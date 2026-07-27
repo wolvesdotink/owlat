@@ -54,6 +54,20 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.imported'),
 	// Irreversible merge: the source contact is hard-deleted into the target.
 	action('contact.merged'),
+	// Sunset policy (deliverability plan P4-4). Every automatic transition the
+	// sunset engine makes is audited, including the ones that only move a
+	// contact onto the re-engagement track — a controller that changes a
+	// recipient's fate silently is experienced as a bug.
+	action('contact.sunset_reengagement'),
+	action('contact.sunset_suppressed'),
+	action('contact.sunset_resumed'),
+	// Operator-driven, one action, and itself audited: the restore path out of
+	// an automatic sunset suppression.
+	action('contact.sunset_restored'),
+	// Operator override toggled on/off for one contact.
+	action('contact.sunset_exemption_changed'),
+	// Per-topic (or deployment-wide) window/enabled tuning.
+	action('contact.sunset_policy_updated'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
 	// Topic

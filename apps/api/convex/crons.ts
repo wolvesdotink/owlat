@@ -491,6 +491,20 @@ crons.interval(
 	{}
 );
 
+// Sunset policy (deliverability plan P4-4): move contacts that have ignored
+// every message for the configured window onto the re-engagement track, then
+// auto-suppress them. Unengaged recipients are the dominant source of
+// spam-folder placement and spam-trap hits, so this runs ON by default at a
+// conservative 180/270 days. Bounded per tick (`SUNSET_CONTACTS_PER_TICK`) and
+// resumable from its index cursor; a contact is re-evaluated at most daily,
+// which is why this is a daily cron rather than an hourly one.
+crons.interval(
+	'sweep contact sunset policy',
+	{ hours: 24 },
+	internal.contacts.sunset.sweepSunsetPolicy,
+	{}
+);
+
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and
 // every run is attributed to its plugin. No-op when no plugin contributes crons.

@@ -32,6 +32,12 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `contact.deleted` | `contact` | `{ email }` (soft-delete; hard cascade happens in cron; also emitted per-row by `bulkDelete`) |
 | `contact.imported` | `contact` | `{ count, source }` |
 | `contact.merged` | `contact` | `{ sourceContactId, sourceEmail }` (target is `resourceId`; source hard-deleted) |
+| `contact.sunset_reengagement` | `contact` | `{ email, reason, quietDays, tenureDays, actor: 'sunset_engine' }` |
+| `contact.sunset_suppressed` | `contact` | `{ email, reason, quietDays, tenureDays, actor: 'sunset_engine' }` + `detailsBlob` (the full decision snapshot) |
+| `contact.sunset_resumed` | `contact` | `{ email, reason, quietDays, actor: 'sunset_engine' }` |
+| `contact.sunset_restored` | `contact` | `{ email, hadBlockedEmailId, exempted: true }` (operator-driven) |
+| `contact.sunset_exemption_changed` | `contact` | `{ email, exempt }` |
+| `contact.sunset_policy_updated` | `settings` | `{ topicId, enabled, reengageAfterDays, suppressAfterDays }` |
 | `topic.created` / `topic.updated` / `topic.deleted` | `topic` | `{ name }` |
 | `email_template.created` | `email_template` | `{ name, type }` |
 | `email_template.updated` | `email_template` | `detailsBlob: { changes: {...} }` |
