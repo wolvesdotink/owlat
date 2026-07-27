@@ -177,7 +177,9 @@ describe('deliverability signal taxonomy', () => {
 		expect(hasCriticalBlocklistSignal([blocklistSignal({ source: 'dnsbl_partial' })])).toBe(true);
 		// Unmeasurable is not evidence of harm any more than it is of health.
 		expect(
-			hasCriticalBlocklistSignal([blocklistSignal({ source: 'dnsbl_unknown', severity: 'warning' })])
+			hasCriticalBlocklistSignal([
+				blocklistSignal({ source: 'dnsbl_unknown', severity: 'warning' }),
+			])
 		).toBe(false);
 		expect(
 			hasCriticalBlocklistSignal([blocklistSignal({ source: 'dnsbl_listed', severity: 'warning' })])
