@@ -73,10 +73,22 @@ describe('own-share resolution (D1)', () => {
 		expect(isFallbackActiveForShare(Number.NaN)).toBe(true);
 		expect(isFallbackActiveForShare(Number.POSITIVE_INFINITY)).toBe(true);
 		expect(isFallbackActiveForShare(Number.NEGATIVE_INFINITY)).toBe(true);
-		// `resolveOwnShare` treats a non-finite STORED share as absent and falls
-		// back to the row's boolean, which is the D1 contract for a corrupt row.
+		// A corrupt STORED share is degenerate evidence, not an absent field: D1's
+		// `??` fires on absent only, so a non-finite share flows into the clamp and
+		// fails closed on the floor — on a HEALTHY row too. Read boundary and write
+		// boundary must never disagree about a NaN.
 		expect(resolveOwnShare({ isFallbackActive: true, ownShare: Number.NaN })).toBe(0);
-		expect(resolveOwnShare({ isFallbackActive: false, ownShare: Number.NaN })).toBe(1);
+		expect(resolveOwnShare({ isFallbackActive: false, ownShare: Number.NaN })).toBe(0);
+		expect(resolveOwnShare({ isFallbackActive: false, ownShare: Number.POSITIVE_INFINITY })).toBe(
+			0
+		);
+		expect(resolveOwnShare({ isFallbackActive: false, ownShare: Number.NEGATIVE_INFINITY })).toBe(
+			0
+		);
+		// ...and a corrupt share on a healthy row therefore engages the relay.
+		expect(isRouteStateFallbackActive({ isFallbackActive: false, ownShare: Number.NaN })).toBe(
+			true
+		);
 		expect(resolveOwnShare({ isFallbackActive: false, ownShare: -0.2 })).toBe(0);
 		expect(resolveOwnShare({ isFallbackActive: false, ownShare: 4 })).toBe(1);
 	});

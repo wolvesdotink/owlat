@@ -189,10 +189,16 @@ export function clampOwnShare(value: number): number {
 /**
  * Fraction of this cell's traffic that the own MTA carries. A missing row is
  * the un-migrated, un-degraded default: the own MTA carries everything.
+ *
+ * This is D1's expression literally — `ownShare ?? (isFallbackActive ? 0 : 1)`.
+ * `??` fires on an ABSENT share, never on a corrupt one: a stored `NaN` or
+ * `±Infinity` is degenerate evidence, not a missing field, so it flows into
+ * `clampOwnShare` and fails closed on the floor exactly as the write boundary
+ * does. Degenerate evidence must never raise a share.
  */
 export function resolveOwnShare(state: DeliverabilityRouteShareState | null | undefined): number {
 	if (!state) return OWN_SHARE_CEILING;
-	if (state.ownShare === undefined || !Number.isFinite(state.ownShare)) {
+	if (state.ownShare === undefined) {
 		return state.isFallbackActive ? OWN_SHARE_FLOOR : OWN_SHARE_CEILING;
 	}
 	return clampOwnShare(state.ownShare);
