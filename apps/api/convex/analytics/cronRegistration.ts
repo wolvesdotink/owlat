@@ -14,12 +14,12 @@ import { internal } from '../_generated/api';
 type Crons = ReturnType<typeof cronJobs>;
 
 /**
- * The three seed-probe housekeeping crons.
+ * The three seed-mailbox housekeeping crons.
  *
  * All three are pure housekeeping — none sends mail, touches a campaign, or can
  * fail a send. Two sweep the probe LEDGER; the third offers the operator the
- * rotation nudge, which is a timestamp decision needing no IMAP at all. With no
- * seed mailboxes connected every one of them is a no-op (D2).
+ * rotation nudge. With no seed mailboxes connected every one of them is a
+ * no-op (D2).
  */
 export function registerSeedPlacementCrons(crons: Crons): void {
 	// One row per shadow copy, retention-bounded at 90 days so the deliverability
