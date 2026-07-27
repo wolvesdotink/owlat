@@ -6,22 +6,36 @@
  * along the right seam: this component owns the credential DRAFT and nothing
  * else knows it exists. The wizard shell only learns whether the step settled.
  *
- * The path is the SHIPPED one (D4 — no second credential model): the setup
- * wizard's validators and `buildProviderEnv`, applied through the sealed
- * `/api/delivery/apply-transport` env patch that `TransportEditor.vue` already
- * uses. Values are WRITE-ONLY — never rendered back, never logged, dropped from
- * memory the moment the patch is accepted, and redacted out of any provider
- * error text before it can reach the screen or a console.
+ * The path is the SHIPPED one (D4 — no second credential model): the relay
+ * credential draft, validators and live handshake `TransportEditor.vue` uses
+ * (`useRelayCredentialDraft`), applied through the sealed
+ * `/api/delivery/apply-transport` env patch. Values are WRITE-ONLY — never
+ * rendered back, never logged, dropped from memory the moment the patch is
+ * accepted, and redacted out of any provider text before it can reach the screen
+ * or a console.
+ *
+ * WHAT APPLYING DOES, stated plainly here and in the step's copy: the shipped
+ * env patch REPOINTS the deployment's default transport at the provider you
+ * enter. Owlat sends through it from that moment, and the built-in MTA stops
+ * being the default sender until you change it back under "Change provider".
+ * This wizard is the guided version of that same action, against the same
+ * endpoint — it does not add a second transport alongside the first. Splitting
+ * traffic between two arms is the ramp controller's job and lands with it; until
+ * then the honest description of this button is "switch", not "split", and the
+ * operator is told so before they press it.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import {
-	SMTP_RELAY_PRESETS,
-	buildProviderEnv,
 	emailStepIsValid,
 	validateEmailStep,
 	type EmailStepDraft,
-	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import {
+	RELAY_PROVIDER_OPTIONS,
+	applyTransportEnv,
+	useRelayCredentialDraft,
+	type ValidateTransportResponse,
+} from '~/composables/useRelayCredentialDraft';
 import { redactSecrets } from '~/utils/transportWizard';
 
 /**
@@ -31,57 +45,29 @@ import { redactSecrets } from '~/utils/transportWizard';
  */
 const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 
-/** The MTA is not a thing you connect here — this step is for relays only. */
-type WizardProvider = 'resend' | 'ses' | 'smtp';
+const relay = useRelayCredentialDraft('resend');
+const {
+	provider,
+	resendKey,
+	sesRegion,
+	sesAccess,
+	sesSecret,
+	smtpPreset,
+	smtpHost,
+	smtpPort,
+	smtpUsername,
+	smtpPassword,
+	smtpPresetOptions,
+	enteredSecrets,
+	canValidateLive,
+} = relay;
 
-const provider = ref<WizardProvider>('resend');
-const resendKey = ref('');
-const sesRegion = ref('us-east-1');
-const sesAccess = ref('');
-const sesSecret = ref('');
-const smtpPreset = ref<SmtpPreset>('mailgun');
-const smtpHost = ref(SMTP_RELAY_PRESETS['mailgun'].host);
-const smtpPort = ref(SMTP_RELAY_PRESETS['mailgun'].port);
-const smtpSecure = ref(SMTP_RELAY_PRESETS['mailgun'].secure);
-const smtpUsername = ref('');
-const smtpPassword = ref('');
-
-const providerOptions: { value: WizardProvider; label: string; hint: string }[] = [
-	{ value: 'resend', label: 'Resend', hint: 'Managed API with a generous free tier.' },
-	{ value: 'ses', label: 'Amazon SES', hint: 'Cheap at scale. Needs an AWS account.' },
-	{ value: 'smtp', label: 'SMTP relay', hint: 'Mailgun, Postmark, SendGrid, Brevo, or custom.' },
-];
-
-const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-// Choosing a named preset prefills host/port/TLS; Custom leaves them editable.
-watch(smtpPreset, (preset) => {
-	if (preset === 'custom') return;
-	const cfg = SMTP_RELAY_PRESETS[preset];
-	smtpHost.value = cfg.host;
-	smtpPort.value = cfg.port;
-	smtpSecure.value = cfg.secure;
-});
-
-/** Every secret currently held in memory — the redaction list, in one place. */
-const enteredSecrets = computed(() => [resendKey.value, sesSecret.value, smtpPassword.value]);
+const providerOptions = RELAY_PROVIDER_OPTIONS;
 
 const draft = computed<EmailStepDraft>(() => ({
 	provider: provider.value,
 	requiresProvider: true,
-	resendKey: resendKey.value,
-	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
-	smtp: {
-		preset: smtpPreset.value,
-		host: smtpHost.value,
-		port: smtpPort.value,
-		secure: smtpSecure.value,
-		username: smtpUsername.value,
-		password: smtpPassword.value,
-	},
+	...relay.credentialFields.value,
 	fromEmail: '',
 	fromName: '',
 }));
@@ -91,41 +77,50 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 const credentialError = ref('');
 const restartNotice = ref('');
+const validationResult = ref<ValidateTransportResponse | null>(null);
 const applying = ref(false);
 
-/** Never surface a provider's message verbatim — it can quote the key back. */
-function fail(raw: string) {
-	credentialError.value = redactSecrets(raw, enteredSecrets.value);
-	emit('settled', { ok: false });
+/**
+ * The redaction boundary. EVERY operator-facing string this component renders
+ * goes through here — a provider's own message can quote back the key it
+ * rejected, and an unhandled `Error` can carry a request body.
+ */
+function safe(raw: string): string {
+	return redactSecrets(raw, enteredSecrets.value);
 }
 
-function clearEnteredSecrets() {
-	resendKey.value = '';
-	sesSecret.value = '';
-	smtpPassword.value = '';
+function fail(raw: string) {
+	credentialError.value = safe(raw);
+	emit('settled', { ok: false });
 }
 
 async function applyCredentials() {
 	submitted.value = true;
 	credentialError.value = '';
 	restartNotice.value = '';
+	validationResult.value = null;
 	if (!emailStepIsValid(draft.value)) return;
 	applying.value = true;
 	try {
-		const providerEnv = buildProviderEnv({}, draft.value);
-		const res = await $fetch<{
-			ok: boolean;
-			message: string;
-			applied: boolean;
-			requiresRestart: boolean;
-		}>('/api/delivery/apply-transport', { method: 'POST', body: { providerEnv } });
+		// The SHIPPED pre-apply handshake first (Resend and SMTP have one), so a bad
+		// key is named by the provider here rather than discovered at the live send
+		// test — after the deployment's transport has already been repointed.
+		const validated = await relay.validateLive();
+		if (validated !== null) {
+			validationResult.value = { ok: validated.ok, message: safe(validated.message) };
+			if (!validated.ok) {
+				emit('settled', { ok: false });
+				return;
+			}
+		}
+		const res = await applyTransportEnv(draft.value);
 		if (!res.ok) {
 			fail(res.message);
 			return;
 		}
-		if (res.requiresRestart) restartNotice.value = res.message;
+		if (res.requiresRestart) restartNotice.value = safe(res.message);
 		// Write-only: the values left with the sealed patch and are dropped here.
-		clearEnteredSecrets();
+		relay.clearEnteredSecrets();
 		emit('settled', { ok: true });
 		emit('applied');
 	} catch (e) {
@@ -168,6 +163,16 @@ async function applyCredentials() {
 			screen.
 		</p>
 
+		<!-- The consequence, before the button that causes it. This is the guided
+		     version of "Change provider": it repoints the deployment's default
+		     transport at this provider, so Owlat sends through it and your own
+		     server stops being the default sender until you switch back. -->
+		<p class="text-sm text-text-secondary">
+			Saving makes this provider the transport Owlat sends through. Your own server keeps running
+			and stays one switch away under “Change provider”, but it stops being the default sender until
+			you switch back.
+		</p>
+
 		<div v-if="provider === 'resend'">
 			<UiInput
 				v-model="resendKey"
@@ -198,6 +203,14 @@ async function applyCredentials() {
 			<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
 			<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
 			<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
+		</div>
+
+		<p v-if="!canValidateLive" class="text-xs text-text-tertiary">
+			Amazon SES can’t be checked before applying — the live send test in the next step confirms it.
+		</p>
+
+		<div v-if="validationResult && !validationResult.ok" role="alert">
+			<UiErrorAlert variant="error" title="Test failed" :message="validationResult.message" />
 		</div>
 
 		<div v-if="credentialError" role="alert">
