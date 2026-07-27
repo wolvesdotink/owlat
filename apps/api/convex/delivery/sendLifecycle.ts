@@ -32,6 +32,7 @@ import {
 	senderDomainFor,
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
+import { transportOutcomeEventForTransition } from '../analytics/transportOutcomeSummary';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
@@ -250,13 +251,38 @@ async function dispatch(
 						eventType: 'send',
 						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
 					},
+					// The per-cell outcome denominator follows the same evidence
+					// rule as the reputation one: an envelope provably reached the
+					// wire, so the arm comparison must count it as sent.
+					{ kind: 'transport_outcome', sendId: ref.id, event: 'sent', at: input.at },
 				]
 			: [];
+
+	// Per-cell, per-arm DELIVERABILITY outcome (plan D5, fixing G-05: acceptance
+	// is not delivery). Derived purely from the transition and appended to the
+	// SAME effect list, so it inherits the lifecycle's duplicate suppression and
+	// the test-send stripping below rather than reimplementing either. A `failed`
+	// transition maps to no event — a local non-delivery is not a transport
+	// outcome. The cell and arm are resolved by the effect runner, by joining the
+	// send to its `sendAssignments` row.
+	const outcomeEvent = transportOutcomeEventForTransition(
+		input.to,
+		input.to === 'bounced' ? input.bounceType : undefined
+	);
+	const transportOutcomeEffects: Effect[] =
+		outcomeEvent === null
+			? []
+			: [{ kind: 'transport_outcome', sendId: ref.id, event: outcomeEvent, at: input.at }];
 
 	result = withoutTestSendEffects(send, ref, {
 		...result,
 		patch: { ...deliveryObservation.patch, ...result.patch },
-		effects: [...queuedTerminalSendAccounting, ...deliveryObservation.effects, ...result.effects],
+		effects: [
+			...queuedTerminalSendAccounting,
+			...deliveryObservation.effects,
+			...result.effects,
+			...transportOutcomeEffects,
+		],
 		applied:
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'
 				? 'recorded'
