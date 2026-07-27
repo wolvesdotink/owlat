@@ -17,12 +17,13 @@ import {
 	YAHOO_CFL_REPORT_COALESCE_MS,
 	YAHOO_CFL_STORED_STATES,
 	YAHOO_CFL_SUBMISSION_PATIENCE_MS,
+	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
 	yahooCflPreconditionMet,
-	yahooComplaintSubstitution,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 } from '../yahooCfl';
+import { yahooComplaintSubstitution } from '../yahooComplaintSignal';
 
 const READY: YahooCflDkimPrecondition = {
 	domain: 'mail.example.com',
@@ -332,6 +333,156 @@ describe('the re-check, derived on read', () => {
 			state: 'enrolled',
 			silentMs: 0,
 		});
+	});
+});
+
+describe('re-submitting a lapsed enrollment — the "re-check it" path', () => {
+	/** An enrollment that saw one report and has been silent past the lapse window. */
+	const LAPSED: YahooCflEnrollmentRecord = {
+		state: 'enrolled',
+		dkimDomain: 'mail.example.com',
+		submittedAt: T0,
+		enrolledAt: T0 + DAY,
+		lastReportAt: T0 + 2 * DAY,
+	};
+	const LAPSED_NOW = T0 + 2 * DAY + YAHOO_CFL_LAPSE_SILENCE_MS;
+
+	it('is genuinely lapsed at the clock the re-submission happens on', () => {
+		expect(deriveYahooCflState(LAPSED, LAPSED_NOW).state).toBe('lapsed');
+	});
+
+	it('transitions back to awaiting_yahoo with a fresh submittedAt', () => {
+		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY);
+		expect(again.changed).toBe(true);
+		expect(again.reason).toBe('resubmitted');
+		expect(again.record.state).toBe('awaiting_yahoo');
+		expect(again.record.submittedAt).toBe(LAPSED_NOW);
+	});
+
+	it('keeps lastReportAt and drops the stale enrolledAt', () => {
+		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY);
+		// Observed history survives — it is what a fresh report has to beat.
+		expect(again.record.lastReportAt).toBe(T0 + 2 * DAY);
+		// The confirmation date does NOT: keeping it would give the derived state a
+		// stale fallback origin for an enrollment we no longer believe is live.
+		expect(again.record.enrolledAt).toBeUndefined();
+		// And the re-submitted record derives as awaiting, not as lapsed-again.
+		expect(deriveYahooCflState(again.record, LAPSED_NOW).state).toBe('awaiting_yahoo');
+	});
+
+	it('still refuses a submission against a LIVE enrollment', () => {
+		const live = applyYahooCflEvent(LAPSED, { kind: 'submit', at: T0 + 3 * DAY }, READY);
+		expect(live).toEqual({ record: LAPSED, changed: false, reason: 'already_enrolled' });
+	});
+
+	it('still refuses a lapsed re-submission when the DKIM domain is not ready', () => {
+		expect(applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, UNVERIFIED)).toEqual({
+			record: LAPSED,
+			changed: false,
+			reason: 'dkim_domain_not_ready',
+		});
+	});
+
+	it('reopens the submit step in the guide rather than showing it done', () => {
+		const step = yahooCflGuidedSteps(LAPSED, READY, LAPSED_NOW).find(
+			(s) => s.id === 'submit_enrollment'
+		);
+		expect(step?.status).toBe('todo');
+		expect(step?.action).toContain('Re-submit');
+	});
+
+	it('completes the round trip: re-submit, then a report re-enrolls', () => {
+		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY).record;
+		const report = applyYahooCflEvent(
+			again,
+			{ kind: 'report_observed', at: LAPSED_NOW + DAY },
+			READY
+		);
+		expect(report.reason).toBe('report_confirms_enrollment');
+		expect(report.record).toMatchObject({
+			state: 'enrolled',
+			enrolledAt: LAPSED_NOW + DAY,
+			lastReportAt: LAPSED_NOW + DAY,
+		});
+	});
+});
+
+describe('available actions — the affordances the flow offers', () => {
+	it('offers submit (and nothing else) on a fresh record', () => {
+		expect(yahooCflAvailableActions(emptyYahooCflEnrollment(), READY, T0)).toEqual({
+			canSubmit: true,
+			submitBlockedByDkim: false,
+			canConfirm: false,
+			canReset: false,
+		});
+	});
+
+	it('shows submit as blocked, not hidden, until the DKIM domain is ready', () => {
+		for (const precondition of [UNVERIFIED, NO_SELECTOR]) {
+			expect(yahooCflAvailableActions(emptyYahooCflEnrollment(), precondition, T0)).toMatchObject({
+				canSubmit: true,
+				submitBlockedByDkim: true,
+			});
+		}
+	});
+
+	it('offers confirm and reset while awaiting Yahoo', () => {
+		expect(
+			yahooCflAvailableActions({ state: 'awaiting_yahoo', submittedAt: T0 }, READY, T0 + DAY)
+		).toEqual({
+			canSubmit: false,
+			submitBlockedByDkim: false,
+			canConfirm: true,
+			canReset: true,
+		});
+	});
+
+	it('offers nothing but reset on a live enrollment', () => {
+		expect(
+			yahooCflAvailableActions({ state: 'enrolled', enrolledAt: T0 }, READY, T0 + DAY)
+		).toEqual({
+			canSubmit: false,
+			submitBlockedByDkim: false,
+			canConfirm: false,
+			canReset: true,
+		});
+	});
+
+	it('re-offers submit once the enrollment derives as lapsed', () => {
+		const enrolled: YahooCflEnrollmentRecord = { state: 'enrolled', enrolledAt: T0 };
+		expect(
+			yahooCflAvailableActions(enrolled, READY, T0 + YAHOO_CFL_LAPSE_SILENCE_MS)
+		).toMatchObject({ canSubmit: true, canReset: true });
+	});
+
+	it('never offers an action the state machine would refuse', () => {
+		const records: YahooCflEnrollmentRecord[] = [
+			emptyYahooCflEnrollment(),
+			{ state: 'not_started', submittedAt: T0 },
+			{ state: 'awaiting_yahoo', submittedAt: T0 },
+			{ state: 'enrolled', enrolledAt: T0 },
+			{ state: 'enrolled', enrolledAt: T0, lastReportAt: T0 },
+		];
+		// Sampled across the whole lapse window so both the live and the lapsed
+		// derivation of every enrolled record is exercised.
+		for (const record of records) {
+			for (const offset of [DAY, YAHOO_CFL_LAPSE_SILENCE_MS + DAY]) {
+				const now = T0 + offset;
+				const actions = yahooCflAvailableActions(record, READY, now);
+				const attempts: { kind: 'submit' | 'confirm' | 'reset'; offered: boolean }[] = [
+					{ kind: 'submit', offered: actions.canSubmit },
+					{ kind: 'confirm', offered: actions.canConfirm },
+					{ kind: 'reset', offered: actions.canReset },
+				];
+				for (const attempt of attempts) {
+					if (!attempt.offered) continue;
+					const result = applyYahooCflEvent(record, { kind: attempt.kind, at: now }, READY);
+					expect(result.changed, `${attempt.kind} on ${JSON.stringify(record)} at +${offset}`).toBe(
+						true
+					);
+				}
+			}
+		}
 	});
 });
 

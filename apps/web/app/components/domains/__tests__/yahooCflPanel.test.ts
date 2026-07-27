@@ -18,14 +18,15 @@ import { mount, flushPromises } from '@vue/test-utils';
 
 import YahooCflPanel from '../YahooCflPanel.vue';
 import {
+	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
-	yahooComplaintSubstitution,
 	YAHOO_CFL_ENROLLMENT_URL,
 	YAHOO_CFL_LAPSE_SILENCE_MS,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 	type YahooCflEnrollmentState,
 } from '@owlat/shared/yahooCfl';
+import { yahooComplaintSubstitution } from '@owlat/shared/yahooComplaintSignal';
 
 const PRECONDITION: YahooCflDkimPrecondition = {
 	domain: 'mail.example.com',
@@ -52,6 +53,9 @@ function guideFor(
 		enrollment: record,
 		precondition,
 		steps: yahooCflGuidedSteps(record, precondition, nowMs),
+		// The affordances come from the pure core exactly as the query serves them —
+		// the panel renders this verbatim and derives no status of its own.
+		actions: yahooCflAvailableActions(record, precondition, nowMs),
 		complaintSignal: yahooComplaintSubstitution({
 			enrollmentState: state,
 			hasCfblAddress: false,
@@ -193,15 +197,36 @@ describe('the controls', () => {
 		expect(runs['confirmEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
 	});
 
-	it('offers Start over once something has been recorded, and re-submit when lapsed', async () => {
+	it('offers Start over once something has been recorded', async () => {
 		expect(mountPanel(NOT_STARTED).find('[data-testid="yahoocfl-reset"]').exists()).toBe(false);
 		const w = mountPanel(LAPSED);
-		// A lapsed enrollment is re-submittable AND resettable — both are to-dos.
-		expect(w.find('[data-testid="yahoocfl-submit"]').exists()).toBe(true);
 		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
 		expect(confirmSpy).toHaveBeenCalledTimes(1);
 		await flushPromises();
 		expect(runs['resetEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
+	});
+
+	it('RE-SUBMITS a lapsed enrollment — and the mutation is the assertion, not the button', async () => {
+		// Asserting the button EXISTS would pass even if the click were a no-op, which
+		// is exactly how a dead control hides. The affordance comes from the pure core
+		// (`actions.canSubmit`), which is keyed on the DERIVED state, and the click has
+		// to reach the mutation that services it.
+		const w = mountPanel(LAPSED);
+		expect(LAPSED.actions.canSubmit).toBe(true);
+		expect(w.get('[data-testid="yahoocfl-submit"]').attributes('disabled')).toBeUndefined();
+		await w.get('[data-testid="yahoocfl-submit"]').trigger('click');
+		await flushPromises();
+		expect(runs['submitEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
+		// And the lapse reopens the submit step rather than leaving it stamped done.
+		expect(w.get('[data-testid="yahoocfl-step-submit_enrollment"]').attributes('data-status')).toBe(
+			'todo'
+		);
+	});
+
+	it('offers no submit control on a LIVE enrollment', () => {
+		const w = mountPanel(ENROLLED);
+		expect(ENROLLED.actions.canSubmit).toBe(false);
+		expect(w.find('[data-testid="yahoocfl-submit"]').exists()).toBe(false);
 	});
 
 	it('disables Submit until the DKIM domain is verified and signing', () => {
@@ -213,8 +238,8 @@ describe('the controls', () => {
 		);
 		const submit = w.get('[data-testid="yahoocfl-submit"]');
 		expect(submit.attributes('disabled')).toBeDefined();
-		// The disabled state is read off the guide's own `blocked` step, not
-		// recomputed here: the panel has exactly one definition of the precondition.
+		// The disabled state is read off the guide's own `actions`, not recomputed
+		// here: the panel has exactly one definition of the precondition.
 		expect(w.get('[data-testid="yahoocfl-step-submit_enrollment"]').attributes('data-status')).toBe(
 			'blocked'
 		);

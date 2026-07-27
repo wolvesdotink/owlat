@@ -236,7 +236,7 @@ describe('report observation keeps the enrollment live', () => {
 			reportedDomain: 'MAIL.G.TEST',
 			at: T0 + DAY,
 		});
-		expect(result).toMatchObject({ observed: true, state: 'enrolled' });
+		expect(result).toMatchObject({ matchedDomain: true, changed: true, state: 'enrolled' });
 		expect((await enrollmentRows(t))[0]).toMatchObject({
 			state: 'enrolled',
 			lastReportAt: T0 + DAY,
@@ -255,7 +255,14 @@ describe('report observation keeps the enrollment live', () => {
 			reportedDomain: 'mail.h.test',
 			at: T0,
 		});
-		expect(result).toMatchObject({ observed: true, state: 'not_started', reason: 'not_submitted' });
+		// The OUTCOME, not a flag: the domain matched, and the transition was
+		// refused, so nothing was written.
+		expect(result).toEqual({
+			matchedDomain: true,
+			changed: false,
+			state: 'not_started',
+			reason: 'not_submitted',
+		});
 		expect(await enrollmentRows(t)).toHaveLength(0);
 
 		// And the guide the operator sees still reports the substituted proxy.
@@ -273,7 +280,7 @@ describe('report observation keeps the enrollment live', () => {
 				reportedDomain: 'someone-elses.example',
 				at: T0,
 			})
-		).toEqual({ observed: false });
+		).toEqual({ matchedDomain: false, changed: false, reason: 'domain_missing' });
 		expect(await enrollmentRows(t)).toHaveLength(0);
 	});
 
@@ -283,7 +290,7 @@ describe('report observation keeps the enrollment live', () => {
 		for (const reportedDomain of ['', '   ', `${'a'.repeat(300)}.example`]) {
 			expect(
 				await t.mutation(internal.domains.yahooCfl.observeReport, { reportedDomain, at: T0 })
-			).toEqual({ observed: false });
+			).toEqual({ matchedDomain: false, changed: false, reason: 'domain_missing' });
 		}
 		expect(await enrollmentRows(t)).toHaveLength(0);
 	});
@@ -324,7 +331,7 @@ describe('report observation keeps the enrollment live', () => {
 					reportedDomain: 'mail.burst.test',
 					at: T0 + i * 1000,
 				})
-			).toMatchObject({ observed: true, state: 'enrolled' });
+			).toMatchObject({ matchedDomain: true, changed: false, state: 'enrolled' });
 		}
 		const afterBurst = (await enrollmentRows(t))[0];
 		// Not one patch per complaint: the row is untouched since creation.
@@ -358,7 +365,7 @@ describe('report observation keeps the enrollment live', () => {
 					reportedDomain: 'mail.clock.test',
 					at,
 				})
-			).toEqual({ observed: false });
+			).toEqual({ matchedDomain: false, changed: false, reason: 'invalid_timestamp' });
 			expect(await enrollmentRows(t)).toHaveLength(0);
 		}
 	);
@@ -455,6 +462,55 @@ describe('the re-check, derived on read', () => {
 		expect((await asUser.query(api.domains.yahooCfl.getGuide, { domainId }))?.state).toBe(
 			'enrolled'
 		);
+	});
+
+	it('RE-SUBMITS a lapsed enrollment: the guide offers it and the mutation changes the row', async () => {
+		// The "re-check it" acceptance criterion, end to end. A lapsed domain's
+		// STORED state is `enrolled`, so re-submission must be keyed on the DERIVED
+		// state or the control is dead: it would write nothing, refresh no
+		// `submittedAt`, and say nothing (a refusal is a reason, not a throw).
+		const t = convexTest(schema, modules);
+		const domainId = await seedSubmittedDomain(t, 'mail.relapse.test');
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.relapse.test',
+			at: T0,
+		});
+		const asUser = t.withIdentity(identity);
+
+		// While the enrollment is live, submit is neither offered nor accepted.
+		vi.setSystemTime(T0 + DAY);
+		const live = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
+		expect(live?.actions).toMatchObject({ canSubmit: false, canConfirm: false, canReset: true });
+		expect(
+			await asUser.mutation(api.domains.yahooCfl.submitEnrollment, { domainId })
+		).toMatchObject({ changed: false, reason: 'already_enrolled' });
+
+		// Once it derives as lapsed, the affordance comes back...
+		const lapsedAt = T0 + LAPSE_MS;
+		vi.setSystemTime(lapsedAt);
+		const lapsed = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
+		expect(lapsed?.state).toBe('lapsed');
+		expect(lapsed?.actions).toMatchObject({ canSubmit: true, submitBlockedByDkim: false });
+		expect(lapsed?.steps.find((s) => s.id === 'submit_enrollment')?.status).toBe('todo');
+
+		// ...and the mutation has a real EFFECT: back to awaiting_yahoo with a fresh
+		// submittedAt, the observed history kept, the stale confirmation date gone.
+		expect(
+			await asUser.mutation(api.domains.yahooCfl.submitEnrollment, { domainId })
+		).toMatchObject({ state: 'awaiting_yahoo', changed: true, reason: 'resubmitted' });
+		const row = (await enrollmentRows(t))[0];
+		expect(row).toMatchObject({
+			state: 'awaiting_yahoo',
+			submittedAt: lapsedAt,
+			lastReportAt: T0,
+			updatedAt: lapsedAt,
+		});
+		expect(row?.enrolledAt).toBeUndefined();
+
+		// The guide now shows the waiting state and offers confirm instead.
+		const after = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
+		expect(after?.state).toBe('awaiting_yahoo');
+		expect(after?.actions).toMatchObject({ canSubmit: false, canConfirm: true, canReset: true });
 	});
 
 	it('never reads as lapsed for a state that was never enrolled', async () => {
