@@ -136,14 +136,20 @@ export function buildEngagementRanker(
 		cohort.push(score);
 	}
 	cohort.sort((a, b) => a - b);
+	// Constant for the life of the ranker, so it is answered once here rather
+	// than once per recipient: too thin a batch to rank at all (D10 — thin data
+	// holds), and every recipient falls back to the random bucket.
+	if (cohort.length < MIN_STRATIFICATION_COHORT) return () => undefined;
 
 	return (recipient) => {
 		const score = recipient.engagementScore;
 		if (score === undefined || !Number.isFinite(score)) return undefined;
-		if (cohort.length < MIN_STRATIFICATION_COHORT) return undefined;
 		const { lower, upper } = engagementPercentileRange(cohort, score);
-		// Untied scores have a zero-width interval, so this is exactly the
-		// shipped percentile for them.
+		// Every DISTINCT score occupies its own interval, and those intervals are
+		// disjoint, so dispersing inside one can never reorder two distinct
+		// scores. A distinct score's interval is one cohort slot wide (not zero),
+		// so untied ranks move too — harmlessly. A tie is the only case where the
+		// interval is wider than 1/n, and dispersing it is the whole point.
 		return lower + (upper - lower) * rankTieBreakUnit(recipient.sendId);
 	};
 }

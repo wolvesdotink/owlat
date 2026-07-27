@@ -62,7 +62,7 @@ import {
 
 // The classification seam lives next door but is part of THIS module's public
 // surface: it is what the write-amplification regression asserts against.
-export { destinationProvidersForEmails, MIN_STRATIFICATION_COHORT } from './sendAssignmentRouting';
+export { destinationProvidersForEmails } from './sendAssignmentRouting';
 
 /** Assignment rows age out after 90 days (D16 — write amplification is bounded). */
 export const SEND_ASSIGNMENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;

@@ -46,7 +46,6 @@ export type {
 	MixAssignmentInput,
 	MixCellState,
 	MixContext,
-	MixHashConsumer,
 	MixRecipientIdentity,
 } from './mix';
 export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
