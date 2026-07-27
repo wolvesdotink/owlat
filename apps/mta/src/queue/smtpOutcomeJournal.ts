@@ -9,7 +9,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { EmailJobResult } from '../types.js';
-import type { CtxWithIp } from '../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effectCheckpoint.js';
@@ -18,7 +18,7 @@ const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
 export const SMTP_OUTCOME_JOURNAL_TTL_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 24 * 60 * 60 * 1000;
 
-export type SmtpAttemptSnapshot = Omit<CtxWithIp, 'job'>;
+export type SmtpAttemptSnapshot = Omit<CtxWithProviderPressure, 'job'>;
 
 interface InFlightSmtpOutcome {
 	state: 'in_flight';
@@ -189,6 +189,12 @@ function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
 		!Number.isSafeInteger(attempt['eligibilityGeneration'])
 	) {
 		return false;
+	}
+	// Reservations persisted before the per-provider pressure dimension carry no
+	// counter. Normalize rather than reject: a legacy in-flight entry must still
+	// replay, and "no recorded pressure" is exactly zero.
+	if (typeof attempt['providerVolumePressure'] !== 'number') {
+		attempt['providerVolumePressure'] = 0;
 	}
 	const destination = attempt['destination'];
 	if (!destination || typeof destination !== 'object') return false;
