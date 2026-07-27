@@ -231,23 +231,41 @@ export function parseSndsTimestamp(raw: string): number | null {
 }
 
 /**
+ * The two spellings the SNDS complaint-rate column is documented to use:
+ * a relational bound at either end of the scale (`< 0.1%`, `> 0.9%`) and a
+ * half-open range one tenth of a point wide in between (`0.3% - < 0.4%`).
+ *
+ * Both are ANCHORED at both ends. An unanchored match would let any text that
+ * merely CONTAINS a number name a band — which is the same failure as guessing.
+ */
+const RELATIONAL_BAND_RE = /^([<>])\s*=?\s*(\d+(?:\.\d+)?)\s*%?$/;
+const RANGE_BAND_RE = /^(\d+(?:\.\d+)?)\s*%\s*-\s*<\s*(\d+(?:\.\d+)?)\s*%$/;
+
+/** The width of one band, in percentage points. */
+const BAND_WIDTH = 0.1;
+
+/**
  * Map the feed's complaint-rate text to a band.
  *
  * FORWARD-COMPATIBLE BY CONSTRUCTION: a spelling this parser has never seen —
- * a new band, a localized separator, an empty cell — becomes `unknown`. It
- * never throws and never guesses a neighbouring band, because a wrong band is
- * worse than no band: `unknown` holds the ramp, a fabricated band moves it.
+ * a new band, a localized separator, a prose rewording, an empty cell — becomes
+ * `unknown`. It never throws and never guesses a neighbouring band, because a
+ * wrong band is worse than no band: `unknown` holds the ramp, a fabricated band
+ * moves it.
  *
- * THE BOUND IS READ, NEVER ASSUMED. A relational spelling names a band only when
- * its bound coincides with a band edge: `< 0.1%` is the cleanest band, but
- * `< 0.5%` spans five of them and is therefore `unknown`. Treating any
- * `<`-prefixed text as `lt_0_1` would let reworded feed input turn a breach into
- * the cleanest possible reading — the one direction this parser must never fail.
+ * THE GRAMMAR IS MATCHED WHOLE, NEVER SCANNED. The field names a band only when
+ * the ENTIRE field is one of the two documented spellings AND its bounds sit on
+ * band edges: `< 0.1%` is the cleanest band, but `< 0.5%` spans five of them,
+ * `0% - < 0.9%` spans nine, and a decimal comma is a locale this parser has not
+ * been taught to read — all three are `unknown`. Reading a number out of the
+ * middle of an unrecognised field would let reworded feed input turn a breach
+ * into the cleanest possible reading, and `lt_0_1` is the only band that can
+ * justify an INCREASE — the one direction this parser must never fail.
  */
 export function parseComplaintBand(raw: string): SndsComplaintBand {
 	const text = raw.trim();
 	if (text.length === 0) return 'unknown';
-	const relational = text.match(/^([<>])\s*=?\s*(\d+(?:\.\d+)?)/);
+	const relational = text.match(RELATIONAL_BAND_RE);
 	if (relational !== null) {
 		const operator = relational[1];
 		const boundText = relational[2];
@@ -255,18 +273,22 @@ export function parseComplaintBand(raw: string): SndsComplaintBand {
 		const bound = Number(boundText);
 		if (!Number.isFinite(bound) || bound < 0) return 'unknown';
 		// `<` names a band only at the bottom edge, `>` only at the top edge.
-		if (operator === '<') return bound <= 0.1 + BAND_EPSILON ? 'lt_0_1' : 'unknown';
+		if (operator === '<') return bound <= BAND_WIDTH + BAND_EPSILON ? 'lt_0_1' : 'unknown';
 		return bound >= 0.9 - BAND_EPSILON ? 'gte_0_9' : 'unknown';
 	}
-	// A relational prefix whose bound we could not read names nothing at all.
-	if (text.startsWith('<') || text.startsWith('>')) return 'unknown';
-	const first = text.match(/\d+(?:\.\d+)?/)?.[0];
-	if (first === undefined) return 'unknown';
-	const lowerBound = Number(first);
-	if (!Number.isFinite(lowerBound) || lowerBound < 0) return 'unknown';
-	// Floor, not round: `0.05%` belongs in the band BELOW 0.1%, and the epsilon
-	// keeps binary floating point from turning 0.3 * 10 into 2.999….
-	const tenths = Math.floor(lowerBound * 10 + BAND_EPSILON);
+	const range = text.match(RANGE_BAND_RE);
+	if (range === null) return 'unknown';
+	const lowerText = range[1];
+	const upperText = range[2];
+	if (lowerText === undefined || upperText === undefined) return 'unknown';
+	const lower = Number(lowerText);
+	const upper = Number(upperText);
+	if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower < 0) return 'unknown';
+	// A range wider than one band spans several of them and names none.
+	if (Math.abs(upper - lower - BAND_WIDTH) > BAND_EPSILON) return 'unknown';
+	const tenths = Math.round(lower * 10);
+	// …and one that does not START on a band edge names none either.
+	if (Math.abs(lower * 10 - tenths) > BAND_EPSILON) return 'unknown';
 	if (tenths < 1) return 'lt_0_1';
 	if (tenths >= 9) return 'gte_0_9';
 	return SNDS_COMPLAINT_BANDS[tenths + 1] ?? 'unknown';

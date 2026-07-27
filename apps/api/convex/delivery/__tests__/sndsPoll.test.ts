@@ -140,6 +140,32 @@ describe('SNDS feed parsing', () => {
 			'<',
 			'> ',
 			'<abc',
+			// A LOCALIZED decimal separator. This is a real band spelled in a
+			// locale this parser has not been taught to read, so it is unknown —
+			// never the band the digits happen to look like, and above all never
+			// the cleanest one.
+			'0,8% - < 0,9%',
+			'0,1% - < 0,2%',
+			// A range WIDER than one band spans several of them and names none.
+			// Both of these start at zero, so a parser that read only the lower
+			// bound would call a nine-band range the cleanest band.
+			'0% - < 0.5%',
+			'0.0% - < 0.9%',
+			'0% - < 1%',
+			// A range that does not START on a band edge.
+			'0.05% - < 0.15%',
+			// Prose. The digits name a band; the sentence around them does not.
+			'Less than 0.1%',
+			'0.1% or less',
+			// The numeric token is not the band's lower bound at all — a parser
+			// that scanned for the first number anywhere in the field would read
+			// a rate out of a note or an address.
+			'n/a 0.5%',
+			'IP 203.0.113.10 0.5%',
+			// Trailing text after an otherwise valid spelling: matched whole or
+			// not at all.
+			'< 0.1% (estimated)',
+			'0.1% - < 0.2% *',
 		]) {
 			expect(() => parseComplaintBand(raw), raw).not.toThrow();
 			expect(parseComplaintBand(raw), raw).toBe('unknown');
@@ -150,6 +176,9 @@ describe('SNDS feed parsing', () => {
 		expect(parseComplaintBand('> 0.9%')).toBe('gte_0_9');
 		expect(parseComplaintBand('>= 0.9%')).toBe('gte_0_9');
 		expect(parseComplaintBand('> 5%')).toBe('gte_0_9');
+		// A one-band-wide range at either end of the scale is still that band.
+		expect(parseComplaintBand('0% - < 0.1%')).toBe('lt_0_1');
+		expect(parseComplaintBand('0.9% - < 1.0%')).toBe('gte_0_9');
 		// `unknown` is deliberately NOT the cleanest band — it has no severity.
 		expect(complaintBandSeverity('unknown')).toBeNull();
 		expect(complaintBandSeverity('lt_0_1')).toBe(0);
