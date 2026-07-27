@@ -243,7 +243,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		await seedCampaignRoute(t, {
 			providers: [
 				{ providerType: 'mta', isEnabled: true },
-				{ providerType: 'ses', isEnabled: false },
+				{ providerType: 'ses', isEnabled: true },
 			],
 			deliverabilityFallback: {
 				isEnabled: true,
@@ -283,7 +283,10 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
 		await seedCampaignRoute(t, {
-			providers: [{ providerType: 'mta', isEnabled: true }],
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
 			deliverabilityFallback: {
 				isEnabled: true,
 				relayProviderType: 'ses',
@@ -308,7 +311,10 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		const campaignId = await seedSendableCampaign(t, 600);
 		await seedVerifiedRelayIdentity(t, 'verified.example.com');
 		await seedCampaignRoute(t, {
-			providers: [{ providerType: 'mta', isEnabled: true }],
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
 			deliverabilityFallback: {
 				isEnabled: true,
 				relayProviderType: 'ses',

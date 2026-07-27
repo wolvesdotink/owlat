@@ -225,16 +225,34 @@ export async function campaignWarmingCapBinds(
 		.withIndex('by_message_type', (q) => q.eq('messageType', 'campaign'))
 		.first();
 
+	const fallbackConfig = routeConfig?.deliverabilityFallback;
 	const enabledKinds = (routeConfig?.providers ?? [])
 		.filter((provider) => provider.isEnabled && isSendProviderKind(provider.providerType))
 		.map((provider) => provider.providerType);
+
+	// The relay is an ESCAPE HATCH, not a normal campaign path: `resolveRoute`
+	// only selects it once a deliverability reason fires, so it is excluded here
+	// and judged on its own below.
+	const baseKinds = fallbackConfig?.isEnabled
+		? enabledKinds.filter((kind) => kind !== fallbackConfig.relayProviderType)
+		: enabledKinds;
 	// No usable route row: `resolveRoute` falls through to the `EMAIL_PROVIDER`
 	// env default, so that is what campaigns dispatch through.
-	const campaignKinds = enabledKinds.length > 0 ? enabledKinds : [getOptional('EMAIL_PROVIDER')];
+	const campaignKinds = baseKinds.length > 0 ? baseKinds : [getOptional('EMAIL_PROVIDER')];
 	if (!campaignKinds.every((kind) => kind === 'mta')) return false;
 
-	const fallbackConfig = routeConfig?.deliverabilityFallback;
-	if (!fallbackConfig?.isEnabled || !fallbackConfig.isWarmupOverflowEnabled) return true;
+	// Warm-up overflow needs EVERY link that `resolveRoute` needs before it will
+	// relay instead of throwing: the escape hatch on, overflow on, an SES relay,
+	// that relay enabled as a route entry, and the From-domain's relay proof
+	// still current. Any missing link and the tail defers exactly as it would
+	// with no relay at all, so the cap still binds.
+	if (
+		!fallbackConfig?.isEnabled ||
+		!fallbackConfig.isWarmupOverflowEnabled ||
+		!enabledKinds.includes(fallbackConfig.relayProviderType)
+	) {
+		return true;
+	}
 	const fromDomain = options.fromEmail ? extractDomainOrNull(options.fromEmail) : null;
 	if (!fromDomain) return true;
 	const overflowAvailable = await relayDomainVerified(
