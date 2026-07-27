@@ -71,16 +71,28 @@ const windowLabel = computed(() => {
 			</div>
 		</header>
 
+		<!--
+			No `empty` binding: the query always answers with the full cell product,
+			and a cell nobody has sent through renders as its own calm empty state
+			rather than as the boundary's generic "nothing to show" (plan D2/D14).
+		-->
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			:empty="!dashboard"
 			error-title="Couldn’t load delivery measurements"
 			error-message="The sending measurements could not be loaded. Your mail is unaffected — this page only reads."
-			loading-label="Loading delivery measurements…"
 		>
 			<template #loading>
-				<div class="space-y-5" aria-label="Loading delivery measurements">
+				<!--
+					`role="status"` is what makes the name announceable: `aria-label` on a
+					bare div (role=generic) is ignored by assistive technology.
+				-->
+				<div
+					class="space-y-5"
+					role="status"
+					aria-live="polite"
+					aria-label="Loading delivery measurements"
+				>
 					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />
 					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />
 				</div>

@@ -86,34 +86,30 @@ export function gateLabel(gate: DeliverabilityDashboardGate['gate']): string {
 
 export type GateTone = 'ok' | 'attention' | 'stop' | 'neutral';
 
+export type GateStatus = DeliverabilityDashboardGate['status'];
+
 /**
- * The tone a gate's verdict is rendered in. `insufficient_data` is NEUTRAL —
- * the measurement is thin, and thin is not broken (plan D10/D2).
+ * How each verdict is presented — its TONE and its WORDS, decided together in
+ * one table rather than in two switches over the same union.
+ *
+ * The pairing is the point: `insufficient_data` reads "Not enough data yet" and
+ * is rendered NEUTRAL, because the measurement is thin and thin is not broken
+ * (plan D10/D2). Splitting tone and label across two functions is how a status
+ * ends up with alarming colour and calm words.
  */
-export function gateTone(status: DeliverabilityDashboardGate['status']): GateTone {
-	switch (status) {
-		case 'pass':
-			return 'ok';
-		case 'fail':
-			return 'attention';
-		case 'halt':
-			return 'stop';
-		case 'insufficient_data':
-			return 'neutral';
-	}
+export const GATE_STATUS_PRESENTATION = {
+	pass: { tone: 'ok', label: 'Healthy' },
+	fail: { tone: 'attention', label: 'Needs attention' },
+	halt: { tone: 'stop', label: 'Stopped' },
+	insufficient_data: { tone: 'neutral', label: 'Not enough data yet' },
+} as const satisfies Record<GateStatus, { tone: GateTone; label: string }>;
+
+export function gateTone(status: GateStatus): GateTone {
+	return GATE_STATUS_PRESENTATION[status].tone;
 }
 
-export function gateStatusLabel(status: DeliverabilityDashboardGate['status']): string {
-	switch (status) {
-		case 'pass':
-			return 'Healthy';
-		case 'fail':
-			return 'Needs attention';
-		case 'halt':
-			return 'Stopped';
-		case 'insufficient_data':
-			return 'Not enough data yet';
-	}
+export function gateStatusLabel(status: GateStatus): string {
+	return GATE_STATUS_PRESENTATION[status].label;
 }
 
 /**
@@ -127,6 +123,8 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const { measurement } = gate;
 	if (gate.status === 'insufficient_data') {
 		switch (gate.reason) {
+			case 'own_sample_below_floor':
+				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} sends this window.`;
 			case 'reference_sample_below_floor':
 				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} sends on the comparison transport this window.`;
 			case 'baseline_sample_below_floor':
@@ -141,8 +139,15 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 				return 'The recorded counters for this window could not be read as a rate, so this check is holding.';
 			case 'evidence_absent':
 				return 'Nothing has been measured for this cell yet.';
-			default:
-				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} sends this window.`;
+			default: {
+				// EXHAUSTIVE ON PURPOSE. A `default` that fell through to the "N of M
+				// sends this window" sentence would put a confident, wrong number under
+				// any hold reason a later gate adds — say a baseline reason, whose
+				// sample is not this window's at all. A new `RampGateHoldReason` must
+				// fail the typecheck here and be given its own sentence.
+				const unhandled: never = gate.reason;
+				return unhandled;
+			}
 		}
 	}
 	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
