@@ -29,6 +29,8 @@ export type RampControlReason =
 	| 'dnsbl'
 	/** A freeze from an earlier decision has not expired. */
 	| 'frozen'
+	/** The stored share was not a share (negative, above 1, or non-finite). */
+	| 'share_unreadable'
 	/** Thin, stale or absent evidence (plan D10): hold, in both directions. */
 	| 'holding'
 	/**

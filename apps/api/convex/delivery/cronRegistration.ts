@@ -97,7 +97,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 	crons.hourly(
 		'evaluate deliverability ramp',
 		{ minuteUTC: 40 },
-		internal.delivery.ramp.controllerCron.runRampController,
+		internal.delivery.rampControllerCron.runRampController,
 		{}
 	);
 
@@ -106,7 +106,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 	crons.interval(
 		'cleanup ramp mix decisions',
 		{ hours: 6 },
-		internal.delivery.ramp.mixDecisions.cleanupExpiredDecisions,
+		internal.delivery.rampMixDecisions.cleanupExpiredDecisions,
 		{}
 	);
 

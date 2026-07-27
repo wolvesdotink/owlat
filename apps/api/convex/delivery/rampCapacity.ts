@@ -16,9 +16,9 @@
  */
 
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import type { DatabaseReader } from '../../_generated/server';
-import { summarizeTransportOutcomeArms } from '../../analytics/transportOutcomes';
-import type { RampCapacityInput } from './controllerTypes';
+import type { DatabaseReader } from '../_generated/server';
+import { summarizeTransportOutcomeArms } from '../analytics/transportOutcomes';
+import type { RampCapacityInput } from './ramp/controllerTypes';
 
 /** How far back the volume projection looks. One day of real sending. */
 export const RAMP_PROJECTION_WINDOW_MS = 24 * 60 * 60 * 1000;

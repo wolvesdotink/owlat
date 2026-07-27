@@ -17,11 +17,11 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import { internalMutation, type MutationCtx } from '../../_generated/server';
-import { internal } from '../../_generated/api';
-import { adminQuery } from '../../lib/authedFunctions';
-import type { RampControllerInput, RampDecision } from './controllerTypes';
-import { describeRampDecision } from './controllerNarrative';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import { adminQuery } from '../lib/authedFunctions';
+import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
+import { describeRampDecision } from './ramp/controllerNarrative';
 
 /** Decisions age out with the experiment record they explain (plan D16). */
 export const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -146,7 +146,7 @@ export const cleanupExpiredDecisions = internalMutation({
 		if (expired.length === CLEANUP_BATCH_SIZE) {
 			await ctx.scheduler.runAfter(
 				1_000,
-				internal.delivery.ramp.mixDecisions.cleanupExpiredDecisions,
+				internal.delivery.rampMixDecisions.cleanupExpiredDecisions,
 				{}
 			);
 		}

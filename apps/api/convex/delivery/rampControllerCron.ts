@@ -15,6 +15,13 @@
  * Each tick takes a slice, writes it, and self-schedules for the next slice, so
  * one mutation's read and write set stays small however the grid grows.
  *
+ * WHY THIS LIVES IN `delivery/` AND NOT IN `delivery/ramp/`: everything under
+ * `ramp/` is the PURE decision core, and `ramp/__tests__/gates.purity.test.ts`
+ * enumerates that directory and forbids a clock, a database handle or a Convex
+ * function wrapper in any file it finds. The shell needs all three. Keeping it
+ * outside means the guard stays at full strength and "is delivery/ramp/ pure?"
+ * stays a question with a yes/no answer.
+ *
  * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No organization, no warming
  * state, no reference transport, no seed mailboxes: every one of those makes
  * the controller measure less and move slower. None of them makes it throw,
@@ -29,22 +36,21 @@ import {
 	resolveOwnShare,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import type { Doc } from '../../_generated/dataModel';
-import { internal } from '../../_generated/api';
-import { internalMutation, type MutationCtx } from '../../_generated/server';
-import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
-import { isSendingAllowed } from '../../workspaces/abuseGate';
-import { loadRouteStateCell } from '../../lib/deliverabilityRouteState';
-import { summarizeTransportOutcomeArms } from '../../analytics/transportOutcomes';
-import { recordAuditLog } from '../../lib/auditLog';
-import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './controllerConfig';
-import { nextShare } from './controller';
-import { RAMP_STREAM_CONFIGS } from './gateConfig';
-import { referenceArmGateEvaluator } from './gateEvaluation';
-import { evaluateEngagementGate } from './engagementGate';
-import { loadRampCapacity } from './capacityProjection';
-import { recordMixDecision } from './mixDecisions';
-import type { RampControllerInput, RampDecision, RampMixState } from './controllerTypes';
+import type { Doc } from '../_generated/dataModel';
+import { internal } from '../_generated/api';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { isSendingAllowed } from '../workspaces/abuseGate';
+import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
+import { summarizeTransportOutcomeArms } from '../analytics/transportOutcomes';
+import { recordAuditLog } from '../lib/auditLog';
+import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
+import { nextShare } from './ramp/controller';
+import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
+import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
+import { evaluateEngagementGate } from './ramp/engagementGate';
+import { loadRampCapacity } from './rampCapacity';
+import { recordMixDecision } from './rampMixDecisions';
+import type { RampControllerInput, RampDecision, RampMixState } from './ramp/controllerTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 export const RAMP_CELLS_PER_TICK = 5;
@@ -57,6 +63,18 @@ const ROUTE_STATE_TTL_MS = DAY_MS;
 /** The engagement floor's recent window and the prior baseline it is compared to. */
 const ENGAGEMENT_RECENT_MS = 7 * DAY_MS;
 const ENGAGEMENT_BASELINE_MS = 30 * DAY_MS;
+
+/**
+ * The deployment's tenant, read off the route-state table. Owlat is
+ * single-organization-per-deployment, so any route-state row names it; `null`
+ * means routing state has never been written and there is nothing to ramp.
+ * The table holds at most a couple of dozen rows, so the unindexed peek is
+ * cheaper than a component round-trip and cannot throw.
+ */
+async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | null> {
+	const row = await ctx.db.query('deliverabilityRouteStates').first();
+	return row?.organizationId ?? null;
+}
 
 /** Infrastructure verdicts, read off whichever route-state rows exist. */
 function readHardStopSignals(
@@ -222,15 +240,13 @@ export const runRampController = internalMutation({
 		const cursor = Number.isFinite(rawCursor) ? Math.max(0, Math.floor(rawCursor)) : 0;
 		if (cursor >= cells.length) return { evaluated: 0, done: true as const };
 
-		// No organization yet (a fresh install mid-bootstrap) is not an error: there
-		// is nothing to ramp. `getSingletonOrganizationId` throws by design for
-		// authenticated callers; a cron must never be one of them.
-		let organizationId: string;
-		try {
-			organizationId = await getSingletonOrganizationId(ctx);
-		} catch {
-			return { evaluated: 0, done: true as const };
-		}
+		// The tenant comes from the route-state rows themselves rather than from the
+		// auth component: this deployment hosts exactly one organization, the ramp
+		// only ever touches cells that already HAVE a row, and a cron must never be
+		// able to fail on an auth lookup. No rows means nothing to ramp — a
+		// supported configuration, not an error (plan D2).
+		const organizationId = await resolveRampOrganizationId(ctx);
+		if (organizationId === null) return { evaluated: 0, done: true as const };
 
 		const settings = await ctx.db.query('instanceSettings').first();
 		const isKillSwitchEngaged = settings?.isRampControllerPaused === true;
@@ -283,7 +299,7 @@ export const runRampController = internalMutation({
 
 		const nextCursor = cursor + slice.length;
 		if (nextCursor < cells.length) {
-			await ctx.scheduler.runAfter(0, internal.delivery.ramp.controllerCron.runRampController, {
+			await ctx.scheduler.runAfter(0, internal.delivery.rampControllerCron.runRampController, {
 				cursor: nextCursor,
 			});
 		}
@@ -320,12 +336,8 @@ export const promoteRampPhase = internalMutation({
 				candidate.destinationProvider === args.destinationProvider
 		);
 		if (!cell) return { ok: false as const };
-		let organizationId: string;
-		try {
-			organizationId = await getSingletonOrganizationId(ctx);
-		} catch {
-			return { ok: false as const };
-		}
+		const organizationId = await resolveRampOrganizationId(ctx);
+		if (organizationId === null) return { ok: false as const };
 		const { perStream } = await loadRouteStateCell(ctx, organizationId, cell);
 		if (!perStream) return { ok: false as const };
 		// One rung, through the ladder helper: an arbitrary caller-supplied ceiling

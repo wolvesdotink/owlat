@@ -246,13 +246,26 @@ function decide(args: DecideArgs): DecisionDraft {
 		};
 	}
 
+	// 4b. A STORED SHARE THAT IS NOT A SHARE. `clampOwnShare` already pulled it
+	//     back into range so nothing downstream can act on garbage, but a row
+	//     holding -0.5 or 1.5 or NaN is a row we do not understand, and the one
+	//     thing we must not do with a value we do not understand is add to it.
+	//     Hold at the clamped value; the hard stops above can still zero it.
+	if (!Number.isFinite(mix.share) || mix.share < 0 || mix.share > OWN_SHARE_CEILING) {
+		return { ...held, reason: 'share_unreadable' };
+	}
+
 	// 5. An unexpired freeze holds, however good the gates look.
 	if (mix.frozenUntil !== undefined && Number.isFinite(mix.frozenUntil) && now < mix.frozenUntil) {
 		return { ...held, reason: 'frozen' };
 	}
 
-	// No evaluation at all is thin evidence, not a failure (plan D10).
-	if (evaluation === null) return { ...held, reason: 'holding' };
+	// No evaluation at all is thin evidence, not a failure (plan D10). It holds
+	// the share and the streak — but it stops the GRADUATION clock, because
+	// graduation demands fourteen days of positive evidence and an unmeasured
+	// window is not evidence of health. Deferring a pin costs nothing; awarding
+	// one to a cell that went quiet costs the relay standby that backs it up.
+	if (evaluation === null) return { ...held, reason: 'holding', greenSince: undefined };
 	const streak = sanitizeStreak(evaluation.cleanStreak);
 
 	// 6. A breached gate: multiplicative decrease to the floor, then a cooldown.
@@ -290,9 +303,16 @@ function decide(args: DecideArgs): DecisionDraft {
 		};
 	}
 
-	// 7. Thin data HOLDS (plan D10) — the streak is held, not reset.
+	// 7. Thin data HOLDS (plan D10) — the streak is held, not reset. The
+	//    graduation clock stops, for the reason given above.
 	if (evaluation.verdict !== 'pass') {
-		return { ...held, reason: 'holding', verdict: evaluation.verdict, cleanStreak: streak };
+		return {
+			...held,
+			reason: 'holding',
+			verdict: evaluation.verdict,
+			cleanStreak: streak,
+			greenSince: undefined,
+		};
 	}
 
 	// From here the window is CLEAN. The green clock starts the moment a cell is

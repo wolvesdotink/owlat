@@ -56,6 +56,8 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for 24h — start the delisting flow from the Delivery checklist.`;
 		case 'frozen':
 			return `Held ${where} at ${percent(decision.share)}: an earlier decision froze this cell and the cooldown has not expired.`;
+		case 'share_unreadable':
+			return `Held ${where} at ${percent(decision.share)}: the stored share was not a usable value and has been read back inside [0, 1]. The controller does not add to a number it cannot read.`;
 		case 'holding':
 			return `Held ${where} at ${percent(decision.share)}: not enough fresh evidence to decide. The controller never increases on thin data, and never decreases on it either.`;
 		case 'awaiting_corroboration':
