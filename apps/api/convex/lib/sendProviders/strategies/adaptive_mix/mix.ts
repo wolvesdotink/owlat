@@ -137,7 +137,7 @@ export interface MixAssignment {
 	readonly bucket: number;
 	readonly basis: MixAssignmentBasis;
 	/** The rank actually used, when the decision was stratified. */
-	readonly engagementRank?: number;
+	readonly engagementRank?: number | undefined;
 }
 
 /**
