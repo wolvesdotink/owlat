@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
 	ADVISORY_DELIVERABILITY_SIGNAL_SOURCES,
 	DELIVERABILITY_SIGNAL_SOURCES,
+	INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES,
+	OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
 	destinationProviderForDomain,
 	hasCriticalBlocklistSignal,
 	isActionableDeliverabilitySignalSource,
 	isAdvisoryDeliverabilitySignalSource,
+	isOutcomeDeliverabilitySignalSource,
 	isDeliverabilitySignalSource,
 	normalizeDeliverabilityRoutingSnapshot,
 	type DeliverabilitySignal,
@@ -134,14 +137,27 @@ describe('deliverability signal taxonomy', () => {
 		expect(isDeliverabilitySignalSource(42)).toBe(false);
 	});
 
-	it('splits the union exhaustively into advisory and actionable', () => {
+	it('splits the union exhaustively into advisory, outcome and actionable', () => {
 		for (const source of DELIVERABILITY_SIGNAL_SOURCES) {
+			// Advisory and outcome-derived sources are both non-actionable: only
+			// the shipped infrastructure sources drive the relay fallback.
+			expect(isActionableDeliverabilitySignalSource(source)).toBe(
+				!isAdvisoryDeliverabilitySignalSource(source) &&
+					!isOutcomeDeliverabilitySignalSource(source)
+			);
 			expect(isAdvisoryDeliverabilitySignalSource(source)).toBe(
-				!isActionableDeliverabilitySignalSource(source)
+				!isOutcomeDeliverabilitySignalSource(source) &&
+					!isActionableDeliverabilitySignalSource(source)
 			);
 		}
 		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isAdvisoryDeliverabilitySignalSource)).toEqual([
 			...ADVISORY_DELIVERABILITY_SIGNAL_SOURCES,
+		]);
+		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isOutcomeDeliverabilitySignalSource)).toEqual([
+			...OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
+		]);
+		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isActionableDeliverabilitySignalSource)).toEqual([
+			...INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES,
 		]);
 		// The shipped fallback + hysteresis sources stay actionable.
 		const shipped: DeliverabilitySignalSource[] = [

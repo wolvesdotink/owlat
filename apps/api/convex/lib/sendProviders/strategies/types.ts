@@ -52,6 +52,20 @@ export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 	readonly kind: K;
 
 	/**
+	 * Whether `select()` is a function of its inputs alone. False for
+	 * `workload_split`, which draws at random on every call, so two calls with
+	 * identical inputs can return different providers.
+	 *
+	 * Load-bearing for BATCH callers that record which transport a recipient
+	 * was assigned to (`delivery/sendAssignments.ts`): they resolve once per
+	 * cell, while the worker draws again independently per recipient at
+	 * dispatch. Under a non-deterministic strategy a recorded arm would be
+	 * wrong for roughly half the batch, so those callers must record no row
+	 * at all — a guessed arm is worse than a missing row.
+	 */
+	readonly isDeterministic: boolean;
+
+	/**
 	 * Pure function. Given enabled providers and (optionally) their
 	 * health statuses, return the chosen provider — or null if no
 	 * candidate is selectable (caller falls back).

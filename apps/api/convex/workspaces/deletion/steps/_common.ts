@@ -91,6 +91,7 @@ export type OrganizationDeletionTable =
 	| 'providerHealth'
 	| 'providerRoutes'
 	| 'deliverabilityRouteStates'
+	| 'deliverabilityAlignmentStates'
 	| 'deliverabilityAlertRecipients'
 	| 'deliverabilityAlertRecipientReceipts'
 	| 'deliverabilityRegressionAlerts'
@@ -98,6 +99,8 @@ export type OrganizationDeletionTable =
 	| 'deliverabilityEvidence'
 	| 'deliverabilityLoopbackAttempts'
 	| 'destinationProviderDomains'
+	| 'sendAssignments'
+	| 'transportOutcomes'
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
@@ -258,6 +261,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('providerHealth'),
 	v.literal('providerRoutes'),
 	v.literal('deliverabilityRouteStates'),
+	v.literal('deliverabilityAlignmentStates'),
 	v.literal('deliverabilityAlertRecipients'),
 	v.literal('deliverabilityAlertRecipientReceipts'),
 	v.literal('deliverabilityRegressionAlerts'),
@@ -265,6 +269,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('deliverabilityEvidence'),
 	v.literal('deliverabilityLoopbackAttempts'),
 	v.literal('destinationProviderDomains'),
+	v.literal('sendAssignments'),
+	v.literal('transportOutcomes'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
