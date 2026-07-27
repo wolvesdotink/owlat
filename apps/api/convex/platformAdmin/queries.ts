@@ -97,8 +97,7 @@ export const getOrganizationDetail = authedQuery({
 		]);
 
 		const blockedCounts = {
-			total:
-				bouncedRows.length + complainedRows.length + manualRows.length + unengagedRows.length,
+			total: bouncedRows.length + complainedRows.length + manualRows.length + unengagedRows.length,
 			bounced: bouncedRows.length,
 			complained: complainedRows.length,
 			manual: manualRows.length,
