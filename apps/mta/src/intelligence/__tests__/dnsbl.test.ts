@@ -13,58 +13,25 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import {
 	configuredDnsblZones,
-	dnsblQueryName,
 	runDnsblCheck,
 	getDnsblStatus,
 	startDnsblChecker,
 } from '../dnsbl.js';
+import { dnsblQueryName } from '../dnsblLookup.js';
 import { resolve4 } from 'dns/promises';
 import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import { logger } from '../../monitoring/logger.js';
 import type { MtaConfig } from '../../config.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
+import { createDnsblTestConfig, createRecordingLookupDeps } from './dnsblFixtures.js';
 
 const ABUSIX_API_KEY = '0123456789abcdef0123456789abcdef';
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		...overrides,
-	};
-}
+/**
+ * The shipped suite must not pay real backoff sleeps: several fixtures return
+ * SERVFAIL/ETIMEOUT, and with the default deps every sweep would wait a real
+ * 200ms + 400ms per zone. Injected deps keep the retry path deterministic.
+ */
+const lookupDeps = createRecordingLookupDeps().deps;
 
 describe('DNSBL checking', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -74,7 +41,7 @@ describe('DNSBL checking', () => {
 		vi.clearAllMocks();
 		redis = new Redis();
 		await redis.flushall();
-		config = createConfig();
+		config = createDnsblTestConfig();
 		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
 			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
 		}
@@ -97,7 +64,7 @@ describe('DNSBL checking', () => {
 		});
 
 		it('quarantines an IPv6 Spamhaus listing without querying IPv4-only providers', async () => {
-			config = createConfig({
+			config = createDnsblTestConfig({
 				ipPools: {
 					transactional: ['203.0.113.10'],
 					campaign: ['203.0.113.10', '2001:db8::1'],
@@ -116,7 +83,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.sismember('mta:ip-pool:active', '2001:db8::1')).toBe(0);
 			const ipv6Queries = queried.filter((hostname) => hostname.startsWith('1.0.0.0.'));
@@ -148,7 +115,7 @@ describe('DNSBL checking', () => {
 				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
 			);
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const status1 = await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus');
 			const status2 = await redis.hget('mta:dnsbl:10.0.0.2', 'overallStatus');
@@ -166,7 +133,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const status = await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus');
 			expect(status).toBe('critical');
@@ -196,7 +163,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const serializedLogs = JSON.stringify(vi.mocked(logger.error).mock.calls);
 			expect(serializedLogs).not.toContain(deliverySentinel);
@@ -221,7 +188,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
@@ -239,7 +206,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
 			expect(await redis.hget('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1')).toBe('0');
@@ -257,7 +224,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
@@ -279,7 +246,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error(`SERVFAIL resolving ${hostname}`), { code: 'ESERVFAIL' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const logged = JSON.stringify(vi.mocked(logger.warn).mock.calls);
 			expect(logged).not.toContain(apiKey);
@@ -296,7 +263,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
@@ -323,7 +290,7 @@ describe('DNSBL checking', () => {
 				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
 			);
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const status = await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus');
 			expect(status).toBe('clean');
@@ -348,7 +315,7 @@ describe('DNSBL checking', () => {
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const emergency = await redis.get('mta:emergency:all_ips_blocked');
 			expect(emergency).toBe('1');
@@ -367,20 +334,20 @@ describe('DNSBL checking', () => {
 				}
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
 
 			vi.mocked(resolve4).mockRejectedValue(
 				Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' })
 			);
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
 
 			vi.mocked(resolve4).mockRejectedValue(
 				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
 			);
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
 		});
 
@@ -391,7 +358,7 @@ describe('DNSBL checking', () => {
 				}
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
 				if (!hostname.startsWith('1.0.0.10')) {
@@ -403,7 +370,7 @@ describe('DNSBL checking', () => {
 				if (hostname.includes('b.barracudacentral.org')) return ['127.0.0.2'];
 				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 			});
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
@@ -428,7 +395,7 @@ describe('DNSBL checking', () => {
 				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
 			);
 
-			await runDnsblCheck(redis, config);
+			await runDnsblCheck(redis, config, lookupDeps);
 
 			const result = await getDnsblStatus(redis, '10.0.0.1');
 			expect(result).not.toBeNull();

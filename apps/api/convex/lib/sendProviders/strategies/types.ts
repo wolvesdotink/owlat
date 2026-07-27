@@ -7,6 +7,7 @@
  * `select()`.
  */
 
+import type { ActionableDeliverabilitySignalSource } from '@owlat/shared/deliverabilityRouting';
 import type { SendProviderKind } from '../types';
 
 export type SendRouteStrategyKind = 'single' | 'priority_failover' | 'workload_split';
@@ -37,12 +38,14 @@ export interface ResolvedRoute {
 	// when nothing is configured, route resolution returns `null` (unconfigured),
 	// never a phantom MTA.
 	source: 'org_config' | 'env_fallback' | 'deliverability_fallback';
-	deliverabilityReason?:
-		| 'ip_quarantined'
-		| 'dnsbl_listed'
-		| 'breaker_open'
-		| 'persistent_defers'
-		| 'warmup_overflow';
+	/**
+	 * Why the deliverability fallback engaged. Derived from the SHARED signal
+	 * taxonomy rather than re-spelled here, so an added advisory source (which
+	 * must never surface as a routing verdict) cannot silently become a legal
+	 * reason: `route.ts`'s actionable filter is load-bearing by construction.
+	 * `warmup_overflow` is not a signal at all — it is the resolver's own reason.
+	 */
+	deliverabilityReason?: ActionableDeliverabilitySignalSource | 'warmup_overflow';
 }
 
 export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
