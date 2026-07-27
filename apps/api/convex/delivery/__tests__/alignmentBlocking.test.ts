@@ -23,6 +23,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import {
 	ALIGNMENT_CHECK_IDS,
+	ALIGNMENT_CHECK_STATUSES,
 	ALIGNMENT_RECHECK_INTERVAL_MS,
 	ALIGNMENT_UNKNOWN_RETRY_MS,
 	evaluateAlignmentPreflight,
@@ -32,7 +33,11 @@ import {
 	alignmentGate,
 	applyAlignmentGateToShare,
 } from '@owlat/shared/deliverabilityAlignmentGate';
-import { alignmentCheckIdValidator, alignmentVerdictValidator } from '../deliverabilityValidators';
+import {
+	alignmentCheckIdValidator,
+	alignmentCheckStatusValidator,
+	alignmentVerdictValidator,
+} from '../deliverabilityValidators';
 
 import { modules } from './testModules';
 
@@ -291,7 +296,11 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		expect(gateState.referenceArm).toBe('unknown');
 	});
 
-	it('is single_arm with no relay anywhere, and opens the gate (D2)', async () => {
+	// D2, and the whole reason a standalone domain is never a target: the gate is
+	// answered from the LIVE transport surface, so it opens with no row at all —
+	// no DNS is gathered and no `single_arm` row is written for anyone to later
+	// misread as evidence about two arms.
+	it('opens the gate with no relay anywhere, without gathering or storing anything (D2)', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
@@ -299,29 +308,76 @@ describe('what counts as a second arm comes from the transport surface', () => {
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
 			firstPage(NOW)
 		);
-		const target = page.targets[0];
-		if (!target) throw new Error('expected a due target');
-		expect(target.reference.kind).toBe('none');
+		expect(page.targets).toEqual([]);
 
-		const result = evaluateAlignmentPreflight({
-			ownArm: target.ownArm,
-			reference: target.reference,
-			dns: { fromDomainTxt: { state: 'absent' }, dmarcTxt: { state: 'absent' }, dkimTxt: {} },
-			checkedAt: NOW,
-		});
-		expect(result.verdict).toBe('single_arm');
-
-		await record(t, {
-			verdict: result.verdict,
-			checks: result.checks,
-			checkedAt: result.checkedAt,
-			nextCheckDueAt: result.nextCheckDueAt,
-		});
 		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
 			domain: DOMAIN,
 		});
 		expect(state.referenceArm).toBe('none');
-		expect(alignmentGate({ ...state, now: NOW }).allowsShareAboveZero).toBe(true);
+		expect(state.state).toBeNull();
+		const gate = alignmentGate({ ...state, now: NOW });
+		expect(gate.allowsShareAboveZero).toBe(true);
+		expect(gate.reason).toBe('single_arm');
+		// And nothing was written, so no readiness row nags a standalone operator.
+		expect(await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {})).toEqual([]);
+	});
+
+	// The one thing that must NEVER be laundered into 'no second arm': a From
+	// domain we could not look up. `relayKinds` says a relay exists; the absence of
+	// a `domains` row is evidence that we cannot SEE it, not evidence that it is
+	// not there. Answering `none` here would open the gate on two arms whose
+	// alignment has never been checked.
+	it('answers UNKNOWN for a From domain it cannot look up while a relay is configured', async () => {
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { relay: 'ses' });
+		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+			domain: 'no-such-domain.example',
+		});
+		expect(state.referenceArm).toBe('unknown');
+		const gate = alignmentGate({ ...state, now: NOW });
+		expect(gate.allowsShareAboveZero).toBe(false);
+		expect(gate.reason).toBe('reference_arm_unknown');
+	});
+
+	// ...and a domain that IS stored is not turned into that case by its spelling.
+	for (const spelling of ['ACME.com', 'acme.com.', '  acme.com  ']) {
+		it(`normalizes ${JSON.stringify(spelling)} to the stored domain`, async () => {
+			stubTransportEnv();
+			const t = convexTest(schema, modules);
+			await seedDomain(t, { relay: 'ses' });
+			await record(t, {
+				verdict: 'aligned',
+				checks: PASSING_CHECKS,
+				checkedAt: NOW,
+				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
+			});
+			const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+				domain: spelling,
+			});
+			expect(state.referenceArm).toBe('configured');
+			expect(state.state?.verdict).toBe('aligned');
+			expect(alignmentGate({ ...state, now: NOW }).allowsShareAboveZero).toBe(true);
+		});
+	}
+
+	it('reports MORE THAN ONE relay with its own reason, not "verify an identity"', async () => {
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		// A verified SES identity AND Resend enabled: there is no single second arm,
+		// and telling the operator to verify an identity they already have would send
+		// them to fix something that is not broken.
+		await seedDomain(t, { relay: 'ses' });
+		await seedRelayRoute(t, 'resend');
+		const page = await t.query(
+			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
+			firstPage(NOW)
+		);
+		const target = page.targets[0];
+		expect(target?.reference.kind).toBe('unknown');
+		if (!target || target.reference.kind !== 'unknown') throw new Error('expected unknown');
+		expect(target.reference.detail).toContain('More than one relay is enabled');
+		expect(target.reference.detail).not.toContain('no verified signing identity');
 	});
 
 	it('holds when MTA_IP_POOLS is unset, rather than passing SPF on a relay-only record', async () => {
@@ -352,7 +408,7 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		const spf = result.checks.find((check) => check.id === 'spf');
 		expect(spf?.status).toBe('unknown');
 		expect(spf?.remedy).toContain('MTA_IP_POOLS');
-		expect(result.allowsShareAboveZero).toBe(false);
+		expect(result.verdict).toBe('unknown');
 	});
 });
 
@@ -377,7 +433,7 @@ describe('the sweep is due-driven and does not starve past the first page', () =
 		const t = convexTest(schema, modules);
 		const domains = Array.from({ length: 12 }, (_, index) => `d${index}.example`);
 		for (const domain of domains) {
-			await seedDomain(t, { relay: null, domain });
+			await seedDomain(t, { relay: 'ses', domain });
 		}
 
 		const seen: string[] = [];
@@ -575,5 +631,16 @@ describe('the stored vocabulary matches the shared union', () => {
 		expect(validatorIds.sort()).toEqual([...ALIGNMENT_CHECK_IDS].sort());
 		const verdicts = alignmentVerdictValidator.members.map((member) => String(member.value));
 		expect(verdicts.sort()).toEqual(['aligned', 'blocked', 'single_arm', 'unknown']);
+	});
+
+	// The status union is the one that carries this piece's whole semantics: its
+	// third member, `unknown`, is the DNS-could-not-answer HOLD. A validator that
+	// silently lost it would turn every unresolved lookup into a write failure, and
+	// one that gained a member would let a status the evaluator never produces be
+	// stored. So it is pinned against the shared as-const exactly like the others.
+	it('keeps the check-status validator in parity with the shared union', () => {
+		const statuses = alignmentCheckStatusValidator.members.map((member) => String(member.value));
+		expect(statuses).toEqual([...ALIGNMENT_CHECK_STATUSES]);
+		expect(statuses).toContain('unknown');
 	});
 });

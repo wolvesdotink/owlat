@@ -57,7 +57,7 @@ export const deliverabilitySignalValidator = v.object({
 
 /**
  * Dual-transport alignment pre-flight (P3-5). Mirrors ALIGNMENT_CHECK_IDS /
- * AlignmentCheckStatus / AlignmentVerdict in
+ * ALIGNMENT_CHECK_STATUSES / AlignmentVerdict in
  * @owlat/shared/deliverabilityAlignment; parity is asserted in
  * delivery/__tests__/alignmentBlocking.test.ts.
  */

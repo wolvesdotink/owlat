@@ -129,10 +129,15 @@ describe('gatherAlignmentDns', () => {
 		]);
 	});
 
-	it('does not look up a second arm that does not exist', async () => {
+	// A relay we cannot DESCRIBE has no selectors to look up, so only the own arm's
+	// names are queried. The standalone case (`kind: 'none'`) cannot appear here at
+	// all: `AlignmentTarget.reference` excludes it, because `buildTarget` never
+	// produces a target for a domain with no second arm — three live TXT lookups
+	// and a `single_arm` row per domain per sweep that no reader ever consumes.
+	it('does not look up selectors for a relay it cannot describe', async () => {
 		const queried: string[] = [];
 		await gatherAlignmentDns(
-			{ ...target, reference: { kind: 'none' } },
+			{ ...target, reference: { kind: 'unknown', detail: 'a relay we cannot describe' } },
 			{
 				resolveTxt: (name) => {
 					queried.push(name);

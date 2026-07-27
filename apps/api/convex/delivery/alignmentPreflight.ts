@@ -21,6 +21,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
+	normalizeDomain,
 	type AlignmentArm,
 	type ReferenceAlignmentArm,
 	type ReferenceArmInput,
@@ -47,11 +48,17 @@ const ALIGNMENT_READINESS_LIMIT = 50;
 /** Upper bound on the (per-messageType) route rows we inspect for a relay. */
 const PROVIDER_ROUTE_SCAN_LIMIT = 16;
 
+/**
+ * A target's reference arm, minus `none`. The sweep only ever targets a domain
+ * that HAS a second arm (see `buildTarget`), so the standalone case is excluded
+ * at the TYPE level rather than being a branch the gather has to remember.
+ */
+export type TargetReferenceArm = Exclude<ReferenceArmInput, { kind: 'none' }>;
+
 export interface AlignmentTarget {
-	organizationId: string;
 	domain: string;
 	ownArm: AlignmentArm;
-	reference: ReferenceArmInput;
+	reference: TargetReferenceArm;
 }
 
 /**
@@ -106,6 +113,21 @@ async function configuredRelayKinds(ctx: QueryCtx): Promise<string[]> {
 }
 
 /**
+ * A configured relay we cannot describe. TWO different situations reach this
+ * state and they need TWO different remedies: a relay whose signing identity we
+ * have no record of (verify it), and more than one relay enabled at once (there
+ * is no single second arm to compare against, so pick one). Telling an operator
+ * with a verified SES identity plus Resend to "verify an identity" would send
+ * them to fix something that is not broken.
+ */
+function undescribableRelayDetail(domain: string, relayKinds: readonly string[]): string {
+	if (relayKinds.length > 1) {
+		return `More than one relay is enabled (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
+	}
+	return `A relay is configured (${relayKinds.join(', ')}) but ${domain} has no verified signing identity for it, so the two arms cannot be compared.`;
+}
+
+/**
  * The second arm. `none` is the standalone deployment (D2). `unknown` is a relay
  * we cannot describe — one we have no verified signing identity for, or more
  * than one at once — and it HOLDS rather than opening the gate.
@@ -129,10 +151,7 @@ function referenceFor(
 		};
 		return { kind: 'arm', arm };
 	}
-	return {
-		kind: 'unknown',
-		detail: `A relay is configured (${relayKinds.join(', ')}) but ${domain.domain} has no verified signing identity for it, so the two arms cannot be compared.`,
-	};
+	return { kind: 'unknown', detail: undescribableRelayDetail(domain.domain, relayKinds) };
 }
 
 /** The gate's view of the same question, without building the arms. */
@@ -148,17 +167,24 @@ function referencePresence(reference: ReferenceArmInput): ReferenceArmPresence {
 }
 
 /**
- * Build one target, or null when there is no own MTA arm to compare.
+ * Build one target, or null when there is nothing for the pre-flight to do.
  *
- * A verified domain with no `sendingDomainMtaIdentities` row is a relay-only
- * domain: it has no own-MTA selector, so there is nothing to align and nothing
- * an operator could do about a "no DKIM key published" verdict. Recording
- * `blocked` for it would manufacture a permanent, unactionable error state for a
- * supported configuration — so it is skipped and no row is written.
+ * TWO domains are skipped, and neither is an error:
+ *
+ *  - A verified domain with no `sendingDomainMtaIdentities` row is a relay-only
+ *    domain: it has no own-MTA selector, so there is nothing to align and nothing
+ *    an operator could do about a "no DKIM key published" verdict. Recording
+ *    `blocked` for it would manufacture a permanent, unactionable error state for
+ *    a supported configuration.
+ *  - A domain with NO reference transport (D2) has no second arm. The evaluator
+ *    short-circuits that case without reading a single DNS fact, and the gate
+ *    answers it from the live transport surface rather than from a row, so
+ *    gathering DNS and writing a `single_arm` row would be three live TXT lookups
+ *    and one write per domain per sweep that no reader ever consumes — and the
+ *    only way a STALE `single_arm` row could exist to be misread later.
  */
 async function buildTarget(
 	ctx: QueryCtx,
-	organizationId: string,
 	domain: Doc<'domains'>,
 	relayKinds: readonly string[]
 ): Promise<AlignmentTarget | null> {
@@ -171,8 +197,9 @@ async function buildTarget(
 		.query('sendingDomainSesIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.unique();
+	const reference = referenceFor(domain, sesIdentity, relayKinds);
+	if (reference.kind === 'none') return null;
 	return {
-		organizationId,
 		domain: domain.domain,
 		ownArm: {
 			label: 'own MTA',
@@ -181,10 +208,15 @@ async function buildTarget(
 			dkimSelectors: [mtaIdentity.dkimSelector],
 			spfMechanisms: ownSpfMechanisms(),
 		},
-		reference: referenceFor(domain, sesIdentity, relayKinds),
+		reference,
 	};
 }
 
+/**
+ * The ONE read of a stored verdict. It normalizes the key, so a reader and the
+ * sweep's writer (which normalizes on the way in) can never key the same domain
+ * two different ways and read past each other.
+ */
 async function loadAlignmentState(
 	ctx: QueryCtx,
 	organizationId: string,
@@ -192,7 +224,9 @@ async function loadAlignmentState(
 ): Promise<Doc<'deliverabilityAlignmentStates'> | null> {
 	return await ctx.db
 		.query('deliverabilityAlignmentStates')
-		.withIndex('by_org_domain', (q) => q.eq('organizationId', organizationId).eq('domain', domain))
+		.withIndex('by_org_domain', (q) =>
+			q.eq('organizationId', organizationId).eq('domain', normalizeDomain(domain))
+		)
 		.unique();
 }
 
@@ -222,7 +256,7 @@ export const listDueAlignmentTargets = internalQuery({
 		for (const domain of page.page) {
 			const state = await loadAlignmentState(ctx, organizationId, domain.domain);
 			if (state && state.nextCheckDueAt > args.now) continue;
-			const target = await buildTarget(ctx, organizationId, domain, relayKinds);
+			const target = await buildTarget(ctx, domain, relayKinds);
 			if (target !== null) targets.push(target);
 		}
 		return { targets, continueCursor: page.continueCursor, isDone: page.isDone };
@@ -242,10 +276,11 @@ export const recordAlignmentResult = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const organizationId = await getSingletonOrganizationId(ctx);
-		const existing = await loadAlignmentState(ctx, organizationId, args.domain);
+		const domain = normalizeDomain(args.domain);
+		const existing = await loadAlignmentState(ctx, organizationId, domain);
 		const row = {
 			organizationId,
-			domain: args.domain,
+			domain,
 			verdict: args.verdict,
 			checks: args.checks,
 			isMeasurementDegraded: args.isMeasurementDegraded,
@@ -270,6 +305,12 @@ export const recordAlignmentResult = internalMutation({
  * shipped transport surface, NOT from the stored row, so a standalone deployment
  * opens the gate even before the first sweep (D2) — and a relay we cannot
  * describe holds even if an older row says `aligned`.
+ *
+ * "We could not look this domain up" is `unknown` (a HOLD), NEVER `none`. A
+ * missing `domains` row while a relay IS configured is not evidence that there is
+ * no second arm — it is evidence that we cannot see the one there is. The
+ * argument is normalized through the shared spelling first, so that `Acme.com`
+ * and `acme.com.` cannot manufacture that miss out of nothing.
  */
 export const getAlignmentGateState = internalQuery({
 	args: { domain: v.string() },
@@ -281,9 +322,10 @@ export const getAlignmentGateState = internalQuery({
 		state: { verdict: Doc<'deliverabilityAlignmentStates'>['verdict']; checkedAt: number } | null;
 	}> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
+		const fromDomain = normalizeDomain(args.domain);
 		const domain = await ctx.db
 			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain))
+			.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
 			.unique();
 		const sesIdentity = domain
 			? await ctx.db
@@ -293,8 +335,12 @@ export const getAlignmentGateState = internalQuery({
 			: null;
 		const relayKinds = await configuredRelayKinds(ctx);
 		const reference: ReferenceArmInput =
-			domain === null ? { kind: 'none' } : referenceFor(domain, sesIdentity, relayKinds);
-		const state = await loadAlignmentState(ctx, organizationId, args.domain);
+			domain !== null
+				? referenceFor(domain, sesIdentity, relayKinds)
+				: relayKinds.length === 0
+					? { kind: 'none' }
+					: { kind: 'unknown', detail: undescribableRelayDetail(fromDomain, relayKinds) };
+		const state = await loadAlignmentState(ctx, organizationId, fromDomain);
 		return {
 			referenceArm: referencePresence(reference),
 			state: state ? { verdict: state.verdict, checkedAt: state.checkedAt } : null,
@@ -314,7 +360,7 @@ export const getAlignmentReadiness = authedQuery({
 	args: { domain: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const organizationId = await getSingletonOrganizationId(ctx);
-		const domainFilter = args.domain;
+		const domainFilter = args.domain === undefined ? undefined : normalizeDomain(args.domain);
 		const rows = await ctx.db
 			.query('deliverabilityAlignmentStates')
 			.withIndex('by_org_domain', (q) => {
