@@ -241,11 +241,13 @@ import type * as delivery_deliverabilityValidators from "../delivery/deliverabil
 import type * as delivery_enqueue from "../delivery/enqueue.js";
 import type * as delivery_governedDispatch from "../delivery/governedDispatch.js";
 import type * as delivery_health from "../delivery/health.js";
+import type * as delivery_externalReputationCrons from "../delivery/externalReputationCrons.js";
 import type * as delivery_ipReadinessAlerts from "../delivery/ipReadinessAlerts.js";
 import type * as delivery_lastMileRouting from "../delivery/lastMileRouting.js";
 import type * as delivery_marketingCompliance from "../delivery/marketingCompliance.js";
 import type * as delivery_mtaHealth from "../delivery/mtaHealth.js";
 import type * as delivery_observationFreshness from "../delivery/observationFreshness.js";
+import type * as delivery_observationRetention from "../delivery/observationRetention.js";
 import type * as delivery_messageIdRouting from "../delivery/messageIdRouting.js";
 import type * as delivery_preferences from "../delivery/preferences.js";
 import type * as delivery_preferencesHttp from "../delivery/preferencesHttp.js";
@@ -1043,11 +1045,13 @@ declare const fullApi: ApiFromModules<{
   "delivery/enqueue": typeof delivery_enqueue;
   "delivery/governedDispatch": typeof delivery_governedDispatch;
   "delivery/health": typeof delivery_health;
+  "delivery/externalReputationCrons": typeof delivery_externalReputationCrons;
   "delivery/ipReadinessAlerts": typeof delivery_ipReadinessAlerts;
   "delivery/lastMileRouting": typeof delivery_lastMileRouting;
   "delivery/marketingCompliance": typeof delivery_marketingCompliance;
   "delivery/mtaHealth": typeof delivery_mtaHealth;
   "delivery/observationFreshness": typeof delivery_observationFreshness;
+  "delivery/observationRetention": typeof delivery_observationRetention;
   "delivery/messageIdRouting": typeof delivery_messageIdRouting;
   "delivery/preferences": typeof delivery_preferences;
   "delivery/preferencesHttp": typeof delivery_preferencesHttp;
