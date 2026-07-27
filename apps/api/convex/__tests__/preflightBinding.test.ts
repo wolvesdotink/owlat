@@ -663,19 +663,21 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 	 *
 	 * A topic candidate costs TWO documents (the membership plus its contact), so
 	 * 6,000 documents buys exactly 3,000 candidates — the pinned proof that the
-	 * budget is charged per document and not per row.
+	 * budget is charged per document and not per row. The audience is seeded just
+	 * past that (3,100): a bigger one would prove nothing further and every extra
+	 * contact is two more convex-test writes.
 	 */
 	it('still REFUSES a topic audience larger than the read budget', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
-		const campaignId = await seedSendableCampaign(t, 10_000);
+		const campaignId = await seedSendableCampaign(t, 3_100);
 
 		const result = await runPreflight(t, campaignId);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('exceeds_sending_capacity');
-		// The plan is built from the 3,000-candidate floor, not from 10,000 …
+		// The plan is built from the 3,000-candidate floor, not from 3,100 …
 		expect(result.capacityPlan?.covered).toBe(3_000);
 		// … and it says so, rather than quoting a finish date for an audience we
 		// never finished counting.
@@ -877,7 +879,10 @@ describe('the capacity gate never blocks the schedule mutation', () => {
 				createTestCampaignSender({ email: 'sender@verified.example.com' })
 			);
 			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
-			for (let i = 0; i < 10_000; i += 1) {
+			// Past the 3,000 contacts a 6,000-document budget buys on this shape (one
+			// contact + one topic-membership point read each), which is all it takes to
+			// prove the preload no longer collects the whole junction table.
+			for (let i = 0; i < 3_100; i += 1) {
 				const contactId = await ctx.db.insert(
 					'contacts',
 					createTestContact({ email: `member-${i}@big.test`, doiStatus: 'not_required' })
