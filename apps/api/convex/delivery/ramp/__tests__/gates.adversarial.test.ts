@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
 import {
 	evaluateComplaintGate,
 	evaluateDeferralGate,
@@ -24,12 +25,21 @@ function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
 	return referenceArmGateEvaluator.evaluate(built);
 }
 
-const GATES = [
+type RampGate = (built: RampGateEvaluationInput) => RampGateResult;
+
+const GATES: readonly RampGate[] = [
 	evaluateHardBounceGate,
 	evaluateDeferralGate,
 	evaluateComplaintGate,
 	evaluateSeedPlacementGate,
-] as const;
+];
+
+/** The gates that read an outcome RATE — the ones a poisoned bucket reaches. */
+const RATE_GATES: readonly RampGate[] = [
+	evaluateHardBounceGate,
+	evaluateDeferralGate,
+	evaluateComplaintGate,
+];
 
 function everyGate(name: string, build: () => RampGateEvaluationInput): void {
 	it(`${name}: no gate throws and no gate passes`, () => {
@@ -61,47 +71,116 @@ describe('degenerate volumes', () => {
 });
 
 describe('poisoned rates', () => {
-	everyGate('NaN rates on both arms', () =>
-		input({
-			own: arm(
-				{ sent: 10_000 },
-				{
-					hardBounceRate: Number.NaN,
-					deferralRate: Number.NaN,
-					complaintRate: Number.NaN,
-				}
-			),
-			reference: arm(
-				{ sent: 10_000 },
-				{
-					hardBounceRate: Number.NaN,
-					deferralRate: Number.NaN,
-					complaintRate: Number.NaN,
-				}
-			),
-		})
-	);
+	/**
+	 * All three fixtures give the own arm an AMPLE, FRESH window and poison only
+	 * the derived rate, so the hold cannot be explained by sample size or age.
+	 */
+	const poisonedOwnArm: ReadonlyArray<readonly [string, () => RampGateEvaluationInput]> = [
+		[
+			'NaN rates on both arms',
+			() =>
+				input({
+					own: arm(
+						{ sent: 10_000 },
+						{
+							hardBounceRate: Number.NaN,
+							deferralRate: Number.NaN,
+							complaintRate: Number.NaN,
+						}
+					),
+					reference: arm(
+						{ sent: 10_000 },
+						{
+							hardBounceRate: Number.NaN,
+							deferralRate: Number.NaN,
+							complaintRate: Number.NaN,
+						}
+					),
+				}),
+		],
+		[
+			'Infinity rates on both arms',
+			() =>
+				input({
+					own: arm(
+						{ sent: 10_000 },
+						{
+							hardBounceRate: Number.POSITIVE_INFINITY,
+							deferralRate: Number.POSITIVE_INFINITY,
+							complaintRate: Number.POSITIVE_INFINITY,
+						}
+					),
+					reference: arm({ sent: 10_000 }),
+				}),
+		],
+		[
+			'negative rates (a subtraction that lost its guard)',
+			() =>
+				input({
+					own: arm({ sent: 10_000 }, { hardBounceRate: -1, deferralRate: -1, complaintRate: -1 }),
+					reference: arm({ sent: 10_000 }),
+				}),
+		],
+	];
 
-	everyGate('Infinity rates on both arms', () =>
-		input({
-			own: arm(
-				{ sent: 10_000 },
-				{
-					hardBounceRate: Number.POSITIVE_INFINITY,
-					deferralRate: Number.POSITIVE_INFINITY,
-					complaintRate: Number.POSITIVE_INFINITY,
-				}
-			),
-			reference: arm({ sent: 10_000 }),
-		})
-	);
+	for (const [name, build] of poisonedOwnArm) {
+		everyGate(name, build);
 
-	everyGate('negative rates (a subtraction that lost its guard)', () =>
-		input({
-			own: arm({ sent: 10_000 }, { hardBounceRate: -1, deferralRate: -1, complaintRate: -1 }),
-			reference: arm({ sent: 10_000 }),
-		})
-	);
+		// A poisoned bucket is NOT a thin window, and the reason code is what the
+		// admin notification renders from (plan D12): reporting an unusable rate as
+		// `own_sample_below_floor` sends the operator to the wrong remediation.
+		it(`${name}: every rate gate holds with own_rate_unmeasurable`, () => {
+			const built = build();
+			for (const gate of RATE_GATES) {
+				expect(gate(built)).toMatchObject({
+					status: 'insufficient_data',
+					reason: 'own_rate_unmeasurable',
+				});
+			}
+		});
+	}
+
+	// The own-arm guard returns first, so a poisoned own arm can never exercise
+	// the reference-arm guard. This is the fixture that does: own arm ample,
+	// fresh and healthy, reference arm ample and fresh but unusable.
+	const poisonedReferenceArm: ReadonlyArray<{
+		readonly field: string;
+		readonly gate: RampGate;
+		readonly poison: (value: number) => Partial<TransportOutcomeSummary>;
+	}> = [
+		{
+			field: 'hardBounceRate',
+			gate: evaluateHardBounceGate,
+			poison: (value) => ({ hardBounceRate: value }),
+		},
+		{
+			field: 'complaintRate',
+			gate: evaluateComplaintGate,
+			poison: (value) => ({ complaintRate: value }),
+		},
+	];
+
+	const POISONS: ReadonlyArray<readonly [string, number]> = [
+		['NaN', Number.NaN],
+		['Infinity', Number.POSITIVE_INFINITY],
+		['negative', -1],
+	];
+
+	for (const { field, gate, poison } of poisonedReferenceArm) {
+		for (const [label, value] of POISONS) {
+			it(`a ${label} ${field} on the REFERENCE arm holds with reference_rate_unmeasurable`, () => {
+				const built = input({
+					own: arm({ sent: 10_000, hardBounced: 10, complained: 5 }),
+					reference: arm({ sent: 10_000, hardBounced: 10, complained: 5 }, poison(value)),
+				});
+				expect(gate(built)).toMatchObject({
+					status: 'insufficient_data',
+					reason: 'reference_rate_unmeasurable',
+				});
+				expect(evaluate(built).verdict).not.toBe('pass');
+			});
+		}
+	}
 
 	it('counts that exceed `sent` clamp to 1 and FAIL rather than being dropped', () => {
 		const built = input({
@@ -161,8 +240,10 @@ describe('missing arms and missing gates', () => {
 	});
 
 	it('an EMPTY gate list holds without throwing — zero evidence is not a pass', () => {
-		expect(() => aggregateRampGates([], 0, NOW)).not.toThrow();
-		const evaluation = aggregateRampGates([], 3, NOW);
+		expect(() =>
+			aggregateRampGates({ perGate: [], previousCleanStreak: 0, now: NOW })
+		).not.toThrow();
+		const evaluation = aggregateRampGates({ perGate: [], previousCleanStreak: 3, now: NOW });
 		expect(evaluation.verdict).toBe('insufficient_data');
 		expect(evaluation.failedGate).toBeUndefined();
 		// Hold, both ways: no increase toward K_CLEAN and no reset either (D10).
@@ -184,7 +265,11 @@ describe('missing arms and missing gates', () => {
 				minSample: 5,
 			},
 		};
-		const evaluation = aggregateRampGates([held], 2, NOW);
+		const evaluation = aggregateRampGates({
+			perGate: [held],
+			previousCleanStreak: 2,
+			now: NOW,
+		});
 		expect(evaluation.verdict).toBe('insufficient_data');
 		expect(evaluation.cleanStreak).toBe(2);
 	});
@@ -206,9 +291,11 @@ describe('missing arms and missing gates', () => {
 				},
 			},
 		];
-		expect(aggregateRampGates(clean, Number.NaN, NOW).cleanStreak).toBe(1);
-		expect(aggregateRampGates(clean, -5, NOW).cleanStreak).toBe(1);
-		expect(aggregateRampGates(clean, 2.7, NOW).cleanStreak).toBe(3);
+		const streak = (previousCleanStreak: number): number =>
+			aggregateRampGates({ perGate: clean, previousCleanStreak, now: NOW }).cleanStreak;
+		expect(streak(Number.NaN)).toBe(1);
+		expect(streak(-5)).toBe(1);
+		expect(streak(2.7)).toBe(3);
 	});
 
 	it('seed observations with only "missing" mailboxes fail rather than divide by zero', () => {
