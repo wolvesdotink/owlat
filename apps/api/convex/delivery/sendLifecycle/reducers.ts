@@ -1,4 +1,4 @@
-import type { Effect } from './effects';
+import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
 	EmailSendDoc,
@@ -312,7 +312,7 @@ export function reduceOpened(
 		// traffic. Note this cannot be hoisted to the dispatcher and gated on
 		// `applied === 'transitioned'`: a genuine FIRST open on an already-bounced
 		// row does not move the status and would be silently under-counted.
-		effects.push({ kind: 'transport_outcome', sendId: ref.id, event: 'opened', at: args.at });
+		effects.push(transportOutcomeEffect(ref, 'opened', args.at));
 		// Customer webhook — first open only; re-opens just bump openCount.
 		effects.push({
 			kind: 'customer_webhook',
@@ -361,7 +361,7 @@ export function reduceClicked(
 		effects.push({ kind: 'daily_stats_bump', field: 'clicked', at: args.at });
 		// Unique clicks here too — same reasoning as `reduceOpened`: the per-cell
 		// outcome counter must agree with the dashboard counter beside it.
-		effects.push({ kind: 'transport_outcome', sendId: ref.id, event: 'clicked', at: args.at });
+		effects.push(transportOutcomeEffect(ref, 'clicked', args.at));
 	}
 
 	// Customer webhook — every click, not just the first: each carries its own

@@ -118,6 +118,19 @@ export type Effect =
 			spec: FanoutSpec;
 	  };
 
+/**
+ * The ONE constructor for the per-cell outcome effect. Every site that records
+ * a transport outcome (the dispatcher's queued→terminal accounting and the
+ * transition map, plus `reduceDeliveryObservation`/`reduceOpened`/
+ * `reduceClicked` under their shipped uniqueness gates) goes through this, so
+ * the effect's shape is declared once next to the union it belongs to.
+ */
+export const transportOutcomeEffect = (
+	ref: SendRef,
+	event: TransportOutcomeEvent,
+	at: number
+): Effect => ({ kind: 'transport_outcome', sendId: ref.id, event, at });
+
 // ─── Runner — applies the patch, dispatches effects, schedules fanout ───────
 
 export async function applyEffects(

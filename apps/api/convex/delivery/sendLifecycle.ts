@@ -18,7 +18,7 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './sendLifecycle/reducers';
-import { applyEffects, type Effect } from './sendLifecycle/effects';
+import { applyEffects, transportOutcomeEffect, type Effect } from './sendLifecycle/effects';
 import {
 	canAttributeRemoteAcceptance,
 	reduceDeliveryObservation,
@@ -33,7 +33,6 @@ import {
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { transportOutcomeEventForTransition } from '../analytics/transportOutcomeSummary';
-import type { TransportOutcomeEvent } from '../analytics/transportOutcomeSummary';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
@@ -231,14 +230,6 @@ async function dispatch(
 		}
 	}
 
-	// One constructor for the per-cell outcome effect; both sites below use it.
-	const outcomeEffect = (event: TransportOutcomeEvent): Effect => ({
-		kind: 'transport_outcome',
-		sendId: ref.id,
-		event,
-		at: input.at,
-	});
-
 	// An SMTP rejection or post-DATA ambiguity goes `queued -> terminal` without
 	// passing through `sent`, so `reduceSent`'s outbound accounting never runs.
 	// Preserve the rate denominator only when the callback proves an envelope
@@ -261,7 +252,7 @@ async function dispatch(
 						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
 					},
 					// Same evidence rule as the reputation counter above it.
-					outcomeEffect('sent'),
+					transportOutcomeEffect(ref, 'sent', input.at),
 				]
 			: [];
 
@@ -275,7 +266,8 @@ async function dispatch(
 		input.to,
 		input.to === 'bounced' ? input.bounceType : undefined
 	);
-	const outcomeEffects: Effect[] = outcomeEvent === null ? [] : [outcomeEffect(outcomeEvent)];
+	const outcomeEffects: Effect[] =
+		outcomeEvent === null ? [] : [transportOutcomeEffect(ref, outcomeEvent, input.at)];
 
 	result = withoutTestSendEffects(send, ref, {
 		...result,
