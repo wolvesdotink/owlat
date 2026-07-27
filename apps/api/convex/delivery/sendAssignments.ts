@@ -51,7 +51,7 @@ import {
 import { resolveNow } from '../lib/clock';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type { MixAssignment, MixRecipientIdentity } from '../lib/sendProviders/strategies';
-import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies';
+import { DEFAULT_MIX_VERSION, OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies';
 import type { MessageType } from '../lib/sendProviders/routeInputs';
 import type { SendProviderKind } from '../lib/sendProviders/types';
 import {
@@ -75,12 +75,6 @@ export const DEFAULT_CELL_PAGE_SIZE = 100;
 
 /** Hard ceiling on the cell/window read — a per-recipient table (D16). */
 export const MAX_CELL_PAGE_SIZE = 500;
-
-/**
- * Mix version 0 = "no controller-driven mix in effect". The row records the
- * shipped router's own decision. The mix controller writes version >= 1.
- */
-export const ROUTER_ONLY_MIX_VERSION = 0;
 
 /**
  * Derived from the schema rather than re-declared, so the literal sets cannot
@@ -141,13 +135,15 @@ export interface SendAssignmentRecipient {
 	 * uncorrelated with anything — see `MixRecipientIdentity.fallbackKey`.
 	 */
 	readonly contactId?: string;
-	/** Optional engagement percentile rank, when the producer already knows it. */
-	readonly engagementRank?: number;
 	/**
 	 * `contacts.engagementScore` (0-100) as the producer already carries it.
-	 * Converted to a percentile WITHIN this batch's cell cohort through the
-	 * shipped `engagementPercentile` helper — this module never re-implements
-	 * scoring. Ignored when `engagementRank` is supplied.
+	 * Converted to a percentile WITHIN this batch's cohort through the shipped
+	 * percentile helper — this module never re-implements scoring.
+	 *
+	 * A producer may NOT hand in a ready-made percentile. A supplied rank would
+	 * bypass the minimum-cohort rule ("thin data holds", D10) and the finiteness
+	 * treatment the cohort path applies, and there is no caller that knows a
+	 * percentile the batch does not: the ranking cohort IS the batch.
 	 */
 	readonly engagementScore?: number;
 }
@@ -245,16 +241,16 @@ export async function recordSendAssignments(
 		organizationId,
 		now,
 	});
-	const fallbackMixVersion = input.mixVersion ?? ROUTER_ONLY_MIX_VERSION;
+	const fallbackMixVersion = input.mixVersion ?? DEFAULT_MIX_VERSION;
 	const fallbackIsCalibration = input.isCalibration ?? false;
-	const rankFor = buildEngagementRanker(input.recipients, providers);
+	const rankFor = buildEngagementRanker(input.recipients);
 
 	let written = 0;
 	for (const recipient of input.recipients) {
 		const destinationProvider = providers.get(recipient.email);
 		// An address whose domain does not parse has no cell we can name.
 		if (destinationProvider === undefined) continue;
-		const engagementRank = rankFor(recipient, destinationProvider);
+		const engagementRank = rankFor(recipient);
 		const identity: MixRecipientIdentity = {
 			...(recipient.contactId !== undefined ? { contactId: recipient.contactId } : {}),
 			...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
@@ -275,14 +271,26 @@ export async function recordSendAssignments(
 		// a stratified row can reproduce it. When the router did not split, the
 		// producer's rank (if any) is recorded as the observation it is.
 		const recordedRank = mix?.engagementRank ?? engagementRank;
+		const arm = armForTransport(transport);
+		// A calibration row is a member of a RANDOMIZED COMPARISON, so it only
+		// counts while the decision could actually be honoured. On a deployment
+		// with no reference transport configured (D2 — a supported
+		// configuration, not an incomplete setup) a `reference` decision still
+		// dispatches on the own MTA, and marking those rows calibration would
+		// hand the engagement-ratio gate a one-armed sample: exactly the
+		// degenerate cell `calibrationSliceFor` zeroes the slice for. The row is
+		// still written — the send happened and belongs in the denominators — it
+		// simply is not part of the experiment.
+		const isCalibration =
+			mix !== null ? mix.isCalibration && arm === mix.arm : fallbackIsCalibration;
 		await ctx.db.insert('sendAssignments', {
 			organizationId,
 			sendId: recipient.sendId,
 			sendKind: input.sendKind,
 			cell,
 			transport,
-			arm: armForTransport(transport),
-			isCalibration: mix?.isCalibration ?? fallbackIsCalibration,
+			arm,
+			isCalibration,
 			mixVersion: mix?.mixVersion ?? fallbackMixVersion,
 			...(recordedRank !== undefined ? { engagementRank: recordedRank } : {}),
 			assignedAt: now,

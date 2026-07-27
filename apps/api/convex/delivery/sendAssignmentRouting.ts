@@ -28,8 +28,8 @@ import {
 	type CellMixResolver,
 	type CellRouteOutcome,
 } from '../lib/sendProviders/cellRoute';
-import type { MixRecipientIdentity } from '../lib/sendProviders/strategies';
-import { engagementPercentile } from '../analytics/engagementScore';
+import { rankTieBreakUnit, type MixRecipientIdentity } from '../lib/sendProviders/strategies';
+import { engagementPercentileRange } from '../analytics/engagementScore';
 import { logWarn } from '../lib/runtimeLog';
 // Type-only, so the pair of modules has no runtime import cycle.
 import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssignments';
@@ -41,6 +41,15 @@ import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssig
  * percentile, which would send every low-volume batch to the own arm on
  * evidence that does not exist. Below this the recipient carries NO rank and
  * the split falls back to the unbiased random bucket.
+ *
+ * Counted over the WHOLE BATCH, not per destination provider. The score
+ * distribution is a property of the audience, not of who runs their mailbox, so
+ * ranking a gmail recipient against the batch's microsoft recipients is not a
+ * distortion — while a per-provider cohort would be: a mixed page spread over
+ * five providers rarely puts 20 recipients in any one of them, so per-provider
+ * cohorts would silently never reach this threshold and stratification, which
+ * D8 makes the DEFAULT, would never engage at all. The CELL remains the
+ * assignment axis; only the ranking cohort is batch-wide.
  */
 export const MIN_STRATIFICATION_COHORT = 20;
 
@@ -87,44 +96,55 @@ export async function destinationProvidersForEmails(
 }
 
 /**
- * Per-CELL engagement percentile over the batch (D8's stratification input).
+ * Engagement percentile over the batch (D8's stratification input).
  *
- * The cohort is the batch's own recipients IN THE SAME CELL: stratification
- * asks "is this recipient in the top `s` of this cell's traffic", and a page of
- * a campaign is the sample we have in hand for free. Ranking against the batch
- * costs no extra read — the scores are already on the envelope the producer
- * built — and reuses the shipped `engagementPercentile` rather than
- * re-implementing scoring.
+ * The cohort is the batch's own scored recipients: stratification asks "is this
+ * recipient in the top `s` of this traffic", and a page of a campaign is the
+ * sample we have in hand for free. Ranking against the batch costs no extra
+ * read — the scores are already on the envelope the producer built — and reuses
+ * the shipped percentile helper rather than re-implementing scoring.
+ *
+ * TIES ARE DISPERSED, and that is the load-bearing part. `engagementPercentile`
+ * gives every member of a tied group the group's UPPER percentile, so a cohort
+ * where everyone shares one score — a cold or freshly-imported list, i.e. the
+ * common warming case, and `0` is a perfectly valid shared score — would rank
+ * every member at 1.0, and the stratified cut (`rank >= 1 - s`) would then send
+ * 100% of the cell to the own arm for ANY `s > 0`. A cohort 60% tied at the
+ * bottom would send that whole 60% own at `s = 0.5`. Both push realised own
+ * volume far above the controller's set point, and in the worst direction: the
+ * LEAST engaged recipients are the ones promoted. So each recipient is placed
+ * inside the percentile INTERVAL its tied group occupies, at an offset drawn
+ * from its own stable hash. Distinct scores keep their exact ordering; a fully
+ * tied cohort spreads uniformly over [0,1) and the realised own share tracks
+ * `s` again.
+ *
+ * The tie-break hash lives in its own partition and is salted with neither the
+ * campaign nor the mix version, so it is INDEPENDENT of the arm bucket — a
+ * tie-break correlated with the arm would re-introduce exactly the bias it
+ * exists to remove.
  *
  * A recipient with no score gets NO rank, which the decision function reads as
  * "unknown" and falls back to the random bucket — never to the own arm.
  */
 export function buildEngagementRanker(
-	recipients: readonly SendAssignmentRecipient[],
-	providers: ReadonlyMap<string, DestinationProviderKey>
-): (
-	recipient: SendAssignmentRecipient,
-	destinationProvider: DestinationProviderKey
-) => number | undefined {
-	const cohorts = new Map<DestinationProviderKey, number[]>();
+	recipients: readonly SendAssignmentRecipient[]
+): (recipient: SendAssignmentRecipient) => number | undefined {
+	const cohort: number[] = [];
 	for (const recipient of recipients) {
 		const score = recipient.engagementScore;
 		if (score === undefined || !Number.isFinite(score)) continue;
-		const destinationProvider = providers.get(recipient.email);
-		if (destinationProvider === undefined) continue;
-		const cohort = cohorts.get(destinationProvider);
-		if (cohort === undefined) cohorts.set(destinationProvider, [score]);
-		else cohort.push(score);
+		cohort.push(score);
 	}
-	for (const cohort of cohorts.values()) cohort.sort((a, b) => a - b);
+	cohort.sort((a, b) => a - b);
 
-	return (recipient, destinationProvider) => {
-		if (recipient.engagementRank !== undefined) return recipient.engagementRank;
+	return (recipient) => {
 		const score = recipient.engagementScore;
 		if (score === undefined || !Number.isFinite(score)) return undefined;
-		const cohort = cohorts.get(destinationProvider);
-		if (cohort === undefined || cohort.length < MIN_STRATIFICATION_COHORT) return undefined;
-		return engagementPercentile(cohort, score);
+		if (cohort.length < MIN_STRATIFICATION_COHORT) return undefined;
+		const { lower, upper } = engagementPercentileRange(cohort, score);
+		// Untied scores have a zero-width interval, so this is exactly the
+		// shipped percentile for them.
+		return lower + (upper - lower) * rankTieBreakUnit(recipient.sendId);
 	};
 }
 

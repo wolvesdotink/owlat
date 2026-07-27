@@ -371,10 +371,12 @@ export const enqueueNonCampaignSend = internalMutation({
 			stream,
 			sendKind: 'transactional',
 			routing: { messageType: stream, from: args.from },
-			// No campaign salt: a transactional send is its own single-recipient
-			// experiment, so the `sendId` fallback key already re-randomizes the
-			// contact on every message. A CONSTANT salt here would be the exact
-			// fixed-cohort bias D7 exists to prevent.
+			// No campaign salt: an automation step or a 1:1 reply is its own
+			// single-recipient experiment. The split then salts with the SEND id
+			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
+			// re-drawn on every message instead of being pinned for the life of
+			// the mix version — the fixed-cohort bias D7 exists to prevent, and
+			// `automation` is a first-class high-volume stream, not an edge.
 			recipients: [
 				{
 					sendId,
