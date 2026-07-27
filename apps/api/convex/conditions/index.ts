@@ -65,11 +65,7 @@ type ConditionsLookup = {
 	[K in ConditionKind]?: unknown;
 };
 
-/**
- * Pre-fetch all data needed to evaluate `conditions` over many contacts in
- * O(1) per condition. Group conditions by kind, hand each batch to the kind's
- * module, and store the typed lookup keyed by kind.
- */
+/** Bucket conditions by kind, preserving order within a kind. */
 function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condition[]> {
 	const grouped = new Map<ConditionKind, Condition[]>();
 	for (const c of conditions) {
@@ -102,6 +98,11 @@ export function conditionsLookupReadsPerContact(conditions: readonly Condition[]
 	return reads;
 }
 
+/**
+ * Pre-fetch all data needed to evaluate `conditions` over many contacts in
+ * O(1) per condition. Group conditions by kind, hand each batch to the kind's
+ * module, and store the typed lookup keyed by kind.
+ */
 export async function preloadConditionsLookup(
 	ctx: { db: DatabaseReader },
 	conditions: Condition[]
