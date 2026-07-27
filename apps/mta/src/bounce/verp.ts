@@ -29,7 +29,10 @@
  * unsigned helper result as attribution evidence.
  */
 
-import { buildVerpAddressWithKey, parseVerpAddressWithKey } from '@owlat/shared/verp';
+import {
+	buildVerpAddress as buildVerpAddressWithKey,
+	parseVerpAddress as parseVerpAddressWithKey,
+} from '@owlat/shared/verp';
 
 /**
  * Resolve the VERP signing key. Reading the env here (rather than threading it

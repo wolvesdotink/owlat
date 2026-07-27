@@ -38,6 +38,29 @@ export const VERP_WINDOW_TOLERANCE = 6;
 /** Local-part prefix every VERP address carries. */
 export const VERP_LOCAL_PART_PREFIX = 'bounce';
 
+/**
+ * Minimum signing-key length. The MTA rejects anything shorter at startup
+ * (`apps/mta/src/config.ts`), so a shorter key on the Convex side would mint
+ * tokens the MTA can never verify — the same floor has to hold on both sides.
+ */
+export const VERP_KEY_MIN_BYTES = 32;
+
+/** Is this a key both sides will accept? A short/typo'd copy is not. */
+export function isUsableVerpKey(key: string | undefined): key is string {
+	return key !== undefined && Buffer.byteLength(key, 'utf8') >= VERP_KEY_MIN_BYTES;
+}
+
+/**
+ * Normalise a configured return-path domain: trim, drop a trailing root dot
+ * (an absolute FQDN is legal in DNS config and illegal in an address), and
+ * treat blank as unset. One definition — the MTA, the relay adapter and the
+ * capability probe must all build the SAME address for the same configuration.
+ */
+export function normalizeReturnPathDomain(value: string | undefined): string | undefined {
+	const normalized = value?.trim().replace(/\.$/, '');
+	return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
+}
+
 /** Current coarse time bucket (UTC day number). */
 function verpWindow(now: number): number {
 	return Math.floor(now / VERP_WINDOW_MS);
@@ -71,7 +94,7 @@ function macsEqual(a: string, b: string): boolean {
  * unsigned form, which exists only for isolated compatibility tests (both
  * production callers require a key).
  */
-export function buildVerpAddressWithKey(
+export function buildVerpAddress(
 	messageId: string,
 	returnPathDomain: string,
 	key: string | undefined,
@@ -91,7 +114,7 @@ export function buildVerpAddressWithKey(
  * with, or its MAC falls outside the accepted window range. `null` means the
  * report is unattributable and MUST NOT suppress a recipient.
  */
-export function parseVerpAddressWithKey(
+export function parseVerpAddress(
 	address: string,
 	key: string | undefined,
 	now: number
