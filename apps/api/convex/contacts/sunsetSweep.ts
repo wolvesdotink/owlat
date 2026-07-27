@@ -262,8 +262,10 @@ export const sweepSunsetPolicy = internalMutation({
 							`suppressed. Nothing changed, and nothing will be suppressed until ` +
 							`this clears. Check the system clock (NTP); if the clock is correct — ` +
 							`a deployment that was simply paused for a long time looks the same ` +
-							`from here — confirm it from the sunset policy settings to resume ` +
-							`sweeps. This message repeats at most once a day.`,
+							`from here — run the "contacts/sunset:confirmSunsetClock" mutation ` +
+							`(requires contacts:manage) to confirm the clock and resume sweeps; ` +
+							`see the "List sunsetting" guide. This message repeats at most once ` +
+							`a day.`,
 					},
 				});
 			}
