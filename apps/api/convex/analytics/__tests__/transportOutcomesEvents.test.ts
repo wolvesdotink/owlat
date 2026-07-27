@@ -28,19 +28,13 @@ describe('transportOutcomeEventForTransition (pure)', () => {
 	});
 
 	it('does not map `opened`/`clicked` — the reducers emit those under the unique gate', () => {
-		// A transition fires on EVERY open, the shipped dashboard counters only on
-		// the first. Mapping them here would make the cell open rate exceed 1.0 and
-		// disagree with the dashboard over the same traffic (plan D5).
+		// Rationale lives on `transportOutcomeEventForTransition`.
 		expect(transportOutcomeEventForTransition('opened')).toBeNull();
 		expect(transportOutcomeEventForTransition('clicked')).toBeNull();
 	});
 
 	it('does not map `delivered` — the delivery observation emits it once per send', () => {
-		// The shipped delivered denominator is written by whichever evidence
-		// arrives first (a provider callback, an open, a click, a complaint), and
-		// an explicit `delivered` transition out of any other state is a duplicate
-		// the runner drops. Mapping it here would under-count `delivered` against
-		// the dashboard and let the rates denominated on it exceed 1.0.
+		// Rationale lives on `transportOutcomeEventForTransition`.
 		expect(transportOutcomeEventForTransition('delivered')).toBeNull();
 	});
 

@@ -176,12 +176,26 @@ export interface TransportOutcomeTotals {
  *     gate comparing `unsubscribeRate` against `complaintRate` is comparing two
  *     differently-denominated numbers — convert, or compare like for like.
  *
- * Every rate here is bounded to [0, 1], twice over. By construction: the
- * open/click numerators count UNIQUE opens and clicks and their `delivered`
- * denominator is bumped by the same delivery observation any open implies, so
- * `delivered >= opened` holds — see `transportOutcomeEventForTransition`. And
- * defensively: `rate()` clamps at the read boundary, so a legacy or
- * partially-written bucket still cannot hand a gate a ratio above 1.
+ * Every rate here is bounded to [0, 1] — but know WHICH guarantee you are
+ * relying on:
+ *
+ *   - PER SEND, by construction: the open/click numerators count UNIQUE opens
+ *     and clicks and their `delivered` denominator is bumped by the same
+ *     delivery observation any open implies, so `delivered >= opened` holds for
+ *     the send — see `transportOutcomeEventForTransition`.
+ *   - PER WINDOW, only by the clamp. Buckets are keyed on the day the outcome
+ *     was RECORDED, not the day the send was delivered: a delivery observed on
+ *     day 1 whose first open arrives on day 3 puts the `opened` numerator in a
+ *     bucket whose `delivered` denominator sits outside a short window, and a
+ *     legacy send that already carried `deliveredAt` before this table existed
+ *     bumps `opened` with no `delivered` at all. So a short or a young window
+ *     can legitimately saturate at `openRate === 1` through `rate()`'s clamp.
+ *
+ * A gate must therefore read a saturated `openRate` as CARRY-OVER — engagement
+ * whose delivery denominator landed elsewhere — and not as 100% engagement.
+ * That is one more reason D8's engagement-ratio gate compares the two arms'
+ * calibration rates against each other over the SAME window rather than reading
+ * either one as an absolute number.
  */
 export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	/** softBounced + hardBounced — summed, never stored. */
