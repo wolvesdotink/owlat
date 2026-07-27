@@ -133,6 +133,9 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * the configured value is IGNORED, never rejected — this value is read on the
  * send path, where throwing would turn a typo into blocked mail (plan D2).
  */
+const RELAY_SPF_TERM_PATTERN =
+	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;
+
 /**
  * Cap on accepted relay-authorisation terms.
  *
@@ -145,9 +148,6 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * "ignore, never throw" rule.
  */
 export const MAX_RELAY_SPF_TERMS = 5;
-
-const RELAY_SPF_TERM_PATTERN =
-	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;
 
 /**
  * Parse `MTA_RETURN_PATH_RELAY_SPF` — the mechanism terms that authorise a

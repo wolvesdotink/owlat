@@ -67,17 +67,6 @@ export const RETURN_PATH_PROBE_REASONS = [
 export type ReturnPathProbeReason = (typeof RETURN_PATH_PROBE_REASONS)[number];
 
 /**
- * A verdict a probe already reached, carried across a later RE-PROBE.
- *
- * A re-probe reopens the row (`awaiting_delivery`), and an open probe resolves
- * to `unknown` — so without this, a relay PROVEN to honour our return path
- * would stop being stamped for up to {@link RETURN_PATH_PROBE_TIMEOUT_MS} every
- * time its TTL came round: relayed bounces in that window would be
- * unattributable and the cell would silently flip to degraded, twelve times a
- * year. The re-probe periodically switching OFF the very stamp it exists to
- * confirm is the opposite of what it is for.
- */
-/**
  * The subsets a SETTLED verdict may carry. `awaiting_delivery` is the status
  * and reason of a probe still in flight, so a settled verdict admits neither —
  * derived here rather than re-listed so a literal added above cannot drift out
@@ -94,6 +83,17 @@ export const SETTLED_RETURN_PATH_PROBE_REASONS = RETURN_PATH_PROBE_REASONS.filte
 		reason !== 'awaiting_delivery'
 );
 
+/**
+ * A verdict a probe already reached, carried across a later RE-PROBE.
+ *
+ * A re-probe reopens the row (`awaiting_delivery`), and an open probe resolves
+ * to `unknown` — so without this, a relay PROVEN to honour our return path
+ * would stop being stamped for up to {@link RETURN_PATH_PROBE_TIMEOUT_MS} every
+ * time its TTL came round: relayed bounces in that window would be
+ * unattributable and the cell would silently flip to degraded, twelve times a
+ * year. The re-probe periodically switching OFF the very stamp it exists to
+ * confirm is the opposite of what it is for.
+ */
 export interface SettledReturnPathVerdict {
 	readonly status: (typeof SETTLED_RETURN_PATH_PROBE_STATUSES)[number];
 	readonly reason: (typeof SETTLED_RETURN_PATH_PROBE_REASONS)[number];
