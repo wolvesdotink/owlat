@@ -13,10 +13,16 @@
  * table-testable. The ctx-bound half (reading warming state, counting the
  * audience) lives in `capacityPreflight.ts`.
  *
- * Soundness rule: `remainingCapacityByDay` must be an UPPER bound on what the
- * deployment can send each day (the published warming schedule is a ceiling).
- * Refusing on an upper bound is sound — if the optimistic projection cannot
- * finish inside the retention horizon, neither can reality.
+ * What `remainingCapacityByDay` IS (`delivery/warmingCapacity.ts` produces it,
+ * and documents the bound in full): the published base warming schedule walked
+ * at one schedule day per calendar day, summed over the active campaign IPs.
+ * It is NOT an upper bound in general — the shipped MTA evaluator can advance
+ * the schedule day faster than the calendar — so this planner claims only what
+ * is true: the projection is optimistic in assuming the whole cap is available
+ * to this campaign (which is what keeps a REFUSAL conservative) and pessimistic
+ * under adaptive acceleration (which can over-schedule a campaign that would
+ * have fit). Both errors are named there; neither lets the gate approve a send
+ * whose tail will expire.
  */
 
 import { MS_PER_DAY } from '../lib/constants';

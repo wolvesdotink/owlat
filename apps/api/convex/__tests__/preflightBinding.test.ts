@@ -765,7 +765,7 @@ describe('pre-flight capacity gate — the projection horizon', () => {
 	/**
 	 * `BASE_WARMING_SCHEDULE` day 30 is `Infinity` — the MTA stops throttling. An
 	 * IP that crosses it INSIDE the four-day retention horizon has unbounded
-	 * capacity there, so the projection cannot be an upper bound and the answer
+	 * capacity there, so the projection cannot bound that day at all and the answer
 	 * must be "unknown", never a clamped number the gate could refuse against.
 	 */
 	it('reports UNKNOWN capacity when the horizon crosses schedule day 30', async () => {
