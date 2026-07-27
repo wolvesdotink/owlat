@@ -14,11 +14,11 @@ import {
 	RETURN_PATH_PROBE_STATUSES,
 	SETTLED_RETURN_PATH_PROBE_REASONS,
 	SETTLED_RETURN_PATH_PROBE_STATUSES,
-} from '../lib/sendProviders/returnPathCapability';
+} from '../lib/sendProviders/returnPathProbe';
 
 /**
  * Table validators DERIVED from the probe state machine in
- * `lib/sendProviders/returnPathCapability`, not re-listed beside it. Hand-copied
+ * `lib/sendProviders/returnPathProbe`, not re-listed beside it. Hand-copied
  * literal sets are how a status added to the core silently fails to validate at
  * the table — a drift that would surface as a write rejection on the send path.
  */

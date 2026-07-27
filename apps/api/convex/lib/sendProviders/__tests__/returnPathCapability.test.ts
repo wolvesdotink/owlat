@@ -1,22 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+	isCustomReturnPathSupported,
+	measurementQualityOf,
+	resolveReturnPathCapability,
+	resolveReturnPathCapabilityForEntry,
+	unresolvableReturnPathCapability,
+} from '../returnPathCapability';
+import {
 	RETURN_PATH_PROBE_RETRY_MS,
 	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
 	RETURN_PATH_PROBE_TIMEOUT_MS,
 	RETURN_PATH_PROBE_TTL_MS,
-	isCustomReturnPathSupported,
 	isProbeDue,
 	isProbeTimedOut,
-	measurementQualityOf,
 	nextProbeAttempts,
 	nextProbeState,
-	resolveReturnPathCapability,
-	resolveReturnPathCapabilityForEntry,
 	returnPathProbeRetryMs,
 	settledVerdictOf,
-	unresolvableReturnPathCapability,
 	type ReturnPathProbeState,
-} from '../returnPathCapability';
+} from '../returnPathProbe';
 
 /**
  * G-08 (2) — capability detection. The catalog declares what it can

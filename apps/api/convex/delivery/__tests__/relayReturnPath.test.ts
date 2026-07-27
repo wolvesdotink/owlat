@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import {
-	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
-	RETURN_PATH_PROBE_TIMEOUT_MS,
-	RETURN_PATH_PROBE_TTL_MS,
 	isCustomReturnPathSupported,
 	measurementQualityOf,
 } from '../../lib/sendProviders/returnPathCapability';
+import {
+	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
+	RETURN_PATH_PROBE_TIMEOUT_MS,
+	RETURN_PATH_PROBE_TTL_MS,
+} from '../../lib/sendProviders/returnPathProbe';
 import { buildReturnPathSpfRecord } from '../../domains/spf';
 import { returnPathProbeMessageId } from '../messageIdRouting';
 import { returnPathCapabilityFor } from '../relayReturnPath';

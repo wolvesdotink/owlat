@@ -1,11 +1,13 @@
 /**
  * Relay return-path capability — persistence + the read seam.
  *
- * The decision logic is pure and lives in
- * `lib/sendProviders/returnPathCapability.ts`; this module is the thin shell
- * that loads the observed probe, calls the pure functions and writes the
- * result. One row per configured transport (deployment-scoped, like the
- * transport configuration itself).
+ * The decision logic is pure and lives in its two sibling modules —
+ * `lib/sendProviders/returnPathProbe.ts` (the probe state machine and its
+ * timing) and `lib/sendProviders/returnPathCapability.ts` (the fold into the
+ * resolved posture). This module is the thin shell that loads the observed
+ * probe, calls those pure functions and writes the result. One row per
+ * configured transport (deployment-scoped, like the transport configuration
+ * itself).
  *
  * Plan D2: everything here is additive. A transport that was never probed, a
  * probe that never came back, a deployment with no relay at all — all resolve
@@ -20,17 +22,19 @@ import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import {
 	isCustomReturnPathSupported,
+	resolveReturnPathCapability,
+	unresolvableReturnPathCapability,
+	type ResolvedReturnPathCapability,
+} from '../lib/sendProviders/returnPathCapability';
+import {
 	isProbeDue,
 	isProbeTimedOut,
 	nextProbeAttempts,
 	nextProbeState,
-	resolveReturnPathCapability,
 	settledVerdictOf,
-	unresolvableReturnPathCapability,
-	type ResolvedReturnPathCapability,
 	type ReturnPathProbeState,
 	type ReturnPathProbeStatus,
-} from '../lib/sendProviders/returnPathCapability';
+} from '../lib/sendProviders/returnPathProbe';
 import {
 	returnPathAuthorizesRelay,
 	type ReturnPathSpfProof,

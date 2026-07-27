@@ -479,6 +479,7 @@ import type * as lib_sendProviders_relayDomainVerification from "../lib/sendProv
 import type * as lib_sendProviders_resend_index from "../lib/sendProviders/resend/index.js";
 import type * as lib_sendProviders_returnPathAuthorization from "../lib/sendProviders/returnPathAuthorization.js";
 import type * as lib_sendProviders_returnPathCapability from "../lib/sendProviders/returnPathCapability.js";
+import type * as lib_sendProviders_returnPathProbe from "../lib/sendProviders/returnPathProbe.js";
 import type * as lib_sendProviders_route from "../lib/sendProviders/route.js";
 import type * as lib_sendProviders_routeInputs from "../lib/sendProviders/routeInputs.js";
 import type * as lib_sendProviders_routing from "../lib/sendProviders/routing.js";
@@ -1270,6 +1271,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/resend/index": typeof lib_sendProviders_resend_index;
   "lib/sendProviders/returnPathAuthorization": typeof lib_sendProviders_returnPathAuthorization;
   "lib/sendProviders/returnPathCapability": typeof lib_sendProviders_returnPathCapability;
+  "lib/sendProviders/returnPathProbe": typeof lib_sendProviders_returnPathProbe;
   "lib/sendProviders/route": typeof lib_sendProviders_route;
   "lib/sendProviders/routeInputs": typeof lib_sendProviders_routeInputs;
   "lib/sendProviders/routing": typeof lib_sendProviders_routing;
