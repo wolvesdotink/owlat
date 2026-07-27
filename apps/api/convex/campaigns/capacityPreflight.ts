@@ -162,11 +162,14 @@ async function measureCampaignCapacity(
  * never zero, so the sentinel is unreachable through seeded integration state
  * and would otherwise ship untested.
  *
- * `audienceUnderCounted` marks a schedule built from a CAPPED count. The cap
- * trips on total candidates, so `eligible` is then a strict under-count and the
- * enumerated slices cannot be the whole story — the schedule is forced
- * `truncated` so the copy says "more than N days" instead of quoting a finish
- * date for an audience we never finished counting (D14 honesty).
+ * `audienceUnderCounted` marks a schedule built from a count that did not run to
+ * completion — `eligible` is then a strict under-count, so the enumerated slices
+ * cover at least, not exactly, the audience. It is recorded on its OWN field
+ * rather than folded into `truncated`: "the enumeration stopped at
+ * MAX_PLAN_DAYS" and "the audience is at least N" are different facts and get
+ * different copy ("at least N days" vs "more than 60 days"). Folding them made
+ * a five-day schedule render as "more than 60 days", which is simply false
+ * (D14 honesty).
  */
 export function toAssessment(
 	plan: CampaignCapacityPlan,
@@ -177,7 +180,9 @@ export function toAssessment(
 	// nothing could be scheduled, or the projection plateaus at zero before the
 	// audience is covered. Either way it is missing data, not a refusal.
 	if (plan.days === 0) return { capacityKnown: false, fits: true };
-	const schedule = options.audienceUnderCounted ? { ...plan, truncated: true } : plan;
+	const schedule: CampaignCapacitySchedule = options.audienceUnderCounted
+		? { ...plan, audienceUnderCounted: true }
+		: plan;
 	return { capacityKnown: true, fits: false, schedule };
 }
 

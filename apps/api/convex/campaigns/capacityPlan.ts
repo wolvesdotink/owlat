@@ -76,6 +76,14 @@ export interface CampaignCapacitySchedule {
 	 * must say "more than N days", never quote `days` as the finish date.
 	 */
 	truncated: boolean;
+	/**
+	 * The audience size the schedule was built from is itself a LOWER bound — the
+	 * count stopped at a ceiling or ran out of read budget. A DIFFERENT fact from
+	 * `truncated`: the enumeration finished, but of an audience that is at least
+	 * this big, so the copy says "at least N days" (plan D14 — say the quiet
+	 * part). The two can be true independently.
+	 */
+	audienceUnderCounted: boolean;
 }
 
 export type CampaignCapacityPlan = { fits: true } | CampaignCapacitySchedule;
@@ -191,6 +199,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
 			finishesAt: now,
 			covered: 0,
 			truncated: false,
+			audienceUnderCounted: false,
 		};
 	}
 
@@ -200,7 +209,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
 
 	const days = slices.length;
 	const finishesAt = utcDayStart(now) + days * MS_PER_DAY;
-	return { fits: false, days, slices, finishesAt, covered, truncated };
+	return { fits: false, days, slices, finishesAt, covered, truncated, audienceUnderCounted: false };
 }
 
 /**

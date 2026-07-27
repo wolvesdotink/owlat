@@ -82,11 +82,16 @@ export interface PreflightOptions {
 }
 
 /**
- * One sentence describing a multi-day capacity schedule. Both refusal messages
- * open the same way; only the tail differs, and a TRUNCATED plan must never
- * quote its own `days` as a finish date — the enumeration stopped at
- * `MAX_PLAN_DAYS` with recipients still unscheduled, so the real finish is
- * later than any number the plan carries.
+ * One sentence describing a multi-day capacity schedule. All three refusal
+ * messages open the same way; only the tail differs, and each tail says exactly
+ * as much as the plan actually knows (D14 — say the quiet part):
+ *
+ *  - `truncated` — the enumeration stopped at `MAX_PLAN_DAYS` with recipients
+ *    still unscheduled, so the real finish is later than any number the plan
+ *    carries and `days` must NOT be quoted as a finish date.
+ *  - `audienceUnderCounted` — the enumeration completed, but of an audience we
+ *    only know a lower bound for, so `days` is a floor: "at least N days".
+ *  - neither — `days` is the projected finish.
  */
 export function describeCapacitySchedule(schedule: CampaignCapacitySchedule): string {
 	const opening =
@@ -99,6 +104,12 @@ export function describeCapacitySchedule(schedule: CampaignCapacitySchedule): st
 		);
 	}
 	const dayWord = schedule.days === 1 ? 'day' : 'days';
+	if (schedule.audienceUnderCounted) {
+		return (
+			`${opening}it takes at least ${schedule.days} ${dayWord} to reach everyone, ` +
+			`so send it over several days instead.`
+		);
+	}
 	return (
 		`${opening}it takes about ${schedule.days} ${dayWord} to reach everyone, ` +
 		`so send it over ${schedule.days} ${dayWord} instead.`
