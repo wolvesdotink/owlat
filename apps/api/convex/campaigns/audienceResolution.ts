@@ -34,6 +34,7 @@ import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet } from '../lib/suppression';
 import {
 	preloadConditionsLookup,
+	preloadConditionsLookupForContacts,
 	parseSegmentFilters,
 	makeSegmentPredicate,
 	type ParsedSegmentFilters,
@@ -286,6 +287,54 @@ function spendExamine(budget: ExamineBudget | undefined): boolean {
 }
 
 /**
+ * How many examined contacts share one condition-lookup preload on the budgeted
+ * segment path. Small enough that the per-batch point reads stay well inside the
+ * per-execution read limit, large enough that the batching overhead is noise.
+ */
+const SEGMENT_LOOKUP_BATCH = 200;
+
+/**
+ * The BOUNDED segment scan: identical predicate and identical yields to the
+ * unbudgeted branch of `streamAudienceCandidates`, but the condition lookup is
+ * resolved per batch of examined contacts (`preloadConditionsLookupForContacts`,
+ * point reads) instead of by front-loading whole columns. Reads therefore scale
+ * with the examine budget, never with the size of a topic or any other column a
+ * condition happens to reference.
+ */
+async function* streamSegmentMatchesBounded(
+	ctx: QueryCtx,
+	parsedFilters: ParsedSegmentFilters,
+	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
+	budget: ExamineBudget
+): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
+	let batch: Doc<'contacts'>[] = [];
+
+	async function* drain(): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
+		if (batch.length === 0) return;
+		const pending = batch;
+		batch = [];
+		const lookup = await preloadConditionsLookupForContacts(ctx, parsedFilters.conditions, pending);
+		const matches = makeSegmentPredicate(parsedFilters, lookup);
+		for (const contact of pending) {
+			if (matches(contact)) yield { recipient: selectRecipient(contact, gate) };
+		}
+	}
+
+	for await (const contact of ctx.db
+		.query('contacts')
+		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
+		// Every live contact is a row READ even when it is not a candidate, so the
+		// budget is spent here — before the predicate — not on matches. Exhaustion
+		// stops the scan but still flushes what was already read: a partial count is
+		// a valid LOWER bound and the caller is told so (`read_budget_exhausted`).
+		if (!spendExamine(budget)) break;
+		batch.push(contact);
+		if (batch.length >= SEGMENT_LOOKUP_BATCH) yield* drain();
+	}
+	yield* drain();
+}
+
+/**
  * Async-stream every CANDIDATE of an Audience — one yield per raw candidate the
  * page walk would examine (the `pageCandidates` unit), carrying the eligible
  * `recipient` or `null` — WITHOUT `.paginate()`. Convex permits a single
@@ -337,6 +386,21 @@ async function* streamAudienceCandidates(
 		parsedFilters = parseSegmentFilters(filters);
 	} catch (err) {
 		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
+		return;
+	}
+
+	// A budgeted stream is a BOUNDED one, end to end. `preloadConditionsLookup`
+	// front-loads whole columns — for a `topic_membership` condition it
+	// `.collect()`s the entire `contactTopics.by_topic` range — and the budgeted
+	// caller (the binding capacity pre-flight) runs inside `campaigns.scheduling
+	// .schedule` / `campaigns.campaigns.sendNow`. An unbounded collect there would
+	// exceed the Convex per-execution read limit, turning a failure to MEASURE
+	// into a blocked SEND (D2), and would drag the whole junction table into the
+	// mutation's OCC read set (D16). So the budgeted path preloads per BATCH of
+	// examined contacts via point reads instead. Unbudgeted callers (the reactive
+	// wizard readout) keep the shipped whole-column preload unchanged.
+	if (budget) {
+		yield* streamSegmentMatchesBounded(ctx, parsedFilters, gate, budget);
 		return;
 	}
 
