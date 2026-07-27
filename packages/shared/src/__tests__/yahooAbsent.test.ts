@@ -8,6 +8,11 @@
  * nag. Un-enrolled falls back to the documented substitution (the CFBL feed if
  * a send carried one, otherwise the unsubscribe-rate proxy at the tightened
  * 0.05% equivalent threshold) and says so as a confidence caveat.
+ *
+ * SCOPE: `yahooComplaintSubstitution` is the yahoo cell's only definition today.
+ * P3-8 lands the ONE substitution table for every gate and SUBSUMES it, taking
+ * the two thresholds with it — so these assertions move there rather than being
+ * duplicated, or we end up with two disagreeing yahoo complaint gates (D3).
  */
 
 import { describe, expect, it } from 'vitest';

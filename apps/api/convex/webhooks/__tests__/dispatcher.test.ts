@@ -1138,3 +1138,109 @@ describe('dispatchInboundEvent — unknown event kinds', () => {
 		expect(schedulerCalls).toHaveLength(0);
 	});
 });
+
+/**
+ * P4-6 — the Yahoo CFL liveness observation on the complaint path.
+ *
+ * The observation is enrollment BOOKKEEPING riding on a path whose job is to get
+ * a complaint onto the blocklist. Three properties are load-bearing and pinned
+ * here: it runs AFTER suppression, it can never throw the dispatch away, and it
+ * ignores member-preview traffic (which the shipped provenance policy excludes
+ * from every other measurement counter).
+ */
+describe('dispatchInboundEvent — Yahoo CFL report observation', () => {
+	const OBSERVE = ref(internal.domains.yahooCfl.observeReport);
+	const SUPPRESS = ref(internal.blockedEmails.addFromEvent);
+	const TRANSITION = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
+
+	// The file-level beforeEach re-spies console.warn but does not reset its
+	// recorded calls; clear them so each assertion sees only this test's output.
+	beforeEach(() => {
+		(console.warn as unknown as ReturnType<typeof vi.fn>).mockClear();
+	});
+
+	/**
+	 * A ctx whose `runMutation` rejects for ONE mutation reference and succeeds for
+	 * every other — the shared `makeCtx` helper fails every subsequent call, which
+	 * cannot express "only the bookkeeping is broken".
+	 */
+	function makeSelectiveCtx(failingRef?: string) {
+		const calls: string[] = [];
+		const argsByRef = new Map<string, unknown>();
+		const ctx = {
+			runMutation: vi.fn(async (r: unknown, args: unknown) => {
+				const path = ref(r);
+				calls.push(path);
+				argsByRef.set(path, args);
+				if (path === failingRef) throw new Error('write conflict');
+				return undefined;
+			}),
+			scheduler: { runAfter: vi.fn(async () => undefined) },
+		} as unknown as ActionCtx;
+		return { ctx, calls, argsByRef };
+	}
+
+	const YAHOO_COMPLAINT: InboundEvent = {
+		kind: 'email.complained',
+		recipient: 'complainer@yahoo.com',
+		at: 7000,
+		deliveryDomain: 'production',
+		reportedDomain: 'mail.owlat.test',
+		sourceIsp: 'yahoo',
+	};
+
+	it('observes the report AFTER the complaint has been suppressed', async () => {
+		const { ctx, calls, argsByRef } = makeSelectiveCtx();
+		await dispatchInboundEvent(ctx, YAHOO_COMPLAINT);
+		// Order matters: suppression must not wait on bookkeeping.
+		expect(calls).toEqual([SUPPRESS, OBSERVE]);
+		expect(argsByRef.get(OBSERVE)).toEqual({ reportedDomain: 'mail.owlat.test', at: 7000 });
+	});
+
+	it('observes after the send transition on a Message-ID-attributed complaint', async () => {
+		const { ctx, calls } = makeSelectiveCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.complained',
+			providerMessageId: 'msg-spam',
+			at: 7000,
+			deliveryDomain: 'production',
+			reportedDomain: 'mail.owlat.test',
+			sourceIsp: 'yahoo',
+		});
+		expect(calls).toEqual([TRANSITION, OBSERVE]);
+	});
+
+	it('still suppresses the complaint when observeReport THROWS', async () => {
+		const { ctx, calls } = makeSelectiveCtx(OBSERVE);
+		// No rejection escapes the dispatcher: the complaint dispatch completes.
+		await expect(dispatchInboundEvent(ctx, YAHOO_COMPLAINT)).resolves.not.toThrow();
+		expect(calls).toContain(SUPPRESS);
+		expect(calls).toContain(OBSERVE);
+		// The failure is observable rather than silent.
+		const messages = (console.warn as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
+			String(c[0])
+		);
+		expect(messages.some((m) => m.includes('yahoo CFL enrollment observation failed'))).toBe(true);
+	});
+
+	it('does NOT observe a member-preview complaint', async () => {
+		const { ctx, calls } = makeSelectiveCtx();
+		await dispatchInboundEvent(ctx, {
+			...YAHOO_COMPLAINT,
+			deliveryDomain: 'member_test',
+		} as InboundEvent);
+		// Preview mail is excluded from every measurement counter, so it can never
+		// mark an enrollment live or hold its confidence at `high`.
+		expect(calls).not.toContain(OBSERVE);
+	});
+
+	it.each([
+		{ name: 'a non-yahoo ISP', patch: { sourceIsp: 'gmail' as const } },
+		{ name: 'no reported domain', patch: { reportedDomain: undefined } },
+		{ name: 'no source ISP at all', patch: { sourceIsp: undefined } },
+	])('does NOT observe when the report carries $name', async ({ patch }) => {
+		const { ctx, calls } = makeSelectiveCtx();
+		await dispatchInboundEvent(ctx, { ...YAHOO_COMPLAINT, ...patch } as InboundEvent);
+		expect(calls).not.toContain(OBSERVE);
+	});
+});

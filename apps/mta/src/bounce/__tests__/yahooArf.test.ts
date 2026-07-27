@@ -13,7 +13,11 @@
  *
  * Covers the named test gate:
  *   (b) a Yahoo CFL report routes through the existing ARF processor and
- *       attributes to the right send / cell (destination provider) / arm.
+ *       attributes to the right send AND to the right destination-provider CELL
+ *       (the shipped `yahoo` key of DESTINATION_PROVIDER_KEYS, via
+ *       `deliverabilityCellKey`). There is deliberately NO arm assertion: the arm
+ *       axis does not exist on this branch (no `sendAssignments` table yet), so
+ *       claiming coverage for it would advertise a test that is not here.
  *   (d) adversarial — malformed and oversized reports are bounded, an
  *       out-of-order replay does not rewind, a forged cross-org claim is
  *       rejected.
@@ -29,8 +33,13 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import {
+	deliverabilityCellKey,
+	DESTINATION_PROVIDER_KEYS,
+	destinationProviderForDomain,
+} from '@owlat/shared/deliverabilityRouting';
 import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
-import { tryParseARF } from '../fblProcessor.js';
+import { releaseComplaint, reserveComplaint, tryParseARF } from '../fblProcessor.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { reduce } from '../outcome.js';
@@ -178,6 +187,76 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 		expect(effects.map((e) => e.kind)).toContain('campaign_complaint_record');
 	});
 
+	it('resolves to the shipped `yahoo` destination-provider CELL', async () => {
+		const redis = newRedis();
+		await recordFeedbackProvenance(redis, JOB);
+		const { parsed, parts } = yahooReport();
+		const arf = tryParseARF(parsed, parts);
+		if (!arf) throw new Error('expected an ARF classification');
+		const attempt = (await attachFeedbackProvenance(redis, {
+			kind: 'fbl',
+			arf: { ...arf, originalMessageId: 'send-9001' },
+		})) as Extract<BounceAttempt, { kind: 'fbl' }>;
+
+		const { effects } = reduce(attempt, makeCtx());
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
+
+		// The forwarded `sourceIsp` IS a destination-provider key, not free text, so
+		// it composes straight into the ramp's cell key.
+		const { sourceIsp } = notify.event;
+		expect(sourceIsp).toBe('yahoo');
+		expect(DESTINATION_PROVIDER_KEYS).toContain(sourceIsp);
+		expect(deliverabilityCellKey({ stream: 'campaign', destinationProvider: 'yahoo' })).toBe(
+			'campaign:yahoo'
+		);
+		// And it AGREES with the shipped address-domain classifier for the recipient
+		// the report names — a Yahoo complaint can never land in a different cell
+		// than the send it complains about.
+		expect(destinationProviderForDomain('yahoo.com')).toBe(sourceIsp);
+	});
+
+	it('folds AOL — which Yahoo operates — into the same yahoo cell as the classifier does', () => {
+		const { parsed, parts } = buildArf({
+			feedbackReport: [
+				'Feedback-Type: abuse',
+				'User-Agent: AOL Feedback-Loop Post/1.0',
+				'Original-Rcpt-To: complainer@aol.com',
+				'Reported-Domain: mail.owlat.test',
+			].join('\r\n'),
+			originalMessage: 'From: news@mail.owlat.test',
+		});
+		const arf = tryParseARF(parsed, parts);
+		if (!arf) throw new Error('expected an ARF classification');
+		// The FBL token enum says `aol`; the CELL axis says `yahoo`, exactly as
+		// `destinationProviderForDomain('aol.com')` does.
+		expect(arf.sourceIsp).toBe('aol');
+		const { effects } = reduce({ kind: 'fbl', arf }, makeCtx());
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
+		expect(notify.event.sourceIsp).toBe('yahoo');
+		expect(destinationProviderForDomain('aol.com')).toBe('yahoo');
+	});
+
+	it('maps the FBL `google` token onto the `gmail` cell key', () => {
+		const { parsed, parts } = buildArf({
+			feedbackReport: [
+				'Feedback-Type: abuse',
+				'User-Agent: Google-Mail-Feedback/1.0',
+				'Original-Rcpt-To: complainer@gmail.com',
+				'Reported-Domain: mail.owlat.test',
+			].join('\r\n'),
+			originalMessage: 'From: news@mail.owlat.test',
+		});
+		const arf = tryParseARF(parsed, parts);
+		if (!arf) throw new Error('expected an ARF classification');
+		expect(arf.sourceIsp).toBe('google');
+		const { effects } = reduce({ kind: 'fbl', arf }, makeCtx());
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
+		expect(notify.event.sourceIsp).toBe('gmail');
+	});
+
 	it('lower-cases the reported domain so the Convex lookup matches the stored domain', () => {
 		const { parsed, parts } = yahooReport({ reportedDomain: 'MAIL.Owlat.TEST' });
 		const arf = tryParseARF(parsed, parts);
@@ -218,7 +297,22 @@ describe('adversarial reports', () => {
 	});
 
 	it('drops a MALFORMED Reported-Domain that is not a DNS name', () => {
-		for (const malformed of ['not a domain', '<script>alert(1)</script>', 'mail owlat test']) {
+		// The bound is the SHIPPED strict FQDN validator, so a bare dot, empty
+		// labels, a leading hyphen and a single label are all rejected too — none of
+		// them can be one of our sending domains.
+		for (const malformed of [
+			'not a domain',
+			'<script>alert(1)</script>',
+			'mail owlat test',
+			'.',
+			'..',
+			'...',
+			'-a.example',
+			'.owlat.test',
+			'mail..owlat.test',
+			'localhost',
+			`${'a'.repeat(64)}.example`,
+		]) {
 			const { parsed, parts } = yahooReport({ reportedDomain: malformed });
 			const arf = tryParseARF(parsed, parts);
 			if (!arf) throw new Error('expected an ARF classification');
@@ -261,14 +355,27 @@ describe('adversarial reports', () => {
 		expect(attributed.arf.feedbackProvenance).toBe('unknown');
 	});
 
-	it('deduplicates a replayed report by its stable dedup key', async () => {
+	it('deduplicates a replayed report through the SHIPPED reservation path', async () => {
 		const { generateDedupKey } = await import('../fblProcessor.js');
+		const redis = newRedis();
 		const { parsed } = yahooReport();
-		// Identical bytes hash to the identical key, so a replay reserves the same
-		// slot the first delivery already consumed.
-		expect(generateDedupKey(parsed)).toBe(generateDedupKey(parsed));
+		// Identical bytes hash to the identical key, so a replay lands on the slot
+		// the first delivery already took.
+		const key = generateDedupKey(parsed);
+		expect(generateDedupKey(parsed)).toBe(key);
 		// A verified Message-ID makes the key the send id itself.
 		expect(generateDedupKey(parsed, 'send-9001')).toBe('send-9001');
+
+		// The first intake reserves; the REPLAY is refused rather than counted twice.
+		const first = await reserveComplaint(redis, key);
+		expect(first.kind).toBe('reserved');
+		await expect(reserveComplaint(redis, key)).rejects.toThrow(/already in progress/i);
+
+		// Releasing the reservation (a transient intake failure) makes the report
+		// retryable — dedup must not swallow a complaint that was never processed.
+		if (first.kind !== 'reserved') throw new Error('expected a reservation');
+		await releaseComplaint(redis, first.reservation);
+		expect((await reserveComplaint(redis, key)).kind).toBe('reserved');
 	});
 });
 

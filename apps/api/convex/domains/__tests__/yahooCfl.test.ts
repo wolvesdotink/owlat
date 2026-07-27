@@ -3,12 +3,14 @@
  *
  * Real table writes through the convex-test harness: the guided flow's four
  * states, the DKIM-domain precondition, the report observation that keeps the
- * enrollment live, the daily re-check that lapses a silent one, and the D2
- * proof that a deployment which never enrolls renders cleanly and gets the
- * documented substitution instead of an error.
+ * enrollment live, the re-check that is DERIVED ON READ (there is no cron and no
+ * re-check write — the lapse verdict is a function of `lastReportAt` and the
+ * clock), and the D2 proof that a deployment which never enrolls renders cleanly
+ * and gets the documented substitution instead of an error.
  *
  * Adversarial: an unknown domain, an oversized/malformed reported domain, a
- * replayed report, and a foreign-org enrollment row.
+ * replayed report, a non-finite/negative clock, a burst of reports that must
+ * coalesce to a single write, and a foreign-org enrollment row.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -17,6 +19,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import { YAHOO_CFL_LAPSE_SILENCE_MS, YAHOO_CFL_REPORT_COALESCE_MS } from '@owlat/shared/yahooCfl';
 
 let mockRole: OrganizationRole = 'admin';
 
@@ -64,7 +67,8 @@ const identity = {
 
 const T0 = Date.UTC(2026, 6, 1);
 const DAY = 24 * 60 * 60 * 1000;
-const LAPSE_MS = 90 * DAY;
+const LAPSE_MS = YAHOO_CFL_LAPSE_SILENCE_MS;
+const COALESCE_MS = YAHOO_CFL_REPORT_COALESCE_MS;
 
 type Harness = TestConvex<typeof schema>;
 
@@ -195,6 +199,18 @@ describe('the guided flow, end to end', () => {
 			await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId })
 		).toBeNull();
 	});
+
+	it('reports domain_missing — not dkim_domain_not_ready — for a deleted domain', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedDomain(t, { domain: 'mail.f2.test' });
+		await t.run(async (ctx) => ctx.db.delete(domainId));
+		// Telling the operator to publish a DKIM record for a domain that no longer
+		// exists is advice they cannot act on.
+		expect(
+			await t.withIdentity(identity).mutation(api.domains.yahooCfl.submitEnrollment, { domainId })
+		).toMatchObject({ state: 'not_started', changed: false, reason: 'domain_missing' });
+		expect(await enrollmentRows(t)).toHaveLength(0);
+	});
 });
 
 describe('report observation keeps the enrollment live', () => {
@@ -267,6 +283,79 @@ describe('report observation keeps the enrollment live', () => {
 		expect(rows[0]?.lastReportAt).toBe(T0 + 10 * DAY);
 	});
 
+	it('COALESCES a burst of complaints into a single row patch (D16 / ADR-0042)', async () => {
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'mail.burst.test' });
+		// First report creates the row.
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.burst.test',
+			at: T0,
+		});
+		const created = (await enrollmentRows(t))[0];
+		expect(created?.updatedAt).toBe(T0);
+
+		// A realistic burst: 50 complaints for the same domain inside one minute.
+		// Every report for a domain lands on THIS row, so a per-report patch is the
+		// single-document OCC contention ADR-0042 was written about.
+		for (let i = 1; i <= 50; i++) {
+			expect(
+				await t.mutation(internal.domains.yahooCfl.observeReport, {
+					reportedDomain: 'mail.burst.test',
+					at: T0 + i * 1000,
+				})
+			).toMatchObject({ observed: true, state: 'enrolled' });
+		}
+		const afterBurst = (await enrollmentRows(t))[0];
+		// Not one patch per complaint: the row is untouched since creation.
+		expect(afterBurst?.updatedAt).toBe(T0);
+		expect(afterBurst?.lastReportAt).toBe(T0);
+
+		// Once the liveness timestamp actually moves by a full coalesce window, the
+		// write happens — the 90-day derived lapse is unaffected by the coalescing.
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.burst.test',
+			at: T0 + COALESCE_MS,
+		});
+		const advanced = (await enrollmentRows(t))[0];
+		expect(advanced?.lastReportAt).toBe(T0 + COALESCE_MS);
+		expect(advanced?.updatedAt).toBe(T0 + COALESCE_MS);
+		// Still exactly one row throughout.
+		expect(await enrollmentRows(t)).toHaveLength(1);
+	});
+
+	it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, -Number.MAX_SAFE_INTEGER])(
+		'refuses a non-finite or non-positive `at` (%s) instead of pinning the row',
+		async (at) => {
+			const t = convexTest(schema, modules);
+			await seedDomain(t, { domain: 'mail.clock.test' });
+			// This mutation is reachable from an internet-triggered path, so the clock
+			// it is handed is untrusted. `Math.max` would absorb Infinity and pin the
+			// record permanently `enrolled` / never `lapsed`, holding the yahoo
+			// complaint gate on the looser direct threshold forever.
+			expect(
+				await t.mutation(internal.domains.yahooCfl.observeReport, {
+					reportedDomain: 'mail.clock.test',
+					at,
+				})
+			).toEqual({ observed: false });
+			expect(await enrollmentRows(t)).toHaveLength(0);
+		}
+	);
+
+	it('leaves an existing row untouched when a garbage clock arrives', async () => {
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'mail.clock2.test' });
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.clock2.test',
+			at: T0,
+		});
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.clock2.test',
+			at: Number.POSITIVE_INFINITY,
+		});
+		expect((await enrollmentRows(t))[0]).toMatchObject({ lastReportAt: T0, updatedAt: T0 });
+	});
+
 	it('never touches another organization row: a foreign enrollment stays untouched', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedDomain(t, { domain: 'mail.l.test' });
@@ -311,12 +400,18 @@ describe('the re-check, derived on read', () => {
 		vi.setSystemTime(T0 + LAPSE_MS - DAY);
 		expect(await asUser.query(api.domains.yahooCfl.getGuide, { domainId })).toMatchObject({
 			state: 'enrolled',
-			storedState: 'enrolled',
+			enrollment: { state: 'enrolled' },
 		});
 
 		vi.setSystemTime(T0 + LAPSE_MS);
 		const lapsed = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
-		expect(lapsed).toMatchObject({ state: 'lapsed', storedState: 'enrolled', silentMs: LAPSE_MS });
+		// The DERIVED state is `lapsed` while the STORED one is still `enrolled` —
+		// reported once each, from one source (`state` vs `enrollment.state`).
+		expect(lapsed).toMatchObject({
+			state: 'lapsed',
+			enrollment: { state: 'enrolled' },
+			silentMs: LAPSE_MS,
+		});
 		// The verdict is derived: the stored row was never rewritten.
 		expect((await enrollmentRows(t))[0]).toMatchObject({ state: 'enrolled', updatedAt: T0 });
 	});
@@ -370,15 +465,16 @@ describe('D2 — never enrolling is a supported configuration', () => {
 		expect(await enrollmentRows(t)).toHaveLength(0);
 	});
 
-	it('substitutes the CFBL feed when the deployment has one', async () => {
+	it('resolves the CFBL substitution SERVER-side, never from a client arg', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedDomain(t, { domain: 'mail.q.test' });
-		const guide = await t
-			.withIdentity(identity)
-			.query(api.domains.yahooCfl.getGuide, { domainId, hasCfblAddress: true });
+		// `getGuide` takes only a domain id. The CFBL-Address feed lands with P2-7;
+		// until then the server answers `false` itself, so a caller cannot steer the
+		// reported confidence or the displayed threshold (D20 — no speculative seam).
+		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide?.complaintSignal).toMatchObject({
-			source: 'cfbl_address',
-			confidence: 'medium',
+			source: 'unsubscribe_rate_proxy',
+			confidence: 'low',
 			isBlocking: false,
 		});
 	});
