@@ -488,6 +488,7 @@ import type * as lib_sendProviders_returnPathCapability from "../lib/sendProvide
 import type * as lib_sendProviders_returnPathProbe from "../lib/sendProviders/returnPathProbe.js";
 import type * as lib_sendProviders_route from "../lib/sendProviders/route.js";
 import type * as lib_sendProviders_routeInputs from "../lib/sendProviders/routeInputs.js";
+import type * as lib_sendProviders_routeMixContext from "../lib/sendProviders/routeMixContext.js";
 import type * as lib_sendProviders_routing from "../lib/sendProviders/routing.js";
 import type * as lib_sendProviders_ses_index from "../lib/sendProviders/ses/index.js";
 import type * as lib_sendProviders_smtp_config from "../lib/sendProviders/smtp/config.js";
@@ -1290,6 +1291,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/returnPathProbe": typeof lib_sendProviders_returnPathProbe;
   "lib/sendProviders/route": typeof lib_sendProviders_route;
   "lib/sendProviders/routeInputs": typeof lib_sendProviders_routeInputs;
+  "lib/sendProviders/routeMixContext": typeof lib_sendProviders_routeMixContext;
   "lib/sendProviders/routing": typeof lib_sendProviders_routing;
   "lib/sendProviders/ses/index": typeof lib_sendProviders_ses_index;
   "lib/sendProviders/smtp/config": typeof lib_sendProviders_smtp_config;
