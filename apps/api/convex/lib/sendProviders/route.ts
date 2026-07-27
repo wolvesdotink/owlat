@@ -31,7 +31,7 @@ import {
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 import { returnPathCapabilityFor } from '../../delivery/relayReturnPath';
-import { defaultSendTransportId } from './transports';
+import { governedDispatchTransportId } from './transports';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -300,7 +300,7 @@ export const resolveSendRoute = internalQuery({
 export async function resolveLastMileRoutePlanFromDb(
 	ctx: QueryCtx,
 	messageType: MessageType,
-	addressContext: { to: string; from: string }
+	addressContext: { to: string; from: string; now?: number }
 ): Promise<{
 	route: ResolvedRoute | null;
 	baseRoute: ResolvedRoute | null;
@@ -314,13 +314,27 @@ export async function resolveLastMileRoutePlanFromDb(
 	 */
 	relayStampVerpReturnPath: boolean;
 }> {
+	const now = addressContext.now ?? Date.now();
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
-	const relayStampVerpReturnPath = (
-		await returnPathCapabilityFor(ctx, defaultSendTransportId('smtp'), Date.now())
-	).stampVerpReturnPath;
+	// Only a RELAY send can carry our own envelope sender, so only a route that
+	// actually has an enabled SMTP relay pays for the probe read: an
+	// mta/ses/resend-only route — and every deployment with no relay configured
+	// at all — skips it entirely. The test is answered from the route config we
+	// already hold rather than from the resolved route, because the warm-up
+	// overflow / breaker-open fallback selects its relay AFTER this query
+	// returns, and that route must still be stamped.
+	const hasRelayCandidate = Boolean(
+		routeConfig?.providers.some(
+			(provider) => provider.isEnabled && provider.providerType === 'smtp'
+		)
+	);
+	const relayStampVerpReturnPath = hasRelayCandidate
+		? (await returnPathCapabilityFor(ctx, governedDispatchTransportId('smtp'), now))
+				.stampVerpReturnPath
+		: false;
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -355,9 +369,14 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
+		now: v.optional(v.number()),
 	},
 	handler: async (ctx, args) =>
-		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
+		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+			...(args.now === undefined ? {} : { now: args.now }),
+		}),
 });
 
 /**
