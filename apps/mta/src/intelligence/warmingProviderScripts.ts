@@ -20,27 +20,7 @@ export const PROVIDER_STATE_TTL_SECONDS = 30 * 24 * 60 * 60;
  * pacing counter is a per-day denominator written by the same script and rides
  * the same horizon.
  */
-export const PROVIDER_DAILY_STATS_TTL_SECONDS = 172800;
-
-/**
- * Roll the provider's UTC day, then report its counters.
- *
- * KEYS[1] provider state hash. ARGV[1] today (YYYY-MM-DD), ARGV[2] codec
- * version, ARGV[3] state TTL seconds.
- * Returns { sentToday, capMultiplier }.
- */
-export const READ_PROVIDER_WARMING_STATE_LUA = `
-local stateKey = KEYS[1]
-local today = ARGV[1]
-if redis.call('EXISTS', stateKey) == 0 then return { '0', '' } end
-if redis.call('HGET', stateKey, 'sentTodayReset') ~= today then
-  redis.call('HSET', stateKey, 'sentToday', '0', 'sentTodayReset', today, 'codecVersion', ARGV[2])
-end
-redis.call('EXPIRE', stateKey, ARGV[3])
-local sentToday = redis.call('HGET', stateKey, 'sentToday') or '0'
-local capMultiplier = redis.call('HGET', stateKey, 'capMultiplier') or ''
-return { sentToday, capMultiplier }
-`;
+export const PROVIDER_DAILY_STATS_TTL_SECONDS = 48 * 60 * 60;
 
 /**
  * The body shared by both send-recording forms.
@@ -88,14 +68,19 @@ return 1
 `;
 
 /**
- * Count one non-delivery outcome against the provider dimension.
+ * The body shared by both outcome-recording forms.
  *
  * KEYS[1] provider daily stats hash. ARGV[1] field name, ARGV[2] stats TTL
  * seconds.
  */
-export const RECORD_PROVIDER_WARMING_OUTCOME_LUA = `
+const RECORD_PROVIDER_WARMING_OUTCOME_BODY_LUA = `
 redis.call('HINCRBY', KEYS[1], ARGV[1], 1)
 redis.call('EXPIRE', KEYS[1], ARGV[2])
+`;
+
+/** Count one non-delivery outcome against the provider dimension. */
+export const RECORD_PROVIDER_WARMING_OUTCOME_LUA = `
+${RECORD_PROVIDER_WARMING_OUTCOME_BODY_LUA}
 return 1
 `;
 
@@ -103,23 +88,30 @@ return 1
 export const RECORD_PROVIDER_WARMING_OUTCOME_IDEMPOTENT_LUA = `
 if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
 redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[3])
-redis.call('HINCRBY', KEYS[1], ARGV[1], 1)
-redis.call('EXPIRE', KEYS[1], ARGV[2])
+${RECORD_PROVIDER_WARMING_OUTCOME_BODY_LUA}
 return 1
+`;
+
+/**
+ * The body shared by both pressure-recording forms.
+ *
+ * KEYS[1] short-lived pressure counter, KEYS[2] provider daily stats hash.
+ * ARGV[1] pressure TTL seconds, ARGV[2] stats TTL seconds. Leaves the new
+ * counter value in `pressure`.
+ */
+const RECORD_PROVIDER_PRESSURE_BODY_LUA = `
+local pressure = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+redis.call('HINCRBY', KEYS[2], 'pressure', 1)
+redis.call('EXPIRE', KEYS[2], ARGV[2])
 `;
 
 /**
  * Record one volume-pressure verdict and return the recent pressure count that
  * lengthens retry backoff.
- *
- * KEYS[1] short-lived pressure counter, KEYS[2] provider daily stats hash.
- * ARGV[1] pressure TTL seconds, ARGV[2] stats TTL seconds.
  */
 export const RECORD_PROVIDER_PRESSURE_LUA = `
-local pressure = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], ARGV[1])
-redis.call('HINCRBY', KEYS[2], 'pressure', 1)
-redis.call('EXPIRE', KEYS[2], ARGV[2])
+${RECORD_PROVIDER_PRESSURE_BODY_LUA}
 return pressure
 `;
 
@@ -134,10 +126,7 @@ if redis.call('EXISTS', KEYS[3]) == 1 then
   return tonumber(redis.call('GET', KEYS[1]) or '0')
 end
 redis.call('SET', KEYS[3], 'recorded', 'PX', ARGV[3])
-local pressure = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], ARGV[1])
-redis.call('HINCRBY', KEYS[2], 'pressure', 1)
-redis.call('EXPIRE', KEYS[2], ARGV[2])
+${RECORD_PROVIDER_PRESSURE_BODY_LUA}
 return pressure
 `;
 

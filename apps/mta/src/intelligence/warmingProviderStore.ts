@@ -37,7 +37,6 @@ import {
 import {
 	PROVIDER_DAILY_STATS_TTL_SECONDS,
 	PROVIDER_STATE_TTL_SECONDS,
-	READ_PROVIDER_WARMING_STATE_LUA,
 	RECORD_PROVIDER_PRESSURE_IDEMPOTENT_LUA,
 	RECORD_PROVIDER_PRESSURE_LUA,
 	RECORD_PROVIDER_WARMING_OUTCOME_IDEMPOTENT_LUA,
@@ -52,6 +51,9 @@ const CODEC_VERSION = String(WARMING_PROVIDER_STATE_CODEC_VERSION);
 const STATE_TTL = String(PROVIDER_STATE_TTL_SECONDS);
 const STATS_TTL = String(PROVIDER_DAILY_STATS_TTL_SECONDS);
 const RECEIPT_TTL = String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS);
+
+/** The provider-state fields the cap gate reads, in reply order. */
+const STATE_FIELDS = ['sentToday', 'sentTodayReset', 'capMultiplier'] as const;
 
 /**
  * The (IP, provider, UTC day) triple every call in this module is scoped by.
@@ -79,23 +81,82 @@ export interface ProviderCapCheck {
  *
  * An IP with no provider state (every IP before this change, and every provider
  * that has never shown pressure) resolves to the full per-IP cap, so the shipped
- * behaviour is the degenerate case. Reading NEVER creates a key.
+ * behaviour is the degenerate case.
+ *
+ * This is the HOT DISPATCH PATH and it is a PURE READ: one `hmget`, no `EVAL`,
+ * no `EXPIRE`, no lazy day-reset `HSET`. The day roll is applied in TypeScript
+ * (a `sentTodayReset` that is not today's date means the persisted counter
+ * belongs to a finished day and reads as zero), the send script rolls the day
+ * itself before it increments, and both write scripts refresh the state TTL —
+ * so nothing is lost by never writing here, and the read can be served by a
+ * replica.
  */
 export async function checkProviderCap(
 	redis: Redis,
 	ref: ProviderWarmingRef,
 	dailyCap: number
 ): Promise<ProviderCapCheck> {
-	const raw = (await redis.eval(
-		READ_PROVIDER_WARMING_STATE_LUA,
-		1,
-		warmingProviderStateKey(ref.ip, ref.provider),
-		ref.utcDate,
-		CODEC_VERSION,
-		STATE_TTL
-	)) as Array<string | number> | null;
-	const sentToday = sanitizeCount(raw?.[0]);
-	const capMultiplier = normalizeCapMultiplier(raw?.[1]);
+	const state = await redis.hmget(warmingProviderStateKey(ref.ip, ref.provider), ...STATE_FIELDS);
+	return providerCapVerdict({ providerState: state, ref }, dailyCap);
+}
+
+/** Everything the warming-cap phase reads beyond the authoritative per-IP gate. */
+export interface WarmingCapGateInputs {
+	readonly ref: ProviderWarmingRef;
+	/** Raw `STATE_FIELDS` reply; narrowed by the pure `providerCapVerdict`. */
+	readonly providerState: ReadonlyArray<string | null>;
+	/** Bulk-pool sends recorded for this IP today — intraday pacing's numerator. */
+	readonly bulkSentToday: number;
+	/** Recent volume-pressure count that lengthens this attempt's retry backoff. */
+	readonly volumePressure: number;
+}
+
+/**
+ * Read gates 2 and 3 and the retry-backoff signal in ONE round trip.
+ *
+ * All three keys live under the same `{warming:<ip>}` hash tag, so they are one
+ * Redis Cluster slot and one pipeline; issuing them sequentially cost the hot
+ * dispatch path three round trips just to build inputs for three PURE
+ * functions. They do not need to be atomic with each other — each is an
+ * advisory counter, and the per-IP cap above them is the authoritative gate.
+ *
+ * The per-IP daily cap is NOT an input here: it is only known after the shipped
+ * gate 1 has run, and keeping it out lets this read be issued CONCURRENTLY with
+ * gate 1. Applying it is `providerCapVerdict`, which is pure.
+ */
+export async function readWarmingCapGateInputs(
+	redis: Redis,
+	ref: ProviderWarmingRef
+): Promise<WarmingCapGateInputs> {
+	const results =
+		(await redis
+			.pipeline()
+			.hmget(warmingProviderStateKey(ref.ip, ref.provider), ...STATE_FIELDS)
+			.get(warmingBulkDailyKey(ref.ip, ref.utcDate))
+			.get(warmingProviderPressureKey(ref.ip, ref.provider))
+			.exec()) ?? [];
+	return {
+		ref,
+		providerState: pipelineValues(results[0]),
+		bulkSentToday: sanitizeCount(results[1]?.[1]),
+		volumePressure: sanitizeCount(results[2]?.[1]),
+	};
+}
+
+/**
+ * PURE. Narrow a raw provider-state read against the per-IP daily cap.
+ *
+ * A `sentTodayReset` that is not the reference day means the persisted counter
+ * belongs to a finished day and reads as zero, which is why neither read path
+ * has to write to roll the day.
+ */
+export function providerCapVerdict(
+	inputs: Pick<WarmingCapGateInputs, 'providerState' | 'ref'>,
+	dailyCap: number
+): ProviderCapCheck {
+	const state = inputs.providerState;
+	const sentToday = state[1] === inputs.ref.utcDate ? sanitizeCount(state[0]) : 0;
+	const capMultiplier = normalizeCapMultiplier(state[2]);
 	const providerCap = effectiveProviderCap(dailyCap, capMultiplier);
 	return { allowed: sentToday < providerCap, sentToday, capMultiplier, providerCap };
 }
@@ -186,12 +247,12 @@ export async function recordProviderWarmingOutcome(
 export async function recordProviderVolumePressure(
 	redis: Redis,
 	ref: ProviderWarmingRef,
-	pressureTtlSeconds: number,
+	retryPressureWindowTtlSeconds: number,
 	identity?: DurableEffectIdentity
 ): Promise<number> {
 	const pressureKey = warmingProviderPressureKey(ref.ip, ref.provider);
 	const statsKey = warmingProviderDailyStatsKey(ref.ip, ref.provider, ref.utcDate);
-	const pressureTtl = String(pressureTtlSeconds);
+	const pressureTtl = String(retryPressureWindowTtlSeconds);
 	const pressure = identity
 		? await redis.eval(
 				RECORD_PROVIDER_PRESSURE_IDEMPOTENT_LUA,

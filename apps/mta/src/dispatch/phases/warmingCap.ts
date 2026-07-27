@@ -24,9 +24,8 @@ import * as warming from '../../intelligence/warming.js';
 import { utcDateKey } from '../../intelligence/warmingKeys.js';
 import { evaluateIntradayPacing, utcDayElapsedFraction } from '../../intelligence/warmingPacing.js';
 import {
-	checkProviderCap,
-	readBulkSentToday,
-	readProviderVolumePressure,
+	providerCapVerdict,
+	readWarmingCapGateInputs,
 } from '../../intelligence/warmingProviderStore.js';
 import { logger } from '../../monitoring/logger.js';
 import type { DispatchTerminal, Phase } from '../pipeline.js';
@@ -52,9 +51,17 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 		const now = Date.now();
 		const utcDate = utcDateKey(now);
 
+		const ref = { ip: ctx.ip, provider: providerKey, utcDate };
+
 		const reservation = ctx.job.routingLease?.warmingReservation;
 		if (reservation?.ip === ctx.ip) {
-			const current = await warming.ensureWarmingReservation(deps.redis, reservation);
+			// One pipelined read alongside the reservation refresh: a reserved
+			// attempt skips gates 2 and 3, but it still carries the retry-backoff
+			// signal into the outcome reducer.
+			const [current, gateInputs] = await Promise.all([
+				warming.ensureWarmingReservation(deps.redis, reservation),
+				readWarmingCapGateInputs(deps.redis, ref),
+			]);
 			if (!current.allowed) {
 				return withhold(
 					ctx,
@@ -75,12 +82,18 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 				ctx: {
 					...ctx,
 					job: { ...ctx.job, routingLease },
-					providerVolumePressure: await readProviderVolumePressure(deps.redis, ctx.ip, providerKey),
+					providerVolumePressure: gateInputs.volumePressure,
 				},
 			};
 		}
 
-		const warmingCap = await warming.checkCap(deps.redis, ctx.ip);
+		// Gate 1 and the inputs to gates 2/3 are independent reads, so they go out
+		// together; the gate-2/3 inputs are only INTERPRETED once gate 1 has
+		// yielded the authoritative daily cap.
+		const [warmingCap, gateInputs] = await Promise.all([
+			warming.checkCap(deps.redis, ctx.ip),
+			readWarmingCapGateInputs(deps.redis, ref),
+		]);
 		if (!warmingCap.allowed) {
 			logger.debug(
 				{ ip: ctx.ip, sentToday: warmingCap.sentToday, dailyCap: warmingCap.dailyCap },
@@ -89,11 +102,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 			return withhold(ctx, `Warming cap reached for IP ${ctx.ip}`, CAP_DEFER_DELAY_MS);
 		}
 
-		const providerCap = await checkProviderCap(
-			deps.redis,
-			{ ip: ctx.ip, provider: providerKey, utcDate },
-			warmingCap.dailyCap
-		);
+		const providerCap = providerCapVerdict(gateInputs, warmingCap.dailyCap);
 		if (!providerCap.allowed) {
 			logger.debug(
 				{
@@ -117,8 +126,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 		// pacing and holds its own headroom — defer a small campaign.
 		const pacing = evaluateIntradayPacing({
 			dailyCap: warmingCap.dailyCap,
-			bulkSentToday:
-				ctx.pool === 'campaign' ? await readBulkSentToday(deps.redis, ctx.ip, utcDate) : 0,
+			bulkSentToday: ctx.pool === 'campaign' ? gateInputs.bulkSentToday : 0,
 			dayElapsedFraction: utcDayElapsedFraction(now),
 			pool: ctx.pool,
 		});
@@ -134,13 +142,8 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 			);
 		}
 
-		// Read once here so the pure outcome reducer can lengthen this attempt's
-		// retry backoff without a Redis dependency of its own.
-		const providerVolumePressure = await readProviderVolumePressure(
-			deps.redis,
-			ctx.ip,
-			providerKey
-		);
-		return { kind: 'continue', ctx: { ...ctx, providerVolumePressure } };
+		// Carried on the context so the pure outcome reducer can lengthen this
+		// attempt's retry backoff without a Redis dependency of its own.
+		return { kind: 'continue', ctx: { ...ctx, providerVolumePressure: gateInputs.volumePressure } };
 	},
 };
