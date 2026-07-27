@@ -141,7 +141,14 @@ describe('shouldRemindSeedRotation', () => {
 
 // ── The EXECUTOR side: the plan is carried out, not merely computed ────────
 
-const modules = import.meta.glob('../../**/*.*s');
+const rootGlob = import.meta.glob('../../**/*.*s');
+const analyticsGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
+		path.replace(/^\.\.\//, '../../analytics/'),
+		module,
+	])
+);
+const modules = { ...rootGlob, ...analyticsGlob };
 const NOW = 1_800_000_000_000;
 const ORG = 'org_hygiene';
 const PROBE_ID = 'sp_abcdefghij0123456789kl';
@@ -168,14 +175,17 @@ async function connectSeed(t: ReturnType<typeof convexTest>): Promise<{
 }> {
 	return t.run(async (ctx) => {
 		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'user_1',
 			organizationId: ORG,
 			address: 'owlat.seed.02@outlook.example',
 			domain: 'outlook.example',
-			kind: 'external',
-			status: 'active',
+			kind: 'external' as const,
+			status: 'active' as const,
+			usedBytes: 0,
+			uidValidity: NOW,
 			createdAt: NOW,
 			updatedAt: NOW,
-		} as never);
+		});
 		const accountId = await insertExternalAccountRow(ctx, {
 			userId: 'user_1',
 			organizationId: ORG,

@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import schema from '../../schema';
@@ -30,43 +30,47 @@ const ORG = 'org_seed_secrets';
 async function seedFixture(t: ReturnType<typeof convexTest>): Promise<void> {
 	await t.run(async (ctx) => {
 		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'user_1',
 			organizationId: ORG,
 			address: 'owlat.seed.01@gmail.example',
 			domain: 'gmail.example',
-			kind: 'external',
-			status: 'active',
+			kind: 'external' as const,
+			status: 'active' as const,
+			usedBytes: 0,
+			uidValidity: NOW,
 			createdAt: NOW,
 			updatedAt: NOW,
-		} as never);
+		});
 		await ctx.db.insert('externalMailAccounts', {
 			userId: 'user_1',
 			organizationId: ORG,
 			mailboxId,
-			purpose: 'seed',
-			seedProvider: 'gmail',
+			purpose: 'seed' as const,
+			seedProvider: 'gmail' as const,
 			imapHost: 'imap.gmail.example',
 			imapPort: 993,
 			isImapSecure: true,
 			smtpHost: 'smtp.gmail.example',
 			smtpPort: 587,
 			isSmtpSecure: false,
-			authMethod: 'password',
+			authMethod: 'password' as const,
 			imapUsername: 'seed-login-01',
 			secretCiphertext: 'CIPHERTEXT_MUST_NEVER_LEAK',
 			secretIv: 'IV_MUST_NEVER_LEAK',
 			secretAuthTag: 'TAG_MUST_NEVER_LEAK',
 			secretEnvelopeVersion: 1,
-			status: 'connected',
+			status: 'connected' as const,
 			createdAt: NOW,
 			updatedAt: NOW,
-		} as never);
+		});
 	});
 }
 
+// Set at MODULE scope: the probe-header suite below composes inside a
+// `describe` body, which vitest runs at COLLECTION time — a `beforeAll` would
+// be too late and the file would collect zero tests.
 const PREV_SECRET = process.env['UNSUBSCRIBE_SECRET'];
-beforeAll(() => {
-	process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
-});
+process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
 afterAll(() => {
 	if (PREV_SECRET === undefined) delete process.env['UNSUBSCRIBE_SECRET'];
 	else process.env['UNSUBSCRIBE_SECRET'] = PREV_SECRET;
@@ -128,11 +132,14 @@ describe('seed mailbox contents', () => {
 
 	it('is not part of the ledger row a classification writes', async () => {
 		const t = convexTest(schema, modules);
+		await seedFixture(t);
 		const stored = await t.run(async (ctx) => {
+			const account = await ctx.db.query('externalMailAccounts').first();
+			if (!account) throw new Error('fixture missing');
 			const id = await ctx.db.insert('seedPlacementProbes', {
 				organizationId: ORG,
 				probeId: 'sp_abcdefghij0123456789kl',
-				accountId: 'x' as never,
+				accountId: account._id,
 				provider: 'gmail',
 				stream: 'campaign',
 				sentAt: NOW,

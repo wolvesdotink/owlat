@@ -127,11 +127,10 @@ describe('absence is never load-bearing', () => {
 			ctx.db.insert('campaigns', {
 				name: 'March',
 				subject: 'Hi',
-				status: 'sending',
-				organizationId: ORG,
+				status: 'sending' as const,
 				createdAt: NOW,
 				updatedAt: NOW,
-			} as never)
+			})
 		);
 		const outcome = await t.run(async (ctx) =>
 			enqueueSeedShadowCopies(ctx, {
@@ -154,11 +153,10 @@ describe('absence is never load-bearing', () => {
 			ctx.db.insert('campaigns', {
 				name: 'March',
 				subject: 'Hi',
-				status: 'sending',
-				organizationId: ORG,
+				status: 'sending' as const,
 				createdAt: NOW,
 				updatedAt: NOW,
-			} as never)
+			})
 		);
 		for (let i = 0; i < 3; i += 1) {
 			const outcome = await t.run(async (ctx) =>
