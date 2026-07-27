@@ -101,6 +101,7 @@ export type OrganizationDeletionTable =
 	| 'destinationProviderDomains'
 	| 'sendAssignments'
 	| 'transportOutcomes'
+	| 'mixDecisions'
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
@@ -270,6 +271,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('destinationProviderDomains'),
 	v.literal('sendAssignments'),
 	v.literal('transportOutcomes'),
+	v.literal('mixDecisions'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),

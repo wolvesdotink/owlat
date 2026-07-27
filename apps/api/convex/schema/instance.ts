@@ -69,6 +69,13 @@ export const instanceTables = {
 		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
 		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
 		trustedArcForwarders: v.optional(v.array(v.string())),
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2's named mitigation for
+		// controller complexity). When true, every ramp cell is PINNED at its
+		// current share: the hourly controller still evaluates and still audits, so
+		// an operator can watch what it WOULD have done, but it writes no share.
+		// Honoured before every other rule, including the hard stops — a paused
+		// controller changes nothing in either direction. Unset ⇒ running.
+		isRampControllerPaused: v.optional(v.boolean()),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

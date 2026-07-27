@@ -104,6 +104,9 @@ export const TENANT_TABLES = [
 	// Per-cell, per-arm outcome counters derived from that experiment record.
 	// Tenant sending history in aggregate form — a wipe must not leave it behind.
 	'transportOutcomes',
+	// Every ramp-controller decision, including no-ops (plan D12). Tenant
+	// sending history: a wipe must not leave the org's ramp audit trail behind.
+	'mixDecisions',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',
