@@ -21,6 +21,7 @@
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 import type { RampGateThresholds } from './gateConfig';
 import type {
+	RampGateGrade,
 	RampGateHoldMeasurement,
 	RampGateHoldReason,
 	RampGateId,
@@ -105,12 +106,18 @@ export function armEvidence(
 	return evidenceFreshness(summary.lastRecordedAt, now, thresholds, maxAgeMs);
 }
 
+/**
+ * A HOLD carries the gate's grade like every other verdict (plan D14): a hold is
+ * a verdict, the UI renders it, and "we could not measure this" from a
+ * high-confidence gate and from a proxy are different sentences to an operator.
+ */
 export function insufficient(
 	gate: RampGateId,
 	reason: RampGateHoldReason,
-	measurement: RampGateHoldMeasurement
+	measurement: RampGateHoldMeasurement,
+	grade: RampGateGrade
 ): RampGateResult {
-	return { gate, status: 'insufficient_data', reason, measurement };
+	return { gate, status: 'insufficient_data', reason, measurement, ...grade };
 }
 
 /**

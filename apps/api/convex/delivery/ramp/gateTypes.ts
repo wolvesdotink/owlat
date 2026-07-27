@@ -36,10 +36,30 @@ export type RampGateId =
 export type RampGateDecidedReason =
 	| 'within_threshold'
 	| 'absolute_threshold_breached'
-	| 'reference_tolerance_breached';
+	| 'reference_tolerance_breached'
+	/**
+	 * The cell moved against ITS OWN 30-day trailing rate by more than the
+	 * standalone substitution allows (plan's "gates, degraded honestly" table).
+	 *
+	 * A distinct reason from `reference_tolerance_breached` because the operator
+	 * story is different in a way that changes what they go and look at: the
+	 * reference reason means "the relay is doing better than we are", this one
+	 * means "we are doing worse than we were last month", and there is no relay to
+	 * inspect in the deployment that produces it.
+	 */
+	| 'trailing_baseline_breached';
 
-/** The single reason a gate can HALT. Only the deferral gate produces it. */
-export type RampGateHaltReason = 'halt_threshold_breached';
+/**
+ * Why a gate can HALT.
+ *
+ *  - `halt_threshold_breached` — the deferral rate is at or above the halt line.
+ *  - `block_message_detected`  — receivers are returning BLOCK messages (their
+ *    own 4xx/5xx text says our content is spam, our sender identity is not
+ *    authorised, or our IP is not one they take mail from). Distinct from a
+ *    deferral-rate breach: throttling gets better by slowing down, a block does
+ *    not get better by sending at all.
+ */
+export type RampGateHaltReason = 'halt_threshold_breached' | 'block_message_detected';
 
 /**
  * Why a gate HELD. Every one of these says which arm was unusable and how, so
@@ -95,6 +115,19 @@ interface RampGateMeasurementBase {
 	 * the engagement family sets it; the ceiling gates leave it absent.
 	 */
 	readonly ratioFloor?: number;
+	/**
+	 * The RELATIVE CEILING a ceiling gate applied, as a dimensionless multiple of
+	 * `referenceRate` — 1.5 means "the own arm may bounce up to 50% relatively
+	 * worse than the series it is compared against".
+	 *
+	 * The mirror image of `ratioFloor`, and a SEPARATE field from it for the same
+	 * reason `ratioFloor` is separate from `thresholdRate`: a floor of 0.85 and a
+	 * ceiling of 1.5 mean opposite things, and an audit row (plan D12) that
+	 * reported one under the other's name would invert the story it tells. Only the
+	 * standalone substitutions set it — the reference-arm gates express their
+	 * comparative half in percentage points, in `toleranceValuePp`.
+	 */
+	readonly ratioCeiling?: number;
 	/** The arm-vs-arm tolerance in percentage points, or `null` when the gate has none. */
 	readonly toleranceValuePp: number | null;
 	/** Denominator behind `ownRate` (sends, or seeds for the placement gate). */
@@ -144,7 +177,63 @@ export interface RampGateHoldMeasurement extends RampGateMeasurementBase {
 
 export type RampGateMeasurement = RampGateDecidedMeasurement | RampGateHoldMeasurement;
 
-interface RampGateResultBase {
+/**
+ * HOW MUCH THE VERDICT IS WORTH (plan D14). Rendered on the cell, recorded in
+ * the audit row, and — through `mayJustifyIncrease` — enforced by the aggregator.
+ *
+ *  - `high`   — the measurement is self-hosted and direct. Bounces and 4xx text
+ *               come off our own wire and never depended on a third party.
+ *  - `medium` — a proxy or a tripwire. The standalone complaint gate reading
+ *               one-click unsubscribes instead of feedback-loop reports, or a
+ *               placement sweep over 5-10 seed mailboxes.
+ *  - `low`    — genuinely weak, and said so out loud rather than dressed up. The
+ *               standalone engagement check cannot tell a redesigned newsletter
+ *               from a placement loss.
+ */
+export type RampGateConfidence = 'high' | 'medium' | 'low';
+
+/**
+ * The two things every verdict carries besides the numbers.
+ *
+ * `mayJustifyIncrease` IS THE ASYMMETRY (plan D14), and it lives on the RESULT
+ * rather than in a caller's head on purpose. "The weak gate may only ever cause a
+ * decrease, never an increase" stated as a convention is a rule every future
+ * caller gets one chance to forget; stated as a field the aggregator reads, a
+ * caller cannot forget it at all. A gate with `mayJustifyIncrease: false` still
+ * FAILS in full — it just cannot be the evidence that lets a share go up.
+ */
+export interface RampGateGrade {
+	readonly confidence: RampGateConfidence;
+	/**
+	 * Whether a `pass` from this gate counts as evidence FOR AN INCREASE. `false`
+	 * on a low-confidence gate; `true` everywhere else. Ignored on non-`pass`
+	 * statuses, where the gate's answer counts in full whatever its confidence.
+	 */
+	readonly mayJustifyIncrease: boolean;
+}
+
+/** Confidence ordered worst-first, so an evaluation can report its weakest link. */
+const CONFIDENCE_RANK: Readonly<Record<RampGateConfidence, number>> = {
+	low: 0,
+	medium: 1,
+	high: 2,
+};
+
+/**
+ * The measurement confidence of a SET of verdicts: the weakest one present. A
+ * cell whose complaint signal is an unsubscribe proxy is a cell measured at
+ * medium confidence, however high its bounce data is, and the UI must say so
+ * (plan D14) rather than average the two into something reassuring.
+ */
+export function weakestConfidence(confidences: readonly RampGateConfidence[]): RampGateConfidence {
+	let weakest: RampGateConfidence = 'high';
+	for (const confidence of confidences) {
+		if (CONFIDENCE_RANK[confidence] < CONFIDENCE_RANK[weakest]) weakest = confidence;
+	}
+	return weakest;
+}
+
+interface RampGateResultBase extends RampGateGrade {
 	readonly gate: RampGateId;
 }
 
@@ -161,7 +250,10 @@ export type RampGateResult =
 	  })
 	| (RampGateResultBase & {
 			readonly status: 'fail';
-			readonly reason: 'absolute_threshold_breached' | 'reference_tolerance_breached';
+			readonly reason:
+				| 'absolute_threshold_breached'
+				| 'reference_tolerance_breached'
+				| 'trailing_baseline_breached';
 			readonly measurement: RampGateDecidedMeasurement;
 	  })
 	| (RampGateResultBase & {
@@ -192,8 +284,45 @@ export interface RampGateEvaluation {
 	/** Consecutive clean windows INCLUDING this one (plan D9's K_CLEAN input). */
 	readonly cleanStreak: number;
 	readonly perGate: readonly RampGateResult[];
+	/**
+	 * The WEAKEST confidence among the gates that contributed (plan D14). This is
+	 * the number the cell renders as "measurement confidence", and the reason the
+	 * standalone UI can honestly offer "connect a relay or add seed mailboxes to
+	 * improve" instead of pretending a proxy is a measurement.
+	 */
+	readonly confidence: RampGateConfidence;
+	/**
+	 * Whether ANY contributing gate passed with `mayJustifyIncrease`. When this is
+	 * false the verdict can never be `pass`, so a low-confidence gate cannot be the
+	 * sole justification for raising a share (plan D14). Carried on the evaluation
+	 * — not just applied to the verdict — so the audit row (plan D12) can say WHY a
+	 * window that looked clean did not advance the streak.
+	 */
+	readonly increaseEvidence: boolean;
 	/** The `now` the evaluation ran against — echoed for the audit row. */
 	readonly evaluatedAt: number;
+}
+
+/**
+ * What receivers said in their own 4xx/5xx text over the window, reduced to the
+ * only question the ramp asks of it: how many responses were BLOCK messages?
+ *
+ * The classification itself is the MTA's (`classifySmtpResponse`), and the
+ * category names are the shared vocabulary in
+ * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
+ */
+export interface SmtpBlockObservation {
+	/** Responses classified into a category in `SMTP_BLOCK_CATEGORIES`. */
+	readonly blocked: number;
+	/** Every classified response over the window — the denominator. */
+	readonly observed: number;
+	/**
+	 * The categories seen, for the audit row and the admin notification. Naming
+	 * the category is what turns "the ramp halted" into "Gmail is rejecting the
+	 * sending IP identity — check PTR and forward DNS".
+	 */
+	readonly categories: readonly string[];
+	readonly observedAt: number;
 }
 
 /** Seed placement, as a tripwire and never as a gauge (plan D17). */
@@ -220,6 +349,36 @@ export interface RampGateEvaluationInput {
 	 * deployment; the CALLER picks the evaluator, this field does not.
 	 */
 	readonly reference: TransportOutcomeSummary | null;
+	/**
+	 * The cell's OWN 30-day trailing window — the second series the standalone
+	 * evaluator substitutes for the missing reference arm (gate 1's 1.5x rule and
+	 * gate 3's 3x unsubscribe proxy).
+	 *
+	 * DISJOINT from the evaluation window, for the same reason gate 4b's baseline
+	 * is: a trailing window that CONTAINS the window under test is dragged down by
+	 * the very move it is supposed to detect, so the tripwire fires late and less
+	 * often than its constant implies. Absent (a young cell) means the relative
+	 * half cannot decide — never that it fails.
+	 *
+	 * Unused by `referenceArmGateEvaluator`, which has a concurrent second arm.
+	 */
+	readonly ownTrailingBaseline?: TransportOutcomeSummary | null;
+	/**
+	 * Whether this cell has a working COMPLAINT FEEDBACK LOOP (CFBL/ARF) — the
+	 * shipped `apps/mta/src/bounce` FBL processor receiving reports for this
+	 * sending identity.
+	 *
+	 * When true the standalone complaint gate measures real complaints at HIGH
+	 * confidence; when absent or false it falls back to the one-click unsubscribe
+	 * proxy at MEDIUM confidence and says so. Absence lowers confidence and does
+	 * nothing else (plan D2).
+	 */
+	readonly hasComplaintFeedback?: boolean;
+	/**
+	 * Block-message counts from the shipped SMTP classifier over the window.
+	 * Absent means "not observed", which holds; it never fails.
+	 */
+	readonly smtpBlocks?: SmtpBlockObservation | null;
 	readonly ownSeeds?: SeedPlacementObservation | null;
 	readonly referenceSeeds?: SeedPlacementObservation | null;
 	/** Gate 4's result, computed elsewhere (MPP handling). Absent = not measured. */
