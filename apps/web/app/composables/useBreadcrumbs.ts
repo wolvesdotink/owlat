@@ -116,6 +116,11 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/delivery',
 		page: 'Setup',
 	},
+	'/dashboard/delivery/measurement': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Measurement',
+	},
 	'/dashboard/delivery/config': {
 		section: 'Delivery',
 		sectionHref: '/dashboard/delivery',
