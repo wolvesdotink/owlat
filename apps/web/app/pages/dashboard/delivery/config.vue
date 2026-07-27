@@ -64,6 +64,21 @@ const envSetCommand = computed(() => {
 
 const { copy, isCopied } = useCopyToClipboard();
 
+// Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
+// Both reads are DNS-facing and non-secret: the two alignment ARMS for the
+// domain we sign as, and the recorded return-path capability of the configured
+// transport. Both skip entirely when there is nothing to ask about, so a
+// standalone deployment issues neither query and sees no error.
+const wizardDomain = computed(() => status.value?.alignment.dkimDomain ?? null);
+const { data: alignmentArms } = useOrganizationQuery(
+	api.delivery.alignmentPreflight.getAlignmentArms,
+	() => (wizardDomain.value ? { domain: wizardDomain.value } : undefined)
+);
+const { data: returnPathReadiness } = useOrganizationQuery(
+	api.delivery.relayReturnPath.getReturnPathReadiness,
+	() => (status.value?.provider ? { transportId: status.value.provider } : undefined)
+);
+
 // Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
 // TLS negotiation when delivering mail to our MX. Member-safe (operator
 // deliverability telemetry, no credentials).
@@ -216,6 +231,17 @@ const {
 			<DeliveryTransportEditor
 				:current-provider="status.provider"
 				:current-outbound-tls-mode="status.outboundTlsMode"
+				@applied="refetchStatus"
+			/>
+
+			<!-- Optional guided "connect an ESP" flow: credentials → live send test
+			     → live-DNS alignment → return-path capability. Skipping it leaves the
+			     deployment fully functional on its own MTA (plan D2), so it renders as
+			     a plain offer with no warning state of any kind. -->
+			<DeliveryTransportConnectionWizard
+				:alignment-arms="alignmentArms ?? null"
+				:return-path-capability="returnPathReadiness?.capability ?? null"
+				:can-send="canSend"
 				@applied="refetchStatus"
 			/>
 
