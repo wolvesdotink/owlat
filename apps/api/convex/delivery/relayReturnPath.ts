@@ -15,7 +15,7 @@
 
 import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
-import { normalizeReturnPathDomain } from '@owlat/shared/verp';
+import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import {
@@ -34,7 +34,7 @@ import { isCustomReturnPathSupported } from '../lib/sendProviders/returnPathCapa
 import {
 	returnPathAuthorizesRelay,
 	type ReturnPathSpfProof,
-} from '../lib/sendProviders/smtp/returnPath';
+} from '../lib/sendProviders/returnPathAuthorization';
 import { defaultSendTransportId, tryResolveSendTransport } from '../lib/sendProviders/transports';
 import type { SendProviderKind } from '../lib/sendProviders/types';
 import { parseReturnPathRelaySpfTerms } from '../domains/spf';

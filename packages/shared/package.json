@@ -45,6 +45,10 @@
 			"types": "./src/verp.ts",
 			"import": "./src/verp.ts"
 		},
+		"./verpNormalize": {
+			"types": "./src/verpNormalize.ts",
+			"import": "./src/verpNormalize.ts"
+		},
 		"./returnPathHost": {
 			"types": "./src/returnPathHost.ts",
 			"import": "./src/returnPathHost.ts"

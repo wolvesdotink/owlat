@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { composeMessage } from '@owlat/mail-message';
 import { buildVerpAddress } from '@owlat/shared/verp';
 import { resolveRelayEnvelopeSender } from '../index';
-import { RETURN_PATH_SPF_PROOF_MAX_AGE_MS, returnPathAuthorizesRelay } from '../returnPath';
+import {
+	RETURN_PATH_SPF_PROOF_MAX_AGE_MS,
+	returnPathAuthorizesRelay,
+} from '../../returnPathAuthorization';
 import { buildReturnPathSpfRecord, parseReturnPathRelaySpfTerms } from '../../../../domains/spf';
 
 /**
