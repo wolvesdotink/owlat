@@ -15,11 +15,13 @@
  */
 
 import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
+import { logWarn } from '../lib/runtimeLog';
 import { throwInvalidInput } from '../_utils/errors';
 import {
 	evaluateAndApplySunset,
@@ -27,6 +29,7 @@ import {
 	resolveSunsetPolicyForContact,
 	restoreSunsetSuppression,
 	setSunsetExemption,
+	toSunsetOverride,
 } from './sunsetEngine';
 import {
 	SUNSET_MIN_WINDOW_DAYS,
@@ -43,7 +46,16 @@ export const SUNSET_BATCH_SIZE = 50;
 /** Chained batches per tick — the hard ceiling on one sweep's work. */
 export const SUNSET_MAX_BATCHES = 20;
 
-/** Contacts one daily tick can converge. */
+/**
+ * Contacts one tick can converge: 50 x 20 = 1000.
+ *
+ * THROUGHPUT. The cron runs HOURLY, so the sustained ceiling is ~24,000
+ * contacts a day while `SUNSET_STALE_MS` still guarantees any one contact is
+ * evaluated at most once a day. A daily cron would have capped the whole
+ * deployment at 1000 contacts a day: past that the stale range never drains,
+ * every tick logs the budget warning, and a contact quiet past the suppression
+ * window is acted on days late.
+ */
 export const SUNSET_CONTACTS_PER_TICK = SUNSET_BATCH_SIZE * SUNSET_MAX_BATCHES;
 
 // ─── The sweep ──────────────────────────────────────────────────────────────
@@ -119,7 +131,7 @@ export const sweepSunsetPolicy = internalMutation({
 		if (isBudgetExhausted) {
 			// The chain's return value is dropped, so a log line is the only way an
 			// operator learns the book is bigger than one tick's capacity.
-			console.warn(
+			logWarn(
 				`[sunsetSweep] tick exhausted its ${SUNSET_MAX_BATCHES}-batch budget ` +
 					`(~${SUNSET_CONTACTS_PER_TICK} contacts) with stale contacts still queued; ` +
 					`contacts re-evaluate on a longer cycle than ${SUNSET_STALE_MS}ms`
@@ -133,7 +145,7 @@ export const sweepSunsetPolicy = internalMutation({
 // ─── Operator surface ───────────────────────────────────────────────────────
 
 const policyShape = v.object({
-	enabled: v.boolean(),
+	isEnabled: v.boolean(),
 	reengageAfterDays: v.number(),
 	suppressAfterDays: v.number(),
 });
@@ -162,14 +174,7 @@ export const getSunsetPolicies = authedQuery({
 			'Only owners and admins can view the sunset policy'
 		);
 		const rows = await loadSunsetPolicyRows(ctx);
-		const globalRow = rows.find((row) => row.topicId === undefined);
-		const globalOverride = globalRow
-			? {
-					enabled: globalRow.enabled,
-					reengageAfterDays: globalRow.reengageAfterDays,
-					suppressAfterDays: globalRow.suppressAfterDays,
-				}
-			: undefined;
+		const globalOverride = toSunsetOverride(rows.find((row) => row.topicId === undefined));
 		const global = resolveSunsetPolicy({ globalOverride });
 
 		const topics = await ctx.db.query('topics').collect(); // bounded: content categories
@@ -181,37 +186,33 @@ export const getSunsetPolicies = authedQuery({
 		return {
 			defaults: { ...SUNSET_POLICY_DEFAULTS },
 			global,
-			topics: topics.map((topic) => {
-				const row = byTopic.get(topic._id);
-				return {
-					topicId: topic._id,
-					topicName: topic.name,
-					policy: resolveSunsetPolicy({
-						globalOverride,
-						topicOverrides: [
-							row
-								? {
-										enabled: row.enabled,
-										reengageAfterDays: row.reengageAfterDays,
-										suppressAfterDays: row.suppressAfterDays,
-									}
-								: undefined,
-						],
-					}),
-				};
-			}),
+			topics: topics.map((topic) => ({
+				topicId: topic._id,
+				topicName: topic.name,
+				policy: resolveSunsetPolicy({
+					globalOverride,
+					topicOverrides: [toSunsetOverride(byTopic.get(topic._id))],
+				}),
+			})),
 		};
 	},
 });
 
 /**
  * Upsert the deployment-wide row (`topicId` omitted) or one topic's override.
- * Every field is optional: omitting one leaves it inheriting.
+ *
+ * A PARTIAL SAVE IS PARTIAL. Only the fields the caller actually supplied reach
+ * the patch: in Convex, patching a field to an explicit `undefined` DELETES it,
+ * so spreading the whole argument object would let a UI that saves one window
+ * silently wipe a stored opt-out and re-arm auto-suppression for that topic's
+ * members at the next sweep. Omitting a field therefore means "leave it as it
+ * is", and clearing an override back to inherited is not something this
+ * mutation can do by accident.
  */
 export const setSunsetPolicy = authedMutation({
 	args: {
 		topicId: v.optional(v.id('topics')),
-		enabled: v.optional(v.boolean()),
+		isEnabled: v.optional(v.boolean()),
 		reengageAfterDays: v.optional(v.number()),
 		suppressAfterDays: v.optional(v.number()),
 	},
@@ -230,15 +231,6 @@ export const setSunsetPolicy = authedMutation({
 		if (suppressAfterDays !== undefined && suppressAfterDays < SUNSET_MIN_WINDOW_DAYS) {
 			throwInvalidInput(`The suppression window must be at least ${SUNSET_MIN_WINDOW_DAYS} days`);
 		}
-		if (
-			reengageAfterDays !== undefined &&
-			suppressAfterDays !== undefined &&
-			suppressAfterDays < reengageAfterDays
-		) {
-			throwInvalidInput(
-				'The suppression window must be at least as long as the re-engagement window'
-			);
-		}
 
 		const now = Date.now();
 		const existing = await ctx.db
@@ -246,10 +238,30 @@ export const setSunsetPolicy = authedMutation({
 			.withIndex('by_topic', (q) => q.eq('topicId', args.topicId))
 			.first();
 
-		const fields = {
-			enabled: args.enabled,
-			reengageAfterDays: args.reengageAfterDays,
-			suppressAfterDays: args.suppressAfterDays,
+		// Ordering is checked against the row the save PRODUCES, not against the
+		// arguments alone: saving `suppressAfterDays: 90` onto a row that already
+		// says `reengageAfterDays: 180` is just as backwards as sending both at
+		// once, and the engine would hold on `invalid_policy` forever.
+		const mergedReengage = reengageAfterDays ?? existing?.reengageAfterDays;
+		const mergedSuppress = suppressAfterDays ?? existing?.suppressAfterDays;
+		if (
+			mergedReengage !== undefined &&
+			mergedSuppress !== undefined &&
+			mergedSuppress < mergedReengage
+		) {
+			throwInvalidInput(
+				'The suppression window must be at least as long as the re-engagement window'
+			);
+		}
+
+		const fields: {
+			isEnabled?: boolean;
+			reengageAfterDays?: number;
+			suppressAfterDays?: number;
+		} = {
+			...(args.isEnabled !== undefined ? { isEnabled: args.isEnabled } : {}),
+			...(reengageAfterDays !== undefined ? { reengageAfterDays } : {}),
+			...(suppressAfterDays !== undefined ? { suppressAfterDays } : {}),
 		};
 
 		let policyId;
@@ -265,6 +277,10 @@ export const setSunsetPolicy = authedMutation({
 			});
 		}
 
+		// Audit the RESULTING row, plus which fields this save actually set. The
+		// arguments alone cannot answer "what does the policy say now", and a save
+		// that changed one window would otherwise record two meaningless nulls.
+		const stored = await ctx.db.get(policyId);
 		await recordAuditLog(ctx, {
 			userId: session.userId,
 			action: 'contact.sunset_policy_updated',
@@ -272,13 +288,59 @@ export const setSunsetPolicy = authedMutation({
 			resourceId: policyId,
 			details: {
 				topicId: args.topicId ?? 'global',
-				enabled: args.enabled ?? null,
-				reengageAfterDays: args.reengageAfterDays ?? null,
-				suppressAfterDays: args.suppressAfterDays ?? null,
+				changedFields: Object.keys(fields).join(',') || 'none',
+				isEnabled: stored?.isEnabled ?? null,
+				reengageAfterDays: stored?.reengageAfterDays ?? null,
+				suppressAfterDays: stored?.suppressAfterDays ?? null,
 			},
 		});
 
 		return policyId;
+	},
+});
+
+/**
+ * WHO IS ON THE TRACK. Paginated over `contacts.by_sunset_stage`, so an
+ * operator can enumerate the contacts the engine just moved onto the
+ * re-engagement track (or auto-suppressed) and build a win-back send from them.
+ * Without this the stage is a write-only field and the "track" is a label
+ * nothing can address.
+ *
+ * Soft-deleted rows are filtered out of the returned page rather than the index
+ * range: `deletedAt` is not part of the key, and the page size is already
+ * bounded by the caller's `numItems`.
+ */
+export const listSunsetStage = authedQuery({
+	args: {
+		stage: v.union(v.literal('reengagement'), v.literal('suppressed')),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args) => {
+		await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can view the sunset track'
+		);
+		const page = await ctx.db
+			.query('contacts')
+			.withIndex('by_sunset_stage', (q) => q.eq('sunsetStage', args.stage))
+			.order('desc')
+			.paginate(args.paginationOpts);
+
+		return {
+			...page,
+			page: page.page
+				.filter((contact) => contact.deletedAt === undefined)
+				.map((contact) => ({
+					contactId: contact._id,
+					email: contact.email ?? null,
+					firstName: contact.firstName ?? null,
+					lastName: contact.lastName ?? null,
+					sunsetStage: contact.sunsetStage ?? 'engaged',
+					sunsetStageAt: contact.sunsetStageAt ?? null,
+					isExempt: contact.sunsetExemptAt !== undefined,
+				})),
+		};
 	},
 });
 
@@ -288,7 +350,7 @@ export const restoreSunsetContact = authedMutation({
 	returns: v.object({
 		restored: v.boolean(),
 		removedSuppression: v.boolean(),
-		reason: v.union(
+		outcome: v.union(
 			v.literal('restored'),
 			v.literal('not_found'),
 			v.literal('no_email'),

@@ -496,11 +496,14 @@ crons.interval(
 // auto-suppress them. Unengaged recipients are the dominant source of
 // spam-folder placement and spam-trap hits, so this runs ON by default at a
 // conservative 180/270 days. Bounded per tick (`SUNSET_CONTACTS_PER_TICK`) and
-// resumable from its index cursor; a contact is re-evaluated at most daily,
-// which is why this is a daily cron rather than an hourly one.
+// resumable from its index cursor. HOURLY, not daily: `SUNSET_STALE_MS` already
+// pins each individual contact to at most one evaluation a day, so the cadence
+// buys THROUGHPUT — a daily tick would cap the whole deployment at
+// `SUNSET_CONTACTS_PER_TICK` (1000) contacts a day, leaving any larger list
+// permanently behind its own stale range.
 crons.interval(
 	'sweep contact sunset policy',
-	{ hours: 24 },
+	{ hours: 1 },
 	internal.contacts.sunset.sweepSunsetPolicy,
 	{}
 );
