@@ -42,15 +42,12 @@ export const applySnapshot = internalMutation({
 			const signals = args.signals
 				.filter((signal) => signal.provider === provider)
 				.map(({ source, severity, observedAt }) => ({ source, severity, observedAt }));
-			// Advisory sources report measurement state (a blocklist lookup that
-			// could not be completed, a partially ejected pool). They are persisted
-			// so the ramp controller and the dashboard can read them, but they must
-			// never on their own flip a provider slice onto the relay: "we could not
-			// measure" is neither evidence of health nor a routing verdict.
-			// Only the four INFRASTRUCTURE sources flip the shipped boolean.
-			// Outcome-derived sources (bounce/complaint/engagement/placement) move
-			// the ramp controller's share instead, exactly like advisory readings
-			// they are persisted for measurement and never trigger fallback here.
+			// ONE RULE: only the four INFRASTRUCTURE sources flip the shipped
+			// boolean. Advisory sources ("we could not complete the lookup", "part
+			// of the pool is ejected") and outcome-derived sources (bounce,
+			// complaint, engagement, placement) are persisted here so the ramp
+			// controller and the dashboard can read them, and they move the
+			// controller's share — but neither ever triggers relay fallback.
 			const degraded = signals.some((signal) =>
 				isActionableDeliverabilitySignalSource(signal.source)
 			);

@@ -22,14 +22,12 @@ import type {
 	DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
 
-export type DeliverabilityRouteStateDoc = Doc<'deliverabilityRouteStates'>;
-
 /** The all-stream row for a provider slice: what the MTA snapshot maintains. */
 export async function loadStreamlessRouteState(
 	ctx: QueryCtx | MutationCtx,
 	organizationId: string,
 	destinationProvider: DeliverabilitySignalProvider
-): Promise<DeliverabilityRouteStateDoc | null> {
+): Promise<Doc<'deliverabilityRouteStates'> | null> {
 	return await ctx.db
 		.query('deliverabilityRouteStates')
 		.withIndex('by_org_provider_stream', (q) =>
@@ -43,25 +41,24 @@ export async function loadStreamlessRouteState(
 
 /**
  * Cell lookup: the per-stream row when one exists, else the legacy
- * stream-less row. Passing no stream asks for the stream-less row directly.
+ * stream-less row. Callers that want the stream-less row itself (the MTA
+ * snapshot writer) call `loadStreamlessRouteState` directly.
  */
 export async function loadRouteStateForCell(
 	ctx: QueryCtx | MutationCtx,
 	organizationId: string,
 	destinationProvider: DeliverabilitySignalProvider,
-	stream?: DeliverabilityStream
-): Promise<DeliverabilityRouteStateDoc | null> {
-	if (stream !== undefined) {
-		const perStream = await ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider_stream', (q) =>
-				q
-					.eq('organizationId', organizationId)
-					.eq('destinationProvider', destinationProvider)
-					.eq('stream', stream)
-			)
-			.first();
-		if (perStream) return perStream;
-	}
+	stream: DeliverabilityStream
+): Promise<Doc<'deliverabilityRouteStates'> | null> {
+	const perStream = await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider_stream', (q) =>
+			q
+				.eq('organizationId', organizationId)
+				.eq('destinationProvider', destinationProvider)
+				.eq('stream', stream)
+		)
+		.first();
+	if (perStream) return perStream;
 	return await loadStreamlessRouteState(ctx, organizationId, destinationProvider);
 }
