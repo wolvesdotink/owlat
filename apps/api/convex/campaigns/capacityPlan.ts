@@ -19,8 +19,7 @@
  * finish inside the retention horizon, neither can reality.
  */
 
-/** Milliseconds in a UTC day — the granularity the warming cap resets on. */
-export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { MS_PER_DAY } from '../lib/constants';
 
 /**
  * Hard bound on how many days a returned plan may span. A plan longer than
@@ -138,6 +137,45 @@ export function capacityWithinHorizon(input: {
 	return total;
 }
 
+/**
+ * The projection's trailing rate — the last projected day, or 0 for an empty
+ * projection. The warming schedule plateaus, so extending at this rate neither
+ * invents growth nor pretends at zero.
+ */
+function trailingRate(capacities: readonly number[]): number {
+	return capacities.length > 0 ? sanitizeCount(capacities[capacities.length - 1] ?? 0) : 0;
+}
+
+/**
+ * Sanitized capacity on schedule day `day`, extending past the end of the
+ * projection at the trailing rate. THE single definition of "what can day `day`
+ * carry" — the schedule builder and `totalPlannableCapacity` both go through it
+ * so the enumerated slices and the summed total can never disagree about a day.
+ */
+function capacityForDay(remainingCapacityByDay: readonly number[], day: number): number {
+	if (day < remainingCapacityByDay.length) {
+		return sanitizeCount(remainingCapacityByDay[day] ?? 0);
+	}
+	return trailingRate(remainingCapacityByDay);
+}
+
+/**
+ * Everything a plan could ever carry: the projected days plus the trailing-rate
+ * extension out to `MAX_PLAN_DAYS`. Callers bound work by capacity rather than
+ * by audience size — once a count exceeds this, the verdict is already decided
+ * and there is no reason to keep streaming audience documents.
+ *
+ * Shares `capacityForDay` with `buildCapacitySchedule`, so "how far past the
+ * projection do we extend, and at what rate" is stated exactly once.
+ */
+export function totalPlannableCapacity(remainingCapacityByDay: readonly number[]): number {
+	let total = 0;
+	for (let day = 0; day < MAX_PLAN_DAYS; day += 1) {
+		total += capacityForDay(remainingCapacityByDay, day);
+	}
+	return total;
+}
+
 /** Inputs to the schedule builder — the planner minus the retention horizon. */
 export interface CapacityScheduleInput {
 	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
@@ -169,13 +207,13 @@ export interface CapacityScheduleInput {
  */
 export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCapacitySchedule {
 	const audienceSize = sanitizeCount(input.audienceSize);
-	const capacities = input.remainingCapacityByDay.map(sanitizeCount);
+	const capacities = input.remainingCapacityByDay;
 	const now = Number.isFinite(input.now) ? input.now : 0;
-	const trailingRate = capacities.length > 0 ? (capacities[capacities.length - 1] ?? 0) : 0;
+	const plateauRate = trailingRate(capacities);
 	const slices: number[] = [];
 	let remaining = audienceSize;
 	for (let day = 0; day < MAX_PLAN_DAYS && remaining > 0; day += 1) {
-		const capacity = day < capacities.length ? (capacities[day] ?? 0) : trailingRate;
+		const capacity = capacityForDay(capacities, day);
 		const slice = Math.min(capacity, remaining);
 		slices.push(slice);
 		remaining -= slice;
@@ -191,7 +229,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
 	// and none can be invented. Rather than hand back slices that silently drop
 	// the tail, collapse to the "cannot be planned" sentinel — callers hold and
 	// allow, exactly as they do for unknown capacity.
-	if (slices.length === 0 || (remaining > 0 && trailingRate <= 0)) {
+	if (slices.length === 0 || (remaining > 0 && plateauRate <= 0)) {
 		return {
 			fits: false,
 			days: 0,
@@ -224,16 +262,18 @@ export function planCampaignCapacity(input: CampaignCapacityPlanInput): Campaign
 	const audienceSize = sanitizeCount(input.audienceSize);
 	if (audienceSize === 0) return { fits: true };
 
-	const capacities = input.remainingCapacityByDay.map(sanitizeCount);
-	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
-	if (horizonDays === 0) return { fits: true };
+	if (usableDayCount(input.now, input.maxMessageAgeMs) === 0) return { fits: true };
 
 	// Does it finish inside the horizon? Only the days the message survives count.
-	let withinHorizon = 0;
-	for (let day = 0; day < horizonDays; day += 1) {
-		withinHorizon += capacities[day] ?? 0;
-		if (withinHorizon >= audienceSize) return { fits: true };
-	}
+	// ONE definition of that sum (`capacityWithinHorizon`), because the gate's
+	// read-budget branch compares a lower bound against the very same number and
+	// the two must never disagree (campaigns/capacityPreflight.ts).
+	const withinHorizon = capacityWithinHorizon({
+		remainingCapacityByDay: input.remainingCapacityByDay,
+		maxMessageAgeMs: input.maxMessageAgeMs,
+		now: input.now,
+	});
+	if (withinHorizon >= audienceSize) return { fits: true };
 
 	return buildCapacitySchedule({
 		audienceSize,

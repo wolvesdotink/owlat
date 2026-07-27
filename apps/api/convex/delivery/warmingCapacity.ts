@@ -23,11 +23,13 @@
 
 import { getWarmingCapForDay } from '@owlat/shared/warming';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { MS_PER_DAY } from '../lib/constants';
 
 type Ctx = MutationCtx | QueryCtx;
 
-/** Milliseconds in a UTC day — the granularity the warming cap resets on. */
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** One entry of `warmingState.ips` — the per-IP warming row the MTA syncs. */
+type WarmingIp = Doc<'warmingState'>['ips'][number];
 
 /** How many days of capacity the projection covers. */
 const CAPACITY_PROJECTION_DAYS = 30;
@@ -56,6 +58,39 @@ export interface WarmingCapacityOptions {
 }
 
 /**
+ * A projection of sendable campaign volume: `byDay[k]` and TODAY'S remainder,
+ * both over the SAME IP population.
+ *
+ * When `startsAt` is today, `remainingToday === byDay[0]`. When it is in the
+ * future, `byDay[0]` is a whole projected day and `remainingToday` is still
+ * today's actual remainder — different questions, both answered honestly.
+ */
+export interface WarmingCapacityProjection {
+	remainingToday: number;
+	byDay: number[];
+}
+
+/** Sum of per-IP headroom, floored per IP so one over-sent IP cannot eat another's. */
+function sumRemainingToday(campaignIps: readonly WarmingIp[]): number {
+	let remainingToday = 0;
+	for (const ip of campaignIps) {
+		const dailyCap = Number.isFinite(ip.dailyCap) ? ip.dailyCap : 0;
+		const sentToday = Number.isFinite(ip.sentToday) ? ip.sentToday : 0;
+		remainingToday += Math.max(0, dailyCap - sentToday);
+	}
+	return remainingToday;
+}
+
+/** {@link loadWarmingCapacity}, projection only — the binding gate's input. */
+export async function loadRemainingCapacityByDay(
+	ctx: Ctx,
+	options: WarmingCapacityOptions
+): Promise<number[] | null> {
+	const projection = await loadWarmingCapacity(ctx, options);
+	return projection === null ? null : projection.byDay;
+}
+
+/**
  * Project sendable campaign volume per day. Returns `null` whenever capacity
  * is UNKNOWN or effectively unbounded.
  *
@@ -78,11 +113,18 @@ export interface WarmingCapacityOptions {
  * day-1 IP reports phase `'ramp'` and would otherwise be projected as if only
  * the day-1 IP existed — a false blocker for campaigns the graduated IPs could
  * deliver instantly.
+ *
+ * `remainingToday` is returned alongside the projection because the advisory
+ * campaign send estimate (`analytics/reputationQueries.ts`) used to take it from
+ * `warmingState.totalDailyCap - totalSentToday` instead — a roll-up over EVERY
+ * campaign-pool IP regardless of `active`. A deactivated high-cap IP therefore
+ * made the advisory readout say "fits today" about a campaign the binding gate
+ * refused as a five-day schedule. One population, one number, both callers.
  */
-export async function loadRemainingCapacityByDay(
+export async function loadWarmingCapacity(
 	ctx: Ctx,
 	options: WarmingCapacityOptions
-): Promise<number[] | null> {
+): Promise<WarmingCapacityProjection | null> {
 	const warmingState = await ctx.db.query('warmingState').first();
 	if (!warmingState) return null;
 
@@ -113,19 +155,12 @@ export async function loadRemainingCapacityByDay(
 			? Math.max(0, Math.floor(startsAt / MS_PER_DAY) - Math.floor(options.now / MS_PER_DAY))
 			: 0;
 
+	// Today's remainder over the SAME population index k>0 projects.
+	const remainingToday = sumRemainingToday(campaignIps);
+
 	const byDay: number[] = [];
-	if (anchorDayOffset === 0) {
-		// Only today's slice is partially consumed; every later day is whole. Summed
-		// per-IP over the SAME population index k>0 projects, and floored per-IP so
-		// one over-sent IP cannot eat another's headroom.
-		let remainingToday = 0;
-		for (const ip of campaignIps) {
-			const dailyCap = Number.isFinite(ip.dailyCap) ? ip.dailyCap : 0;
-			const sentToday = Number.isFinite(ip.sentToday) ? ip.sentToday : 0;
-			remainingToday += Math.max(0, dailyCap - sentToday);
-		}
-		byDay.push(remainingToday);
-	}
+	// Only today's slice is partially consumed; every later day is whole.
+	if (anchorDayOffset === 0) byDay.push(remainingToday);
 	for (
 		let day = Math.max(1, anchorDayOffset);
 		day < CAPACITY_PROJECTION_DAYS + anchorDayOffset;
@@ -151,5 +186,5 @@ export async function loadRemainingCapacityByDay(
 		byDay.push(projected);
 	}
 	if (byDay.length === 0) return null;
-	return byDay;
+	return { remainingToday, byDay };
 }
