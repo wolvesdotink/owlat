@@ -310,7 +310,7 @@ export function tryParseARF(
 		{
 			feedbackType,
 			originalMessageId,
-			cfblSource: cfbl.source,
+			cfblSource: cfbl.attributed ? cfbl.source : undefined,
 			cfblRejections: cfbl.rejections,
 			recipient,
 			sourceIsp,
