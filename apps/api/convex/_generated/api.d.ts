@@ -117,6 +117,7 @@ import type * as campaigns_analytics from "../campaigns/analytics.js";
 import type * as campaigns_archiveHttp from "../campaigns/archiveHttp.js";
 import type * as campaigns_archiveQueries from "../campaigns/archiveQueries.js";
 import type * as campaigns_audience from "../campaigns/audience.js";
+import type * as campaigns_audienceCandidates from "../campaigns/audienceCandidates.js";
 import type * as campaigns_audienceResolution from "../campaigns/audienceResolution.js";
 import type * as campaigns_campaigns from "../campaigns/campaigns.js";
 import type * as campaigns_capacityPlan from "../campaigns/capacityPlan.js";
@@ -886,6 +887,7 @@ declare const fullApi: ApiFromModules<{
   "campaigns/archiveHttp": typeof campaigns_archiveHttp;
   "campaigns/archiveQueries": typeof campaigns_archiveQueries;
   "campaigns/audience": typeof campaigns_audience;
+  "campaigns/audienceCandidates": typeof campaigns_audienceCandidates;
   "campaigns/audienceResolution": typeof campaigns_audienceResolution;
   "campaigns/campaigns": typeof campaigns_campaigns;
   "campaigns/capacityPlan": typeof campaigns_capacityPlan;
