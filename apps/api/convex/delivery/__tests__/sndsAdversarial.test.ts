@@ -13,7 +13,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
+	createSndsDayFold,
 	DAY_MS,
+	foldedSndsDays,
+	foldSndsDays,
 	normalizeSndsIp,
 	parseSndsFeed,
 	SNDS_MAX_FEED_BYTES,
@@ -89,6 +92,22 @@ describe('oversized and malformed feeds', () => {
 		const parsed = parseSndsFeed(body);
 		expect(parsed.rows).toHaveLength(SNDS_MAX_ROWS);
 		expect(parsed.truncated).toBe(true);
+	});
+
+	it('bounds the distinct (IP, day) cells one fold may hold, and counts the overflow', () => {
+		// A feed naming an unbounded number of addresses must not be able to grow the
+		// accumulator without limit. New cells past the cap are counted; cells already
+		// in the fold keep accruing, so the days we DO hold stay complete.
+		const fold = createSndsDayFold(2);
+		const { rows } = parseSndsFeed(
+			[row('203.0.113.10'), row('203.0.113.11'), row('203.0.113.12'), row('203.0.113.10')].join(
+				'\n'
+			)
+		);
+		foldSndsDays(fold, rows);
+		expect(foldedSndsDays(fold).map((day) => day.ip)).toEqual(['203.0.113.10', '203.0.113.11']);
+		expect(fold.overflowed).toBe(1);
+		expect(foldedSndsDays(fold)[0]?.messageRecipients).toBe(20);
 	});
 
 	it('drops an absurdly long line rather than storing it', () => {

@@ -325,6 +325,40 @@ describe('SNDS poll', () => {
 		expect(summary.rejected).toBe(0);
 	});
 
+	it('folds an IP-day reported by two overlapping feeds into one summed row', async () => {
+		const t = convexTest(schema, modules);
+		// SNDS keys are per registered range, and ranges overlap: the same IP-day
+		// legitimately arrives twice. Both readings must land in ONE row — the second
+		// carries the poll's own fetchedAt, so a per-feed fold would file it as a
+		// replay and throw one feed's counters away.
+		process.env['SNDS_DATA_FEED_URLS'] = `${FEED_URL}-a ${FEED_URL}-b`;
+		const bodies = [
+			feedRow({ ip: '203.0.113.10', start: dayAgo(1, 0), end: dayAgo(1, 8), recipients: 400 }),
+			feedRow({
+				ip: '203.0.113.10',
+				start: dayAgo(1, 8),
+				end: dayAgo(1, 16),
+				recipients: 600,
+				complaint: '0.2% - < 0.3%',
+				trapHits: 2,
+			}),
+		];
+		let call = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(bodies[call++] ?? '', { status: 200 }))
+		);
+
+		const summary = await t.action(internal.delivery.snds.poll, {});
+		expect(summary).toMatchObject({ feeds: 2, observations: 1, ingested: 1, replayed: 0 });
+
+		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.messageRecipients).toBe(1000);
+		expect(rows[0]?.trapHits).toBe(2);
+		expect(rows[0]?.complaintBand).toBe('0_2_to_0_3');
+	});
+
 	it('counts replays instead of hiding them behind a quiet feed', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
