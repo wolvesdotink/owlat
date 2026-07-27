@@ -11,7 +11,7 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
-import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
+import { loadWarmingCapacity } from '../delivery/warmingCapacity';
 import { MAX_PLAN_DAYS, buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
@@ -123,7 +123,24 @@ export const getCampaignSendEstimate = authedQuery({
 		}
 
 		const { totalDailyCap, totalSentToday } = warmingState;
-		const remainingToday = Math.max(0, totalDailyCap - totalSentToday);
+
+		// Project forward off the SAME published warming schedule — and the SAME IP
+		// population — the binding pre-flight gate uses (campaigns/capacityPlan.ts,
+		// delivery/warmingCapacity.ts). The previous ad-hoc "cap grows ~1.5x/day"
+		// heuristic could disagree with the gate about the day count, and taking
+		// today's remainder from `totalDailyCap - totalSentToday` disagreed about the
+		// IP population: that roll-up counts every campaign-pool IP regardless of
+		// `active`, so a deactivated high-cap IP made this readout claim "fits
+		// today" about a campaign the gate refused as a multi-day schedule. One
+		// projection, one population, one answer.
+		const now = Date.now();
+		const projection = await loadWarmingCapacity(ctx, { now });
+
+		// `null` is "capacity unknown" — the gate is equally undecided there, so the
+		// stale roll-up is only ever a DISPLAY fallback and can no longer contradict
+		// a refusal.
+		const remainingToday =
+			projection?.remainingToday ?? Math.max(0, totalDailyCap - totalSentToday);
 
 		// Check if all IPs are graduated
 		const isFullyWarmed = warmingState.phase === 'graduated';
@@ -150,14 +167,7 @@ export const getCampaignSendEstimate = authedQuery({
 			};
 		}
 
-		// Project forward off the SAME published warming schedule the binding
-		// pre-flight gate uses (campaigns/capacityPlan.ts). The previous ad-hoc
-		// "cap grows ~1.5x/day" heuristic could disagree with the gate about the
-		// day count, so the advisory estimate and the refusal told the operator
-		// two different stories. One projection, one answer.
-		const now = Date.now();
-		const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, { now });
-		if (remainingCapacityByDay === null) {
+		if (projection === null) {
 			return {
 				totalDailyCap,
 				remainingToday,
@@ -172,7 +182,7 @@ export const getCampaignSendEstimate = authedQuery({
 		// directly rather than the horizon-gated planner.
 		const plan = buildCapacitySchedule({
 			audienceSize: recipientCount,
-			remainingCapacityByDay,
+			remainingCapacityByDay: projection.byDay,
 			now,
 		});
 
