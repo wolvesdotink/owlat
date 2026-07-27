@@ -38,6 +38,8 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 		pool: 'transactional',
 		dedicatedIp: undefined,
 		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
+		providerVolumePressure: 0,
 		durationMs: 421,
 		...overrides,
 	};

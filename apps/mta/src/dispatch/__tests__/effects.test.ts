@@ -167,9 +167,27 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects(
 			[
-				{ kind: 'warming_record', ip: '10.0.0.1', result: 'send' },
-				{ kind: 'warming_record', ip: '10.0.0.2', result: 'bounce' },
-				{ kind: 'warming_record', ip: '10.0.0.3', result: 'deferral' },
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.1',
+					result: 'send',
+					providerKey: 'gmail',
+					pool: 'campaign',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.2',
+					result: 'bounce',
+					providerKey: 'gmail',
+					pool: 'campaign',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.3',
+					result: 'deferral',
+					providerKey: 'gmail',
+					pool: 'campaign',
+				},
 			],
 			deps
 		);
@@ -286,7 +304,13 @@ describe('applyEffects — ordering', () => {
 
 		const effects: DispatchEffect[] = [
 			{ kind: 'domain_throttle_reject', ip: '10.0.0.1', domain: 'g.com' },
-			{ kind: 'warming_record', ip: '10.0.0.1', result: 'bounce' },
+			{
+				kind: 'warming_record',
+				ip: '10.0.0.1',
+				result: 'bounce',
+				providerKey: 'gmail',
+				pool: 'campaign',
+			},
 			{ kind: 'suppress_recipient', address: 'a@b.c', reason: 'hard_bounce' },
 		];
 
