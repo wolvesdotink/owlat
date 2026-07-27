@@ -133,6 +133,19 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * the configured value is IGNORED, never rejected — this value is read on the
  * send path, where throwing would turn a typo into blocked mail (plan D2).
  */
+/**
+ * Cap on accepted relay-authorisation terms.
+ *
+ * RFC 7208 §4.6.4 budgets TEN DNS lookups per evaluation, and the generated
+ * return-path record already spends some on its own mechanisms. An unbounded
+ * configured value would produce a record that PERMERRORs at receivers — and a
+ * permerror on the bounce domain evaluates as a FAIL, precisely the outcome the
+ * relay-authorisation gate exists to avoid. Five leaves headroom for the rest of
+ * the record. Excess terms are dropped silently, per this module's
+ * "ignore, never throw" rule.
+ */
+export const MAX_RELAY_SPF_TERMS = 5;
+
 const RELAY_SPF_TERM_PATTERN =
 	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;
 
@@ -148,7 +161,8 @@ const RELAY_SPF_TERM_PATTERN =
  * relay VERP stamp stays off and the arm is graded degraded-measurement.
  *
  * Total: comma- or whitespace-separated, case-normalised, de-duplicated,
- * unrecognised terms dropped. Never throws.
+ * capped at {@link MAX_RELAY_SPF_TERMS}, unrecognised terms dropped. Never
+ * throws.
  */
 export function parseReturnPathRelaySpfTerms(raw: string | undefined | null): string[] {
 	const terms: string[] = [];
@@ -156,6 +170,7 @@ export function parseReturnPathRelaySpfTerms(raw: string | undefined | null): st
 		const term = entry.trim().toLowerCase();
 		if (!term || !RELAY_SPF_TERM_PATTERN.test(term) || terms.includes(term)) continue;
 		terms.push(term);
+		if (terms.length >= MAX_RELAY_SPF_TERMS) break;
 	}
 	return terms;
 }
@@ -221,6 +236,14 @@ export const RETURN_PATH_MX_PRIORITY = 10;
  * can be built (no `mailHost` AND no pool IPs). Each record is emitted only when
  * its input is present: the MX needs `mailHost`, the SPF TXT needs pool IPs — a
  * caller with only one still publishes what it can (and warns about the rest).
+ *
+ * `relaySpfTerms` ADD relay authorisation to a record the pool IPs already
+ * justify; they never justify one on their own. An empty pool with configured
+ * relay terms therefore emits NO TXT — shipped behaviour, and deliberately so:
+ * publishing `v=spf1 include:<relay> ~all` at the bounce host would take the
+ * DIRECT-MX arm's own `bounce+…@<host>` envelope sender from SPF `none` to
+ * softfail (to FAIL under `SPF_QUALIFIER=-all`), stripping DMARC's SPF leg from
+ * exactly the arm the relay stamp exists to make comparable.
  */
 export function buildReturnPathMailFromRecords(
 	returnPathHost: string | undefined,
@@ -242,7 +265,7 @@ export function buildReturnPathMailFromRecords(
 		});
 	}
 
-	if (poolIps.length > 0 || relaySpfTerms.length > 0) {
+	if (poolIps.length > 0) {
 		records.push({
 			type: 'TXT',
 			hostname: returnPathHost,

@@ -12,6 +12,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	DEFAULT_SPF_QUALIFIER,
+	MAX_RELAY_SPF_TERMS,
+	RETURN_PATH_MX_PRIORITY,
+	buildReturnPathMailFromRecords,
 	buildReturnPathSpfRecord,
 	buildSpfRecordValue,
 	parseReturnPathRelaySpfTerms,
@@ -273,6 +276,68 @@ describe('parseReturnPathRelaySpfTerms', () => {
 	it('leaves the shipped record byte-identical when nothing is configured', () => {
 		expect(buildReturnPathSpfRecord(['203.0.113.10'], DEFAULT_SPF_QUALIFIER, [])).toBe(
 			buildReturnPathSpfRecord(['203.0.113.10'], DEFAULT_SPF_QUALIFIER)
+		);
+	});
+
+	it('caps the term count so the record cannot exhaust the RFC 7208 lookup budget', () => {
+		const configured = Array.from(
+			{ length: MAX_RELAY_SPF_TERMS + 4 },
+			(_unused, index) => `include:relay${index}.example.net`
+		);
+		const parsed = parseReturnPathRelaySpfTerms(configured.join(' '));
+		expect(parsed).toHaveLength(MAX_RELAY_SPF_TERMS);
+		// Excess is DROPPED, in order, never thrown — the send path reads this.
+		expect(parsed).toEqual(configured.slice(0, MAX_RELAY_SPF_TERMS));
+	});
+});
+
+describe('buildReturnPathMailFromRecords', () => {
+	const HOST = 'bounces.example.com';
+	const MAIL_HOST = 'mail.example.com';
+
+	it('publishes the MX and the pool-authorized TXT for a normal pool', () => {
+		expect(
+			buildReturnPathMailFromRecords(HOST, ['203.0.113.10'], DEFAULT_SPF_QUALIFIER, MAIL_HOST)
+		).toEqual([
+			{ type: 'MX', hostname: HOST, value: MAIL_HOST, priority: RETURN_PATH_MX_PRIORITY },
+			{ type: 'TXT', hostname: HOST, value: 'v=spf1 ip4:203.0.113.10 ~all' },
+		]);
+	});
+
+	it('emits NO return-path TXT when the pool is empty, even with relay terms configured', () => {
+		// Shipped behaviour, and load-bearing: `v=spf1 include:relay… ~all` at the
+		// bounce host would take the DIRECT-MX arm's own `bounce+…@<host>` sender
+		// from SPF `none` to softfail — or to FAIL under `-all` — stripping DMARC's
+		// SPF leg from exactly the arm the relay stamp exists to make comparable.
+		const records = buildReturnPathMailFromRecords(
+			HOST,
+			[],
+			DEFAULT_SPF_QUALIFIER,
+			MAIL_HOST,
+			parseReturnPathRelaySpfTerms('include:relay.example.net')
+		);
+		expect(records).toEqual([
+			{ type: 'MX', hostname: HOST, value: MAIL_HOST, priority: RETURN_PATH_MX_PRIORITY },
+		]);
+		expect(records?.some((record) => record.type === 'TXT')).toBe(false);
+	});
+
+	it('emits nothing at all with no pool and no mail host', () => {
+		expect(
+			buildReturnPathMailFromRecords(HOST, [], '-all', undefined, ['include:relay.example.net'])
+		).toBeUndefined();
+	});
+
+	it('appends the relay terms once the pool justifies a record', () => {
+		const records = buildReturnPathMailFromRecords(
+			HOST,
+			['203.0.113.10'],
+			DEFAULT_SPF_QUALIFIER,
+			MAIL_HOST,
+			parseReturnPathRelaySpfTerms('include:relay.example.net')
+		);
+		expect(records?.find((record) => record.type === 'TXT')?.value).toBe(
+			'v=spf1 ip4:203.0.113.10 include:relay.example.net ~all'
 		);
 	});
 });
