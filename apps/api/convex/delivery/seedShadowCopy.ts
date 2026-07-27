@@ -107,6 +107,11 @@ export function buildSeedShadowEnvelope(
 	// so neither can reach a contact record or a campaign denominator.
 	if (base.convexSiteUrl !== undefined) shadow.convexSiteUrl = base.convexSiteUrl;
 	if (base.trackingBaseUrl !== undefined) shadow.trackingBaseUrl = base.trackingBaseUrl;
+	// `engagementScore` is deliberately NOT copied: it is the REAL recipient's
+	// contact score, and a probe has no contact. Omitting it is the correct
+	// reading — the MTA treats an absent score as "unknown" and applies
+	// `PRIORITY_BANDS.DEFAULT`, whereas cloning the last subscriber's score
+	// would let an unrelated contact's engagement reorder the measurement.
 	// `siteUrl` (the in-body unsubscribe/preference footer) and
 	// `viewInBrowserUrl` (a contact-scoped archive token) are deliberately
 	// dropped: both are only meaningful with a `contactId`, which a shadow copy
