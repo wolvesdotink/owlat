@@ -331,6 +331,116 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
+	/**
+	 * THE VERDICT IS A FUNCTION OF THE CONFIGURATION, NOT OF A DICE ROLL.
+	 *
+	 * `workload_split` picks among the enabled+ready entries by WEIGHTED RANDOM
+	 * draw, and with the escape hatch enabled but the From-domain's relay proof
+	 * ABSENT the shipped resolver throws on exactly the draws that land on the
+	 * relay entry. A gate that read its answer off the selected route therefore
+	 * answered "allow" on some draws and "refuse over N days" on others for the
+	 * same clock and the same rows — and since the wizard preview and the binding
+	 * gate are separate calls, each drawing its own number, the operator could be
+	 * quoted one answer and get the other. Both extremes of the draw must land on
+	 * the same verdict.
+	 */
+	it('answers deterministically under workload_split with an unproven relay escape hatch', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// Deliberately NO `seedVerifiedRelayIdentity`: the From-domain carries no
+		// current relay proof, so the relay draw makes the shipped resolver throw.
+		await seedCampaignRoute(t, {
+			strategy: 'workload_split',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		// Both ends of the weighted-random draw, plus unstubbed repeats.
+		const draws = [0, 0.999_999, null] as const;
+		for (const draw of draws) {
+			const random = draw === null ? null : vi.spyOn(Math, 'random').mockReturnValue(draw);
+			try {
+				for (let attempt = 0; attempt < (draw === null ? 20 : 1); attempt += 1) {
+					// SES carries a real share of the audience here, so the projection
+					// is not an upper bound and the cap cannot strand the campaign.
+					expect(await assessCampaign(t, campaignId)).toEqual({
+						capacityKnown: false,
+						fits: true,
+					});
+					expect((await runPreflight(t, campaignId)).ok).toBe(true);
+				}
+			} finally {
+				random?.mockRestore();
+			}
+		}
+	});
+
+	/**
+	 * THE ENV-FALLBACK BRANCH. `workload_split` whose only route entry is enabled
+	 * but NOT READY leaves `resolveRoute` with no enabled entry at all, so it
+	 * falls through to the `EMAIL_PROVIDER` default — the own MTA. The gate must
+	 * read the campaign's dispatch kind off that resolved base route (there is no
+	 * enabled+ready set to read it from) and still bind.
+	 */
+	it('refuses under workload_split when only the env default is left to dispatch through', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		// No `configureSesEnv()`: the single SES entry is enabled, uncredentialed.
+		await seedCampaignRoute(t, {
+			strategy: 'workload_split',
+			providers: [{ providerType: 'ses', isEnabled: true }],
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+
+	/**
+	 * DISABLED IS NOT A DISPATCH PATH, however ready it is. The gate reads
+	 * readiness out of `SendRouteFacts.readyKinds`, which is computed over EVERY
+	 * kind named in `providerRoutes.providers` — `isEnabled` or not — so a
+	 * credentialed but DISABLED SES entry is present in that set and must still
+	 * not count as a share of the audience, nor as an overflow target.
+	 */
+	it('still refuses under workload_split when a READY SES entry is disabled', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedVerifiedRelayIdentity(t, 'verified.example.com');
+		await seedCampaignRoute(t, {
+			strategy: 'workload_split',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: false },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+
 	it('allows the send when campaigns do not dispatch through the own MTA at all', async () => {
 		const t = convexTest(schema, modules);
 		// The MTA still carries transactional mail, so `warmingState` keeps syncing
