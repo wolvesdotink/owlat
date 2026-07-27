@@ -24,6 +24,7 @@ import {
 	capacityWithinHorizon,
 	MAX_PLAN_DAYS,
 	planCampaignCapacity,
+	usableDayCount,
 	type CampaignCapacityPlan,
 	type CampaignCapacitySchedule,
 } from './capacityPlan';
@@ -113,6 +114,15 @@ async function measureCampaignCapacity(
 		startsAt,
 	});
 	if (remainingCapacityByDay === null) return { capacityKnown: false, fits: true };
+
+	// The projection stops at the last day it can BOUND: schedule day 30 removes
+	// the warming cap altogether, and clamping that to a display sentinel would
+	// make the array a LOWER bound and let the gate refuse a campaign that fits.
+	// If it does not reach across the retention horizon, capacity inside that
+	// horizon is unbounded — unknown, and unknown allows.
+	if (remainingCapacityByDay.length < usableDayCount(startsAt, GOVERNED_MTA_MAX_MESSAGE_AGE_MS)) {
+		return { capacityKnown: false, fits: true };
+	}
 
 	// Bound the CANDIDATE count by CAPACITY, not by audience size. The verdict
 	// is already decided once the count exceeds everything the deployment could

@@ -89,6 +89,7 @@ describe('planCampaignCapacity — the table', () => {
 			finishesAt: MIDNIGHT,
 			covered: 0,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 	});
 
@@ -189,6 +190,7 @@ describe('planCampaignCapacity — the table', () => {
 			finishesAt: MIDNIGHT,
 			covered: 0,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 	});
 
@@ -208,6 +210,7 @@ describe('planCampaignCapacity — the table', () => {
 			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
 			covered: 150,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 	});
 });
@@ -251,6 +254,7 @@ describe('planCampaignCapacity — adversarial', () => {
 			finishesAt: MIDNIGHT,
 			covered: 0,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 	});
 
@@ -365,6 +369,7 @@ describe('buildCapacitySchedule — the horizon-free enumeration', () => {
 			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
 			covered: 200,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 	});
 

@@ -16,7 +16,9 @@
  *  - The projection is an UPPER bound. Per-IP caps come from the published
  *    warming schedule, which the MTA treats as a ceiling. Refusing against an
  *    optimistic projection is sound: if the best case cannot finish, reality
- *    cannot either.
+ *    cannot either. To stay an upper bound the array ENDS at the last day it can
+ *    bound — schedule day 30 lifts the cap entirely — so callers must treat a
+ *    short array as "unknown beyond here", never as "zero beyond here".
  */
 
 import { getWarmingCapForDay } from '@owlat/shared/warming';
@@ -130,16 +132,24 @@ export async function loadRemainingCapacityByDay(
 		day += 1
 	) {
 		let projected = 0;
+		let unbounded = false;
 		for (const ip of campaignIps) {
 			const cap = getWarmingCapForDay(Math.floor(ip.currentDay) + day);
-			// Schedule day 30 is `Infinity`: the MTA stops throttling there. That is
-			// UNBOUNDED capacity, not `GRADUATED_DISPLAY_CAP` — clamping it would turn
-			// the projection into a LOWER bound and let the gate refuse a campaign
-			// that actually fits. Unknown, not a number.
-			if (!Number.isFinite(cap)) return null;
+			if (!Number.isFinite(cap)) {
+				unbounded = true;
+				break;
+			}
 			projected += cap;
 		}
+		// Schedule day 30 is `Infinity`: the MTA stops throttling there. That is
+		// UNBOUNDED capacity, not `GRADUATED_DISPLAY_CAP` — clamping it would turn
+		// the projection into a LOWER bound and let the gate refuse a campaign that
+		// actually fits. Stop at the last day we can bound instead, and never push
+		// `Infinity` into the array (the planner's `sanitizeCount` maps it to 0,
+		// which reads as "no capacity" — the exact inversion of the truth).
+		if (unbounded) break;
 		byDay.push(projected);
 	}
+	if (byDay.length === 0) return null;
 	return byDay;
 }

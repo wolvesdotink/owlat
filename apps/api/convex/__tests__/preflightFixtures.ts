@@ -123,9 +123,6 @@ export async function seedWarmingState(
 	});
 }
 
-/** Alias kept for the regression suite's reading order. */
-export const seedTightWarmingState = seedWarmingState;
-
 /**
  * Run the real pre-flight against a stored campaign with the BINDING capacity
  * gate enabled. `validateReadyToSendQuery` deliberately disables it (a

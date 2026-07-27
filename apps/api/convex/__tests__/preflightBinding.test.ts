@@ -103,6 +103,7 @@ describe('pre-flight capacity gate — binding refusal', () => {
 			finishesAt: MIDNIGHT + 5 * 24 * 60 * 60 * 1000,
 			covered: 600,
 			truncated: false,
+			audienceUnderCounted: false,
 		});
 		// The copy is a schedule, not an error.
 		expect(result.message).toContain('5 days');
@@ -274,6 +275,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				finishesAt: MIDNIGHT,
 				covered: 0,
 				truncated: false,
+				audienceUnderCounted: false,
 			})
 		).toEqual({ capacityKnown: false, fits: true });
 	});
@@ -287,6 +289,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
 				covered: 150,
 				truncated: false,
+				audienceUnderCounted: false,
 			})
 		).toEqual({
 			capacityKnown: true,
@@ -298,6 +301,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
 				covered: 150,
 				truncated: false,
+				audienceUnderCounted: false,
 			},
 		});
 	});

@@ -30,7 +30,7 @@ import {
 import {
 	MIDNIGHT,
 	runPreflight,
-	seedTightWarmingState,
+	seedWarmingState,
 	useMtaPreflightEnv,
 	type TestRunner,
 } from './preflightFixtures';
@@ -66,7 +66,7 @@ async function seedOversizedTopic(t: TestRunner): Promise<Id<'topics'>> {
 describe('pre-flight ladder — shipped checks still win over the capacity gate', () => {
 	it('no_template comes first even when capacity would refuse', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
@@ -90,7 +90,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('no_audience comes before the capacity gate (there is nothing to plan)', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
 			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
@@ -109,7 +109,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('no_from_email still precedes the abuse-status and capacity checks', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
@@ -138,7 +138,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('sending_not_allowed (suspended) still precedes the provider, domain and capacity checks', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		delete process.env['EMAIL_PROVIDER'];
 		let campaignId: Id<'campaigns'>;
@@ -168,7 +168,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('no_delivery_provider still precedes the domain and capacity checks', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		delete process.env['EMAIL_PROVIDER'];
 		delete process.env['MTA_API_URL'];
@@ -195,7 +195,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('domain_not_verified still precedes the sender and capacity checks', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
@@ -219,7 +219,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('sender_not_allowed still precedes the capacity check', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
@@ -256,7 +256,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 
 	it('scheduled_in_past still precedes the capacity check on the schedule path', async () => {
 		const t = convexTest(schema, modules);
-		await seedTightWarmingState(t);
+		await seedWarmingState(t);
 		const topicId = await seedOversizedTopic(t);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
