@@ -10,10 +10,11 @@ import {
 	buildCapacitySchedule,
 	capacityWithinHorizon,
 	planCampaignCapacity,
+	totalPlannableCapacity,
 	usableDayCount,
-	MS_PER_DAY,
 	MAX_PLAN_DAYS,
 } from '../capacityPlan';
+import { MS_PER_DAY } from '../../lib/constants';
 
 /** A UTC midnight, so day boundaries in assertions are exact. */
 const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
@@ -444,5 +445,39 @@ describe('capacityWithinHorizon', () => {
 				now: Number.NaN,
 			})
 		).toBe(0);
+	});
+});
+
+describe('totalPlannableCapacity — the ONE trailing-rate extension rule', () => {
+	/**
+	 * The gate bounds its audience count by this number, and the schedule builder
+	 * enumerates against the same rule. They used to be two hand-written copies
+	 * of "sum the projection, then extend at the trailing rate", which is exactly
+	 * the shape that drifts. Pinned here as one function, and cross-checked
+	 * against the builder below.
+	 */
+	it('sums the projection and extends to MAX_PLAN_DAYS at the trailing rate', () => {
+		expect(totalPlannableCapacity([0, 100, 200])).toBe(0 + 100 + 200 + (MAX_PLAN_DAYS - 3) * 200);
+	});
+
+	it('is zero for an empty projection and for one that plateaus at zero', () => {
+		expect(totalPlannableCapacity([])).toBe(0);
+		expect(totalPlannableCapacity([100, 0])).toBe(100);
+	});
+
+	it('sanitizes hostile entries rather than propagating NaN', () => {
+		expect(totalPlannableCapacity([Number.NaN, -5, 10])).toBe(10 + (MAX_PLAN_DAYS - 3) * 10);
+	});
+
+	it('agrees with what the schedule builder can actually cover', () => {
+		const projection = [0, 100, 200];
+		const total = totalPlannableCapacity(projection);
+		const plan = buildCapacitySchedule({
+			audienceSize: total,
+			remainingCapacityByDay: projection,
+			now: MIDNIGHT,
+		});
+		expect(plan.covered).toBe(total);
+		expect(plan.truncated).toBe(false);
 	});
 });

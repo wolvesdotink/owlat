@@ -13,7 +13,14 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { MIDNIGHT, useMtaPreflightEnv, warmingIp, type TestRunner } from './preflightFixtures';
+import {
+	MIDNIGHT,
+	useMtaPreflightEnv,
+	warmingIp,
+	type TestRunner,
+	type WarmingIpRow,
+	type WarmingPhase,
+} from './preflightFixtures';
 import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -29,12 +36,16 @@ useMtaPreflightEnv();
 async function seedWarming(
 	t: TestRunner,
 	opts: {
-		phase: string;
+		phase: WarmingPhase;
+		/** Deployment roll-up — counts EVERY campaign-pool IP, `active` or not. */
 		totalDailyCap: number;
 		totalSentToday: number;
+		/** The primary IP's own cap. Defaults to the roll-up (one-IP deployments). */
+		ipDailyCap?: number;
+		ipSentToday?: number;
 		currentDay: number;
 		syncedAt?: number;
-		extraIps?: ReturnType<typeof warmingIp>[];
+		extraIps?: WarmingIpRow[];
 	}
 ): Promise<void> {
 	await t.run(async (ctx) => {
@@ -48,8 +59,8 @@ async function seedWarming(
 					ip: '203.0.113.10',
 					phase: opts.phase,
 					currentDay: opts.currentDay,
-					dailyCap: opts.totalDailyCap,
-					sentToday: opts.totalSentToday,
+					dailyCap: opts.ipDailyCap ?? opts.totalDailyCap,
+					sentToday: opts.ipSentToday ?? opts.totalSentToday,
 				}),
 				...(opts.extraIps ?? []),
 			],
@@ -182,6 +193,51 @@ describe('getCampaignSendEstimate — day counts', () => {
 			recipientCount: 600,
 		});
 
+		expect(estimate.estimatedDays).toBe(5);
+		expect(estimate.message).toBe(
+			'Based on your IP warmup progress, this campaign will take approximately 5 days to complete.'
+		);
+	});
+
+	/**
+	 * The advisory readout and the BINDING gate must count the same IPs.
+	 * `warmingState.totalDailyCap` / `totalSentToday` roll up every campaign-pool
+	 * IP regardless of `active` (packages/shared/src/ipReadinessSync.ts), so
+	 * deriving today's remainder from them let a DEACTIVATED 100,000-cap IP make
+	 * this query answer "fits within today's remaining capacity (100,050 emails)"
+	 * about the very campaign the gate refuses as a five-day schedule
+	 * (preflightBinding.test.ts, "does not count a deactivated campaign IP").
+	 * Both now read the ACTIVE campaign-IP sum out of `warmingCapacity.ts`.
+	 */
+	it('ignores a deactivated campaign IP when sizing today’s remainder', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarming(t, {
+			phase: 'ramp',
+			totalDailyCap: 100_050,
+			totalSentToday: 50,
+			ipDailyCap: 50,
+			ipSentToday: 50,
+			currentDay: 1,
+			extraIps: [
+				warmingIp({
+					ip: '203.0.113.40',
+					phase: 'ramp',
+					currentDay: 12,
+					dailyCap: 100_000,
+					active: false,
+				}),
+			],
+		});
+
+		const estimate = await t.query(api.analytics.reputationQueries.getCampaignSendEstimate, {
+			recipientCount: 600,
+		});
+
+		// The deployment roll-up is still the roll-up (a display field) …
+		expect(estimate.totalDailyCap).toBe(100_050);
+		// … but the remainder — the number the fits-today short-circuit turns on —
+		// counts only the active day-1 IP, whose cap is already spent.
+		expect(estimate.remainingToday).toBe(0);
 		expect(estimate.estimatedDays).toBe(5);
 		expect(estimate.message).toBe(
 			'Based on your IP warmup progress, this campaign will take approximately 5 days to complete.'

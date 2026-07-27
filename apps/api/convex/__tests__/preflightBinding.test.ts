@@ -33,7 +33,11 @@ import {
 import type { Id } from '../_generated/dataModel';
 import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/preflight';
 import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
-import { assessCampaignCapacity, toAssessment } from '../campaigns/capacityPreflight';
+import {
+	assessCampaignCapacity,
+	toAssessment,
+	type CampaignCapacityAssessment,
+} from '../campaigns/capacityPreflight';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const { sessionOrganizationMock } = await import('./preflightFixtures');
@@ -43,6 +47,30 @@ vi.mock('../lib/sessionOrganization', async () => {
 const modules = import.meta.glob('../**/*.*s');
 
 useMtaPreflightEnv();
+
+/**
+ * The gate's ASSESSMENT for a stored campaign, un-laundered by the pre-flight
+ * ladder. `result.ok === true` cannot tell "allowed because the lower bound
+ * decided nothing" apart from "allowed because the scan threw and
+ * `assessCampaignCapacity`'s fail-open catch swallowed it" — the assessment
+ * shape can (`capacityKnown: false` for the first, and for the second too, so
+ * the suites that care assert it alongside a positive signal).
+ */
+async function assessCampaign(
+	t: TestRunner,
+	campaignId: Id<'campaigns'>,
+	options: { startsAt?: number } = {}
+): Promise<CampaignCapacityAssessment> {
+	return await t.run(async (ctx) => {
+		const campaign = await ctx.db.get(campaignId);
+		if (!campaign?.audience) throw new Error('campaign missing its audience');
+		return await assessCampaignCapacity(ctx, {
+			audience: campaign.audience,
+			now: MIDNIGHT,
+			...options,
+		});
+	});
+}
 
 /**
  * A sendable campaign: template, verified domain, curated sender, and a topic
@@ -522,20 +550,26 @@ describe('pre-flight capacity gate — segment audiences', () => {
 	});
 
 	/**
-	 * The examine ceiling is the only bound that holds for a segment: the scan
-	 * walks every LIVE contact, not just matches. Here the 8,100-row noise floor
-	 * is examined before any of the 600 matches, so the surviving lower bound is
-	 * 0 — below horizon capacity, therefore undecided, therefore allowed. A
-	 * failure to MEASURE never blocks a send.
+	 * The document budget is the only bound that holds for a segment: the scan
+	 * walks every LIVE contact, not just matches. This filter is on a BUILT-IN
+	 * field, so one contact costs one document and the 6,100-row noise floor is
+	 * read before any of the 600 matches — the surviving lower bound is 0, below
+	 * horizon capacity, therefore undecided, therefore allowed. A failure to
+	 * MEASURE never blocks a send.
+	 *
+	 * Asserted on the ASSESSMENT, not just on `ok`: `{ capacityKnown: false }`
+	 * distinguishes "the lower bound decided nothing" from "the scan threw and
+	 * the fail-open catch swallowed it", which `ok === true` alone cannot.
 	 */
 	it('allows the send when the audience scan exhausts its read budget', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
-		const campaignId = await seedSegmentCampaign(t, { matching: 600, otherContacts: 8_100 });
+		const campaignId = await seedSegmentCampaign(t, { matching: 600, otherContacts: 6_100 });
 
 		const result = await runPreflight(t, campaignId);
-
 		expect(result.ok).toBe(true);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
 	});
 });
 
@@ -566,18 +600,13 @@ describe('pre-flight capacity gate — hostile start anchors', () => {
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
 
-		await t.run(async (ctx) => {
-			const campaign = await ctx.db.get(campaignId);
-			if (!campaign?.audience) throw new Error('campaign missing its audience');
-			const assessment = await assessCampaignCapacity(ctx, {
-				audience: campaign.audience,
-				now: MIDNIGHT,
-				startsAt: MIDNIGHT - 10 * DAY_MS,
-			});
-			expect(assessment.fits).toBe(false);
-			if (assessment.fits) return;
-			expect(assessment.schedule.slices).toEqual([0, 100, 200, 200, 100]);
+		const assessment = await assessCampaign(t, campaignId, {
+			startsAt: MIDNIGHT - 10 * DAY_MS,
 		});
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.slices).toEqual([0, 100, 200, 200, 100]);
 	});
 });
 
@@ -625,13 +654,18 @@ describe('the fire-time path does NOT re-run the capacity gate', () => {
 
 describe('pre-flight capacity gate — audiences past the read budget', () => {
 	/**
-	 * The gate's examine budget (8,000 rows) is smaller than the audiences this
-	 * piece exists to stop. Throwing the partial count away would make the budget
-	 * an OFF switch for exactly those campaigns, so the partial count is kept as a
-	 * LOWER BOUND: a floor already above the capacity inside the retention horizon
-	 * is a sound refusal, because the real audience can only be bigger.
+	 * The gate's document budget (6,000 documents) is smaller than the audiences
+	 * this piece exists to stop. Throwing the partial count away would make the
+	 * budget an OFF switch for exactly those campaigns, so the partial count is
+	 * kept as a LOWER BOUND: a floor already above the capacity inside the
+	 * retention horizon is a sound refusal, because the real audience can only be
+	 * bigger.
+	 *
+	 * A topic candidate costs TWO documents (the membership plus its contact), so
+	 * 6,000 documents buys exactly 3,000 candidates — the pinned proof that the
+	 * budget is charged per document and not per row.
 	 */
-	it('still REFUSES a topic audience larger than the examine budget', async () => {
+	it('still REFUSES a topic audience larger than the read budget', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 10_000);
@@ -641,8 +675,8 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('exceeds_sending_capacity');
-		// The plan is built from the 8,000-row floor, not from 10,000 …
-		expect(result.capacityPlan?.covered).toBe(8_000);
+		// The plan is built from the 3,000-candidate floor, not from 10,000 …
+		expect(result.capacityPlan?.covered).toBe(3_000);
 		// … and it says so, rather than quoting a finish date for an audience we
 		// never finished counting.
 		expect(result.capacityPlan?.audienceUnderCounted).toBe(true);
@@ -673,7 +707,7 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 				'campaignSenders',
 				createTestCampaignSender({ email: 'sender@verified.example.com' })
 			);
-			for (let i = 0; i < 8_100; i += 1) {
+			for (let i = 0; i < 6_100; i += 1) {
 				await ctx.db.insert(
 					'contacts',
 					createTestContact({ email: `noise-${i}@other.test`, doiStatus: 'not_required' })
@@ -709,8 +743,11 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 		});
 
 		const result = await runPreflight(t, campaignId);
-
 		expect(result.ok).toBe(true);
+
+		// Allowed because the lower bound decided nothing — NOT because the scan
+		// threw and the fail-open catch swallowed it.
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
 	});
 });
 
@@ -729,14 +766,6 @@ describe('pre-flight capacity gate — the projection horizon', () => {
 		});
 	}
 
-	async function assess(t: TestRunner, campaignId: Id<'campaigns'>) {
-		return await t.run(async (ctx) => {
-			const campaign = await ctx.db.get(campaignId);
-			if (!campaign?.audience) throw new Error('campaign missing its audience');
-			return await assessCampaignCapacity(ctx, { audience: campaign.audience, now: MIDNIGHT });
-		});
-	}
-
 	/**
 	 * `BASE_WARMING_SCHEDULE` day 30 is `Infinity` — the MTA stops throttling. An
 	 * IP that crosses it INSIDE the four-day retention horizon has unbounded
@@ -748,7 +777,7 @@ describe('pre-flight capacity gate — the projection horizon', () => {
 		await seedIpAtDay(t, 27, 30_000);
 		const campaignId = await seedSendableCampaign(t, 600);
 
-		const assessment = await assess(t, campaignId);
+		const assessment = await assessCampaign(t, campaignId);
 
 		expect(assessment).toEqual({ capacityKnown: false, fits: true });
 	});
@@ -758,7 +787,7 @@ describe('pre-flight capacity gate — the projection horizon', () => {
 		await seedIpAtDay(t, 25, 30_000);
 		const campaignId = await seedSendableCampaign(t, 600);
 
-		const assessment = await assess(t, campaignId);
+		const assessment = await assessCampaign(t, campaignId);
 
 		expect(assessment).toEqual({ capacityKnown: true, fits: true });
 	});
@@ -884,5 +913,41 @@ describe('the capacity gate never blocks the schedule mutation', () => {
 
 		const scheduled = await t.run(async (ctx) => await ctx.db.get(campaignId));
 		expect(scheduled?.status).toBe('scheduled');
+	});
+});
+
+describe('pre-flight capacity gate — a suppression list past the bounded scan', () => {
+	/**
+	 * The budgeted scan reads the suppression list with `.take()` rather than
+	 * `.collect()` — collecting it inside `campaigns.scheduling.schedule` would
+	 * put every suppressed address in the mutation's OCC read set, and an OCC
+	 * conflict is raised at COMMIT time, where the gate's fail-open catch can no
+	 * longer turn it into "allow" (D16).
+	 *
+	 * The consequence has to be handled honestly: candidates filtered through a
+	 * SUBSET of the blocklist yield an OVER-count of eligible recipients, which
+	 * bounds the audience in NEITHER direction. Unlike a spent read budget it may
+	 * therefore never license a refusal — and the audience here (600 against a
+	 * 500-recipient horizon, well inside the document budget) is one the gate
+	 * refuses outright whenever it CAN read the blocklist in full.
+	 */
+	it('never refuses on an over-count from a truncated suppression set', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 2_001; i += 1) {
+				await ctx.db.insert('blockedEmails', {
+					email: `blocked-${i}@nowhere.test`,
+					reason: 'manual',
+					createdAt: MIDNIGHT,
+				});
+			}
+		});
+
+		const result = await runPreflight(t, campaignId);
+		expect(result.ok).toBe(true);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
 	});
 });

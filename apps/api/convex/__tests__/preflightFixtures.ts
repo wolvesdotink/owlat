@@ -12,7 +12,7 @@ import {
 	type PreflightOptions,
 	type PreflightResult,
 } from '../campaigns/preflight';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 
 export type TestRunner = ReturnType<typeof convexTest>;
 
@@ -71,16 +71,33 @@ export function useMtaPreflightEnv(): void {
 	});
 }
 
-/** One warming IP row, with the noise fields filled in. */
+/** One entry of `warmingState.ips` — anchored to the schema row itself. */
+export type WarmingIpRow = Doc<'warmingState'>['ips'][number];
+
+/**
+ * The values `phase` and `pool` may actually take. The schema stores both as
+ * `v.string()` (the MTA sync is the writer), so nothing downstream of the
+ * schema stops a fixture from writing `pool: 'campaigns'` — which would make
+ * every seeded IP non-campaign, silently empty the projection's population, and
+ * leave the assertions passing for the wrong reason. Narrow them HERE, where the
+ * fixtures are written, so that typo is a compile error.
+ */
+export type WarmingPhase = 'ramp' | 'plateau' | 'graduated';
+export type WarmingIpPool = 'campaign' | 'transactional';
+
+/**
+ * One warming IP row, with the noise fields filled in. The return type is the
+ * schema row, so a schema change breaks the fixture instead of the suites.
+ */
 export function warmingIp(overrides: {
 	ip: string;
-	phase: string;
+	phase: WarmingPhase;
 	currentDay: number;
 	dailyCap: number;
 	sentToday?: number;
-	pool?: string;
+	pool?: WarmingIpPool;
 	active?: boolean;
-}) {
+}): WarmingIpRow {
 	return {
 		ip: overrides.ip,
 		phase: overrides.phase,
@@ -101,7 +118,7 @@ export function warmingIp(overrides: {
  */
 export async function seedWarmingState(
 	t: TestRunner,
-	overrides: { totalSentToday?: number; syncedAt?: number; phase?: string } = {}
+	overrides: { totalSentToday?: number; syncedAt?: number; phase?: WarmingPhase } = {}
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('warmingState', {
