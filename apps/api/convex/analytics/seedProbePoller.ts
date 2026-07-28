@@ -51,6 +51,9 @@ const SEED_ACCOUNT_PAGE_SIZE = 25;
 /** Bound on probe ids handed to the worker per account per sweep. */
 const SEED_PROBE_WORK_LIMIT = 50;
 
+/** Bound on the click-host allowlist read. A deployment has a handful. */
+const TRACKING_DOMAIN_SCAN_LIMIT = 50;
+
 const connectableStatuses = new Set<string>(CONNECTABLE_ACCOUNT_STATUSES);
 
 /**
@@ -62,6 +65,16 @@ const connectableStatuses = new Set<string>(CONNECTABLE_ACCOUNT_STATUSES);
  * and its own site/Convex origins, and nothing else. Anything not on the list
  * is simply not clicked — a skipped click is a missing data point, which is a
  * far cheaper outcome than an outbound request the worker was talked into.
+ *
+ * DEPLOYMENT-SCOPED, because `trackingDomains` is a deployment-scoped table:
+ * the row carries `domain`, `cnameTarget` and `isVerified` and NO organization
+ * column, and every shipped reader of it (`domains/trackingDomains.ts`,
+ * `delivery/checklist.ts`) reads the whole table for the same reason. There is
+ * therefore no per-org subset to narrow to — the deployment's verified tracking
+ * hosts ARE the set of hosts any org's wrapped links can point at. What this
+ * read must not be is UNBOUNDED, and it is not: it is paged, and it is resolved
+ * once per sweep tick, lazily, so a tick with no probe work does not read it at
+ * all.
  */
 async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
 	const hosts = new Set<string>();
@@ -75,9 +88,10 @@ async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
 	};
 	add(getOptional('CONVEX_SITE_URL'));
 	add(getOptional('SITE_URL'));
-	// Tracking domains are few per deployment and the shipped resolver collects
-	// them the same way (`domains/trackingDomains.getActiveTrackingDomain`).
-	const trackingDomains = await db.query('trackingDomains').collect(); // bounded: tracking domains (a handful per deployment), same read as domains/trackingDomains.ts
+	// A handful per deployment, and paged rather than collected: this runs on a
+	// 15-minute cron, and a bound is cheaper than trusting an operator never to
+	// add a hundred.
+	const trackingDomains = await db.query('trackingDomains').take(TRACKING_DOMAIN_SCAN_LIMIT);
 	for (const domain of trackingDomains) {
 		if (domain.isVerified) add(domain.domain);
 	}
@@ -110,7 +124,14 @@ export const listSeedProbeWork = internalQuery({
 			.paginate({ numItems: SEED_ACCOUNT_PAGE_SIZE, cursor: args.cursor ?? null });
 
 		const items: SeedProbeWorkItem[] = [];
-		const clickHosts = await resolveClickHosts(ctx.db);
+		// Resolved at most ONCE per tick, and only once an account actually has
+		// probe work: the common tick on a deployment between campaigns produces no
+		// items at all and must not pay for a table read to say so.
+		let clickHosts: string[] | undefined;
+		const clickHostsFor = async (): Promise<string[]> => {
+			clickHosts ??= await resolveClickHosts(ctx.db);
+			return clickHosts;
+		};
 		for (const account of page.page) {
 			if (!connectableStatuses.has(account.status)) continue;
 			const mailbox = await ctx.db.get(account.mailboxId);
@@ -153,7 +174,7 @@ export const listSeedProbeWork = internalQuery({
 				provider: seedProviderOf(account),
 				probeIds,
 				expiredProbeIds,
-				clickHosts,
+				clickHosts: await clickHostsFor(),
 			});
 		}
 		return {
