@@ -144,3 +144,21 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('graduated'),
 	rampGateIdValidator
 );
+
+/**
+ * THE PACE ACTUATOR'S REASONS, as a stored vocabulary (plan D3, D12).
+ *
+ * The second actuator answers the SAME questions in the same order, so it
+ * reports the share actuator's whole vocabulary and adds only the reasons that
+ * are genuinely about a pace dial. Mirrors `PaceDecisionReason` in
+ * delivery/ramp/paceTypes.ts; parity is asserted in
+ * delivery/__tests__/mixDecisions.test.ts.
+ */
+export const paceDecisionReasonValidator = v.union(
+	rampDecisionReasonValidator,
+	v.literal('low_utilisation'),
+	v.literal('day_already_advanced'),
+	v.literal('share_moved_first'),
+	v.literal('multiplier_unreadable'),
+	v.literal('schedule_ceiling')
+);

@@ -83,9 +83,20 @@ const campaignSendJobs = defineTable({
 	planDayIndex: v.optional(v.number()),
 	planTotalDays: v.optional(v.number()),
 	// The audience size the plan was built from, for the progress line's
-	// denominator ("5 000 of 20 000"). A LOWER bound whenever the bounded count
-	// stopped early, which is why the copy never presents it as a promise.
+	// denominator ("5 000 of 20 000") — and whether that number is the audience
+	// size or only a FLOOR under it, because the bounded count stopped early.
+	// The flag is load-bearing rather than cosmetic: a lower bound may lengthen a
+	// plan, may never shorten one, and may never be read as "the audience is
+	// finished". The copy says "of at least N" when it is set.
 	plannedTotal: v.optional(v.number()),
+	isPlannedTotalLowerBound: v.optional(v.boolean()),
+	// A DELIBERATELY PARKED WALK's resume instant. Today's slice is spent and the
+	// walk is waiting for the next cap window — up to ~24h out, far past the
+	// stuck-walk watchdog's staleness threshold. Without this the watchdog would
+	// re-drive the parked row every five minutes, and each re-drive would park it
+	// again and schedule ANOTHER resume hop at the same instant. Cleared on every
+	// hop that makes progress, so a walk that genuinely dies is still re-driven.
+	resumeAt: v.optional(v.number()),
 	startedAt: v.number(),
 	updatedAt: v.number(),
 })

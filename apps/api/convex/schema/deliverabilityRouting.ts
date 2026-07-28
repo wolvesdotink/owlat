@@ -6,6 +6,7 @@ import {
 	deliverabilitySignalSourceValidator,
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
+	paceDecisionReasonValidator,
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
 } from '../delivery/deliverabilityValidators';
@@ -211,6 +212,25 @@ export const deliverabilityRoutingTables = {
 		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),
 		frozenUntil: v.optional(v.number()),
+		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION (plan D3, D12). One
+		// controller decides both dials in one tick, so one row records both —
+		// splitting them across two rows would make "what did the controller do to
+		// this cell at 14:00" a join. Absent on a row written for a deployment with
+		// no pace state, which is every row written before the pace dial existed.
+		//
+		// `isPaceDeferred` is the COMPOSITION INTERLOCK, recorded rather than
+		// inferred: share moves first and pace moves second, and a cell may never
+		// increase both in one window. When the interlock fires, `paceReason` reads
+		// `share_moved_first` and the multiplier holds — which is a decision an
+		// operator is entitled to see spelled out, not one they should have to
+		// reconstruct by comparing two numbers.
+		fromPaceMultiplier: v.optional(v.number()),
+		toPaceMultiplier: v.optional(v.number()),
+		paceDirection: v.optional(
+			v.union(v.literal('increase'), v.literal('decrease'), v.literal('hold'))
+		),
+		paceReason: v.optional(paceDecisionReasonValidator),
+		isPaceDeferred: v.optional(v.boolean()),
 		// JSON snapshot of every gate's inputs and the hard-stop signals, so a
 		// decision can be replayed against the pure function that made it. A blob
 		// rather than a nested object: it is evidence, never a query predicate.

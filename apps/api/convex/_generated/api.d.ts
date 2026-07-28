@@ -143,6 +143,7 @@ import type * as campaigns_preflight from "../campaigns/preflight.js";
 import type * as campaigns_scheduling from "../campaigns/scheduling.js";
 import type * as campaigns_send from "../campaigns/send.js";
 import type * as campaigns_sendJob from "../campaigns/sendJob.js";
+import type * as campaigns_sendPlanProgress from "../campaigns/sendPlanProgress.js";
 import type * as campaigns_sendPlanQueries from "../campaigns/sendPlanQueries.js";
 import type * as campaigns_sendQueries from "../campaigns/sendQueries.js";
 import type * as campaigns_sendVariantSplit from "../campaigns/sendVariantSplit.js";
@@ -286,6 +287,7 @@ import type * as delivery_rampCapacityInputs from "../delivery/rampCapacityInput
 import type * as delivery_rampControllerCron from "../delivery/rampControllerCron.js";
 import type * as delivery_rampControllerInputs from "../delivery/rampControllerInputs.js";
 import type * as delivery_rampMixDecisions from "../delivery/rampMixDecisions.js";
+import type * as delivery_rampPaceInputs from "../delivery/rampPaceInputs.js";
 import type * as delivery_ramp_controllerBounds from "../delivery/ramp/controllerBounds.js";
 import type * as delivery_ramp_controllerConfig from "../delivery/ramp/controllerConfig.js";
 import type * as delivery_ramp_controllerNarrative from "../delivery/ramp/controllerNarrative.js";
@@ -1020,6 +1022,7 @@ declare const fullApi: ApiFromModules<{
   "campaigns/scheduling": typeof campaigns_scheduling;
   "campaigns/send": typeof campaigns_send;
   "campaigns/sendJob": typeof campaigns_sendJob;
+  "campaigns/sendPlanProgress": typeof campaigns_sendPlanProgress;
   "campaigns/sendPlanQueries": typeof campaigns_sendPlanQueries;
   "campaigns/sendQueries": typeof campaigns_sendQueries;
   "campaigns/sendVariantSplit": typeof campaigns_sendVariantSplit;
@@ -1165,6 +1168,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/rampControllerCron": typeof delivery_rampControllerCron;
   "delivery/rampControllerInputs": typeof delivery_rampControllerInputs;
   "delivery/rampMixDecisions": typeof delivery_rampMixDecisions;
+  "delivery/rampPaceInputs": typeof delivery_rampPaceInputs;
   "delivery/ramp/controllerBounds": typeof delivery_ramp_controllerBounds;
   "delivery/ramp/controllerConfig": typeof delivery_ramp_controllerConfig;
   "delivery/ramp/controllerNarrative": typeof delivery_ramp_controllerNarrative;
