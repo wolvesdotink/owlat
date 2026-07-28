@@ -186,7 +186,8 @@ re-rolling try/catch.
 2. **Centralized policy, not caller-injected.** The module owns the
    category→treatment map; callers get leverage from a tiny interface
    (`ref` + `label`). Caller-injected handlers were rejected as re-creating
-   today's wide, shallow boilerplate.
+   today's wide, shallow boilerplate. *(Amended — see
+   [Amendment: the `onError` claim](#amendment-the-onerror-claim).)*
 3. **Category + message + data, not a code zoo.** Domain errors collapse to a
    category and explain themselves in `data`/`message`. First-class domain
    codes were rejected as re-drifting toward the very zoo this closes;
@@ -259,3 +260,57 @@ by `useBackendOperation`/`useBackendQuery`.
 the SDK wire break is intentional and atomic. Behaviour at each call site is
 preserved or improved (a raw-string toast becomes a categorized one); the only
 hard cutover is external SDK consumers reading `.code`.
+
+## Amendment: the `onError` claim
+
+*Added by the deliverability plan's binding campaign-capacity pre-flight (P0-5).*
+
+`BackendOperationOptions` gains one option beyond `label` / `type` /
+`inlineTarget`:
+
+```ts
+onError?: (error: OperationError) => boolean;
+```
+
+It runs on a NORMALIZED `OperationError`, before the category→treatment map.
+Returning `true` claims the failure: the default surface (toast / inline /
+redirect) and the telemetry report are both skipped. Returning `false` — or
+omitting the option — changes nothing.
+
+**Why the original decision is no longer sufficient.** Resolved decision 2
+assumed every failure wants *a* treatment, and that the only question is which
+one. The campaign capacity gate is a failure that wants *no* treatment: it is
+not a fault at all but an OFFER. `campaigns.preflight` refuses a campaign that
+provably cannot finish inside the MTA's message-retention horizon and hands back
+the multi-day schedule it WOULD take (`reason: 'exceeds_sending_capacity'`,
+`data.capacityPlan`). The deliverability plan (D14) is explicit that a multi-day
+send is a normal, visible state for a warming deployment, never an error and
+never a surprise — so a red `invalid_state` toast is precisely the wrong
+treatment for "Sending over 4 days", and the *correct* rendering is a calm
+schedule panel only the calling screen can draw.
+
+**Why not extend the central map instead.** Keying the exception off
+`data.reason` inside `categoryTreatment` would put a `campaigns`-domain string
+into the module every screen shares, add a fourth `surface` the module cannot
+itself render, and still need a per-caller `ref` to hand the payload to. That is
+the code zoo decision 3 closes, arriving through the treatment table instead of
+through error codes.
+
+**Narrow contract.** The option is not a general escape hatch from the one
+policy:
+
+- **Claim-only.** It may decide *"I am rendering this"* and nothing else. It
+  must not toast, navigate, or report — those are still the module's.
+- **No new category, no new treatment.** The vocabulary is untouched; an
+  unclaimed failure follows exactly the shipped policy.
+- **The caller MUST render something.** Claiming a failure and showing nothing
+  is a silent swallow, which is worse than the wrong toast.
+- **A refusal, not a fault.** Only for backend refusals that are really offers.
+  Genuine faults (`internal`, `unauthenticated`, …) stay central — the telemetry
+  suppression is exactly why claiming one would be a bug.
+
+**Current users:** one — `useCapacityRefusal`
+(`apps/web/app/composables/useCapacityRefusal.ts`), consumed by the campaign
+editor (`useCampaignActions`) and the wizard's Review step. A second, unrelated
+user is the signal to revisit whether the exception belongs in the central map
+after all.
