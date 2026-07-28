@@ -12,22 +12,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
-	aggregateSndsDays,
 	complaintBandSeverity,
+	createSndsDayFold,
+	foldedSndsDays,
+	foldSndsDays,
 	parseComplaintBand,
 	parseFilterResult,
 	parseSndsFeed,
-	parseSndsCellKey,
 	parseSndsTimestamp,
 	SNDS_COMPLAINT_BANDS,
 	sndsCellKey,
 	utcDayStart,
 	type SndsComplaintBand,
+	type SndsDayObservation,
+	type SndsFeedRow,
 } from '../sndsFeed';
 
 import { modules } from './helpers/convexModules';
 
 const FEED_URL = 'https://sendersupport.olc.protection.outlook.com/snds/ada/example-key';
+
+/**
+ * Fold ONE feed's rows — a test convenience, deliberately not production API.
+ *
+ * The poller folds ACROSS feeds into a single accumulator, because SNDS ranges
+ * overlap and one (IP, day) can appear in two feeds. A one-shot single-feed
+ * aggregate has no production caller, so it lives here rather than as an
+ * exported seam nothing uses (D20).
+ */
+function aggregateSndsDays(rows: readonly SndsFeedRow[]): SndsDayObservation[] {
+	const fold = createSndsDayFold();
+	foldSndsDays(fold, rows);
+	return foldedSndsDays(fold);
+}
 
 /**
  * A FIXED simulated instant, mid-day and mid-month.
@@ -334,17 +351,19 @@ describe('SNDS feed parsing', () => {
 		]);
 	});
 
-	it('round-trips an (IP, day) cell key, IPv6 included', () => {
-		for (const ip of ['203.0.113.10', '2001:db8::1', '2001:db8:0:0:0:0:0:beef']) {
-			const day = Date.UTC(2026, 6, 20);
-			expect(parseSndsCellKey(sndsCellKey(ip, day))).toEqual({ ip, periodStart: day });
-		}
-		// A key that is not one of ours is refused rather than half-parsed.
-		expect(parseSndsCellKey('203.0.113.10')).toBeNull();
-		expect(parseSndsCellKey('|123')).toBeNull();
-		expect(parseSndsCellKey('203.0.113.10|not-a-day')).toBeNull();
-		// Distinct cells never collide.
-		expect(sndsCellKey('203.0.113.1', 0)).not.toBe(sndsCellKey('203.0.113.10', 0));
+	it('gives distinct (IP, day) cells distinct keys, IPv6 included', () => {
+		// The key exists so a Map can hold a PAIR. What it must guarantee is that
+		// two different cells never fold together — the separator is chosen for
+		// exactly that, since it appears in no address spelling we accept.
+		const day = Date.UTC(2026, 6, 20);
+		const keys = [
+			sndsCellKey('203.0.113.1', 0),
+			sndsCellKey('203.0.113.10', 0),
+			sndsCellKey('203.0.113.10', day),
+			sndsCellKey('2001:db8::1', day),
+			sndsCellKey('2001:db8:0:0:0:0:0:beef', day),
+		];
+		expect(new Set(keys).size).toBe(keys.length);
 	});
 
 	it('returns an empty result for an empty day, with no throw', () => {

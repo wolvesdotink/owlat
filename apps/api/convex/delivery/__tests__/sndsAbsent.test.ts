@@ -12,8 +12,8 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { parseSndsFeedUrls } from '../sndsPoll';
-import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
+import { parseSndsFeedUrls } from '../sndsConfig';
+import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../ramp/sndsGate';
 
 import { modules } from './helpers/convexModules';
 
@@ -72,12 +72,20 @@ describe('SNDS absent — the gate', () => {
 		expect(input.reason).toBe('not_enrolled');
 		// SMTP reply classification, dwell x2, ceiling one phase lower.
 		expect(input.substitution).toEqual({
-			signalSource: 'smtp_classification',
+			source: 'smtp_classification',
 			dwellMultiplier: 2,
 			ceilingPhaseDelta: -1,
 			confidence: 'low',
+			confidenceNote: expect.stringContaining('Measurement confidence: low'),
+			isBlocking: false,
 		});
 		expect(input.substitution).toEqual(SNDS_ABSENT_SUBSTITUTION);
+		// D2, asserted rather than assumed: the substitution is never a blocker,
+		// and the sentence the UI shows explains rather than nags (D14).
+		expect(input.substitution.isBlocking).toBe(false);
+		expect(input.substitution.confidenceNote).not.toMatch(
+			/error|failed|invalid|incomplete|required|must/i
+		);
 	});
 
 	it('HOLDS the ramp instead of breaching it, and says so in plain language', async () => {

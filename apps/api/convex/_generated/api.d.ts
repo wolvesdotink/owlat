@@ -271,6 +271,7 @@ import type * as delivery_ramp_gateEvaluation from "../delivery/ramp/gateEvaluat
 import type * as delivery_ramp_gateEvidence from "../delivery/ramp/gateEvidence.js";
 import type * as delivery_ramp_gateTypes from "../delivery/ramp/gateTypes.js";
 import type * as delivery_ramp_gates from "../delivery/ramp/gates.js";
+import type * as delivery_ramp_sndsGate from "../delivery/ramp/sndsGate.js";
 import type * as delivery_ramp_yahooComplaintSignal from "../delivery/ramp/yahooComplaintSignal.js";
 import type * as delivery_relayReturnPath from "../delivery/relayReturnPath.js";
 import type * as delivery_relayReturnPathProbe from "../delivery/relayReturnPathProbe.js";
@@ -302,8 +303,8 @@ import type * as delivery_sendLifecycle_reducers from "../delivery/sendLifecycle
 import type * as delivery_sendLifecycle_types from "../delivery/sendLifecycle/types.js";
 import type * as delivery_sends from "../delivery/sends.js";
 import type * as delivery_snds from "../delivery/snds.js";
+import type * as delivery_sndsConfig from "../delivery/sndsConfig.js";
 import type * as delivery_sndsFeed from "../delivery/sndsFeed.js";
-import type * as delivery_sndsGate from "../delivery/sndsGate.js";
 import type * as delivery_sndsPoll from "../delivery/sndsPoll.js";
 import type * as delivery_status from "../delivery/status.js";
 import type * as delivery_suppressionMirror from "../delivery/suppressionMirror.js";
@@ -1105,6 +1106,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/gateEvidence": typeof delivery_ramp_gateEvidence;
   "delivery/ramp/gateTypes": typeof delivery_ramp_gateTypes;
   "delivery/ramp/gates": typeof delivery_ramp_gates;
+  "delivery/ramp/sndsGate": typeof delivery_ramp_sndsGate;
   "delivery/ramp/yahooComplaintSignal": typeof delivery_ramp_yahooComplaintSignal;
   "delivery/readinessValidators": typeof delivery_readinessValidators;
   "delivery/routingReentry": typeof delivery_routingReentry;
@@ -1134,8 +1136,8 @@ declare const fullApi: ApiFromModules<{
   "delivery/sendLifecycle/types": typeof delivery_sendLifecycle_types;
   "delivery/sends": typeof delivery_sends;
   "delivery/snds": typeof delivery_snds;
+  "delivery/sndsConfig": typeof delivery_sndsConfig;
   "delivery/sndsFeed": typeof delivery_sndsFeed;
-  "delivery/sndsGate": typeof delivery_sndsGate;
   "delivery/sndsPoll": typeof delivery_sndsPoll;
   "delivery/status": typeof delivery_status;
   "delivery/suppressionMirror": typeof delivery_suppressionMirror;

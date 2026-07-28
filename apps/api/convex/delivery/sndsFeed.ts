@@ -7,7 +7,7 @@
  *
  * The feed is a headerless CSV, one row per (IP, activity window). Microsoft
  * publishes activity in sub-day blocks, so a UTC day is several rows that we
- * fold together in {@link aggregateSndsDays}.
+ * fold together in {@link foldSndsDays}.
  *
  * The single most important modelling decision: SNDS reports a complaint-rate
  * BAND, not a rate. We keep the band as a small enumerated type all the way to
@@ -43,6 +43,20 @@ export type SndsComplaintBand = (typeof SNDS_COMPLAINT_BANDS)[number];
 const BAND_SEVERITY_ORDER: readonly SndsComplaintBand[] = SNDS_COMPLAINT_BANDS.slice(1);
 
 /**
+ * The worse of two values of one enumerated severity scale.
+ *
+ * ONE definition of the `unknown`-loses-to-anything rule. `order` lists the
+ * values that HAVE a severity, ascending; anything absent from it — every
+ * scale's `unknown` sentinel — ranks below all of them and therefore loses to
+ * any ranked value, and two unranked values fold to the first. Both SNDS scales
+ * used to spell that rule for themselves, one with a `null` sentinel and one
+ * with a `-1`, which is two chances to disagree about the same sentence.
+ */
+function worstOf<T extends string>(order: readonly T[], a: T, b: T): T {
+	return order.indexOf(b) > order.indexOf(a) ? b : a;
+}
+
+/**
  * Rank a band for comparison. `null` for `unknown` — deliberately not `0`, so a
  * caller cannot accidentally treat "no data" as "the cleanest band".
  *
@@ -59,26 +73,19 @@ export function complaintBandSeverity(band: SndsComplaintBand): number | null {
 
 /** The worse of two bands; `unknown` loses to anything banded. */
 export function worseComplaintBand(a: SndsComplaintBand, b: SndsComplaintBand): SndsComplaintBand {
-	const severityA = complaintBandSeverity(a);
-	const severityB = complaintBandSeverity(b);
-	if (severityA === null) return b;
-	if (severityB === null) return a;
-	return severityB > severityA ? b : a;
+	return worstOf(BAND_SEVERITY_ORDER, a, b);
 }
 
 /** SNDS "Filter result" — the traffic-light verdict on the IP's mail. */
 export const SNDS_FILTER_RESULTS = ['unknown', 'green', 'yellow', 'red'] as const;
 export type SndsFilterResult = (typeof SNDS_FILTER_RESULTS)[number];
 
-const FILTER_SEVERITY: Record<SndsFilterResult, number> = {
-	unknown: -1,
-	green: 0,
-	yellow: 1,
-	red: 2,
-};
+/** The filter results in ascending severity, without the `unknown` sentinel. */
+const FILTER_SEVERITY_ORDER: readonly SndsFilterResult[] = SNDS_FILTER_RESULTS.slice(1);
 
+/** The worse of two filter results; `unknown` loses to anything reported. */
 export function worseFilterResult(a: SndsFilterResult, b: SndsFilterResult): SndsFilterResult {
-	return FILTER_SEVERITY[b] > FILTER_SEVERITY[a] ? b : a;
+	return worstOf(FILTER_SEVERITY_ORDER, a, b);
 }
 
 /** One parsed feed row: an IP's activity over one sub-day window. */
@@ -112,7 +119,8 @@ export interface SndsDayObservation {
  * The separator between the two components of an (IP, UTC day) cell key.
  *
  * A space, a colon and a dot all occur inside an address; `|` never does in any
- * spelling {@link normalizeSndsIp} accepts, so the key round-trips.
+ * spelling {@link normalizeSndsIp} accepts, so two distinct cells can never
+ * produce one key.
  */
 const SNDS_CELL_KEY_SEPARATOR = '|';
 
@@ -127,16 +135,6 @@ const SNDS_CELL_KEY_SEPARATOR = '|';
  */
 export function sndsCellKey(ip: string, periodStart: number): string {
 	return `${ip}${SNDS_CELL_KEY_SEPARATOR}${periodStart}`;
-}
-
-/** The inverse of {@link sndsCellKey}; `null` when the key is not one of ours. */
-export function parseSndsCellKey(key: string): { ip: string; periodStart: number } | null {
-	const separator = key.lastIndexOf(SNDS_CELL_KEY_SEPARATOR);
-	if (separator <= 0) return null;
-	const ip = key.slice(0, separator);
-	const periodStart = Number(key.slice(separator + 1));
-	if (!Number.isFinite(periodStart)) return null;
-	return { ip, periodStart };
 }
 
 export interface SndsParseResult {
@@ -437,19 +435,12 @@ export function foldedSndsDays(fold: SndsDayFold): SndsDayObservation[] {
 }
 
 /**
- * Fold sub-day rows into one observation per (IP, UTC day).
+ * Fold one feed's rows into a shared accumulator. Never throws.
  *
  * Counters SUM; the band and the filter result take the WORST value seen that
  * day. Worst-not-latest is deliberate: the day is a gate input, and a bad
  * eight-hour block followed by a quiet one is still a bad day.
  */
-export function aggregateSndsDays(rows: readonly SndsFeedRow[]): SndsDayObservation[] {
-	const fold = createSndsDayFold();
-	foldSndsDays(fold, rows);
-	return foldedSndsDays(fold);
-}
-
-/** Fold one feed's rows into a shared accumulator. Never throws. */
 export function foldSndsDays(fold: SndsDayFold, rows: readonly SndsFeedRow[]): void {
 	const byCell = fold.byCell;
 	for (const row of rows) {

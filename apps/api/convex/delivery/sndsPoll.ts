@@ -18,80 +18,28 @@ import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import {
 	createSndsDayFold,
-	DAY_MS,
 	foldedSndsDays,
 	foldSndsDays,
 	parseSndsFeed,
 	SNDS_MAX_FEED_BYTES,
-	utcDayStart,
 	type SndsDayObservation,
 } from './sndsFeed';
-import { parsePoolIpsLenient } from '../domains/spf';
+import { oldestStorableDay, parsePoolAllowlist, parseSndsFeedUrls } from './sndsConfig';
 
-/**
- * How far back a feed row may reach and still be stored. Shared with `snds.ts`:
- * the poller pre-filters on it so a day the mutation would refuse never costs a
- * round trip, and the mutation re-checks it because the argument is untrusted.
- */
-export const SNDS_INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const FEED_TIMEOUT_MS = 20_000;
 
-/** Bounds on the operator-supplied configuration and on each poll's fan-out. */
-export const SNDS_MAX_FEEDS = 8;
+/** The bound on one poll's ingest fan-out. */
 export const SNDS_INGEST_BATCH_SIZE = 64;
 /**
  * The hard ceiling on one poll's ingest fan-out (D16 — write amplification is a
  * design constraint). Every observation past it costs a `runMutation` round trip
  * carrying indexed reads and writes, and the feed decides how many there are:
- * {@link SNDS_MAX_FEEDS} feeds x `SNDS_MAX_ROWS` rows can fold to six figures of
+ * `SNDS_MAX_FEEDS` feeds x `SNDS_MAX_ROWS` rows can fold to six figures of
  * (IP, day) pairs. This bounds the tick at ~32 batched mutations for a pool far
  * larger than any real deployment, and the overflow is COUNTED rather than
  * silently dropped.
  */
 export const SNDS_MAX_OBSERVATIONS_PER_POLL = 2_000;
-
-/**
- * Parse `SNDS_DATA_FEED_URLS`.
- *
- * The value is a list of Automated Data Access URLs. Each one is a BEARER
- * CAPABILITY to the operator's SNDS data, so it is never logged or returned;
- * only `https` is accepted, and a malformed entry is ignored rather than
- * crashing the poll.
- */
-export function parseSndsFeedUrls(raw: string | undefined): string[] {
-	const urls: string[] = [];
-	for (const entry of (raw ?? '').split(/[,\s]+/)) {
-		if (urls.length >= SNDS_MAX_FEEDS) break;
-		const candidate = entry.trim();
-		if (candidate.length === 0) continue;
-		let parsed: URL;
-		try {
-			parsed = new URL(candidate);
-		} catch {
-			continue;
-		}
-		if (parsed.protocol !== 'https:') continue;
-		if (!urls.includes(parsed.toString())) urls.push(parsed.toString());
-	}
-	return urls;
-}
-
-/**
- * The sending IPs this deployment claims, from `MTA_IP_POOLS`.
- *
- * An SNDS key can cover a whole registered range, so a feed may legitimately
- * carry addresses that are not ours. When the operator declares their pool we
- * treat it as an allowlist and drop everything else; when they do not, the feed
- * is stored unattributed and the GATE refuses to read it as positive evidence
- * (see `snds.ts`'s `getMicrosoftGateInput`).
- *
- * The grammar is `domains/spf.ts`'s, read leniently: one parser for one env var,
- * because a typo in the pool must not take the poller down but it also must not
- * mean the poller accepts addresses registration would have refused.
- */
-export function parsePoolAllowlist(raw: string | undefined): Set<string> {
-	return new Set(parsePoolIpsLenient(raw).ips);
-}
 
 export interface SndsPollSummary {
 	enrolled: boolean;
@@ -211,10 +159,12 @@ export const poll = internalAction({
 		// dispatch that day twice and the second copy — same `fetchedAt` — would be
 		// stored as a replay, silently dropping one feed's counters.
 		const fold = createSndsDayFold();
-		// EVERY filter the mutation would apply is applied HERE first: the round
-		// trip is the expensive part of ingest, so a day we already know will be
-		// refused must never be paid for (D16).
-		const oldestDay = utcDayStart(fetchedAt) - SNDS_INGEST_MAX_AGE_MS;
+		// EVERY filter the mutation would apply is applied HERE first, through the
+		// SAME function the mutation calls: the round trip is the expensive part of
+		// ingest, so a day we already know will be refused must never be paid for
+		// (D16), and two spellings of one edge is how a day gets dispatched and then
+		// comes back as an unexplainable `rejected`.
+		const oldestDay = oldestStorableDay(fetchedAt);
 
 		for (const url of urls) {
 			const body = await fetchFeed(url);

@@ -18,7 +18,7 @@ import {
 	evaluateSndsGate,
 	sndsPromotionPass,
 	type SndsGateObservation,
-} from '../sndsGate';
+} from '../ramp/sndsGate';
 import { SNDS_GATE_MAX_ROWS } from '../snds';
 
 import { modules } from './helpers/convexModules';

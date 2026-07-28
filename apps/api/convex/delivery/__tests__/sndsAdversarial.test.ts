@@ -23,13 +23,12 @@ import {
 	SNDS_MAX_ROWS,
 	type SndsDayObservation,
 } from '../sndsFeed';
+import { SNDS_INGEST_BATCH_SIZE, SNDS_MAX_OBSERVATIONS_PER_POLL } from '../sndsPoll';
 import {
 	parsePoolAllowlist,
 	parseSndsFeedUrls,
-	SNDS_INGEST_BATCH_SIZE,
 	SNDS_MAX_FEEDS,
-	SNDS_MAX_OBSERVATIONS_PER_POLL,
-} from '../sndsPoll';
+} from '../sndsConfig';
 
 import { modules } from './helpers/convexModules';
 const FEED_URL = 'https://snds.example.test/feed';

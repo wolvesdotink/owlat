@@ -1,8 +1,9 @@
 /**
  * Microsoft SNDS storage, retention and gate input.
  *
- * The poller — configuration, fetching and fan-out — lives in the sibling
- * `sndsPoll.ts`; parsing lives in `sndsFeed.ts` and the decision in `sndsGate.ts`.
+ * The poller — fetching and fan-out — lives in the sibling `sndsPoll.ts`;
+ * configuration parsing in `sndsConfig.ts`, feed parsing in `sndsFeed.ts`, and
+ * the decision in `ramp/sndsGate.ts` beside the rest of the ramp's gates.
  * What remains here is the durable side: the idempotent ingest mutation, the
  * retention sweep, and the bounded read that gate 3 consumes.
  *
@@ -12,13 +13,14 @@
  */
 
 import { v } from 'convex/values';
+import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import { DAY_MS, normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
-import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './sndsGate';
-import { parsePoolAllowlist, parseSndsFeedUrls, SNDS_INGEST_MAX_AGE_MS } from './sndsPoll';
+import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './ramp/sndsGate';
+import { parsePoolAllowlist, parseSndsFeedUrls, SNDS_INGEST_MAX_AGE_MS } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 
@@ -242,13 +244,14 @@ async function readGateRows(
 	return { observations, truncated, attributed: true };
 }
 
-function projectGateObservation(row: {
-	ip: string;
-	periodStart: number;
-	complaintBand: SndsGateObservation['complaintBand'];
-	filterResult: SndsGateObservation['filterResult'];
-	trapHits: number;
-}): SndsGateObservation {
+/**
+ * Narrow a stored row to what the gate reads.
+ *
+ * It takes the ROW TYPE, not a structural literal that re-spells the row's
+ * fields: a schema rename should be a compile error here rather than a silent
+ * drift into a projection nothing populates any more.
+ */
+function projectGateObservation(row: Doc<'sndsIpDailyStats'>): SndsGateObservation {
 	return {
 		ip: row.ip,
 		periodStart: row.periodStart,

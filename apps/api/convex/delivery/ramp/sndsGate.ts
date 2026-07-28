@@ -25,24 +25,45 @@ import {
 	worseFilterResult,
 	type SndsComplaintBand,
 	type SndsFilterResult,
-} from './sndsFeed';
-import type { RampGateId, RampGateStatus } from './ramp/gateTypes';
+} from '../sndsFeed';
+import type { RampGateId, RampGateStatus } from './gateTypes';
 
 /**
  * The substitution the Microsoft cell applies when SNDS data is unavailable.
  *
  * Its shape is a table ENTRY, not an if-branch: the degraded path is expressed
  * as data so the controller substitutes rather than special-cases (D3).
+ *
+ * IT DELIBERATELY SPELLS ITS FIELDS THE WAY `./yahooComplaintSignal` DOES.
+ * Both are entries in the ONE P3-8 substitution table — "which signal is gate 3
+ * actually running on for this destination-provider cell" — so `source`,
+ * `confidence`, `confidenceNote` and `isBlocking` mean the same thing in both
+ * and P3-8 can subsume them without reconciling two vocabularies. Only
+ * `dwellMultiplier` and `ceilingPhaseDelta` are particular to this cell: they
+ * are how the Microsoft substitution pays for its weaker evidence.
  */
 export const SNDS_ABSENT_SUBSTITUTION = {
 	/** What replaces the SNDS band while it is missing. */
-	signalSource: 'smtp_classification',
+	source: 'smtp_classification',
 	/** Dwell longer before advancing, because the evidence is weaker. */
 	dwellMultiplier: 2,
 	/** Cap the cell one phase below what the evidence would otherwise allow. */
 	ceilingPhaseDelta: -1,
 	/** Surfaced verbatim in the UI (D14) — an honest weak signal, said out loud. */
 	confidence: 'low',
+	/**
+	 * The confidence sentence shown on the cell, with ONE home (D14). A UI that
+	 * had to compose this itself would be a second definition of the same fact,
+	 * free to drift — the same reason `yahooComplaintSubstitution` returns its
+	 * note on every branch.
+	 */
+	confidenceNote:
+		'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell reads Microsoft’s SMTP reply text instead. Connecting SNDS would measure this IP’s complaint band directly.',
+	/**
+	 * Always `false`. Encoded as a field rather than left implicit so the D2
+	 * invariant is asserted by a test rather than assumed by a reader.
+	 */
+	isBlocking: false,
 } as const;
 
 export type SndsSubstitution = typeof SNDS_ABSENT_SUBSTITUTION;
