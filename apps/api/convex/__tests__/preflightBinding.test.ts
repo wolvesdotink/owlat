@@ -585,6 +585,20 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 		expect(plan).toEqual({ fits: true, capacityKnown: false, unknownReason: 'no_projection' });
 	});
 
+	it('answers no_audience when the wizard has not chosen one yet', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+
+		// The preview is rendered from the FIRST wizard step onward, before an
+		// audience exists. Nothing to judge is not a fault: it is `capacityKnown:
+		// false`, `fits: true` — the panel simply does not render (D2).
+		const plan = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
+			fromEmail: 'sender@verified.example.com',
+		});
+
+		expect(plan).toEqual({ fits: true, capacityKnown: false, unknownReason: 'no_audience' });
+	});
+
 	it("assesses a future start against the capacity it will have THEN, not today's", async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
@@ -1319,6 +1333,48 @@ describe('pre-flight capacity gate — a suppression list past the bounded scan'
 			capacityKnown: false,
 			fits: true,
 			unknownReason: 'audience_over_counted',
+		});
+	});
+});
+
+describe('assessCampaignCapacity — the fail-open catch (D2)', () => {
+	it('allows the send with measurement_failed when the measurement itself throws', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		let topicId: Id<'topics'>;
+		await t.run(async (ctx) => {
+			topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+		});
+
+		// A ctx whose very first document read throws. This is the branch that
+		// GUARANTEES a measurement fault can never block a send: an exception
+		// escaping the assessment would not refuse the campaign, it would make
+		// `schedule` / `sendNow` throw — a failure to MEASURE blocking a SEND,
+		// exactly what D2 forbids.
+		const assessment = await t.run(async (ctx) => {
+			const hostileCtx = {
+				...ctx,
+				db: {
+					...ctx.db,
+					query: () => {
+						throw new Error('read limit exceeded');
+					},
+					get: () => {
+						throw new Error('read limit exceeded');
+					},
+				},
+			} as unknown as Parameters<typeof assessCampaignCapacity>[0];
+			return await assessCampaignCapacity(hostileCtx, {
+				audience: { kind: 'topic', topicId: topicId! },
+				fromEmail: 'sender@verified.example.com',
+				now: MIDNIGHT,
+			});
+		});
+
+		expect(assessment).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'measurement_failed',
 		});
 	});
 });
