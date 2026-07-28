@@ -16,12 +16,20 @@
  *   bounce/VERP          → bounces.<root>   (already the MTA's return-path host)
  *
  * D11 — PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This is the piece
- * most likely to violate it, so the violation is not expressible: nothing in
- * this module takes a transport, a provider id or an arm as an input to the
+ * most likely to violate it, so the violation is not expressible HERE: nothing
+ * in this module takes a transport, a provider id or an arm as an input to the
  * From domain or the DKIM `d=`. {@link resolveCellSendingIdentity} takes an arm
  * ONLY to name that arm's DKIM SELECTOR — the one thing D11 explicitly allows
- * to differ — and {@link findPerTransportSubdomainViolations} re-derives both
- * arms and asserts they agree.
+ * to differ.
+ *
+ * The two guards that CAN fail therefore live in `streamSubdomainRecords.ts`,
+ * because both compare this layout against something outside it:
+ * `findPerTransportSubdomainViolations` walks the GENERATED DKIM rows and
+ * reports any that put an arm on a host which is not one of this layout's
+ * stream From domains, and `findUnpublishedSigningSelectors` compares the
+ * selectors a cell SIGNS with against the ones the wizard actually PUBLISHES. A
+ * guard that only re-derived both arms from this module's own layout could
+ * never fail, and a guard that cannot fail is not a guard.
  *
  * SINGLE-IP DEPLOYMENTS ARE THE COMMON CASE. Most self-hosters have exactly one
  * IP, so the transactional and campaign pools resolve to the same address and
