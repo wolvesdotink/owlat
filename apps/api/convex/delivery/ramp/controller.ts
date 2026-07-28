@@ -38,8 +38,8 @@
 
 import { clampOwnShare, OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { normalizePhaseCeiling, RAMP_AIMD } from './controllerConfig';
-import { CORROBORATION_REQUIRED_RAMP_GATES, ppToFraction } from './gateConfig';
-import type { RampGateEvaluation, RampGateId } from './gateTypes';
+import { ppToFraction } from './gateConfig';
+import type { RampGateId } from './gateTypes';
 import type {
 	RampCapacityInput,
 	RampControllerInput,
@@ -121,21 +121,6 @@ export function capacityCeiling(capacity: RampCapacityInput): number | null {
 	const ratio = (warmingCapRemaining / projectedVolume) * RAMP_AIMD.capacitySafety;
 	if (!Number.isFinite(ratio)) return null;
 	return Math.min(OWN_SHARE_CEILING, Math.max(0, ratio));
-}
-
-/**
- * Does a tripwire failure have corroboration (plan D17)? Seeds are 5-10
- * mailboxes: a collapse across all of them is actionable at any sample size but
- * SUSPECT on its own, so the deferral or bounce gate must agree before the
- * share is halved. Without agreement the controller HOLDS — it does not
- * increase either, because the streak was already reset by the failure.
- */
-function isCorroborated(evaluation: RampGateEvaluation): boolean {
-	return evaluation.perGate.some(
-		(result) =>
-			!CORROBORATION_REQUIRED_RAMP_GATES.has(result.gate) &&
-			(result.status === 'fail' || result.status === 'halt')
-	);
 }
 
 interface DecisionDraft {
@@ -283,7 +268,14 @@ function decide(args: DecideArgs): DecisionDraft {
 		const failedGate = evaluation.failedGate;
 		// D17: a tripwire alone is suspect. Hold — the streak is already zero, so
 		// holding still forbids an increase; it just does not halve on one signal.
-		if (evaluation.requiresCorroboration && !isCorroborated(evaluation)) {
+		//
+		// NO SECOND CORROBORATION SCAN HERE, deliberately. `aggregateRampGates`
+		// names the FIRST gate at the winning rank, so any corroborating fail or
+		// halt from a non-tripwire gate would already be `failedGate` and would have
+		// left `requiresCorroboration` false. The flag being set therefore already
+		// MEANS "the tripwire is alone at the top rank"; re-deriving that from
+		// `perGate` would be a predicate that can only ever answer one way.
+		if (evaluation.requiresCorroboration) {
 			return {
 				...held,
 				reason: 'awaiting_corroboration',
