@@ -9,8 +9,10 @@
  * reason, a human date label, and the permission flag in. The action is gated on
  * `canManage` here for affordance; the backend re-checks `contacts:manage`.
  */
+import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+
 const props = defineProps<{
-	reason: 'bounced' | 'complained' | 'manual';
+	reason: BlockReason;
 	/** Pre-formatted human date the address was suppressed (e.g. "Mar 3"). */
 	dateLabel: string;
 	/** Whether the viewer may remove suppressions (contacts:manage). */
@@ -21,17 +23,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{ remove: [] }>();
 
-// Plain language, reason-specific — no jargon, explains WHY in one line.
-const reasonPhrase = computed(() => {
-	switch (props.reason) {
-		case 'bounced':
-			return `bounced on ${props.dateLabel}`;
-		case 'complained':
-			return `complained on ${props.dateLabel}`;
-		default:
-			return `manually suppressed on ${props.dateLabel}`;
-	}
-});
+// Plain language, reason-specific — no jargon, explains WHY in one line. The
+// wording comes from the SAME table the suppression list renders from, so the
+// two surfaces cannot describe the same reason differently, and a new schema
+// literal is a compile error rather than a silent "manually suppressed".
+const presentation = computed(() => suppressionReasonPresentation(props.reason));
+const reasonPhrase = computed(() => presentation.value.phrase(props.dateLabel));
+// The headline is reason-specific too: an `unengaged` row is marketing-only, so
+// that address still gets transactional mail, DOI confirmations and 1:1 agent
+// replies. Presenting it as "not receiving mail" would read like a hard block
+// and invite a manual removal the operator does not need.
+const headline = computed(() => presentation.value.headline);
 </script>
 
 <template>
@@ -41,7 +43,7 @@ const reasonPhrase = computed(() => {
 	>
 		<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
 		<p class="text-text-secondary">
-			<span class="font-medium text-text-primary">Not receiving mail</span>
+			<span class="font-medium text-text-primary">{{ headline }}</span>
 			— {{ reasonPhrase }}.
 			<button
 				v-if="canManage"

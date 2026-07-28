@@ -26,10 +26,12 @@
 
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type {
-	DeliverabilityCell,
-	DeliverabilitySignalProvider,
+import {
+	resolveOwnShare,
+	type DeliverabilityCell,
+	type DeliverabilitySignalProvider,
 } from '@owlat/shared/deliverabilityRouting';
+import type { MixCellState } from './sendProviders/strategies';
 
 /** The all-stream row for a provider slice: what the MTA snapshot maintains. */
 export async function loadStreamlessRouteState(
@@ -82,4 +84,18 @@ export async function loadRouteStateCell(
 		loadStreamlessRouteState(ctx, organizationId, cell.destinationProvider),
 	]);
 	return { perStream, streamless };
+}
+
+/**
+ * The ramp's view of one cell: D1's resolution expression, in ONE place.
+ *
+ * `ownShare ?? (isFallbackActive ? 0 : 1)` (via `resolveOwnShare`) over
+ * `perStream ?? streamless` — the share convention this module documents. The
+ * stream-less row carries no share of its own, so on a pre-controller cell this
+ * resolves to exactly the shipped boolean. Both the enqueue-time decision and
+ * the dispatch-time replay read it from here so they can never drift apart.
+ */
+export function mixCellStateFor(cell: RouteStateCellRows): MixCellState {
+	const shareRow = cell.perStream ?? cell.streamless;
+	return { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion };
 }

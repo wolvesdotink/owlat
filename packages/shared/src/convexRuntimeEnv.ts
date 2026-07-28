@@ -184,6 +184,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// scheduling replies.
 	'CALENDAR_FREEBUSY_ICS_URL',
 	'CALENDAR_TIMEZONE',
+	// Microsoft SNDS "Automated Data Access" feed URLs, read at Convex function
+	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
+	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always
+	// undefined and the poller silently dead in production. Unset ⇒ the poller
+	// returns immediately: SNDS enrollment is additive-only (D2).
+	'SNDS_DATA_FEED_URLS',
 ] as const;
 
 /**

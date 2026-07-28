@@ -52,7 +52,7 @@ import {
 	createTestEmailTemplate,
 	createTestInstanceSettings,
 } from '../../__tests__/factories';
-import { TEST_SEND_RETENTION_MS } from '../enqueue';
+import { TEST_SEND_RETENTION_MS } from '../enqueueTestSend';
 
 // Stub the workpool so enqueue's `enqueueAction` is a no-op (the Workpool
 // component isn't registered in convexTest, and the worker action would need
@@ -275,7 +275,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 	});
 });
 
-describe('delivery.enqueue.enqueueTestSend — durable governed preview', () => {
+describe('delivery.enqueueTestSend — durable governed preview', () => {
 	it('creates an explicit test Send and queues the normal worker/completion contract', async () => {
 		const t = convexTest(schema, modules);
 		const { transactionalEmailPool } = await import('../workpool');
@@ -290,7 +290,7 @@ describe('delivery.enqueue.enqueueTestSend — durable governed preview', () => 
 		process.env['MTA_API_URL'] = 'https://mta.test';
 		process.env['MTA_API_KEY'] = 'test-key';
 		try {
-			const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueTestSend, {
+			const { sendId } = await t.mutation(internal.delivery.enqueueTestSend.enqueueTestSend, {
 				email: 'member@example.com',
 				organizationId: 'org-1',
 				from: 'Owlat <sender@example.org>',
@@ -346,13 +346,13 @@ describe('delivery.enqueue.enqueueTestSend — durable governed preview', () => 
 		}));
 
 		await expect(
-			t.mutation(internal.delivery.enqueue.deleteExpiredTestSend, {
+			t.mutation(internal.delivery.enqueueTestSend.deleteExpiredTestSend, {
 				sendId: testId,
 				queuedAt,
 			})
 		).resolves.toBe(true);
 		await expect(
-			t.mutation(internal.delivery.enqueue.deleteExpiredTestSend, {
+			t.mutation(internal.delivery.enqueueTestSend.deleteExpiredTestSend, {
 				sendId: ordinaryId,
 				queuedAt,
 			})

@@ -17,7 +17,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
 	const now = Date.now();

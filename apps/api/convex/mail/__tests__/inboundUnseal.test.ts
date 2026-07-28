@@ -30,7 +30,7 @@ import {
 	seedPinnedSender,
 	type ConvexTestCtx,
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { isSealedAtRest, isSealedBytesAtRest } from '../../lib/atRestBodies';
 import { readSealedBlobBytes } from '../../lib/sealedBlob';

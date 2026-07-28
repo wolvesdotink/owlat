@@ -19,22 +19,23 @@ import {
 	type ProviderRouteConfig,
 	type ProviderHealthStatus,
 	type ResolvedRoute,
+	type DeliverabilityRouteInput,
 } from './routing';
-import { extractDomainOrNull } from '@owlat/shared';
-import { resolveDestinationProvider } from './destinationProvider';
-import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
-import { getSingletonOrganizationId } from '../sessionOrganization';
-import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import type { MixContext } from './strategies';
+import {
+	mixContextFor,
+	resolveAddressCell,
+	type PrecomputedRouteInputs,
+	type SendRouteAddressContext,
+} from './routeMixContext';
+import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import type { SendProviderKind } from './types';
 import {
 	candidateSendProviderKinds,
-	freshFallbackReasons,
-	isGlobalBreakerOpenState,
 	messageTypeValidator,
 	readySendProviderKinds,
-	relayDomainVerifiedFor,
 	type MessageType,
 } from './routeInputs';
 
@@ -44,18 +45,10 @@ import {
 // module.
 export { messageTypeValidator, type MessageType };
 
-/**
- * Per-message inputs the deliverability layer keys off. Shared by
- * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
- * shapes cannot drift.
- */
-export interface SendRouteAddressContext {
-	to?: string;
-	from?: string;
-	now?: number;
-	baseOnly?: boolean;
-	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-}
+// `SendRouteAddressContext` lives next to the identity it extends, in
+// `routeMixContext.ts`, so the deliverability-input module can name it without
+// an import edge back to this one. Re-exported here for existing importers.
+export type { SendRouteAddressContext };
 
 /**
  * The one candidate kind whose envelope-sender control is decided by a PROBE
@@ -79,6 +72,39 @@ function probeableCandidateKind(
 }
 
 /**
+ * Everything the READ half of route resolution yields: the route row, the
+ * provider-health snapshots mapped to the strategy-facing shape, and the
+ * readiness verdict for every candidate provider kind. Callers that need more
+ * than the selected route — the campaign warming-cap gate needs the row and
+ * the readiness set too — load this once and select from it, instead of
+ * re-reading `providerRoutes` and re-running `isSendProviderReady`, which would
+ * double the OCC read set they carry inside `schedule` / `sendNow`.
+ */
+export type SendRouteFacts = {
+	routeConfig: Doc<'providerRoutes'> | null;
+	healthStatuses: ProviderHealthStatus[];
+	/**
+	 * LOAD-BEARING TOTALITY INVARIANT — do not narrow. This set is
+	 * `readySendProviderKinds`, i.e. TOTAL over the ENABLED entries of
+	 * `routeConfig.providers` plus the `EMAIL_PROVIDER` env default — which is
+	 * exactly the set the warming-cap gate reads. It is POSITIVE-ONLY: "not
+	 * ready" and "never evaluated" are indistinguishable to a reader, so a kind
+	 * missing from the candidate pass silently reads as not-ready.
+	 *
+	 * `campaignWarmingCapBinds` (warmingCapGate.ts) walks `routeConfig.providers`
+	 * and asks `readyKinds.has(kind)` for each ENABLED entry rather than calling
+	 * `isSendProviderReady` again — disabled entries are skipped before the
+	 * lookup, so excluding them here is exact, not a narrowing. Restricting the
+	 * candidate pass FURTHER, to the subset `resolveRoute` happens to need, would
+	 * make those lookups answer `false` for kinds that are in fact ready, and the
+	 * gate would quote the operator a multi-day plan for a campaign that fits.
+	 * Pinned by the disabled-entry fixtures in
+	 * `__tests__/preflightBinding.test.ts`.
+	 */
+	readyKinds: ReadonlySet<SendProviderKind>;
+};
+
+/**
  * Resolve the send route for a message type from the current transaction.
  * Reads the route config (indexed) + all provider health, maps health rows
  * to the strategy-facing shape, and returns the resolved route. Pure
@@ -89,6 +115,63 @@ export async function resolveSendRouteFromDb(
 	messageType: MessageType,
 	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
+	return (await resolveSendRouteWithInputs(ctx, messageType, addressContext, undefined)).route;
+}
+
+interface SendRouteResolution {
+	readonly route: ResolvedRoute | null;
+	/** Reusable by a second resolution of the same message (see `PrecomputedRouteInputs`). */
+	readonly mix: MixContext | undefined;
+}
+
+async function resolveSendRouteWithInputs(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext: SendRouteAddressContext | undefined,
+	precomputed: PrecomputedRouteInputs | undefined
+): Promise<SendRouteResolution> {
+	const facts = await loadSendRouteFacts(ctx, messageType);
+	const { routeConfig } = facts;
+
+	// One resolution of tenant + cell for BOTH consumers below, and only when
+	// one of them can actually use it — an unaddressed base-only resolution on a
+	// shipped strategy still costs nothing.
+	const wantsDeliverability = !addressContext?.baseOnly && Boolean(addressContext?.to);
+	const wantsMix =
+		precomputed === undefined &&
+		routeConfig?.strategy === 'adaptive_mix' &&
+		(addressContext?.sendId !== undefined || addressContext?.to !== undefined);
+	const resolvedCell =
+		wantsDeliverability || wantsMix
+			? await resolveAddressCell(ctx, messageType, addressContext)
+			: null;
+
+	// The two consumers then run CONCURRENTLY, each awaiting the still-pending
+	// cell read inside its own parallel read set: one resolution of tenant +
+	// cell, and the same overlap between the cell, the stream-less route state
+	// and the warming state that the deliverability input had before the pair
+	// was hoisted out of it.
+	const [deliverability, mix] = await Promise.all([
+		wantsDeliverability
+			? deliverabilityInput(ctx, routeConfig, messageType, addressContext, resolvedCell)
+			: undefined,
+		precomputed ? precomputed.mix : mixContextFor(ctx, routeConfig, addressContext, resolvedCell),
+	]);
+
+	return { route: selectRouteFromFacts(facts, messageType, deliverability, mix), mix };
+}
+
+/**
+ * The read half of {@link resolveSendRouteFromDb}: one pass over
+ * `providerRoutes` + `providerHealth` + provider readiness. Exposed so a caller
+ * that must survive a {@link selectRouteFromFacts} throw — `resolveRoute`
+ * signals an unusable relay configuration by throwing — still has the row and
+ * the readiness set it read (see {@link SendRouteFacts}).
+ */
+export async function loadSendRouteFacts(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType
+): Promise<SendRouteFacts> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -100,83 +183,44 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
+	// TOTAL over the ENABLED entries of `routeConfig.providers` + the env default
+	// — see the invariant on `SendRouteFacts.readyKinds` before narrowing this.
 	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
 
-	const deliverability = addressContext?.baseOnly
-		? undefined
-		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
-
-	const resolved = resolveRoute(
-		routeConfig as ProviderRouteConfig | null,
-		healthStatuses,
-		(kind) => readyKinds.has(kind),
-		deliverability
-	);
-	return resolved
-		? {
-				...resolved,
-				warmupOverflowEnabled: Boolean(
-					messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-				),
-			}
-		: null;
+	return { routeConfig, healthStatuses, readyKinds };
 }
 
-async function deliverabilityInput(
-	ctx: QueryCtx | MutationCtx,
-	routeConfig: Doc<'providerRoutes'> | null,
+/**
+ * The select half of {@link resolveSendRouteFromDb}: runs the pure
+ * `resolveRoute` dispatcher over already-loaded {@link SendRouteFacts}. Throws
+ * exactly what `resolveRoute` throws.
+ */
+export function selectRouteFromFacts(
+	facts: SendRouteFacts,
 	messageType: MessageType,
-	addressContext?: SendRouteAddressContext
-) {
-	if (!addressContext?.to) return undefined;
-	const toDomain = extractDomainOrNull(addressContext.to);
-	if (!toDomain) return undefined;
-	const now = addressContext.now ?? Date.now();
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return undefined;
-	}
-	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
-	const [providerCell, globalState, warmingState] = await Promise.all([
-		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
-		// the MTA snapshot maintains, so neither can shadow the other.
-		loadRouteStateCell(ctx, organizationId, { stream: messageType, destinationProvider: provider }),
-		// The global slice is infrastructure-wide and never per-stream: read the
-		// stream-less row directly so a per-stream `all` row could never hide the
-		// breaker_open signal the snapshot writes there.
-		loadStreamlessRouteState(ctx, organizationId, 'all'),
-		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-			? ctx.db.query('warmingState').first()
-			: Promise.resolve(null),
-	]);
-	// EVERY row of the cell is considered, not just the most specific one: the
-	// per-stream row carries the controller's share and the stream-less row
-	// carries the infrastructure signals, so reading only one would drop a hard
-	// stop. `freshFallbackReasons` applies D1's share resolution and the
-	// advisory-signal filter for both call sites.
-	const activeReasons = freshFallbackReasons(
-		[globalState, providerCell.streamless, providerCell.perStream],
-		now
+	deliverability?: DeliverabilityRouteInput,
+	/**
+	 * The per-recipient mix context. `undefined` for every caller that has no
+	 * recipient identity to resolve one from (and for every strategy but
+	 * `adaptive_mix`, which is the only one that reads it).
+	 */
+	mix?: MixContext
+): ResolvedRoute | null {
+	const resolved = resolveRoute(
+		facts.routeConfig as ProviderRouteConfig | null,
+		facts.healthStatuses,
+		(kind) => facts.readyKinds.has(kind),
+		deliverability,
+		mix
 	);
-	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
-	const isWarmupOverflow = Boolean(
-		addressContext.forceRelayReason === 'warmup_overflow' ||
-		(warmingState &&
-			now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-			warmingState.phase !== 'graduated' &&
-			warmingState.totalDailyCap > 0 &&
-			warmingState.totalSentToday >= warmingState.totalDailyCap)
-	);
-	const isRelayDomainVerified = await relayDomainVerifiedFor(
-		ctx,
-		routeConfig,
-		addressContext.from,
-		now
-	);
-	const isGlobalBreakerOpen = isGlobalBreakerOpenState(globalState, now);
-	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
+	if (!resolved) return null;
+	return {
+		...resolved,
+		warmupOverflowEnabled: Boolean(
+			messageType === 'campaign' &&
+			facts.routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+		),
+	};
 }
 
 /**
@@ -197,7 +241,7 @@ export type RoutingDeferralCode =
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
 
-function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
+export function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
 	if (error instanceof GlobalDeliveryCircuitOpenError) return error.code;
 	if (error instanceof DeliverabilityRouteError) return error.code;
 	return null;
@@ -215,6 +259,7 @@ export const resolveSendRoute = internalQuery({
 		from: v.optional(v.string()),
 		baseOnly: v.optional(v.boolean()),
 		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
+		sendId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
 		return await resolveSendRouteFromDb(ctx, args.messageType, {
@@ -222,6 +267,7 @@ export const resolveSendRoute = internalQuery({
 			from: args.from,
 			baseOnly: args.baseOnly,
 			forceRelayReason: args.forceRelayReason,
+			sendId: args.sendId,
 		});
 	},
 });
@@ -235,7 +281,7 @@ export const resolveSendRoute = internalQuery({
 export async function resolveLastMileRoutePlanFromDb(
 	ctx: QueryCtx,
 	messageType: MessageType,
-	addressContext: { to: string; from: string; now?: number }
+	addressContext: { to: string; from: string; now?: number; sendId?: string }
 ): Promise<{
 	route: ResolvedRoute | null;
 	baseRoute: ResolvedRoute | null;
@@ -284,11 +330,29 @@ export async function resolveLastMileRoutePlanFromDb(
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
 	);
 	try {
-		const route = await resolveSendRouteFromDb(ctx, messageType, addressContext);
-		const baseRoute = await resolveSendRouteFromDb(ctx, messageType, {
-			...addressContext,
-			baseOnly: true,
-		});
+		// TWO resolutions of ONE message: the governed route and the base route
+		// the fallback is measured against. The mix context is a property of the
+		// message, not of the resolution, so it is resolved once by the first
+		// call and handed to the second — otherwise every governed send under
+		// `adaptive_mix` would pay a second assignment lookup and a second
+		// singleton-organization lookup for an answer it already has. Both go
+		// through the PRIVATE resolver: hand-off is an in-module concern, so the
+		// exported helper never has to widen for it.
+		const resolution = await resolveSendRouteWithInputs(
+			ctx,
+			messageType,
+			addressContext,
+			undefined
+		);
+		const route = resolution.route;
+		const baseRoute = (
+			await resolveSendRouteWithInputs(
+				ctx,
+				messageType,
+				{ ...addressContext, baseOnly: true },
+				{ mix: resolution.mix }
+			)
+		).route;
 		return {
 			route,
 			baseRoute,
@@ -313,6 +377,9 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
+		// The durable Send id, so the dispatch-time resolution replays the arm
+		// the enqueue transaction recorded (see `SendRouteAddressContext`).
+		sendId: v.optional(v.string()),
 		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
 		// none either. `now` lives on the …FromDb helper for tests, which call it
 		// directly; accepting one over the wire would let a backdated value revive
@@ -322,6 +389,7 @@ export const resolveLastMileRoutePlan = internalQuery({
 		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			...(args.sendId !== undefined ? { sendId: args.sendId } : {}),
 		}),
 });
 
@@ -337,6 +405,7 @@ export async function resolveGovernedRelayRouteFromDb(
 	options: {
 		to?: string;
 		from?: string;
+		sendId?: string;
 		forceRelayReason: 'breaker_open' | 'warmup_overflow';
 	}
 ): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
@@ -354,12 +423,14 @@ export const resolveGovernedRelayRoute = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
+		sendId: v.optional(v.string()),
 		forceRelayReason: v.union(v.literal('breaker_open'), v.literal('warmup_overflow')),
 	},
 	handler: async (ctx, args) =>
 		await resolveGovernedRelayRouteFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			sendId: args.sendId,
 			forceRelayReason: args.forceRelayReason,
 		}),
 });

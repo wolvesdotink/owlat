@@ -12,9 +12,10 @@
  * but Convex never set it (the shipped docs claim it is "supplied by Convex";
  * that claim was false). This module is the producer. The share controller's
  * stratified assignment (plan P2-5) derives a recipient's percentile within a
- * cell from the same score via `engagementPercentile` below — the scoring logic
- * is NOT duplicated there. The `contactActivities` catalog adapter lives in the
- * sibling `engagementActivity.ts`, so this file stays closed arithmetic.
+ * cell from the same score via the sibling `engagementPercentile.ts` — the
+ * scoring logic is NOT duplicated there. The `contactActivities` catalog
+ * adapter lives in the sibling `engagementActivity.ts`, so this file stays
+ * closed arithmetic.
  *
  * THE MODEL. One exponentially-decayed accumulator, folded activity by
  * activity in chronological order:
@@ -468,28 +469,4 @@ export function computeEngagementScore(args: {
 /** The band a score falls in. The shared cuts the MTA's `mapToPriority` uses. */
 export function engagementBand(score: number): EngagementBand {
 	return engagementBandForScore(score);
-}
-
-/**
- * The seam plan P2-5 consumes for stratified assignment: a contact's percentile
- * (0-1) within a cohort of scores. `cohortAscending` must be sorted ascending;
- * the result is the fraction of the cohort scoring at or below `score`.
- *
- * An empty cohort has no ordering information, so it returns the neutral 0.5
- * rather than pretending the contact is at either extreme.
- */
-export function engagementPercentile(cohortAscending: readonly number[], score: number): number {
-	const size = cohortAscending.length;
-	if (size === 0) return 0.5;
-
-	// Upper bound: first index whose value is strictly greater than `score`.
-	let low = 0;
-	let high = size;
-	while (low < high) {
-		const mid = (low + high) >>> 1;
-		const value = cohortAscending[mid];
-		if (value === undefined || value <= score) low = mid + 1;
-		else high = mid;
-	}
-	return low / size;
 }

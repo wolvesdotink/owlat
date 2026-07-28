@@ -17,7 +17,7 @@ import {
 	TRANSPORT_OUTCOME_RETENTION_MS,
 } from '../transportOutcomes';
 import { startOfDayUtc } from '../../lib/clock';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import { bucketRow, DAY_MS, readBuckets } from './transportOutcomesFixtures';
 
 // A failing assertion must not leak fake timers into the next test.

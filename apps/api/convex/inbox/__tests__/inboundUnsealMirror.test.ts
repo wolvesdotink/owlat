@@ -27,7 +27,7 @@ import {
 	seedPinnedSender,
 	type ConvexTestCtx,
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
-import { modules } from '../../mail/__tests__/testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { openMessageBody } from '../../lib/messageBody';
 import { isSealedAtRest } from '../../lib/atRestBodies';
 

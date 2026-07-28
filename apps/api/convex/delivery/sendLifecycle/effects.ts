@@ -12,7 +12,7 @@ import type { ContactActivityType } from '../../contactActivities/catalog';
 import { bumpSendDailyStat } from '../../lib/sendDailyStats';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
-import { scheduleSuppressionMirror } from '../suppressionMirror';
+import { isMarketingOnlyBlockReason, scheduleSuppressionMirror } from '../suppressionMirror';
 import {
 	applyTransportOutcomeEffect,
 	type TransportOutcomeEvent,
@@ -146,20 +146,45 @@ export async function applyEffects(
 					.withIndex('by_email', (q) => q.eq('email', normalized))
 					.first();
 				if (existing) {
-					// A threshold-created soft suppression can later receive decisive
-					// hard-bounce evidence. Preserve the single blocklist row while
-					// upgrading both its classification and provenance; the hard mirror
-					// refresh below also changes the MTA backstop from expiring to permanent.
-					if (
-						existing.reason !== 'bounced' ||
-						existing.bounceType !== 'soft' ||
-						effect.reason !== 'bounced' ||
-						effect.bounceType !== 'hard'
-					) {
-						break;
-					}
+					// THE BLOCKLIST KEEPS ONE ROW PER ADDRESS, so an existing row has to
+					// be able to ABSORB stronger later evidence instead of swallowing it.
+					// Two upgrades exist, weakest evidence class first:
+					//
+					//  - A MARKETING-ONLY row (the sunset engine's `unengaged` hygiene
+					//    decision) says nothing at all about the mailbox — which is why
+					//    transactional mail still goes out to it. If that transactional
+					//    mail then hard-bounces or draws a complaint, THAT is evidence
+					//    about the mailbox and must replace the reason outright.
+					//    Otherwise the address stays permanently sendable on the
+					//    transactional scope, keeps bouncing, and the MTA backstop never
+					//    hears about it.
+					//  - A threshold-created SOFT bounce upgrades to HARD: the mirror
+					//    refresh below also changes the MTA backstop from expiring to
+					//    permanent.
+					//
+					// `effect.reason` is only ever 'bounced' | 'complained', i.e. always
+					// mailbox-level evidence, so the marketing-only row always yields.
+					const upgradesMarketingOnly = isMarketingOnlyBlockReason(existing.reason);
+					const upgradesSoftToHard =
+						existing.reason === 'bounced' &&
+						existing.bounceType === 'soft' &&
+						effect.reason === 'bounced' &&
+						effect.bounceType === 'hard';
+					if (!upgradesMarketingOnly && !upgradesSoftToHard) break;
+					const bounceType = upgradesSoftToHard ? 'hard' : effect.bounceType;
 					await ctx.db.patch(existing._id, {
-						bounceType: 'hard',
+						reason: effect.reason,
+						bounceType,
+						// THE NOTE MUST NOT OUTLIVE THE REASON IT EXPLAINED. A
+						// marketing-only row carries the sunset engine's note ("no
+						// engagement for N days"); once mailbox evidence has replaced the
+						// reason, that sentence describes a decision this row no longer
+						// records — and the suppression screen both renders it and
+						// free-text searches it, so a `bounced` row would explain itself
+						// as a hygiene pause. Patching to `undefined` is how Convex clears
+						// an optional field. The soft→hard upgrade keeps its note: that
+						// one is bounce provenance and still true.
+						...(upgradesMarketingOnly ? { notes: undefined } : {}),
 						sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
 						sourceEmailSendId: effect.source.kind === 'campaign' ? effect.source.id : undefined,
 						sourceTransactionalSendId:
@@ -167,8 +192,8 @@ export async function applyEffects(
 					});
 					await scheduleSuppressionMirror(ctx, {
 						email: normalized,
-						reason: 'bounced',
-						bounceType: 'hard',
+						reason: effect.reason,
+						...(bounceType ? { bounceType } : {}),
 					});
 					break;
 				}

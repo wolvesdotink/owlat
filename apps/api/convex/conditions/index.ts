@@ -65,6 +65,67 @@ type ConditionsLookup = {
 	[K in ConditionKind]?: unknown;
 };
 
+/** Bucket conditions by kind, preserving order within a kind. */
+function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condition[]> {
+	const grouped = new Map<ConditionKind, Condition[]>();
+	for (const c of conditions) {
+		const list = grouped.get(c.kind);
+		if (list) list.push(c);
+		else grouped.set(c.kind, [c]);
+	}
+	return grouped;
+}
+
+/**
+ * Sum one of the module registry's read-cost dimensions across every kind
+ * present in `conditions`.
+ *
+ * `groupByKind` erases the correlation between the map key and its bucket's
+ * element type, so calling a per-kind cost function needs a cast. Keeping that
+ * cast in ONE place is the point of this helper: each cost dimension is then a
+ * one-line export, and a future third dimension adds no third copy.
+ */
+function sumLookupReads(
+	conditions: readonly Condition[],
+	dimension: 'lookupReadsPerContact' | 'lookupReadsPerBatch'
+): number {
+	let reads = 0;
+	for (const [kind, list] of groupByKind(conditions)) {
+		const cost = conditionTypeModuleFor(kind)[dimension] as (
+			conds: ConditionOfKind<typeof kind>[]
+		) => number;
+		reads += cost(list as ConditionOfKind<typeof kind>[]);
+	}
+	return reads;
+}
+
+/**
+ * How many DOCUMENT reads {@link preloadConditionsLookupForContacts} costs PER
+ * CONTACT for `conditions` — the sum of each kind's own per-contact fan-out.
+ *
+ * The binding capacity pre-flight budgets its audience scan in DOCUMENTS
+ * (Convex caps a function execution at 16,384 of them), and a segment carrying
+ * two `topic_membership` conditions costs three documents per contact, not one.
+ * Charging rows instead of documents is how a "bounded" scan quietly blows the
+ * limit; this is the multiplier that makes the budget honest.
+ */
+export function conditionsLookupReadsPerContact(conditions: readonly Condition[]): number {
+	return sumLookupReads(conditions, 'lookupReadsPerContact');
+}
+
+/**
+ * How many DOCUMENT reads ONE call to {@link preloadConditionsLookupForContacts}
+ * costs regardless of batch size — each kind's fixed set-up.
+ *
+ * A batched scan calls the preload once per batch, so this is charged once per
+ * batch on top of the per-contact multiplier. Omitting it left the budget
+ * under-charged by a fixed cost on every batch, which is precisely the drift
+ * that makes a "bounded" scan overrun the Convex per-execution read limit.
+ */
+export function conditionsLookupReadsPerBatch(conditions: readonly Condition[]): number {
+	return sumLookupReads(conditions, 'lookupReadsPerBatch');
+}
+
 /**
  * Pre-fetch all data needed to evaluate `conditions` over many contacts in
  * O(1) per condition. Group conditions by kind, hand each batch to the kind's
@@ -74,12 +135,7 @@ export async function preloadConditionsLookup(
 	ctx: { db: DatabaseReader },
 	conditions: Condition[]
 ): Promise<ConditionsLookup> {
-	const grouped = new Map<ConditionKind, Condition[]>();
-	for (const c of conditions) {
-		const list = grouped.get(c.kind);
-		if (list) list.push(c);
-		else grouped.set(c.kind, [c]);
-	}
+	const grouped = groupByKind(conditions);
 
 	const out: ConditionsLookup = {};
 	for (const [kind, list] of grouped) {
@@ -106,12 +162,7 @@ export async function preloadConditionsLookupForContacts(
 	conditions: Condition[],
 	contacts: readonly Doc<'contacts'>[]
 ): Promise<ConditionsLookup> {
-	const grouped = new Map<ConditionKind, Condition[]>();
-	for (const c of conditions) {
-		const list = grouped.get(c.kind);
-		if (list) list.push(c);
-		else grouped.set(c.kind, [c]);
-	}
+	const grouped = groupByKind(conditions);
 
 	const out: ConditionsLookup = {};
 	for (const [kind, list] of grouped) {

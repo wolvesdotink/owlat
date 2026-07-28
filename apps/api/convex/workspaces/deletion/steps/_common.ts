@@ -35,6 +35,7 @@ export type OrganizationDeletionTable =
 	| 'agentActions'
 	| 'contentScanResults'
 	| 'deliverySnapshots'
+	| 'seedPlacementProbes'
 	| 'gmailDeliveryReceipts'
 	| 'gmailVolumeBuckets'
 	| 'gmailDomainVolumeRollups'
@@ -148,6 +149,7 @@ export type OrganizationDeletionTable =
 	| 'contactActivities'
 	| 'contactIdentities'
 	| 'contactRelationships'
+	| 'sunsetPolicies'
 	| 'knowledgeRelations'
 	| 'knowledgeBackfillJobs'
 	| 'knowledgeEdgeBackfillJobs'
@@ -205,6 +207,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('agentActions'),
 	v.literal('contentScanResults'),
 	v.literal('deliverySnapshots'),
+	v.literal('seedPlacementProbes'),
 	v.literal('gmailDeliveryReceipts'),
 	v.literal('gmailVolumeBuckets'),
 	v.literal('gmailDomainVolumeRollups'),
@@ -318,6 +321,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('contactActivities'),
 	v.literal('contactIdentities'),
 	v.literal('contactRelationships'),
+	v.literal('sunsetPolicies'),
 	v.literal('knowledgeRelations'),
 	v.literal('knowledgeBackfillJobs'),
 	v.literal('knowledgeEdgeBackfillJobs'),
