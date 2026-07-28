@@ -93,6 +93,9 @@ function ownSpfMechanisms(): string[] {
 /** Upper bound on the (per-messageType) route rows we inspect for a relay. */
 const PROVIDER_ROUTE_SCAN_LIMIT = 16;
 
+/** Read-only ctx: the ramp controller's hourly tick is a mutation and reads this. */
+type RelayReadCtx = QueryCtx | MutationCtx;
+
 /**
  * Every configured non-MTA transport kind, from the SHIPPED surfaces: each
  * enabled `providerRoutes` entry plus the single-transport `EMAIL_PROVIDER` env.
@@ -105,9 +108,6 @@ const PROVIDER_ROUTE_SCAN_LIMIT = 16;
  * is the second arm is one question, and two implementations of it would drift
  * into telling the operator two different stories about one configuration.
  */
-/** Read-only ctx: the ramp controller's hourly tick is a mutation and reads this. */
-type RelayReadCtx = QueryCtx | MutationCtx;
-
 export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]> {
 	// One row per messageType — tiny by construction, and bounded anyway.
 	const routes = await ctx.db.query('providerRoutes').take(PROVIDER_ROUTE_SCAN_LIMIT);
