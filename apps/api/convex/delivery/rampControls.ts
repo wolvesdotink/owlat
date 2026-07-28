@@ -71,7 +71,6 @@ const cellArgs = {
 /** Why a control could not be applied — always calm, never an exception. */
 export type RampControlRefusal =
 	| 'cell_not_ramp_managed'
-	| 'no_organization'
 	// The global kill switch is engaged: "everything held still" means everything.
 	| 'controller_paused'
 	// Abuse suspension, an open breaker, a critical blocklist listing or a live
@@ -385,7 +384,7 @@ export const resetCellPhase = adminMutation({
  */
 export const setStreamPreset = adminMutation({
 	args: { stream: deliverabilityStreamValidator, preset: v.union(rampPresetValidator, v.null()) },
-	handler: async (ctx, args): Promise<{ applied: boolean }> => {
+	handler: async (ctx, args): Promise<{ readonly applied: true }> => {
 		const { userId } = await getMutationContext(ctx);
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const now = Date.now();

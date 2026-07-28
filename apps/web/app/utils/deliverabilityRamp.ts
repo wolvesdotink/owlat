@@ -265,7 +265,6 @@ const REFUSAL_SENTENCES = {
 		'A safety hold is active on this cell — an abuse hold, an open circuit breaker, a critical blocklist listing or a cooldown from an earlier pull-back. Clear it and try again.',
 	cell_not_ramp_managed:
 		'This cell is not on the ramp yet. It starts being managed the first time the controller evaluates it.',
-	no_organization: 'There is no organization on this session, so there is nothing to change.',
 } as const satisfies Record<RampControlRefusal, string>;
 
 export function rampRefusalSentence(refusal: RampControlRefusal): string {
