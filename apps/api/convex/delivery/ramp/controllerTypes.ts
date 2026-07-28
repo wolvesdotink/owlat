@@ -31,8 +31,14 @@ export type RampControlReason =
 	| 'frozen'
 	/** The stored share was not a share (negative, above 1, or non-finite). */
 	| 'share_unreadable'
-	/** Thin, stale or absent evidence (plan D10): hold, in both directions. */
+	/** Thin or absent evidence (plan D10): hold, in both directions. */
 	| 'holding'
+	/**
+	 * The gate aggregate is not a reading of the PRESENT: it was computed longer
+	 * ago than `maxEvidenceAgeMs`, or stamped further ahead of the clock than
+	 * `maxFutureSkewMs`. Held, in both directions — evidence has an expiry.
+	 */
+	| 'evidence_stale'
 	/**
 	 * A tripwire gate failed alone (plan D17). Seeds are 5-10 mailboxes: a
 	 * collapse is actionable, but on its own it is SUSPECT, so the controller
@@ -115,20 +121,43 @@ export interface RampHardStopSignals {
  * The capacity projection, taken as a NARROW INPUT rather than computed here.
  *
  * P3-3 owns the real per-(IP x mailbox provider) projection. Keeping it behind
- * two numbers means that piece can replace the projection wholesale without
+ * this type means that piece can replace the projection wholesale without
  * touching the decision function, and means the decision function stays
  * testable against a projection that is deliberately hostile.
+ *
+ * "NO PROJECTION AT ALL" IS ITS OWN SHAPE, not a pair of zeros. Until P3-3
+ * lands there is no per-cell warming projection to read, and the share is
+ * bounded by its PHASE CEILING alone — but a projected reading of zero headroom
+ * against zero volume is also a perfectly legitimate thing P3-3 can produce for
+ * a cell whose cap is spent and whose projected volume is zero, and the two must
+ * not be the same value. `kind` is the difference, in the type rather than
+ * in a constant whose meaning depends on a short-circuit three modules away.
+ *
+ * WHY NOT SHIP A STAND-IN PROJECTION MEANWHILE. The obvious approximation — the
+ * deployment-wide remaining warming headroom over one cell's trailing volume —
+ * is wrong in both directions. The numerator is shared by all fifteen cells, so
+ * each one claims the whole deployment's headroom and the ceiling is far LOOSER
+ * than the plan intends; and as the day's sends approach the cap that numerator
+ * decays toward zero against a trailing-24h denominator that does not, so the
+ * ceiling collapses and retreats cells whose gates are all green — a daily
+ * sawtooth into the relay, with an admin notice attached to each one. A ceiling
+ * nobody designed is worse than no ceiling at all. ABSENCE IS NOT A CONSTRAINT
+ * (plan D2): a missing reading is never evidence of a full cap.
  */
-export interface RampCapacityInput {
-	/** Sends of warming-cap headroom left for this cell in the window. */
-	readonly warmingCapRemaining: number;
-	/**
-	 * Sends this cell is projected to make in the window. ZERO means "nothing to
-	 * send", which is not a constraint — a cell with no projected volume is
-	 * bounded by its phase ceiling alone.
-	 */
-	readonly projectedVolume: number;
-}
+export type RampCapacityInput =
+	/** No per-cell warming projection is available; only the phase ceiling binds. */
+	| { readonly kind: 'unconstrained' }
+	| {
+			readonly kind: 'projected';
+			/** Sends of warming-cap headroom left for this cell in the window. */
+			readonly warmingCapRemaining: number;
+			/**
+			 * Sends this cell is projected to make in the window. ZERO means "nothing
+			 * to send", which is not a constraint — a cell with no projected volume
+			 * is bounded by its phase ceiling alone.
+			 */
+			readonly projectedVolume: number;
+	  };
 
 export interface RampControllerInput {
 	readonly cell: DeliverabilityCell;

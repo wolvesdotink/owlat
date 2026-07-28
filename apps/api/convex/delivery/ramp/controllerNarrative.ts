@@ -90,6 +90,8 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Held ${where} at ${percent(decision.share)}: the stored share was not a usable value and has been read back inside [0, 1]. The controller does not add to a number it cannot read.`;
 		case 'holding':
 			return `Held ${where} at ${percent(decision.share)}: not enough fresh evidence to decide. The controller never increases on thin data, and never decreases on it either.`;
+		case 'evidence_stale':
+			return `Held ${where} at ${percent(decision.share)}: the gate measurements behind this decision were not a reading of the present — too old, or stamped ahead of the clock. The controller neither raises nor lowers a share on evidence it cannot date.`;
 		case 'awaiting_corroboration':
 			return `Held ${where} at ${percent(decision.share)}: the seed-placement tripwire fired alone. Seeds are too small a sample to act on without the deferral or bounce gate agreeing.`;
 		case 'capacity_unknown':

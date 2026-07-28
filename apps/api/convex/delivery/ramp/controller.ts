@@ -16,6 +16,7 @@
  *   3. circuit breaker      -> s x 0.5, freeze 6h
  *   4. critical blocklist   -> 0, freeze 24h
  *   5. active freeze        -> hold
+ *  5b. stale/skewed evidence -> hold; evidence has an expiry, both directions
  *   6. gate halt / fail     -> max(floor, s x 0.5), freeze COOLDOWN
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
  *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
@@ -41,8 +42,16 @@
  * the one that cannot increase.
  */
 
-import { clampOwnShare, OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
+import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { normalizePhaseCeiling, RAMP_AIMD } from './controllerConfig';
+import {
+	isEvidenceUsable,
+	isStoredInstantAhead,
+	readStoredInstant,
+	roundShare,
+	sanitizeGreenSince,
+	sanitizeStreak,
+} from './controllerReaders';
 import { ppToFraction } from './gateConfig';
 import type { RampGateId } from './gateTypes';
 import type {
@@ -53,56 +62,6 @@ import type {
 	RampDecisionReason,
 	RampMixState,
 } from './controllerTypes';
-
-/**
- * Shares are stored to four decimals. Repeated additive increase on binary
- * floats drifts (0.02 + 0.05 x 19 lands on 0.9699999999999999), and a drifting
- * share makes every fixture approximate and every audit row unreadable.
- */
-const SHARE_PRECISION = 10_000;
-
-function roundShare(value: number): number {
-	return Math.round(clampOwnShare(value) * SHARE_PRECISION) / SHARE_PRECISION;
-}
-
-function sanitizeStreak(value: number | undefined): number {
-	if (value === undefined || !Number.isFinite(value) || value <= 0) return 0;
-	return Math.floor(value);
-}
-
-/**
- * ONE reading of a stored instant, for every rung that has to decide whether a
- * timestamp on the row can be believed: `null` means the value is NOT USABLE as
- * a past instant — absent, non-finite, non-positive, or ahead of the clock.
- *
- * Spelling this out once matters more than it looks: three rungs used to
- * hand-roll the same three conditions with slightly different wording, and the
- * one that forgot the future check was how a graduation clock could be handed
- * out early.
- */
-function readStoredInstant(stored: number | undefined, now: number): number | null {
-	if (stored === undefined || !Number.isFinite(stored) || stored <= 0) return null;
-	if (stored > now) return null;
-	return stored;
-}
-
-/**
- * The one distinction `readStoredInstant` deliberately collapses: an anchor
- * AHEAD of the clock. Unreadable and future are both unusable, but the window
- * gate must treat them differently — see `isEvaluationWindowElapsed`.
- */
-function isStoredInstantAhead(stored: number | undefined, now: number): boolean {
-	return stored !== undefined && Number.isFinite(stored) && stored > now;
-}
-
-/**
- * The graduation clock, sanitised. A stored instant that is missing, corrupt,
- * non-positive or AHEAD OF THE CLOCK restarts the count at `now`: the only
- * failure mode we accept here is graduating a cell LATER than it deserved.
- */
-function sanitizeGreenSince(stored: number | undefined, now: number): number {
-	return readStoredInstant(stored, now) ?? now;
-}
 
 /**
  * Has a whole evaluation window elapsed since the last COUNTED one?
@@ -158,6 +117,11 @@ export function nextCooldownMs(mix: RampMixState, now: number): number {
  * and — far earlier — by gates that cannot reach their sample floors.
  */
 export function capacityCeiling(capacity: RampCapacityInput): number | null {
+	// NO PROJECTION is not a spent cap: the cell is bounded by its phase ceiling
+	// alone until P3-3 supplies a real per-cell reading (plan D2 — absence never
+	// constrains). It is a distinct SHAPE, not a pair of zeros, precisely so it
+	// cannot be confused with a cell whose cap is spent and whose volume is zero.
+	if (capacity.kind === 'unconstrained') return OWN_SHARE_CEILING;
 	const { warmingCapRemaining, projectedVolume } = capacity;
 	if (!Number.isFinite(warmingCapRemaining) || warmingCapRemaining < 0) return null;
 	if (!Number.isFinite(projectedVolume) || projectedVolume < 0) return null;
@@ -331,6 +295,16 @@ function decide(args: DecideArgs): DecisionDraft {
 	// window is not evidence of health. Deferring a pin costs nothing; awarding
 	// one to a cell that went quiet costs the relay standby that backs it up.
 	if (evaluation === null) return { ...held, reason: 'holding', greenSince: undefined };
+
+	// 5b. EVIDENCE HAS AN EXPIRY. An aggregate stamped long ago — or ahead of the
+	//     clock — is not a reading of the present, and a `pass` of any age would
+	//     otherwise flow straight through K_CLEAN into the additive-increase
+	//     branch and buy one step per elapsed window for ever. Holds in BOTH
+	//     directions, and stops the graduation clock, exactly like a missing one:
+	//     evidence we cannot date is not evidence (plan D10).
+	if (!isEvidenceUsable(evaluation.evaluatedAt, now, config.thresholds)) {
+		return { ...held, reason: 'evidence_stale', greenSince: undefined };
+	}
 	const streak = sanitizeStreak(evaluation.cleanStreak);
 
 	// 6. A breached gate: multiplicative decrease to the floor, then a cooldown.
@@ -366,7 +340,9 @@ function decide(args: DecideArgs): DecisionDraft {
 		return {
 			...held,
 			share,
-			reason: failedGate ?? 'holding',
+			// The union guarantees a named gate on `fail`/`halt`, so this reason can
+			// never read `holding` for a halved share (plan D12: no silent retreat).
+			reason: failedGate,
 			verdict: evaluation.verdict,
 			failedGate,
 			cleanStreak: streak,
