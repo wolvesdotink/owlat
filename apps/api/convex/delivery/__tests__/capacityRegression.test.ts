@@ -19,20 +19,28 @@
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
+import { MS_PER_DAY } from '../../lib/constants';
+import { campaignWarmingCapBinds } from '../../lib/sendProviders/warmingCapGate';
 import { loadWarmingCapacity } from '../warmingCapacity';
 import { RAMP_FIXTURE_SHARE, readManagedCell, seedRampCell } from './rampCronFixtures';
 import {
+	CAPACITY_FROM,
 	CAPACITY_NOW,
 	CAPACITY_ORG,
+	CAPACITY_TO,
 	capacityFor,
-	DAY_MS,
+	clearRelayEnv,
+	resolveShippedRoute,
+	seedOverflowRoute,
 	seedTrafficWeek,
 	seedWarming,
+	spendWarmingCap,
 	type CapacitySnapshot,
+	type Harness,
 	type SeedWarmingOptions,
 } from './capacityFixtures';
 
@@ -44,10 +52,12 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	};
 });
 
-type Harness = ReturnType<typeof convexTest>;
-
 beforeEach(() => {
 	vi.spyOn(Date, 'now').mockReturnValue(CAPACITY_NOW);
+});
+
+afterEach(() => {
+	clearRelayEnv();
 });
 
 async function runTick(options: {
@@ -69,7 +79,7 @@ describe('the shipped absences still constrain nothing (plan D2)', () => {
 	});
 
 	it('a warming sync that has gone quiet for a day: unconstrained, never a spent cap', async () => {
-		const { capacity } = await runTick({ warming: { syncedAgoMs: DAY_MS + 60_000 } });
+		const { capacity } = await runTick({ warming: { syncedAgoMs: MS_PER_DAY + 60_000 } });
 		expect(capacity.kind).toBe('unconstrained');
 	});
 
@@ -97,7 +107,7 @@ describe('the shipped warming projection itself is untouched', () => {
 
 	it('still answers UNKNOWN — not zero — for a stale sync', async () => {
 		const t = convexTest(schema, modules);
-		await seedWarming(t, { syncedAgoMs: DAY_MS + 60_000 });
+		await seedWarming(t, { syncedAgoMs: MS_PER_DAY + 60_000 });
 		const projection = await t.run(
 			async (ctx) => await loadWarmingCapacity(ctx, { now: CAPACITY_NOW })
 		);
@@ -114,5 +124,66 @@ describe('THE SANCTIONED CHANGE: a known cap over unprojectable demand HOLDS', (
 	it('and holds the share where it was — a hold, never a retreat (plan D10)', async () => {
 		const { harness } = await runTick({ traffic: false });
 		expect((await readManagedCell(harness))?.ownShare).toBe(RAMP_FIXTURE_SHARE);
+	});
+});
+
+/**
+ * THE SHIPPED REACTIVE HALF, UNCHANGED.
+ *
+ * P3-3 adds a PREDICTIVE ceiling beside the shipped `warmup_overflow` reroute
+ * and rebuilds nothing of it. These pin the three points the piece composes with
+ * — the resolver's reason, the pre-flight gate's verdict and the last-mile
+ * forced-reason mapping — so a change to any of them fails here rather than
+ * silently changing what the controller reads a reroute as.
+ */
+describe('the shipped warmup_overflow reroute is untouched', () => {
+	async function seedOverflowDeployment(): Promise<Harness> {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: CAPACITY_ORG });
+		await seedWarming(t);
+		await seedOverflowRoute(t);
+		return t;
+	}
+
+	it('a SPENT cap still relays with deliverabilityReason "warmup_overflow"', async () => {
+		const t = await seedOverflowDeployment();
+		await spendWarmingCap(t);
+		const route = await resolveShippedRoute(t);
+		expect(route?.providerType).toBe('ses');
+		expect(route?.source).toBe('deliverability_fallback');
+		expect(route?.deliverabilityReason).toBe('warmup_overflow');
+	});
+
+	it('and a cap with headroom still keeps the send on the own MTA', async () => {
+		const t = await seedOverflowDeployment();
+		const route = await resolveShippedRoute(t);
+		expect(route?.providerType).toBe('mta');
+		expect(route?.deliverabilityReason).toBeUndefined();
+	});
+
+	it('the pre-flight gate still answers "warmup_overflow_absorbs" rather than binding', async () => {
+		const t = await seedOverflowDeployment();
+		const verdict = await t.run(
+			async (ctx) =>
+				await campaignWarmingCapBinds(ctx, { fromEmail: CAPACITY_FROM, now: CAPACITY_NOW })
+		);
+		expect(verdict).toEqual({ binds: false, why: 'warmup_overflow_absorbs' });
+	});
+
+	it('the last-mile forced reason still resolves the relay with the same reason', async () => {
+		// `delivery/lastMileRouting.ts` maps its own overflow decision onto
+		// `forceRelayReason: 'warmup_overflow'` and asks this query. The forced
+		// reason alone must carry the send to the relay — here with the cap NOT
+		// spent, so nothing but the mapping can be producing the answer.
+		const t = await seedOverflowDeployment();
+		const relay = await t.query(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {
+			messageType: 'campaign',
+			to: CAPACITY_TO,
+			from: CAPACITY_FROM,
+			forceRelayReason: 'warmup_overflow',
+		});
+		expect(relay.deferralCode).toBeUndefined();
+		expect(relay.route?.providerType).toBe('ses');
+		expect(relay.route?.deliverabilityReason).toBe('warmup_overflow');
 	});
 });

@@ -9,12 +9,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { startOfDayUtc } from '../../../lib/clock';
 import { projectCellVolume, type CellVolumeDay } from '../capacityProjection';
 import { DAY, NOW } from './controllerFixtures';
 
 /** Whole UTC day starts, oldest first, for the seven COMPLETE days before NOW. */
 function trailingDays(totals: readonly number[], owns?: readonly number[]): CellVolumeDay[] {
-	const today = NOW - (NOW % DAY);
+	const today = startOfDayUtc(NOW);
 	return totals.map((total, index) => ({
 		dayStartMs: today - (totals.length - index) * DAY,
 		total,
@@ -72,13 +73,13 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it("a cell that only started yesterday projects yesterday's volume", () => {
-		const today = NOW - (NOW % DAY);
+		const today = startOfDayUtc(NOW);
 		const projection = projectCellVolume([{ dayStartMs: today - DAY, total: 900, own: 300 }], NOW);
 		expect(projection).toMatchObject({ kind: 'projected', dailyVolume: 900, observedDays: 1 });
 	});
 
 	it("EXCLUDES today's partial day — a half-counted morning is not a low day", () => {
-		const today = NOW - (NOW % DAY);
+		const today = startOfDayUtc(NOW);
 		const projection = projectCellVolume(
 			[
 				...trailingDays([1000, 1000, 1000, 1000, 1000, 1000, 1000]),
@@ -94,7 +95,7 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it('EXCLUDES days older than the trailing window', () => {
-		const today = NOW - (NOW % DAY);
+		const today = startOfDayUtc(NOW);
 		const projection = projectCellVolume(
 			[
 				{ dayStartMs: today - 30 * DAY, total: 100_000, own: 100_000 },
@@ -106,7 +107,7 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it('AGGREGATES per-shard rows for the same day instead of counting them as days', () => {
-		const today = NOW - (NOW % DAY);
+		const today = startOfDayUtc(NOW);
 		const shards: CellVolumeDay[] = [];
 		for (let day = 1; day <= 3; day += 1) {
 			for (let shard = 0; shard < 8; shard += 1) {
@@ -125,6 +126,36 @@ describe('projectCellVolume over trailing fixtures', () => {
 			NOW
 		);
 		expect(projection).toMatchObject({ ownDailyVolume: 200, ownFraction: 0.2 });
+	});
+
+	it('measures the mix PER DAY, so a jagged week cannot invent a mix no day had', () => {
+		// The own arm's big day is not the total's big day. A ratio of two
+		// independently-taken statistics would divide the own arm's peak by the
+		// total's typical day and report a mix strictly above every day observed;
+		// a median over the DAILY ratios can only ever report one of them.
+		const totals = [1000, 200, 1000, 200, 1000, 200, 1000];
+		const owns = [100, 200, 100, 200, 100, 200, 100];
+		const projection = projectCellVolume(trailingDays(totals, owns), NOW);
+		if (projection.kind !== 'projected') throw new Error('expected a projection');
+
+		const dailyRatios = totals.map((total, index) => (owns[index] ?? 0) / total);
+		expect(projection.ownFraction).toBeLessThanOrEqual(Math.max(...dailyRatios));
+		expect(projection.ownFraction).toBeGreaterThanOrEqual(Math.min(...dailyRatios));
+		// Four days at 0.1 and three at 1.0: the median day is a tenth.
+		expect(projection.ownFraction).toBeCloseTo(0.1, 10);
+		// And the own volume stays consistent with the mix it was derived from.
+		expect(projection.ownDailyVolume).toBeCloseTo(projection.dailyVolume * 0.1, 10);
+	});
+
+	it('a day with no demand contributes no mix rather than a zero one', () => {
+		// A paused day is a day with no mix, not a day the own arm carried none of:
+		// counting it as 0/0 = 0 would drag the measured mix toward zero and report
+		// a shortfall no reroute caused.
+		const projection = projectCellVolume(
+			trailingDays([1000, 0, 1000, 0, 1000], [800, 0, 800, 0, 800]),
+			NOW
+		);
+		expect(projection).toMatchObject({ ownFraction: 0.8 });
 	});
 
 	it('never reports an own arm that carried more than the cell sent', () => {

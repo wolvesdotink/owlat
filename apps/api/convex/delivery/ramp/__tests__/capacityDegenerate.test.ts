@@ -22,12 +22,16 @@ import {
 	CAPACITY_MIN_DAY_FRACTION_REMAINING,
 	projectCellVolume,
 	remainingDemandToday,
-	rerouteMissRate,
+	deliveredShareShortfall,
 	type CellVolumeDay,
 } from '../capacityProjection';
+import { startOfDayUtc } from '../../../lib/clock';
 import { controllerInput, mixState, DAY, NOW } from './controllerFixtures';
 
-const TODAY = NOW - (NOW % DAY);
+// The SHIPPED day boundary, never a re-implementation of it: a fixture that
+// recomputes `x - (x % DAY)` itself cannot catch a bug in the function the
+// projection actually uses.
+const TODAY = startOfDayUtc(NOW);
 
 function day(offset: number, total: number, own = total): CellVolumeDay {
 	return { dayStartMs: TODAY - offset * DAY, total, own };
@@ -180,19 +184,19 @@ describe('a ZERO projected volume holds as well — the division is never reache
 	});
 });
 
-describe('rerouteMissRate refuses meaningless questions', () => {
+describe('deliveredShareShortfall refuses meaningless questions', () => {
 	it('is null when there is no projection to measure against', () => {
-		expect(rerouteMissRate({ kind: 'unknown', reason: 'no_volume' }, 0.5)).toBeNull();
+		expect(deliveredShareShortfall({ kind: 'unknown', reason: 'no_volume' }, 0.5)).toBeNull();
 	});
 
 	it('is null when the cell was assigned no own traffic at all — nothing to miss', () => {
 		const projection = projectCellVolume([day(1, 1000, 0), day(2, 1000, 0)], NOW);
-		expect(rerouteMissRate(projection, 0)).toBeNull();
-		expect(rerouteMissRate(projection, Number.NaN)).toBeNull();
+		expect(deliveredShareShortfall(projection, 0)).toBeNull();
+		expect(deliveredShareShortfall(projection, Number.NaN)).toBeNull();
 	});
 
 	it('is zero, never negative, when the own arm carried MORE than its share', () => {
 		const projection = projectCellVolume([day(1, 1000, 900), day(2, 1000, 900)], NOW);
-		expect(rerouteMissRate(projection, 0.5)).toBe(0);
+		expect(deliveredShareShortfall(projection, 0.5)).toBe(0);
 	});
 });
