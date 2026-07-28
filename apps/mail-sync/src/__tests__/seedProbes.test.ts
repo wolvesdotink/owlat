@@ -27,11 +27,14 @@ const HOST = 'track.example';
 interface Recorded {
 	probeId: string;
 	folderName: string | null;
+	specialUse?: string;
 }
 
 function buildDeps(overrides: {
 	work: SeedProbeWorkItem[];
 	folders?: Record<string, string>;
+	/** The folder's RFC 6154 attribute, per probe, when the server offers one. */
+	specialUse?: Record<string, string>;
 	hygiene?: Record<string, { markRead: boolean; click: boolean }>;
 	placements?: Record<string, 'inbox' | 'category' | 'spam' | 'deleted' | 'missing'>;
 }): {
@@ -56,7 +59,13 @@ function buildDeps(overrides: {
 			const found = new Map<string, SeedProbeLocation>();
 			for (const probeId of probeIds) {
 				const folderName = overrides.folders?.[probeId];
-				if (folderName !== undefined) found.set(probeId, { folderName, uid: 7 });
+				if (folderName === undefined) continue;
+				const specialUse = overrides.specialUse?.[probeId];
+				found.set(probeId, {
+					folderName,
+					uid: 7,
+					...(specialUse !== undefined ? { specialUse } : {}),
+				});
 			}
 			return found;
 		},
@@ -75,8 +84,8 @@ function buildDeps(overrides: {
 			opened += 1;
 			return session;
 		},
-		recordClassification: async ({ probeId, folderName }) => {
-			recorded.push({ probeId, folderName });
+		recordClassification: async ({ probeId, folderName, specialUse }) => {
+			recorded.push({ probeId, folderName, ...(specialUse !== undefined ? { specialUse } : {}) });
 			return {
 				recorded: true,
 				placement: overrides.placements?.[probeId] ?? (folderName === null ? 'missing' : 'inbox'),
@@ -445,5 +454,36 @@ describe('the hygiene click stays on our own origins', () => {
 
 	it('ignores a candidate that is not a parseable URL', () => {
 		expect(chooseHygieneClickTarget(['https://['], [HOST])).toBeUndefined();
+	});
+});
+
+/**
+ * (a) The folder's RFC 6154 SPECIAL-USE attribute is the only
+ * language-independent statement of what a folder IS, and the backend's
+ * classifier trusts it ahead of the name. The sweep's job is to carry it.
+ */
+describe('runSeedProbeSweep — the special-use attribute reaches the classifier', () => {
+	it('forwards the flag the mailbox reported alongside the folder name', async () => {
+		const { deps, recorded } = buildDeps({
+			work: [account],
+			folders: { sp_a: 'Nemzsehető levelek' },
+			specialUse: { sp_a: '\\Junk' },
+		});
+		await runSeedProbeSweep(deps);
+		expect(recorded).toEqual([
+			{ probeId: 'sp_a', folderName: 'Nemzsehető levelek', specialUse: '\\Junk' },
+		]);
+	});
+
+	it('omits it entirely when the server advertised none', async () => {
+		const { deps, recorded } = buildDeps({ work: [account], folders: { sp_a: 'INBOX' } });
+		await runSeedProbeSweep(deps);
+		expect(recorded).toEqual([{ probeId: 'sp_a', folderName: 'INBOX' }]);
+	});
+
+	it('sends no flag for a probe that was never found — MISSING has no folder', async () => {
+		const { deps, recorded } = buildDeps({ work: [account], folders: {} });
+		await runSeedProbeSweep(deps);
+		expect(recorded).toEqual([{ probeId: 'sp_a', folderName: null }]);
 	});
 });

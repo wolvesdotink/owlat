@@ -374,6 +374,32 @@ describe('recordSeedProbeDispatch — arm attribution', () => {
 		expect(probe?.transportArm).toBe('reference');
 	});
 
+	it('is the SINGLE ARBITER: a workpool re-run cannot rewrite the first attribution', async () => {
+		// `sendSingleEmail` runs in a workpool that may re-run an action. A second
+		// write would replace the FIRST arm attribution — the whole point of the
+		// observation — and restart the poller's give-up horizon, hiding a probe
+		// that has already gone missing. First writer wins; the loser is a no-op.
+		const f = await probeFixture();
+		const first = 1_800_000_000_000;
+		await f.t.mutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
+			organizationId: ORG,
+			probeRef: f.probeRef,
+			transportArm: 'own',
+			now: first,
+		});
+		expect(
+			await f.t.mutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
+				organizationId: ORG,
+				probeRef: f.probeRef,
+				transportArm: 'reference',
+				now: first + 60_000,
+			})
+		).toEqual({ recorded: false, reason: 'already_dispatched' });
+		const probe = await f.t.run(async (ctx) => ctx.db.get(f.probeRef));
+		expect(probe?.transportArm).toBe('own');
+		expect(probe?.dispatchedAt).toBe(first);
+	});
+
 	it('refuses a dispatch record from another organization', async () => {
 		const f = await probeFixture();
 		expect(

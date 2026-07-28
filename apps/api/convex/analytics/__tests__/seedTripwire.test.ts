@@ -187,7 +187,7 @@ describe('the corroboration rule (D17)', () => {
 
 	it('HOLDS on a collapse with no corroboration — eight mailboxes may not halve a healthy share', () => {
 		expect(resolveSeedTripwire(collapsed, NO_CORROBORATION)).toEqual({
-			action: 'hold',
+			outcome: 'suspect',
 			reason: 'seed_collapse_awaiting_corroboration',
 		});
 	});
@@ -195,24 +195,28 @@ describe('the corroboration rule (D17)', () => {
 	it('acts when the DEFERRAL gate corroborates', () => {
 		expect(
 			resolveSeedTripwire(collapsed, { deferralGateBreached: true, bounceGateBreached: false })
-		).toEqual({ action: 'act', reason: 'seed_collapse_corroborated' });
+		).toEqual({ outcome: 'act', reason: 'seed_collapse_corroborated' });
 	});
 
 	it('acts when the BOUNCE gate corroborates', () => {
 		expect(
 			resolveSeedTripwire(collapsed, { deferralGateBreached: false, bounceGateBreached: true })
-		).toEqual({ action: 'act', reason: 'seed_collapse_corroborated' });
+		).toEqual({ outcome: 'act', reason: 'seed_collapse_corroborated' });
 	});
 
-	it('never acts on a healthy, mixed, or thin reading — even with both gates breached', () => {
+	it('never acts on a healthy or a thin reading — even with both gates breached', () => {
 		const both = { deferralGateBreached: true, bounceGateBreached: true };
-		for (const rollup of [
-			summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'inbox', 'inbox'])),
-			summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'inbox', 'spam', 'spam'])),
-			summarizeSeedProvider('gmail', observations('gmail', ['spam'])),
-		]) {
-			expect(resolveSeedTripwire(rollup, both).action).toBe('hold');
-		}
+		expect(
+			resolveSeedTripwire(
+				summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'inbox', 'inbox'])),
+				both
+			).outcome
+		).toBe('clean');
+		// D10: thin data never produces a verdict in either direction.
+		expect(
+			resolveSeedTripwire(summarizeSeedProvider('gmail', observations('gmail', ['spam'])), both)
+				.outcome
+		).toBe('insufficient');
 	});
 });
 
@@ -230,7 +234,7 @@ describe('a degraded provider that is also LOSING probes', () => {
 
 	it('HOLDS while nothing corroborates it', () => {
 		expect(resolveSeedTripwire(missingMixed, NO_CORROBORATION)).toEqual({
-			action: 'hold',
+			outcome: 'suspect',
 			reason: 'seed_probes_missing_awaiting_corroboration',
 		});
 	});
@@ -238,17 +242,33 @@ describe('a degraded provider that is also LOSING probes', () => {
 	it('acts once the bounce gate corroborates', () => {
 		expect(
 			resolveSeedTripwire(missingMixed, { deferralGateBreached: false, bounceGateBreached: true })
-		).toEqual({ action: 'act', reason: 'seed_probes_missing_corroborated' });
+		).toEqual({ outcome: 'act', reason: 'seed_probes_missing_corroborated' });
 	});
 
-	it('stays a plain hold when the same mix loses no probes', () => {
+	it('is still a SUSPICION when the same mix loses no probes — never a clean reading', () => {
+		// GATE 5'S FIRST CLAUSE. `mixed` is below SEED_REACHED_THRESHOLD by
+		// construction, so it may not read clean: a clean reading feeds the K_CLEAN
+		// streak and licenses an increase while probes are being filed to spam.
 		const noMissing = summarizeSeedProvider(
 			'gmail',
 			observations('gmail', ['inbox', 'inbox', 'spam', 'spam'])
 		);
+		expect(resolveSeedTripwire(noMissing, NO_CORROBORATION)).toEqual({
+			outcome: 'suspect',
+			reason: 'seeds_below_reached_threshold_awaiting_corroboration',
+		});
 		expect(
-			resolveSeedTripwire(noMissing, { deferralGateBreached: true, bounceGateBreached: true })
-		).toEqual({ action: 'hold', reason: 'seeds_mixed_no_collapse' });
+			resolveSeedTripwire(noMissing, { deferralGateBreached: true, bounceGateBreached: false })
+		).toEqual({
+			outcome: 'act',
+			reason: 'seeds_below_reached_threshold_corroborated',
+		});
+		expect(
+			resolveSeedTripwire(noMissing, { deferralGateBreached: false, bounceGateBreached: true })
+		).toEqual({
+			outcome: 'act',
+			reason: 'seeds_below_reached_threshold_corroborated',
+		});
 	});
 });
 
@@ -340,7 +360,7 @@ describe('the per-arm roll-up and the reference comparison', () => {
 		]);
 		expect(rollup.reference).toBe('below_reference');
 		expect(resolveSeedTripwire(rollup, NO_CORROBORATION)).toEqual({
-			action: 'hold',
+			outcome: 'suspect',
 			reason: 'seeds_below_reference_awaiting_corroboration',
 		});
 		const corroborated = evaluateSeedPlacementGate({
@@ -362,7 +382,7 @@ describe('the per-arm roll-up and the reference comparison', () => {
 		expect(rollup.status).toBe('inbox_dominant');
 		expect(rollup.reference).toBe('below_reference');
 		expect(
-			resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: false }).action
+			resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: false }).outcome
 		).toBe('act');
 	});
 
@@ -374,7 +394,7 @@ describe('the per-arm roll-up and the reference comparison', () => {
 		]);
 		expect(rollup.reference).toBe('at_or_above_reference');
 		expect(resolveSeedTripwire(rollup, NO_CORROBORATION)).toEqual({
-			action: 'hold',
+			outcome: 'clean',
 			reason: 'seeds_reaching_inbox',
 		});
 	});
@@ -388,7 +408,7 @@ describe('the per-arm roll-up and the reference comparison', () => {
 		expect(rollup.status).toBe('collapse_suspected');
 		expect(
 			resolveSeedTripwire(rollup, { deferralGateBreached: false, bounceGateBreached: true })
-		).toEqual({ action: 'act', reason: 'seed_collapse_corroborated' });
+		).toEqual({ outcome: 'act', reason: 'seed_collapse_corroborated' });
 	});
 
 	it('holds the comparison when the reference arm is below the minimum sample (D10)', () => {
@@ -397,9 +417,11 @@ describe('the per-arm roll-up and the reference comparison', () => {
 			...observations('gmail', reached(SEED_MIN_OBSERVATIONS - 1), 'reference'),
 		]);
 		expect(rollup.reference).toBe('insufficient_reference_sample');
+		// The COMPARISON holds — the reason names the absolute clause, never the
+		// reference one, because there is no comparable reference sample.
 		expect(
-			resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: true }).action
-		).toBe('hold');
+			resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: true })
+		).toEqual({ outcome: 'act', reason: 'seeds_below_reached_threshold_corroborated' });
 	});
 });
 
@@ -413,31 +435,38 @@ describe('the same matrix with no reference arm (standalone)', () => {
 		name: string;
 		placements: SeedPlacement[];
 		status: string;
-		action: 'hold' | 'act';
+		/** With NOTHING corroborating: a clean reading, or a suspicion that holds. */
+		uncorroborated: 'clean' | 'suspect';
+		/** With the deferral and bounce gates breached. */
+		corroborated: 'clean' | 'act';
 	}> = [
 		{
 			name: 'clean',
 			placements: ['inbox', 'inbox', 'inbox', 'inbox'],
 			status: 'inbox_dominant',
-			action: 'hold',
+			uncorroborated: 'clean',
+			corroborated: 'clean',
 		},
 		{
 			name: 'degraded',
 			placements: ['inbox', 'inbox', 'spam', 'spam'],
 			status: 'mixed',
-			action: 'hold',
+			uncorroborated: 'suspect',
+			corroborated: 'act',
 		},
 		{
 			name: 'degraded and losing probes',
 			placements: ['inbox', 'inbox', 'spam', 'missing'],
 			status: 'mixed',
-			action: 'act',
+			uncorroborated: 'suspect',
+			corroborated: 'act',
 		},
 		{
 			name: 'collapsed',
 			placements: ['spam', 'spam', 'spam', 'spam'],
 			status: 'collapse_suspected',
-			action: 'act',
+			uncorroborated: 'suspect',
+			corroborated: 'act',
 		},
 	];
 
@@ -447,11 +476,88 @@ describe('the same matrix with no reference arm (standalone)', () => {
 			expect(rollup.reference).toBe('no_reference_arm');
 			expect(rollup.referenceSampleSize).toBe(0);
 			expect(rollup.status).toBe(testCase.status);
+			expect(resolveSeedTripwire(rollup, NO_CORROBORATION).outcome).toBe(testCase.uncorroborated);
 			expect(
-				resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: true }).action
-			).toBe(testCase.action);
+				resolveSeedTripwire(rollup, { deferralGateBreached: true, bounceGateBreached: true })
+					.outcome
+			).toBe(testCase.corroborated);
 		});
 	}
+
+	it('STANDALONE, a degraded provider never licenses an increase (the absolute clause IS the gate)', () => {
+		// D3's substitution: with no reference arm the second clause is absent, so
+		// gate 5's first clause is all there is. 3 of 10 probes filed to spam is a
+		// 70 % reached share — below SEED_REACHED_THRESHOLD — and answering `pass`
+		// here would feed the K_CLEAN streak that authorises the +5pp increase.
+		const degraded = summarizeSeedProvider(
+			'gmail',
+			observations('gmail', [
+				'inbox',
+				'inbox',
+				'inbox',
+				'inbox',
+				'inbox',
+				'inbox',
+				'inbox',
+				'spam',
+				'spam',
+				'spam',
+			])
+		);
+		expect(degraded.status).toBe('mixed');
+		expect(degraded.reference).toBe('no_reference_arm');
+		expect(degraded.anyMissing).toBe(false);
+
+		const held = evaluateSeedPlacementGate({
+			rollups: [degraded],
+			corroboration: NO_CORROBORATION,
+		});
+		expect(held.verdict).toBe('insufficient_data');
+		expect(held.verdict).not.toBe('pass');
+		expect(held.suspectProviders).toEqual(['gmail']);
+		expect(held.failedProviders).toEqual([]);
+
+		const corroborated = evaluateSeedPlacementGate({
+			rollups: [degraded],
+			corroboration: { deferralGateBreached: false, bounceGateBreached: true },
+		});
+		expect(corroborated.verdict).toBe('fail');
+		expect(corroborated.failedProviders).toEqual(['gmail']);
+	});
+
+	it('WITH A REFERENCE ARM, the same degraded provider holds even when the comparison is clean', () => {
+		// The reference arm is degraded to the same degree, so the SECOND clause
+		// reads `at_or_above_reference` and cannot trip. The first clause still
+		// must: a gate that passes here would ramp both arms into the same wall.
+		const degraded = summarizeSeedProvider('gmail', [
+			...observations(
+				'gmail',
+				['inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'spam', 'spam', 'spam'],
+				'own'
+			),
+			...observations(
+				'gmail',
+				['inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'inbox', 'spam', 'spam', 'spam'],
+				'reference'
+			),
+		]);
+		expect(degraded.status).toBe('mixed');
+		expect(degraded.reference).toBe('at_or_above_reference');
+
+		const held = evaluateSeedPlacementGate({
+			rollups: [degraded],
+			corroboration: NO_CORROBORATION,
+		});
+		expect(held.verdict).toBe('insufficient_data');
+		expect(held.suspectProviders).toEqual(['gmail']);
+
+		const corroborated = evaluateSeedPlacementGate({
+			rollups: [degraded],
+			corroboration: { deferralGateBreached: true, bounceGateBreached: false },
+		});
+		expect(corroborated.verdict).toBe('fail');
+		expect(corroborated.failedProviders).toEqual(['gmail']);
+	});
 
 	it('never reads `below_reference` when nothing carried a reference probe', () => {
 		for (const testCase of cases) {

@@ -1,7 +1,5 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, afterAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import schema from '../../schema';
 import { loadSeedAccounts } from '../seedPlacement';
 import {
@@ -15,10 +13,6 @@ import { buildComposeInput } from '../../delivery/worker';
 import { composeForSend } from '../../delivery/sendComposition';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from './testModules';
-
-const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
-
-const schemaSource = readFileSync(here('../../schema/seedPlacement.ts'), 'utf8');
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_seed_secrets';
@@ -99,9 +93,46 @@ describe('seed credentials', () => {
 		expect(accounts[0]?.address).toBe('owlat.seed.01@gmail.example');
 	});
 
-	it('defines no second credential model — seeds are ordinary external accounts', () => {
-		expect(schemaSource).toContain("v.id('externalMailAccounts')");
-		expect(schemaSource).not.toContain('password');
+	it('defines no second credential model — seeds are ordinary external accounts (D4)', async () => {
+		// Asserted on the STORED DOCUMENT, not on the schema file's source text: a
+		// text match passes vacuously (a field could be named `secretPassword` and
+		// still satisfy a `not.toContain('password')`) and breaks on unrelated
+		// edits. The ledger row is where a second credential model would actually
+		// show up.
+		const t = convexTest(schema, modules);
+		await seedFixture(t);
+		const stored = await t.run(async (ctx) => {
+			const account = await ctx.db.query('externalMailAccounts').first();
+			if (!account) throw new Error('fixture missing');
+			const id = await ctx.db.insert('seedPlacementProbes', {
+				organizationId: ORG,
+				probeId: 'sp_a1b2c3d4e5f60718293a4b',
+				accountId: account._id,
+				provider: 'gmail',
+				stream: 'campaign',
+				sentAt: NOW,
+				expiresAt: NOW + 1,
+			});
+			return ctx.db.get(id);
+		});
+		// The probe points at the SHIPPED external account, which is the one place
+		// a seed's sealed credentials live.
+		expect(stored?.accountId).toBeDefined();
+		const keys = Object.keys(stored ?? {});
+		for (const field of [
+			'password',
+			'secret',
+			'secretCiphertext',
+			'secretIv',
+			'secretAuthTag',
+			'imapUsername',
+			'imapHost',
+			'authMethod',
+		]) {
+			expect(keys).not.toContain(field);
+		}
+		// And nothing resembling a credential is reachable by VALUE either.
+		expect(JSON.stringify(stored)).not.toContain('MUST_NEVER_LEAK');
 	});
 
 	it('logs a seed account only as provider + domain, never the address or a secret', () => {
@@ -123,13 +154,6 @@ describe('seed credentials', () => {
 
 /** (e) Mailbox CONTENTS are never logged — or even stored. */
 describe('seed mailbox contents', () => {
-	it('never enters Convex: the ledger stores a folder NAME and timestamps only', () => {
-		for (const field of ['subject', 'bodyHtml', 'bodyText', 'snippet', 'rawMessage']) {
-			expect(schemaSource).not.toContain(`${field}:`);
-		}
-		expect(schemaSource).toContain('folderName');
-	});
-
 	it('is not part of the ledger row a classification writes', async () => {
 		const t = convexTest(schema, modules);
 		await seedFixture(t);
@@ -154,6 +178,8 @@ describe('seed mailbox contents', () => {
 		for (const field of ['subject', 'bodyHtml', 'bodyText', 'snippet', 'rawMessage']) {
 			expect(keys).not.toContain(field);
 		}
+		// A folder NAME and timestamps are the entire vocabulary of the row.
+		expect(stored?.folderName).toBe('[Gmail]/Spam');
 	});
 });
 

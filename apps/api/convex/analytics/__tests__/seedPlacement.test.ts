@@ -85,6 +85,23 @@ describe('classifySeedFolder — provider-specific folder naming', () => {
 		{ provider: 'other', folder: 'Quarantine', placement: 'spam' },
 		{ provider: 'microsoft', folder: 'Inbox', placement: 'inbox' },
 		{ provider: 'other', folder: 'inbox', placement: 'inbox' },
+		// The name set used to carry 'Bulk Mail' but not 'Junk Mail', which is a
+		// real folder name on several clients and servers.
+		{ provider: 'other', folder: 'Junk Mail', placement: 'spam' },
+		{ provider: 'other', folder: 'Spam Mail', placement: 'spam' },
+		// LOCALIZED Junk folders. Consumer providers name this folder in the
+		// account's own language, and the card scopes seeds to "Gmail, Outlook,
+		// Yahoo, iCloud, plus regional providers". A miss here reads a spam-filed
+		// probe as REACHED, which only ever moves gate 5 toward `pass`.
+		{ provider: 'microsoft', folder: 'Courrier indésirable', placement: 'spam' },
+		// Same folder, decomposed rather than precomposed on the wire.
+		{ provider: 'microsoft', folder: 'Courrier inde\u0301sirable', placement: 'spam' },
+		{ provider: 'other', folder: 'Posta indesiderata', placement: 'spam' },
+		{ provider: 'other', folder: 'Correo no deseado', placement: 'spam' },
+		{ provider: 'other', folder: 'Skräppost', placement: 'spam' },
+		{ provider: 'other', folder: 'Nevyžádaná pošta', placement: 'spam' },
+		{ provider: 'other', folder: 'Спам', placement: 'spam' },
+		{ provider: 'other', folder: '迷惑メール', placement: 'spam' },
 	];
 
 	for (const testCase of cases) {
@@ -117,6 +134,59 @@ describe('classifySeedFolder — provider-specific folder naming', () => {
 			placement: 'category',
 			categoryLabel: 'Newsletters',
 		});
+	});
+
+	it('never reads a DEGENERATE folder name as the inbox', () => {
+		// A name that normalizes to nothing is a name we could not parse, not a
+		// statement that the probe reached the recipient — and `inbox` counts as
+		// reached, so the error would only ever move gate 5 toward `pass`.
+		for (const folder of ['___', '--', '[Gmail]/', 'INBOX.']) {
+			expect(classifySeedFolder(folder, 'gmail')).toEqual({
+				placement: 'category',
+				categoryLabel: folder,
+			});
+		}
+	});
+});
+
+/**
+ * (a) The server's own RFC 6154 SPECIAL-USE attribute, which is the only
+ * language-independent statement of what a folder IS. No name table can cover
+ * every locale and every server's spelling, and every gap in it reads a
+ * spam-filed probe as REACHED.
+ */
+describe('classifySeedFolder — IMAP special-use flags decide ahead of the name', () => {
+	it('classifies a folder flagged \\Junk as spam whatever it is called', () => {
+		// A locale this classifier has never seen, flagged by the server.
+		expect(classifySeedFolder('Nemzsehető levelek', 'other', '\\Junk')).toEqual({
+			placement: 'spam',
+		});
+	});
+
+	it('classifies a folder flagged \\Trash as deleted whatever it is called', () => {
+		expect(classifySeedFolder('Kukatár', 'other', '\\Trash')).toEqual({ placement: 'deleted' });
+	});
+
+	it('accepts the attribute with or without its leading backslash, in any case', () => {
+		for (const flag of ['\\Junk', 'Junk', '\\JUNK', ' \\junk ']) {
+			expect(classifySeedFolder('Whatever', 'other', flag).placement).toBe('spam');
+		}
+	});
+
+	it('falls back to the NAME when the server advertised no attribute', () => {
+		for (const flag of [undefined, null, '', '   ']) {
+			expect(classifySeedFolder('Junk Email', 'microsoft', flag).placement).toBe('spam');
+			expect(classifySeedFolder('Newsletters', 'other', flag).placement).toBe('category');
+		}
+	});
+
+	it('ignores attributes that carry no placement verdict', () => {
+		expect(classifySeedFolder('INBOX', 'gmail', '\\Important').placement).toBe('inbox');
+		expect(classifySeedFolder('Archive', 'other', '\\Archive').placement).toBe('category');
+	});
+
+	it('still reports MISSING when there is no folder at all, flag or not', () => {
+		expect(classifySeedFolder(null, 'gmail', '\\Junk')).toEqual({ placement: 'missing' });
 	});
 });
 
@@ -263,5 +333,66 @@ describe('a hostile remote folder name is bounded before it is stored', () => {
 		const row = await t.run(async (ctx) => ctx.db.get(ref));
 		expect(row?.folderName).toBe('[Gmail]/Spam');
 		expect(row?.placement).toBe('spam');
+	});
+
+	it('never stores an unpaired surrogate when a long name is cut mid-character', async () => {
+		const t = convexTest(schema, modules);
+		const ref = await probeRow(t);
+		// Astral characters occupy TWO UTF-16 code units, so a length bound applied
+		// with `slice` lands mid-character and stores half of one.
+		const astral = '\u{1F4A9}'.repeat(400);
+
+		await t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
+			organizationId: ORG,
+			probeId: PROBE_ID,
+			folderName: astral,
+			now: NOW + 10,
+			clickRoll: 0.9,
+		});
+
+		const stored = (await t.run(async (ctx) => ctx.db.get(ref)))?.folderName ?? '';
+		expect([...stored].length).toBe(256);
+		for (const unit of stored) {
+			const code = unit.codePointAt(0) ?? 0;
+			expect(code >= 0xd800 && code <= 0xdfff).toBe(false);
+		}
+	});
+
+	it("takes the server's special-use flag over the folder NAME", async () => {
+		const t = convexTest(schema, modules);
+		const ref = await probeRow(t);
+
+		// A localized Junk folder this classifier's name table has never seen. The
+		// flag is what makes it a spam reading rather than a `category` one — and
+		// `category` counts as REACHED, so the miss would only ever move gate 5
+		// toward `pass`.
+		await t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
+			organizationId: ORG,
+			probeId: PROBE_ID,
+			folderName: 'Nemzsehető levelek',
+			specialUse: '\\Junk',
+			now: NOW + 10,
+			clickRoll: 0.9,
+		});
+
+		const row = await t.run(async (ctx) => ctx.db.get(ref));
+		expect(row?.placement).toBe('spam');
+		// The raw name is still stored for the operator to read; it is metadata.
+		expect(row?.folderName).toBe('Nemzsehető levelek');
+	});
+
+	it('falls back to the name when the server advertised no flag', async () => {
+		const t = convexTest(schema, modules);
+		const ref = await probeRow(t);
+
+		await t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
+			organizationId: ORG,
+			probeId: PROBE_ID,
+			folderName: 'Junk Mail',
+			now: NOW + 10,
+			clickRoll: 0.9,
+		});
+
+		expect((await t.run(async (ctx) => ctx.db.get(ref)))?.placement).toBe('spam');
 	});
 });

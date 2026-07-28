@@ -163,6 +163,43 @@ describe('shadow composition is identical apart from the probe header', () => {
 		expect(shadowOut.transformConfig?.trackedLinkBase).toBeDefined();
 		expect(realOut.transformConfig?.trackingPixelUrl).toBeDefined();
 	});
+
+	it('renders the IN-BODY unsubscribe footer too, re-keyed to the probe', () => {
+		// The footer is a feature filters weigh heavily, and dropping it from the
+		// one message whose filtering we are measuring would measure something
+		// else. `siteUrl` is contact-scoped, so the probe's footer is minted from
+		// its own namespaced one-click token instead.
+		const real = realOut.transformConfig;
+		const probe = shadowOut.transformConfig;
+		expect(real?.unsubscribeUrl).toBeDefined();
+		expect(real?.preferenceUrl).toBeDefined();
+		// Present, so the footer renders — the whole point.
+		expect(probe?.unsubscribeUrl).toBeDefined();
+		expect(probe?.preferenceUrl).toBeDefined();
+		// Probe-scoped, so a subscriber's token can never land in a seed mailbox
+		// and the probe's link can never resolve to a contact.
+		expect(probe?.unsubscribeUrl).toContain('/unsub/probe/');
+		expect(probe?.preferenceUrl).toContain('/unsub/probe/');
+		expect(probe?.unsubscribeUrl).not.toBe(real?.unsubscribeUrl);
+		expect(probe?.unsubscribeUrl).not.toContain(CONTACT_ID);
+		expect(probe?.preferenceUrl).not.toContain(CONTACT_ID);
+	});
+
+	it('renders no footer for a SEGMENT campaign, exactly as a real segment send does', () => {
+		// The in-body footer is topic-only on both arms: a segment is a computed
+		// audience with no topic to name in the footer copy.
+		const segmentReal: CampaignEnvelopeInput = { ...realSend, audienceType: 'segment' };
+		const segmentShadow = buildSeedShadowEnvelope(segmentReal, {
+			address: SEED_ADDRESS,
+			probeId: PROBE_ID,
+			probeRef: PROBE_REF,
+		});
+		const out = composeForSend(buildComposeInput(segmentShadow)).transformConfig;
+		expect(out?.unsubscribeUrl).toBeUndefined();
+		expect(composeForSend(buildComposeInput(segmentReal)).transformConfig?.unsubscribeUrl).toBe(
+			undefined
+		);
+	});
 });
 
 /** (b) A probe must clear the two pre-dispatch gates that used to throw. */
