@@ -29,6 +29,13 @@ export type RampControlReason =
 	| 'dnsbl'
 	/** A freeze from an earlier decision has not expired. */
 	| 'frozen'
+	/**
+	 * The stored freeze expiry was not one: further in the future than any rung of
+	 * this controller can stamp. Held — a freeze we cannot read is not permission
+	 * to step up — but named apart from `frozen`, whose sentence promises the
+	 * operator an instant the hold really ends at.
+	 */
+	| 'freeze_unreadable'
 	/** The stored share was not a share (negative, above 1, or non-finite). */
 	| 'share_unreadable'
 	/** Thin or absent evidence (plan D10): hold, in both directions. */
@@ -66,6 +73,24 @@ export type RampControlReason =
 
 export type RampDecisionReason = RampControlReason | RampGateId;
 
+/**
+ * WHICH RUNG STAMPED A FREEZE.
+ *
+ * Three rungs can freeze a cell and they do NOT mean the same thing, so the row
+ * records which one it was. The breaker rung declines to re-charge its retreat
+ * while ITS OWN freeze runs — charging one incident once — and without an origin
+ * on the row that suppression would extend to any freeze at all, letting a
+ * multi-hour gate cooldown swallow the halving a newly-open circuit breaker is
+ * supposed to cost. A hard stop must never be absorbed by an unrelated cooldown.
+ */
+export type RampFreezeOrigin =
+	/** A gate breach: the AIMD cooldown ladder (6h, doubling, capped at 48h). */
+	| 'gate_breach'
+	/** The MTA circuit breaker opened for this cell. */
+	| 'breaker'
+	/** A pool address carries a critical blocklist listing. */
+	| 'dnsbl';
+
 export type RampDecisionDirection = 'increase' | 'decrease' | 'hold';
 
 /**
@@ -86,6 +111,12 @@ export interface RampMixState {
 	readonly cleanStreak: number | undefined;
 	/** Absolute instant the current freeze expires. */
 	readonly frozenUntil: number | undefined;
+	/**
+	 * Which rung stamped the freeze `frozenUntil` belongs to, or `undefined` on a
+	 * row frozen before the origin was recorded. Unknown is never read as "the
+	 * breaker's" — see `RampFreezeOrigin`.
+	 */
+	readonly freezeReason: RampFreezeOrigin | undefined;
 	/** The instant the current freeze STARTED — the repeat-window test's input. */
 	readonly freezeStartedAt: number | undefined;
 	/** The cooldown length that produced the current freeze (the ladder position). */
@@ -186,6 +217,12 @@ export interface RampDecision {
 	readonly failedGate: RampGateId | undefined;
 	/** Absolute instant the cell is frozen until, or `undefined` for no new freeze. */
 	readonly frozenUntil: number | undefined;
+	/**
+	 * Which rung stamped `frozenUntil`. Always set together with it and always
+	 * absent without it: a freeze whose origin nobody recorded is exactly the
+	 * state the breaker rung must not mistake for its own.
+	 */
+	readonly freezeReason: RampFreezeOrigin | undefined;
 	/**
 	 * The next COOLDOWN-LADDER position — set ONLY by a gate-breach freeze, and
 	 * deliberately `undefined` for a hard-stop freeze even though the breaker's

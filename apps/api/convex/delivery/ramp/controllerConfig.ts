@@ -11,7 +11,16 @@
  * The PER-STREAM numbers (initial share, step, K_CLEAN) live in `gateConfig.ts`
  * as `RAMP_STREAM_CONFIGS` and are reused here rather than re-declared: one
  * table of ramp constants, not two that can disagree.
+ *
+ * `nextCooldownMs` lives here rather than beside the row readers because it is
+ * POLICY, not a reading: it owns the ladder's doubling rule and every number it
+ * returns comes off `RAMP_AIMD`. It reads one stored instant on the way, which
+ * is why it borrows `readStoredInstant` — the dependency runs one way only
+ * (readers never import this module's constants).
  */
+
+import { readStoredInstant } from './controllerReaders';
+import type { RampMixState } from './controllerTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -78,6 +87,42 @@ export const RAMP_AIMD: RampAimdConfig = {
 	graduationHoldMs: 14 * DAY_MS,
 	evaluationWindowMs: DAY_MS,
 };
+
+/**
+ * THE LONGEST FREEZE ANY RUNG CAN LEGITIMATELY STAMP, and therefore the
+ * plausibility bound on a stored `frozenUntil`.
+ *
+ * Derived rather than written down: the three freezing rungs are the gate
+ * cooldown ladder (capped at `cooldownMaxMs`), the breaker and the blocklist, so
+ * a stored expiry further out than the largest of those did not come from this
+ * controller. It exists because `frozenUntil` is state a corrupt write or a
+ * skewed clock can put arbitrarily far in the future, and a freeze nobody can
+ * outlive would pin a cell — and suppress the breaker rung's retreat — for ever.
+ */
+export const RAMP_MAX_FREEZE_MS: number = Math.max(
+	RAMP_AIMD.cooldownMaxMs,
+	RAMP_AIMD.breakerFreezeMs,
+	RAMP_AIMD.blocklistFreezeMs
+);
+
+/**
+ * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within
+ * 24h of the previous freeze's start, capped at 48h.
+ *
+ * A missing, corrupt or non-positive stored ladder position restarts at the
+ * base rather than propagating garbage — the ladder is a penalty, and a penalty
+ * derived from an unreadable number is not a penalty anyone can defend.
+ */
+export function nextCooldownMs(mix: RampMixState, now: number): number {
+	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
+	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
+	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
+	const previous = mix.cooldownMs;
+	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
+		return cooldownBaseMs;
+	}
+	return Math.min(cooldownMaxMs, previous * 2);
+}
 
 /**
  * The phase ceiling ladder. A cell may not exceed its current rung however

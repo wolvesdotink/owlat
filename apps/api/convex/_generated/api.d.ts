@@ -276,6 +276,7 @@ import type * as delivery_ramp_controller from "../delivery/ramp/controller.js";
 import type * as delivery_rampControllerCron from "../delivery/rampControllerCron.js";
 import type * as delivery_rampControllerInputs from "../delivery/rampControllerInputs.js";
 import type * as delivery_rampMixDecisions from "../delivery/rampMixDecisions.js";
+import type * as delivery_ramp_controllerBounds from "../delivery/ramp/controllerBounds.js";
 import type * as delivery_ramp_controllerConfig from "../delivery/ramp/controllerConfig.js";
 import type * as delivery_ramp_controllerNarrative from "../delivery/ramp/controllerNarrative.js";
 import type * as delivery_ramp_controllerReaders from "../delivery/ramp/controllerReaders.js";
@@ -1139,6 +1140,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/rampControllerCron": typeof delivery_rampControllerCron;
   "delivery/rampControllerInputs": typeof delivery_rampControllerInputs;
   "delivery/rampMixDecisions": typeof delivery_rampMixDecisions;
+  "delivery/ramp/controllerBounds": typeof delivery_ramp_controllerBounds;
   "delivery/ramp/controllerConfig": typeof delivery_ramp_controllerConfig;
   "delivery/ramp/controllerNarrative": typeof delivery_ramp_controllerNarrative;
   "delivery/ramp/controllerReaders": typeof delivery_ramp_controllerReaders;

@@ -8,10 +8,12 @@
  * that decides what such a value MEANS, and every one of them fails in the
  * direction that cannot raise a share.
  *
- * The FREEZE pair at the end of the file belongs to the same job: "is the
- * stored freeze still running" and "what is the next rung of the stored
- * cooldown ladder" are both readings of a row whose numbers may be missing or
- * corrupt, and both fail towards the smaller share.
+ * The FREEZE READER at the end of the file belongs to the same job: "is the
+ * stored freeze still running, and whose is it" is a reading of a row whose
+ * numbers may be missing, corrupt or impossibly far in the future, and it fails
+ * towards the smaller share in every one of those cases. The ladder POLICY that
+ * decides how long the NEXT freeze runs is `controllerConfig.nextCooldownMs` —
+ * a rule, not a reading, so it lives with the constants it is made of.
  *
  * They live beside `controller.ts` rather than inside it so the precedence
  * ladder — the thing a reviewer must verify in one sitting — stays the whole
@@ -23,8 +25,7 @@
  */
 
 import { clampOwnShare } from '@owlat/shared/deliverabilityRouting';
-import { RAMP_AIMD } from './controllerConfig';
-import type { RampMixState } from './controllerTypes';
+import type { RampFreezeOrigin, RampMixState } from './controllerTypes';
 import type { RampGateThresholds } from './gateConfig';
 
 /**
@@ -110,30 +111,59 @@ export function isEvidenceUsable(
 }
 
 /**
- * Is a freeze — from a gate breach or from a hard stop — still running? Read by
- * TWO rungs: `frozen`, and the breaker rung that declines to re-charge its own
- * retreat while the freeze it stamped is in force. An unreadable stored instant
- * is NOT a freeze — pinning a cell for ever on a corrupt number is worse.
+ * WHAT THE ROW'S FREEZE PAIR MEANS, in three states rather than a boolean.
+ *
+ *   - `none`       — nothing frozen, or a freeze that has expired.
+ *   - `active`     — a freeze this controller could have stamped, with the rung
+ *                    that stamped it when the row records one.
+ *   - `unreadable` — a stored expiry no rung of this controller can produce
+ *                    (further out than `maxFreezeMs`). A corrupt write or a
+ *                    skewed clock, not a decision.
+ *
+ * THE THIRD STATE IS THE POINT. Collapsing `unreadable` into `active` lets a
+ * fabricated expiry a century out suppress the circuit breaker's retreat for
+ * ever; collapsing it into `none` lets the same row walk straight into the
+ * additive-increase branch. Neither is acceptable, so it is its own answer and
+ * each caller fails towards the smaller share in its own terms: the breaker rung
+ * re-charges its retreat (an unattributable freeze is not its own), and the
+ * freeze rung HOLDS without pretending it knows when the hold ends.
  */
-export function isFreezeActive(mix: RampMixState, now: number): boolean {
-	return mix.frozenUntil !== undefined && Number.isFinite(mix.frozenUntil) && now < mix.frozenUntil;
-}
+export type RampFreezeReading =
+	| { readonly kind: 'none' }
+	| { readonly kind: 'unreadable' }
+	| {
+			readonly kind: 'active';
+			readonly until: number;
+			/**
+			 * WHICH RUNG STAMPED IT, or `undefined` for a freeze whose origin the row
+			 * does not record (a legacy row written before the field existed). Unknown
+			 * is deliberately NOT treated as any particular rung: the one caller that
+			 * cares uses it to decline a retreat, so an unattributable freeze must
+			 * never be able to buy that suppression.
+			 */
+			readonly origin: RampFreezeOrigin | undefined;
+	  };
 
 /**
- * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within
- * 24h of the previous freeze's start, capped at 48h.
+ * IS A FREEZE STILL RUNNING, AND WHOSE IS IT?
  *
- * A missing, corrupt or non-positive stored ladder position restarts at the
- * base rather than propagating garbage — the ladder is a penalty, and a penalty
- * derived from an unreadable number is not a penalty anyone can defend.
+ * Read by TWO rungs, which is why the ORIGIN comes back with it: the `frozen`
+ * rung only asks whether anything is in force, while the breaker rung declines
+ * to re-charge its retreat only while ITS OWN freeze runs — an unrelated gate
+ * cooldown must not absorb a hard stop.
+ *
+ * `maxFreezeMs` is the longest freeze any rung can legitimately stamp, so an
+ * expiry beyond it did not come from a decision and is reported `unreadable`
+ * rather than believed.
  */
-export function nextCooldownMs(mix: RampMixState, now: number): number {
-	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
-	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
-	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
-	const previous = mix.cooldownMs;
-	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
-		return cooldownBaseMs;
-	}
-	return Math.min(cooldownMaxMs, previous * 2);
+export function readActiveFreeze(
+	mix: RampMixState,
+	now: number,
+	maxFreezeMs: number
+): RampFreezeReading {
+	const until = mix.frozenUntil;
+	if (until === undefined || !Number.isFinite(until)) return { kind: 'none' };
+	if (until > now + maxFreezeMs) return { kind: 'unreadable' };
+	if (now >= until) return { kind: 'none' };
+	return { kind: 'active', until, origin: mix.freezeReason };
 }

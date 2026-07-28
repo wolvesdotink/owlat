@@ -46,12 +46,16 @@
  */
 
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
-import { normalizePhaseCeiling, RAMP_AIMD } from './controllerConfig';
+import { capacityCeiling, isEvaluationWindowElapsed } from './controllerBounds';
+import {
+	nextCooldownMs,
+	normalizePhaseCeiling,
+	RAMP_AIMD,
+	RAMP_MAX_FREEZE_MS,
+} from './controllerConfig';
 import {
 	isEvidenceUsable,
-	isFreezeActive,
-	isStoredInstantAhead,
-	nextCooldownMs,
+	readActiveFreeze,
 	readStoredInstant,
 	roundShare,
 	sanitizeGreenSince,
@@ -60,60 +64,17 @@ import {
 import { ppToFraction } from './gateConfig';
 import type { RampGateId } from './gateTypes';
 import type {
-	RampCapacityInput,
 	RampControllerInput,
 	RampDecision,
 	RampDecisionDirection,
 	RampDecisionReason,
+	RampFreezeOrigin,
 } from './controllerTypes';
-
-/**
- * Has a whole evaluation window elapsed since the last COUNTED one?
- *
- * The cron ticks hourly against a 24h outcome window, so without this the same
- * day of data would be counted 24 times and K_CLEAN = 3 would cost three hours
- * instead of three days. A window counts once.
- *
- * Degenerate anchors fail CLOSED, in the direction that cannot advance a cell:
- * an anchor AHEAD of the clock reads as "just counted" (hold), while an absent
- * or unreadable one reads as "never counted" — there is no anchor to have
- * counted against, and refusing forever would strand the cell.
- */
-export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now: number): boolean {
-	if (isStoredInstantAhead(lastCountedAt, now)) return false;
-	const anchor = readStoredInstant(lastCountedAt, now);
-	if (anchor === null) return true;
-	return now - anchor >= RAMP_AIMD.evaluationWindowMs;
-}
 
 function directionOf(fromShare: number, share: number): RampDecisionDirection {
 	if (share > fromShare) return 'increase';
 	if (share < fromShare) return 'decrease';
 	return 'hold';
-}
-
-/**
- * The capacity ceiling. `null` means the projection was UNUSABLE — a hold, not
- * an unbounded ceiling: a controller that treated an unreadable projection as
- * "no limit" would ramp hardest exactly when it understood the least.
- *
- * A projected volume of zero is not unusable, it is "nothing to send", which
- * imposes no capacity limit at all; such a cell is bounded by its phase ceiling
- * and — far earlier — by gates that cannot reach their sample floors.
- */
-export function capacityCeiling(capacity: RampCapacityInput): number | null {
-	// NO PROJECTION is not a spent cap: the cell is bounded by its phase ceiling
-	// alone until P3-3 supplies a real per-cell reading (plan D2 — absence never
-	// constrains). It is a distinct SHAPE, not a pair of zeros, precisely so it
-	// cannot be confused with a cell whose cap is spent and whose volume is zero.
-	if (capacity.kind === 'unconstrained') return OWN_SHARE_CEILING;
-	const { warmingCapRemaining, projectedVolume } = capacity;
-	if (!Number.isFinite(warmingCapRemaining) || warmingCapRemaining < 0) return null;
-	if (!Number.isFinite(projectedVolume) || projectedVolume < 0) return null;
-	if (projectedVolume === 0) return OWN_SHARE_CEILING;
-	const ratio = (warmingCapRemaining / projectedVolume) * RAMP_AIMD.capacitySafety;
-	if (!Number.isFinite(ratio)) return null;
-	return Math.min(OWN_SHARE_CEILING, Math.max(0, ratio));
 }
 
 interface DecisionDraft {
@@ -122,6 +83,8 @@ interface DecisionDraft {
 	readonly verdict: RampDecision['verdict'];
 	readonly failedGate?: RampGateId | undefined;
 	readonly freezeMs?: number | undefined;
+	/** Which rung stamped `freezeMs`. Set by every rung that sets a freeze. */
+	readonly freezeReason?: RampFreezeOrigin | undefined;
 	/** Freeze imposed by a hard stop: it does NOT advance the gate-cooldown ladder. */
 	readonly isLadderFreeze?: boolean;
 	readonly cleanStreak: number;
@@ -177,6 +140,9 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		verdict: draft.verdict,
 		failedGate: draft.failedGate,
 		frozenUntil,
+		// The origin travels with the instant and never without it: a freeze the
+		// clock could not date is not a freeze, so it has no origin to record.
+		freezeReason: frozenUntil === undefined ? undefined : draft.freezeReason,
 		cooldownMs: draft.isLadderFreeze === true ? freezeMs : undefined,
 		cleanStreak: draft.cleanStreak,
 		phaseCeiling,
@@ -230,6 +196,15 @@ function decide(args: DecideArgs): DecisionDraft {
 	// 2-4. HARD STOPS, in the plan's order. They bypass the gates entirely and
 	//      each resets the clean streak AND REVOKES THE GRADUATION PIN: a cell in
 	//      one of these states has no clean history left to spend.
+	//
+	//      EACH ONE'S FREEZE POLICY IS STATED ON THE RUNG, because the three
+	//      differ and a reader comparing them should not have to infer the rule
+	//      from the shape of the code.
+	//
+	// 2. ABUSE STATUS — NO FREEZE AT ALL. The share is already 0 and the condition
+	//    itself is the hold: it is re-read from the org on every tick, so it lifts
+	//    the instant the account is reinstated. A freeze here would keep a
+	//    reinstated org stopped for hours after the reason had gone.
 	if (!signals.isSendingAllowed) {
 		return {
 			...held,
@@ -240,16 +215,27 @@ function decide(args: DecideArgs): DecisionDraft {
 			graduatedAt: undefined,
 		};
 	}
+	// 3. CIRCUIT BREAKER — FREEZE STAMPED ONCE PER INCIDENT.
 	if (signals.isCircuitBreakerOpen) {
-		// THE FREEZE THIS RUNG STAMPS BINDS THE RUNG ITSELF. An open breaker is a
-		// CONDITION, not an event: it stays open across many hourly ticks, and a
-		// rung that re-halved on each of them would walk a cell from 0.5 to the
-		// rounding floor — and post an incident notice per rung — for ONE incident.
-		// The retreat is charged once per freeze window: the cell still hard-stops
-		// here every tick (no gate is consulted, streak and pin stay revoked), it
-		// just does not re-charge while its own freeze runs. Once that freeze
-		// expires with the breaker still open, the next tick halves again.
-		if (isFreezeActive(mix, now)) {
+		// THE FREEZE THIS RUNG STAMPS BINDS THIS RUNG, AND ONLY THIS RUNG'S OWN.
+		// An open breaker is a CONDITION, not an event: it stays open across many
+		// hourly ticks, and a rung that re-halved on each of them would walk a cell
+		// from 0.5 to the rounding floor — and post an incident notice per tick —
+		// for ONE incident. So the retreat is charged once per BREAKER freeze
+		// window: the cell still hard-stops here every tick (no gate is consulted,
+		// streak and pin stay revoked), it just does not re-charge while the freeze
+		// IT stamped runs. Once that freeze expires with the breaker still open,
+		// the next tick halves again.
+		//
+		// THE ORIGIN TEST IS THE WHOLE POINT. A gate-breach cooldown can run for up
+		// to 48h and a blocklist freeze for 24h; suppressing on "any freeze" would
+		// let either of them absorb the halving a newly-open breaker costs, and the
+		// cell would keep its full pre-breaker share for as long as the unrelated
+		// freeze lasted. A hard stop is never absorbed by someone else's cooldown —
+		// and a freeze whose origin the row does not record is not this rung's
+		// either, so it does not suppress anything.
+		const freeze = readActiveFreeze(mix, now, RAMP_MAX_FREEZE_MS);
+		if (freeze.kind === 'active' && freeze.origin === 'breaker') {
 			return {
 				...held,
 				reason: 'breaker',
@@ -266,8 +252,17 @@ function decide(args: DecideArgs): DecisionDraft {
 			greenSince: undefined,
 			graduatedAt: undefined,
 			freezeMs: RAMP_AIMD.breakerFreezeMs,
+			freezeReason: 'breaker',
 		};
 	}
+	// 4. CRITICAL BLOCKLIST LISTING — FREEZE RE-STAMPED EVERY TICK, deliberately
+	//    unlike the breaker above. The share is already 0, so there is no retreat
+	//    to re-charge and no notice to repeat; what the re-stamp buys is a
+	//    TRAILING 24h. A delisting that lands at noon does not put a listed IP
+	//    back in rotation at 12:01 — the receiver-side effects outlive the listing
+	//    — so the cell stays down for a further day from the last tick that still
+	//    saw the listing. The breaker has no such tail: it closes when the MTA
+	//    says the destination is healthy again.
 	if (signals.isPoolBlocklisted) {
 		return {
 			...held,
@@ -277,6 +272,7 @@ function decide(args: DecideArgs): DecisionDraft {
 			greenSince: undefined,
 			graduatedAt: undefined,
 			freezeMs: RAMP_AIMD.blocklistFreezeMs,
+			freezeReason: 'dnsbl',
 		};
 	}
 
@@ -289,10 +285,19 @@ function decide(args: DecideArgs): DecisionDraft {
 		return { ...held, reason: 'share_unreadable' };
 	}
 
-	// 5. An unexpired freeze holds, however good the gates look.
-	if (isFreezeActive(mix, now)) {
-		return { ...held, reason: 'frozen' };
-	}
+	// 5. An unexpired freeze holds, however good the gates look — WHOEVER stamped
+	//    it. This rung asks only whether one is in force; only the breaker rung
+	//    above cares whose it is.
+	//
+	//    AN UNREADABLE ONE HOLDS TOO, under its own reason. A stored expiry no
+	//    rung could have stamped is a corrupt write, and the one thing we must not
+	//    do with a freeze we cannot read is treat its absence of meaning as
+	//    permission to step up — the same rule `share_unreadable` follows one rung
+	//    above. It is a separate reason because the operator sentences differ:
+	//    "frozen until <instant>" is a true sentence only when the instant is one.
+	const storedFreeze = readActiveFreeze(mix, now, RAMP_MAX_FREEZE_MS);
+	if (storedFreeze.kind === 'active') return { ...held, reason: 'frozen' };
+	if (storedFreeze.kind === 'unreadable') return { ...held, reason: 'freeze_unreadable' };
 
 	// 5a. No evaluation at all is thin evidence, not a failure (plan D10). It holds
 	// the share and the streak — but it stops the GRADUATION clock, because
@@ -358,6 +363,7 @@ function decide(args: DecideArgs): DecisionDraft {
 			greenSince: undefined,
 			graduatedAt: undefined,
 			freezeMs: nextCooldownMs(mix, now),
+			freezeReason: 'gate_breach',
 			isLadderFreeze: true,
 		};
 	}
