@@ -90,6 +90,48 @@ describe('freezes through the decision function', () => {
 		expect(second.frozenUntil).toBe(NOW + 7 * HOUR + 12 * HOUR);
 	});
 
+	// AN INFRASTRUCTURE FREEZE IS NOT A LADDER RUNG. A breaker freeze in between
+	// two gate breaches must not re-arm the "repeat within 24h" window: the
+	// second breach is 31h after the first and starts again at the base, even
+	// though the cell was frozen for infrastructure reasons an hour ago.
+	it('does not let a hard-stop freeze inflate the next gate cooldown', () => {
+		const breach = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4 }),
+				evaluation: breachedEvaluation('complaint'),
+			})
+		);
+		expect(breach.cooldownMs).toBe(6 * HOUR);
+
+		const breaker = nextShare(
+			controllerInput({
+				now: NOW + 30 * HOUR,
+				mix: mixState({
+					share: breach.share,
+					cooldownMs: breach.cooldownMs,
+					freezeStartedAt: NOW,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		// A hard stop imposes an expiry but claims NO ladder rung — which is what
+		// keeps the shell from re-stamping the ladder's anchor.
+		expect(breaker.cooldownMs).toBeUndefined();
+
+		const second = nextShare(
+			controllerInput({
+				now: NOW + 31 * HOUR,
+				mix: mixState({
+					share: breaker.share,
+					cooldownMs: breach.cooldownMs,
+					freezeStartedAt: NOW,
+				}),
+				evaluation: breachedEvaluation('complaint', { now: NOW + 31 * HOUR }),
+			})
+		);
+		expect(second.cooldownMs).toBe(6 * HOUR);
+	});
+
 	it('holds a frozen cell against a perfect gate sweep', () => {
 		const decision = nextShare(
 			controllerInput({

@@ -174,6 +174,31 @@ describe('organizations.settings.update — write semantics', () => {
 		});
 	});
 
+	// The ramp controller's global kill switch is the plan's named mitigation for
+	// controller complexity, so it has to be reachable by an owner/admin from the
+	// product — not only from an internal mutation — and audited like every other
+	// setting change.
+	it('lets an admin engage and release the ramp controller kill switch', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(api.workspaces.settings.update, { isRampControllerPaused: true });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.isRampControllerPaused).toBe(true);
+			const audit = await ctx.db.query('auditLogs').first();
+			const details = JSON.parse(audit?.detailsBlob ?? '{}') as {
+				changes?: Record<string, { from: unknown; to: unknown }>;
+			};
+			expect(details.changes?.['isRampControllerPaused']).toEqual({ from: null, to: true });
+		});
+
+		await t.mutation(api.workspaces.settings.update, { isRampControllerPaused: false });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.isRampControllerPaused).toBe(false);
+		});
+	});
+
 	it('rejects oversized trusted ARC forwarder lists', async () => {
 		const t = convexTest(schema, modules);
 		await expect(

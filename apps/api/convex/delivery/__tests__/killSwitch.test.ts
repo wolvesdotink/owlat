@@ -9,7 +9,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { allDeliverabilityCells } from '@owlat/shared/deliverabilityRouting';
@@ -23,6 +23,17 @@ import {
 	NOW,
 } from '../ramp/__tests__/controllerFixtures';
 import { modules } from './testModules';
+
+// The cron resolves its tenant through the shared singleton-org helper, which
+// talks to the auth component; the harness has no component, so the suite mocks
+// it exactly as the transportOutcomes suites do.
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_kill_switch'),
+	};
+});
 
 const ORG = 'org_ramp_kill_switch';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -116,7 +127,10 @@ describe('the kill switch, through the cron', () => {
 		expect(after?.ownShare).toBe(before?.ownShare);
 		expect(after?.cleanStreak).toBe(before?.cleanStreak);
 		expect(after?.mixVersion).toBe(before?.mixVersion);
-		expect(after?.updatedAt).toBe(before?.updatedAt);
+		expect(after?.phaseCeiling).toBe(before?.phaseCeiling);
+		// The LEASE is the one thing a paused tick does write: see the TTL case
+		// below for why "pinned" has to outlive the route-state cache horizon.
+		expect(after?.expiresAt ?? 0).toBeGreaterThanOrEqual(before?.expiresAt ?? 0);
 
 		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 		expect(decisions).toHaveLength(1);
@@ -167,7 +181,57 @@ describe('the kill switch, through the cron', () => {
 		});
 
 		const result = await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
-		expect(result).toEqual({ evaluated: 0, done: true });
+		expect(result.evaluated).toBe(0);
+		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(decisions).toHaveLength(0);
+	});
+
+	// THE PAUSE MUST OUTLIVE THE CACHE. Route-state rows carry a 24h TTL and the
+	// shipped 5-minute sweep deletes anything past it. A paused cell whose lease
+	// stopped being renewed would be DELETED, and a missing row resolves to share
+	// 1.0 — every recipient onto the own MTA, the exact opposite of "pinned".
+	it('survives the route-state TTL sweep while paused, with its share intact', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const start = Date.UTC(2026, 6, 1, 0, 0, 0);
+			vi.setSystemTime(start);
+			const t = convexTest(schema, modules);
+			await seed(t, { isPaused: true });
+
+			// Two paused ticks, 23h apart: each one renews the lease and writes no
+			// share. Then the sweep runs a day and a bit after the FIRST tick.
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			vi.setSystemTime(start + 23 * 60 * 60 * 1000);
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			vi.setSystemTime(start + 25 * 60 * 60 * 1000);
+			await t.mutation(internal.delivery.deliverabilityRouting.cleanupExpired, {});
+
+			const row = await managedRow(t);
+			expect(row).toBeDefined();
+			expect(row?.ownShare).toBe(0.1);
+			expect(row?.cleanStreak).toBe(9);
+			expect(row?.mixVersion).toBe(3);
+			expect(row?.phaseCeiling).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('would lose that state if the lease were not renewed — the sweep is real', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const start = Date.UTC(2026, 6, 1, 0, 0, 0);
+			vi.setSystemTime(start);
+			const t = convexTest(schema, modules);
+			await seed(t, { isPaused: true });
+
+			// No tick at all for a day: the control for the case above.
+			vi.setSystemTime(start + 25 * 60 * 60 * 1000);
+			await t.mutation(internal.delivery.deliverabilityRouting.cleanupExpired, {});
+			expect(await managedRow(t)).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('can be toggled through its own mutation', async () => {

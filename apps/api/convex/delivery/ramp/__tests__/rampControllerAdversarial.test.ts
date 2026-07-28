@@ -153,8 +153,36 @@ describe('degenerate numbers fail closed', () => {
 				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
 			})
 		);
-		expect(decision.share).toBe(0);
+		// The ceiling pulls the cell back hard — but NOT past the soft floor. No
+		// gate failed here, and only a gate breach or a hard stop may take a cell
+		// to zero; a green cell keeps the trickle that lets it be re-measured.
+		expect(decision.share).toBe(0.01);
 		expect(decision.reason).toBe('capacity_ceiling');
+		expect(decision.direction).toBe('decrease');
+	});
+
+	it('cannot turn the ceiling floor into an increase for a cell below it', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.005 }),
+				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
+			})
+		);
+		expect(decision.share).toBe(0.005);
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('never grants graduation off a degenerate green clock', () => {
+		for (const greenSince of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			const decision = nextShare(
+				controllerInput({ mix: mixState({ share: 1, cleanStreak: 40, greenSince }) })
+			);
+			// The clock restarts at `now`: a stored instant we cannot trust may only
+			// ever DELAY a pin, never grant one.
+			expect(decision.reason).not.toBe('graduated');
+			expect(decision.graduatedAt).toBeUndefined();
+			expect(decision.greenSince).toBe(NOW);
+		}
 	});
 
 	it('snaps a corrupt phase ceiling DOWN to the lowest rung, never up', () => {

@@ -136,18 +136,64 @@ describe('mixDecisions — a row for every evaluation', () => {
 		expect(rows[0]?.adminNotice).toBeUndefined();
 	});
 
-	it('is queryable by cell and time', async () => {
+	it('is queryable by ORG, cell and time — never unscoped', async () => {
 		const t = convexTest(schema, modules);
 		await record(t, controllerInput({ mix: mixState({ share: 0.4 }) }));
 		const byCell = await t.run(
 			async (ctx) =>
 				await ctx.db
 					.query('mixDecisions')
-					.withIndex('by_cell_time', (q) => q.eq('cell', 'campaign:gmail'))
+					.withIndex('by_org_cell_time', (q) =>
+						q.eq('organizationId', ORG).eq('cell', 'campaign:gmail')
+					)
 					.collect()
 		);
 		expect(byCell).toHaveLength(1);
 		expect(byCell[0]?.organizationId).toBe(ORG);
+
+		// The tenant is part of the key, so another tenant's identical cell key
+		// cannot be reached through it.
+		const otherTenant = await t.run(
+			async (ctx) =>
+				await ctx.db
+					.query('mixDecisions')
+					.withIndex('by_org_cell_time', (q) =>
+						q.eq('organizationId', 'org_someone_else').eq('cell', 'campaign:gmail')
+					)
+					.collect()
+		);
+		expect(otherTenant).toHaveLength(0);
+	});
+
+	it('writes no admin notice for a ceiling-bound retreat — nothing broke', async () => {
+		const t = convexTest(schema, modules);
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({ share: 0.5 }),
+				capacity: { warmingCapRemaining: 1, projectedVolume: 1_000 },
+			})
+		);
+		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];
+		expect(row?.direction).toBe('decrease');
+		expect(row?.failedGate).toBeUndefined();
+		expect(row?.adminNotice).toBeUndefined();
+		// …and the sentence describes a RETREAT rather than claiming it "held".
+		expect(row?.message).toContain('Reduced');
+	});
+
+	it('notifies on a HARD-STOP retreat, naming the cause', async () => {
+		const t = convexTest(schema, modules);
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({ share: 0.5 }),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true },
+			})
+		);
+		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];
+		expect(row?.reason).toBe('dnsbl');
+		expect(row?.adminNotice).toContain('blocklist');
 	});
 });
 
