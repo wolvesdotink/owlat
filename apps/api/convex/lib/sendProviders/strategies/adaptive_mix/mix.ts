@@ -3,7 +3,7 @@
  *
  * Given a cell's share and one recipient's identity, decide which arm the
  * recipient belongs to and whether it belongs to the randomized calibration
- * slice. No clock, no database, no environment, no `Math.random()`: the one
+ * slice. No clock, no database, no environment, no `Math.random()`: the
  * decision is a total function of its inputs, and a recipient with no stable
  * identity at all fails CLOSED to the reference arm rather than reaching for a
  * draw — so every branch is reproducible from a fixture.
