@@ -179,7 +179,9 @@ export async function recordMixDecision(
 		message,
 		...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
 		// See the module header and `rampDecisionAdminNotice` for the predicate.
-		...(adminNotice === undefined ? {} : { adminNotice }),
+		// `noticeAt` mirrors `at` on exactly the rows that carry a notice — the
+		// partial index Convex will not give us, expressed as a column.
+		...(adminNotice === undefined ? {} : { adminNotice, noticeAt: at }),
 		...(decision.freeze === undefined ? {} : { frozenUntil: decision.freeze.until }),
 		...(pace === undefined
 			? {}

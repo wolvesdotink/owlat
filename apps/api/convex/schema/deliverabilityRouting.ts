@@ -246,6 +246,15 @@ export const deliverabilityRoutingTables = {
 		// admin-visible, mirroring `mtaIpReadinessAlerts` — the shipped shape for a
 		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),
+		// THE NOTICE'S OWN CLOCK, and the only reason it exists as a second column
+		// is that Convex indexes cannot be partial. Written ONLY on a row that
+		// carries an `adminNotice`, and always equal to `at` on those rows, so the
+		// `by_org_notice` index below contains exactly the retreats and nothing
+		// else. Without it the feed can only take a fixed page of `by_org_time` —
+		// which the controller fills with roughly a hundred no-op rows a day, so a
+		// retreat older than a day or two could never appear in a screen whose
+		// whole promise (D12) is that every decrease surfaces here.
+		noticeAt: v.optional(v.number()),
 		frozenUntil: v.optional(v.number()),
 		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION (plan D3, D12). One
 		// controller decides both dials in one tick, so one row records both —
@@ -276,13 +285,14 @@ export const deliverabilityRoutingTables = {
 		// index is keyed by organization first and there is no unscoped variant for
 		// a caller to reach for.
 		.index('by_org_cell_time', ['organizationId', 'cell', 'at'])
-		// THE ADMIN NOTIFICATION FEED (plan D12). Every DECREASE with a named cause
-		// leaves an `adminNotice`, and an operator must be able to find those
-		// without reading fifteen cells' worth of no-ops. Convex indexes cannot be
-		// partial, so the index is over the whole table ordered by time and the
-		// notice filter happens on the (bounded) page — the alternative, scanning
-		// `by_org_cell_time` once per cell, reads fifteen pages to build one list.
+		// THE LAST DECISION PER CELL, in ONE bounded page. The Cells and Controls
+		// screens want fifteen cells' most recent rows; scanning `by_org_cell_time`
+		// once per cell reads fifteen pages to build one grid.
 		.index('by_org_time', ['organizationId', 'at'])
+		// THE ADMIN NOTIFICATION FEED (plan D12). `noticeAt` is set only on rows
+		// carrying an `adminNotice`, so this index holds exactly the retreats and a
+		// range read over it never pages past a no-op.
+		.index('by_org_notice', ['organizationId', 'noticeAt'])
 		.index('by_expires_at', ['expiresAt']),
 
 	// The per-stream aggressiveness preset (plan D9, P3-6).
