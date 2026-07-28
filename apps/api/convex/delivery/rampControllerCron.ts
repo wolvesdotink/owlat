@@ -96,7 +96,9 @@ async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | nul
  * Infrastructure verdicts, read off whichever route-state rows exist.
  *
  * WHICH ROWS MATTER IS NOT THE SAME PER SIGNAL. `breaker_open` is emitted per
- * destination provider, so the cell's own rows carry it. Pool-level blocklist
+ * destination provider, and `applySnapshot` files it onto the STREAMLESS row for
+ * that provider — the cell's `streamless` row, not its per-stream one, which is
+ * the ramp's own state and carries no MTA signals. Pool-level blocklist
  * and quarantine signals are emitted by the MTA against the WHOLE pool with
  * `provider: 'all'`, and `applySnapshot` files them onto the `'all'` row only —
  * so a controller that read the cell's rows alone would never see one, and the
@@ -114,6 +116,14 @@ async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | nul
  * the two layers could disagree about whether a signal counts — and because the
  * breaker rung halves without a floor, a signal that goes stale rather than
  * being cleared would walk the cell toward zero over successive freezes.
+ *
+ * That filter is only honest because the controller does NOT stamp `updatedAt`
+ * (see `applyDecision`): on every row in this scan — the cell's per-stream row
+ * included — `updatedAt` means "when a snapshot last wrote this row", exactly
+ * what the router means by it. The per-stream row carries no MTA signals today,
+ * so in practice `streamless` and `pool` are what answer here; it stays in the
+ * list so that a per-stream snapshot writer would be honoured automatically,
+ * under the same expiry rule as the router rather than a second one.
  */
 function readHardStopSignals(
 	rows: readonly (Doc<'deliverabilityRouteStates'> | null)[],
@@ -282,14 +292,16 @@ async function loadCellInput(
  * "pinned at its current share".
  *
  * So EVERY evaluation refreshes the lease, including the ones that write no
- * share. The refresh touches nothing else.
+ * share. The refresh touches nothing else — and in particular NOT `updatedAt`,
+ * which is the shipped router's signal-freshness clock and not the ramp's (see
+ * `applyDecision`).
  */
 async function refreshRouteStateLease(
 	ctx: MutationCtx,
 	perStream: Doc<'deliverabilityRouteStates'>,
 	now: number
 ): Promise<void> {
-	await ctx.db.patch(perStream._id, { expiresAt: now + ROUTE_STATE_TTL_MS, updatedAt: now });
+	await ctx.db.patch(perStream._id, { expiresAt: now + ROUTE_STATE_TTL_MS });
 }
 
 /**
@@ -339,13 +351,17 @@ async function applyDecision(
 		// must leave the previous one in place, or every hourly tick would push the
 		// next countable window another hour out and the streak could never grow.
 		lastCountedAt: decision.countedAt ?? perStream.lastCountedAt,
-		// `snapshotGeneratedAt` is NOT touched. It means "the instant the MTA
-		// generated the snapshot" everywhere else, and `applySnapshot` uses it as
-		// its idempotency comparand; stamping the controller's own clock into it
-		// would give one column two meanings across two row shapes. The controller's
-		// clock is `updatedAt`.
+		// NEITHER `snapshotGeneratedAt` NOR `updatedAt` IS TOUCHED, for one reason:
+		// both belong to the SNAPSHOT WRITER. `snapshotGeneratedAt` means "the
+		// instant the MTA generated the snapshot" and is `applySnapshot`'s
+		// idempotency comparand; `updatedAt` is the shipped ROUTER'S SIGNAL-FRESHNESS
+		// clock — `routeInputs.ts` only honours a signal on a row it has heard from
+		// within `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the per-stream row is in
+		// that scan. An hourly controller stamping it would silently re-arm every
+		// signal on the row as "fresh" on every tick, indefinitely. The controller's
+		// own clock is `decidedAt`, which nothing else reads.
+		decidedAt: now,
 		expiresAt: now + ROUTE_STATE_TTL_MS,
-		updatedAt: now,
 	};
 	await ctx.db.patch(perStream._id, fields);
 }
@@ -479,7 +495,9 @@ export const promoteRampPhase = internalMutation({
 		await ctx.db.patch(perStream._id, {
 			phaseCeiling,
 			mixVersion: (perStream.mixVersion ?? 0) + 1,
-			updatedAt: Date.now(),
+			// The ramp's own clock, never the router's freshness clock — see
+			// `applyDecision`.
+			decidedAt: Date.now(),
 		});
 		return { ok: true as const, phaseCeiling };
 	},

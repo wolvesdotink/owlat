@@ -82,6 +82,14 @@ export const deliverabilityRoutingTables = {
 		// window counts once, and only a counted window extends the clean streak or
 		// unlocks an additive increase.
 		lastCountedAt: v.optional(v.number()),
+		// THE RAMP'S OWN CLOCK, and the reason it is not `updatedAt`. `updatedAt` is
+		// the shipped router's SIGNAL-FRESHNESS clock: `routeInputs.ts` only acts on
+		// a row it has heard from within `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, so a
+		// snapshot that stopped arriving stops steering traffic. An hourly
+		// controller stamping that column would re-arm every signal on the row as
+		// "fresh" on every tick, for ever — one column with two meanings across two
+		// row shapes, the same objection `snapshotGeneratedAt` is kept clear of.
+		decidedAt: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
 		updatedAt: v.number(),
