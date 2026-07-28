@@ -33,6 +33,7 @@ import {
 	rampGateIdValidator,
 } from '../deliverabilityValidators';
 import type { PaceDecisionReason } from '../ramp/paceTypes';
+import { PACE_AIMD } from '../ramp/paceConfig';
 import type { RampControllerInput, RampDecisionReason } from '../ramp/controllerTypes';
 import type { RampGateId } from '../ramp/gateTypes';
 import {
@@ -746,10 +747,12 @@ describe('mixDecisions — the audit log follows the change', () => {
 
 	it('writes no audit entry for a hard stop that is merely still true', async () => {
 		const t = convexTest(schema, modules);
-		// Already stopped by an earlier tick, and the listing has not cleared.
+		// Already stopped by an earlier tick — BOTH dials, since one controller
+		// stopped both — and the listing has not cleared.
 		await seedRampCell(t, {
 			organizationId: ORG,
 			ownShare: 0,
+			paceMultiplier: PACE_AIMD.multiplierFloor,
 			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: Date.now() }],
 		});
 

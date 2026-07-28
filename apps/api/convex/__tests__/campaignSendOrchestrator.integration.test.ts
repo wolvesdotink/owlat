@@ -1030,7 +1030,7 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 	async function scoreContacts(t: TestConvex<typeof schema>, scores: readonly number[]) {
 		await t.run(async (ctx) => {
 			const contacts = await ctx.db.query('contacts').collect();
-			contacts.sort((a, b) => a.email.localeCompare(b.email));
+			contacts.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
 			for (const [index, contact] of contacts.entries()) {
 				const score = scores[index];
 				if (score !== undefined) await ctx.db.patch(contact._id, { engagementScore: score });

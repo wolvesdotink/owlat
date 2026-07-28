@@ -387,12 +387,16 @@ export const runRampController = internalMutation({
 			// the relay drops to `priority_failover` standby. `decision.pinChange`
 			// carries that transition, so the tick a cell graduates — and the tick a
 			// hard stop takes the pin away again — are both in the audit log.
-			// AND THE SAME PREDICATE APPLIES TO THE SECOND DIAL. A pace retreat on a
-			// cell whose share held is still an automatic change — it rewrote the
-			// multiplier, the freeze expiry and the cooldown rung — and a change no
-			// log records is a change an operator cannot explain.
+			// AND THE SAME PREDICATE APPLIES TO THE SECOND DIAL, in the same shape as
+			// `rampDecisionChangedState`: the dial MOVED, or a gate breach advanced
+			// the cooldown ladder. A pace retreat on a cell whose share held is a real
+			// automatic change and an operator cannot explain one no log records —
+			// while a hard stop that is merely STILL TRUE an hour later re-stamps a
+			// freeze without changing anything, and must stay as quiet here as it does
+			// on the share side.
 			const isPaceChanged =
-				composed.pace.direction !== 'hold' || composed.pace.freeze !== undefined;
+				composed.pace.multiplier !== composed.pace.fromMultiplier ||
+				composed.pace.freeze?.ladderMs !== undefined;
 			if (!rampDecisionChangedState(decision) && !isPaceChanged) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
