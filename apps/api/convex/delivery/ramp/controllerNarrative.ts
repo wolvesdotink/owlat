@@ -76,6 +76,14 @@ function gateRemedy(decision: RampDecision): string {
  * undefined, so a persistent hard stop announces itself on the tick that moved
  * the share and then goes quiet until something changes.
  *
+ * That holds for all three hard stops, but only because the BREAKER rung was
+ * made to hold its own retreat: an open breaker is a condition rather than an
+ * event, and a rung that re-halved every hour would post an incident notice
+ * every hour for one incident. It charges the retreat once per freeze window
+ * (`isFreezeActive` in `controller.ts`), so the notice tracks the incident, not
+ * the condition. `abuse_status` and `dnsbl` re-enter at share 0 and are silent
+ * after the tick that took the cell there.
+ *
  * `awaiting_corroboration` is deliberately NOT notifiable. It carries a
  * `failedGate`, but it is the branch in which the controller has decided NOT to
  * believe the seed tripwire on its own (plan D17): nothing moved, no freeze was
@@ -123,7 +131,7 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 		case 'breaker':
 			return decision.direction === 'decrease'
 				? `Halved ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for 6h while the breaker recovers.`
-				: `Held ${where} at ${percent(decision.share)}: the MTA circuit breaker is still open for this provider. Frozen for a further 6h while the breaker recovers.`;
+				: `Held ${where} at ${percent(decision.share)}: the MTA circuit breaker is still open for this provider. The share already retreated for this incident and holds until the freeze expires.`;
 		case 'dnsbl':
 			return decision.direction === 'decrease'
 				? `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for 24h — start the delisting flow from the Delivery checklist.`

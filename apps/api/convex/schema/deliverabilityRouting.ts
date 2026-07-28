@@ -148,11 +148,16 @@ export const deliverabilityRoutingTables = {
 		message: v.string(),
 		failedGate: v.optional(rampGateIdValidator),
 		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
-		// about it. Present whenever the decision has a NAMED cause — a breached
-		// gate or a hard stop — whichever way the share moved, because a breach on a
-		// cell already at the soft floor HOLDS rather than halves and is exactly the
-		// incident an operator needs to see. A ceiling pulling a healthy cell
-		// back to its rung is not an incident and carries no notice. Persistent and
+		// about it. Present when the decision has a NAMED cause — a breached gate or
+		// a hard stop — AND that decision CHANGED something. `cooldownMs` is the
+		// discriminator for the second half: a breach on a cell already at the soft
+		// floor HOLDS the number while imposing a fresh freeze and a fresh cooldown
+		// rung, and that is an incident; a hard stop that is merely still true an
+		// hour later changed nothing and stays quiet rather than re-announcing
+		// itself every tick. A ceiling pulling a healthy cell back to its rung has
+		// no cause to name, and `awaiting_corroboration` is the branch that decided
+		// NOT to act — neither carries a notice. `rampDecisionAdminNotice` is the
+		// exact predicate and documents why it is exact. Persistent and
 		// admin-visible, mirroring `mtaIpReadinessAlerts` — the shipped shape for a
 		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),

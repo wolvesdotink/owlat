@@ -186,7 +186,19 @@ export interface RampDecision {
 	readonly failedGate: RampGateId | undefined;
 	/** Absolute instant the cell is frozen until, or `undefined` for no new freeze. */
 	readonly frozenUntil: number | undefined;
-	/** Length of the freeze this decision imposed — the next ladder position. */
+	/**
+	 * The next COOLDOWN-LADDER position — set ONLY by a gate-breach freeze, and
+	 * deliberately `undefined` for a hard-stop freeze even though the breaker's
+	 * 6h and the blocklist's 24h are real freezes that really are imposed
+	 * (`frozenUntil` is where those show up). Only a breach advances the ladder.
+	 *
+	 * Two readers depend on exactly that asymmetry, so it is load-bearing rather
+	 * than incidental: `rampDecisionAdminNotice` and the audit-log emit in
+	 * `rampControllerCron` both use it to tell a FRESH INCIDENT — a new breach,
+	 * with a new rung and new durable state — from a CONDITION that is merely
+	 * still true an hour later. A hold with a `cooldownMs` changed something; a
+	 * hold without one did not.
+	 */
 	readonly cooldownMs: number | undefined;
 	/** Clean-streak to store (already folded through the gate aggregate). */
 	readonly cleanStreak: number;
