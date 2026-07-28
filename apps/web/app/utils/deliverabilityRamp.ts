@@ -23,12 +23,25 @@ import {
 	type RampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
+import {
+	cellLabel,
+	measurementHeadline,
+	providerLabel,
+	streamLabel,
+} from '~/utils/deliverabilityMeasurement';
 
 export type RampControls = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.getRampControls
 >;
 export type RampCellControl = RampControls['cells'][number];
 export type RampCellDecision = NonNullable<RampCellControl['lastDecision']>;
+/**
+ * The controller's closed reason union, taken off the QUERY rather than imported
+ * across the package boundary: the query is where it is already narrowed, and
+ * reaching into `apps/api`'s internals from a page module is the coupling the
+ * cross-package import check exists to prevent.
+ */
+export type RampDecisionReason = RampCellDecision['reason'];
 export type IndependenceSummary = FunctionReturnType<
 	typeof api.delivery.rampIndependence.getIndependenceSummary
 >;
@@ -42,10 +55,14 @@ export type RampAdminNotice = FunctionReturnType<
  * WITH NO RELAY THERE IS NOTHING TO BECOME INDEPENDENT OF, so the screen is not
  * a degraded "Sending independence" — it is a different, honest feature whose
  * headline is today's capacity and what is holding it back (plan D14).
+ *
+ * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
+ * first; re-deciding it here would let the two screens disagree about what the
+ * standalone feature is CALLED, which is the one thing D14 cares about. So this
+ * is an alias, not a copy — the SUBHEAD below is genuinely different prose (that
+ * screen is read-only; this one is the ramp) and stays local.
  */
-export function independenceHeadline(referenceTransportId: string | null): string {
-	return referenceTransportId === null ? 'Warm-up autopilot' : 'Sending independence';
-}
+export const independenceHeadline = measurementHeadline;
 
 export function independenceSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
@@ -59,6 +76,24 @@ export function volumeSentence(summary: IndependenceSummary): string {
 }
 
 /**
+ * Format a minor-unit amount in its own currency.
+ *
+ * The exponent comes from `Intl.NumberFormat`, which knows that JPY has none and
+ * that KWD has three. An unknown or malformed code makes `Intl` throw; that must
+ * never take a screen down over a settings typo, so the fallback prints the code
+ * beside the raw amount and remains readable.
+ */
+function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): string {
+	try {
+		const format = new Intl.NumberFormat('en-US', { style: 'currency', currency });
+		const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
+		return format.format(minorUnits / 10 ** digits);
+	} catch {
+		return `${currency} ${formatNumber(minorUnits)} (minor units)`;
+	}
+}
+
+/**
  * THE MONEY, OR AN HONEST ABSENCE. A relay price the product invented would be
  * quoted back at us as fact, so when nobody has recorded one the screen says
  * what it would take to show the figure rather than printing a confident guess.
@@ -67,8 +102,13 @@ export function spendAvoidedCopy(summary: IndependenceSummary): string {
 	if (summary.spendAvoidedMinorUnits === null || summary.spendAvoidedCurrency === null) {
 		return 'Add what your relay charges per thousand messages to see the spend this replaces.';
 	}
-	const major = summary.spendAvoidedMinorUnits / 100;
-	return `${summary.spendAvoidedCurrency} ${major.toFixed(2)} of relay spend avoided this month.`;
+	// MINOR UNITS ARE NOT ALWAYS HUNDREDTHS. JPY has no minor unit at all and
+	// KWD/BHD have three digits, so the exponent is read off the CURRENCY through
+	// `Intl` rather than assumed to be 100 — a hardcoded divisor would misstate a
+	// yen figure by two orders of magnitude on the screen people screenshot.
+	const currency = summary.spendAvoidedCurrency;
+	const minor = summary.spendAvoidedMinorUnits;
+	return `${formatCurrencyFromMinorUnits(minor, currency)} of relay spend avoided this month.`;
 }
 
 /**
@@ -153,7 +193,12 @@ export function bindingConstraint(cell: RampCellControl): string {
 	return rampReasonLabel(cell.lastDecision.reason);
 }
 
-const REASON_LABELS: Record<string, string> = {
+/**
+ * EXHAUSTIVE BY CONSTRUCTION. `satisfies` against the stored union means a rung
+ * added to the controller next month fails this build instead of quietly
+ * rendering its snake_case code in the Cells grid's "Holding it back" column.
+ */
+const REASON_LABELS = {
 	kill_switch: 'The global ramp pause',
 	clock_unusable: 'An unusable clock',
 	abuse_status: 'The account’s abuse status',
@@ -181,15 +226,17 @@ const REASON_LABELS: Record<string, string> = {
 	complaint: 'The complaint gate',
 	engagement_ratio: 'The engagement gate',
 	seed_placement: 'The seed-placement tripwire',
-};
+} satisfies Record<RampDecisionReason, string>;
 
 /**
- * BRACKET ACCESS AND AN EXPLICIT FALLBACK, on purpose. The reason union grows
- * with the controller, and a screen that rendered `undefined` for a rung added
- * next month would be worse than one that renders the machine-readable code.
+ * The map above is exhaustive over the CURRENT union, so a live reason always
+ * has a label. The fallback is for LEGACY STORED ROWS only: `mixDecisions` keeps
+ * ninety days of history, so a reason retired in that window is still readable
+ * on the timeline and renders as its code rather than as nothing at all.
  */
-export function rampReasonLabel(reason: string): string {
-	return REASON_LABELS[reason] ?? reason.replace(/_/g, ' ');
+export function rampReasonLabel(reason: RampDecisionReason | string): string {
+	const label = (REASON_LABELS as Record<string, string | undefined>)[reason];
+	return label ?? reason.replace(/_/g, ' ');
 }
 
 export function shareLabel(share: number): string {
@@ -229,20 +276,12 @@ export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
 	},
 ];
 
-export const STREAM_LABELS: Record<string, string> = {
-	campaign: 'Campaign',
-	automation: 'Automation',
-	transactional: 'Transactional',
-};
-
-export const PROVIDER_LABELS: Record<string, string> = {
-	gmail: 'Gmail',
-	microsoft: 'Microsoft',
-	yahoo: 'Yahoo',
-	apple: 'Apple',
-	other: 'Everywhere else',
-};
-
-export function rampCellLabel(cell: RampCellControl['cell']): string {
-	return `${STREAM_LABELS[cell.stream] ?? cell.stream} → ${PROVIDER_LABELS[cell.destinationProvider] ?? cell.destinationProvider}`;
-}
+/**
+ * THE CELL VOCABULARY IS THE MEASUREMENT SCREEN'S, IMPORTED. Re-declaring the
+ * stream and provider maps here gave two screens two chances to name the same
+ * axis differently, and the copies were `Record<string, string>` with `??`
+ * fallbacks — so a provider added to `DESTINATION_PROVIDER_KEYS` would have
+ * rendered as a raw key on this screen and as a compile error on that one. The
+ * exhaustive originals are the ones worth keeping.
+ */
+export { cellLabel as rampCellLabel, providerLabel, streamLabel };

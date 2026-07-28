@@ -13,8 +13,14 @@
  * "Independence" — it is "Warm-up autopilot", whose headline is TODAY'S CAPACITY
  * and what is holding it back. Both variants are answered here, from the same
  * read, and neither is an error state: `spendAvoidedMinorUnits` is simply `null`
- * when nobody has told us a relay price, and the projection is
+ * when nobody has recorded a relay price, and the projection is
  * `already_independent` rather than "unknown".
+ *
+ * THE PRICE COMES FROM SETTINGS, NOT FROM A NEW TABLE (plan D4). An admin
+ * records what their relay charges per thousand messages on the existing
+ * `instanceSettings` row (Settings → Delivery, and the Controls screen links
+ * there); unset is the ordinary state and costs the screen one line of copy
+ * rather than a warning.
  *
  * D2: absence lowers confidence and does nothing else. No credential is read
  * here, nothing throws, and a fresh install with only an MTA renders every field
@@ -105,34 +111,40 @@ async function readIndependenceSeries(
 ): Promise<IndependenceDayPoint[]> {
 	const own = new Map<number, number>();
 	const reference = new Map<number, number>();
-	for (const cell of allDeliverabilityCells()) {
+	const window = { since: args.sinceDay, until: args.untilDay };
+	// ONE PASS OVER THE ROWS, AND THE READS DO NOT QUEUE BEHIND EACH OTHER.
+	// `transportOutcomes` is indexed `by_org_cell_arm_period_shard`, so a
+	// cross-cell sweep is not expressible: the smallest read that answers this
+	// screen is one bounded range per (cell, arm), and each of those rows is
+	// visited exactly once by the per-day fold below (the note in
+	// `analytics/transportOutcomes.ts` is about re-reading ONE cell's index per
+	// window, which this does not do). What is available is concurrency — awaiting
+	// them in a loop made thirty round trips serial for no reason.
+	//
+	// The reference arm is not read at all on a standalone deployment: there is no
+	// second arm, so those fifteen ranges could only ever come back empty (D2).
+	const reads = allDeliverabilityCells().flatMap((cell) => {
 		const cellKey = deliverabilityCellKey(cell);
-		const window = { since: args.sinceDay, until: args.untilDay };
-		const ownBuckets = await readCellArmBuckets(ctx.db, {
-			organizationId: args.organizationId,
-			cell: cellKey,
-			arm: 'own',
-			...window,
-		});
-		for (const bucket of ownBuckets) {
+		const arms: readonly ('own' | 'reference')[] = args.hasReferenceArm
+			? ['own', 'reference']
+			: ['own'];
+		return arms.map(async (arm) => ({
+			arm,
+			buckets: await readCellArmBuckets(ctx.db, {
+				organizationId: args.organizationId,
+				cell: cellKey,
+				arm,
+				...window,
+			}),
+		}));
+	});
+	for (const { arm, buckets } of await Promise.all(reads)) {
+		const into = arm === 'own' ? own : reference;
+		for (const bucket of buckets) {
 			if (!Number.isFinite(bucket.periodStart)) continue;
-			own.set(
+			into.set(
 				bucket.periodStart,
-				(own.get(bucket.periodStart) ?? 0) + safeOutcomeCount(bucket.sent)
-			);
-		}
-		if (!args.hasReferenceArm) continue;
-		const referenceBuckets = await readCellArmBuckets(ctx.db, {
-			organizationId: args.organizationId,
-			cell: cellKey,
-			arm: 'reference',
-			...window,
-		});
-		for (const bucket of referenceBuckets) {
-			if (!Number.isFinite(bucket.periodStart)) continue;
-			reference.set(
-				bucket.periodStart,
-				(reference.get(bucket.periodStart) ?? 0) + safeOutcomeCount(bucket.sent)
+				(into.get(bucket.periodStart) ?? 0) + safeOutcomeCount(bucket.sent)
 			);
 		}
 	}
@@ -202,7 +214,24 @@ export const getIndependenceSummary = authedQuery({
 		// THE PRICE IS AN OPERATOR'S, NOT OURS. Until a deployment records what its
 		// relay costs, the money figure is absent and the screen says why — a rate
 		// the product invented would be quoted back at us as fact.
-		const minorUnitsPerThousand = null;
+		//
+		// A price with no relay is also nothing to show: there is no relay spend to
+		// avoid on a standalone deployment, whatever a stale settings row says.
+		const settings = await ctx.db.query('instanceSettings').first();
+		const storedPrice = settings?.relayMinorUnitsPerThousand;
+		// BOTH HALVES OR NEITHER. A number with no currency cannot be rendered
+		// honestly — its minor-unit exponent is a property of the currency — so an
+		// amount without a code is treated exactly like no price at all rather than
+		// formatted under a guessed one.
+		const storedCurrency = settings?.relayCurrency;
+		const hasPrice =
+			hasReferenceArm &&
+			storedPrice !== undefined &&
+			Number.isFinite(storedPrice) &&
+			storedPrice > 0 &&
+			storedCurrency !== undefined &&
+			storedCurrency !== '';
+		const minorUnitsPerThousand = hasPrice ? (storedPrice ?? null) : null;
 		const capacityProjection = await loadWarmingCapacity(ctx, { now });
 		return {
 			generatedAt: now,
@@ -214,7 +243,7 @@ export const getIndependenceSummary = authedQuery({
 				ownSends: monthToDateOwnSends,
 				minorUnitsPerThousand,
 			}),
-			spendAvoidedCurrency: null,
+			spendAvoidedCurrency: hasPrice ? (storedCurrency ?? null) : null,
 			monthToDateOwnSends,
 			relayRemoval: hasReferenceArm
 				? assessRelayRemoval({ cells, projection })
