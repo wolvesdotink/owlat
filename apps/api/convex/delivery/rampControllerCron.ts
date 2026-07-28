@@ -155,18 +155,22 @@ async function loadCellInput(
 	args: {
 		organizationId: string;
 		cell: DeliverabilityCell;
+		/**
+		 * The POOL-WIDE slice, read ONCE per tick by the caller: every blocklist /
+		 * quarantine signal the MTA reports is filed against `provider: 'all'`, so
+		 * it lives on no cell's row — and it is cell-independent, so reading it in
+		 * here would be the same index lookup repeated once per cell.
+		 */
+		pool: Doc<'deliverabilityRouteStates'> | null;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		now: number;
 	}
 ): Promise<{ input: RampControllerInput; perStream: Doc<'deliverabilityRouteStates'> } | null> {
-	const { organizationId, cell, now } = args;
+	const { organizationId, cell, pool, now } = args;
 	const cellKey = deliverabilityCellKey(cell);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
 	if (!perStream || perStream.ownShare === undefined) return null;
-	// The POOL-WIDE slice as well: every blocklist / quarantine signal the MTA
-	// reports is filed against `provider: 'all'`, so it lives on no cell's row.
-	const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
 	const mix = readMixState(perStream);
 
 	const window = { organizationId, cell: cellKey, since: now - RAMP_WINDOW_MS };
@@ -206,7 +210,7 @@ async function loadCellInput(
 		own,
 		reference: referenceArm,
 		engagement,
-		previousCleanStreak: perStream?.cleanStreak ?? 0,
+		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,
 	});
 
@@ -284,7 +288,11 @@ async function applyDecision(
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,
-		snapshotGeneratedAt: now,
+		// `snapshotGeneratedAt` is NOT touched. It means "the instant the MTA
+		// generated the snapshot" everywhere else, and `applySnapshot` uses it as
+		// its idempotency comparand; stamping the controller's own clock into it
+		// would give one column two meanings across two row shapes. The controller's
+		// clock is `updatedAt`.
 		expiresAt: now + ROUTE_STATE_TTL_MS,
 		updatedAt: now,
 	};
@@ -314,12 +322,17 @@ export const runRampController = internalMutation({
 		const isKillSwitchEngaged = settings?.isRampControllerPaused === true;
 		const isSendingPermitted = isSendingAllowed(settings?.abuseStatus);
 
+		// Cell-independent, so it is read ONCE for the whole slice rather than once
+		// per cell: the pool row carries the same verdict for all fifteen cells.
+		const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
+
 		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
 		let evaluated = 0;
 		for (const cell of slice) {
 			const loaded = await loadCellInput(ctx, {
 				organizationId,
 				cell,
+				pool,
 				isKillSwitchEngaged,
 				isSendingPermitted,
 				now,
