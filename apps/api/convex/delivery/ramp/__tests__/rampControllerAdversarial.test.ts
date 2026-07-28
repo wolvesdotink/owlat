@@ -340,15 +340,17 @@ describe('degenerate numbers fail closed', () => {
 		}
 	});
 
-	it('treats a ZERO-VOLUME cell as unconstrained by capacity, not as infinite headroom', () => {
-		// The two readings that both mean "nothing bounds this cell" are DIFFERENT
-		// SHAPES on purpose: "no projection exists yet" and "a real projection of
-		// zero volume" are the same ceiling but not the same fact, and a magic pair
-		// of zeros standing for the first would make them indistinguishable.
+	it('holds on a ZERO-VOLUME cell rather than reading it as infinite headroom', () => {
+		// The two readings are DIFFERENT SHAPES on purpose, and they answer
+		// DIFFERENT things. A MISSING warming reading constrains nothing (plan D2):
+		// absence is never evidence of a spent cap. A projection of ZERO volume is
+		// not absence — it is a denominator we cannot divide by — so it HOLDS
+		// (plan P3-3), because a cell with no measured demand is neither a cell in
+		// trouble nor a cell that has earned the whole cap.
 		expect(capacityCeiling({ kind: 'unconstrained' })).toBe(1);
-		expect(capacityCeiling({ kind: 'projected', warmingCapRemaining: 0, projectedVolume: 0 })).toBe(
-			1
-		);
+		expect(
+			capacityCeiling({ kind: 'projected', warmingCapRemaining: 0, projectedVolume: 0 })
+		).toBeNull();
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.3 }),

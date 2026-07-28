@@ -139,6 +139,47 @@ describe('an unknown capacity reading HOLDS the controller', () => {
 	});
 });
 
+describe('a ZERO projected volume holds as well — the division is never reached', () => {
+	/** A real cap over a demand of nothing: the shape the card singles out. */
+	const zeroDenominator = {
+		kind: 'projected',
+		warmingCapRemaining: 4_000,
+		projectedVolume: 0,
+	} as const;
+
+	it('answers null rather than dividing a real cap by nothing', () => {
+		expect(capacityCeiling(zeroDenominator)).toBeNull();
+	});
+
+	it('is NEITHER of the two wrong answers — not a full share, not a zero one', () => {
+		// `4000 / 0` is `Infinity`, which clamps to a FULL share: the cell we
+		// measured least would be handed the whole cap. The opposite reading — a
+		// ceiling of zero — would retreat a cell for the crime of being quiet.
+		// Both are ruled out by the same assertion.
+		const ceiling = capacityCeiling(zeroDenominator);
+		expect(ceiling).not.toBe(OWN_SHARE_CEILING);
+		expect(ceiling).not.toBe(0);
+	});
+
+	it('a zero cap over a zero demand is the same non-answer, not a spent cap', () => {
+		expect(
+			capacityCeiling({ kind: 'projected', warmingCapRemaining: 0, projectedVolume: 0 })
+		).toBeNull();
+	});
+
+	it('and the ladder holds the share exactly where it was', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3, lastCountedAt: NOW - 2 * DAY }),
+				capacity: zeroDenominator,
+			})
+		);
+		expect(decision.share).toBe(0.4);
+		expect(decision.direction).toBe('hold');
+		expect(decision.reason).toBe('capacity_unknown');
+	});
+});
+
 describe('rerouteMissRate refuses meaningless questions', () => {
 	it('is null when there is no projection to measure against', () => {
 		expect(rerouteMissRate({ kind: 'unknown', reason: 'no_volume' }, 0.5)).toBeNull();
