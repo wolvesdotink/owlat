@@ -133,7 +133,10 @@ describe('gate 1 — hard bounce against the cell’s own trailing rate', () => 
 			ownHardBounced: 1,
 			trailing: { sent: 40_000, hardBounced: 0 },
 			status: 'insufficient_data',
-			reason: 'baseline_rate_unmeasurable',
+			// NOT `baseline_rate_unmeasurable`: the trailing rate is a perfectly good
+			// number (exactly 0). It is the DERIVED CEILING that cannot decide, and the
+			// audit row must not tell the operator their clean window is corrupt.
+			reason: 'baseline_not_a_denominator',
 		},
 		{
 			name: 'a zero-rate baseline does not suppress the ABSOLUTE breach either',
@@ -294,7 +297,7 @@ describe('gate 3 — complaints, or the unsubscribe proxy when there is no feedb
 			ownTrailingBaseline: arm({ sent: 40_000, unsubscribed: 0 }),
 		});
 		expect(result.status).toBe('insufficient_data');
-		expect(result.reason).toBe('baseline_rate_unmeasurable');
+		expect(result.reason).toBe('baseline_not_a_denominator');
 	});
 
 	it('WITHOUT one: an implausible baseline buys silence, never permission', () => {
@@ -306,7 +309,7 @@ describe('gate 3 — complaints, or the unsubscribe proxy when there is no feedb
 			ownTrailingBaseline: arm({ sent: 40_000, unsubscribed: 30_000 }),
 		});
 		expect(result.status).toBe('insufficient_data');
-		expect(result.reason).toBe('baseline_rate_unmeasurable');
+		expect(result.reason).toBe('baseline_not_a_denominator');
 	});
 
 	it('WITHOUT one: no trailing baseline holds rather than failing', () => {

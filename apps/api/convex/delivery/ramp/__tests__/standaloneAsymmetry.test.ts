@@ -174,6 +174,7 @@ describe('the standalone evaluator cannot be handed a strong engagement verdict'
 			['reference_evidence_stale', 'baseline_evidence_stale'],
 			['reference_sample_below_floor', 'baseline_sample_below_floor'],
 			['reference_rate_unmeasurable', 'baseline_rate_unmeasurable'],
+			['reference_not_a_denominator', 'baseline_not_a_denominator'],
 		] as const;
 		for (const [smuggled, expected] of holds) {
 			expect(

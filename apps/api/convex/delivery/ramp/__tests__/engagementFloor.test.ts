@@ -251,7 +251,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
-		expect(floor.reason).toBe('baseline_rate_unmeasurable');
+		expect(floor.reason).toBe('baseline_not_a_denominator');
 	});
 
 	it('compares the explicit RECENT window, not the evaluation window', () => {
