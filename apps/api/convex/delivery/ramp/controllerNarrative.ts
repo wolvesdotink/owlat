@@ -16,19 +16,6 @@ import { rampDecisionChangedState } from './controllerTypes';
 import type { RampDecision, RampDecisionReason } from './controllerTypes';
 import type { RampGateId } from './gateTypes';
 
-/**
- * The retreats an operator must be TOLD about: something measured or something
- * infrastructural broke, and the sentence for each names the cause and the
- * remedy. Ceiling-bound pull-backs are deliberately absent — nothing failed, so
- * a notice would be an alarm with no gate to name and nothing to act on, and a
- * notice channel that cries wolf stops being read.
- */
-const NOTIFIABLE_RETREAT_REASONS: ReadonlySet<RampDecisionReason> = new Set<RampDecisionReason>([
-	'abuse_status',
-	'breaker',
-	'dnsbl',
-]);
-
 function percent(share: number): string {
 	return `${Math.round(share * 1000) / 10}%`;
 }
@@ -52,6 +39,31 @@ const RAMP_GATE_REMEDIES: Record<RampGateId, string> = {
 	seed_placement:
 		'Seed mailboxes moved from inbox to spam or went missing. Corroborate against the deferral and bounce gates before acting.',
 };
+
+/**
+ * THE DECISIONS WITH A NAMED CAUSE — ONE SPELLING, one list.
+ *
+ * Something measured or something infrastructural broke, and the sentence for
+ * each names the cause and the remedy: the three hard stops, plus every gate.
+ * The gate half is taken from the keys of `RAMP_GATE_REMEDIES` rather than
+ * re-typed, so a sixth gate becomes notifiable by existing — the same reason
+ * that table is a `Record` instead of a switch.
+ *
+ * Two reasons are deliberately ABSENT and are absent STRUCTURALLY, not as a
+ * consequence of some second half of a predicate. `awaiting_corroboration`
+ * carries a `failedGate`, but it is the branch in which the controller has
+ * decided NOT to believe the seed tripwire on its own (plan D17): nothing moved,
+ * nothing froze, and the remedy sentence would be an alarm asking the operator to
+ * go and find out whether there is an alarm. A ceiling-bound pull-back is absent
+ * for the plainer reason that nothing failed — no gate to name, nothing to act
+ * on, and a notice channel that cries wolf stops being read.
+ */
+const NOTIFIABLE_REASONS: ReadonlySet<RampDecisionReason> = new Set<RampDecisionReason>([
+	'abuse_status',
+	'breaker',
+	'dnsbl',
+	...(Object.keys(RAMP_GATE_REMEDIES) as RampGateId[]),
+]);
 
 /**
  * The remedy for THIS decision's breached gate. The single guard is here rather
@@ -103,24 +115,22 @@ function gateRemedy(decision: RampDecision): string {
  * and `dnsbl` re-enter at share 0 and are silent after the tick that took the
  * cell there.
  *
- * `awaiting_corroboration` is deliberately NOT notifiable. It carries a
- * `failedGate`, but it is the branch in which the controller has decided NOT to
- * believe the seed tripwire on its own (plan D17): nothing moved, no freeze was
- * imposed, and the remedy sentence would be "corroborate this before acting" —
- * an alarm asking the operator to go and find out whether there is an alarm. The
- * tripwire becomes notifiable the moment a second gate agrees, at which point
+ * WHICH CAUSES COUNT AS NAMED is `NOTIFIABLE_REASONS` above, and nothing else:
+ * `awaiting_corroboration` and the ceiling pull-backs are excluded by not being
+ * in that set rather than by a second clause here. The tripwire becomes
+ * notifiable the moment a second gate agrees, at which point
  * `aggregateRampGates` names THAT gate and the retreat is a real one.
  *
- * Also deliberately not notifiable: a ceiling-bound pull-back. Nothing failed,
- * there is no gate to name and nothing to act on.
+ * The PIN arm of `rampDecisionChangedState` cannot widen this: `graduated` is not
+ * a named cause, so a graduation is audited without ever posting an incident. A
+ * hard stop that REVOKES a pin is named — and that is correct, it is the tick on
+ * which a cell lost its independence.
  */
 export function rampDecisionAdminNotice(
 	cell: DeliverabilityCell,
 	decision: RampDecision
 ): string | undefined {
-	const isNamed =
-		decision.failedGate !== undefined || NOTIFIABLE_RETREAT_REASONS.has(decision.reason);
-	return isNamed && rampDecisionChangedState(decision)
+	return NOTIFIABLE_REASONS.has(decision.reason) && rampDecisionChangedState(decision)
 		? describeRampDecision(cell, decision)
 		: undefined;
 }
