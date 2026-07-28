@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { OperationError } from '@owlat/shared/operationError';
-import {
-	capacityRefusalPlan,
-	type CampaignCapacitySchedulePlan,
-} from '~/lib/campaignCapacityRefusal';
 import { isValidEmail } from '~/utils/validation';
 
 type SendOption = 'now' | 'later';
@@ -67,13 +62,7 @@ const isTestEmailModalOpen = ref(false);
  * D14), so the refusal is claimed here and rendered as a calm panel rather than
  * left to the generic red `invalid_state` toast.
  */
-const capacitySchedule = ref<CampaignCapacitySchedulePlan | null>(null);
-const claimCapacityRefusal = (err: OperationError): boolean => {
-	const plan = capacityRefusalPlan(err);
-	if (!plan) return false;
-	capacitySchedule.value = plan;
-	return true;
-};
+const { capacitySchedule, claimCapacityRefusal } = useCapacityRefusal();
 
 // Mutations
 const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {

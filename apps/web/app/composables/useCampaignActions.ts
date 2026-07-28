@@ -1,11 +1,7 @@
 import { ref, type Ref, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
-import type { OperationError } from '@owlat/shared/operationError';
-import {
-	capacityRefusalPlan,
-	type CampaignCapacitySchedulePlan,
-} from '~/lib/campaignCapacityRefusal';
+import { useCapacityRefusal } from './useCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
@@ -47,19 +43,9 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	/**
 	 * The multi-day schedule pre-flight handed back instead of starting the
 	 * campaign, or `null`. NOT an error state: capacity is a schedule, and the
-	 * caller renders it as one (deliverability plan D14). Claiming the failure
-	 * here is what keeps it off the generic red `invalid_state` toast.
+	 * caller renders it as one (deliverability plan D14).
 	 */
-	const capacitySchedule = ref<CampaignCapacitySchedulePlan | null>(null);
-	const claimCapacityRefusal = (error: OperationError): boolean => {
-		const plan = capacityRefusalPlan(error);
-		if (!plan) return false;
-		capacitySchedule.value = plan;
-		return true;
-	};
-	const dismissCapacitySchedule = () => {
-		capacitySchedule.value = null;
-	};
+	const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
 
 	// Mutations
 	const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
@@ -70,9 +56,12 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		label: 'Schedule campaign',
 		onError: claimCapacityRefusal,
 	});
+	// No `onError` claim here, deliberately: `campaigns.scheduling.reschedule`
+	// does not run pre-flight (only `schedule` does), so it cannot refuse for
+	// capacity and the handler could only ever return false. Whether rescheduling
+	// should also run the capacity gate is a separate decision.
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
 		label: 'Reschedule campaign',
-		onError: claimCapacityRefusal,
 	});
 	const { run: unscheduleCampaign } = useBackendOperation(api.campaigns.scheduling.unschedule, {
 		label: 'Unschedule campaign',
