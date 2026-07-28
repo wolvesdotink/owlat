@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
@@ -84,8 +85,14 @@ export const mailTables = {
 		// whose access is governed by explicit `mailboxMembers` rows rather than
 		// by the owning `userId` alone. NOTE: distinct from `kind` below, which
 		// discriminates the *transport* (hosted vs external), not the sharing
-		// model — the two are orthogonal.
-		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
+		// model — the two are orthogonal. 'seed' ⇒ the mailbox row behind a
+		// DELIVERABILITY SEED account: org infrastructure that is NOT anybody's
+		// inbox. It is filtered out of every caller-visible mailbox surface
+		// (`mail/permissions.ts::loadAccessibleMailboxes`,
+		// `mail/mailbox.ts::getActiveMailboxForUser`), so connecting a seed can
+		// never put the operator's consumer address in their own Postbox nor make
+		// the fresh-start flow believe they already have a mailbox.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'), v.literal('seed'))),
 		// Transport discriminator. undefined ⇒ 'hosted' (Owlat-hosted mailbox;
 		// back-compat for pre-external rows). 'external' ⇒ backed by a
 		// user-connected IMAP/SMTP account (see externalMailAccounts).
@@ -201,6 +208,31 @@ export const mailTables = {
 		// the inbox itself follows `mailboxes.userId` via mailboxMembers.
 		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 
+		// What the connection is FOR. undefined ⇒ 'mail' (every pre-seed row): an
+		// ordinary BYO mailbox synced into Postbox. 'seed' ⇒ a deliverability SEED
+		// mailbox: a free consumer account the operator owns purely so Owlat can
+		// mail itself a shadow copy and see which folder it lands in (gate 5 of
+		// the deliverability controller). A seed account reuses this table's
+		// sealed-credential handling and the shipped IMAP client verbatim — there
+		// is no second credential model — but it is NOT a user inbox: it is
+		// excluded from the personal-external surfaces and its mail is never
+		// indexed. Zero seed accounts is a SUPPORTED configuration.
+		purpose: v.optional(v.union(v.literal('mail'), v.literal('seed'))),
+		// Mailbox provider of a seed account, on the routing cell's destination
+		// axis. Set at connect time from the account's domain/host; drives the
+		// per-provider placement roll-up. Seed rows only.
+		seedProvider: v.optional(destinationProviderValidator),
+		// Last time the rotation nudge was EMITTED into the audit log. Purely a
+		// de-duplication stamp for the background sweep — it does NOT gate
+		// due-ness, or a sweep tick would extinguish the very signal it exists to
+		// raise. Absent ⇒ never emitted for the current cycle.
+		seedRotationRemindedAt: v.optional(v.number()),
+		// Last time an OPERATOR acknowledged the rotation nudge. This is what the
+		// 90-day clock runs from (absent ⇒ it runs from `createdAt`), so the
+		// reminder stands until a human acts on it. A reminder is a nudge on a
+		// connected seed, never a blocking warning or a "setup incomplete" state.
+		seedRotationAcknowledgedAt: v.optional(v.number()),
+
 		// IMAP (receive). isImapSecure=true ⇒ implicit TLS (993); false ⇒ STARTTLS (143).
 		imapHost: v.string(),
 		imapPort: v.number(),
@@ -245,7 +277,24 @@ export const mailTables = {
 	})
 		.index('by_user', ['userId'])
 		.index('by_mailbox', ['mailboxId'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		// Seed-mailbox lookup for the placement prober. Legacy rows carry no
+		// `purpose`, so this index only ever returns explicitly-tagged accounts.
+		//
+		// `status` is IN the index, not filtered after a bounded page, because
+		// disconnecting an account is a SOFT status change (`mail/mailbox.ts`'s
+		// `remove` patches the row to 'disconnected' and keeps it). Filtering a
+		// `.take(cap)` page would let retired rows eat slots — the per-org connect
+		// cap would read short and stop refusing, and the roll-up would silently
+		// drop live seeds off the end of the page. Selecting the LIVE statuses
+		// through the index is the only shape where both are exact.
+		.index('by_org_purpose_and_status', ['organizationId', 'purpose', 'status'])
+		// The prober's GLOBAL sweep selects on exactly `purpose` and PAGINATES with
+		// a cursor the worker carries across ticks. Filtering a bounded `by_status`
+		// page for seeds after the fact goes silently dark on any deployment with
+		// more connectable accounts than the page bound; a bounded page of seeds
+		// with no cursor starves whichever orgs sort last, permanently.
+		.index('by_purpose', ['purpose']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track

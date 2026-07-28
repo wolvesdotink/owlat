@@ -123,6 +123,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
 	'deliverySnapshots',
+	'seedPlacementProbes',
 	'gmailDeliveryReceipts',
 	'gmailVolumeBuckets',
 	'gmailDomainVolumeRollups',
@@ -206,6 +207,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'destinationProviderDomains',
 	'sendAssignments',
 	'transportOutcomes',
+	'yahooCflEnrollments',
 	'domains',
 	'sendingDomainMtaIdentities',
 	'sendingDomainSesIdentities',
@@ -297,6 +299,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
+	seedPlacementProbes: makeSweepStep('seedPlacementProbes'),
 	gmailDeliveryReceipts: makeSweepStep('gmailDeliveryReceipts'),
 	gmailVolumeBuckets: makeSweepStep('gmailVolumeBuckets'),
 	gmailDomainVolumeRollups: makeSweepStep('gmailDomainVolumeRollups'),
@@ -342,6 +345,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	destinationProviderDomains: makeSweepStep('destinationProviderDomains'),
 	sendAssignments: makeSweepStep('sendAssignments'),
 	transportOutcomes: makeSweepStep('transportOutcomes'),
+	yahooCflEnrollments: makeSweepStep('yahooCflEnrollments'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),

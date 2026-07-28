@@ -41,6 +41,13 @@ import { normalizeEmail, parseAddress } from '@owlat/shared';
  * "does this member have a mailbox" means the SAME thing everywhere — an active
  * row, never a suspended/deleted one. A member whose only mailbox is suspended
  * still reaches the honest "ask an admin" escape hatch.
+ *
+ * A `scope='seed'` mailbox is skipped: a deliverability seed carries the
+ * connecting ADMIN's `userId` (it has no other owner), but it is org
+ * infrastructure, not their inbox. Counting one would tell
+ * `mailboxRequest.freshStartStatus` / `userOnboarding.completeFreshStart` that
+ * an admin who connected a seed already has a mailbox — a silent change to a
+ * shipped flow.
  */
 export async function getActiveMailboxForUser(
 	ctx: QueryCtx | MutationCtx,
@@ -49,7 +56,7 @@ export async function getActiveMailboxForUser(
 	return await ctx.db
 		.query('mailboxes')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.filter((q) => q.eq(q.field('status'), 'active'))
+		.filter((q) => q.and(q.eq(q.field('status'), 'active'), q.neq(q.field('scope'), 'seed')))
 		.first();
 }
 
@@ -142,9 +149,11 @@ export async function provisionMailbox(
 		 * 'shared' marks a team inbox whose access is governed by explicit
 		 * `mailboxMembers` rows (see mail/mailboxMembers.ts). The creator's
 		 * implicit 'owner' membership is inserted here regardless of scope; a
-		 * shared mailbox layers further member rows on top.
+		 * shared mailbox layers further member rows on top. 'seed' marks a
+		 * deliverability seed mailbox — org infrastructure that is not anybody's
+		 * inbox and is filtered out of every caller-visible mailbox surface.
 		 */
-		scope?: 'personal' | 'shared';
+		scope?: 'personal' | 'shared' | 'seed';
 		externalAccountId?: Id<'externalMailAccounts'>;
 	}
 ): Promise<Id<'mailboxes'>> {

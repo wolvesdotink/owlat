@@ -12,6 +12,8 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
+import { observationVerdict } from './observationFreshness';
+import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 import {
 	derivePostmasterCards,
 	type PostmasterCard,
@@ -113,17 +115,6 @@ function isValidObservation(
 		fetchedAt <= now + FETCHED_AT_FUTURE_TOLERANCE_MS &&
 		isCanonicalDomain(domain)
 	);
-}
-
-/** What to do with an observation given what is already stored for its day. */
-type ObservationVerdict = 'stale' | 'replayed' | 'write';
-
-function observationVerdict(
-	storedFetchedAt: number | undefined,
-	fetchedAt: number
-): ObservationVerdict {
-	if (storedFetchedAt === undefined || storedFetchedAt < fetchedAt) return 'write';
-	return storedFetchedAt === fetchedAt ? 'replayed' : 'stale';
 }
 
 const INVALID_OBSERVATION = {
@@ -266,25 +257,33 @@ export const ingestCompliance = internalMutation({
 	},
 });
 
+/**
+ * The return type is ANNOTATED, not inferred: `scheduleContinuation` names this
+ * mutation through the generated API, so an inferred handler return type would
+ * be defined in terms of itself. See the same note on `delivery/snds.ts`.
+ */
 export const cleanup = internalMutation({
 	args: {},
-	handler: async (ctx) => {
-		const horizon = Date.now() - RETENTION_MS;
-		const expired = await ctx.db
-			.query('googlePostmasterStats')
-			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
-			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
-		for (const row of expired) await ctx.db.delete(row._id);
-		const expiredCompliance = await ctx.db
-			.query('googlePostmasterCompliance')
-			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
-			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
-		for (const row of expiredCompliance) await ctx.db.delete(row._id);
-		const hasMore =
-			expired.length === POSTMASTER_CLEANUP_BATCH_SIZE ||
-			expiredCompliance.length === POSTMASTER_CLEANUP_BATCH_SIZE;
-		if (hasMore) await ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {});
-		return { deleted: expired.length + expiredCompliance.length, continuationScheduled: hasMore };
+	handler: async (ctx): Promise<ObservationSweepResult> => {
+		return sweepExpiredObservations(ctx, {
+			now: Date.now(),
+			retentionMs: RETENTION_MS,
+			batchSize: POSTMASTER_CLEANUP_BATCH_SIZE,
+			scans: [
+				(horizon, limit) =>
+					ctx.db
+						.query('googlePostmasterStats')
+						.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+				(horizon, limit) =>
+					ctx.db
+						.query('googlePostmasterCompliance')
+						.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+			],
+			scheduleContinuation: () =>
+				ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {}),
+		});
 	},
 });
 

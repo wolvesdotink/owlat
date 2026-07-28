@@ -394,6 +394,16 @@ function matchField(text: string, field: string): string | undefined {
  * attachment part or inline in the report body (when the ISP doesn't set the
  * MIME content-type correctly), so we scan both. Addresses may be wrapped in
  * angle brackets or carry an `rfc822;` address-type prefix; both are stripped.
+ *
+ * Microsoft's Junk Mail Reporting Program (JMRP) is the reason for the second
+ * pass. A JMRP report frequently omits every RFC 5965 recipient field and
+ * carries the complaining address only in the `X-HmXmrOriginalRecipient`
+ * header of the re-attached original message. Without it a Microsoft complaint
+ * arrives with NO attribution handle at all whenever the Message-ID is
+ * redacted — which is most of them. It is tried strictly after the standard
+ * fields so a conforming report is never affected, and it inherits the same
+ * trust posture as the fields above it: this scan reads report bytes, so it can
+ * only ever suppress a recipient, never resurrect one.
  */
 function extractComplainedRecipient(
 	reportParts: ReportPart[],
@@ -404,9 +414,11 @@ function extractComplainedRecipient(
 		sources.push(part.content.toString('utf-8'));
 	}
 
-	for (const source of sources) {
-		const recipient = matchRecipientField(source);
-		if (recipient) return recipient;
+	for (const pattern of [RECIPIENT_FIELD_RE, JMRP_RECIPIENT_FIELD_RE]) {
+		for (const source of sources) {
+			const recipient = matchRecipientField(source, pattern);
+			if (recipient) return recipient;
+		}
 	}
 
 	return undefined;
@@ -414,8 +426,11 @@ function extractComplainedRecipient(
 
 const RECIPIENT_FIELD_RE = /^(?:Original-Rcpt-To|Removed-Recipient|Original-Recipient):\s*(.+)$/im;
 
-function matchRecipientField(text: string): string | undefined {
-	const match = text.match(RECIPIENT_FIELD_RE);
+/** Microsoft JMRP's recipient header, emitted on the re-attached original. */
+const JMRP_RECIPIENT_FIELD_RE = /^X-HmXmrOriginalRecipient:\s*(.+)$/im;
+
+function matchRecipientField(text: string, pattern: RegExp): string | undefined {
+	const match = text.match(pattern);
 	if (!match?.[1]) return undefined;
 	return normalizeRecipient(match[1]);
 }
@@ -437,15 +452,29 @@ function normalizeRecipient(raw: string): string | undefined {
 }
 
 /**
+ * Every ISP token `isp()` can resolve.
+ *
+ * Exported because it is a CONTRACT, not an implementation detail:
+ * `outcome.ts` maps each token onto the ramp's destination-provider cell axis,
+ * and that mapping has to be TOTAL — a token with no row would silently drop
+ * that ISP's complaints out of the cell axis. Declaring the tokens as a union
+ * and requiring the map to `satisfies Record<FblSourceIspToken, …>` turns that
+ * omission into a compile error instead of a hand-maintained test list.
+ *
+ * Each member MUST be a single `\w+` word: `reduceFbl()` in outcome.ts re-parses
+ * the ISP out of the classification `message` with `/from (\w+)/`, and the ISP
+ * becomes a bounded Prometheus label.
+ */
+export type FblSourceIspToken = 'microsoft' | 'yahoo' | 'aol' | 'comcast' | 'google' | 'mailru';
+
+/**
  * Map a free-text hint (a feedback-report `User-Agent`, `Reported-Domain`, or
  * `Source-IP` reverse hint, or a `Received` trace line) to a known ISP token.
  *
- * The returned value MUST be a single `\w+` word: `reduceFbl()` in outcome.ts
- * re-parses the ISP out of the classification `message` with `/from (\w+)/`,
- * and the ISP becomes a bounded Prometheus label, so this is intentionally a
- * fixed enum of the large FBL providers rather than free text.
+ * This is intentionally a fixed enum of the large FBL providers rather than
+ * free text — see `FblSourceIspToken`.
  */
-function isp(hint: string | undefined): string | undefined {
+function isp(hint: string | undefined): FblSourceIspToken | undefined {
 	if (!hint) return undefined;
 	const lower = hint.toLowerCase();
 	if (lower.includes('microsoft') || lower.includes('outlook') || lower.includes('hotmail')) {
@@ -463,6 +492,6 @@ function isp(hint: string | undefined): string | undefined {
  * Try to identify the source ISP from received headers. Kept as the last-resort
  * fallback for reports that carry no structured `User-Agent`/`Reported-Domain`.
  */
-function extractSourceIsp(receivedHeader: string): string | undefined {
+function extractSourceIsp(receivedHeader: string): FblSourceIspToken | undefined {
 	return isp(receivedHeader);
 }

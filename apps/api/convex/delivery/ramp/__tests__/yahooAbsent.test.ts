@@ -1,0 +1,226 @@
+/**
+ * P4-6 D2 proof — a deployment with NO Yahoo CFL enrollment.
+ *
+ * The additive-only third-party rule: absence of the enrollment may lower
+ * measurement confidence and slow the ramp, and must do NOTHING else. It never
+ * throws, never blocks a send, never blocks a phase promotion, never surfaces an
+ * error state, and never renders an unresolvable warning or a "setup incomplete"
+ * nag. Un-enrolled falls back to the documented substitution (the CFBL feed if
+ * a send carried one, otherwise the unsubscribe-rate proxy at the tightened
+ * 0.05% equivalent threshold) and says so as a confidence caveat.
+ *
+ * SCOPE: `yahooComplaintSubstitution` is the yahoo cell's only definition today.
+ * P3-8 lands the ONE substitution table for every gate and SUBSUMES it — so
+ * these assertions move there rather than being duplicated, or we end up with
+ * two disagreeing yahoo complaint gates (D3). The THRESHOLDS do not move: they
+ * already live in `../gateConfig` alongside every other ramp threshold, which is
+ * why this suite reads them from there rather than from a second declaration.
+ */
+
+import { describe, expect, it } from 'vitest';
+import {
+	YAHOO_CFL_ENROLLMENT_STATES,
+	yahooCflGuidedSteps,
+	emptyYahooCflEnrollment,
+	type YahooCflEnrollmentState,
+} from '@owlat/shared/yahooCfl';
+import { RAMP_GATE_THRESHOLDS, UNSUBSCRIBE_PROXY_COMPLAINT_MAX, rateFraction } from '../gateConfig';
+import { evaluateComplaintGate } from '../gates';
+import {
+	YAHOO_COMPLAINT_SIGNAL_SOURCES,
+	yahooComplaintGateFails,
+	yahooComplaintSubstitution,
+} from '../yahooComplaintSignal';
+import { arm, input } from './gateFixtures';
+
+const UNENROLLED_STATES: YahooCflEnrollmentState[] = ['not_started', 'awaiting_yahoo', 'lapsed'];
+
+describe('the substitution table always yields a usable gate', () => {
+	it('enumerates exactly three complaint sources', () => {
+		expect(YAHOO_COMPLAINT_SIGNAL_SOURCES).toEqual([
+			'yahoo_cfl',
+			'cfbl_address',
+			'unsubscribe_rate_proxy',
+		]);
+	});
+
+	it('uses Yahoo CFL at full confidence when enrolled', () => {
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'enrolled', hasCfblAddress: false })
+		).toEqual({
+			source: 'yahoo_cfl',
+			thresholdRate: RAMP_GATE_THRESHOLDS.complaintMax,
+			confidence: 'high',
+			confidenceNote:
+				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
+			isBlocking: false,
+		});
+	});
+
+	it('falls back to the CFBL feed at medium confidence when un-enrolled', () => {
+		for (const enrollmentState of UNENROLLED_STATES) {
+			const result = yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: true });
+			expect(result.source).toBe('cfbl_address');
+			expect(result.confidence).toBe('medium');
+			expect(result.thresholdRate).toBe(RAMP_GATE_THRESHOLDS.complaintMax);
+			expect(result.confidenceNote).toContain('Measurement confidence: medium');
+		}
+	});
+
+	it('falls back to the unsubscribe proxy at the TIGHTENED threshold with no feed at all', () => {
+		for (const enrollmentState of UNENROLLED_STATES) {
+			const result = yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: false });
+			expect(result.source).toBe('unsubscribe_rate_proxy');
+			expect(result.confidence).toBe('low');
+			expect(result.thresholdRate).toBe(UNSUBSCRIBE_PROXY_COMPLAINT_MAX);
+			expect(result.confidenceNote).toContain('Measurement confidence: low');
+		}
+	});
+
+	it('tightens the proxy to the 0.05% equivalent of the 0.1% direct threshold', () => {
+		expect(RAMP_GATE_THRESHOLDS.complaintMax).toBe(0.001);
+		expect(UNSUBSCRIBE_PROXY_COMPLAINT_MAX).toBe(0.0005);
+		expect(UNSUBSCRIBE_PROXY_COMPLAINT_MAX).toBeLessThan(RAMP_GATE_THRESHOLDS.complaintMax);
+	});
+
+	it('never blocks and never errors, in EVERY state and both feed configurations', () => {
+		for (const enrollmentState of YAHOO_CFL_ENROLLMENT_STATES) {
+			for (const hasCfblAddress of [true, false]) {
+				const result = yahooComplaintSubstitution({ enrollmentState, hasCfblAddress });
+				expect(result.isBlocking).toBe(false);
+				// A source is ALWAYS resolved: there is no "no signal" branch that a
+				// caller could interpret as an error or an unresolvable warning.
+				expect(YAHOO_COMPLAINT_SIGNAL_SOURCES).toContain(result.source);
+				expect(result.thresholdRate).toBeGreaterThan(0);
+				// The confidence sentence has ONE home — the pure function — so a UI can
+				// render it unconditionally and can never drift from this copy.
+				expect(result.confidenceNote).toContain('Measurement confidence:');
+			}
+		}
+	});
+
+	it('caveats confidence rather than reporting a problem', () => {
+		const result = yahooComplaintSubstitution({
+			enrollmentState: 'not_started',
+			hasCfblAddress: false,
+		});
+		// The copy is a confidence statement plus an optional improvement — never
+		// "error", "failed", "required", "incomplete", or "action needed".
+		const forbidden = ['error', 'failed', 'required', 'incomplete', 'action needed', 'must'];
+		for (const word of forbidden) {
+			expect(result.confidenceNote.toLowerCase()).not.toContain(word);
+			expect(result.caveat?.toLowerCase()).not.toContain(word);
+		}
+		expect(result.caveat).toContain('would measure complaints directly');
+	});
+
+	it('only the enrolled state gets high confidence', () => {
+		for (const enrollmentState of UNENROLLED_STATES) {
+			expect(
+				yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: true }).confidence
+			).not.toBe('high');
+		}
+	});
+});
+
+/**
+ * `thresholdRate` + `yahooComplaintGateFails` are the contract P3-8 consumes,
+ * and the shipped gate publishes a field of the same name — so the comparison
+ * boundary is pinned rather than left to the reader. Gate 3 is
+ * `complaint <= 0.1%`: exactly the threshold PASSES, anything above it fails.
+ * The rates here are injected as summary overrides because an integer numerator
+ * cannot express a rate a hair over the threshold.
+ *
+ * The proxy half calls the SHIPPED comparator, not a local re-declaration of
+ * `>`: a helper that re-implements the operator under test compares `a > b`
+ * against itself and can never fail.
+ */
+describe('the comparison boundary is inclusive on the pass side', () => {
+	/**
+	 * The shipped gate 3, evaluated at a chosen own-arm complaint rate. Both arms
+	 * carry the SAME rate so the comparative half is always satisfied and the only
+	 * thing under test is the absolute-ceiling comparison.
+	 */
+	function complaintVerdict(rate: number) {
+		return evaluateComplaintGate(
+			input({
+				own: arm({ sent: 100_000 }, { complaintRate: rate }),
+				reference: arm({ sent: 100_000 }, { complaintRate: rate }),
+			})
+		).status;
+	}
+
+	/** The shipped comparator, applied to the substitution the given state selects. */
+	function substitutionFails(enrollmentState: YahooCflEnrollmentState, rate: number): boolean {
+		return yahooComplaintGateFails(
+			rateFraction(rate),
+			yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: false })
+		);
+	}
+
+	const DIRECT = RAMP_GATE_THRESHOLDS.complaintMax as number;
+	const PROXY = UNSUBSCRIBE_PROXY_COMPLAINT_MAX as number;
+	/** A hair over a threshold — far more than one ulp, small enough to be a boundary probe. */
+	const JUST_ABOVE = 0.0000000001;
+
+	it('publishes the same threshold the shipped gate compares against', () => {
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'enrolled', hasCfblAddress: false })
+				.thresholdRate as number
+		).toBe(DIRECT);
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'not_started', hasCfblAddress: false })
+				.thresholdRate as number
+		).toBe(PROXY);
+	});
+
+	it('passes at exactly the direct threshold and fails just above it', () => {
+		expect(complaintVerdict(DIRECT)).toBe('pass');
+		expect(complaintVerdict(DIRECT + JUST_ABOVE)).toBe('fail');
+		expect(substitutionFails('enrolled', DIRECT)).toBe(false);
+		expect(substitutionFails('enrolled', DIRECT + JUST_ABOVE)).toBe(true);
+	});
+
+	it('passes at exactly the proxy threshold and fails just above it', () => {
+		expect(substitutionFails('not_started', PROXY)).toBe(false);
+		expect(substitutionFails('not_started', PROXY + JUST_ABOVE)).toBe(true);
+		// The proxy substitutes only the NUMBER, never the comparison — and it is
+		// genuinely stricter: a rate the direct threshold passes trips the proxy.
+		expect(substitutionFails('enrolled', PROXY + JUST_ABOVE)).toBe(false);
+		expect(complaintVerdict(PROXY)).toBe('pass');
+	});
+});
+
+describe('the guided flow on a never-enrolled install', () => {
+	it('renders cleanly with zero credentials and an unverified domain', () => {
+		const steps = yahooCflGuidedSteps(
+			emptyYahooCflEnrollment(),
+			{ domain: 'mail.example.com', isVerified: false },
+			Date.UTC(2026, 6, 1)
+		);
+		expect(steps).toHaveLength(4);
+		for (const step of steps) {
+			// `blocked` is a sequencing statement ("do the earlier step first"), the
+			// vocabulary has no error/failure status at all.
+			expect(['blocked', 'todo', 'in_progress', 'done']).toContain(step.status);
+			expect(step.action).not.toContain('undefined');
+			expect(step.verification).not.toContain('undefined');
+		}
+	});
+
+	it('treats a DERIVED lapse exactly like no enrollment', () => {
+		// The point of the derived lapse is that the feed can no longer be trusted
+		// to be live, so the gate substitutes rather than keeping a stale verdict.
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'lapsed', hasCfblAddress: false }).source
+		).toBe('unsubscribe_rate_proxy');
+	});
+
+	it('treats not_started as a supported configuration, not an unfinished setup', () => {
+		const record = emptyYahooCflEnrollment();
+		expect(record.state).toBe('not_started');
+		// Nothing about the default record is nag-shaped: no due date, no counter,
+		// no error field. It is simply the absence of an optional integration.
+		expect(Object.keys(record)).toEqual(['state']);
+	});
+});

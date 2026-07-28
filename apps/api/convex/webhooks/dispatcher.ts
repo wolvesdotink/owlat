@@ -10,8 +10,12 @@
  *
  * Negative-feedback events (`email.bounced` / `email.complained`) whose
  * `providerMessageId` resolves to no Send row now emit an `unresolved_bounce`
- * signal via `recordUnresolvedBounce` instead of acking silently — see that
- * function for the rationale (M3AAWG measure-unattributable-feedback).
+ * signal via `recordUnresolvedBounce` (`./unresolvedBounce`) instead of acking
+ * silently — see that function for the rationale (M3AAWG
+ * measure-unattributable-feedback).
+ *
+ * A handler that outgrows a table entry moves to its own module and is
+ * registered here by name: `email.complained` lives in `./complaintDispatch`.
  */
 
 import { internal } from '../_generated/api';
@@ -21,7 +25,9 @@ import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
-import { logError, logWarn } from '../lib/runtimeLog';
+import { logError } from '../lib/runtimeLog';
+import { dispatchComplaint } from './complaintDispatch';
+import { recordUnresolvedBounce } from './unresolvedBounce';
 import {
 	type InboundEvent,
 	type InboundEventKind,
@@ -31,39 +37,6 @@ import {
 
 /** Max time to wait for the SNS subscription-confirm GET before giving up. */
 const SNS_CONFIRM_FETCH_TIMEOUT_MS = 10_000;
-
-/**
- * Unresolved-bounce observability (M3AAWG "measure unattributable feedback").
- *
- * `transitionByProviderMessageId` returns `{ ok: false, reason:
- * 'send_not_found' }` when a provider message id resolves to no Send row, and
- * the webhook path otherwise acks silently. For a negative-signal event
- * (`email.bounced` / `email.complained`) that silence hides a real failure
- * class: a bounce the MTA attributed (so the worker-side unattributed-bounce
- * counter never fires) but which is lost at the Convex resolve step — e.g. the
- * VERP-token-vs-stored-providerMessageId mismatch (PR-01). Without a signal
- * here those bounces are invisible end-to-end.
- *
- * So: when a negative-signal transition resolves to `send_not_found`, emit a
- * structured `unresolved_bounce` warning carrying the event kind and provider
- * message id. The literal token makes the mismatch observable to log-based
- * metrics/alerts rather than a no-op.
- */
-function recordUnresolvedBounce(
-	signal: 'email.bounced' | 'email.complained',
-	providerMessageId: string,
-	at: number,
-	outcome: TransitionOutcome | undefined
-): void {
-	// Only the specific no-row outcome is a signal; any other shape (success,
-	// a different failure reason, or an absent return) is a quiet no-op.
-	if (!outcome || outcome.ok || outcome.reason !== 'send_not_found') return;
-	logWarn(
-		`[Webhook Dispatcher] unresolved_bounce: ${signal} for providerMessageId ` +
-			`${providerMessageId} resolved to no Send row (at=${at}). The bounce was ` +
-			`attributed at the MTA but lost at Convex resolve — measure-unattributable-feedback.`
-	);
-}
 
 type Handler<K extends InboundEventKind> = (
 	ctx: ActionCtx,
@@ -227,31 +200,7 @@ const DISPATCH: DispatchTable = {
 		)) as TransitionOutcome;
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
 	},
-	'email.complained': async (ctx, e) => {
-		// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
-		// original Message-ID (e.g. Gmail), so there's no send to transition.
-		// Suppress the complainer directly by email — a complaint must always
-		// reach the blocklist, never evaporate into a metric.
-		if (!e.providerMessageId) {
-			if (!e.recipient || (e.providerType !== 'ses' && e.deliveryDomain !== 'production')) return;
-			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
-				email: e.recipient,
-				reason: 'complained',
-			});
-			return;
-		}
-		if (isPostboxMessageId(e.providerMessageId)) return;
-		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
-				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
-				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'complained', at: e.at },
-			}
-		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
-	},
+	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
 		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {

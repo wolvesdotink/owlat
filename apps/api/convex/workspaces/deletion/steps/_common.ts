@@ -35,6 +35,7 @@ export type OrganizationDeletionTable =
 	| 'agentActions'
 	| 'contentScanResults'
 	| 'deliverySnapshots'
+	| 'seedPlacementProbes'
 	| 'gmailDeliveryReceipts'
 	| 'gmailVolumeBuckets'
 	| 'gmailDomainVolumeRollups'
@@ -101,6 +102,7 @@ export type OrganizationDeletionTable =
 	| 'destinationProviderDomains'
 	| 'sendAssignments'
 	| 'transportOutcomes'
+	| 'yahooCflEnrollments'
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
@@ -205,6 +207,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('agentActions'),
 	v.literal('contentScanResults'),
 	v.literal('deliverySnapshots'),
+	v.literal('seedPlacementProbes'),
 	v.literal('gmailDeliveryReceipts'),
 	v.literal('gmailVolumeBuckets'),
 	v.literal('gmailDomainVolumeRollups'),
@@ -271,6 +274,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('destinationProviderDomains'),
 	v.literal('sendAssignments'),
 	v.literal('transportOutcomes'),
+	v.literal('yahooCflEnrollments'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),

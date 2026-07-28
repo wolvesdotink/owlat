@@ -104,6 +104,18 @@ export type InboundEvent =
 			recipient?: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
+			/**
+			 * RFC 5965 `Reported-Domain` — OUR sending/DKIM domain the complaint was
+			 * filed against — and the feedback-loop source ISP the MTA's ARF
+			 * processor resolved. Both optional; most ISPs omit at least one.
+			 * Together they keep a DKIM-domain-based FBL enrollment marked live.
+			 *
+			 * `sourceIsp` is the shipped destination-provider union, not a free
+			 * string, so the dispatcher's yahoo branch compares against a checked
+			 * constant instead of a magic literal.
+			 */
+			reportedDomain?: string;
+			sourceIsp?: DestinationProviderKey;
 	  }
 	| {
 			kind: 'email.opened';

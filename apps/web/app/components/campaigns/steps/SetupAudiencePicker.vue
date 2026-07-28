@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 type AudienceType = 'topic' | 'segment';
@@ -13,11 +15,12 @@ interface SegmentOption {
 	name: string;
 	description?: string | null;
 }
-interface RecipientCount {
-	eligible: number;
-	total: number;
-	capped?: boolean;
-}
+/**
+ * Derived from the query itself rather than hand-restated, so a new
+ * `completeness` value is a COMPILE error here (the suffix mapping below has to
+ * decide what it means) instead of silently falling through to "exact".
+ */
+type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution.countRecipients>;
 
 const props = defineProps<{
 	topics: readonly TopicOption[] | null;
@@ -41,7 +44,14 @@ const selectedSegment = computed(
 
 const formattedEligibleRecipients = computed(() => {
 	const eligible = props.audienceCount?.eligible ?? 0;
-	const suffix = props.audienceCount?.capped ? '+' : '';
+	// A capped or budget-stopped enumeration is an "at least" reading, so it earns
+	// the `+`. `suppression_truncated` is an OVER-count, not a lower bound — never
+	// render it as "at least" (it cannot reach this screen today: the wizard's
+	// `countRecipients` runs unbudgeted, and only a budgeted scan can truncate
+	// suppression. Handled anyway so the mapping stays honest if that changes).
+	const completeness = props.audienceCount?.completeness;
+	const suffix =
+		completeness === 'candidate_capped' || completeness === 'read_budget_exhausted' ? '+' : '';
 	return `${eligible.toLocaleString()}${suffix}`;
 });
 
@@ -173,9 +183,11 @@ const nonEligibleRecipients = computed(() => {
 					<Icon name="lucide:users" class="w-5 h-5 text-text-tertiary" />
 					<span class="text-text-secondary">Estimated recipients</span>
 				</div>
-				<span class="text-xl font-semibold text-text-primary">{{
-					formattedEligibleRecipients
-				}}</span>
+				<span
+					data-testid="audience-eligible-count"
+					class="text-xl font-semibold text-text-primary"
+					>{{ formattedEligibleRecipients }}</span
+				>
 			</div>
 			<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
 				Eligible recipients for this topic.

@@ -14,7 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { selectRecipient } from '../audienceResolution';
+import { selectRecipient } from '../audienceCandidates';
 import {
 	createTestContact,
 	createTestTopic,
@@ -30,7 +30,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -45,7 +49,7 @@ const modules = Object.fromEntries(
 			return ['../../campaigns/' + key.slice(3), val];
 		}
 		return [key, val];
-	}),
+	})
 );
 
 // ── 1. The pure core: selectRecipient ───────────────────────────────────
@@ -136,6 +140,7 @@ describe('selectRecipient — the eligibility predicate', () => {
 			lastName: 'Y',
 			timezone: 'Europe/Berlin',
 			language: 'de',
+			engagementScore: 61,
 		});
 		expect(selectRecipient(c, { requiresDoi: false, ...noBlocks })).toEqual({
 			_id: 'contact_x',
@@ -144,7 +149,21 @@ describe('selectRecipient — the eligibility predicate', () => {
 			lastName: 'Y',
 			timezone: 'Europe/Berlin',
 			language: 'de',
+			engagementScore: 61,
 		});
+	});
+
+	// G-02 (#459): `engagementScore` rides the recipient projection so the enqueue
+	// path can put it on the send envelope without re-reading the contact row. It
+	// has been dropped once by a module split already — pin it at BOTH layers.
+	it('projects engagementScore, and omits it when the scorer has not reached the contact', () => {
+		const scored = makeContact({ email: 'scored@y.com', engagementScore: 0 });
+		expect(selectRecipient(scored, { requiresDoi: false, ...noBlocks })?.engagementScore).toBe(0);
+
+		const unscored = makeContact({ email: 'unscored@y.com', engagementScore: undefined });
+		const projected = selectRecipient(unscored, { requiresDoi: false, ...noBlocks });
+		expect(projected).not.toBeNull();
+		expect(projected!.engagementScore).toBeUndefined();
 	});
 });
 
@@ -168,15 +187,17 @@ interface SeedResult {
 //   frank   — confirmed, email, BLOCKED  → excluded (both)
 async function seed(t: TestConvex<typeof schema>): Promise<SeedResult> {
 	return await t.run(async (ctx) => {
-		const topicId = await ctx.db.insert(
-			'topics',
-			createTestTopic({ requireDoubleOptIn: true }),
-		);
+		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
 
-		const mk = (o: Record<string, unknown>) =>
-			ctx.db.insert('contacts', createTestContact(o));
+		const mk = (o: Record<string, unknown>) => ctx.db.insert('contacts', createTestContact(o));
 
-		const aliceId = await mk({ email: 'alice@match.com', doiStatus: 'confirmed' });
+		// Alice carries an engagementScore; Bob does not (the scorer has not reached
+		// him). Both shapes must survive the projection — see the G-02 assertions.
+		const aliceId = await mk({
+			email: 'alice@match.com',
+			doiStatus: 'confirmed',
+			engagementScore: 73,
+		});
 		const bobId = await mk({ email: 'bob@match.com', doiStatus: 'confirmed' });
 		const charlieId = await mk({ email: 'charlie@match.com', doiStatus: 'pending' });
 		const daveId = await mk({ email: undefined, doiStatus: 'confirmed' });
@@ -191,10 +212,7 @@ async function seed(t: TestConvex<typeof schema>): Promise<SeedResult> {
 			await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
 		}
 
-		await ctx.db.insert(
-			'blockedEmails',
-			createTestBlockedEmail({ email: 'frank@match.com' }),
-		);
+		await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'frank@match.com' }));
 
 		const segmentId = await ctx.db.insert('segments', {
 			name: 'match.com folks',
@@ -223,13 +241,19 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, { audience });
 
-		expect(resolved.map((r) => r.email).sort()).toEqual([
-			'alice@match.com',
-			'bob@match.com',
-		]);
+		expect(resolved.map((r) => r.email).sort()).toEqual(['alice@match.com', 'bob@match.com']);
 		expect(count.eligible).toBe(resolved.length); // anti-drift
 		expect(count.total).toBe(6); // raw membership count
 		expect(count.total - count.eligible).toBe(4); // honest excluded gap
+
+		// G-02 (#459): the resolved recipient carries `engagementScore` through the
+		// real Convex entry point, not just through the pure predicate. A module
+		// split that drops the field off `projectRecipient` fails HERE.
+		const alice = resolved.find((r) => r.email === 'alice@match.com');
+		expect(alice?.engagementScore).toBe(73);
+		const bob = resolved.find((r) => r.email === 'bob@match.com');
+		expect(bob).toBeDefined();
+		expect(bob?.engagementScore).toBeUndefined();
 	});
 
 	it('segment: no DOI gate — includes DOI-pending; still gates emailless + suppressed + soft-deleted', async () => {
@@ -260,10 +284,9 @@ describe('Audience resolution — count and send share one predicate', () => {
 			{ kind: 'topic' as const, topicId },
 			{ kind: 'segment' as const, segmentId },
 		]) {
-			const resolved = await t.query(
-				internal.campaigns.audienceResolution.resolveRecipients,
-				{ audience },
-			);
+			const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+				audience,
+			});
 			expect(resolved.map((r) => String(r._id))).not.toContain(String(eveId));
 		}
 	});
@@ -278,17 +301,14 @@ describe('Audience resolution — count and send share one predicate', () => {
 		// rows that the streaming read surfaces only on a later page.
 		const ELIGIBLE = 1100;
 		const { topicId, eligibleEmails } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: true }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }));
 
 			const eligibleEmails: string[] = [];
 			for (let i = 0; i < ELIGIBLE; i++) {
 				const email = `member${i}@stream.test`;
 				const contactId = await ctx.db.insert(
 					'contacts',
-					createTestContact({ email, doiStatus: 'confirmed' }),
+					createTestContact({ email, doiStatus: 'confirmed' })
 				);
 				await ctx.db.insert('contactTopics', {
 					contactId,
@@ -305,11 +325,11 @@ describe('Audience resolution — count and send share one predicate', () => {
 					email: 'gone@stream.test',
 					doiStatus: 'confirmed',
 					deletedAt: Date.now(),
-				}),
+				})
 			);
 			const pendingId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'pending@stream.test', doiStatus: 'pending' }),
+				createTestContact({ email: 'pending@stream.test', doiStatus: 'pending' })
 			);
 			for (const contactId of [deletedId, pendingId]) {
 				await ctx.db.insert('contactTopics', {
@@ -323,10 +343,9 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience,
 		});
@@ -360,13 +379,10 @@ describe('Audience resolution — count and send share one predicate', () => {
 			// Two matching-but-ineligible contacts inserted LAST → final page.
 			await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'gone@seg.test', deletedAt: Date.now() }),
+				createTestContact({ email: 'gone@seg.test', deletedAt: Date.now() })
 			);
 			await ctx.db.insert('contacts', createTestContact({ email: 'blocked@seg.test' }));
-			await ctx.db.insert(
-				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@seg.test' }),
-			);
+			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'blocked@seg.test' }));
 
 			const segmentId = await ctx.db.insert('segments', {
 				name: 'seg.test folks',
@@ -384,10 +400,9 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'segment' as const, segmentId };
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience,
 		});
@@ -410,14 +425,12 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const t = convexTest(schema, modules);
 		const { topicId, segmentId, charlieId } = await seed(t);
 
-		const topicResolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience: { kind: 'topic', topicId } },
-		);
-		const segmentResolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience: { kind: 'segment', segmentId } },
-		);
+		const topicResolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience: { kind: 'topic', topicId },
+		});
+		const segmentResolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience: { kind: 'segment', segmentId },
+		});
 
 		expect(topicResolved.map((r) => String(r._id))).not.toContain(String(charlieId));
 		expect(segmentResolved.map((r) => String(r._id))).toContain(String(charlieId));
@@ -434,23 +447,20 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const t = convexTest(schema, modules);
 		const { topicId, confirmedId, pendingFormId } = await t.run(async (ctx) => {
 			// Topic does NOT require DOI at the topic level.
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 
 			// Control: confirmed member, no form-DOI flag → eligible. `pending`
 			// doiStatus here would normally be gated only by a DOI-required topic;
 			// on this non-DOI topic it is NOT the contact-level gate that excludes.
 			const confirmedId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'confirmed@form.test', doiStatus: 'confirmed' }),
+				createTestContact({ email: 'confirmed@form.test', doiStatus: 'confirmed' })
 			);
 			// Form-forced DOI, still unconfirmed. Without the membership flag this
 			// contact would pass the gate (topic requiresDoi === false).
 			const pendingFormId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'pending@form.test', doiStatus: 'pending' }),
+				createTestContact({ email: 'pending@form.test', doiStatus: 'pending' })
 			);
 
 			await ctx.db.insert('contactTopics', {
@@ -469,10 +479,9 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience,
 		});
@@ -494,7 +503,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 
 async function drainPages(
 	t: TestConvex<typeof schema>,
-	audience: Doc<'campaigns'>['audience'] & object,
+	audience: Doc<'campaigns'>['audience'] & object
 ): Promise<{ emails: string[]; totalCandidates: number; pageCount: number }> {
 	const emails: string[] = [];
 	let totalCandidates = 0;
@@ -504,7 +513,7 @@ async function drainPages(
 		const page = await t.query(
 			internal.campaigns.audienceResolution.resolveRecipientPage,
 			// Small numItems forces multiple pages so the resume logic is exercised.
-			{ audience, cursor, numItems: 7 },
+			{ audience, cursor, numItems: 7 }
 		);
 		pageCount++;
 		totalCandidates += page.pageCandidates;
@@ -521,10 +530,9 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		const { topicId } = await seed(t);
 		const audience = { kind: 'topic' as const, topicId };
 
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const drained = await drainPages(t, audience);
 
 		expect(drained.emails.sort()).toEqual(resolved.map((r) => r.email).sort());
@@ -538,10 +546,9 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		const { segmentId } = await seed(t);
 		const audience = { kind: 'segment' as const, segmentId };
 
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const drained = await drainPages(t, audience);
 
 		expect(drained.emails.sort()).toEqual(resolved.map((r) => r.email).sort());
@@ -552,14 +559,11 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		const t = convexTest(schema, modules);
 		const ELIGIBLE = 1100; // > 2 default pages of 500
 		const { topicId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			for (let i = 0; i < ELIGIBLE; i++) {
 				const contactId = await ctx.db.insert(
 					'contacts',
-					createTestContact({ email: `pg${i}@page.test`, doiStatus: 'not_required' }),
+					createTestContact({ email: `pg${i}@page.test`, doiStatus: 'not_required' })
 				);
 				await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
 			}
@@ -567,10 +571,9 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		const drained = await drainPages(t, audience);
 
 		expect(resolved).toHaveLength(ELIGIBLE);
@@ -591,44 +594,37 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 	it('topic: a suppressed (mixed-case) member is counted in pageCandidates but excluded from recipients', async () => {
 		const t = convexTest(schema, modules);
 		const { topicId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			const eligibleId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'ok@page.test', doiStatus: 'not_required' }),
+				createTestContact({ email: 'ok@page.test', doiStatus: 'not_required' })
 			);
 			// Stored email is mixed-case; the blocklist row is lowercased.
 			const blockedId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'Blocked@Page.Test', doiStatus: 'not_required' }),
+				createTestContact({ email: 'Blocked@Page.Test', doiStatus: 'not_required' })
 			);
 			for (const contactId of [eligibleId, blockedId]) {
 				await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
 			}
-			await ctx.db.insert(
-				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@page.test' }),
-			);
+			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'blocked@page.test' }));
 			return { topicId };
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
 		// One generous page so both members land on the same page.
-		const page = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipientPage,
-			{ audience, cursor: '', numItems: 50 },
-		);
+		const page = await t.query(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience,
+			cursor: '',
+			numItems: 50,
+		});
 
 		// Both memberships are counted as candidates...
 		expect(page.pageCandidates).toBe(2);
 		// ...but the suppressed (mixed-case) one is excluded from recipients.
 		expect(page.recipients).toHaveLength(1);
 		expect(page.recipients.map((r) => r.email)).toEqual(['ok@page.test']);
-		expect(page.recipients.map((r) => r.email.toLowerCase())).not.toContain(
-			'blocked@page.test',
-		);
+		expect(page.recipients.map((r) => r.email.toLowerCase())).not.toContain('blocked@page.test');
 	});
 });
 
@@ -641,12 +637,12 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: { kind: 'topic', topicId },
 		});
-		expect(count.capped).toBe(false);
+		expect(count.completeness).toBe('exact');
 		expect(count.total).toBe(6);
 		expect(count.eligible).toBe(2);
 	});
 
-	it('an audience over the ceiling reports capped=true clamped to 25,000', async () => {
+	it('an audience over the ceiling reports candidate_capped clamped to 25,000', async () => {
 		const t = convexTest(schema, modules);
 		// Seed > 25,000 matching live contacts so the stream hits COUNT_CEILING.
 		const OVER = 25_010;
@@ -654,7 +650,7 @@ describe('countRecipients — capped at the ceiling', () => {
 			for (let i = 0; i < OVER; i++) {
 				await ctx.db.insert(
 					'contacts',
-					createTestContact({ email: `cap${i}@cap.test`, doiStatus: 'not_required' }),
+					createTestContact({ email: `cap${i}@cap.test`, doiStatus: 'not_required' })
 				);
 			}
 			return await ctx.db.insert('segments', {
@@ -673,7 +669,7 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: { kind: 'segment', segmentId },
 		});
-		expect(count.capped).toBe(true);
+		expect(count.completeness).toBe('candidate_capped');
 		expect(count.total).toBe(25_000); // clamped to the ceiling
 		expect(count.eligible).toBeLessThanOrEqual(25_000);
 	});
@@ -683,7 +679,7 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: undefined,
 		});
-		expect(count).toEqual({ total: 0, eligible: 0, capped: false });
+		expect(count).toEqual({ total: 0, eligible: 0, completeness: 'exact' });
 	});
 });
 
@@ -700,10 +696,7 @@ describe('countRecipients — capped at the ceiling', () => {
 describe('Audience resolution — honors global unsubscribe across segments (PR-09)', () => {
 	async function seedSubscribedPair(t: TestConvex<typeof schema>) {
 		return await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			// Match-all segment (no conditions) so membership is irrelevant to
 			// selection — both contacts match purely by existing.
 			const segmentId = await ctx.db.insert('segments', {
@@ -715,11 +708,11 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 			const unsubId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'unsub@pr09.test', doiStatus: 'not_required' }),
+				createTestContact({ email: 'unsub@pr09.test', doiStatus: 'not_required' })
 			);
 			const keepId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'keep@pr09.test', doiStatus: 'not_required' }),
+				createTestContact({ email: 'keep@pr09.test', doiStatus: 'not_required' })
 			);
 			for (const contactId of [unsubId, keepId]) {
 				await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
@@ -736,14 +729,10 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// Before unsubscribe: both contacts resolve (segment ignores topic
 		// membership — this is exactly why the global opt-out is needed).
-		const before = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
-		expect(before.map((r) => r.email).sort()).toEqual([
-			'keep@pr09.test',
-			'unsub@pr09.test',
-		]);
+		const before = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
+		expect(before.map((r) => r.email).sort()).toEqual(['keep@pr09.test', 'unsub@pr09.test']);
 
 		// Global unsubscribe (no topicId) — the public unsubscribe link path.
 		await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
@@ -758,10 +747,9 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// After unsubscribe: the unsubscribed contact is gone; the positive
 		// control (keep@) is still returned.
-		const after = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const after = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		expect(after.map((r) => r.email)).toEqual(['keep@pr09.test']);
 		expect(after.map((r) => String(r._id))).not.toContain(String(unsubId));
 		expect(after.map((r) => String(r._id))).toContain(String(keepId));
@@ -786,10 +774,9 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		// The topic membership for unsub@ was deleted by the same call, but even
 		// a contact who somehow retained a membership must be excluded by the
 		// opt-out — keep@ (still a member, not unsubscribed) is the control.
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience: { kind: 'topic', topicId } },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience: { kind: 'topic', topicId },
+		});
 		expect(resolved.map((r) => r.email)).toEqual(['keep@pr09.test']);
 		expect(resolved.map((r) => String(r._id))).not.toContain(String(unsubId));
 		expect(resolved.map((r) => String(r._id))).toContain(String(keepId));
@@ -805,10 +792,9 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 			source: 'public_email_link',
 			reason: 'unsubscribe',
 		});
-		const afterUnsub = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const afterUnsub = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		expect(afterUnsub.map((r) => r.email)).not.toContain('unsub@pr09.test');
 
 		// Active opt-in via a topic resubscribe clears unsubscribedAt.
@@ -821,10 +807,9 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		const cleared = await t.run((ctx) => ctx.db.get(unsubId));
 		expect(cleared?.unsubscribedAt).toBeUndefined();
 
-		const afterResub = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const afterResub = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		expect(afterResub.map((r) => r.email)).toContain('unsub@pr09.test');
 	});
 
@@ -845,10 +830,9 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// Still reachable by a matching segment — a single-topic opt-out is not
 		// a global marketing opt-out.
-		const resolved = await t.query(
-			internal.campaigns.audienceResolution.resolveRecipients,
-			{ audience },
-		);
+		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			audience,
+		});
 		expect(resolved.map((r) => r.email)).toContain('unsub@pr09.test');
 	});
 
@@ -865,7 +849,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// A DOI-required topic (the public-form target).
 		const doiTopicId = await t.run((ctx) =>
-			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true })),
+			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }))
 		);
 
 		// Global unsubscribe — sets the persistent opt-out and deletes prior
@@ -875,15 +859,13 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 			source: 'public_email_link',
 			reason: 'unsubscribe',
 		});
-		expect((await t.run((ctx) => ctx.db.get(unsubId)))?.unsubscribedAt).toBeTypeOf(
-			'number',
-		);
+		expect((await t.run((ctx) => ctx.db.get(unsubId)))?.unsubscribedAt).toBeTypeOf('number');
 		expect(
 			(
 				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
 					audience,
 				})
-			).map((r) => r.email),
+			).map((r) => r.email)
 		).not.toContain('unsub@pr09.test');
 
 		// Form re-subscribe to the DOI topic — DOI required, NOT skipped. This
@@ -906,17 +888,16 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
 					audience,
 				})
-			).map((r) => r.email),
+			).map((r) => r.email)
 		).not.toContain('unsub@pr09.test');
 
 		// Confirm DOI by consuming the token — a genuine completed opt-in.
-		const token =
-			result.ok && result.action === 'pending_doi' ? result.doiToken : '';
+		const token = result.ok && result.action === 'pending_doi' ? result.doiToken : '';
 		expect(token).not.toBe('');
-		await t.mutation(
-			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{ token, input: { to: 'confirmed', at: Date.now() } },
-		);
+		await t.mutation(internal.contacts.doiLifecycle.transitionByConfirmationToken, {
+			token,
+			input: { to: 'confirmed', at: Date.now() },
+		});
 
 		// Now the opt-out is lifted and the contact is reachable again.
 		const confirmed = await t.run((ctx) => ctx.db.get(unsubId));
@@ -927,7 +908,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
 					audience,
 				})
-			).map((r) => r.email),
+			).map((r) => r.email)
 		).toContain('unsub@pr09.test');
 	});
 });

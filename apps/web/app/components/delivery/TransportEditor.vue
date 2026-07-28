@@ -5,14 +5,17 @@ import {
 	type OutboundTlsMode,
 } from '~/composables/setupOutboundTls';
 import {
-	SMTP_RELAY_PRESETS,
-	buildProviderEnv,
 	emailStepIsValid,
 	validateEmailStep,
 	type EmailStepDraft,
 	type ProviderChoice,
-	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import {
+	RELAY_PROVIDER_OPTIONS,
+	applyTransportEnv,
+	useRelayCredentialDraft,
+	type RelayProviderOption,
+} from '~/composables/useRelayCredentialDraft';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -46,11 +49,24 @@ function knownKind(kind: string | null): ProviderChoice {
 	return kind === 'mta' || kind === 'resend' || kind === 'ses' || kind === 'smtp' ? kind : 'mta';
 }
 
-const provider = ref<ProviderChoice>(knownKind(props.currentProvider));
-const resendKey = ref('');
-const sesRegion = ref('us-east-1');
-const sesAccess = ref('');
-const sesSecret = ref('');
+// The SAME relay-credential draft the connection wizard's step 1 uses — one
+// provider list, one preset table, one live handshake, one env patch.
+const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
+const {
+	provider,
+	resendKey,
+	sesRegion,
+	sesAccess,
+	sesSecret,
+	smtpPreset,
+	smtpHost,
+	smtpPort,
+	smtpSecure,
+	smtpUsername,
+	smtpPassword,
+	smtpPresetOptions,
+} = relay;
+
 const fromEmail = ref('');
 const fromName = ref('');
 // Outbound TLS posture for the built-in MTA (direct-MX). Seeded from the active
@@ -66,52 +82,17 @@ const outboundTlsModeHint = computed(
 	() => OUTBOUND_TLS_MODE_OPTIONS.find((o) => o.value === outboundTlsMode.value)?.hint ?? ''
 );
 
-const smtpPreset = ref<SmtpPreset>('mailgun');
-const smtpHost = ref(SMTP_RELAY_PRESETS['mailgun'].host);
-const smtpPort = ref(SMTP_RELAY_PRESETS['mailgun'].port);
-const smtpSecure = ref(SMTP_RELAY_PRESETS['mailgun'].secure);
-const smtpUsername = ref('');
-const smtpPassword = ref('');
+/** The MTA is not a relay, so it is the editor's own entry above the shared ones. */
+const MTA_OPTION: { value: ProviderChoice; label: string; hint: string; icon: string } = {
+	value: 'mta',
+	label: 'Run your own MTA',
+	hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
+	icon: 'lucide:server',
+};
 
-const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-// Choosing a named preset prefills host/port/TLS; Custom leaves them editable.
-watch(smtpPreset, (preset) => {
-	if (preset === 'custom') return;
-	const cfg = SMTP_RELAY_PRESETS[preset];
-	smtpHost.value = cfg.host;
-	smtpPort.value = cfg.port;
-	smtpSecure.value = cfg.secure;
-});
-
-const providerOptions: { value: ProviderChoice; label: string; hint: string; icon: string }[] = [
-	{
-		value: 'mta',
-		label: 'Run your own MTA',
-		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
-		icon: 'lucide:server',
-	},
-	{
-		value: 'ses',
-		label: 'Amazon SES',
-		hint: 'Managed deliverability, cheap at scale. Needs an AWS account.',
-		icon: 'lucide:cloud',
-	},
-	{
-		value: 'smtp',
-		label: 'SMTP relay',
-		hint: 'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
-		icon: 'lucide:route',
-	},
-	{
-		value: 'resend',
-		label: 'Resend',
-		hint: 'Managed API with a generous free tier.',
-		icon: 'lucide:zap',
-	},
+const providerOptions: readonly (RelayProviderOption | typeof MTA_OPTION)[] = [
+	MTA_OPTION,
+	...RELAY_PROVIDER_OPTIONS,
 ];
 
 const draft = computed<EmailStepDraft>(() => ({
@@ -119,16 +100,7 @@ const draft = computed<EmailStepDraft>(() => ({
 	// The editor only ever sets a real transport, so the "none" branch of the
 	// shared validator is unreachable here.
 	requiresProvider: true,
-	resendKey: resendKey.value,
-	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
-	smtp: {
-		preset: smtpPreset.value,
-		host: smtpHost.value,
-		port: smtpPort.value,
-		secure: smtpSecure.value,
-		username: smtpUsername.value,
-		password: smtpPassword.value,
-	},
+	...relay.credentialFields.value,
 	outboundTlsMode: outboundTlsMode.value,
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
@@ -140,7 +112,7 @@ const showErrors = computed(() => submitted.value);
 const isValid = computed(() => emailStepIsValid(draft.value));
 
 // Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
-const canTest = computed(() => provider.value === 'resend' || provider.value === 'smtp');
+const canTest = relay.canValidateLive;
 
 // ── Test ─────────────────────────────────────────────────────────────────────
 const testing = ref(false);
@@ -152,24 +124,7 @@ async function handleTest() {
 	if (!isValid.value) return;
 	testing.value = true;
 	try {
-		const trimmedPort = smtpPort.value.trim();
-		const bodyBase =
-			provider.value === 'resend'
-				? { provider: 'resend' as const, apiKey: resendKey.value }
-				: {
-						provider: 'smtp' as const,
-						smtp: {
-							host: smtpHost.value.trim(),
-							port: trimmedPort ? Number.parseInt(trimmedPort, 10) : 587,
-							secure: smtpSecure.value,
-							username: smtpUsername.value,
-							password: smtpPassword.value,
-						},
-					};
-		testResult.value = await $fetch<{ ok: boolean; message: string }>(
-			'/api/delivery/validate-transport',
-			{ method: 'POST', body: bodyBase }
-		);
+		testResult.value = await relay.validateLive();
 	} catch (e) {
 		testResult.value = {
 			ok: false,
@@ -192,15 +147,8 @@ async function handleApply() {
 	if (!isValid.value) return;
 	applying.value = true;
 	try {
-		// Identical env patch to the wizard's — pass an empty base so only the
-		// transport keys are sent; the backend allowlists and clears the rest.
-		const providerEnv = buildProviderEnv({}, draft.value);
-		const res = await $fetch<{
-			ok: boolean;
-			message: string;
-			applied: boolean;
-			requiresRestart: boolean;
-		}>('/api/delivery/apply-transport', { method: 'POST', body: { providerEnv } });
+		// The wizard's env patch, literally: one helper, one endpoint.
+		const res = await applyTransportEnv(draft.value);
 		if (!res.ok) {
 			applyError.value = res.message;
 			return;
@@ -212,9 +160,7 @@ async function handleApply() {
 			isEditing.value = false;
 		}
 		// Clear the entered secrets from memory once applied.
-		resendKey.value = '';
-		sesSecret.value = '';
-		smtpPassword.value = '';
+		relay.clearEnteredSecrets();
 		emit('applied');
 	} catch (e) {
 		applyError.value = (e as Error).message || 'Could not apply the transport. Try again.';
@@ -434,6 +380,12 @@ function cancel() {
 				<span class="font-medium text-text-primary">{{ currentProvider ?? 'not set' }}</span
 				>. Choose a different provider or rotate its credentials — the change is tested and applied
 				in place.
+			</p>
+			<!-- One endpoint, two doors: name the relationship so neither affordance
+			     looks like it does something the other does not. -->
+			<p class="text-sm text-text-secondary mt-2">
+				“Connect an email provider” below is the guided version of this: the same change, walked
+				step by step with a live send test and DNS alignment checks.
 			</p>
 		</div>
 	</UiCard>

@@ -82,6 +82,12 @@ export async function isSuppressed(
  *
  * Membership tests against the returned set MUST normalize the candidate the
  * same way (`normalizeEmail`) so the comparison agrees with the stored keys.
+ *
+ * SCOPE-BLIND BY DESIGN — unlike {@link isSuppressed}, this loader (and
+ * {@link loadSuppressionSetBounded}) carries no {@link SuppressionScope}: its
+ * only callers resolve CAMPAIGN audiences, which are marketing scope, where
+ * every blocklist reason blocks. A caller that needs the transactional reading
+ * is doing a per-send gate and belongs on `isSuppressed`, not here.
  */
 export async function loadSuppressionSet(
 	ctx: QueryCtx | MutationCtx
@@ -149,4 +155,50 @@ export async function suppressEmail(
 	}
 
 	return blockedEmailId;
+}
+
+/** A suppression set that may be INCOMPLETE, plus the fact of it. */
+export interface BoundedSuppressionSet {
+	blockedEmails: ReadonlySet<string>;
+	/**
+	 * More than `limit` suppressed addresses exist, so the set is a SUBSET of the
+	 * real blocklist. A caller filtering candidates through a subset lets some
+	 * suppressed addresses through, which makes any "eligible" tally an
+	 * OVER-count — it must never license a decision that a bigger audience would
+	 * justify.
+	 */
+	truncated: boolean;
+	/**
+	 * ROWS actually read, including the truncation probe. Distinct from
+	 * `blockedEmails.size`, which is the DE-DUPLICATED, truncated set: a caller
+	 * charging a read budget must charge what the query read, not what survived
+	 * it, or the "bound" under-counts exactly the reads it exists to cap.
+	 */
+	rowsRead: number;
+}
+
+/**
+ * Bounded variant of {@link loadSuppressionSet} for callers that run inside a
+ * MUTATION. `.collect()`ing the whole `blockedEmails` table there drops every
+ * suppressed address into the mutation's OCC read set, so a concurrent
+ * bounce/complaint write conflicts the mutation at COMMIT time — after any
+ * fail-open `try/catch` has already returned (deliverability plan D16).
+ *
+ * `limit` bounds the read; exceeding it is reported, never thrown.
+ */
+export async function loadSuppressionSetBounded(
+	ctx: QueryCtx | MutationCtx,
+	limit: number
+): Promise<BoundedSuppressionSet> {
+	const bound = Math.max(0, Math.floor(limit));
+	// One extra row is the truncation probe: `bound + 1` rows means "more than
+	// `bound` exist" without a second query.
+	const records = await ctx.db.query('blockedEmails').take(bound + 1);
+	const truncated = records.length > bound;
+	const kept = truncated ? records.slice(0, bound) : records;
+	return {
+		blockedEmails: new Set(kept.map((b) => normalizeEmail(b.email))),
+		truncated,
+		rowsRead: records.length,
+	};
 }
