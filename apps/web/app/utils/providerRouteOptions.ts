@@ -75,18 +75,18 @@ export const PROVIDER_ROUTE_STRATEGIES: {
 }[] = [
 	{
 		value: 'single',
-		label: 'Single provider',
+		label: PROVIDER_ROUTE_STRATEGY_LABELS.single,
 		description: 'Always send through the first enabled provider.',
 	},
 	{
 		value: 'priority_failover',
-		label: 'Priority failover',
+		label: PROVIDER_ROUTE_STRATEGY_LABELS.priority_failover,
 		description:
 			'Try providers in order; fall over to the next on failure or when one is unhealthy.',
 	},
 	{
 		value: 'workload_split',
-		label: 'Workload split',
+		label: PROVIDER_ROUTE_STRATEGY_LABELS.workload_split,
 		description: 'Distribute traffic across providers by the weights you set.',
 	},
 ];
