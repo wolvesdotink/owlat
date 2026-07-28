@@ -155,6 +155,7 @@ function readMixState(row: ManagedRouteState): RampMixState {
 		phaseCeiling: row.phaseCeiling,
 		cleanStreak: row.cleanStreak,
 		frozenUntil: row.frozenUntil,
+		freezeReason: row.freezeReason,
 		freezeStartedAt: row.fallbackActiveSince,
 		cooldownMs: row.cooldownMs,
 		greenSince: row.healthySince,
@@ -228,6 +229,13 @@ export async function loadCellInput(
 		now,
 	});
 
+	// WHICH EVALUATOR RUNS IS P3-8's CHOICE, not this file's. The base branch now
+	// ships `trailingBaselineGateEvaluator` beside this one, and a deployment with
+	// no reference arm (`referenceArm === null` above) wants that twin rather than
+	// this one — evaluated by the reference implementation it can only ever hold.
+	// P3-8's substitution table is what selects between them; the hard-coded
+	// evaluator here is STAGED, exactly like `capacity: { kind: 'unconstrained' }`
+	// below is staged for P3-3.
 	const evaluation = referenceArmGateEvaluator.evaluate({
 		config: RAMP_STREAM_CONFIGS[cell.stream],
 		own,

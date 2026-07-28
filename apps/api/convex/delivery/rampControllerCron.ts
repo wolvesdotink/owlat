@@ -122,6 +122,18 @@ async function applyDecision(
 			(perStream.frozenUntil !== undefined && perStream.frozenUntil > now
 				? perStream.frozenUntil
 				: undefined),
+		// THE ORIGIN MOVES WITH THE EXPIRY, always — carried forward with a freeze
+		// that is still running, cleared with one that has passed, replaced whole by
+		// a new one. They are one fact: the breaker rung reads the pair to tell its
+		// OWN freeze from an unrelated cooldown it must not let absorb its retreat,
+		// and an expiry whose origin drifted out of step would answer that question
+		// with the last incident's name.
+		freezeReason:
+			decision.frozenUntil !== undefined
+				? decision.freezeReason
+				: perStream.frozenUntil !== undefined && perStream.frozenUntil > now
+					? perStream.freezeReason
+					: undefined,
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,
