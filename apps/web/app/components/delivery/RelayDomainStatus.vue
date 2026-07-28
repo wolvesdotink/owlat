@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import { api } from "@owlat/api";
+import type { Id } from "@owlat/api/dataModel";
 
 interface RelayDnsRecord {
 	type?: string;
@@ -17,9 +17,9 @@ const {
 } = usePaginatedQuery(api.providerRoutes.listDeliverabilityRelayDomains, () => ({}), {
 	initialNumItems: 100,
 });
-const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
+const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === "CanLoadMore");
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
-	label: 'Verify relay domain',
+	label: "Verify relay domain",
 });
 const { showToast: showNotification } = useToast();
 const verifyingRelayDomainId = ref<string | null>(null);
@@ -32,7 +32,7 @@ function relayRecords(
 				mailFrom?: RelayDnsRecord[];
 		  }
 		| null
-		| undefined
+		| undefined,
 ): RelayDnsRecord[] {
 	return [
 		...(records?.spf ? [records.spf] : []),
@@ -41,11 +41,11 @@ function relayRecords(
 	];
 }
 
-async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
+async function handleVerifyRelayDomain(domainId: Id<"domains">) {
 	verifyingRelayDomainId.value = domainId;
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
-	if (result !== undefined) showNotification('Relay DNS verification refreshed');
+	if (result !== undefined) showNotification("Relay DNS verification refreshed");
 }
 </script>
 

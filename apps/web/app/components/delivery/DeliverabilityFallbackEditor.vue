@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, watch } from "vue";
 
 interface ProviderEntry {
 	providerType: string;
@@ -7,26 +7,26 @@ interface ProviderEntry {
 }
 
 const props = defineProps<{
-	messageType: 'campaign' | 'transactional' | 'automation';
+	messageType: "campaign" | "transactional" | "automation";
 	providers: ProviderEntry[];
 	providerLabel: (providerType: string) => string;
 }>();
 
-const isEnabled = defineModel<boolean>('enabled', { required: true });
-const relay = defineModel<string>('relay', { required: true });
-const isWarmupOverflowEnabled = defineModel<boolean>('warmupOverflow', { required: true });
+const isEnabled = defineModel<boolean>("enabled", { required: true });
+const relay = defineModel<string>("relay", { required: true });
+const isWarmupOverflowEnabled = defineModel<boolean>("warmupOverflow", { required: true });
 const enabledRelays = computed(() =>
-	props.providers.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
+	props.providers.filter((provider) => provider.isEnabled && provider.providerType === "ses"),
 );
 
 watch(
 	enabledRelays,
 	(options) => {
 		if (!options.some((provider) => provider.providerType === relay.value)) {
-			relay.value = options[0]?.providerType ?? '';
+			relay.value = options[0]?.providerType ?? "";
 		}
 	},
-	{ immediate: true }
+	{ immediate: true },
 );
 </script>
 
