@@ -13,13 +13,20 @@
  * yourself typing `/` next to a counter in this file, you are writing the bug
  * D5 exists to prevent.
  *
- * CONFIDENCE (plan D14). P1-7 owns the standalone (trailing-baseline) evaluator
- * and will own the confidence model with it. Until it lands, confidence is
- * derived HERE from the two facts the dashboard already holds — is there a
- * second arm, and is the sample above the gates' own floors — and is expressed
- * as a level plus machine-readable improvement codes. It is deliberately a
- * small, replaceable function: when P1-7 lands its model, this one is deleted,
- * not extended.
+ * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The level on
+ * the wire is `RampGateEvaluation.confidence` — the weakest grade among the
+ * gates that actually contributed, decided by the same pure core the controller
+ * runs. This module only translates it: `none` when nothing was sent, and the
+ * machine-readable improvement codes, which are the one part the evaluator does
+ * not produce (it grades what it measured; the codes name what would raise the
+ * grade).
+ *
+ * A placeholder used to derive the level here from (is there a second arm) plus
+ * (is the sample above the floors). It was replaced rather than extended,
+ * because a healthy standalone cell graded `medium` by the decision core and
+ * `low` by the screen is the controller and the dashboard disagreeing about a
+ * number — the exact failure the D5 single-derivation rule exists to prevent,
+ * landing in the one configuration D14 says must be told the truth.
  *
  * D2 IS THE FRAME. A missing reference transport, a missing seed set and a
  * missing external account are all SUPPORTED CONFIGURATIONS. They lower
@@ -34,7 +41,7 @@ import {
 	type TransportOutcomeBucketCounts,
 	type TransportOutcomeSummary,
 } from '../analytics/transportOutcomeSummary';
-import type { RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
+import type { RampGateConfidence, RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
 import { RAMP_GATE_SAMPLE_FLOORS } from './ramp/gateConfig';
 
 /** Declared ONCE for the whole feature; the query shell imports it from here. */
@@ -162,16 +169,21 @@ export function buildDashboardTrend(input: {
 // ============ CONFIDENCE (D14) ============
 
 /**
- * How much this cell's measurement is worth.
+ * How much this cell's measurement is worth — `RampGateConfidence` plus the one
+ * state a gate never has to describe.
  *
- *  - `none`   — nothing was sent in the window. Not a problem, not a warning.
- *  - `low`    — one arm only, or a sample below the gates' floors. The ramp
- *               still moves; it just moves on thinner evidence.
- *  - `medium` — two arms, BOTH above the bounce/deferral floors, but the
- *               engagement comparison's calibration slice is still too thin.
- *  - `high`   — two arms, every floor met on both of them.
+ *  - `none`   — nothing was sent in the window. Not a problem, not a warning;
+ *               the gates all held, and grading a held window would put a
+ *               confidence beside no measurement at all.
+ *  - `low`    — the weakest contributing gate was a weak signal (the standalone
+ *               trailing-baseline engagement check). The ramp still moves; it
+ *               just may not move UP on that evidence (plan D14).
+ *  - `medium` — the weakest contributing gate was a proxy or a tripwire: the
+ *               one-click unsubscribe stand-in for a feedback loop, or a seed
+ *               sweep. Real evidence, honestly labelled as second-hand.
+ *  - `high`   — everything that contributed was measured on our own wire.
  */
-export type DashboardConfidenceLevel = 'none' | 'low' | 'medium' | 'high';
+export type DashboardConfidenceLevel = 'none' | RampGateConfidence;
 
 /**
  * What would raise it. Machine-readable so the UI owns the sentence and the
@@ -187,37 +199,35 @@ export interface DashboardConfidence {
 	readonly improvements: readonly DashboardConfidenceImprovement[];
 }
 
+/**
+ * TRANSLATE, DO NOT RE-DERIVE. The level is the evaluator's own
+ * `weakestConfidence` fold, passed straight through; the only judgement made
+ * here is that a window with nothing in it is graded `none` rather than being
+ * given whichever level a column of holds happened to produce.
+ *
+ * The IMPROVEMENT CODES are this module's, because they are the one thing the
+ * evaluator does not answer: it grades what it measured, and these name what an
+ * operator could add to make the next grade better. They are advice and never a
+ * warning (plan D2) — `connect_reference_transport` is offered to a supported
+ * configuration, not to an incomplete one.
+ */
 export function dashboardConfidence(input: {
 	readonly own: TransportOutcomeSummary;
 	readonly reference: TransportOutcomeSummary | null;
 	readonly hasSeedCoverage: boolean;
+	readonly evaluated: RampGateConfidence;
 }): DashboardConfidence {
-	const { own, reference, hasSeedCoverage } = input;
-	// The floor the two-armed gates actually apply to a raw send count. The
-	// calibration slice has its own, larger floor below.
-	const armFloor = RAMP_GATE_SAMPLE_FLOORS.hardBounce;
-	const calibrationFloor = RAMP_GATE_SAMPLE_FLOORS.engagement;
+	const { own, reference, hasSeedCoverage, evaluated } = input;
 	const improvements: DashboardConfidenceImprovement[] = [];
 	if (reference === null) improvements.push('connect_reference_transport');
 	if (!hasSeedCoverage) improvements.push('add_seed_mailboxes');
 
-	if (own.sent <= 0) {
-		return { level: 'none', improvements };
-	}
-	// BOTH arms are measured against the floor, not just the own one: a cell
-	// whose reference arm has a handful of sends has every two-armed gate
-	// holding on `reference_sample_below_floor`, so calling that `medium`
-	// would put a confident number beside a column of "not enough data yet".
-	const thin = own.sent < armFloor || (reference !== null && reference.sent < armFloor);
-	if (thin) improvements.push('send_more_volume');
-
-	if (reference === null || thin) {
-		return { level: 'low', improvements };
-	}
-	const calibrated =
-		own.calibrationSent >= calibrationFloor && reference.calibrationSent >= calibrationFloor;
-	if (!calibrated) improvements.push('send_more_volume');
-	return { level: calibrated ? 'high' : 'medium', improvements };
+	if (own.sent <= 0) return { level: 'none', improvements };
+	// A cell whose gates are holding for want of volume is told the one thing
+	// that would unhold them. The LEVEL still comes from the evaluator — this
+	// only adds the advice beside it.
+	if (own.sent < RAMP_GATE_SAMPLE_FLOORS.hardBounce) improvements.push('send_more_volume');
+	return { level: evaluated, improvements };
 }
 
 // ============ CELL VIEW ============
@@ -292,6 +302,7 @@ export function buildDashboardCellView(input: {
 			own: input.own,
 			reference: input.reference,
 			hasSeedCoverage: input.hasSeedCoverage,
+			evaluated: evaluation.confidence,
 		}),
 		trend: input.trend,
 	};
