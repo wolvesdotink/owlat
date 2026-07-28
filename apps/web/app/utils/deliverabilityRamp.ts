@@ -243,6 +243,35 @@ export function shareLabel(share: number): string {
 	return formatPercentage(share, 0);
 }
 
+// ============ REFUSALS ============
+
+/**
+ * A control the server DECLINED to apply — `{applied: false, refusal}` rather
+ * than a thrown error, because none of these is a fault.
+ *
+ * The type is read off the mutation so the four arms cannot drift from the
+ * server's union, and the sentences are calm and end in something the operator
+ * can actually do (plan D2): a refusal is the system explaining a rule, not the
+ * UI reporting a failure.
+ */
+export type RampControlRefusal = NonNullable<
+	FunctionReturnType<typeof api.delivery.rampControls.setCellPause>['refusal']
+>;
+
+const REFUSAL_SENTENCES = {
+	controller_paused:
+		'The ramp is globally paused, so this cell cannot be raised right now. Resume the ramp first.',
+	hard_stop_active:
+		'A safety hold is active on this cell — an abuse hold, an open circuit breaker, a critical blocklist listing or a cooldown from an earlier pull-back. Clear it and try again.',
+	cell_not_ramp_managed:
+		'This cell is not on the ramp yet. It starts being managed the first time the controller evaluates it.',
+	no_organization: 'There is no organization on this session, so there is nothing to change.',
+} as const satisfies Record<RampControlRefusal, string>;
+
+export function rampRefusalSentence(refusal: RampControlRefusal): string {
+	return REFUSAL_SENTENCES[refusal];
+}
+
 // ============ PRESETS ============
 
 export interface RampPresetOption {

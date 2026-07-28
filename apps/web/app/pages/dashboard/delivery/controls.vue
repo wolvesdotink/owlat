@@ -23,7 +23,13 @@ import {
 	type RampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
-import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
+import {
+	rampCellLabel,
+	rampRefusalSentence,
+	shareLabel,
+	type RampCellControl,
+	type RampControlRefusal,
+} from '~/utils/deliverabilityRamp';
 
 useHead({ title: 'Delivery controls — Owlat' });
 
@@ -41,21 +47,50 @@ const { data: notices } = useOrganizationQuery(
 
 const noticesHeadingId = useId();
 
-const { run: setCellPause } = useBackendOperation(api.delivery.rampControls.setCellPause, {
-	label: 'Pause ramp cell',
-});
-const { run: pinCellShare } = useBackendOperation(api.delivery.rampControls.pinCellShare, {
-	label: 'Pin ramp cell',
-});
-const { run: forceAdvance } = useBackendOperation(api.delivery.rampControls.forceAdvanceCellShare, {
-	label: 'Force-advance ramp cell',
-});
-const { run: resetPhase } = useBackendOperation(api.delivery.rampControls.resetCellPhase, {
-	label: 'Reset ramp phase',
-});
-const { run: setStreamPreset } = useBackendOperation(api.delivery.rampControls.setStreamPreset, {
-	label: 'Change ramp pace',
-});
+const { run: setCellPause, isLoading: isPausing } = useBackendOperation(
+	api.delivery.rampControls.setCellPause,
+	{ label: 'Pause ramp cell' }
+);
+const { run: pinCellShare, isLoading: isPinning } = useBackendOperation(
+	api.delivery.rampControls.pinCellShare,
+	{ label: 'Pin ramp cell' }
+);
+const { run: forceAdvance, isLoading: isForcing } = useBackendOperation(
+	api.delivery.rampControls.forceAdvanceCellShare,
+	{ label: 'Force-advance ramp cell' }
+);
+const { run: resetPhase, isLoading: isResetting } = useBackendOperation(
+	api.delivery.rampControls.resetCellPhase,
+	{ label: 'Reset ramp phase' }
+);
+const { run: setStreamPreset, isLoading: isChangingPreset } = useBackendOperation(
+	api.delivery.rampControls.setStreamPreset,
+	{ label: 'Change ramp pace' }
+);
+
+/**
+ * ONE MUTATION IN FLIGHT AT A TIME. The four cell controls share one card and
+ * one row, so leaving them all live while any of them is writing invites a
+ * double submit against a row that is about to change under it.
+ */
+const isCellBusy = computed(
+	() => isPausing.value || isPinning.value || isForcing.value || isResetting.value
+);
+
+/**
+ * THE REFUSAL IS PART OF THE ANSWER, not an error path. Every control mutation
+ * can answer `{applied: false, refusal}` — the ramp is globally paused, a safety
+ * hold stands, the cell is not managed yet — and an operator who sees nothing
+ * happen and no sentence has been told the system is broken.
+ *
+ * Cleared at the START of every attempt so a stale sentence can never sit next
+ * to a control that has since succeeded.
+ */
+const refusal = ref<RampControlRefusal | null>(null);
+
+function noteResult(result: { readonly refusal?: RampControlRefusal } | undefined): void {
+	refusal.value = result?.refusal ?? null;
+}
 
 const selectedCellKey = ref<string | null>(null);
 const pendingForceShare = ref<number | null>(null);
@@ -69,6 +104,11 @@ const selectedCell = computed<RampCellControl | null>(
 // preset card that silently never matches a stored row.
 const streams: readonly DeliverabilityStream[] = ['campaign', 'automation', 'transactional'];
 
+function selectCell(cellKey: string): void {
+	selectedCellKey.value = cellKey;
+	refusal.value = null;
+}
+
 function presetFor(stream: DeliverabilityStream): RampPreset | null {
 	return controls.value?.presets[stream] ?? null;
 }
@@ -80,21 +120,24 @@ function cellArgs(cell: RampCellControl) {
 async function pause(isPaused: boolean): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	await setCellPause({ ...cellArgs(cell), isPaused });
+	refusal.value = null;
+	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
 	await refetch();
 }
 
 async function pin(share: number | null): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	await pinCellShare({ ...cellArgs(cell), share });
+	refusal.value = null;
+	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
 	await refetch();
 }
 
 async function reset(phaseCeiling: number): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	await resetPhase({ ...cellArgs(cell), phaseCeiling });
+	refusal.value = null;
+	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
 	await refetch();
 }
 
@@ -108,7 +151,8 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	const share = pendingForceShare.value;
 	pendingForceShare.value = null;
 	if (cell === null || share === null) return;
-	await forceAdvance({ ...cellArgs(cell), share, confirmation });
+	refusal.value = null;
+	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
 	await refetch();
 }
 
@@ -116,6 +160,7 @@ async function changePreset(
 	stream: DeliverabilityStream,
 	preset: RampPreset | null
 ): Promise<void> {
+	refusal.value = null;
 	await setStreamPreset({ stream, preset });
 	await refetch();
 }
@@ -166,7 +211,7 @@ async function changePreset(
 							class="rounded-md border border-border-subtle px-2 py-1 text-sm"
 							:aria-pressed="cell.cellKey === selectedCellKey"
 							:data-testid="`ramp-select-${cell.cellKey}`"
-							@click="selectedCellKey = cell.cellKey"
+							@click="selectCell(cell.cellKey)"
 						>
 							{{ rampCellLabel(cell.cell) }} · {{ shareLabel(cell.ownShare) }}
 						</button>
@@ -183,11 +228,20 @@ async function changePreset(
 					<DeliveryRampCellControls
 						:key="selectedCell.cellKey"
 						:cell="selectedCell"
+						:busy="isCellBusy"
 						@pause="pause"
 						@pin="pin"
 						@force-advance="requestForceAdvance"
 						@reset-phase="reset"
 					/>
+					<p
+						v-if="refusal"
+						class="mt-3 text-sm text-text-secondary"
+						data-testid="ramp-control-refusal"
+						role="status"
+					>
+						{{ rampRefusalSentence(refusal) }}
+					</p>
 				</UiCard>
 
 				<UiCard>
@@ -199,6 +253,7 @@ async function changePreset(
 							:stream="stream"
 							:preset="presetFor(stream)"
 							:default-preset="controls.defaultPreset"
+							:busy="isChangingPreset"
 							@change="(preset) => changePreset(stream, preset)"
 						/>
 					</div>

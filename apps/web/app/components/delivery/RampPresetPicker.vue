@@ -8,6 +8,12 @@
  * signal is genuinely the weaker one, which is a statement about evidence rather
  * than about nerve, and the copy says exactly that.
  *
+ * SAY THE QUIET PART (plan D14). On a standalone deployment the two faster
+ * paces run the reference-arm constants with no reference arm to corroborate
+ * them, so each of them carries the sentence that says so. They stay selectable
+ * — this is an operator's deployment and the trade-off is theirs to take — but
+ * it is stated rather than discovered.
+ *
  * "Use the default" is a real, selectable option rather than an absence: it
  * deletes the stored row, so a deployment that later connects a relay picks up
  * the new default automatically instead of silently keeping a pace it never
@@ -33,6 +39,12 @@ const groupId = useId();
 const defaultLabel = computed(
 	() => RAMP_PRESET_OPTIONS.find((option) => option.value === props.defaultPreset)?.label ?? ''
 );
+/**
+ * A conservative DEFAULT is exactly the plan's standalone substitution, so it is
+ * how this component knows there is no reference arm — without reaching for a
+ * second source of truth that could disagree with the one that sets the pace.
+ */
+const isStandalone = computed(() => props.defaultPreset === 'conservative');
 </script>
 
 <template>
@@ -74,6 +86,14 @@ const defaultLabel = computed(
 				<span>
 					<span class="text-text-primary">{{ option.label }}</span>
 					<span class="block text-xs text-text-secondary">{{ option.description }}</span>
+					<span
+						v-if="isStandalone && option.value !== 'conservative'"
+						class="block text-xs text-text-secondary"
+						:data-testid="`ramp-preset-standalone-note-${option.value}`"
+					>
+						With no relay connected the engagement check is the weaker signal, so this pace advances
+						on evidence nothing else has corroborated.
+					</span>
 				</span>
 			</label>
 		</div>
