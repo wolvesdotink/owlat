@@ -60,6 +60,8 @@ export interface SeedRampCellOptions {
 	readonly freezeReason?: 'gate_breach' | 'breaker' | 'dnsbl';
 	/** The cooldown ladder rung already on the row. */
 	readonly cooldownMs?: number;
+	/** The graduation pin already on the row — the cell has PINNED at full share. */
+	readonly graduatedAt?: number;
 }
 
 /** Seeds instance settings plus the pool / provider / managed row triple. */
@@ -107,6 +109,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
 			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
 			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
+			...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
 		});
 	});
 }

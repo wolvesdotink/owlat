@@ -65,7 +65,7 @@ import {
 	sanitizeStreak,
 } from './controllerReaders';
 import { ppToFraction } from './gateConfig';
-import { rampDecisionDirection } from './controllerTypes';
+import { rampDecisionDirection, rampPinChange } from './controllerTypes';
 import type {
 	RampControllerInput,
 	RampDecision,
@@ -107,6 +107,11 @@ export function nextShare(input: RampControllerInput): RampDecision {
 	// graduated, while a cell that FAILED its way down had its pin revoked by the
 	// rung that lowered it — which is the only place that knows the difference.
 	const graduatedAt = draft.graduatedAt;
+	// THE PIN TRANSITION, derived once and against the SANITISED stored value: a
+	// degenerate instant on the row was never a pin, so dropping it is not a
+	// revocation. `direction` cannot express this — a graduation holds the share —
+	// and it is the one durable change the audit log would otherwise miss.
+	const pinChange = rampPinChange(readStoredInstant(mix.graduatedAt, now), graduatedAt);
 
 	return {
 		share,
@@ -130,6 +135,7 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		phaseCeiling,
 		greenSince: draft.greenSince,
 		graduatedAt,
+		pinChange,
 		countedAt: draft.countedAt,
 		ceiling: draft.ceiling,
 	};

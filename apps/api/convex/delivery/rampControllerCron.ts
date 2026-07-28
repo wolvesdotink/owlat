@@ -257,6 +257,14 @@ export const runRampController = internalMutation({
 			// the notice must never be able to disagree about whether something
 			// happened. An ordinary hold rewrites nothing but the lease and stays out
 			// of the log — see `rampDecisionAdminNotice` for why it is exact.
+			//
+			// THE PIN TRANSITION IS THE PIECE'S TERMINAL STATE CHANGE and it moves no
+			// share at all: graduation holds the number (the pinned target IS the
+			// current share) and imposes no freeze, while `applyDecision` above has
+			// just written `graduatedAt` onto a row that had none — the cell pins and
+			// the relay drops to `priority_failover` standby. `decision.pinChange`
+			// carries that transition, so the tick a cell graduates — and the tick a
+			// hard stop takes the pin away again — are both in the audit log.
 			if (!rampDecisionChangedState(decision)) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
@@ -272,6 +280,7 @@ export const runRampController = internalMutation({
 					reason: decision.reason,
 					verdict: decision.verdict,
 					...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
+					...(decision.pinChange === undefined ? {} : { pinChange: decision.pinChange }),
 				},
 			});
 		}

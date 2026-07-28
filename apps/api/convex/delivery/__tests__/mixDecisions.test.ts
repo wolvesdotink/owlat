@@ -24,7 +24,8 @@ import { createTestInstanceSettings } from '../../__tests__/factories';
 import { nextShare } from '../ramp/controller';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { recordMixDecision } from '../rampMixDecisions';
-import { describeRampDecision } from '../ramp/controllerNarrative';
+import { describeRampDecision, rampDecisionAdminNotice } from '../ramp/controllerNarrative';
+import { rampDecisionChangedState } from '../ramp/controllerTypes';
 import type { Infer } from 'convex/values';
 import { rampDecisionReasonValidator, rampGateIdValidator } from '../deliverabilityValidators';
 import type { RampControllerInput, RampDecisionReason } from '../ramp/controllerTypes';
@@ -40,7 +41,7 @@ import {
 	NOW,
 	thinEvaluation,
 } from '../ramp/__tests__/controllerFixtures';
-import { seedRampCell } from './rampCronFixtures';
+import { readManagedCell, seedRampCell } from './rampCronFixtures';
 import { modules } from '../../__tests__/testModules';
 
 const ORG = 'org_ramp_audit';
@@ -261,8 +262,9 @@ describe('mixDecisions — a row for every evaluation', () => {
  * move the number: a cell pinned on the share floor still takes a fresh freeze
  * and another rung of the cooldown ladder every time a gate breaks.
  *
- * `cooldownMs` separates them exactly, because only a LADDER freeze — a breached
- * gate — sets it.
+ * `rampDecisionChangedState` separates them exactly, and what it reads is the
+ * freeze's LADDER POSITION (`decision.freeze.ladderMs`), which only a breached
+ * gate ever sets.
  */
 describe('mixDecisions — the notice fires on a change, not on a condition', () => {
 	const BLOCKLISTED = {
@@ -696,6 +698,58 @@ describe('mixDecisions — the audit log follows the change', () => {
 		// INCIDENT channels that stay quiet.
 		expect(rows[0]?.adminNotice).toBeUndefined();
 		expect(await auditLogs(t)).toHaveLength(0);
+	});
+
+	/**
+	 * THE PIECE'S TERMINAL STATE TRANSITION IS INVISIBLE TO `direction`.
+	 *
+	 * Graduation pins the cell and drops the relay to `priority_failover` standby
+	 * while the share stays exactly where it was, and a hard stop takes the pin
+	 * away again on a cell that is already stopped. Both write a durable column
+	 * nobody asked for and neither moves a number, so `decision.pinChange` is what
+	 * carries them into `auditLogs` — the card's contract is "every automatic
+	 * change also emits an audit-log entry", not "every change to the share".
+	 */
+	it('counts a GRADUATION as a change, even though the share holds', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - 20 * DAY }),
+				evaluation: cleanEvaluation(40),
+			})
+		);
+		expect(decision.reason).toBe('graduated');
+		expect(decision.direction).toBe('hold');
+		expect(decision.pinChange).toBe('awarded');
+		// …so the cron's emit fires…
+		expect(rampDecisionChangedState(decision)).toBe(true);
+		// …and the INCIDENT channel stays quiet, because nothing broke.
+		expect(rampDecisionAdminNotice(GMAIL_CAMPAIGN, decision)).toBeUndefined();
+	});
+
+	it('audits the tick a hard stop REVOKES a pin, with the share already at zero', async () => {
+		const t = convexTest(schema, modules);
+		// The cell is stopped and still carries its pin; the listing has not cleared.
+		// `max(0, 0)` is zero, so this decision is a HOLD — and it un-pins the cell.
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0,
+			graduatedAt: Date.now() - 20 * DAY,
+			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: Date.now() }],
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.reason).toBe('dnsbl');
+		expect(rows[0]?.direction).toBe('hold');
+		// The pin is off the row…
+		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
+		// …and the organization's audit log says so.
+		const logs = await auditLogs(t);
+		expect(logs).toHaveLength(1);
+		expect(logs[0]?.action).toBe('deliverability_ramp.decision_applied');
+		expect(logs[0]?.details?.['pinChange']).toBe('revoked');
 	});
 });
 

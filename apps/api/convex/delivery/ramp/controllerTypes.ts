@@ -259,6 +259,17 @@ export interface RampDecision {
 	readonly greenSince: number | undefined;
 	readonly graduatedAt: number | undefined;
 	/**
+	 * WHETHER THIS DECISION MOVED THE GRADUATION PIN, and which way — `undefined`
+	 * when the pin is exactly what the row already held.
+	 *
+	 * Derived once, in the shell, rather than left to each caller to reconstruct by
+	 * comparing `decision.graduatedAt` against a row it would have to still be
+	 * holding: a pin transition is the piece's TERMINAL state change (the cell pins
+	 * and the relay drops to `priority_failover` standby) and it happens while the
+	 * SHARE DOES NOT MOVE, so `direction` cannot see it.
+	 */
+	readonly pinChange: RampPinChange | undefined;
+	/**
 	 * Set to `now` when this evaluation COUNTED as a window (and is therefore the
 	 * anchor the next window is measured from); `undefined` when it did not, in
 	 * which case the caller must leave the stored anchor alone.
@@ -266,6 +277,24 @@ export interface RampDecision {
 	readonly countedAt: number | undefined;
 	/** The effective ceiling this decision was bounded by. */
 	readonly ceiling: number;
+}
+
+/** A graduation pin awarded to, or revoked from, a cell that did not have it. */
+export type RampPinChange = 'awarded' | 'revoked';
+
+/**
+ * The pin transition between what the row stored and what this decision writes.
+ * `stored` is the SANITISED reading (`readStoredInstant`), not the raw column: a
+ * degenerate instant is not a pin, so clearing one is not a revocation anybody
+ * needs to be told about.
+ */
+export function rampPinChange(
+	stored: number | null,
+	next: number | undefined
+): RampPinChange | undefined {
+	if (stored === null && next !== undefined) return 'awarded';
+	if (stored !== null && next === undefined) return 'revoked';
+	return undefined;
 }
 
 /**
@@ -321,7 +350,18 @@ export function rampDecisionDirection(fromShare: number, share: number): RampDec
  *
  * The audit emit and the admin notice MUST agree about this, so they share the
  * predicate rather than each spelling out the same condition.
+ *
+ * THE PIN TRANSITION IS THE THIRD ARM, and it is the piece's TERMINAL state
+ * change: graduation returns `direction: 'hold'` (the pinned target IS the
+ * current share) and imposes no freeze, yet it writes `graduatedAt` onto a row
+ * that had none — the cell pins and the relay drops to `priority_failover`
+ * standby. Without this arm that transition, and the hard-stop revocation that
+ * undoes it, would never reach `auditLogs` at all. It cannot make a graduation
+ * cry wolf on the notice path: `rampDecisionAdminNotice` also requires a NAMED
+ * cause, and `graduated` is not one.
  */
 export function rampDecisionChangedState(decision: RampDecision): boolean {
-	return decision.direction !== 'hold' || decision.freeze?.ladderMs !== undefined;
+	if (decision.direction !== 'hold') return true;
+	if (decision.freeze?.ladderMs !== undefined) return true;
+	return decision.pinChange !== undefined;
 }
