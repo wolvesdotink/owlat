@@ -48,9 +48,24 @@ interface Props {
 	 * instead (RFC 7208 §3.2 allows only one `v=spf1` record per host).
 	 */
 	coexistence?: SpfCoexistenceSuggestion;
+	/**
+	 * What to say when there is no value to copy yet.
+	 *
+	 * The default is right for a key WE mint (adding the name produces it), and
+	 * wrong for a key someone else holds — a relay's selector never resolves by
+	 * creating the name, so telling the operator to "come back and copy the key"
+	 * is an instruction that cannot work. The caller that knows why the row is
+	 * pending is the one that gets to say so.
+	 */
+	pendingExplanation?: string;
 }
 
 const props = defineProps<Props>();
+
+const DEFAULT_PENDING_EXPLANATION =
+	'Value supplied once this subdomain is added — create the name first, then come back and copy the key.';
+
+const pendingCopy = computed<string>(() => props.pendingExplanation ?? DEFAULT_PENDING_EXPLANATION);
 
 const { copy, isCopied } = useCopyToClipboard();
 
@@ -289,8 +304,7 @@ const diagnostic = computed(() => {
 					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
 					data-testid="dns-value-pending"
 				>
-					Value supplied once this subdomain is added — create the name first, then come back and
-					copy the key.
+					{{ pendingCopy }}
 				</p>
 				<div v-else class="flex items-center gap-2">
 					<code

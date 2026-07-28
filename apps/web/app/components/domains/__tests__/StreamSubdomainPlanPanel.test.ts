@@ -201,6 +201,37 @@ describe('a row with no key yet offers nothing copyable', () => {
 	});
 });
 
+describe('a pending row explains itself in the terms of THAT row', () => {
+	it('tells the operator to create the name for a key WE mint', () => {
+		const w = mountPanel(planFixture());
+		expect(w.find('[data-testid="dns-value-pending"]').text()).toContain('create the name first');
+	});
+
+	it('never tells the operator that adding the name yields the RELAY key', () => {
+		// The ESP holds that key, so "create the name first, then come back and
+		// copy the key" is an instruction that can never resolve — the row is
+		// permanently pending until the operator pastes the relay's value.
+		const w = mountPanel(
+			planFixture({
+				records: [
+					{
+						subdomain: 'news.example.com',
+						host: '_domainkey.news.example.com',
+						relativeHost: '_domainkey.news',
+						purpose: 'dkim',
+						type: 'TXT',
+						value: null,
+						arm: 'reference',
+					},
+				],
+			})
+		);
+		const pending = w.find('[data-testid="dns-value-pending"]');
+		expect(pending.text()).toContain('relay');
+		expect(pending.text()).not.toContain('create the name first');
+	});
+});
+
 describe('the panel does not duplicate the shipped table for this domain', () => {
 	it('drops rows whose subdomain IS the domain being viewed', () => {
 		// The shipped SPF/DKIM/DMARC panels for that host are directly above.

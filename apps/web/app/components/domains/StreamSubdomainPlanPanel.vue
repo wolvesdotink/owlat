@@ -42,20 +42,35 @@ const { data: plan } = useConvexQuery(
 
 const ready = computed(() => (plan.value?.ok === true ? plan.value : null));
 
-const ROLE_LABELS: Record<string, string> = {
+type ReadyPlan = NonNullable<typeof ready.value>;
+type ProposalRow = ReadyPlan['subdomains'][number];
+type PlanRecord = ReadyPlan['records'][number];
+
+// The backend keeps its unions on the wire, so both maps are TOTAL: a role or a
+// record purpose the backend can emit and this screen cannot label is a type
+// error here rather than a raw enum leaking into the UI at runtime.
+const ROLE_LABELS: Record<ProposalRow['role'], string> = {
 	transactional: 'Transactional',
 	bulk: 'Marketing & lifecycle',
 	bounce: 'Bounces (return path)',
 };
 
-const roleLabel = (role: string): string => ROLE_LABELS[role] ?? role;
-
-const RECORD_LABELS: Record<string, string> = {
+const RECORD_LABELS: Record<PlanRecord['purpose'], string> = {
 	spf: 'SPF',
 	dkim: 'DKIM',
 	dmarc: 'DMARC',
 	mx: 'MX',
 };
+
+/**
+ * Why a row has no value yet, in the terms of THAT row.
+ *
+ * Our own selector appears the moment the name is registered; the relay's key
+ * lives at the ESP and adding the name will never produce it. One sentence for
+ * both would be wrong for one of them.
+ */
+const RELAY_PENDING_EXPLANATION =
+	'Your relay provides this key — copy the DKIM value from its dashboard and publish it under this name. Adding the subdomain here does not generate it.';
 
 /**
  * Flatten the generated rows into what DNSRecordPanel renders.
@@ -81,25 +96,31 @@ const recordPanels = computed(() =>
 			label:
 				record.purpose === 'dkim'
 					? `DKIM (${record.arm === 'own' ? 'this server' : 'relay'})`
-					: (RECORD_LABELS[record.purpose] ?? record.purpose),
+					: RECORD_LABELS[record.purpose],
 			record: {
 				type: record.type,
 				host: record.host,
 				hostIsFqdn: true,
 				value: record.value,
-				...(record.priority === undefined ? {} : { priority: record.priority }),
+				...(record.purpose === 'mx' ? { priority: record.priority } : {}),
 			},
+			pendingExplanation:
+				record.purpose === 'dkim' && record.arm === 'reference'
+					? RELAY_PENDING_EXPLANATION
+					: undefined,
 		}))
 );
 
-const REJECTED_INPUT_LABELS: Record<string, string> = {
+type RejectedInput = ReadyPlan['bimiOffers'][number]['offer']['rejectedInputs'][number];
+
+const REJECTED_INPUT_LABELS: Record<RejectedInput, string> = {
 	logoUrl: 'MTA_BIMI_LOGO_URL',
 	vmcUrl: 'MTA_BIMI_VMC_URL',
 };
 
 /** Name the value to fix rather than silently rendering nothing. */
-const rejectedInputCopy = (keys: readonly string[]): string =>
-	`${keys.map((key) => REJECTED_INPUT_LABELS[key] ?? key).join(' and ')} must be a plain https:// URL with no spaces or semicolons, so no BIMI record was generated.`;
+const rejectedInputCopy = (keys: readonly RejectedInput[]): string =>
+	`${keys.map((key) => REJECTED_INPUT_LABELS[key]).join(' and ')} must be a plain https:// URL with no spaces or semicolons, so no BIMI record was generated.`;
 
 /** Offers only — an ineligible domain shows nothing about BIMI at all. */
 const bimiOffers = computed(() =>
@@ -128,7 +149,7 @@ const bimiOffers = computed(() =>
 			>
 				<div class="flex flex-wrap items-baseline gap-2">
 					<code class="font-mono text-sm text-text-primary">{{ entry.host }}</code>
-					<span class="text-xs text-text-tertiary">{{ roleLabel(entry.role) }}</span>
+					<span class="text-xs text-text-tertiary">{{ ROLE_LABELS[entry.role] }}</span>
 					<!-- Work already done is shown as done, never re-proposed. -->
 					<span
 						v-if="entry.alreadyRegistered"
@@ -174,6 +195,7 @@ const bimiOffers = computed(() =>
 				:record="panel.record"
 				:label="panel.label"
 				:domain="ready.domain"
+				:pending-explanation="panel.pendingExplanation"
 			/>
 		</div>
 
