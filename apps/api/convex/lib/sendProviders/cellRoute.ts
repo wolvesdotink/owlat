@@ -100,7 +100,7 @@ export interface CellRouteOutcome {
  */
 export type CellMixResolver = (
 	destinationProvider: DestinationProviderKey,
-	recipient?: MixRecipientIdentity
+	recipient: MixRecipientIdentity
 ) => Promise<CellRouteOutcome | null>;
 
 /**
@@ -162,19 +162,18 @@ export async function prepareCellMixResolver(
 			});
 			cellRows.set(destinationProvider, providerCell);
 		}
-		const mixContext: MixContext | undefined =
-			isAdaptiveMix && recipient !== undefined
-				? {
-						kind: 'decide',
-						input: {
-							// D1's resolution expression, owned by one helper next to
-							// `loadRouteStateCell` so this site and the dispatch-time
-							// replay in `route.ts` can never drift apart.
-							cell: mixCellStateFor(providerCell),
-							recipient,
-						},
-					}
-				: undefined;
+		const mixContext: MixContext | undefined = isAdaptiveMix
+			? {
+					kind: 'decide',
+					input: {
+						// D1's resolution expression, owned by one helper next to
+						// `loadRouteStateCell` so this site and the dispatch-time
+						// replay in `route.ts` can never drift apart.
+						cell: mixCellStateFor(providerCell),
+						recipient,
+					},
+				}
+			: undefined;
 		const resolved = resolveRoute(
 			routeConfig as ProviderRouteConfig | null,
 			undefined,

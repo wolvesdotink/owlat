@@ -165,11 +165,16 @@ export async function mixContextFor(
 	]);
 	if (recorded) return { kind: 'assigned', arm: recorded.arm };
 	if (cell === null) return undefined;
+	// Absence is expressed as ABSENCE, not as an empty string standing in for
+	// one: a durable send id when there is one, else the recipient address, else
+	// no identity at all — the decision then takes its documented unidentified
+	// branch instead of asking a downstream module to re-interpret a sentinel.
+	const fallbackKey = sendId ?? addressContext?.to;
 	return {
 		kind: 'decide',
 		input: {
 			cell: mixCellStateFor(cell),
-			recipient: { fallbackKey: sendId ?? addressContext?.to ?? '' },
+			recipient: fallbackKey !== undefined ? { fallbackKey } : {},
 		},
 	};
 }

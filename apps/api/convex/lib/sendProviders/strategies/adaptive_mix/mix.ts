@@ -216,7 +216,7 @@ function identityKey(recipient: MixRecipientIdentity): string | null {
  * membership with the arm — a bias no downstream test could distinguish from a
  * real effect.
  */
-export type MixHashConsumer =
+type MixHashConsumer =
 	/** The arm bucket. */
 	| 'arm'
 	/** The randomized calibration slice. */
