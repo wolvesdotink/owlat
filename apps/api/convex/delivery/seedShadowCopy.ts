@@ -37,9 +37,17 @@
  *      unsubscribe/preference FOOTER (`delivery/worker.ts` mints it from
  *      `getSeedProbeFooterUrls` when the envelope carries a probe id, so the
  *      probe does not have to carry the contact-scoped `siteUrl`).
- *   b. The probe's two footer links point at the same probe one-click target:
- *      a probe has no preferences to manage. The rendered footer's SHAPE is
- *      identical; two hrefs differ.
+ *   b. The probe's two footer HREFS differ from a subscriber's in BOTH ways,
+ *      and both are stated here because this list is the merge record for the
+ *      byte-identity claim. (i) ORIGIN: the probe footer is minted from
+ *      `convexSiteUrl` (`delivery/unsubscribe.ts` `getSeedProbeFooterUrls`)
+ *      while a subscriber's is minted from the contact-scoped `siteUrl`, so
+ *      the two footers resolve to DIFFERENT HOSTS, not merely to different
+ *      paths on the same one. (ii) ARITY: a probe has no preferences to
+ *      manage, so its Unsubscribe and Manage-Preferences slots point at the
+ *      one same probe endpoint where a subscriber's point at two. The rendered
+ *      footer's SHAPE — the link text, the ordering, the surrounding markup —
+ *      is identical; the two hrefs are not.
  *   c. Merge tags render the neutral placeholders above rather than the
  *      subscriber's own name.
  *   d. The `X-Owlat-Seed-Probe` header is added.

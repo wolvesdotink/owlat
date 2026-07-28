@@ -91,11 +91,14 @@ export function getSeedProbeListUnsubscribeHeader(
  * contact — so both slots point at the probe's own one-click target, the same
  * namespaced token the RFC 8058 header carries.
  *
- * ONE honest residual: a probe has no preferences to manage, so the two links
- * resolve to the same probe endpoint rather than to two. The rendered SHAPE —
- * a footer with a Manage Preferences and an Unsubscribe link — is what the
- * filter sees and it matches the real send's byte for byte apart from the two
- * hrefs.
+ * TWO honest residuals, both of them href-only. The ORIGIN differs: these are
+ * minted from `convexSiteUrl` where a subscriber's footer is minted from the
+ * contact-scoped `siteUrl`, so the probe's links resolve to a different HOST.
+ * And the ARITY differs: a probe has no preferences to manage, so the two
+ * links resolve to the same probe endpoint rather than to two. The rendered
+ * SHAPE — a footer with a Manage Preferences and an Unsubscribe link — is what
+ * the filter sees and it matches the real send's byte for byte apart from
+ * those two hrefs.
  */
 export function getSeedProbeFooterUrls(
 	convexSiteUrl: string,
