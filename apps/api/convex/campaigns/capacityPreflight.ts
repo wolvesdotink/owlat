@@ -18,7 +18,10 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { loadWarmingCapacity } from '../delivery/warmingCapacity';
-import { campaignWarmingCapBinds } from '../lib/sendProviders/warmingCapGate';
+import {
+	campaignWarmingCapBinds,
+	type WarmingCapNotBindingReason,
+} from '../lib/sendProviders/warmingCapGate';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceCandidates';
 import {
@@ -92,9 +95,36 @@ export interface CampaignCapacityOptions {
  * cannot be constructed: an unmeasured assessment is ALWAYS `fits: true`.
  */
 export type CampaignCapacityAssessment =
-	| { capacityKnown: false; fits: true }
+	| { capacityKnown: false; fits: true; unknownReason: CapacityUnknownReason }
 	| { capacityKnown: true; fits: true }
 	| { capacityKnown: true; fits: false; schedule: CampaignCapacitySchedule };
+
+/**
+ * WHY capacity could not be measured. Every `capacityKnown: false` arm carries
+ * one (plan D12 — every decision carries a recorded, human-readable reason;
+ * D14 — the UI has to be able to say "measurement confidence: low" and name
+ * what would improve it).
+ *
+ * The first three are the warming-cap gate's verdict (`warmingCapGate.ts`) and
+ * mean the cap is not a constraint at all; the rest are genuine measurement
+ * faults, where the send is allowed precisely because nothing is known.
+ */
+export type CapacityUnknownReason =
+	| WarmingCapNotBindingReason
+	/** No warming state, stale sync, graduated pool, or no active campaign IP. */
+	| 'no_projection'
+	/** The caller has not chosen an audience yet — the preview has nothing to judge. */
+	| 'no_audience'
+	/** The projection stops before the retention horizon: capacity is unbounded there. */
+	| 'projection_shorter_than_horizon'
+	/** The suppression set was truncated, so `eligible` is an over-count that bounds nothing. */
+	| 'audience_over_counted'
+	/** The read budget ran out and the partial count does not exceed horizon capacity. */
+	| 'audience_under_counted'
+	/** The projection carries no plannable capacity at all (the planner's `days === 0`). */
+	| 'unplannable_projection'
+	/** The measurement itself threw; the gate failed open. */
+	| 'measurement_failed';
 
 /**
  * Decide whether `audience` can be delivered inside the message-retention
@@ -120,7 +150,7 @@ export async function assessCampaignCapacity(
 		return await measureCampaignCapacity(ctx, options);
 	} catch (err) {
 		logWarn('capacityPreflight: capacity could not be measured; allowing the send', err);
-		return { capacityKnown: false, fits: true };
+		return { capacityKnown: false, fits: true, unknownReason: 'measurement_failed' };
 	}
 }
 
@@ -134,8 +164,12 @@ async function measureCampaignCapacity(
 	// does not dispatch through the own MTA has no warming cap at all — in both
 	// shipped configurations the failure this gate exists to prevent cannot
 	// happen, and refusing would be a false blocker on traffic that ships fine.
-	if (!(await campaignWarmingCapBinds(ctx, { fromEmail: options.fromEmail, now: options.now }))) {
-		return { capacityKnown: false, fits: true };
+	const capVerdict = await campaignWarmingCapBinds(ctx, {
+		fromEmail: options.fromEmail,
+		now: options.now,
+	});
+	if (!capVerdict.binds) {
+		return { capacityKnown: false, fits: true, unknownReason: capVerdict.why };
 	}
 
 	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
@@ -147,7 +181,9 @@ async function measureCampaignCapacity(
 			? Math.max(options.now, requestedStart)
 			: options.now;
 	const projection = await loadWarmingCapacity(ctx, { now: options.now, startsAt });
-	if (projection === null) return { capacityKnown: false, fits: true };
+	if (projection === null) {
+		return { capacityKnown: false, fits: true, unknownReason: 'no_projection' };
+	}
 	const remainingCapacityByDay = projection.byDay;
 
 	// The projection stops at the last day it can BOUND: schedule day 30 removes
@@ -156,7 +192,7 @@ async function measureCampaignCapacity(
 	// If it does not reach across the retention horizon, capacity inside that
 	// horizon is unbounded — unknown, and unknown allows.
 	if (remainingCapacityByDay.length < usableDayCount(startsAt, GOVERNED_MTA_MAX_MESSAGE_AGE_MS)) {
-		return { capacityKnown: false, fits: true };
+		return { capacityKnown: false, fits: true, unknownReason: 'projection_shorter_than_horizon' };
 	}
 
 	// Bound the CANDIDATE count by CAPACITY, not by audience size. The verdict
@@ -173,7 +209,7 @@ async function measureCampaignCapacity(
 	// spent read budget it bounds the audience in NEITHER direction, so it cannot
 	// license a refusal — it is simply "unmeasured".
 	if (counted.completeness === 'suppression_truncated') {
-		return { capacityKnown: false, fits: true };
+		return { capacityKnown: false, fits: true, unknownReason: 'audience_over_counted' };
 	}
 
 	// Ran out of read budget before the audience was sized. The partial count is
@@ -190,7 +226,9 @@ async function measureCampaignCapacity(
 			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 			now: startsAt,
 		});
-		if (counted.eligible <= horizonCapacity) return { capacityKnown: false, fits: true };
+		if (counted.eligible <= horizonCapacity) {
+			return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
+		}
 	}
 
 	const plan = planCampaignCapacity({
@@ -229,7 +267,9 @@ export function toAssessment(
 	// `days === 0` is the planner's "no capacity to schedule against" sentinel:
 	// nothing could be scheduled, or the projection plateaus at zero before the
 	// audience is covered. Either way it is missing data, not a refusal.
-	if (plan.days === 0) return { capacityKnown: false, fits: true };
+	if (plan.days === 0) {
+		return { capacityKnown: false, fits: true, unknownReason: 'unplannable_projection' };
+	}
 	const schedule: CampaignCapacitySchedule = options.audienceUnderCounted
 		? { ...plan, audienceUnderCounted: true }
 		: plan;
@@ -262,7 +302,9 @@ export const getCampaignCapacityPlan = authedQuery({
 		startsAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<CampaignCapacityAssessment> => {
-		if (!args.audience) return { capacityKnown: false, fits: true };
+		if (!args.audience) {
+			return { capacityKnown: false, fits: true, unknownReason: 'no_audience' };
+		}
 		return await assessCampaignCapacity(ctx, {
 			audience: args.audience,
 			fromEmail: args.fromEmail,

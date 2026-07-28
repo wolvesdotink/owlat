@@ -47,6 +47,39 @@ async function resolveCampaignBase(
 }
 
 /**
+ * Why the own-MTA warming cap does NOT bind this deployment's campaign
+ * traffic. A verdict, not a footnote: it is what the "capacity unknown" arm of
+ * the pre-flight assessment renders as its measurement-confidence reason
+ * (plan D12 — every decision carries a recorded reason; D14 — say the quiet
+ * part), and the three cases are materially different things to tell an
+ * operator.
+ */
+export type WarmingCapNotBindingReason =
+	/**
+	 * Warm-up overflow to a VERIFIED relay will absorb the tail. Capacity is
+	 * genuinely not a constraint on this send — nothing to improve.
+	 */
+	| 'warmup_overflow_absorbs'
+	/**
+	 * Campaign traffic does not dispatch through the own MTA at all, so the
+	 * per-IP warming cap is not an upper bound on this campaign. Also not a
+	 * constraint — but for a different reason, and the operator's own-MTA
+	 * warm-up progress says nothing about this send.
+	 */
+	| 'not_own_mta'
+	/**
+	 * Nothing is known about where campaigns dispatch: no enabled+ready route
+	 * entry AND no resolvable base route. This is genuinely MISSING DATA — the
+	 * send is allowed (D10: never act on thin data), but unlike the other two
+	 * this one is worth surfacing as low measurement confidence rather than as
+	 * reassurance.
+	 */
+	| 'dispatch_unknown';
+
+/** Does the own-MTA warming cap bind campaign traffic, and if not, why not. */
+export type WarmingCapVerdict = { binds: true } | { binds: false; why: WarmingCapNotBindingReason };
+
+/**
  * Does the own-MTA warming cap actually BIND campaign traffic?
  *
  * The P0-5 pre-flight capacity gate exists for ONE shipped configuration: a
@@ -55,10 +88,11 @@ async function resolveCampaignBase(
  * expires at `maxMessageAgeMs`. In every other configuration the cap cannot
  * strand a campaign, and a gate that refused anyway would be a false blocker on
  * traffic that ships fine today (plan D2 — never block on a measurement that
- * does not apply). Answering `false` therefore means "unknown / not subject to
- * the cap → allow".
+ * does not apply). Answering `{ binds: false }` therefore means "not subject to
+ * the cap, or unknown → allow", and `why` says WHICH — the three cases are not
+ * interchangeable and the caller has to be able to tell them apart.
  *
- * Two shipped configurations answer `false`:
+ * Two shipped configurations answer `binds: false`:
  *
  * (a) WARM-UP OVERFLOW TO A VERIFIED RELAY. With `deliverabilityFallback`
  *     enabled, `isWarmupOverflowEnabled` set and the From-domain verified for
@@ -106,7 +140,7 @@ async function resolveCampaignBase(
 export async function campaignWarmingCapBinds(
 	ctx: QueryCtx | MutationCtx,
 	options: { fromEmail?: string | undefined; now: number }
-): Promise<boolean> {
+): Promise<WarmingCapVerdict> {
 	// ONE pass over the route tables.
 	const { routeConfig, readyKinds, route: baseRoute } = await resolveCampaignBase(ctx);
 
@@ -141,10 +175,17 @@ export async function campaignWarmingCapBinds(
 		// either, nothing is known about where campaigns dispatch: hold and allow.
 		const campaignKinds: readonly SendProviderKind[] =
 			enabledKinds.length > 0 ? enabledKinds : baseRoute ? [baseRoute.providerType] : [];
-		if (campaignKinds.length === 0) return false;
-		if (!campaignKinds.every((kind) => kind === 'mta')) return false;
-	} else if (baseRoute?.providerType !== 'mta') {
-		return false;
+		if (campaignKinds.length === 0) return { binds: false, why: 'dispatch_unknown' };
+		if (!campaignKinds.every((kind) => kind === 'mta')) {
+			return { binds: false, why: 'not_own_mta' };
+		}
+	} else if (!baseRoute) {
+		// Neither strategy could select a route — `resolveRoute` threw a routing
+		// deferral and even the env default did not apply. Where campaigns
+		// dispatch is simply unknown.
+		return { binds: false, why: 'dispatch_unknown' };
+	} else if (baseRoute.providerType !== 'mta') {
+		return { binds: false, why: 'not_own_mta' };
 	}
 
 	// Warm-up overflow needs EVERY link that `resolveRoute` needs before it will
@@ -157,15 +198,15 @@ export async function campaignWarmingCapBinds(
 		!fallbackConfig.isWarmupOverflowEnabled ||
 		!enabledKinds.some((kind) => kind === fallbackConfig.relayProviderType)
 	) {
-		return true;
+		return { binds: true };
 	}
 	const fromDomain = options.fromEmail ? extractDomainOrNull(options.fromEmail) : null;
-	if (!fromDomain) return true;
+	if (!fromDomain) return { binds: true };
 	const overflowAvailable = await relayDomainVerified(
 		ctx,
 		fromDomain,
 		fallbackConfig.relayProviderType,
 		options.now
 	);
-	return !overflowAvailable;
+	return overflowAvailable ? { binds: false, why: 'warmup_overflow_absorbs' } : { binds: true };
 }
