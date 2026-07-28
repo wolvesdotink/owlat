@@ -68,13 +68,37 @@ function sanitizeStreak(value: number | undefined): number {
 }
 
 /**
+ * ONE reading of a stored instant, for every rung that has to decide whether a
+ * timestamp on the row can be believed: `null` means the value is NOT USABLE as
+ * a past instant — absent, non-finite, non-positive, or ahead of the clock.
+ *
+ * Spelling this out once matters more than it looks: three rungs used to
+ * hand-roll the same three conditions with slightly different wording, and the
+ * one that forgot the future check was how a graduation clock could be handed
+ * out early.
+ */
+function readStoredInstant(stored: number | undefined, now: number): number | null {
+	if (stored === undefined || !Number.isFinite(stored) || stored <= 0) return null;
+	if (stored > now) return null;
+	return stored;
+}
+
+/**
+ * The one distinction `readStoredInstant` deliberately collapses: an anchor
+ * AHEAD of the clock. Unreadable and future are both unusable, but the window
+ * gate must treat them differently — see `isEvaluationWindowElapsed`.
+ */
+function isStoredInstantAhead(stored: number | undefined, now: number): boolean {
+	return stored !== undefined && Number.isFinite(stored) && stored > now;
+}
+
+/**
  * The graduation clock, sanitised. A stored instant that is missing, corrupt,
  * non-positive or AHEAD OF THE CLOCK restarts the count at `now`: the only
  * failure mode we accept here is graduating a cell LATER than it deserved.
  */
 function sanitizeGreenSince(stored: number | undefined, now: number): number {
-	if (stored === undefined || !Number.isFinite(stored) || stored <= 0 || stored > now) return now;
-	return stored;
+	return readStoredInstant(stored, now) ?? now;
 }
 
 /**
@@ -90,11 +114,10 @@ function sanitizeGreenSince(stored: number | undefined, now: number): number {
  * counted against, and refusing forever would strand the cell.
  */
 export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now: number): boolean {
-	if (lastCountedAt === undefined || !Number.isFinite(lastCountedAt) || lastCountedAt <= 0) {
-		return true;
-	}
-	if (lastCountedAt > now) return false;
-	return now - lastCountedAt >= RAMP_AIMD.evaluationWindowMs;
+	if (isStoredInstantAhead(lastCountedAt, now)) return false;
+	const anchor = readStoredInstant(lastCountedAt, now);
+	if (anchor === null) return true;
+	return now - anchor >= RAMP_AIMD.evaluationWindowMs;
 }
 
 function directionOf(fromShare: number, share: number): RampDecisionDirection {
@@ -113,12 +136,8 @@ function directionOf(fromShare: number, share: number): RampDecisionDirection {
  */
 export function nextCooldownMs(mix: RampMixState, now: number): number {
 	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
-	const startedAt = mix.freezeStartedAt;
-	const isRepeat =
-		startedAt !== undefined &&
-		Number.isFinite(startedAt) &&
-		now >= startedAt &&
-		now - startedAt < cooldownRepeatWindowMs;
+	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
+	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
 	const previous = mix.cooldownMs;
 	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
 		return cooldownBaseMs;
