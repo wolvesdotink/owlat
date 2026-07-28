@@ -46,11 +46,11 @@ import {
 	classifySeedFolder,
 	evaluateSeedPlacementGate,
 	planSeedHygiene,
-	summarizeSeedPlacement,
 	type SeedGateResult,
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
+import { resolvePlacementAdapter } from '@owlat/shared/placementAdapter';
 import { loadSeedAccounts } from './seedAccounts';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
@@ -336,8 +336,18 @@ export async function summarizeSeedPlacementWindow(
 	}
 
 	const accounts = await loadSeedAccounts(db, organizationId, now);
+	// Gate 5 reads its evidence through the placement ADAPTER rather than the
+	// roll-up directly (P4-7). With no commercial placement key — the default and
+	// expected configuration — this resolves to the self-hosted seed adapter and
+	// the reading is byte-identical to the shipped one; a deployment that later
+	// adds a panel feeds the SAME gate through the SAME interface (D2: the key is
+	// an upgrade, its absence changes nothing).
+	const placement = resolvePlacementAdapter({
+		seedMailboxCount: accounts.length,
+		commercialApiConfigured: false,
+	});
 	return {
-		rollups: summarizeSeedPlacement(observations),
+		rollups: placement.adapter.summarize({ kind: 'self_hosted_seeds', observations }),
 		seedAccountCount: accounts.length,
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
