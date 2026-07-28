@@ -48,7 +48,7 @@ import {
 	summarizeTransportOutcomes,
 } from '../analytics/transportOutcomes';
 import { recordAuditLog } from '../lib/auditLog';
-import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
+import { nextPhaseCeiling, RAMP_AIMD, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { nextShare } from './ramp/controller';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
@@ -65,8 +65,14 @@ import type { RampControllerInput, RampDecision, RampMixState } from './ramp/con
 export const RAMP_CELLS_PER_TICK = 5;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-/** The gate evaluation window: one day of outcomes. */
-const RAMP_WINDOW_MS = DAY_MS;
+/**
+ * The gate evaluation window: one day of outcomes. Taken from the controller's
+ * own constant rather than re-declared, because the SAME number is what spaces
+ * two counted windows apart — the cron ticks hourly, so a query window and a
+ * streak-spacing window that could disagree would let three overlapping reads of
+ * the same day satisfy K_CLEAN.
+ */
+const RAMP_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 /** Route-state rows are refreshed on every tick; the TTL matches the snapshot's. */
 const ROUTE_STATE_TTL_MS = DAY_MS;
 /** The engagement floor's recent window and the prior baseline it is compared to. */
@@ -137,6 +143,7 @@ function readMixState(row: Doc<'deliverabilityRouteStates'> | null): RampMixStat
 		cooldownMs: row?.cooldownMs,
 		greenSince: row?.healthySince,
 		graduatedAt: row?.graduatedAt,
+		lastCountedAt: row?.lastCountedAt,
 	};
 }
 
@@ -288,6 +295,10 @@ async function applyDecision(
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,
+		// Only a COUNTED window moves the anchor: an evaluation that did not count
+		// must leave the previous one in place, or every hourly tick would push the
+		// next countable window another hour out and the streak could never grow.
+		lastCountedAt: decision.countedAt ?? perStream.lastCountedAt,
 		// `snapshotGeneratedAt` is NOT touched. It means "the instant the MTA
 		// generated the snapshot" everywhere else, and `applySnapshot` uses it as
 		// its idempotency comparand; stamping the controller's own clock into it

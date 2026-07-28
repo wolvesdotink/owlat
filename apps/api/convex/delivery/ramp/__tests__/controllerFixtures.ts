@@ -152,6 +152,9 @@ export function mixState(overrides: Partial<RampMixState> = {}): RampMixState {
 		cooldownMs: undefined,
 		greenSince: undefined,
 		graduatedAt: undefined,
+		// No counted window yet: the fixtures exercise the decision rules, and the
+		// window spacing has its own suite.
+		lastCountedAt: undefined,
 		...overrides,
 	};
 }

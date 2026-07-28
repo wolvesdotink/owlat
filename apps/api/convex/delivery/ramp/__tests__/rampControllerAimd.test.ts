@@ -15,6 +15,8 @@ import {
 	breachedEvaluation,
 	cleanEvaluation,
 	controllerInput,
+	DAY,
+	HOUR,
 	mixState,
 	NOW,
 } from './controllerFixtures';
@@ -107,5 +109,84 @@ describe('multiplicative decrease', () => {
 		);
 		expect(decision.share).toBe(0.06);
 		expect(decision.reason).toBe('healthy');
+	});
+});
+
+/**
+ * ONE WINDOW, COUNTED ONCE.
+ *
+ * The cron ticks HOURLY while the gates read a 24-HOUR window of outcomes. If
+ * every tick counted, K_CLEAN = 3 would be bought with three overlapping reads
+ * of the same day an hour apart, and the twenty steps above would fit inside a
+ * single day. That is D9's "expensive to advance" half deleted, so it has a test.
+ */
+describe('the evaluation window is counted once', () => {
+	const clean = () =>
+		controllerInput({
+			mix: mixState({ share: 0.1, cleanStreak: 3, lastCountedAt: NOW - HOUR }),
+			evaluation: cleanEvaluation(3),
+		});
+
+	it('holds a green cell that already counted this window, naming why', () => {
+		const decision = nextShare(clean());
+		expect(decision.share).toBe(0.1);
+		expect(decision.direction).toBe('hold');
+		expect(decision.reason).toBe('window_open');
+		// The streak does not grow either: an hour-old read is the same evidence.
+		expect(decision.cleanStreak).toBe(3);
+		expect(decision.countedAt).toBeUndefined();
+	});
+
+	it('increases once a whole window has elapsed, and re-anchors the window', () => {
+		const decision = nextShare(
+			controllerInput({
+				...clean(),
+				mix: mixState({
+					share: 0.1,
+					cleanStreak: 3,
+					lastCountedAt: NOW - RAMP_AIMD.evaluationWindowMs,
+				}),
+			})
+		);
+		expect(decision.share).toBe(0.15);
+		expect(decision.reason).toBe('healthy');
+		expect(decision.cleanStreak).toBe(4);
+		expect(decision.countedAt).toBe(NOW);
+	});
+
+	it('costs three DAYS, not three hours, to reach K_CLEAN from a cold streak', () => {
+		let mix = mixState({ share: 0.02, cleanStreak: 0, lastCountedAt: undefined });
+		let counted = 0;
+		let increases = 0;
+		// A full day of hourly ticks, three times over.
+		for (let tick = 0; tick < 72; tick += 1) {
+			const now = NOW + tick * HOUR;
+			const decision = nextShare(
+				controllerInput({ mix, evaluation: cleanEvaluation(mix.cleanStreak ?? 0), now })
+			);
+			if (decision.countedAt !== undefined) counted += 1;
+			if (decision.direction === 'increase') increases += 1;
+			mix = mixState({
+				share: decision.share,
+				cleanStreak: decision.cleanStreak,
+				lastCountedAt: decision.countedAt ?? mix.lastCountedAt,
+			});
+		}
+		// Seventy-two hourly ticks buy exactly three counted windows...
+		expect(counted).toBe(3);
+		// ...and exactly ONE additive step, taken once the third one landed.
+		expect(increases).toBe(1);
+		expect(mix.share).toBe(0.07);
+	});
+
+	it('never lets a window anchor in the FUTURE unlock an increase', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.1, cleanStreak: 9, lastCountedAt: NOW + 10 * DAY }),
+				evaluation: cleanEvaluation(9),
+			})
+		);
+		expect(decision.direction).toBe('hold');
+		expect(decision.reason).toBe('window_open');
 	});
 });

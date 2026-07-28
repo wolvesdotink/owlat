@@ -74,6 +74,12 @@ export const deliverabilityRoutingTables = {
 		// cell and drops the relay to priority_failover standby. Set once, and
 		// cleared only when the share leaves 1.0.
 		graduatedAt: v.optional(v.number()),
+		// The instant the last COUNTED evaluation window was counted. The cron ticks
+		// hourly against a 24h outcome window, so without an anchor K_CLEAN = 3 would
+		// be satisfied by three overlapping reads of the SAME day an hour apart. A
+		// window counts once, and only a counted window extends the clean streak or
+		// unlocks an additive increase.
+		lastCountedAt: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
 		updatedAt: v.number(),

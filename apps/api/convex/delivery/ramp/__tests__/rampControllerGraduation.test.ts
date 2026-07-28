@@ -53,6 +53,26 @@ describe('graduation', () => {
 		expect(decision.greenSince).toBe(NOW - 13 * DAY);
 	});
 
+	it('is still bounded by the warming cap — the pin is not an exemption', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
+				evaluation: cleanEvaluation(40),
+				// Half the projected volume of headroom, times the 0.8 safety margin.
+				capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+			})
+		);
+		// A graduated cell is the cell carrying the most volume, so it is the LAST
+		// one that should be exempt from the cap.
+		expect(decision.share).toBe(0.4);
+		expect(decision.ceiling).toBe(0.4);
+		// The sentence names the ceiling, not a graduation move nobody made...
+		expect(decision.reason).toBe('capacity_ceiling');
+		// ...but the cell is still graduated: capacity is a physical limit, not a
+		// gate the cell failed.
+		expect(decision.graduatedAt).toBe(NOW);
+	});
+
 	it('keeps an existing graduation instant rather than restamping it', () => {
 		const graduatedAt = NOW - 30 * DAY;
 		const decision = nextShare(

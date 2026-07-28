@@ -17,6 +17,7 @@ import {
 	CLEAR_SIGNALS,
 	controllerInput,
 	GMAIL_CAMPAIGN,
+	HOUR,
 	mixState,
 	NOW,
 	OPEN_CAPACITY,
@@ -177,6 +178,30 @@ describe('nextShare — ceilings and confidence', () => {
 		expect(decision.share).toBe(0.15);
 		expect(decision.reason).toBe('healthy');
 		expect(decision.direction).toBe('increase');
+	});
+
+	it('holds a K_CLEAN-satisfied cell whose evaluation window is already counted', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.1, cleanStreak: 3, lastCountedAt: NOW - HOUR }),
+				evaluation: cleanEvaluation(3),
+			})
+		);
+		expect(decision.share).toBe(0.1);
+		expect(decision.reason).toBe('window_open');
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('still pulls back to a lowered ceiling mid-window — retreats are never delayed', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.5, cleanStreak: 3, lastCountedAt: NOW - HOUR }),
+				capacity: { warmingCapRemaining: 100, projectedVolume: 1_000 },
+				evaluation: cleanEvaluation(3),
+			})
+		);
+		expect(decision.share).toBe(0.08);
+		expect(decision.reason).toBe('capacity_ceiling');
 	});
 
 	it('uses the transactional step for a transactional cell', () => {

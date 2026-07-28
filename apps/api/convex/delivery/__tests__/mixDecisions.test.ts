@@ -225,6 +225,7 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		['building confidence', { evaluation: cleanEvaluation(0) }],
 		['capacity ceiling', { capacity: { warmingCapRemaining: 1, projectedVolume: 1_000 } }],
 		['phase ceiling', { mix: mixState({ share: 0.25, phaseCeiling: 0.25 }) }],
+		['window already counted', { mix: mixState({ share: 0.4, lastCountedAt: NOW - 1_000 }) }],
 		['healthy', {}],
 		['graduated', { mix: mixState({ share: 1, greenSince: NOW - 20 * 24 * 60 * 60 * 1000 }) }],
 		['gate breach', { evaluation: breachedEvaluation('deferral') }],
