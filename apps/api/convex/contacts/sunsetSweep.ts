@@ -130,6 +130,11 @@ async function recordSweepClockState(
 ): Promise<void> {
 	const existing = globalSunsetPolicyRow(args.policyRows);
 	if (existing === undefined) {
+		// A TOTAL FUNCTION OF ITS INPUTS, not two speculative cases: today only the
+		// healthy branch can reach this, because with no row there is no
+		// corroborating instant and a tick with nothing to disagree with never
+		// refuses. Branching on `isStalled` anyway keeps the row's meaning correct
+		// if that ever stops being true, and costs one ternary.
 		await ctx.db.insert('sunsetPolicies', {
 			...(args.isStalled ? { clockStalledAt: args.now } : { lastSweepAt: args.now }),
 			createdAt: args.now,
