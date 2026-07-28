@@ -28,6 +28,7 @@ import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
 import { referenceRelayTransportId } from './alignmentPreflight';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import type { RampGateId } from './ramp/gateTypes';
@@ -174,15 +175,7 @@ export const getRampControls = authedQuery({
 		const presets: Partial<Record<DeliverabilityStream, RampPreset>> = {};
 		for (const row of presetRows) presets[row.stream] = row.preset;
 
-		const routeRows = await ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
-			.take(128);
-		const byCell = new Map<string, Doc<'deliverabilityRouteStates'>>();
-		for (const row of routeRows) {
-			if (row.stream === undefined) continue;
-			byCell.set(`${row.stream}:${row.destinationProvider}`, row);
-		}
+		const byCell = await loadRouteStatesByCell(ctx, organizationId);
 
 		const cellKeys = allDeliverabilityCells().map(deliverabilityCellKey);
 		const decisionsByCell = await latestDecisionsByCell(ctx, organizationId, cellKeys);
@@ -253,7 +246,7 @@ export interface RampAdminNotice {
 	readonly at: number;
 	readonly cellKey: string;
 	readonly notice: string;
-	readonly failedGate: string | null;
+	readonly failedGate: RampGateId | null;
 	readonly fromShare: number;
 	readonly toShare: number;
 }

@@ -38,21 +38,21 @@ import {
 	projectIndependenceDate,
 	spendAvoidedMinorUnits,
 	assessRelayRemoval,
+	DAY_MS,
 	type IndependenceDayPoint,
 	type IndependenceProjection,
 	type RelayRemovalCellState,
 	type RelayRemovalSafety,
 } from '@owlat/shared/deliverabilityIndependence';
-import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
+import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
 import { referenceRelayTransportId } from './alignmentPreflight';
 import { loadWarmingCapacity } from './warmingCapacity';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much history the stacked chart shows. Bounded by the 90-day retention. */
 const INDEPENDENCE_WINDOW_DAYS = 30;
 
@@ -163,15 +163,7 @@ async function readCellPositions(
 	ctx: QueryCtx,
 	organizationId: string
 ): Promise<RelayRemovalCellState[]> {
-	const rows = await ctx.db
-		.query('deliverabilityRouteStates')
-		.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
-		.take(128);
-	const byCell = new Map<string, Doc<'deliverabilityRouteStates'>>();
-	for (const row of rows) {
-		if (row.stream === undefined) continue;
-		byCell.set(`${row.stream}:${row.destinationProvider}`, row);
-	}
+	const byCell = await loadRouteStatesByCell(ctx, organizationId);
 	return allDeliverabilityCells().map((cell) => {
 		const cellKey = deliverabilityCellKey(cell);
 		const row = byCell.get(cellKey) ?? null;
