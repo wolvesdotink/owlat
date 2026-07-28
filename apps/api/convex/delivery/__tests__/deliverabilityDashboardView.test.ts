@@ -65,7 +65,7 @@ const BELOW_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
 /**
  * THE LEVEL IS THE EVALUATOR'S, NOT THE SCREEN'S.
  *
- * `dashboardConfidence` translates `RampGateEvaluation.confidence` and adds the
+ * `dashboardConfidence` translates `RampGateEvaluation.measuredConfidence` and adds the
  * improvement codes; it never re-derives a level from the arms or the sample.
  * That is the whole point of the table below: the same traffic with a different
  * `evaluated` grade renders a different level, and the same `evaluated` grade
@@ -388,7 +388,7 @@ describe('buildDashboardCellView', () => {
 				...DIRECT_MEASUREMENT,
 			},
 		],
-		confidence: 'high',
+		measuredConfidence: 'high',
 		increaseEvidence: true,
 		evaluatedAt: 1,
 	};
@@ -450,7 +450,7 @@ describe('buildDashboardCellView', () => {
 				// Standalone: the configuration the old heuristic pinned at `low`
 				// regardless of what the gates actually measured.
 				reference: null,
-				evaluation: { ...evaluation, confidence: graded },
+				evaluation: { ...evaluation, measuredConfidence: graded },
 				hasSeedCoverage: true,
 				hasReferenceArm: false,
 				trend: [],

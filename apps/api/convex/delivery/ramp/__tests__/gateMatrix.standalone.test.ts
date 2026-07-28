@@ -95,7 +95,7 @@ describe(`the ${MODE} leg`, () => {
 
 	it('reports a confidence level the UI can render', () => {
 		const evaluation = EVALUATOR.evaluate(matrixInput(MODE));
-		expect(['high', 'medium', 'low']).toContain(evaluation.confidence);
+		expect(['high', 'medium', 'low']).toContain(evaluation.measuredConfidence);
 	});
 
 	it('makes the mode load-bearing for EVERY fixture, not just this suite', () => {

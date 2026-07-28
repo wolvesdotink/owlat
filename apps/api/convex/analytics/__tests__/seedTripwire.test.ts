@@ -9,6 +9,8 @@ import {
 	SEED_REFERENCE_TOLERANCE,
 	summarizeSeedPlacement,
 	summarizeSeedProvider,
+	summarizeSeedProviderCounts,
+	type SeedArmPlacementCounts,
 	type SeedObservation,
 	type SeedPlacement,
 	type SeedProviderRollup,
@@ -104,7 +106,16 @@ describe('the roll-up is a status, not a gauge (D17)', () => {
 		expect(rollup.reference).toBe('no_reference_arm');
 	});
 
+	/**
+	 * THE VALUE IS PINNED HERE, ONCE, BESIDE THE CONSTANT'S OWN SUITE. Every other
+	 * assertion in this package reads the grade INDIRECTLY (`SEED_GATE_CONFIDENCE`
+	 * on both sides), which is what keeps them honest about where the number
+	 * lives — and which is also why none of them would notice the number
+	 * CHANGING. `medium` is an operator-visible label on the measurement screen
+	 * (plan D14): edit the constant and this fails, which is the point.
+	 */
 	it('never claims more than the shared seed grade — seeds are a coarse signal and say so', () => {
+		expect(SEED_GATE_CONFIDENCE).toBe('medium');
 		expect(rollup.confidence).toBe(SEED_GATE_CONFIDENCE);
 	});
 
@@ -598,5 +609,89 @@ describe('adversarial inputs', () => {
 	it('is deterministic — the same observations always yield the same verdict', () => {
 		const input = observations('gmail', ['inbox', 'spam', 'missing', 'category']);
 		expect(summarizeSeedPlacement(input)).toEqual(summarizeSeedPlacement(input));
+	});
+});
+
+/**
+ * THE COUNTS ENTRY POINT IS THE SAME MEASUREMENT, NOT A SECOND ONE.
+ *
+ * A caller that already holds per-placement counters (the ramp's gate 5 holds
+ * three integers per arm) used to expand them into one object per probe purely
+ * so this module could count them back down. `summarizeSeedProviderCounts` takes
+ * the integers directly — and because a second entry point into a threshold is
+ * exactly how two answers to one question get born, every case below asserts it
+ * against the observation form rather than against a copy of the rules.
+ */
+describe('the roll-up reads counts and observations identically', () => {
+	const cases: Array<{ name: string; own: SeedPlacement[]; reference: SeedPlacement[] }> = [
+		{
+			name: 'healthy at the reached threshold',
+			own: [...Array.from({ length: 9 }, () => 'inbox' as SeedPlacement), 'spam'],
+			reference: [],
+		},
+		{ name: 'a collapse', own: ['inbox', 'spam', 'spam', 'spam'], reference: [] },
+		{ name: 'a vanished probe', own: ['inbox', 'inbox', 'inbox', 'missing'], reference: [] },
+		{
+			name: 'a Gmail tab, which counts as reached',
+			own: ['category', 'category', 'category'],
+			reference: [],
+		},
+		{ name: 'a sweep below the minimum sample', own: ['inbox', 'inbox'], reference: [] },
+		{ name: 'nothing at all', own: [], reference: [] },
+		{
+			name: 'both arms, own at or above the reference',
+			own: ['inbox', 'inbox', 'inbox', 'spam'],
+			reference: ['inbox', 'inbox', 'inbox', 'spam'],
+		},
+		{
+			name: 'both arms, own below the reference',
+			own: ['spam', 'spam', 'spam', 'inbox'],
+			reference: ['inbox', 'inbox', 'inbox', 'inbox'],
+		},
+	];
+
+	function counts(placements: readonly SeedPlacement[]): SeedArmPlacementCounts {
+		const tally: Partial<Record<SeedPlacement, number>> = {};
+		for (const placement of placements) tally[placement] = (tally[placement] ?? 0) + 1;
+		return tally;
+	}
+
+	for (const testCase of cases) {
+		it(`agrees on ${testCase.name}`, () => {
+			expect(
+				summarizeSeedProviderCounts('gmail', {
+					own: counts(testCase.own),
+					reference: counts(testCase.reference),
+				})
+			).toEqual(
+				summarizeSeedProvider('gmail', [
+					...observations('gmail', testCase.own, 'own'),
+					...observations('gmail', testCase.reference, 'reference'),
+				])
+			);
+		});
+	}
+
+	it('treats an omitted arm and an empty one the same way', () => {
+		expect(summarizeSeedProviderCounts('gmail', {})).toEqual(
+			summarizeSeedProviderCounts('gmail', { own: {}, reference: null })
+		);
+	});
+
+	/**
+	 * A SAMPLE SIZE IS THE ONE NUMBER `insufficient_data` TURNS ON, so a caller's
+	 * negative, fractional or non-finite counter may never become one. Scrubbed to
+	 * zero rather than trusted or thrown on — the same posture `safeOutcomeCount`
+	 * takes on every other counter the gates read.
+	 */
+	it('scrubs a hostile counter rather than measuring with it', () => {
+		const hostile = summarizeSeedProviderCounts('gmail', {
+			own: { inbox: Number.NaN, spam: -100, missing: Number.POSITIVE_INFINITY },
+		});
+		expect(hostile.sampleSize).toBe(0);
+		expect(hostile.status).toBe('insufficient_data');
+		expect(hostile.anyMissing).toBe(false);
+		// A fractional count cannot buy a whole probe of sample.
+		expect(summarizeSeedProviderCounts('gmail', { own: { inbox: 2.9 } }).sampleSize).toBe(2);
 	});
 });
