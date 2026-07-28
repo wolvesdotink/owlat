@@ -130,8 +130,8 @@ export const sweepSunsetPolicy = internalMutation({
 		 */
 		maxSuppressions: v.optional(v.number()),
 		/**
-		 * The tick's second reading of time, computed ONCE at the head of the chain
-		 * and carried down. Recomputing it per batch would be self-defeating: the
+		 * The tick's second reading of time (see `SunsetClock`), computed ONCE at
+		 * the head of the chain and carried down. Recomputing it per batch would be self-defeating: the
 		 * previous batch stamped its rows with the (possibly wrong) `now`, so batch
 		 * two would be corroborating this clock against itself.
 		 */
@@ -186,12 +186,13 @@ export const sweepSunsetPolicy = internalMutation({
 			max: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 		});
 
-		// THE SECOND READING OF TIME (see `SunsetFacts.corroboratingInstant`): the
-		// freshest evaluation stamp in the table, written by an earlier tick under
-		// an earlier reading of the clock. Same index, opposite end, one row — so
-		// the guard against a jumped host clock costs a single point read per
-		// batch. Absent on a deployment that has never swept, which is exactly the
-		// case the blast-radius ceiling covers instead.
+		// THE SECOND READING OF TIME (see `SunsetClock`): the freshest evaluation
+		// stamp in the table, written by an earlier tick under an earlier reading
+		// of the clock. Derived by `loadSunsetCorroboratingInstant` — the SAME
+		// derivation `getSunsetPolicies` reports the stall from, so the screen and
+		// the engine cannot disagree. Same index, opposite end, one row, and only
+		// at the head of the chain. Absent on a deployment that has never swept,
+		// which is exactly the case the blast-radius ceiling covers instead.
 		//
 		// THE OPERATOR'S RE-ARM STAMP IS A SECOND SOURCE, and it is what stops this
 		// guard from latching on forever. The sweep is the ONLY writer of the
