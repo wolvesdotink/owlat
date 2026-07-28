@@ -51,6 +51,7 @@ import {
 	type SubdomainSigningIdentity,
 } from './streamSubdomainRecords';
 import {
+	SIGNING_SUBDOMAIN_ROLES,
 	SUBDOMAIN_ADVICE_COPY,
 	planStreamSubdomains,
 	planSubdomainWarming,
@@ -235,7 +236,7 @@ export const getStreamSubdomainPlan = authedQuery({
 		}
 
 		const signingIdentities: Partial<Record<SigningSubdomainRole, SubdomainSigningIdentity>> = {};
-		for (const role of ['transactional', 'bulk'] as const) {
+		for (const role of SIGNING_SUBDOMAIN_ROLES) {
 			const registered = registeredByHost.get(layout.subdomainsByRole[role].host) ?? null;
 			const identityRow =
 				registered === null
@@ -254,12 +255,18 @@ export const getStreamSubdomainPlan = authedQuery({
 		const spfInclude = getOptional('MTA_SPF_INCLUDE');
 
 		// PER-FQDN, from each proposed host's own row — see dmarcSettingsForHost.
-		const dmarcByRole: Record<SigningSubdomainRole, SubdomainDmarcSettings> = {
-			transactional: dmarcSettingsForHost(
-				registeredByHost.get(layout.subdomainsByRole.transactional.host)
-			),
-			bulk: dmarcSettingsForHost(registeredByHost.get(layout.subdomainsByRole.bulk.host)),
-		};
+		const dmarcByRole: Record<SigningSubdomainRole, SubdomainDmarcSettings> =
+			SIGNING_SUBDOMAIN_ROLES.reduce<Record<SigningSubdomainRole, SubdomainDmarcSettings>>(
+				(byRole, role) => {
+					byRole[role] = dmarcSettingsForHost(
+						registeredByHost.get(layout.subdomainsByRole[role].host)
+					);
+					return byRole;
+				},
+				// Seeded total so the Record stays total for every role, not a cast
+				// over a map that a future role could silently leave a hole in.
+				{ transactional: { policy: DEFAULT_DMARC_POLICY }, bulk: { policy: DEFAULT_DMARC_POLICY } }
+			);
 
 		const { records } = buildStreamSubdomainRecords(layout, {
 			dmarcByRole,
@@ -278,7 +285,6 @@ export const getStreamSubdomainPlan = authedQuery({
 		const bimiLogoUrl = getOptional('MTA_BIMI_LOGO_URL')?.trim();
 		const bimiVmcUrl = getOptional('MTA_BIMI_VMC_URL')?.trim();
 		const bimiSelector = getOptional('MTA_BIMI_SELECTOR')?.trim();
-		const sending: readonly SigningSubdomainRole[] = ['transactional', 'bulk'];
 
 		return {
 			ok: true,
@@ -300,7 +306,7 @@ export const getStreamSubdomainPlan = authedQuery({
 			// ON — the same knobs its `_dmarc` row carries. Reading another host's
 			// `p=` would offer a logo on a name at `p=none` (or withhold one from an
 			// enforcing name) purely because of which domain the operator opened.
-			bimiOffers: sending.map((role) => {
+			bimiOffers: SIGNING_SUBDOMAIN_ROLES.map((role) => {
 				const host = layout.subdomainsByRole[role].host;
 				const dmarc = dmarcByRole[role];
 				return {

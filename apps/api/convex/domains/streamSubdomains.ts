@@ -69,6 +69,19 @@ export const STREAM_SUBDOMAIN_ROLES = {
 	automation: 'bulk',
 } as const satisfies Record<SendingStream, Exclude<SendingSubdomainRole, 'bounce'>>;
 
+/**
+ * The roles that SIGN and WARM, in the order every surface iterates them.
+ *
+ * One list, because five copies of `['transactional', 'bulk']` is five places a
+ * third signing role would have to be found: the wizard's identity lookup, its
+ * per-host DMARC map and its BIMI offers, the one-pass record generator, and
+ * the warming plan.
+ */
+export const SIGNING_SUBDOMAIN_ROLES = [
+	'transactional',
+	'bulk',
+] as const satisfies readonly SigningSubdomainRole[];
+
 /** The IP pool a role sends from. The bounce host does not send. */
 export const SUBDOMAIN_ROLE_POOLS = {
 	transactional: 'transactional',
@@ -416,11 +429,7 @@ export interface SubdomainWarmingPlan {
  * carries the return path and sends nothing, so it has no reputation to warm.
  */
 export function planSubdomainWarming(layout: SubdomainLayoutProposal): SubdomainWarmingPlan[] {
-	const signing: SigningSubdomainPlan[] = [
-		layout.subdomainsByRole.transactional,
-		layout.subdomainsByRole.bulk,
-	];
-	return signing.map((subdomain) => ({
+	return SIGNING_SUBDOMAIN_ROLES.map((role) => layout.subdomainsByRole[role]).map((subdomain) => ({
 		host: subdomain.host,
 		role: subdomain.role,
 		pool: subdomain.pool,

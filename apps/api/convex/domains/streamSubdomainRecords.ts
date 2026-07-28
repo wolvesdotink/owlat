@@ -55,6 +55,7 @@ import {
 	type SpfQualifier,
 } from './spf';
 import {
+	SIGNING_SUBDOMAIN_ROLES,
 	STREAM_SUBDOMAIN_ROLES,
 	planStreamSubdomains,
 	resolveCellSendingIdentity,
@@ -289,12 +290,8 @@ export function buildStreamSubdomainRecords(
 		bulk: {},
 	};
 
-	const signing: readonly (readonly [SigningSubdomainRole, SigningSubdomainPlan])[] = [
-		['transactional', layout.subdomainsByRole.transactional],
-		['bulk', layout.subdomainsByRole.bulk],
-	];
-
-	for (const [role, subdomain] of signing) {
+	for (const role of SIGNING_SUBDOMAIN_ROLES) {
+		const subdomain = layout.subdomainsByRole[role];
 		// Byte-for-byte what the shipped adapter emits for this host, INCLUDING
 		// emitting nothing at all when the include is unset.
 		if (spfInclude) {
