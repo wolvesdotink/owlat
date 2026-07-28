@@ -178,6 +178,20 @@ const sendingDetail = computed(() => {
 			</div>
 			<div class="flex shrink-0 items-center gap-4">
 				<NuxtLink
+					to="/dashboard/delivery/independence"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:trending-up" class="w-4 h-4" />
+					Independence
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/cells"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:grid-3x3" class="w-4 h-4" />
+					Cells
+				</NuxtLink>
+				<NuxtLink
 					to="/dashboard/delivery/measurement"
 					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
 				>
