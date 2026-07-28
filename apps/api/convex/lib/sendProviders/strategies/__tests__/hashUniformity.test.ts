@@ -161,34 +161,25 @@ describe('mix hash — a caller cannot steer the arm', () => {
 	});
 
 	it('keeps an identity-less recipient out of the calibration slice entirely', () => {
-		// The one branch where the two partitions COULD collapse: with neither a
-		// contact id nor a fallback key both hash helpers have no key material,
-		// so the arm falls back to the caller's random unit. If the slice draw
-		// fell back to that same unit, slice membership would be a deterministic
-		// function of the arm and every calibration recipient would land in the
-		// own arm — a one-armed sample handed to the engagement-ratio gate (D8).
-		// An identity-less recipient has nothing stable to join a randomized
-		// comparison on, so it is simply never in the slice.
+		// With neither a contact id nor a fallback key, BOTH partitions have no
+		// key material. Neither may substitute the other's draw: a slice whose
+		// membership were a function of the arm would hand the engagement-ratio
+		// gate a one-armed sample (D8). Both simply return null, and the
+		// decision fails closed.
 		const recipient = {};
 		expect(armBucketFor(recipient, 1)).toBeNull();
 		expect(calibrationBucketFor(recipient, 1)).toBeNull();
 
-		let calibration = 0;
-		let own = 0;
-		const draws = 20_000;
-		for (let index = 0; index < draws; index += 1) {
-			const decision = decideMixAssignment({
-				cell: { ownShare: 0.5, mixVersion: 1 },
-				recipient,
-				// Sweep the whole unit interval, including the region a shared
-				// draw would have classified as calibration.
-				randomUnit: (index + 0.5) / draws,
-			});
-			if (decision.isCalibration) calibration += 1;
-			if (decision.arm === 'own') own += 1;
+		for (const mixVersion of [1, 2, 7, 9_999]) {
+			for (const ownShare of [0.02, 0.25, 0.5, 0.9]) {
+				const decision = decideMixAssignment({
+					cell: { ownShare, mixVersion },
+					recipient,
+				});
+				expect(decision.isCalibration).toBe(false);
+				expect(decision.arm).toBe('reference');
+				expect(decision.basis).toBe('unidentified');
+			}
 		}
-		expect(calibration).toBe(0);
-		// The arm itself is still an unbiased draw off the random unit.
-		expect(Math.abs(own / draws - 0.5)).toBeLessThan(0.01);
 	});
 });

@@ -90,20 +90,26 @@ describe('adaptive_mix — missing identity and missing rank', () => {
 		expect(Math.abs(own / sendIds.length - 0.3)).toBeLessThan(0.015);
 	});
 
-	it('with NO identity at all it uses the supplied draw, and never invents "own"', () => {
-		const withDraw = decideMixAssignment({
+	it('with NO identity at all it fails closed to reference, never inventing "own"', () => {
+		// There is no draw to reach for: the decision is a total function of its
+		// inputs, so an identity-less recipient can only take the arm that costs
+		// nothing to get wrong.
+		for (const ownShare of [0.02, 0.3, 0.5, 0.97]) {
+			const decision = decideMixAssignment({
+				cell: { ownShare, mixVersion: 1 },
+				recipient: {},
+			});
+			expect(decision.arm).toBe('reference');
+			expect(decision.basis).toBe('unidentified');
+			expect(decision.isCalibration).toBe(false);
+		}
+		// An empty-string key is no key, and must not become one by coercion.
+		const emptyKey = decideMixAssignment({
 			cell: { ownShare: 0.5, mixVersion: 1 },
-			recipient: {},
-			randomUnit: 0.1,
+			recipient: { contactId: '', fallbackKey: '' },
 		});
-		expect(withDraw.arm).toBe('own');
-		const withoutDraw = decideMixAssignment({
-			cell: { ownShare: 0.5, mixVersion: 1 },
-			recipient: {},
-		});
-		expect(withoutDraw.arm).toBe('reference');
-		expect(withoutDraw.basis).toBe('unidentified');
-		expect(withoutDraw.isCalibration).toBe(false);
+		expect(emptyKey.basis).toBe('unidentified');
+		expect(emptyKey.arm).toBe('reference');
 	});
 
 	it('a missing engagement rank falls back to the random bucket, never to "own"', () => {

@@ -4,9 +4,9 @@
  * Given a cell's share and one recipient's identity, decide which arm the
  * recipient belongs to and whether it belongs to the randomized calibration
  * slice. No clock, no database, no environment, no `Math.random()`: the one
- * source of non-determinism the algorithm can need (a recipient with no stable
- * identity at all) arrives as the `randomUnit` PARAMETER, so every branch is
- * reproducible from a fixture.
+ * decision is a total function of its inputs, and a recipient with no stable
+ * identity at all fails CLOSED to the reference arm rather than reaching for a
+ * draw — so every branch is reproducible from a fixture.
  *
  * THE ANTI-COHORT PROPERTY (D7) is the reason this file exists. Salting the
  * hash with `contactId` alone would put a contact in the same arm for every
@@ -119,12 +119,6 @@ export interface MixRecipientIdentity {
 export interface MixAssignmentInput {
 	readonly cell: MixCellState;
 	readonly recipient: MixRecipientIdentity;
-	/**
-	 * A `[0,1)` draw, used ONLY when the recipient has neither a contact id nor
-	 * a fallback key. Passed in rather than drawn here so the decision function
-	 * stays pure (D15).
-	 */
-	readonly randomUnit?: number | undefined;
 }
 
 export interface MixAssignment {
@@ -135,6 +129,16 @@ export interface MixAssignment {
 	readonly mixVersion: number;
 	/** The recipient's slot in `[0, MIX_BUCKET_SPACE)`. */
 	readonly bucket: number;
+	/**
+	 * Why this decision came out the way it did. DIAGNOSTIC ONLY: it is not
+	 * persisted on the assignment row, because the audit trail D12 asks for is
+	 * owned by P3's `mixDecisions` table, which records the CONTROLLER's
+	 * per-cell evaluation (from/to share, verdict, failed gate, gate inputs) —
+	 * the decision a human can act on. A per-recipient copy of a branch label
+	 * would be a second, far larger audit trail of a decision nobody reviews
+	 * one recipient at a time. Read it in tests and at a debugger; do not add a
+	 * production reader without moving the field to the row first.
+	 */
 	readonly basis: MixAssignmentBasis;
 	/** The rank actually used, when the decision was stratified. */
 	readonly engagementRank?: number | undefined;
@@ -199,13 +203,6 @@ function identityKey(recipient: MixRecipientIdentity): string | null {
 	return key !== undefined && key !== '' ? key : null;
 }
 
-function randomBucket(randomUnit: number | undefined): number | null {
-	if (randomUnit === undefined || !Number.isFinite(randomUnit)) return null;
-	if (randomUnit <= 0) return 0;
-	if (randomUnit >= 1) return MIX_BUCKET_SPACE - 1;
-	return Math.min(MIX_BUCKET_SPACE - 1, Math.floor(randomUnit * MIX_BUCKET_SPACE));
-}
-
 /**
  * The hash namespaces this module partitions its bucket space into. A CLOSED
  * set, and typed: the arm bucket and the calibration bucket must never be able
@@ -252,15 +249,30 @@ function mixKey(
 }
 
 /**
- * The recipient's arm bucket, or `null` when there is no stable identity to
- * hash. Exported so tests assert against the key shape this module OWNS rather
- * than hand-rebuilding it — a test that rebuilds the key keeps passing after
- * the key changes, while testing a format the code no longer produces.
+ * The recipient's bucket in ONE hash partition, or `null` when there is no
+ * stable identity to hash. The partition is the only thing that varies between
+ * the arm draw and the calibration draw, so it is the only parameter: two
+ * copies of this body differing by a string literal is exactly how the two
+ * partitions would eventually drift into agreeing.
  */
-export function armBucketFor(recipient: MixRecipientIdentity, mixVersion?: number): number | null {
+function partitionBucketFor(
+	consumer: MixHashConsumer,
+	recipient: MixRecipientIdentity,
+	mixVersion?: number
+): number | null {
 	const key = identityKey(recipient);
 	if (key === null) return null;
-	return bucketFor(mixKey('arm', key, recipient, normalizeMixVersion(mixVersion)));
+	return bucketFor(mixKey(consumer, key, recipient, normalizeMixVersion(mixVersion)));
+}
+
+/**
+ * The recipient's arm bucket. Exported so tests assert against the key shape
+ * this module OWNS rather than hand-rebuilding it — a test that rebuilds the
+ * key keeps passing after the key changes, while testing a format the code no
+ * longer produces.
+ */
+export function armBucketFor(recipient: MixRecipientIdentity, mixVersion?: number): number | null {
+	return partitionBucketFor('arm', recipient, mixVersion);
 }
 
 /** The recipient's calibration-slice bucket, from its own partition. */
@@ -268,9 +280,7 @@ export function calibrationBucketFor(
 	recipient: MixRecipientIdentity,
 	mixVersion?: number
 ): number | null {
-	const key = identityKey(recipient);
-	if (key === null) return null;
-	return bucketFor(mixKey('calibration', key, recipient, normalizeMixVersion(mixVersion)));
+	return partitionBucketFor('calibration', recipient, mixVersion);
 }
 
 /**
@@ -303,15 +313,19 @@ export function rankTieBreakUnit(key: string): number {
 export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	const ownShare = clampOwnShare(input.cell.ownShare);
 	const mixVersion = normalizeMixVersion(input.cell.mixVersion);
-	const bucket = armBucketFor(input.recipient, mixVersion) ?? randomBucket(input.randomUnit);
 
+	// BEFORE the hash, not after: until the controller starts writing shares
+	// every cell resolves to one of these two, and the bucket a degenerate
+	// decision would compute is recorded nowhere — `sendAssignments` has no
+	// bucket column. Hashing a ~60-character key per recipient per page for a
+	// value that is then discarded is the whole campaign's cost for nothing.
 	if (ownShare <= OWN_SHARE_FLOOR) {
 		return {
 			arm: 'reference',
 			isCalibration: false,
 			ownShare,
 			mixVersion,
-			bucket: bucket ?? 0,
+			bucket: 0,
 			basis: 'degenerate_reference',
 		};
 	}
@@ -321,10 +335,12 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 			isCalibration: false,
 			ownShare,
 			mixVersion,
-			bucket: bucket ?? 0,
+			bucket: 0,
 			basis: 'degenerate_own',
 		};
 	}
+
+	const bucket = armBucketFor(input.recipient, mixVersion);
 	if (bucket === null) {
 		return {
 			arm: 'reference',
@@ -342,13 +358,9 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	// the key. Slice membership must be independent of engagement, or the gate
 	// that reads it is measuring cohort quality again (D8).
 	//
-	// There is deliberately NO random fallback here. The arm draw may fall back
-	// to `randomUnit` when the recipient carries no stable identity; if the
-	// slice draw did the same it would read the SAME random unit, slice
-	// membership would become a deterministic function of the arm, and every
-	// calibration recipient of such a batch would land in one arm. An
-	// identity-less recipient has nothing stable to join a randomized
-	// comparison on, so it is simply not in the slice.
+	// An identity-less recipient never reaches here: it has nothing stable to
+	// join a randomized comparison on, so it fails closed to the reference arm
+	// above and is simply not in the slice.
 	const sliceBucket = calibrationBucketFor(input.recipient, mixVersion);
 	const isCalibration = sliceBucket !== null && sliceBucket < sliceThreshold;
 

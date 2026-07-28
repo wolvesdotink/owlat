@@ -172,17 +172,6 @@ export async function prepareCellMixResolver(
 							// replay in `route.ts` can never drift apart.
 							cell: mixCellStateFor(providerCell),
 							recipient,
-							// The ONLY non-reproducible input the decision can take,
-							// and only for a recipient with neither a contact id nor
-							// a fallback key. Every production caller supplies the
-							// send id as a fallback key, so this is drawn solely for
-							// the theoretical caller that supplies neither —
-							// spending a draw per recipient that nothing consumes
-							// would also make the seam gratuitously irreproducible
-							// on an OCC retry.
-							...(recipient.contactId === undefined && recipient.fallbackKey === undefined
-								? { randomUnit: Math.random() }
-								: {}),
 						},
 					}
 				: undefined;
