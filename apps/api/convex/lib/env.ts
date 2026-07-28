@@ -168,6 +168,14 @@ export type EnvKey =
 	// (user-triggered) AI is paused once remaining headroom drops within it.
 	// Default 0.2.
 	| 'AI_SPEND_ADVISORY_RESERVE_FRACTION'
+	// Microsoft SNDS "Automated Data Access" feed URLs (comma- or
+	// whitespace-separated, `https` only), one per registered IP range. Each URL
+	// is a BEARER CAPABILITY to the deployment's SNDS data — it is read only by
+	// the SNDS poller, never logged and never returned to a client. Unset ⇒ the
+	// poller returns immediately having written nothing: SNDS enrollment is
+	// additive-only, so its absence lowers measurement confidence for the
+	// Microsoft cell and slows that cell's ramp, and does nothing else.
+	| 'SNDS_DATA_FEED_URLS'
 	// Analytics & links
 	| 'POSTHOG_API_KEY'
 	| 'POSTHOG_HOST'

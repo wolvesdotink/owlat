@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { BLOCKLIST_VIEW_LIMIT } from '../blockedEmails';
 import { authedQuery } from '../lib/authedFunctions';
 import { requirePlatformAdmin } from './platformAdmin';
 import { summarize } from '../analytics/sendingReputation';
@@ -75,28 +76,39 @@ export const getOrganizationDetail = authedQuery({
 		// Get recent content scan results
 		const scanResults = await ctx.db.query('contentScanResults').order('desc').take(20);
 
-		// Get blocked email counts via `by_reason` index. Each .collect() is
-		// bounded to one reason class — far smaller than the global table.
-		const [bouncedRows, complainedRows, manualRows] = await Promise.all([
+		// Blocked-email counts via the `by_reason` index, each CAPPED at
+		// BLOCKLIST_VIEW_LIMIT. The index narrows the scan to one reason class but
+		// does not bound it: blockedEmails is append-only with no expiry, and
+		// `unengaged` is written by the sunset cron rather than by an operator or a
+		// recipient, so any class can outgrow Convex's per-query read limit and take
+		// this whole page down. Counts saturate at the cap — the same way
+		// `blockedEmails.getCountsByReason` saturates, so the two counters of the
+		// same thing agree at scale.
+		const [bouncedRows, complainedRows, manualRows, unengagedRows] = await Promise.all([
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
-				.collect(), // bounded: per-reason slice
+				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'complained'))
-				.collect(), // bounded: per-reason slice
+				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
-				.collect(), // bounded: per-reason slice (admin-curated)
+				.take(BLOCKLIST_VIEW_LIMIT),
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
+				.take(BLOCKLIST_VIEW_LIMIT),
 		]);
 
 		const blockedCounts = {
-			total: bouncedRows.length + complainedRows.length + manualRows.length,
+			total: bouncedRows.length + complainedRows.length + manualRows.length + unengagedRows.length,
 			bounced: bouncedRows.length,
 			complained: complainedRows.length,
 			manual: manualRows.length,
+			unengaged: unengagedRows.length,
 		};
 
 		// Get recent campaigns

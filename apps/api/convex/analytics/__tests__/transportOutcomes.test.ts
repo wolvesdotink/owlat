@@ -30,7 +30,7 @@ import {
 import type { Effect } from '../../delivery/sendLifecycle/effects';
 import { recordTransportOutcomeForCell, recordTransportOutcomeForSend } from '../transportOutcomes';
 import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../transportOutcomeSummary';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	GMAIL_CAMPAIGN_CELL,
 	OUTCOME_ORG,

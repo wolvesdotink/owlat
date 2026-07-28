@@ -20,9 +20,14 @@ describe('Send route strategy registry', () => {
 		expect(SEND_ROUTE_STRATEGIES.single.isDeterministic).toBe(true);
 		expect(SEND_ROUTE_STRATEGIES.priority_failover.isDeterministic).toBe(true);
 		expect(SEND_ROUTE_STRATEGIES.workload_split.isDeterministic).toBe(false);
+		// `adaptive_mix` is the answer to that: it decides per RECIPIENT from a
+		// stable hash (or replays a recorded arm), so the enqueue-time record and
+		// the dispatch-time resolution are the same answer.
+		expect(SEND_ROUTE_STRATEGIES.adaptive_mix.isDeterministic).toBe(true);
 		expect(isDeterministicRouteStrategy('single')).toBe(true);
 		expect(isDeterministicRouteStrategy('priority_failover')).toBe(true);
 		expect(isDeterministicRouteStrategy('workload_split')).toBe(false);
+		expect(isDeterministicRouteStrategy('adaptive_mix')).toBe(true);
 		// An unrecognised or absent kind never reaches a strategy at all —
 		// `resolveRoute` falls straight through to the env fallback, which is
 		// deterministic.
@@ -35,6 +40,7 @@ describe('Send route strategy registry', () => {
 		expect(strategyFor('single').kind).toBe('single');
 		expect(strategyFor('priority_failover').kind).toBe('priority_failover');
 		expect(strategyFor('workload_split').kind).toBe('workload_split');
+		expect(strategyFor('adaptive_mix').kind).toBe('adaptive_mix');
 	});
 
 	it('strategyFor throws on unknown kinds', () => {
@@ -43,15 +49,16 @@ describe('Send route strategy registry', () => {
 		);
 	});
 
-	it('SEND_ROUTE_STRATEGIES has exactly the three documented kinds', () => {
+	it('SEND_ROUTE_STRATEGIES has exactly the four documented kinds', () => {
 		const keys = Object.keys(SEND_ROUTE_STRATEGIES).sort();
-		expect(keys).toEqual(['priority_failover', 'single', 'workload_split']);
+		expect(keys).toEqual(['adaptive_mix', 'priority_failover', 'single', 'workload_split']);
 	});
 
 	it('isSendRouteStrategyKind narrows correctly', () => {
 		expect(isSendRouteStrategyKind('single')).toBe(true);
 		expect(isSendRouteStrategyKind('priority_failover')).toBe(true);
 		expect(isSendRouteStrategyKind('workload_split')).toBe(true);
+		expect(isSendRouteStrategyKind('adaptive_mix')).toBe(true);
 		expect(isSendRouteStrategyKind('unknown')).toBe(false);
 		expect(isSendRouteStrategyKind(undefined)).toBe(false);
 	});

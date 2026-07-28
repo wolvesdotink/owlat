@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { CampaignRecipient } from './audienceResolution';
+import type { CampaignRecipient } from './audienceCandidates';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
@@ -540,6 +540,9 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
+				// Keys the deliverability seed-probe set: the two A/B arms are
+				// different messages and each gets its own placement reading.
+				abVariant: args.abVariant,
 			});
 		}
 	};

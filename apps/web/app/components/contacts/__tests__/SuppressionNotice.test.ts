@@ -13,7 +13,7 @@ import { mount } from '@vue/test-utils';
 
 import SuppressionNotice from '../SuppressionNotice.vue';
 
-type Reason = 'bounced' | 'complained' | 'manual';
+type Reason = 'bounced' | 'complained' | 'manual' | 'unengaged';
 
 function mountNotice(props: {
 	reason: Reason;
@@ -38,10 +38,26 @@ describe('ContactsSuppressionNotice', () => {
 		expect(wrapper.text()).toContain('Not receiving mail');
 	});
 
+	/**
+	 * THE HEADLINE IS PER-REASON, and `unengaged` is the reason it has to be.
+	 * That row is a MARKETING-ONLY hygiene decision: the address still receives
+	 * transactional mail, double-opt-in confirmations and 1:1 agent replies.
+	 * Presenting it identically to a hard-bounce block would push the operator
+	 * into a manual removal they do not need.
+	 */
+	it('says campaigns, not mail, for a marketing-only hygiene suppression', () => {
+		const wrapper = mountNotice({ reason: 'unengaged' });
+		expect(wrapper.text()).toContain('Not receiving campaigns');
+		expect(wrapper.text()).not.toContain('Not receiving mail');
+	});
+
 	it('renders a plain-language phrase per reason (no jargon)', () => {
 		expect(mountNotice({ reason: 'bounced' }).text()).toContain('bounced on Mar 3');
 		expect(mountNotice({ reason: 'complained' }).text()).toContain('complained on Mar 3');
 		expect(mountNotice({ reason: 'manual' }).text()).toContain('manually suppressed on Mar 3');
+		expect(mountNotice({ reason: 'unengaged' }).text()).toContain(
+			'paused on Mar 3 after months with no opens or clicks'
+		);
 	});
 
 	it('offers the remove action when the viewer can manage contacts', () => {

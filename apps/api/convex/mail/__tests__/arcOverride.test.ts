@@ -17,7 +17,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 
 async function setupMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'_storage'>> {
 	let rawStorageId!: Id<'_storage'>;

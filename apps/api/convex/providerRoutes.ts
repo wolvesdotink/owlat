@@ -82,10 +82,17 @@ const providerEntryValidator = v.object({
 	isEnabled: v.boolean(),
 });
 
+// Mirrors `SendRouteStrategyKind` (lib/sendProviders/strategies/types.ts).
+// `adaptive_mix` is CONTROLLER-OWNED: the ramp controller selects it, and the
+// operator UI renders it read-only rather than offering it in the strategy
+// picker. It is accepted here so an existing adaptive_mix row survives an
+// unrelated edit — a validator that rejected the kind the schema already stores
+// would silently downgrade the route on the next save.
 const strategyValidator = v.union(
 	v.literal('single'),
 	v.literal('priority_failover'),
-	v.literal('workload_split')
+	v.literal('workload_split'),
+	v.literal('adaptive_mix')
 );
 
 const deliverabilityFallbackValidator = v.object({

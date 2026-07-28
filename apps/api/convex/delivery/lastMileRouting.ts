@@ -23,6 +23,12 @@ interface LastMileInput {
 	startedAt: number;
 	deliveryDomain: DeliveryDomain;
 	mtaReconciliation?: boolean;
+	/**
+	 * The durable Send id. Passed to route resolution so an `adaptive_mix` cell
+	 * dispatches on the arm the enqueue transaction RECORDED for this recipient,
+	 * instead of a second, independently-taken decision.
+	 */
+	sendId?: string;
 }
 
 export interface LastMileRoutingReady {
@@ -89,6 +95,7 @@ export async function resolveLastMileRouting(
 		messageType: input.messageType,
 		to: input.to,
 		from: input.from,
+		...(input.sendId !== undefined ? { sendId: input.sendId } : {}),
 	});
 	// An open org-wide safety circuit, or a fallback whose relay identity is
 	// unverified, is a "not right now" — holding keeps the message alive until
@@ -210,6 +217,7 @@ export async function resolveLastMileRouting(
 			messageType: input.messageType,
 			to: input.to,
 			from: input.from,
+			...(input.sendId !== undefined ? { sendId: input.sendId } : {}),
 			forceRelayReason: decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open',
 		});
 		route = relay.route;

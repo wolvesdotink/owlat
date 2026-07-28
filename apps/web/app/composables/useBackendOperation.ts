@@ -1,10 +1,7 @@
 import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
 import type { Ref } from 'vue';
-import {
-	normalizeToOperationError,
-	categoryTreatment,
-	operationCopy,
-} from '~/lib/operationError';
+import type { OperationError } from '@owlat/shared/operationError';
+import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
 
 export interface BackendOperationOptions {
 	/** Short human label for the operation — used in telemetry on genuine faults. */
@@ -16,6 +13,23 @@ export interface BackendOperationOptions {
 	 * a form field) instead of as a toast. When omitted, those categories toast.
 	 */
 	inlineTarget?: Ref<string | null>;
+	/**
+	 * Last look at a normalized failure BEFORE the category → treatment policy
+	 * runs. Return `true` to claim it: the default surface (toast / inline /
+	 * redirect) and the telemetry report are both skipped, because the caller has
+	 * taken responsibility for showing the user something better.
+	 *
+	 * This is NOT a general escape hatch from ADR-0036's one policy — it exists
+	 * for the narrow case where a backend refusal is not really a fault but an
+	 * OFFER the caller can render as a normal UI state. The campaign capacity
+	 * gate is the motivating case: `exceeds_sending_capacity` hands back a
+	 * structured multi-day schedule, and a red toast is precisely the wrong
+	 * treatment for "sending over 4 days" (deliverability plan D14 — a multi-day
+	 * send is a normal, visible state, never an error and never a surprise).
+	 *
+	 * Return `false` (or omit the option) and nothing changes.
+	 */
+	onError?: (error: OperationError) => boolean;
 }
 
 /**
@@ -32,11 +46,9 @@ export interface BackendOperationOptions {
  * module — they don't go through the Convex client, so the error vocabulary
  * and telemetry policy here don't apply to them.
  */
-export function useBackendOperation<
-	M extends FunctionReference<'mutation' | 'action'>,
->(
+export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
-	opts: BackendOperationOptions,
+	opts: BackendOperationOptions
 ): {
 	run: (args: FunctionArgs<M>) => Promise<FunctionReturnType<M> | undefined>;
 	isLoading: Readonly<Ref<boolean>>;
@@ -52,6 +64,9 @@ export function useBackendOperation<
 
 	function applyTreatment(e: unknown): void {
 		const op = normalizeToOperationError(e);
+		// Claimed by the caller — it is rendering this failure itself, so neither
+		// the default surface nor the telemetry report applies.
+		if (opts.onError?.(op) === true) return;
 		const treatment = categoryTreatment(op.category);
 		const copy = operationCopy(op);
 
@@ -81,9 +96,7 @@ export function useBackendOperation<
 		}
 	}
 
-	const run = async (
-		args: FunctionArgs<M>,
-	): Promise<FunctionReturnType<M> | undefined> => {
+	const run = async (args: FunctionArgs<M>): Promise<FunctionReturnType<M> | undefined> => {
 		inlineError.value = null;
 
 		if (!client) {

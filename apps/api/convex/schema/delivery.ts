@@ -19,15 +19,15 @@ import {
 export const deliveryTables = {
 	...returnPathTables,
 
-	// Blocked Emails - email addresses that should not receive emails
-	// Used to protect sender reputation by excluding bounced, complained, or manually blocked addresses
+	// Blocked Emails — addresses that must not be sent to, so a bounce, a
+	// complaint, a manual block or a sunset decision cannot cost us reputation.
 	blockedEmails: defineTable({
 		email: v.string(), // The blocked email address (normalized to lowercase)
-		// Reason why this email was blocked
 		reason: v.union(
 			v.literal('bounced'), // Hard bounce - email address doesn't exist
 			v.literal('complained'), // Recipient marked email as spam
-			v.literal('manual') // Manually added to blocklist
+			v.literal('manual'), // Manually added to blocklist
+			v.literal('unengaged') // Sunset policy — see contacts/sunsetPolicy.ts
 		),
 		// Bounce type classification (hard = permanent, soft = temporary)
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
@@ -191,8 +191,7 @@ export const deliveryTables = {
 		expiresAt: v.number(), // 24h for clean, 1h for flagged
 	}).index('by_url_hash', ['urlHash']),
 
-	// Provider Routes - email provider routing configuration
-	// Determines which email provider (mta, ses, resend, smtp) to use per message type
+	// Provider Routes - which email provider (mta, ses, resend, smtp) per message type
 	providerRoutes: defineTable({
 		messageType: v.union(
 			v.literal('campaign'),
@@ -202,7 +201,8 @@ export const deliveryTables = {
 		strategy: v.union(
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
-			v.literal('workload_split') // Split traffic by weight across providers
+			v.literal('workload_split'), // Split traffic by weight across providers
+			v.literal('adaptive_mix') // Deterministic per-recipient split by the cell's share (D7)
 		),
 		// Ordered list of providers for this route
 		providers: v.array(

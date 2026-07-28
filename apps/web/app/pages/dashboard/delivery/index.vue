@@ -42,7 +42,7 @@ const { data: snapshots } = useOrganizationQuery(
 	api.analytics.reputationSnapshots.getDeliverySnapshots
 );
 
-// Suppression roll-up (bounced/complained/manual) for the quiet summary line.
+// Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
 const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
 
 const isLoading = computed(() => teamLoading.value || overviewLoading.value);
@@ -133,6 +133,7 @@ const suppressionParts = computed(() => {
 	if (c.bounced > 0) parts.push(`${c.bounced.toLocaleString()} bounced`);
 	if (c.complained > 0) parts.push(`${c.complained.toLocaleString()} complained`);
 	if (c.manual > 0) parts.push(`${c.manual.toLocaleString()} manual`);
+	if (c.unengaged > 0) parts.push(`${c.unengaged.toLocaleString()} unengaged`);
 	return { total: c.total, breakdown: parts.join(' · ') };
 });
 
@@ -175,13 +176,22 @@ const sendingDetail = computed(() => {
 					</p>
 				</div>
 			</div>
-			<NuxtLink
-				to="/dashboard/delivery/setup"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) shrink-0 mt-1"
-			>
-				<Icon name="lucide:settings-2" class="w-4 h-4" />
-				Delivery setup
-			</NuxtLink>
+			<div class="flex shrink-0 items-center gap-4">
+				<NuxtLink
+					to="/dashboard/delivery/measurement"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:activity" class="w-4 h-4" />
+					Measurement
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/setup"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:settings-2" class="w-4 h-4" />
+					Delivery setup
+				</NuxtLink>
+			</div>
 		</div>
 
 		<!-- The one readiness panel leads the hub: it derives a single truth for

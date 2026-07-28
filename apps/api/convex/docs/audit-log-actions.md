@@ -32,6 +32,14 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `contact.deleted` | `contact` | `{ email }` (soft-delete; hard cascade happens in cron; also emitted per-row by `bulkDelete`) |
 | `contact.imported` | `contact` | `{ count, source }` |
 | `contact.merged` | `contact` | `{ sourceContactId, sourceEmail }` (target is `resourceId`; source hard-deleted) |
+| `contact.sunset_reengagement` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_suppressed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` + `detailsBlob` (the full decision snapshot: facts, policy, verdict) |
+| `contact.sunset_resumed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_restored` | `contact` | `{ email, fromStage, exempted: true }` (operator-driven) |
+| `contact.sunset_exemption_changed` | `contact` | `{ email, exempt }` |
+| `contact.sunset_policy_updated` | `settings` | `{ topicId, changedFields, clearedFields, isEnabled, reengageAfterDays, suppressAfterDays }` (the values are the RESULTING row, `null` where it inherits) |
+| `contact.sunset_sweep_summary` | `settings` | `{ actor: 'sunset_engine', scanned, suppressed, reengaged, resumed, deferredSuppressions, suppressionCeiling, isSuppressionCeilingHit, message }`, plus `isClockSkewed: true` on the clock-abort variant only — one aggregated row per sweep tick that suppressed, or refused to suppress, anything |
+| `contact.sunset_clock_confirmed` | `settings` | `{ clockVerifiedAt, message }` (operator re-arm after a clock stall; `contacts/sunset:confirmSunsetClock`) |
 | `topic.created` / `topic.updated` / `topic.deleted` | `topic` | `{ name }` |
 | `email_template.created` | `email_template` | `{ name, type }` |
 | `email_template.updated` | `email_template` | `detailsBlob: { changes: {...} }` |
@@ -59,7 +67,10 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `sending_domain.created` / `registered` / `registration_failed` / `verified` / `verification_failed` / `regenerated` / `deleted` | `sending_domain` | `{ previousStatus?, newStatus?, applied, error? }` (lifecycle transitions; see ADR-0018) |
 | `sending_domain.dmarc_policy_changed` | `sending_domain` | `{ domain, previousPolicy, newPolicy, newSubdomainPolicy, newPct, applied }` |
 | `sending_domain.dkim_rotated` | `sending_domain` | `{ domain, selector, phase, applied }` |
+| `sending_domain.yahoo_cfl_changed` | `sending_domain` | `{ event, changed, state, reason, complaintSource }` — one row per Yahoo CFL guided-flow event (`submit` / `confirm` / `reset`), including refusals, so a downgrade of the yahoo cell's complaint measurement always names its cause |
 | `sending_domain.return_path_changed` | `sending_domain` | `{ domain, previousReturnPathHost, newReturnPathHost, applied }` on edit; `{ domain, returnPathHost, applied: 'sync_failed', attempts, error }` when the MTA push permanently fails |
+| `seed_mailbox.rotation_reminder` | `seed_mailbox` | `{ provider, ageDays }` — advisory rotation nudge for a deliverability seed mailbox, emitted by the placement sweep. Provider and age only: never the seed address, never a credential, never mailbox contents. |
+| `seed_mailbox.rotation_acknowledged` | `seed_mailbox` | `{ provider, ageDays }` — the operator dismissed the nudge; the 90-day clock restarts from here. |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |

@@ -54,6 +54,29 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.imported'),
 	// Irreversible merge: the source contact is hard-deleted into the target.
 	action('contact.merged'),
+	// Sunset policy (deliverability plan P4-4). Every automatic transition the
+	// sunset engine makes is audited, including the ones that only move a
+	// contact onto the re-engagement track — a controller that changes a
+	// recipient's fate silently is experienced as a bug.
+	action('contact.sunset_reengagement'),
+	action('contact.sunset_suppressed'),
+	action('contact.sunset_resumed'),
+	// Operator-driven, one action, and itself audited: the restore path out of
+	// an automatic sunset suppression.
+	action('contact.sunset_restored'),
+	// Operator override toggled on/off for one contact.
+	action('contact.sunset_exemption_changed'),
+	// Per-topic (or deployment-wide) window/enabled tuning.
+	action('contact.sunset_policy_updated'),
+	// One aggregated row per sweep tick that suppressed (or refused to suppress)
+	// anything. A per-contact row answers "why this address"; only this one can
+	// answer "did the engine just act on a hundred people at once, and why".
+	action('contact.sunset_sweep_summary'),
+	// An operator vouching for the deployment's clock, which re-arms a sweep
+	// that stalled because its own freshness stamps had aged past the tolerance.
+	// The machine cannot tell "the clock jumped" from "nobody ran this for two
+	// months", so a person says which it was — on the record.
+	action('contact.sunset_clock_confirmed'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
 	// Topic
@@ -123,6 +146,15 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
 	action('sending_domain.deleted'),
+	// Deliverability seed mailbox — the placement probe's operator-visible
+	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only (D2).
+	action('seed_mailbox.rotation_reminder'),
+	action('seed_mailbox.rotation_acknowledged'),
+	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
+	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
+	// submitted/enrolled dates and downgrades the yahoo cell's complaint
+	// measurement to the tightened proxy, doubling the gate's strictness.
+	action('sending_domain.yahoo_cfl_changed'),
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),
@@ -247,6 +279,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'api_key',
 	'webhook',
 	'sending_domain',
+	'seed_mailbox',
 	'blocklist',
 	'segment',
 	'platform_admin',
