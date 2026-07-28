@@ -403,7 +403,11 @@ export const promoteRampPhase = internalMutation({
 		if (!perStream) return { ok: false as const };
 		// One rung, through the ladder helper: an arbitrary caller-supplied ceiling
 		// would let a promotion skip 0.5 and 0.8 straight to 1.0.
-		const phaseCeiling = nextPhaseCeiling(perStream.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING);
+		const current = perStream.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING;
+		const phaseCeiling = nextPhaseCeiling(current);
+		// Already at the top rung: nothing to promote, and re-randomising the
+		// cohort for a no-op would cost the comparison its continuity for nothing.
+		if (phaseCeiling === current) return { ok: true as const, phaseCeiling };
 		await ctx.db.patch(perStream._id, {
 			phaseCeiling,
 			mixVersion: (perStream.mixVersion ?? 0) + 1,

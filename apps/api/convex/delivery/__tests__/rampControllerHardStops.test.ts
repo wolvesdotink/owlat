@@ -260,8 +260,9 @@ describe('the phase ladder', () => {
 		// The top rung is the top rung: further promotions are no-ops.
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
 
-		// A promotion IS a new mix generation, so the salt advances once per call.
-		expect((await cellRow(t))?.mixVersion).toBe(6);
+		// A promotion IS a new mix generation, so the salt advances once per real
+		// rung — and not at all for the no-op at the top.
+		expect((await cellRow(t))?.mixVersion).toBe(5);
 	});
 
 	it('is a no-op for a cell that has no ramp row', async () => {
