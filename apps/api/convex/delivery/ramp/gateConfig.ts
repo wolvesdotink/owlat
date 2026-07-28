@@ -17,6 +17,11 @@ import {
 	DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
 	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
+import {
+	SEED_MIN_OBSERVATIONS,
+	SEED_REACHED_THRESHOLD,
+	SEED_REFERENCE_TOLERANCE,
+} from '@owlat/shared/seedPlacement';
 import type { RampGateId } from './gateTypes';
 
 /** A rate in [0, 1]. 0.02 means 2%. */
@@ -55,8 +60,14 @@ export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(
  * Gates whose FAIL is a tripwire rather than a measurement (plan D17). Seeds are
  * 5-10 mailboxes: a collapse across all of them is actionable at any sample
  * size, but it is SUSPECT on its own and the controller (P3-2) must corroborate
- * it against the deferral or bounce gate before acting. Declared here so the
- * controller keys off a name rather than re-deriving the policy.
+ * it against the deferral or bounce gate before acting.
+ *
+ * THE RULE ITSELF IS NOT HERE, and deliberately: `resolveSeedTripwire` in
+ * `@owlat/shared/seedPlacement` is the one implementation of "what does an
+ * uncorroborated suspicion mean", reachable through
+ * `analytics.seedPlacement.getGateVerdict`. This set only NAMES the gates it
+ * applies to, so the controller reaches for that rule instead of writing a
+ * second copy of it.
  */
 export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>([
 	'seed_placement',
@@ -111,7 +122,13 @@ export interface RampGateSampleFloors {
 	 * reached its minimum sample on precisely the cells that are working.
 	 */
 	readonly smtpBlock: number;
-	/** Seeds per arm before the placement tripwire may return a verdict (D17). */
+	/**
+	 * Seeds per arm before the placement tripwire may return a verdict (D17).
+	 *
+	 * DERIVED, not declared: the roll-up in `@owlat/shared/seedPlacement` is what
+	 * actually enforces it, and gate 5 reports this number beside the sample it
+	 * counted. Two spellings of one floor is a screen that says "3 of 5".
+	 */
 	readonly seedPlacement: number;
 }
 
@@ -123,7 +140,7 @@ export const RAMP_GATE_SAMPLE_FLOORS: RampGateSampleFloors = {
 	engagementRecent: 400,
 	engagementTrailing: 2000,
 	smtpBlock: 20,
-	seedPlacement: 5,
+	seedPlacement: SEED_MIN_OBSERVATIONS,
 };
 
 /**
@@ -176,9 +193,17 @@ export interface RampGateThresholds {
 	 * this sender" is not noise.
 	 */
 	readonly smtpBlockHalt: RateFraction;
-	/** Gate 5: own-arm seed inbox floor, absolute. */
+	/**
+	 * Gate 5: own-arm seed inbox floor, absolute — and the reference tolerance
+	 * below it.
+	 *
+	 * BOTH ARE DERIVED FROM `@owlat/shared/seedPlacement`, which is where the
+	 * roll-up that applies them lives. Gate 5 never compares a rate against
+	 * either of these: it consumes the roll-up's STATUS and reports these two
+	 * numbers only so the screen can render the line the verdict was measured
+	 * against (plan D5 — the controller and the dashboard may not disagree).
+	 */
 	readonly seedInboxMin: RateFraction;
-	/** Gate 5: own arm may fall below the reference arm by at most this much. */
 	readonly seedInboxTolerance: PercentagePoints;
 	/**
 	 * Evidence older than this is not evidence. A gate whose arm has no fresher
@@ -234,8 +259,8 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	hardBounceTrailingMultiple: 1.5,
 	unsubscribeProxyMultiple: 3,
 	smtpBlockHalt: rateFraction(0.005),
-	seedInboxMin: rateFraction(0.9),
-	seedInboxTolerance: percentagePoints(5),
+	seedInboxMin: rateFraction(SEED_REACHED_THRESHOLD),
+	seedInboxTolerance: percentagePoints(SEED_REFERENCE_TOLERANCE * 100),
 	maxEvidenceAgeMs: 48 * HOUR_MS,
 	maxBaselineAgeMs: 33 * DAY_MS,
 	maxFutureSkewMs: DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,

@@ -13,6 +13,7 @@
  * `gateTypes.ts` says on its first line that it is types only.
  */
 
+import { SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
 import type { RampGateConfidence, RampGateGrade } from './gateTypes';
 
 /**
@@ -24,10 +25,20 @@ export const DIRECT_MEASUREMENT: RampGateGrade = { confidence: 'high', mayJustif
 
 /**
  * Seeds are a TRIPWIRE, not a gauge (plan D17): 5-10 mailboxes is not a sample
- * anyone should quote a percentage from. Medium confidence, and it still counts
- * toward an increase — a clean placement sweep is real, if coarse, evidence.
+ * anyone should quote a percentage from. Medium confidence — small sample, but a
+ * DIRECT observation of the spam folder rather than a proxy for one — and it
+ * still counts toward an increase, because a clean placement sweep is real, if
+ * coarse, evidence.
+ *
+ * THE LEVEL IS IMPORTED, NOT RESTATED. `SEED_GATE_CONFIDENCE` is declared beside
+ * the roll-up that produces the reading (`@owlat/shared/seedPlacement`), so the
+ * analytics surface and the controller's gate cannot put two different labels on
+ * one measurement.
  */
-export const SEED_TRIPWIRE: RampGateGrade = { confidence: 'medium', mayJustifyIncrease: true };
+export const SEED_TRIPWIRE: RampGateGrade = {
+	confidence: SEED_GATE_CONFIDENCE,
+	mayJustifyIncrease: true,
+};
 
 /**
  * A PROXY stands in for the thing we actually wanted to measure: one-click
