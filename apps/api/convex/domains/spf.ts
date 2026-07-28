@@ -282,16 +282,42 @@ export function buildReturnPathMailFromRecords(
  * and the return-path edit so both read the env the same way.
  */
 export function parsePoolIps(raw: string | undefined | null): string[] {
-	const result: string[] = [];
+	const { ips, dropped } = parsePoolIpsLenient(raw);
+	const invalid = dropped[0];
+	if (invalid !== undefined) {
+		throw new Error(`MTA_IP_POOLS contains an invalid bare IP address: ${invalid}`);
+	}
+	return ips;
+}
+
+/**
+ * The same `MTA_IP_POOLS` grammar as {@link parsePoolIps}, reporting the entries
+ * it could not read instead of throwing on the first one.
+ *
+ * ONE grammar, two failure policies. Registration wants the throw — a typo there
+ * is an operator mistake worth surfacing at the point of edit. A background
+ * consumer (the SNDS poller's allowlist) wants the surviving addresses, because
+ * a typo in the pool must not take a poll down. Two independent parsers of one
+ * env var drift; this is the same one read twice.
+ */
+export function parsePoolIpsLenient(raw: string | undefined | null): {
+	ips: string[];
+	dropped: string[];
+} {
+	const ips: string[] = [];
+	const dropped: string[] = [];
 	for (const entry of (raw ?? '')
 		.split(',')
 		.map((ip) => ip.trim())
 		.filter(Boolean)) {
 		const parsed = parseIpAddress(entry);
-		if (!parsed) throw new Error(`MTA_IP_POOLS contains an invalid bare IP address: ${entry}`);
-		if (!result.includes(parsed.address)) result.push(parsed.address);
+		if (!parsed) {
+			dropped.push(entry);
+			continue;
+		}
+		if (!ips.includes(parsed.address)) ips.push(parsed.address);
 	}
-	return result;
+	return { ips, dropped };
 }
 
 // ─── Duplicate / existing-record detection ──────────────────────────────────

@@ -394,6 +394,16 @@ function matchField(text: string, field: string): string | undefined {
  * attachment part or inline in the report body (when the ISP doesn't set the
  * MIME content-type correctly), so we scan both. Addresses may be wrapped in
  * angle brackets or carry an `rfc822;` address-type prefix; both are stripped.
+ *
+ * Microsoft's Junk Mail Reporting Program (JMRP) is the reason for the second
+ * pass. A JMRP report frequently omits every RFC 5965 recipient field and
+ * carries the complaining address only in the `X-HmXmrOriginalRecipient`
+ * header of the re-attached original message. Without it a Microsoft complaint
+ * arrives with NO attribution handle at all whenever the Message-ID is
+ * redacted — which is most of them. It is tried strictly after the standard
+ * fields so a conforming report is never affected, and it inherits the same
+ * trust posture as the fields above it: this scan reads report bytes, so it can
+ * only ever suppress a recipient, never resurrect one.
  */
 function extractComplainedRecipient(
 	reportParts: ReportPart[],
@@ -404,9 +414,11 @@ function extractComplainedRecipient(
 		sources.push(part.content.toString('utf-8'));
 	}
 
-	for (const source of sources) {
-		const recipient = matchRecipientField(source);
-		if (recipient) return recipient;
+	for (const pattern of [RECIPIENT_FIELD_RE, JMRP_RECIPIENT_FIELD_RE]) {
+		for (const source of sources) {
+			const recipient = matchRecipientField(source, pattern);
+			if (recipient) return recipient;
+		}
 	}
 
 	return undefined;
@@ -414,8 +426,11 @@ function extractComplainedRecipient(
 
 const RECIPIENT_FIELD_RE = /^(?:Original-Rcpt-To|Removed-Recipient|Original-Recipient):\s*(.+)$/im;
 
-function matchRecipientField(text: string): string | undefined {
-	const match = text.match(RECIPIENT_FIELD_RE);
+/** Microsoft JMRP's recipient header, emitted on the re-attached original. */
+const JMRP_RECIPIENT_FIELD_RE = /^X-HmXmrOriginalRecipient:\s*(.+)$/im;
+
+function matchRecipientField(text: string, pattern: RegExp): string | undefined {
+	const match = text.match(pattern);
 	if (!match?.[1]) return undefined;
 	return normalizeRecipient(match[1]);
 }
