@@ -18,7 +18,7 @@ import type {
 	RampGateResult,
 	RampGateStatus,
 } from '../gateTypes';
-import { arm, healthyInput, input, seeds } from './gateFixtures';
+import { arm, describeEquipped, healthyInput, input, seeds } from './gateFixtures';
 
 const EVALUATED_AT = 1_700_000_000_000;
 
@@ -228,7 +228,7 @@ describe('aggregateRampGates precedence', () => {
 	});
 });
 
-describe('referenceArmGateEvaluator', () => {
+describeEquipped('referenceArmGateEvaluator', () => {
 	it('is the reference-arm implementation of the one gate interface (D3)', () => {
 		expect(referenceArmGateEvaluator.kind).toBe('reference_arm');
 	});

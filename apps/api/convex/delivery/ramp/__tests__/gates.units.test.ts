@@ -31,7 +31,7 @@ import {
 	evaluateHardBounceGate,
 	evaluateSeedPlacementGate,
 } from '../gates';
-import { arm, input, seeds } from './gateFixtures';
+import { arm, describeEquipped, input, seeds } from './gateFixtures';
 
 const STREAM_CONFIGS = DELIVERABILITY_STREAM_KEYS.map((stream) => RAMP_STREAM_CONFIGS[stream]);
 
@@ -90,7 +90,7 @@ describe('every threshold is stored as a FRACTION, never as a percentage', () =>
 	});
 });
 
-describe('the wrong reading is rejected behaviourally', () => {
+describeEquipped('the wrong reading is rejected behaviourally', () => {
 	it('a 5% hard-bounce rate fails — 2% is not the fraction 2', () => {
 		const result = evaluateHardBounceGate(
 			input({

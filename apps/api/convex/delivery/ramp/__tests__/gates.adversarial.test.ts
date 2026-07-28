@@ -8,7 +8,7 @@
  * (hold) or `fail`, never on the verdict that raises the share.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
 import {
 	evaluateComplaintGate,
@@ -19,7 +19,7 @@ import {
 import { aggregateRampGates, referenceArmGateEvaluator } from '../gateEvaluation';
 import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import type { RampGateEvaluation, RampGateEvaluationInput, RampGateResult } from '../gateTypes';
-import { arm, input, NOW, seeds } from './gateFixtures';
+import { arm, describeEquipped, input, NOW, seeds } from './gateFixtures';
 
 function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
 	return referenceArmGateEvaluator.evaluate(built);
@@ -52,7 +52,7 @@ function everyGate(name: string, build: () => RampGateEvaluationInput): void {
 	});
 }
 
-describe('degenerate volumes', () => {
+describeEquipped('degenerate volumes', () => {
 	everyGate('a zero-volume cell (0/0 everywhere)', () =>
 		input({ own: arm({ sent: 0 }), reference: arm({ sent: 0 }), ownSeeds: seeds(0, 0) })
 	);
@@ -70,7 +70,7 @@ describe('degenerate volumes', () => {
 	);
 });
 
-describe('poisoned rates', () => {
+describeEquipped('poisoned rates', () => {
 	/**
 	 * All three fixtures give the own arm an AMPLE, FRESH window and poison only
 	 * the derived rate, so the hold cannot be explained by sample size or age.
@@ -204,7 +204,7 @@ describe('poisoned rates', () => {
 	});
 });
 
-describe('clock skew', () => {
+describeEquipped('clock skew', () => {
 	everyGate('evidence recorded far in the future', () =>
 		input({
 			own: arm({ sent: 10_000, lastRecordedAt: NOW + 30 * 24 * 60 * 60 * 1000 }),
@@ -227,7 +227,7 @@ describe('clock skew', () => {
 	});
 });
 
-describe('missing arms and missing gates', () => {
+describeEquipped('missing arms and missing gates', () => {
 	it('the reference arm is entirely missing: the two-armed gates hold, the one-armed gate still decides', () => {
 		const built = input({ own: arm({ sent: 10_000 }), reference: null });
 		expect(evaluateHardBounceGate(built).status).toBe('insufficient_data');

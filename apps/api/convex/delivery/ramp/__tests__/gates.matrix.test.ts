@@ -16,7 +16,7 @@ import {
 } from '../gates';
 import { OPTIONAL_RAMP_GATES } from '../gateConfig';
 import type { RampGateResult, RampGateStatus } from '../gateTypes';
-import { arm, armWith, input, seeds } from './gateFixtures';
+import { arm, armWith, describeEquipped, input, seeds } from './gateFixtures';
 
 interface Case {
 	readonly name: string;
@@ -39,7 +39,7 @@ function hardBounce(ownHardBounced: number): () => RampGateResult {
 		);
 }
 
-describe('gate 1 — hard bounce (own <= 2% AND <= reference + 0.5pp)', () => {
+describeEquipped('gate 1 — hard bounce (own <= 2% AND <= reference + 0.5pp)', () => {
 	const cases: readonly Case[] = [
 		{
 			name: 'just below the 2% ceiling',
@@ -155,7 +155,7 @@ describe('gate 2 — deferral (own <= 10%, >= 25% halts)', () => {
 	});
 });
 
-describe('gate 3 — complaint (own <= 0.1% AND <= reference + 0.05pp)', () => {
+describeEquipped('gate 3 — complaint (own <= 0.1% AND <= reference + 0.05pp)', () => {
 	const reference = arm({ sent: 100_000, complained: 20 }); // 0.02%
 
 	const cases: readonly Case[] = [
@@ -222,7 +222,7 @@ describe('gate 3 — complaint (own <= 0.1% AND <= reference + 0.05pp)', () => {
 	}
 });
 
-describe('gate 5 — seed placement (inbox >= 90% AND >= reference - 5pp)', () => {
+describeEquipped('gate 5 — seed placement (inbox >= 90% AND >= reference - 5pp)', () => {
 	it('exactly on the 90% inbox floor passes', () => {
 		const result = evaluateSeedPlacementGate(
 			input({

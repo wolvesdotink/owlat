@@ -20,7 +20,7 @@ import { referenceArmGateEvaluator } from '../gateEvaluation';
 import { evaluateHardBounceGate } from '../gates';
 import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import type { RampGateEvaluation, RampGateEvaluationInput } from '../gateTypes';
-import { arm, healthyInput, input, NOW } from './gateFixtures';
+import { arm, describeEquipped, healthyInput, input, NOW } from './gateFixtures';
 
 function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
 	return referenceArmGateEvaluator.evaluate(built);
@@ -67,7 +67,7 @@ describe('the decision core is pure at the source level', () => {
 	}
 });
 
-describe('the decision core is pure behaviourally', () => {
+describeEquipped('the decision core is pure behaviourally', () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});

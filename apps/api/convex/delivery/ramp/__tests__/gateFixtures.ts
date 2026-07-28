@@ -9,6 +9,7 @@
  * derived fields deliberately, which is the only way a poisoned value gets in.
  */
 
+import { describe, it } from 'vitest';
 import type {
 	DeliverabilityCell,
 	DeliverabilityStream,
@@ -27,9 +28,53 @@ import type {
 	SeedPlacementObservation,
 	SmtpBlockObservation,
 } from '../gateTypes';
+import { externalDataAllowed, rampGateMatrixMode, type RampGateMatrixMode } from './gateMatrixMode';
 
 /** A fixed, arbitrary clock. Every suite injects it; nothing reads a real one. */
 export const NOW = 1_760_000_000_000;
+
+/**
+ * WHICH LEG OF THE CI MATRIX THIS PROCESS IS, and — the load-bearing part —
+ * whether it may use ANY external input at all.
+ *
+ * The matrix is plan D3's defence against the degraded path rotting, and it only
+ * defends anything if the mode reaches the FIXTURES. A second leg that rebuilt the
+ * same two-armed cells and merely added a handful of mode-branching assertions
+ * would pass exactly when the first leg passes, so a change that quietly made a
+ * reference arm load-bearing would fail both legs or neither — which is no signal
+ * at all.
+ *
+ * So in the standalone leg the builders below REFUSE a reference arm and a
+ * reference seed sweep, and every suite that genuinely needs one declares itself
+ * with `describeEquipped` / `itEquipped`. What is left running in that leg is the
+ * suite as a deployment with zero third-party accounts would experience it, and
+ * a future fixture that reaches for an external input to make something pass
+ * fails there on the PR that introduces it.
+ */
+export const MATRIX_MODE: RampGateMatrixMode = rampGateMatrixMode();
+export const EXTERNAL_DATA_ALLOWED = externalDataAllowed(MATRIX_MODE);
+
+/** `describe` for a group that MEASURES AGAINST A REFERENCE ARM: skipped standalone. */
+export const describeEquipped = describe.skipIf(!EXTERNAL_DATA_ALLOWED);
+/** `it` for a single reference-arm case inside an otherwise standalone-safe group. */
+export const itEquipped = it.skipIf(!EXTERNAL_DATA_ALLOWED);
+
+function rejectExternalInput(overrides: {
+	readonly reference?: TransportOutcomeSummary | null;
+	readonly referenceSeeds?: SeedPlacementObservation | null;
+}): void {
+	if (EXTERNAL_DATA_ALLOWED) return;
+	if (overrides.reference != null) {
+		throw new Error(
+			`the ${MATRIX_MODE} leg was handed a reference arm: a standalone deployment has none. Wrap the case in describeEquipped/itEquipped, or build the cell with standaloneInput().`
+		);
+	}
+	if (overrides.referenceSeeds != null) {
+		throw new Error(
+			`the ${MATRIX_MODE} leg was handed a reference seed sweep: a standalone deployment has none. Wrap the case in describeEquipped/itEquipped, or build the cell with standaloneInput().`
+		);
+	}
+}
 
 export interface ArmCounts {
 	readonly sent?: number;
@@ -151,6 +196,7 @@ export const CAMPAIGN_CONFIG: RampStreamConfig = RAMP_STREAM_CONFIGS.campaign;
 export function input(
 	overrides: Partial<RampGateEvaluationInput> & { readonly own: TransportOutcomeSummary }
 ): RampGateEvaluationInput {
+	rejectExternalInput(overrides);
 	return {
 		config: CAMPAIGN_CONFIG,
 		reference: null,
@@ -178,6 +224,7 @@ export function engagementCell(
 export function engagementInput(
 	overrides: Partial<EngagementGateInput> & { readonly own: TransportOutcomeSummary }
 ): EngagementGateInput {
+	rejectExternalInput(overrides);
 	return {
 		cell: engagementCell('gmail'),
 		reference: null,
@@ -198,6 +245,7 @@ export function engagementInput(
 export function standaloneInput(
 	overrides: Partial<RampGateEvaluationInput> = {}
 ): RampGateEvaluationInput {
+	rejectExternalInput(overrides);
 	const base = input({
 		own: arm({ sent: 10_000, deferred: 100, hardBounced: 100, complained: 5, unsubscribed: 30 }),
 		ownTrailingBaseline: arm({
@@ -212,10 +260,22 @@ export function standaloneInput(
 	return { ...base, ...overrides };
 }
 
-/** A both-arms-healthy baseline: every gate passes, nothing is thin or stale. */
+/**
+ * A both-arms-healthy baseline: every gate passes, nothing is thin or stale.
+ *
+ * THROWS IN THE STANDALONE LEG, by construction rather than by assertion: this
+ * fixture IS a reference-arm cell, so a suite that reaches for it in the leg that
+ * has no reference transport is a suite whose subject that leg cannot have. Wrap
+ * it in `describeEquipped`.
+ */
 export function healthyInput(
 	overrides: Partial<RampGateEvaluationInput> = {}
 ): RampGateEvaluationInput {
+	if (!EXTERNAL_DATA_ALLOWED) {
+		throw new Error(
+			`healthyInput() builds a REFERENCE-ARM cell and the ${MATRIX_MODE} leg has no reference transport. Use standaloneInput(), or declare the suite with describeEquipped/itEquipped.`
+		);
+	}
 	const base = input({
 		own: arm({ sent: 10_000, deferred: 100, hardBounced: 10, complained: 5 }),
 		reference: arm({ sent: 10_000, deferred: 100, hardBounced: 10, complained: 5 }),
@@ -223,4 +283,24 @@ export function healthyInput(
 		referenceSeeds: seeds(19, 1),
 	});
 	return { ...base, ...overrides };
+}
+
+/**
+ * A healthy input FOR THE CURRENT LEG — and, standalone, one that is SCRUBBED of
+ * every external input rather than merely built without one.
+ *
+ * The scrub is what the matrix proof asserts on: hand this builder a reference
+ * arm on purpose and the standalone leg strips it, so a leg that reported green
+ * while quietly measuring against a relay is a state the suite can detect.
+ */
+export function matrixInput(
+	mode: RampGateMatrixMode,
+	overrides: Partial<RampGateEvaluationInput> = {}
+): RampGateEvaluationInput {
+	if (mode === 'reference_arm') return healthyInput(overrides);
+	// Strip BEFORE building, because `standaloneInput` refuses what this function
+	// promises to remove: the scrub is this builder's contract, not a hole in the
+	// leg's guard.
+	const { reference, referenceSeeds, ...scrubbed } = overrides;
+	return { ...standaloneInput(scrubbed), reference: null, referenceSeeds: null };
 }

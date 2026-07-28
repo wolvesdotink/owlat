@@ -20,8 +20,7 @@
  */
 
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from '../gateEvaluation';
-import type { RampGateEvaluationInput, RampGateEvaluator } from '../gateTypes';
-import { healthyInput, standaloneInput } from './gateFixtures';
+import type { RampGateEvaluator } from '../gateTypes';
 
 export type RampGateMatrixMode = 'reference_arm' | 'standalone';
 
@@ -48,26 +47,12 @@ export function matrixEvaluator(mode: RampGateMatrixMode): RampGateEvaluator {
 }
 
 /**
- * A healthy input for the current leg — and, in the standalone leg, one that is
- * SCRUBBED of every external input rather than merely built without one.
+ * Whether the current leg is allowed ANY external input at all.
  *
- * The scrub is the point. A caller can hand this function a `reference` arm (a
- * fixture written for the concurrent gates, a copy-paste from another suite) and
- * the standalone leg will strip it, so the leg cannot be quietly handed the very
- * thing it exists to prove we do not need.
- */
-export function matrixInput(
-	mode: RampGateMatrixMode,
-	overrides: Partial<RampGateEvaluationInput> = {}
-): RampGateEvaluationInput {
-	if (mode === 'reference_arm') return healthyInput(overrides);
-	const built = standaloneInput(overrides);
-	return { ...built, reference: null, referenceSeeds: null };
-}
-
-/**
- * Whether the current leg is allowed ANY external input at all. Used by the
- * matrix proof to assert that the standalone leg really is standalone.
+ * `gateFixtures` reads this on the way in: in the standalone leg every fixture
+ * builder REFUSES a reference arm or a reference seed sweep rather than quietly
+ * accepting one, so the leg cannot be handed the very thing it exists to prove we
+ * do not need — however far from this file the fixture was written.
  */
 export function externalDataAllowed(mode: RampGateMatrixMode): boolean {
 	return mode === 'reference_arm';

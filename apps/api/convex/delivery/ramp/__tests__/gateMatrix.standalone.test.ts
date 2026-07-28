@@ -22,10 +22,17 @@ import {
 	RAMP_GATE_MATRIX_ENV,
 	externalDataAllowed,
 	matrixEvaluator,
-	matrixInput,
 	rampGateMatrixMode,
 } from './gateMatrixMode';
-import { arm, seeds } from './gateFixtures';
+import {
+	EXTERNAL_DATA_ALLOWED,
+	arm,
+	healthyInput,
+	input,
+	matrixInput,
+	seeds,
+	standaloneInput,
+} from './gateFixtures';
 
 const MODE = rampGateMatrixMode();
 const EVALUATOR = matrixEvaluator(MODE);
@@ -89,6 +96,29 @@ describe(`the ${MODE} leg`, () => {
 	it('reports a confidence level the UI can render', () => {
 		const evaluation = EVALUATOR.evaluate(matrixInput(MODE));
 		expect(['high', 'medium', 'low']).toContain(evaluation.confidence);
+	});
+
+	it('makes the mode load-bearing for EVERY fixture, not just this suite', () => {
+		// The whole point of the second leg (plan D3). The builders every suite in
+		// this directory uses consult the mode themselves, so a case anywhere that
+		// reaches for a reference arm to make something pass fails the standalone
+		// leg — rather than rebuilding the same two-armed cell in both legs and
+		// proving nothing.
+		expect(EXTERNAL_DATA_ALLOWED).toBe(MODE === 'reference_arm');
+		const withReference = () => input({ own: arm({ sent: 10_000 }), reference: arm({ sent: 10 }) });
+		const withReferenceSeeds = () =>
+			input({ own: arm({ sent: 10_000 }), referenceSeeds: seeds(20, 0) });
+		if (EXTERNAL_DATA_ALLOWED) {
+			expect(withReference().reference).not.toBeNull();
+			expect(withReferenceSeeds().referenceSeeds).not.toBeNull();
+			expect(healthyInput().reference).not.toBeNull();
+		} else {
+			expect(withReference).toThrow(/reference arm/);
+			expect(withReferenceSeeds).toThrow(/reference seed sweep/);
+			expect(healthyInput).toThrow(/REFERENCE-ARM cell/);
+			// …and the standalone builder keeps working with none of it.
+			expect(standaloneInput().reference).toBeNull();
+		}
 	});
 
 	it('rejects an unrecognised mode rather than falling back to the equipped one', () => {

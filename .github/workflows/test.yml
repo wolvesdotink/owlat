@@ -223,6 +223,13 @@ jobs:
   # standalone leg on the PR that introduces it rather than months later on the
   # install nobody runs by hand.
   #
+  # THE MODE IS LOAD-BEARING, not decorative. `__tests__/gateFixtures.ts` reads it
+  # and REFUSES to build a reference arm or a reference seed sweep in the
+  # standalone leg, and the suites that measure against one declare themselves
+  # (`describeEquipped` / `itEquipped`) and are skipped there. What runs in the
+  # second leg is therefore the suite as a deployment with zero third-party
+  # accounts experiences it — not the same fixtures with a few extra assertions.
+  #
   # Deliberately NOT behind the affected-graph filter: it is a few hundred pure
   # unit tests with no database and no network, and the cost of running it always
   # is far below the cost of the degraded path rotting unnoticed.

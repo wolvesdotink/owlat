@@ -15,21 +15,52 @@
 import { describe, expect, it } from 'vitest';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from '../gateEvaluation';
 import type { RampGateEvaluationInput, RampGateEvaluator } from '../gateTypes';
-import { NOW, arm, healthyInput, seeds, standaloneInput } from './gateFixtures';
+import {
+	EXTERNAL_DATA_ALLOWED,
+	NOW,
+	arm,
+	describeEquipped,
+	healthyInput,
+	seeds,
+	standaloneInput,
+} from './gateFixtures';
 
 interface Implementation {
 	readonly name: string;
 	readonly evaluator: RampGateEvaluator;
 	/** A cell in which every gate this implementation reads is healthy. */
 	readonly healthy: (overrides?: Partial<RampGateEvaluationInput>) => RampGateEvaluationInput;
+	/** Whether this implementation is measurable in the current matrix leg. */
+	readonly needsReferenceArm: boolean;
 }
 
 const IMPLEMENTATIONS: readonly Implementation[] = [
-	{ name: 'reference_arm', evaluator: referenceArmGateEvaluator, healthy: healthyInput },
-	{ name: 'trailing_baseline', evaluator: trailingBaselineGateEvaluator, healthy: standaloneInput },
+	{
+		name: 'reference_arm',
+		evaluator: referenceArmGateEvaluator,
+		healthy: healthyInput,
+		needsReferenceArm: true,
+	},
+	{
+		name: 'trailing_baseline',
+		evaluator: trailingBaselineGateEvaluator,
+		healthy: standaloneInput,
+		needsReferenceArm: false,
+	},
 ];
 
-describe.each(IMPLEMENTATIONS)('$name satisfies the gate interface', (implementation) => {
+/**
+ * In the standalone leg only the implementation a standalone deployment actually
+ * runs is exercised — with the SAME contract, from the same table. The parity
+ * claim is proved by the equipped leg, where both are present; what this leg
+ * proves is that the trailing-baseline half of the table still satisfies that
+ * contract with every external input removed.
+ */
+const RUNNABLE = IMPLEMENTATIONS.filter(
+	(implementation) => EXTERNAL_DATA_ALLOWED || !implementation.needsReferenceArm
+);
+
+describe.each(RUNNABLE)('$name satisfies the gate interface', (implementation) => {
 	const { evaluator, healthy } = implementation;
 
 	it('declares its kind, and the two kinds are distinct', () => {
@@ -94,7 +125,13 @@ describe.each(IMPLEMENTATIONS)('$name satisfies the gate interface', (implementa
 
 	it('a seed collapse fails and is flagged as requiring corroboration (plan D17)', () => {
 		const evaluation = evaluator.evaluate(
-			healthy({ ownSeeds: seeds(1, 19), referenceSeeds: seeds(19, 1) })
+			healthy({
+				ownSeeds: seeds(1, 19),
+				// A standalone deployment runs no second sweep, so the collapse has to
+				// be visible from the own sweep alone — which is the standalone gate's
+				// entire claim.
+				...(implementation.needsReferenceArm ? { referenceSeeds: seeds(19, 1) } : {}),
+			})
 		);
 		expect(evaluation.verdict).toBe('fail');
 		expect(evaluation.failedGate).toBe('seed_placement');
@@ -122,7 +159,7 @@ describe.each(IMPLEMENTATIONS)('$name satisfies the gate interface', (implementa
 	});
 });
 
-describe('the two implementations disagree only where the plan says they do', () => {
+describeEquipped('the two implementations disagree only where the plan says they do', () => {
 	it('the standalone one judges seed placement absolutely; the other judges it against the relay sweep', () => {
 		// Exactly at the absolute inbox floor, and 10pp behind a perfect relay
 		// sweep: inside the standalone rule, outside the 5pp comparative one.
