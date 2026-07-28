@@ -103,16 +103,22 @@ export function describeCapacitySchedule(schedule: CampaignCapacitySchedule): st
 			`send it in stages, or reduce the audience.`
 		);
 	}
-	const dayWord = schedule.days === 1 ? 'day' : 'days';
+	// Always PLURAL, and not by oversight: a refusal with `days === 1` cannot be
+	// constructed. Covering the audience on day 0 requires
+	// `capacityForDay(0) >= audienceSize`, which makes horizon capacity at least
+	// the audience for any horizon of one day or more — so `planCampaignCapacity`
+	// answers `{ fits: true }` and this function is never reached. A singular
+	// branch here would be dead code carrying a maintenance cost and an implied
+	// promise the planner does not make.
 	if (schedule.audienceUnderCounted) {
 		return (
-			`${opening}it takes at least ${schedule.days} ${dayWord} to reach everyone, ` +
+			`${opening}it takes at least ${schedule.days} days to reach everyone, ` +
 			`so send it over several days instead.`
 		);
 	}
 	return (
-		`${opening}it takes about ${schedule.days} ${dayWord} to reach everyone, ` +
-		`so send it over ${schedule.days} ${dayWord} instead.`
+		`${opening}it takes about ${schedule.days} days to reach everyone, ` +
+		`so send it over ${schedule.days} days instead.`
 	);
 }
 
