@@ -10,6 +10,7 @@
  * exhaustive, so a new reason cannot ship without a sentence to go with it.
  */
 
+import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import type { RampDecision, RampDecisionReason } from './controllerTypes';
 
@@ -111,8 +112,15 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 				: `Held ${where} at ${percent(decision.share)}: the cell is at its phase ceiling. Promote the phase to let it go further.`;
 		case 'healthy':
 			return `Increased ${where} (${move}): every gate is green and the clean streak is long enough.`;
+		// A GRADUATED CELL CAN SIT BELOW FULL SHARE — the warming cap bounds a pin
+		// without revoking it — so the sentence is built from the DECISION'S SHARE,
+		// not from the reason alone. Telling an operator the relay is on standby
+		// while it is in fact carrying 60% of the cell is the same defect the two
+		// ceiling sentences above were fixed for.
 		case 'graduated':
-			return `Graduated ${where}: 100% held for 14 days with every gate green. The cell is pinned and the relay drops to standby.`;
+			return decision.share >= OWN_SHARE_CEILING
+				? `Graduated ${where}: 100% held for 14 days with every gate green. The cell is pinned and the relay drops to standby.`
+				: `Held ${where} at ${percent(decision.share)}: the cell is graduated and pinned, but remaining warming capacity bounds it below full share, so the relay still carries the rest. Capacity grows with the warming schedule.`;
 		case 'hard_bounce':
 		case 'deferral':
 		case 'complaint':

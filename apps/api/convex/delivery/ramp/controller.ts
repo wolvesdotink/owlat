@@ -20,7 +20,10 @@
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
  *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
  *                             graduated cell is bounded by the warming cap
- *   9. graduation           -> pin at max(floor, min(1, ceiling))
+ *   9. graduation           -> award/keep the pin, and hold or lower to
+ *                             max(floor, min(1, ceiling)); an upward pin target
+ *                             falls through to 10/11 and is paid for like any
+ *                             other increase
  *  10. K_CLEAN              -> hold while building confidence
  *  11. additive increase    -> min(ceiling, s + step), at most once per window
  *
@@ -256,7 +259,12 @@ function decide(args: DecideArgs): DecisionDraft {
 		verdict: 'not_evaluated' as const,
 		cleanStreak: storedStreak,
 		greenSince: mix.greenSince,
-		graduatedAt: mix.graduatedAt,
+		// The graduation pin is the one carried-forward instant a DOWNSTREAM reader
+		// acts on — the dashboard and the `mix` blob in `mixDecisions.snapshot` both
+		// read the row, not this function — so it is sanitised on the way through
+		// rather than only at the point of use. A row holding NaN, a negative or a
+		// future instant would otherwise report the cell as graduated for ever.
+		graduatedAt: readStoredInstant(mix.graduatedAt, now) ?? undefined,
 		ceiling: phaseCeiling,
 	};
 
@@ -430,31 +438,44 @@ function decide(args: DecideArgs): DecisionDraft {
 	// The PIN SURVIVES A CAPACITY BOUND but does not override it: a graduated cell
 	// still gives way to the warming cap, and when it does the sentence names the
 	// ceiling rather than claiming a graduation move the operator did not see.
-	if (greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs) {
+	const isGraduationDue =
+		greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs;
+	// The pin is AWARDED here and carried by every rung below, so a graduated cell
+	// that has to climb back to its ceiling stays graduated the whole way up.
+	const pinnedGreen = isGraduationDue
+		? { ...green, graduatedAt: readStoredInstant(mix.graduatedAt, now) ?? now }
+		: green;
+
+	if (isGraduationDue) {
 		// The pinned target is the ceiling — but NEVER below the soft floor. A
 		// capacity ceiling is not a breach, and this module allows only a gate
 		// failure or a hard stop to take a cell to zero; a warming cap with no
 		// headroom left projects a ceiling of 0, and honouring that literally would
 		// switch a healthy graduated cell off entirely.
-		const pinTarget = Math.max(RAMP_AIMD.shareFloor, Math.min(OWN_SHARE_CEILING, ceiling));
-		// Retreats are instant, RESTORES ARE NOT: lifting a bounded pin back toward
-		// 1.0 is an increase and costs a counted window like every other one.
-		const pinned = pinTarget > fromShare && !isWindowCounted ? fromShare : pinTarget;
-		const reason: RampDecisionReason =
-			pinned < fromShare ? bindingReason : pinTarget > pinned ? 'window_open' : 'graduated';
-		return {
-			...green,
-			share: pinned,
-			reason,
-			graduatedAt: mix.graduatedAt ?? now,
-			ceiling,
-		};
+		// Rounded to the stored precision before it is COMPARED to `fromShare`,
+		// which is already rounded: a ceiling one float ulp above the current share
+		// is not a restore anyone asked for, and comparing raw against rounded would
+		// route it through the increase rungs to land back on the same number.
+		const pinTarget = roundShare(
+			Math.max(RAMP_AIMD.shareFloor, Math.min(OWN_SHARE_CEILING, ceiling))
+		);
+		// THIS RUNG MAY ONLY HOLD OR LOWER. Retreating to a bound is instant and
+		// costs nothing; RESTORING is an increase, and every increase in this module
+		// is paid for in the same currency — K_CLEAN, one counted window, one step —
+		// so an upward pin target falls through to rungs 10 and 11 rather than
+		// jumping the cell to its ceiling in a single evaluation.
+		if (pinTarget < fromShare) {
+			return { ...pinnedGreen, share: pinTarget, reason: bindingReason, ceiling };
+		}
+		if (pinTarget === fromShare) {
+			return { ...pinnedGreen, share: pinTarget, reason: 'graduated', ceiling };
+		}
 	}
 
 	// 10. K_CLEAN. Confidence is spent, not assumed — and it is spent in WINDOWS,
 	//     so the streak read here is the one this window is allowed to have moved.
 	if (countedStreak < config.cleanWindowsRequired) {
-		return { ...green, reason: 'building_confidence', ceiling };
+		return { ...pinnedGreen, reason: 'building_confidence', ceiling };
 	}
 
 	// 11. ADDITIVE INCREASE — the ONLY branch that can raise a share, and at most
@@ -463,8 +484,8 @@ function decide(args: DecideArgs): DecisionDraft {
 	const step: number = ppToFraction(config.increaseStep);
 	const bounded = Math.min(ceiling, fromShare + step);
 	if (bounded > fromShare) {
-		if (!isWindowCounted) return { ...green, reason: 'window_open', ceiling };
-		return { ...green, share: bounded, reason: 'healthy', ceiling };
+		if (!isWindowCounted) return { ...pinnedGreen, reason: 'window_open', ceiling };
+		return { ...pinnedGreen, share: bounded, reason: 'healthy', ceiling };
 	}
 	// A CEILING IS NOT A BREACH. When the ceiling sits below the current share it
 	// pulls the cell back to it, but never below the soft floor: nothing here
@@ -474,5 +495,5 @@ function decide(args: DecideArgs): DecisionDraft {
 	// the floor may only ever soften a retreat, never become an increase in
 	// disguise for a cell sitting below it.
 	const target = Math.min(fromShare, Math.max(RAMP_AIMD.shareFloor, bounded));
-	return { ...green, share: target, reason: bindingReason, ceiling };
+	return { ...pinnedGreen, share: target, reason: bindingReason, ceiling };
 }
