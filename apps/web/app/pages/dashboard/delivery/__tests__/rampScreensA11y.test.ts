@@ -61,7 +61,7 @@ beforeEach(() => {
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
-	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isRunning: ref(false) }));
+	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 });
 
 const passthroughCard = { template: '<div><slot /></div>' };

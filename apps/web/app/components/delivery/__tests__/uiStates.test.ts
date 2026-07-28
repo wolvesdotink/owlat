@@ -12,16 +12,23 @@
  * colour has still told the operator their install is broken.
  */
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import { api } from '@owlat/api';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampCellsGrid from '../RampCellsGrid.vue';
 import RampCellControls from '../RampCellControls.vue';
 import RampDecreaseNotices from '../RampDecreaseNotices.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
+import RampPresetPicker from '../RampPresetPicker.vue';
+import ControlsPage from '~/pages/dashboard/delivery/controls.vue';
+import QueryBoundary from '~/components/ui/QueryBoundary.vue';
+import { rampRefusalSentence, type RampControlRefusal } from '~/utils/deliverabilityRamp';
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
-import { cellControl, NOW } from './rampFixtures';
+import { cellControl, controlsView, NOW } from './rampFixtures';
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 
@@ -126,5 +133,121 @@ describe('calm states', () => {
 		const timeline = mount(RampDecisionTimeline, { props: { decisions: [], labelledBy: 'h' } });
 		expect(timeline.html()).not.toMatch(ALARM);
 		timeline.unmount();
+	});
+});
+
+/**
+ * A REFUSAL IS AN EXPLANATION, NOT A FAILURE.
+ *
+ * The control mutations answer `{applied: false, refusal}` rather than throwing,
+ * so nothing in the UI's error machinery ever sees them. If the page discards
+ * that answer, the operator clicks, nothing moves, and no sentence appears —
+ * which is exactly how a working rule gets reported as a bug.
+ */
+describe('control refusals', () => {
+	const passthroughCard = { template: '<div><slot /></div>' };
+	const globalOptions = {
+		stubs: {
+			UiIconBox: true,
+			Icon: true,
+			UiSpinner: true,
+			UiEmptyState: true,
+			UiCard: passthroughCard,
+			DeliveryRampConfirmDialog: true,
+		},
+		components: {
+			UiQueryBoundary: QueryBoundary,
+			DeliveryRampCellControls: RampCellControls,
+			DeliveryRampDecreaseNotices: RampDecreaseNotices,
+			DeliveryRampPresetPicker: RampPresetPicker,
+		},
+	};
+
+	function stubPage(refusal: RampControlRefusal): { run: ReturnType<typeof vi.fn> } {
+		const run = vi.fn().mockResolvedValue({ applied: false, refusal });
+		vi.stubGlobal('useHead', vi.fn());
+		vi.stubGlobal('definePageMeta', vi.fn());
+		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
+		const answers = new Map<string, unknown>([
+			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView()],
+			[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), []],
+		]);
+		vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({
+			data: ref(answers.get(getFunctionName(query))),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+		return { run };
+	}
+
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it.each<[RampControlRefusal, RegExp]>([
+		['controller_paused', /globally paused/i],
+		['hard_stop_active', /safety hold/i],
+		['cell_not_ramp_managed', /not on the ramp yet/i],
+	])('explains the %s refusal calmly instead of showing nothing', async (refusal, sentence) => {
+		stubPage(refusal);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-pause"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		const note = wrapper.find('[data-testid="ramp-control-refusal"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).toMatch(sentence);
+		expect(note.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/** Every arm has a sentence, and none of them reads as a fault. */
+	it('gives every refusal arm a calm sentence that ends in something to do', () => {
+		const arms: readonly RampControlRefusal[] = [
+			'controller_paused',
+			'hard_stop_active',
+			'cell_not_ramp_managed',
+			'no_organization',
+		];
+		for (const arm of arms) {
+			const sentence = rampRefusalSentence(arm);
+			expect(sentence.length).toBeGreaterThan(20);
+			expect(sentence).not.toMatch(ALARM);
+			expect(sentence).not.toMatch(/error|failed|invalid/i);
+		}
+	});
+});
+
+/**
+ * SAY THE QUIET PART (plan D14). A standalone deployment can still pick a faster
+ * pace — it is their deployment — but it must be told what that pace is running
+ * on, in the same calm register as every other state here.
+ */
+describe('standalone preset trade-off', () => {
+	it('names what the faster paces lack when there is no relay', () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: { stream: 'campaign', preset: null, defaultPreset: 'conservative' },
+		});
+		const note = wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).toMatch(/weaker signal/i);
+		expect(wrapper.find('[data-testid="ramp-preset-standalone-note-conservative"]').exists()).toBe(
+			false
+		);
+		expect(wrapper.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	it('says nothing extra when a relay is connected', () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: { stream: 'campaign', preset: null, defaultPreset: 'balanced' },
+		});
+		expect(wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]').exists()).toBe(
+			false
+		);
+		wrapper.unmount();
 	});
 });

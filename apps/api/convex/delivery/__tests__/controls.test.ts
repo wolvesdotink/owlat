@@ -288,6 +288,67 @@ describe('hard stops bound the operator, not only the controller', () => {
 		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
 	});
 
+	/**
+	 * THE ABSENT CEILING IS THE INTERESTING ONE. `phaseCeiling` is optional, so a
+	 * row that predates the controller carries none — and a guard that falls back
+	 * to the ARGUMENT would compare a value against itself and wave every raise
+	 * through. The ladder's first rung is the reading `promoteRampPhase` takes,
+	 * and this asserts the operator path agrees with it.
+	 */
+	it('refuses raising the ceiling of a row with NO stored ceiling under the kill switch', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			omitPhaseCeiling: true,
+			isPaused: true,
+		});
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 1,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('controller_paused');
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBeUndefined();
+		expect(row?.ownShare).toBe(0.2);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('refuses raising the ceiling of a ceiling-less row inside a live cooldown', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			omitPhaseCeiling: true,
+			frozenUntil: Date.now() + 60 * 60 * 1000,
+			freezeReason: 'gate_breach',
+		});
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 1,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.phaseCeiling).toBeUndefined();
+	});
+
+	it('still lets a ceiling-less row be put on the FIRST rung under the kill switch', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			omitPhaseCeiling: true,
+			isPaused: true,
+		});
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+
 	it('still lets a phase be reset DOWNWARD while the kill switch is engaged', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, phaseCeiling: 1, isPaused: true });

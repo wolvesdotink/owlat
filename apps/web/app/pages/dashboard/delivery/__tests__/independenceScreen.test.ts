@@ -99,6 +99,22 @@ describe('independence arithmetic', () => {
 		expect(spendAvoidedMinorUnits({ ownSends: 0, minorUnitsPerThousand: 100 })).toBe(0);
 	});
 
+	/**
+	 * A CORRUPT PRICE IS UNANSWERABLE AT ANY VOLUME. If the sends guard ran first,
+	 * a zero-volume month would answer `0` off a NaN price and the screen would
+	 * print "$0.00 avoided" instead of asking for the price it never had.
+	 */
+	it('answers "cannot say" on an unusable price even when there were no sends', () => {
+		expect(spendAvoidedMinorUnits({ ownSends: 0, minorUnitsPerThousand: Number.NaN })).toBeNull();
+		expect(
+			spendAvoidedMinorUnits({ ownSends: 0, minorUnitsPerThousand: Number.POSITIVE_INFINITY })
+		).toBeNull();
+		expect(spendAvoidedMinorUnits({ ownSends: 0, minorUnitsPerThousand: -1 })).toBeNull();
+		expect(
+			spendAvoidedMinorUnits({ ownSends: 12_500, minorUnitsPerThousand: Number.NaN })
+		).toBeNull();
+	});
+
 	it('counts month-to-date own sends from the month boundary only', () => {
 		const points: IndependenceDayPoint[] = [
 			{ day: NOW - 40 * DAY_MS, own: 1000, reference: 0 },

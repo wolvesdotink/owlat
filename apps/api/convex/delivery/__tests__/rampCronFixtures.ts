@@ -63,6 +63,12 @@ export interface SeedRampCellOptions {
 	/** The clean streak stored on the managed cell's row. */
 	readonly cleanStreak?: number;
 	readonly phaseCeiling?: number;
+	/**
+	 * Seed the managed row with NO stored `phaseCeiling` at all. The column is
+	 * `v.optional`, so absence is a representable state every guard that reads it
+	 * has to answer for — and the fixture's default of 1 would hide it.
+	 */
+	readonly omitPhaseCeiling?: boolean;
 	readonly mixVersion?: number;
 	/** The derived boolean view of the share (plan D1). */
 	readonly isFallbackActive?: boolean;
@@ -135,7 +141,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			stream: 'campaign' as const,
 			isFallbackActive: options.isFallbackActive ?? false,
 			ownShare: options.ownShare ?? RAMP_FIXTURE_SHARE,
-			phaseCeiling: options.phaseCeiling ?? 1,
+			...(options.omitPhaseCeiling === true ? {} : { phaseCeiling: options.phaseCeiling ?? 1 }),
 			cleanStreak: options.cleanStreak ?? 3,
 			mixVersion: options.mixVersion ?? 2,
 			...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
