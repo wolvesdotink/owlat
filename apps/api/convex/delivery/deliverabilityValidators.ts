@@ -131,6 +131,7 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('dnsbl'),
 	v.literal('frozen'),
 	v.literal('share_unreadable'),
+	v.literal('freeze_unreadable'),
 	v.literal('holding'),
 	v.literal('evidence_stale'),
 	v.literal('awaiting_corroboration'),

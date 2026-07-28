@@ -72,6 +72,16 @@ export const deliverabilityRoutingTables = {
 		// untouched, so an infrastructure incident cannot inflate a gate cooldown.
 		frozenUntil: v.optional(v.number()),
 		cooldownMs: v.optional(v.number()),
+		// WHICH RUNG STAMPED `frozenUntil`. Three rungs can freeze a cell and they
+		// do not mean the same thing: the circuit-breaker rung charges its halving
+		// ONCE per incident and declines to re-charge while ITS OWN freeze runs, so
+		// without the origin on the row an unrelated gate cooldown — up to 48h —
+		// would absorb the retreat a newly-open breaker is supposed to cost. Absent
+		// on a row frozen before this was recorded, and an unattributed freeze is
+		// deliberately never read as the breaker's.
+		freezeReason: v.optional(
+			v.union(v.literal('gate_breach'), v.literal('breaker'), v.literal('dnsbl'))
+		),
 		// Graduation (plan D9): s = 1.0 held 14 days with every gate green PINS the
 		// cell and drops the relay to priority_failover standby. Set once, and
 		// cleared only when the share leaves 1.0.
