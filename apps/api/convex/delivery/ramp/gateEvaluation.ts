@@ -43,7 +43,6 @@ import type {
 	RampGateEvaluation,
 	RampGateEvaluationInput,
 	RampGateEvaluator,
-	RampGateId,
 	RampGateResult,
 	RampGateStatus,
 	RampVerdict,
@@ -73,25 +72,25 @@ function contributes(result: RampGateResult): boolean {
  */
 export function aggregateRampGates(args: RampGateAggregationInput): RampGateEvaluation {
 	const { perGate, previousCleanStreak, now } = args;
-	let contributed = false;
-	let contributedVerdict: RampVerdict = 'pass';
-	let failedGate: RampGateId | undefined;
-	let rank = -1;
-
+	// The WINNING RESULT is carried whole rather than shredded into a rank, a
+	// verdict and a gate id: the verdict and the gate that produced it are one
+	// fact, and keeping them together is what lets the returned union promise a
+	// named gate on every `fail`/`halt` without a re-derivation the type system
+	// would have to be talked into believing.
+	let winner: RampGateResult | undefined;
 	for (const result of perGate) {
 		if (!contributes(result)) continue;
-		contributed = true;
-		const resultRank = STATUS_RANK[result.status];
-		if (resultRank > rank) {
-			rank = resultRank;
-			contributedVerdict = result.status;
-			failedGate = result.status === 'pass' ? undefined : result.gate;
+		// STRICTLY greater: the FIRST gate at the winning rank is the one named,
+		// and gates arrive in the plan's numbering, so the earliest, most
+		// fundamental problem is the one reported.
+		if (winner === undefined || STATUS_RANK[result.status] > STATUS_RANK[winner.status]) {
+			winner = result;
 		}
 	}
 
 	// An evaluation nothing contributed to is evidence-free, and evidence-free is
 	// exactly the state `pass` must not be reachable from.
-	const verdict: RampVerdict = contributed ? contributedVerdict : 'insufficient_data';
+	const verdict: RampVerdict = winner === undefined ? 'insufficient_data' : winner.status;
 
 	const previous =
 		Number.isFinite(previousCleanStreak) && previousCleanStreak > 0
@@ -102,19 +101,24 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 	// could not measure is neither clean nor dirty.
 	const cleanStreak =
 		verdict === 'pass' ? previous + 1 : verdict === 'insufficient_data' ? previous : 0;
+	const base = { cleanStreak, perGate, evaluatedAt: now };
 
-	const requiresCorroboration =
-		(verdict === 'fail' || verdict === 'halt') &&
-		failedGate !== undefined &&
-		CORROBORATION_REQUIRED_RAMP_GATES.has(failedGate);
-
+	// A BREACH IS NAMED, always: the branch is taken off the winning RESULT, so
+	// the gate that produced the verdict travels with it and no re-derivation is
+	// needed to satisfy the union.
+	if (winner !== undefined && (winner.status === 'fail' || winner.status === 'halt')) {
+		return {
+			...base,
+			verdict: winner.status,
+			failedGate: winner.gate,
+			requiresCorroboration: CORROBORATION_REQUIRED_RAMP_GATES.has(winner.gate),
+		};
+	}
 	return {
-		verdict,
-		...(failedGate === undefined ? {} : { failedGate }),
-		requiresCorroboration,
-		cleanStreak,
-		perGate,
-		evaluatedAt: now,
+		...base,
+		verdict: verdict === 'pass' ? 'pass' : 'insufficient_data',
+		...(winner === undefined || winner.status === 'pass' ? {} : { failedGate: winner.gate }),
+		requiresCorroboration: false,
 	};
 }
 

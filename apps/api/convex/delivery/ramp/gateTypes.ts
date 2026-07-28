@@ -178,10 +178,7 @@ export type RampGateResult =
 /** Aggregate verdict. `halt` is a strictly stronger `fail` (deferral hard stop). */
 export type RampVerdict = 'pass' | 'fail' | 'halt' | 'insufficient_data';
 
-export interface RampGateEvaluation {
-	readonly verdict: RampVerdict;
-	/** The gate that produced a `fail`/`halt`, or the one holding on thin data. */
-	readonly failedGate?: RampGateId;
+interface RampGateEvaluationBase {
 	/**
 	 * The failing gate is a TRIPWIRE, not a measurement (plan D17): the
 	 * controller must corroborate it against the deferral or bounce gate before
@@ -192,9 +189,41 @@ export interface RampGateEvaluation {
 	/** Consecutive clean windows INCLUDING this one (plan D9's K_CLEAN input). */
 	readonly cleanStreak: number;
 	readonly perGate: readonly RampGateResult[];
-	/** The `now` the evaluation ran against — echoed for the audit row. */
+	/**
+	 * The `now` the evaluation ran against.
+	 *
+	 * NOT decoration: the controller reads it to decide whether this aggregate is
+	 * still EVIDENCE. An aggregate older than `maxEvidenceAgeMs`, or one stamped
+	 * ahead of the clock by more than `maxFutureSkewMs`, holds the cell rather
+	 * than buying it a step — the same freshness/skew model the shipped routing
+	 * snapshot validator applies.
+	 */
 	readonly evaluatedAt: number;
 }
+
+/**
+ * The gate aggregate, DISCRIMINATED ON `verdict`.
+ *
+ * A `fail` or a `halt` is the one shape that costs a cell half its share, and
+ * the audit row for that retreat has to name what broke (plan D12). Making
+ * `failedGate` REQUIRED on those two members is what stops a decrease from ever
+ * being recorded with a reason that says it held: the alternative — one
+ * interface with an optional flag — permits a breach with nothing to name, and
+ * a silent retreat is exactly the failure mode the audit trail exists to
+ * prevent. A `pass` names nothing; an `insufficient_data` may name the gate that
+ * is holding.
+ */
+export type RampGateEvaluation =
+	| (RampGateEvaluationBase & {
+			readonly verdict: 'pass' | 'insufficient_data';
+			/** The gate holding on thin data, when one can be named. */
+			readonly failedGate?: RampGateId;
+	  })
+	| (RampGateEvaluationBase & {
+			readonly verdict: 'fail' | 'halt';
+			/** REQUIRED: a retreat always names the measurement that broke. */
+			readonly failedGate: RampGateId;
+	  });
 
 /** Seed placement, as a tripwire and never as a gauge (plan D17). */
 export interface SeedPlacementObservation {
