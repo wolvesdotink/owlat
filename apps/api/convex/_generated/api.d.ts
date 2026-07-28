@@ -274,6 +274,7 @@ import type * as delivery_postmaster from "../delivery/postmaster.js";
 import type * as delivery_postmasterCards from "../delivery/postmasterCards.js";
 import type * as delivery_ramp_controller from "../delivery/ramp/controller.js";
 import type * as delivery_rampControllerCron from "../delivery/rampControllerCron.js";
+import type * as delivery_rampControllerInputs from "../delivery/rampControllerInputs.js";
 import type * as delivery_rampMixDecisions from "../delivery/rampMixDecisions.js";
 import type * as delivery_ramp_controllerConfig from "../delivery/ramp/controllerConfig.js";
 import type * as delivery_ramp_controllerNarrative from "../delivery/ramp/controllerNarrative.js";
@@ -1131,6 +1132,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/postmasterCards": typeof delivery_postmasterCards;
   "delivery/ramp/controller": typeof delivery_ramp_controller;
   "delivery/rampControllerCron": typeof delivery_rampControllerCron;
+  "delivery/rampControllerInputs": typeof delivery_rampControllerInputs;
   "delivery/rampMixDecisions": typeof delivery_rampMixDecisions;
   "delivery/ramp/controllerConfig": typeof delivery_ramp_controllerConfig;
   "delivery/ramp/controllerNarrative": typeof delivery_ramp_controllerNarrative;
