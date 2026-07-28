@@ -289,15 +289,13 @@ describe('one-pass record generation', () => {
 		policy: 'reject',
 		subdomainPolicy: 'none',
 		pct: 10,
-		adkim: 's',
-		aspf: 'r',
 	} as const;
 
 	it('NEVER publishes a stricter DMARC than the operator configured', () => {
-		// `sp=`, `pct=`, `adkim=` and `aspf=` are shipped, persisted settings. A
-		// one-pass generator that dropped them would take a domain deliberately
-		// staged at 10 % to full enforcement on 100 % of the stream, and relax
-		// alignment the operator chose to make strict.
+		// `sp=` and `pct=` are the knobs the schema persists next to `p=`
+		// (`dmarcSubdomainPolicy`, `dmarcPct`). A one-pass generator that dropped
+		// them would take a domain deliberately staged at 10 % to full enforcement
+		// on 100 % of the stream.
 		const staged = recordsOf({
 			...BASE,
 			dmarcByRole: {
@@ -308,9 +306,7 @@ describe('one-pass record generation', () => {
 		const dmarc = staged.filter((r) => r.purpose === 'dmarc');
 		expect(dmarc).toHaveLength(2);
 		for (const row of dmarc) {
-			expect(streamSubdomainRecordValue(row)).toBe(
-				'v=DMARC1; p=reject; sp=none; pct=10; adkim=s; aspf=r'
-			);
+			expect(streamSubdomainRecordValue(row)).toBe('v=DMARC1; p=reject; sp=none; pct=10');
 		}
 	});
 

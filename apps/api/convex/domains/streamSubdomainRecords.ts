@@ -26,10 +26,12 @@
  * `dmarc.ts`) — a second SPF or DMARC renderer is exactly the kind of duplicate
  * that drifts.
  *
- * IT PUBLISHES THE OPERATOR'S DMARC, NOT A TIGHTER ONE. `sp=`, `pct=`, `adkim=`
- * and `aspf=` are shipped, persisted settings, and a one-pass generator that
- * dropped them would silently move a domain staged at `pct=10` to full
- * enforcement on 100 % of a stream. Every knob is threaded through.
+ * IT PUBLISHES THE OPERATOR'S DMARC, NOT A TIGHTER ONE. `sp=` and `pct=` are
+ * the knobs `schema/domains.ts` persists alongside `p=`
+ * (`dmarcSubdomainPolicy`, `dmarcPct`), and a one-pass generator that dropped
+ * them would silently move a domain staged at `pct=10` to full enforcement on
+ * 100 % of a stream. Both are threaded through; nothing beyond what the schema
+ * stores is invented here.
  *
  * D11 — the generated records keep BOTH ARMS OF A CELL on the same From domain
  * and the same `d=`. The only per-arm record is a second DKIM selector under
@@ -46,7 +48,7 @@
 
 import { zoneRelativeHost, type DnsName } from '@owlat/shared/dnsZone';
 import { GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
-import { buildDmarcRecordValue, type DmarcAlignment, type DmarcPolicy } from './dmarc';
+import { buildDmarcRecordValue, type DmarcPolicy } from './dmarc';
 import {
 	DEFAULT_SPF_QUALIFIER,
 	RETURN_PATH_MX_PRIORITY,
@@ -151,18 +153,20 @@ export interface SubdomainSigningIdentity {
 /**
  * One host's persisted DMARC configuration.
  *
- * Every knob is threaded verbatim: `sp=`, `pct=`, `adkim=` and `aspf=` are
- * shipped, persisted settings, and a one-pass generator that dropped them would
- * silently move a domain staged at `pct=10` to full enforcement on 100 % of a
- * stream. A host that has not been added yet carries `DEFAULT_DMARC_POLICY` —
- * what registration will actually publish for it.
+ * These are exactly the three columns `schema/domains.ts` persists —
+ * `dmarcPolicy`, `dmarcSubdomainPolicy` and `dmarcPct` — threaded verbatim,
+ * because a generator that dropped `sp=` or `pct=` would silently move a domain
+ * staged at `pct=10` to full enforcement on 100 % of a stream. There is no
+ * fourth knob to thread: the shipped policy writer (`lifecycle.setDmarcPolicy`)
+ * has no alignment setting, so this type carries none either rather than
+ * offering an option no production caller can supply. A host that has not been
+ * added yet carries `DEFAULT_DMARC_POLICY` — what registration will actually
+ * publish for it.
  */
 export interface SubdomainDmarcSettings {
 	policy: DmarcPolicy;
 	subdomainPolicy?: DmarcPolicy;
 	pct?: number;
-	adkim?: DmarcAlignment;
-	aspf?: DmarcAlignment;
 }
 
 export interface StreamSubdomainRecordOptions {
@@ -331,8 +335,6 @@ export function buildStreamSubdomainRecords(
 				policy: dmarc.policy,
 				...(dmarc.subdomainPolicy === undefined ? {} : { subdomainPolicy: dmarc.subdomainPolicy }),
 				...(dmarc.pct === undefined ? {} : { pct: dmarc.pct }),
-				...(dmarc.adkim === undefined ? {} : { adkim: dmarc.adkim }),
-				...(dmarc.aspf === undefined ? {} : { aspf: dmarc.aspf }),
 				...(options.dmarcRua === undefined ? {} : { rua: options.dmarcRua }),
 			}),
 		});
