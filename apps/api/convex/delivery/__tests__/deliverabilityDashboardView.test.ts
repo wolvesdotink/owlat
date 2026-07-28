@@ -73,8 +73,8 @@ const BELOW_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
  */
 interface ConfidenceCase {
 	readonly name: string;
-	readonly own: TransportOutcomeSummary;
-	readonly reference: TransportOutcomeSummary | null;
+	readonly ownSent: number;
+	readonly hasReferenceArm: boolean;
 	readonly hasSeedCoverage: boolean;
 	readonly evaluated: RampGateConfidence;
 	readonly level: DashboardConfidenceLevel;
@@ -84,8 +84,8 @@ interface ConfidenceCase {
 const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	{
 		name: 'nothing sent, standalone, no seeds — none, and both invitations',
-		own: summary(),
-		reference: null,
+		ownSent: 0,
+		hasReferenceArm: false,
 		// An evaluation nothing contributed to grades `low`; a window with no
 		// traffic in it is still reported as `none`, because a confidence beside no
 		// measurement at all is a number nobody should read.
@@ -96,8 +96,8 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	},
 	{
 		name: 'nothing sent with both a reference arm and seeds — still none, nothing to offer',
-		own: summary(),
-		reference: summary({ sent: 5000 }),
+		ownSent: 0,
+		hasReferenceArm: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'none',
@@ -107,10 +107,8 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'a healthy STANDALONE cell reaches the wire at the MEDIUM the evaluator graded it',
 		// The configuration the whole confidence model exists for: no reference arm,
 		// gate 3 on the unsubscribe proxy, so the weakest contributor is `medium`.
-		// The screen used to derive `low` here from "one arm only" and contradict the
-		// decision core about a number (plan D5/D14).
-		own: summary({ sent: 100_000, calibrationSent: 100_000 }),
-		reference: null,
+		ownSent: 100_000,
+		hasReferenceArm: false,
 		evaluated: 'medium',
 		hasSeedCoverage: true,
 		level: 'medium',
@@ -118,17 +116,30 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	},
 	{
 		name: 'a standalone cell graded LOW is not upgraded on its way to the screen',
-		own: summary({ sent: 100_000, calibrationSent: 100_000 }),
-		reference: null,
+		ownSent: 100_000,
+		hasReferenceArm: false,
 		evaluated: 'low',
 		hasSeedCoverage: true,
 		level: 'low',
 		improvements: ['connect_reference_transport'],
 	},
 	{
+		name: 'a STANDALONE cell whose gates all graded HIGH is still capped at medium (D14)',
+		// THE REGRESSION THIS TABLE EXISTS FOR. A one-armed cell whose only DECIDED
+		// gate is the (genuinely high-confidence) deferral check must not tell the
+		// operator the cell is well-measured: there is no second arm, and the screen
+		// says so.
+		ownSent: 100_000,
+		hasReferenceArm: false,
+		evaluated: 'high',
+		hasSeedCoverage: true,
+		level: 'medium',
+		improvements: ['connect_reference_transport'],
+	},
+	{
 		name: 'a thin window keeps the evaluator’s level and gains only the volume advice',
-		own: summary({ sent: BELOW_BOUNCE_FLOOR }),
-		reference: summary({ sent: BELOW_BOUNCE_FLOOR }),
+		ownSent: BELOW_BOUNCE_FLOOR,
+		hasReferenceArm: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'high',
@@ -136,8 +147,8 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	},
 	{
 		name: 'two arms, everything measured on our own wire — high, nothing to improve',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR }),
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'high',
@@ -145,8 +156,8 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	},
 	{
 		name: 'high measurement with no seeds — still high, seeds are an invitation not a gate (D2)',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR }),
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: true,
 		evaluated: 'high',
 		hasSeedCoverage: false,
 		level: 'high',
@@ -158,8 +169,8 @@ describe('dashboardConfidence', () => {
 	for (const testCase of CONFIDENCE_CASES) {
 		it(testCase.name, () => {
 			const result = dashboardConfidence({
-				own: testCase.own,
-				reference: testCase.reference,
+				ownSent: testCase.ownSent,
+				hasReferenceArm: testCase.hasReferenceArm,
 				hasSeedCoverage: testCase.hasSeedCoverage,
 				evaluated: testCase.evaluated,
 			});
@@ -182,11 +193,11 @@ describe('dashboardConfidence', () => {
 		]);
 	});
 
-	it('passes EVERY grade through unchanged on identical traffic', () => {
+	it('passes EVERY grade through unchanged on a two-armed cell', () => {
 		for (const evaluated of ['low', 'medium', 'high'] as const) {
 			const result = dashboardConfidence({
-				own: summary({ sent: ABOVE_BOUNCE_FLOOR }),
-				reference: null,
+				ownSent: ABOVE_BOUNCE_FLOOR,
+				hasReferenceArm: true,
 				hasSeedCoverage: true,
 				evaluated,
 			});
@@ -194,10 +205,38 @@ describe('dashboardConfidence', () => {
 		}
 	});
 
+	it('never renders HIGH for a cell with no reference arm, whatever the gates graded', () => {
+		for (const evaluated of ['low', 'medium', 'high'] as const) {
+			for (const hasSeedCoverage of [true, false]) {
+				const result = dashboardConfidence({
+					ownSent: ABOVE_BOUNCE_FLOOR,
+					hasReferenceArm: false,
+					hasSeedCoverage,
+					evaluated,
+				});
+				expect(result.level).not.toBe('high');
+			}
+		}
+	});
+
+	it('reads D14’s sentence literally: neither input present caps the cell at LOW', () => {
+		const result = dashboardConfidence({
+			ownSent: ABOVE_BOUNCE_FLOOR,
+			hasReferenceArm: false,
+			hasSeedCoverage: false,
+			evaluated: 'high',
+		});
+		expect(result.level).toBe('low');
+		expect([...result.improvements].sort()).toEqual([
+			'add_seed_mailboxes',
+			'connect_reference_transport',
+		]);
+	});
+
 	it('never asks for volume twice', () => {
 		const result = dashboardConfidence({
-			own: summary({ sent: BELOW_BOUNCE_FLOOR }),
-			reference: summary({ sent: BELOW_BOUNCE_FLOOR }),
+			ownSent: BELOW_BOUNCE_FLOOR,
+			hasReferenceArm: true,
 			hasSeedCoverage: true,
 			evaluated: 'high',
 		});
@@ -365,6 +404,7 @@ describe('buildDashboardCellView', () => {
 			reference: null,
 			evaluation,
 			hasSeedCoverage: false,
+			hasReferenceArm: false,
 			trend: [],
 		});
 		expect(view.own).toBe(own);
@@ -384,6 +424,7 @@ describe('buildDashboardCellView', () => {
 			reference: null,
 			evaluation,
 			hasSeedCoverage: false,
+			hasReferenceArm: false,
 			trend: [],
 		});
 		expect(view.cleanStreakIncludingThisWindow).toBe(evaluation.cleanStreak);
@@ -411,6 +452,7 @@ describe('buildDashboardCellView', () => {
 				reference: null,
 				evaluation: { ...evaluation, confidence: graded },
 				hasSeedCoverage: true,
+				hasReferenceArm: false,
 				trend: [],
 			});
 			expect(view.confidence.level).toBe(graded);

@@ -221,14 +221,32 @@ export function seeds(
  * a rate-pressure category instead, and the gate's numerator then sums to zero
  * rather than being asserted away by a second field.
  */
+/**
+ * `count` and `category` BUILD the map, so a caller may not also supply one:
+ * `...rest` would overwrite the map this fixture just built and the numerator
+ * would stop describing the category names beside it — which is the exact
+ * disagreement `SmtpBlockObservation`'s docblock says must not be expressible.
+ * The union makes the two spellings mutually exclusive at the type level.
+ */
+export type BlockOverrides =
+	| (Omit<Partial<SmtpBlockObservation>, 'blockedByCategory'> & {
+			readonly category?: SmtpFailureCategory;
+			readonly blockedByCategory?: never;
+	  })
+	| (Partial<SmtpBlockObservation> & { readonly category?: never });
+
 export function blocks(
 	count: number,
 	observed: number,
-	overrides: Partial<SmtpBlockObservation> & { readonly category?: SmtpFailureCategory } = {}
+	overrides: BlockOverrides = {}
 ): SmtpBlockObservation {
 	const { category = 'content_rejected', ...rest } = overrides;
 	const blockedByCategory: Partial<Record<SmtpFailureCategory, number>> = {};
 	blockedByCategory[category] = count;
+	// `...rest` last is safe now that the type forbids `category` and
+	// `blockedByCategory` together: it either carries the caller's WHOLE map (the
+	// map-only spelling, in which `count` is unused by construction) or it carries
+	// no map at all and leaves the one built above intact.
 	return { observed, blockedByCategory, observedAt: NOW, ...rest };
 }
 
