@@ -25,6 +25,7 @@ import {
 } from '../sndsFeed';
 import { SNDS_INGEST_BATCH_SIZE, SNDS_MAX_OBSERVATIONS_PER_POLL } from '../sndsPoll';
 import {
+	oldestStorableDay,
 	parsePoolAllowlist,
 	parseSndsFeedUrls,
 	SNDS_MAX_FEEDS,
@@ -221,6 +222,28 @@ describe('replay, staleness and foreign IPs', () => {
 		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.complaintBand).toBe('0_1_to_0_2');
+	});
+
+	it('ingests the OLDEST day still inside the window, at the exact boundary', async () => {
+		// The poller pre-filters on a DAY-ALIGNED edge and the mutation re-checks
+		// it. If the two disagreed by so much as a mid-day offset, the oldest day
+		// the poller decided to send would come back as an unexplainable
+		// `rejected` on every poll that ran after 00:00 UTC — i.e. always.
+		const t = convexTest(schema, modules);
+		const boundary = oldestStorableDay(NOW);
+		const result = await t.mutation(internal.delivery.snds.ingestDays, {
+			observations: [observation({ periodStart: boundary })],
+			fetchedAt: Date.now(),
+		});
+		expect(result).toMatchObject({ ingested: 1, rejected: 0 });
+
+		// One day older is outside the window and is refused, so the boundary is
+		// pinned from both sides rather than merely being permissive.
+		const older = await t.mutation(internal.delivery.snds.ingestDays, {
+			observations: [observation({ periodStart: boundary - DAY_MS })],
+			fetchedAt: Date.now(),
+		});
+		expect(older).toMatchObject({ ingested: 0, rejected: 1 });
 	});
 
 	it('rejects observations outside the ingest window or with impossible counters', async () => {

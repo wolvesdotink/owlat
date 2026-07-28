@@ -20,7 +20,7 @@ import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import { DAY_MS, normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
 import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './ramp/sndsGate';
-import { parsePoolAllowlist, parseSndsFeedUrls, SNDS_INGEST_MAX_AGE_MS } from './sndsConfig';
+import { oldestStorableDay, parsePoolAllowlist, parseSndsFeedUrls } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 
@@ -67,7 +67,10 @@ function isStorableObservation(
 		Number.isFinite(observation.periodStart) &&
 		observation.periodStart % DAY_MS === 0 &&
 		observation.periodStart <= now &&
-		observation.periodStart >= now - SNDS_INGEST_MAX_AGE_MS &&
+		// DAY-ALIGNED, matching the poller's pre-filter exactly: every `periodStart`
+		// is a UTC midnight, so an edge taken at `now` would sit mid-day and refuse
+		// the oldest day the poller had just decided was worth a round trip.
+		observation.periodStart >= oldestStorableDay(now) &&
 		Number.isFinite(fetchedAt) &&
 		fetchedAt >= observation.periodStart &&
 		fetchedAt <= now + FETCHED_AT_FUTURE_TOLERANCE_MS &&
