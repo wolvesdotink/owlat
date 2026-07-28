@@ -55,14 +55,37 @@ function gateRemedy(decision: RampDecision): string {
  * already names what broke and what to do about it, and a second wording could
  * only drift from the first.
  *
- * THE TRIGGER IS A NAMED CAUSE, NOT A DROP IN THE NUMBER. A cell already sitting
+ * THE TRIGGER IS A NAMED CAUSE THAT ALSO CHANGED SOMETHING. Two failure modes
+ * bracket this predicate and it has to miss both.
+ *
+ * Keying purely off `direction` silences the worst case: a cell already sitting
  * on the soft floor cannot fall any further, so a fresh breach there is a HOLD —
  * and it is precisely the incident an operator most needs to see, because a cell
  * pinned at 1% by repeated breaches still imposes a fresh freeze and still
- * advances the cooldown ladder every time. Keying the notice off `direction`
- * silenced exactly the worst case. What is deliberately NOT notifiable is a
- * ceiling-bound pull-back: nothing failed, there is no gate to name and nothing
- * to act on, and a notice channel that cries wolf stops being read.
+ * advances the cooldown ladder every time.
+ *
+ * Keying purely off the CAUSE cries wolf: `abuse_status` and `dnsbl` sit above
+ * the `frozen` rung and re-enter at share 0 on every hourly tick, so a condition
+ * that persists for a day would post twenty-four identical incident notices for
+ * one incident, and a notice channel that repeats itself stops being read.
+ *
+ * `cooldownMs` is the exact discriminator between them. It is set ONLY by a
+ * LADDER freeze (`isLadderFreeze` in `controller.ts`) — a breached gate — which
+ * is a fresh freeze and a fresh rung of the cooldown ladder every time it fires,
+ * i.e. genuinely new every tick. Hard-stop freezes deliberately leave it
+ * undefined, so a persistent hard stop announces itself on the tick that moved
+ * the share and then goes quiet until something changes.
+ *
+ * `awaiting_corroboration` is deliberately NOT notifiable. It carries a
+ * `failedGate`, but it is the branch in which the controller has decided NOT to
+ * believe the seed tripwire on its own (plan D17): nothing moved, no freeze was
+ * imposed, and the remedy sentence would be "corroborate this before acting" —
+ * an alarm asking the operator to go and find out whether there is an alarm. The
+ * tripwire becomes notifiable the moment a second gate agrees, at which point
+ * `aggregateRampGates` names THAT gate and the retreat is a real one.
+ *
+ * Also deliberately not notifiable: a ceiling-bound pull-back. Nothing failed,
+ * there is no gate to name and nothing to act on.
  */
 export function rampDecisionAdminNotice(
 	cell: DeliverabilityCell,
@@ -70,7 +93,8 @@ export function rampDecisionAdminNotice(
 ): string | undefined {
 	const isNamed =
 		decision.failedGate !== undefined || NOTIFIABLE_RETREAT_REASONS.has(decision.reason);
-	return isNamed ? describeRampDecision(cell, decision) : undefined;
+	const hasChanged = decision.direction !== 'hold' || decision.cooldownMs !== undefined;
+	return isNamed && hasChanged ? describeRampDecision(cell, decision) : undefined;
 }
 
 /**
@@ -86,12 +110,24 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Ramp paused: ${where} is pinned at ${percent(decision.share)} by the global kill switch. No cell moves while the controller is paused.`;
 		case 'clock_unusable':
 			return `Held ${where} at ${percent(decision.share)}: the evaluation clock was unusable, and the controller never decides against a broken clock.`;
+		// THE HARD STOPS REPEAT. `abuse_status` and `dnsbl` sit ABOVE the `frozen`
+		// rung, so while the condition persists every hourly tick re-enters them with
+		// the cell already at 0 and `fromShare === share`. A hard-coded verb would
+		// render "Stopped campaign mail to gmail (0% -> 0%)" twenty-four times a day —
+		// the same misleading no-op sentence the gate and ceiling arms below take
+		// their verb from `direction` to avoid. So these do too.
 		case 'abuse_status':
-			return `Stopped ${where} (${move}): the organization's abuse status forbids sending. Resolve the account status first; nothing else the controller measures matters until then.`;
+			return decision.direction === 'decrease'
+				? `Stopped ${where} (${move}): the organization's abuse status forbids sending. Resolve the account status first; nothing else the controller measures matters until then.`
+				: `Held ${where} at ${percent(decision.share)}: the organization's abuse status still forbids sending. Resolve the account status first; nothing else the controller measures matters until then.`;
 		case 'breaker':
-			return `Halved ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for 6h while the breaker recovers.`;
+			return decision.direction === 'decrease'
+				? `Halved ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for 6h while the breaker recovers.`
+				: `Held ${where} at ${percent(decision.share)}: the MTA circuit breaker is still open for this provider. Frozen for a further 6h while the breaker recovers.`;
 		case 'dnsbl':
-			return `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for 24h — start the delisting flow from the Delivery checklist.`;
+			return decision.direction === 'decrease'
+				? `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for 24h — start the delisting flow from the Delivery checklist.`
+				: `Held ${where} at ${percent(decision.share)}: a pool IP still carries a critical blocklist listing. Frozen for a further 24h — start the delisting flow from the Delivery checklist.`;
 		case 'frozen':
 			return `Held ${where} at ${percent(decision.share)}: an earlier decision froze this cell and the cooldown has not expired.`;
 		case 'share_unreadable':
