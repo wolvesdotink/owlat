@@ -44,11 +44,18 @@ export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now
  * and — far earlier — by gates that cannot reach their sample floors.
  */
 export function capacityCeiling(capacity: RampCapacityInput): number | null {
-	// NO PROJECTION is not a spent cap: the cell is bounded by its phase ceiling
-	// alone until P3-3 supplies a real per-cell reading (plan D2 — absence never
-	// constrains). It is a distinct SHAPE, not a pair of zeros, precisely so it
-	// cannot be confused with a cell whose cap is spent and whose volume is zero.
+	// NO WARMING READING AT ALL is not a spent cap: the cell is bounded by its
+	// phase ceiling alone (plan D2 — absence never constrains). It is a distinct
+	// SHAPE, not a pair of zeros, precisely so it cannot be confused with a cell
+	// whose cap is spent and whose volume is zero.
 	if (capacity.kind === 'unconstrained') return OWN_SHARE_CEILING;
+	// A KNOWN CAP OVER AN UNKNOWN DEMAND is the opposite case, and the one the
+	// projection reports for a brand-new cell, a paused week or the last sliver
+	// of a UTC day. There is no ceiling to compute, so the cell HOLDS (plan D10):
+	// never an unbounded ceiling, never a zero one, and never a division by a
+	// projection of zero — that division is refused in `projectCellVolume`, one
+	// module upstream, and this is where the refusal arrives.
+	if (capacity.kind === 'unknown') return null;
 	const { warmingCapRemaining, projectedVolume } = capacity;
 	if (!Number.isFinite(warmingCapRemaining) || warmingCapRemaining < 0) return null;
 	if (!Number.isFinite(projectedVolume) || projectedVolume < 0) return null;
