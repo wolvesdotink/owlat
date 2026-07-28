@@ -25,12 +25,26 @@ import {
 	type RampCellControl,
 } from '~/utils/deliverabilityRamp';
 
-defineProps<{
+const props = defineProps<{
 	cells: readonly RampCellControl[];
 	/** The cell whose drill-down is open, by key. */
 	selectedCellKey: string | null;
 	labelledBy: string;
 }>();
+
+/**
+ * Status decided ONCE per row. The template needs it three times — the tone
+ * class, the `data-state` hook and the label — and calling the classifier once
+ * per use makes three chances for them to describe different states if the
+ * classifier ever stops being pure.
+ */
+const rows = computed(() =>
+	props.cells.map((cell) => ({
+		cell,
+		status: rampCellStatus(cell),
+		constraint: bindingConstraint(cell),
+	}))
+);
 
 const emit = defineEmits<{ select: [cellKey: string] }>();
 
@@ -55,7 +69,7 @@ const TONE_CLASS = {
 			</thead>
 			<tbody>
 				<tr
-					v-for="cell in cells"
+					v-for="{ cell, status, constraint } in rows"
 					:key="cell.cellKey"
 					class="border-t border-border-subtle align-top"
 					:data-testid="`ramp-cell-${cell.cellKey}`"
@@ -78,15 +92,15 @@ const TONE_CLASS = {
 					<td class="py-3 pr-4">
 						<span
 							class="rounded-full border px-2 py-0.5 text-xs"
-							:class="TONE_CLASS[rampCellStatus(cell).tone]"
-							:data-state="rampCellStatus(cell).key"
+							:class="TONE_CLASS[status.tone]"
+							:data-state="status.key"
 							data-testid="ramp-cell-state"
 						>
-							{{ rampCellStatus(cell).label }}
+							{{ status.label }}
 						</span>
 					</td>
 					<td class="py-3 pr-4 text-text-secondary" data-testid="ramp-cell-constraint">
-						{{ bindingConstraint(cell) }}
+						{{ constraint }}
 					</td>
 					<td class="py-3 text-text-secondary" data-testid="ramp-cell-reason">
 						{{

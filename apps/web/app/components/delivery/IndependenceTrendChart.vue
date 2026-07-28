@@ -15,7 +15,7 @@
  * cannot be drawn as an area, and no history at all is a fact about a young
  * deployment — both render a calm sentence instead of an axis with nothing on it.
  */
-import type { IndependenceDayPoint } from '@owlat/shared/deliverabilityIndependence';
+import { isUsablePoint, type IndependenceDayPoint } from '@owlat/shared/deliverabilityIndependence';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
 
 const props = defineProps<{
@@ -25,18 +25,21 @@ const props = defineProps<{
 	labelledBy: string;
 }>();
 
+// A DOCUMENT-UNIQUE PATTERN ID. `url(#…)` resolves against the whole document,
+// so a hardcoded id means a second chart on the page silently paints with the
+// first one's pattern.
+const hatchId = useId();
+
 const VIEW_WIDTH = 640;
 const VIEW_HEIGHT = 180;
 const PADDING = { top: 8, right: 8, bottom: 20, left: 8 };
 const innerWidth = VIEW_WIDTH - PADDING.left - PADDING.right;
 const innerHeight = VIEW_HEIGHT - PADDING.top - PADDING.bottom;
 
-const usable = computed(() =>
-	props.points.filter(
-		(point) =>
-			Number.isFinite(point.day) && Number.isFinite(point.own) && Number.isFinite(point.reference)
-	)
-);
+// THE SHARED PREDICATE, NOT A LOCAL ONE. See `isUsablePoint`: the server's
+// headline share already drops these days, so filtering them differently here is
+// how the chart and the number above it come to describe different traffic.
+const usable = computed(() => props.points.filter(isUsablePoint));
 
 const peak = computed(() =>
 	usable.value.reduce((max, point) => Math.max(max, point.own + point.reference), 0)
@@ -141,7 +144,7 @@ const summary = computed(() => {
 					own-server band without any colour perception at all.
 				-->
 				<pattern
-					id="independence-relay-hatch"
+					:id="hatchId"
 					width="6"
 					height="6"
 					patternUnits="userSpaceOnUse"
@@ -154,7 +157,7 @@ const summary = computed(() => {
 			<path
 				v-if="hasReference"
 				:d="referenceArea"
-				fill="url(#independence-relay-hatch)"
+				:fill="`url(#${hatchId})`"
 				class="text-text-secondary"
 				fill-opacity="0.5"
 				data-testid="reference-band"

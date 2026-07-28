@@ -22,6 +22,7 @@ import {
 	FORCE_ADVANCE_CONFIRMATION,
 	type RampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
+import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
 
 useHead({ title: 'Delivery controls — Owlat' });
@@ -64,13 +65,12 @@ const selectedCell = computed<RampCellControl | null>(
 	() => cells.value.find((cell) => cell.cellKey === selectedCellKey.value) ?? null
 );
 
-const streams = ['campaign', 'automation', 'transactional'] as const;
-type RampStream = (typeof streams)[number];
+// The closed stream union, so a typo here is a build failure rather than a
+// preset card that silently never matches a stored row.
+const streams: readonly DeliverabilityStream[] = ['campaign', 'automation', 'transactional'];
 
-function presetFor(stream: string): RampPreset | null {
-	const stored = controls.value?.presets;
-	if (stored === undefined) return null;
-	return stored[stream] ?? null;
+function presetFor(stream: DeliverabilityStream): RampPreset | null {
+	return controls.value?.presets[stream] ?? null;
 }
 
 function cellArgs(cell: RampCellControl) {
@@ -112,7 +112,10 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	await refetch();
 }
 
-async function changePreset(stream: RampStream, preset: RampPreset | null): Promise<void> {
+async function changePreset(
+	stream: DeliverabilityStream,
+	preset: RampPreset | null
+): Promise<void> {
 	await setStreamPreset({ stream, preset });
 	await refetch();
 }
@@ -171,7 +174,14 @@ async function changePreset(stream: RampStream, preset: RampPreset | null): Prom
 				</UiCard>
 
 				<UiCard v-if="selectedCell">
+					<!--
+						KEYED BY CELL. Without it Vue reuses the instance across a change of
+						selection and the pin/force number inputs keep the previous cell's
+						values — the destructive control would then propose a share the
+						operator chose for a different cell.
+					-->
 					<DeliveryRampCellControls
+						:key="selectedCell.cellKey"
 						:cell="selectedCell"
 						@pause="pause"
 						@pin="pin"

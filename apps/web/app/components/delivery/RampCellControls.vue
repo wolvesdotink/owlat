@@ -32,8 +32,28 @@ const pinInputId = useId();
 const forceInputId = useId();
 
 /** Percent-typed inputs: operators think in points, the API takes a share. */
-const pinPercent = ref(Math.round((props.cell.pinnedShare ?? props.cell.ownShare) * 100));
-const forcePercent = ref(Math.round(props.cell.ownShare * 100));
+const pinPercent = ref(0);
+const forcePercent = ref(0);
+
+/**
+ * RESYNC WHEN THE SELECTED CELL CHANGES.
+ *
+ * The page mounts this inside a `v-if`, so Vue reuses the instance when the
+ * operator picks a different cell — and a `ref` seeded from props once would
+ * keep the PREVIOUS cell's numbers in both boxes. Force-advance would then open
+ * its confirmation proposing a share the operator never chose, for a cell they
+ * were not looking at when they chose it. Watched on `cellKey` rather than on
+ * the object so an unrelated re-render (a new decision arriving on the same
+ * cell) does not discard what the operator is halfway through typing.
+ */
+watch(
+	() => props.cell.cellKey,
+	() => {
+		pinPercent.value = Math.round((props.cell.pinnedShare ?? props.cell.ownShare) * 100);
+		forcePercent.value = Math.round(props.cell.ownShare * 100);
+	},
+	{ immediate: true }
+);
 
 const PHASE_RUNGS = [0.25, 0.5, 0.8, 1] as const;
 

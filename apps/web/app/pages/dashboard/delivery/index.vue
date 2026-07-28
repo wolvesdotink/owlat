@@ -192,6 +192,13 @@ const sendingDetail = computed(() => {
 					Cells
 				</NuxtLink>
 				<NuxtLink
+					to="/dashboard/delivery/controls"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
+					Controls
+				</NuxtLink>
+				<NuxtLink
 					to="/dashboard/delivery/measurement"
 					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
 				>

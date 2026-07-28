@@ -34,8 +34,6 @@ import {
 } from '~/utils/deliverabilityRamp';
 import { formatShortDate } from '~/utils/formatters';
 
-useHead({ title: 'Sending independence — Owlat' });
-
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 const {
@@ -49,6 +47,10 @@ const referenceTransportId = computed<string | null>(
 );
 const isStandalone = computed(() => referenceTransportId.value === null);
 const headline = computed(() => independenceHeadline(referenceTransportId.value));
+// THE TAB TITLE FOLLOWS THE H1. A static "Sending independence" would leave a
+// standalone deployment reading "Warm-up autopilot" on the page and something
+// else in its browser tab — the D14 rename half-applied.
+useHead(computed(() => ({ title: `${headline.value} — Owlat` })));
 const chartHeadingId = useId();
 
 /**

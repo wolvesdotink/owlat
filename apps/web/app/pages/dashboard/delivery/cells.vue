@@ -129,6 +129,16 @@ function select(cellKey: string): void {
 						:decisions="decisions ?? []"
 						:labelled-by="historyHeadingId"
 					/>
+					<!-- This screen explains; the next one acts. An operator who has just
+						 read why a cell is held is exactly the person about to change it. -->
+					<NuxtLink
+						to="/dashboard/delivery/controls"
+						class="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:text-brand"
+						data-testid="ramp-cells-controls-link"
+					>
+						<Icon name="lucide:sliders-horizontal" class="h-4 w-4" />
+						Pause, pin or reset this cell
+					</NuxtLink>
 				</UiCard>
 			</div>
 		</UiQueryBoundary>

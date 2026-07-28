@@ -14,10 +14,13 @@
  * chose.
  */
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
-import { RAMP_PRESET_OPTIONS, STREAM_LABELS } from '~/utils/deliverabilityRamp';
+import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
+import { RAMP_PRESET_OPTIONS, streamLabel } from '~/utils/deliverabilityRamp';
 
 const props = defineProps<{
-	stream: string;
+	// The closed stream union, not `string`: a typo in a caller's stream name is a
+	// build failure rather than a legend reading "campain mail".
+	stream: DeliverabilityStream;
 	/** The stored choice, or `null` when the stream is on the default. */
 	preset: RampPreset | null;
 	defaultPreset: RampPreset;
@@ -35,7 +38,7 @@ const defaultLabel = computed(
 <template>
 	<fieldset class="space-y-2" :data-testid="`ramp-preset-${stream}`">
 		<legend :id="groupId" class="text-sm font-medium text-text-primary">
-			{{ STREAM_LABELS[stream] ?? stream }} mail
+			{{ streamLabel(stream) }} mail
 		</legend>
 		<p class="text-xs text-text-secondary">Default for this deployment: {{ defaultLabel }}.</p>
 		<div class="space-y-1">
