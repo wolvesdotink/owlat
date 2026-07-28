@@ -180,8 +180,10 @@ describe('sunset restore path', () => {
 		const logs = await auditEntries(t);
 		const restored = logs.find((log) => log.action === 'contact.sunset_restored');
 		expect(restored?.userId).toBe('user_operator_1');
-		expect(restored?.details?.['removedSuppression']).toBe(true);
 		expect(restored?.details?.['exempted']).toBe(true);
+		// No always-true derivable field: reaching this action already means the
+		// blocklist row was removed, so recording that as data would be noise.
+		expect(restored?.details).not.toHaveProperty('removedSuppression');
 	});
 
 	it('a restored contact is not re-suppressed by the next evaluation', async () => {

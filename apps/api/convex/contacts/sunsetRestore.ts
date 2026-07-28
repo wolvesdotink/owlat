@@ -50,10 +50,12 @@ export type SunsetRestoreResult = {
  * expiry on purpose: an operator who reached for "restore" is asserting they
  * know something the engine does not, and quietly re-arming auto-suppression
  * after some interval would take that assertion away without telling anyone. It
- * is instead SURFACED — `contacts.sunset.listSunsetStage` projects it as
- * `isExempt`, the suppressions screen renders it, and
- * `setSunsetContactExemption` clears it in one action — so "why is this contact
- * never sunset" is always answerable and always reversible.
+ * It is instead RECORDED where it can be read back: the restore writes a
+ * `contact.sunset_restored` audit entry naming the actor, and
+ * `contacts.sunset.listSunsetStage` projects the override as `isExempt` so any
+ * caller can see which contacts the engine will never act on.
+ * `setSunsetContactExemption` clears it in one action. Both are API surfaces
+ * today — no dashboard screen renders or toggles the override yet.
  *
  * A contact with NO blocklist row is reported as `not_suppressed` and nothing is
  * written: restore restores, it does not double as an exemption toggle.
@@ -107,7 +109,6 @@ export async function restoreSunsetSuppression(
 		resourceId: contact._id,
 		details: {
 			email,
-			removedSuppression: true,
 			fromStage: contact.sunsetStage ?? 'engaged',
 			exempted: true,
 		},
