@@ -107,9 +107,15 @@ async function latestGoogleCompliancePassAt(
 	// promote on, which is the same answer as an unread one.
 	if (domains.length === 0 || domains.length > DOMAIN_SCAN_LIMIT) return null;
 
+	// THE POPULATION IS KNOWN UP FRONT AND EVERY READ IS INDEPENDENT, so the
+	// per-domain readings are issued together rather than as N serialized
+	// round-trips. The fold below is unchanged, and so is its fail-CLOSED rule.
+	const perDomain = await Promise.all(
+		domains.map((domain) => domainCompliancePassAt(ctx, domain.domain, since))
+	);
+
 	let oldest: number | null = null;
-	for (const domain of domains) {
-		const latest = await domainCompliancePassAt(ctx, domain.domain, since);
+	for (const latest of perDomain) {
 		if (latest === null) return null;
 		oldest = oldest === null ? latest : Math.min(oldest, latest);
 	}
@@ -239,14 +245,23 @@ async function worstCellDeferralRate(
 	ctx: RampReadCtx,
 	args: { organizationId: string; now: number }
 ): Promise<number | null> {
+	// FIFTEEN INDEPENDENT SHARDED SUMMARIES, issued together. Each one is itself
+	// several shard reads, so serializing them made one promotion serialize
+	// several hundred round-trips. The reads stay bounded and the fold below —
+	// and therefore the verdict — is unchanged.
+	const summaries = await Promise.all(
+		allDeliverabilityCells().map((cell) =>
+			summarizeTransportOutcomes(ctx.db, {
+				organizationId: args.organizationId,
+				cell: deliverabilityCellKey(cell),
+				arm: 'own',
+				since: args.now - RAMP_AIMD.evaluationWindowMs,
+			})
+		)
+	);
+
 	let worst: number | null = null;
-	for (const cell of allDeliverabilityCells()) {
-		const summary = await summarizeTransportOutcomes(ctx.db, {
-			organizationId: args.organizationId,
-			cell: deliverabilityCellKey(cell),
-			arm: 'own',
-			since: args.now - RAMP_AIMD.evaluationWindowMs,
-		});
+	for (const summary of summaries) {
 		if (summary.sent <= 0) continue;
 		const rate = summary.deferralRate;
 		if (!Number.isFinite(rate)) continue;
@@ -292,21 +307,36 @@ export async function loadRampPromotionEvidence(
 	// never be served at all.) `applyDecision` stamps the same value onto the row
 	// the first time it manages one without an anchor, so reader and writer agree.
 	const heldSince = perStream.phaseCeilingSince ?? perStream._creationTime;
-	return {
-		googleCompliancePassAt: await latestGoogleCompliancePassAt(ctx, since),
-		sndsBandGreenAt: await latestSndsGreenBandAt(ctx, since),
-		seedProbePassAt: await latestSeedProbePassAt(ctx, {
+	// FIVE INDEPENDENT EVIDENCE READS — none of them feeds another, so they are
+	// issued together rather than one after the next.
+	const [
+		googleCompliancePassAt,
+		sndsBandGreenAt,
+		seedProbePassAt,
+		dnsblDayReadings,
+		worstDeferralRate,
+	] = await Promise.all([
+		latestGoogleCompliancePassAt(ctx, since),
+		latestSndsGreenBandAt(ctx, since),
+		latestSeedProbePassAt(ctx, {
 			organizationId,
 			since,
 			provider: cell.destinationProvider,
 		}),
+		dnsblDays(ctx, { organizationId, cell, now }),
+		worstCellDeferralRate(ctx, { organizationId, now }),
+	]);
+	return {
+		googleCompliancePassAt,
+		sndsBandGreenAt,
+		seedProbePassAt,
 		// UNKNOWN, NOT ZERO, when the anchor is degenerate or ahead of the clock: a
 		// dwell nobody could measure must not read as a dwell nobody served, and it
 		// must not read as one served either.
 		ceilingHeldMs: !Number.isFinite(heldSince) || heldSince > now ? null : now - heldSince,
 		requiredDwellMs: PROMOTION_BASE_DWELL_MS * degradation.dwellMultiplier,
-		dnsblDays: await dnsblDays(ctx, { organizationId, cell, now }),
-		worstCellDeferralRate: await worstCellDeferralRate(ctx, { organizationId, now }),
+		dnsblDays: dnsblDayReadings,
+		worstCellDeferralRate: worstDeferralRate,
 		deferralMax: RAMP_GATE_THRESHOLDS.deferralMax,
 	};
 }
