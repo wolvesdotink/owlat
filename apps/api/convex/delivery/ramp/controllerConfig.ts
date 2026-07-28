@@ -20,7 +20,22 @@
  */
 
 import { readStoredInstant } from './controllerReaders';
-import type { RampMixState } from './controllerTypes';
+
+/**
+ * THE COOLDOWN LADDER'S INPUTS, and nothing else.
+ *
+ * Narrowed from `RampMixState` deliberately: BOTH actuators climb the same
+ * ladder (plan D3 — one controller, two actuators), and the pace actuator's
+ * stored state is not a mix state. Taking the two fields the rule actually
+ * reads is what lets the ladder stay one function instead of two copies that
+ * can drift apart. `RampMixState` and `PaceState` both satisfy it structurally.
+ */
+export interface RampCooldownState {
+	/** The instant the current freeze STARTED — the repeat-window test's input. */
+	readonly freezeStartedAt: number | undefined;
+	/** The cooldown length that produced the current freeze (the ladder position). */
+	readonly cooldownMs: number | undefined;
+}
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -113,7 +128,7 @@ export const RAMP_MAX_FREEZE_MS: number = Math.max(
  * base rather than propagating garbage — the ladder is a penalty, and a penalty
  * derived from an unreadable number is not a penalty anyone can defend.
  */
-export function nextCooldownMs(mix: RampMixState, now: number): number {
+export function nextCooldownMs(mix: RampCooldownState, now: number): number {
 	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
 	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
 	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
