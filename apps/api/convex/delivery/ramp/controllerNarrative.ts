@@ -196,6 +196,13 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return decision.direction === 'decrease'
 				? `Reduced ${where} (${move}): the cell is above its phase ceiling and has been brought back to it. No gate failed — promote the phase to allow more.`
 				: `Held ${where} at ${percent(decision.share)}: the cell is at its phase ceiling. Promote the phase to let it go further.`;
+		// NOT "PROMOTE THE PHASE": the rung is already promoted and the controller
+		// is capping it. The remedy is the missing integration, and it applies
+		// itself — nothing for the operator to undo afterwards.
+		case 'degradation_ceiling':
+			return decision.direction === 'decrease'
+				? `Reduced ${where} (${move}): a missing measurement integration caps this cell one phase below its promoted rung, and it was above that cap. No gate failed — the cap lifts by itself when the integration reports again.`
+				: `Held ${where} at ${percent(decision.share)}: a missing measurement integration caps this cell one phase below its promoted rung. The cap lifts by itself when the integration reports again.`;
 		case 'healthy':
 			return `Increased ${where} (${move}): every gate is green and the clean streak is long enough.`;
 		// A GRADUATED CELL CAN SIT BELOW FULL SHARE — the warming cap bounds a pin

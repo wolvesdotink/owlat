@@ -411,14 +411,20 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     anyone re-promoting the cell. Degenerate values are ignored rather than
 	//     honoured — a NaN cap must not become a ceiling of NaN — which keeps this
 	//     rung incapable of raising anything.
-	const capBound =
-		phaseCeilingCap !== undefined && Number.isFinite(phaseCeilingCap)
-			? Math.max(0, phaseCeilingCap)
-			: phaseCeiling;
+	const capBound = Number.isFinite(phaseCeilingCap) ? Math.max(0, phaseCeilingCap) : phaseCeiling;
 	const effectivePhaseCeiling = Math.min(phaseCeiling, capBound);
 	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, effectivePhaseCeiling);
+	// WHICH CEILING BINDS IS PART OF THE REASON (plan D12). Three of them can, and
+	// they have three different remedies: grow the warming schedule, promote the
+	// phase, or reconnect the missing feed. Collapsing the last two into
+	// `phase_ceiling` would tell an operator to promote a rung the controller is
+	// itself capping — advice that cannot work until the feed comes back.
 	const bindingReason: RampDecisionReason =
-		capacityBound < effectivePhaseCeiling ? 'capacity_ceiling' : 'phase_ceiling';
+		capacityBound < effectivePhaseCeiling
+			? 'capacity_ceiling'
+			: capBound < phaseCeiling
+				? 'degradation_ceiling'
+				: 'phase_ceiling';
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.

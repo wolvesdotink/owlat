@@ -140,6 +140,7 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('building_confidence'),
 	v.literal('capacity_ceiling'),
 	v.literal('phase_ceiling'),
+	v.literal('degradation_ceiling'),
 	v.literal('healthy'),
 	v.literal('graduated'),
 	rampGateIdValidator
