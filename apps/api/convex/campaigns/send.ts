@@ -3,13 +3,14 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { CampaignRecipient } from './audienceCandidates';
+import { SEND_PAGE_SIZE, type CampaignRecipient } from './audienceCandidates';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
+import { orderByEngagement, planTodaysSlice } from './multiDaySendPlan';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -627,11 +628,63 @@ export const resolveCampaignPage = internalAction({
 			return { done: true, pageEnqueued: 0 };
 		}
 
+		// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+		// with no relay to overflow to cannot deliver a large campaign in one day,
+		// and enqueueing the whole audience anyway does not make it faster — it makes
+		// the tail expire at `maxMessageAgeMs` after churning the MTA's queue for
+		// hours. So the walker takes only TODAY'S CAPACITY SLICE and resumes in the
+		// next cap window.
+		//
+		// UNMEASURED CAPACITY IMPOSES NO BUDGET: with no warming projection the slice
+		// is `undefined` and every line below behaves exactly as the shipped walker.
+		const planCapacity = await ctx.runQuery(
+			internal.campaigns.sendPlanQueries.getSendPlanCapacity,
+			{ audience: job.audience, countAudienceSize: job.plannedTotal === undefined }
+		);
+		const plannedTotal = planCapacity.plannedTotal ?? job.plannedTotal;
+		const slice = planTodaysSlice({
+			state: {
+				planDayKey: job.planDayKey,
+				enqueuedToday: job.enqueuedToday,
+				planDayIndex: job.planDayIndex,
+				planTotalDays: job.planTotalDays,
+			},
+			remaining:
+				plannedTotal === undefined ? undefined : Math.max(0, plannedTotal - job.enqueuedCount),
+			capacityByDay: planCapacity.capacityByDay,
+			now: Date.now(),
+		});
+		if (slice.isDayExhausted && slice.resumeAt !== undefined) {
+			// Today's slice is spent. Touch the row so THIS reschedule — not the
+			// stuck-walk watchdog — owns the resume, exactly as the no-provider defer
+			// above does, then wait for the next cap window rather than burning hops
+			// against a cap that cannot move until the UTC day rolls over.
+			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, {
+				campaignId: args.campaignId,
+			});
+			await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
+				campaignId: args.campaignId,
+				planDayKey: slice.dayKey,
+				enqueuedToday: slice.enqueuedToday,
+				planDayIndex: slice.dayIndex,
+				planTotalDays: slice.totalDays,
+				plannedTotal,
+			});
+			await ctx.scheduler.runAt(slice.resumeAt, internal.campaigns.send.resolveCampaignPage, {
+				campaignId: args.campaignId,
+			});
+			return { done: false, pageEnqueued: 0 };
+		}
+
 		// Resolve ONE page at the job cursor — the bounded read that replaces the
-		// whole-audience resolve.
+		// whole-audience resolve, NARROWED to what is left of today's slice so a
+		// page can never overshoot the day's capacity.
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,
+			...(slice.remainingToday === undefined
+				? {}
+				: { numItems: Math.max(1, Math.min(SEND_PAGE_SIZE, slice.remainingToday)) }),
 		});
 
 		const audienceType = job.audience.kind;
@@ -786,7 +839,17 @@ export const resolveCampaignPage = internalAction({
 				variant: 'A' | 'B' | undefined;
 			};
 			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
-			for (const recipient of page.recipients) {
+			// ENGAGEMENT ORDER (plan P0-2/P0-3, P3-7). Each day's slice should be the
+			// best remaining audience: engaged recipients open, and openers are what a
+			// receiver reads as a positive signal on a warming IP — so the ideal
+			// warming behaviour and the ideal recipient experience are the same order.
+			//
+			// WITHIN THE PAGE, honestly. Pages arrive in the audience index's order, so
+			// this orders each slice rather than the whole audience; a globally ordered
+			// walk would need an engagement-ordered index, which is not this piece's
+			// scope. The property that matters for the daily slice still holds when a
+			// day is one page, and never regresses when it is more.
+			for (const recipient of orderByEngagement(page.recipients)) {
 				const variant = bucketFor(String(recipient._id));
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
@@ -881,6 +944,19 @@ export const resolveCampaignPage = internalAction({
 			nextCursor: page.nextCursor,
 			pageEnqueued,
 			pageCandidates: page.pageCandidates,
+		});
+
+		// Record what today's slice has carried so far. Written AFTER the advance so
+		// the two never disagree about a page, and written on every hop — including
+		// the ones that enqueued nothing — because the day-of-N line has to be there
+		// from the first moment (plan D14), not once a plan turns out to be long.
+		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
+			campaignId: args.campaignId,
+			planDayKey: slice.dayKey,
+			enqueuedToday: slice.enqueuedToday + pageEnqueued,
+			planDayIndex: slice.dayIndex,
+			planTotalDays: slice.totalDays,
+			plannedTotal,
 		});
 
 		if (page.nextCursor !== null) {

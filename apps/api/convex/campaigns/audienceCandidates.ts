@@ -131,6 +131,17 @@ export function selectRecipient(
 export const COUNT_CEILING = 25_000;
 
 /**
+ * Recipients the send walker resolves per hop.
+ *
+ * Lives here rather than in `audienceResolution.ts` because TWO callers need it
+ * now: the resolver's default page size, and the walker, which narrows a page to
+ * what is left of the multi-day plan's daily slice (`min(SEND_PAGE_SIZE,
+ * remainingToday)`) so a page can never overshoot the day's warming capacity. A
+ * second copy of the number would let the two disagree about how big a page is.
+ */
+export const SEND_PAGE_SIZE = 500;
+
+/**
  * A budget on DOCUMENTS READ (not rows examined, and not candidates yielded).
  *
  * Convex caps a single function execution at 16,384 document reads, and the

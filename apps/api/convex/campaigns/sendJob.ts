@@ -34,7 +34,7 @@ import { audienceValidator } from './audience';
 const variantModeValidator = v.union(
 	v.literal('plain'),
 	v.literal('ab_test'),
-	v.literal('ab_winner'),
+	v.literal('ab_winner')
 );
 
 /**
@@ -71,6 +71,15 @@ export const createSendJob = internalMutation({
 			audience: args.audience,
 			enqueuedCount: 0,
 			totalCandidates: 0,
+			// A RESET WIPES THE MULTI-DAY PLAN TOO. The row is reused for the second
+			// A/B phase and for a re-fired send, and a plan carried over from the
+			// previous walk would charge the new one for a day it never sent on — and,
+			// worse, could report it as "day 3 of 4" before it had enqueued anybody.
+			planDayKey: undefined,
+			enqueuedToday: undefined,
+			planDayIndex: undefined,
+			planTotalDays: undefined,
+			plannedTotal: undefined,
 			updatedAt: now,
 		};
 		const existing = await ctx.db
@@ -119,8 +128,12 @@ export const advanceSendJob = internalMutation({
 	},
 	handler: async (
 		ctx,
-		args,
-	): Promise<{ phase: 'resolving' | 'done'; enqueuedCount: number; totalCandidates: number } | null> => {
+		args
+	): Promise<{
+		phase: 'resolving' | 'done';
+		enqueuedCount: number;
+		totalCandidates: number;
+	} | null> => {
 		const job = await ctx.db
 			.query('campaignSendJobs')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
@@ -140,6 +153,51 @@ export const advanceSendJob = internalMutation({
 		});
 
 		return { phase, enqueuedCount, totalCandidates };
+	},
+});
+
+/**
+ * Checkpoint the MULTI-DAY SEND PLAN's day state (deliverability plan P3-7).
+ *
+ * Separate from `advanceSendJob` on purpose: the cursor advance is the walk's
+ * CORRECTNESS checkpoint — a crash between the enqueue and that patch re-runs
+ * the same page, and `createBatch`'s idempotency makes the re-run free — while
+ * this is the day BUDGET, which the exhausted-day path has to write on a hop
+ * that advanced no cursor at all. Folding the two together would mean either
+ * writing a cursor that did not move or leaving the day's counter behind.
+ *
+ * Unlike `touchSendJob` it does NOT skip a `done` walk: the LAST hop of a plan
+ * is the one that finishes it, and refusing to record its day would leave the
+ * operator-facing progress line permanently one page short of the truth. The
+ * `updatedAt` bump it carries is safe on a finished walk: the stuck-walk
+ * watchdog matches on `phase === 'resolving'`, so a `done` row is not something
+ * a fresh timestamp can drag back into the re-drive queue.
+ */
+export const recordSendPlanDay = internalMutation({
+	args: {
+		campaignId: v.id('campaigns'),
+		planDayKey: v.string(),
+		enqueuedToday: v.number(),
+		planDayIndex: v.number(),
+		planTotalDays: v.number(),
+		plannedTotal: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const job = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
+			.first();
+		if (!job) return;
+		await ctx.db.patch(job._id, {
+			planDayKey: args.planDayKey,
+			enqueuedToday: args.enqueuedToday,
+			planDayIndex: args.planDayIndex,
+			planTotalDays: args.planTotalDays,
+			// Only ever SET, never cleared: the denominator is counted once per walk
+			// and a later hop that skipped the count must not erase it.
+			...(args.plannedTotal === undefined ? {} : { plannedTotal: args.plannedTotal }),
+			updatedAt: Date.now(),
+		});
 	},
 });
 
@@ -193,9 +251,7 @@ export const redriveStuckSendJobs = internalMutation({
 
 		const stuck = await ctx.db
 			.query('campaignSendJobs')
-			.withIndex('by_phase_updatedAt', (q) =>
-				q.eq('phase', 'resolving').lt('updatedAt', cutoff),
-			)
+			.withIndex('by_phase_updatedAt', (q) => q.eq('phase', 'resolving').lt('updatedAt', cutoff))
 			.take(50);
 
 		for (const job of stuck) {
