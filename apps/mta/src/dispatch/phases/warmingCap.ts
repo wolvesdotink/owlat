@@ -21,7 +21,7 @@
  */
 
 import * as warming from '../../intelligence/warming.js';
-import { nextCapWindowDelayMs } from '../../intelligence/warmingCapWindow.js';
+import { capDeferDelayMs } from '../../intelligence/warmingCapWindow.js';
 import { utcDateKey } from '../../intelligence/warmingKeys.js';
 import { evaluateIntradayPacing, utcDayElapsedFraction } from '../../intelligence/warmingPacing.js';
 import {
@@ -111,10 +111,13 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 				{ ip: ctx.ip, sentToday: warmingCap.sentToday, dailyCap: warmingCap.dailyCap },
 				'Warming cap reached — deferring'
 			);
-			// THE NEXT CAP WINDOW, not a blind five minutes: the daily budget cannot
-			// change before the UTC day rolls over, so re-asking sooner produces the
-			// same verdict and nothing but Redis re-queue churn.
-			return withhold(ctx, `Warming cap reached for IP ${ctx.ip}`, nextCapWindowDelayMs(now));
+			// THE NEXT CAP WINDOW, not a blind five minutes: the daily budget almost
+			// never changes before the UTC day rolls over, so re-asking every 300 s
+			// buys nothing but Redis re-queue churn. `capDeferDelayMs` bounds that
+			// wait, because "almost never" is not "never" — a schedule advance, a new
+			// IP or the ramp's pace dial can widen the cap intraday, and a parked
+			// backlog must not sit out capacity that already exists.
+			return withhold(ctx, `Warming cap reached for IP ${ctx.ip}`, capDeferDelayMs(now));
 		}
 
 		const providerCap = providerCapVerdict(gateInputs, warmingCap.dailyCap);
@@ -132,7 +135,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 			return withhold(
 				ctx,
 				`Warming cap reached for IP ${ctx.ip} at ${providerKey}`,
-				nextCapWindowDelayMs(now)
+				capDeferDelayMs(now)
 			);
 		}
 

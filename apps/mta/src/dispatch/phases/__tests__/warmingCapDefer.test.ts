@@ -29,6 +29,8 @@ vi.mock('../../../monitoring/logger.js', () => ({
 import { warmingCapPhase } from '../warmingCap.js';
 import * as warming from '../../../intelligence/warming.js';
 import {
+	capDeferDelayMs,
+	MAX_CAP_DEFER_MS,
 	MINIMUM_CAP_DEFER_MS,
 	nextCapWindowDelayMs,
 } from '../../../intelligence/warmingCapWindow.js';
@@ -98,6 +100,19 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+describe('capDeferDelayMs', () => {
+	it('is the next cap window, bounded so intraday capacity is never stranded', () => {
+		const now = Date.parse(NOW_ISO);
+		expect(nextCapWindowDelayMs(now)).toBe(10 * 60 * 60 * 1000);
+		expect(capDeferDelayMs(now)).toBe(MAX_CAP_DEFER_MS);
+	});
+
+	it('takes the window when the window is the nearer of the two', () => {
+		const nearMidnight = Date.parse(`${UTC_DATE}T23:40:00.000Z`);
+		expect(capDeferDelayMs(nearMidnight)).toBe(20 * 60 * 1000);
+	});
+});
+
 describe('nextCapWindowDelayMs', () => {
 	it('lands on the next UTC day boundary', () => {
 		const now = Date.parse(NOW_ISO);
@@ -125,7 +140,7 @@ describe('warmingCapPhase — deferral target', () => {
 		const out = await warmingCapPhase.run(deps, makeCtx());
 		expect(out.kind).toBe('defer');
 		if (out.kind !== 'defer') return;
-		expect(out.delayMs).toBe(nextCapWindowDelayMs(Date.now()));
+		expect(out.delayMs).toBe(capDeferDelayMs(Date.now()));
 		expect(out.delayMs).not.toBe(SHIPPED_BLIND_DEFER_MS);
 	});
 
@@ -152,10 +167,10 @@ describe('warmingCapPhase — deferral target', () => {
 		const out = await warmingCapPhase.run(deps, makeCtx({ providerKey }));
 		expect(out.kind).toBe('defer');
 		if (out.kind !== 'defer') return;
-		expect(out.delayMs).toBe(nextCapWindowDelayMs(Date.now()));
+		expect(out.delayMs).toBe(capDeferDelayMs(Date.now()));
 	});
 
-	it('ONE re-queue before capacity returns, instead of one every five minutes', async () => {
+	it('an order of magnitude fewer re-queues before capacity returns', async () => {
 		vi.mocked(warming.checkCap).mockResolvedValueOnce({
 			allowed: false,
 			sentToday: 100,
@@ -167,7 +182,10 @@ describe('warmingCapPhase — deferral target', () => {
 		const msUntilCapacity = nextCapWindowDelayMs(Date.now());
 		const shippedRequeues = Math.ceil(msUntilCapacity / SHIPPED_BLIND_DEFER_MS);
 		const requeues = Math.ceil(msUntilCapacity / out.delayMs);
-		expect(requeues).toBe(1);
+		// The churn the change exists to remove: 120 re-asks of an unchanged
+		// verdict become 10, and the last of them is the one that finds capacity.
+		expect(requeues).toBe(10);
 		expect(shippedRequeues).toBeGreaterThan(100);
+		expect(requeues * 10).toBeLessThan(shippedRequeues);
 	});
 });

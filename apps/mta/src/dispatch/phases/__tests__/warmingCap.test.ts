@@ -19,6 +19,7 @@ import {
 } from '../../../intelligence/warmingProviderStore.js';
 import { PROVIDER_WARMING_POLICY } from '../../../intelligence/warmingProviderPolicy.js';
 import { warmingBulkDailyKey, warmingProviderStateKey } from '../../../intelligence/warmingKeys.js';
+import { capDeferDelayMs } from '../../../intelligence/warmingCapWindow.js';
 import { INTRADAY_PACING_POLICY } from '../../../intelligence/warmingPacing.js';
 import type { DestinationProviderKey, EmailJob, IpPoolType } from '../../../types.js';
 import type { MtaConfig } from '../../../config.js';
@@ -139,7 +140,14 @@ describe('warmingCapPhase', () => {
 		expect(warming.checkCap).not.toHaveBeenCalled();
 	});
 
-	it('defers 5 minutes when the cap is reached', async () => {
+	/**
+	 * P3-7's ONE sanctioned change on this path: a spent DAILY cap defers to the
+	 * next cap window (bounded) instead of a blind 300 s, because the verdict
+	 * cannot change until the day's counter resets and re-asking sooner is pure
+	 * Redis churn. The regression proof is UPDATED to the new target rather than
+	 * deleted — this path is still asserted, exactly as strictly.
+	 */
+	it('defers to the next cap window when the cap is reached', async () => {
 		vi.mocked(warming.checkCap).mockResolvedValueOnce({
 			allowed: false,
 			sentToday: 100,
@@ -148,9 +156,10 @@ describe('warmingCapPhase', () => {
 		const out = await warmingCapPhase.run(deps, makeCtx());
 		expect(out).toEqual({
 			kind: 'defer',
-			delayMs: 300_000,
+			delayMs: capDeferDelayMs(Date.now()),
 			reason: expect.stringContaining('10.0.0.7'),
 		});
+		expect(out).not.toMatchObject({ delayMs: 300_000 });
 	});
 
 	/**
@@ -220,9 +229,11 @@ describe('warmingCapPhase', () => {
 		it('defers at a narrowed provider while the per-IP cap still has room', async () => {
 			const out = await warmingCapPhase.run(deps, makeCtx({ providerKey: 'microsoft' }));
 
+			// The per-(IP x provider) cap is the same DAILY budget as the per-IP one,
+			// so it earns the same deferral target (P3-7).
 			expect(out).toEqual({
 				kind: 'defer',
-				delayMs: 300_000,
+				delayMs: capDeferDelayMs(Date.now()),
 				reason: expect.stringContaining('microsoft'),
 			});
 		});
