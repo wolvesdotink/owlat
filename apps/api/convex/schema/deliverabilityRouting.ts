@@ -9,6 +9,7 @@ import {
 	paceDecisionReasonValidator,
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
+	rampPresetValidator,
 } from '../delivery/deliverabilityValidators';
 
 /**
@@ -163,6 +164,15 @@ export const deliverabilityRoutingTables = {
 		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
 		paceDeferredAt: v.optional(v.number()),
 		decidedAt: v.optional(v.number()),
+		// THE OPERATOR'S HAND ON THE RAMP (P3-6), and both fields are deliberately
+		// one-directional. `operatorPausedAt` suppresses INCREASES only and
+		// `operatorPinnedShare` caps them; neither can block a retreat, because a
+		// safety response an operator can switch off is not a safety response. The
+		// controller's rungs are untouched — `applyRampCellControl` rewrites the
+		// decision AFTER the pure function has made it, so the audit row records
+		// what the operator's setting actually produced.
+		operatorPausedAt: v.optional(v.number()),
+		operatorPinnedShare: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
 		updatedAt: v.number(),
@@ -266,5 +276,30 @@ export const deliverabilityRoutingTables = {
 		// index is keyed by organization first and there is no unscoped variant for
 		// a caller to reach for.
 		.index('by_org_cell_time', ['organizationId', 'cell', 'at'])
+		// THE ADMIN NOTIFICATION FEED (plan D12). Every DECREASE with a named cause
+		// leaves an `adminNotice`, and an operator must be able to find those
+		// without reading fifteen cells' worth of no-ops. Convex indexes cannot be
+		// partial, so the index is over the whole table ordered by time and the
+		// notice filter happens on the (bounded) page — the alternative, scanning
+		// `by_org_cell_time` once per cell, reads fifteen pages to build one list.
+		.index('by_org_time', ['organizationId', 'at'])
 		.index('by_expires_at', ['expiresAt']),
+
+	// The per-stream aggressiveness preset (plan D9, P3-6).
+	//
+	// A ROW ONLY WHERE A HUMAN CHOSE ONE. Absence is the default — `balanced`
+	// with a relay, `conservative` standalone (plan D14) — so a deployment that
+	// never opens the Controls screen has no rows here and runs exactly the
+	// shipped constants. The preset is a SUBSTITUTION over `RAMP_STREAM_CONFIGS`
+	// (`applyRampPreset` in @owlat/shared), never a second constant table, and it
+	// can only make the ADVANCE cheaper or dearer: there is no field here that
+	// could touch the multiplicative decrease, the floor, the cooldown ladder or
+	// any hard stop.
+	rampStreamPresets: defineTable({
+		organizationId: v.string(),
+		stream: deliverabilityStreamValidator,
+		preset: rampPresetValidator,
+		updatedAt: v.number(),
+		updatedByUserId: v.string(),
+	}).index('by_org_stream', ['organizationId', 'stream']),
 };

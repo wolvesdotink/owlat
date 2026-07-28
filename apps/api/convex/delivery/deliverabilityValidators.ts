@@ -143,6 +143,14 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('degradation_ceiling'),
 	v.literal('healthy'),
 	v.literal('graduated'),
+	// THE OPERATOR'S OWN REASONS (plan D12). A human hand on the ramp is still a
+	// decision, and a decision with no audit row is exactly the silence D12
+	// forbids — so an operator hold, pin, force-advance or phase reset writes a
+	// `mixDecisions` row with a reason of its own rather than borrowing a gate's.
+	v.literal('operator_pause'),
+	v.literal('operator_pin'),
+	v.literal('operator_force_advance'),
+	v.literal('operator_phase_reset'),
 	rampGateIdValidator
 );
 
@@ -162,4 +170,11 @@ export const paceDecisionReasonValidator = v.union(
 	v.literal('share_moved_first'),
 	v.literal('multiplier_unreadable'),
 	v.literal('schedule_ceiling')
+);
+
+/** The per-stream aggressiveness preset (plan D9, P3-6). */
+export const rampPresetValidator = v.union(
+	v.literal('conservative'),
+	v.literal('balanced'),
+	v.literal('aggressive')
 );
