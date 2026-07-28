@@ -10,6 +10,7 @@
  */
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import { nextTick } from 'vue';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import RampCellControls from '../RampCellControls.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
@@ -24,6 +25,39 @@ describe('force-advance control', () => {
 		const warning = wrapper.find('[data-testid="ramp-force-advance-warning"]').text();
 		expect(warning).toContain(FORCE_ADVANCE_CONFIRMATION);
 		expect(warning).toContain('reputation');
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE DESTRUCTIVE CONTROL MUST NOT CARRY A NUMBER ACROSS CELLS. The page
+	 * mounts this component inside a `v-if`, so Vue reuses the instance when the
+	 * operator picks a different cell — and a share proposed for the cell they
+	 * were looking at a moment ago is exactly the wrong default for this one.
+	 */
+	it('resyncs its number inputs when the selected cell changes', async () => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ ownShare: 0.25, pinnedShare: 0.4 }) },
+		});
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-control-force-input"]').element.value
+		).toBe('25');
+		await wrapper.setProps({
+			cell: cellControl({
+				cellKey: 'campaign:yahoo',
+				cell: { stream: 'campaign', destinationProvider: 'yahoo' },
+				ownShare: 0.8,
+				pinnedShare: null,
+			}),
+		});
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-control-force-input"]').element.value
+		).toBe('80');
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-control-pin-input"]').element.value
+		).toBe('80');
+		// And the intent it emits is the NEW cell's share, not the old one's.
+		await wrapper.find('[data-testid="ramp-control-force-advance"]').trigger('click');
+		expect(wrapper.emitted('forceAdvance')?.[0]).toEqual([0.8]);
 		wrapper.unmount();
 	});
 });
@@ -79,6 +113,85 @@ describe('the consequence-naming confirmation', () => {
 		const label = wrapper.find(`label[for="${input.attributes('id')}"]`);
 		expect(label.exists()).toBe(true);
 		wrapper.unmount();
+	});
+
+	/**
+	 * `aria-modal` IS A PROMISE ABOUT THE KEYBOARD. A destructive confirmation a
+	 * keyboard user can tab out of without noticing is not a confirmation.
+	 */
+	it('moves focus into the phrase input when it opens', async () => {
+		const wrapper = mount(RampConfirmDialog, {
+			props: {
+				open: false,
+				title: 'Force this cell past the evidence?',
+				phrase: FORCE_ADVANCE_CONFIRMATION,
+				confirmLabel: 'Force-advance',
+			},
+			slots: { consequence: '<p>Consequence.</p>' },
+			attachTo: document.body,
+		});
+		await wrapper.setProps({ open: true });
+		await nextTick();
+		expect(document.activeElement).toBe(wrapper.find('[data-testid="ramp-confirm-input"]').element);
+		wrapper.unmount();
+	});
+
+	it('cancels on Escape', async () => {
+		const wrapper = mountDialog();
+		await wrapper.find('[role="dialog"]').trigger('keydown', { key: 'Escape' });
+		expect(wrapper.emitted('cancel')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('keeps Tab inside the dialog', async () => {
+		const wrapper = mount(RampConfirmDialog, {
+			props: {
+				open: true,
+				title: 'Force this cell past the evidence?',
+				phrase: FORCE_ADVANCE_CONFIRMATION,
+				confirmLabel: 'Force-advance',
+			},
+			slots: { consequence: '<p>Consequence.</p>' },
+			attachTo: document.body,
+		});
+		await nextTick();
+		// Enabled nodes only — the confirm button is disabled until the phrase is
+		// typed, and a trap that wrapped onto a node the browser will not focus
+		// would drop focus on the document instead.
+		const nodes = wrapper.findAll('input:not([disabled]), button:not([disabled])');
+		const first = nodes[0]?.element as HTMLElement | undefined;
+		const last = nodes[nodes.length - 1]?.element as HTMLElement | undefined;
+		expect(first).toBeDefined();
+		expect(last).toBeDefined();
+		// Backwards off the first node wraps to the last, rather than escaping to
+		// the page behind the overlay.
+		first?.focus();
+		await wrapper.find('[role="dialog"]').trigger('keydown', { key: 'Tab', shiftKey: true });
+		expect(document.activeElement).toBe(last);
+		wrapper.unmount();
+	});
+
+	it('gives focus back to whatever opened it', async () => {
+		const opener = document.createElement('button');
+		document.body.appendChild(opener);
+		opener.focus();
+		const wrapper = mount(RampConfirmDialog, {
+			props: {
+				open: false,
+				title: 'Force this cell past the evidence?',
+				phrase: FORCE_ADVANCE_CONFIRMATION,
+				confirmLabel: 'Force-advance',
+			},
+			slots: { consequence: '<p>Consequence.</p>' },
+			attachTo: document.body,
+		});
+		await wrapper.setProps({ open: true });
+		await nextTick();
+		await wrapper.setProps({ open: false });
+		await nextTick();
+		expect(document.activeElement).toBe(opener);
+		wrapper.unmount();
+		opener.remove();
 	});
 
 	it('clears a typed phrase when it closes, so the next open is not one click away', async () => {

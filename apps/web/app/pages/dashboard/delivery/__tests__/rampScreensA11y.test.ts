@@ -140,7 +140,14 @@ describe('independence screen accessibility', () => {
 			props: { points: independenceSummary().series, hasReference: true, labelledBy: 'x' },
 		});
 		expect(wrapper.find('svg[role="img"]').attributes('aria-label')).toBeTruthy();
-		expect(wrapper.find('[data-testid="reference-band"]').attributes('fill')).toContain('hatch');
+		// The relay band is painted with a PATTERN, not merely a second colour, and
+		// the pattern id is document-unique so two charts on one page cannot share
+		// (and silently overwrite) it.
+		const fill = wrapper.find('[data-testid="reference-band"]').attributes('fill') ?? '';
+		expect(fill).toMatch(/^url\(#.+\)$/);
+		const patternId = wrapper.find('pattern').attributes('id');
+		expect(patternId).toBeTruthy();
+		expect(fill).toBe(`url(#${patternId})`);
 		expect(wrapper.find('table caption').exists()).toBe(true);
 		wrapper.unmount();
 	});

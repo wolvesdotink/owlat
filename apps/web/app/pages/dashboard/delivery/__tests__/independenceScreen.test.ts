@@ -13,7 +13,7 @@
  */
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { isRef, ref, type Ref } from 'vue';
 import {
 	INDEPENDENCE_PROJECTION_MIN_DAYS,
 	independenceShare,
@@ -108,6 +108,17 @@ describe('independence arithmetic', () => {
 	});
 });
 
+const useHead = vi.fn();
+
+/**
+ * The title the page handed `useHead`. It is passed as a computed so the tab can
+ * follow the D14 rename, so the assertion has to unwrap it.
+ */
+function headTitle(): string {
+	const call = useHead.mock.calls.at(-1)?.[0] as unknown;
+	const options = isRef(call) ? (call.value as { title?: unknown }) : (call as { title?: unknown });
+	return typeof options?.title === 'string' ? options.title : '';
+}
 const data: Ref<IndependenceSummary | undefined> = ref(undefined);
 const isLoading = ref(false);
 const error: Ref<Error | null> = ref(null);
@@ -116,7 +127,8 @@ beforeEach(() => {
 	data.value = independenceSummary();
 	isLoading.value = false;
 	error.value = null;
-	vi.stubGlobal('useHead', vi.fn());
+	useHead.mockClear();
+	vi.stubGlobal('useHead', useHead);
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('useOrganizationQuery', () => ({ data, isLoading, error, refetch: vi.fn() }));
@@ -169,6 +181,30 @@ describe('independence screen', () => {
 		wrapper.unmount();
 	});
 
+	it('renders the month-to-date spend avoided once a relay price is recorded', () => {
+		data.value = independenceSummary({
+			// 8¢ per thousand against 12,500 own sends this month.
+			spendAvoidedMinorUnits: 1000,
+			spendAvoidedCurrency: 'USD',
+		});
+		const wrapper = mountPage();
+		const spend = wrapper.find('[data-testid="independence-spend"]').text();
+		expect(spend).toContain('$10.00');
+		expect(spend).toContain('relay spend avoided this month');
+		wrapper.unmount();
+	});
+
+	it('reads a minor unit off its own currency rather than assuming hundredths', () => {
+		// JPY has NO minor unit: 1,000 minor units is ¥1,000, not ¥10.00.
+		data.value = independenceSummary({
+			spendAvoidedMinorUnits: 1000,
+			spendAvoidedCurrency: 'JPY',
+		});
+		const wrapper = mountPage();
+		expect(wrapper.find('[data-testid="independence-spend"]').text()).toContain('1,000');
+		wrapper.unmount();
+	});
+
 	it('becomes Warm-up autopilot with no relay, headed by today’s capacity (D14)', () => {
 		data.value = independenceSummary({
 			referenceTransportId: null,
@@ -178,6 +214,8 @@ describe('independence screen', () => {
 		});
 		const wrapper = mountPage();
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
+		// The browser tab follows the h1 — the D14 rename applied all the way.
+		expect(headTitle()).toContain('Warm-up autopilot');
 		expect(wrapper.find('[data-testid="independence-headline"]').text()).toBe('4000');
 		expect(wrapper.find('[data-testid="independence-headline-note"]').text()).toContain(
 			'can go out from your own server today'
