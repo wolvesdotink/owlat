@@ -65,6 +65,16 @@ function sanitizeStreak(value: number | undefined): number {
 	return Math.floor(value);
 }
 
+/**
+ * The graduation clock, sanitised. A stored instant that is missing, corrupt,
+ * non-positive or AHEAD OF THE CLOCK restarts the count at `now`: the only
+ * failure mode we accept here is graduating a cell LATER than it deserved.
+ */
+function sanitizeGreenSince(stored: number | undefined, now: number): number {
+	if (stored === undefined || !Number.isFinite(stored) || stored <= 0 || stored > now) return now;
+	return stored;
+}
+
 function directionOf(fromShare: number, share: number): RampDecisionDirection {
 	if (share > fromShare) return 'increase';
 	if (share < fromShare) return 'decrease';
@@ -317,16 +327,18 @@ function decide(args: DecideArgs): DecisionDraft {
 
 	// From here the window is CLEAN. The green clock starts the moment a cell is
 	// both at full share and passing; anything else above already cleared it.
-	const greenSince = fromShare >= OWN_SHARE_CEILING ? (mix.greenSince ?? now) : undefined;
+	//
+	// The STORED instant is sanitised like every other stored field: a green
+	// clock in the future is nonsense, and one far enough in the past would hand
+	// out a graduation pin on the first passing tick. Unreadable or ahead of the
+	// clock ⇒ start counting from now, which can only DELAY a pin.
+	const greenSince =
+		fromShare >= OWN_SHARE_CEILING ? sanitizeGreenSince(mix.greenSince, now) : undefined;
 	const green = { ...held, verdict: 'pass' as const, cleanStreak: streak, greenSince };
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.
-	if (
-		greenSince !== undefined &&
-		Number.isFinite(greenSince) &&
-		now - greenSince >= RAMP_AIMD.graduationHoldMs
-	) {
+	if (greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs) {
 		return {
 			...green,
 			share: OWN_SHARE_CEILING,
@@ -350,7 +362,15 @@ function decide(args: DecideArgs): DecisionDraft {
 
 	// 10. ADDITIVE INCREASE — the ONLY branch that can raise a share.
 	const step: number = ppToFraction(config.increaseStep);
-	const target = Math.min(ceiling, fromShare + step);
-	if (target > fromShare) return { ...green, share: target, reason: 'healthy', ceiling };
+	const bounded = Math.min(ceiling, fromShare + step);
+	if (bounded > fromShare) return { ...green, share: bounded, reason: 'healthy', ceiling };
+	// A CEILING IS NOT A BREACH. When the ceiling sits below the current share it
+	// pulls the cell back to it, but never below the soft floor: nothing here
+	// measured anything wrong, and only a gate failure or a hard stop may take a
+	// cell to zero. Keeping the trickle is what lets the cell be re-measured.
+	// `Math.min(fromShare, ...)` keeps this branch incapable of raising anything:
+	// the floor may only ever soften a retreat, never become an increase in
+	// disguise for a cell sitting below it.
+	const target = Math.min(fromShare, Math.max(RAMP_AIMD.shareFloor, bounded));
 	return { ...green, share: target, reason: bindingReason, ceiling };
 }
