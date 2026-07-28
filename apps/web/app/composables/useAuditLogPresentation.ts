@@ -113,6 +113,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: 'Settings & Team', prefixes: ['settings', 'team_member'] },
 	{ label: 'API & Webhooks', prefixes: ['api_key', 'webhook'] },
 	{ label: 'Sending Domains', prefixes: ['sending_domain'] },
+	{ label: 'Deliverability', prefixes: ['deliverability_ramp'] },
 	{ label: 'Blocklist', prefixes: ['blocklist'] },
 	{ label: 'Segments', prefixes: ['segment'] },
 	{ label: 'Postbox', prefixes: ['postbox_outbound_transition', 'postbox_draft'] },
@@ -184,6 +185,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 	ai_provider_config: 'lucide:sparkles',
 	plugin: 'lucide:blocks',
 	connected_app: 'lucide:plug',
+	deliverability_ramp: 'lucide:trending-up',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -202,6 +204,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	ai_provider_config: 'AI Provider',
 	plugin: 'Plugin',
 	connected_app: 'Connected App',
+	deliverability_ramp: 'Deliverability Ramp',
 };
 
 const ACTION_VERB_LABELS: Record<string, string> = {
