@@ -14,11 +14,16 @@
  * will read through — `by_org_cell_time` — is in the schema and is exercised by
  * `__tests__/mixDecisions.test.ts`.
  *
- * A retreat with a NAMED CAUSE — a breached gate or a hard stop — additionally
- * carries `adminNotice`: what broke and what to do about it. A controller that
- * silently retreats will be experienced as a bug; equally, an alarm that cannot
- * name a cause (a ceiling pulling a healthy cell back to its rung) is noise
- * that teaches operators to ignore the channel.
+ * A decision with a NAMED CAUSE — a breached gate or a hard stop — that also
+ * CHANGED something additionally carries `adminNotice`: what broke and what to
+ * do about it. "Changed something" is not the same as "moved the share": a
+ * breach on a cell already at the soft floor holds the number while imposing a
+ * fresh freeze and another rung of the cooldown ladder, and that is an incident.
+ * A controller that silently retreats will be experienced as a bug; equally, an
+ * alarm that cannot name a cause (a ceiling pulling a healthy cell back to its
+ * rung) — or that re-announces the same unchanged hard stop every hour — is
+ * noise that teaches operators to ignore the channel. See
+ * `rampDecisionAdminNotice` for the exact predicate and why it is exact.
  */
 
 import {
