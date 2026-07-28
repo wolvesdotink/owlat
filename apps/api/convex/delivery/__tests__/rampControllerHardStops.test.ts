@@ -24,6 +24,7 @@ import { cleanEvaluation } from '../ramp/__tests__/controllerFixtures';
 import {
 	RAMP_FIXTURE_SHARE,
 	readManagedCell,
+	seedArmOutcomes,
 	seedRampCell,
 	type SeedRampCellOptions,
 } from './rampCronFixtures';
@@ -361,17 +362,31 @@ describe('a gate aggregate that is not a reading of the present', () => {
 		// K_CLEAN already satisfied and no window anchor: with FRESH evidence this
 		// tick would be an additive step, so the age is the only thing stopping it.
 		await seed(t, { cleanStreak: 3 });
+		// A LIVE REFERENCE ARM, or the substitution table (P3-8) would correctly
+		// route this cell to the trailing-baseline twin and the spy below would
+		// intercept an evaluator the fold never calls.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
 		const gateEvaluation = await import('../ramp/gateEvaluation');
 		const spy = vi
 			.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate')
 			.mockImplementation((input) => cleanEvaluation(3, input.now - 400 * DAY_MS));
 
+		// THE CALL COUNT IS READ BEFORE THE RESTORE. Vitest's `mockRestore` performs
+		// a `mockReset`, which clears `mock.calls` — so an assertion after the
+		// `finally` block reads an emptied history and can never pass, however many
+		// times the spy actually ran. Capture, then restore, then assert.
+		let evaluations = 0;
 		try {
 			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			evaluations = spy.mock.calls.length;
 		} finally {
 			spy.mockRestore();
 		}
 
+		// The stale aggregate has to have come from the MOCK. Without this the test
+		// would still pass if the fold routed the cell to the other evaluator and
+		// something else produced the hold.
+		expect(evaluations).toBeGreaterThan(0);
 		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
 		const rows = await decisions(t);
 		expect(rows[0]?.reason).toBe('evidence_stale');
@@ -394,6 +409,55 @@ describe('a gate aggregate that is not a reading of the present', () => {
 	});
 });
 
+/**
+ * WHICH EVALUATOR RUNS IS THE SUBSTITUTION TABLE'S DECISION (P3-8, plan D3).
+ *
+ * The pure suites prove each evaluator; the matrix suite proves the fold picks
+ * one. Neither proves the CRON reaches the one the fold picked — and the seam
+ * between them is a presence map derived from data on disk, which is exactly the
+ * kind of wiring a pure fixture cannot cover. So each evaluator gets a case, and
+ * the case asserts BOTH that its own evaluator ran and that the other did not.
+ */
+describe('the cron runs the evaluator the substitution table selects', () => {
+	async function evaluatorsUsed(t: Harness): Promise<{
+		reference: boolean;
+		trailing: boolean;
+	}> {
+		const gateEvaluation = await import('../ramp/gateEvaluation');
+		const referenceSpy = vi.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate');
+		const trailingSpy = vi.spyOn(gateEvaluation.trailingBaselineGateEvaluator, 'evaluate');
+		try {
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			return {
+				reference: referenceSpy.mock.calls.length > 0,
+				trailing: trailingSpy.mock.calls.length > 0,
+			};
+		} finally {
+			referenceSpy.mockRestore();
+			trailingSpy.mockRestore();
+		}
+	}
+
+	it('runs the reference-arm evaluator when the cell has a live relay arm', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+
+		expect(await evaluatorsUsed(t)).toEqual({ reference: true, trailing: false });
+	});
+
+	it('runs the trailing-baseline twin when there is no relay arm at all', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		// Own traffic only — a zero-third-party deployment, which is a SUPPORTED
+		// configuration and not a degraded one (plan D2).
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+
+		expect(await evaluatorsUsed(t)).toEqual({ reference: false, trailing: true });
+	});
+});
+
 describe('the phase ladder', () => {
 	it('promotes exactly one rung per call and cannot skip one', async () => {
 		const t = convexTest(schema, modules);
@@ -410,14 +474,46 @@ describe('the phase ladder', () => {
 			if (cell) await ctx.db.patch(cell._id, { phaseCeiling: 0.25, mixVersion: 2 });
 		});
 
+		// The lower rungs are the ordinary ladder — no evidence is consulted.
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.5 });
+
+		// CROSSING 0.5 IS EVIDENCE-GATED (P3-8). With no external reading and no
+		// corroborating self-hosted evidence the cell keeps its rung and the
+		// outstanding conditions come back BY NAME — a refusal, never an error.
+		const refused = await promote();
+		expect(refused).toMatchObject({ ok: false, phaseCeiling: 0.5 });
+		const outstanding = (refused as { outstanding?: readonly string[] }).outstanding ?? [];
+		expect(outstanding).toContain('google_compliance_pass');
+		expect(outstanding).toContain('dnsbl_clean_streak');
+		expect((await cellRow(t))?.phaseCeiling).toBe(0.5);
+
+		// A Google Compliance Status pass within the last 7 days is one whole route
+		// on its own, and it carries the cell to the top.
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert('domains', {
+				domain: 'example.test',
+				status: 'verified' as const,
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('googlePostmasterCompliance', {
+				domainId,
+				domain: 'example.test',
+				periodStart: Date.now() - DAY_MS,
+				checks: [{ name: 'spam_rate', state: 'passing' as const }],
+				fetchedAt: Date.now() - HOUR_MS,
+				ingestedAt: Date.now() - HOUR_MS,
+			});
+		});
+
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.8 });
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
 		// The top rung is the top rung: further promotions are no-ops.
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
 
 		// A promotion IS a new mix generation, so the salt advances once per real
-		// rung — and not at all for the no-op at the top.
+		// rung — and not at all for the refusal or for the no-op at the top.
 		expect((await cellRow(t))?.mixVersion).toBe(5);
 	});
 

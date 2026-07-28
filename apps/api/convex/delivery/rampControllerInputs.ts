@@ -37,7 +37,15 @@ import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/tra
 import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
-import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
+import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
+import {
+	degradedCeilingCap,
+	degradedStreamConfig,
+	resolveRampDegradation,
+	usesTrailingBaseline,
+	usesUnsubscribeProxy,
+} from './ramp/degradation';
+import { withReferenceArm, type RampDeploymentPresence } from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
@@ -201,6 +209,13 @@ export async function loadCellInput(
 		 * does not resolve it either.
 		 */
 		capacity: () => Promise<RampCapacityContext>;
+		/**
+		 * The deployment's integration presence, read ONCE per tick by the caller
+		 * (`rampIntegrationPresence.ts`): every entry but the reference arm is
+		 * deployment-level, and the reference arm is completed here from this
+		 * cell's own outcome rows.
+		 */
+		presence: RampDeploymentPresence;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		now: number;
@@ -253,17 +268,34 @@ export async function loadCellInput(
 		now,
 	});
 
-	// WHICH EVALUATOR RUNS IS P3-8's CHOICE, not this file's. The base branch now
-	// ships `trailingBaselineGateEvaluator` beside this one, and a deployment with
-	// no reference arm (`referenceArm === null` above) wants that twin rather than
-	// this one — evaluated by the reference implementation it can only ever hold.
-	// P3-8's substitution table is what selects between them; the hard-coded
-	// evaluator here is STAGED, exactly as the capacity input below was until P3-3
-	// replaced its stand-in with a real projection.
-	const evaluation = referenceArmGateEvaluator.evaluate({
-		config: RAMP_STREAM_CONFIGS[cell.stream],
+	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW (plan D3, piece P3-8). Which
+	// evaluator runs, how many clean windows an increase costs, how big a step is,
+	// which complaint line applies and how high the phase ladder may go are all
+	// folded out of `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or
+	// anywhere else in the controller: a conditional naming an integration would be
+	// a substitution living outside the table, which is the exact failure mode the
+	// table exists to prevent.
+	const presence = withReferenceArm(args.presence, referenceArm !== null);
+	const degradation = resolveRampDegradation({ presence, provider: cell.destinationProvider });
+	const config = degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation);
+	const evaluator = usesTrailingBaseline(degradation)
+		? trailingBaselineGateEvaluator
+		: referenceArmGateEvaluator;
+	const evaluation = evaluator.evaluate({
+		config,
 		own,
 		reference: referenceArm,
+		// The trailing twin's second series, DISJOINT from the evaluation window by
+		// construction (30d..7d) — which is what the standalone gates require. The
+		// reference-arm evaluator has a concurrent arm and ignores it.
+		ownTrailingBaseline: ownPriorBaseline,
+		// THROUGH THE FOLD, never off the presence map. `usesUnsubscribeProxy` is
+		// the table's answer to "is there a real feedback loop on this cell?", so
+		// an integration's presence is read exactly ONCE — by
+		// `resolveRampDegradation` — and every consumer asks the RESOLUTION. A
+		// direct `presence.<id>` read here would be a substitution living outside
+		// the table, which is the one thing this piece exists to prevent (D3).
+		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,
@@ -273,8 +305,20 @@ export async function loadCellInput(
 		perStream,
 		input: {
 			cell,
-			config: RAMP_STREAM_CONFIGS[cell.stream],
+			config,
 			mix,
+			// THE CEILING CAP IS THE TABLE'S TOO (the Microsoft cell caps one rung
+			// lower while SNDS is absent). Passed as a BOUND rather than folded into
+			// the stored rung, so the promotion an operator was granted survives the
+			// outage and the cap lifts by itself when the feed returns.
+			phaseCeilingCap: degradedCeilingCap(degradation),
+			// The cap's CAUSE travels with the cap, so the audit row and the operator
+			// sentence can name the integration whose return would lift it (plan D12).
+			ceilingCapSource: degradation.ceilingCappedBy,
+			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
+			// the constants this tick used, so a decision can be explained without
+			// re-deriving what the deployment looked like at the time.
+			absentIntegrations: degradation.absent.map((entry) => entry.integration),
 			signals: readHardStopSignals([perStream, streamless, pool], {
 				isSendingPermitted: args.isSendingPermitted,
 				now,

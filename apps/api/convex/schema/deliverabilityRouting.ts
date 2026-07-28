@@ -47,6 +47,22 @@ export const deliverabilityRoutingTables = {
 		// continuity in a comparison that is still in flight.
 		ownShare: v.optional(v.number()),
 		phaseCeiling: v.optional(v.number()),
+		// WHEN THE CELL ARRIVED AT ITS CURRENT RUNG — the dwell clock the promotion
+		// rule reads ("2x the normal dwell time at the current ceiling", plan D3's
+		// standalone route). Stamped by `promoteRampPhase` and by nothing else: the
+		// hourly AIMD loop moves the SHARE, never the rung, so a tick must not be
+		// able to restart a dwell the cell has already served.
+		//
+		// Absent on a row that reached its rung any other way — seeded, hand-patched,
+		// or written before this column existed. Absence must NEVER be permanent
+		// though: dwell is one of the four conditions on the standalone promotion
+		// route, and for a provider with no external route that is the only route
+		// there is, so an anchor nobody ever writes would leave the cell
+		// unpromotable for ever with no operator remedy (plan D2). The controller
+		// therefore ADOPTS the row's creation instant the first time it manages a
+		// row without one — the earliest moment the rung could have been set, so the
+		// backfill can only understate the dwell served, never manufacture it.
+		phaseCeilingSince: v.optional(v.number()),
 		cleanStreak: v.optional(v.number()),
 		mixVersion: v.optional(v.number()),
 		signals: v.array(

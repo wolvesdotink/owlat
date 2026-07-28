@@ -11,6 +11,11 @@ import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { aggregateRampGates } from '../gateEvaluation';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { externalDataAllowed, rampGateMatrixMode } from './gateMatrixMode';
+import {
+	RAMP_FULLY_EQUIPPED,
+	type RampIntegrationId,
+	type RampIntegrationPresence,
+} from '../degradationMatrix';
 import type {
 	RampGateDecidedMeasurement,
 	RampGateEvaluation,
@@ -28,6 +33,21 @@ import type {
 export const NOW = 1_800_000_000_000;
 export const HOUR = 60 * 60 * 1000;
 export const DAY = 24 * HOUR;
+
+/**
+ * A presence map with the named integrations REMOVED and everything else
+ * present.
+ *
+ * ONE variadic helper, in the shared fixtures. Three suites used to carry their
+ * own copy under two different names (`absent`, `without`), which is the same
+ * function pretending to be two — and the day one of them starts from a
+ * different baseline the suites stop testing the same deployment.
+ */
+export function absent(...ids: readonly RampIntegrationId[]): RampIntegrationPresence {
+	const presence: Record<RampIntegrationId, boolean> = { ...RAMP_FULLY_EQUIPPED };
+	for (const id of ids) presence[id] = false;
+	return presence;
+}
 
 export const GMAIL_CAMPAIGN: DeliverabilityCell = {
 	stream: 'campaign',
@@ -195,6 +215,14 @@ export function controllerInput(overrides: Partial<RampControllerInput> = {}): R
 		signals: CLEAR_SIGNALS,
 		evaluation: cleanEvaluation(3),
 		capacity: OPEN_CAPACITY,
+		// The fully-equipped deployment's cap: the top rung, i.e. no cap at all.
+		// `degradedCeilingCap` is total and returns exactly this when nothing is
+		// missing, so the default fixture is the production identity case.
+		phaseCeilingCap: 1,
+		// Nothing caps the equipped deployment, so nothing names a cap either.
+		ceilingCapSource: undefined,
+		// Equipped: nothing absent. Carried for the audit row, never for a decision.
+		absentIntegrations: [],
 		isKillSwitchEngaged: false,
 		now: NOW,
 		...overrides,

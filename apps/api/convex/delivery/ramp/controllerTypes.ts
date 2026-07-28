@@ -8,6 +8,7 @@
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import type { CellVolumeUnknownReason } from './capacityProjection';
+import type { RampIntegrationId } from './degradationMatrix';
 import type { RampStreamConfig } from './gateConfig';
 import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
@@ -67,6 +68,16 @@ export type RampControlReason =
 	| 'capacity_ceiling'
 	/** The phase-ladder rung is what bounds the share. */
 	| 'phase_ceiling'
+	/**
+	 * THE SUBSTITUTION TABLE'S CAP is what bounds the share — the cell is held a
+	 * rung below the one it was promoted to because an integration is missing.
+	 *
+	 * Named apart from `phase_ceiling` because the two are indistinguishable to an
+	 * operator otherwise, and the remedies are opposite: `phase_ceiling` says
+	 * "promote the phase", while this one says "the Microsoft cell is a rung low
+	 * because SNDS is absent, and it lifts by itself when SNDS returns" (plan D12).
+	 */
+	| 'degradation_ceiling'
 	/** An additive increase. The only reason that ever raises a share. */
 	| 'healthy'
 	/** s = 1.0 held 14 days with every gate green: the cell PINS. */
@@ -257,6 +268,41 @@ export interface RampControllerInput {
 	 */
 	readonly evaluation: RampGateEvaluation | null;
 	readonly capacity: RampCapacityInput;
+	/**
+	 * THE DEGRADATION MATRIX'S CEILING CAP (plan D3, piece P3-8) — the highest
+	 * rung this cell may occupy while an integration is missing.
+	 *
+	 * REQUIRED, not optional. `degradedCeilingCap` is TOTAL: it answers for every
+	 * presence map and returns the top rung when nothing caps anything, so an
+	 * "absent" case would be a second spelling of "1" that no caller can produce
+	 * and no fixture would keep honest.
+	 *
+	 * A BOUND, NOT A LADDER POSITION, and the distinction is why it is a separate
+	 * field rather than a smaller `mix.phaseCeiling`. The stored rung is a
+	 * PROMOTION — a deliberate act someone took — while this is a MEASUREMENT
+	 * consequence that must lift by itself the moment the missing feed returns.
+	 * Folding it into the stored value would persist it, and reconnecting SNDS
+	 * would leave the Microsoft cell pinned a rung low until a human promoted it
+	 * again. It bounds the share exactly like the capacity ceiling does, and like
+	 * the capacity ceiling it never rewrites the row.
+	 */
+	readonly phaseCeilingCap: number;
+	/**
+	 * WHICH absent integration produced `phaseCeilingCap`, or `undefined` when
+	 * nothing caps this cell. Resolved by the substitution fold, never by the
+	 * decision path: the controller applies a number and REPORTS a name, and the
+	 * two must come from the same table read or the audit row would explain the
+	 * cap with an integration that did not cause it (plan D12).
+	 */
+	readonly ceilingCapSource: RampIntegrationId | undefined;
+	/**
+	 * EVERY absent integration governing this cell, in table order — carried for
+	 * the AUDIT ROW, not for the decision. The controller reads none of it; the
+	 * snapshot in `mixDecisions` does, so a decision whose reason is
+	 * `degradation_ceiling` can say exactly which feeds were missing when it was
+	 * taken and a replay can be reproduced from the row alone (plan D12).
+	 */
+	readonly absentIntegrations: readonly RampIntegrationId[];
 	/** Plan P3-2's global kill switch. Honoured before every other rule. */
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
@@ -333,6 +379,12 @@ export interface RampDecision {
 	readonly countedAt: number | undefined;
 	/** The effective ceiling this decision was bounded by. */
 	readonly ceiling: number;
+	/**
+	 * The absent integration whose table entry capped the ceiling, present ONLY
+	 * on a `degradation_ceiling` decision. It is what lets the audit row and the
+	 * operator sentence NAME the missing feed instead of gesturing at one.
+	 */
+	readonly cappedBy: RampIntegrationId | undefined;
 }
 
 /**
@@ -389,6 +441,8 @@ export interface RampDecisionDraft {
 	/** `now` when this evaluation counted as a window; absent when it did not. */
 	readonly countedAt?: number | undefined;
 	readonly ceiling: number;
+	/** The capping integration, set only by the ceiling rung. */
+	readonly cappedBy?: RampIntegrationId | undefined;
 }
 
 export function rampDecisionDirection(fromShare: number, share: number): RampDecisionDirection {
