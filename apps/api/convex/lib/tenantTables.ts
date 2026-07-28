@@ -111,6 +111,9 @@ export const TENANT_TABLES = [
 	// Every ramp-controller decision, including no-ops (plan D12). Tenant
 	// sending history: a wipe must not leave the org's ramp audit trail behind.
 	'mixDecisions',
+	// The per-stream ramp aggressiveness preset an operator chose (plan D9).
+	// Per-organization business configuration — a wipe must not leave it behind.
+	'rampStreamPresets',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',
