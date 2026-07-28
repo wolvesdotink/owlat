@@ -51,6 +51,9 @@ describe('graduation', () => {
 		// transition, and it is what carries the tick into the audit log.
 		expect(decision.direction).toBe('hold');
 		expect(decision.pinChange).toBe('awarded');
+		// Only the AWARD tick may claim the transition.
+		expect(describeRampDecision(GMAIL_CAMPAIGN, decision)).toContain('Graduated');
+		expect(describeRampDecision(GMAIL_CAMPAIGN, decision)).toContain('drops to standby');
 	});
 
 	/**
@@ -97,7 +100,14 @@ describe('graduation', () => {
 		expect(clean.reason).toBe('graduated');
 		expect(clean.graduatedAt).toBe(graduatedAt);
 		expect(clean.pinChange).toBeUndefined();
-		expect(describeRampDecision(GMAIL_CAMPAIGN, clean)).toContain('standby');
+		// …and the sentence says exactly that: the cell IS pinned and the relay IS
+		// on standby, but this tick did not graduate anything, so it must not claim
+		// fourteen continuously green days — the window before it was thin.
+		const message = describeRampDecision(GMAIL_CAMPAIGN, clean);
+		expect(message).toContain('graduated and pinned');
+		expect(message).toContain('the relay is on standby');
+		expect(message).not.toContain('Graduated');
+		expect(message).not.toContain('14 days');
 	});
 
 	it('does NOT pin at thirteen days', () => {

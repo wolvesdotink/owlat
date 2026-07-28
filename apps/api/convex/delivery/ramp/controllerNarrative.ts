@@ -202,11 +202,19 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 		// without revoking it — so the sentence is built from the DECISION'S SHARE,
 		// not from the reason alone. Telling an operator the relay is on standby
 		// while it is in fact carrying 60% of the cell is the same defect the two
-		// ceiling sentences above were fixed for.
+		// ceiling sentences above were fixed for. And `graduated` is the STEADY
+		// STATE of a pinned cell, not only the tick it pins, so the TRANSITION
+		// wording comes from `pinChange`, never from the reason: a pinned cell whose
+		// green clock was restarted by a thin window last tick has not "held 100%
+		// for 14 days with every gate green", and saying so would be a false claim
+		// on every tick thereafter.
 		case 'graduated':
-			return decision.share >= OWN_SHARE_CEILING
+			if (decision.share < OWN_SHARE_CEILING) {
+				return `Held ${where} at ${percent(decision.share)}: the cell is graduated and pinned, but remaining warming capacity bounds it below full share, so the relay still carries the rest. Capacity grows with the warming schedule.`;
+			}
+			return decision.pinChange === 'awarded'
 				? `Graduated ${where}: 100% held for 14 days with every gate green. The cell is pinned and the relay drops to standby.`
-				: `Held ${where} at ${percent(decision.share)}: the cell is graduated and pinned, but remaining warming capacity bounds it below full share, so the relay still carries the rest. Capacity grows with the warming schedule.`;
+				: `Held ${where} at 100%: the cell is graduated and pinned, and the relay is on standby.`;
 		// A BREACH ON A CELL ALREADY AT THE FLOOR CANNOT LOWER IT — `max(floor, s x
 		// 0.5)` is the same 1% it started at — so this verb comes from the
 		// DIRECTION too, for the same reason the two ceiling arms above do. "Reduced
