@@ -132,16 +132,16 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 				: `Held ${where} at ${percent(decision.share)}: the organization's abuse status still forbids sending. Resolve the account status first; nothing else the controller measures matters until then.`;
 		case 'breaker':
 			return decision.direction === 'decrease'
-				? `Halved ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for 6h while the breaker recovers.`
+				? `Halved ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for at least 6h while the breaker recovers.`
 				: `Held ${where} at ${percent(decision.share)}: the MTA circuit breaker is still open for this provider. The retreat for this incident has already been charged, so the share holds until the breaker freeze expires.`;
 		case 'dnsbl':
 			return decision.direction === 'decrease'
-				? `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for 24h — start the delisting flow from the Delivery checklist.`
-				: `Held ${where} at ${percent(decision.share)}: a pool IP still carries a critical blocklist listing. Frozen for a further 24h — start the delisting flow from the Delivery checklist.`;
+				? `Stopped ${where} (${move}): a pool IP carries a critical blocklist listing. Frozen for at least 24h — start the delisting flow from the Delivery checklist.`
+				: `Held ${where} at ${percent(decision.share)}: a pool IP still carries a critical blocklist listing. Frozen for a further 24h at least — start the delisting flow from the Delivery checklist.`;
 		case 'frozen':
 			return `Held ${where} at ${percent(decision.share)}: an earlier decision froze this cell and the cooldown has not expired.`;
 		case 'freeze_unreadable':
-			return `Held ${where} at ${percent(decision.share)}: the stored freeze expiry was further out than any cooldown this controller imposes, so it was not believed. The cell holds — an unreadable freeze is not a reason to step up — and the next decision that freezes it will write a usable one.`;
+			return `Held ${where} at ${percent(decision.share)}: the stored freeze expiry was further out than any cooldown this controller imposes, so it was not believed. The cell holds for this evaluation — an unreadable freeze is not a reason to step up — and the unusable value has been cleared off the cell, so the next evaluation decides on the gates again.`;
 		case 'share_unreadable':
 			return `Held ${where} at ${percent(decision.share)}: the stored share was not a usable value and has been read back inside [0, 1]. The controller does not add to a number it cannot read.`;
 		case 'holding':
