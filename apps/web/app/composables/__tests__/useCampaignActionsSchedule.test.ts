@@ -2,6 +2,9 @@ import { computed, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from '@owlat/api/dataModel';
 import { useCampaignActions } from '../useCampaignActions';
+import type { useCampaignABTest } from '../useCampaignABTest';
+
+type ABTest = ReturnType<typeof useCampaignABTest>;
 
 /**
  * The schedule submit path judges "is this start in the past?" against a LIVE
@@ -25,7 +28,10 @@ describe('useCampaignActions schedule clock', () => {
 		return useCampaignActions({
 			campaignId,
 			// Only the two A/B fields `handleSave` touches are read on this path.
-			abTest: { abTestEnabled: ref(false), buildEnablePayload: () => ({}) } as never,
+			abTest: {
+				abTestEnabled: ref(false),
+				buildEnablePayload: () => ({}),
+			} as unknown as ABTest,
 			campaignData: ref<Doc<'campaigns'> | null>({
 				isABTest: false,
 			} as unknown as Doc<'campaigns'>),
@@ -63,7 +69,11 @@ describe('useCampaignActions schedule clock', () => {
 		const actions = makeActions(true);
 
 		// 09:00 — the operator picks 09:05 and the computed evaluates as future.
-		actions.initializeSchedule(new Date('2026-03-10T09:05:00').getTime());
+		// The two refs are set the way the `<input type="date">` / `<input
+		// type="time">` controls set them, so the fixture does not depend on how
+		// an epoch happens to serialise into them.
+		actions.scheduledDate.value = '2026-03-10';
+		actions.scheduledTime.value = '09:05';
 		expect(actions.scheduledStartAt.value).not.toBeNull();
 
 		// 09:10 — the controls were never touched again, so the computed still
@@ -80,7 +90,8 @@ describe('useCampaignActions schedule clock', () => {
 
 	it('still refuses inline on the reschedule path', async () => {
 		const actions = makeActions(false);
-		actions.initializeSchedule(new Date('2026-03-10T09:05:00').getTime());
+		actions.scheduledDate.value = '2026-03-10';
+		actions.scheduledTime.value = '09:05';
 		vi.setSystemTime(new Date('2026-03-10T09:10:00'));
 
 		await actions.handleSchedule();
@@ -91,8 +102,11 @@ describe('useCampaignActions schedule clock', () => {
 
 	it('persists the still-future start unchanged when the clock has not passed it', async () => {
 		const actions = makeActions(true);
+		// Local-time parse on both sides, so the expected instant matches whatever
+		// `parseScheduledStart` produces in the runner's zone.
 		const startsAt = new Date('2026-03-10T09:05:00').getTime();
-		actions.initializeSchedule(startsAt);
+		actions.scheduledDate.value = '2026-03-10';
+		actions.scheduledTime.value = '09:05';
 
 		vi.setSystemTime(new Date('2026-03-10T09:04:00'));
 		await actions.handleSchedule();
