@@ -26,6 +26,7 @@ import { modules } from '../../__tests__/testModules';
 import { MS_PER_DAY } from '../../lib/constants';
 import { campaignWarmingCapBinds } from '../../lib/sendProviders/warmingCapGate';
 import { loadWarmingCapacity } from '../warmingCapacity';
+import { capacityInputForCell, type RampCapacityContext } from '../rampCapacityInputs';
 import { RAMP_FIXTURE_SHARE, readManagedCell, seedRampCell } from './rampCronFixtures';
 import {
 	CAPACITY_FROM,
@@ -192,5 +193,50 @@ describe('the shipped warmup_overflow reroute is untouched', () => {
 		expect(relay.deferralCode).toBeUndefined();
 		expect(relay.route?.providerType).toBe('ses');
 		expect(relay.route?.deliverabilityReason).toBe('warmup_overflow');
+	});
+});
+
+/**
+ * THE READING IS NOT TAKEN FOR CELLS IT CANNOT BIND.
+ *
+ * `allDeliverabilityCells()` is stream-major, so a whole cursor slice can be
+ * transactional — a stream the campaign warming pool does not carry and this
+ * bound therefore says nothing about. Resolving the tick's context for such a
+ * slice would pay for the `warmingState` row plus two index reads per governed
+ * cell and discard all of it, so the context is passed in UNRESOLVED and the
+ * stream check happens first.
+ */
+describe('P3-3 capacity reading laziness', () => {
+	function countingContext(): { thunk: () => Promise<RampCapacityContext>; calls: () => number } {
+		let calls = 0;
+		return {
+			thunk: async () => {
+				calls += 1;
+				return await Promise.resolve({ base: { kind: 'unconstrained' }, projections: new Map() });
+			},
+			calls: () => calls,
+		};
+	}
+
+	it('never resolves the context for a cell the campaign pool does not carry', async () => {
+		const context = countingContext();
+		const input = await capacityInputForCell(
+			context.thunk,
+			{ stream: 'transactional', destinationProvider: 'gmail' },
+			0.5
+		);
+		expect(input).toEqual({ kind: 'unconstrained' });
+		expect(context.calls()).toBe(0);
+	});
+
+	it('resolves it exactly once for a cell the pool does carry', async () => {
+		const context = countingContext();
+		const input = await capacityInputForCell(
+			context.thunk,
+			{ stream: 'campaign', destinationProvider: 'gmail' },
+			0.5
+		);
+		expect(input).toEqual({ kind: 'unconstrained' });
+		expect(context.calls()).toBe(1);
 	});
 });
