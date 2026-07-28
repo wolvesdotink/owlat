@@ -40,7 +40,11 @@
  */
 
 import type { DestinationProviderKey } from './deliverabilityRouting';
-import { isSeedPlacementReached, type SeedPlacement } from './seedPlacementFolders';
+import {
+	SEED_PLACEMENTS,
+	isSeedPlacementReached,
+	type SeedPlacement,
+} from './seedPlacementFolders';
 
 // ============ ROLL-UP (STATUS, NEVER A NUMBER) ============
 
@@ -179,14 +183,74 @@ function readArm(observations: readonly SeedObservation[]): ArmReading {
 	};
 }
 
+/**
+ * Per-placement PROBE COUNTS for one arm — the same evidence as a
+ * `SeedObservation[]`, in the form a caller that already has counters holds it.
+ *
+ * Omitted placements are zero. Negative, fractional and non-finite counts are
+ * scrubbed rather than trusted: a sample size is the one number the
+ * `insufficient_data` rule turns on, so it may never be a caller's typo.
+ */
+export type SeedArmPlacementCounts = Partial<Readonly<Record<SeedPlacement, number>>>;
+
+function safeProbeCount(value: number | undefined): number {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value);
+}
+
+function readArmCounts(counts: SeedArmPlacementCounts | null | undefined): ArmReading {
+	let sampleSize = 0;
+	let reached = 0;
+	let anyMissing = false;
+	for (const placement of SEED_PLACEMENTS) {
+		const count = safeProbeCount(counts?.[placement]);
+		if (count <= 0) continue;
+		sampleSize += count;
+		if (isSeedPlacementReached(placement)) reached += count;
+		if (placement === 'missing') anyMissing = true;
+	}
+	if (sampleSize === 0) return { sampleSize: 0, reachedShare: 0, anyMissing: false };
+	return { sampleSize, reachedShare: reached / sampleSize, anyMissing };
+}
+
+/**
+ * The roll-up from COUNTS rather than from one object per probe.
+ *
+ * THE SAME MEASUREMENT, NOT A SECOND ONE. Both entry points reduce their input
+ * to the same `ArmReading` pair and hand it to the same `rollupFromArms`, so the
+ * thresholds, the minimum sample and the confidence keep the single home this
+ * module gives them. A caller that already counts its probes (the ramp's gate 5
+ * holds three integers per arm) can ask its question without first expanding
+ * those integers into thousands of throwaway objects for this module to count
+ * back down again.
+ */
+export function summarizeSeedProviderCounts(
+	provider: DestinationProviderKey,
+	arms: {
+		readonly own?: SeedArmPlacementCounts | null;
+		readonly reference?: SeedArmPlacementCounts | null;
+	}
+): SeedProviderRollup {
+	return rollupFromArms(provider, readArmCounts(arms.own), readArmCounts(arms.reference));
+}
+
 export function summarizeSeedProvider(
 	provider: DestinationProviderKey,
 	observations: readonly SeedObservation[]
 ): SeedProviderRollup {
 	const mine = observations.filter((o) => o.provider === provider);
-	const own = readArm(mine.filter((o) => o.arm === 'own'));
-	const reference = readArm(mine.filter((o) => o.arm === 'reference'));
+	return rollupFromArms(
+		provider,
+		readArm(mine.filter((o) => o.arm === 'own')),
+		readArm(mine.filter((o) => o.arm === 'reference'))
+	);
+}
 
+function rollupFromArms(
+	provider: DestinationProviderKey,
+	own: ArmReading,
+	reference: ArmReading
+): SeedProviderRollup {
 	// The comparison needs BOTH arms to clear the minimum sample; below it the
 	// second clause holds rather than guessing (D10 — insufficient_data HOLDS).
 	const referenceStatus: SeedReferenceStatus =

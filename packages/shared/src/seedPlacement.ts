@@ -140,6 +140,8 @@ export {
 	resolveSeedTripwire,
 	summarizeSeedPlacement,
 	summarizeSeedProvider,
+	summarizeSeedProviderCounts,
+	type SeedArmPlacementCounts,
 	type SeedConfidence,
 	type SeedCorroboration,
 	type SeedGateResult,
