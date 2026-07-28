@@ -57,29 +57,49 @@ const RECORD_LABELS: Record<string, string> = {
 	mx: 'MX',
 };
 
-/** Flatten the generated rows into what DNSRecordPanel renders. */
+/**
+ * Flatten the generated rows into what DNSRecordPanel renders.
+ *
+ * `value` arrives ALREADY RESOLVED from the backend (`streamSubdomainRecordValue`
+ * is the one place that decides what is copyable for a row), so nothing here
+ * branches on the record's purpose to build a DNS value. Two renderers of one
+ * DNS value drift; this component is not the second one.
+ *
+ * ROWS FOR THE DOMAIN BEING VIEWED ARE DROPPED. This panel is mounted inside the
+ * SAME expanded record row as that domain's shipped SPF/DKIM/DMARC panels, and
+ * `mail.`/`news.` are exactly the names the Add-Domain form suggests — so the
+ * host is normally one of the three proposed ones. The values are identical
+ * either way (the backend builds them from the same source the provider adapter
+ * does), but showing the operator the same record twice under two headings is
+ * not information, it is doubt.
+ */
 const recordPanels = computed(() =>
-	(ready.value?.records ?? []).map((record, index) => ({
-		key: `${record.host}-${record.purpose}-${index}`,
-		label:
-			record.purpose === 'dkim'
-				? `DKIM (${record.arm === 'own' ? 'this server' : 'relay'})`
-				: (RECORD_LABELS[record.purpose] ?? record.purpose),
-		record: {
-			type: record.type,
-			host: record.host,
-			hostIsFqdn: true,
-			// A pending DKIM row carries NO value — see DNSRecordPanel.
-			value:
+	(ready.value?.records ?? [])
+		.filter((record) => record.subdomain !== ready.value?.domain)
+		.map((record, index) => ({
+			key: `${record.host}-${record.purpose}-${index}`,
+			label:
 				record.purpose === 'dkim'
-					? record.key.status === 'published'
-						? `v=DKIM1; k=rsa; p=${record.key.value}`
-						: null
-					: record.value,
-			...(record.purpose === 'mx' ? { priority: record.priority } : {}),
-		},
-	}))
+					? `DKIM (${record.arm === 'own' ? 'this server' : 'relay'})`
+					: (RECORD_LABELS[record.purpose] ?? record.purpose),
+			record: {
+				type: record.type,
+				host: record.host,
+				hostIsFqdn: true,
+				value: record.value,
+				...(record.priority === undefined ? {} : { priority: record.priority }),
+			},
+		}))
 );
+
+const REJECTED_INPUT_LABELS: Record<string, string> = {
+	logoUrl: 'MTA_BIMI_LOGO_URL',
+	vmcUrl: 'MTA_BIMI_VMC_URL',
+};
+
+/** Name the value to fix rather than silently rendering nothing. */
+const rejectedInputCopy = (keys: readonly string[]): string =>
+	`${keys.map((key) => REJECTED_INPUT_LABELS[key] ?? key).join(' and ')} must be a plain https:// URL with no spaces or semicolons, so no BIMI record was generated.`;
 
 /** Offers only — an ineligible domain shows nothing about BIMI at all. */
 const bimiOffers = computed(() =>
@@ -109,6 +129,13 @@ const bimiOffers = computed(() =>
 				<div class="flex flex-wrap items-baseline gap-2">
 					<code class="font-mono text-sm text-text-primary">{{ entry.host }}</code>
 					<span class="text-xs text-text-tertiary">{{ roleLabel(entry.role) }}</span>
+					<!-- Work already done is shown as done, never re-proposed. -->
+					<span
+						v-if="entry.alreadyRegistered"
+						class="text-xs text-text-tertiary"
+						data-testid="stream-subdomain-registered"
+						>Already added</span
+					>
 				</div>
 				<p v-if="entry.streams.length > 0" class="mt-1 text-xs text-text-secondary">
 					Carries: {{ entry.streams.join(', ') }}
@@ -161,6 +188,32 @@ const bimiOffers = computed(() =>
 				Optional: show your logo on {{ entry.host }} (BIMI)
 			</p>
 			<p class="mt-1 text-xs text-text-secondary">{{ entry.offer.vmcNote }}</p>
+			<!-- The record itself, once a logo URL is configured. -->
+			<DomainsDNSRecordPanel
+				v-if="entry.offer.record"
+				class="mt-2"
+				:record="{
+					type: entry.offer.record.type,
+					host: entry.offer.record.host,
+					hostIsFqdn: true,
+					value: entry.offer.record.value,
+				}"
+				label="BIMI"
+				:domain="ready.domain"
+			/>
+			<!-- A value we could not publish as given: say which one, and stop.
+			     Still never a blocker — BIMI is an offer (D2). -->
+			<p
+				v-else-if="entry.offer.rejectedInputs.length > 0"
+				class="mt-2 text-xs text-text-tertiary"
+				data-testid="stream-subdomain-bimi-rejected"
+			>
+				{{ rejectedInputCopy(entry.offer.rejectedInputs) }}
+			</p>
+			<p v-else class="mt-2 text-xs text-text-tertiary" data-testid="stream-subdomain-bimi-no-logo">
+				Set MTA_BIMI_LOGO_URL to the HTTPS address of your SVG logo and this record is generated for
+				you.
+			</p>
 		</div>
 	</section>
 </template>
