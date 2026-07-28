@@ -2,7 +2,7 @@ import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
-import { isSuppressed } from '../lib/suppression';
+import { isSuppressed, type SuppressionScope } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
@@ -291,6 +291,29 @@ export const enqueueCampaignEmails = internalMutation({
 	},
 });
 
+/** The kinds of mail `enqueueNonCampaignSend` writes. */
+const nonCampaignSendKindValidator = v.union(v.literal('automation'), v.literal('agent_reply'));
+
+/** @see nonCampaignSendKindValidator */
+export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
+
+/**
+ * Which {@link SuppressionScope} each non-campaign kind is gated at.
+ *
+ * TOTAL BY CONSTRUCTION, and deliberately so. The `satisfies
+ * Record<NonCampaignSendKind, SuppressionScope>` makes adding a third literal
+ * to {@link nonCampaignSendKindValidator} a COMPILE ERROR until the new kind
+ * names its scope — where a ternary with a permissive else-branch would have
+ * silently handed it the transactional reading and stopped marketing-hygiene
+ * rows blocking it. `lib/suppression.ts` states the same invariant for the
+ * default: forgetting to think about scope must yield the blocking behaviour,
+ * never the permissive one.
+ */
+const SUPPRESSION_SCOPE_BY_KIND = {
+	automation: 'marketing',
+	agent_reply: 'transactional',
+} as const satisfies Record<NonCampaignSendKind, SuppressionScope>;
+
 /**
  * Shared writer for the three NON-campaign, non-template-API Send sources:
  * automation email steps and agent approved-replies (and, in principle, any
@@ -317,7 +340,7 @@ export const enqueueCampaignEmails = internalMutation({
  */
 export const enqueueNonCampaignSend = internalMutation({
 	args: {
-		kind: v.union(v.literal('automation'), v.literal('agent_reply')),
+		kind: nonCampaignSendKindValidator,
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
 		automationId: v.optional(v.id('automations')),
@@ -365,7 +388,10 @@ export const enqueueNonCampaignSend = internalMutation({
 		// clearest possible evidence they are still there. Bounce, complaint and
 		// manual rows still block it: `isMarketingOnlyBlockReason` is false for
 		// those, so the transactional scope keeps blocking on mailbox evidence.
-		const suppressionScope = args.kind === 'automation' ? 'marketing' : 'transactional';
+		//
+		// The mapping is the TOTAL table above, not a ternary: a future kind has
+		// to name its scope to compile.
+		const suppressionScope = SUPPRESSION_SCOPE_BY_KIND[args.kind];
 		if (await isSuppressed(ctx, args.email, { scope: suppressionScope })) {
 			throw new Error(RECIPIENT_BLOCKED_ERROR);
 		}
