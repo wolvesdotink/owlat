@@ -43,7 +43,12 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { recordAuditLog } from '../lib/auditLog';
-import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
+import {
+	nextPhaseCeiling,
+	RAMP_INITIAL_PHASE_CEILING,
+	RAMP_MAX_FREEZE_MS,
+} from './ramp/controllerConfig';
+import { readActiveFreeze } from './ramp/controllerReaders';
 import { nextShare } from './ramp/controller';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
@@ -51,7 +56,7 @@ import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
 } from './deliverabilityValidators';
-import type { RampDecision } from './ramp/controllerTypes';
+import type { RampDecision, RampFreezeOrigin } from './ramp/controllerTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 export const RAMP_CELLS_PER_TICK = 5;
@@ -83,6 +88,54 @@ async function refreshRouteStateLease(
 }
 
 /**
+ * THE THREE FREEZE COLUMNS MOVE TOGETHER, or they do not move at all.
+ *
+ * `fallbackActiveSince` (the ladder's anchor), `frozenUntil` (the expiry) and
+ * `freezeReason` (which rung it belongs to) are three views of ONE fact, and
+ * every defect this write path has had came from computing them separately: an
+ * expiry carried forward past a corrupt value, an origin left pointing at the
+ * previous incident. Resolving them in one place makes "they agree" a property
+ * of the code rather than of three ternaries that happen to line up.
+ *
+ * THE CARRY-FORWARD TEST IS THE RUNGS' OWN (`readActiveFreeze`), deliberately —
+ * not an inline `frozenUntil > now`. Only a freeze the decision function would
+ * BELIEVE survives the tick: an expired one is dropped (the pure rung already
+ * ignores it, so leaving it on the row would only make the dashboard and the
+ * `mix` blob report the cell as frozen until a past instant for ever), and an
+ * UNREADABLE one is dropped too. That second case is the whole point: the
+ * `freeze_unreadable` rung holds the cell for the tick that reads it, and if the
+ * write path carried the unusable instant forward that hold would be permanent
+ * rather than one tick, which is neither what the rung's sentence promises nor
+ * something an operator could clear.
+ */
+function resolveFreezeFields(
+	perStream: Doc<'deliverabilityRouteStates'>,
+	decision: RampDecision,
+	now: number
+): {
+	fallbackActiveSince: number | undefined;
+	frozenUntil: number | undefined;
+	freezeReason: RampFreezeOrigin | undefined;
+} {
+	const carried = readActiveFreeze(perStream, now, RAMP_MAX_FREEZE_MS);
+	const running = carried.kind === 'active' ? carried : undefined;
+	return {
+		// The GATE-COOLDOWN ladder's clock: start, expiry and rung move together,
+		// and only a LADDER freeze re-stamps the start. A hard-stop freeze (breaker
+		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
+		// alone — otherwise an infrastructure incident would re-arm the "repeat
+		// within 24h" window and double the next gate cooldown off a stale rung.
+		fallbackActiveSince: decision.cooldownMs === undefined ? perStream.fallbackActiveSince : now,
+		// A new freeze REPLACES the pair whole. It can only ever be later than the
+		// one it replaces — the decision function lengthens rather than shortens
+		// (`extendFreezeUntil`) — so the row never loses time it had already been
+		// told to serve, and the origin becomes the rung that just fired.
+		frozenUntil: decision.frozenUntil ?? running?.until,
+		freezeReason: decision.frozenUntil !== undefined ? decision.freezeReason : running?.origin,
+	};
+}
+
+/**
  * Persist one decision onto the cell's per-stream route-state row.
  *
  * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
@@ -105,35 +158,12 @@ async function applyDecision(
 		ownShare: decision.share,
 		phaseCeiling: decision.phaseCeiling,
 		cleanStreak: decision.cleanStreak,
-		// The GATE-COOLDOWN ladder's clock: start, expiry and rung move together,
-		// and only a LADDER freeze re-stamps the start. A hard-stop freeze (breaker
-		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
-		// alone — otherwise an infrastructure incident would re-arm the "repeat
-		// within 24h" window and double the next gate cooldown off a stale rung.
-		fallbackActiveSince: decision.cooldownMs === undefined ? perStream.fallbackActiveSince : now,
-		// …but the freeze EXPIRY is not carried forward once it has passed. The pure
-		// rung already ignores an expired instant (`now < mix.frozenUntil` is
-		// false), so leaving it on the row changes no decision — it only makes
-		// every reader of the row (the delivery dashboard, the `mix` blob in
-		// `mixDecisions.snapshot`) report the cell as "frozen until <a past
-		// instant>" for ever. Clearing it keeps the row's story true.
-		frozenUntil:
-			decision.frozenUntil ??
-			(perStream.frozenUntil !== undefined && perStream.frozenUntil > now
-				? perStream.frozenUntil
-				: undefined),
-		// THE ORIGIN MOVES WITH THE EXPIRY, always — carried forward with a freeze
-		// that is still running, cleared with one that has passed, replaced whole by
-		// a new one. They are one fact: the breaker rung reads the pair to tell its
-		// OWN freeze from an unrelated cooldown it must not let absorb its retreat,
-		// and an expiry whose origin drifted out of step would answer that question
-		// with the last incident's name.
-		freezeReason:
-			decision.frozenUntil !== undefined
-				? decision.freezeReason
-				: perStream.frozenUntil !== undefined && perStream.frozenUntil > now
-					? perStream.freezeReason
-					: undefined,
+		// THE THREE FREEZE COLUMNS, resolved together — see `resolveFreezeFields`.
+		// They are one fact: the breaker rung reads the pair to tell its OWN freeze
+		// from an unrelated cooldown it must not let absorb its retreat, and an
+		// expiry whose origin drifted out of step would answer that question with
+		// the last incident's name.
+		...resolveFreezeFields(perStream, decision, now),
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,
