@@ -87,11 +87,26 @@ export function applyRampCellControl(
 
 	if (pinned === null || decision.share <= pinned) return decision;
 
+	// THE SAME NO-OP GUARD THE PAUSE ARM HAS, and for a sharper reason. A pin
+	// stored BELOW the cell's current share sits above nothing the controller
+	// wanted to do on a hold, so without this guard every ordinary hold —
+	// `frozen`, `evidence_stale`, `awaiting_corroboration`, `capacity_ceiling`,
+	// `building_confidence` — would be relabelled `operator_pin` and the Cells
+	// grid's "Holding it back" column would name the operator instead of the
+	// constraint that is actually binding. It would also be untrue twice over:
+	// the share shown is `fromShare`, not the pinned share.
+	if (decision.share === decision.fromShare) return decision;
+
 	const share = Math.max(pinned, decision.fromShare);
+	// `ceiling` IS ONLY NARROWED WHERE THE PIN ACTUALLY BOUND THE SHARE. Pinning
+	// at 0.2 a cell already running at 0.7 must not record `share: 0.7,
+	// ceiling: 0.2` — a self-contradictory evidence row for anyone replaying the
+	// decision later.
+	const ceiling = share <= pinned ? Math.min(decision.ceiling, pinned) : decision.ceiling;
 	return {
 		...decision,
 		share,
-		ceiling: Math.min(decision.ceiling, pinned),
+		ceiling,
 		reason: 'operator_pin',
 		direction: rampDecisionDirection(decision.fromShare, share),
 	};
