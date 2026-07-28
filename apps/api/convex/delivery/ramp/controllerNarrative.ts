@@ -11,7 +11,20 @@
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
-import type { RampDecision } from './controllerTypes';
+import type { RampDecision, RampDecisionReason } from './controllerTypes';
+
+/**
+ * The retreats an operator must be TOLD about: something measured or something
+ * infrastructural broke, and the sentence for each names the cause and the
+ * remedy. Ceiling-bound pull-backs are deliberately absent — nothing failed, so
+ * a notice would be an alarm with no gate to name and nothing to act on, and a
+ * notice channel that cries wolf stops being read.
+ */
+const NOTIFIABLE_RETREAT_REASONS: ReadonlySet<RampDecisionReason> = new Set<RampDecisionReason>([
+	'abuse_status',
+	'breaker',
+	'dnsbl',
+]);
 
 function percent(share: number): string {
 	return `${Math.round(share * 1000) / 10}%`;
@@ -33,6 +46,22 @@ function gateRemedy(decision: RampDecision): string {
 		default:
 			return 'Review the delivery dashboard for the failing measurement.';
 	}
+}
+
+/**
+ * THE ADMIN NOTICE for a retreat (plan D12), or `undefined` when there is
+ * nothing an operator can act on. The notice IS the decision's sentence: it
+ * already names what broke and what to do about it, and a second wording could
+ * only drift from the first.
+ */
+export function rampDecisionAdminNotice(
+	cell: DeliverabilityCell,
+	decision: RampDecision
+): string | undefined {
+	if (decision.direction !== 'decrease') return undefined;
+	const isNamed =
+		decision.failedGate !== undefined || NOTIFIABLE_RETREAT_REASONS.has(decision.reason);
+	return isNamed ? describeRampDecision(cell, decision) : undefined;
 }
 
 /**
@@ -66,10 +95,18 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Held ${where} at ${percent(decision.share)}: the warming-capacity projection was unusable, so no ceiling could be computed. The controller does not ramp hardest when it understands least.`;
 		case 'building_confidence':
 			return `Held ${where} at ${percent(decision.share)}: the window was clean, but the controller requires several consecutive clean windows before it increases.`;
+		// A CEILING CAN PULL A CELL DOWN, not only stop it going up — so the verb
+		// comes from the DIRECTION, never from the reason. "Held ... at 8%" for a
+		// 42-point retreat would make the audit trail actively misleading, and this
+		// same sentence is what an operator reads in the notice.
 		case 'capacity_ceiling':
-			return `Held ${where} at ${percent(decision.share)}: remaining warming capacity is what bounds this cell, not its gates. Capacity grows with the warming schedule.`;
+			return decision.direction === 'decrease'
+				? `Reduced ${where} (${move}): remaining warming capacity now bounds this cell below its current share. No gate failed; capacity grows back with the warming schedule.`
+				: `Held ${where} at ${percent(decision.share)}: remaining warming capacity is what bounds this cell, not its gates. Capacity grows with the warming schedule.`;
 		case 'phase_ceiling':
-			return `Held ${where} at ${percent(decision.share)}: the cell is at its phase ceiling. Promote the phase to let it go further.`;
+			return decision.direction === 'decrease'
+				? `Reduced ${where} (${move}): the cell is above its phase ceiling and has been brought back to it. No gate failed — promote the phase to allow more.`
+				: `Held ${where} at ${percent(decision.share)}: the cell is at its phase ceiling. Promote the phase to let it go further.`;
 		case 'healthy':
 			return `Increased ${where} (${move}): every gate is green and the clean streak is long enough.`;
 		case 'graduated':

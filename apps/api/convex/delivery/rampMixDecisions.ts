@@ -7,26 +7,25 @@
  * still for a week. The KPI is that 100% of decisions carry a recorded,
  * human-readable reason, so `message` is a required field, not an optional one.
  *
- * Every DECREASE additionally carries `adminNotice`: the gate that broke and
- * what to do about it. A controller that silently retreats will be experienced
- * as a bug.
+ * A retreat with a NAMED CAUSE — a breached gate or a hard stop — additionally
+ * carries `adminNotice`: what broke and what to do about it. A controller that
+ * silently retreats will be experienced as a bug; equally, an alarm that cannot
+ * name a cause (a ceiling pulling a healthy cell back to its rung) is noise
+ * that teaches operators to ignore the channel.
  */
 
-import { v } from 'convex/values';
 import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { adminQuery } from '../lib/authedFunctions';
 import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
-import { describeRampDecision } from './ramp/controllerNarrative';
+import { describeRampDecision, rampDecisionAdminNotice } from './ramp/controllerNarrative';
 
 /** Decisions age out with the experiment record they explain (plan D16). */
 export const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 200;
-const READ_LIMIT = 200;
 
 /**
  * The gate inputs behind ONE decision, as a JSON blob. Evidence, never a query
@@ -82,6 +81,7 @@ export async function recordMixDecision(
 ): Promise<void> {
 	const { organizationId, cell, input, decision, at } = args;
 	const message = describeRampDecision(cell, decision);
+	const adminNotice = rampDecisionAdminNotice(cell, decision);
 	await ctx.db.insert('mixDecisions', {
 		organizationId,
 		cell: deliverabilityCellKey(cell),
@@ -95,9 +95,9 @@ export async function recordMixDecision(
 		reason: decision.reason,
 		message,
 		...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
-		// The notice IS the message for a retreat: it already names the gate and
-		// the remedy, so a second wording could only drift from the first.
-		...(decision.direction === 'decrease' ? { adminNotice: message } : {}),
+		// Present only on a retreat with a NAMED cause (a breached gate or a hard
+		// stop) — see `rampDecisionAdminNotice`.
+		...(adminNotice === undefined ? {} : { adminNotice }),
 		...(decision.frozenUntil === undefined ? {} : { frozenUntil: decision.frozenUntil }),
 		snapshot: rampDecisionSnapshot(input, decision),
 		expiresAt: at + MIX_DECISION_RETENTION_MS,
@@ -105,33 +105,13 @@ export async function recordMixDecision(
 }
 
 /**
- * Recent decisions for the delivery dashboard and for support. Admin-gated:
- * the snapshot blob carries whole-cell sending statistics.
+ * NO READ PATH SHIPS HERE. The delivery dashboard is a later piece and owns the
+ * query it needs; a read function with no consumer is a seam with no
+ * requirements behind it (plan D20), and the unscoped version this file used to
+ * carry read a TENANT table without pinning the tenant. The index the dashboard
+ * will read through — `by_org_cell_time` — is in the schema and is exercised by
+ * `__tests__/mixDecisions.test.ts`.
  */
-export const listRecentDecisions = adminQuery({
-	args: { cell: v.optional(v.string()), limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const requested = args.limit ?? 50;
-		const limit = Number.isFinite(requested)
-			? Math.max(1, Math.min(READ_LIMIT, Math.floor(requested)))
-			: 50;
-		const cell = args.cell;
-		if (cell === undefined) {
-			// `expiresAt` is `at` plus one constant retention horizon, so ordering by
-			// it IS ordering by decision time — no second index for the same order.
-			return await ctx.db
-				.query('mixDecisions')
-				.withIndex('by_expires_at')
-				.order('desc')
-				.take(limit);
-		}
-		return await ctx.db
-			.query('mixDecisions')
-			.withIndex('by_cell_time', (q) => q.eq('cell', cell))
-			.order('desc')
-			.take(limit);
-	},
-});
 
 /** Age out decisions past the retention horizon, in bounded batches. */
 export const cleanupExpiredDecisions = internalMutation({

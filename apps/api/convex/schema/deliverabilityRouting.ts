@@ -33,8 +33,16 @@ export const deliverabilityRoutingTables = {
 		isFallbackActive: v.boolean(),
 		// Share in [0,1] of the cell carried by the own MTA, absent on every
 		// pre-migration row; the ramp phase ceiling (0.25/0.5/0.8/1); the
-		// consecutive all-gates-green window count; and the mix generation that
+		// consecutive all-gates-green window count; and the mix GENERATION that
 		// salts per-recipient assignment. Written by the ramp controller only.
+		//
+		// `mixVersion` NAMES A GENERATION, NOT A STEP (plan D7). It salts
+		// `${contactId}:${campaignId}:${mixVersion}`, so every bump re-shuffles
+		// which arm each recipient lands in. It therefore advances only on a
+		// deliberate generation change — a phase promotion or an operator action —
+		// and NEVER on an ordinary AIMD step, which would otherwise re-randomise
+		// the cohort ~20 times during a single ramp and destroy per-contact
+		// continuity in a comparison that is still in flight.
 		ownShare: v.optional(v.number()),
 		phaseCeiling: v.optional(v.number()),
 		cleanStreak: v.optional(v.number()),
@@ -47,9 +55,12 @@ export const deliverabilityRoutingTables = {
 			})
 		),
 		// Also the AIMD freeze clock / clean-streak clock: no parallel fields.
-		// `fallbackActiveSince` is the instant the CURRENT freeze started (what the
-		// cooldown ladder's "repeat within 24h" test reads); `healthySince` is the
-		// instant the cell last became continuously green (the graduation clock).
+		// `fallbackActiveSince` is the instant the current GATE-COOLDOWN freeze
+		// started — the ladder's "repeat within 24h" anchor — and only a ladder
+		// freeze re-stamps it, so an infrastructure freeze (breaker, blocklist)
+		// cannot re-arm the repeat window and inflate the next gate cooldown.
+		// `healthySince` is the instant the cell last became continuously green
+		// (the graduation clock).
 		fallbackActiveSince: v.optional(v.number()),
 		healthySince: v.optional(v.number()),
 		// The freeze's EXPIRY and its LENGTH — the two things a start instant
@@ -117,11 +128,12 @@ export const deliverabilityRoutingTables = {
 		// 100% of decisions carry one, so it is REQUIRED, not optional.
 		message: v.string(),
 		failedGate: v.optional(v.string()),
-		// THE ADMIN NOTIFICATION for a DECREASE (plan D12): the gate that broke and
-		// what to do about it. Present on every decrease and on no other decision,
-		// so "what retreated, and why" is one indexed read rather than a scan.
-		// Persistent and admin-visible, mirroring `mtaIpReadinessAlerts` — the
-		// shipped shape for a delivery incident an operator must see.
+		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
+		// about it. Present on a decrease with a NAMED cause — a breached gate or a
+		// hard stop — and on no other decision. A ceiling pulling a healthy cell
+		// back to its rung is not an incident and carries no notice. Persistent and
+		// admin-visible, mirroring `mtaIpReadinessAlerts` — the shipped shape for a
+		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),
 		frozenUntil: v.optional(v.number()),
 		// JSON snapshot of every gate's inputs and the hard-stop signals, so a
@@ -130,7 +142,9 @@ export const deliverabilityRoutingTables = {
 		snapshot: v.string(),
 		expiresAt: v.number(),
 	})
-		.index('by_cell_time', ['cell', 'at'])
+		// TENANT-SCOPED READS ONLY: `mixDecisions` is a tenant table, so the cell
+		// index is keyed by organization first and there is no unscoped variant for
+		// a caller to reach for.
 		.index('by_org_cell_time', ['organizationId', 'cell', 'at'])
 		.index('by_expires_at', ['expiresAt']),
 };
