@@ -21,26 +21,21 @@ import {
 	type ResolvedRoute,
 	type DeliverabilityRouteInput,
 } from './routing';
-import { loadStreamlessRouteState } from '../deliverabilityRouteState';
 import type { MixContext } from './strategies';
 import {
 	mixContextFor,
 	resolveAddressCell,
-	type MixAddressIdentity,
 	type PrecomputedRouteInputs,
-	type ResolvedAddressCell,
+	type SendRouteAddressContext,
 } from './routeMixContext';
-import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import type { SendProviderKind } from './types';
 import {
 	candidateSendProviderKinds,
-	freshFallbackReasons,
-	isGlobalBreakerOpenState,
 	messageTypeValidator,
 	readySendProviderKinds,
-	relayDomainVerifiedFor,
 	type MessageType,
 } from './routeInputs';
 
@@ -50,16 +45,10 @@ import {
 // module.
 export { messageTypeValidator, type MessageType };
 
-/**
- * Per-message inputs the deliverability layer keys off. Shared by
- * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
- * shapes cannot drift.
- */
-export interface SendRouteAddressContext extends MixAddressIdentity {
-	from?: string;
-	baseOnly?: boolean;
-	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-}
+// `SendRouteAddressContext` lives next to the identity it extends, in
+// `routeMixContext.ts`, so the deliverability-input module can name it without
+// an import edge back to this one. Re-exported here for existing importers.
+export type { SendRouteAddressContext };
 
 /**
  * The one candidate kind whose envelope-sender control is decided by a PROBE
@@ -232,62 +221,6 @@ export function selectRouteFromFacts(
 			facts.routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 		),
 	};
-}
-
-async function deliverabilityInput(
-	ctx: QueryCtx | MutationCtx,
-	routeConfig: Doc<'providerRoutes'> | null,
-	messageType: MessageType,
-	addressContext: SendRouteAddressContext | undefined,
-	resolved: ResolvedAddressCell | null
-) {
-	if (!addressContext?.to) return undefined;
-	// The tenant, the recipient's cell and the resolution clock all come from
-	// the ONE `resolveAddressCell` the caller already ran; a null bundle (no
-	// tenant) means there is no deliverability input to give, exactly as before.
-	if (resolved === null) return undefined;
-	const { organizationId, now } = resolved;
-	// The cell read is still in flight, so it overlaps the other two — the shape
-	// this function had when it issued the cell read itself.
-	const [providerCell, globalState, warmingState] = await Promise.all([
-		resolved.cell,
-		// The global slice is infrastructure-wide and never per-stream: read the
-		// stream-less row directly so a per-stream `all` row could never hide the
-		// breaker_open signal the snapshot writes there.
-		loadStreamlessRouteState(ctx, organizationId, 'all'),
-		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-			? ctx.db.query('warmingState').first()
-			: Promise.resolve(null),
-	]);
-	// A null cell (no parseable recipient domain) means there is nothing to key
-	// the deliverability signals off, exactly as before.
-	if (providerCell === null) return undefined;
-	// EVERY row of the cell is considered, not just the most specific one: the
-	// per-stream row carries the controller's share and the stream-less row
-	// carries the infrastructure signals, so reading only one would drop a hard
-	// stop. `freshFallbackReasons` applies D1's share resolution and the
-	// advisory-signal filter for both call sites.
-	const activeReasons = freshFallbackReasons(
-		[globalState, providerCell.streamless, providerCell.perStream],
-		now
-	);
-	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
-	const isWarmupOverflow = Boolean(
-		addressContext.forceRelayReason === 'warmup_overflow' ||
-		(warmingState &&
-			now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-			warmingState.phase !== 'graduated' &&
-			warmingState.totalDailyCap > 0 &&
-			warmingState.totalSentToday >= warmingState.totalDailyCap)
-	);
-	const isRelayDomainVerified = await relayDomainVerifiedFor(
-		ctx,
-		routeConfig,
-		addressContext.from,
-		now
-	);
-	const isGlobalBreakerOpen = isGlobalBreakerOpenState(globalState, now);
-	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
 }
 
 /**

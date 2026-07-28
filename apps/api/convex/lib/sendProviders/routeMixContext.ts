@@ -47,6 +47,19 @@ export interface MixAddressIdentity {
 }
 
 /**
+ * Per-message inputs the deliverability layer keys off. Extends the mix
+ * identity above so the resolver can hand ONE context to both consumers, and
+ * lives here rather than in `route.ts` so `routeDeliverabilityInput.ts` can
+ * name it without an import edge back to the resolver. `route.ts` re-exports
+ * it for existing importers.
+ */
+export interface SendRouteAddressContext extends MixAddressIdentity {
+	from?: string;
+	baseOnly?: boolean;
+	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+}
+
+/**
  * Inputs a caller has already paid for and can hand back, so a second
  * resolution of the SAME message does not re-read them. Presence of the object
  * is the signal — a present object with `mix: undefined` means "there is no mix
