@@ -24,7 +24,8 @@
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
  *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
  *                             graduated cell is bounded by the warming cap
- *   9. graduation           -> award/keep the pin, and hold or lower to
+ *   9. graduation           -> due, OR ALREADY PINNED: award/keep the pin, and
+ *                             hold or lower to
  *                             max(floor, min(1, ceiling)); an upward pin target
  *                             falls through to 10/11 and is paid for like any
  *                             other increase
@@ -416,7 +417,18 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		? { ...green, graduatedAt: readStoredInstant(mix.graduatedAt, now) ?? now }
 		: green;
 
-	if (isGraduationDue) {
+	// ALREADY PINNED COUNTS, not only NEWLY DUE — and for an hourly cron that is
+	// the steady state rather than an edge. `isGraduationDue` is re-derived from
+	// `greenSince` every tick, but rungs 5a, 5b and 7 all CLEAR `greenSince` (an
+	// unmeasured window is not evidence of health), the cron writes that back, and
+	// the next clean tick restarts the clock at `now`. So a single thin window —
+	// the common case — would make an already-pinned cell report `phase_ceiling`
+	// ("the cell is at its phase ceiling") for the next fourteen days, while
+	// `graduatedAt` still sits on the row and nothing was revoked. Reading the pin
+	// off the row as well as off the clock keeps the sentence honest; it cannot
+	// award anything, because `pinnedGreen` still only stamps a pin when the
+	// fourteen days are genuinely due.
+	if (isGraduationDue || isGraduated) {
 		// The pinned target is the ceiling — but NEVER below the soft floor. A
 		// capacity ceiling is not a breach, and this module allows only a gate
 		// failure or a hard stop to take a cell to zero; a warming cap with no

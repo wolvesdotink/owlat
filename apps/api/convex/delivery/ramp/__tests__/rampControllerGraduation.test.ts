@@ -47,6 +47,57 @@ describe('graduation', () => {
 		expect(decision.graduatedAt).toBe(NOW);
 		// The relay is standby by construction: a full share means no fallback.
 		expect(isFallbackActiveForShare(decision.share)).toBe(false);
+		// The share did not move, so `direction` cannot see this. The PIN is the
+		// transition, and it is what carries the tick into the audit log.
+		expect(decision.direction).toBe('hold');
+		expect(decision.pinChange).toBe('awarded');
+	});
+
+	/**
+	 * A PIN IS NOT RE-EARNED EVERY FOURTEEN DAYS.
+	 *
+	 * `isGraduationDue` is re-derived from `greenSince`, and every holding rung
+	 * CLEARS `greenSince` — an unmeasured window is not evidence of health. For an
+	 * hourly cron a thin window is the common case, so reading the pin off that
+	 * clock alone made an already-pinned cell report `phase_ceiling` ("the cell is
+	 * at its phase ceiling") for the next fortnight, while `graduatedAt` still sat
+	 * on the row and nothing had been revoked.
+	 */
+	it('still reads GRADUATED on the clean tick after a thin window', () => {
+		const graduatedAt = NOW - 20 * DAY;
+		const thin = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - 30 * DAY, graduatedAt }),
+				evaluation: thinEvaluation(40),
+			})
+		);
+		// Thin data holds the share and the streak, stops the graduation clock…
+		expect(thin.reason).toBe('holding');
+		expect(thin.greenSince).toBeUndefined();
+		// …and revokes nothing: the pin is still on the row the cron writes back.
+		expect(thin.graduatedAt).toBe(graduatedAt);
+		expect(thin.pinChange).toBeUndefined();
+
+		const clean = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: thin.share,
+					cleanStreak: thin.cleanStreak,
+					greenSince: thin.greenSince,
+					graduatedAt: thin.graduatedAt,
+					lastCountedAt: thin.countedAt,
+				}),
+				evaluation: cleanEvaluation(40),
+				now: NOW + DAY,
+			})
+		);
+		// The green clock restarted at `now`, so fourteen days are NOT due — and the
+		// cell is nonetheless still pinned, so that is what the sentence says.
+		expect(clean.share).toBe(1);
+		expect(clean.reason).toBe('graduated');
+		expect(clean.graduatedAt).toBe(graduatedAt);
+		expect(clean.pinChange).toBeUndefined();
+		expect(describeRampDecision(GMAIL_CAMPAIGN, clean)).toContain('standby');
 	});
 
 	it('does NOT pin at thirteen days', () => {
@@ -340,5 +391,7 @@ describe('graduation', () => {
 		expect(decision.share).toBe(RAMP_AIMD.decreaseFactor);
 		expect(decision.graduatedAt).toBeUndefined();
 		expect(decision.reason).toBe('breaker');
+		// Losing the pin is the other half of the transition the audit log follows.
+		expect(decision.pinChange).toBe('revoked');
 	});
 });
