@@ -189,8 +189,7 @@ export const rampPresetValidator = v.union(
 );
 
 type ValidatedRampPreset = Infer<typeof rampPresetValidator>;
-type AssertMutuallyExhaustive<A extends B, B extends A> = true;
-export type _RampPresetValidatorMatchesShared = AssertMutuallyExhaustive<
-	ValidatedRampPreset,
-	RampPreset
->;
+/** Mutual assignability, expressed without either parameter constraining the other. */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+type AssertTrue<T extends true> = T;
+export type _RampPresetValidatorMatchesShared = AssertTrue<Exact<ValidatedRampPreset, RampPreset>>;
