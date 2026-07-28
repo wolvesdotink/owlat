@@ -1,10 +1,11 @@
 /**
- * THE TWO BOUNDS THE LADDER APPLIES — the evaluation WINDOW and the CAPACITY
- * ceiling.
+ * THE BOUNDS THE LADDER APPLIES — the evaluation WINDOW, the CAPACITY ceiling,
+ * and the ceiling ARITHMETIC that decides which of the three possible ceilings
+ * actually binds.
  *
- * Both are pure functions of their inputs and neither is a rung: `controller.ts`
- * stays the precedence ladder and nothing else, which is the property a reviewer
- * has to be able to verify in one sitting.
+ * All of it is a pure function of its inputs and none of it is a rung:
+ * `controller.ts` stays the precedence ladder and nothing else, which is the
+ * property a reviewer has to be able to verify in one sitting.
  *
  * PURE, like everything else under `ramp/`: no clock, no database, no
  * environment. `now` is a parameter.
@@ -13,7 +14,8 @@
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { RAMP_AIMD } from './controllerConfig';
 import { isStoredInstantAhead, readStoredInstant } from './controllerReaders';
-import type { RampCapacityInput } from './controllerTypes';
+import type { RampIntegrationId } from './degradationMatrix';
+import type { RampCapacityInput, RampDecisionReason } from './controllerTypes';
 
 /**
  * Has a whole evaluation window elapsed since the last COUNTED one?
@@ -67,4 +69,51 @@ export function capacityCeiling(capacity: RampCapacityInput): number | null {
 	const ratio = (warmingCapRemaining / projectedVolume) * RAMP_AIMD.capacitySafety;
 	if (!Number.isFinite(ratio)) return null;
 	return Math.min(OWN_SHARE_CEILING, Math.max(0, ratio));
+}
+
+/** Which of the three ceilings bound the cell, and — for the cap — what caused it. */
+export interface RampCeilingBound {
+	/** The effective ceiling: the LOWEST of the three, never above full share. */
+	readonly ceiling: number;
+	readonly reason: RampDecisionReason;
+	/**
+	 * The absent integration whose table entry produced the cap, present ONLY when
+	 * `reason` is `degradation_ceiling`. It travels with the bound rather than
+	 * being looked up again by the narrative, so the sentence an operator reads
+	 * and the number the controller applied cannot name different integrations.
+	 */
+	readonly cappedBy: RampIntegrationId | undefined;
+}
+
+/**
+ * WHICH CEILING BINDS IS PART OF THE REASON (plan D12). Three of them can, and
+ * they have three different remedies: grow the warming schedule, promote the
+ * phase, or reconnect the missing feed. Collapsing the last two into
+ * `phase_ceiling` would tell an operator to promote a rung the controller is
+ * itself capping — advice that cannot work until the feed comes back.
+ *
+ * THE SUBSTITUTION TABLE'S CAP IS A BOUND, NEVER A STORED RUNG (P3-8): an absent
+ * SNDS feed caps the Microsoft cell one phase lower while it is missing and
+ * stops capping it the tick the feed returns, without anyone re-promoting the
+ * cell. Degenerate caps are ignored rather than honoured — a NaN cap must not
+ * become a ceiling of NaN — which keeps this arithmetic incapable of raising
+ * anything.
+ */
+export function resolveCeilingBound(args: {
+	readonly capacityBound: number;
+	readonly phaseCeiling: number;
+	readonly phaseCeilingCap: number;
+	readonly ceilingCapSource: RampIntegrationId | undefined;
+}): RampCeilingBound {
+	const { capacityBound, phaseCeiling, phaseCeilingCap, ceilingCapSource } = args;
+	const capBound = Number.isFinite(phaseCeilingCap) ? Math.max(0, phaseCeilingCap) : phaseCeiling;
+	const effectivePhaseCeiling = Math.min(phaseCeiling, capBound);
+	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, effectivePhaseCeiling);
+	if (capacityBound < effectivePhaseCeiling) {
+		return { ceiling, reason: 'capacity_ceiling', cappedBy: undefined };
+	}
+	if (capBound < phaseCeiling) {
+		return { ceiling, reason: 'degradation_ceiling', cappedBy: ceilingCapSource };
+	}
+	return { ceiling, reason: 'phase_ceiling', cappedBy: undefined };
 }

@@ -8,6 +8,7 @@
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import type { CellVolumeUnknownReason } from './capacityProjection';
+import type { RampIntegrationId } from './degradationMatrix';
 import type { RampStreamConfig } from './gateConfig';
 import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
@@ -286,6 +287,22 @@ export interface RampControllerInput {
 	 * the capacity ceiling it never rewrites the row.
 	 */
 	readonly phaseCeilingCap: number;
+	/**
+	 * WHICH absent integration produced `phaseCeilingCap`, or `undefined` when
+	 * nothing caps this cell. Resolved by the substitution fold, never by the
+	 * decision path: the controller applies a number and REPORTS a name, and the
+	 * two must come from the same table read or the audit row would explain the
+	 * cap with an integration that did not cause it (plan D12).
+	 */
+	readonly ceilingCapSource: RampIntegrationId | undefined;
+	/**
+	 * EVERY absent integration governing this cell, in table order — carried for
+	 * the AUDIT ROW, not for the decision. The controller reads none of it; the
+	 * snapshot in `mixDecisions` does, so a decision whose reason is
+	 * `degradation_ceiling` can say exactly which feeds were missing when it was
+	 * taken and a replay can be reproduced from the row alone (plan D12).
+	 */
+	readonly absentIntegrations: readonly RampIntegrationId[];
 	/** Plan P3-2's global kill switch. Honoured before every other rule. */
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
@@ -362,6 +379,12 @@ export interface RampDecision {
 	readonly countedAt: number | undefined;
 	/** The effective ceiling this decision was bounded by. */
 	readonly ceiling: number;
+	/**
+	 * The absent integration whose table entry capped the ceiling, present ONLY
+	 * on a `degradation_ceiling` decision. It is what lets the audit row and the
+	 * operator sentence NAME the missing feed instead of gesturing at one.
+	 */
+	readonly cappedBy: RampIntegrationId | undefined;
 }
 
 /**
@@ -418,6 +441,8 @@ export interface RampDecisionDraft {
 	/** `now` when this evaluation counted as a window; absent when it did not. */
 	readonly countedAt?: number | undefined;
 	readonly ceiling: number;
+	/** The capping integration, set only by the ceiling rung. */
+	readonly cappedBy?: RampIntegrationId | undefined;
 }
 
 export function rampDecisionDirection(fromShare: number, share: number): RampDecisionDirection {

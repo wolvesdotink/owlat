@@ -47,7 +47,11 @@
  */
 
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
-import { capacityCeiling, isEvaluationWindowElapsed } from './controllerBounds';
+import {
+	capacityCeiling,
+	isEvaluationWindowElapsed,
+	resolveCeilingBound,
+} from './controllerBounds';
 import {
 	nextCooldownMs,
 	normalizePhaseCeiling,
@@ -66,12 +70,7 @@ import {
 } from './controllerReaders';
 import { ppToFraction } from './gateConfig';
 import { rampDecisionDirection, rampPinChange } from './controllerTypes';
-import type {
-	RampControllerInput,
-	RampDecision,
-	RampDecisionDraft,
-	RampDecisionReason,
-} from './controllerTypes';
+import type { RampControllerInput, RampDecision, RampDecisionDraft } from './controllerTypes';
 
 /**
  * THE decision. Pure — `now` is a parameter and nothing here reads a clock, a
@@ -138,6 +137,7 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		pinChange,
 		countedAt: draft.countedAt,
 		ceiling: draft.ceiling,
+		cappedBy: draft.cappedBy,
 	};
 }
 
@@ -405,26 +405,17 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//    the wrong one.
 	const capacityBound = capacityCeiling(capacity);
 	if (capacityBound === null) return { ...green, reason: 'capacity_unknown' };
-	// 8b. THE SUBSTITUTION TABLE'S CEILING CAP (P3-8). A bound, never a stored
-	//     rung: an absent SNDS feed caps the Microsoft cell one phase lower while
-	//     it is missing and stops capping it the tick the feed returns, without
-	//     anyone re-promoting the cell. Degenerate values are ignored rather than
-	//     honoured — a NaN cap must not become a ceiling of NaN — which keeps this
-	//     rung incapable of raising anything.
-	const capBound = Number.isFinite(phaseCeilingCap) ? Math.max(0, phaseCeilingCap) : phaseCeiling;
-	const effectivePhaseCeiling = Math.min(phaseCeiling, capBound);
-	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, effectivePhaseCeiling);
-	// WHICH CEILING BINDS IS PART OF THE REASON (plan D12). Three of them can, and
-	// they have three different remedies: grow the warming schedule, promote the
-	// phase, or reconnect the missing feed. Collapsing the last two into
-	// `phase_ceiling` would tell an operator to promote a rung the controller is
-	// itself capping — advice that cannot work until the feed comes back.
-	const bindingReason: RampDecisionReason =
-		capacityBound < effectivePhaseCeiling
-			? 'capacity_ceiling'
-			: capBound < phaseCeiling
-				? 'degradation_ceiling'
-				: 'phase_ceiling';
+	// 8b. WHICH OF THE THREE CEILINGS BINDS — the capacity projection, the stored
+	//     phase rung, or the substitution table's cap (P3-8). The arithmetic and
+	//     the remedy each one implies live in `controllerBounds`; this rung only
+	//     applies the answer, so the ladder stays a ladder.
+	const bound = resolveCeilingBound({
+		capacityBound,
+		phaseCeiling,
+		phaseCeilingCap,
+		ceilingCapSource: input.ceilingCapSource,
+	});
+	const { ceiling, cappedBy } = bound;
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.
@@ -470,7 +461,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		// so an upward pin target falls through to rungs 10 and 11 rather than
 		// jumping the cell to its ceiling in a single evaluation.
 		if (pinTarget < fromShare) {
-			return { ...pinnedGreen, share: pinTarget, reason: bindingReason, ceiling };
+			return { ...pinnedGreen, share: pinTarget, reason: bound.reason, ceiling, cappedBy };
 		}
 		if (pinTarget === fromShare) {
 			return { ...pinnedGreen, share: pinTarget, reason: 'graduated', ceiling };
@@ -500,5 +491,5 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// the floor may only ever soften a retreat, never become an increase in
 	// disguise for a cell sitting below it.
 	const target = Math.min(fromShare, Math.max(RAMP_AIMD.shareFloor, bounded));
-	return { ...pinnedGreen, share: target, reason: bindingReason, ceiling };
+	return { ...pinnedGreen, share: target, reason: bound.reason, ceiling, cappedBy };
 }

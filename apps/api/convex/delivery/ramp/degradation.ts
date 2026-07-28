@@ -28,6 +28,7 @@ import {
 	entryAppliesToProvider,
 	RAMP_DEGRADATION_MATRIX,
 	COMPLAINT_PROXY_TOLERANCE,
+	type RampIntegrationId,
 	type RampIntegrationPresence,
 	type RampSubstituteSource,
 	type RampSubstitutionEntry,
@@ -62,6 +63,17 @@ export interface RampDegradation {
 	readonly stepMultiplier: number;
 	readonly dwellMultiplier: number;
 	readonly ceilingPhaseDelta: number;
+	/**
+	 * WHICH absent integration lowered the ceiling — the FIRST table entry (in
+	 * table order) that contributed a non-zero `ceilingPhaseDelta`, `undefined`
+	 * when nothing did.
+	 *
+	 * Resolved HERE rather than re-derived by whoever renders the sentence,
+	 * because the number and the name have to come from one fold: an audit row
+	 * that blames an integration the cap did not come from is worse than one that
+	 * blames nobody (plan D12).
+	 */
+	readonly ceilingCappedBy: RampIntegrationId | undefined;
 	readonly complaintMaxOverride: RateFraction | undefined;
 	/**
 	 * The furthest warming-schedule DAY the pace actuator may reach.
@@ -99,6 +111,7 @@ export function resolveRampDegradation(args: {
 	let stepMultiplier = 1;
 	let dwellMultiplier = 1;
 	let ceilingPhaseDelta = 0;
+	let ceilingCappedBy: RampIntegrationId | undefined;
 	let complaintMaxOverride: RateFraction | undefined;
 	let paceCeilingDay: number | undefined;
 	const confidences: RampGateConfidence[] = [];
@@ -112,7 +125,10 @@ export function resolveRampDegradation(args: {
 		}
 		if (entry.stepMultiplier !== undefined) stepMultiplier *= entry.stepMultiplier;
 		if (entry.dwellMultiplier !== undefined) dwellMultiplier *= entry.dwellMultiplier;
-		if (entry.ceilingPhaseDelta !== undefined) ceilingPhaseDelta += entry.ceilingPhaseDelta;
+		if (entry.ceilingPhaseDelta !== undefined && entry.ceilingPhaseDelta !== 0) {
+			ceilingPhaseDelta += entry.ceilingPhaseDelta;
+			ceilingCappedBy ??= entry.integration;
+		}
 		if (entry.complaintMaxOverride !== undefined) {
 			complaintMaxOverride =
 				complaintMaxOverride === undefined
@@ -137,6 +153,7 @@ export function resolveRampDegradation(args: {
 		stepMultiplier,
 		dwellMultiplier,
 		ceilingPhaseDelta,
+		ceilingCappedBy,
 		complaintMaxOverride,
 		paceCeilingDay,
 		confidence: weakestConfidence(confidences),
@@ -203,4 +220,18 @@ export function degradedCeilingCap(degradation: RampDegradation): number {
  */
 export function usesTrailingBaseline(degradation: RampDegradation): boolean {
 	return degradation.substitutes.includes('trailing_baseline_engagement');
+}
+
+/**
+ * Whether the complaint gate for this cell is judged from the unsubscribe-rate
+ * PROXY rather than from a real feedback loop.
+ *
+ * The twin of `usesTrailingBaseline`, and it exists for the same reason: the
+ * decision path must never read `presence.complaint_feedback_loop` itself. An
+ * integration's presence is read exactly once, by the fold, and every consumer
+ * asks the RESOLUTION what to do — which is what keeps adding an integration a
+ * table row and nothing else (plan D3).
+ */
+export function usesUnsubscribeProxy(degradation: RampDegradation): boolean {
+	return degradation.substitutes.includes('unsubscribe_rate_proxy');
 }

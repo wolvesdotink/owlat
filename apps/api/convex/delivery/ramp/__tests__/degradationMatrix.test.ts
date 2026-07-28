@@ -20,17 +20,11 @@ import {
 	RAMP_FULLY_EQUIPPED,
 	RAMP_INTEGRATION_IDS,
 	type RampIntegrationId,
-	type RampIntegrationPresence,
 	type RampSubstituteSource,
 } from '../degradationMatrix';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+import { absent } from './controllerFixtures';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-
-function absent(...ids: readonly RampIntegrationId[]): RampIntegrationPresence {
-	const presence: Record<RampIntegrationId, boolean> = { ...RAMP_FULLY_EQUIPPED };
-	for (const id of ids) presence[id] = false;
-	return presence;
-}
 
 interface MatrixCase {
 	readonly integration: RampIntegrationId;
@@ -173,8 +167,12 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 				expect(degradation.paceCeilingDay).toBe(testCase.paceCeilingDay);
 			});
 
-			it('caps the ceiling where the plan caps it', () => {
+			it('caps the ceiling where the plan caps it, and NAMES what capped it', () => {
 				expect(degradedCeilingCap(degradation)).toBe(testCase.ceilingCap);
+				// The cap and its cause come from ONE fold: an audit row that states a
+				// cap must be able to say which absence produced it (plan D12).
+				const caps = degradation.ceilingPhaseDelta !== 0;
+				expect(degradation.ceilingCappedBy).toBe(caps ? testCase.integration : undefined);
 			});
 
 			it('applies the documented complaint threshold AND its tolerance', () => {
@@ -218,6 +216,7 @@ describe('the fully-equipped deployment is the identity', () => {
 			provider: 'gmail',
 		});
 		expect(degradation.absent).toHaveLength(0);
+		expect(degradation.ceilingCappedBy).toBeUndefined();
 		expect(degradation.stepMultiplier).toBe(1);
 		expect(degradation.dwellMultiplier).toBe(1);
 		expect(degradation.ceilingPhaseDelta).toBe(0);

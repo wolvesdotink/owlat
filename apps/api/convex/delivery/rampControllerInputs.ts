@@ -43,6 +43,7 @@ import {
 	degradedStreamConfig,
 	resolveRampDegradation,
 	usesTrailingBaseline,
+	usesUnsubscribeProxy,
 } from './ramp/degradation';
 import { withReferenceArm, type RampDeploymentPresence } from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
@@ -288,7 +289,13 @@ export async function loadCellInput(
 		// construction (30d..7d) — which is what the standalone gates require. The
 		// reference-arm evaluator has a concurrent arm and ignores it.
 		ownTrailingBaseline: ownPriorBaseline,
-		hasComplaintFeedback: presence.complaint_feedback_loop,
+		// THROUGH THE FOLD, never off the presence map. `usesUnsubscribeProxy` is
+		// the table's answer to "is there a real feedback loop on this cell?", so
+		// an integration's presence is read exactly ONCE — by
+		// `resolveRampDegradation` — and every consumer asks the RESOLUTION. A
+		// direct `presence.<id>` read here would be a substitution living outside
+		// the table, which is the one thing this piece exists to prevent (D3).
+		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,
@@ -305,6 +312,13 @@ export async function loadCellInput(
 			// the stored rung, so the promotion an operator was granted survives the
 			// outage and the cap lifts by itself when the feed returns.
 			phaseCeilingCap: degradedCeilingCap(degradation),
+			// The cap's CAUSE travels with the cap, so the audit row and the operator
+			// sentence can name the integration whose return would lift it (plan D12).
+			ceilingCapSource: degradation.ceilingCappedBy,
+			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
+			// the constants this tick used, so a decision can be explained without
+			// re-deriving what the deployment looked like at the time.
+			absentIntegrations: degradation.absent.map((entry) => entry.integration),
 			signals: readHardStopSignals([perStream, streamless, pool], {
 				isSendingPermitted: args.isSendingPermitted,
 				now,
