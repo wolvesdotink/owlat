@@ -175,6 +175,16 @@ export async function applyEffects(
 					await ctx.db.patch(existing._id, {
 						reason: effect.reason,
 						bounceType,
+						// THE NOTE MUST NOT OUTLIVE THE REASON IT EXPLAINED. A
+						// marketing-only row carries the sunset engine's note ("no
+						// engagement for N days"); once mailbox evidence has replaced the
+						// reason, that sentence describes a decision this row no longer
+						// records — and the suppression screen both renders it and
+						// free-text searches it, so a `bounced` row would explain itself
+						// as a hygiene pause. Patching to `undefined` is how Convex clears
+						// an optional field. The soft→hard upgrade keeps its note: that
+						// one is bounce provenance and still true.
+						...(upgradesMarketingOnly ? { notes: undefined } : {}),
 						sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
 						sourceEmailSendId: effect.source.kind === 'campaign' ? effect.source.id : undefined,
 						sourceTransactionalSendId:

@@ -289,6 +289,11 @@ describe('sunset suppression reuses the shipped path', () => {
 				expect(rows[0]?.reason).toBe('bounced');
 				expect(rows[0]?.bounceType).toBe('hard');
 				expect(rows[0]?.sourceTransactionalSendId).toBe(sendId);
+				// The engine's hygiene note does not survive the upgrade. The
+				// suppression screen renders `notes` and free-text searches it, so a
+				// `bounced` row explaining itself as "no engagement for N days" would
+				// be actively misleading.
+				expect(rows[0]?.notes).toBeUndefined();
 				// The permissive scope now blocks: this is evidence about the mailbox.
 				expect(
 					await isSuppressed(ctx, 'quiet-then-broken@example.com', { scope: 'transactional' })
@@ -328,6 +333,7 @@ describe('sunset suppression reuses the shipped path', () => {
 				expect(rows).toHaveLength(1);
 				expect(rows[0]?.reason).toBe('complained');
 				expect(rows[0]?.bounceType).toBeUndefined();
+				expect(rows[0]?.notes).toBeUndefined();
 				expect(
 					await isSuppressed(ctx, 'quiet-then-broken@example.com', { scope: 'transactional' })
 				).toBe(true);
