@@ -62,7 +62,7 @@ const CAPACITY_PROJECTION_DAYS = 30;
  * The sync runs every five minutes, so a day of silence means the pipe is
  * broken — and a broken measurement pipe must never block sending.
  */
-const WARMING_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const WARMING_STATE_MAX_AGE_MS = 1 * MS_PER_DAY;
 
 export interface WarmingCapacityOptions {
 	/** Current wall-clock time (ms since epoch); staleness is judged against it. */
@@ -78,6 +78,17 @@ export interface WarmingCapacityOptions {
 	 * refuse campaigns that provably fit.
 	 */
 	startsAt?: number;
+	/**
+	 * The `warmingState` singleton, when the caller already holds it. Omit and
+	 * it is read here.
+	 *
+	 * This exists so a caller that reads the singleton for its own purposes does
+	 * not pay for it twice inside one execution — and, more importantly, so the
+	 * two reads cannot observe different rows. `undefined` means "not supplied,
+	 * read it"; `null` means "the caller looked and there is no row", which
+	 * answers `null` (capacity unknown) exactly as the internal read would.
+	 */
+	warmingState?: Doc<'warmingState'> | null;
 }
 
 /**
@@ -139,7 +150,10 @@ export async function loadWarmingCapacity(
 	ctx: Ctx,
 	options: WarmingCapacityOptions
 ): Promise<WarmingCapacityProjection | null> {
-	const warmingState = await ctx.db.query('warmingState').first();
+	const warmingState =
+		options.warmingState !== undefined
+			? options.warmingState
+			: await ctx.db.query('warmingState').first();
 	if (!warmingState) return null;
 
 	// Stale state: the MTA sync has stopped. Unknown, not zero.
