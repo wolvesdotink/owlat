@@ -1,6 +1,11 @@
 import { ref, type Ref, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
+import type { OperationError } from '@owlat/shared/operationError';
+import {
+	capacityRefusalPlan,
+	type CampaignCapacitySchedulePlan,
+} from '~/lib/campaignCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
@@ -39,15 +44,35 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	const router = useRouter();
 	const { showToast } = useToast();
 
+	/**
+	 * The multi-day schedule pre-flight handed back instead of starting the
+	 * campaign, or `null`. NOT an error state: capacity is a schedule, and the
+	 * caller renders it as one (deliverability plan D14). Claiming the failure
+	 * here is what keeps it off the generic red `invalid_state` toast.
+	 */
+	const capacitySchedule = ref<CampaignCapacitySchedulePlan | null>(null);
+	const claimCapacityRefusal = (error: OperationError): boolean => {
+		const plan = capacityRefusalPlan(error);
+		if (!plan) return false;
+		capacitySchedule.value = plan;
+		return true;
+	};
+	const dismissCapacitySchedule = () => {
+		capacitySchedule.value = null;
+	};
+
 	// Mutations
 	const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
 		label: 'Send campaign now',
+		onError: claimCapacityRefusal,
 	});
 	const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 		label: 'Schedule campaign',
+		onError: claimCapacityRefusal,
 	});
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
 		label: 'Reschedule campaign',
+		onError: claimCapacityRefusal,
 	});
 	const { run: unscheduleCampaign } = useBackendOperation(api.campaigns.scheduling.unschedule, {
 		label: 'Unschedule campaign',
@@ -122,6 +147,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
+		capacitySchedule.value = null;
 
 		try {
 			if (isDraft.value) {
@@ -158,6 +184,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
+		capacitySchedule.value = null;
 
 		try {
 			if (isDraft.value) {
@@ -278,5 +305,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleUnschedule,
 		handleCancel,
 		handleBack,
+		capacitySchedule,
+		dismissCapacitySchedule,
 	};
 }

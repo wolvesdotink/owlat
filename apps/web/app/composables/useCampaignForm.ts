@@ -406,6 +406,8 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		handleUnschedule: actions.handleUnschedule,
 		handleCancel: actions.handleCancel,
 		handleBack: actions.handleBack,
+		capacitySchedule: actions.capacitySchedule,
+		dismissCapacitySchedule: actions.dismissCapacitySchedule,
 
 		// Helpers
 		validateForm,

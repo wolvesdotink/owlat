@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { OperationError } from '@owlat/shared/operationError';
+import {
+	capacityRefusalPlan,
+	type CampaignCapacitySchedulePlan,
+} from '~/lib/campaignCapacityRefusal';
 import { isValidEmail } from '~/utils/validation';
 
 type SendOption = 'now' | 'later';
@@ -56,12 +61,28 @@ const useRecipientTimezone = ref(false);
 // Test email modal
 const isTestEmailModalOpen = ref(false);
 
+/**
+ * Pre-flight refused the send and handed back the multi-day schedule it would
+ * take instead. Capacity is a SCHEDULE, not a failure (deliverability plan
+ * D14), so the refusal is claimed here and rendered as a calm panel rather than
+ * left to the generic red `invalid_state` toast.
+ */
+const capacitySchedule = ref<CampaignCapacitySchedulePlan | null>(null);
+const claimCapacityRefusal = (err: OperationError): boolean => {
+	const plan = capacityRefusalPlan(err);
+	if (!plan) return false;
+	capacitySchedule.value = plan;
+	return true;
+};
+
 // Mutations
 const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
 	label: 'Send campaign now',
+	onError: claimCapacityRefusal,
 });
 const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 	label: 'Schedule campaign',
+	onError: claimCapacityRefusal,
 });
 
 // Modal state — `error`/`setError` carry the send-blocked reason and local
@@ -147,6 +168,7 @@ const handleSendCampaign = async () => {
 
 	if (!validate()) return;
 
+	capacitySchedule.value = null;
 	setLoading(true);
 	try {
 		let toastMessage: string;
@@ -203,6 +225,12 @@ const variantBTemplateName = computed(() => {
 
 			<!-- Error Alert -->
 			<UiErrorAlert v-if="error" :message="error" class="mb-6" />
+
+			<CampaignsCapacitySchedulePanel
+				v-if="capacitySchedule"
+				:plan="capacitySchedule"
+				class="mb-6"
+			/>
 
 			<!-- Campaign Details Summary -->
 			<div class="space-y-4">

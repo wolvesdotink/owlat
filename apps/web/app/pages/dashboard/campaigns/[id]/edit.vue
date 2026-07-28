@@ -67,6 +67,8 @@ const {
 	handleUnschedule,
 	handleCancel,
 	handleBack,
+	capacitySchedule,
+	dismissCapacitySchedule,
 
 	// Helpers
 	formatDate,
@@ -831,9 +833,18 @@ const sendEstimate = computed(() => {
 								</p>
 							</div>
 
+							<!-- Pre-flight refused the send and handed back a schedule instead.
+							     Capacity is a schedule, not a failure (deliverability plan D14). -->
+							<CampaignsCapacitySchedulePanel
+								v-if="capacitySchedule"
+								:plan="capacitySchedule"
+								dismissible
+								@dismiss="dismissCapacitySchedule"
+							/>
+
 							<!-- Send Estimate -->
 							<div
-								v-if="sendEstimate && audienceCount && sendEstimate.days > 1"
+								v-if="!capacitySchedule && sendEstimate && audienceCount && sendEstimate.days > 1"
 								class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
 							>
 								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
