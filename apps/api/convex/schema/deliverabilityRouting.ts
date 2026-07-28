@@ -172,10 +172,12 @@ export const deliverabilityRoutingTables = {
 		failedGate: v.optional(rampGateIdValidator),
 		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
 		// about it. Present when the decision has a NAMED cause — a breached gate or
-		// a hard stop — AND that decision CHANGED something. `cooldownMs` is the
-		// discriminator for the second half: a breach on a cell already at the soft
-		// floor HOLDS the number while imposing a fresh freeze and a fresh cooldown
-		// rung, and that is an incident; a hard stop that is merely still true an
+		// a hard stop — AND that decision CHANGED something.
+		// `rampDecisionChangedState` is the discriminator for the second half, and
+		// the freeze's ladder position (`RampDecision.freeze.ladderMs`) is what it
+		// reads: a breach on a cell already at the soft floor HOLDS the number while
+		// imposing a fresh freeze and a fresh rung of the cooldown ladder, and that
+		// is an incident; a hard stop that is merely still true an
 		// hour later changed nothing and stays quiet rather than re-announcing
 		// itself every tick. A ceiling pulling a healthy cell back to its rung has
 		// no cause to name, and `awaiting_corroboration` is the branch that decided
