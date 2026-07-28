@@ -35,7 +35,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
-import { summarizeSeedPlacementWindow } from '../analytics/seedPlacement';
+import { hasSeedAccounts } from '../analytics/seedAccounts';
 import {
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
@@ -174,8 +174,11 @@ export const getDeliverabilityDashboard = authedQuery({
 		// The per-cell PLACEMENT sweep is a separate wiring job (the roll-up is per
 		// destination provider, the gate input is per cell); until it lands, gate 5
 		// holds and that hold costs the ramp nothing, because it is optional.
-		const hasSeedCoverage =
-			(await summarizeSeedPlacementWindow(ctx.db, organizationId, now)).seedAccountCount > 0;
+		// ONE row through the seed index, not a placement window: the screen needs
+		// the boolean, and the roll-up it used to buy it from scans the probe
+		// index, expands one observation per probe and fans out a `db.get` per
+		// account — all of it discarded.
+		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
 		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
 
 		const cells: DashboardCellView[] = [];

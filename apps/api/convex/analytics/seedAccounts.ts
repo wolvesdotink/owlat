@@ -94,6 +94,27 @@ export async function loadSeedAccounts(
 }
 
 /**
+ * SEED COVERAGE as one boolean: does this org own a seed mailbox at all?
+ *
+ * The question the measurement screen asks is not "how are the probes doing" but
+ * "is there an instrument here", and that is answered by ONE row through the
+ * same index `loadSeedAccounts` selects through — no observation expansion, no
+ * roll-up, no per-account mailbox fan-out. It reads the LIVE set for the same
+ * reason the roll-up does: an `auth_error` seed is still an instrument the
+ * operator owns, and telling them to "add seed mailboxes" when they have some
+ * that need reconnecting is the wrong sentence.
+ *
+ * Absence is a SUPPORTED CONFIGURATION (plan D2): `false` lowers measurement
+ * confidence and offers an improvement, and does nothing else.
+ */
+export async function hasSeedAccounts(
+	db: DatabaseReader,
+	organizationId: string
+): Promise<boolean> {
+	return (await takeLiveSeedAccounts(db, organizationId, 1)).length > 0;
+}
+
+/**
  * EMIT the "rotate this seed" nudge into a log a human actually reads.
  *
  * THREE earlier shapes were wrong, and the fix has to hold all three properties
