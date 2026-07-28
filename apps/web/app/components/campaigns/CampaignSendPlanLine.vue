@@ -7,24 +7,30 @@
  * several days. That is a NORMAL, VISIBLE state — not an error and not a
  * surprise — so this is a neutral informational line, present from the moment
  * the send starts, in the same register as the rest of the campaign header. It
- * carries no warning colour, no icon of alarm and nothing to dismiss or fix.
+ * carries no warning colour, no icon of alarm and nothing to dismiss or fix,
+ * and it is styled with the page's own utility vocabulary rather than a
+ * one-off style island.
  *
  * It renders NOTHING for an ordinary same-day send, and nothing at all when
  * there is no walk in flight: absence of a plan is not a state to explain.
  */
 
-interface SendPlanProgress {
-	isMultiDay: boolean;
-	day: number;
-	totalDays: number;
-	enqueued: number;
-	total: number;
-	isTruncated: boolean;
-}
+import type { FunctionReturnType } from 'convex/server';
+// TYPE-ONLY: the component needs the query's return shape, never the client.
+import type { api } from '@owlat/api';
+
+/**
+ * The payload's shape comes from the query that produces it — one declaration,
+ * so the component and the backend cannot drift apart.
+ */
+type SendPlanProgress = NonNullable<
+	FunctionReturnType<typeof api.campaigns.sendPlanQueries.getCampaignSendPlan>
+>;
 
 const props = defineProps<{ progress: SendPlanProgress | null | undefined }>();
 
-const formatCount = (value: number) => new Intl.NumberFormat().format(value);
+/** The neighbouring recipient count's idiom, so the two lines format alike. */
+const formatCount = (value: number) => value.toLocaleString();
 
 /**
  * "over N days", or "over more than N days" when the plan is longer than we are
@@ -42,10 +48,14 @@ const detail = computed(() => {
 	const progress = props.progress;
 	if (!progress) return null;
 	const parts = [`day ${progress.day} of ${progress.totalDays}`];
-	// The denominator is only quoted when there is one: a walk whose audience
-	// count could not be taken says how far it has come, not how far it has left.
+	// The denominator is only quoted when there is one, and it is quoted as the
+	// FLOOR it is when the audience count stopped early: a walk whose audience we
+	// could only bound says so rather than rounding a bound into a promise.
 	if (progress.total > 0) {
-		parts.push(`${formatCount(progress.enqueued)} of ${formatCount(progress.total)}`);
+		const total = progress.isTotalLowerBound
+			? `at least ${formatCount(progress.total)}`
+			: formatCount(progress.total);
+		parts.push(`${formatCount(progress.enqueued)} of ${total}`);
 	} else if (progress.enqueued > 0) {
 		parts.push(`${formatCount(progress.enqueued)} sent`);
 	}
@@ -54,24 +64,8 @@ const detail = computed(() => {
 </script>
 
 <template>
-	<p v-if="progress?.isMultiDay && headline" class="send-plan-line">
-		<span class="send-plan-line__headline">{{ headline }}</span>
-		<span class="send-plan-line__detail">{{ detail }}</span>
+	<p v-if="progress?.isMultiDay && headline" class="flex flex-wrap items-baseline gap-2 text-sm">
+		<span class="font-medium text-text-secondary">{{ headline }}</span>
+		<span class="text-text-tertiary tabular-nums">{{ detail }}</span>
 	</p>
 </template>
-
-<style scoped>
-.send-plan-line {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.5rem;
-	align-items: baseline;
-	font-size: 0.875rem;
-	color: var(--color-text-muted, #6b7280);
-}
-
-.send-plan-line__headline {
-	font-weight: 600;
-	color: var(--color-text, inherit);
-}
-</style>
