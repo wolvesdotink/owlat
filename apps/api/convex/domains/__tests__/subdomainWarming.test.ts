@@ -10,9 +10,20 @@
 
 import { describe, expect, it } from 'vitest';
 import { BASE_WARMING_SCHEDULE, getWarmingCapForDay } from '@owlat/shared/warming';
-import { planStreamSubdomains, planSubdomainWarming } from '../streamSubdomains';
+import {
+	planStreamSubdomains,
+	planSubdomainWarming,
+	type SubdomainLayoutInput,
+	type SubdomainLayoutProposal,
+} from '../streamSubdomains';
 
-const LAYOUT = planStreamSubdomains({ domain: 'example.com', sendingIps: ['203.0.113.10'] });
+function layoutOf(input: SubdomainLayoutInput): SubdomainLayoutProposal {
+	const result = planStreamSubdomains(input);
+	if (!result.ok) throw new Error(`expected a layout for ${input.domain}`);
+	return result.proposal;
+}
+
+const LAYOUT = layoutOf({ domain: 'example.com', sendingIps: ['203.0.113.10'] });
 
 describe('one warming state per sending subdomain', () => {
 	const plans = planSubdomainWarming(LAYOUT);
@@ -57,14 +68,14 @@ describe('one warming state per sending subdomain', () => {
 
 	it('is the same on a single-IP deployment — warming is per NAME, not per IP', () => {
 		const oneIp = planSubdomainWarming(
-			planStreamSubdomains({ domain: 'example.com', sendingIps: ['203.0.113.10'] })
+			layoutOf({ domain: 'example.com', sendingIps: ['203.0.113.10'] })
 		);
-		const noIp = planSubdomainWarming(planStreamSubdomains({ domain: 'example.com' }));
+		const noIp = planSubdomainWarming(layoutOf({ domain: 'example.com' }));
 		expect(noIp).toEqual(oneIp);
 	});
 
 	it('works under a multi-label public suffix', () => {
-		const uk = planSubdomainWarming(planStreamSubdomains({ domain: 'example.co.uk' }));
+		const uk = planSubdomainWarming(layoutOf({ domain: 'example.co.uk' }));
 		expect(uk.map((p) => p.host)).toEqual(['mail.example.co.uk', 'news.example.co.uk']);
 	});
 });

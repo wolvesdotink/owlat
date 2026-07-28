@@ -62,7 +62,6 @@ describe('at p=none the offer is silent', () => {
 describe('at p=quarantine the offer is made', () => {
 	const offer = offerBimiRecord({
 		domain: 'news.example.com',
-		zone: 'example.com',
 		dmarcPolicy: 'quarantine',
 		logoUrl: LOGO,
 	});
@@ -121,6 +120,32 @@ describe('at p=quarantine the offer is made', () => {
 			selector: '   ',
 		});
 		expect(blank.record?.host).toBe('default._bimi.news.example.com');
+	});
+
+	it('a selector that is not a DNS label falls back rather than throwing', () => {
+		// The selector is interpolated into a record host, and this is a RENDERING
+		// surface: a value that cannot name anything degrades to the spec default
+		// instead of taking down the screen the operator would use to fix it.
+		for (const selector of ['bad selector', 'a/b', '-leading', 'trailing-', 'x'.repeat(64)]) {
+			const offer = offerBimiRecord({
+				domain: 'news.example.com',
+				dmarcPolicy: 'reject',
+				logoUrl: LOGO,
+				selector,
+			});
+			expect(offer.record?.host).toBe('default._bimi.news.example.com');
+			expect(offer.record?.relativeHost).toBe('default._bimi.news');
+		}
+	});
+
+	it('a domain with no registrable zone shows the absolute host, never a throw', () => {
+		const offer = offerBimiRecord({
+			domain: 'localhost',
+			dmarcPolicy: 'reject',
+			logoUrl: LOGO,
+		});
+		expect(offer.record?.host).toBe('default._bimi.localhost');
+		expect(offer.record?.relativeHost).toBe('default._bimi.localhost');
 	});
 });
 

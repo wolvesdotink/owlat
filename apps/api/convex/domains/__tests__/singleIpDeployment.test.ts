@@ -9,17 +9,40 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { generateStreamSubdomainRecords } from '../streamSubdomainRecords';
+import {
+	generateStreamSubdomainRecords,
+	streamSubdomainRecordValue,
+	type StreamSubdomainRecord,
+	type StreamSubdomainRecordInput,
+} from '../streamSubdomainRecords';
 import {
 	SUBDOMAIN_ADVICE_COPY,
+	normalizePoolIps,
 	planStreamSubdomains,
 	planSubdomainWarming,
+	type SubdomainLayoutInput,
+	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
 
 const ONE_IP = ['203.0.113.10'];
 
+function layoutOf(input: SubdomainLayoutInput): SubdomainLayoutProposal {
+	const result = planStreamSubdomains(input);
+	if (!result.ok) throw new Error(`expected a layout for ${input.domain}`);
+	return result.proposal;
+}
+
+function recordsOf(input: StreamSubdomainRecordInput): StreamSubdomainRecord[] {
+	const result = generateStreamSubdomainRecords(input);
+	if (!result.ok) throw new Error(`expected records for ${input.domain}`);
+	return result.recordSet.records;
+}
+
+const valueOf = (record: StreamSubdomainRecord | undefined): string | null =>
+	record === undefined ? null : streamSubdomainRecordValue(record);
+
 describe('one IP: the pools collapse and the wizard still renders', () => {
-	const layout = planStreamSubdomains({ domain: 'example.com', sendingIps: ONE_IP });
+	const layout = layoutOf({ domain: 'example.com', sendingIps: ONE_IP });
 
 	it('reports the collapse rather than pretending there are two pools', () => {
 		expect(layout.poolsCollapsed).toBe(true);
@@ -38,8 +61,8 @@ describe('one IP: the pools collapse and the wizard still renders', () => {
 	it('keeps the pool LABELS distinct even though the address is shared', () => {
 		// The labels are what the MTA's pool rules key off; a collapsed pool is a
 		// deployment fact, not a reason to merge the two streams' identities.
-		expect(layout.subdomains.find((s) => s.role === 'transactional')?.pool).toBe('transactional');
-		expect(layout.subdomains.find((s) => s.role === 'bulk')?.pool).toBe('campaign');
+		expect(layout.subdomainsByRole.transactional.pool).toBe('transactional');
+		expect(layout.subdomainsByRole.bulk.pool).toBe('campaign');
 	});
 
 	it('gives ADVICE THAT IS TRUE with one IP', () => {
@@ -50,7 +73,7 @@ describe('one IP: the pools collapse and the wizard still renders', () => {
 	});
 
 	it('two IPs flip the advice to the separated wording', () => {
-		const multi = planStreamSubdomains({
+		const multi = layoutOf({
 			domain: 'example.com',
 			sendingIps: ['203.0.113.10', '203.0.113.11'],
 		});
@@ -58,23 +81,52 @@ describe('one IP: the pools collapse and the wizard still renders', () => {
 		expect(multi.advice).toContain('pools_separated');
 	});
 
-	it('a repeated address is still ONE IP', () => {
-		const duplicated = planStreamSubdomains({
+	it('a repeated address is still ONE IP, whatever spelling it arrives in', () => {
+		const repeated = layoutOf({
 			domain: 'example.com',
 			sendingIps: ['203.0.113.10', ' 203.0.113.10 '],
 		});
-		expect(duplicated.poolsCollapsed).toBe(true);
+		expect(repeated.poolsCollapsed).toBe(true);
+		// IPv6 hex case is not an address difference (RFC 5952 canonical form).
+		const cased = layoutOf({
+			domain: 'example.com',
+			sendingIps: ['2001:DB8::1', '2001:db8::1'],
+		});
+		expect(cased.poolsCollapsed).toBe(true);
+		expect(normalizePoolIps(['2001:DB8::1', '2001:db8::1']).distinctCount).toBe(1);
+	});
+
+	it('an unparseable address is dropped, never counted as a pool', () => {
+		expect(normalizePoolIps(['203.0.113.10', 'not-an-ip', ''])).toEqual({
+			ip4: ['203.0.113.10'],
+			ip6: [],
+			distinctCount: 1,
+		});
 	});
 
 	it('a relay-only deployment with NO IP renders the same way', () => {
-		const relayOnly = planStreamSubdomains({ domain: 'example.com', sendingIps: [] });
+		const relayOnly = layoutOf({ domain: 'example.com', sendingIps: [] });
 		expect(relayOnly.poolsCollapsed).toBe(true);
 		expect(relayOnly.subdomains).toHaveLength(3);
+	});
+
+	it('a domain with no registrable zone reports it instead of throwing', () => {
+		expect(planStreamSubdomains({ domain: 'localhost', sendingIps: ONE_IP })).toEqual({
+			ok: false,
+			reason: 'invalid_domain',
+		});
+		expect(
+			generateStreamSubdomainRecords({
+				domain: 'localhost',
+				sendingIps: ONE_IP,
+				dmarcPolicy: 'none',
+			})
+		).toEqual({ ok: false, reason: 'invalid_domain' });
 	});
 });
 
 describe('one IP: the generated records are correct', () => {
-	const { records } = generateStreamSubdomainRecords({
+	const records = recordsOf({
 		domain: 'example.com',
 		sendingIps: ONE_IP,
 		dmarcPolicy: 'none',
@@ -84,7 +136,7 @@ describe('one IP: the generated records are correct', () => {
 	it('authorises the one address on BOTH subdomains', () => {
 		const spf = records.filter((r) => r.purpose === 'spf');
 		expect(spf).toHaveLength(3); // mail. + news. + bounces.
-		for (const row of spf) expect(row.value).toBe('v=spf1 ip4:203.0.113.10 ~all');
+		for (const row of spf) expect(valueOf(row)).toBe('v=spf1 ip4:203.0.113.10 ~all');
 	});
 
 	it('still gives each subdomain its own DKIM selector', () => {
@@ -94,12 +146,11 @@ describe('one IP: the generated records are correct', () => {
 	});
 
 	it('emits no record whose value depends on a second address existing', () => {
-		expect(records.some((r) => r.value.includes('203.0.113.11'))).toBe(false);
+		expect(records.some((r) => (valueOf(r) ?? '').includes('203.0.113.11'))).toBe(false);
 	});
 
 	it('warms each sending subdomain separately even on one shared address', () => {
-		const layout = planStreamSubdomains({ domain: 'example.com', sendingIps: ONE_IP });
-		const warming = planSubdomainWarming(layout);
+		const warming = planSubdomainWarming(layoutOf({ domain: 'example.com', sendingIps: ONE_IP }));
 		expect(warming.map((w) => w.host)).toEqual(['mail.example.com', 'news.example.com']);
 		expect(warming.every((w) => w.inheritsFromRoot === false)).toBe(true);
 	});
@@ -107,13 +158,13 @@ describe('one IP: the generated records are correct', () => {
 
 describe('with no pool IPs the SPF record still renders', () => {
 	it('emits a syntactically valid record rather than a broken one', () => {
-		const { records } = generateStreamSubdomainRecords({
+		const records = recordsOf({
 			domain: 'example.com',
 			sendingIps: [],
 			dmarcPolicy: 'none',
 			relaySpfTerms: ['include:amazonses.com'],
 		});
-		const spf = records.filter((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
-		expect(spf[0]?.value).toBe('v=spf1 include:amazonses.com ~all');
+		const spf = records.find((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
+		expect(valueOf(spf)).toBe('v=spf1 include:amazonses.com ~all');
 	});
 });

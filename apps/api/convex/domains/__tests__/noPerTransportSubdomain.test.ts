@@ -8,27 +8,56 @@
  * arms incomparable, and throw away the reputation the relay arm spent weeks
  * building."
  *
- * This suite exists so that a future edit which gives the own-MTA arm its own
- * subdomain fails here instead of shipping.
+ * The guard is deliberately written over the GENERATED RECORDS rather than over
+ * two derivations of the same expression. Re-deriving both arms from a layout
+ * can never disagree — `arm` reaches nothing but the selector — so an assertion
+ * on that is a guaranteed pass and proves nothing. What CAN diverge is (a) a
+ * row that puts an arm on a host of its own and (b) a selector we SIGN with
+ * that we never PUBLISHED, which is a silent, total DKIM failure for the whole
+ * subdomain. Both are asserted here, and both can fail.
  */
 
 import { describe, expect, it } from 'vitest';
 import { GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
-import { generateStreamSubdomainRecords } from '../streamSubdomainRecords';
 import {
+	dkimSelectorLabel,
 	findPerTransportSubdomainViolations,
+	findUnpublishedSigningSelectors,
+	generateStreamSubdomainRecords,
+	type StreamSubdomainRecordInput,
+	type StreamSubdomainRecordSet,
+} from '../streamSubdomainRecords';
+import {
+	DEFAULT_ARM_SELECTOR_SUFFIXES,
 	planStreamSubdomains,
 	resolveCellSendingIdentity,
-	type TransportArm,
+	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
 
-const LAYOUT = planStreamSubdomains({ domain: 'example.com', dkimSelectorBase: 's1711' });
+function layoutOf(domain: string, base: string): SubdomainLayoutProposal {
+	const result = planStreamSubdomains({ domain, dkimSelectorBase: base });
+	if (!result.ok) throw new Error(`expected a layout for ${domain}`);
+	return result.proposal;
+}
+
+function recordSetOf(input: StreamSubdomainRecordInput): StreamSubdomainRecordSet {
+	const result = generateStreamSubdomainRecords(input);
+	if (!result.ok) throw new Error(`expected records for ${input.domain}`);
+	return result.recordSet;
+}
+
+const LAYOUT = layoutOf('example.com', 's1711');
+
+const BOTH_ARMS: StreamSubdomainRecordInput = {
+	domain: 'example.com',
+	sendingIps: ['203.0.113.10'],
+	dmarcPolicy: 'none',
+	mailHost: 'mta.example.com',
+	dkimSelectorBase: 's1711',
+	referenceArmConfigured: true,
+};
 
 describe('both arms of a cell share one sending identity', () => {
-	it('From domain, d= and return path are identical across the arms', () => {
-		expect(findPerTransportSubdomainViolations(LAYOUT)).toEqual([]);
-	});
-
 	it.each(GOVERNED_MESSAGE_TYPES)('stream %s: the arms agree field by field', (stream) => {
 		const own = resolveCellSendingIdentity({ layout: LAYOUT, stream, arm: 'own' });
 		const reference = resolveCellSendingIdentity({ layout: LAYOUT, stream, arm: 'reference' });
@@ -57,17 +86,18 @@ describe('both arms of a cell share one sending identity', () => {
 	});
 
 	it('a custom per-arm selector suffix still cannot move the domain', () => {
+		const suffixes = { own: 'mta', reference: 'esp' };
 		const own = resolveCellSendingIdentity({
 			layout: LAYOUT,
 			stream: 'campaign',
 			arm: 'own',
-			armSelectorSuffix: { own: 'mta', reference: 'esp' },
+			armSelectorSuffix: suffixes,
 		});
 		const reference = resolveCellSendingIdentity({
 			layout: LAYOUT,
 			stream: 'campaign',
 			arm: 'reference',
-			armSelectorSuffix: { own: 'mta', reference: 'esp' },
+			armSelectorSuffix: suffixes,
 		});
 		expect(own.dkimSelector).toBe('s1711-news-mta');
 		expect(reference.dkimSelector).toBe('s1711-news-esp');
@@ -87,15 +117,83 @@ describe('both arms of a cell share one sending identity', () => {
 	});
 });
 
+describe('THE GUARD: what we sign with is what we published', () => {
+	it('every arm signs with a selector the table actually publishes', () => {
+		expect(findUnpublishedSigningSelectors(recordSetOf(BOTH_ARMS))).toEqual([]);
+	});
+
+	it('holds for custom per-arm suffixes too', () => {
+		const recordSet = recordSetOf({
+			...BOTH_ARMS,
+			armSelectorSuffixes: { own: 'mta', reference: 'esp' },
+		});
+		expect(findUnpublishedSigningSelectors(recordSet)).toEqual([]);
+	});
+
+	it('holds standalone, where only the own arm has a published row', () => {
+		const recordSet = recordSetOf({ ...BOTH_ARMS, referenceArmConfigured: false });
+		expect(findUnpublishedSigningSelectors(recordSet)).toEqual([]);
+	});
+
+	it('the signing selector is EXACTLY the published label for that stream and arm', () => {
+		const recordSet = recordSetOf(BOTH_ARMS);
+		for (const stream of GOVERNED_MESSAGE_TYPES) {
+			for (const arm of ['own', 'reference'] as const) {
+				const identity = resolveCellSendingIdentity({ layout: recordSet.layout, stream, arm });
+				const row = recordSet.records.find(
+					(entry) =>
+						entry.purpose === 'dkim' && entry.arm === arm && entry.subdomain === identity.dkimDomain
+				);
+				expect(row).toBeDefined();
+				expect(row && dkimSelectorLabel(row.host, row.subdomain)).toBe(identity.dkimSelector);
+			}
+		}
+	});
+
+	it('CAN FAIL: a published selector that drifts from the signed one is reported', () => {
+		// Exactly the shape of the bug this guard exists for — the arm-suffix
+		// default growing a second, divergent copy. Mail would then be signed with
+		// a selector that has no TXT record and DKIM would fail silently for every
+		// message on the subdomain.
+		const recordSet = recordSetOf(BOTH_ARMS);
+		const drifted: StreamSubdomainRecordSet = {
+			...recordSet,
+			records: recordSet.records.map((record) =>
+				record.purpose === 'dkim' && record.arm === 'own'
+					? { ...record, host: record.host.replace('-a._domainkey', '-z._domainkey') }
+					: record
+			),
+		};
+		const mismatches = findUnpublishedSigningSelectors(drifted);
+		expect(mismatches.length).toBeGreaterThan(0);
+		expect(mismatches.every((entry) => entry.arm === 'own')).toBe(true);
+		expect(mismatches[0]?.signsWith).toContain(`-${DEFAULT_ARM_SELECTOR_SUFFIXES.own}`);
+	});
+});
+
 describe('the generated records cannot express a per-transport subdomain', () => {
-	const { records } = generateStreamSubdomainRecords({
-		domain: 'example.com',
-		sendingIps: ['203.0.113.10'],
-		dmarcPolicy: 'none',
-		mailHost: 'mta.example.com',
-		dkimSelectorBase: 's1711',
-		referenceArmConfigured: true,
+	const recordSet = recordSetOf({
+		...BOTH_ARMS,
 		armSelectorSuffixes: { own: 'mta', reference: 'esp' },
+	});
+	const records = recordSet.records;
+
+	it('no arm gets a sending host of its own', () => {
+		expect(findPerTransportSubdomainViolations(recordSet)).toEqual([]);
+	});
+
+	it('CAN FAIL: a row on an arm-specific host is reported', () => {
+		const violating: StreamSubdomainRecordSet = {
+			...recordSet,
+			records: records.map((record) =>
+				record.purpose === 'dkim' && record.arm === 'own'
+					? { ...record, subdomain: 'mta.example.com', host: 'x._domainkey.mta.example.com' }
+					: record
+			),
+		};
+		const violations = findPerTransportSubdomainViolations(violating);
+		expect(violations.length).toBeGreaterThan(0);
+		expect(violations[0]?.subdomain).toBe('mta.example.com');
 	});
 
 	it('every host lives under one of the three proposed subdomains', () => {
@@ -107,10 +205,12 @@ describe('the generated records cannot express a per-transport subdomain', () =>
 	});
 
 	it('the two arms sign under the SAME subdomain with different selectors', () => {
-		const dkim = records.filter((r) => r.purpose === 'dkim' && r.subdomain === 'news.example.com');
-		expect(dkim).toHaveLength(2);
-		const byArm = new Map<TransportArm, string>();
-		for (const row of dkim) if (row.arm !== undefined) byArm.set(row.arm, row.host);
+		const byArm = new Map<string, string>();
+		for (const row of records) {
+			if (row.purpose !== 'dkim' || row.subdomain !== 'news.example.com') continue;
+			byArm.set(row.arm, row.host);
+		}
+		expect(byArm.size).toBe(2);
 		expect(byArm.get('own')).toBe('s1711-news-mta._domainkey.news.example.com');
 		expect(byArm.get('reference')).toBe('s1711-news-esp._domainkey.news.example.com');
 	});
@@ -132,13 +232,12 @@ describe('the generated records cannot express a per-transport subdomain', () =>
 	});
 
 	it('the reference arm is absent by default — standalone is the default', () => {
-		const { records: standalone } = generateStreamSubdomainRecords({
+		const standalone = recordSetOf({
 			domain: 'example.com',
 			sendingIps: ['203.0.113.10'],
 			dmarcPolicy: 'none',
-		});
-		const dkim = standalone.filter((r) => r.purpose === 'dkim');
-		expect(dkim).toHaveLength(2); // one per SENDING SUBDOMAIN, own arm only
-		expect(dkim.every((r) => r.arm === 'own')).toBe(true);
+		}).records.filter((r) => r.purpose === 'dkim');
+		expect(standalone).toHaveLength(2); // one per SENDING SUBDOMAIN, own arm only
+		expect(standalone.every((r) => r.purpose === 'dkim' && r.arm === 'own')).toBe(true);
 	});
 });
