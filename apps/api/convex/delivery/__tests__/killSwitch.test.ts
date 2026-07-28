@@ -94,46 +94,75 @@ describe('the kill switch, in the decision function', () => {
 
 describe('the kill switch, through the cron', () => {
 	it('writes no share while paused, but still audits every evaluation', async () => {
-		const t = convexTest(schema, modules);
-		await seed(t, { isPaused: true });
-		const before = await managedRow(t);
+		// FAKE CLOCK, on purpose: the lease assertion below is about a value MOVING,
+		// and seed and tick would otherwise land in the same millisecond and make a
+		// `>=` comparison true for the wrong reason.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const start = Date.UTC(2026, 6, 1, 0, 0, 0);
+			vi.setSystemTime(start);
+			const t = convexTest(schema, modules);
+			await seed(t, { isPaused: true });
+			const before = await managedRow(t);
 
-		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			vi.setSystemTime(start + 60 * 60 * 1000);
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
 
-		const after = await managedRow(t);
-		expect(after?.ownShare).toBe(before?.ownShare);
-		expect(after?.cleanStreak).toBe(before?.cleanStreak);
-		expect(after?.mixVersion).toBe(before?.mixVersion);
-		expect(after?.phaseCeiling).toBe(before?.phaseCeiling);
-		// The LEASE is the one thing a paused tick does write: see the TTL case
-		// below for why "pinned" has to outlive the route-state cache horizon.
-		expect(after?.expiresAt ?? 0).toBeGreaterThanOrEqual(before?.expiresAt ?? 0);
+			const after = await managedRow(t);
+			expect(after?.ownShare).toBe(before?.ownShare);
+			expect(after?.cleanStreak).toBe(before?.cleanStreak);
+			expect(after?.mixVersion).toBe(before?.mixVersion);
+			expect(after?.phaseCeiling).toBe(before?.phaseCeiling);
+			// The LEASE is the one thing a paused tick does write: see the TTL case
+			// below for why "pinned" has to outlive the route-state cache horizon.
+			expect(after?.expiresAt ?? 0).toBeGreaterThan(before?.expiresAt ?? 0);
+			// And it writes NOTHING ELSE. `updatedAt` is the shipped router's
+			// signal-freshness clock, not the ramp's: a controller that stamped it
+			// would re-arm every signal on the row as "fresh" once an hour, for ever.
+			expect(after?.updatedAt).toBe(before?.updatedAt);
 
-		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
-		expect(decisions).toHaveLength(1);
-		expect(decisions[0]?.reason).toBe('kill_switch');
-		expect(decisions[0]?.direction).toBe('hold');
-		expect(decisions[0]?.message).toContain('kill switch');
+			const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+			expect(decisions).toHaveLength(1);
+			expect(decisions[0]?.reason).toBe('kill_switch');
+			expect(decisions[0]?.direction).toBe('hold');
+			expect(decisions[0]?.message).toContain('kill switch');
 
-		// A paused controller changes nothing, so it logs nothing to the audit log.
-		const auditLogs = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
-		expect(auditLogs).toHaveLength(0);
+			// A paused controller changes nothing, so it logs nothing to the audit log.
+			const auditLogs = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
+			expect(auditLogs).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('evaluates and writes again once the switch is released', async () => {
-		const t = convexTest(schema, modules);
-		await seed(t, { isPaused: false });
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const start = Date.UTC(2026, 6, 1, 0, 0, 0);
+			vi.setSystemTime(start);
+			const t = convexTest(schema, modules);
+			await seed(t, { isPaused: false });
+			const before = await managedRow(t);
 
-		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			vi.setSystemTime(start + 60 * 60 * 1000);
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
 
-		const after = await managedRow(t);
-		// With no outcome data every gate holds, so the share does not move — but
-		// the row IS refreshed, which is how "the controller ran" is observable.
-		expect(after?.ownShare).toBe(0.1);
-		expect(after?.isFallbackActive).toBe(true);
-		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
-		expect(decisions).toHaveLength(1);
-		expect(decisions[0]?.reason).toBe('holding');
+			const after = await managedRow(t);
+			// With no outcome data every gate holds, so the share does not move — but
+			// the row IS refreshed, which is how "the controller ran" is observable.
+			expect(after?.ownShare).toBe(0.1);
+			expect(after?.isFallbackActive).toBe(true);
+			// THE WRITING PATH KEEPS OFF THE ROUTER'S CLOCK TOO. `decidedAt` is the
+			// ramp's own stamp; `updatedAt` still says when a SNAPSHOT last wrote this
+			// row, which is what `routeInputs.ts` ages signals against.
+			expect(after?.decidedAt).toBe(start + 60 * 60 * 1000);
+			expect(after?.updatedAt).toBe(before?.updatedAt);
+			const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+			expect(decisions).toHaveLength(1);
+			expect(decisions[0]?.reason).toBe('holding');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('leaves an UNMANAGED cell alone entirely — no row, no share, no audit', async () => {

@@ -4,8 +4,9 @@
  * The contract this file exists to pin:
  *   - a row for EVERY evaluation, including the no-ops;
  *   - the gate snapshot round-trips, so a decision can be replayed;
- *   - every DECREASE carries an admin notice that NAMES the gate that broke and
- *     says what to do about it;
+ *   - every retreat with a NAMED cause carries an admin notice that names the
+ *     gate that broke and says what to do about it — including the one that
+ *     cannot lower the share because the cell is already on the floor;
  *   - 100% of decisions carry a human-readable reason. That is the KPI, and it
  *     is asserted over every reachable decision reason, not a sample.
  */
@@ -17,6 +18,7 @@ import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
 import { createTestInstanceSettings } from '../../__tests__/factories';
 import { nextShare } from '../ramp/controller';
+import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { recordMixDecision } from '../rampMixDecisions';
 import { describeRampDecision } from '../ramp/controllerNarrative';
 import type { Infer } from 'convex/values';
@@ -173,6 +175,33 @@ describe('mixDecisions — a row for every evaluation', () => {
 		expect(otherTenant).toHaveLength(0);
 	});
 
+	// A CELL ALREADY AT THE FLOOR CANNOT FALL FURTHER, and that is exactly when an
+	// operator most needs telling: the breach is real, it imposes a fresh freeze
+	// and it advances the cooldown ladder — only the number stands still. Keying
+	// the notice off the direction of the share silenced the worst case.
+	it('notifies on a breach that cannot lower the share any further', async () => {
+		const t = convexTest(schema, modules);
+		const input = controllerInput({
+			mix: mixState({ share: RAMP_AIMD.shareFloor }),
+			evaluation: breachedEvaluation('hard_bounce'),
+		});
+		const decision = nextShare(input);
+		expect(decision.share).toBe(RAMP_AIMD.shareFloor);
+		expect(decision.direction).toBe('hold');
+		expect(decision.failedGate).toBe('hard_bounce');
+		// The retreat still costs the cell a freeze: this is an incident, not a no-op.
+		expect(decision.frozenUntil).toBeGreaterThan(NOW);
+
+		await record(t, input);
+		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];
+		expect(row?.reason).toBe('hard_bounce');
+		expect(row?.adminNotice).toContain('hard bounce');
+		// The verb comes from the DIRECTION: "Reduced (1% -> 1%)" would read as a
+		// no-op sentence for a real breach.
+		expect(row?.message).not.toContain('Reduced');
+		expect(row?.message).toContain('floor');
+	});
+
 	it('writes no admin notice for a ceiling-bound retreat — nothing broke', async () => {
 		const t = convexTest(schema, modules);
 		await record(
@@ -250,6 +279,18 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		['healthy', {}],
 		['graduated', { mix: mixState({ share: 1, greenSince: NOW - 20 * DAY }) }],
 		['gate breach', { evaluation: breachedEvaluation('deferral') }],
+		// THE FLOORED BREACH. `max(floor, floor x 0.5)` is the floor, so this
+		// decision is a HOLD — the one retreat the share cannot express. It has to
+		// be in the table, or the branch that words it and the notice that announces
+		// it are both unpinned. A different gate from the row above, because the
+		// table asserts one scenario per distinct reason.
+		[
+			'gate breach at the floor',
+			{
+				mix: mixState({ share: RAMP_AIMD.shareFloor }),
+				evaluation: breachedEvaluation('hard_bounce'),
+			},
+		],
 	];
 
 	it('gives every reachable decision a distinct, actionable sentence', async () => {
