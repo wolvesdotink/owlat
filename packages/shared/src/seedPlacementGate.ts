@@ -272,29 +272,26 @@ export function resolveSeedTripwire(
 		corroborated
 			? { outcome: 'act', reason: corroboratedReason }
 			: { outcome: 'suspect', reason: awaitingReason };
-	const collapse = (): SeedTripwireResolution =>
-		gated('seed_collapse_corroborated', 'seed_collapse_awaiting_corroboration');
-	const probesMissing = (): SeedTripwireResolution =>
-		gated('seed_probes_missing_corroborated', 'seed_probes_missing_awaiting_corroboration');
+	/** Two call sites (the `mixed` and `inbox_dominant` branches). */
 	const belowReference = (): SeedTripwireResolution =>
 		gated('seeds_below_reference_corroborated', 'seeds_below_reference_awaiting_corroboration');
-	const belowReachedThreshold = (): SeedTripwireResolution =>
-		gated(
-			'seeds_below_reached_threshold_corroborated',
-			'seeds_below_reached_threshold_awaiting_corroboration'
-		);
 
 	switch (rollup.status) {
 		case 'insufficient_data':
 			return { outcome: 'insufficient', reason: 'insufficient_seed_sample' };
 		case 'collapse_suspected':
-			return collapse();
+			return gated('seed_collapse_corroborated', 'seed_collapse_awaiting_corroboration');
 		case 'mixed':
 			// D17 calls MISSING the most alarming outcome and the one no other
 			// signal surfaces at all — so a degraded provider that is also LOSING
 			// probes is named for what it is, behind the same corroboration gate a
 			// collapse sits behind.
-			if (rollup.anyMissing) return probesMissing();
+			if (rollup.anyMissing) {
+				return gated(
+					'seed_probes_missing_corroborated',
+					'seed_probes_missing_awaiting_corroboration'
+				);
+			}
 			// Gate 5's SECOND clause. Behind the same corroboration gate as the
 			// first: a seed reading is a tripwire whichever clause trips it.
 			if (rollup.reference === 'below_reference') return belowReference();
@@ -306,7 +303,10 @@ export function resolveSeedTripwire(
 			// the seeds said the opposite, and standalone (where there is no
 			// reference arm and this clause IS the whole gate, D3) it was the only
 			// clause left. Uncorroborated it HOLDS, exactly like a collapse.
-			return belowReachedThreshold();
+			return gated(
+				'seeds_below_reached_threshold_corroborated',
+				'seeds_below_reached_threshold_awaiting_corroboration'
+			);
 		case 'inbox_dominant':
 			// Above SEED_REACHED_THRESHOLD the provider is healthy enough that a
 			// single stray disappearance is noise, not a signal — but the reference
