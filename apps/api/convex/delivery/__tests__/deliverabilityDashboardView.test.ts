@@ -24,6 +24,7 @@ import {
 	type TransportOutcomeSummary,
 } from '../../analytics/transportOutcomeSummary';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
+import { DIRECT_MEASUREMENT } from '../ramp/gateGrades';
 import type { RampGateEvaluation } from '../ramp/gateTypes';
 import {
 	buildDashboardCellView,
@@ -340,8 +341,11 @@ describe('buildDashboardCellView', () => {
 					ownRate: 0.004,
 					referenceRate: 0.003,
 				},
+				...DIRECT_MEASUREMENT,
 			},
 		],
+		confidence: 'high',
+		increaseEvidence: true,
 		evaluatedAt: 1,
 	};
 
