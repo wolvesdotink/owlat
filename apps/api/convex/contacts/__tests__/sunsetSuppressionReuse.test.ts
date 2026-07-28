@@ -66,7 +66,7 @@ async function suppressOne(t: ReturnType<typeof harness>, email: string) {
 		return await evaluateAndApplySunset(ctx, {
 			contact,
 			policy: { ...SUNSET_POLICY_DEFAULTS },
-			now: NOW,
+			clock: { now: NOW },
 		});
 	});
 }
@@ -225,7 +225,7 @@ describe('sunset suppression reuses the shipped path', () => {
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW,
+				clock: { now: NOW },
 			});
 		});
 
@@ -407,11 +407,7 @@ describe('sunset suppression reuses the shipped path', () => {
 			});
 		}
 
-		function send(
-			t: TestConvex<typeof schema>,
-			kind: 'automation' | 'agent_reply',
-			email: string
-		) {
+		function send(t: TestConvex<typeof schema>, kind: 'automation' | 'agent_reply', email: string) {
 			return t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
 				kind,
 				email,

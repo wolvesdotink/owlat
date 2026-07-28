@@ -12,13 +12,16 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
-import { loadSunsetPolicyRows, toSunsetOverride } from './sunsetEngine';
+import {
+	loadSunsetCorroboratingInstant,
+	loadSunsetPolicyRows,
+	toSunsetOverride,
+} from './sunsetEngine';
 import { restoreSunsetSuppression, setSunsetExemption } from './sunsetRestore';
 import {
 	SUNSET_MIN_WINDOW_DAYS,
 	SUNSET_POLICY_DEFAULTS,
 	isClockCorroborated,
-	latestSunsetInstant,
 	resolveSunsetPolicy,
 } from './sunsetPolicy';
 
@@ -66,15 +69,9 @@ export const getSunsetPolicies = authedQuery({
 		const globalOverride = toSunsetOverride(globalRow);
 		const global = resolveSunsetPolicy({ globalOverride });
 
-		const newestEvaluated = await ctx.db
-			.query('contacts')
-			.withIndex('by_sunset_evaluated_at')
-			.order('desc')
-			.first();
-		const corroboratingInstant = latestSunsetInstant(
-			newestEvaluated?.sunsetEvaluatedAt,
-			globalRow?.clockVerifiedAt
-		);
+		// The SAME derivation the sweep judges its clock by (`sunsetEngine.ts`), so
+		// this screen and the engine cannot disagree about whether it is running.
+		const corroboratingInstant = await loadSunsetCorroboratingInstant(ctx, rows);
 
 		const topics = await ctx.db.query('topics').collect(); // bounded: content categories
 		const byTopic = new Map<string, (typeof rows)[number]>();

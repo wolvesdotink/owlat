@@ -12,8 +12,14 @@
  * engine introduced 'unengaged'.
  */
 
-/** The `blockedEmails.reason` union, mirrored for the client. */
-export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
+import type { Doc } from '@owlat/api/dataModel';
+
+/**
+ * The `blockedEmails.reason` union, DERIVED from the schema rather than
+ * mirrored. A hand-written copy would go on compiling when a fifth literal is
+ * added, which is the exact failure the `satisfies` below promises to catch.
+ */
+export type BlockReason = Doc<'blockedEmails'>['reason'];
 
 export type SuppressionReasonPresentation = {
 	/** Badge classes for the suppression table. */
@@ -46,7 +52,7 @@ export const SUPPRESSION_REASON_PRESENTATION = {
 		phrase: (dateLabel: string) => `complained on ${dateLabel}`,
 	},
 	unengaged: {
-		badge: 'bg-surface-raised text-text-secondary border-border',
+		badge: 'bg-bg-elevated text-text-secondary border-border',
 		tone: 'text-text-secondary',
 		icon: 'lucide:moon',
 		label: 'Unengaged — ignored every message for months',

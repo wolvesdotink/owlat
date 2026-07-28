@@ -24,7 +24,7 @@
  * `scheduleSuppressionMirror` without crossing the runtime boundary.
  */
 
-import { v } from 'convex/values';
+import { v, type Validator } from 'convex/values';
 import { internalAction, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
@@ -57,6 +57,28 @@ export type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[num
 
 /** The reasons that DO reach the MTA backstop — everything not marketing-only. */
 export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>;
+
+/**
+ * The mirrored reasons as VALUES, so the `mirror` action's validator is derived
+ * from the same exclusion the type expresses instead of hand-listing it. The
+ * `satisfies` is what makes the derivation load-bearing: adding a second
+ * marketing-only reason narrows `MirroredBlockReason` and fails this line rather
+ * than leaving a validator that still accepts the excluded reason.
+ */
+export const MIRRORED_BLOCK_REASONS = [
+	'bounced',
+	'complained',
+	'manual',
+] as const satisfies readonly MirroredBlockReason[];
+
+/**
+ * Convex validator over the mirrored reasons. Spreading into `v.union` loses
+ * literal narrowing, so it is cast back once here (cf.
+ * `contactActivities/catalog.ts`'s `contactActivityTypeValidator`).
+ */
+export const mirroredBlockReasonValidator = v.union(
+	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason))
+) as unknown as Validator<MirroredBlockReason>;
 
 const MARKETING_ONLY_SET: ReadonlySet<string> = new Set(MARKETING_ONLY_BLOCK_REASONS);
 
@@ -127,7 +149,7 @@ export async function scheduleSuppressionMirror(
 export const mirror = internalAction({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		reason: mirroredBlockReasonValidator,
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
 	handler: async (_ctx, args) => {

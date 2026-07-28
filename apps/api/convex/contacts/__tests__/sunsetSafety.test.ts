@@ -169,7 +169,7 @@ describe('sunset safety — auto-suppression NEVER deletes data', () => {
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW,
+				clock: { now: NOW },
 			});
 		});
 
@@ -216,7 +216,7 @@ describe('sunset safety — auto-suppression NEVER deletes data', () => {
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW,
+				clock: { now: NOW },
 			});
 		});
 
@@ -287,7 +287,7 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 				return await evaluateAndApplySunset(ctx, {
 					contact,
 					policy: { ...SUNSET_POLICY_DEFAULTS },
-					now: NOW,
+					clock: { now: NOW },
 				});
 			});
 
@@ -334,7 +334,7 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW,
+				clock: { now: NOW },
 			});
 		});
 
@@ -385,7 +385,7 @@ describe('sunset safety — an explicit act by the contact resets the quiet cloc
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW,
+				clock: { now: NOW },
 			});
 		});
 	}
@@ -444,8 +444,7 @@ describe('sunset safety — a jumped clock never fires', () => {
 			return await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now,
-				corroboratingInstant,
+				clock: { now, corroboratingInstant },
 			});
 		});
 	}
@@ -481,8 +480,7 @@ describe('sunset safety — a jumped clock never fires', () => {
 			await evaluateAndApplySunset(ctx, {
 				contact,
 				policy: { ...SUNSET_POLICY_DEFAULTS },
-				now: NOW + 365 * DAY,
-				corroboratingInstant: NOW,
+				clock: { now: NOW + 365 * DAY, corroboratingInstant: NOW },
 			});
 		});
 

@@ -188,10 +188,15 @@ export type SunsetReason =
 	| 'quiet_past_suppress_window';
 
 /**
- * Everything the decision needs, all supplied by the caller. `undefined`
- * consistently means "we have no measurement", never "zero".
+ * ONE READING OF TIME, travelling as one value.
+ *
+ * `now` and its corroboration are a single observation of the clock: they are
+ * read together, checked against each other, and are meaningless apart. Passing
+ * them as two parameters through the sweep, the loader and the facts invited a
+ * transposition and forced a conditional spread at every hop.
  */
-export type SunsetFacts = {
+export type SunsetClock = {
+	/** The instant the decision is being made at. */
 	now: number;
 	/**
 	 * A SECOND, INDEPENDENT READING OF TIME: the newest instant this deployment
@@ -202,10 +207,18 @@ export type SunsetFacts = {
 	 * It is what lets `evaluateSunset` reject a `now` that is merely plausible
 	 * rather than merely malformed. Absent means "no second reading available"
 	 * (a deployment that has never swept), and absence HOLDS nobody — the
-	 * per-tick suppression ceiling in `contacts/sunset.ts` is the bound that
+	 * per-tick suppression ceiling in `contacts/sunsetSweep.ts` is the bound that
 	 * covers that case.
 	 */
 	corroboratingInstant?: number | undefined;
+};
+
+/**
+ * Everything the decision needs, all supplied by the caller — the clock plus
+ * the contact's measurements. `undefined` consistently means "we have no
+ * measurement", never "zero".
+ */
+export type SunsetFacts = SunsetClock & {
 	/** Contact row creation instant — the tenure clock. */
 	createdAt: number;
 	/** Newest open/click/reply, per the P0-2 engagement literals. */

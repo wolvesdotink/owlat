@@ -22,10 +22,11 @@ import { recordAuditLog } from '../lib/auditLog';
 import { logWarn } from '../lib/runtimeLog';
 import {
 	evaluateAndApplySunset,
+	loadSunsetCorroboratingInstant,
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from './sunsetEngine';
-import { isClockCorroborated, latestSunsetInstant, MS_PER_DAY } from './sunsetPolicy';
+import { isClockCorroborated, MS_PER_DAY, type SunsetClock } from './sunsetPolicy';
 
 /** A contact is re-evaluated at most once a day. */
 export const SUNSET_STALE_MS = MS_PER_DAY;
@@ -84,13 +85,14 @@ export const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
  *
  * Stated once so the four bounds cannot drift.
  */
-function clampArg(
-	value: number | undefined,
-	whenAbsent: number,
-	whenUnreadable: number,
-	min: number,
-	max: number
-): number {
+function clampArg(options: {
+	value: number | undefined;
+	whenAbsent: number;
+	whenUnreadable: number;
+	min: number;
+	max: number;
+}): number {
+	const { value, whenAbsent, whenUnreadable, min, max } = options;
 	if (value === undefined) return whenAbsent;
 	if (!Number.isFinite(value)) return whenUnreadable;
 	return Math.max(min, Math.min(value, max));
@@ -151,38 +153,38 @@ export const sweepSunsetPolicy = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const staleBefore = now - SUNSET_STALE_MS;
-		const batchSize = clampArg(
-			args.batchSize,
-			SUNSET_BATCH_SIZE,
-			SUNSET_BATCH_SIZE,
-			1,
-			SUNSET_BATCH_SIZE
-		);
-		const batchesRemaining = clampArg(
-			args.batchesRemaining,
-			SUNSET_MAX_BATCHES,
-			SUNSET_MAX_BATCHES,
-			0,
-			SUNSET_MAX_BATCHES
-		);
+		const batchSize = clampArg({
+			value: args.batchSize,
+			whenAbsent: SUNSET_BATCH_SIZE,
+			whenUnreadable: SUNSET_BATCH_SIZE,
+			min: 1,
+			max: SUNSET_BATCH_SIZE,
+		});
+		const batchesRemaining = clampArg({
+			value: args.batchesRemaining,
+			whenAbsent: SUNSET_MAX_BATCHES,
+			whenUnreadable: SUNSET_MAX_BATCHES,
+			min: 0,
+			max: SUNSET_MAX_BATCHES,
+		});
 		// ABSENT means this is the HEAD of the chain: nothing has been suppressed
 		// yet, so the true default is 0. Only an UNREADABLE value falls back to the
 		// ceiling — a count of what earlier batches already did that we cannot read
 		// must be treated as "budget spent", never as "none".
-		const suppressedSoFar = clampArg(
-			args.suppressedSoFar,
-			0,
-			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
-			0,
-			SUNSET_MAX_SUPPRESSIONS_PER_TICK
-		);
-		const maxSuppressions = clampArg(
-			args.maxSuppressions,
-			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
-			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
-			0,
-			SUNSET_MAX_SUPPRESSIONS_PER_TICK
-		);
+		const suppressedSoFar = clampArg({
+			value: args.suppressedSoFar,
+			whenAbsent: 0,
+			whenUnreadable: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+			min: 0,
+			max: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+		});
+		const maxSuppressions = clampArg({
+			value: args.maxSuppressions,
+			whenAbsent: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+			whenUnreadable: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+			min: 0,
+			max: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+		});
 
 		// THE SECOND READING OF TIME (see `SunsetFacts.corroboratingInstant`): the
 		// freshest evaluation stamp in the table, written by an earlier tick under
@@ -199,16 +201,12 @@ export const sweepSunsetPolicy = internalMutation({
 		// (contacts/sunset.ts) lets an operator who has checked the clock record
 		// that fact; the LATER of the two readings is what `now` is judged against.
 		const policyRows = await loadSunsetPolicyRows(ctx);
-		const newestEvaluated =
-			args.corroboratingInstant === undefined
-				? await ctx.db.query('contacts').withIndex('by_sunset_evaluated_at').order('desc').first()
-				: null;
 		const corroboratingInstant =
-			args.corroboratingInstant ??
-			latestSunsetInstant(
-				newestEvaluated?.sunsetEvaluatedAt,
-				policyRows.find((row) => row.topicId === undefined)?.clockVerifiedAt
-			);
+			args.corroboratingInstant ?? (await loadSunsetCorroboratingInstant(ctx, policyRows));
+		const clock: SunsetClock = {
+			now,
+			...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
+		};
 
 		// THE SKEW CHECK IS A HEAD-OF-TICK ABORT, NOT A PER-CONTACT HOLD.
 		//
@@ -308,8 +306,7 @@ export const sweepSunsetPolicy = internalMutation({
 			const { verdict, applied, deferred } = await evaluateAndApplySunset(ctx, {
 				contact,
 				policy,
-				now,
-				...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
+				clock,
 				canSuppress: suppressedSoFar + suppressed < maxSuppressions,
 			});
 

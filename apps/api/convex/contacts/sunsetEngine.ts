@@ -35,7 +35,9 @@ import { recordAuditLog } from '../lib/auditLog';
 import { isSuppressed, suppressEmail } from '../lib/suppression';
 import {
 	evaluateSunset,
+	latestSunsetInstant,
 	resolveSunsetPolicy,
+	type SunsetClock,
 	type SunsetFacts,
 	type SunsetPolicy,
 	type SunsetMeasuredVerdict,
@@ -148,6 +150,37 @@ export async function loadSunsetPolicyRows(
 }
 
 /**
+ * THE SECOND READING OF TIME, derived in ONE place.
+ *
+ * Two callers need it and must never disagree about it: the sweep judges its
+ * `Date.now()` against it before writing anything, and `getSunsetPolicies`
+ * reports the resulting stall to the operator. A screen that says the engine is
+ * running while the sweep is refusing to run — or the reverse — is worse than
+ * either answer alone, so the corroboration sources are folded here and nowhere
+ * else.
+ *
+ * The sources are the freshest evaluation stamp this deployment wrote (newest
+ * first on `by_sunset_evaluated_at`) and the operator's explicit re-arm
+ * (`sunsetPolicies.clockVerifiedAt` on the global row); the LATER of the two
+ * wins. `undefined` means "no second reading available" — a deployment that has
+ * never swept — which holds nobody.
+ */
+export async function loadSunsetCorroboratingInstant(
+	ctx: QueryCtx | MutationCtx,
+	policyRows: readonly SunsetPolicyRow[]
+): Promise<number | undefined> {
+	const newestEvaluated = await ctx.db
+		.query('contacts')
+		.withIndex('by_sunset_evaluated_at')
+		.order('desc')
+		.first();
+	return latestSunsetInstant(
+		newestEvaluated?.sunsetEvaluatedAt,
+		policyRows.find((row) => row.topicId === undefined)?.clockVerifiedAt
+	);
+}
+
+/**
  * The policy one contact is judged by: the deployment-wide row, with the rows
  * of every topic the contact belongs to layered on top and combined by
  * `resolveSunsetPolicy` (most lenient wins — see its docstring).
@@ -226,8 +259,7 @@ async function loadLastQuietResetAt(
 export async function loadSunsetFacts(
 	ctx: QueryCtx | MutationCtx,
 	contact: Doc<'contacts'>,
-	now: number,
-	corroboratingInstant?: number | undefined
+	clock: SunsetClock
 ): Promise<SunsetFacts> {
 	const rawEmail = contact.email;
 	const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
@@ -247,8 +279,7 @@ export async function loadSunsetFacts(
 	const lastEngagementAt = await loadLastQuietResetAt(ctx, contact._id);
 
 	return {
-		now,
-		...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
+		...clock,
 		createdAt: contact.createdAt,
 		...(lastEngagementAt !== undefined ? { lastEngagementAt } : {}),
 		...(firstSend !== null ? { firstMessagedAt: firstSend.occurredAt } : {}),
@@ -307,9 +338,8 @@ export async function evaluateAndApplySunset(
 	args: {
 		contact: Doc<'contacts'>;
 		policy: SunsetPolicy;
-		now: number;
-		/** See `SunsetFacts.corroboratingInstant`. */
-		corroboratingInstant?: number | undefined;
+		/** The tick's single reading of time — see `SunsetClock`. */
+		clock: SunsetClock;
 		/**
 		 * The caller's blast-radius ceiling. `false` means "you may move this
 		 * contact onto the re-engagement track, but do NOT suppress it in this
@@ -319,8 +349,9 @@ export async function evaluateAndApplySunset(
 		canSuppress?: boolean | undefined;
 	}
 ): Promise<SunsetTransition> {
-	const { contact, policy, now } = args;
-	const facts = await loadSunsetFacts(ctx, contact, now, args.corroboratingInstant);
+	const { contact, policy, clock } = args;
+	const now = clock.now;
+	const facts = await loadSunsetFacts(ctx, contact, clock);
 	const verdict = evaluateSunset(facts, policy);
 
 	switch (verdict.action) {

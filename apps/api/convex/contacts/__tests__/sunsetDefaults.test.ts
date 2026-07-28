@@ -84,7 +84,7 @@ describe('sunset defaults', () => {
 			if (!contact) throw new Error('fixture contact missing');
 			const rows = await loadSunsetPolicyRows(ctx);
 			const policy = await resolveSunsetPolicyForContact(ctx, contact._id, rows);
-			return await evaluateAndApplySunset(ctx, { contact, policy, now: NOW });
+			return await evaluateAndApplySunset(ctx, { contact, policy, clock: { now: NOW } });
 		});
 
 		expect(applied.verdict.action).toBe('suppress');
@@ -151,7 +151,7 @@ describe('sunset defaults', () => {
 			if (!contact) throw new Error('fixture contact missing');
 			const rows = await loadSunsetPolicyRows(ctx);
 			const policy = await resolveSunsetPolicyForContact(ctx, contact._id, rows);
-			return await evaluateAndApplySunset(ctx, { contact, policy, now: NOW });
+			return await evaluateAndApplySunset(ctx, { contact, policy, clock: { now: NOW } });
 		});
 
 		expect(applied.applied).toBe(false);

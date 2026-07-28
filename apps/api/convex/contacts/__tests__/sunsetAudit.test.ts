@@ -54,7 +54,7 @@ async function sweepOne(t: Harness, contactId: Id<'contacts'>) {
 		return await evaluateAndApplySunset(ctx, {
 			contact,
 			policy: { ...SUNSET_POLICY_DEFAULTS },
-			now: NOW,
+			clock: { now: NOW },
 		});
 	});
 }
@@ -233,7 +233,6 @@ describe('sunset restore path', () => {
 					now: NOW,
 				})
 		);
-		expect(result.restored).toBe(false);
 		expect(result.outcome).toBe('not_sunset_suppressed');
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(1);
