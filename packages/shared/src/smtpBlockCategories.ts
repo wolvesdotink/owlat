@@ -47,6 +47,41 @@ export type SmtpFailureCategory =
 	| 'unknown';
 
 /**
+ * THE WHOLE VOCABULARY, as a set — the narrowing a stored `v.array(v.string())`
+ * needs at the row-read boundary.
+ *
+ * DISTINCT FROM THE BLOCK SET BELOW, and the distinction matters: this answers
+ * "is this string a category the classifier can emit?", which is the question a
+ * row read has to answer before it may hand the array to anything typed. The
+ * block set answers "is this category a refusal?", which is the question the
+ * ramp's hard stop asks. Narrowing a row with the block set would silently drop
+ * every rate-pressure category the gate is designed to receive and audit, so the
+ * two guards are named for the two questions rather than reused for both.
+ */
+export const SMTP_FAILURE_CATEGORIES: ReadonlySet<SmtpFailureCategory> =
+	new Set<SmtpFailureCategory>([
+		'greylisted',
+		'rate_limited',
+		'content_rejected',
+		'policy_rejected',
+		'mailbox_full',
+		'auth_required',
+		'network_error',
+		'gmail_rate_limited',
+		'gmail_ip_identity',
+		'gmail_tls_required',
+		'yahoo_ts03',
+		'yahoo_tss04',
+		'microsoft_resource_throttle',
+		'unknown',
+	]);
+
+/** Is this string a category the shipped classifier can emit? */
+export function isSmtpFailureCategory(value: string): value is SmtpFailureCategory {
+	return SMTP_FAILURE_CATEGORIES.has(value as SmtpFailureCategory);
+}
+
+/**
  * THE BLOCK SET: categories that mean the receiver is REFUSING THIS SENDING
  * IDENTITY, as opposed to asking us to slow down.
  *
@@ -75,6 +110,7 @@ export const SMTP_BLOCK_CATEGORIES: ReadonlySet<SmtpFailureCategory> = new Set<S
 	]
 );
 
+/** Is this category a REFUSAL (a ramp hard stop), rather than rate pressure? */
 export function isSmtpBlockCategory(value: string): value is SmtpFailureCategory {
 	return SMTP_BLOCK_CATEGORIES.has(value as SmtpFailureCategory);
 }

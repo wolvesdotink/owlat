@@ -16,7 +16,9 @@
 import {
 	SMTP_BLOCK_CATEGORIES,
 	SMTP_BLOCK_MESSAGE_SAMPLES,
+	SMTP_FAILURE_CATEGORIES,
 	isSmtpBlockCategory,
+	isSmtpFailureCategory,
 } from '@owlat/shared/smtpBlockCategories';
 import { describe, expect, it } from 'vitest';
 import { classifySmtpResponse } from '../smtpClassifier.js';
@@ -59,6 +61,18 @@ describe('the block set', () => {
 		for (const category of SMTP_BLOCK_CATEGORIES) {
 			expect(produced.has(category)).toBe(true);
 		}
+	});
+
+	it('is a STRICT subset of the whole vocabulary — the two guards answer two questions', () => {
+		for (const category of SMTP_BLOCK_CATEGORIES) {
+			expect(SMTP_FAILURE_CATEGORIES.has(category)).toBe(true);
+		}
+		expect(SMTP_BLOCK_CATEGORIES.size).toBeLessThan(SMTP_FAILURE_CATEGORIES.size);
+		// The row-read narrowing must ADMIT rate pressure: the gate is designed to
+		// receive and audit it, and narrowing with the block guard would drop it.
+		expect(isSmtpFailureCategory('rate_limited')).toBe(true);
+		expect(isSmtpBlockCategory('rate_limited')).toBe(false);
+		expect(isSmtpFailureCategory('not_a_category')).toBe(false);
 	});
 
 	it('never contains a retryable throttle: a block does not get better by sending', () => {
