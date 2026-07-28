@@ -97,6 +97,19 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
+	// BIMI (P4-7) — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
+	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
+	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and
+	// what a VMC is, and generates no record. Never a blocked send, never a
+	// blocked promotion, never an unresolvable warning (D2).
+	// HTTPS URL of the SVG Tiny PS brand logo (the `l=` tag).
+	| 'MTA_BIMI_LOGO_URL'
+	// HTTPS URL of the Verified Mark Certificate PEM (the `a=` tag). Gmail and
+	// Apple Mail need one; other receivers show the logo without it.
+	| 'MTA_BIMI_VMC_URL'
+	// BIMI selector label (`<selector>._bimi.<domain>`). Unset ⇒ the spec's
+	// `default`. A value that is not a DNS label falls back to `default`.
+	| 'MTA_BIMI_SELECTOR'
 	// Optional SMTP TLS Reporting (`rua`) reporting URI emitted in the generated
 	// `_smtp._tls` TXT record (RFC 8460 §3), e.g.
 	// `mailto:tls-reports@owlat.example` or `https://example.com/tlsrpt`.
