@@ -42,11 +42,10 @@
 
 import {
 	isSeedPlacementReached,
-	summarizeSeedProvider,
-	type SeedObservation,
+	summarizeSeedProviderCounts,
+	type SeedArmPlacementCounts,
 	type SeedPlacement,
 	type SeedProviderRollup,
-	type SeedTransportArm,
 } from '@owlat/shared/seedPlacement';
 import type { RampGateThresholds } from './gateConfig';
 import { evidenceFreshness, evidenceReason, insufficient, type ArmEvidence } from './gateEvidence';
@@ -64,14 +63,6 @@ import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
  * rather than a fact. Nothing this module returns carries it.
  */
 const CELL_PROVIDER = 'other';
-
-/**
- * A sweep claiming more probes than any deployment has seed mailboxes is a
- * PRODUCER BUG, not a very good measurement (plan D17 — 5-10 mailboxes per
- * provider). Bounded rather than trusted, because the roll-up is fed one
- * observation per probe and an unbounded count is an unbounded allocation.
- */
-const MAX_SEED_SWEEP = 1000;
 
 /** The three placements a counted sweep can express, in one place. */
 const SWEEP_PLACEMENTS = ['inbox', 'spam', 'missing'] as const satisfies readonly SeedPlacement[];
@@ -91,23 +82,24 @@ function sweepTotal(sweep: SeedPlacementObservation | null | undefined): number 
 }
 
 /**
- * Expand one arm's counted sweep into the observations the shared roll-up
- * consumes. Negative, fractional and non-finite counts are scrubbed by
+ * One arm's counted sweep, in the shape the shared roll-up's COUNTS entry point
+ * takes. Negative, fractional and non-finite counts are scrubbed by
  * `safeOutcomeCount` before they can become a sample size.
+ *
+ * COUNTS IN, COUNTS OUT. A ramp sweep is three integers per arm and the roll-up
+ * is a status over three integers per arm; expanding them into one object per
+ * probe on the way in — which is what this did before — bought nothing but the
+ * allocation, and needed a clamp to bound it.
  */
-function armObservations(
-	sweep: SeedPlacementObservation | null | undefined,
-	arm: SeedTransportArm
-): SeedObservation[] {
-	if (!sweep) return [];
-	const observations: SeedObservation[] = [];
-	for (const placement of SWEEP_PLACEMENTS) {
-		const count = Math.min(sweepCount(sweep, placement), MAX_SEED_SWEEP);
-		for (let index = 0; index < count; index += 1) {
-			observations.push({ provider: CELL_PROVIDER, arm, placement });
-		}
-	}
-	return observations;
+function armCounts(
+	sweep: SeedPlacementObservation | null | undefined
+): SeedArmPlacementCounts | null {
+	if (!sweep) return null;
+	return {
+		inbox: sweepCount(sweep, 'inbox'),
+		spam: sweepCount(sweep, 'spam'),
+		missing: sweepCount(sweep, 'missing'),
+	};
 }
 
 /**
@@ -182,10 +174,10 @@ function evaluateSeedGate(
 	const { thresholds, sampleFloors } = input.config;
 	const own = input.ownSeeds ?? null;
 	const referenceSweep = expectsReference ? (input.referenceSeeds ?? null) : null;
-	const rollup: SeedProviderRollup = summarizeSeedProvider(CELL_PROVIDER, [
-		...armObservations(own, 'own'),
-		...armObservations(referenceSweep, 'reference'),
-	]);
+	const rollup: SeedProviderRollup = summarizeSeedProviderCounts(CELL_PROVIDER, {
+		own: armCounts(own),
+		reference: armCounts(referenceSweep),
+	});
 
 	const ownRate = reachedShare(own);
 	const shape = {
