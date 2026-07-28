@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { capacityCeiling } from '../controllerBounds';
-import { RAMP_AIMD } from '../controllerConfig';
+import { RAMP_AIMD, RAMP_PHASE_CEILINGS } from '../controllerConfig';
 import { nextShare } from '../controller';
 import { remainingDemandToday } from '../capacityProjection';
 import { controllerInput, mixState, NOW } from './controllerFixtures';
@@ -65,29 +65,74 @@ describe('remainingDemandToday scales demand to the day that is left', () => {
 });
 
 describe('which bound binds, through the ladder', () => {
-	function decide(share: number, phaseCeiling: number, capacityBound: number) {
-		return nextShare(
-			controllerInput({
-				mix: mixState({ share, phaseCeiling, cleanStreak: 3, lastCountedAt: NOW - 2 * 86_400_000 }),
-				capacity: {
-					kind: 'projected',
-					warmingCapRemaining: capacityBound * 1000,
-					projectedVolume: 800,
-				},
-			})
-		);
+	/**
+	 * The two capacity numbers go in EXPLICITLY and the bound they derive comes
+	 * back out, so a fixture can never quietly change which of the two ceilings
+	 * binds: an earlier version of this suite hid the capacity bound behind
+	 * arithmetic that happened to land on the phase ceiling, and the branch it
+	 * claimed to cover was never separated from the one beside it.
+	 *
+	 * `phaseCeiling` must be a REAL ladder rung (`RAMP_PHASE_CEILINGS`) —
+	 * `normalizePhaseCeiling` snaps anything else onto the lowest rung, which is
+	 * the second half of how that fixture went wrong.
+	 */
+	function decide(args: {
+		share: number;
+		phaseCeiling: number;
+		warmingCapRemaining: number;
+		projectedVolume: number;
+	}) {
+		const capacity = {
+			kind: 'projected',
+			warmingCapRemaining: args.warmingCapRemaining,
+			projectedVolume: args.projectedVolume,
+		} as const;
+		return {
+			capacityBound: capacityCeiling(capacity),
+			decision: nextShare(
+				controllerInput({
+					mix: mixState({
+						share: args.share,
+						phaseCeiling: args.phaseCeiling,
+						cleanStreak: 3,
+						lastCountedAt: NOW - 2 * 86_400_000,
+					}),
+					capacity,
+				})
+			),
+		};
 	}
 
+	it('every phase ceiling this suite uses is a real rung', () => {
+		// Guards the exact defect above: an off-ladder value normalises onto the
+		// lowest rung, so the fixture would stop testing what it says it tests.
+		for (const rung of [0.25, 1] as const) {
+			expect(RAMP_PHASE_CEILINGS).toContain(rung);
+		}
+	});
+
 	it('THE PHASE CEILING BINDS FIRST when it is the lower of the two', () => {
-		// capacity bound = (250/800) x 0.8 = 0.25... but the phase rung is 0.2.
-		const decision = decide(0.5, 0.2, 0.25);
-		expect(decision.share).toBe(0.2);
+		// (500 / 800) x 0.8 = 0.5 of capacity, against a phase rung of 0.25.
+		const { capacityBound, decision } = decide({
+			share: 0.9,
+			phaseCeiling: 0.25,
+			warmingCapRemaining: 500,
+			projectedVolume: 800,
+		});
+		expect(capacityBound ?? 0).toBeCloseTo(0.5, 10);
+		expect(decision.share).toBe(0.25);
 		expect(decision.reason).toBe('phase_ceiling');
-		expect(decision.ceiling).toBe(0.2);
+		expect(decision.ceiling).toBe(0.25);
 	});
 
 	it('the CAPACITY bound binds when it is the lower of the two, and says so', () => {
-		const decision = decide(0.9, 1, 0.5);
+		const { capacityBound, decision } = decide({
+			share: 0.9,
+			phaseCeiling: 1,
+			warmingCapRemaining: 500,
+			projectedVolume: 800,
+		});
+		expect(capacityBound ?? 0).toBeCloseTo(0.5, 10);
 		expect(decision.ceiling ?? 0).toBeCloseTo(0.5, 10);
 		expect(decision.share).toBeCloseTo(0.5, 10);
 		expect(decision.reason).toBe('capacity_ceiling');
@@ -95,7 +140,13 @@ describe('which bound binds, through the ladder', () => {
 
 	it('a capacity bound ABOVE the current share never becomes an instant jump', () => {
 		// Retreats are instant; advances cost a counted window and one step.
-		const decision = decide(0.2, 1, 0.9);
+		const { capacityBound, decision } = decide({
+			share: 0.2,
+			phaseCeiling: 1,
+			warmingCapRemaining: 900,
+			projectedVolume: 800,
+		});
+		expect(capacityBound ?? 0).toBeCloseTo(0.9, 10);
 		expect(decision.share).toBeLessThanOrEqual(0.26);
 		expect(decision.share).toBeGreaterThan(0.2);
 	});
