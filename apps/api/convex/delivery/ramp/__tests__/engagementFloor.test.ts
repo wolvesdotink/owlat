@@ -37,7 +37,7 @@ import {
 	evaluateEngagementGate,
 	evaluateEngagementRatioGate,
 } from '../engagementGate';
-import { NOW, arm, engagementCell, engagementInput } from './gateFixtures';
+import { NOW, arm, engagementCell, engagementInput, itEquipped } from './gateFixtures';
 
 /** A window of `calibrationSent` calibration sends opening at `rate`. */
 function engagementWindow(calibrationSent: number, rate: number, lastRecordedAt: number = NOW) {
@@ -61,7 +61,7 @@ const BASELINE_AGE = NOW - 7 * DAY_MS;
 const BASELINE_30D = engagementWindow(4_000, 0.1, BASELINE_AGE);
 
 describe("gate 4b — the absolute floor against the cell's own past", () => {
-	it('fires on a smooth decay that every concurrent gate passes', () => {
+	itEquipped('fires on a smooth decay that every concurrent gate passes', () => {
 		// Both arms decayed together, so the RATIO is a clean 1.0 …
 		const decayed = engagementWindow(1_000, 0.06);
 		const input = engagementInput({
@@ -84,15 +84,18 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(evaluateEngagementGate(input).status).toBe('fail');
 	});
 
-	it('stays quiet on a small decline (plan D14: editorial moves are not placement losses)', () => {
-		const input = engagementInput({
-			own: engagementWindow(1_000, 0.08),
-			reference: engagementWindow(1_000, 0.08),
-			ownPriorBaseline: BASELINE_30D,
-		});
-		expect(evaluateEngagementFloorGate(input).status).toBe('pass');
-		expect(evaluateEngagementGate(input).status).toBe('pass');
-	});
+	itEquipped(
+		'stays quiet on a small decline (plan D14: editorial moves are not placement losses)',
+		() => {
+			const input = engagementInput({
+				own: engagementWindow(1_000, 0.08),
+				reference: engagementWindow(1_000, 0.08),
+				ownPriorBaseline: BASELINE_30D,
+			});
+			expect(evaluateEngagementFloorGate(input).status).toBe('pass');
+			expect(evaluateEngagementGate(input).status).toBe('pass');
+		}
+	);
 
 	it('passes exactly AT the floor, and fails one send below it', () => {
 		// 0.5 and 0.7 multiply EXACTLY in float64, so this really is the boundary
@@ -119,7 +122,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(oneBelow.status).toBe('fail');
 	});
 
-	it('HOLDS — never fails — when the cell has no 30-day baseline yet', () => {
+	itEquipped('HOLDS — never fails — when the cell has no 30-day baseline yet', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
 			reference: engagementWindow(1_000, 0.01),
@@ -218,7 +221,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(floor.reason).toBe('baseline_evidence_stale');
 	});
 
-	it("does NOT widen the concurrent ratio's freshness rule", () => {
+	itEquipped("does NOT widen the concurrent ratio's freshness rule", () => {
 		// Gate 4a's reference arm is the other half of the same send: a week-old
 		// reference is stale there, and the baseline's allowance must not leak.
 		const ratio = evaluateEngagementRatioGate(
@@ -248,7 +251,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
-		expect(floor.reason).toBe('baseline_rate_unmeasurable');
+		expect(floor.reason).toBe('baseline_not_a_denominator');
 	});
 
 	it('compares the explicit RECENT window, not the evaluation window', () => {

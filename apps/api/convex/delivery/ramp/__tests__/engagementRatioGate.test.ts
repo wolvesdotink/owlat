@@ -7,10 +7,10 @@
  * reference arm at zero (a division by zero that must NOT read as a pass).
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../engagementConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { arm, engagementInput } from './gateFixtures';
+import { arm, describeEquipped, engagementInput } from './gateFixtures';
 
 /** 1000 calibration sends with `opened` of them opened. */
 function slice(opened: number) {
@@ -23,7 +23,7 @@ function verdict(ownOpened: number, referenceOpened: number) {
 	);
 }
 
-describe('gate 4 — engagement ratio matrix', () => {
+describeEquipped('gate 4 — engagement ratio matrix', () => {
 	it('passes when the arms engage identically', () => {
 		const result = verdict(200, 200);
 		expect(result.gate).toBe('engagement_ratio');
@@ -78,13 +78,13 @@ describe('gate 4 — engagement ratio matrix', () => {
 	it('HOLDS when the reference arm is at zero — a zero denominator is not a pass', () => {
 		const result = verdict(200, 0);
 		expect(result.status).toBe('insufficient_data');
-		expect(result.reason).toBe('reference_rate_unmeasurable');
+		expect(result.reason).toBe('reference_not_a_denominator');
 	});
 
 	it('HOLDS when both arms are at zero', () => {
 		const result = verdict(0, 0);
 		expect(result.status).toBe('insufficient_data');
-		expect(result.reason).toBe('reference_rate_unmeasurable');
+		expect(result.reason).toBe('reference_not_a_denominator');
 	});
 
 	it('HOLDS when there is no reference transport at all (plan D2)', () => {

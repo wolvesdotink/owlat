@@ -134,7 +134,7 @@ export const domainTables = {
 	//
 	// D2: absence is a SUPPORTED CONFIGURATION. A domain with no row here is
 	// simply `not_started` — the yahoo cell's complaint gate substitutes the
-	// CFBL feed or the tightened unsubscribe proxy and carries a confidence
+	// CFBL feed or the unsubscribe-rate proxy and carries a confidence
 	// caveat. It is never an error and never blocks a send or a promotion.
 	yahooCflEnrollments: defineTable({
 		// Scoped to the caller's active organization so a report or an operator

@@ -10,7 +10,7 @@
  * through per-evaluation overrides, and the two must agree.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import {
 	DESTINATION_PROVIDER_KEYS,
 	type DestinationProviderKey,
@@ -21,7 +21,7 @@ import {
 	type EngagementMetricOverrides,
 } from '../engagementConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { arm, engagementCell, engagementInput } from './gateFixtures';
+import { arm, describeEquipped, engagementCell, engagementInput } from './gateFixtures';
 
 /**
  * The own arm's OPENS collapse while its CLICKS hold. On an opens-gated cell
@@ -56,7 +56,7 @@ function verdictFor(
 	);
 }
 
-describe('gate 4 — MPP metric substitution', () => {
+describeEquipped('gate 4 — MPP metric substitution', () => {
 	it('gates the apple cell on CLICK rate', () => {
 		expect(ENGAGEMENT_METRIC_BY_PROVIDER.apple).toBe('click');
 		const result = verdictFor('apple');

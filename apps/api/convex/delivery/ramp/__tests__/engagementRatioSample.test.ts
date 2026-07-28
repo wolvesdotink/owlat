@@ -8,10 +8,10 @@
  * anything.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../gateConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { arm, engagementInput } from './gateFixtures';
+import { arm, describeEquipped, engagementInput } from './gateFixtures';
 
 const FLOOR = RAMP_GATE_SAMPLE_FLOORS.engagement;
 
@@ -31,7 +31,7 @@ function verdict(ownSample: number, referenceSample: number) {
 	);
 }
 
-describe('gate 4 — minimum sample', () => {
+describeEquipped('gate 4 — minimum sample', () => {
 	it('the floor is 400 calibration sends per arm', () => {
 		expect(FLOOR).toBe(400);
 	});

@@ -8,18 +8,23 @@
  * (hold) or `fail`, never on the verdict that raises the share.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
-import {
-	evaluateComplaintGate,
-	evaluateDeferralGate,
-	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
-} from '../gates';
+import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../gates';
+import { evaluateSeedPlacementGate } from '../seedGate';
 import { aggregateRampGates, referenceArmGateEvaluator } from '../gateEvaluation';
 import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import type { RampGateEvaluation, RampGateEvaluationInput, RampGateResult } from '../gateTypes';
-import { arm, input, NOW, seeds } from './gateFixtures';
+import {
+	BEYOND_SKEW,
+	NOW,
+	POISON_RATE_VALUES,
+	arm,
+	describeEquipped,
+	input,
+	poisonedRates,
+	seeds,
+} from './gateFixtures';
 
 function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
 	return referenceArmGateEvaluator.evaluate(built);
@@ -52,7 +57,7 @@ function everyGate(name: string, build: () => RampGateEvaluationInput): void {
 	});
 }
 
-describe('degenerate volumes', () => {
+describeEquipped('degenerate volumes', () => {
 	everyGate('a zero-volume cell (0/0 everywhere)', () =>
 		input({ own: arm({ sent: 0 }), reference: arm({ sent: 0 }), ownSeeds: seeds(0, 0) })
 	);
@@ -70,57 +75,34 @@ describe('degenerate volumes', () => {
 	);
 });
 
-describe('poisoned rates', () => {
+describeEquipped('poisoned rates', () => {
 	/**
 	 * All three fixtures give the own arm an AMPLE, FRESH window and poison only
 	 * the derived rate, so the hold cannot be explained by sample size or age.
 	 */
 	const poisonedOwnArm: ReadonlyArray<readonly [string, () => RampGateEvaluationInput]> = [
+		// BOTH arms poisoned, so the own-arm guard is proved to return before the
+		// reference-arm one rather than merely happening to.
 		[
 			'NaN rates on both arms',
 			() =>
 				input({
-					own: arm(
-						{ sent: 10_000 },
-						{
-							hardBounceRate: Number.NaN,
-							deferralRate: Number.NaN,
-							complaintRate: Number.NaN,
-						}
-					),
-					reference: arm(
-						{ sent: 10_000 },
-						{
-							hardBounceRate: Number.NaN,
-							deferralRate: Number.NaN,
-							complaintRate: Number.NaN,
-						}
-					),
+					own: arm({ sent: 10_000 }, poisonedRates(Number.NaN)),
+					reference: arm({ sent: 10_000 }, poisonedRates(Number.NaN)),
 				}),
 		],
-		[
-			'Infinity rates on both arms',
-			() =>
-				input({
-					own: arm(
-						{ sent: 10_000 },
-						{
-							hardBounceRate: Number.POSITIVE_INFINITY,
-							deferralRate: Number.POSITIVE_INFINITY,
-							complaintRate: Number.POSITIVE_INFINITY,
-						}
-					),
-					reference: arm({ sent: 10_000 }),
-				}),
-		],
-		[
-			'negative rates (a subtraction that lost its guard)',
-			() =>
-				input({
-					own: arm({ sent: 10_000 }, { hardBounceRate: -1, deferralRate: -1, complaintRate: -1 }),
-					reference: arm({ sent: 10_000 }),
-				}),
-		],
+		// ...and one case per shared poison value with a healthy reference arm.
+		...POISON_RATE_VALUES.map(
+			([label, value]) =>
+				[
+					`${label} rates on the own arm`,
+					() =>
+						input({
+							own: arm({ sent: 10_000 }, poisonedRates(value)),
+							reference: arm({ sent: 10_000 }),
+						}),
+				] as const
+		),
 	];
 
 	for (const [name, build] of poisonedOwnArm) {
@@ -160,14 +142,8 @@ describe('poisoned rates', () => {
 		},
 	];
 
-	const POISONS: ReadonlyArray<readonly [string, number]> = [
-		['NaN', Number.NaN],
-		['Infinity', Number.POSITIVE_INFINITY],
-		['negative', -1],
-	];
-
 	for (const { field, gate, poison } of poisonedReferenceArm) {
-		for (const [label, value] of POISONS) {
+		for (const [label, value] of POISON_RATE_VALUES) {
 			it(`a ${label} ${field} on the REFERENCE arm holds with reference_rate_unmeasurable`, () => {
 				const built = input({
 					own: arm({ sent: 10_000, hardBounced: 10, complained: 5 }),
@@ -204,12 +180,12 @@ describe('poisoned rates', () => {
 	});
 });
 
-describe('clock skew', () => {
+describeEquipped('clock skew', () => {
 	everyGate('evidence recorded far in the future', () =>
 		input({
-			own: arm({ sent: 10_000, lastRecordedAt: NOW + 30 * 24 * 60 * 60 * 1000 }),
+			own: arm({ sent: 10_000, lastRecordedAt: BEYOND_SKEW }),
 			reference: arm({ sent: 10_000 }),
-			ownSeeds: seeds(20, 0, 0, NOW + 30 * 24 * 60 * 60 * 1000),
+			ownSeeds: seeds(20, 0, 0, BEYOND_SKEW),
 			referenceSeeds: seeds(20, 0),
 		})
 	);
@@ -227,7 +203,7 @@ describe('clock skew', () => {
 	});
 });
 
-describe('missing arms and missing gates', () => {
+describeEquipped('missing arms and missing gates', () => {
 	it('the reference arm is entirely missing: the two-armed gates hold, the one-armed gate still decides', () => {
 		const built = input({ own: arm({ sent: 10_000 }), reference: null });
 		expect(evaluateHardBounceGate(built).status).toBe('insufficient_data');
@@ -264,6 +240,8 @@ describe('missing arms and missing gates', () => {
 				referenceSample: null,
 				minSample: 5,
 			},
+			confidence: 'medium',
+			mayJustifyIncrease: true,
 		};
 		const evaluation = aggregateRampGates({
 			perGate: [held],
@@ -289,6 +267,8 @@ describe('missing arms and missing gates', () => {
 					referenceSample: 10_000,
 					minSample: 200,
 				},
+				confidence: 'high',
+				mayJustifyIncrease: true,
 			},
 		];
 		const streak = (previousCleanStreak: number): number =>
