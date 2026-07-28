@@ -54,12 +54,20 @@ function gateRemedy(decision: RampDecision): string {
  * nothing an operator can act on. The notice IS the decision's sentence: it
  * already names what broke and what to do about it, and a second wording could
  * only drift from the first.
+ *
+ * THE TRIGGER IS A NAMED CAUSE, NOT A DROP IN THE NUMBER. A cell already sitting
+ * on the soft floor cannot fall any further, so a fresh breach there is a HOLD —
+ * and it is precisely the incident an operator most needs to see, because a cell
+ * pinned at 1% by repeated breaches still imposes a fresh freeze and still
+ * advances the cooldown ladder every time. Keying the notice off `direction`
+ * silenced exactly the worst case. What is deliberately NOT notifiable is a
+ * ceiling-bound pull-back: nothing failed, there is no gate to name and nothing
+ * to act on, and a notice channel that cries wolf stops being read.
  */
 export function rampDecisionAdminNotice(
 	cell: DeliverabilityCell,
 	decision: RampDecision
 ): string | undefined {
-	if (decision.direction !== 'decrease') return undefined;
 	const isNamed =
 		decision.failedGate !== undefined || NOTIFIABLE_RETREAT_REASONS.has(decision.reason);
 	return isNamed ? describeRampDecision(cell, decision) : undefined;
@@ -123,11 +131,20 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return decision.share >= OWN_SHARE_CEILING
 				? `Graduated ${where}: 100% held for 14 days with every gate green. The cell is pinned and the relay drops to standby.`
 				: `Held ${where} at ${percent(decision.share)}: the cell is graduated and pinned, but remaining warming capacity bounds it below full share, so the relay still carries the rest. Capacity grows with the warming schedule.`;
+		// A BREACH ON A CELL ALREADY AT THE FLOOR CANNOT LOWER IT — `max(floor, s x
+		// 0.5)` is the same 1% it started at — so this verb comes from the
+		// DIRECTION too, for the same reason the two ceiling arms above do. "Reduced
+		// ... (1% -> 1%)" reads as a no-op sentence for what is actually a fresh
+		// breach, a fresh freeze and another rung of the cooldown ladder.
 		case 'hard_bounce':
 		case 'deferral':
 		case 'complaint':
 		case 'engagement_ratio':
-		case 'seed_placement':
-			return `Reduced ${where} (${move}): the ${decision.reason.replace(/_/g, ' ')} gate breached. ${gateRemedy(decision)}`;
+		case 'seed_placement': {
+			const breached = `the ${decision.reason.replace(/_/g, ' ')} gate breached`;
+			return decision.direction === 'decrease'
+				? `Reduced ${where} (${move}): ${breached}. ${gateRemedy(decision)}`
+				: `Held ${where} at the ${percent(decision.share)} floor: ${breached} again, and the share is already as low as a soft failure takes it. ${gateRemedy(decision)}`;
+		}
 	}
 }

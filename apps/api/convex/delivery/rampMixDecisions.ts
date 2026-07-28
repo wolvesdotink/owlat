@@ -102,8 +102,10 @@ export async function recordMixDecision(
 		reason: decision.reason,
 		message,
 		...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
-		// Present only on a retreat with a NAMED cause (a breached gate or a hard
-		// stop) — see `rampDecisionAdminNotice`.
+		// Present only when the decision has a NAMED cause (a breached gate or a
+		// hard stop), whichever way the share moved — a breach on a cell already at
+		// the floor holds rather than halves, and is still an incident. See
+		// `rampDecisionAdminNotice`.
 		...(adminNotice === undefined ? {} : { adminNotice }),
 		...(decision.frozenUntil === undefined ? {} : { frozenUntil: decision.frozenUntil }),
 		snapshot: rampDecisionSnapshot(input, decision),

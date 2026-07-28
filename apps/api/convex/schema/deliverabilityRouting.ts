@@ -140,8 +140,10 @@ export const deliverabilityRoutingTables = {
 		message: v.string(),
 		failedGate: v.optional(rampGateIdValidator),
 		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
-		// about it. Present on a decrease with a NAMED cause — a breached gate or a
-		// hard stop — and on no other decision. A ceiling pulling a healthy cell
+		// about it. Present whenever the decision has a NAMED cause — a breached
+		// gate or a hard stop — whichever way the share moved, because a breach on a
+		// cell already at the soft floor HOLDS rather than halves and is exactly the
+		// incident an operator needs to see. A ceiling pulling a healthy cell
 		// back to its rung is not an incident and carries no notice. Persistent and
 		// admin-visible, mirroring `mtaIpReadinessAlerts` — the shipped shape for a
 		// delivery incident an operator must see.
