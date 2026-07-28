@@ -14,6 +14,7 @@ import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
 import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
+import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
@@ -44,6 +45,7 @@ export default defineSchema({
 	...instanceTables,
 	...templateTables,
 	...deliveryTables,
+	...seedPlacementTables,
 	...alignmentTables,
 	...sendAssignmentTables,
 	...transportOutcomeTables,

@@ -2,6 +2,7 @@ import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
+import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 
 const crons = cronJobs();
 
@@ -74,6 +75,9 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+// Seed-placement probe ledger housekeeping, registered from the analytics
+// domain sibling next to the functions it schedules.
+registerSeedPlacementCrons(crons);
 crons.interval(
 	'cleanup MTA campaign alert receipts',
 	{ hours: 24 },

@@ -19,6 +19,12 @@
  * model. The `scope='shared'` discriminator is what keeps a team inbox out of
  * the personal-external surfaces below.
  *
+ * A third path — the DELIVERABILITY SEED mailbox — lives in the sibling
+ * `mail/externalAccountsSeed.ts`. It reuses this file's `connectFieldsValidator`
+ * and the same sealed envelope, but a seed is not an inbox at all: the
+ * `purpose='seed'` discriminator keeps it off every personal-external surface
+ * below and out of `listConnectableAccounts`.
+ *
  *   Public:   getForCurrentUser, disconnect, purge
  *   Internal: _connectInternal, _updateCredentialsInternal (called by the
  *             connect actions after encryption), _getRowInternal,
@@ -39,7 +45,11 @@ import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
-import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
+import {
+	insertExternalAccountRow,
+	applyCredentialRotation,
+	CONNECTABLE_ACCOUNT_STATUSES,
+} from './externalAccountShared';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import {
 	throwForbidden,
@@ -54,7 +64,10 @@ const PURGE_CHUNK = 200;
 
 /** A shared account backs a team inbox; it is never the caller's PERSONAL account. */
 function isPersonalAccount(a: Doc<'externalMailAccounts'>): boolean {
-	return a.scope !== 'shared';
+	// A deliverability SEED mailbox is org infrastructure the operator connects
+	// so Owlat can mail itself: it is never the caller's personal inbox, so it
+	// must not mask one, block a connect, or appear on a personal surface.
+	return a.scope !== 'shared' && a.purpose !== 'seed';
 }
 
 /**
@@ -396,12 +409,21 @@ export const _getRowInternal = internalQuery({
  * Accounts the worker should hold a connection for. Excludes `auth_error`
  * (waiting on the user to fix credentials) and `disconnected`. No secrets — the
  * worker fetches the password per-account via getCredentialsForWorker.
+ *
+ * SEED mailboxes are excluded outright. A seed is not a user inbox: it exists
+ * only so the deliverability prober can look for its own shadow copies, and
+ * `schema/mail.ts` promises that "its mail is never indexed". Handing one to
+ * the inbound AccountManager would open an IMAP IDLE connection to the
+ * operator's personal consumer mailbox and ingest its entire contents — blobs
+ * and `mailMessages` rows — into Convex as an ordinary Postbox mailbox, plus
+ * re-ingest every shadow copy as inbound mail and race the prober's sweep on
+ * `\Seen`. The prober selects its own accounts via `by_purpose`.
  */
 export const listConnectableAccounts = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const groups = await Promise.all(
-			(['pending', 'connected', 'error'] as const).map(
+			CONNECTABLE_ACCOUNT_STATUSES.map(
 				(status) =>
 					ctx.db
 						.query('externalMailAccounts')
@@ -409,15 +431,18 @@ export const listConnectableAccounts = internalQuery({
 						.collect() // bounded: connectable accounts per single-org deployment (tens)
 			)
 		);
-		return groups.flat().map((a) => ({
-			accountId: a._id,
-			mailboxId: a.mailboxId,
-			imapHost: a.imapHost,
-			imapPort: a.imapPort,
-			isImapSecure: a.isImapSecure,
-			imapUsername: a.imapUsername,
-			status: a.status,
-		}));
+		return groups
+			.flat()
+			.filter((a) => a.purpose !== 'seed')
+			.map((a) => ({
+				accountId: a._id,
+				mailboxId: a.mailboxId,
+				imapHost: a.imapHost,
+				imapPort: a.imapPort,
+				isImapSecure: a.isImapSecure,
+				imapUsername: a.imapUsername,
+				status: a.status,
+			}));
 	},
 });
 

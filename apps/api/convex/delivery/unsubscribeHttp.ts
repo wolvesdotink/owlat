@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 import type { TokenValidation } from './tokenValidation';
+import type { SeedProbeTokenValidation } from './unsubscribe';
 import { logWarn } from '../lib/runtimeLog';
 
 interface ContactUnsubInfo {
@@ -140,5 +141,46 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 				organizationName: contact.organizationName,
 			},
 		};
+	}
+);
+
+/**
+ * RFC 8058 one-click unsubscribe for a deliverability SEED PROBE —
+ * POST /unsub/probe/{token}.
+ *
+ * A shadow copy carries the same header pair the real send carries, but it has
+ * no contact to unsubscribe: the payload is the opaque probe id, signed in its
+ * own token namespace so it can never be replayed against the contact
+ * endpoint. Exercising it records the interaction on the probe's ledger row —
+ * useful seed hygiene, and never a contact-list mutation.
+ */
+export const handleSeedProbeUnsubscribe = publicTokenEndpoint(
+	{
+		path: '/unsub/probe/:token',
+		method: 'POST',
+		rateLimit: 'subscriptionManagement',
+		rateLimitKeyMode: 'ip+token',
+		cors: false,
+		resultMode: 'action',
+	},
+	async (ctx, { token }) => {
+		const validation = await ctx.runAction<SeedProbeTokenValidation>(
+			internal.delivery.unsubscribe.validateSeedProbeToken,
+			{ token }
+		);
+		if (!validation.valid) {
+			return {
+				ok: false,
+				reason: validation.reason,
+				message: 'Invalid or expired unsubscribe link',
+				status: 400,
+			};
+		}
+		await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeUnsubscribe, {
+			organizationId: validation.organizationId,
+			probeId: validation.probeId,
+			now: Date.now(),
+		});
+		return { ok: true, data: { message: 'Unsubscribed' } };
 	}
 );

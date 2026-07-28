@@ -61,6 +61,8 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `sending_domain.dkim_rotated` | `sending_domain` | `{ domain, selector, phase, applied }` |
 | `sending_domain.yahoo_cfl_changed` | `sending_domain` | `{ event, changed, state, reason, complaintSource }` — one row per Yahoo CFL guided-flow event (`submit` / `confirm` / `reset`), including refusals, so a downgrade of the yahoo cell's complaint measurement always names its cause |
 | `sending_domain.return_path_changed` | `sending_domain` | `{ domain, previousReturnPathHost, newReturnPathHost, applied }` on edit; `{ domain, returnPathHost, applied: 'sync_failed', attempts, error }` when the MTA push permanently fails |
+| `seed_mailbox.rotation_reminder` | `seed_mailbox` | `{ provider, ageDays }` — advisory rotation nudge for a deliverability seed mailbox, emitted by the placement sweep. Provider and age only: never the seed address, never a credential, never mailbox contents. |
+| `seed_mailbox.rotation_acknowledged` | `seed_mailbox` | `{ provider, ageDays }` — the operator dismissed the nudge; the 90-day clock restarts from here. |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |

@@ -28,8 +28,23 @@ export const sendRefValidator = v.union(
 	v.object({ kind: v.literal('transactional'), id: v.id('transactionalSends') })
 );
 
+/**
+ * A deliverability SEED PROBE's durable reference (D18). A shadow copy has no
+ * `emailSends` row — that is what keeps it out of every denominator — but its
+ * probe-ledger row IS durable, org-scoped and unique, which is what the
+ * governed boundary needs for an idempotency key and a re-entry token.
+ * Deliberately outside `SendRef`: no lifecycle, no completion, no stat shard.
+ */
+export const seedProbeRefValidator = v.object({
+	kind: v.literal('seedProbe'),
+	id: v.id('seedPlacementProbes'),
+});
+
+/** Everything the governed dispatch boundary can issue a re-entry token for. */
+export const reentryRefValidator = v.union(sendRefValidator, seedProbeRefValidator);
+
 interface RoutingReentryTokenPayload {
-	sendKind: 'campaign' | 'transactional';
+	sendKind: 'campaign' | 'transactional' | 'seedProbe';
 	sendId: string;
 	organizationId: string;
 	messageId: string;
@@ -42,7 +57,7 @@ interface RoutingReentryTokenPayload {
 /** Compact encrypted wire representation. Opaque names do not enter domain logic. */
 interface CompactTokenPayload {
 	v: 2;
-	k: 'c' | 't';
+	k: 'c' | 't' | 's';
 	i: string;
 	o: string;
 	m: string;
@@ -91,7 +106,7 @@ function isCompactTokenPayload(value: unknown): value is CompactTokenPayload {
 	return (
 		Object.keys(payload).length === 9 &&
 		payload['v'] === 2 &&
-		(payload['k'] === 'c' || payload['k'] === 't') &&
+		(payload['k'] === 'c' || payload['k'] === 't' || payload['k'] === 's') &&
 		typeof payload['i'] === 'string' &&
 		typeof payload['o'] === 'string' &&
 		typeof payload['m'] === 'string' &&
@@ -109,6 +124,8 @@ function isCompactTokenPayload(value: unknown): value is CompactTokenPayload {
 function isLegacyCompactTokenPayload(value: unknown): value is LegacyCompactTokenPayload {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	const payload = value as Record<string, unknown>;
+	// rr1 never issued a seed-probe token; only 'c'/'t' are decodable there.
+	if (payload['k'] !== 'c' && payload['k'] !== 't') return false;
 	return payload['v'] === 1 && isCompactTokenPayload({ ...payload, v: 2 });
 }
 
@@ -116,7 +133,7 @@ function fromCompactTokenPayload(
 	payload: CompactTokenPayload | LegacyCompactTokenPayload
 ): RoutingReentryTokenPayload {
 	return {
-		sendKind: payload.k === 'c' ? 'campaign' : 'transactional',
+		sendKind: payload.k === 'c' ? 'campaign' : payload.k === 's' ? 'seedProbe' : 'transactional',
 		sendId: payload.i,
 		organizationId: payload.o,
 		messageId: payload.m,
@@ -130,7 +147,7 @@ function fromCompactTokenPayload(
 function toCompactTokenPayload(payload: RoutingReentryTokenPayload): CompactTokenPayload {
 	return {
 		v: 2,
-		k: payload.sendKind === 'campaign' ? 'c' : 't',
+		k: payload.sendKind === 'campaign' ? 'c' : payload.sendKind === 'seedProbe' ? 's' : 't',
 		i: payload.sendId,
 		o: payload.organizationId,
 		m: payload.messageId,
@@ -233,7 +250,7 @@ async function callbackDigest(envelopeInput: unknown, retryState: unknown): Prom
 /** Issue a self-contained authenticated callback token after verifying its exact Send. */
 export const issueSnapshot = internalMutation({
 	args: {
-		sendRef: sendRefValidator,
+		sendRef: reentryRefValidator,
 		organizationId: v.string(),
 		messageId: v.string(),
 		workAttemptId: v.string(),
@@ -246,17 +263,35 @@ export const issueSnapshot = internalMutation({
 		if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
 			throw new Error('Routing re-entry deadline expired.');
 		}
-		const send = await ctx.db.get(args.sendRef.id);
-		if (!send || send.status !== 'queued') {
-			throw new Error('Routing re-entry token requires an existing queued Send.');
-		}
-		if (
-			(args.envelopeInput.kind === 'campaign' &&
-				(args.sendRef.kind !== 'campaign' || args.envelopeInput.emailSendId !== args.sendRef.id)) ||
-			(args.envelopeInput.kind === 'transactional' &&
-				(args.sendRef.kind !== 'transactional' || args.envelopeInput.sendId !== args.sendRef.id))
-		) {
-			throw new Error('Routing re-entry envelope does not belong to the Send.');
+		if (args.sendRef.kind === 'seedProbe') {
+			// A seed probe is bound to its ledger row, not to a Send. The binding
+			// checked here is the one the probe header carries.
+			const probe = await ctx.db.get(args.sendRef.id);
+			if (!probe) throw new Error('Routing re-entry token requires an existing seed probe.');
+			if (
+				args.envelopeInput.kind !== 'campaign' ||
+				args.envelopeInput.seedProbeId !== probe.probeId ||
+				args.envelopeInput.emailSendId !== undefined
+			) {
+				throw new Error('Routing re-entry envelope does not belong to the seed probe.');
+			}
+			if (probe.organizationId !== args.organizationId) {
+				throw new Error('Routing re-entry probe does not belong to the organization.');
+			}
+		} else {
+			const send = await ctx.db.get(args.sendRef.id);
+			if (!send || send.status !== 'queued') {
+				throw new Error('Routing re-entry token requires an existing queued Send.');
+			}
+			if (
+				(args.envelopeInput.kind === 'campaign' &&
+					(args.sendRef.kind !== 'campaign' ||
+						args.envelopeInput.emailSendId !== args.sendRef.id)) ||
+				(args.envelopeInput.kind === 'transactional' &&
+					(args.sendRef.kind !== 'transactional' || args.envelopeInput.sendId !== args.sendRef.id))
+			) {
+				throw new Error('Routing re-entry envelope does not belong to the Send.');
+			}
 		}
 		if (args.envelopeInput.organizationId !== args.organizationId) {
 			throw new Error('Routing re-entry envelope does not belong to the organization.');
@@ -304,6 +339,12 @@ async function resolveReentryTarget(
 	retryState: WorkerRetryState,
 	messageId: string
 ): Promise<TargetResolution> {
+	// A seed probe is DISPOSABLE by design: no lifecycle to resume and no
+	// denominator that would notice its absence, so a hand-back is dropped. Its
+	// ledger row stays unclassified, and unclassified probes are not evidence.
+	if (payload.sendKind === 'seedProbe') {
+		return { ok: false, disposition: 'snapshot_not_found' };
+	}
 	if (payload.sendKind === 'campaign') {
 		const id = ctx.db.normalizeId('emailSends', payload.sendId);
 		if (!id || envelopeInput.kind !== 'campaign' || envelopeInput.emailSendId !== id) {

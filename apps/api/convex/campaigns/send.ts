@@ -540,6 +540,9 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
+				// Keys the deliverability seed-probe set: the two A/B arms are
+				// different messages and each gets its own placement reading.
+				abVariant: args.abVariant,
 			});
 		}
 	};

@@ -17,7 +17,7 @@
 
 import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -259,6 +259,86 @@ describe('trackOpen (GET /t/o/...)', () => {
 		const res = await t.fetch('/t/o/not-a-valid-id', { method: 'GET' });
 		expect(res.status).toBe(200);
 		expect(res.headers.get('Content-Type')).toBe('image/gif');
+	});
+});
+
+// ============================================================================
+// Deliverability SEED PROBE ids at the shipped tracking endpoints
+//
+// A shadow copy carries the tracking pixel and the wrapped links a subscriber's
+// copy carries (those are exactly what a filter weighs), keyed by an OPAQUE
+// PROBE ID. A probe id is not a Convex document id — but it does satisfy the
+// generic `isValidConvexId` shape check, which is why both handlers have to
+// reject it BY NAME. Before that they logged an error on every probe open and
+// 500'd the public endpoint on every probe click.
+// ============================================================================
+
+describe('seed probe ids are rejected by the tracking endpoints', () => {
+	const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
+
+	it('is shaped like a Convex id, which is why the guard has to be by name', () => {
+		expect(/^[a-zA-Z0-9_-]{10,}$/.test(PROBE_ID)).toBe(true);
+	});
+
+	it('/t/o/{probeId} returns the pixel and records no open', async () => {
+		const t = setupTest();
+		const errors: unknown[][] = [];
+		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+			errors.push(args);
+		});
+		try {
+			const res = await t.fetch(`/t/o/${PROBE_ID}`, { method: 'GET' });
+			expect(res.status).toBe(200);
+			expect(res.headers.get('Content-Type')).toBe('image/gif');
+		} finally {
+			spy.mockRestore();
+		}
+		expect(errors).toEqual([]);
+		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		expect(sends).toEqual([]);
+	});
+
+	it('/t/c/{probeId}/… resolves the signed target without 500ing or recording', async () => {
+		const t = setupTest();
+		// Signed with the probe id, exactly as the composer signs it. The HMAC
+		// genuinely verifies, so the probe follows the same hop a subscriber's
+		// click follows — what the explicit probe guard skips is everything
+		// ANALYTICS: no send lookup, no lifecycle transition, no click row. Without
+		// that guard the handler would call `getEmailSendForTracking` with a
+		// non-document id outside any try/catch and 500 a public endpoint.
+		const target = 'https://example.com/landing?x=1';
+		const path = await makeClickPath(PROBE_ID, target);
+
+		const errors: unknown[][] = [];
+		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+			errors.push(args);
+		});
+		try {
+			const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+			expect(res.status).toBe(302);
+			expect(res.headers.get('Location')).toBe(new URL(target).toString());
+		} finally {
+			spy.mockRestore();
+		}
+		expect(errors).toEqual([]);
+		// Nothing countable was created by the probe's click.
+		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		expect(sends).toEqual([]);
+	});
+
+	it('/t/c/{probeId}/… still refuses an unsigned or tampered target', async () => {
+		const t = setupTest();
+		const encodedUrl = utf8ToBase64Url('https://attacker.example/phish');
+		const forgedSig = bytesToBase64Url(new Uint8Array(32));
+
+		const res = await t.fetch(`/t/c/${PROBE_ID}/${encodedUrl}/${forgedSig}`, {
+			method: 'GET',
+			redirect: 'manual',
+		});
+		expect(res.status).toBe(302);
+		const location = res.headers.get('Location');
+		expect(location).toBe('/');
+		expect(location).not.toContain('attacker.example');
 	});
 });
 
@@ -846,5 +926,161 @@ describe('seedAdmin (POST /seed/admin)', () => {
 		});
 		// One-shot guard: a user already exists → 409.
 		expect(second.status).toBe(409);
+	});
+});
+
+// ============================================================================
+// Seed-probe one-click unsubscribe — POST /unsub/probe/{token}
+//
+// A public, unauthenticated, ORG-SCOPED write surface: the signed token is the
+// only claim the recording mutation gets, and the organization travels inside
+// it precisely so the mutation has something independent to check. Everything
+// below is driven through `t.fetch` so the longest-prefix routing in `http.ts`
+// (`/unsub/probe/` must win over `/unsub/`) is exercised too.
+// ============================================================================
+
+const PROBE_ORG = 'org_probe_links';
+const PROBE_ID = 'sp_tokenlinks000000000';
+
+// Probe token: payload is `{organizationId}.{probeId}`, signed in the
+// `seedprobe:` namespace — `{payload}:{timestamp}:{HMAC(secret, "seedprobe:{payload}:{timestamp}")}`.
+async function makeProbeToken(
+	organizationId: string,
+	probeId: string,
+	timestamp = Date.now()
+): Promise<string> {
+	const payload = `${organizationId}.${probeId}`;
+	const ts = String(timestamp);
+	const sig = await hmacBase64Url(SECRET, `seedprobe:${payload}:${ts}`);
+	return `${payload}:${ts}:${sig}`;
+}
+
+async function seedProbeRow(
+	t: ReturnType<typeof setupTest>,
+	organizationId = PROBE_ORG,
+	probeId = PROBE_ID
+): Promise<Id<'seedPlacementProbes'>> {
+	const now = Date.now();
+	return await t.run(async (ctx) => {
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'user_1',
+			organizationId,
+			kind: 'external',
+			scope: 'seed',
+			address: 'owlat.seed.0@gmail.example',
+			domain: 'gmail.example',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		} as never);
+		const accountId = await ctx.db.insert('externalMailAccounts', {
+			userId: 'user_1',
+			organizationId,
+			mailboxId,
+			purpose: 'seed',
+			seedProvider: 'gmail',
+			imapHost: 'imap.gmail.example',
+			imapPort: 993,
+			isImapSecure: true,
+			smtpHost: 'smtp.gmail.example',
+			smtpPort: 465,
+			isSmtpSecure: true,
+			authMethod: 'password',
+			imapUsername: 'login-0',
+			secretCiphertext: 'ct',
+			secretIv: 'iv',
+			secretAuthTag: 'tag',
+			secretEnvelopeVersion: 1,
+			status: 'connected',
+			createdAt: now,
+			updatedAt: now,
+		} as never);
+		return ctx.db.insert('seedPlacementProbes', {
+			organizationId,
+			probeId,
+			accountId,
+			provider: 'gmail',
+			stream: 'campaign',
+			sentAt: now,
+			dispatchedAt: now,
+			expiresAt: now + 90 * 24 * 60 * 60 * 1000,
+		} as never);
+	});
+}
+
+/**
+ * `t.run` hands its result back through the Convex value codec, which has no
+ * `undefined`: an unstamped row's absent `unsubscribedAt` arrives as `null`.
+ * Normalize here so the assertions below read "nothing was recorded" rather
+ * than encoding a serialization detail.
+ */
+async function readUnsubscribedAt(
+	t: ReturnType<typeof setupTest>,
+	ref: Id<'seedPlacementProbes'>
+): Promise<number | null> {
+	return await t.run(async (ctx) => (await ctx.db.get(ref))?.unsubscribedAt ?? null);
+}
+
+describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
+	it('stamps the probe row for a valid token (200, ok:true)', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { ok: boolean };
+		expect(json.ok).toBe(true);
+		expect(await readUnsubscribedAt(t, ref)).toEqual(expect.any(Number));
+	});
+
+	it('records nothing for a token minted by a DIFFERENT organization', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		// Correctly signed, but its org claim does not own the probe.
+		const token = await makeProbeToken('org_someone_else', PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(200);
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
+	});
+
+	it('refuses a CONTACT unsubscribe token replayed at /unsub/probe/', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const contactId = await seedContact(t);
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
+	});
+
+	it('refuses a PROBE token replayed at the contact endpoint /unsub/', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
+
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
+	});
+
+	it('refuses the degraded empty-organization token as invalid_format', async () => {
+		// `delivery/worker.ts` builds the header with `organizationId ?? ''` so a
+		// campaign-shaped message never loses its RFC 8058 pair. The resulting
+		// token is unattributable and must record NOTHING rather than fall back
+		// to the row's own organization.
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken('', PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		const json = (await res.json()) as { error?: { message: string } };
+		expect(json.error).toBeDefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 });

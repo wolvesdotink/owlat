@@ -15,7 +15,11 @@ import {
 import { sendEvent } from './eventsApi';
 import { sendTransactional } from './transactional/api';
 import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
-import { handleOneClickUnsubscribe, verifyUnsubscribeToken } from './delivery/unsubscribeHttp';
+import {
+	handleOneClickUnsubscribe,
+	handleSeedProbeUnsubscribe,
+	verifyUnsubscribeToken,
+} from './delivery/unsubscribeHttp';
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import { handleResendWebhook } from './resendWebhook';
@@ -55,6 +59,15 @@ http.route({
 	pathPrefix: '/unsub/',
 	method: 'POST',
 	handler: handleOneClickUnsubscribe,
+});
+
+// One-click unsubscribe target of a deliverability seed probe (RFC 8058):
+// POST /unsub/probe/{token}. More specific than `/unsub/`, so the router
+// prefers it for probe tokens; a probe token never resolves to a contact.
+http.route({
+	pathPrefix: '/unsub/probe/',
+	method: 'POST',
+	handler: handleSeedProbeUnsubscribe,
 });
 
 // Verify unsubscribe token: GET /unsub/verify/{token}
