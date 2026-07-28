@@ -44,6 +44,34 @@ export const BIMI_VMC_NOTE =
 
 export type BimiIneligibleReason = 'dmarc_policy_below_quarantine' | 'dmarc_pct_below_100';
 
+/** An operator-supplied URL the offer could not put in a published record. */
+export type BimiRejectedInput = 'logoUrl' | 'vmcUrl';
+
+/**
+ * Accept a URL only if it can be published verbatim inside a BIMI TXT value.
+ *
+ * A BIMI record is `tag=value` pairs separated by `;` and there is no escaping
+ * in that grammar, so a value carrying a separator or a space does not round
+ * trip: the record the operator pastes stops meaning what the screen showed
+ * them. The scheme is checked too — BIMI requires HTTPS for both the logo and
+ * the VMC. Anything else returns `null` and the caller DEGRADES to no record
+ * rather than throwing: this is a rendering surface, and the screen must survive
+ * the value it exists to help the operator fix.
+ */
+export function publishableBimiUri(raw: string | undefined): string | null {
+	const trimmed = raw?.trim() ?? '';
+	// Printable ASCII only, which rules out every space, tab, newline and control
+	// character in one predicate; `;` is excluded separately for legibility.
+	if (trimmed === '' || !/^[\x21-\x7e]+$/.test(trimmed) || trimmed.includes(';')) return null;
+	let parsed: URL;
+	try {
+		parsed = new URL(trimmed);
+	} catch {
+		return null;
+	}
+	return parsed.protocol === 'https:' ? trimmed : null;
+}
+
 /**
  * A BIMI record the operator MAY publish. Never a checklist item, never a
  * blocker, and absent entirely when the DMARC precondition is not met.
@@ -59,6 +87,13 @@ export interface BimiOffer {
 	 * asks for the logo rather than emitting a record with an empty `l=`.
 	 */
 	record: { type: 'TXT'; host: string; relativeHost: string; value: string } | null;
+	/**
+	 * URLs the operator supplied that could not be published as given. Named so
+	 * the wizard can say WHICH value to fix instead of silently showing nothing
+	 * — and so a rejected VMC never quietly ships a logo-only record the operator
+	 * believes carries their certificate.
+	 */
+	rejectedInputs: BimiRejectedInput[];
 	/** Present whenever the offer is made. */
 	vmcNote: string | null;
 	vmcRequiredReceivers: readonly string[];
@@ -73,6 +108,7 @@ function withheld(reason: BimiIneligibleReason): BimiOffer {
 		offered: false,
 		ineligibleReason: reason,
 		record: null,
+		rejectedInputs: [],
 		vmcNote: null,
 		vmcRequiredReceivers: BIMI_VMC_REQUIRED_RECEIVERS,
 		required: false,
@@ -128,31 +164,39 @@ export function offerBimiRecord(input: {
 	const candidate = input.selector?.trim() ?? '';
 	const selector = isDnsLabel(candidate) ? candidate : BIMI_DEFAULT_SELECTOR;
 	const host = `${selector}._bimi.${input.domain}`;
-	const logoUrl = input.logoUrl?.trim();
-	const vmcUrl = input.vmcUrl?.trim();
 
 	// Same rule one level up: a domain with no registrable zone has no
 	// zone-relative form, so the offer shows the absolute host instead of throwing.
 	const relativeHost =
 		trySplitZone(input.domain) === null ? host : zoneRelativeHost(host, input.domain);
 
+	const suppliedLogo = input.logoUrl?.trim() ?? '';
+	const suppliedVmc = input.vmcUrl?.trim() ?? '';
+	const logoUrl = publishableBimiUri(suppliedLogo);
+	const vmcUrl = publishableBimiUri(suppliedVmc);
+	const rejectedInputs: BimiRejectedInput[] = [];
+	if (suppliedLogo !== '' && logoUrl === null) rejectedInputs.push('logoUrl');
+	if (suppliedVmc !== '' && vmcUrl === null) rejectedInputs.push('vmcUrl');
+
+	// No logo yet ⇒ ask for one rather than emit an empty `l=`. A REJECTED value
+	// (either of them) ⇒ no record either: publishing a logo-only record when the
+	// VMC was the part we could not use would hand the operator a record that
+	// silently does nothing at the two receivers that need the certificate.
 	const record =
-		logoUrl === undefined || logoUrl === ''
+		logoUrl === null || rejectedInputs.length > 0
 			? null
 			: {
 					type: 'TXT' as const,
 					host,
 					relativeHost,
-					value:
-						vmcUrl === undefined || vmcUrl === ''
-							? `v=BIMI1; l=${logoUrl};`
-							: `v=BIMI1; l=${logoUrl}; a=${vmcUrl};`,
+					value: vmcUrl === null ? `v=BIMI1; l=${logoUrl};` : `v=BIMI1; l=${logoUrl}; a=${vmcUrl};`,
 				};
 
 	return {
 		offered: true,
 		ineligibleReason: null,
 		record,
+		rejectedInputs,
 		vmcNote: BIMI_VMC_NOTE,
 		vmcRequiredReceivers: BIMI_VMC_REQUIRED_RECEIVERS,
 		required: false,
