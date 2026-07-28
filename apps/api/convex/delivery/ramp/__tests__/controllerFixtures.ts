@@ -10,6 +10,8 @@
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { aggregateRampGates } from '../gateEvaluation';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+import { PACE_INITIAL_MULTIPLIER } from '../paceConfig';
+import type { PaceControllerInput, PaceState, PaceUtilisationReading } from '../paceTypes';
 import { externalDataAllowed, rampGateMatrixMode } from './gateMatrixMode';
 import type {
 	RampGateDecidedMeasurement,
@@ -183,6 +185,57 @@ export function mixState(overrides: Partial<RampMixState> = {}): RampMixState {
 		// No counted window yet: the fixtures exercise the decision rules, and the
 		// window spacing has its own suite.
 		lastCountedAt: undefined,
+		...overrides,
+	};
+}
+
+/**
+ * THE SECOND ACTUATOR'S FIXTURES (plan D3, P3-7).
+ *
+ * Deliberately in THIS file rather than a parallel one: the pace actuator runs
+ * the same gates, the same hard-stop signals and the same clock as the share
+ * actuator, and a second set of fixtures is a second set that can drift. The
+ * pace suites therefore inherit the standalone-matrix derivation above for free
+ * — which is exactly what the matrix is for, since the pace actuator IS the
+ * standalone configuration's dial.
+ */
+export function paceState(overrides: Partial<PaceState> = {}): PaceState {
+	return {
+		multiplier: PACE_INITIAL_MULTIPLIER,
+		cleanStreak: 0,
+		frozenUntil: undefined,
+		freezeReason: undefined,
+		freezeStartedAt: undefined,
+		cooldownMs: undefined,
+		lastEvaluatedUtcDay: undefined,
+		...overrides,
+	};
+}
+
+/** A cap that WAS exercised: the evidence the pace actuator needs to advance. */
+export const EXERCISED: PaceUtilisationReading = {
+	kind: 'measured',
+	sent: 950,
+	enforcedCap: 1_000,
+};
+
+/** A cap nobody filled — thin evidence, and the one sanctioned change's input. */
+export const UNEXERCISED: PaceUtilisationReading = {
+	kind: 'measured',
+	sent: 100,
+	enforcedCap: 1_000,
+};
+
+export function paceInput(overrides: Partial<PaceControllerInput> = {}): PaceControllerInput {
+	return {
+		cell: GMAIL_CAMPAIGN,
+		config: RAMP_STREAM_CONFIGS.campaign,
+		pace: paceState(),
+		signals: CLEAR_SIGNALS,
+		evaluation: cleanEvaluation(3),
+		utilisation: EXERCISED,
+		isKillSwitchEngaged: false,
+		now: NOW,
 		...overrides,
 	};
 }
