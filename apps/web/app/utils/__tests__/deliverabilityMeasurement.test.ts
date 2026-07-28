@@ -25,6 +25,7 @@ import {
 	passingGate,
 	seedPlacementGate,
 	seedPlacementHold,
+	seedPlacementReferenceHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
 	gateExplanation,
@@ -66,6 +67,12 @@ describe('gateExplanation — units', () => {
 		const held = gateExplanation(seedPlacementHold());
 		expect(held).toContain('8 of 20 seed mailboxes');
 		expect(held).not.toContain('sends');
+
+		// THE THIRD SENTENCE. The comparison sweep is thin, and its sample is seed
+		// mailboxes too — the reason names the OTHER series, not another unit.
+		const referenceHeld = gateExplanation(seedPlacementReferenceHold());
+		expect(referenceHeld).toContain('3 of 5 seed mailboxes');
+		expect(referenceHeld).not.toContain('sends');
 	});
 
 	it('still reports the placement limit the seed gate compared against', () => {

@@ -146,7 +146,10 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			case 'own_sample_below_floor':
 				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} this window.`;
 			case 'reference_sample_below_floor':
-				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} sends on the comparison transport this window.`;
+				// The unit is the GATE's, not the sentence's: the seed gate's second sweep is
+				// denominated in MAILBOXES, and it reaches this reason whenever that sweep
+				// is thin.
+				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport this window.`;
 			case 'baseline_sample_below_floor':
 				return `Not enough history yet — this cell has not sent enough over the past 30 days to be compared with its own past.`;
 			case 'own_evidence_stale':

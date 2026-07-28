@@ -185,6 +185,33 @@ export function seedPlacementHold(): DeliverabilityDashboardGate {
 }
 
 /**
+ * THE SEED GATE'S SECOND SWEEP, thin.
+ *
+ * `evaluateSeedGate` reaches `reference_sample_below_floor` when the COMPARISON
+ * sweep is the thin one, and its `referenceSample` is seed mailboxes just as the
+ * own sample is. The shape carries no `referenceMinSample`, so the sentence falls
+ * back to `minSample` — which is the SEED floor, in seed mailboxes.
+ */
+export function seedPlacementReferenceHold(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'insufficient_data',
+		reason: 'reference_sample_below_floor',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 20,
+			referenceSample: 3,
+			minSample: 5,
+			ownRate: 0.95,
+			referenceRate: null,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/**
  * The BLOCK-MESSAGE HARD STOP — the one verdict whose sample is not denominated
  * in sends. `ownSample` counts CLASSIFIED SMTP RESPONSES and `minSample` is the
  * floor in those same units, which is why `gateExplanation` branches on the
