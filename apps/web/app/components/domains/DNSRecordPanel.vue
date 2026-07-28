@@ -5,7 +5,6 @@ import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 interface DNSRecord {
 	type: string;
 	host: string;
-	value: string;
 	/**
 	 * True when `host` is an absolute FQDN (the return-path record's env hostname)
 	 * rather than a name relative to `domain`. Supplied by `normalizeDnsRecord`;
@@ -19,6 +18,14 @@ interface DNSRecord {
 	 * by `normalizeDnsRecord`).
 	 */
 	priority?: number;
+	/**
+	 * `null` when there is NO value to publish yet — a DKIM row whose key is
+	 * minted at registration, or one the ESP supplies. The panel then says so
+	 * instead of offering something copyable: an empty DKIM `p=` is not "blank",
+	 * RFC 6376 §3.6.1 defines it as a REVOCATION, so publishing it would revoke
+	 * the very selector the mail is about to be signed with.
+	 */
+	value: string | null;
 }
 
 interface VerificationResult {
@@ -149,13 +156,15 @@ const handleCopyFqdn = () => {
  * shown + copied value is the full `<priority> <exchange>` (e.g. `10 mail.host`)
  * — what's enforced is what's shown. Every other record shows its value verbatim.
  */
-const valueDisplay = computed(() => {
+const valueDisplay = computed<string | null>(() => {
 	const { type, value, priority } = props.record;
+	if (value === null) return null;
 	return type === 'MX' && priority !== undefined ? `${priority} ${value}` : value;
 });
 
 const handleCopyValue = () => {
-	copy(valueDisplay.value, `${props.label}-value`);
+	const value = valueDisplay.value;
+	if (value !== null) copy(value, `${props.label}-value`);
 };
 
 const handleCopyFound = () => {
@@ -273,7 +282,17 @@ const diagnostic = computed(() => {
 			<!-- Value -->
 			<div>
 				<p class="text-xs text-text-tertiary mb-1">Value</p>
-				<div class="flex items-center gap-2">
+				<!-- No value yet: say so. Never render an empty DKIM p= as something
+				     copyable — that is a published revocation, not a placeholder. -->
+				<p
+					v-if="valueDisplay === null"
+					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
+					data-testid="dns-value-pending"
+				>
+					Value supplied once this subdomain is added — create the name first, then come back and
+					copy the key.
+				</p>
+				<div v-else class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
 						data-testid="dns-value"

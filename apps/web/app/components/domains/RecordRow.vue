@@ -434,6 +434,14 @@ const registrationSettled = computed(
 						</div>
 					</template>
 
+					<!-- Per-STREAM sending subdomains (G-14): the proposed layout, the
+					     reputation-inheritance advice and every record for it in one pass. -->
+					<DomainsStreamSubdomainPlanPanel
+						v-if="registrationSettled"
+						:domain-id="domain._id"
+						:can-manage="canManageDomains"
+					/>
+
 					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
 					     belongs here. Never enrolling is supported (D2); the panel owns its
 					     own divider so nothing renders when it has nothing to show. -->
