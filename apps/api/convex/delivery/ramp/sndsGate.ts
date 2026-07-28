@@ -350,10 +350,23 @@ export function evaluateSndsGate(
 			reason: `Microsoft's complaint band for at least one sending IP is ${signal.worstComplaintBand}, at or above ${thresholds.breachBand}.${caveat}`,
 		};
 	}
-	return {
-		verdict: 'pass',
-		reason: `Microsoft's worst complaint band over the last ${signal.windowDays} days is ${signal.worstComplaintBand}.${caveat}`,
-	};
+	const passSentence = `Microsoft's worst complaint band over the last ${signal.windowDays} days is ${signal.worstComplaintBand}.`;
+	if (!signal.attributed) {
+		// THE UP DIRECTION IS THE ONE THAT NEEDS ATTRIBUTION. `pass` is not a
+		// neutral verdict: `aggregateRampGates` grows `cleanStreak` on it, and D9
+		// increases the share after K_CLEAN clean windows — so a clean band from a
+		// neighbouring sender in the same registered range would buy us an increase
+		// we have no evidence for. Symmetric with the trap-hit branch above, and
+		// D10-correct: `insufficient_data` HOLDS — no increase, and no decrease
+		// either. The DOWN direction is untouched, because every breaching branch
+		// returns before this point whether or not the window is attributed.
+		return {
+			verdict: 'insufficient_data',
+			reason: `${passSentence}${caveat}`,
+			substitution: SNDS_ABSENT_SUBSTITUTION,
+		};
+	}
+	return { verdict: 'pass', reason: passSentence };
 }
 
 /**
@@ -378,6 +391,10 @@ export function sndsPromotionPass(
 	const { signal } = input;
 	// Unattributed evidence is stated separately from `confidence` on purpose:
 	// it is the one disqualifier that says "this band may be someone else's".
+	// `evaluateSndsGate` now refuses to answer `pass` on an unattributed window
+	// too, so this line is no longer the ONLY place the rule is enforced — it
+	// stays because promotion states its own preconditions rather than inferring
+	// them from another function's current implementation.
 	if (signal.confidence !== 'high' || signal.truncated || !signal.attributed) return false;
 	// `pass` already implies the trap count is within limit, the filter result is
 	// not red and the band is banded and strictly below the breach band — so

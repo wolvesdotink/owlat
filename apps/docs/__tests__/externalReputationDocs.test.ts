@@ -54,6 +54,14 @@ describe('external reputation provider guidance', () => {
 		expect(feedbackDoc).toMatch(/no request,\s+no row,\s+no error/i);
 		expect(feedbackDoc).toMatch(/SMTP reply\s+classification/i);
 	});
+
+	it('states that unattributed evidence can only slow the Microsoft ramp', () => {
+		// The asymmetry is the whole point of the attribution flag, so the page
+		// states both halves: an unattributed clean window HOLDS, and a breach in
+		// the same window still fails.
+		expect(feedbackDoc).toMatch(/\*holds\*\s+rather than passing/i);
+		expect(feedbackDoc).toMatch(/slowing the ramp and can never speed it up/i);
+	});
 });
 
 describe('DNSBL recovery runbooks', () => {

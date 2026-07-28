@@ -416,8 +416,50 @@ describe('getMicrosoftGateInput — attribution', () => {
 		expect(input.signal.attributed).toBe(false);
 		expect(input.signal.confidence).toBe('low');
 		expect(sndsPromotionPass(input)).toBe(false);
-		// The DOWN direction is untouched: a breach anywhere in the range still fails.
-		expect(evaluateSndsGate(input).verdict).toBe('pass');
+		// THE UP DIRECTION IS CLOSED. `pass` is the verdict `aggregateRampGates`
+		// grows `cleanStreak` on, and D9 increases the share after K_CLEAN clean
+		// windows — so a clean band that may belong to a neighbour in the same
+		// registered range must not be able to buy an increase. `insufficient_data`
+		// HOLDS: no increase, and no decrease either (D10).
+		const verdict = evaluateSndsGate(input);
+		expect(verdict.verdict).toBe('insufficient_data');
+		// The reason still names the band AND says why it is not ours (D12/D14).
+		expect(verdict.reason).toContain('registered range');
+		expect(verdict.reason).toContain('MTA_IP_POOLS');
+	});
+
+	it('still FAILS on an unattributed breach — only the up direction is closed', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
+		// No `MTA_IP_POOLS`: the window covers the whole registered range.
+		const now = NOW;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sndsIpDailyStats', {
+				ip: '198.51.100.7',
+				periodStart: Math.floor(now / DAY_MS) * DAY_MS - DAY_MS,
+				complaintBand: 'gte_0_9',
+				filterResult: 'red',
+				trapHits: 0,
+				messageRecipients: 100,
+				rcptCommands: 100,
+				dataCommands: 100,
+				fetchedAt: now,
+				ingestedAt: now,
+			});
+		});
+
+		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, { windowDays: 7 });
+		expect(input.available).toBe(true);
+		if (!input.available) return;
+		expect(input.signal.attributed).toBe(false);
+		// Evidence we cannot attribute is still enough to SLOW the ramp: a red
+		// filter result inside our own registered range is our problem to answer.
+		const verdict = evaluateSndsGate(input);
+		expect(verdict.verdict).toBe('fail');
+		if (verdict.verdict !== 'fail') return;
+		expect(verdict.gate).toBe('complaint');
+		expect(verdict.failedSignal).toBe('filter_result');
+		expect(verdict.reason).toContain('registered range');
 	});
 
 	it('still fails on a breach recorded against a declared address', async () => {
