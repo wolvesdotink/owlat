@@ -28,6 +28,8 @@ import type { DatabaseWriter } from '../../_generated/server';
 import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { summarizeTransportOutcomeBuckets } from '../../analytics/transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
+import { ENGAGEMENT_GATE_THRESHOLDS } from '../ramp/engagementConfig';
+import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
 import type { DeliverabilityDashboard } from '../deliverabilityDashboard';
 import { modules } from './testModules';
 
@@ -259,18 +261,90 @@ describe('getDeliverabilityDashboard — tenant isolation', () => {
 describe('getDeliverabilityDashboard — window composition', () => {
 	/**
 	 * The disjointness `dashboardWindow` guarantees is only worth anything if the
-	 * shell actually USES those two bounds. It must not re-derive a baseline from
-	 * its own offsets — that is exactly the drift that made the screen render a
-	 * slow-poison verdict the controller would never reach.
+	 * shell actually READS the baseline span, and reads it OUTSIDE the evaluation
+	 * window. Asserted end-to-end and by placement alone: the same two rows, with
+	 * the same counters, land in the baseline span in the first case and inside
+	 * the evaluation window in the second, and nothing else differs.
+	 *
+	 * The deployment is standalone on purpose. Gate 4's aggregator reports the
+	 * concurrent ratio unless the slow-poison FLOOR fails, so the floor — the one
+	 * comparison that consumes the baseline — is only observable at this boundary
+	 * when it fires. With no reference arm the ratio can only hold, which leaves
+	 * the floor free to be the verdict the screen shows.
 	 */
-	it('feeds the engagement gate the window’s own baseline bounds, not its own offsets', () => {
-		const source = readFileSync(
-			resolve(dirname(fileURLToPath(import.meta.url)), '../deliverabilityDashboard.ts'),
-			'utf8'
-		);
-		expect(source).toContain('input.window.baselineSinceDay');
-		expect(source).toContain('input.window.baselineUntilDay');
-		expect(source).not.toMatch(/BASELINE_(DAYS|GAP_DAYS)/);
+	const DAY = 24 * 60 * 60 * 1000;
+	/** Engaged, and large enough to be a denominator: 20% of a 1500-send slice. */
+	const BASELINE_CALIBRATION_SENT = ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample + 300;
+	const BASELINE_CALIBRATION_OPENED = 300;
+	/** Recent, above the recent floor, and engaging four times worse. */
+	const RECENT_CALIBRATION_SENT = RAMP_GATE_SAMPLE_FLOORS.engagementRecent + 100;
+	const RECENT_CALIBRATION_OPENED = 25;
+
+	function engagementGate(dashboard: DeliverabilityDashboard) {
+		const gate = gmailCell(dashboard).gates.find((entry) => entry.gate === 'engagement_ratio');
+		if (gate === undefined) throw new Error('engagement gate missing from the cell');
+		return gate;
+	}
+
+	/**
+	 * @param baselineDayOffset days before "tomorrow" the engaged slice sits at.
+	 *   20 puts it in the baseline span [-30d, -7d); 3 puts it inside the
+	 *   evaluation window [-7d, +1d).
+	 */
+	async function dashboardWithEngagedSliceAt(baselineDayOffset: number) {
+		const t = convexTest(schema, modules);
+		const tomorrow = startOfDayUtc(Date.now()) + DAY;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({
+					periodStart: tomorrow - baselineDayOffset * DAY,
+					sent: BASELINE_CALIBRATION_SENT,
+					delivered: BASELINE_CALIBRATION_SENT,
+					calibrationSent: BASELINE_CALIBRATION_SENT,
+					calibrationOpened: BASELINE_CALIBRATION_OPENED,
+				})
+			);
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({
+					periodStart: tomorrow - DAY,
+					shardKey: 1,
+					sent: RECENT_CALIBRATION_SENT,
+					delivered: RECENT_CALIBRATION_SENT,
+					calibrationSent: RECENT_CALIBRATION_SENT,
+					calibrationOpened: RECENT_CALIBRATION_OPENED,
+					// Fresh evidence: the recent arm is refused outright past 48h.
+					lastRecordedAt: Date.now() - 60 * 60 * 1000,
+				})
+			);
+		});
+		return await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {});
+	}
+
+	it('measures the recent window against the slice sitting in the baseline span', async () => {
+		const gate = engagementGate(await dashboardWithEngagedSliceAt(20));
+
+		// The slow-poison floor fired, which it can only do off the baseline.
+		expect(gate.status).toBe('fail');
+		expect(gate.reason).toBe('absolute_threshold_breached');
+		// And the numbers behind it are the baseline slice's, not the window's.
+		expect(gate.measurement.referenceSample).toBe(BASELINE_CALIBRATION_SENT);
+		expect(gate.measurement.referenceMinSample).toBe(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample);
+		expect(gate.measurement.ownSample).toBe(RECENT_CALIBRATION_SENT);
+	});
+
+	it('lets nothing inside the evaluation window act as its own baseline', async () => {
+		const dashboard = await dashboardWithEngagedSliceAt(3);
+		const gate = engagementGate(dashboard);
+
+		// Same rows, moved forward: the baseline span is now empty, so the floor
+		// has no denominator, holds, and the standalone ratio hold is reported.
+		expect(gate.status).toBe('insufficient_data');
+		expect(gate.measurement.referenceSample).toBeNull();
+		// Thin evidence is never a failure (D10) — and the engaged slice being
+		// inside the window cannot flatter the comparison either.
+		expect(gmailCell(dashboard).verdict).not.toBe('fail');
 	});
 });
 
