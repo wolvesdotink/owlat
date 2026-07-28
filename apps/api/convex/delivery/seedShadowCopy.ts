@@ -54,7 +54,7 @@ import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool } from './workpool';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
-import { loadSeedAccounts } from '../analytics/seedPlacement';
+import { loadSeedAccounts } from '../analytics/seedAccounts';
 import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 
 export type CampaignEnvelopeInput = Extract<WorkerEnvelopeInput, { kind: 'campaign' }>;

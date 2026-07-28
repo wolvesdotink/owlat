@@ -2,11 +2,8 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import {
-	loadSeedAccounts,
-	summarizeSeedPlacementWindow,
-	SEED_PLACEMENT_WINDOW_MS,
-} from '../seedPlacement';
+import { summarizeSeedPlacementWindow, SEED_PLACEMENT_WINDOW_MS } from '../seedPlacement';
+import { loadSeedAccounts } from '../seedAccounts';
 import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
 import { evaluateSeedPlacementGate } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';

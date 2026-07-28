@@ -24,7 +24,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { toPaginationCursor } from '../lib/paginationCursor';
-import { emitSeedRotationReminderFor } from './seedPlacement';
+import { emitSeedRotationReminderFor } from './seedAccounts';
 
 /**
  * Seed accounts examined per tick. Every deployment's whole seed set is a

@@ -62,6 +62,7 @@ import type * as analytics_qualityMetrics from "../analytics/qualityMetrics.js";
 import type * as analytics_reporter from "../analytics/reporter.js";
 import type * as analytics_reputationQueries from "../analytics/reputationQueries.js";
 import type * as analytics_reputationSnapshots from "../analytics/reputationSnapshots.js";
+import type * as analytics_seedAccounts from "../analytics/seedAccounts.js";
 import type * as analytics_seedPlacement from "../analytics/seedPlacement.js";
 import type * as analytics_seedProbeLedger from "../analytics/seedProbeLedger.js";
 import type * as analytics_seedProbePoller from "../analytics/seedProbePoller.js";
@@ -862,6 +863,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/reporter": typeof analytics_reporter;
   "analytics/reputationQueries": typeof analytics_reputationQueries;
   "analytics/reputationSnapshots": typeof analytics_reputationSnapshots;
+  "analytics/seedAccounts": typeof analytics_seedAccounts;
   "analytics/seedPlacement": typeof analytics_seedPlacement;
   "analytics/seedProbeLedger": typeof analytics_seedProbeLedger;
   "analytics/seedProbePoller": typeof analytics_seedProbePoller;

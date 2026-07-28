@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
-import { loadSeedAccounts, summarizeSeedPlacementWindow } from '../seedPlacement';
+import { summarizeSeedPlacementWindow } from '../seedPlacement';
+import { loadSeedAccounts } from '../seedAccounts';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from './testModules';
 import {

@@ -22,10 +22,10 @@
  * nothing errors, warns, or nags.
  *
  * WHAT THIS MODULE OWNS, AND WHAT IT HANDS ON. It owns the probe ledger, the
- * per-provider roll-up, gate 5's verdict, and the two operator-visible
- * artifacts the hygiene rule requires (the rotation reminder, written into
- * `auditLogs` and read back through the shipped `auditLogs.list` admin query,
- * and `getSeedPlacementSummary` for a screen to read). It does NOT own the CELL
+ * per-provider roll-up, gate 5's verdict, and `getSeedPlacementSummary` for a
+ * screen to read. The seed ACCOUNTS themselves — the projection and the
+ * rotation nudge — are the domain sibling `analytics/seedAccounts.ts`, and the
+ * two ledger sweeps are `analytics/seedProbeLedger.ts`. It does NOT own the CELL
  * DASHBOARD that renders the status or the confidence line beside it — that is
  * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
  * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
@@ -40,32 +40,18 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type DatabaseReader,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, internalQuery, type DatabaseReader } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	classifySeedFolder,
 	evaluateSeedPlacementGate,
 	planSeedHygiene,
-	SEED_ACCOUNTS_PER_ORG_LIMIT,
-	shouldRemindSeedRotation,
 	summarizeSeedPlacement,
 	type SeedGateResult,
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import {
-	seedAgeDays,
-	seedProviderOf,
-	takeConnectableSeedAccounts,
-	takeLiveSeedAccounts,
-} from '../mail/externalAccountShared';
-import { recordAuditLog } from '../lib/auditLog';
+import { loadSeedAccounts } from './seedAccounts';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -118,146 +104,6 @@ function clampRemoteFolderName(value: string): string {
 		if (sanitized.length >= SEED_FOLDER_NAME_MAX_LENGTH) break;
 	}
 	return sanitized.join('');
-}
-
-// ============ SEED ACCOUNTS ============
-
-/**
- * The seed mailboxes of an org. Projection is deliberate: no ciphertext, no
- * IV, no auth tag, no username, no host — a seed account's credentials never
- * leave the sealed envelope the mail-sync worker already owns.
- */
-export interface SeedAccountView {
-	accountId: Id<'externalMailAccounts'>;
-	provider: DestinationProviderKey;
-	address: string;
-	connectedAt: number;
-	rotationReminderDue: boolean;
-}
-
-function toSeedAccountView(
-	account: Doc<'externalMailAccounts'>,
-	address: string,
-	now: number
-): SeedAccountView {
-	return {
-		accountId: account._id,
-		provider: seedProviderOf(account),
-		address,
-		connectedAt: account.createdAt,
-		rotationReminderDue: shouldRemindSeedRotation({
-			connectedAt: account.createdAt,
-			lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
-			now,
-		}),
-	};
-}
-
-/**
- * The org's seed mailboxes, projected.
- *
- * `reach: 'live'` is every seed the operator still owns — the honest
- * denominator for the roll-up and for the connect cap, `auth_error` seeds
- * included. `reach: 'connectable'` is the strictly smaller set the POLLER will
- * walk, and it is the only set anything is allowed to MAIL: a shadow copy to a
- * seed whose credentials expired is real volume against the warming cap that
- * can never be observed, plus a ledger row that sits unclassified for the whole
- * retention window.
- */
-export async function loadSeedAccounts(
-	db: DatabaseReader,
-	organizationId: string,
-	now: number,
-	reach: 'live' | 'connectable' = 'live'
-): Promise<SeedAccountView[]> {
-	// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
-	// (limit+1)th LIVE seed at CONNECT time and this read selects through the
-	// same index, so the page can only ever be short of the cap. A seed the
-	// operator connected is always measured.
-	const rows =
-		reach === 'connectable'
-			? await takeConnectableSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT)
-			: await takeLiveSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT);
-	const views: SeedAccountView[] = [];
-	for (const row of rows) {
-		// `imapUsername` is the LOGIN, which for several providers is not an email
-		// address at all. The deliverable address is the linked mailbox's.
-		const mailbox = await db.get(row.mailboxId);
-		if (!mailbox) continue;
-		views.push(toSeedAccountView(row, mailbox.address, now));
-	}
-	return views;
-}
-
-/**
- * EMIT the "rotate this seed" nudge into a log a human actually reads.
- *
- * THREE earlier shapes were wrong, and the fix has to hold all three properties
- * at once. The first had the sweep clear a reminder flag and deliver nothing.
- * The second delivered into `mailAuditLog` — a table with no reader anywhere in
- * the product except the retention sweep that deletes from it — and then
- * stamped the flag the roll-up derives due-ness from, so within one 15-minute
- * tick of `rotationRemindersDue` ever becoming non-zero it was back to zero for
- * another 90 days. The third made the artifact readable and durable but left
- * the CALL coupled to IMAP probe work, so the nudge could only be offered to a
- * seed that happened to have an outstanding probe at that instant: a 90-day-old
- * seed on a deployment between campaigns, or one sitting in `auth_error` — the
- * seed most in need of rotating — never produced one.
- *
- * So, in order: the artifact goes through `recordAuditLog` into `auditLogs`,
- * which `auditLogs.list` surfaces org-scoped to admins — a query the product
- * really exposes. Due-ness runs off `seedRotationAcknowledgedAt`, which ONLY an
- * operator writes (`mail/externalAccountsSeed.acknowledgeSeedRotation`);
- * `seedRotationRemindedAt` survives purely as this function's de-duplication
- * stamp, so a repeated sweep cannot write one audit row per tick and cannot
- * silence the nudge either. And the caller is `analytics/seedRotationSweep.ts`,
- * a Convex cron that pages every seed account regardless of status and needs no
- * mailbox, no credential and no worker: rotation is a pure timestamp decision.
- *
- * A plain function rather than a mutation because its one caller is a mutation
- * in the same deployment; there is no worker on the other side of the boundary
- * any more, so an org argument to re-check would be an argument nobody supplies.
- *
- * D2: advisory only. It never blocks a send, a promotion, or a screen, and it
- * is not a "setup incomplete" nag — a seed that is never rotated keeps being
- * measured, it just measures less well.
- */
-export async function emitSeedRotationReminderFor(
-	ctx: MutationCtx,
-	account: Doc<'externalMailAccounts'>,
-	now: number
-): Promise<boolean> {
-	if (account.purpose !== 'seed') return false;
-	const due = shouldRemindSeedRotation({
-		connectedAt: account.createdAt,
-		lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
-		now,
-	});
-	if (!due) return false;
-	// One row per un-acknowledged cycle, not one per sweep tick. A stamp older
-	// than the acknowledgement it follows belongs to a previous cycle.
-	const cycleStart = account.seedRotationAcknowledgedAt ?? account.createdAt;
-	const remindedAt = account.seedRotationRemindedAt;
-	if (remindedAt !== undefined && remindedAt >= cycleStart) return false;
-
-	// Provider + age only. No address, no credential, no mailbox contents.
-	await recordAuditLog(ctx, {
-		userId: 'system',
-		organizationId: account.organizationId,
-		action: 'seed_mailbox.rotation_reminder',
-		resource: 'seed_mailbox',
-		resourceId: account._id,
-		details: {
-			provider: seedProviderOf(account),
-			ageDays: seedAgeDays(account.createdAt, now),
-		},
-	});
-	// De-duplication only: this stamp does NOT feed `shouldRemindSeedRotation`.
-	await ctx.db.patch(account._id, {
-		seedRotationRemindedAt: now,
-		updatedAt: now,
-	});
-	return true;
 }
 
 // ============ THE TENANT BOUNDARY, ONCE ============

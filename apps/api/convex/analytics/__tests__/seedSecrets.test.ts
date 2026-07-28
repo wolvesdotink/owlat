@@ -1,7 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, afterAll } from 'vitest';
 import schema from '../../schema';
-import { loadSeedAccounts } from '../seedPlacement';
+import { loadSeedAccounts } from '../seedAccounts';
 import {
 	isSeedProbeId,
 	SEED_PROBE_HEADER,

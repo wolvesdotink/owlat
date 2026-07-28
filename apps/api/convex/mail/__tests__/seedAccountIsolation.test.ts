@@ -29,7 +29,7 @@ import { loadAccessibleMailboxes } from '../permissions';
 import { getActiveMailboxForUser } from '../mailbox';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 import type { DatabaseWriter } from '../../_generated/server';
-import { loadSeedAccounts } from '../../analytics/seedPlacement';
+import { loadSeedAccounts } from '../../analytics/seedAccounts';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'admin-user',
