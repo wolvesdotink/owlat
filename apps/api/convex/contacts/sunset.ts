@@ -12,16 +12,11 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
-import {
-	loadSunsetCorroboratingInstant,
-	loadSunsetPolicyRows,
-	toSunsetOverride,
-} from './sunsetEngine';
+import { globalSunsetPolicyRow, loadSunsetPolicyRows, toSunsetOverride } from './sunsetEngine';
 import { restoreSunsetSuppression, setSunsetExemption } from './sunsetRestore';
 import {
 	SUNSET_MIN_WINDOW_DAYS,
 	SUNSET_POLICY_DEFAULTS,
-	isClockCorroborated,
 	resolveSunsetPolicy,
 } from './sunsetPolicy';
 
@@ -52,6 +47,12 @@ export const getSunsetPolicies = authedQuery({
 		 * is not corroborated, and when an operator last confirmed the clock. This
 		 * is the only place the stall is visible to a person: without it the engine
 		 * is silently off and the audit trail is the only clue.
+		 *
+		 * `isSweepStalled` is READ BACK, not recomputed: the sweep stores the fact
+		 * on the deployment-wide row when it starts refusing and clears it when it
+		 * resumes. A `Date.now()` comparison here would be a comparison against a
+		 * clock a reactive query has no subscription to, so a stall that develops
+		 * purely by the passage of time would never reach an already-open page.
 		 */
 		clock: v.object({
 			isSweepStalled: v.boolean(),
@@ -65,13 +66,9 @@ export const getSunsetPolicies = authedQuery({
 			'Only owners and admins can view the sunset policy'
 		);
 		const rows = await loadSunsetPolicyRows(ctx);
-		const globalRow = rows.find((row) => row.topicId === undefined);
+		const globalRow = globalSunsetPolicyRow(rows);
 		const globalOverride = toSunsetOverride(globalRow);
 		const global = resolveSunsetPolicy({ globalOverride });
-
-		// The SAME derivation the sweep judges its clock by (`sunsetEngine.ts`), so
-		// this screen and the engine cannot disagree about whether it is running.
-		const corroboratingInstant = await loadSunsetCorroboratingInstant(ctx, rows);
 
 		const topics = await ctx.db.query('topics').collect(); // bounded: content categories
 		const byTopic = new Map<string, (typeof rows)[number]>();
@@ -91,7 +88,7 @@ export const getSunsetPolicies = authedQuery({
 				}),
 			})),
 			clock: {
-				isSweepStalled: !isClockCorroborated(Date.now(), corroboratingInstant),
+				isSweepStalled: globalRow?.clockStalledAt !== undefined,
 				verifiedAt: globalRow?.clockVerifiedAt ?? null,
 			},
 		};
@@ -103,7 +100,8 @@ export const getSunsetPolicies = authedQuery({
  * stalled sweep.
  *
  * The sweep refuses to run when `Date.now()` is not corroborated by the
- * freshest evaluation stamp, AND the sweep is the only writer of those stamps.
+ * heartbeat an earlier tick stamped, AND the sweep is the only writer of that
+ * heartbeat.
  * A deployment that was paused (or restored from a backup) for longer than the
  * tolerance therefore cannot recover on its own — the guard would hold forever
  * and a feature that ships ON would be silently off. This mutation is the way
@@ -132,7 +130,14 @@ export const confirmSunsetClock = authedMutation({
 			.withIndex('by_topic', (q) => q.eq('topicId', undefined))
 			.first();
 		if (existing) {
-			await ctx.db.patch(existing._id, { clockVerifiedAt: now, updatedAt: now });
+			await ctx.db.patch(existing._id, {
+				clockVerifiedAt: now,
+				// The operator has just answered the only question the stall was
+				// waiting on, so the banner clears immediately rather than at the next
+				// tick. Patching an optional field to `undefined` clears it in Convex.
+				...(existing.clockStalledAt !== undefined ? { clockStalledAt: undefined } : {}),
+				updatedAt: now,
+			});
 		} else {
 			await ctx.db.insert('sunsetPolicies', {
 				clockVerifiedAt: now,

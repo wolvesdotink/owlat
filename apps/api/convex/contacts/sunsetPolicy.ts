@@ -130,8 +130,9 @@ export function isClockCorroborated(
 /**
  * The LATER of two optional readings of time, ignoring absent and non-finite
  * ones. PURE, and shared so the sweep and the operator surface cannot disagree
- * about which corroboration source is current: the freshest evaluation stamp
- * and the operator's re-arm stamp are both evidence, and the newest wins.
+ * about which corroboration source is current: the sweep's own heartbeat
+ * (`sunsetPolicies.lastSweepAt`) and the operator's re-arm stamp
+ * (`clockVerifiedAt`) are both evidence, and the newest wins.
  */
 export function latestSunsetInstant(
 	a: number | undefined,
@@ -200,9 +201,9 @@ export type SunsetClock = {
 	now: number;
 	/**
 	 * A SECOND, INDEPENDENT READING OF TIME: the newest instant this deployment
-	 * is known to have written before this evaluation (the sweep passes the
-	 * freshest `contacts.sunsetEvaluatedAt` stamp in the table, which a previous
-	 * tick wrote under a previous reading of the clock).
+	 * is known to have written before this evaluation (the sweep passes
+	 * `sunsetPolicies.lastSweepAt`, the heartbeat a previous tick stamped under a
+	 * previous reading of the clock).
 	 *
 	 * It is what lets `evaluateSunset` reject a `now` that is merely plausible
 	 * rather than merely malformed. Absent means "no second reading available"

@@ -16,15 +16,17 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { logWarn } from '../lib/runtimeLog';
 import {
 	evaluateAndApplySunset,
-	loadSunsetCorroboratingInstant,
+	globalSunsetPolicyRow,
+	sunsetCorroboratingInstant,
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
+	type SunsetPolicyRow,
 } from './sunsetEngine';
 import { isClockCorroborated, MS_PER_DAY, type SunsetClock } from './sunsetPolicy';
 
@@ -107,6 +109,55 @@ function clampArg(options: {
  */
 const SUNSET_STALL_REPORT_INTERVAL_MS = MS_PER_DAY;
 
+/**
+ * Record what this tick learned about the clock on the ONE deployment-wide
+ * `sunsetPolicies` row: the heartbeat a later tick corroborates its `Date.now()`
+ * against, and whether the sweep is currently refusing to run.
+ *
+ * TWO PROPERTIES MAKE THIS SAFE TO CALL EVERY TICK. It writes at most once an
+ * hour (only the head of a chain calls it), and it writes NOTHING when the state
+ * is unchanged and there is no heartbeat to advance — so the operator query that
+ * subscribes to this table is invalidated by the sweep at most hourly, instead
+ * of once per contact the sweep re-stamps.
+ *
+ * The row is created on demand: an install that never tuned a policy has no row
+ * at all, and an all-`undefined` override row resolves to exactly the shipped
+ * defaults, so materialising it changes no policy.
+ */
+async function recordSweepClockState(
+	ctx: MutationCtx,
+	args: { policyRows: readonly SunsetPolicyRow[]; now: number; isStalled: boolean }
+): Promise<void> {
+	const existing = globalSunsetPolicyRow(args.policyRows);
+	if (existing === undefined) {
+		await ctx.db.insert('sunsetPolicies', {
+			...(args.isStalled ? { clockStalledAt: args.now } : { lastSweepAt: args.now }),
+			createdAt: args.now,
+			updatedAt: args.now,
+		});
+		return;
+	}
+
+	if (args.isStalled) {
+		// STAMP THE TRANSITION ONLY. A stall is cleared by a person, so re-stamping
+		// it hourly would turn a permanent condition into a permanent write source
+		// — and would move the instant, making "since when" unanswerable. The
+		// heartbeat is deliberately left where it was: it is the reading this tick
+		// just failed to corroborate against, and overwriting it would erase the
+		// evidence of the skew.
+		if (existing.clockStalledAt !== undefined) return;
+		await ctx.db.patch(existing._id, { clockStalledAt: args.now, updatedAt: args.now });
+		return;
+	}
+
+	await ctx.db.patch(existing._id, {
+		lastSweepAt: args.now,
+		// Patching an optional field to `undefined` is how Convex clears it.
+		...(existing.clockStalledAt !== undefined ? { clockStalledAt: undefined } : {}),
+		updatedAt: args.now,
+	});
+}
+
 // ─── The sweep ──────────────────────────────────────────────────────────────
 
 /**
@@ -186,12 +237,11 @@ export const sweepSunsetPolicy = internalMutation({
 			max: SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 		});
 
-		// THE SECOND READING OF TIME (see `SunsetClock`): the freshest evaluation
-		// stamp in the table, written by an earlier tick under an earlier reading
-		// of the clock. Derived by `loadSunsetCorroboratingInstant` — the SAME
+		// THE SECOND READING OF TIME (see `SunsetClock`): the heartbeat the last
+		// PASSING tick stamped on the deployment-wide policy row, i.e. an earlier
+		// reading of this clock. Derived by `sunsetCorroboratingInstant` — the SAME
 		// derivation `getSunsetPolicies` reports the stall from, so the screen and
-		// the engine cannot disagree. Same index, opposite end, one row, and only
-		// at the head of the chain. Absent on a deployment that has never swept,
+		// the engine cannot disagree. Absent on a deployment that has never swept,
 		// which is exactly the case the blast-radius ceiling covers instead.
 		//
 		// THE OPERATOR'S RE-ARM STAMP IS A SECOND SOURCE, and it is what stops this
@@ -202,8 +252,13 @@ export const sweepSunsetPolicy = internalMutation({
 		// (contacts/sunset.ts) lets an operator who has checked the clock record
 		// that fact; the LATER of the two readings is what `now` is judged against.
 		const policyRows = await loadSunsetPolicyRows(ctx);
+		// ONLY THE HEAD OF THE CHAIN reads and writes the clock state. Later batches
+		// carry the head's reading in `corroboratingInstant`, so they neither
+		// re-derive it (which would now see the head's own heartbeat and trivially
+		// corroborate itself) nor re-stamp the shared row once per batch.
+		const isHeadOfChain = args.corroboratingInstant === undefined;
 		const corroboratingInstant =
-			args.corroboratingInstant ?? (await loadSunsetCorroboratingInstant(ctx, policyRows));
+			args.corroboratingInstant ?? sunsetCorroboratingInstant(policyRows);
 		const clock: SunsetClock = {
 			now,
 			...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
@@ -220,6 +275,12 @@ export const sweepSunsetPolicy = internalMutation({
 		// corroboration source stays uncontaminated and every later tick
 		// re-detects the same skew until an operator fixes the clock.
 		if (!isClockCorroborated(now, corroboratingInstant)) {
+			// Make the refusal a STORED FACT so the operator query can read it back
+			// instead of recomputing it against a clock it has no subscription to.
+			if (isHeadOfChain) {
+				await recordSweepClockState(ctx, { policyRows, now, isStalled: true });
+			}
+
 			// A PERMANENT CONDITION MUST BE A BOUNDED WRITE PATH. The stall can only
 			// be cleared by a person, and the cron runs hourly, so reporting it every
 			// tick would write the identical row 24 times a day forever and drown the
@@ -279,6 +340,15 @@ export const sweepSunsetPolicy = internalMutation({
 				isSuppressionCeilingHit: false,
 				isClockSkewed: true,
 			};
+		}
+
+		// THE HEARTBEAT IS STAMPED BEFORE ANY CONTACT IS TOUCHED, because it records
+		// that this tick's reading of the clock was corroborated — not how much
+		// work followed. A tick that finds nothing stale still proves the clock is
+		// sane, and must still advance the reading later ticks judge themselves
+		// against, or a quiet deployment would stall itself after the tolerance.
+		if (isHeadOfChain) {
+			await recordSweepClockState(ctx, { policyRows, now, isStalled: false });
 		}
 
 		const candidates = await ctx.db

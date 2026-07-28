@@ -149,6 +149,13 @@ export async function loadSunsetPolicyRows(
 	return await ctx.db.query('sunsetPolicies').collect(); // bounded: one row per topic + one global
 }
 
+/** The deployment-wide row (`topicId` omitted), if this install ever wrote one. */
+export function globalSunsetPolicyRow(
+	policyRows: readonly SunsetPolicyRow[]
+): SunsetPolicyRow | undefined {
+	return policyRows.find((row) => row.topicId === undefined);
+}
+
 /**
  * THE SECOND READING OF TIME, derived in ONE place.
  *
@@ -159,25 +166,25 @@ export async function loadSunsetPolicyRows(
  * either answer alone, so the corroboration sources are folded here and nowhere
  * else.
  *
- * The sources are the freshest evaluation stamp this deployment wrote (newest
- * first on `by_sunset_evaluated_at`) and the operator's explicit re-arm
- * (`sunsetPolicies.clockVerifiedAt` on the global row); the LATER of the two
- * wins. `undefined` means "no second reading available" — a deployment that has
- * never swept — which holds nobody.
+ * BOTH SOURCES LIVE ON THE ONE DEPLOYMENT-WIDE ROW: the heartbeat the last
+ * passing tick stamped (`lastSweepAt`) and the operator's explicit re-arm
+ * (`clockVerifiedAt`); the LATER of the two wins. That is the whole point of
+ * `lastSweepAt` existing — the earlier version of this function read the newest
+ * `contacts.by_sunset_evaluated_at` row instead, which put the hot contacts
+ * index in the read set of a reactive operator query that the sweep invalidates
+ * a thousand rows at a time.
+ *
+ * `undefined` means "no second reading available" — a deployment that has never
+ * swept — which holds nobody. A deployment upgrading ACROSS this change is that
+ * case for exactly one tick: it has evaluation stamps but no heartbeat yet, so
+ * the first tick after the upgrade runs unguarded (bounded, as ever, by the
+ * per-tick suppression ceiling) and stamps the heartbeat for every tick after.
  */
-export async function loadSunsetCorroboratingInstant(
-	ctx: QueryCtx | MutationCtx,
+export function sunsetCorroboratingInstant(
 	policyRows: readonly SunsetPolicyRow[]
-): Promise<number | undefined> {
-	const newestEvaluated = await ctx.db
-		.query('contacts')
-		.withIndex('by_sunset_evaluated_at')
-		.order('desc')
-		.first();
-	return latestSunsetInstant(
-		newestEvaluated?.sunsetEvaluatedAt,
-		policyRows.find((row) => row.topicId === undefined)?.clockVerifiedAt
-	);
+): number | undefined {
+	const globalRow = globalSunsetPolicyRow(policyRows);
+	return latestSunsetInstant(globalRow?.lastSweepAt, globalRow?.clockVerifiedAt);
 }
 
 /**

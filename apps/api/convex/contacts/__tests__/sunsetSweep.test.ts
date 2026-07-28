@@ -421,11 +421,12 @@ describe('sunset sweep — the per-tick suppression ceiling', () => {
  *
  * The engine's corroboration guard was previously asserted only against
  * `evaluateSunset` with a hand-supplied second reading of time. That is not
- * where it has to hold: the sweep DERIVES that second reading from the freshest
- * `sunsetEvaluatedAt` in the table and also WRITES that field, so a guard that
- * runs after the write protects exactly one tick and is inert from the second
- * one onwards. These fixtures run consecutive ticks under a clock that
- * disagrees with every stored stamp and assert the LAST tick is still inert.
+ * where it has to hold: the sweep DERIVES that second reading from the
+ * heartbeat it stamped on an earlier tick (`sunsetPolicies.lastSweepAt`) and is
+ * also the only writer of it, so a guard that ran after the write would protect
+ * exactly one tick and be inert from the second one onwards. These fixtures run
+ * consecutive ticks under a clock that disagrees with the stored heartbeat and
+ * assert the LAST tick is still inert.
  */
 describe('sunset sweep — a host clock that disagrees with the stored stamps', () => {
 	/**
@@ -435,6 +436,13 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 	 */
 	async function seedSkewedBook(t: Harness, count: number): Promise<void> {
 		await t.run(async (ctx) => {
+			// The corroboration source: a heartbeat an "earlier tick" stamped so far
+			// in the past that `now` cannot be reconciled with it.
+			await ctx.db.insert('sunsetPolicies', {
+				lastSweepAt: agoReal(365),
+				createdAt: agoReal(365),
+				updatedAt: agoReal(365),
+			});
 			for (let i = 0; i < count; i += 1) {
 				const id = await ctx.db.insert(
 					'contacts',
@@ -460,10 +468,17 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 			return rows.map((row) => row.sunsetEvaluatedAt);
 		});
 
+	const readHeartbeat = async (t: Harness): Promise<number | undefined> =>
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('sunsetPolicies').collect();
+			return rows.find((row) => row.topicId === undefined)?.lastSweepAt;
+		});
+
 	it('is inert on the SECOND and every later tick, not just the first', async () => {
 		const t = harness();
 		await seedSkewedBook(t, 4);
 		const before = await readStamps(t);
+		const heartbeatBefore = await readHeartbeat(t);
 
 		for (let tick = 0; tick < 3; tick += 1) {
 			const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
@@ -484,10 +499,60 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 			expect(rows.filter((row) => row.sunsetStage === 'reengagement')).toHaveLength(0);
 		});
 
-		// …and the reason it stays inert: the freshness stamp — which IS the
+		// …and the reason it stays inert: the heartbeat — which IS the
 		// corroboration source — was never advanced, so every later tick
 		// re-detects the same disagreement instead of believing its own writes.
+		// The per-contact freshness stamps are untouched too: nothing was written.
+		expect(await readHeartbeat(t)).toBe(heartbeatBefore);
 		expect(await readStamps(t)).toEqual(before);
+	});
+
+	/**
+	 * THE STALL IS A STORED FACT, not a `Date.now()` comparison recomputed inside
+	 * the operator query. A reactive query has no subscription to the clock, so a
+	 * stall that develops purely by the passage of time would never reach an
+	 * already-open page unless the sweep RECORDS the refusal.
+	 */
+	it('records the refusal on the deployment-wide row, once, and clears it on recovery', async () => {
+		const t = harness();
+		await seedSkewedBook(t, 2);
+
+		const readStall = async (): Promise<number | undefined> =>
+			await t.run(async (ctx) => {
+				const rows = await ctx.db.query('sunsetPolicies').collect();
+				return rows.find((row) => row.topicId === undefined)?.clockStalledAt;
+			});
+
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		const firstStalledAt = await readStall();
+		expect(typeof firstStalledAt).toBe('number');
+
+		// A permanent condition must not be a permanent write source: later ticks
+		// leave the instant exactly where the first one put it, so "since when" is
+		// answerable and the operator query is not invalidated hourly.
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		expect(await readStall()).toBe(firstStalledAt);
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('sunsetPolicies').collect();
+			const globalRow = rows.find((row) => row.topicId === undefined);
+			if (!globalRow) throw new Error('fixture policy row missing');
+			await ctx.db.patch(globalRow._id, { clockVerifiedAt: Date.now() });
+		});
+
+		const resumed = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		expect(resumed.isClockSkewed).toBe(false);
+		expect(await readStall()).toBeUndefined();
+		expect(typeof (await readHeartbeat(t))).toBe('number');
 	});
 
 	it('does not chain, and burns no batch budget, while the clock is wrong', async () => {
@@ -524,7 +589,7 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 		expect(String(summary?.details?.['message'])).toMatch(/clock/i);
 	});
 
-	it('resumes normally once the stored stamps agree with the clock again', async () => {
+	it('resumes normally once the stored heartbeat agrees with the clock again', async () => {
 		const t = harness();
 		await seedSkewedBook(t, 2);
 
@@ -534,12 +599,18 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 		});
 		expect(skewed.isClockSkewed).toBe(true);
 
-		// The operator fixes the clock: the stamps are now plausibly recent
-		// relative to `now`, while still stale enough to be re-evaluated.
+		// The clock comes back: the stored heartbeat is now plausibly recent
+		// relative to `now`, and the contacts are still stale enough to re-evaluate.
 		await t.run(async (ctx) => {
-			const rows = await ctx.db.query('contacts').collect();
-			for (const row of rows) {
-				await ctx.db.patch(row._id, { sunsetEvaluatedAt: Date.now() - SUNSET_STALE_MS - 1000 });
+			const rows = await ctx.db.query('sunsetPolicies').collect();
+			const globalRow = rows.find((row) => row.topicId === undefined);
+			if (!globalRow) throw new Error('fixture policy row missing');
+			await ctx.db.patch(globalRow._id, { lastSweepAt: Date.now() - SUNSET_STALE_MS - 1000 });
+			const contacts = await ctx.db.query('contacts').collect();
+			for (const contact of contacts) {
+				await ctx.db.patch(contact._id, {
+					sunsetEvaluatedAt: Date.now() - SUNSET_STALE_MS - 1000,
+				});
 			}
 		});
 
@@ -577,8 +648,8 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 	});
 
 	/**
-	 * AND THE STALL MUST BE CLEARABLE. The sweep is the ONLY writer of the stamps
-	 * it corroborates against, so a deployment paused past the tolerance can
+	 * AND THE STALL MUST BE CLEARABLE. The sweep is the ONLY writer of the
+	 * heartbeat it corroborates against, so a deployment paused past the tolerance can
 	 * never recover on its own — without an operator re-arm the engine would be
 	 * permanently and silently off.
 	 */
@@ -593,13 +664,13 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 		expect(stalled.isClockSkewed).toBe(true);
 
 		// The operator vouches for the clock — the only thing that changes is one
-		// stamp on the deployment-wide policy row.
+		// stamp on the deployment-wide policy row. The heartbeat is deliberately
+		// left where the skew found it.
 		await t.run(async (ctx) => {
-			await ctx.db.insert('sunsetPolicies', {
-				clockVerifiedAt: Date.now(),
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
-			});
+			const rows = await ctx.db.query('sunsetPolicies').collect();
+			const globalRow = rows.find((row) => row.topicId === undefined);
+			if (!globalRow) throw new Error('fixture policy row missing');
+			await ctx.db.patch(globalRow._id, { clockVerifiedAt: Date.now() });
 		});
 
 		const resumed = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {

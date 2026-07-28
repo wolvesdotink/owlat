@@ -284,14 +284,36 @@ export const contactTables = {
 		// THE OPERATOR'S RE-ARM STAMP, on the deployment-wide row only.
 		//
 		// The sweep refuses to run when `Date.now()` is not corroborated by the
-		// freshest evaluation stamp it wrote earlier — and the sweep is the only
-		// writer of those stamps, so a deployment that sat paused for longer than
-		// the tolerance can never refresh them on its own: the guard would latch
+		// heartbeat it stamped on an earlier tick (`lastSweepAt` below) — and the
+		// sweep is the only writer of that heartbeat, so a deployment that sat
+		// paused for longer than the tolerance can never refresh it on its own:
+		// the guard would latch
 		// on forever. This field is the way out. An operator who has checked the
 		// clock records that fact, and the sweep treats this instant as a second
 		// corroboration source, so the next tick runs and starts writing fresh
 		// stamps again. Absent on every deployment that never stalled.
 		clockVerifiedAt: v.optional(v.number()),
+		// THE SWEEP'S OWN HEARTBEAT, on the deployment-wide row only.
+		//
+		// `Date.now()` cannot check itself, so the sweep judges it against an
+		// instant an EARLIER tick recorded. This is that instant: the head of every
+		// tick that passed the clock check stamps it, so it is one write an hour on
+		// one row. It deliberately does NOT live on the contacts it evaluated —
+		// deriving it from the newest `contacts.by_sunset_evaluated_at` row instead
+		// would drag the hot contacts index into the read set of the operator query
+		// that reports the stall, and the sweep re-stamps up to a full tick's worth
+		// of contacts every hour, so an open dashboard would re-run that query
+		// roughly a thousand times an hour to render a banner a healthy deployment
+		// never shows.
+		lastSweepAt: v.optional(v.number()),
+		// PRESENCE MEANS "the sweep is currently refusing to run". Set by the first
+		// tick that aborts on an uncorroborated clock, cleared by the first tick
+		// that passes — so the stall is a STORED FACT the operator query reads back
+		// directly, rather than a `Date.now()` comparison recomputed inside a
+		// reactive query (which, having no time input, would never re-evaluate on
+		// an already-open page). Writes only on the transition, so a permanently
+		// stalled deployment is not a permanent write source.
+		clockStalledAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_topic', ['topicId']),

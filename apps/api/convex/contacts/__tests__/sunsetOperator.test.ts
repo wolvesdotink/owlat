@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { requireOrgPermission } from '../../lib/sessionOrganization';
@@ -742,14 +742,27 @@ describe('confirmSunsetClock', () => {
 
 	it('reports the stall, and its clearing, on the policy query', async () => {
 		const t = harness();
+		// A heartbeat far older than the clock tolerance: the sweep aborts and
+		// RECORDS the refusal, which is what the query reads back.
 		await t.run(async (ctx) => {
 			const id = await ctx.db.insert(
 				'contacts',
 				createTestContact({ email: 'stalled@example.com', createdAt: daysAgo(900) })
 			);
-			// A stamp far older than the clock tolerance: the sweep is stalled.
 			await ctx.db.patch(id, { sunsetEvaluatedAt: Date.now() - 365 * 86_400_000 });
+			await ctx.db.insert('sunsetPolicies', {
+				lastSweepAt: Date.now() - 365 * 86_400_000,
+				createdAt: Date.now() - 365 * 86_400_000,
+				updatedAt: Date.now() - 365 * 86_400_000,
+			});
 		});
+
+		const healthy = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
+		// NOT YET: the stall is a fact the sweep records, not one the query infers.
+		expect(healthy.clock.isSweepStalled).toBe(false);
+
+		const tick = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {});
+		expect(tick.isClockSkewed).toBe(true);
 
 		const stalled = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
 		expect(stalled.clock.isSweepStalled).toBe(true);
@@ -757,8 +770,33 @@ describe('confirmSunsetClock', () => {
 
 		await t.withIdentity(identity).mutation(api.contacts.sunset.confirmSunsetClock, {});
 
+		// The operator's re-arm clears the banner immediately — it does not wait
+		// for the next hourly tick to notice.
 		const cleared = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
 		expect(cleared.clock.isSweepStalled).toBe(false);
 		expect(typeof cleared.clock.verifiedAt).toBe('number');
+	});
+
+	/**
+	 * THE REACTIVE READ SET IS PART OF THE CONTRACT. `getSunsetPolicies` is what
+	 * an open dashboard subscribes to; the hourly sweep re-stamps up to
+	 * `SUNSET_CONTACTS_PER_TICK` contact rows, so if this query read the contacts
+	 * index it would re-run roughly a thousand times an hour to render a banner a
+	 * healthy deployment never shows.
+	 */
+	it('does not read the contacts table to report the clock', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'noisy@example.com', createdAt: daysAgo(900) })
+			);
+			// The stamp the OLD derivation would have corroborated against. It must
+			// no longer reach the answer at all.
+			await ctx.db.patch(id, { sunsetEvaluatedAt: Date.now() - 365 * 86_400_000 });
+		});
+
+		const result = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
+		expect(result.clock.isSweepStalled).toBe(false);
 	});
 });
