@@ -38,8 +38,17 @@ export interface IndependenceDayPoint {
 	readonly reference: number;
 }
 
-/** A day is only usable if both counters are finite and non-negative. */
-function isUsablePoint(point: IndependenceDayPoint): boolean {
+/**
+ * A day is only usable if both counters are finite and non-negative.
+ *
+ * EXPORTED SO THE CHART CANNOT DISAGREE WITH THE HEADLINE. The screen filters
+ * the same series before drawing it and before summing its own caption; a local
+ * copy that accepted, say, a negative counter would draw a band below the
+ * baseline and quote a total the server's `independenceShare` had already
+ * dropped — a page and a server disagreeing about one number, which is the
+ * failure this module's header is about.
+ */
+export function isUsablePoint(point: IndependenceDayPoint): boolean {
 	return (
 		Number.isFinite(point.day) &&
 		Number.isFinite(point.own) &&
@@ -266,6 +275,9 @@ export interface RampPresetTuning {
 }
 
 export const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
+	// `conservative` IS the plan's standalone substitution, not a coincidence
+	// that happens to match it: step halved, K_CLEAN +2 (3 -> 5). Applying that
+	// substitution anywhere else as well would compound it to x0.25 / K_CLEAN 7.
 	conservative: { increaseStepScale: 0.5, extraCleanWindows: 2 },
 	balanced: { increaseStepScale: 1, extraCleanWindows: 0 },
 	aggressive: { increaseStepScale: 1.5, extraCleanWindows: 0 },
@@ -278,6 +290,16 @@ export const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
  * timidity: with no reference arm the engagement gate is a genuinely weak
  * signal, so the honest response to weaker evidence is to advance more slowly —
  * not to advance at the same pace and hope.
+ *
+ * THIS IS THE PLAN'S STANDALONE SUBSTITUTION, AND ITS ONLY APPLICATION. The
+ * substitution the plan describes — K_CLEAN 3 -> 5, step halved with no
+ * reference transport — is precisely `RAMP_PRESET_TUNING.conservative`, so it is
+ * delivered here rather than a second time inside the gate table. The resulting
+ * standalone constants are fixture-pinned (K_CLEAN 5; campaign and automation
+ * step 2.5pp; transactional step 1.5pp) so they cannot drift silently.
+ *
+ * A deployment WITH a relay defaults to `balanced`, which is the identity
+ * tuning: it runs `RAMP_STREAM_CONFIGS` exactly as shipped.
  */
 export function defaultRampPreset(hasReferenceTransport: boolean): RampPreset {
 	return hasReferenceTransport ? 'balanced' : 'conservative';

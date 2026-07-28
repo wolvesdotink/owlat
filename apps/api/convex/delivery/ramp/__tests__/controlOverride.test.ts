@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { applyRampCellControl, type RampCellControl } from '../controlOverride';
+import { defaultRampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { rampConfigForStream } from '../presetConfig';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import type { RampDecision } from '../controllerTypes';
@@ -119,12 +120,31 @@ describe('pin', () => {
 	});
 
 	it('never pulls a cell DOWN to the pin — only a gate may lower a share', () => {
-		const result = applyRampCellControl(decision({ share: 0.8, fromShare: 0.7 }), {
+		const climbing = decision({ share: 0.8, fromShare: 0.7 });
+		const result = applyRampCellControl(climbing, {
 			pausedAt: undefined,
 			pinnedShare: 0.2,
 		});
 		expect(result.share).toBe(0.7);
 		expect(result.direction).toBe('hold');
+		// AND THE PIN OWNS THE REASON, because the pin is what stopped the climb.
+		expect(result.reason).toBe('operator_pin');
+		// The pin did NOT bound the share it ended up at, so it must not narrow the
+		// recorded ceiling either: an evidence row saying "share 0.7, ceiling 0.2"
+		// contradicts itself for anyone replaying the decision.
+		expect(result.ceiling).toBe(climbing.ceiling);
+	});
+
+	it('leaves an ordinary HOLD reporting its real binding constraint, not the pin', () => {
+		// A pin stored BELOW the cell's share suppressed nothing on a hold, and a
+		// grid column headed "Holding it back" must name the constraint that is
+		// actually binding rather than the operator who set an unrelated cap.
+		for (const reason of ['frozen', 'evidence_stale', 'building_confidence'] as const) {
+			const held = decision({ share: 0.7, fromShare: 0.7, reason, direction: 'hold' });
+			const result = applyRampCellControl(held, { pausedAt: undefined, pinnedShare: 0.2 });
+			expect(result).toBe(held);
+			expect(result.reason).toBe(reason);
+		}
 	});
 
 	it('reads a hostile stored pin without producing a hostile share', () => {
@@ -172,6 +192,36 @@ describe('presets', () => {
 	it('falls back to the deployment default for a stream nobody chose one for', () => {
 		const tuned = rampConfigForStream('automation', {}, 'conservative');
 		expect(tuned.increaseStep).toBeLessThan(RAMP_STREAM_CONFIGS.automation.increaseStep);
+	});
+
+	/**
+	 * THE STANDALONE DEPLOYMENT'S EXACT CONSTANTS, PINNED.
+	 *
+	 * `conservative` is not merely "slower" — it IS the plan's standalone
+	 * substitution (K_CLEAN 3 -> 5, step halved), and it is applied in exactly one
+	 * place so it cannot compound. These are the numbers, by name, so neither the
+	 * tuning nor the default can drift without this failing.
+	 */
+	it('pins the exact constants a standalone deployment runs under', () => {
+		const campaign = rampConfigForStream('campaign', {}, defaultRampPreset(false));
+		const automation = rampConfigForStream('automation', {}, defaultRampPreset(false));
+		const transactional = rampConfigForStream('transactional', {}, defaultRampPreset(false));
+		expect(defaultRampPreset(false)).toBe('conservative');
+		expect(campaign.increaseStep).toBe(2.5);
+		expect(automation.increaseStep).toBe(2.5);
+		expect(transactional.increaseStep).toBe(1.5);
+		for (const config of [campaign, automation, transactional]) {
+			expect(config.cleanWindowsRequired).toBe(5);
+		}
+	});
+
+	it('a deployment WITH a relay runs the shipped constants exactly', () => {
+		expect(defaultRampPreset(true)).toBe('balanced');
+		for (const stream of ['campaign', 'automation', 'transactional'] as const) {
+			const tuned = rampConfigForStream(stream, {}, defaultRampPreset(true));
+			expect(tuned.increaseStep).toBe(RAMP_STREAM_CONFIGS[stream].increaseStep);
+			expect(tuned.cleanWindowsRequired).toBe(RAMP_STREAM_CONFIGS[stream].cleanWindowsRequired);
+		}
 	});
 
 	it('never asks for a fractional number of clean windows', () => {

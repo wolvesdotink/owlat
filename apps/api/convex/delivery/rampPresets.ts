@@ -2,9 +2,12 @@
  * THE PER-STREAM AGGRESSIVENESS PRESETS — the read half (plan D9, D14, P3-6).
  *
  * At most three rows per deployment, and USUALLY NONE: absence is the default,
- * not an unconfigured state. A deployment that has never opened the Controls
- * screen has no rows here and runs the shipped constants exactly — which is what
- * makes the preset additive rather than a fork of `RAMP_STREAM_CONFIGS`.
+ * not an unconfigured state. A deployment WITH A RELAY that has never opened the
+ * Controls screen has no rows here and runs the shipped constants exactly —
+ * which is what makes the preset additive rather than a fork of
+ * `RAMP_STREAM_CONFIGS`. A STANDALONE deployment defaults to `conservative`,
+ * which is the plan's standalone substitution expressed as a preset rather than
+ * as a second constant table (see `ramp/presetConfig.ts`).
  *
  * THE DEFAULT IS A JUDGEMENT ABOUT EVIDENCE, NOT ABOUT NERVE (plan D14).
  * Standalone deployments default to `conservative` because their engagement gate

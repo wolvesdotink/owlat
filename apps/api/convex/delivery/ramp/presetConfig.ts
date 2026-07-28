@@ -5,8 +5,15 @@
  * A SUBSTITUTION, NEVER A SECOND TABLE. `RAMP_STREAM_CONFIGS` remains the only
  * constant table in the ramp; a preset scales the additive step and adds clean
  * windows on top of K_CLEAN, and `balanced` is the identity — so a deployment
- * that has never opened the Controls screen runs byte-identical constants to the
- * ones it ran before this shipped.
+ * WITH A RELAY that has never opened the Controls screen runs byte-identical
+ * constants to the ones it ran before this shipped.
+ *
+ * A STANDALONE DEPLOYMENT DEFAULTS TO `conservative`, and that is deliberate
+ * rather than incidental: `conservative` IS the plan's standalone substitution
+ * (K_CLEAN 3 -> 5, step halved), applied HERE and nowhere else. `gateConfig.ts`
+ * carries no second standalone table waiting to land, because applying the same
+ * halving twice would compound it. The exact resulting constants are pinned by
+ * fixture in `__tests__/controlOverride.test.ts`.
  *
  * WHAT A PRESET CANNOT REACH, by the shape of `RampPresetTuning` rather than by
  * a rule someone has to remember: the multiplicative decrease, the share floor,
