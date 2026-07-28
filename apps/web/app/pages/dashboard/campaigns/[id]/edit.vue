@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { isValidEmail } from '~/utils/validation';
 
 useHead({ title: 'Edit Campaign — Owlat' });
 
@@ -24,6 +25,7 @@ const {
 	segments,
 	emailTemplates,
 	audienceCount,
+	audience,
 
 	// Form state
 	campaignName,
@@ -154,6 +156,47 @@ const sendEstimate = computed(() => {
 		isFullyWarmed: sendEstimateRaw.value.isFullyWarmed,
 		message: sendEstimateRaw.value.message,
 	};
+});
+
+/** The chosen send start, or `null` when it is unset, unparseable or past. */
+const scheduledStartAt = computed(() => {
+	if (!scheduledDate.value || !scheduledTime.value) return null;
+	const at = new Date(`${scheduledDate.value}T${scheduledTime.value}`).getTime();
+	if (!Number.isFinite(at) || at <= Date.now()) return null;
+	return at;
+});
+
+// The BINDING capacity plan, previewed BEFORE the operator presses send.
+//
+// Same assessment pre-flight makes, so the operator sees "Sending over N days"
+// as a first-class choice rather than discovering it as a refusal (deliverability
+// plan D14 — a multi-day send is a normal, visible state for a warming
+// deployment, never a surprise). Skips until there is an audience and a valid
+// From address; `fromEmail` is what decides whether warm-up overflow to a
+// verified relay absorbs the tail, so previewing without it would answer a
+// different question than the gate.
+const { data: capacityPreviewRaw } = useOrganizationQuery(
+	api.campaigns.capacityPreflight.getCampaignCapacityPlan,
+	() => {
+		const selected = audience.value;
+		const from = fromEmail.value.trim();
+		if (!selected || !isValidEmail(from)) return undefined;
+		// Anchor on the chosen start when there is one: a campaign scheduled for
+		// next week is judged against the capacity it will have then.
+		const startsAt = scheduledStartAt.value;
+		return { audience: selected, fromEmail: from, ...(startsAt !== null ? { startsAt } : {}) };
+	}
+);
+
+/**
+ * The schedule to render: the one pre-flight actually refused with, else the
+ * preview. The refusal wins — it is the authoritative answer for the send the
+ * operator just attempted.
+ */
+const shownCapacityPlan = computed(() => {
+	if (capacitySchedule.value) return capacitySchedule.value;
+	const preview = capacityPreviewRaw.value;
+	return preview && !preview.fits ? preview.schedule : null;
 });
 </script>
 
@@ -833,18 +876,19 @@ const sendEstimate = computed(() => {
 								</p>
 							</div>
 
-							<!-- Pre-flight refused the send and handed back a schedule instead.
-							     Capacity is a schedule, not a failure (deliverability plan D14). -->
+							<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
+							     from the refusal itself when pre-flight hands one back. Capacity is a
+							     schedule, not a failure (deliverability plan D14). -->
 							<CampaignsCapacitySchedulePanel
-								v-if="capacitySchedule"
-								:plan="capacitySchedule"
-								dismissible
+								v-if="shownCapacityPlan"
+								:plan="shownCapacityPlan"
+								:dismissible="Boolean(capacitySchedule)"
 								@dismiss="dismissCapacitySchedule"
 							/>
 
 							<!-- Send Estimate -->
 							<div
-								v-if="!capacitySchedule && sendEstimate && audienceCount && sendEstimate.days > 1"
+								v-if="!shownCapacityPlan && sendEstimate && audienceCount && sendEstimate.days > 1"
 								class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
 							>
 								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />

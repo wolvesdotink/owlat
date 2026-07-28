@@ -363,6 +363,8 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		segments,
 		emailTemplates,
 		audienceCount,
+		/** The resolved audience selector, or `null` until one is chosen. */
+		audience,
 
 		// Form state
 		campaignName,
