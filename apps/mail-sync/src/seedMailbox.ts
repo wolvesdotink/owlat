@@ -23,6 +23,24 @@ import type { WorkerCredentials } from './convex.js';
 /** Folders never worth walking: our own copies, not the provider's verdict. */
 const SKIPPED_FOLDER_FLAGS = new Set(['\\Sent', '\\Drafts', '\\All']);
 
+/**
+ * The RFC 6154 SPECIAL-USE attributes worth reporting back with a hit. The
+ * classifier trusts `\Junk` and `\Trash` ahead of the folder NAME, because a
+ * name is localized per account language and no name table can be complete.
+ */
+const CLASSIFYING_FOLDER_FLAGS = ['\\Junk', '\\Trash'] as const;
+
+/** One folder worth walking, with the server's own statement of what it is. */
+interface SeedFolder {
+	path: string;
+	specialUse?: string;
+}
+
+function toSeedFolder(path: string, flags: ReadonlySet<string>): SeedFolder {
+	const attribute = CLASSIFYING_FOLDER_FLAGS.find((flag) => flags.has(flag));
+	return attribute === undefined ? { path } : { path, specialUse: attribute };
+}
+
 /** Extract `href` targets from an already-DECODED HTML body. */
 export function extractLinkTargets(html: string): string[] {
 	const targets: string[] = [];
@@ -57,7 +75,7 @@ export function extractProbeLinkTargets(rawSource: string): string[] {
 class ImapSeedMailboxSession implements SeedMailboxSession {
 	constructor(
 		private readonly client: ImapFlow,
-		private readonly folders: string[]
+		private readonly folders: readonly SeedFolder[]
 	) {}
 
 	/**
@@ -72,10 +90,10 @@ class ImapSeedMailboxSession implements SeedMailboxSession {
 	 */
 	async findProbes(probeIds: readonly string[]): Promise<Map<string, SeedProbeLocation>> {
 		const found = new Map<string, SeedProbeLocation>();
-		for (const folderName of this.folders) {
+		for (const folder of this.folders) {
 			const outstanding = probeIds.filter((id) => !found.has(id));
 			if (outstanding.length === 0) break;
-			const lock = await this.client.getMailboxLock(folderName);
+			const lock = await this.client.getMailboxLock(folder.path);
 			try {
 				for (const probeId of outstanding) {
 					const uids = await this.client.search(
@@ -83,7 +101,13 @@ class ImapSeedMailboxSession implements SeedMailboxSession {
 						{ uid: true }
 					);
 					const uid = Array.isArray(uids) ? uids[uids.length - 1] : undefined;
-					if (typeof uid === 'number') found.set(probeId, { folderName, uid });
+					if (typeof uid === 'number') {
+						found.set(probeId, {
+							folderName: folder.path,
+							uid,
+							...(folder.specialUse !== undefined ? { specialUse: folder.specialUse } : {}),
+						});
+					}
 				}
 			} catch {
 				// A folder we cannot open is not evidence of anything; keep walking.
@@ -148,7 +172,10 @@ export async function openSeedMailbox(
 		const folders = list
 			.filter((box) => !box.flags.has('\\Noselect'))
 			.filter((box) => ![...box.flags].some((flag) => SKIPPED_FOLDER_FLAGS.has(flag)))
-			.map((box) => box.path);
+			// The special-use attribute travels WITH the folder: it is the only
+			// language-independent statement of what the folder is, and it is lost
+			// the moment the list is reduced to bare paths.
+			.map((box) => toSeedFolder(box.path, box.flags));
 		return new ImapSeedMailboxSession(client, folders);
 	} catch {
 		await client.logout().catch(() => undefined);

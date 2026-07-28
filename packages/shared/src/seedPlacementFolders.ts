@@ -54,24 +54,66 @@ function normalizeFolderName(folderName: string): string {
 	name = name.replace(/^inbox[./]/i, '');
 	// Gmail category LABELS arrive as "CATEGORY_PROMOTIONS".
 	name = name.replace(/^category[_/]/i, '');
-	return name.toLowerCase().replace(/[_-]+/g, ' ').trim();
+	return (
+		name
+			.toLowerCase()
+			// Diacritics are folded so ONE localized spelling per language is enough
+			// in the tables below: an operator's IMAP server may or may not send
+			// `Courrier indésirable` fully composed, and either way it has to match.
+			.normalize('NFD')
+			.replace(/[\u0300-\u036f]/gu, '')
+			.replace(/[_-]+/g, ' ')
+			.trim()
+	);
 }
 
 function normalizedFolderSet(names: readonly string[]): ReadonlySet<string> {
 	return new Set(names.map(normalizeFolderName));
 }
 
-/** Spam/junk folder names across the providers an operator can realistically seed. */
+/**
+ * Spam/junk folder names across the providers an operator can realistically
+ * seed — the FALLBACK, used only when the server offered no special-use flag.
+ *
+ * A name table can never be complete: consumer providers localize the Junk
+ * folder per account language, so the list carries the common European
+ * spellings the card's "plus regional providers" implies alongside the English
+ * ones. The flag is what makes the classification sound; this is what catches
+ * the servers that do not advertise one.
+ */
 const SPAM_FOLDER_NAMES = normalizedFolderSet([
 	'Spam',
 	'Junk',
 	'Junk E-mail',
 	'Junk Email',
 	'JunkMail',
+	'Junk Mail',
+	'Spam Mail',
 	'Bulk',
 	'Bulk Mail',
 	'Unwanted',
 	'Quarantine',
+	// Localized Junk/Spam folder names. Outlook.com, Yahoo and the regional
+	// providers name this folder in the account's own language.
+	'Courrier indésirable', // fr
+	'Indésirables',
+	'Posta indesiderata', // it
+	'Correo no deseado', // es
+	'Lixo eletrônico', // pt
+	'Spamverdacht', // de
+	'Ongewenste e-mail', // nl
+	'Ongewenst',
+	'Skräppost', // sv
+	'Uønsket e-post', // nb
+	'Uonsket e-post',
+	'Roskaposti', // fi
+	'Nevyžádaná pošta', // cs
+	'Wiadomości-śmieci', // pl
+	'Спам', // ru / uk / bg
+	'迷惑メール', // ja
+	'垃圾邮件', // zh-Hans
+	'垃圾郵件', // zh-Hant
+	'스팸편지함', // ko
 ]);
 
 /**
@@ -97,11 +139,36 @@ const GMAIL_CATEGORY_LABELS: Record<string, string> = {
 };
 
 /**
+ * RFC 6154 SPECIAL-USE attributes, which are how a folder says what it IS
+ * independently of what it is CALLED. `\Junk` and `\Trash` are the two that
+ * decide a placement; the rest carry no verdict here.
+ *
+ * These are compared case-insensitively with the leading backslash optional,
+ * because that is how they arrive off different servers and clients.
+ */
+const SPECIAL_USE_JUNK = 'junk';
+const SPECIAL_USE_TRASH = 'trash';
+
+function normalizeSpecialUse(flag: string | null | undefined): string | undefined {
+	if (flag === null || flag === undefined) return undefined;
+	const trimmed = flag.trim().replace(/^\\+/, '').toLowerCase();
+	return trimmed === '' ? undefined : trimmed;
+}
+
+/**
  * Classify one probe observation.
  *
  * `folderName` is `null`/`undefined` when the poller walked every folder of the
  * seed mailbox and did not find the probe at all — MISSING, the most alarming
  * outcome and the one no other signal in the system surfaces.
+ *
+ * `specialUse` is the folder's RFC 6154 attribute when the server advertised
+ * one, and it DECIDES ahead of the name table. Names alone cannot carry this:
+ * consumer providers localize the Junk folder per account language, and an
+ * unrecognised name falls through to `category`, which counts as REACHED — so
+ * every gap in the table reads a spam-filed probe as healthy and moves gate 5
+ * toward `pass`. The flag is the server telling us the answer; the names stay
+ * as the fallback for servers that advertise nothing.
  *
  * An unrecognised, non-spam folder is reported as `category`: the message was
  * accepted but filtered away from the inbox, which is the same operational
@@ -109,14 +176,20 @@ const GMAIL_CATEGORY_LABELS: Record<string, string> = {
  */
 export function classifySeedFolder(
 	folderName: string | null | undefined,
-	provider: DestinationProviderKey
+	provider: DestinationProviderKey,
+	specialUse?: string | null
 ): SeedFolderClassification {
 	if (folderName === null || folderName === undefined || folderName.trim() === '') {
 		return { placement: 'missing' };
 	}
 
+	// The server's own answer, ahead of any guess made from the name.
+	const attribute = normalizeSpecialUse(specialUse);
+	if (attribute === SPECIAL_USE_JUNK) return { placement: 'spam' };
+	if (attribute === SPECIAL_USE_TRASH) return { placement: 'deleted' };
+
 	const normalized = normalizeFolderName(folderName);
-	if (normalized === '' || normalized === 'inbox') {
+	if (normalized === 'inbox') {
 		return { placement: 'inbox' };
 	}
 	if (SPAM_FOLDER_NAMES.has(normalized)) {
@@ -133,5 +206,9 @@ export function classifySeedFolder(
 				: { placement: 'category', categoryLabel: label };
 		}
 	}
+	// Anything left — including a name that normalizes to NOTHING (`___`, `--`,
+	// a bare `[Gmail]/`) — is an unknown, non-inbox folder. Reading a degenerate
+	// remainder as `inbox` would claim the probe reached the recipient on the
+	// strength of a name we could not parse.
 	return { placement: 'category', categoryLabel: folderName.trim() };
 }

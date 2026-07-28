@@ -105,13 +105,19 @@ const SEED_FOLDER_NAME_MAX_LENGTH = 256;
 function clampRemoteFolderName(value: string): string {
 	// Character codes rather than a control-character regex: the regex form is a
 	// lint error in this repo, and the intent reads more plainly this way.
-	const bounded = value.slice(0, SEED_FOLDER_NAME_MAX_LENGTH);
-	let out = '';
-	for (const char of bounded) {
+	//
+	// SANITIZE FIRST, THEN BOUND BY CODE POINT. `String.slice` counts UTF-16 code
+	// units, so slicing a name first can cut an astral character in half and
+	// store a lone surrogate — an unpaired half that no longer round-trips
+	// through JSON and renders as a replacement glyph. Iterating the string
+	// yields whole code points, so the bound is applied to characters.
+	const sanitized: string[] = [];
+	for (const char of value) {
 		const code = char.codePointAt(0) ?? 0;
-		out += code < 0x20 || code === 0x7f ? ' ' : char;
+		sanitized.push(code < 0x20 || code === 0x7f ? ' ' : char);
+		if (sanitized.length >= SEED_FOLDER_NAME_MAX_LENGTH) break;
 	}
-	return out;
+	return sanitized.join('');
 }
 
 // ============ SEED ACCOUNTS ============
@@ -254,6 +260,48 @@ export async function emitSeedRotationReminderFor(
 	return true;
 }
 
+// ============ THE TENANT BOUNDARY, ONCE ============
+
+/**
+ * Load a probe row the caller is allowed to write, by probe id or by row ref.
+ *
+ * Every probe-writing mutation opens with the SAME two questions — does this row
+ * exist, and does it belong to the organization the caller claims — and the
+ * answer to the second is the tenant boundary of this whole module. Three
+ * copies of it is three places for it to drift; this is the one implementation,
+ * and the discriminated result keeps each caller's own no-op reasons distinct
+ * from it.
+ *
+ * The order is deliberate and load-bearing: the boundary is asserted BEFORE any
+ * caller-specific state check, so no branch of a mutation can become reachable
+ * only for rows in a state the caller is not entitled to know about.
+ */
+type OwnedProbeResult =
+	| { ok: true; probe: Doc<'seedPlacementProbes'> }
+	| { ok: false; reason: 'unknown_probe' | 'foreign_organization' };
+
+async function loadOwnedProbe(
+	db: DatabaseReader,
+	organizationId: string,
+	ref: { probeId: string } | { probeRef: Id<'seedPlacementProbes'> }
+): Promise<OwnedProbeResult> {
+	const probe =
+		'probeRef' in ref
+			? await db.get(ref.probeRef)
+			: await db
+					.query('seedPlacementProbes')
+					.withIndex('by_probe_id', (q) => q.eq('probeId', ref.probeId))
+					.unique();
+	// EVERY failure branch names its reason: the mail-sync worker has to be able
+	// to tell "not yours" (a bug in the sweep's org scoping — loud) from "gone"
+	// (the retention cleanup won the race — expected, drop it).
+	if (!probe) return { ok: false, reason: 'unknown_probe' };
+	if (probe.organizationId !== organizationId) {
+		return { ok: false, reason: 'foreign_organization' };
+	}
+	return { ok: true, probe };
+}
+
 // ============ CLASSIFICATION ============
 
 /**
@@ -266,23 +314,23 @@ export const recordSeedProbeClassification = internalMutation({
 		organizationId: v.string(),
 		probeId: v.string(),
 		folderName: v.union(v.string(), v.null()),
+		/**
+		 * The folder's RFC 6154 SPECIAL-USE attribute (`\Junk`, `\Trash`) when the
+		 * server advertised one. It DECIDES ahead of the folder name: names are
+		 * localized per account language, and an unrecognised name falls through to
+		 * `category`, which counts as reached.
+		 */
+		specialUse: v.optional(v.string()),
 		now: v.number(),
 		/** Uniform [0,1) draw for the occasional click. Randomness stays at the edge. */
 		clickRoll: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const probe = await ctx.db
-			.query('seedPlacementProbes')
-			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
-			.unique();
-		// EVERY failure branch names its reason: the mail-sync worker has to be
-		// able to tell "not yours" (a bug in the sweep's org scoping — loud) from
-		// "gone" (the retention cleanup won the race — expected, drop it).
-		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
-		// Defense in depth at the poller boundary.
-		if (probe.organizationId !== args.organizationId) {
-			return { recorded: false as const, reason: 'foreign_organization' as const };
-		}
+		// Existence + the tenant boundary, in the one implementation all three
+		// probe-writing mutations share.
+		const owned = await loadOwnedProbe(ctx.db, args.organizationId, { probeId: args.probeId });
+		if (!owned.ok) return { recorded: false as const, reason: owned.reason };
+		const probe = owned.probe;
 		// A probe we never handed to a transport is NOT evidence — it was never
 		// mailed, so no folder is the right answer and `missing` is the wrong one.
 		// The work selection already excludes it; this is the load-bearing check,
@@ -305,7 +353,7 @@ export const recordSeedProbeClassification = internalMutation({
 		// software the operator does not choose — so it is bounded before it is
 		// stored. Classification still runs on the raw name: clamping is about what
 		// we persist and render, not about what we decide.
-		const classification = classifySeedFolder(args.folderName, probe.provider);
+		const classification = classifySeedFolder(args.folderName, probe.provider, args.specialUse);
 		const storedFolderName =
 			args.folderName !== null ? clampRemoteFolderName(args.folderName) : null;
 		const storedCategoryLabel =
@@ -349,12 +397,16 @@ export const recordSeedProbeDispatch = internalMutation({
 		now: v.number(),
 	},
 	handler: async (ctx, args) => {
-		const probe = await ctx.db.get(args.probeRef);
-		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
-		// Same defense in depth as its two siblings: a probe row is only ever
-		// writable through the organization that owns it.
-		if (probe.organizationId !== args.organizationId) {
-			return { recorded: false as const, reason: 'foreign_organization' as const };
+		const owned = await loadOwnedProbe(ctx.db, args.organizationId, { probeRef: args.probeRef });
+		if (!owned.ok) return { recorded: false as const, reason: owned.reason };
+		// THE SINGLE ARBITER of "which arm carried this probe", the same rule its
+		// classification sibling holds. `sendSingleEmail` runs in a workpool that
+		// may re-run an action, and a second write would replace the FIRST arm
+		// attribution — the whole point of the observation — and restart the
+		// poller's give-up horizon, hiding a probe that has already gone missing.
+		// First writer wins; the loser gets a no-op, not an error.
+		if (owned.probe.dispatchedAt !== undefined) {
+			return { recorded: false as const, reason: 'already_dispatched' as const };
 		}
 		await ctx.db.patch(args.probeRef, {
 			transportArm: args.transportArm,
@@ -372,26 +424,20 @@ export const recordSeedProbeDispatch = internalMutation({
 export const recordSeedProbeUnsubscribe = internalMutation({
 	args: { organizationId: v.string(), probeId: v.string(), now: v.number() },
 	handler: async (ctx, args) => {
-		const probe = await ctx.db
-			.query('seedPlacementProbes')
-			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
-			.unique();
-		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
-		// The same org boundary its three siblings hold, and — like them — held
-		// FIRST. The caller's claim here is the SIGNED one-click token, which
-		// carries the organization alongside the probe id precisely so this
+		// The shared loader holds the org boundary FIRST, ahead of the state check
+		// below. The caller's claim here is the SIGNED one-click token, which
+		// carries the organization alongside the probe id precisely so the
 		// assertion has something independent to check rather than reading the
 		// answer off the row it is about to write. Checking `already_recorded`
 		// ahead of it would make one branch of the boundary reachable only for
 		// un-recorded probes and turn "already recorded" into a cross-tenant
 		// existence answer.
-		if (probe.organizationId !== args.organizationId) {
-			return { recorded: false as const, reason: 'foreign_organization' as const };
-		}
-		if (probe.unsubscribedAt !== undefined) {
+		const owned = await loadOwnedProbe(ctx.db, args.organizationId, { probeId: args.probeId });
+		if (!owned.ok) return { recorded: false as const, reason: owned.reason };
+		if (owned.probe.unsubscribedAt !== undefined) {
 			return { recorded: false as const, reason: 'already_recorded' as const };
 		}
-		await ctx.db.patch(probe._id, { unsubscribedAt: args.now });
+		await ctx.db.patch(owned.probe._id, { unsubscribedAt: args.now });
 		return { recorded: true as const };
 	},
 });

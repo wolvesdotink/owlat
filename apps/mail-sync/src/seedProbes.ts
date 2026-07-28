@@ -46,6 +46,14 @@ export type { SeedHygienePlan, SeedPlacement, SeedProbeWorkItem, SeedProbeWorkPa
 export interface SeedProbeLocation {
 	folderName: string;
 	uid: number;
+	/**
+	 * The folder's RFC 6154 SPECIAL-USE attribute (`\Junk`, `\Trash`, …) when the
+	 * server advertised one. Carried because a folder NAME is localized per
+	 * account language and no name table can be complete: the flag is the server
+	 * telling us what the folder IS, and the classifier trusts it ahead of the
+	 * name. Absent for servers that advertise nothing.
+	 */
+	specialUse?: string;
 }
 
 /**
@@ -79,6 +87,8 @@ export interface SeedProbeDeps {
 		organizationId: string;
 		probeId: string;
 		folderName: string | null;
+		/** The folder's RFC 6154 attribute, when the server advertised one. */
+		specialUse?: string;
 		now: number;
 		clickRoll: number;
 	}): Promise<{ recorded: boolean; placement?: SeedPlacement; hygiene?: SeedHygienePlan }>;
@@ -151,6 +161,7 @@ async function classifyOne(
 		organizationId: item.organizationId,
 		probeId,
 		folderName: location ? location.folderName : null,
+		...(location?.specialUse !== undefined ? { specialUse: location.specialUse } : {}),
 		now: deps.now(),
 		clickRoll: deps.random(),
 	});
