@@ -71,6 +71,42 @@ describe('nextShare — hard stops, in precedence order', () => {
 		expect(decision.cooldownMs).toBeUndefined();
 	});
 
+	it('does not re-halve on an open breaker while its own freeze is still running', () => {
+		// The breaker is a CONDITION that persists across hourly ticks. It still
+		// hard-stops here — the reason is `breaker`, not the `frozen` rung below
+		// it, and the streak stays revoked — but the retreat is charged once per
+		// freeze window rather than once per tick.
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.3,
+					cleanStreak: 5,
+					frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.share).toBe(0.3);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.direction).toBe('hold');
+		expect(decision.cleanStreak).toBe(0);
+		// No NEW freeze: the one already in force is what holds the cell.
+		expect(decision.frozenUntil).toBeUndefined();
+	});
+
+	it('halves again once the breaker freeze has expired and the breaker is still open', () => {
+		const decision = nextShare(
+			controllerInput({
+				now: NOW + 7 * HOUR,
+				mix: mixState({ share: 0.3, frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs }),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.share).toBe(0.15);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.frozenUntil).toBe(NOW + 7 * HOUR + RAMP_AIMD.breakerFreezeMs);
+	});
+
 	it('zeroes and freezes for 24h on a critical pool blocklist listing', () => {
 		const decision = nextShare(
 			controllerInput({

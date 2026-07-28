@@ -299,6 +299,46 @@ describe('mixDecisions — the notice fires on a change, not on a condition', ()
 		expect(rows[1]?.message).toContain('Held');
 	});
 
+	const BREAKER_OPEN = {
+		isSendingAllowed: true,
+		isCircuitBreakerOpen: true,
+		isPoolBlocklisted: false,
+	} as const;
+
+	it('charges an open breaker once per freeze window, not once per tick', async () => {
+		const t = convexTest(schema, modules);
+		// Tick 1: the breaker opens, the share halves and the 6h freeze is stamped.
+		await record(t, controllerInput({ mix: mixState({ share: 0.5 }), signals: BREAKER_OPEN }));
+		// Tick 2, an hour later: the breaker is STILL open — a condition, not a
+		// second incident — and the freeze from tick 1 is still in force. Unlike
+		// `abuse_status` and `dnsbl`, this rung does not stop the cell at zero, so
+		// re-halving here would walk the share down a rung an hour and post an
+		// incident notice for each one.
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({ share: 0.25, frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs }),
+				signals: BREAKER_OPEN,
+				now: NOW + HOUR,
+			})
+		);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(2);
+		expect(rows[0]?.direction).toBe('decrease');
+		expect(rows[0]?.toShare).toBe(0.25);
+		expect(rows[0]?.adminNotice).toContain('circuit breaker');
+		// The second tick still HARD-STOPS — the reason is the breaker, not the
+		// generic `frozen` rung below it — but it neither moves the share nor
+		// announces itself again.
+		expect(rows[1]?.reason).toBe('breaker');
+		expect(rows[1]?.direction).toBe('hold');
+		expect(rows[1]?.toShare).toBe(0.25);
+		expect(rows[1]?.adminNotice).toBeUndefined();
+		expect(rows[1]?.message).toContain('Held');
+		expect(rows[1]?.message).not.toContain('Halved');
+	});
+
 	it('announces every floored breach, because each one is a fresh freeze', async () => {
 		const t = convexTest(schema, modules);
 		const floored = { share: RAMP_AIMD.shareFloor } as const;
@@ -470,7 +510,10 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		const t = convexTest(schema, modules);
 		for (const [, overrides] of steadyStateHardStops) {
 			// The share the cell is ALREADY at once the hard stop has bitten: zero for
-			// abuse/dnsbl, and a breaker that keeps halving converges there too.
+			// abuse/dnsbl. The breaker retreats by halving rather than to zero and
+			// charges that retreat once per freeze window — the two-tick fixture
+			// above pins that arc; here it is the wording of the steady state that
+			// is under test, so the table shares one already-stopped share.
 			const input = controllerInput({ mix: mixState({ share: 0 }), ...overrides });
 			const decision = nextShare(input);
 			expect(decision.direction).toBe('hold');
