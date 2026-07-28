@@ -373,6 +373,8 @@ function asBaselineHoldReason(reason: RampGateHoldReason): RampGateHoldReason {
 			return 'baseline_sample_below_floor';
 		case 'reference_rate_unmeasurable':
 			return 'baseline_rate_unmeasurable';
+		case 'reference_not_a_denominator':
+			return 'baseline_not_a_denominator';
 		default:
 			return reason;
 	}

@@ -25,7 +25,13 @@ import type {
 	RampGateThresholds,
 	RateFraction,
 } from './gateConfig';
-import { armEvidence, evidenceReason, insufficient, safeRate } from './gateEvidence';
+import {
+	armEvidence,
+	evidenceReason,
+	insufficient,
+	notADenominatorReason,
+	safeRate,
+} from './gateEvidence';
 import type {
 	RampGateDecidedMeasurement,
 	RampGateEvaluationInput,
@@ -77,8 +83,8 @@ export interface CeilingGateSpec {
 	 * reports need no second series to mean something).
 	 *
 	 * A spec with neither a threshold nor a second series would pass unconditionally
-	 * and is a defect; `ceilingGateSpecIsDecidable` states that invariant and the
-	 * suites assert it over every shipped spec.
+	 * and is a defect; `ceilingGateSpecIsDecidable` states that invariant and
+	 * `gates.units.test.ts` asserts it over every shipped spec, in both matrix legs.
 	 */
 	readonly secondSeries: CeilingSecondSeries | null;
 	readonly grade: RampGateGrade;
@@ -157,7 +163,9 @@ export function ceilingGateSpecIsDecidable(
  *      half is unmeasurable, so the gate holds rather than passing on half a
  *      check.
  *   4. A RELATIVE ceiling whose second series cannot act as a denominator ->
- *      insufficient_data. See `relativeCeilingIsMeasurable`.
+ *      insufficient_data, reported as `*_not_a_denominator` and NOT as
+ *      `*_rate_unmeasurable`: the rate is a real number, it is the derived
+ *      ceiling that cannot decide. See `relativeCeilingIsMeasurable`.
  *   5. Otherwise, compare the arms.
  */
 export function evaluateCeilingGate(
@@ -265,7 +273,7 @@ export function evaluateCeilingGate(
 	if (!relativeCeilingIsMeasurable(secondRate, ceiling, threshold)) {
 		return insufficient(
 			spec.gate,
-			evidenceReason('fresh', series.arm),
+			notADenominatorReason(series.arm),
 			{ ...shape, ownRate, referenceRate: secondRate },
 			spec.grade
 		);

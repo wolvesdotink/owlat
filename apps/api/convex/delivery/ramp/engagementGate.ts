@@ -71,7 +71,13 @@ import {
 	type RampGateSampleFloors,
 	type RampGateThresholds,
 } from './gateConfig';
-import { armEvidence, evidenceReason, insufficient, safeEngagementRate } from './gateEvidence';
+import {
+	armEvidence,
+	evidenceReason,
+	insufficient,
+	notADenominatorReason,
+	safeEngagementRate,
+} from './gateEvidence';
 import type { RampGateGrade, RampGateResult } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
@@ -298,19 +304,24 @@ export function evaluateEngagementComparison(
 		thresholds,
 		referenceMaxAgeMs
 	);
-	// A rate of exactly zero reaches `evidenceReason('fresh', …)` alongside a
-	// poisoned one, and correctly so: both mean "this series cannot act as a
-	// denominator", which is a hold and never a pass.
-	if (
-		referenceEvidence !== 'fresh' ||
-		!reference ||
-		reference.rate === null ||
-		reference.rate <= 0
-	) {
+	if (referenceEvidence !== 'fresh' || !reference || reference.rate === null) {
 		return insufficient(
 			'engagement_ratio',
 			evidenceReason(referenceEvidence, spec.referenceArm),
 			{ ...holdShape, ownRate: recent.rate, referenceRate: reference?.rate ?? null },
+			spec.grade
+		);
+	}
+
+	// A rate of exactly zero is a HOLD and never a pass — but it is a different
+	// story from a poisoned bucket, and the two used to share `*_rate_unmeasurable`
+	// between them. The evidence here is fresh, ample and numeric; there is simply
+	// no denominator to divide by, which is what `notADenominatorReason` says.
+	if (!(reference.rate > 0)) {
+		return insufficient(
+			'engagement_ratio',
+			notADenominatorReason(spec.referenceArm),
+			{ ...holdShape, ownRate: recent.rate, referenceRate: reference.rate },
 			spec.grade
 		);
 	}

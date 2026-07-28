@@ -84,6 +84,24 @@ export type RampGateHoldReason =
 	| 'baseline_sample_below_floor'
 	| 'baseline_evidence_stale'
 	| 'baseline_rate_unmeasurable'
+	/**
+	 * A DIFFERENT STORY FROM `*_rate_unmeasurable`, and the distinction is the
+	 * whole point of the two codes existing.
+	 *
+	 * `*_rate_unmeasurable` says the series' rate was NOT A NUMBER — a poisoned
+	 * bucket, something to go and investigate. `*_not_a_denominator` says the rate
+	 * was a perfectly good number that a RELATIVE comparison cannot be built on:
+	 * a trailing window with zero hard bounces, or a baseline so high that `k *
+	 * base` reaches 1 and the derived ceiling could never fail anything. Nothing
+	 * is broken; there is simply no relative verdict to give, so the gate holds
+	 * (plan D10).
+	 *
+	 * Reporting the second as the first tells an operator whose 30-day window is
+	 * clean and complete that their trailing rate is corrupt — and the audit row
+	 * and the admin notification key off exactly this code (plan D12).
+	 */
+	| 'reference_not_a_denominator'
+	| 'baseline_not_a_denominator'
 	| 'evidence_absent';
 
 /**

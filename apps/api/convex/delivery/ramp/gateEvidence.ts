@@ -161,3 +161,24 @@ export function evidenceReason(
 					: 'baseline_rate_unmeasurable';
 	}
 }
+
+/**
+ * THE OTHER WAY A SECOND SERIES CAN FAIL TO DECIDE, and it is not a defect.
+ *
+ * `evidenceReason` answers "why is this arm's evidence UNUSABLE". This answers a
+ * question no evidence state describes: the evidence was fresh, ample and its
+ * rate was a real number, but a RELATIVE comparison cannot be formed from it —
+ * a zero denominator, or a derived ceiling so high that nothing could breach it.
+ *
+ * It exists as its own function so that no call site has to fabricate an
+ * `ArmEvidence` value it never observed in order to borrow a reason. Passing
+ * `'fresh'` into `evidenceReason` to reach `*_rate_unmeasurable` was exactly
+ * that, and it told the operator the wrong thing to go and look at (plan D12).
+ *
+ * `'own'` is deliberately not accepted: the own arm is the NUMERATOR of every
+ * relative comparison in this module, and a numerator of zero is a real,
+ * decidable verdict rather than a hold.
+ */
+export function notADenominatorReason(arm: 'reference' | 'baseline'): RampGateHoldReason {
+	return arm === 'reference' ? 'reference_not_a_denominator' : 'baseline_not_a_denominator';
+}
