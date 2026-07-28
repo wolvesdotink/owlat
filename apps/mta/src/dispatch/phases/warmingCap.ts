@@ -21,6 +21,7 @@
  */
 
 import * as warming from '../../intelligence/warming.js';
+import { nextCapWindowDelayMs } from '../../intelligence/warmingCapWindow.js';
 import { utcDateKey } from '../../intelligence/warmingKeys.js';
 import { evaluateIntradayPacing, utcDayElapsedFraction } from '../../intelligence/warmingPacing.js';
 import {
@@ -32,8 +33,17 @@ import { logger } from '../../monitoring/logger.js';
 import type { DispatchTerminal, Phase } from '../pipeline.js';
 import type { CtxWithIp, CtxWithProviderPressure } from '../types.js';
 
-/** Deferral applied when a cap gate withholds capacity. */
-const CAP_DEFER_DELAY_MS = 300_000;
+/**
+ * Deferral applied when a RESERVATION could not be refreshed.
+ *
+ * Deliberately still the shipped 300 s and NOT the next cap window: a
+ * reservation is a short-lived promise of capacity the routing layer already
+ * made, and it can become available again within the day (the holder finishes,
+ * or the reservation's own TTL lapses). Only the two DAILY cap gates below —
+ * whose verdict provably cannot change until the UTC day rolls over — defer to
+ * the window.
+ */
+const RESERVATION_DEFER_DELAY_MS = 300_000;
 
 /**
  * Withhold this attempt. A governed attempt carrying a re-entry token goes back
@@ -68,7 +78,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 				return withhold(
 					ctx,
 					`Warming reservation unavailable for IP ${ctx.ip}`,
-					CAP_DEFER_DELAY_MS
+					RESERVATION_DEFER_DELAY_MS
 				);
 			}
 			const routingLease = { ...ctx.job.routingLease! };
@@ -101,7 +111,10 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 				{ ip: ctx.ip, sentToday: warmingCap.sentToday, dailyCap: warmingCap.dailyCap },
 				'Warming cap reached — deferring'
 			);
-			return withhold(ctx, `Warming cap reached for IP ${ctx.ip}`, CAP_DEFER_DELAY_MS);
+			// THE NEXT CAP WINDOW, not a blind five minutes: the daily budget cannot
+			// change before the UTC day rolls over, so re-asking sooner produces the
+			// same verdict and nothing but Redis re-queue churn.
+			return withhold(ctx, `Warming cap reached for IP ${ctx.ip}`, nextCapWindowDelayMs(now));
 		}
 
 		const providerCap = providerCapVerdict(gateInputs, warmingCap.dailyCap);
@@ -119,7 +132,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 			return withhold(
 				ctx,
 				`Warming cap reached for IP ${ctx.ip} at ${providerKey}`,
-				CAP_DEFER_DELAY_MS
+				nextCapWindowDelayMs(now)
 			);
 		}
 
