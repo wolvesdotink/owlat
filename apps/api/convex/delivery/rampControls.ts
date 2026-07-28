@@ -54,7 +54,7 @@ import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOr
 import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
-import { RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
+import { RAMP_INITIAL_PHASE_CEILING, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -328,7 +328,9 @@ export const resetCellPhase = adminMutation({
 		// A reset never raises the share (`Math.min` above), so it can only be an
 		// increase by way of the CEILING it hands the controller for the next tick.
 		// That is still an advance past the evidence, so it meets the same guard.
-		if (args.phaseCeiling > (target.row.phaseCeiling ?? args.phaseCeiling)) {
+		// A row with no stored ceiling is sitting on the ladder's first rung — the
+		// same reading `promoteRampPhase` takes — so the guard stays live there.
+		if (args.phaseCeiling > (target.row.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING)) {
 			const block = await readRampIncreaseBlock(ctx, {
 				organizationId: target.organizationId,
 				cell: target.cell,
