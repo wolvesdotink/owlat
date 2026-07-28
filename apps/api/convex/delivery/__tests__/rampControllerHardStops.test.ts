@@ -27,7 +27,7 @@ import {
 	seedRampCell,
 	type SeedRampCellOptions,
 } from './rampCronFixtures';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();

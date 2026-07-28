@@ -35,7 +35,7 @@ import {
 	NOW,
 	thinEvaluation,
 } from '../ramp/__tests__/controllerFixtures';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const ORG = 'org_ramp_audit';
 

@@ -23,7 +23,7 @@ import {
 	NOW,
 } from '../ramp/__tests__/controllerFixtures';
 import { readManagedCell, seedRampCell } from './rampCronFixtures';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 // The cron resolves its tenant through the shared singleton-org helper, which
 // talks to the auth component; the harness has no component, so the suite mocks
