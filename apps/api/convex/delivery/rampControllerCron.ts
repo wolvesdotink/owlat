@@ -52,6 +52,14 @@ import { readActiveFreeze } from './ramp/controllerReaders';
 import { nextShare } from './ramp/controller';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import {
+	loadRampDeploymentPresence,
+	loadReferenceArmPresence,
+	withReferenceArm,
+} from './rampIntegrationPresence';
+import { loadRampPromotionEvidence } from './rampPromotionEvidence';
+import { resolveRampDegradation } from './ramp/degradation';
+import { evaluatePhasePromotion } from './ramp/phasePromotion';
 import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
 import {
 	deliverabilityStreamValidator,
@@ -235,6 +243,12 @@ export const runRampController = internalMutation({
 			return capacityContext;
 		};
 
+		// WHICH INTEGRATIONS THIS DEPLOYMENT HAS, read ONCE per tick: every entry but
+		// the reference arm is deployment-level, so reading it per cell would repeat
+		// the same four index lookups fifteen times. The substitution table (plan D3)
+		// is what turns it into each cell's constants — see `rampControllerInputs.ts`.
+		const presence = await loadRampDeploymentPresence(ctx, { organizationId, now });
+
 		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
 		let evaluated = 0;
 		for (const cell of slice) {
@@ -243,6 +257,7 @@ export const runRampController = internalMutation({
 				cell,
 				pool,
 				capacity,
+				presence,
 				isKillSwitchEngaged,
 				isSendingPermitted,
 				now,
@@ -355,12 +370,55 @@ export const promoteRampPhase = internalMutation({
 		// Already at the top rung: nothing to promote, and re-randomising the
 		// cohort for a no-op would cost the comparison its continuity for nothing.
 		if (phaseCeiling === current) return { ok: true as const, phaseCeiling };
+
+		const now = Date.now();
+		// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED (plan D3), and the rule is a
+		// table of ROUTES rather than a branch: either an external reading for this
+		// cell within the last 7 days, or the four corroborating self-hosted
+		// conditions. Below that line no route is consulted and the promotion is the
+		// ordinary ladder step it has always been — so a deployment with no external
+		// account is slowed, never stopped (plan D2).
+		const presence = withReferenceArm(
+			await loadRampDeploymentPresence(ctx, { organizationId, now }),
+			await loadReferenceArmPresence(ctx, { organizationId, cell, now })
+		);
+		const degradation = resolveRampDegradation({
+			presence,
+			provider: cell.destinationProvider,
+		});
+		const promotion = evaluatePhasePromotion({
+			targetCeiling: phaseCeiling,
+			provider: cell.destinationProvider,
+			evidence: await loadRampPromotionEvidence(ctx, {
+				organizationId,
+				cell,
+				perStream,
+				degradation,
+				now,
+			}),
+			now,
+		});
+		if (!promotion.allowed) {
+			// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
+			// rung. The outstanding conditions travel back by name so the screen can
+			// say what would unlock it (plan D12/D14).
+			return {
+				ok: false as const,
+				phaseCeiling: current,
+				outstanding: promotion.routes.flatMap((route) =>
+					route.outstanding.map((entry) => entry.condition)
+				),
+			};
+		}
 		await ctx.db.patch(perStream._id, {
 			phaseCeiling,
+			// THE DWELL CLOCK STARTS HERE and nowhere else: the rung is what it
+			// measures, and only this mutation moves a rung.
+			phaseCeilingSince: now,
 			mixVersion: (perStream.mixVersion ?? 0) + 1,
 			// The ramp's own clock, never the router's freshness clock — see
 			// `applyDecision`.
-			decidedAt: Date.now(),
+			decidedAt: now,
 		});
 		return { ok: true as const, phaseCeiling };
 	},

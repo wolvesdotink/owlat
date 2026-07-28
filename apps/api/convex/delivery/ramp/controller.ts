@@ -156,7 +156,7 @@ interface DecideArgs {
  */
 function decide(args: DecideArgs): RampDecisionDraft {
 	const { fromShare, phaseCeiling, storedStreak, isClockUsable, input } = args;
-	const { mix, signals, evaluation, capacity, config, now } = input;
+	const { mix, signals, evaluation, capacity, config, now, phaseCeilingCap } = input;
 	const held = {
 		share: fromShare,
 		verdict: 'not_evaluated' as const,
@@ -405,9 +405,20 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//    the wrong one.
 	const capacityBound = capacityCeiling(capacity);
 	if (capacityBound === null) return { ...green, reason: 'capacity_unknown' };
-	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, phaseCeiling);
+	// 8b. THE SUBSTITUTION TABLE'S CEILING CAP (P3-8). A bound, never a stored
+	//     rung: an absent SNDS feed caps the Microsoft cell one phase lower while
+	//     it is missing and stops capping it the tick the feed returns, without
+	//     anyone re-promoting the cell. Degenerate values are ignored rather than
+	//     honoured — a NaN cap must not become a ceiling of NaN — which keeps this
+	//     rung incapable of raising anything.
+	const capBound =
+		phaseCeilingCap !== undefined && Number.isFinite(phaseCeilingCap)
+			? Math.max(0, phaseCeilingCap)
+			: phaseCeiling;
+	const effectivePhaseCeiling = Math.min(phaseCeiling, capBound);
+	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, effectivePhaseCeiling);
 	const bindingReason: RampDecisionReason =
-		capacityBound < phaseCeiling ? 'capacity_ceiling' : 'phase_ceiling';
+		capacityBound < effectivePhaseCeiling ? 'capacity_ceiling' : 'phase_ceiling';
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.

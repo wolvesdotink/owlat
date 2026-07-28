@@ -257,6 +257,20 @@ export interface RampControllerInput {
 	 */
 	readonly evaluation: RampGateEvaluation | null;
 	readonly capacity: RampCapacityInput;
+	/**
+	 * THE DEGRADATION MATRIX'S CEILING CAP (plan D3, piece P3-8), or `undefined`
+	 * when no absent integration caps this cell.
+	 *
+	 * A BOUND, NOT A LADDER POSITION, and the distinction is why it is a separate
+	 * field rather than a smaller `mix.phaseCeiling`. The stored rung is a
+	 * PROMOTION — a deliberate act someone took — while this is a MEASUREMENT
+	 * consequence that must lift by itself the moment the missing feed returns.
+	 * Folding it into the stored value would persist it, and reconnecting SNDS
+	 * would leave the Microsoft cell pinned a rung low until a human promoted it
+	 * again. It bounds the share exactly like the capacity ceiling does, and like
+	 * the capacity ceiling it never rewrites the row.
+	 */
+	readonly phaseCeilingCap?: number;
 	/** Plan P3-2's global kill switch. Honoured before every other rule. */
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
