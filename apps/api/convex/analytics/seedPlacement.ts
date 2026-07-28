@@ -50,7 +50,12 @@ import {
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
-import { resolvePlacementAdapter } from '@owlat/shared/placementAdapter';
+import {
+	resolvePlacementAdapter,
+	type PlacementImprovementHint,
+	type PlacementSourceKind,
+} from '@owlat/shared/placementAdapter';
+import type { SeedConfidence } from '@owlat/shared/seedPlacement';
 import { loadSeedAccounts } from './seedAccounts';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
@@ -297,6 +302,20 @@ export interface SeedPlacementSummary {
 	/** Seeds the operator should rotate. Advisory only. */
 	rotationRemindersDue: number;
 	windowStart: number;
+	/** Which placement adapter produced {@link rollups} (P4-7). */
+	placementSource: PlacementSourceKind;
+	/**
+	 * How much this reading is worth (D14). Placement evidence is NEVER high
+	 * confidence whoever gathered it — `none` means there is nothing to read at
+	 * all yet, and the screen says so instead of quoting a percentage.
+	 */
+	placementConfidence: SeedConfidence;
+	/**
+	 * The ONE advisory the reading may carry, for rendering next to the
+	 * confidence label. A hint, never an error, never a "setup incomplete" nag
+	 * and never a reason to withhold a screen or a send (D2).
+	 */
+	placementImprovement: PlacementImprovementHint;
 }
 
 /**
@@ -351,6 +370,12 @@ export async function summarizeSeedPlacementWindow(
 		seedAccountCount: accounts.length,
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
+		// The resolution's own verdict, carried through rather than recomputed:
+		// this IS D14's "measurement confidence: low — add seed mailboxes" hint,
+		// and it is the resolution that decides it, not the screen.
+		placementSource: placement.kind,
+		placementConfidence: placement.confidence,
+		placementImprovement: placement.improvement,
 	};
 }
 
