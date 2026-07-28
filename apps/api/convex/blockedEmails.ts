@@ -42,7 +42,11 @@ function deriveBlockSourceType(source: {
 // per-query document read limit. Return the most recent N (ordered by creation
 // time via the implicit by_creation_time index / the by_reason index) instead
 // of every row; the UI filters by reason for anything older.
-const BLOCKLIST_VIEW_LIMIT = 1000;
+//
+// Exported because it is the cap every count of this table saturates at — the
+// operator counter below and the platform-admin org detail
+// (`platformAdmin/queries.ts`) must not disagree about the same number.
+export const BLOCKLIST_VIEW_LIMIT = 1000;
 
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
 export const listByTeam = authedQuery({
