@@ -135,11 +135,13 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	if (!Number.isFinite(now) || !Number.isFinite(maxMessageAgeMs) || maxMessageAgeMs <= 0) return 0;
 	const expiresAt = now + maxMessageAgeMs;
 	const dayZeroStart = utcDayStart(now);
-	let days = 1; // the remainder of today
-	while (days < MAX_HORIZON_DAYS && dayZeroStart + days * MS_PER_DAY < expiresAt) {
-		days += 1;
-	}
-	return days;
+	// Closed form for "how many day-starts at or before the expiry instant":
+	// day k is usable when `dayZeroStart + k * MS_PER_DAY < expiresAt`, so the
+	// count is `ceil((expiresAt - dayZeroStart) / MS_PER_DAY)`. Clamped below at
+	// 1 (the remainder of today is always usable for a positive horizon) and
+	// above at MAX_HORIZON_DAYS.
+	const days = Math.ceil((expiresAt - dayZeroStart) / MS_PER_DAY);
+	return Math.min(MAX_HORIZON_DAYS, Math.max(1, days));
 }
 
 /**
