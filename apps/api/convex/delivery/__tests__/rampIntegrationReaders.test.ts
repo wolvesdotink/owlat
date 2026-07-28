@@ -75,7 +75,16 @@ async function cellRow(t: Harness) {
 	return row;
 }
 
-async function evidence(t: Harness) {
+/**
+ * THE CLOCK IS READ AT CALL TIME, not pinned at module load.
+ *
+ * `NOW` is fixed when this file is imported, but the fixtures insert their rows
+ * afterwards — so a row's `_creationTime` is AHEAD of `NOW`. The dwell anchor
+ * falls back to `_creationTime`, and an anchor ahead of the clock is correctly
+ * reported as unmeasured, which would make the legacy-row case exercise the
+ * future-anchor guard instead of the fallback it is written for.
+ */
+async function evidence(t: Harness, now: number = Date.now()) {
 	const perStream = await cellRow(t);
 	return await t.run(
 		async (ctx) =>
@@ -84,7 +93,7 @@ async function evidence(t: Harness) {
 				cell: CELL,
 				perStream,
 				degradation: EQUIPPED_DEGRADATION,
-				now: NOW,
+				now,
 			})
 	);
 }
@@ -414,6 +423,8 @@ describe('the promotion-evidence reader', () => {
 	it('anchors the dwell on the row’s creation when no anchor was ever stamped', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t);
+		// The row genuinely carries no anchor — otherwise this would assert nothing.
+		expect((await cellRow(t)).phaseCeilingSince).toBeUndefined();
 		const loaded = await evidence(t);
 		expect(loaded.ceilingHeldMs).not.toBeNull();
 		expect(loaded.ceilingHeldMs ?? -1).toBeGreaterThanOrEqual(0);

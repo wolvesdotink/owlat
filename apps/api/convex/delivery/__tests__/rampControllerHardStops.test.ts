@@ -371,13 +371,22 @@ describe('a gate aggregate that is not a reading of the present', () => {
 			.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate')
 			.mockImplementation((input) => cleanEvaluation(3, input.now - 400 * DAY_MS));
 
+		// THE CALL COUNT IS READ BEFORE THE RESTORE. Vitest's `mockRestore` performs
+		// a `mockReset`, which clears `mock.calls` — so an assertion after the
+		// `finally` block reads an emptied history and can never pass, however many
+		// times the spy actually ran. Capture, then restore, then assert.
+		let evaluations = 0;
 		try {
 			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			evaluations = spy.mock.calls.length;
 		} finally {
 			spy.mockRestore();
 		}
 
-		expect(spy).toHaveBeenCalled();
+		// The stale aggregate has to have come from the MOCK. Without this the test
+		// would still pass if the fold routed the cell to the other evaluator and
+		// something else produced the hold.
+		expect(evaluations).toBeGreaterThan(0);
 		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
 		const rows = await decisions(t);
 		expect(rows[0]?.reason).toBe('evidence_stale');
