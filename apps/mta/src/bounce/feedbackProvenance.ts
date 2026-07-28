@@ -1,11 +1,18 @@
 /**
  * Authenticated delayed-feedback provenance.
  *
- * Exact message records and bounded recipient indexes expire after eight days:
- * one day beyond the signed VERP verification horizon and well beyond the
- * four-day delivery retry horizon. Recipient indexes keep at most 64 live
- * message/domain observations; mixed or missing observations resolve unknown
- * and therefore cannot mutate suppression or reputation state.
+ * Exact message records and bounded recipient indexes are retained for
+ * `FEEDBACK_RECORD_RETENTION_SECONDS` (`bounce/signedToken.ts`) — the horizon
+ * over which a signed feedback token still verifies, plus a day of clock-skew
+ * slack. The record is the ONLY source of organizationId/campaignId/
+ * deliveryDomain/recipient, so it must outlive every token that can still be
+ * presented: a complaint that verifies but finds no record attributes to
+ * nothing and cannot feed the complaint gate. That is why the retention is
+ * derived from the token horizon rather than chosen here.
+ *
+ * Recipient indexes keep at most 64 live message/domain observations; mixed or
+ * missing observations resolve unknown and therefore cannot mutate suppression
+ * or reputation state.
  */
 
 import { createHash } from 'crypto';
@@ -15,8 +22,9 @@ import type { BounceAttempt } from './types.js';
 import type { EmailJob } from '../types.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
+import { FEEDBACK_RECORD_RETENTION_SECONDS } from './signedToken.js';
 
-const FEEDBACK_TTL_SECONDS = 8 * 24 * 60 * 60;
+const FEEDBACK_TTL_SECONDS = FEEDBACK_RECORD_RETENTION_SECONDS;
 const FEEDBACK_TTL_MS = FEEDBACK_TTL_SECONDS * 1_000;
 const MAX_RECIPIENT_OBSERVATIONS = 64;
 
@@ -141,8 +149,23 @@ export async function attachFeedbackProvenance(
 		}
 	}
 	if (exact) {
+		// EVERY trusted field comes from the record we wrote at send time, never
+		// from the report. The recipient matters most: a verified message id proves
+		// only that the reporter holds a token we signed — with a CFBL address that
+		// is true of anyone who received one message from the tenant — so trusting
+		// the report's `Original-Rcpt-To` would let such a reporter have an
+		// arbitrary address suppressed inside that tenant. The record already knows
+		// who the message went to.
+		//
+		// This branch covers `dsn_attributed` as well as `fbl`, so it is also an
+		// intentional hardening of the shipped bounce path: for an alias or
+		// forwarder the DSN's `Final-Recipient` is the FORWARDED mailbox, and the
+		// address suppression may legitimately act on is the one we actually sent
+		// to. A verified token proves which SEND the report is about; it never
+		// proves which address the reporter is entitled to name.
 		const enriched = {
 			...classification,
+			recipient: exact.recipient,
 			organizationId: exact.organizationId,
 			campaignId: exact.campaignId,
 			deliveryDomain: exact.deliveryDomain,

@@ -9,7 +9,6 @@ WORKDIR /app
 # (examples/* and examples/plugins/* included), or bun's frozen-lockfile
 # check rejects the partial workspace shape.
 COPY package.json bun.lock ./
-COPY patches/ patches/
 COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 
 # Root-level filtered install (same idiom as web/updater/setup-cli): only this

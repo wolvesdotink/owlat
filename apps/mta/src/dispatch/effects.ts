@@ -31,7 +31,19 @@ import * as metrics from '../monitoring/collector.js';
 import { logDeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
-import type { MtaWebhookEvent, MetricOutcome } from '../types.js';
+import type {
+	DestinationProviderKey,
+	IpPoolType,
+	MtaWebhookEvent,
+	MetricOutcome,
+} from '../types.js';
+import { utcDateKey } from '../intelligence/warmingKeys.js';
+import {
+	recordProviderVolumePressure,
+	recordProviderWarmingOutcome,
+	recordProviderWarmingSend,
+} from '../intelligence/warmingProviderStore.js';
+import { PROVIDER_WARMING_POLICY } from '../intelligence/warmingProviderPolicy.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import type { PhaseDeps } from './types.js';
 import type { WarmingReservation } from '../intelligence/warming.js';
@@ -67,10 +79,46 @@ export type DispatchEffect =
 			campaignId: string;
 	  }
 	| {
+			/**
+			 * A DELIVERED send. This is the only outcome that consumes warming
+			 * capacity, so it is the only one carrying the reservation it consumes
+			 * and the pool that decides whether it counts toward the bulk pacing
+			 * curve — the union says so rather than threading dead payload (and
+			 * journalling it) through the three non-delivery branches.
+			 */
 			kind: 'warming_record';
 			ip: string;
-			result: 'send' | 'bounce' | 'deferral';
+			result: 'send';
 			reservation?: WarmingReservation;
+			/**
+			 * Mirrors the outcome into the per-(IP x mailbox provider) warming
+			 * dimension. Required: every reducer branch that emits this effect
+			 * resolves the destination before it does.
+			 */
+			providerKey: DestinationProviderKey;
+			/**
+			 * Only `campaign` sends count toward the bulk pacing curve;
+			 * transactional volume is exempt from pacing and holds its own
+			 * headroom out of the same daily cap.
+			 */
+			pool: IpPoolType;
+	  }
+	| {
+			/** A bounce or a deferral: counted, but it consumes no capacity. */
+			kind: 'warming_record';
+			ip: string;
+			result: 'bounce' | 'deferral';
+			providerKey: DestinationProviderKey;
+	  }
+	| {
+			/**
+			 * One SMTP volume-pressure verdict (4xx rate limiting / provider
+			 * throttling) for this (IP x mailbox provider). Feeds the per-provider
+			 * cap gate and lengthens this destination's retry backoff.
+			 */
+			kind: 'warming_provider_pressure';
+			ip: string;
+			providerKey: DestinationProviderKey;
 	  }
 	| {
 			kind: 'metrics_record';
@@ -186,6 +234,49 @@ function fireAndForget(
 	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
+/** The shipped per-IP warming accounting — unchanged. */
+function applyPerIpWarmingRecord(
+	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
+	if (effect.result === 'send') {
+		return downstreamIdentity
+			? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
+			: warming.recordSend(deps.redis, effect.ip, effect.reservation);
+	}
+	if (effect.result === 'bounce') {
+		return downstreamIdentity
+			? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
+			: warming.recordBounce(deps.redis, effect.ip);
+	}
+	return downstreamIdentity
+		? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
+		: warming.recordDeferral(deps.redis, effect.ip);
+}
+
+/** The additive per-(IP x mailbox provider) mirror of the same outcome. */
+function applyPerProviderWarmingRecord(
+	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
+	const ref = {
+		ip: effect.ip,
+		provider: effect.providerKey,
+		utcDate: utcDateKey(),
+	};
+	if (effect.result === 'send') {
+		return recordProviderWarmingSend(deps.redis, ref, effect.pool, downstreamIdentity);
+	}
+	return recordProviderWarmingOutcome(
+		deps.redis,
+		ref,
+		effect.result === 'bounce' ? 'bounced' : 'deferred',
+		downstreamIdentity
+	);
+}
+
 function applyOne(
 	effect: DispatchEffect,
 	deps: PhaseDeps,
@@ -246,17 +337,17 @@ function applyOne(
 				downstreamIdentity
 			);
 		case 'warming_record':
-			if (effect.result === 'send')
-				return downstreamIdentity
-					? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
-					: warming.recordSend(deps.redis, effect.ip, effect.reservation);
-			if (effect.result === 'bounce')
-				return downstreamIdentity
-					? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
-					: warming.recordBounce(deps.redis, effect.ip);
-			return downstreamIdentity
-				? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
-				: warming.recordDeferral(deps.redis, effect.ip);
+			return Promise.all([
+				applyPerIpWarmingRecord(effect, deps, downstreamIdentity),
+				applyPerProviderWarmingRecord(effect, deps, downstreamIdentity),
+			]);
+		case 'warming_provider_pressure':
+			return recordProviderVolumePressure(
+				deps.redis,
+				{ ip: effect.ip, provider: effect.providerKey, utcDate: utcDateKey() },
+				PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
+				downstreamIdentity
+			);
 		case 'metrics_record':
 			return metrics.record(
 				deps.redis,

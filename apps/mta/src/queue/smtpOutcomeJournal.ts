@@ -9,7 +9,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { EmailJobResult } from '../types.js';
-import type { CtxWithIp } from '../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effectCheckpoint.js';
@@ -18,7 +18,7 @@ const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
 export const SMTP_OUTCOME_JOURNAL_TTL_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 24 * 60 * 60 * 1000;
 
-export type SmtpAttemptSnapshot = Omit<CtxWithIp, 'job'>;
+export type SmtpAttemptSnapshot = Omit<CtxWithProviderPressure, 'job'>;
 
 interface InFlightSmtpOutcome {
 	state: 'in_flight';
@@ -154,6 +154,7 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
+		normalizeAttemptSnapshot(entry['attempt']);
 		return entry as unknown as InFlightSmtpOutcome;
 	}
 	if (entry['state'] === 'effects_applied') {
@@ -173,7 +174,17 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 	) {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
+	normalizeAttemptSnapshot(entry['attempt']);
 	return entry as unknown as CompletedSmtpOutcome;
+}
+
+/** Fill in fields added after an entry was written, so a replay never sees a hole. */
+function normalizeAttemptSnapshot(value: unknown): void {
+	if (!value || typeof value !== 'object') return;
+	const attempt = value as Record<string, unknown>;
+	if (typeof attempt['providerVolumePressure'] !== 'number') {
+		attempt['providerVolumePressure'] = 0;
+	}
 }
 
 function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
@@ -187,6 +198,15 @@ function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
 		typeof attempt['ip'] !== 'string' ||
 		typeof attempt['eligibilityGeneration'] !== 'number' ||
 		!Number.isSafeInteger(attempt['eligibilityGeneration'])
+	) {
+		return false;
+	}
+	// Entries persisted before the per-provider pressure dimension carry no
+	// counter. Tolerated rather than rejected — a legacy in-flight entry must
+	// still replay — and normalized to zero by `normalizeAttemptSnapshot`.
+	if (
+		attempt['providerVolumePressure'] !== undefined &&
+		typeof attempt['providerVolumePressure'] !== 'number'
 	) {
 		return false;
 	}
@@ -270,6 +290,7 @@ export async function reserveSmtpOutcome(
 			dedicatedIp: attempt.dedicatedIp,
 			ip: attempt.ip,
 			eligibilityGeneration: attempt.eligibilityGeneration,
+			providerVolumePressure: attempt.providerVolumePressure,
 		},
 	};
 	const raw = JSON.stringify(entry);

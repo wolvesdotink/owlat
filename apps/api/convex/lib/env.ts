@@ -66,6 +66,21 @@ export type EnvKey =
 	// the pool IPs, so the bounce envelope passes SPF at receivers that check
 	// MAIL FROM. Unset ⇒ no return-path SPF record is generated.
 	| 'MTA_RETURN_PATH_DOMAIN'
+	// The MTA's VERP signing key (BOUNCE_VERP_KEY on the MTA side). Convex needs
+	// the SAME key to stamp a verifiable VERP envelope sender on RELAY sends, so
+	// a bounce a third-party relay generates still reaches our bounce server and
+	// attributes to the right send. Unset ⇒ relay sends keep the composer's
+	// envelope sender and that arm's bounce data is graded degraded — never an
+	// error, never a blocked send.
+	| 'MTA_BOUNCE_VERP_KEY'
+	// SPF mechanism terms (e.g. `include:amazonses.com`) that authorise a
+	// third-party RELAY to send with a `bounce+…@<return-path host>` envelope
+	// sender. Emitted into the generated return-path SPF record, and required —
+	// published and verified — before a relay send may carry our VERP address:
+	// the record otherwise authorises the MTA pool only, so stamping it on a
+	// relay send would fail SPF on the very arm being measured. Unset ⇒ no relay
+	// stamp, degraded measurement, nothing blocked.
+	| 'MTA_RETURN_PATH_RELAY_SPF'
 	// The DKIM signing domain (`d=` tag) the ACTIVE transport stamps on outbound
 	// mail, when it isn't the per-message From-domain. The built-in MTA signs
 	// per-From-domain, so it leaves this unset (and aligns by construction); a

@@ -39,13 +39,30 @@ export interface CtxWithIp extends CtxWithPool {
 }
 
 /**
+ * The ctx after `warmingCap` enriches it.
+ *
+ * The field is REQUIRED, and the phase widens the ctx type to carry it, for the
+ * same reason `selectIp` widens `CtxWithPool` into `CtxWithIp`: an optional
+ * field would let a caller that skipped the phase silently read "no pressure"
+ * and compile.
+ */
+export interface CtxWithProviderPressure extends CtxWithIp {
+	/**
+	 * Recent volume-pressure verdicts this (IP x mailbox provider) has collected
+	 * from the SMTP classifier. Read once by the warming-cap phase so the pure
+	 * outcome reducer can lengthen retry backoff without touching Redis.
+	 */
+	readonly providerVolumePressure: number;
+}
+
+/**
  * The ctx fed into the outcome reducer once the SMTP send returns.
  *
  * Equivalent to the final pipeline output ctx plus the measured attempt
  * duration. Named separately because the reducer treats it as immutable
  * input.
  */
-export interface AttemptCtx extends CtxWithIp {
+export interface AttemptCtx extends CtxWithProviderPressure {
 	readonly durationMs: number;
 }
 

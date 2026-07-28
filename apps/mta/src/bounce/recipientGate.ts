@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 import type { SmtpAddress, SmtpHandlerResult, SmtpReply, SmtpSession } from '@owlat/smtp-listener';
+import { isReturnPathProbeRecipient } from '@owlat/shared/verp';
 import type { MtaConfig } from '../config.js';
 import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { findRoute } from '../inbound/router.js';
@@ -50,6 +51,16 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 			return;
 		}
 		if (address.address.startsWith('bounce+') || address.address.startsWith('fbl+')) return;
+
+		// Reserved: a return-path capability probe is addressed here PRECISELY so
+		// that it is refused and the relay generates a DSN we can attribute. The
+		// refusal is explicit rather than incidental — without this rule a
+		// catch-all route or a mailbox at the bounce domain would swallow every
+		// probe, no DSN would ever be produced, and every relay would grade
+		// "unsupported" forever with no diagnostic.
+		if (isReturnPathProbeRecipient(address.address, config.returnPathDomain)) {
+			return { code: 550, enhanced: '5.1.1', text: 'Mailbox not found' };
+		}
 
 		return findMailboxRoute(redis, address.address)
 			.then((mailboxEntry): Promise<SmtpHandlerResult> | SmtpHandlerResult => {

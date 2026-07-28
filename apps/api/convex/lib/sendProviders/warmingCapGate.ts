@@ -11,12 +11,8 @@
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { SendRouteFacts } from './route';
-import {
-	loadSendRouteFacts,
-	relayDomainVerified,
-	routingDeferralCode,
-	selectRouteFromFacts,
-} from './route';
+import { loadSendRouteFacts, routingDeferralCode, selectRouteFromFacts } from './route';
+import { relayDomainVerified } from './relayDomainVerification';
 import type { ResolvedRoute } from './routing';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { extractDomainOrNull } from '@owlat/shared';
