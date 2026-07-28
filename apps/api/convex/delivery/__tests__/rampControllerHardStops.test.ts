@@ -410,14 +410,46 @@ describe('the phase ladder', () => {
 			if (cell) await ctx.db.patch(cell._id, { phaseCeiling: 0.25, mixVersion: 2 });
 		});
 
+		// The lower rungs are the ordinary ladder — no evidence is consulted.
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.5 });
+
+		// CROSSING 0.5 IS EVIDENCE-GATED (P3-8). With no external reading and no
+		// corroborating self-hosted evidence the cell keeps its rung and the
+		// outstanding conditions come back BY NAME — a refusal, never an error.
+		const refused = await promote();
+		expect(refused).toMatchObject({ ok: false, phaseCeiling: 0.5 });
+		const outstanding = (refused as { outstanding?: readonly string[] }).outstanding ?? [];
+		expect(outstanding).toContain('google_compliance_pass');
+		expect(outstanding).toContain('dnsbl_clean_streak');
+		expect((await cellRow(t))?.phaseCeiling).toBe(0.5);
+
+		// A Google Compliance Status pass within the last 7 days is one whole route
+		// on its own, and it carries the cell to the top.
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert('domains', {
+				domain: 'example.test',
+				status: 'verified' as const,
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('googlePostmasterCompliance', {
+				domainId,
+				domain: 'example.test',
+				periodStart: Date.now() - DAY_MS,
+				checks: [{ name: 'spam_rate', state: 'passing' as const }],
+				fetchedAt: Date.now() - HOUR_MS,
+				ingestedAt: Date.now() - HOUR_MS,
+			});
+		});
+
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.8 });
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
 		// The top rung is the top rung: further promotions are no-ops.
 		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
 
 		// A promotion IS a new mix generation, so the salt advances once per real
-		// rung — and not at all for the no-op at the top.
+		// rung — and not at all for the refusal or for the no-op at the top.
 		expect((await cellRow(t))?.mixVersion).toBe(5);
 	});
 
