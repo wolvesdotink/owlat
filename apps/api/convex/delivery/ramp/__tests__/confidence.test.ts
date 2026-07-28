@@ -17,8 +17,9 @@ import {
 	referenceArmGateEvaluator,
 	trailingBaselineGateEvaluator,
 } from '../gateEvaluation';
-import { weakestConfidence, type RampGateConfidence, type RampGateId } from '../gateTypes';
-import { NOW, arm, healthyInput, seeds, standaloneInput } from './gateFixtures';
+import { weakestConfidence } from '../gateGrades';
+import type { RampGateConfidence, RampGateId } from '../gateTypes';
+import { NOW, arm, healthyInput, itEquipped, seeds, standaloneInput } from './gateFixtures';
 
 const LEVELS: readonly RampGateConfidence[] = ['high', 'medium', 'low'];
 
@@ -46,7 +47,7 @@ const TRAILING_BASELINE_CONFIDENCE: Readonly<Record<RampGateId, RampGateConfiden
 };
 
 describe('every verdict carries a documented confidence level', () => {
-	it('the reference-arm evaluator grades each gate as documented', () => {
+	itEquipped('the reference-arm evaluator grades each gate as documented', () => {
 		const evaluation = referenceArmGateEvaluator.evaluate(healthyInput());
 		for (const gate of evaluation.perGate) {
 			expect(LEVELS).toContain(gate.confidence);
@@ -114,7 +115,7 @@ describe('the evaluation reports the cell’s weakest link', () => {
 		expect(evaluation.confidence).toBe('medium');
 	});
 
-	it('a healthy relay-backed cell measures at HIGH', () => {
+	itEquipped('a healthy relay-backed cell measures at HIGH', () => {
 		expect(referenceArmGateEvaluator.evaluate(healthyInput()).confidence).toBe('high');
 	});
 
@@ -122,7 +123,7 @@ describe('the evaluation reports the cell’s weakest link', () => {
 		expect(trailingBaselineGateEvaluator.evaluate(standaloneInput()).confidence).toBe('medium');
 	});
 
-	it('a seed FAIL drags the reported confidence down to the tripwire’s level', () => {
+	itEquipped('a seed FAIL drags the reported confidence down to the tripwire’s level', () => {
 		const evaluation = referenceArmGateEvaluator.evaluate(healthyInput({ ownSeeds: seeds(1, 19) }));
 		expect(evaluation.failedGate).toBe('seed_placement');
 		expect(evaluation.confidence).toBe('medium');

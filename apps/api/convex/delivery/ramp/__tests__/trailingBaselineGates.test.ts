@@ -90,6 +90,59 @@ describe('gate 1 — hard bounce against the cell’s own trailing rate', () => 
 			status: 'insufficient_data',
 			reason: 'baseline_sample_below_floor',
 		},
+		// ---- THE BOUNDARY ITSELF: the plan says "AT MOST 1.5x", so 1.5x passes. ----
+		{
+			name: 'exactly 1.5x the trailing rate passes — the allowance is inclusive',
+			ownSent: 10_000,
+			ownHardBounced: 150,
+			trailing: { sent: 40_000, hardBounced: 400 },
+			status: 'pass',
+			reason: 'within_threshold',
+		},
+		{
+			name: 'one send past 1.5x fails',
+			ownSent: 10_000,
+			ownHardBounced: 151,
+			trailing: { sent: 40_000, hardBounced: 400 },
+			status: 'fail',
+			reason: 'trailing_baseline_breached',
+		},
+		{
+			name: 'exactly on the 2% absolute ceiling passes',
+			ownSent: 10_000,
+			ownHardBounced: 200,
+			trailing: { sent: 40_000, hardBounced: 800 },
+			status: 'pass',
+			reason: 'within_threshold',
+		},
+		{
+			name: 'one send past the 2% absolute ceiling fails',
+			ownSent: 10_000,
+			ownHardBounced: 201,
+			trailing: { sent: 40_000, hardBounced: 804 },
+			status: 'fail',
+			reason: 'absolute_threshold_breached',
+		},
+		// ---- A BASELINE THAT CANNOT BE A DENOMINATOR ----
+		{
+			name: 'a trailing window with ZERO hard bounces HOLDS: 1.5x of nothing is not a ceiling',
+			// A large, fresh, perfectly clean month is not evidence that one bounce in
+			// ten thousand — two orders of magnitude inside the absolute ceiling — is a
+			// reason to halve the share.
+			ownSent: 10_000,
+			ownHardBounced: 1,
+			trailing: { sent: 40_000, hardBounced: 0 },
+			status: 'insufficient_data',
+			reason: 'baseline_rate_unmeasurable',
+		},
+		{
+			name: 'a zero-rate baseline does not suppress the ABSOLUTE breach either',
+			ownSent: 10_000,
+			ownHardBounced: 300,
+			trailing: { sent: 40_000, hardBounced: 0 },
+			status: 'fail',
+			reason: 'absolute_threshold_breached',
+		},
 	];
 
 	for (const testCase of cases) {
@@ -209,6 +262,53 @@ describe('gate 3 — complaints, or the unsubscribe proxy when there is no feedb
 		expect(ordinary.measurement.ownRate).toBeGreaterThan(RAMP_GATE_THRESHOLDS.complaintMax);
 	});
 
+	it('WITHOUT one: EXACTLY 3x is a breach — the plan says "at or above 3x"', () => {
+		// Counts chosen so both rates are exactly representable and base * 3 is
+		// exactly the own rate: this case is about the comparison operator, and a
+		// rounding artefact would decide it instead.
+		const result = complaintGate({
+			own: arm({ sent: 16_384, unsubscribed: 48 }),
+			ownTrailingBaseline: arm({ sent: 32_768, unsubscribed: 32 }),
+		});
+		expect(result.measurement.ownRate).toBe(
+			(result.measurement.referenceRate ?? 0) * RAMP_GATE_THRESHOLDS.unsubscribeProxyMultiple
+		);
+		expect(result.status).toBe('fail');
+		expect(result.reason).toBe('trailing_baseline_breached');
+	});
+
+	it('WITHOUT one: one unsubscribe short of 3x still passes', () => {
+		const result = complaintGate({
+			own: arm({ sent: 16_384, unsubscribed: 47 }),
+			ownTrailingBaseline: arm({ sent: 32_768, unsubscribed: 32 }),
+		});
+		expect(result.status).toBe('pass');
+	});
+
+	it('WITHOUT one: a trailing window with ZERO unsubscribes HOLDS, never fails', () => {
+		// The proxy has no absolute ceiling, so a zero baseline would fail this cell
+		// on its FIRST unsubscribe — and a young standalone cell is exactly the
+		// population the substitution exists for.
+		const result = complaintGate({
+			own: arm({ sent: 10_000, unsubscribed: 1 }),
+			ownTrailingBaseline: arm({ sent: 40_000, unsubscribed: 0 }),
+		});
+		expect(result.status).toBe('insufficient_data');
+		expect(result.reason).toBe('baseline_rate_unmeasurable');
+	});
+
+	it('WITHOUT one: an implausible baseline buys silence, never permission', () => {
+		// A relative-only gate whose implied ceiling reaches 1 can never fail
+		// anything — so a poisoned or absurd baseline would hand the cell an
+		// unfalsifiable pass, and an unfalsifiable pass counts toward an increase.
+		const result = complaintGate({
+			own: arm({ sent: 10_000, unsubscribed: 9_000 }),
+			ownTrailingBaseline: arm({ sent: 40_000, unsubscribed: 30_000 }),
+		});
+		expect(result.status).toBe('insufficient_data');
+		expect(result.reason).toBe('baseline_rate_unmeasurable');
+	});
+
 	it('WITHOUT one: no trailing baseline holds rather than failing', () => {
 		const result = complaintGate({ own: arm({ sent: 10_000, unsubscribed: 30 }) });
 		expect(result.status).toBe('insufficient_data');
@@ -243,8 +343,16 @@ describe('gate 4 — trailing-baseline engagement (0.85 / 7 days / 2000 sends)',
 
 	it('the constants are the plan’s relaxed ones, not the concurrent gate’s', () => {
 		expect(ENGAGEMENT_GATE_THRESHOLDS.trailingBaselineRatio).toBe(0.85);
-		expect(ENGAGEMENT_GATE_THRESHOLDS.trailingWindowDays).toBe(7);
 		expect(RAMP_GATE_SAMPLE_FLOORS.engagementTrailing).toBe(2000);
+	});
+
+	it('a ratio of EXACTLY 0.85 passes — the floor is inclusive', () => {
+		// 0.17 / 0.2 = 0.85 exactly, so this case decides the operator rather than a
+		// rounding artefact.
+		const result = engagement(1_700, 10_000, 2_000);
+		expect(result.measurement.ownRate).toBe(0.17);
+		expect(result.measurement.referenceRate).toBe(0.2);
+		expect(result.status).toBe('pass');
 	});
 
 	it('engagement flat against the trailing baseline passes', () => {

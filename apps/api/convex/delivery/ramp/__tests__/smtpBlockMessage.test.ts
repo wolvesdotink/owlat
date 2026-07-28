@@ -132,6 +132,18 @@ describe('the hard stop is guarded like every other verdict', () => {
 		).not.toThrow();
 	});
 
+	it('more blocks than classified responses is UNMEASURABLE, not a 100% block rate', () => {
+		// An impossible producer row. A clamp to 1.0 would manufacture the highest
+		// possible reading of the one signal here that halts a cell outright, so the
+		// row is discarded and the deferral rate behind it decides on its own.
+		const built = standaloneInput({
+			own: arm({ sent: 10_000, deferred: 10 }),
+			smtpBlocks: blocks(500, 200),
+		});
+		expect(evaluateSmtpBlockMessages(built)).toBeNull();
+		expect(evaluateStandaloneDeferralGate(built).status).toBe('pass');
+	});
+
 	it('absent block data changes nothing: the deferral rate still decides', () => {
 		const evaluation = evaluateStandaloneDeferralGate(standaloneInput());
 		expect(evaluation.status).toBe('pass');

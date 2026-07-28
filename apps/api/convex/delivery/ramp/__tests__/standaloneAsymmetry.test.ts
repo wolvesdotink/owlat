@@ -147,6 +147,60 @@ describe('the standalone evaluator cannot be handed a strong engagement verdict'
 		expect(regraded.status).toBe('pass');
 	});
 
+	it('re-REASONS it too: no standalone audit row names a relay that does not exist', () => {
+		// Re-grading alone would leave the operator a `reference_*` reason (plan D12
+		// keys the audit row and the admin notification off it) pointing at a
+		// transport this deployment has never had.
+		const measurement = {
+			ownRate: 0.1,
+			referenceRate: 0.2,
+			thresholdRate: 0.19,
+			toleranceValuePp: null,
+			ownSample: 10_000,
+			referenceSample: 10_000,
+			minSample: 400,
+		} as const;
+		const smuggledFail = asTrailingEngagement({
+			gate: 'engagement_ratio',
+			status: 'fail',
+			reason: 'reference_tolerance_breached',
+			measurement,
+			confidence: 'high',
+			mayJustifyIncrease: true,
+		});
+		expect(smuggledFail.reason).toBe('trailing_baseline_breached');
+
+		const holds = [
+			['reference_evidence_stale', 'baseline_evidence_stale'],
+			['reference_sample_below_floor', 'baseline_sample_below_floor'],
+			['reference_rate_unmeasurable', 'baseline_rate_unmeasurable'],
+		] as const;
+		for (const [smuggled, expected] of holds) {
+			expect(
+				asTrailingEngagement({
+					gate: 'engagement_ratio',
+					status: 'insufficient_data',
+					reason: smuggled,
+					measurement,
+					confidence: 'high',
+					mayJustifyIncrease: true,
+				}).reason
+			).toBe(expected);
+		}
+
+		// The OWN-arm vocabulary is about this deployment and survives untouched.
+		expect(
+			asTrailingEngagement({
+				gate: 'engagement_ratio',
+				status: 'insufficient_data',
+				reason: 'own_sample_below_floor',
+				measurement,
+				confidence: 'high',
+				mayJustifyIncrease: true,
+			}).reason
+		).toBe('own_sample_below_floor');
+	});
+
 	it('a healthy standalone cell still reaches PASS on its strong gates', () => {
 		const evaluation = trailingBaselineGateEvaluator.evaluate(
 			standaloneInput({ engagement: trailingEngagement(2_000), previousCleanStreak: 1 })
