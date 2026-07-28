@@ -7,7 +7,6 @@
  * actuators can never come to mean different things by the same word.
  */
 
-import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import type {
 	RampDecisionDirection,
 	RampDecisionReason,
@@ -98,7 +97,6 @@ export type PaceUtilisationReading =
 	  };
 
 export interface PaceControllerInput {
-	readonly cell: DeliverabilityCell;
 	readonly config: RampStreamConfig;
 	readonly pace: PaceState;
 	readonly signals: RampHardStopSignals;

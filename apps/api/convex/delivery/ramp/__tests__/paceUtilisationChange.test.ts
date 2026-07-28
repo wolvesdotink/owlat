@@ -22,8 +22,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ADAPTIVE_WARMING_POLICY } from '@owlat/shared/warming';
-import { isCapExercised, nextPaceMultiplier } from '../paceActuator';
-import { PACE_AIMD } from '../paceConfig';
+import { isCapExercised, nextPaceMultiplier, PACE_MINIMUM_UTILISATION } from '../paceActuator';
 import {
 	breachedEvaluation,
 	EXERCISED,
@@ -60,9 +59,7 @@ describe('the utilisation rule — BEFORE (shipped)', () => {
 	});
 
 	it('the threshold the pace actuator adopts is the shipped number, unchanged', () => {
-		expect(PACE_AIMD.minimumUtilisation).toBe(
-			ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum
-		);
+		expect(PACE_MINIMUM_UTILISATION).toBe(ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum);
 	});
 });
 

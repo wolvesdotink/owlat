@@ -76,9 +76,31 @@ import type {
 	PaceUtilisationReading,
 } from './paceTypes';
 
-/** Stored multipliers are kept to three decimals, like the stored share. */
-export function roundMultiplier(value: number): number {
-	if (!Number.isFinite(value)) return PACE_AIMD.multiplierFloor;
+/**
+ * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE — the one sanctioned
+ * behaviour change in this piece (plan D19).
+ *
+ * The shipped MTA evaluator REQUIRES this much utilisation to accelerate and
+ * otherwise falls through to the normal one-day advance, so a deployment sending
+ * less than its cap can never accelerate. Under pace control the same reading
+ * means something different: low utilisation is INSUFFICIENT EVIDENCE, so the
+ * pace actuator HOLDS rather than penalising. An unexercised cap is not evidence
+ * of anything.
+ *
+ * The NUMBER is the shipped one (`ADAPTIVE_WARMING_POLICY.acceleration
+ * .usageRateMinimum`); only the verdict it produces changed. It lives beside
+ * `isCapExercised`, the one rule that reads it.
+ */
+export const PACE_MINIMUM_UTILISATION = 0.8;
+
+/**
+ * Stored multipliers are kept to three decimals, like the stored share.
+ *
+ * Total on the values it is ever given: both call sites clamp through
+ * `aimdClamp` first, which is where the fail-closed decision about a non-finite
+ * reading is made and stated. Rounding does not make that decision twice.
+ */
+function roundMultiplier(value: number): number {
 	return Math.round(value * 1000) / 1000;
 }
 
@@ -103,7 +125,7 @@ export function isCapExercised(reading: PaceUtilisationReading): boolean {
 	const { sent, enforcedCap } = reading;
 	if (!Number.isFinite(enforcedCap) || enforcedCap <= 0) return false;
 	if (!Number.isFinite(sent) || sent <= 0) return false;
-	return sent / enforcedCap >= PACE_AIMD.minimumUtilisation;
+	return sent / enforcedCap >= PACE_MINIMUM_UTILISATION;
 }
 
 /** THE decision. Pure — `now` is a parameter. */
@@ -293,15 +315,19 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 		return { ...held, reason: 'holding', verdict: evaluation.verdict, cleanStreak: streak };
 	}
 
-	// From here the window is CLEAN.
-	const green = { ...held, verdict: 'pass' as const };
+	// From here the window is CLEAN. The freshly EVALUATED streak is the source of
+	// truth for it from this rung down — including on the two rungs that hold —
+	// so a caller writing `decision.cleanStreak` back cannot freeze the persisted
+	// streak at its stored value on every same-day tick.
+	const green = { ...held, verdict: 'pass' as const, cleanStreak: streak };
 	const today = utcDayKey(now);
 
 	// 8. THE PER-UTC-DAY IDEMPOTENCY GUARD (plan D19), PRESERVED. Twenty-four
 	//    hourly ticks in one UTC day advance the schedule exactly once. The empty
-	//    key is never a match: an unusable clock is rung 1's business, and a stored
-	//    day nobody set must not be able to look like today.
-	if (today !== '' && today === pace.lastEvaluatedUtcDay) {
+	//    key is never a match here because rung 1 already returned for the only
+	//    clock that produces one — and an absent stored anchor is `undefined`,
+	//    which no real day key can equal.
+	if (today === pace.lastEvaluatedUtcDay) {
 		return { ...green, reason: 'day_already_advanced' };
 	}
 
@@ -315,9 +341,16 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	}
 
 	// The day COUNTS from here: the evidence was real and sufficient.
-	const counted = { ...green, cleanStreak: streak, countedUtcDay: today };
+	const counted = { ...green, countedUtcDay: today };
 
 	// 10. K_CLEAN. Confidence is spent, not assumed.
+	//
+	//     P3-8 OWNS THE SUBSTITUTION FOR THIS DIAL. `cleanWindowsRequired` is
+	//     documented in `gateConfig.ts` as the EQUIPPED half only ("with a
+	//     reference arm", 3), and the pace dial only ever runs standalone — where
+	//     the plan's substitution table mandates K_CLEAN 3 -> 5 and a halved step.
+	//     Both substitutions arrive with P3-8's table; nothing here branches on
+	//     the configuration itself (plan D3).
 	if (streak < config.cleanWindowsRequired) {
 		return { ...counted, reason: 'building_confidence' };
 	}

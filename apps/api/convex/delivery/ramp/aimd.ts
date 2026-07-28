@@ -11,8 +11,10 @@
  * bounds are arguments.
  *
  * PURE and total: every function here takes numbers and returns a number.
- * Degenerate input FAILS CLOSED — a non-finite value resolves to the floor
- * rather than to the ceiling, in the direction that cannot advance a cell.
+ * Degenerate input FAILS CLOSED in the two functions that HAVE a floor to fail
+ * to — `aimdClamp` and `aimdDecrease` both resolve a non-finite value to the
+ * floor, the direction that cannot advance a cell. `aimdIncrease` has no floor
+ * in its bounds by design and says at its own definition what it does instead.
  */
 
 /** The bounds one actuator moves between. */
@@ -64,6 +66,14 @@ export function aimdDecrease(
  * the retreat.
  */
 export function aimdIncrease(value: number, bounds: Pick<AimdBounds, 'ceiling' | 'step'>): number {
+	// A value we cannot read is returned UNTOUCHED — deliberately, and it is why
+	// this function is excluded from the module's fail-closed promise. "Closed"
+	// for an increase would mean the floor, and this function has no floor to
+	// return: adding one would lift a below-floor value into a silent promotion,
+	// which is the thing the doc above forbids. Both callers clamp the result
+	// through `aimdClamp` (which does fail closed) before it can be stored, and
+	// an unreadable value never compares greater than the value it came from, so
+	// it can never buy a step.
 	if (!Number.isFinite(value)) return value;
 	const step = Number.isFinite(bounds.step) ? bounds.step : 0;
 	const ceiling = Number.isFinite(bounds.ceiling) ? bounds.ceiling : value;

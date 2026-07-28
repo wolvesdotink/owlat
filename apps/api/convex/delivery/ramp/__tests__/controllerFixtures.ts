@@ -228,7 +228,6 @@ export const UNEXERCISED: PaceUtilisationReading = {
 
 export function paceInput(overrides: Partial<PaceControllerInput> = {}): PaceControllerInput {
 	return {
-		cell: GMAIL_CAMPAIGN,
 		config: RAMP_STREAM_CONFIGS.campaign,
 		pace: paceState(),
 		signals: CLEAR_SIGNALS,

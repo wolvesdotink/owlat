@@ -4,6 +4,24 @@
  *
  *   dailyCap(cell) = clamp(dailyCap(cell) * m, floor, BASE_SCHEDULE_CEILING(day))
  *
+ * TWO DIFFERENT CAPS APPEAR IN THAT LINE, and conflating them makes the dial's
+ * whole increase range inert:
+ *
+ *   · `cellCap` is the per-(IP x mailboxProvider) cap the cell actually sends
+ *     against — the IP's daily cap narrowed by the provider's own multiplier
+ *     (`warmingProviderStore.providerCapVerdict`). THIS is what the dial
+ *     multiplies, and it is the number the plan means by `dailyCap(cell)`.
+ *   · `baseScheduleCap` is the IP's PUBLISHED schedule cap for the current
+ *     schedule day. That is the HARD CEILING: the controller may go slower than
+ *     the published ramp, and may never exceed it for the day.
+ *
+ * Because the cell cap sits BELOW the IP's published cap, a multiplier above 1
+ * buys real per-provider headroom — up to the IP's own cap and not one send
+ * further. Multiplying the ceiling by the dial and then clamping to the same
+ * ceiling, as an earlier revision did, made every increase a no-op and turned the
+ * AIMD asymmetry upside down (a halving of an inert dial is not a halving of
+ * anything).
+ *
  * The controller may go SLOWER than the published ramp; it may never go faster
  * than its ceiling for the current day. Keeping that clamp in one function —
  * rather than in the actuator, which only moves a dial — is what makes the
@@ -13,18 +31,40 @@
  * AND THE CAP DOES NOT GROW BEYOND WHAT VOLUME CAN ACTUALLY EXERCISE. An
  * unexercised cap is not evidence that a bigger one is safe, so growth tracks
  * demand: the cap may exceed the volume recently exercised by
- * `exerciseHeadroom` and no more. ABSENCE OF THE READING IS NOT A CONSTRAINT
- * (plan D2): a deployment we have no volume history for is bounded by the
- * published schedule alone, never by a zero we invented.
+ * `CAP_EXERCISE_HEADROOM` and no more. ABSENCE OF THE READING IS NOT A
+ * CONSTRAINT (plan D2): a deployment we have no volume history for is bounded by
+ * the published schedule alone, never by a zero we invented.
  *
  * Pure: every input is a parameter.
  */
 
-import { PACE_AIMD } from './paceConfig';
+/**
+ * How far past the volume actually exercised a cap may be allowed to grow. A cap
+ * nobody filled is not evidence that a bigger one is safe, so growth tracks
+ * demand: today's cap may exceed the recently exercised volume by this factor
+ * and no more.
+ *
+ * Lives here rather than with the actuator's AIMD bounds because it shapes a
+ * CAP, not the dial: nothing in `nextPaceMultiplier` reads it, and the two are
+ * changed for entirely different reasons.
+ */
+const CAP_EXERCISE_HEADROOM = 1.5;
+
+/**
+ * The smallest daily cap the exercise bound may produce. Without it a day with a
+ * handful of sends would pin the cap near zero and the cell could never generate
+ * the volume that would lift it again.
+ */
+const MINIMUM_DAILY_CAP = 50;
 
 export interface EffectiveDailyCapInput {
 	/**
-	 * The cap the shipped warming schedule publishes for the cell's CURRENT
+	 * The per-(IP x mailboxProvider) cap the cell sends against today, BEFORE the
+	 * pace dial. This is what the multiplier multiplies.
+	 */
+	readonly cellCap: number;
+	/**
+	 * The cap the shipped warming schedule publishes for the IP's CURRENT
 	 * schedule day. This is the hard ceiling; `Infinity` means graduated.
 	 */
 	readonly baseScheduleCap: number;
@@ -40,38 +80,44 @@ export interface EffectiveDailyCapInput {
 /**
  * The cap the pace actuator's multiplier produces, with both bounds applied.
  *
- * A degenerate base cap answers with the policy minimum rather than with `NaN`
+ * A degenerate cell cap answers with the policy minimum rather than with `NaN`
  * or zero: the cap is what stands between the deployment and sending nothing at
  * all, and a reading we cannot use is not a reason to stop.
  */
 export function effectiveDailyCap(input: EffectiveDailyCapInput): number {
-	const { baseScheduleCap, multiplier, exercisedVolume } = input;
-	// GRADUATED. The published schedule imposes no ceiling, so neither does this:
-	// an `Infinity` ceiling multiplied by a dial is still `Infinity`, and bounding
-	// it by exercised volume would re-impose a cap the IP has already outgrown.
-	if (baseScheduleCap === Infinity) return Infinity;
-	if (!Number.isFinite(baseScheduleCap) || baseScheduleCap <= 0) {
-		return PACE_AIMD.minimumDailyCap;
+	const { cellCap, baseScheduleCap, multiplier, exercisedVolume } = input;
+	// GRADUATED, and no cell cap either: the published schedule imposes no ceiling
+	// and there is nothing to multiply, so neither does this. Bounding it by
+	// exercised volume would re-impose a cap the IP has already outgrown.
+	if (baseScheduleCap === Infinity && !Number.isFinite(cellCap)) return Infinity;
+	// The CEILING. A ceiling we cannot read is not a ceiling — an unreadable
+	// published cap must not silently pin the cell to the policy minimum, so it
+	// simply does not bind.
+	const ceiling =
+		Number.isFinite(baseScheduleCap) && baseScheduleCap > 0 ? baseScheduleCap : Infinity;
+	if (!Number.isFinite(cellCap) || cellCap <= 0) {
+		return Math.min(ceiling, MINIMUM_DAILY_CAP);
 	}
 	const dial = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 
 	// What the dial ASKS for. It may legitimately exceed the day's ceiling — the
 	// dial is a request, and the clamp below is the answer.
-	const requested = baseScheduleCap * dial;
+	const requested = cellCap * dial;
 
 	// THE EXERCISE BOUND. Only a real, positive reading constrains; the floor on
 	// it is what stops a quiet day pinning the cap somewhere the cell could never
 	// generate the volume to climb back from.
 	const exercised =
 		exercisedVolume !== undefined && Number.isFinite(exercisedVolume) && exercisedVolume > 0
-			? Math.max(PACE_AIMD.minimumDailyCap, exercisedVolume * PACE_AIMD.exerciseHeadroom)
+			? Math.max(MINIMUM_DAILY_CAP, exercisedVolume * CAP_EXERCISE_HEADROOM)
 			: Infinity;
 
 	// THE HARD CEILING. Applied here, and here only — and applied LAST, so no
 	// floor above can lift a cap past the schedule's ceiling for the day.
-	const bounded = Math.min(baseScheduleCap, requested, exercised);
+	const bounded = Math.min(ceiling, requested, exercised);
+	if (!Number.isFinite(bounded)) return Infinity;
 	// Never zero: a cap of nothing sends nothing, and a cell that sends nothing
 	// can never be re-measured. One send is the trickle, the same rule the share
 	// floor follows.
-	return Math.min(baseScheduleCap, Math.max(1, Math.floor(bounded)));
+	return Math.min(ceiling, Math.max(1, Math.floor(bounded)));
 }

@@ -42,35 +42,6 @@ export interface PaceAimdConfig {
 	readonly increaseStep: number;
 	/** Multiplicative decrease the instant any gate breaches (the share's). */
 	readonly decreaseFactor: number;
-	/**
-	 * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE — the one sanctioned
-	 * behaviour change in this piece (plan D19).
-	 *
-	 * The shipped MTA evaluator REQUIRES this much utilisation to accelerate and
-	 * otherwise falls through to the normal one-day advance, so a deployment
-	 * sending less than its cap can never accelerate. Under pace control the same
-	 * reading means something different: low utilisation is INSUFFICIENT EVIDENCE,
-	 * so the pace actuator HOLDS rather than penalising, and the cap does not grow
-	 * beyond what volume can actually exercise. An unexercised cap is not evidence
-	 * of anything.
-	 *
-	 * The NUMBER is the shipped one (`ADAPTIVE_WARMING_POLICY.acceleration
-	 * .usageRateMinimum`); only the verdict it produces changed.
-	 */
-	readonly minimumUtilisation: number;
-	/**
-	 * How far past the volume actually exercised a cap may be allowed to grow.
-	 * A cap nobody filled is not evidence that a bigger one is safe, so growth
-	 * tracks demand: today's cap may exceed yesterday's exercised volume by this
-	 * factor and no more.
-	 */
-	readonly exerciseHeadroom: number;
-	/**
-	 * The smallest daily cap the exercise bound may produce. Without it a day
-	 * with a handful of sends would pin the cap near zero and the cell could
-	 * never generate the volume that would lift it again.
-	 */
-	readonly minimumDailyCap: number;
 }
 
 export const PACE_AIMD: PaceAimdConfig = {
@@ -78,9 +49,6 @@ export const PACE_AIMD: PaceAimdConfig = {
 	multiplierCeiling: 1.5,
 	increaseStep: 0.1,
 	decreaseFactor: RAMP_AIMD.decreaseFactor,
-	minimumUtilisation: 0.8,
-	exerciseHeadroom: 1.5,
-	minimumDailyCap: 50,
 };
 
 /** The multiplier a cell starts at: the published schedule, unmodified. */
