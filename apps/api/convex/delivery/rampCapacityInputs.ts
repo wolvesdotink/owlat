@@ -42,9 +42,11 @@
  * cell — the cell's own and reference outcome shards over eight UTC days —
  * issued CONCURRENTLY, because the cells are independent. The alternative was
  * plumbing a demand total through the cursor chain and keeping a second, staler
- * source of truth for it. The reading is also taken LAZILY: a slice with no
- * ramp-managed cell in it (the normal state during rollout, plan D1) never asks
- * for it at all.
+ * source of truth for it. The reading is also taken LAZILY — `capacityInputForCell`
+ * takes a THUNK and resolves it only after the cell is known to be governed — so
+ * a slice with no ramp-managed cell in it (the normal state during rollout, plan
+ * D1), and a slice of transactional cells (which the stream-major cell order
+ * produces exactly), never ask for it at all.
  *
  * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No warming state, a stale
  * sync, a graduated pool: every one of them answers `unconstrained` — the cell
@@ -135,19 +137,20 @@ async function readCellVolumeDays(
  * (`no_volume`) are different situations with different responses, and both are
  * lost if the tick reports one hardcoded string. A mixed set has no single true
  * answer, so it reports the generic one honestly instead of picking a winner.
+ *
+ * The parameter is the UNKNOWN reasons only: a cell that projected contributes
+ * no reason, and the caller reaches this function only when NO cell projected,
+ * so the "one shared reason or the generic one" shape is the whole domain.
  */
 function sharedUnknownReason(
-	projected: readonly (readonly [DeliverabilityCellKey, CellVolumeProjection])[]
+	reasons: readonly CellVolumeUnknownReason[]
 ): RampCapacityUnknownReason {
-	let shared: CellVolumeUnknownReason | null = null;
-	for (const [, projection] of projected) {
-		// A cell that DID project, in a tick whose total is nevertheless zero, has
-		// no unknown reason to contribute.
-		if (projection.kind !== 'unknown') return 'demand_unprojectable';
-		if (shared === null) shared = projection.reason;
-		else if (shared !== projection.reason) return 'demand_unprojectable';
+	const [first] = reasons;
+	if (first === undefined) return 'demand_unprojectable';
+	for (const reason of reasons) {
+		if (reason !== first) return 'demand_unprojectable';
 	}
-	return shared ?? 'demand_unprojectable';
+	return first;
 }
 
 /**
@@ -184,9 +187,11 @@ export async function loadRampCapacityContext(
 		})
 	);
 	let projectedVolume = 0;
+	const unknownReasons: CellVolumeUnknownReason[] = [];
 	for (const [key, projection] of projected) {
 		projections.set(key, projection);
 		if (projection.kind === 'projected') projectedVolume += projection.dailyVolume;
+		else unknownReasons.push(projection.reason);
 	}
 
 	// NO GOVERNED CELL PROJECTED ANYTHING is its own answer, told apart from the
@@ -194,7 +199,7 @@ export async function loadRampCapacityContext(
 	// When every governed cell agrees on WHY — a brand-new deployment, a paused
 	// week — that reason is carried through verbatim rather than flattened.
 	if (!(projectedVolume > 0)) {
-		return { base: { kind: 'unknown', reason: sharedUnknownReason(projected) }, projections };
+		return { base: { kind: 'unknown', reason: sharedUnknownReason(unknownReasons) }, projections };
 	}
 
 	// The remaining day's demand against the remaining day's cap — like for like,
@@ -218,18 +223,24 @@ export async function loadRampCapacityContext(
  * trailing evidence for the audit snapshot (plan D12). The evidence changes no
  * rung — `capacityCeiling` reads the two numbers and nothing else.
  */
-export function capacityInputForCell(
-	context: RampCapacityContext,
+export async function capacityInputForCell(
+	context: () => Promise<RampCapacityContext>,
 	cell: DeliverabilityCell,
 	currentShare: number
-): RampCapacityInput {
+): Promise<RampCapacityInput> {
 	// A CELL THE CAMPAIGN POOL DOES NOT CARRY IS NOT BOUNDED BY ITS CAP. The
 	// transactional stream dispatches through the transactional pool, so this
 	// reading says nothing about it — and a reading that says nothing constrains
 	// nothing (plan D2). Its phase ceiling and its gates still bind.
+	//
+	// THE CONTEXT IS A THUNK so that this check happens BEFORE the reading is
+	// taken: `allDeliverabilityCells()` is stream-major, so a whole cursor slice
+	// can be transactional, and such a slice must not pay for a reading no cell
+	// in it consults. Which cells the campaign pool governs is known here and
+	// nowhere else, so the laziness is resolved here too.
 	if (!isCampaignPoolCell(cell)) return UNCONSTRAINED_CAPACITY;
-	const { base } = context;
-	const projection = context.projections.get(deliverabilityCellKey(cell));
+	const { base, projections } = await context();
+	const projection = projections.get(deliverabilityCellKey(cell));
 	// THE CELL'S OWN REASON BEATS THE TICK'S. When the deployment could not be
 	// projected, the audit row should say whether THIS cell is brand-new, paused
 	// or clock-broken rather than repeating the aggregate verdict (plan D12).
