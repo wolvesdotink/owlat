@@ -33,6 +33,7 @@ import {
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
+import type { PaceDecision, PaceUtilisationReading } from './ramp/paceTypes';
 import { describeRampDecision, rampDecisionAdminNotice } from './ramp/controllerNarrative';
 
 /** Decisions age out with the experiment record they explain (plan D16). */
@@ -44,7 +45,11 @@ const CLEANUP_BATCH_SIZE = 200;
  * predicate — so it is stored as a string rather than a nested object, and a
  * decision can be replayed against the pure function that made it.
  */
-function rampDecisionSnapshot(input: RampControllerInput, decision: RampDecision): string {
+function rampDecisionSnapshot(
+	input: RampControllerInput,
+	decision: RampDecision,
+	pace: RecordedPaceDecision | undefined
+): string {
 	return JSON.stringify({
 		cell: deliverabilityCellKey(input.cell),
 		now: Number.isFinite(input.now) ? input.now : null,
@@ -80,7 +85,35 @@ function rampDecisionSnapshot(input: RampControllerInput, decision: RampDecision
 			pinChange: decision.pinChange ?? null,
 			graduatedAt: decision.graduatedAt ?? null,
 		},
+		// The SECOND actuator's evidence and outcome, in the same blob as the
+		// first: the two decisions were made in one tick against one set of gates,
+		// and a replay that could only reconstruct one of them would not be a
+		// replay of what the controller did.
+		pace:
+			pace === undefined
+				? null
+				: {
+						utilisation: pace.utilisation,
+						fromMultiplier: pace.decision.fromMultiplier,
+						multiplier: pace.decision.multiplier,
+						reason: pace.decision.reason,
+						direction: pace.decision.direction,
+						cleanStreak: pace.decision.cleanStreak,
+						countedUtcDay: pace.decision.countedUtcDay ?? null,
+						isDeferred: pace.isDeferred,
+					},
 	});
+}
+
+/**
+ * The pace half of one evaluation, as the audit row records it: the decision,
+ * the evidence it was made against, and whether the composition interlock held
+ * it back (plan D3, D12).
+ */
+export interface RecordedPaceDecision {
+	readonly decision: PaceDecision;
+	readonly utilisation: PaceUtilisationReading;
+	readonly isDeferred: boolean;
 }
 
 /**
@@ -94,10 +127,12 @@ export async function recordMixDecision(
 		cell: DeliverabilityCell;
 		input: RampControllerInput;
 		decision: RampDecision;
+		/** The pace actuator's half, absent on a cell with no pace state. */
+		pace?: RecordedPaceDecision | undefined;
 		at: number;
 	}
 ): Promise<void> {
-	const { organizationId, cell, input, decision, at } = args;
+	const { organizationId, cell, input, decision, pace, at } = args;
 	const message = describeRampDecision(cell, decision);
 	const adminNotice = rampDecisionAdminNotice(cell, decision);
 	await ctx.db.insert('mixDecisions', {
@@ -116,7 +151,16 @@ export async function recordMixDecision(
 		// See the module header and `rampDecisionAdminNotice` for the predicate.
 		...(adminNotice === undefined ? {} : { adminNotice }),
 		...(decision.freeze === undefined ? {} : { frozenUntil: decision.freeze.until }),
-		snapshot: rampDecisionSnapshot(input, decision),
+		...(pace === undefined
+			? {}
+			: {
+					fromPaceMultiplier: pace.decision.fromMultiplier,
+					toPaceMultiplier: pace.decision.multiplier,
+					paceDirection: pace.decision.direction,
+					paceReason: pace.decision.reason,
+					isPaceDeferred: pace.isDeferred,
+				}),
+		snapshot: rampDecisionSnapshot(input, decision, pace),
 		expiresAt: at + MIX_DECISION_RETENTION_MS,
 	});
 }

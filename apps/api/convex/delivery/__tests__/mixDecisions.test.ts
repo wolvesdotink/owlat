@@ -27,7 +27,12 @@ import { recordMixDecision } from '../rampMixDecisions';
 import { describeRampDecision, rampDecisionAdminNotice } from '../ramp/controllerNarrative';
 import { rampDecisionChangedState } from '../ramp/controllerTypes';
 import type { Infer } from 'convex/values';
-import { rampDecisionReasonValidator, rampGateIdValidator } from '../deliverabilityValidators';
+import {
+	paceDecisionReasonValidator,
+	rampDecisionReasonValidator,
+	rampGateIdValidator,
+} from '../deliverabilityValidators';
+import type { PaceDecisionReason } from '../ramp/paceTypes';
 import type { RampControllerInput, RampDecisionReason } from '../ramp/controllerTypes';
 import type { RampGateId } from '../ramp/gateTypes';
 import {
@@ -828,11 +833,17 @@ const REASON_VOCABULARY_MATCHES: Exact<
 	RampDecisionReason
 > = true;
 const GATE_VOCABULARY_MATCHES: Exact<Infer<typeof rampGateIdValidator>, RampGateId> = true;
+/** The SECOND actuator's vocabulary, under the same rule (plan D3, D12). */
+const PACE_VOCABULARY_MATCHES: Exact<
+	Infer<typeof paceDecisionReasonValidator>,
+	PaceDecisionReason
+> = true;
 
 describe('mixDecisions — the stored reason vocabulary', () => {
 	it('is exactly the union the narrative switches on', () => {
 		expect(REASON_VOCABULARY_MATCHES).toBe(true);
 		expect(GATE_VOCABULARY_MATCHES).toBe(true);
+		expect(PACE_VOCABULARY_MATCHES).toBe(true);
 	});
 });
 

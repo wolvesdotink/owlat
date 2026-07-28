@@ -48,10 +48,13 @@ import {
 	RAMP_INITIAL_PHASE_CEILING,
 	RAMP_MAX_FREEZE_MS,
 } from './ramp/controllerConfig';
-import { readActiveFreeze } from './ramp/controllerReaders';
+import { readActiveFreeze, type StoredFreeze } from './ramp/controllerReaders';
 import { nextShare } from './ramp/controller';
+import { nextPaceMultiplier } from './ramp/paceActuator';
+import { composeActuators } from './ramp/actuatorComposition';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
 import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
 import {
 	deliverabilityStreamValidator,
@@ -59,6 +62,7 @@ import {
 } from './deliverabilityValidators';
 import { rampDecisionChangedState } from './ramp/controllerTypes';
 import type { RampDecision, RampFreezeOrigin } from './ramp/controllerTypes';
+import type { PaceDecision, PaceUtilisationReading } from './ramp/paceTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 const RAMP_CELLS_PER_TICK = 5;
@@ -111,15 +115,15 @@ async function refreshRouteStateLease(
  * something an operator could clear.
  */
 function resolveFreezeFields(
-	perStream: Doc<'deliverabilityRouteStates'>,
-	decision: RampDecision,
+	stored: StoredFreeze & { freezeStartedAt?: number | undefined },
+	decision: { freeze: RampDecision['freeze'] },
 	now: number
 ): {
 	freezeStartedAt: number | undefined;
 	frozenUntil: number | undefined;
 	freezeReason: RampFreezeOrigin | undefined;
 } {
-	const carried = readActiveFreeze(perStream, now, RAMP_MAX_FREEZE_MS);
+	const carried = readActiveFreeze(stored, now, RAMP_MAX_FREEZE_MS);
 	const running = carried.kind === 'active' ? carried : undefined;
 	const imposed = decision.freeze;
 	return {
@@ -128,7 +132,7 @@ function resolveFreezeFields(
 		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
 		// alone — otherwise an infrastructure incident would re-arm the "repeat
 		// within 24h" window and double the next gate cooldown off a stale rung.
-		freezeStartedAt: imposed?.ladderMs === undefined ? perStream.freezeStartedAt : now,
+		freezeStartedAt: imposed?.ladderMs === undefined ? stored.freezeStartedAt : now,
 		// A new freeze REPLACES the pair whole. It can only ever be later than the
 		// one it replaces — the decision function lengthens rather than shortens
 		// (`extendFreezeUntil`) — so the row never loses time it had already been
@@ -152,10 +156,12 @@ async function applyDecision(
 	args: {
 		perStream: Doc<'deliverabilityRouteStates'>;
 		decision: RampDecision;
+		/** The SECOND actuator's decision, written in the SAME patch — see below. */
+		pace: PaceDecision;
 		now: number;
 	}
 ): Promise<void> {
-	const { perStream, decision, now } = args;
+	const { perStream, decision, pace, now } = args;
 	const fields = {
 		isFallbackActive: isFallbackActiveForShare(decision.share),
 		ownShare: decision.share,
@@ -185,8 +191,59 @@ async function applyDecision(
 		// own clock is `decidedAt`, which nothing else reads.
 		decidedAt: now,
 		expiresAt: now + ROUTE_STATE_TTL_MS,
+		// THE SECOND ACTUATOR'S COLUMNS, in the SAME patch and never a second one.
+		// One controller decided both dials from one set of gates in one tick, so
+		// one write applies both: two patches would leave a window in which the row
+		// carried a share from this tick and a pace from the last.
+		...paceFields(perStream, pace, now),
 	};
 	await ctx.db.patch(perStream._id, fields);
+}
+
+/**
+ * The pace dial's half of the row.
+ *
+ * THE FREEZE COLUMNS ARE THE PACE ACTUATOR'S OWN and are resolved by the SAME
+ * rule as the share's (`resolveFreezeFields`), reading the pace triple rather
+ * than the share triple: the two dials retreat independently, and one column
+ * shared between them would let a share cooldown suppress a pace retreat for a
+ * reason the pace gates never measured.
+ *
+ * `paceLastEvaluatedUtcDay` MOVES ONLY ON A COUNTED DAY (plan D19). An
+ * evaluation that held — thin evidence, an unexercised cap, or the composition
+ * interlock deferring the step — deliberately leaves the anchor where it found
+ * it, so a later tick the same day can still evaluate that day once.
+ */
+interface PaceRowFields {
+	paceMultiplier: number;
+	paceCleanStreak: number;
+	paceFrozenUntil: number | undefined;
+	paceFreezeStartedAt: number | undefined;
+	paceFreezeReason: RampFreezeOrigin | undefined;
+	paceCooldownMs: number | undefined;
+	paceLastEvaluatedUtcDay: string | undefined;
+}
+
+function paceFields(
+	perStream: Doc<'deliverabilityRouteStates'>,
+	pace: PaceDecision,
+	now: number
+): PaceRowFields {
+	const stored = {
+		frozenUntil: perStream.paceFrozenUntil,
+		freezeReason: perStream.paceFreezeReason,
+		freezeStartedAt: perStream.paceFreezeStartedAt,
+	};
+	const freeze = resolveFreezeFields(stored, { freeze: pace.freeze }, now);
+	return {
+		paceMultiplier: pace.multiplier,
+		paceCleanStreak: pace.cleanStreak,
+		paceFrozenUntil: freeze.frozenUntil,
+		paceFreezeStartedAt: freeze.freezeStartedAt,
+		paceFreezeReason: freeze.freezeReason,
+		paceCooldownMs: pace.freeze?.ladderMs ?? perStream.paceCooldownMs,
+		paceLastEvaluatedUtcDay: pace.countedUtcDay ?? perStream.paceLastEvaluatedUtcDay,
+	};
 }
 
 /**
@@ -235,6 +292,17 @@ export const runRampController = internalMutation({
 			return capacityContext;
 		};
 
+		// THE PACE ACTUATOR'S EVIDENCE, read ONCE per tick and LAZILY, for the same
+		// two reasons the capacity context is: the warming sync reports one
+		// pool-wide utilisation reading that every cell in the slice shares, and a
+		// slice with no ramp-managed cell in it must not pay for a reading no cell
+		// would consume.
+		let utilisationReading: PaceUtilisationReading | null = null;
+		const utilisation = async (): Promise<PaceUtilisationReading> => {
+			utilisationReading ??= await loadPaceUtilisation(ctx, { now });
+			return utilisationReading;
+		};
+
 		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
 		let evaluated = 0;
 		for (const cell of slice) {
@@ -252,11 +320,44 @@ export const runRampController = internalMutation({
 			if (loaded === null) continue;
 			const { input, perStream } = loaded;
 			const decision = nextShare(input);
+			// THE SECOND ACTUATOR, on the SAME gates, the SAME hard stops and the
+			// SAME kill switch (plan D3). Standalone it is the only dial that moves —
+			// s === 1 by definition — and with a reference arm it is the slow,
+			// reputation-bearing half of a composed decision.
+			const paceReading = await utilisation();
+			const paceDecision = nextPaceMultiplier({
+				config: input.config,
+				pace: readPaceState(perStream),
+				signals: input.signals,
+				evaluation: input.evaluation,
+				utilisation: paceReading,
+				isKillSwitchEngaged,
+				now,
+			});
+			// THE COMPOSITION ORDER IS FIXED (plan D3): share moves FIRST (cheap and
+			// instantly reversible — the relay absorbs the difference), pace moves
+			// SECOND (slow and reputation-bearing), and a cell may NEVER increase both
+			// in one window. The interlock lives in one pure function so that
+			// property is a fixture rather than an inline conditional here.
+			const composed = composeActuators({ share: decision, pace: paceDecision });
 			evaluated += 1;
 
 			// THE AUDIT ROW COMES FIRST AND ALWAYS (plan D12) — including for the
-			// no-ops, and including while the kill switch is pinning every cell.
-			await recordMixDecision(ctx, { organizationId, cell, input, decision, at: now });
+			// no-ops, and including while the kill switch is pinning every cell. It
+			// carries BOTH actuators, so "what did the controller do to this cell at
+			// 14:00" is one row rather than a join.
+			await recordMixDecision(ctx, {
+				organizationId,
+				cell,
+				input,
+				decision,
+				pace: {
+					decision: composed.pace,
+					utilisation: paceReading,
+					isDeferred: composed.isPaceDeferred,
+				},
+				at: now,
+			});
 
 			// A PAUSED CONTROLLER WRITES NO SHARE. It still evaluates, still audits —
 			// so an operator can watch what it would have done — and still renews the
@@ -266,7 +367,7 @@ export const runRampController = internalMutation({
 				continue;
 			}
 
-			await applyDecision(ctx, { perStream, decision, now });
+			await applyDecision(ctx, { perStream, decision, pace: composed.pace, now });
 			// EVERY AUTOMATIC CHANGE IS AUDITED (plan D12) — which is a wider predicate
 			// than "the share moved". A gate breach on a cell already sitting on
 			// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
@@ -286,7 +387,13 @@ export const runRampController = internalMutation({
 			// the relay drops to `priority_failover` standby. `decision.pinChange`
 			// carries that transition, so the tick a cell graduates — and the tick a
 			// hard stop takes the pin away again — are both in the audit log.
-			if (!rampDecisionChangedState(decision)) continue;
+			// AND THE SAME PREDICATE APPLIES TO THE SECOND DIAL. A pace retreat on a
+			// cell whose share held is still an automatic change — it rewrote the
+			// multiplier, the freeze expiry and the cooldown rung — and a change no
+			// log records is a change an operator cannot explain.
+			const isPaceChanged =
+				composed.pace.direction !== 'hold' || composed.pace.freeze !== undefined;
+			if (!rampDecisionChangedState(decision) && !isPaceChanged) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
 				organizationId,
@@ -302,6 +409,13 @@ export const runRampController = internalMutation({
 					verdict: decision.verdict,
 					...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
 					...(decision.pinChange === undefined ? {} : { pinChange: decision.pinChange }),
+					// The pace dial is part of the same automatic change and is logged
+					// with it: an operator reading the audit trail must be able to see
+					// which of the two dials moved, and why.
+					fromPaceMultiplier: composed.pace.fromMultiplier,
+					toPaceMultiplier: composed.pace.multiplier,
+					paceDirection: composed.pace.direction,
+					paceReason: composed.pace.reason,
 				},
 			});
 		}
