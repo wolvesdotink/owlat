@@ -54,6 +54,7 @@ import {
 	RAMP_MAX_FREEZE_MS,
 } from './controllerConfig';
 import {
+	extendFreezeUntil,
 	isEvidenceUsable,
 	readActiveFreeze,
 	readStoredInstant,
@@ -124,8 +125,14 @@ export function nextShare(input: RampControllerInput): RampDecision {
 
 	const share = roundShare(draft.share);
 	const freezeMs = draft.freezeMs;
+	// A FREEZE IS ONLY EVER LENGTHENED — see `extendFreezeUntil`. The rung decides
+	// how long ITS freeze runs; the row decides whether an existing one already
+	// runs longer, and the later end wins so that a 6h breaker stop cannot cut a
+	// 48h gate cooldown short and hand the cell its windows back early.
 	const frozenUntil =
-		freezeMs === undefined || !isClockUsable ? undefined : now + Math.max(0, freezeMs);
+		freezeMs === undefined || !isClockUsable
+			? undefined
+			: extendFreezeUntil(now + Math.max(0, freezeMs), mix, now, RAMP_MAX_FREEZE_MS);
 	// The pin is whatever the rung decided. It is NOT re-derived from the share
 	// here: a graduated cell bounded below 1.0 by the warming cap is still
 	// graduated, while a cell that FAILED its way down had its pin revoked by the

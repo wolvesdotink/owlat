@@ -25,7 +25,7 @@
  */
 
 import { clampOwnShare } from '@owlat/shared/deliverabilityRouting';
-import type { RampFreezeOrigin, RampMixState } from './controllerTypes';
+import type { RampFreezeOrigin } from './controllerTypes';
 import type { RampGateThresholds } from './gateConfig';
 
 /**
@@ -145,25 +145,68 @@ export type RampFreezeReading =
 	  };
 
 /**
+ * THE FREEZE PAIR, as narrowly as anything needs it.
+ *
+ * Deliberately NOT `RampMixState`: the cron's WRITE path has to answer the same
+ * question about the row it is patching, and the round-trip through a full mix
+ * state was how the write path came to re-implement `frozenUntil > now` inline
+ * and disagree with the rung that reads it. Both the mix state and the raw
+ * `deliverabilityRouteStates` document satisfy this shape.
+ */
+export interface StoredFreeze {
+	readonly frozenUntil?: number | undefined;
+	readonly freezeReason?: RampFreezeOrigin | undefined;
+}
+
+/**
  * IS A FREEZE STILL RUNNING, AND WHOSE IS IT?
  *
  * Read by TWO rungs, which is why the ORIGIN comes back with it: the `frozen`
  * rung only asks whether anything is in force, while the breaker rung declines
  * to re-charge its retreat only while ITS OWN freeze runs — an unrelated gate
- * cooldown must not absorb a hard stop.
+ * cooldown must not absorb a hard stop. The cron's write path reads it too, so
+ * the value it carries forward onto the row is the one the next tick's rungs
+ * will believe.
  *
  * `maxFreezeMs` is the longest freeze any rung can legitimately stamp, so an
  * expiry beyond it did not come from a decision and is reported `unreadable`
  * rather than believed.
  */
 export function readActiveFreeze(
-	mix: RampMixState,
+	stored: StoredFreeze,
 	now: number,
 	maxFreezeMs: number
 ): RampFreezeReading {
-	const until = mix.frozenUntil;
+	const until = stored.frozenUntil;
 	if (until === undefined || !Number.isFinite(until)) return { kind: 'none' };
 	if (until > now + maxFreezeMs) return { kind: 'unreadable' };
 	if (now >= until) return { kind: 'none' };
-	return { kind: 'active', until, origin: mix.freezeReason };
+	return { kind: 'active', until, origin: stored.freezeReason };
+}
+
+/**
+ * A FREEZE IS ONLY EVER LENGTHENED.
+ *
+ * A hard stop that lands while a longer freeze is already running must not
+ * SHORTEN it. The gate-cooldown ladder can hold a cell for up to 48h, and the
+ * breaker's 6h or the blocklist's 24h replacing that expiry would hand the cell
+ * back its evaluation windows a day and a half early — an infrastructure
+ * incident would end up SPEEDING UP a cell that had just breached a gate,
+ * exactly inverting the AIMD asymmetry the plan is built on.
+ *
+ * So the later of the two expiries wins, and the NEW ORIGIN is kept regardless:
+ * the origin answers "which rung is this freeze accountable to", and the rung
+ * that just fired is the correct answer even when it is not the one that set the
+ * far end. An `unreadable` stored expiry extends nothing — it is not a decision
+ * this controller made, and believing it would let a fabricated instant pin a
+ * cell for ever.
+ */
+export function extendFreezeUntil(
+	stamped: number,
+	stored: StoredFreeze,
+	now: number,
+	maxFreezeMs: number
+): number {
+	const active = readActiveFreeze(stored, now, maxFreezeMs);
+	return active.kind === 'active' ? Math.max(stamped, active.until) : stamped;
 }
