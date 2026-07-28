@@ -311,7 +311,19 @@ export const enqueueNonCampaignSend = internalMutation({
 		// The shared `isSuppressed` owns the normalization + `by_email` point
 		// read; this path's POLICY is to THROW before the row insert, so no
 		// `transactionalSends` row is produced for a suppressed address.
-		if (await isSuppressed(ctx, args.email)) {
+		//
+		// THE SCOPE IS PER-KIND, because this producer writes two very different
+		// kinds of mail. An `automation` step is marketing — it takes the strict
+		// scope, so a marketing-hygiene row (`unengaged`) blocks it like every
+		// other reason. An `agent_reply` is a 1:1 answer to a human who wrote in;
+		// it carries no List-Unsubscribe, is classified as the `transactional`
+		// stream for routing a few lines below, and must not be thrown away
+		// because the same person stopped opening campaigns — that inbound is the
+		// clearest possible evidence they are still there. Bounce, complaint and
+		// manual rows still block it: `isMarketingOnlyBlockReason` is false for
+		// those, so the transactional scope keeps blocking on mailbox evidence.
+		const suppressionScope = args.kind === 'automation' ? 'marketing' : 'transactional';
+		if (await isSuppressed(ctx, args.email, { scope: suppressionScope })) {
 			throw new Error(RECIPIENT_BLOCKED_ERROR);
 		}
 
