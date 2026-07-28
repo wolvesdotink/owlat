@@ -257,6 +257,7 @@ import type * as delivery_deliverabilityDashboardView from "../delivery/delivera
 import type * as delivery_deliverabilityRouting from "../delivery/deliverabilityRouting.js";
 import type * as delivery_deliverabilityValidators from "../delivery/deliverabilityValidators.js";
 import type * as delivery_enqueue from "../delivery/enqueue.js";
+import type * as delivery_enqueueTestSend from "../delivery/enqueueTestSend.js";
 import type * as delivery_governedDispatch from "../delivery/governedDispatch.js";
 import type * as delivery_health from "../delivery/health.js";
 import type * as delivery_ipReadinessAlerts from "../delivery/ipReadinessAlerts.js";
@@ -1103,6 +1104,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/deliverabilityRouting": typeof delivery_deliverabilityRouting;
   "delivery/deliverabilityValidators": typeof delivery_deliverabilityValidators;
   "delivery/enqueue": typeof delivery_enqueue;
+  "delivery/enqueueTestSend": typeof delivery_enqueueTestSend;
   "delivery/governedDispatch": typeof delivery_governedDispatch;
   "delivery/health": typeof delivery_health;
   "delivery/ipReadinessAlerts": typeof delivery_ipReadinessAlerts;
