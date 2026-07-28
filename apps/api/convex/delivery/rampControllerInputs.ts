@@ -36,7 +36,6 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
-import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
 	degradedCeilingCap,
@@ -47,6 +46,8 @@ import {
 	type RampDegradation,
 } from './ramp/degradation';
 import { withReferenceArm, type RampDeploymentPresence } from './rampIntegrationPresence';
+import { rampConfigForStream, type RampPresetsByStream } from './ramp/presetConfig';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
@@ -219,6 +220,14 @@ export async function loadCellInput(
 		presence: RampDeploymentPresence;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
+		/**
+		 * THE PER-STREAM PRESETS (P3-6), read ONCE for the whole tick: at most three
+		 * rows, shared by every cell in the slice. `balanced` is the identity, so a
+		 * deployment with no preset rows runs the shipped constants unchanged.
+		 */
+		presets: RampPresetsByStream;
+		/** The deployment default when a stream has no preset row (plan D14). */
+		presetFallback: RampPreset;
 		now: number;
 	}
 ): Promise<{
@@ -235,6 +244,7 @@ export async function loadCellInput(
 } | null> {
 	const { organizationId, cell, pool, now } = args;
 	const cellKey = deliverabilityCellKey(cell);
+	const config = rampConfigForStream(cell.stream, args.presets, args.presetFallback);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
 	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
@@ -287,14 +297,20 @@ export async function loadCellInput(
 	// anywhere else in the controller: a conditional naming an integration would be
 	// a substitution living outside the table, which is the exact failure mode the
 	// table exists to prevent.
+	//
+	// THE OPERATOR'S PRESET AND THE TABLE COMPOSE IN THIS ORDER (plan D9 then D3):
+	// `config` above is the per-stream constant table tuned by the operator's
+	// aggressiveness preset; the table's tightening is applied ON TOP of it here,
+	// LAST, so a missing integration always slows a cell down and an "aggressive"
+	// preset can never out-argue a safety substitution.
 	const presence = withReferenceArm(args.presence, referenceArm !== null);
 	const degradation = resolveRampDegradation({ presence, provider: cell.destinationProvider });
-	const config = degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation);
+	const degradedConfig = degradedStreamConfig(config, degradation);
 	const evaluator = usesTrailingBaseline(degradation)
 		? trailingBaselineGateEvaluator
 		: referenceArmGateEvaluator;
 	const evaluation = evaluator.evaluate({
-		config,
+		config: degradedConfig,
 		own,
 		reference: referenceArm,
 		// The trailing twin's second series, DISJOINT from the evaluation window by
