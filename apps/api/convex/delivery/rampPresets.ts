@@ -15,7 +15,7 @@
  */
 
 import { defaultRampPreset, type RampPreset } from '@owlat/shared/deliverabilityIndependence';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { referenceRelayTransportId } from './alignmentPreflight';
 import type { RampPresetsByStream } from './ramp/presetConfig';
 
@@ -27,7 +27,7 @@ export interface RampPresetContext {
 
 /** One bounded index read plus the relay probe the dashboard already makes. */
 export async function loadRampPresets(
-	ctx: QueryCtx,
+	ctx: QueryCtx | MutationCtx,
 	organizationId: string
 ): Promise<RampPresetContext> {
 	const rows = await ctx.db

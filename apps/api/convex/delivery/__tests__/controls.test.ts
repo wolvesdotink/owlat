@@ -1,0 +1,282 @@
+/**
+ * THE OPERATOR CONTROLS, END TO END (plan D12, P3-6).
+ *
+ * Each control writes through an org-scoped, admin-gated mutation; each lands in
+ * BOTH the audit log and the decision timeline; and none of them can reach
+ * another tenant's row. The cross-tenant test is the one that matters most:
+ * every mutation here takes a CELL from its arguments and its ORGANIZATION from
+ * the session, so the only way to touch another tenant would be an index read
+ * that was not org-leading.
+ *
+ * The named-test contract also covers the two things an operator must NOT be
+ * able to do: force-advance without typing the consequence phrase, and reach a
+ * phase rung the ladder has no name for.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api } from '../../_generated/api';
+import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { modules } from '../../__tests__/testModules';
+import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+
+const ORG = 'org_ramp_controls';
+const OTHER_ORG = 'org_ramp_controls_other';
+
+// The mutations resolve their tenant through the shared singleton-org helper,
+// which talks to the auth component; the harness has no component, so the suite
+// mocks it exactly as the ramp cron suites do. `getMutationContext` and the
+// admin floor are mocked for the same reason — the role gate itself is covered
+// where it belongs, in the authedFunctions suites.
+const organizationId = { current: ORG };
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn(async () => organizationId.current),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+	};
+});
+
+const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
+
+function harness(): Harness {
+	organizationId.current = ORG;
+	return convexTest(schema, modules);
+}
+
+async function auditActions(t: Harness): Promise<string[]> {
+	const rows = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
+	return rows.map((row) => row.action);
+}
+
+async function decisions(t: Harness) {
+	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+}
+
+describe('pause', () => {
+	it('holds the cell, records a decision and an audit entry', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(true);
+
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeGreaterThan(0);
+		// A pause does NOT move the share: it only stops it climbing.
+		expect(row?.ownShare).toBe(0.4);
+
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_paused');
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]?.reason).toBe('operator_pause');
+		expect(recorded[0]?.message).toContain('operator');
+	});
+
+	it('is idempotent — pausing a paused cell writes nothing new', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(await decisions(t)).toHaveLength(1);
+	});
+
+	it('clears on resume', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: false });
+		expect((await readManagedCell(t))?.operatorPausedAt).toBeUndefined();
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_resumed');
+	});
+});
+
+describe('pin', () => {
+	it('stores a clamped ceiling and audits it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.5 });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 1.7 });
+		const row = await readManagedCell(t);
+		expect(row?.operatorPinnedShare).toBe(1);
+		// The pin never MOVES the share; it only bounds a future climb.
+		expect(row?.ownShare).toBe(0.5);
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_pinned');
+	});
+
+	it('removes the pin when asked for null', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.3 });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: null });
+		expect((await readManagedCell(t))?.operatorPinnedShare).toBeUndefined();
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_unpinned');
+	});
+
+	it('refuses a share that is not a number', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await expect(
+			t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: Number.NaN })
+		).rejects.toThrow();
+	});
+});
+
+describe('force-advance', () => {
+	it('refuses without the consequence-naming confirmation', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
+		await expect(
+			t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+				...CELL,
+				share: 0.9,
+				confirmation: 'yes',
+			})
+		).rejects.toThrow();
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('moves the share with the confirmation, and never carries the streak across', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, cleanStreak: 3, mixVersion: 2 });
+		await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.9);
+		expect(row?.isFallbackActive).toBe(false);
+		// Nothing about a manual move is earned.
+		expect(row?.cleanStreak).toBe(0);
+		expect(row?.greenSince).toBeUndefined();
+		// A manual move is a new mix generation (plan D7).
+		expect(row?.mixVersion).toBe(3);
+		expect(await auditActions(t)).toContain('deliverability_ramp.force_advanced');
+		const recorded = await decisions(t);
+		expect(recorded[0]?.reason).toBe('operator_force_advance');
+		expect(recorded[0]?.direction).toBe('increase');
+	});
+});
+
+describe('reset to a phase', () => {
+	it('accepts only a rung on the ladder', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await expect(
+			t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
+		).rejects.toThrow();
+	});
+
+	it('brings the share back under the new ceiling and restarts the streak', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, cleanStreak: 3 });
+		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.cleanStreak).toBe(0);
+		expect(await auditActions(t)).toContain('deliverability_ramp.phase_reset');
+	});
+});
+
+describe('presets', () => {
+	it('stores, updates and clears a per-stream choice, auditing each time', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'aggressive',
+		});
+		let rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.preset).toBe('aggressive');
+
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'conservative',
+		});
+		rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.preset).toBe('conservative');
+
+		// Clearing returns the stream to the DEPLOYMENT DEFAULT rather than to a
+		// stored 'balanced', so a later relay changes the pace automatically.
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: null,
+		});
+		rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(0);
+		expect(
+			(await auditActions(t)).filter((action) => action === 'deliverability_ramp.preset_changed')
+		).toHaveLength(3);
+	});
+});
+
+describe('cross-tenant', () => {
+	it('never touches another organization’s cell, and refuses calmly', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+
+		// The caller's session now resolves to a DIFFERENT organization. The cell
+		// arguments are unchanged: only the tenant moved.
+		organizationId.current = OTHER_ORG;
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('cell_not_ramp_managed');
+
+		organizationId.current = ORG;
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeUndefined();
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	it('files a preset against the caller’s own organization only', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		organizationId.current = OTHER_ORG;
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'aggressive',
+		});
+		const rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.organizationId).toBe(OTHER_ORG);
+	});
+});
+
+describe('an unmanaged cell', () => {
+	it('is refused without being created', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			stream: 'transactional',
+			destinationProvider: 'yahoo',
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('cell_not_ramp_managed');
+		const rows = await t.run(
+			async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
+		);
+		expect(rows.some((row) => row.destinationProvider === 'yahoo')).toBe(false);
+	});
+});
