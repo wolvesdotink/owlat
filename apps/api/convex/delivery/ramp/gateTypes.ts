@@ -397,7 +397,6 @@ export interface SmtpBlockObservation {
 	readonly blockedByCategory: Readonly<Partial<Record<SmtpFailureCategory, number>>>;
 	readonly observedAt: number;
 }
->>>>>>> origin/integration/deliverability
 
 /** Seed placement, as a tripwire and never as a gauge (plan D17). */
 export interface SeedPlacementObservation {

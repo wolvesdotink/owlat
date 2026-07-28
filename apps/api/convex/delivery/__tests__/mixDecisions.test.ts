@@ -317,7 +317,11 @@ describe('mixDecisions — the notice fires on a change, not on a condition', ()
 		await record(
 			t,
 			controllerInput({
-				mix: mixState({ share: 0.25, frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs }),
+				mix: mixState({
+					share: 0.25,
+					frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs,
+					freezeReason: 'breaker',
+				}),
 				signals: BREAKER_OPEN,
 				now: NOW + HOUR,
 			})
@@ -337,6 +341,34 @@ describe('mixDecisions — the notice fires on a change, not on a condition', ()
 		expect(rows[1]?.adminNotice).toBeUndefined();
 		expect(rows[1]?.message).toContain('Held');
 		expect(rows[1]?.message).not.toContain('Halved');
+	});
+
+	// THE MIRROR CASE, and the reason the freeze carries an origin at all. A gate
+	// cooldown running when the breaker opens is not the breaker's freeze, so the
+	// retreat is charged in full and announced in full — an unrelated timer never
+	// stands in for a hard stop that has not been paid for.
+	it('charges and announces a breaker that opens under an unrelated cooldown', async () => {
+		const t = convexTest(schema, modules);
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({
+					share: 0.5,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: 'gate_breach',
+					cooldownMs: RAMP_AIMD.cooldownMaxMs,
+					freezeStartedAt: NOW - HOUR,
+				}),
+				signals: BREAKER_OPEN,
+			})
+		);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.reason).toBe('breaker');
+		expect(rows[0]?.direction).toBe('decrease');
+		expect(rows[0]?.toShare).toBe(0.25);
+		expect(rows[0]?.adminNotice).toContain('circuit breaker');
 	});
 
 	it('announces every floored breach, because each one is a fresh freeze', async () => {
@@ -415,6 +447,10 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		],
 		['unreadable share', { mix: mixState({ share: -3 }) }],
 		['frozen', { mix: mixState({ share: 0.4, frozenUntil: NOW + 1 }) }],
+		// A stored expiry no cooldown this controller imposes could have produced.
+		// It holds under its OWN reason, because "frozen until <instant>" is only a
+		// true sentence when the instant is one.
+		['unreadable freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + 4_000 * DAY }) }],
 		// `evaluation: null` is deliberately absent: it is the SAME `holding`
 		// reason as thin evidence, and this table asserts one scenario per reason.
 		['holding', { evaluation: thinEvaluation(0) }],

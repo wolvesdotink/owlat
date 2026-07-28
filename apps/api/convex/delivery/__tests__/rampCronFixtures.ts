@@ -56,6 +56,8 @@ export interface SeedRampCellOptions {
 	readonly isFallbackActive?: boolean;
 	/** A freeze expiry already on the row — expired instants included. */
 	readonly frozenUntil?: number;
+	/** Which rung stamped that expiry. Absent models a row frozen before it was recorded. */
+	readonly freezeReason?: 'gate_breach' | 'breaker' | 'dnsbl';
 	/** The cooldown ladder rung already on the row. */
 	readonly cooldownMs?: number;
 }
@@ -103,6 +105,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			cleanStreak: options.cleanStreak ?? 3,
 			mixVersion: options.mixVersion ?? 2,
 			...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
+			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
 			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
 		});
 	});

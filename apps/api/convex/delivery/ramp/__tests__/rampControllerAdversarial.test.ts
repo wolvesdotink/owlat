@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { capacityCeiling, isEvaluationWindowElapsed, nextShare } from '../controller';
+import { nextShare } from '../controller';
+import { capacityCeiling, isEvaluationWindowElapsed } from '../controllerBounds';
 import { RAMP_AIMD } from '../controllerConfig';
 import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import { aggregateRampGates } from '../gateEvaluation';
@@ -62,6 +63,7 @@ describe('a crafted snapshot cannot bypass a hard stop', () => {
 			{ signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true } },
 		],
 		['active freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + DAY }) }],
+		['unreadable freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + 10_000 * DAY }) }],
 	];
 
 	for (const [name, overrides] of attacks) {
@@ -543,14 +545,76 @@ describe('clock skew', () => {
 		}
 	});
 
-	it('a freeze stamped far in the future still holds the cell', () => {
+	// A FABRICATED EXPIRY IS NOT A FREEZE, AND NOT A LICENCE EITHER. No rung of
+	// this controller can stamp an expiry beyond the longest cooldown it imposes,
+	// so one a century out is a corrupt write. It must not buy a step — and it
+	// must not pin the cell for ever under a sentence promising an instant the
+	// hold ends at, which is why it lands on its own reason.
+	it('a freeze stamped far beyond any cooldown holds under its own reason', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.3, frozenUntil: NOW + 10_000 * DAY }),
 				evaluation: cleanEvaluation(99),
 			})
 		);
+		expect(decision.reason).toBe('freeze_unreadable');
+		expect(decision.share).toBe(0.3);
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('a freeze at the outer edge of the cooldown ladder is still believed', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.3,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: 'gate_breach',
+				}),
+				evaluation: cleanEvaluation(99),
+			})
+		);
 		expect(decision.reason).toBe('frozen');
+	});
+
+	// DEGENERATE STORED STATE MUST NEVER WEAKEN A HARD STOP. The breaker rung
+	// declines to re-charge its retreat only while ITS OWN freeze runs; a corrupt
+	// far-future expiry is nobody's freeze, so the halving still happens.
+	it('a corrupt far-future freeze cannot suppress the breaker retreat', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, frozenUntil: NOW + 10_000 * DAY }),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.share).toBe(0.2);
+		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freezeReason).toBe('breaker');
+	});
+
+	// The same property against a LIVE, legitimate gate-cooldown freeze: it can
+	// run for up to 48h, and for none of those hours may it absorb the retreat a
+	// newly-open circuit breaker costs.
+	it('a live gate-cooldown freeze cannot absorb a newly-open breaker', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: 'gate_breach',
+					cooldownMs: RAMP_AIMD.cooldownMaxMs,
+					freezeStartedAt: NOW - HOUR,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.share).toBe(0.2);
+		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freezeReason).toBe('breaker');
+		// The BREAKER freeze does not advance the gate ladder — the rung the next
+		// breach doubles from is untouched by an infrastructure incident.
+		expect(decision.cooldownMs).toBeUndefined();
 	});
 
 	it('a non-finite stored freeze does not pin the cell forever', () => {

@@ -19,9 +19,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { capacityCeiling, nextShare } from '../controller';
-import { nextCooldownMs } from '../controllerReaders';
-import { RAMP_AIMD } from '../controllerConfig';
+import { nextShare } from '../controller';
+import { capacityCeiling } from '../controllerBounds';
+import { nextCooldownMs, RAMP_AIMD } from '../controllerConfig';
 import { breachedEvaluation, controllerInput, DAY, mixState, NOW } from './controllerFixtures';
 
 afterEach(() => {

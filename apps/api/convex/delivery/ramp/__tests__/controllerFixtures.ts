@@ -159,6 +159,7 @@ export function mixState(overrides: Partial<RampMixState> = {}): RampMixState {
 		phaseCeiling: 1,
 		cleanStreak: 0,
 		frozenUntil: undefined,
+		freezeReason: undefined,
 		freezeStartedAt: undefined,
 		cooldownMs: undefined,
 		greenSince: undefined,

@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+import type { RampFreezeOrigin } from '../controllerTypes';
 import {
 	breachedEvaluation,
 	cleanEvaluation,
@@ -67,11 +68,14 @@ describe('nextShare — hard stops, in precedence order', () => {
 		expect(decision.share).toBe(0.3);
 		expect(decision.reason).toBe('breaker');
 		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		// The freeze is ATTRIBUTED, which is what lets the next tick tell its own
+		// freeze from an unrelated cooldown it must not be absorbed by.
+		expect(decision.freezeReason).toBe('breaker');
 		// A hard-stop freeze does NOT advance the gate-cooldown ladder.
 		expect(decision.cooldownMs).toBeUndefined();
 	});
 
-	it('does not re-halve on an open breaker while its own freeze is still running', () => {
+	it('does not re-halve on an open breaker while the freeze it stamped is running', () => {
 		// The breaker is a CONDITION that persists across hourly ticks. It still
 		// hard-stops here — the reason is `breaker`, not the `frozen` rung below
 		// it, and the streak stays revoked — but the retreat is charged once per
@@ -82,6 +86,7 @@ describe('nextShare — hard stops, in precedence order', () => {
 					share: 0.3,
 					cleanStreak: 5,
 					frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs,
+					freezeReason: 'breaker',
 				}),
 				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
 			})
@@ -92,13 +97,54 @@ describe('nextShare — hard stops, in precedence order', () => {
 		expect(decision.cleanStreak).toBe(0);
 		// No NEW freeze: the one already in force is what holds the cell.
 		expect(decision.frozenUntil).toBeUndefined();
+		expect(decision.freezeReason).toBeUndefined();
 	});
+
+	// THE DISCRIMINATING PAIR. The suppression above is the BREAKER'S OWN freeze
+	// declining to re-charge one incident; it is emphatically not "any freeze
+	// suppresses the breaker". A gate-breach cooldown can run for 48h, and if it
+	// could absorb this rung the cell would keep its full pre-breaker share for
+	// two days with the breaker open — the hard stop deleted by an unrelated
+	// timer. Same fixture, one field different, opposite outcome.
+	const FOREIGN_FREEZES: readonly (readonly [string, RampFreezeOrigin | undefined])[] = [
+		['a gate-breach cooldown', 'gate_breach'],
+		['a blocklist freeze', 'dnsbl'],
+		['an unattributed legacy freeze', undefined],
+	];
+	for (const [label, origin] of FOREIGN_FREEZES) {
+		it(`still halves on a newly-open breaker under ${label}`, () => {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({
+						share: 0.4,
+						frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+						freezeReason: origin,
+					}),
+					signals: {
+						isSendingAllowed: true,
+						isCircuitBreakerOpen: true,
+						isPoolBlocklisted: false,
+					},
+				})
+			);
+			expect(decision.share).toBe(0.2);
+			expect(decision.reason).toBe('breaker');
+			// And the retreat re-stamps the freeze as the BREAKER'S, so the next tick
+			// holds rather than halving a second time for the same incident.
+			expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+			expect(decision.freezeReason).toBe('breaker');
+		});
+	}
 
 	it('halves again once the breaker freeze has expired and the breaker is still open', () => {
 		const decision = nextShare(
 			controllerInput({
 				now: NOW + 7 * HOUR,
-				mix: mixState({ share: 0.3, frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs }),
+				mix: mixState({
+					share: 0.3,
+					frozenUntil: NOW + RAMP_AIMD.breakerFreezeMs,
+					freezeReason: 'breaker',
+				}),
 				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
 			})
 		);
@@ -117,6 +163,7 @@ describe('nextShare — hard stops, in precedence order', () => {
 		expect(decision.share).toBe(0);
 		expect(decision.reason).toBe('dnsbl');
 		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freezeReason).toBe('dnsbl');
 	});
 
 	it('holds a frozen cell however green its gates are', () => {

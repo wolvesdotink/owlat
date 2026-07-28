@@ -131,20 +131,24 @@ describe('hard stops reach the controller through real route-state rows', () => 
 
 		const row = await cellRow(t);
 		expect(row?.frozenUntil).toBeUndefined();
+		// The origin goes with the expiry: a row with no freeze must not keep the
+		// last one's name, or the breaker rung would read a freeze that is not there.
+		expect(row?.freezeReason).toBeUndefined();
 		expect(row?.cooldownMs).toBe(RAMP_AIMD.cooldownBaseMs);
 		expect(row?.ownShare).toBe(CELL_SHARE);
 		expect((await decisions(t))[0]?.reason).toBe('holding');
 	});
 
-	it('keeps a freeze instant that has NOT yet expired', async () => {
+	it('keeps a freeze instant that has NOT yet expired, with its origin', async () => {
 		const t = convexTest(schema, modules);
 		const until = Date.now() + 3 * HOUR_MS;
-		await seed(t, { frozenUntil: until });
+		await seed(t, { frozenUntil: until, freezeReason: 'gate_breach' });
 
 		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
 
 		const row = await cellRow(t);
 		expect(row?.frozenUntil).toBe(until);
+		expect(row?.freezeReason).toBe('gate_breach');
 		expect((await decisions(t))[0]?.reason).toBe('frozen');
 	});
 
@@ -163,9 +167,37 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		expect(row?.frozenUntil ?? 0).toBeLessThan(at + 7 * HOUR_MS);
 		expect(row?.cooldownMs).toBeUndefined();
 
+		expect(row?.freezeReason).toBe('breaker');
+
 		const rows = await decisions(t);
 		expect(rows[0]?.reason).toBe('breaker');
 		expect(rows[0]?.adminNotice).toContain('circuit breaker');
+	});
+
+	// THE ROW IS WHAT MAKES THE ONCE-PER-INCIDENT RULE WORK ACROSS TICKS. A
+	// breaker that opens while an unrelated gate cooldown is running is a hard
+	// stop that has not been paid for, so the share halves and the freeze the row
+	// carries becomes the BREAKER'S — which is what makes the next tick hold
+	// rather than halve again for the same incident.
+	it('re-attributes the row freeze when a breaker opens under a gate cooldown', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now();
+		await seed(t, {
+			providerSignals: [{ source: 'breaker_open', severity: 'critical', observedAt: at }],
+			frozenUntil: at + RAMP_AIMD.cooldownMaxMs,
+			freezeReason: 'gate_breach',
+			cooldownMs: RAMP_AIMD.cooldownMaxMs,
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await cellRow(t);
+		expect(row?.ownShare).toBe(CELL_SHARE / 2);
+		expect(row?.freezeReason).toBe('breaker');
+		expect(row?.frozenUntil ?? 0).toBeLessThan(at + 7 * HOUR_MS);
+		// The gate ladder's rung is untouched by an infrastructure incident.
+		expect(row?.cooldownMs).toBe(RAMP_AIMD.cooldownMaxMs);
+		expect((await decisions(t))[0]?.reason).toBe('breaker');
 	});
 
 	it('a breaker freeze leaves the gate-cooldown ladder and its anchor alone', async () => {
