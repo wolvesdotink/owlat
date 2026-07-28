@@ -30,6 +30,9 @@
  *                  Confidence LOW, and it may NEVER justify an INCREASE.
  *   5 PLACEMENT    self-hosted seed mailboxes, absolute floor only, promoted from
  *                  optional to RECOMMENDED. Confidence MEDIUM (a tripwire, D17).
+ *                  Its cascade is shared with the reference-arm gate and lives in
+ *                  `seedGate.ts`; the entry point is RE-EXPORTED below so all five
+ *                  standalone gates are reachable from this one module.
  *
  * WHAT IS NOT HERE. No cascade. Every gate below is the SAME evaluator the
  * reference-arm implementation uses, handed a different SPEC — a different second
@@ -38,11 +41,28 @@
  * the thin-sample rule or the poisoned-rate rule lands in both implementations at
  * once because there is only one of each.
  *
+ * THE COLD START, NAMED (plan D10), because the population this module exists
+ * for is a FRESH INSTALL and this is what it sees on day one. With no
+ * `ownTrailingBaseline` — or one below the sample floors — gate 1 holds on
+ * `evidence_absent` / `baseline_sample_below_floor`, and the gate-3 unsubscribe
+ * proxy holds for the same reason. Holds outrank passes in `aggregateRampGates`,
+ * so a standalone cell CANNOT REACH `pass` until its trailing window clears the
+ * hard-bounce (200) and complaint (1000) floors, and the ramp sits at the
+ * stream's initial `s` for that long.
+ *
+ * THAT IS CORRECT, NOT A DEFECT. D10 says thin data HOLDS: it never increases on
+ * it and never decreases on it either, so the cost of the cold start is time, not
+ * risk. What UNFREEZES it is volume — and P3-2's cron should hand this module a
+ * PARTIAL-HISTORY trailing summary as soon as the window clears those floors,
+ * rather than passing `null` until some notional thirty days have elapsed. The
+ * gates already judge the summary they are given on its own sample and freshness;
+ * withholding a usable one only lengthens the freeze.
+ *
  * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
  * environment.
  */
 
-import { SMTP_BLOCK_CATEGORIES } from '@owlat/shared/smtpBlockCategories';
+import { SMTP_BLOCK_CATEGORIES, type SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import { evaluateCeilingGate, type CeilingGateSpec } from './ceilingGate';
 import { ENGAGEMENT_GATE_THRESHOLDS } from './engagementConfig';
 import {
@@ -51,15 +71,11 @@ import {
 	type EngagementGateInput,
 } from './engagementGate';
 import { evaluateDeferralGate } from './gates';
-import { evidenceFreshness, safeRate } from './gateEvidence';
+import { evaluateStandaloneSeedPlacementGate } from './seedGate';
+import { asBaselineHoldReason, evidenceFreshness, safeRate } from './gateEvidence';
 import { DIRECT_MEASUREMENT, PROXY_MEASUREMENT, WEAK_TRAILING_SIGNAL } from './gateGrades';
 import { oneArmedMeasurement } from './gateMeasurement';
-import type {
-	RampGateEvaluationInput,
-	RampGateHoldReason,
-	RampGateResult,
-	SmtpBlockObservation,
-} from './gateTypes';
+import type { RampGateEvaluationInput, RampGateResult, SmtpBlockObservation } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 
 // ============================ gate 1 — hard bounce ==========================
@@ -91,6 +107,7 @@ export const TRAILING_HARD_BOUNCE_SPEC: CeilingGateSpec = {
 			kind: 'multiple',
 			of: (t) => t.hardBounceTrailingMultiple,
 			boundary: 'inclusive_pass',
+			failReason: 'trailing_baseline_breached',
 		},
 	},
 	grade: DIRECT_MEASUREMENT,
@@ -158,6 +175,7 @@ export const UNSUBSCRIBE_PROXY_SPEC: CeilingGateSpec = {
 			kind: 'multiple',
 			of: (t) => t.unsubscribeProxyMultiple,
 			boundary: 'inclusive_fail',
+			failReason: 'trailing_baseline_breached',
 		},
 	},
 	grade: PROXY_MEASUREMENT,
@@ -182,6 +200,33 @@ export function evaluateStandaloneComplaintGate(input: RampGateEvaluationInput):
 // ================== gate 2 — deferral, plus block messages ==================
 
 /**
+ * THE ONE DERIVATION of "what did the receivers refuse, and how much of it".
+ *
+ * The COUNT and the NAMES come out of the SAME map here, so they cannot describe
+ * different rows: the numerator is the sum over the keys that are in
+ * `SMTP_BLOCK_CATEGORIES`, and the named categories are exactly those keys with a
+ * positive count. Rate pressure in the map is carried, counted by nobody, and
+ * never reaches the numerator.
+ *
+ * Exported because the admin notification (plan D12) names the categories and the
+ * gate applies the rate: two readers, one derivation, no second opinion.
+ */
+export function summarizeSmtpBlocks(observation: SmtpBlockObservation): {
+	readonly blocked: number;
+	readonly categories: readonly SmtpFailureCategory[];
+} {
+	let blocked = 0;
+	const categories: SmtpFailureCategory[] = [];
+	for (const category of SMTP_BLOCK_CATEGORIES) {
+		const count = safeOutcomeCount(observation.blockedByCategory[category]);
+		if (count <= 0) continue;
+		blocked += count;
+		categories.push(category);
+	}
+	return { blocked, categories };
+}
+
+/**
  * The share of classified responses that were BLOCK messages, or `null` when the
  * row cannot express one.
  *
@@ -195,7 +240,7 @@ export function evaluateStandaloneComplaintGate(input: RampGateEvaluationInput):
  */
 function blockRate(observation: SmtpBlockObservation): number | null {
 	const observed = safeOutcomeCount(observation.observed);
-	const blocked = safeOutcomeCount(observation.blocked);
+	const blocked = summarizeSmtpBlocks(observation).blocked;
 	if (observed <= 0 || blocked > observed) return null;
 	return safeRate(blocked / observed);
 }
@@ -254,14 +299,10 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
 		return null;
 	}
 
-	// The COUNT says how much, the CATEGORIES say what. Both are required: a
-	// producer that counted a throttle as a block must not be able to halt a
-	// healthy cell, and the admin notification has nothing to name without them.
-	// Membership only — the categories are narrowed to the shared vocabulary at
-	// the row-read boundary, so this side does a set test rather than re-guarding
-	// every element on every read.
-	if (!observation.categories.some((category) => SMTP_BLOCK_CATEGORIES.has(category))) return null;
-
+	// The numerator IS the block subset, by construction (`summarizeSmtpBlocks`):
+	// a window whose classified responses were all rate pressure sums to zero and
+	// falls under the threshold below, so a producer that counted a throttle
+	// cannot halt a healthy cell no matter how it filled the row.
 	const rate = blockRate(observation);
 	if (rate === null || rate < (thresholds.smtpBlockHalt as number)) return null;
 
@@ -364,18 +405,14 @@ export function asTrailingEngagement(result: RampGateResult): RampGateResult {
 	}
 }
 
-/** The `reference_*` hold reasons, restated about the cell's own past. */
-function asBaselineHoldReason(reason: RampGateHoldReason): RampGateHoldReason {
-	switch (reason) {
-		case 'reference_evidence_stale':
-			return 'baseline_evidence_stale';
-		case 'reference_sample_below_floor':
-			return 'baseline_sample_below_floor';
-		case 'reference_rate_unmeasurable':
-			return 'baseline_rate_unmeasurable';
-		case 'reference_not_a_denominator':
-			return 'baseline_not_a_denominator';
-		default:
-			return reason;
-	}
-}
+// ============================ gate 5 — placement ============================
+
+/**
+ * Gate 5, standalone, re-exported from `seedGate.ts`.
+ *
+ * The seed cascade is shared with the reference-arm gate, so it lives beside it
+ * rather than being copied here — but "where does the standalone implementation
+ * live" must have ONE answer, so the entry point is reachable from this module
+ * alongside its four siblings.
+ */
+export { evaluateStandaloneSeedPlacementGate };

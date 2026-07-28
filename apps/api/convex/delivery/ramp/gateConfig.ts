@@ -247,6 +247,13 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
  *
  * Transactional starts at zero and ramps LAST — it is the mail a failure hurts
  * most — but once started it moves in the smallest steps.
+ *
+ * THIS TABLE IS THE EQUIPPED HALF ONLY. The plan's standalone substitution
+ * raises K_CLEAN from 3 to 5 and halves the step when there is no reference
+ * transport, because the evidence behind each clean window is weaker. Those
+ * numbers are the AIMD ACTUATOR's (P3-2) and land with it: nothing in this piece
+ * consumes them, and a field here with no reader would be the speculative seam
+ * plan D20 forbids. Read `cleanWindowsRequired` as "with a reference arm".
  */
 export interface RampStreamConfig {
 	readonly stream: DeliverabilityStream;

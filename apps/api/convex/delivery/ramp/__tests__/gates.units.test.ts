@@ -32,9 +32,9 @@ import {
 	evaluateComplaintGate,
 	evaluateDeferralGate,
 	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
 	HARD_BOUNCE_SPEC,
 } from '../gates';
+import { evaluateSeedPlacementGate } from '../seedGate';
 import {
 	CFBL_COMPLAINT_SPEC,
 	TRAILING_HARD_BOUNCE_SPEC,
@@ -80,6 +80,32 @@ describe('every shipped ceiling spec is decidable', () => {
 		};
 		expect(ceilingGateSpecIsDecidable(undecidable, RAMP_GATE_THRESHOLDS)).toBe(false);
 	});
+});
+
+/**
+ * THE ARM VOCABULARY AND THE BREACH VOCABULARY MUST AGREE.
+ *
+ * A hold or a fail reason exists to NAME THE THING TO FIX (plan D12): it reaches
+ * the audit row, the admin notification and `gateExplanation`. `reference_*`
+ * names a second transport, `trailing_baseline_*` names the cell's own past, and
+ * a spec that compares against one while reporting the other sends the operator
+ * after something that does not exist — in the standalone configuration, after a
+ * relay that was never configured.
+ *
+ * The comparison carries its `failReason` as data precisely so the two cannot
+ * drift; this asserts every shipped spec's pairing, so a new spec has to state a
+ * reason that matches its arm.
+ */
+describe('every shipped ceiling spec names its own arm when it breaches', () => {
+	for (const [name, spec] of SHIPPED_CEILING_SPECS) {
+		const series = spec.secondSeries;
+		if (series === null) continue;
+		it(`${name} reports the ${series.arm} vocabulary`, () => {
+			expect(series.comparison.failReason).toBe(
+				series.arm === 'reference' ? 'reference_tolerance_breached' : 'trailing_baseline_breached'
+			);
+		});
+	}
 });
 
 const STREAM_CONFIGS = DELIVERABILITY_STREAM_KEYS.map((stream) => RAMP_STREAM_CONFIGS[stream]);

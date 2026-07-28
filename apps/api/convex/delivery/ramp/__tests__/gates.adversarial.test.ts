@@ -10,12 +10,8 @@
 
 import { expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
-import {
-	evaluateComplaintGate,
-	evaluateDeferralGate,
-	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
-} from '../gates';
+import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../gates';
+import { evaluateSeedPlacementGate } from '../seedGate';
 import { aggregateRampGates, referenceArmGateEvaluator } from '../gateEvaluation';
 import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import type { RampGateEvaluation, RampGateEvaluationInput, RampGateResult } from '../gateTypes';

@@ -120,46 +120,80 @@ export function insufficient(
 	return { gate, status: 'insufficient_data', reason, measurement, ...grade };
 }
 
+/** Which series a hold is about, and therefore which vocabulary it speaks. */
+export type HoldArm = 'own' | 'reference' | 'baseline';
+
+/** The hold reasons every arm has: its evidence was absent, thin, stale or poisoned. */
+interface ArmHoldReasons {
+	readonly stale: RampGateHoldReason;
+	readonly thin: RampGateHoldReason;
+	readonly unmeasurable: RampGateHoldReason;
+}
+
+/** …plus the one only a DENOMINATOR can have. `own` is never one. */
+interface RelativeArmHoldReasons extends ArmHoldReasons {
+	readonly notADenominator: RampGateHoldReason;
+}
+
 /**
- * The reason an unusable arm produces, mapped once so every gate agrees.
+ * THE ARM VOCABULARY, WRITTEN ONCE.
  *
- * Called only when the arm is unusable, so `fresh` here means the evidence was
- * fresh and large enough but the RATE itself was not a number — a poisoned
- * bucket, which is a different operator story from a thin window and must not
- * be reported as one.
- *
- * THREE arms, not two. A hold reason exists to NAME THE THING TO FIX, and
- * "reference" names a second transport an operator can go and look at. The
- * slow-poison floor's second series is the cell's OWN past, so reporting
+ * THREE arms, not two. A hold reason exists to NAME THE THING TO FIX (plan D12),
+ * and "reference" names a second transport an operator can go and look at. The
+ * standalone substitutions' second series is the cell's OWN past, so reporting
  * `reference_evidence_stale` there would send that operator hunting for a relay
  * problem that does not exist.
+ *
+ * ONE TABLE, THREE READERS. The reference/baseline pairing used to be spelled
+ * three times — once per evidence kind inside `evidenceReason`, again in
+ * `notADenominatorReason`, and a third time reason-to-reason in the standalone
+ * evaluator's re-reasoning guard. Adding a fourth hold kind meant editing all
+ * three, and any two of them could drift while still typechecking. Here the
+ * pairing exists exactly once and all three readers index it.
+ *
+ * `own` HAS NO `notADenominator` ENTRY, deliberately: the own arm is the
+ * NUMERATOR of every relative comparison in this module, and a numerator of zero
+ * is a real, decidable verdict rather than a hold. `notADenominatorReason` will
+ * not accept it, and the table is why.
  */
-export function evidenceReason(
-	evidence: ArmEvidence,
-	arm: 'own' | 'reference' | 'baseline'
-): RampGateHoldReason {
-	switch (evidence) {
-		case 'absent':
-			return 'evidence_absent';
-		case 'stale':
-			return arm === 'own'
-				? 'own_evidence_stale'
-				: arm === 'reference'
-					? 'reference_evidence_stale'
-					: 'baseline_evidence_stale';
-		case 'thin':
-			return arm === 'own'
-				? 'own_sample_below_floor'
-				: arm === 'reference'
-					? 'reference_sample_below_floor'
-					: 'baseline_sample_below_floor';
-		case 'fresh':
-			return arm === 'own'
-				? 'own_rate_unmeasurable'
-				: arm === 'reference'
-					? 'reference_rate_unmeasurable'
-					: 'baseline_rate_unmeasurable';
-	}
+export const HOLD_REASONS_BY_ARM: {
+	readonly own: ArmHoldReasons;
+	readonly reference: RelativeArmHoldReasons;
+	readonly baseline: RelativeArmHoldReasons;
+} = {
+	own: {
+		stale: 'own_evidence_stale',
+		thin: 'own_sample_below_floor',
+		unmeasurable: 'own_rate_unmeasurable',
+	},
+	reference: {
+		stale: 'reference_evidence_stale',
+		thin: 'reference_sample_below_floor',
+		unmeasurable: 'reference_rate_unmeasurable',
+		notADenominator: 'reference_not_a_denominator',
+	},
+	baseline: {
+		stale: 'baseline_evidence_stale',
+		thin: 'baseline_sample_below_floor',
+		unmeasurable: 'baseline_rate_unmeasurable',
+		notADenominator: 'baseline_not_a_denominator',
+	},
+};
+
+/** The evidence states that name an arm; `absent` names nothing and is not here. */
+const EVIDENCE_HOLD_KIND = {
+	stale: 'stale',
+	thin: 'thin',
+	// Called only when the arm is unusable, so `fresh` here means the evidence WAS
+	// fresh and large enough but the RATE itself was not a number — a poisoned
+	// bucket, which is a different operator story from a thin window.
+	fresh: 'unmeasurable',
+} as const satisfies Readonly<Record<Exclude<ArmEvidence, 'absent'>, keyof ArmHoldReasons>>;
+
+/** The reason an unusable arm produces, mapped once so every gate agrees. */
+export function evidenceReason(evidence: ArmEvidence, arm: HoldArm): RampGateHoldReason {
+	if (evidence === 'absent') return 'evidence_absent';
+	return HOLD_REASONS_BY_ARM[arm][EVIDENCE_HOLD_KIND[evidence]];
 }
 
 /**
@@ -174,11 +208,30 @@ export function evidenceReason(
  * `ArmEvidence` value it never observed in order to borrow a reason. Passing
  * `'fresh'` into `evidenceReason` to reach `*_rate_unmeasurable` was exactly
  * that, and it told the operator the wrong thing to go and look at (plan D12).
- *
- * `'own'` is deliberately not accepted: the own arm is the NUMERATOR of every
- * relative comparison in this module, and a numerator of zero is a real,
- * decidable verdict rather than a hold.
  */
 export function notADenominatorReason(arm: 'reference' | 'baseline'): RampGateHoldReason {
-	return arm === 'reference' ? 'reference_not_a_denominator' : 'baseline_not_a_denominator';
+	return HOLD_REASONS_BY_ARM[arm].notADenominator;
+}
+
+/**
+ * THE SAME PAIRING, READ IN THE OTHER DIRECTION: a `reference_*` hold reason
+ * restated about the cell's own past.
+ *
+ * The standalone evaluator re-reasons whatever gate-4 result it is handed (see
+ * `asTrailingEngagement`), and doing that with a third hand-written switch was
+ * the third place the pairing lived. This walks the table's own rows instead, so
+ * a hold kind added above is translated here without anyone remembering to.
+ * Anything that is not a reference reason passes through untouched.
+ */
+const BASELINE_FOR_REFERENCE_HOLD: ReadonlyMap<RampGateHoldReason, RampGateHoldReason> = new Map(
+	(['stale', 'thin', 'unmeasurable', 'notADenominator'] as const).map(
+		(kind): readonly [RampGateHoldReason, RampGateHoldReason] => [
+			HOLD_REASONS_BY_ARM.reference[kind],
+			HOLD_REASONS_BY_ARM.baseline[kind],
+		]
+	)
+);
+
+export function asBaselineHoldReason(reason: RampGateHoldReason): RampGateHoldReason {
+	return BASELINE_FOR_REFERENCE_HOLD.get(reason) ?? reason;
 }

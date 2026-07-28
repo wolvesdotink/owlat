@@ -25,12 +25,12 @@
 import { describe, expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
 import { trailingBaselineGateEvaluator } from '../gateEvaluation';
-import { evaluateStandaloneSeedPlacementGate } from '../gates';
 import type { RampGateEvaluationInput, RampGateResult } from '../gateTypes';
 import {
 	evaluateSmtpBlockMessages,
 	evaluateStandaloneComplaintGate,
 	evaluateStandaloneDeferralGate,
+	evaluateStandaloneSeedPlacementGate,
 	evaluateTrailingEngagementGate,
 	evaluateTrailingHardBounceGate,
 } from '../trailingBaselineGates';

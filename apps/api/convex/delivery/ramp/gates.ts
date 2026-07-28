@@ -15,32 +15,20 @@
  *
  * WHAT IS NOT HERE. The ceiling cascade gates 1 and 3 share — and that the
  * standalone substitutions reuse with a different second series — is in
- * `ceilingGate.ts`. Gate 4 (engagement ratio) lives in its own module because of
- * its MPP handling; the aggregator takes it as a pre-computed result. The
+ * `ceilingGate.ts`, and gate 5's seed cascade is in `seedGate.ts` for the same
+ * reason and in the same shape. Gate 4 (engagement ratio) lives in its own module
+ * because of its MPP handling; the aggregator takes it as a pre-computed result. The
  * aggregator itself is in `gateEvaluation.ts`. The "is this evidence usable at
  * all" rules — freshness, clock skew, thin samples, poisoned rates — live in
  * `gateEvidence.ts`, shared with gate 4 so the safety property has exactly one
  * implementation. The confidence grades are in `gateGrades.ts`.
  */
 
-import { evaluateCeilingGate, withinTolerance, type CeilingGateSpec } from './ceilingGate';
-import type { PercentagePoints, RampGateThresholds } from './gateConfig';
-import {
-	armEvidence,
-	evidenceFreshness,
-	evidenceReason,
-	insufficient,
-	safeRate,
-	type ArmEvidence,
-} from './gateEvidence';
-import { DIRECT_MEASUREMENT, SEED_TRIPWIRE } from './gateGrades';
+import { evaluateCeilingGate, type CeilingGateSpec } from './ceilingGate';
+import { armEvidence, evidenceReason, insufficient, safeRate } from './gateEvidence';
+import { DIRECT_MEASUREMENT } from './gateGrades';
 import { oneArmedMeasurement } from './gateMeasurement';
-import type {
-	RampGateEvaluationInput,
-	RampGateGrade,
-	RampGateResult,
-	SeedPlacementObservation,
-} from './gateTypes';
+import type { RampGateEvaluationInput, RampGateResult } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 
 /**
@@ -59,7 +47,11 @@ export const HARD_BOUNCE_SPEC: CeilingGateSpec = {
 		arm: 'reference',
 		maxAgeOf: (thresholds) => thresholds.maxEvidenceAgeMs,
 		floorOf: (floors) => floors.hardBounce,
-		comparison: { kind: 'tolerance_pp', of: (t) => t.hardBounceTolerance },
+		comparison: {
+			kind: 'tolerance_pp',
+			of: (t) => t.hardBounceTolerance,
+			failReason: 'reference_tolerance_breached',
+		},
 	},
 	grade: DIRECT_MEASUREMENT,
 };
@@ -75,7 +67,11 @@ export const COMPLAINT_SPEC: CeilingGateSpec = {
 		arm: 'reference',
 		maxAgeOf: (thresholds) => thresholds.maxEvidenceAgeMs,
 		floorOf: (floors) => floors.complaint,
-		comparison: { kind: 'tolerance_pp', of: (t) => t.complaintTolerance },
+		comparison: {
+			kind: 'tolerance_pp',
+			of: (t) => t.complaintTolerance,
+			failReason: 'reference_tolerance_breached',
+		},
 	},
 	grade: DIRECT_MEASUREMENT,
 };
@@ -152,180 +148,5 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 				reason: 'absolute_threshold_breached',
 				measurement: { ...shape, ownRate },
 				...DIRECT_MEASUREMENT,
-			};
-}
-
-function seedTotal(observation: SeedPlacementObservation | null | undefined): number {
-	if (!observation) return 0;
-	return (
-		safeOutcomeCount(observation.inbox) +
-		safeOutcomeCount(observation.spam) +
-		safeOutcomeCount(observation.missing)
-	);
-}
-
-function seedInboxRate(observation: SeedPlacementObservation | null | undefined): number | null {
-	const total = seedTotal(observation);
-	if (!observation || total <= 0) return null;
-	return Math.min(1, safeOutcomeCount(observation.inbox) / total);
-}
-
-function seedEvidence(
-	observation: SeedPlacementObservation | null | undefined,
-	minSeeds: number,
-	now: number,
-	thresholds: RampGateThresholds
-): ArmEvidence {
-	if (!observation) return 'absent';
-	const total = seedTotal(observation);
-	if (total <= 0 || total < minSeeds) return 'thin';
-	return evidenceFreshness(observation.observedAt, now, thresholds, thresholds.maxEvidenceAgeMs);
-}
-
-/**
- * Gate 5 — SEED PLACEMENT (OPTIONAL): inbox >= 90% AND >= reference - 5pp.
- *
- * Absent seed data returns `insufficient_data`, NEVER `fail` (plan D2) — and
- * because the gate is listed in `OPTIONAL_RAMP_GATES`, that `insufficient_data`
- * does not hold the ramp either: it only lowers measurement confidence. A
- * deployment with zero seed mailboxes is a supported configuration, not an
- * incomplete setup.
- *
- * Seeds are a tripwire, not a gauge (plan D17): what is consumed is the
- * verdict, with the sample carried alongside so nothing renders the rate as a
- * percentage anyone would quote. A `fail` here is SUSPECT on a sample of five,
- * which is why this gate is listed in `CORROBORATION_REQUIRED_RAMP_GATES` and
- * the aggregate evaluation flags `requiresCorroboration` when it decides.
- */
-export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampGateResult {
-	return evaluateSeedGate(REFERENCE_SEED_SPEC, input);
-}
-
-/**
- * Gate 5, STANDALONE: the ABSOLUTE inbox floor only.
- *
- * A deployment with no reference transport has no second seed sweep to compare
- * against, so the comparative half is not "unmeasurable" — it does not exist.
- * Holding on a series that is absent by design would silently delete the gate in
- * exactly the configuration the plan promotes it from optional to RECOMMENDED
- * (P2-6 supplies the data), which is the degraded path rotting in one line.
- *
- * Still a tripwire and still corroboration-required (plan D17): a collapse across
- * 5-10 mailboxes is actionable at any sample size, and a percentage off it is not
- * a number anyone should quote.
- */
-export function evaluateStandaloneSeedPlacementGate(
-	input: RampGateEvaluationInput
-): RampGateResult {
-	return evaluateSeedGate(STANDALONE_SEED_SPEC, input);
-}
-
-/**
- * The second seed sweep a placement gate compares against, and by how much.
- *
- * Bundled rather than left as two independently-nullable fields, for the reason
- * `CeilingSecondSeries` states: a tolerance with no sweep to apply it to, or a
- * sweep with no tolerance, is a comparison that is not happening described in two
- * contradictory ways.
- */
-interface SeedComparison {
-	readonly referenceOf: (input: RampGateEvaluationInput) => SeedPlacementObservation | null;
-	readonly toleranceOf: (thresholds: RampGateThresholds) => PercentagePoints;
-}
-
-interface SeedGateSpec {
-	/** `null` for the ABSOLUTE-ONLY gate: a standalone cell has no second sweep. */
-	readonly comparison: SeedComparison | null;
-	readonly grade: RampGateGrade;
-}
-
-const REFERENCE_SEED_SPEC: SeedGateSpec = {
-	comparison: {
-		referenceOf: (input) => input.referenceSeeds ?? null,
-		toleranceOf: (thresholds) => thresholds.seedInboxTolerance,
-	},
-	grade: SEED_TRIPWIRE,
-};
-
-const STANDALONE_SEED_SPEC: SeedGateSpec = { comparison: null, grade: SEED_TRIPWIRE };
-
-function evaluateSeedGate(spec: SeedGateSpec, input: RampGateEvaluationInput): RampGateResult {
-	const { thresholds, sampleFloors } = input.config;
-	const minSample = sampleFloors.seedPlacement;
-	const { comparison } = spec;
-	const reference = comparison ? comparison.referenceOf(input) : null;
-	const ownRate = seedInboxRate(input.ownSeeds);
-	const referenceRate = seedInboxRate(reference);
-	const shape = {
-		referenceRate,
-		thresholdRate: thresholds.seedInboxMin as number,
-		toleranceValuePp: comparison ? (comparison.toleranceOf(thresholds) as number) : null,
-		ownSample: seedTotal(input.ownSeeds),
-		referenceSample: reference ? seedTotal(reference) : null,
-		minSample,
-	} as const;
-
-	const ownEvidence = seedEvidence(input.ownSeeds, minSample, input.now, thresholds);
-	if (ownEvidence !== 'fresh' || ownRate === null) {
-		return insufficient(
-			'seed_placement',
-			evidenceReason(ownEvidence, 'own'),
-			{ ...shape, ownRate },
-			spec.grade
-		);
-	}
-
-	if (ownRate < (thresholds.seedInboxMin as number)) {
-		return {
-			gate: 'seed_placement',
-			status: 'fail',
-			reason: 'absolute_threshold_breached',
-			measurement: { ...shape, ownRate },
-			...spec.grade,
-		};
-	}
-
-	// An absolute-only gate has nothing left to consult: the sweep is fresh, large
-	// enough and above the inbox floor, which is the whole check.
-	if (comparison === null) {
-		return {
-			gate: 'seed_placement',
-			status: 'pass',
-			reason: 'within_threshold',
-			measurement: { ...shape, ownRate },
-			...spec.grade,
-		};
-	}
-
-	const referenceEvidence = seedEvidence(reference, minSample, input.now, thresholds);
-	if (referenceEvidence !== 'fresh' || referenceRate === null) {
-		return insufficient(
-			'seed_placement',
-			evidenceReason(referenceEvidence, 'reference'),
-			{ ...shape, ownRate },
-			spec.grade
-		);
-	}
-
-	const within = withinTolerance(
-		ownRate,
-		referenceRate,
-		comparison.toleranceOf(thresholds),
-		'own_must_not_fall_below'
-	);
-	return within
-		? {
-				gate: 'seed_placement',
-				status: 'pass',
-				reason: 'within_threshold',
-				measurement: { ...shape, ownRate },
-				...spec.grade,
-			}
-		: {
-				gate: 'seed_placement',
-				status: 'fail',
-				reason: 'reference_tolerance_breached',
-				measurement: { ...shape, ownRate },
-				...spec.grade,
 			};
 }

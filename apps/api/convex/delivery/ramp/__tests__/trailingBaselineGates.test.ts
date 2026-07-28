@@ -10,10 +10,10 @@
 import { describe, expect, it } from 'vitest';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../engagementConfig';
 import { RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
-import { evaluateStandaloneSeedPlacementGate } from '../gates';
 import type { RampGateResult } from '../gateTypes';
 import {
 	evaluateStandaloneComplaintGate,
+	evaluateStandaloneSeedPlacementGate,
 	evaluateTrailingEngagementGate,
 	evaluateTrailingHardBounceGate,
 } from '../trailingBaselineGates';
@@ -347,6 +347,40 @@ describe('gate 4 — trailing-baseline engagement (0.85 / 7 days / 2000 sends)',
 	it('the constants are the plan’s relaxed ones, not the concurrent gate’s', () => {
 		expect(ENGAGEMENT_GATE_THRESHOLDS.trailingBaselineRatio).toBe(0.85);
 		expect(RAMP_GATE_SAMPLE_FLOORS.engagementTrailing).toBe(2000);
+	});
+
+	/**
+	 * THE 7-DAY WINDOW, pinned the only way it can be today.
+	 *
+	 * The window itself is a CALLER PARAMETER (`trailingBaselineGates.ts` says
+	 * why: inventing a constant with no consumer is the speculative seam D20
+	 * forbids), so nothing here can assert its width. What IS assertable is that
+	 * the two age allowances ADMIT the intended shape as a pair: a 7-day recent
+	 * window whose newest observation is a day old is fresh under the concurrent
+	 * rule, while its DISJOINT prior 30-day baseline — which by contract ends
+	 * where the recent window begins, so its newest observation is 7 days old — is
+	 * fresh under the wider baseline rule. A change to either allowance that made
+	 * the intended window shape undecidable fails here.
+	 */
+	it('the two age allowances admit a 7-day window over a disjoint 30-day baseline', () => {
+		const result = evaluateTrailingEngagementGate(
+			engagementInput({
+				own: arm({ sent: 10_000, calibrationSent: 10_000, calibrationOpened: 2_000 }),
+				ownRecent: arm(
+					{ sent: 10_000, calibrationSent: 10_000, calibrationOpened: 2_000 },
+					// Newest observation in the 7-day window: yesterday.
+					{ lastRecordedAt: NOW - DAY_MS }
+				),
+				ownPriorBaseline: arm(
+					{ sent: 10_000, calibrationSent: 10_000, calibrationOpened: 2_000 },
+					// Newest observation in `[now - 30d, now - 7d)`: a week ago.
+					{ lastRecordedAt: NOW - 7 * DAY_MS }
+				),
+			})
+		);
+		expect(result.status).toBe('pass');
+		expect(RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs).toBeGreaterThan(DAY_MS);
+		expect(RAMP_GATE_THRESHOLDS.maxBaselineAgeMs).toBeGreaterThan(30 * DAY_MS);
 	});
 
 	it('a ratio of EXACTLY 0.85 passes — the floor is inclusive', () => {

@@ -110,6 +110,25 @@ export interface CeilingSecondSeries {
 }
 
 /**
+ * WHAT AN OPERATOR IS TOLD WHEN THE COMPARATIVE HALF BREACHES — and it belongs
+ * to the ARM, not to the unit.
+ *
+ * `reference_tolerance_breached` names a second transport to go and look at;
+ * `trailing_baseline_breached` names the cell's own past. Both reach the audit
+ * row (plan D12), the admin notification and `gateExplanation`, so telling a
+ * standalone deployment that its relay drifted sends an operator after a relay
+ * that does not exist.
+ *
+ * CARRIED AS DATA ON THE COMPARISON rather than inferred from its `kind`. The
+ * pairing is only incidentally one-to-one today — every shipped `tolerance_pp`
+ * spec happens to be a reference-arm one — and the type permits a reference spec
+ * with a `multiple` comparison, which under a `kind` switch would announce a
+ * trailing-baseline breach about a relay. `EngagementComparisonSpec` already
+ * carries its `failReason` for the same reason; this makes the two modules agree.
+ */
+export type CeilingFailReason = 'reference_tolerance_breached' | 'trailing_baseline_breached';
+
+/**
  * How the comparative half is expressed. Two units, never interchangeable:
  * `tolerance_pp` is an ADDITIVE allowance in percentage points (the reference-arm
  * gates), `multiple` is a dimensionless RELATIVE ceiling (the standalone
@@ -117,10 +136,17 @@ export interface CeilingSecondSeries {
  * nullable number fields is what stops a 1.5 from ever being read as 1.5pp.
  */
 export type CeilingComparison =
-	| { readonly kind: 'tolerance_pp'; readonly of: (t: RampGateThresholds) => PercentagePoints }
+	| {
+			readonly kind: 'tolerance_pp';
+			readonly of: (t: RampGateThresholds) => PercentagePoints;
+			/** @see CeilingFailReason */
+			readonly failReason: CeilingFailReason;
+	  }
 	| {
 			readonly kind: 'multiple';
 			readonly of: (t: RampGateThresholds) => number;
+			/** @see CeilingFailReason */
+			readonly failReason: CeilingFailReason;
 			/**
 			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the plan's two
 			 * substitutions state it differently and one shared operator cannot be
@@ -262,7 +288,7 @@ export function evaluateCeilingGate(
 		return decide(
 			spec,
 			withinTolerance(ownRate, secondRate, comparison.of(thresholds), 'own_must_not_exceed'),
-			'reference_tolerance_breached',
+			comparison.failReason,
 			{ ...shape, ownRate, referenceRate: secondRate }
 		);
 	}
@@ -282,7 +308,7 @@ export function evaluateCeilingGate(
 	return decide(
 		spec,
 		comparison.boundary === 'inclusive_pass' ? ownRate <= ceiling : ownRate < ceiling,
-		'trailing_baseline_breached',
+		comparison.failReason,
 		{ ...shape, thresholdRate: ceiling, ownRate, referenceRate: secondRate }
 	);
 }
@@ -320,7 +346,7 @@ function relativeCeilingIsMeasurable(
 function decide(
 	spec: CeilingGateSpec,
 	within: boolean,
-	failReason: 'reference_tolerance_breached' | 'trailing_baseline_breached',
+	failReason: CeilingFailReason,
 	measurement: RampGateDecidedMeasurement
 ): RampGateResult {
 	return within

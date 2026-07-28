@@ -25,6 +25,7 @@ import { RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import {
 	evaluateSmtpBlockMessages,
 	evaluateStandaloneDeferralGate,
+	summarizeSmtpBlocks,
 } from '../trailingBaselineGates';
 import { NOW, arm, blocks, input, standaloneInput } from './gateFixtures';
 
@@ -52,7 +53,7 @@ describe.each(BLOCK_SAMPLES)('a block message ($category) halts the cell', (samp
 	it(`halts on: ${sample.response.slice(0, 48)}…`, () => {
 		const evaluation = evaluateStandaloneDeferralGate(
 			standaloneInput({
-				smtpBlocks: blocks(5, 200, { categories: [sample.category] }),
+				smtpBlocks: blocks(5, 200, { category: sample.category }),
 			})
 		);
 		expect(evaluation.status).toBe('halt');
@@ -65,7 +66,7 @@ describe.each(PRESSURE_SAMPLES)('rate pressure ($category) does not halt', (samp
 	it(`stays on the deferral rate for: ${sample.response.slice(0, 48)}…`, () => {
 		const evaluation = evaluateStandaloneDeferralGate(
 			standaloneInput({
-				smtpBlocks: blocks(200, 200, { categories: [sample.category] }),
+				smtpBlocks: blocks(200, 200, { category: sample.category }),
 			})
 		);
 		expect(evaluation.status).not.toBe('halt');
@@ -119,11 +120,37 @@ describe('the hard stop is guarded like every other verdict', () => {
 		expect(evaluation.status).toBe('halt');
 	});
 
-	it('counts without a blocking category do not halt — the categories say WHAT', () => {
-		const evaluation = evaluateStandaloneDeferralGate(
-			standaloneInput({ smtpBlocks: blocks(200, 200, { categories: ['rate_limited'] }) })
-		);
-		expect(evaluation.status).not.toBe('halt');
+	it('a window of pure rate pressure sums to a ZERO numerator, so it cannot halt', () => {
+		// Two hundred classified responses, every one of them a throttle. The
+		// numerator is derived from the block subset alone, so there is nothing to
+		// halt on — the count cannot disagree with the categories because there is
+		// only one field.
+		const observation = blocks(200, 200, { category: 'rate_limited' });
+		expect(summarizeSmtpBlocks(observation).blocked).toBe(0);
+		expect(summarizeSmtpBlocks(observation).categories).toEqual([]);
+		expect(
+			evaluateStandaloneDeferralGate(standaloneInput({ smtpBlocks: observation })).status
+		).not.toBe('halt');
+	});
+
+	it('sums ONLY the block subset when a window carries both refusals and throttles', () => {
+		const observation = {
+			observed: 1_000,
+			blockedByCategory: {
+				content_rejected: 4,
+				policy_rejected: 1,
+				rate_limited: 800,
+				greylisted: 100,
+			},
+			observedAt: NOW,
+		} as const;
+		const summary = summarizeSmtpBlocks(observation);
+		expect(summary.blocked).toBe(5);
+		expect([...summary.categories].sort()).toEqual(['content_rejected', 'policy_rejected']);
+		// 5 of 1000 = the halt line exactly; the throttles are carried, never counted.
+		expect(
+			evaluateStandaloneDeferralGate(standaloneInput({ smtpBlocks: observation })).status
+		).toBe('halt');
 	});
 
 	it('a zero denominator is not a division by zero', () => {

@@ -32,13 +32,8 @@
  */
 
 import { CORROBORATION_REQUIRED_RAMP_GATES, OPTIONAL_RAMP_GATES } from './gateConfig';
-import {
-	evaluateComplaintGate,
-	evaluateDeferralGate,
-	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
-	evaluateStandaloneSeedPlacementGate,
-} from './gates';
+import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from './gates';
+import { evaluateSeedPlacementGate, evaluateStandaloneSeedPlacementGate } from './seedGate';
 import { weakestConfidence } from './gateGrades';
 import type {
 	RampGateAggregationInput,

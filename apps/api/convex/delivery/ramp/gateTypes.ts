@@ -325,22 +325,33 @@ export interface RampGateEvaluation {
  * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
  */
 export interface SmtpBlockObservation {
-	/** Responses classified into a category in `SMTP_BLOCK_CATEGORIES`. */
-	readonly blocked: number;
 	/** Every classified response over the window — the denominator. */
 	readonly observed: number;
 	/**
-	 * The categories seen, for the audit row and the admin notification. Naming
-	 * the category is what turns "the ramp halted" into "Gmail is rejecting the
-	 * sending IP identity — check PTR and forward DNS".
+	 * HOW MANY RESPONSES LANDED IN EACH CATEGORY. ONE FIELD, because the numerator
+	 * and the names are one fact and a type that lets them disagree is a type that
+	 * will.
+	 *
+	 * An earlier shape carried a `blocked` count and a `categories` list side by
+	 * side. Nothing tied them together: a producer whose count included throttles
+	 * while the list happened to name one refusal would halt a healthy cell, and a
+	 * producer whose count was right while the list named only rate pressure would
+	 * silently never fire the hard stop at all. Both readings typechecked. Here the
+	 * gate DERIVES the numerator by summing the keys in `SMTP_BLOCK_CATEGORIES` and
+	 * DERIVES the named categories as the ones with a positive count, so the two can
+	 * only ever describe the same rows.
+	 *
+	 * RATE PRESSURE BELONGS IN HERE TOO. `rate_limited` and friends are not blocks
+	 * and never contribute to the numerator, but they are what the receiver said and
+	 * the audit row (plan D12) is better for having them.
 	 *
 	 * THE SHARED VOCABULARY, not free text. The stored row is
 	 * `v.array(v.string())`, so the narrowing happens ONCE where that row is read
-	 * (`isSmtpBlockCategory`) rather than on every element on every gate
-	 * evaluation — a string that is not a category the classifier can emit is not
-	 * evidence and must not reach the gate at all.
+	 * (`isSmtpFailureCategory` — the WHOLE vocabulary, not the block subset, which
+	 * would drop every category above) rather than on every element on every gate
+	 * evaluation.
 	 */
-	readonly categories: readonly SmtpFailureCategory[];
+	readonly blockedByCategory: Readonly<Partial<Record<SmtpFailureCategory, number>>>;
 	readonly observedAt: number;
 }
 

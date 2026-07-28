@@ -8,12 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	evaluateComplaintGate,
-	evaluateDeferralGate,
-	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
-} from '../gates';
+import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../gates';
+import { evaluateSeedPlacementGate } from '../seedGate';
 import { OPTIONAL_RAMP_GATES } from '../gateConfig';
 import type { RampGateResult, RampGateStatus } from '../gateTypes';
 import { arm, armWith, describeEquipped, input, seeds } from './gateFixtures';

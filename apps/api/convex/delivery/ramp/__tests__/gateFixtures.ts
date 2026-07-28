@@ -15,6 +15,7 @@ import type {
 	DeliverabilityStream,
 	DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { Id } from '../../../_generated/dataModel';
 import {
 	summarizeTransportOutcomeBuckets,
@@ -213,22 +214,22 @@ export function seeds(
 }
 
 /**
- * A window of classified SMTP responses. `categories` defaults to a real BLOCK
- * category so that a fixture asking for blocks gets blocks; a suite that wants
- * counted-but-not-blocking responses states its own categories.
+ * A window of classified SMTP responses, `count` of them in `category`.
+ *
+ * The category defaults to a real BLOCK category so that a fixture asking for
+ * blocks gets blocks; a suite that wants counted-but-NOT-blocking responses names
+ * a rate-pressure category instead, and the gate's numerator then sums to zero
+ * rather than being asserted away by a second field.
  */
 export function blocks(
-	blocked: number,
+	count: number,
 	observed: number,
-	overrides: Partial<SmtpBlockObservation> = {}
+	overrides: Partial<SmtpBlockObservation> & { readonly category?: SmtpFailureCategory } = {}
 ): SmtpBlockObservation {
-	return {
-		blocked,
-		observed,
-		categories: ['content_rejected'],
-		observedAt: NOW,
-		...overrides,
-	};
+	const { category = 'content_rejected', ...rest } = overrides;
+	const blockedByCategory: Partial<Record<SmtpFailureCategory, number>> = {};
+	blockedByCategory[category] = count;
+	return { observed, blockedByCategory, observedAt: NOW, ...rest };
 }
 
 export const CAMPAIGN_CONFIG: RampStreamConfig = RAMP_STREAM_CONFIGS.campaign;
