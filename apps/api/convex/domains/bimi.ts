@@ -24,7 +24,7 @@
  * Pure — policy, pct, logo and VMC URLs are all parameters.
  */
 
-import { zoneRelativeHost } from '@owlat/shared/dnsZone';
+import { isDnsLabel, trySplitZone, zoneRelativeHost } from '@owlat/shared/dnsZone';
 import type { DmarcPolicy } from './dmarc';
 
 /** The weakest DMARC policy at which BIMI is meaningful. */
@@ -109,8 +109,6 @@ export function isBimiEligible(input: { dmarcPolicy?: DmarcPolicy; dmarcPct?: nu
 export function offerBimiRecord(input: {
 	/** The From domain the record is published for, e.g. `news.example.com`. */
 	domain: string;
-	/** The zone the operator manages; defaults to the domain's registrable zone. */
-	zone?: string;
 	dmarcPolicy?: DmarcPolicy;
 	dmarcPct?: number;
 	/** HTTPS URL of the SVG Tiny PS logo. */
@@ -122,10 +120,21 @@ export function offerBimiRecord(input: {
 	const reason = bimiIneligibleReason(input);
 	if (reason !== null) return withheld(reason);
 
-	const selector = input.selector?.trim() || BIMI_DEFAULT_SELECTOR;
+	// A selector is a DNS LABEL and is interpolated into a record host. Anything
+	// that is not one (a space, a slash, a leading hyphen) falls back to the
+	// spec's `default` rather than producing a host nothing can name: this is a
+	// rendering surface, and it degrades instead of blowing up the screen the
+	// operator is using to fix the value.
+	const candidate = input.selector?.trim() ?? '';
+	const selector = isDnsLabel(candidate) ? candidate : BIMI_DEFAULT_SELECTOR;
 	const host = `${selector}._bimi.${input.domain}`;
 	const logoUrl = input.logoUrl?.trim();
 	const vmcUrl = input.vmcUrl?.trim();
+
+	// Same rule one level up: a domain with no registrable zone has no
+	// zone-relative form, so the offer shows the absolute host instead of throwing.
+	const relativeHost =
+		trySplitZone(input.domain) === null ? host : zoneRelativeHost(host, input.domain);
 
 	const record =
 		logoUrl === undefined || logoUrl === ''
@@ -133,7 +142,7 @@ export function offerBimiRecord(input: {
 			: {
 					type: 'TXT' as const,
 					host,
-					relativeHost: zoneRelativeHost(host, input.zone ?? input.domain),
+					relativeHost,
 					value:
 						vmcUrl === undefined || vmcUrl === ''
 							? `v=BIMI1; l=${logoUrl};`
