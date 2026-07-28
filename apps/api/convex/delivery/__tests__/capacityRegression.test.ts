@@ -121,6 +121,13 @@ describe('THE SANCTIONED CHANGE: a known cap over unprojectable demand HOLDS', (
 		expect(capacity.kind).toBe('unknown');
 	});
 
+	it('and NAMES the reason, so the audit row says brand-new rather than merely "unknown"', async () => {
+		// D12: an operator has to be able to learn WHICH degenerate case this is —
+		// a cell that has never sent reads differently from a paused one.
+		const { capacity } = await runTick({ traffic: false });
+		expect(capacity.kind === 'unknown' ? capacity.reason : null).toBe('no_history');
+	});
+
 	it('and holds the share where it was — a hold, never a retreat (plan D10)', async () => {
 		const { harness } = await runTick({ traffic: false });
 		expect((await readManagedCell(harness))?.ownShare).toBe(RAMP_FIXTURE_SHARE);
