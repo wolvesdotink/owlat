@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { nextCooldownMs, nextShare } from '../controller';
+import { nextShare } from '../controller';
+import { nextCooldownMs } from '../controllerReaders';
 import { RAMP_AIMD } from '../controllerConfig';
 import {
 	breachedEvaluation,

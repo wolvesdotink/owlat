@@ -49,7 +49,9 @@ import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { normalizePhaseCeiling, RAMP_AIMD } from './controllerConfig';
 import {
 	isEvidenceUsable,
+	isFreezeActive,
 	isStoredInstantAhead,
+	nextCooldownMs,
 	readStoredInstant,
 	roundShare,
 	sanitizeGreenSince,
@@ -63,7 +65,6 @@ import type {
 	RampDecision,
 	RampDecisionDirection,
 	RampDecisionReason,
-	RampMixState,
 } from './controllerTypes';
 
 /**
@@ -89,25 +90,6 @@ function directionOf(fromShare: number, share: number): RampDecisionDirection {
 	if (share > fromShare) return 'increase';
 	if (share < fromShare) return 'decrease';
 	return 'hold';
-}
-
-/**
- * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within
- * 24h of the previous freeze's start, capped at 48h.
- *
- * A missing, corrupt or non-positive stored ladder position restarts at the
- * base rather than propagating garbage — the ladder is a penalty, and a penalty
- * derived from an unreadable number is not a penalty anyone can defend.
- */
-export function nextCooldownMs(mix: RampMixState, now: number): number {
-	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
-	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
-	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
-	const previous = mix.cooldownMs;
-	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
-		return cooldownBaseMs;
-	}
-	return Math.min(cooldownMaxMs, previous * 2);
 }
 
 /**
@@ -259,6 +241,23 @@ function decide(args: DecideArgs): DecisionDraft {
 		};
 	}
 	if (signals.isCircuitBreakerOpen) {
+		// THE FREEZE THIS RUNG STAMPS BINDS THE RUNG ITSELF. An open breaker is a
+		// CONDITION, not an event: it stays open across many hourly ticks, and a
+		// rung that re-halved on each of them would walk a cell from 0.5 to the
+		// rounding floor — and post an incident notice per rung — for ONE incident.
+		// The retreat is charged once per freeze window: the cell still hard-stops
+		// here every tick (no gate is consulted, streak and pin stay revoked), it
+		// just does not re-charge while its own freeze runs. Once that freeze
+		// expires with the breaker still open, the next tick halves again.
+		if (isFreezeActive(mix, now)) {
+			return {
+				...held,
+				reason: 'breaker',
+				cleanStreak: 0,
+				greenSince: undefined,
+				graduatedAt: undefined,
+			};
+		}
 		return {
 			...held,
 			share: fromShare * RAMP_AIMD.decreaseFactor,
@@ -291,7 +290,7 @@ function decide(args: DecideArgs): DecisionDraft {
 	}
 
 	// 5. An unexpired freeze holds, however good the gates look.
-	if (mix.frozenUntil !== undefined && Number.isFinite(mix.frozenUntil) && now < mix.frozenUntil) {
+	if (isFreezeActive(mix, now)) {
 		return { ...held, reason: 'frozen' };
 	}
 

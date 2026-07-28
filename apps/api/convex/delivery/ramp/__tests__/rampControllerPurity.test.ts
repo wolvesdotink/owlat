@@ -19,7 +19,8 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { capacityCeiling, nextCooldownMs, nextShare } from '../controller';
+import { capacityCeiling, nextShare } from '../controller';
+import { nextCooldownMs } from '../controllerReaders';
 import { RAMP_AIMD } from '../controllerConfig';
 import { breachedEvaluation, controllerInput, DAY, mixState, NOW } from './controllerFixtures';
 

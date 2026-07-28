@@ -8,6 +8,11 @@
  * that decides what such a value MEANS, and every one of them fails in the
  * direction that cannot raise a share.
  *
+ * The FREEZE pair at the end of the file belongs to the same job: "is the
+ * stored freeze still running" and "what is the next rung of the stored
+ * cooldown ladder" are both readings of a row whose numbers may be missing or
+ * corrupt, and both fail towards the smaller share.
+ *
  * They live beside `controller.ts` rather than inside it so the precedence
  * ladder — the thing a reviewer must verify in one sitting — stays the whole
  * content of that file. Same directory, so `__tests__/gates.purity.test.ts`
@@ -18,6 +23,8 @@
  */
 
 import { clampOwnShare } from '@owlat/shared/deliverabilityRouting';
+import { RAMP_AIMD } from './controllerConfig';
+import type { RampMixState } from './controllerTypes';
 import type { RampGateThresholds } from './gateConfig';
 
 /**
@@ -100,4 +107,33 @@ export function isEvidenceUsable(
 	if (!Number.isFinite(evaluatedAt)) return false;
 	if (evaluatedAt > now + thresholds.maxFutureSkewMs) return false;
 	return now - evaluatedAt <= thresholds.maxEvidenceAgeMs;
+}
+
+/**
+ * Is a freeze — from a gate breach or from a hard stop — still running? Read by
+ * TWO rungs: `frozen`, and the breaker rung that declines to re-charge its own
+ * retreat while the freeze it stamped is in force. An unreadable stored instant
+ * is NOT a freeze — pinning a cell for ever on a corrupt number is worse.
+ */
+export function isFreezeActive(mix: RampMixState, now: number): boolean {
+	return mix.frozenUntil !== undefined && Number.isFinite(mix.frozenUntil) && now < mix.frozenUntil;
+}
+
+/**
+ * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within
+ * 24h of the previous freeze's start, capped at 48h.
+ *
+ * A missing, corrupt or non-positive stored ladder position restarts at the
+ * base rather than propagating garbage — the ladder is a penalty, and a penalty
+ * derived from an unreadable number is not a penalty anyone can defend.
+ */
+export function nextCooldownMs(mix: RampMixState, now: number): number {
+	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
+	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
+	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
+	const previous = mix.cooldownMs;
+	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
+		return cooldownBaseMs;
+	}
+	return Math.min(cooldownMaxMs, previous * 2);
 }
