@@ -34,7 +34,6 @@ import {
 	deliverabilityCellKey,
 	hasCriticalBlocklistSignal,
 	isFallbackActiveForShare,
-	resolveOwnShare,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
 import type { Doc } from '../_generated/dataModel';
@@ -53,12 +52,12 @@ import { nextShare } from './ramp/controller';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
-import { UNCONSTRAINED_RAMP_CAPACITY } from './rampCapacity';
 import { recordMixDecision } from './rampMixDecisions';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
 } from './deliverabilityValidators';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import type { RampControllerInput, RampDecision, RampMixState } from './ramp/controllerTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
@@ -106,44 +105,71 @@ async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | nul
  *
  * The blocklist test itself is the SHIPPED predicate, not a local copy: one
  * definition of "critically blocklisted" for routing and for the ramp.
+ *
+ * AND ONE DEFINITION OF "STILL TRUE". The shipped router only acts on a row it
+ * has heard from within `DELIVERABILITY_SIGNAL_MAX_AGE_MS` (`routeInputs.ts`),
+ * so a snapshot that stopped arriving stops steering traffic. The controller
+ * applies the SAME filter: a row the router has already stopped acting on must
+ * not still be driving the ramp's breaker and blocklist hard stops. Without it
+ * the two layers could disagree about whether a signal counts — and because the
+ * breaker rung halves without a floor, a signal that goes stale rather than
+ * being cleared would walk the cell toward zero over successive freezes.
  */
 function readHardStopSignals(
 	rows: readonly (Doc<'deliverabilityRouteStates'> | null)[],
-	isSendingPermitted: boolean
+	args: { readonly isSendingPermitted: boolean; readonly now: number }
 ) {
 	let isCircuitBreakerOpen = false;
 	let isPoolBlocklisted = false;
 	for (const row of rows) {
-		const signals = row?.signals ?? [];
+		if (row === null) continue;
+		if (args.now - row.updatedAt > DELIVERABILITY_SIGNAL_MAX_AGE_MS) continue;
+		const { signals } = row;
 		if (signals.some((signal) => signal.source === 'breaker_open')) isCircuitBreakerOpen = true;
 		if (hasCriticalBlocklistSignal(signals)) isPoolBlocklisted = true;
 	}
-	return { isSendingAllowed: isSendingPermitted, isCircuitBreakerOpen, isPoolBlocklisted };
+	return { isSendingAllowed: args.isSendingPermitted, isCircuitBreakerOpen, isPoolBlocklisted };
 }
 
 /**
- * The STORED state, read out verbatim.
- *
- * `share` is deliberately NOT normalised here. `resolveOwnShare` clamps a stored
- * `ownShare` on the way out, which is right for every routing reader — but
- * handing the controller a clamped value would mean a row holding `-0.5`, `1.5`
- * or `NaN` arrives as a perfectly ordinary `0` or `1`, the decision function's
- * `share_unreadable` rung could never fire in production, and a corrupt row
- * would be stepped UP on the next clean tick (or start a graduation clock).
- * `resolveOwnShare` stays as the fallback for the ABSENT-share case only, which
- * is the one case it is being asked a question about.
+ * A cell the ramp MANAGES: a per-stream route-state row that carries a stored
+ * share. A row without one is governed entirely by the shipped boolean plus
+ * hysteresis, and the controller leaves it alone (plan D1).
  */
-function readMixState(row: Doc<'deliverabilityRouteStates'> | null): RampMixState {
+type ManagedRouteState = Doc<'deliverabilityRouteStates'> & { readonly ownShare: number };
+
+function isManagedRouteState(
+	row: Doc<'deliverabilityRouteStates'> | null
+): row is ManagedRouteState {
+	return row !== null && row.ownShare !== undefined;
+}
+
+/**
+ * The STORED state of a MANAGED cell, read out verbatim.
+ *
+ * `share` is deliberately NOT normalised here. The shared `resolveOwnShare`
+ * clamps a stored `ownShare` on the way out, which is right for every routing
+ * reader — but handing the controller a clamped value would mean a row holding
+ * `-0.5`, `1.5` or `NaN` arrives as a perfectly ordinary `0` or `1`, the
+ * decision function's `share_unreadable` rung could never fire in production,
+ * and a corrupt row would be stepped UP on the next clean tick (or start a
+ * graduation clock).
+ *
+ * The ABSENT-share case is not handled here either: a row without `ownShare` is
+ * an UNMANAGED cell, and the caller returns before reaching this function. One
+ * definition of "managed", in the one place that decides it.
+ */
+function readMixState(row: ManagedRouteState): RampMixState {
 	return {
-		share: row?.ownShare ?? resolveOwnShare(row),
-		phaseCeiling: row?.phaseCeiling,
-		cleanStreak: row?.cleanStreak,
-		frozenUntil: row?.frozenUntil,
-		freezeStartedAt: row?.fallbackActiveSince,
-		cooldownMs: row?.cooldownMs,
-		greenSince: row?.healthySince,
-		graduatedAt: row?.graduatedAt,
-		lastCountedAt: row?.lastCountedAt,
+		share: row.ownShare,
+		phaseCeiling: row.phaseCeiling,
+		cleanStreak: row.cleanStreak,
+		frozenUntil: row.frozenUntil,
+		freezeStartedAt: row.fallbackActiveSince,
+		cooldownMs: row.cooldownMs,
+		greenSince: row.healthySince,
+		graduatedAt: row.graduatedAt,
+		lastCountedAt: row.lastCountedAt,
 	};
 }
 
@@ -177,7 +203,7 @@ async function loadCellInput(
 	const { organizationId, cell, pool, now } = args;
 	const cellKey = deliverabilityCellKey(cell);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
-	if (!perStream || perStream.ownShare === undefined) return null;
+	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
 
 	const window = { organizationId, cell: cellKey, since: now - RAMP_WINDOW_MS };
@@ -227,13 +253,17 @@ async function loadCellInput(
 			cell,
 			config: RAMP_STREAM_CONFIGS[cell.stream],
 			mix,
-			signals: readHardStopSignals([perStream, streamless, pool], args.isSendingPermitted),
+			signals: readHardStopSignals([perStream, streamless, pool], {
+				isSendingPermitted: args.isSendingPermitted,
+				now,
+			}),
 			evaluation,
 			// P3-3 owns the real per-(IP x mailbox provider) projection; until it
 			// lands the controller is bounded by its PHASE CEILING alone. A stand-in
 			// projection here would be a rule with no fixture and a ceiling nobody
-			// designed (see rampCapacity.ts).
-			capacity: UNCONSTRAINED_RAMP_CAPACITY,
+			// designed — see `RampCapacityInput`, where "no projection" is its own
+			// shape rather than a pair of zeros a real reading could also produce.
+			capacity: { kind: 'unconstrained' },
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},
@@ -398,23 +428,6 @@ export const runRampController = internalMutation({
 });
 
 /**
- * THE GLOBAL KILL SWITCH (plan P3-2's named mitigation for controller
- * complexity). The OPERATOR path is `workspaces/settings.update`
- * (`isRampControllerPaused`), which is permission-gated and audits the change;
- * this internal mutation is the seam an incident runbook and the tests drive
- * when there is no session to act through.
- */
-export const setRampControllerPaused = internalMutation({
-	args: { isPaused: v.boolean() },
-	handler: async (ctx, args) => {
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (!settings) return { ok: false as const };
-		await ctx.db.patch(settings._id, { isRampControllerPaused: args.isPaused });
-		return { ok: true as const };
-	},
-});
-
-/**
  * Promote a cell one rung up the phase ladder (0.25 -> 0.5 -> 0.8 -> 1.0). A
  * deliberate act, never something the hourly AIMD loop does on its own: the
  * ladder exists precisely so that the biggest steps stay human-authorised.
@@ -422,6 +435,13 @@ export const setRampControllerPaused = internalMutation({
  * A promotion IS a new mix generation, so it is also the one place that
  * advances `mixVersion` (plan D7): the cohort is deliberately re-randomised
  * when the phase changes, and never on an ordinary AIMD step.
+ *
+ * THE GLOBAL KILL SWITCH PINS THIS TOO. The switch's contract is that no cell
+ * moves while it is engaged, and a promotion moves two things that matter most
+ * during an incident: it raises the phase ceiling, and it re-shuffles which arm
+ * EVERY recipient of the cell lands in. "Everything held still" has to mean
+ * everything, so a paused controller refuses the promotion rather than applying
+ * it quietly while the AIMD loop is frozen.
  */
 export const promoteRampPhase = internalMutation({
 	args: {
@@ -433,6 +453,8 @@ export const promoteRampPhase = internalMutation({
 			stream: args.stream,
 			destinationProvider: args.destinationProvider,
 		};
+		const settings = await ctx.db.query('instanceSettings').first();
+		if (settings?.isRampControllerPaused === true) return { ok: false as const };
 		const organizationId = await resolveRampOrganizationId(ctx);
 		if (organizationId === null) return { ok: false as const };
 		const { perStream } = await loadRouteStateCell(ctx, organizationId, cell);

@@ -7,6 +7,13 @@
  * still for a week. The KPI is that 100% of decisions carry a recorded,
  * human-readable reason, so `message` is a required field, not an optional one.
  *
+ * NO READ PATH SHIPS HERE. The delivery dashboard is a later piece and owns the
+ * query it needs; a read function with no consumer is a seam with no
+ * requirements behind it (plan D20), and the unscoped version this file used to
+ * carry read a TENANT table without pinning the tenant. The index the dashboard
+ * will read through — `by_org_cell_time` — is in the schema and is exercised by
+ * `__tests__/mixDecisions.test.ts`.
+ *
  * A retreat with a NAMED CAUSE — a breached gate or a hard stop — additionally
  * carries `adminNotice`: what broke and what to do about it. A controller that
  * silently retreats will be experienced as a bug; equally, an alarm that cannot
@@ -103,15 +110,6 @@ export async function recordMixDecision(
 		expiresAt: at + MIX_DECISION_RETENTION_MS,
 	});
 }
-
-/**
- * NO READ PATH SHIPS HERE. The delivery dashboard is a later piece and owns the
- * query it needs; a read function with no consumer is a seam with no
- * requirements behind it (plan D20), and the unscoped version this file used to
- * carry read a TENANT table without pinning the tenant. The index the dashboard
- * will read through — `by_org_cell_time` — is in the schema and is exercised by
- * `__tests__/mixDecisions.test.ts`.
- */
 
 /** Age out decisions past the retention horizon, in bounded batches. */
 export const cleanupExpiredDecisions = internalMutation({
