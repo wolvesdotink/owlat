@@ -3,10 +3,17 @@
  *
  * A domain sibling of `seedPlacement.ts` (CONVENTIONS.md's ~500 LOC split
  * guideline): given the NAME of the remote folder an IMAP poller found a probe
- * in — and nothing else, never its contents — decide what that means. Provider
- * folder naming is the whole difficulty: Gmail nests under `[Gmail]/`, Outlook
- * says `Junk Email`, Yahoo says `Bulk Mail`, and a Gmail tab is a LABEL, not a
- * folder.
+ * in, plus the folder's RFC 6154 SPECIAL-USE attribute when the server offered
+ * one — and nothing else, never its contents — decide what that means.
+ *
+ * The FLAG decides first and the name is the fallback, and that order is the
+ * point. Provider folder naming is the whole difficulty: Gmail nests under
+ * `[Gmail]/`, Outlook says `Junk Email`, Yahoo says `Bulk Mail`, a Gmail tab is
+ * a LABEL rather than a folder, and consumer providers localize the Junk folder
+ * per account language. A name table can never be complete, and an unrecognised
+ * name falls through to `category`, which counts as REACHED — so every gap in
+ * the table reads a spam-filed probe as healthy and moves gate 5 toward `pass`.
+ * `\Junk` is the server telling us the answer in no language at all.
  *
  * Re-exported from `seedPlacement.ts`, which stays the single import surface.
  *
