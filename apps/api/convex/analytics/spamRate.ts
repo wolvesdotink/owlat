@@ -3,11 +3,8 @@
 import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import type { Doc } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
-import {
-	startOfDayUtc,
-	type DomainReputationBucketGroups,
-	type ReputationScope,
-} from './sendingReputation';
+import type { DomainReputationBucketGroups, ReputationScope } from './sendingReputation';
+import { startOfDayUtc } from '../lib/clock';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_MS = 30 * DAY_MS;

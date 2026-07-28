@@ -127,6 +127,11 @@ export const AUDIT_ACTION_LITERALS = [
 	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only (D2).
 	action('seed_mailbox.rotation_reminder'),
 	action('seed_mailbox.rotation_acknowledged'),
+	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
+	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
+	// submitted/enrolled dates and downgrades the yahoo cell's complaint
+	// measurement to the tightened proxy, doubling the gate's strictness.
+	action('sending_domain.yahoo_cfl_changed'),
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),

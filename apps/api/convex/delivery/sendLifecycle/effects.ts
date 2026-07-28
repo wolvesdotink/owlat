@@ -13,6 +13,10 @@ import { bumpSendDailyStat } from '../../lib/sendDailyStats';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
 import { scheduleSuppressionMirror } from '../suppressionMirror';
+import {
+	applyTransportOutcomeEffect,
+	type TransportOutcomeEvent,
+} from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 
 // ─── Effects (a discriminated list returned by reducers) ────────────────────
@@ -91,6 +95,16 @@ export type Effect =
 			domain?: string;
 	  }
 	| {
+			// Per-cell, per-arm DELIVERABILITY counter (plan D5). Reuses this
+			// existing effect list rather than a parallel event stream: the cell
+			// and arm are learned by joining the send to its `sendAssignments`
+			// row, and a send without one records nothing.
+			kind: 'transport_outcome';
+			sendId: string;
+			event: TransportOutcomeEvent;
+			at: number;
+	  }
+	| {
 			kind: 'attachment_cleanup';
 			storageIds: ReadonlyArray<string>;
 	  }
@@ -103,6 +117,19 @@ export type Effect =
 			kind: 'customer_webhook';
 			spec: FanoutSpec;
 	  };
+
+/**
+ * The ONE constructor for the per-cell outcome effect. Every site that records
+ * a transport outcome (the dispatcher's queued→terminal accounting and the
+ * transition map, plus `reduceDeliveryObservation`/`reduceOpened`/
+ * `reduceClicked` under their shipped uniqueness gates) goes through this, so
+ * the effect's shape is declared once next to the union it belongs to.
+ */
+export const transportOutcomeEffect = (
+	ref: SendRef,
+	event: TransportOutcomeEvent,
+	at: number
+): Effect => ({ kind: 'transport_outcome', sendId: ref.id, event, at });
 
 // ─── Runner — applies the patch, dispatches effects, schedules fanout ───────
 
@@ -248,6 +275,16 @@ export async function applyEffects(
 				await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.recordEvent, {
 					eventType: effect.eventType,
 					...(effect.domain ? { domain: effect.domain } : {}),
+				});
+				break;
+			}
+			case 'transport_outcome': {
+				// Fail-soft inside the helper: a measurement write must never be
+				// able to roll back the delivery state transition it describes.
+				await applyTransportOutcomeEffect(ctx, {
+					sendId: effect.sendId,
+					event: effect.event,
+					at: effect.at,
 				});
 				break;
 			}

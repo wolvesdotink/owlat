@@ -237,6 +237,10 @@
 			"types": "./src/spfCoexistence.ts",
 			"import": "./src/spfCoexistence.ts"
 		},
+		"./yahooCfl": {
+			"types": "./src/yahooCfl.ts",
+			"import": "./src/yahooCfl.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"

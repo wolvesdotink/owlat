@@ -2,7 +2,8 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { deriveSnapshot, startOfDayUtc } from '../reputationSnapshots';
+import { deriveSnapshot } from '../reputationSnapshots';
+import { startOfDayUtc } from '../../lib/clock';
 import type { ReputationSummary } from '../sendingReputation';
 
 /**
