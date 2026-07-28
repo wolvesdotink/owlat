@@ -133,7 +133,7 @@ describe('pre-flight capacity gate — binding refusal', () => {
 			fits: false,
 			days: 5,
 			slices: [0, 100, 200, 200, 100],
-			finishesAt: MIDNIGHT + 5 * 24 * 60 * 60 * 1000,
+			finishesAt: MIDNIGHT + 5 * DAY_MS,
 			covered: 600,
 			truncated: false,
 			audienceUnderCounted: false,
@@ -165,7 +165,7 @@ describe('pre-flight capacity gate — never a false blocker (D2/D10)', () => {
 
 	it('allows the send when warming state is stale (the MTA sync stopped)', async () => {
 		const t = convexTest(schema, modules);
-		await seedWarmingState(t, { syncedAt: MIDNIGHT - 3 * 24 * 60 * 60 * 1000 });
+		await seedWarmingState(t, { syncedAt: MIDNIGHT - 3 * DAY_MS });
 		const campaignId = await seedSendableCampaign(t, 600);
 
 		const result = await runPreflight(t, campaignId);
@@ -254,7 +254,11 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 			},
 		});
 
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'warmup_overflow_absorbs',
+		});
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
@@ -327,7 +331,11 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 			],
 		});
 
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'not_own_mta',
+		});
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
@@ -375,6 +383,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 					expect(await assessCampaign(t, campaignId)).toEqual({
 						capacityKnown: false,
 						fits: true,
+						unknownReason: 'not_own_mta',
 					});
 					expect((await runPreflight(t, campaignId)).ok).toBe(true);
 				}
@@ -455,7 +464,49 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 			],
 		});
 
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'not_own_mta',
+		});
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * NOTHING IS KNOWN ABOUT WHERE CAMPAIGNS DISPATCH. Under a DETERMINISTIC
+	 * strategy the shipped resolver still throws for an unusable relay
+	 * configuration — here `single` selects the SES entry while an MTA entry is
+	 * also enabled, which is a hybrid relay selection with no relay proof. The
+	 * gate loses the selected route to that throw and has no other handle on the
+	 * campaign's dispatch kind, so it holds and allows (D10) — and says so, with
+	 * `dispatch_unknown` rather than the reassuring `not_own_mta`. The two are
+	 * NOT interchangeable: one means the cap provably does not apply, the other
+	 * means we could not tell.
+	 */
+	it('answers dispatch_unknown when no route can be selected at all', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// No `seedVerifiedRelayIdentity`: the hybrid relay selection has no proof.
+		await seedCampaignRoute(t, {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'mta', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'dispatch_unknown',
+		});
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
@@ -531,7 +582,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 			fromEmail: 'sender@verified.example.com',
 		});
 
-		expect(plan).toEqual({ fits: true, capacityKnown: false });
+		expect(plan).toEqual({ fits: true, capacityKnown: false, unknownReason: 'no_projection' });
 	});
 
 	it("assesses a future start against the capacity it will have THEN, not today's", async () => {
@@ -563,7 +614,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 		const later = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
 			audience,
 			fromEmail: 'sender@verified.example.com',
-			startsAt: MIDNIGHT + 3 * 24 * 60 * 60 * 1000,
+			startsAt: MIDNIGHT + 3 * DAY_MS,
 		});
 		expect(later).toEqual({ capacityKnown: true, fits: true });
 	});
@@ -586,7 +637,7 @@ describe('pre-flight capacity gate — scheduled sends', () => {
 
 			const scheduled = await validateReadyToSend(ctx, campaign, {
 				now: MIDNIGHT,
-				scheduledAt: MIDNIGHT + 3 * 24 * 60 * 60 * 1000,
+				scheduledAt: MIDNIGHT + 3 * DAY_MS,
 			});
 			expect(scheduled.ok).toBe(true);
 		});
@@ -605,7 +656,11 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				truncated: false,
 				audienceUnderCounted: false,
 			})
-		).toEqual({ capacityKnown: false, fits: true });
+		).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'unplannable_projection',
+		});
 	});
 
 	it('passes a real schedule through as a measured refusal', () => {
@@ -614,7 +669,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				fits: false,
 				days: 2,
 				slices: [100, 50],
-				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
+				finishesAt: MIDNIGHT + 2 * DAY_MS,
 				covered: 150,
 				truncated: false,
 				audienceUnderCounted: false,
@@ -626,7 +681,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 				fits: false,
 				days: 2,
 				slices: [100, 50],
-				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
+				finishesAt: MIDNIGHT + 2 * DAY_MS,
 				covered: 150,
 				truncated: false,
 				audienceUnderCounted: false,
@@ -905,7 +960,11 @@ describe('pre-flight capacity gate — segment audiences', () => {
 		const result = await runPreflight(t, campaignId);
 		expect(result.ok).toBe(true);
 
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
 	});
 });
 
@@ -1042,7 +1101,11 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 
 		// Allowed because the lower bound decided nothing — NOT because the scan
 		// threw and the fail-open catch swallowed it.
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
 	});
 });
 
@@ -1074,7 +1137,11 @@ describe('pre-flight capacity gate — the projection horizon', () => {
 
 		const assessment = await assessCampaign(t, campaignId);
 
-		expect(assessment).toEqual({ capacityKnown: false, fits: true });
+		expect(assessment).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'projection_shorter_than_horizon',
+		});
 	});
 
 	it('still measures when the horizon stops short of schedule day 30', async () => {
@@ -1248,6 +1315,10 @@ describe('pre-flight capacity gate — a suppression list past the bounded scan'
 		const result = await runPreflight(t, campaignId);
 		expect(result.ok).toBe(true);
 
-		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_over_counted',
+		});
 	});
 });

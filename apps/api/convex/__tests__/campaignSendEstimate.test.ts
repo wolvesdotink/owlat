@@ -14,6 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import {
+	DAY_MS,
 	MIDNIGHT,
 	useMtaPreflightEnv,
 	warmingIp,
@@ -116,7 +117,7 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 			totalDailyCap: 100,
 			totalSentToday: 100,
 			currentDay: 1,
-			syncedAt: MIDNIGHT - 3 * 24 * 60 * 60 * 1000,
+			syncedAt: MIDNIGHT - 3 * DAY_MS,
 		});
 
 		const estimate = await t.query(api.analytics.reputationQueries.getCampaignSendEstimate, {
