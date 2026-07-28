@@ -6,6 +6,8 @@ import {
 	deliverabilitySignalSourceValidator,
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
+	rampDecisionReasonValidator,
+	rampGateIdValidator,
 } from '../delivery/deliverabilityValidators';
 
 /**
@@ -128,12 +130,15 @@ export const deliverabilityRoutingTables = {
 			v.literal('insufficient_data'),
 			v.literal('not_evaluated')
 		),
-		// Stable machine-readable decision reason (a control reason or a gate id).
-		reason: v.string(),
+		// Stable machine-readable decision reason (a control reason or a gate id),
+		// as the CLOSED union it is in TypeScript rather than a free string: the
+		// narrative's exhaustive switch is what guarantees every decision has a
+		// sentence, and the stored column has to be able to make the same promise.
+		reason: rampDecisionReasonValidator,
 		// The same reason as one sentence an operator can act on. The KPI is that
 		// 100% of decisions carry one, so it is REQUIRED, not optional.
 		message: v.string(),
-		failedGate: v.optional(v.string()),
+		failedGate: v.optional(rampGateIdValidator),
 		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
 		// about it. Present on a decrease with a NAMED cause — a breached gate or a
 		// hard stop — and on no other decision. A ceiling pulling a healthy cell
