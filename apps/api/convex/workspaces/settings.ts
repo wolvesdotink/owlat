@@ -63,6 +63,12 @@ export const update = authedMutation({
 		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
 		// `off`. Unset ⇒ `auto` at resolution time.
 		sealPolicy: v.optional(sealPolicyValidator),
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2). True pins every ramp
+		// cell at its current share: the hourly controller still evaluates and
+		// audits, but writes no share. It is the plan's named mitigation for
+		// controller complexity, so an owner/admin must be able to pull it from the
+		// product — not only from an internal mutation.
+		isRampControllerPaused: v.optional(v.boolean()),
 		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
 		// can disable it for legacy senders that cannot negotiate TLS.
 		isInboundTlsRequired: v.optional(v.boolean()),
