@@ -90,10 +90,18 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	const useRecipientTimezone = ref(false);
 
 	/**
-	 * The chosen send start as epoch ms, or `null` when it is unset, unparseable
-	 * or already past. The single source the schedule mutation args, the
-	 * pre-submit validation and the capacity PREVIEW all read — see
-	 * {@link parseScheduledStart} for why they may not each derive their own.
+	 * The chosen send start as epoch ms for the capacity PREVIEW, or `null` when
+	 * it is unset, unparseable or already past.
+	 *
+	 * Reactive on the two form controls only: `Date.now()` is not a tracked
+	 * dependency, so this value is the parse as of the last edit of the date or
+	 * time, not as of the moment it is read. That is exactly right for a preview
+	 * (it must stay a `computed` so `useOrganizationQuery` re-runs when the
+	 * controls change, and a few minutes of clock staleness changes no answer it
+	 * gives), and exactly wrong for a submit-time past-check — an editor left
+	 * open past the chosen instant would still see a cached non-null. The submit
+	 * path therefore calls {@link parseScheduledStart} itself with a live clock;
+	 * the derivation is still the one in `campaignSchedule.ts`.
 	 */
 	const scheduledStartAt = computed<number | null>(() =>
 		parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
@@ -177,10 +185,12 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	};
 
 	// Schedule
-	const executeSchedule = async () => {
+	// `startsAt` is passed in rather than read off `scheduledStartAt` so the
+	// persisted instant is the one `handleSchedule` validated against a LIVE
+	// clock at click time.
+	const executeSchedule = async (startsAt: number | null) => {
 		if (!campaignId.value) return;
 
-		const startsAt = scheduledStartAt.value;
 		if (startsAt === null) return; // handleSchedule has already surfaced why
 		// Only the wall-clock hour/minute is read off this Date; the persisted
 		// instant is `startsAt` itself.
@@ -245,12 +255,16 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			return;
 		}
 
-		if (scheduledStartAt.value === null) {
+		// Derived here with a live clock, not read off the preview computed: a
+		// start that was future when the controls were last touched may be past
+		// by the time the operator presses the button.
+		const startsAt = parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now());
+		if (startsAt === null) {
 			saveError.value = 'Scheduled time must be in the future';
 			return;
 		}
 
-		await executeSchedule();
+		await executeSchedule(startsAt);
 	};
 
 	// Unschedule
