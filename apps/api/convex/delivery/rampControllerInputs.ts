@@ -33,16 +33,18 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import {
-	summarizeTransportOutcomeArms,
-	summarizeTransportOutcomes,
-} from '../analytics/transportOutcomes';
+import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
+import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
-import type { RampControllerInput, RampMixState } from './ramp/controllerTypes';
+import type {
+	RampControllerInput,
+	RampHardStopSignals,
+	RampMixState,
+} from './ramp/controllerTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -108,7 +110,7 @@ export async function resolveRampOrganizationId(ctx: MutationCtx): Promise<strin
 function readHardStopSignals(
 	rows: readonly (Doc<'deliverabilityRouteStates'> | null)[],
 	args: { readonly isSendingPermitted: boolean; readonly now: number }
-) {
+): RampHardStopSignals {
 	let isCircuitBreakerOpen = false;
 	let isPoolBlocklisted = false;
 	for (const row of rows) {
@@ -197,23 +199,32 @@ export async function loadCellInput(
 	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
 
-	const window = { organizationId, cell: cellKey, since: now - RAMP_WINDOW_MS };
-	const { own, reference } = await summarizeTransportOutcomeArms(ctx.db, window);
-	// The engagement baselines are OWN-ARM ONLY (that gate compares the own arm
-	// to its own past), so they read one arm rather than both: a reference-arm
-	// summary here would be a second indexed collect thrown away.
-	const ownRecent = await summarizeTransportOutcomes(ctx.db, {
-		organizationId,
-		cell: cellKey,
-		arm: 'own',
-		since: now - ENGAGEMENT_RECENT_MS,
-	});
-	const ownPriorBaseline = await summarizeTransportOutcomes(ctx.db, {
+	// THREE OWN-ARM WINDOWS, ONE INDEX READ. The gate window (24h), the engagement
+	// recent window (7d) and the prior baseline (30d..7d) are all sub-windows of the
+	// same 30 days of own-arm shard rows, so summarizing each separately would fetch
+	// the same rows up to three times — the anti-pattern `readCellArmBuckets` is
+	// exported to avoid. The rows come back once and the ONE summarizer runs over
+	// each window, so every derived number is identical to the per-window read it
+	// replaces. The reference arm has a single window, so it stays a plain summary.
+	const ownBuckets = await readCellArmBuckets(ctx.db, {
 		organizationId,
 		cell: cellKey,
 		arm: 'own',
 		since: now - ENGAGEMENT_BASELINE_MS,
+	});
+	const own = summarizeTransportOutcomeBuckets(ownBuckets, { since: now - RAMP_WINDOW_MS });
+	const ownRecent = summarizeTransportOutcomeBuckets(ownBuckets, {
+		since: now - ENGAGEMENT_RECENT_MS,
+	});
+	const ownPriorBaseline = summarizeTransportOutcomeBuckets(ownBuckets, {
+		since: now - ENGAGEMENT_BASELINE_MS,
 		until: now - ENGAGEMENT_RECENT_MS,
+	});
+	const reference = await summarizeTransportOutcomes(ctx.db, {
+		organizationId,
+		cell: cellKey,
+		arm: 'reference',
+		since: now - RAMP_WINDOW_MS,
 	});
 
 	// The reference arm is ABSENT, not empty, when nothing was sent through it:
