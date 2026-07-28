@@ -112,6 +112,30 @@ export const deliverabilityRoutingTables = {
 		// controller stamping that column would re-arm every signal on the row as
 		// "fresh" on every tick, for ever — one column with two meanings across two
 		// row shapes, the same objection `snapshotGeneratedAt` is kept clear of.
+		// THE SECOND ACTUATOR'S STATE (plan D3, P3-7). Standalone there is no mix to
+		// control — s === 1 by definition — so the controller writes a WARMING-PACE
+		// MULTIPLIER against the per-(IP x mailboxProvider) daily cap instead. Same
+		// gates, same AIMD, same freeze ladder; a different dial. Every field is
+		// optional and absent on every row written before the pace actuator existed,
+		// where an absent multiplier means the published schedule, unmodified.
+		//
+		// The freeze columns are the pace actuator's OWN and deliberately not the
+		// share's: the two dials retreat independently, and one column shared
+		// between them would let a share cooldown suppress a pace retreat (or the
+		// reverse) for reasons neither actuator measured.
+		paceMultiplier: v.optional(v.number()),
+		paceCleanStreak: v.optional(v.number()),
+		paceFrozenUntil: v.optional(v.number()),
+		paceFreezeStartedAt: v.optional(v.number()),
+		paceCooldownMs: v.optional(v.number()),
+		paceFreezeReason: v.optional(
+			v.union(v.literal('gate_breach'), v.literal('breaker'), v.literal('dnsbl'))
+		),
+		// THE PER-UTC-DAY IDEMPOTENCY ANCHOR (plan D19), as the `YYYY-MM-DD` key the
+		// shipped MTA evaluator stores in `lastEvaluatedDate` — same shape, same
+		// meaning. The controller ticks hourly and a warming schedule must advance
+		// AT MOST ONCE per UTC day, so a tick that finds today's key here holds.
+		paceLastEvaluatedUtcDay: v.optional(v.string()),
 		decidedAt: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
