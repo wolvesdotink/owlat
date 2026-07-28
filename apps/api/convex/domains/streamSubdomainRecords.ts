@@ -234,7 +234,14 @@ function dkimRows(input: {
 	identity: SubdomainSigningIdentity | undefined;
 	referenceArmConfigured: boolean;
 }): StreamSubdomainRecord[] {
-	const arms: TransportArm[] = input.referenceArmConfigured ? ['own', 'reference'] : ['own'];
+	// ONE ROW PER DISTINCT NAME. The reference arm's row is worth showing because
+	// it is a SECOND selector under the same subdomain — but until the own arm has
+	// a minted selector both rows are the bare `_domainkey.<host>` parent with no
+	// value, i.e. the identical name printed twice under two labels. That is not
+	// the shape, it is doubt: with nothing minted yet the host gets exactly one
+	// pending row, and the relay's row appears alongside a real selector.
+	const arms: TransportArm[] =
+		input.referenceArmConfigured && input.identity !== undefined ? ['own', 'reference'] : ['own'];
 	return arms.map((arm): StreamSubdomainRecord => {
 		// The reference arm signs with the ESP's key under its own selector, which
 		// we never hold; the own arm's is minted once the name is registered.
