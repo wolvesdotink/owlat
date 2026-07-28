@@ -551,7 +551,11 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 			batchesRemaining: 1,
 		});
 		expect(resumed.isClockSkewed).toBe(false);
-		expect(await readStall()).toBeUndefined();
+		// "Not stalled" is "no instant stored". Asserted on the TYPE rather than on
+		// `undefined`: Convex removes a field patched to `undefined`, but a cleared
+		// optional can read back as `null`, and the operator query derives the
+		// banner from the same type check for exactly that reason.
+		expect(typeof (await readStall())).not.toBe('number');
 		expect(typeof (await readHeartbeat(t))).toBe('number');
 	});
 

@@ -143,6 +143,10 @@ async function recordSweepClockState(
 		return;
 	}
 
+	// "Currently stalled" is "an instant is stored" — a type check, not a
+	// `!== undefined` one, because a cleared optional can read back as `null`.
+	const isCurrentlyStalled = typeof existing.clockStalledAt === 'number';
+
 	if (args.isStalled) {
 		// STAMP THE TRANSITION ONLY. A stall is cleared by a person, so re-stamping
 		// it hourly would turn a permanent condition into a permanent write source
@@ -150,7 +154,7 @@ async function recordSweepClockState(
 		// heartbeat is deliberately left where it was: it is the reading this tick
 		// just failed to corroborate against, and overwriting it would erase the
 		// evidence of the skew.
-		if (existing.clockStalledAt !== undefined) return;
+		if (isCurrentlyStalled) return;
 		await ctx.db.patch(existing._id, { clockStalledAt: args.now, updatedAt: args.now });
 		return;
 	}
@@ -158,7 +162,7 @@ async function recordSweepClockState(
 	await ctx.db.patch(existing._id, {
 		lastSweepAt: args.now,
 		// Patching an optional field to `undefined` is how Convex clears it.
-		...(existing.clockStalledAt !== undefined ? { clockStalledAt: undefined } : {}),
+		...(isCurrentlyStalled ? { clockStalledAt: undefined } : {}),
 		updatedAt: args.now,
 	});
 }
@@ -412,7 +416,12 @@ export const sweepSunsetPolicy = internalMutation({
 				batchSize,
 				suppressedSoFar: suppressedSoFar + suppressed,
 				maxSuppressions,
-				...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
+				// ALWAYS DEFINED, so every later batch is a non-head and neither
+				// re-derives the reading nor re-stamps the shared row. `now` is the
+				// right value when the head had none: this tick just corroborated it
+				// and stamped it as the heartbeat, so it is the reading the rest of
+				// the chain runs under.
+				corroboratingInstant: corroboratingInstant ?? now,
 			});
 		}
 

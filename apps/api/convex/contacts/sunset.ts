@@ -88,7 +88,12 @@ export const getSunsetPolicies = authedQuery({
 				}),
 			})),
 			clock: {
-				isSweepStalled: globalRow?.clockStalledAt !== undefined,
+				// TYPE-CHECKED, NOT `!== undefined`. Convex removes a field patched to
+				// `undefined`, but a cleared optional can also read back as `null`
+				// depending on the runtime doing the reading, and `null !== undefined`
+				// would report a cleared stall as an active one — the banner would
+				// never go away. "Stalled" is exactly "an instant is stored".
+				isSweepStalled: typeof globalRow?.clockStalledAt === 'number',
 				verifiedAt: globalRow?.clockVerifiedAt ?? null,
 			},
 		};

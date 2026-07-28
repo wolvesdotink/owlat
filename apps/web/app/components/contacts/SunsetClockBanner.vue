@@ -22,6 +22,7 @@
 import { api } from '@owlat/api';
 
 const { canManageContacts } = usePermissions();
+const { showToast: showNotification } = useToast();
 
 const { data: sunsetPolicies } = useOrganizationQuery(api.contacts.sunset.getSunsetPolicies, () =>
 	canManageContacts.value ? {} : undefined
