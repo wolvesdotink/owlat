@@ -24,6 +24,7 @@ import { cleanEvaluation } from '../ramp/__tests__/controllerFixtures';
 import {
 	RAMP_FIXTURE_SHARE,
 	readManagedCell,
+	seedArmOutcomes,
 	seedRampCell,
 	type SeedRampCellOptions,
 } from './rampCronFixtures';
@@ -361,6 +362,10 @@ describe('a gate aggregate that is not a reading of the present', () => {
 		// K_CLEAN already satisfied and no window anchor: with FRESH evidence this
 		// tick would be an additive step, so the age is the only thing stopping it.
 		await seed(t, { cleanStreak: 3 });
+		// A LIVE REFERENCE ARM, or the substitution table (P3-8) would correctly
+		// route this cell to the trailing-baseline twin and the spy below would
+		// intercept an evaluator the fold never calls.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
 		const gateEvaluation = await import('../ramp/gateEvaluation');
 		const spy = vi
 			.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate')
@@ -372,6 +377,7 @@ describe('a gate aggregate that is not a reading of the present', () => {
 			spy.mockRestore();
 		}
 
+		expect(spy).toHaveBeenCalled();
 		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
 		const rows = await decisions(t);
 		expect(rows[0]?.reason).toBe('evidence_stale');
@@ -391,6 +397,55 @@ describe('a gate aggregate that is not a reading of the present', () => {
 			evaluation?: { evaluatedAt?: number } | null;
 		};
 		expect(snapshot.evaluation?.evaluatedAt).toBe(snapshot.now);
+	});
+});
+
+/**
+ * WHICH EVALUATOR RUNS IS THE SUBSTITUTION TABLE'S DECISION (P3-8, plan D3).
+ *
+ * The pure suites prove each evaluator; the matrix suite proves the fold picks
+ * one. Neither proves the CRON reaches the one the fold picked — and the seam
+ * between them is a presence map derived from data on disk, which is exactly the
+ * kind of wiring a pure fixture cannot cover. So each evaluator gets a case, and
+ * the case asserts BOTH that its own evaluator ran and that the other did not.
+ */
+describe('the cron runs the evaluator the substitution table selects', () => {
+	async function evaluatorsUsed(t: Harness): Promise<{
+		reference: boolean;
+		trailing: boolean;
+	}> {
+		const gateEvaluation = await import('../ramp/gateEvaluation');
+		const referenceSpy = vi.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate');
+		const trailingSpy = vi.spyOn(gateEvaluation.trailingBaselineGateEvaluator, 'evaluate');
+		try {
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+			return {
+				reference: referenceSpy.mock.calls.length > 0,
+				trailing: trailingSpy.mock.calls.length > 0,
+			};
+		} finally {
+			referenceSpy.mockRestore();
+			trailingSpy.mockRestore();
+		}
+	}
+
+	it('runs the reference-arm evaluator when the cell has a live relay arm', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+
+		expect(await evaluatorsUsed(t)).toEqual({ reference: true, trailing: false });
+	});
+
+	it('runs the trailing-baseline twin when there is no relay arm at all', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		// Own traffic only — a zero-third-party deployment, which is a SUPPORTED
+		// configuration and not a degraded one (plan D2).
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+
+		expect(await evaluatorsUsed(t)).toEqual({ reference: false, trailing: true });
 	});
 });
 

@@ -8,14 +8,24 @@
  *
  * "Within one window" is a property of the resolution, not of a scheduler: the
  * presence map is read on every tick and the constants are folded from it, so
- * the tick after the feed stops is already the degraded tick. The test asserts
- * exactly that — resolve twice, once with the integration and once without, and
- * compare — because a substitution that needed a migration, a flag or an
- * operator action would be a substitution that could be forgotten.
+ * the tick after the feed stops is already the degraded tick. The suite asserts
+ * it TWICE — once over the pure fold (resolve with the integration and without,
+ * and compare) and once END TO END through the cron against real rows, because
+ * the fold reacting proves nothing if the reader that feeds it never notices.
  */
 
-import { describe, expect, it } from 'vitest';
+import { convexTest } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
+import schema from '../../../schema';
+import { internal } from '../../../_generated/api';
+import { modules } from '../../../__tests__/testModules';
+import { seedArmOutcomes, seedRampCell, type Harness } from '../../__tests__/rampCronFixtures';
+import {
+	loadRampDeploymentPresence,
+	loadReferenceArmPresence,
+	withReferenceArm,
+} from '../../rampIntegrationPresence';
 import {
 	degradedCeilingCap,
 	degradedStreamConfig,
@@ -29,6 +39,14 @@ import {
 } from '../degradationMatrix';
 import { rampCellConfidence } from '../measurementConfidence';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+
+vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_integration_removal'),
+	};
+});
 
 function without(id: RampIntegrationId): RampIntegrationPresence {
 	const presence: Record<RampIntegrationId, boolean> = { ...RAMP_FULLY_EQUIPPED };
@@ -136,5 +154,109 @@ describe('the ramp continues at reduced speed rather than halting', () => {
 		});
 		expect(degradedStreamConfig(base, restored)).toBe(base);
 		expect(usesTrailingBaseline(restored)).toBe(false);
+	});
+});
+
+/**
+ * THE SAME ACCEPTANCE CRITERION, THROUGH THE REAL SEAM.
+ *
+ * Everything above resolves two hand-built presence maps and compares them,
+ * which proves the FOLD reacts. It cannot prove the deployment ever notices,
+ * because "is this integration connected?" is answered by rows on disk —
+ * `delivery/rampIntegrationPresence.ts` — and a reader that never sees a revoked
+ * key would leave the equipped constants running for ever with every pure
+ * fixture still green. So the criterion is re-asserted end to end: the tick
+ * AFTER the data stops is already the degraded tick.
+ */
+describe('the deployment itself degrades within one window', () => {
+	const ORG = 'org_ramp_integration_removal';
+
+	interface DecisionSnapshot {
+		readonly config?: { readonly increaseStep?: number; readonly cleanWindowsRequired?: number };
+	}
+
+	async function latestConfig(t: Harness): Promise<DecisionSnapshot['config']> {
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		const newest = rows.sort((a, b) => b.at - a.at)[0];
+		return (JSON.parse(newest?.snapshot ?? '{}') as DecisionSnapshot).config;
+	}
+
+	it('keeps the equipped constants while the relay arm is live, and halves them the next tick', async () => {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: ORG });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+		const equipped = await latestConfig(t);
+		expect(equipped?.cleanWindowsRequired).toBe(RAMP_STREAM_CONFIGS.campaign.cleanWindowsRequired);
+		expect(equipped?.increaseStep).toBeCloseTo(
+			RAMP_STREAM_CONFIGS.campaign.increaseStep as number,
+			10
+		);
+
+		// The relay is disconnected: its outcome rows stop existing. No migration,
+		// no flag, no operator action — the next tick reads a different deployment.
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('transportOutcomes').collect();
+			for (const row of rows) if (row.arm === 'reference') await ctx.db.delete(row._id);
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+		const degraded = await latestConfig(t);
+		// K_CLEAN 3 -> 5 and the step HALVED, exactly as the table says.
+		expect(degraded?.cleanWindowsRequired).toBe(5);
+		expect(degraded?.increaseStep).toBeCloseTo(
+			(RAMP_STREAM_CONFIGS.campaign.increaseStep as number) / 2,
+			10
+		);
+		// REDUCED SPEED, NOT A HALT: the step is smaller and still positive, and the
+		// controller kept deciding rather than erroring out.
+		expect(degraded?.increaseStep ?? 0).toBeGreaterThan(0);
+	});
+
+	it('drops the cell’s confidence and names what would restore it, off real rows', async () => {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: ORG });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+
+		const confidenceNow = async () => {
+			const deployment = await t.run(
+				async (ctx) =>
+					await loadRampDeploymentPresence(ctx, { organizationId: ORG, now: Date.now() })
+			);
+			const hasArm = await t.run(
+				async (ctx) =>
+					await loadReferenceArmPresence(ctx, {
+						organizationId: ORG,
+						cell: { stream: 'campaign', destinationProvider: 'gmail' },
+						now: Date.now(),
+					})
+			);
+			return rampCellConfidence({
+				degradation: resolveRampDegradation({
+					presence: withReferenceArm(deployment, hasArm),
+					provider: 'gmail',
+				}),
+				evaluated: 'high',
+			});
+		};
+
+		const before = await confidenceNow();
+		expect(before.improvements.map((offer) => offer.integration)).not.toContain(
+			'reference_transport'
+		);
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('transportOutcomes').collect();
+			for (const row of rows) if (row.arm === 'reference') await ctx.db.delete(row._id);
+		});
+
+		const after = await confidenceNow();
+		expect(after.level).toBe('low');
+		expect(after.improvements.map((offer) => offer.integration)).toContain('reference_transport');
+		// An OFFER, not a warning: the surface stays informational throughout.
+		expect(after.tone).toBe('info');
+		expect(after.isBlocking).toBe(false);
 	});
 });

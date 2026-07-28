@@ -13,10 +13,16 @@
  * mocks `getSingletonOrganizationId` with its own tenant.
  */
 
+import {
+	deliverabilityCellKey,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import type { TestConvex } from 'convex-test';
 import type { Doc } from '../../_generated/dataModel';
 import type schema from '../../schema';
 import { createTestInstanceSettings } from '../../__tests__/factories';
+import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../../analytics/transportOutcomeSummary';
+import { startOfDayUtc } from '../../lib/clock';
 import { MS_PER_DAY } from '../../lib/constants';
 
 /** The default share on the managed cell when a suite does not name one. */
@@ -116,6 +122,53 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
 			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
 			...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
+		});
+	});
+}
+
+/**
+ * THE MANAGED CELL'S OUTCOME ROWS for one arm, in today's UTC bucket.
+ *
+ * WHY EVERY CRON SUITE NEEDS THIS NOW. The substitution table (P3-8) chooses the
+ * evaluator from the presence map, and a cell's REFERENCE ARM is present exactly
+ * when it has outcome rows: a fixture with none is a standalone deployment, and
+ * the controller correctly runs the trailing-baseline twin over it. A suite that
+ * means to exercise the reference-arm evaluator has to say so with data.
+ *
+ * Healthy by construction — everything sent was delivered — so seeding an arm
+ * never fails a gate by accident; a suite that wants a breach names the counters.
+ */
+export async function seedArmOutcomes(
+	t: Harness,
+	args: {
+		readonly organizationId: string;
+		readonly arm: 'own' | 'reference';
+		readonly sent: number;
+		readonly stream?: 'campaign' | 'automation' | 'transactional';
+		readonly destinationProvider?: DestinationProviderKey;
+		readonly counters?: Partial<typeof ZERO_TRANSPORT_OUTCOME_TOTALS>;
+		/** How long before now the bucket's day started. Default: today. */
+		readonly dayOffset?: number;
+	}
+): Promise<void> {
+	const now = Date.now();
+	const periodStart = startOfDayUtc(now) - (args.dayOffset ?? 0) * MS_PER_DAY;
+	const provider = args.destinationProvider ?? 'gmail';
+	await t.run(async (ctx) => {
+		await ctx.db.insert('transportOutcomes', {
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			organizationId: args.organizationId,
+			cell: deliverabilityCellKey({
+				stream: args.stream ?? 'campaign',
+				destinationProvider: provider,
+			}),
+			arm: args.arm,
+			periodStart,
+			shardKey: 0,
+			sent: args.sent,
+			delivered: args.sent,
+			...args.counters,
+			lastRecordedAt: Math.min(now, periodStart + MS_PER_DAY - 1),
 		});
 	});
 }

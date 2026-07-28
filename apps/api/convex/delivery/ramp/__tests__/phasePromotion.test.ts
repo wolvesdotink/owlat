@@ -13,6 +13,7 @@ import {
 	derivePromotionConditions,
 	dnsblCleanStreakDays,
 	evaluatePhasePromotion,
+	isDnsblObservationCurrent,
 	PROMOTION_BASE_DWELL_MS,
 	PROMOTION_DNSBL_CLEAN_DAYS,
 	PROMOTION_STANDALONE_DWELL_MULTIPLE,
@@ -235,5 +236,110 @@ describe('the DNSBL streak is CONSECUTIVE', () => {
 
 	it('is empty-safe', () => {
 		expect(dnsblCleanStreakDays([])).toBe(0);
+	});
+});
+
+/**
+ * A STREAK MUST REACH THE PRESENT.
+ *
+ * Fourteen consecutive clean days that ENDED last week is the exact shape a
+ * controller that stopped ticking leaves behind — a deployment offline, a paused
+ * cron, a truncated scan. Counting it as met would unlock the most expensive
+ * rung on the ladder on evidence nobody has gathered since.
+ */
+describe('the DNSBL streak must be a reading of the PRESENT', () => {
+	function runEndingDaysAgo(daysAgo: number): DnsblDayObservation[] {
+		const today = Math.floor(NOW / DAY_MS) * DAY_MS;
+		const days: DnsblDayObservation[] = [];
+		for (let index = 0; index < PROMOTION_DNSBL_CLEAN_DAYS + 2; index += 1) {
+			days.push({ dayStart: today - (daysAgo + index) * DAY_MS, clean: true });
+		}
+		return days;
+	}
+
+	it('accepts a run ending today', () => {
+		const conditions = derivePromotionConditions(
+			standaloneEvidence({ dnsblDays: runEndingDaysAgo(0) }),
+			NOW
+		);
+		expect(conditions.dnsbl_clean_streak).toBe('met');
+	});
+
+	it('accepts a run ending yesterday — the newest COMPLETE day', () => {
+		const conditions = derivePromotionConditions(
+			standaloneEvidence({ dnsblDays: runEndingDaysAgo(1) }),
+			NOW
+		);
+		expect(conditions.dnsbl_clean_streak).toBe('met');
+	});
+
+	it('rejects a fourteen-day clean run that ended a week ago', () => {
+		const conditions = derivePromotionConditions(
+			standaloneEvidence({ dnsblDays: runEndingDaysAgo(7) }),
+			NOW
+		);
+		expect(conditions.dnsbl_clean_streak).toBe('unknown');
+	});
+
+	it('refuses the whole standalone route on stale streak evidence', () => {
+		const decision = evaluatePhasePromotion({
+			targetCeiling: 0.8,
+			provider: 'yahoo',
+			evidence: standaloneEvidence({ dnsblDays: runEndingDaysAgo(7) }),
+			now: NOW,
+		});
+		expect(decision.allowed).toBe(false);
+		expect(decision.routes[0]?.outstanding.map((entry) => entry.condition)).toContain(
+			'dnsbl_clean_streak'
+		);
+	});
+
+	it('is not fooled by a stray future-dated observation', () => {
+		const today = Math.floor(NOW / DAY_MS) * DAY_MS;
+		expect(isDnsblObservationCurrent([{ dayStart: today - 30 * DAY_MS, clean: true }], NOW)).toBe(
+			false
+		);
+		expect(isDnsblObservationCurrent([], NOW)).toBe(false);
+		expect(isDnsblObservationCurrent([{ dayStart: today, clean: true }], Number.NaN)).toBe(false);
+	});
+});
+
+/**
+ * ADVERSARIAL: DEGENERATE INPUTS MUST FAIL CLOSED.
+ *
+ * This function's exported contract IS the gate. A caller that hands it a rung
+ * or a dwell it cannot read must get a refusal, never a promotion — "we could
+ * not tell" is the one answer that must never be spelled `allowed: true`.
+ */
+describe('degenerate inputs never open the gate', () => {
+	for (const targetCeiling of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+		it(`refuses a target ceiling of ${String(targetCeiling)}`, () => {
+			const decision = evaluatePhasePromotion({
+				targetCeiling,
+				provider: 'gmail',
+				// Every condition met: only the unreadable target may stop this.
+				evidence: standaloneEvidence({ googleCompliancePassAt: NOW - DAY_MS }),
+				now: NOW,
+			});
+			expect(decision.allowed).toBe(false);
+			expect(decision.viaRoute).toBeNull();
+			expect(decision.evidenceRequired).toBe(true);
+			// The routes still travel back, so a screen can say what it looked at.
+			expect(decision.routes.length).toBeGreaterThan(0);
+		});
+	}
+
+	for (const requiredDwellMs of [Number.NaN, Number.POSITIVE_INFINITY]) {
+		it(`reports the dwell as unknown for a required dwell of ${String(requiredDwellMs)}`, () => {
+			const conditions = derivePromotionConditions(standaloneEvidence({ requiredDwellMs }), NOW);
+			expect(conditions.dwell_multiple_served).toBe('unknown');
+		});
+	}
+
+	it('reports the dwell as unknown for a degenerate held duration', () => {
+		expect(
+			derivePromotionConditions(standaloneEvidence({ ceilingHeldMs: Number.NaN }), NOW)
+				.dwell_multiple_served
+		).toBe('unknown');
 	});
 });

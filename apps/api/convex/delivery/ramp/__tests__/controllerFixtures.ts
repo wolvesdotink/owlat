@@ -195,6 +195,10 @@ export function controllerInput(overrides: Partial<RampControllerInput> = {}): R
 		signals: CLEAR_SIGNALS,
 		evaluation: cleanEvaluation(3),
 		capacity: OPEN_CAPACITY,
+		// The fully-equipped deployment's cap: the top rung, i.e. no cap at all.
+		// `degradedCeilingCap` is total and returns exactly this when nothing is
+		// missing, so the default fixture is the production identity case.
+		phaseCeilingCap: 1,
 		isKillSwitchEngaged: false,
 		now: NOW,
 		...overrides,

@@ -43,6 +43,14 @@ interface MatrixCase {
 	readonly dwellMultiplier: number;
 	readonly ceilingCap: number;
 	readonly complaintMax: number | undefined;
+	/**
+	 * The complaint gate's RELATIVE half, in PERCENTAGE POINTS while `complaintMax`
+	 * is a FRACTION. Asserted beside it precisely because the pair carries two
+	 * units: a proxy line half as wide judged against the equipped tolerance would
+	 * let the relative half pass what the absolute half just failed, and a
+	 * pp/fraction slip in either override is invisible from the other.
+	 */
+	readonly complaintTolerance: number | undefined;
 	readonly paceCeilingDay: number | undefined;
 	readonly actuator: RampActuator;
 }
@@ -59,6 +67,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 1,
 		ceilingCap: 1,
 		complaintMax: undefined,
+		complaintTolerance: undefined,
 		paceCeilingDay: undefined,
 		actuator: 'pace',
 	},
@@ -74,6 +83,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 2,
 		ceilingCap: 1,
 		complaintMax: undefined,
+		complaintTolerance: undefined,
 		paceCeilingDay: undefined,
 		actuator: 'share',
 	},
@@ -89,6 +99,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 2,
 		ceilingCap: 0.8,
 		complaintMax: undefined,
+		complaintTolerance: undefined,
 		paceCeilingDay: undefined,
 		actuator: 'share',
 	},
@@ -103,6 +114,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 1,
 		ceilingCap: 1,
 		complaintMax: 0.0005,
+		complaintTolerance: 0.025,
 		paceCeilingDay: undefined,
 		actuator: 'share',
 	},
@@ -117,6 +129,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 1,
 		ceilingCap: 1,
 		complaintMax: undefined,
+		complaintTolerance: undefined,
 		paceCeilingDay: 14,
 		actuator: 'share',
 	},
@@ -130,6 +143,7 @@ const CASES: readonly MatrixCase[] = [
 		dwellMultiplier: 1,
 		ceilingCap: 1,
 		complaintMax: undefined,
+		complaintTolerance: undefined,
 		paceCeilingDay: undefined,
 		actuator: 'share',
 	},
@@ -163,11 +177,14 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 				expect(degradedCeilingCap(degradation)).toBe(testCase.ceilingCap);
 			});
 
-			it('applies the documented complaint threshold', () => {
+			it('applies the documented complaint threshold AND its tolerance', () => {
 				const config = degradedStreamConfig(RAMP_STREAM_CONFIGS.campaign, degradation);
-				const expected =
+				const expectedMax =
 					testCase.complaintMax ?? RAMP_STREAM_CONFIGS.campaign.thresholds.complaintMax;
-				expect(config.thresholds.complaintMax as number).toBeCloseTo(expected, 10);
+				expect(config.thresholds.complaintMax as number).toBeCloseTo(expectedMax, 10);
+				const expectedTolerance =
+					testCase.complaintTolerance ?? RAMP_STREAM_CONFIGS.campaign.thresholds.complaintTolerance;
+				expect(config.thresholds.complaintTolerance as number).toBeCloseTo(expectedTolerance, 10);
 			});
 
 			it('drives the documented actuator', () => {

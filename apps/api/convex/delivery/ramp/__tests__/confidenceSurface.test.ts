@@ -54,16 +54,43 @@ describe('the affordance is concrete — it names the integration and what it bu
 		});
 	}
 
-	it('carries one offer per absent integration governing the cell', () => {
+	it('carries one offer per ACTIONABLE absent integration governing the cell', () => {
 		const degradation = resolveRampDegradation({
 			presence: RAMP_FULLY_STANDALONE,
 			provider: 'microsoft',
 		});
 		const confidence = rampCellConfidence({ degradation, evaluated: 'high' });
+		const offered = degradation.absent.filter((entry) => entry.offersImprovement);
 		expect(confidence.improvements.map((offer) => offer.integration)).toEqual(
-			degradation.absent.map((entry) => entry.integration)
+			offered.map((entry) => entry.integration)
 		);
-		expect(confidence.notes).toEqual(degradation.absent.map((entry) => entry.confidenceNote));
+		expect(confidence.notes).toEqual(offered.map((entry) => entry.confidenceNote));
+	});
+
+	/**
+	 * THE PERMANENT-NAG GUARD. An integration this deployment cannot connect is
+	 * absent in EVERY deployment for ever, so its note and its offer would sit on
+	 * every cell of every screen with no button to press — an unresolvable nag,
+	 * which is exactly what D2 forbids. It still contributes its (unchanged)
+	 * confidence; it contributes no copy.
+	 */
+	it('offers nothing for an integration nobody can connect', () => {
+		const unofferable = RAMP_DEGRADATION_MATRIX.filter((entry) => !entry.offersImprovement);
+		expect(unofferable.length).toBeGreaterThan(0);
+		for (const provider of DESTINATION_PROVIDER_KEYS) {
+			const degradation = resolveRampDegradation({
+				presence: RAMP_FULLY_STANDALONE,
+				provider,
+			});
+			const confidence = rampCellConfidence({ degradation, evaluated: 'high' });
+			for (const entry of unofferable) {
+				expect(degradation.absent).toContain(entry);
+				expect(confidence.improvements.map((offer) => offer.integration)).not.toContain(
+					entry.integration
+				);
+				expect(confidence.notes).not.toContain(entry.confidenceNote);
+			}
+		}
 	});
 });
 
