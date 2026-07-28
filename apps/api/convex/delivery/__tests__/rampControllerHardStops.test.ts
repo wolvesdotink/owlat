@@ -194,10 +194,46 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		const row = await cellRow(t);
 		expect(row?.ownShare).toBe(CELL_SHARE / 2);
 		expect(row?.freezeReason).toBe('breaker');
-		expect(row?.frozenUntil ?? 0).toBeLessThan(at + 7 * HOUR_MS);
+		// THE EXPIRY IS THE LATER OF THE TWO. The breaker's 6h must not cut the 48h
+		// the cell was already serving: halving the share while handing back a day
+		// and a half of evaluation windows would leave the cell FASTER after an
+		// infrastructure incident than the gate breach had left it.
+		expect(row?.frozenUntil).toBe(at + RAMP_AIMD.cooldownMaxMs);
 		// The gate ladder's rung is untouched by an infrastructure incident.
 		expect(row?.cooldownMs).toBe(RAMP_AIMD.cooldownMaxMs);
 		expect((await decisions(t))[0]?.reason).toBe('breaker');
+	});
+
+	// THE UNREADABLE FREEZE IS A ONE-TICK HOLD, and the write path is what makes
+	// it one: the rung declines to believe a stored expiry no cooldown of this
+	// controller could have produced, and the tick that reads it CLEARS it. Carry
+	// that value forward and the hold is permanent — a cell pinned for ever by a
+	// corrupt write, under a sentence promising the opposite.
+	it('clears a freeze expiry it cannot read, and decides on the gates the tick after', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now();
+		await seed(t, {
+			frozenUntil: at + 10_000 * DAY_MS,
+			freezeReason: 'gate_breach',
+			cleanStreak: 0,
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const held = await cellRow(t);
+		expect(held?.ownShare).toBe(CELL_SHARE);
+		expect(held?.frozenUntil).toBeUndefined();
+		expect(held?.freezeReason).toBeUndefined();
+		const first = await decisions(t);
+		expect(first[0]?.reason).toBe('freeze_unreadable');
+
+		// The tick after: nothing frozen, so the ordinary ladder runs again.
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const after = await cellRow(t);
+		expect(after?.frozenUntil).toBeUndefined();
+		const second = await decisions(t);
+		expect(second.at(-1)?.reason).not.toBe('freeze_unreadable');
 	});
 
 	it('a breaker freeze leaves the gate-cooldown ladder and its anchor alone', async () => {

@@ -588,6 +588,8 @@ describe('clock skew', () => {
 		);
 		expect(decision.reason).toBe('breaker');
 		expect(decision.share).toBe(0.2);
+		// And a fabricated expiry EXTENDS nothing either: the freeze the row ends up
+		// carrying is the breaker's own 6h, not a century of it.
 		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
 		expect(decision.freezeReason).toBe('breaker');
 	});
@@ -610,11 +612,39 @@ describe('clock skew', () => {
 		);
 		expect(decision.reason).toBe('breaker');
 		expect(decision.share).toBe(0.2);
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		// …and the retreat does not SHORTEN the cooldown either. The cell keeps the
+		// 48h it was already serving and the freeze becomes the breaker's: a hard
+		// stop may lengthen a freeze, never cut one. Halving the share while handing
+		// back a day and a half of evaluation windows would invert the AIMD
+		// asymmetry — an infrastructure incident SPEEDING UP a cell that had just
+		// breached a gate.
+		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
 		expect(decision.freezeReason).toBe('breaker');
 		// The BREAKER freeze does not advance the gate ladder — the rung the next
 		// breach doubles from is untouched by an infrastructure incident.
 		expect(decision.cooldownMs).toBeUndefined();
+	});
+
+	// The mirror: a hard stop that outlasts the running freeze DOES push the end
+	// out. "Only ever lengthened" is a rule in both directions, or it is just
+	// "whichever fired last wins" with extra words.
+	it('a hard stop that outlasts the running freeze pushes the expiry out', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					frozenUntil: NOW + HOUR,
+					freezeReason: 'gate_breach',
+					cooldownMs: 6 * HOUR,
+					freezeStartedAt: NOW - 5 * HOUR,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true },
+			})
+		);
+		expect(decision.reason).toBe('dnsbl');
+		expect(decision.share).toBe(0);
+		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freezeReason).toBe('dnsbl');
 	});
 
 	it('a non-finite stored freeze does not pin the cell forever', () => {

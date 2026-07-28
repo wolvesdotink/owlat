@@ -130,11 +130,30 @@ describe('nextShare — hard stops, in precedence order', () => {
 			expect(decision.share).toBe(0.2);
 			expect(decision.reason).toBe('breaker');
 			// And the retreat re-stamps the freeze as the BREAKER'S, so the next tick
-			// holds rather than halving a second time for the same incident.
-			expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+			// holds rather than halving a second time for the same incident. The
+			// EXPIRY is the later of the two: the breaker's 6h does not cut the 48h
+			// the cell was already serving, because a freeze is only ever lengthened.
+			expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
 			expect(decision.freezeReason).toBe('breaker');
 		});
 	}
+
+	it('lengthens rather than replaces when the new freeze outlasts the running one', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					// One hour left to serve; the blocklist's 24h is longer, so it wins.
+					frozenUntil: NOW + HOUR,
+					freezeReason: 'gate_breach',
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true },
+			})
+		);
+		expect(decision.share).toBe(0);
+		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freezeReason).toBe('dnsbl');
+	});
 
 	it('halves again once the breaker freeze has expired and the breaker is still open', () => {
 		const decision = nextShare(
