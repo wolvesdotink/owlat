@@ -50,7 +50,7 @@ describe('useCapacityRefusal', () => {
 		});
 	});
 
-	it.each([
+	const unclaimed: ReadonlyArray<[string, Record<string, unknown> | undefined]> = [
 		['a different invalid_state reason', { reason: 'campaign_already_sent' }],
 		['no reason at all', { field: 'name' }],
 		['no data', undefined],
@@ -58,7 +58,9 @@ describe('useCapacityRefusal', () => {
 			'a capacity refusal whose plan is unrenderable',
 			{ reason: 'exceeds_sending_capacity', capacityPlan: { days: 0 } },
 		],
-	])('does not claim %s', (_label, data) => {
+	];
+
+	it.each(unclaimed)('does not claim %s', (_label, data) => {
 		const { capacitySchedule, claimCapacityRefusal } = useCapacityRefusal();
 
 		expect(claimCapacityRefusal(error(data))).toBe(false);
