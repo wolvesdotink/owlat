@@ -42,7 +42,11 @@ import type {
 	SeedProviderRollup,
 	SeedTransportArm,
 } from './seedPlacement';
-import { evaluateSeedPlacementGate, summarizeSeedPlacement } from './seedPlacement';
+import {
+	SEED_ACCOUNTS_PER_ORG_LIMIT,
+	evaluateSeedPlacementGate,
+	summarizeSeedPlacement,
+} from './seedPlacement';
 
 /** The two — and only two — placement sources. */
 export const PLACEMENT_SOURCE_KINDS = ['self_hosted_seeds', 'commercial_api'] as const;
@@ -100,36 +104,61 @@ export interface PlacementAdapter {
 	summarize(evidence: PlacementEvidence): SeedProviderRollup[];
 }
 
-/** Non-negative integer count, defensively floored — a panel may send junk. */
-function count(value: number | undefined): number {
+/**
+ * The panel's numbers are THIRD-PARTY INPUT and are expanded into one row per
+ * mailbox, so an unclamped count is an allocation someone else controls. Both
+ * caps are sized generously against the shipped self-hosted set
+ * ({@link SEED_ACCOUNTS_PER_ORG_LIMIT}) — a panel reporting more mailboxes than
+ * this per provider is not measuring anything gate 5 reads differently (D17:
+ * status, never a percentage), so clamping costs no fidelity.
+ */
+export const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
+
+/** Same reasoning one level up: the report list is third-party input too. */
+export const MAX_PANEL_REPORTS = 50;
+
+/**
+ * Clamp a mailbox count from an untrusted source to a non-negative integer no
+ * larger than `cap`. Junk (non-number, non-finite, negative, fractional) reads
+ * as the nearest sane count rather than throwing — a bad panel response may not
+ * take a screen or a controller tick down (D2).
+ */
+function nonNegativeMailboxCount(value: number | undefined, cap: number): number {
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
-	return Math.floor(value);
+	return Math.min(cap, Math.floor(value));
 }
 
-function repeat(
-	observations: SeedObservation[],
-	times: number,
-	provider: DestinationProviderKey,
-	arm: SeedTransportArm,
-	placement: SeedPlacement
-): void {
-	for (let index = 0; index < times; index += 1) observations.push({ provider, arm, placement });
+/** `times` copies of one observation, as a fresh array — no caller mutation. */
+function observationsOf(observation: SeedObservation, times: number): SeedObservation[] {
+	const rows: SeedObservation[] = [];
+	for (let index = 0; index < times; index += 1) rows.push(observation);
+	return rows;
 }
 
 /**
  * Expand panel COUNTS into the same per-mailbox observations the seed poller
  * writes, so both sources go through ONE roll-up and ONE tripwire rule.
+ *
+ * Every count — and the report list itself — is clamped here, at the parse
+ * boundary, because this is the single place a third-party number becomes an
+ * allocation.
  */
 export function commercialReportsToObservations(
 	reports: readonly CommercialPlacementReport[]
 ): SeedObservation[] {
 	const observations: SeedObservation[] = [];
-	for (const report of reports) {
+	for (const report of reports.slice(0, MAX_PANEL_REPORTS)) {
 		const arm: SeedTransportArm = report.arm ?? 'own';
-		repeat(observations, count(report.inbox), report.provider, arm, 'inbox');
-		repeat(observations, count(report.category), report.provider, arm, 'category');
-		repeat(observations, count(report.spam), report.provider, arm, 'spam');
-		repeat(observations, count(report.missing), report.provider, arm, 'missing');
+		const placements: readonly [SeedPlacement, number | undefined][] = [
+			['inbox', report.inbox],
+			['category', report.category],
+			['spam', report.spam],
+			['missing', report.missing],
+		];
+		for (const [placement, raw] of placements) {
+			const times = nonNegativeMailboxCount(raw, MAX_PANEL_MAILBOXES_PER_REPORT);
+			observations.push(...observationsOf({ provider: report.provider, arm, placement }, times));
+		}
 	}
 	return observations;
 }
@@ -188,7 +217,7 @@ export interface PlacementSourceResolution {
  * fully functional.
  */
 export function resolvePlacementAdapter(config: PlacementSourceConfig): PlacementSourceResolution {
-	const seeds = count(config.seedMailboxCount);
+	const seeds = nonNegativeMailboxCount(config.seedMailboxCount, SEED_ACCOUNTS_PER_ORG_LIMIT);
 	if (config.commercialApiConfigured) {
 		return {
 			adapter: commercialPlacementApiAdapter,
@@ -265,7 +294,10 @@ export interface PlacementProbePlan {
  *
  * Pure — `nowMs` is a parameter (D15). Clock skew is handled by treating a
  * reading stamped in the future as fresh rather than negative-aged: a skewed
- * clock must not manufacture probe traffic.
+ * clock must not manufacture probe traffic. An UNREADABLE clock is the opposite
+ * case and resolves the other way: with no usable `nowMs` we cannot say the
+ * reading is fresh, so the probe is scheduled. Skipping it would let a broken
+ * clock silently promote a cell on evidence of unknown age.
  */
 export function planPlacementProbeForPromotion(input: {
 	cell: DeliverabilityCell;
@@ -274,7 +306,6 @@ export function planPlacementProbeForPromotion(input: {
 	lastProbeAtMs: number | null;
 	/** The controller intends to raise this cell's phase ceiling. */
 	promotionPending: boolean;
-	freshnessMs?: number;
 }): PlacementProbePlan {
 	const cellKey = deliverabilityCellKey(input.cell);
 	const base: Pick<PlacementProbePlan, 'cellKey' | 'blocksPromotion'> = {
@@ -284,12 +315,15 @@ export function planPlacementProbeForPromotion(input: {
 	if (!input.promotionPending) {
 		return { ...base, shouldSchedule: false, reason: 'no_promotion_pending' };
 	}
-	if (input.lastProbeAtMs === null || !Number.isFinite(input.lastProbeAtMs)) {
+	if (
+		input.lastProbeAtMs === null ||
+		!Number.isFinite(input.lastProbeAtMs) ||
+		!Number.isFinite(input.nowMs)
+	) {
 		return { ...base, shouldSchedule: true, reason: 'promotion_pending_no_probe_yet' };
 	}
-	const freshness = input.freshnessMs ?? PLACEMENT_PROBE_FRESHNESS_MS;
 	const ageMs = input.nowMs - input.lastProbeAtMs;
-	if (ageMs > freshness) {
+	if (ageMs > PLACEMENT_PROBE_FRESHNESS_MS) {
 		return { ...base, shouldSchedule: true, reason: 'promotion_pending_probe_stale' };
 	}
 	return { ...base, shouldSchedule: false, reason: 'probe_fresh' };

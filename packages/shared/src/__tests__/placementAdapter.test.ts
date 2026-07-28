@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
 import type { DeliverabilityCell } from '../deliverabilityRouting';
 import {
 	DEFAULT_PLACEMENT_SOURCE_KIND,
+	MAX_PANEL_MAILBOXES_PER_REPORT,
+	MAX_PANEL_REPORTS,
 	PLACEMENT_PROBE_FRESHNESS_MS,
 	PLACEMENT_SOURCE_KINDS,
 	commercialPlacementApiAdapter,
@@ -201,6 +203,27 @@ describe('commercial counts fold into the shared observation shape', () => {
 		expect(observations.every((o) => o.placement === 'missing')).toBe(true);
 	});
 
+	it('a huge count from the panel is clamped to the named cap', () => {
+		// The only junk value that actually ALLOCATES is a large FINITE one: the
+		// counts are expanded into one row per mailbox, and the roll-up walks that
+		// array several times per provider. The cap is what keeps a third party
+		// from choosing how much work we do.
+		const observations = commercialReportsToObservations([
+			{ provider: 'gmail', inbox: 1e9, spam: 1e9, category: 1e9, missing: 1e9 },
+		]);
+		expect(observations).toHaveLength(4 * MAX_PANEL_MAILBOXES_PER_REPORT);
+		expect(MAX_PANEL_MAILBOXES_PER_REPORT).toBeLessThanOrEqual(1000);
+	});
+
+	it('the report LIST is bounded too', () => {
+		const reports = Array.from({ length: MAX_PANEL_REPORTS + 25 }, () => ({
+			provider: 'gmail' as const,
+			inbox: 1,
+			spam: 0,
+		}));
+		expect(commercialReportsToObservations(reports)).toHaveLength(MAX_PANEL_REPORTS);
+	});
+
 	it('keeps the reference arm separate so it cannot dilute the own arm', () => {
 		const rollups = commercialPlacementApiAdapter.summarize({
 			kind: 'commercial_api',
@@ -294,5 +317,22 @@ describe('scheduling fires BEFORE a phase promotion', () => {
 			promotionPending: true,
 		});
 		expect(plan.reason).toBe('promotion_pending_no_probe_yet');
+	});
+
+	it('an UNREADABLE clock schedules the probe rather than silently skipping it', () => {
+		// With a NaN `nowMs` the age is NaN and every comparison is false, so an
+		// unguarded implementation reports `probe_fresh` — a broken clock would
+		// promote the cell on evidence of unknown age and gate 5 would never see a
+		// fresh reading.
+		for (const nowMs of [Number.NaN, Number.POSITIVE_INFINITY]) {
+			const plan = planPlacementProbeForPromotion({
+				cell: CELL,
+				nowMs,
+				lastProbeAtMs: now - 1000,
+				promotionPending: true,
+			});
+			expect(plan.shouldSchedule).toBe(true);
+			expect(plan.reason).toBe('promotion_pending_no_probe_yet');
+		}
 	});
 });
