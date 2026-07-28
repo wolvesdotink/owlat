@@ -46,6 +46,16 @@ function recordSetOf(input: StreamSubdomainRecordInput): StreamSubdomainRecordSe
 	return result.recordSet;
 }
 
+/**
+ * Monitor-only on both signing hosts — the shipped default a freshly registered
+ * name publishes. `_dmarc` is PER-FQDN, so the generator takes one setting per
+ * signing role rather than one for the whole layout.
+ */
+const DMARC_NONE = {
+	transactional: { policy: 'none' },
+	bulk: { policy: 'none' },
+} as const;
+
 const LAYOUT = layoutOf('example.com');
 
 /** The selectors the MTA minted for the two sending names. */
@@ -57,7 +67,7 @@ const MINTED = {
 const BOTH_ARMS: StreamSubdomainRecordInput = {
 	domain: 'example.com',
 	sendingIps: ['203.0.113.10'],
-	dmarcPolicy: 'none',
+	dmarcByRole: DMARC_NONE,
 	mailHost: 'mta.example.com',
 	spfInclude: 'spf.owlat.example',
 	signingIdentities: MINTED,
@@ -233,11 +243,33 @@ describe('the generated records cannot express a per-transport subdomain', () =>
 		expect(new Set(spfHosts).size).toBe(spfHosts.length);
 	});
 
+	it('never prints ONE name twice: no minted selector ⇒ one pending row', () => {
+		// Both arms would otherwise take the "no identity" branch and emit the
+		// bare `_domainkey.<host>` parent — the same host, the same absent value,
+		// under two labels. A table that shows one name twice is doubt, not shape.
+		const unminted = recordSetOf({
+			...BOTH_ARMS,
+			signingIdentities: { transactional: MINTED.transactional },
+		}).records.filter((r) => r.purpose === 'dkim' && r.subdomain === 'news.example.com');
+		expect(unminted).toHaveLength(1);
+		expect(unminted[0]?.host).toBe('_domainkey.news.example.com');
+		const only = unminted[0];
+		expect(only !== undefined && only.purpose === 'dkim' ? only.arm : null).toBe('own');
+		// The host that DOES have a selector still shows both arms — the relay row
+		// is worth showing precisely when it sits beside a real second selector.
+		const minted = recordSetOf({
+			...BOTH_ARMS,
+			signingIdentities: { transactional: MINTED.transactional },
+		}).records.filter((r) => r.purpose === 'dkim' && r.subdomain === 'mail.example.com');
+		expect(minted).toHaveLength(2);
+		expect(new Set(minted.map((r) => r.host)).size).toBe(2);
+	});
+
 	it('the reference arm is absent by default — standalone is the default', () => {
 		const standalone = recordSetOf({
 			domain: 'example.com',
 			sendingIps: ['203.0.113.10'],
-			dmarcPolicy: 'none',
+			dmarcByRole: DMARC_NONE,
 		}).records.filter((r) => r.purpose === 'dkim');
 		expect(standalone).toHaveLength(2); // one per SENDING SUBDOMAIN, own arm only
 		expect(standalone.every((r) => r.purpose === 'dkim' && r.arm === 'own')).toBe(true);

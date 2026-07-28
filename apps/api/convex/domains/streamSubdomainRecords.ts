@@ -17,7 +17,9 @@
  *   • DKIM  ← the selector the MTA minted for that host and the record value it
  *             stored, verbatim, or NO row value at all when the host has not
  *             been registered yet;
- *   • DMARC ← the operator's own persisted policy and knobs.
+ *   • DMARC ← the persisted policy and knobs OF THAT HOST'S OWN domain row, not
+ *             of whichever domain the operator is looking at — `_dmarc` is a
+ *             per-FQDN record and each name enforces what it chose.
  * The pool IPs and the relay terms stay on the RETURN-PATH host, which is the
  * only host `MTA_IP_POOLS` and `MTA_RETURN_PATH_RELAY_SPF` authorise in the
  * shipped code. Record syntax comes from the shipped builders (`spf.ts`,
@@ -145,18 +147,35 @@ export interface SubdomainSigningIdentity {
 	recordValue: string;
 }
 
+/**
+ * One host's persisted DMARC configuration.
+ *
+ * Every knob is threaded verbatim: `sp=`, `pct=`, `adkim=` and `aspf=` are
+ * shipped, persisted settings, and a one-pass generator that dropped them would
+ * silently move a domain staged at `pct=10` to full enforcement on 100 % of a
+ * stream. A host that has not been added yet carries `DEFAULT_DMARC_POLICY` —
+ * what registration will actually publish for it.
+ */
+export interface SubdomainDmarcSettings {
+	policy: DmarcPolicy;
+	subdomainPolicy?: DmarcPolicy;
+	pct?: number;
+	adkim?: DmarcAlignment;
+	aspf?: DmarcAlignment;
+}
+
 export interface StreamSubdomainRecordOptions {
-	/** DMARC policy published on every sending subdomain — the `p=` tag. */
-	dmarcPolicy: DmarcPolicy;
 	/**
-	 * The operator's OTHER shipped DMARC settings. Threaded verbatim: a one-pass
-	 * generator that published a stricter record than the operator configured
-	 * would enforce on mail they deliberately staged.
+	 * The DMARC knobs to publish, PER SIGNING ROLE.
+	 *
+	 * `_dmarc` is a PER-FQDN record and the shipped path builds it from each
+	 * domain row's own persisted policy (`lifecycle.setDmarcPolicy`), so one
+	 * global set of knobs here would stamp whichever domain the operator happens
+	 * to be looking at onto every proposed name — telling them to move a
+	 * separately staged `news.` to enforcement it never chose. Same shape as
+	 * {@link signingIdentities} for the same reason: these are per-host facts.
 	 */
-	dmarcSubdomainPolicy?: DmarcPolicy;
-	dmarcPct?: number;
-	dmarcAdkim?: DmarcAlignment;
-	dmarcAspf?: DmarcAlignment;
+	dmarcByRole: Readonly<Record<SigningSubdomainRole, SubdomainDmarcSettings>>;
 	/** Optional `rua=` aggregate-report mailbox. */
 	dmarcRua?: string;
 	/** SPF trailing qualifier; the shipped default is the soft-fail `~all`. */
@@ -293,6 +312,10 @@ export function buildStreamSubdomainRecords(
 			})
 		);
 
+		// THIS HOST'S OWN policy, never the one the operator happens to be looking
+		// at — `_dmarc` is per-FQDN, and a separately registered `news.` publishes
+		// the knobs on ITS row (`lifecycle.setDmarcPolicy`), not another domain's.
+		const dmarc = options.dmarcByRole[role];
 		const dmarcHost = `_dmarc.${subdomain.host}`;
 		records.push({
 			subdomain: subdomain.host,
@@ -301,13 +324,11 @@ export function buildStreamSubdomainRecords(
 			host: dmarcHost,
 			relativeHost: zoneRelativeHost(dmarcHost, root),
 			value: buildDmarcRecordValue(subdomain.host, {
-				policy: options.dmarcPolicy,
-				...(options.dmarcSubdomainPolicy === undefined
-					? {}
-					: { subdomainPolicy: options.dmarcSubdomainPolicy }),
-				...(options.dmarcPct === undefined ? {} : { pct: options.dmarcPct }),
-				...(options.dmarcAdkim === undefined ? {} : { adkim: options.dmarcAdkim }),
-				...(options.dmarcAspf === undefined ? {} : { aspf: options.dmarcAspf }),
+				policy: dmarc.policy,
+				...(dmarc.subdomainPolicy === undefined ? {} : { subdomainPolicy: dmarc.subdomainPolicy }),
+				...(dmarc.pct === undefined ? {} : { pct: dmarc.pct }),
+				...(dmarc.adkim === undefined ? {} : { adkim: dmarc.adkim }),
+				...(dmarc.aspf === undefined ? {} : { aspf: dmarc.aspf }),
 				...(options.dmarcRua === undefined ? {} : { rua: options.dmarcRua }),
 			}),
 		});

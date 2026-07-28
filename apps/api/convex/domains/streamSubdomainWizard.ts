@@ -16,9 +16,12 @@
  *
  * IT NEVER INVENTS A RECORD VALUE. The proposed hosts are ordinary sending
  * domains, so the ones that already exist are LOOKED UP and their shipped
- * selector and DKIM value are what the table shows — the wizard republishes the
- * shipped row rather than composing a rival one for the same host. A host that
- * has not been added yet has no selector and no key, and the table says so
+ * selector, DKIM value AND DMARC KNOBS are what the table shows — the wizard
+ * republishes the shipped row rather than composing a rival one for the same
+ * host. `_dmarc` in particular is a PER-FQDN record: a `news.` staged at
+ * `p=none` keeps `p=none` here even when the operator opened an enforcing
+ * `mail.`, and BIMI eligibility is judged on the same per-host policy. A host
+ * that has not been added yet has no selector and no key, and the table says so
  * instead of filling the gap with a name nothing signs with.
  *
  * D2 — NOTHING HERE IS LOAD-BEARING ON A THIRD PARTY. No relay, no ESP, no
@@ -29,25 +32,30 @@
  */
 
 import { v } from 'convex/values';
+import type { GovernedIpPool } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
-import { providerKindConfigured } from '../lib/sendProviders/capability';
+import { isSendProviderReady } from '../lib/sendProviders/capability';
 import { listSendTransports } from '../lib/sendProviders/transports';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { offerBimiRecord, type BimiOffer } from './bimi';
+import { DEFAULT_DMARC_POLICY } from './dmarc';
 import { parsePoolIpsLenient, parseReturnPathRelaySpfTerms, resolveSpfQualifier } from './spf';
 import {
 	buildStreamSubdomainRecords,
 	streamSubdomainRecordValue,
 	type StreamSubdomainRecord,
-	type StreamSubdomainRecordPurpose,
+	type SubdomainDmarcSettings,
 	type SubdomainSigningIdentity,
 } from './streamSubdomainRecords';
 import {
 	SUBDOMAIN_ADVICE_COPY,
 	planStreamSubdomains,
 	planSubdomainWarming,
+	type SendingStream,
+	type SendingSubdomainRole,
 	type SigningSubdomainRole,
 	type SubdomainAdviceKey,
 	type SubdomainWarmingPlan,
@@ -62,11 +70,12 @@ export interface StreamSubdomainAdvice {
 
 /** One proposed sending name, flattened for the table. */
 export interface StreamSubdomainProposalRow {
-	role: string;
+	/** The layout's own union, kept on the wire so the UI's labels are TOTAL. */
+	role: SendingSubdomainRole;
 	host: string;
 	relativeHost: string;
-	streams: string[];
-	pool: string | null;
+	streams: SendingStream[];
+	pool: GovernedIpPool | null;
 	sends: boolean;
 	/**
 	 * The name already exists as a sending domain on this deployment. The panel
@@ -85,19 +94,34 @@ export interface StreamSubdomainProposalRow {
  * A component that re-derived it would be a second renderer of one DNS value,
  * and two renderers of one value drift.
  */
-export interface StreamSubdomainRecordRow {
+interface StreamSubdomainRecordRowBase {
 	subdomain: string;
 	host: string;
 	relativeHost: string;
-	purpose: StreamSubdomainRecordPurpose;
-	type: string;
-	/** `null` when there is nothing to publish yet — never an empty `p=`. */
-	value: string | null;
-	/** DKIM rows only. */
-	arm?: TransportArm;
-	/** MX rows only. */
-	priority?: number;
 }
+
+/**
+ * The generated rows STAY A DISCRIMINATED UNION on the wire. Flattening them
+ * into `arm?` / `priority?` would hand the UI a bag of optionals it has to
+ * re-narrow by hand, and widening `purpose`/`type` to `string` would turn every
+ * label map into a partial one with a `??` fallback that can never fire.
+ */
+export type StreamSubdomainRecordRow =
+	| (StreamSubdomainRecordRowBase & { purpose: 'spf'; type: 'TXT'; value: string })
+	| (StreamSubdomainRecordRowBase & { purpose: 'dmarc'; type: 'TXT'; value: string })
+	| (StreamSubdomainRecordRowBase & {
+			purpose: 'dkim';
+			type: 'TXT';
+			/** `null` when there is nothing to publish yet — never an empty `p=`. */
+			value: string | null;
+			arm: TransportArm;
+	  })
+	| (StreamSubdomainRecordRowBase & {
+			purpose: 'mx';
+			type: 'MX';
+			value: string;
+			priority: number;
+	  });
 
 export type StreamSubdomainWizardResult =
 	| { ok: false; reason: 'unknown_domain' | 'invalid_domain' }
@@ -116,19 +140,47 @@ export type StreamSubdomainWizardResult =
 
 /**
  * A reference transport is connected iff some NON-MTA send transport this
- * deployment can dispatch through has its credentials present.
+ * deployment can ACTUALLY DISPATCH THROUGH is ready.
  *
  * D4 — the plugin/transport catalog is the single source of truth for "which
  * transports exist here". The return-path relay SPF env var is not: it
  * authorises a relay on the BOUNCE HOST and says nothing about whether a
  * transport is registered, so inferring one from the other gets both directions
- * wrong. Env-only, zero document reads. Absence stays entirely non-blocking
- * (D2): it removes one DKIM row from the table and changes nothing else.
+ * wrong.
+ *
+ * READINESS, NOT ENV PRESENCE. A plugin-contributed kind also needs its bundled
+ * capability grant before the worker will send through it, so credentials alone
+ * would let the wizard state something untrue — a connected relay arm, and a
+ * DKIM row for a transport that cannot dispatch. `isSendProviderReady` is the
+ * shipped check both the route resolver and the worker use.
+ *
+ * Absence stays entirely non-blocking (D2): it removes one DKIM row from the
+ * table and changes nothing else.
  */
-function referenceTransportConfigured(): boolean {
-	return listSendTransports().some(
-		(transport) => transport.kind !== 'mta' && providerKindConfigured(transport.kind)
-	);
+async function referenceTransportConfigured(ctx: QueryCtx): Promise<boolean> {
+	for (const transport of listSendTransports()) {
+		if (transport.kind === 'mta') continue;
+		if (await isSendProviderReady(ctx, transport.kind)) return true;
+	}
+	return false;
+}
+
+/**
+ * One proposed host's DMARC knobs, from ITS OWN domain row.
+ *
+ * A host that has not been added yet falls back to `DEFAULT_DMARC_POLICY` —
+ * monitor-only, which is exactly what registration will publish for it — rather
+ * than to the knobs of the domain the operator happens to be viewing.
+ */
+function dmarcSettingsForHost(registered: Doc<'domains'> | undefined): SubdomainDmarcSettings {
+	if (registered === undefined) return { policy: DEFAULT_DMARC_POLICY };
+	return {
+		policy: registered.dmarcPolicy ?? DEFAULT_DMARC_POLICY,
+		...(registered.dmarcSubdomainPolicy === undefined
+			? {}
+			: { subdomainPolicy: registered.dmarcSubdomainPolicy }),
+		...(registered.dmarcPct === undefined ? {} : { pct: registered.dmarcPct }),
+	};
 }
 
 /** The DKIM identity the shipped registration path already minted for a host. */
@@ -201,12 +253,16 @@ export const getStreamSubdomainPlan = authedQuery({
 		const rua = getOptional('MTA_DMARC_RUA')?.trim();
 		const spfInclude = getOptional('MTA_SPF_INCLUDE');
 
+		// PER-FQDN, from each proposed host's own row — see dmarcSettingsForHost.
+		const dmarcByRole: Record<SigningSubdomainRole, SubdomainDmarcSettings> = {
+			transactional: dmarcSettingsForHost(
+				registeredByHost.get(layout.subdomainsByRole.transactional.host)
+			),
+			bulk: dmarcSettingsForHost(registeredByHost.get(layout.subdomainsByRole.bulk.host)),
+		};
+
 		const { records } = buildStreamSubdomainRecords(layout, {
-			dmarcPolicy: domain.dmarcPolicy ?? 'none',
-			...(domain.dmarcSubdomainPolicy === undefined
-				? {}
-				: { dmarcSubdomainPolicy: domain.dmarcSubdomainPolicy }),
-			...(domain.dmarcPct === undefined ? {} : { dmarcPct: domain.dmarcPct }),
+			dmarcByRole,
 			...(rua === undefined || rua === '' ? {} : { dmarcRua: rua }),
 			spfQualifier: resolveSpfQualifier(getOptional('SPF_QUALIFIER')),
 			// The From-domain SPF comes from the SAME variable the shipped provider
@@ -216,13 +272,13 @@ export const getStreamSubdomainPlan = authedQuery({
 			returnPathRelaySpfTerms: relaySpfTerms,
 			...(mailHost === undefined || mailHost === '' ? {} : { mailHost }),
 			signingIdentities,
-			referenceArmConfigured: referenceTransportConfigured(),
+			referenceArmConfigured: await referenceTransportConfigured(ctx),
 		});
 
 		const bimiLogoUrl = getOptional('MTA_BIMI_LOGO_URL')?.trim();
 		const bimiVmcUrl = getOptional('MTA_BIMI_VMC_URL')?.trim();
 		const bimiSelector = getOptional('MTA_BIMI_SELECTOR')?.trim();
-		const sending = [layout.subdomainsByRole.transactional, layout.subdomainsByRole.bulk];
+		const sending: readonly SigningSubdomainRole[] = ['transactional', 'bulk'];
 
 		return {
 			ok: true,
@@ -240,31 +296,52 @@ export const getStreamSubdomainPlan = authedQuery({
 			advice: layout.advice.map((key) => ({ key, text: SUBDOMAIN_ADVICE_COPY[key] })),
 			records: records.map(toRecordRow),
 			warmingPlans: planSubdomainWarming(layout),
-			bimiOffers: sending.map((entry) => ({
-				host: entry.host,
-				offer: offerBimiRecord({
-					domain: entry.host,
-					...(domain.dmarcPolicy === undefined ? {} : { dmarcPolicy: domain.dmarcPolicy }),
-					...(domain.dmarcPct === undefined ? {} : { dmarcPct: domain.dmarcPct }),
-					...(bimiLogoUrl === undefined || bimiLogoUrl === '' ? {} : { logoUrl: bimiLogoUrl }),
-					...(bimiVmcUrl === undefined || bimiVmcUrl === '' ? {} : { vmcUrl: bimiVmcUrl }),
-					...(bimiSelector === undefined || bimiSelector === '' ? {} : { selector: bimiSelector }),
-				}),
-			})),
+			// BIMI is evaluated against the DMARC of THE HOST THE RECORD IS PUBLISHED
+			// ON — the same knobs its `_dmarc` row carries. Reading another host's
+			// `p=` would offer a logo on a name at `p=none` (or withhold one from an
+			// enforcing name) purely because of which domain the operator opened.
+			bimiOffers: sending.map((role) => {
+				const host = layout.subdomainsByRole[role].host;
+				const dmarc = dmarcByRole[role];
+				return {
+					host,
+					offer: offerBimiRecord({
+						domain: host,
+						dmarcPolicy: dmarc.policy,
+						...(dmarc.pct === undefined ? {} : { dmarcPct: dmarc.pct }),
+						...(bimiLogoUrl === undefined || bimiLogoUrl === '' ? {} : { logoUrl: bimiLogoUrl }),
+						...(bimiVmcUrl === undefined || bimiVmcUrl === '' ? {} : { vmcUrl: bimiVmcUrl }),
+						...(bimiSelector === undefined || bimiSelector === ''
+							? {}
+							: { selector: bimiSelector }),
+					}),
+				};
+			}),
 		};
 	},
 });
 
-/** Flatten one generated record onto the wire, value already resolved. */
+/** Put one generated record on the wire, value already resolved, union intact. */
 function toRecordRow(record: StreamSubdomainRecord): StreamSubdomainRecordRow {
-	return {
+	const base = {
 		subdomain: record.subdomain,
 		host: record.host,
 		relativeHost: record.relativeHost,
-		purpose: record.purpose,
-		type: record.type,
-		value: streamSubdomainRecordValue(record),
-		...(record.purpose === 'dkim' ? { arm: record.arm } : {}),
-		...(record.purpose === 'mx' ? { priority: record.priority } : {}),
 	};
+	switch (record.purpose) {
+		case 'dkim':
+			return {
+				...base,
+				purpose: 'dkim',
+				type: 'TXT',
+				value: streamSubdomainRecordValue(record),
+				arm: record.arm,
+			};
+		case 'mx':
+			return { ...base, purpose: 'mx', type: 'MX', value: record.value, priority: record.priority };
+		case 'spf':
+			return { ...base, purpose: 'spf', type: 'TXT', value: record.value };
+		case 'dmarc':
+			return { ...base, purpose: 'dmarc', type: 'TXT', value: record.value };
+	}
 }

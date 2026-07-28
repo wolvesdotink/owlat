@@ -24,6 +24,16 @@ import {
 	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
 
+/**
+ * Monitor-only on both signing hosts — the shipped default a freshly registered
+ * name publishes. `_dmarc` is PER-FQDN, so the generator takes one setting per
+ * signing role rather than one for the whole layout.
+ */
+const DMARC_NONE = {
+	transactional: { policy: 'none' },
+	bulk: { policy: 'none' },
+} as const;
+
 const ONE_IP = ['203.0.113.10'];
 
 function layoutOf(input: SubdomainLayoutInput): SubdomainLayoutProposal {
@@ -119,7 +129,7 @@ describe('one IP: the pools collapse and the wizard still renders', () => {
 			generateStreamSubdomainRecords({
 				domain: 'localhost',
 				sendingIps: ONE_IP,
-				dmarcPolicy: 'none',
+				dmarcByRole: DMARC_NONE,
 			})
 		).toEqual({ ok: false, reason: 'invalid_domain' });
 	});
@@ -129,7 +139,7 @@ describe('one IP: the generated records are correct', () => {
 	const records = recordsOf({
 		domain: 'example.com',
 		sendingIps: ONE_IP,
-		dmarcPolicy: 'none',
+		dmarcByRole: DMARC_NONE,
 		mailHost: 'mta.example.com',
 		spfInclude: 'spf.owlat.example',
 	});
@@ -166,7 +176,7 @@ describe('with no pool IPs the SPF record still renders', () => {
 		const records = recordsOf({
 			domain: 'example.com',
 			sendingIps: [],
-			dmarcPolicy: 'none',
+			dmarcByRole: DMARC_NONE,
 			spfInclude: 'spf.owlat.example',
 			returnPathRelaySpfTerms: ['include:amazonses.com'],
 		});

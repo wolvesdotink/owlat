@@ -10,7 +10,12 @@
  * verified domain.
  */
 
+import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import type { OrganizationRole } from '../../lib/sessionOrganization';
 import {
 	generateStreamSubdomainRecords,
 	streamSubdomainRecordValue,
@@ -24,8 +29,43 @@ import {
 	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
 
+/**
+ * Monitor-only on both signing hosts — the shipped default a freshly registered
+ * name publishes. `_dmarc` is PER-FQDN, so the generator takes one setting per
+ * signing role rather than one for the whole layout.
+ */
+const DMARC_NONE = {
+	transactional: { policy: 'none' },
+	bulk: { policy: 'none' },
+} as const;
+
 const MINTED_SELECTOR = 'owlat-1711';
 const MINTED_DKIM_VALUE = 'v=DKIM1; k=rsa; p=MIIBIjAN-fixture';
+
+const mockRole: OrganizationRole = 'admin';
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
+	);
+	const ctx = () => ({ userId: 'test-user', role: mockRole, activeOrganizationId: 'org-a' });
+	return {
+		...actual,
+		requireOrgMember: vi.fn(async () => ctx()),
+		requireOrgPermission: vi.fn(async () => ctx()),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
+	};
+});
+
+const rootGlob = import.meta.glob('../../**/*.*s');
+const domainsGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../domains/'),
+		mod,
+	])
+);
+const modules = { ...rootGlob, ...domainsGlob };
 
 vi.mock('../../lib/emailProviders/mtaIdentity', () => ({
 	createMtaIdentityManager: () => ({
@@ -38,7 +78,7 @@ vi.mock('../../lib/emailProviders/mtaIdentity', () => ({
 const BASE = {
 	domain: 'example.com',
 	sendingIps: ['203.0.113.10', '203.0.113.11'],
-	dmarcPolicy: 'none' as const,
+	dmarcByRole: DMARC_NONE,
 	mailHost: 'mta.example.com',
 	spfInclude: 'spf.owlat.example',
 };
@@ -130,7 +170,7 @@ describe('a domain with no registrable zone degrades instead of throwing', () =>
 	);
 
 	it('generateStreamSubdomainRecords inherits the same degraded branch', () => {
-		const result = generateStreamSubdomainRecords({ domain: 'localhost', dmarcPolicy: 'none' });
+		const result = generateStreamSubdomainRecords({ domain: 'localhost', dmarcByRole: DMARC_NONE });
 		expect(result).toEqual({ ok: false, reason: 'invalid_domain' });
 	});
 
@@ -235,7 +275,7 @@ describe('one-pass record generation', () => {
 	it('threads the policy and the rua mailbox into every DMARC row', () => {
 		const strict = recordsOf({
 			...BASE,
-			dmarcPolicy: 'quarantine',
+			dmarcByRole: { transactional: { policy: 'quarantine' }, bulk: { policy: 'quarantine' } },
 			dmarcRua: 'mailto:dmarc@example.com',
 		});
 		for (const row of strict.filter((r) => r.purpose === 'dmarc')) {
@@ -245,6 +285,14 @@ describe('one-pass record generation', () => {
 		}
 	});
 
+	const STAGED_DMARC = {
+		policy: 'reject',
+		subdomainPolicy: 'none',
+		pct: 10,
+		adkim: 's',
+		aspf: 'r',
+	} as const;
+
 	it('NEVER publishes a stricter DMARC than the operator configured', () => {
 		// `sp=`, `pct=`, `adkim=` and `aspf=` are shipped, persisted settings. A
 		// one-pass generator that dropped them would take a domain deliberately
@@ -252,11 +300,10 @@ describe('one-pass record generation', () => {
 		// alignment the operator chose to make strict.
 		const staged = recordsOf({
 			...BASE,
-			dmarcPolicy: 'reject',
-			dmarcSubdomainPolicy: 'none',
-			dmarcPct: 10,
-			dmarcAdkim: 's',
-			dmarcAspf: 'r',
+			dmarcByRole: {
+				transactional: STAGED_DMARC,
+				bulk: STAGED_DMARC,
+			},
 		});
 		const dmarc = staged.filter((r) => r.purpose === 'dmarc');
 		expect(dmarc).toHaveLength(2);
@@ -375,5 +422,110 @@ describe('shipped-generator parity for a host both tables cover', () => {
 		// absolute because the table spans three names.
 		expect(wizard?.host).toBe(`${shippedDkim.host}.news.example.com`);
 		expect(wizard && streamSubdomainRecordValue(wizard)).toBe(shippedDkim.value);
+	});
+});
+
+// ============ THE WIRING: every host publishes ITS OWN DMARC ============
+
+/**
+ * `_dmarc` is a PER-FQDN record, and each proposed name is an ordinary sending
+ * domain with its own persisted policy. A wizard that stamped the VIEWED
+ * domain's knobs onto every row would tell the operator to publish, on a
+ * different and separately staged name, a record contradicting that name's own
+ * DMARC panel — and if they copied it as instructed, move it to an enforcement
+ * it never chose. Same for the BIMI offer, whose whole rule is about the policy
+ * of the From domain the record is published ON.
+ */
+describe('the wizard reads each proposed host DMARC from that host', () => {
+	async function seedTwoHosts(): Promise<{
+		t: ReturnType<typeof convexTest>;
+		mailId: Id<'domains'>;
+	}> {
+		const t = convexTest(schema, modules);
+		const mailId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const id = await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {},
+				// Enforcing, with the apex's subdomains deliberately held back.
+				dmarcPolicy: 'reject',
+				dmarcSubdomainPolicy: 'none',
+				createdAt: now,
+				updatedAt: now,
+			});
+			// A SEPARATELY registered name, deliberately staged in monitor-only.
+			await ctx.db.insert('domains', {
+				domain: 'news.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {},
+				dmarcPolicy: 'none',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return id;
+		});
+		return { t, mailId };
+	}
+
+	it('never stamps the viewed policy onto another registered subdomain', async () => {
+		const { t, mailId } = await seedTwoHosts();
+		const plan = await t.query(api.domains.streamSubdomainWizard.getStreamSubdomainPlan, {
+			domainId: mailId,
+		});
+		expect(plan.ok).toBe(true);
+		if (!plan.ok) return;
+		const dmarcFor = (host: string) =>
+			plan.records.find((r) => r.purpose === 'dmarc' && r.host === `_dmarc.${host}`)?.value;
+		expect(dmarcFor('mail.example.com')).toBe('v=DMARC1; p=reject; sp=none');
+		// The staged host keeps ITS policy — this is the regression the row-drop
+		// mitigation could never cover, because it only drops the viewed domain.
+		expect(dmarcFor('news.example.com')).toBe('v=DMARC1; p=none');
+	});
+
+	it('offers BIMI on the host whose OWN policy enforces, and only there', async () => {
+		const { t, mailId } = await seedTwoHosts();
+		const plan = await t.query(api.domains.streamSubdomainWizard.getStreamSubdomainPlan, {
+			domainId: mailId,
+		});
+		expect(plan.ok).toBe(true);
+		if (!plan.ok) return;
+		const offered = new Map(plan.bimiOffers.map((entry) => [entry.host, entry.offer.offered]));
+		expect(offered.get('mail.example.com')).toBe(true);
+		// `news.` is at p=none. Offering it a logo because ANOTHER host enforces is
+		// exactly the inversion the card's rule forbids.
+		expect(offered.get('news.example.com')).toBe(false);
+	});
+
+	it('falls back to the monitor-only default for a host not added yet', async () => {
+		const t = convexTest(schema, modules);
+		const mailId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {},
+				dmarcPolicy: 'reject',
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		const plan = await t.query(api.domains.streamSubdomainWizard.getStreamSubdomainPlan, {
+			domainId: mailId,
+		});
+		expect(plan.ok).toBe(true);
+		if (!plan.ok) return;
+		// `news.example.com` does not exist yet, so the row shows what REGISTERING
+		// it will actually publish — not the enforcement of the name next to it.
+		const news = plan.records.find(
+			(r) => r.purpose === 'dmarc' && r.host === '_dmarc.news.example.com'
+		);
+		expect(news?.value).toBe('v=DMARC1; p=none');
+		const newsOffer = plan.bimiOffers.find((entry) => entry.host === 'news.example.com');
+		expect(newsOffer?.offer.offered).toBe(false);
+		expect(newsOffer?.offer.required).toBe(false);
 	});
 });
