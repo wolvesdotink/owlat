@@ -12,7 +12,7 @@
  * colour has still told the operator their install is broken.
  */
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
@@ -181,10 +181,6 @@ describe('control refusals', () => {
 		return { run };
 	}
 
-	beforeEach(() => {
-		vi.unstubAllGlobals();
-	});
-
 	it.each<[RampControlRefusal, RegExp]>([
 		['controller_paused', /globally paused/i],
 		['hard_stop_active', /safety hold/i],
@@ -210,7 +206,6 @@ describe('control refusals', () => {
 			'controller_paused',
 			'hard_stop_active',
 			'cell_not_ramp_managed',
-			'no_organization',
 		];
 		for (const arm of arms) {
 			const sentence = rampRefusalSentence(arm);
@@ -229,7 +224,12 @@ describe('control refusals', () => {
 describe('standalone preset trade-off', () => {
 	it('names what the faster paces lack when there is no relay', () => {
 		const wrapper = mount(RampPresetPicker, {
-			props: { stream: 'campaign', preset: null, defaultPreset: 'conservative' },
+			props: {
+				stream: 'campaign',
+				preset: null,
+				defaultPreset: 'conservative',
+				hasReferenceArm: false,
+			},
 		});
 		const note = wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]');
 		expect(note.exists()).toBe(true);
@@ -243,7 +243,7 @@ describe('standalone preset trade-off', () => {
 
 	it('says nothing extra when a relay is connected', () => {
 		const wrapper = mount(RampPresetPicker, {
-			props: { stream: 'campaign', preset: null, defaultPreset: 'balanced' },
+			props: { stream: 'campaign', preset: null, defaultPreset: 'balanced', hasReferenceArm: true },
 		});
 		expect(wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]').exists()).toBe(
 			false
