@@ -15,6 +15,15 @@
  * answer to those questions is a second answer the pre-flight and the walker can
  * disagree about.
  *
+ * THE BUDGET AND THE PLAN LENGTH ARE TWO DIFFERENT QUESTIONS, and only the
+ * second one needs a denominator. "How many may go out today" is
+ * `capacityByDay[0]` minus what today has already carried — no audience size is
+ * involved. "How many days will this take" needs to know how many recipients are
+ * left, and that count is frequently a LOWER BOUND (`countAudience` stops at a
+ * read budget). A lower bound LENGTHENS a plan; it must never be allowed to
+ * cancel today's budget, because the campaigns whose count truncates are exactly
+ * the large ones this feature exists for.
+ *
  * PURE (plan D15): the clock, the capacity projection and the counters are all
  * parameters. The ctx-bound half is the walker in `campaigns/send.ts`.
  *
@@ -37,22 +46,43 @@ export interface SendPlanState {
 	readonly planDayIndex: number | undefined;
 	/** Days the plan spanned when it was last recomputed. */
 	readonly planTotalDays: number | undefined;
+	/**
+	 * The audience size the plan was built from — the progress line's
+	 * denominator. Travels WITH the four counters above because it is read and
+	 * written with them on every hop; keeping it out of the type left the
+	 * checkpoint mutation restating a clump the type already described.
+	 */
+	readonly plannedTotal: number | undefined;
+	/**
+	 * `plannedTotal` is a LOWER BOUND rather than the audience size — the bounded
+	 * count stopped at a ceiling or ran out of read budget. The plan is then AT
+	 * LEAST as long as it computes, and the copy says so (plan D14).
+	 */
+	readonly isPlannedTotalLowerBound: boolean | undefined;
 }
+
+/**
+ * HOW MANY RECIPIENTS ARE STILL TO ENQUEUE — and how well we know it.
+ *
+ * `unknown` and `atLeast` are deliberately different from `exact`: an audience
+ * count that stopped early bounds the audience from BELOW, so it may lengthen a
+ * plan and may never shorten one. Collapsing the three into a number is what let
+ * a truncated count read as "nothing left to send" and waive the day budget on
+ * exactly the campaigns the plan exists for.
+ */
+export type RemainingRecipients =
+	| { readonly kind: 'unknown' }
+	| { readonly kind: 'atLeast'; readonly count: number }
+	| { readonly kind: 'exact'; readonly count: number };
 
 export interface SendPlanSliceInput {
 	readonly state: SendPlanState;
 	/**
-	 * Recipients still to enqueue, or `undefined` when the walk has no denominator
-	 * (the bounded audience count could not be taken). A LOWER bound is fine.
-	 *
-	 * UNKNOWN NEVER WAIVES THE DAY BUDGET. The walker only asks this question
-	 * while it still has pages to enqueue, so "how many are left" being unknown
-	 * means "at least one" — treating it as zero would let a capped deployment
-	 * empty the whole audience into a queue that expires it. It does mean the
-	 * plan's LENGTH is unknown, and the day count is carried forward rather than
-	 * invented.
+	 * Recipients still to enqueue. UNKNOWN NEVER WAIVES THE DAY BUDGET: the
+	 * walker only asks while it still has pages to enqueue, so "how many are
+	 * left" being unknown means "at least one".
 	 */
-	readonly remaining: number | undefined;
+	readonly remaining: RemainingRecipients;
 	/**
 	 * Projected sendable volume per day, index 0 = the REMAINDER of today — the
 	 * same array `capacityPlan` consumes, produced by `delivery/warmingCapacity`.
@@ -95,6 +125,30 @@ function sanitizeCount(value: number | undefined): number {
 }
 
 /**
+ * What the walk still has to enqueue, derived from the checkpointed denominator.
+ *
+ * A denominator that was never taken answers `unknown`; one taken from a count
+ * that stopped early answers `atLeast`. Only an exact count can say "nothing is
+ * left", and only an exact count is allowed to stand the day budget down on that
+ * basis.
+ */
+export function remainingRecipients(
+	state: SendPlanState,
+	enqueuedCount: number
+): RemainingRecipients {
+	// A denominator we cannot read is one we never took: a `NaN` that fell through
+	// as `exact: 0` would say "the audience is finished" and stand the day budget
+	// down — the exact failure this type exists to prevent.
+	if (state.plannedTotal === undefined || !Number.isFinite(state.plannedTotal)) {
+		return { kind: 'unknown' };
+	}
+	const count = Math.max(0, sanitizeCount(state.plannedTotal) - sanitizeCount(enqueuedCount));
+	return state.isPlannedTotalLowerBound === true
+		? { kind: 'atLeast', count }
+		: { kind: 'exact', count };
+}
+
+/**
  * DECIDE TODAY'S SLICE.
  *
  * Recomputed on EVERY hop rather than frozen at plan time, which is what makes
@@ -105,7 +159,7 @@ function sanitizeCount(value: number | undefined): number {
  * enqueueing against a cap that no longer exists.
  */
 export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
-	const { state, capacityByDay, now } = input;
+	const { state, capacityByDay, remaining, now } = input;
 	const dayKey = utcDayKey(now);
 	// DAY ROLLOVER. A checkpoint from a previous UTC day starts today at zero —
 	// the resume path, and the reason the walker survives being re-driven days
@@ -119,39 +173,44 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	const storedIndex = sanitizeCount(state.planDayIndex);
 	const dayIndex = state.planDayKey === undefined ? 0 : isSameDay ? storedIndex : storedIndex + 1;
 
-	const isRemainingKnown = input.remaining !== undefined;
-	const remaining = isRemainingKnown ? sanitizeCount(input.remaining) : 0;
-	// The plan's LENGTH needs a denominator. Without one it is carried forward
-	// from the checkpoint rather than invented, and the progress line degrades to
-	// the single-day sentence.
-	const schedule = isRemainingKnown
-		? buildCapacitySchedule({
-				audienceSize: remaining,
-				remainingCapacityByDay: capacityByDay,
-				now,
-			})
-		: { days: sanitizeCount(state.planTotalDays) };
+	// THE PLAN'S LENGTH — the ONLY question a denominator is needed for.
+	const totalDays = planLength({
+		remaining,
+		capacityByDay,
+		carriedDays: sanitizeCount(state.planTotalDays),
+		now,
+	});
+
 	// TWO READINGS THAT MUST NOT BE CONFUSED.
 	//
-	// NO PROJECTION AT ALL (an empty array, or the planner's `days === 0`
-	// "cannot be planned" sentinel) is UNKNOWN capacity: it yields NO budget, and
-	// the walk proceeds exactly as the shipped single-day walker always has. A
-	// measurement we could not take never withholds mail (plan D2).
+	// NO PROJECTION AT ALL (an empty array) is UNKNOWN capacity: it yields NO
+	// budget, and the walk proceeds exactly as the shipped single-day walker
+	// always has. A measurement we could not take never withholds mail (plan D2).
 	//
 	// A PROJECTED ZERO for today is the opposite — a real reading that today's cap
 	// is already spent — and it exhausts the day rather than waiving the budget.
 	// Collapsing the two would let a cap-spent deployment empty a 20 000-recipient
 	// campaign into a queue that expires it.
-	const hasProjection = capacityByDay.length > 0 && (!isRemainingKnown || schedule.days > 0);
+	//
+	// THE PLAN'S LENGTH IS NOT PART OF THIS TEST. It used to be, and that is what
+	// let a truncated audience count — which yields the planner's "cannot be
+	// planned" sentinel — silently waive the budget on the largest campaigns.
+	const hasProjection = capacityByDay.length > 0;
 	const capacityToday = hasProjection ? sanitizeCount(capacityByDay[0]) : undefined;
 
-	if (capacityToday === undefined) {
+	// AN EXACT DENOMINATOR THAT SAYS NOTHING IS LEFT stands the budget down. The
+	// pages that remain are ones the count did not consider eligible, so metering
+	// them against a spent day budget would crawl the tail one candidate per hop.
+	// Only `exact` may do this: a lower bound reading "0 left" means only "the
+	// count stopped", never "the audience is finished".
+	const isAudienceCounted = remaining.kind === 'exact' && remaining.count === 0;
+	if (capacityToday === undefined || isAudienceCounted) {
 		return {
 			dayKey,
 			dayIndex,
-			totalDays: schedule.days,
+			totalDays,
 			remainingToday: undefined,
-			capacityToday: undefined,
+			capacityToday,
 			isDayExhausted: false,
 			resumeAt: undefined,
 			enqueuedToday,
@@ -159,17 +218,43 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	}
 
 	const remainingToday = Math.max(0, capacityToday - enqueuedToday);
-	const isDayExhausted = remainingToday <= 0 && (!isRemainingKnown || remaining > 0);
+	const isDayExhausted = remainingToday <= 0;
 	return {
 		dayKey,
 		dayIndex,
-		totalDays: Math.min(MAX_PLAN_DAYS, schedule.days),
+		totalDays,
 		remainingToday,
 		capacityToday,
 		isDayExhausted,
 		resumeAt: isDayExhausted ? nextUtcDayStart(now) : undefined,
 		enqueuedToday,
 	};
+}
+
+/**
+ * How many days the plan spans, given what we know about how many recipients
+ * are left. An unknown denominator carries the checkpoint's length forward
+ * rather than inventing one; a LOWER-BOUND denominator computes a length that
+ * can only be too short, so it may lengthen the plan and never shorten it.
+ */
+function planLength(args: {
+	readonly remaining: RemainingRecipients;
+	readonly capacityByDay: readonly number[];
+	readonly carriedDays: number;
+	readonly now: number;
+}): number {
+	const { remaining, capacityByDay, carriedDays, now } = args;
+	if (remaining.kind === 'unknown') return carriedDays;
+	const schedule = buildCapacitySchedule({
+		audienceSize: remaining.count,
+		remainingCapacityByDay: capacityByDay,
+		now,
+	});
+	// `days === 0` is the planner's "cannot be planned" sentinel — no usable
+	// projection, or one that plateaus at zero before the audience is covered.
+	// That is an UNKNOWN length, so the checkpoint's length is carried forward.
+	const computed = schedule.days > 0 ? Math.min(MAX_PLAN_DAYS, schedule.days) : carriedDays;
+	return remaining.kind === 'atLeast' ? Math.max(carriedDays, computed) : computed;
 }
 
 /** A recipient the walker can order. Only the score is read. */
@@ -197,44 +282,4 @@ export function orderByEngagement<T extends EngagementOrdered>(recipients: reado
 function engagementRank(recipient: EngagementOrdered): number {
 	const score = recipient.engagementScore;
 	return score !== undefined && Number.isFinite(score) ? score : -1;
-}
-
-/**
- * THE OPERATOR-FACING PROGRESS STATE — "Sending over 4 days · day 1 of 4 · 5 000
- * of 20 000", present FROM THE MOMENT THE SEND STARTS (plan D14).
- *
- * A multi-day send is a normal, visible state for a warming deployment. It is
- * NEVER an error state and never a warning: this function has no failure shape
- * at all, and a plan it cannot describe degrades to the single-day sentence
- * rather than to a nag.
- */
-export interface CampaignSendPlanProgress {
-	/** Render the day-of-N line at all? False for an ordinary same-day send. */
-	readonly isMultiDay: boolean;
-	/** 1-based day being sent right now. Always at least 1. */
-	readonly day: number;
-	/** Days the plan spans. Always at least 1. */
-	readonly totalDays: number;
-	readonly enqueued: number;
-	readonly total: number;
-	/** The plan is longer than `MAX_PLAN_DAYS`: the copy says "more than N days". */
-	readonly isTruncated: boolean;
-}
-
-export function campaignSendPlanProgress(input: {
-	readonly planDayIndex: number | undefined;
-	readonly planTotalDays: number | undefined;
-	readonly enqueuedCount: number | undefined;
-	readonly plannedTotal: number | undefined;
-}): CampaignSendPlanProgress {
-	const totalDays = Math.max(1, sanitizeCount(input.planTotalDays));
-	const day = Math.min(totalDays, Math.max(1, sanitizeCount(input.planDayIndex) + 1));
-	return {
-		isMultiDay: totalDays > 1,
-		day,
-		totalDays,
-		enqueued: sanitizeCount(input.enqueuedCount),
-		total: sanitizeCount(input.plannedTotal),
-		isTruncated: sanitizeCount(input.planTotalDays) >= MAX_PLAN_DAYS,
-	};
 }

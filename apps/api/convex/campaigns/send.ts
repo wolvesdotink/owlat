@@ -10,7 +10,12 @@ import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
-import { orderByEngagement, planTodaysSlice } from './multiDaySendPlan';
+import {
+	orderByEngagement,
+	planTodaysSlice,
+	remainingRecipients,
+	type SendPlanState,
+} from './multiDaySendPlan';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -641,50 +646,81 @@ export const resolveCampaignPage = internalAction({
 			internal.campaigns.sendPlanQueries.getSendPlanCapacity,
 			{ audience: job.audience, countAudienceSize: job.plannedTotal === undefined }
 		);
-		const plannedTotal = planCapacity.plannedTotal ?? job.plannedTotal;
+		// The denominator is counted ONCE per walk and then carried on the row —
+		// together with whether it is the audience size or only a floor under one,
+		// because a floor may lengthen the plan and may never shorten it.
+		const planState: SendPlanState =
+			planCapacity.plannedTotal === null
+				? {
+						planDayKey: job.planDayKey,
+						enqueuedToday: job.enqueuedToday,
+						planDayIndex: job.planDayIndex,
+						planTotalDays: job.planTotalDays,
+						plannedTotal: job.plannedTotal,
+						isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
+					}
+				: {
+						planDayKey: job.planDayKey,
+						enqueuedToday: job.enqueuedToday,
+						planDayIndex: job.planDayIndex,
+						planTotalDays: job.planTotalDays,
+						plannedTotal: planCapacity.plannedTotal,
+						isPlannedTotalLowerBound: planCapacity.isPlannedTotalLowerBound,
+					};
 		const slice = planTodaysSlice({
-			state: {
-				planDayKey: job.planDayKey,
-				enqueuedToday: job.enqueuedToday,
-				planDayIndex: job.planDayIndex,
-				planTotalDays: job.planTotalDays,
-			},
-			remaining:
-				plannedTotal === undefined ? undefined : Math.max(0, plannedTotal - job.enqueuedCount),
+			state: planState,
+			remaining: remainingRecipients(planState, job.enqueuedCount),
 			capacityByDay: planCapacity.capacityByDay,
 			now: Date.now(),
 		});
+		/** The plan state this hop checkpoints, whichever branch it takes. */
+		const planCheckpoint = {
+			planDayKey: slice.dayKey,
+			planDayIndex: slice.dayIndex,
+			planTotalDays: slice.totalDays,
+			...(planState.plannedTotal === undefined
+				? {}
+				: {
+						plannedTotal: planState.plannedTotal,
+						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
+					}),
+		};
 		if (slice.isDayExhausted && slice.resumeAt !== undefined) {
-			// Today's slice is spent. Touch the row so THIS reschedule — not the
-			// stuck-walk watchdog — owns the resume, exactly as the no-provider defer
-			// above does, then wait for the next cap window rather than burning hops
-			// against a cap that cannot move until the UTC day rolls over.
-			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, {
+			// Today's slice is spent. PARK the walk until the next cap window: the
+			// checkpoint carries `resumeAt`, which both records the day's counters and
+			// takes the row out of the stuck-walk watchdog's reach — a 24h park is far
+			// past its staleness threshold, and a re-drive would schedule a second
+			// resume hop for the same instant. `recordSendPlanDay` owns the
+			// `updatedAt` touch, so there is no separate `touchSendJob` here.
+			const parked = await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
 				campaignId: args.campaignId,
+				plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday },
+				resumeAt: slice.resumeAt,
 			});
-			await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
-				campaignId: args.campaignId,
-				planDayKey: slice.dayKey,
-				enqueuedToday: slice.enqueuedToday,
-				planDayIndex: slice.dayIndex,
-				planTotalDays: slice.totalDays,
-				plannedTotal,
-			});
-			await ctx.scheduler.runAt(slice.resumeAt, internal.campaigns.send.resolveCampaignPage, {
-				campaignId: args.campaignId,
-			});
+			// IDEMPOTENT RESUME. The row was already parked for exactly this window,
+			// so a hop is already pending and a second one would apply this page's
+			// counters twice.
+			if (!parked.isResumeAlreadyScheduled) {
+				await ctx.scheduler.runAt(slice.resumeAt, internal.campaigns.send.resolveCampaignPage, {
+					campaignId: args.campaignId,
+				});
+			}
 			return { done: false, pageEnqueued: 0 };
 		}
 
 		// Resolve ONE page at the job cursor — the bounded read that replaces the
 		// whole-audience resolve, NARROWED to what is left of today's slice so a
-		// page can never overshoot the day's capacity.
+		// page can never overshoot the day's capacity. `remainingToday` is
+		// `undefined` for "no day budget applies" (no projection, or an exact
+		// denominator that is already satisfied), which resolves a full page exactly
+		// as the shipped walker does — and it is never 0 here, because a spent
+		// budget took the park branch above.
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,
 			...(slice.remainingToday === undefined
 				? {}
-				: { numItems: Math.max(1, Math.min(SEND_PAGE_SIZE, slice.remainingToday)) }),
+				: { numItems: Math.min(SEND_PAGE_SIZE, slice.remainingToday) }),
 		});
 
 		const audienceType = job.audience.kind;
@@ -950,13 +986,11 @@ export const resolveCampaignPage = internalAction({
 		// the two never disagree about a page, and written on every hop — including
 		// the ones that enqueued nothing — because the day-of-N line has to be there
 		// from the first moment (plan D14), not once a plan turns out to be long.
+		// No `resumeAt`: this hop made progress, so any previous park is cleared and
+		// the stuck-walk watchdog can see the row again.
 		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
 			campaignId: args.campaignId,
-			planDayKey: slice.dayKey,
-			enqueuedToday: slice.enqueuedToday + pageEnqueued,
-			planDayIndex: slice.dayIndex,
-			planTotalDays: slice.totalDays,
-			plannedTotal,
+			plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday + pageEnqueued },
 		});
 
 		if (page.nextCursor !== null) {

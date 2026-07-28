@@ -12,16 +12,28 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { campaignSendPlanProgress } from '../multiDaySendPlan';
+import { campaignSendPlanProgress } from '../sendPlanProgress';
 import { MAX_PLAN_DAYS } from '../capacityPlan';
+import type { SendPlanState } from '../multiDaySendPlan';
+
+/** The plan clump, so each case states only the fields it is about. */
+function plan(overrides: Partial<SendPlanState> = {}): SendPlanState {
+	return {
+		planDayKey: undefined,
+		enqueuedToday: undefined,
+		planDayIndex: undefined,
+		planTotalDays: undefined,
+		plannedTotal: undefined,
+		isPlannedTotalLowerBound: undefined,
+		...overrides,
+	};
+}
 
 describe('campaignSendPlanProgress', () => {
 	it('reports day 1 of N from the very first hop', () => {
 		const progress = campaignSendPlanProgress({
-			planDayIndex: 0,
-			planTotalDays: 4,
+			plan: plan({ planDayIndex: 0, planTotalDays: 4, plannedTotal: 20_000 }),
 			enqueuedCount: 0,
-			plannedTotal: 20_000,
 		});
 		expect(progress).toEqual({
 			isMultiDay: true,
@@ -29,6 +41,7 @@ describe('campaignSendPlanProgress', () => {
 			totalDays: 4,
 			enqueued: 0,
 			total: 20_000,
+			isTotalLowerBound: false,
 			isTruncated: false,
 		});
 	});
@@ -36,30 +49,24 @@ describe('campaignSendPlanProgress', () => {
 	it('advances the day without ever exceeding the plan length', () => {
 		expect(
 			campaignSendPlanProgress({
-				planDayIndex: 3,
-				planTotalDays: 4,
+				plan: plan({ planDayIndex: 3, planTotalDays: 4, plannedTotal: 20_000 }),
 				enqueuedCount: 15_000,
-				plannedTotal: 20_000,
 			}).day
 		).toBe(4);
 		// A stored index past the end of a plan that was re-shortened mid-flight
 		// still renders a sentence, and never "day 9 of 4".
 		expect(
 			campaignSendPlanProgress({
-				planDayIndex: 8,
-				planTotalDays: 4,
+				plan: plan({ planDayIndex: 8, planTotalDays: 4, plannedTotal: 20_000 }),
 				enqueuedCount: 20_000,
-				plannedTotal: 20_000,
 			}).day
 		).toBe(4);
 	});
 
 	it('an ordinary same-day send is simply not multi-day', () => {
 		const progress = campaignSendPlanProgress({
-			planDayIndex: 0,
-			planTotalDays: 1,
+			plan: plan({ planDayIndex: 0, planTotalDays: 1, plannedTotal: 500 }),
 			enqueuedCount: 500,
-			plannedTotal: 500,
 		});
 		expect(progress.isMultiDay).toBe(false);
 		expect(progress.day).toBe(1);
@@ -68,10 +75,8 @@ describe('campaignSendPlanProgress', () => {
 
 	it('a walk with NO plan state at all still renders — day 1 of 1', () => {
 		const progress = campaignSendPlanProgress({
-			planDayIndex: undefined,
-			planTotalDays: undefined,
+			plan: plan({ planDayIndex: undefined, planTotalDays: undefined, plannedTotal: undefined }),
 			enqueuedCount: undefined,
-			plannedTotal: undefined,
 		});
 		expect(progress.isMultiDay).toBe(false);
 		expect(progress.day).toBe(1);
@@ -82,13 +87,35 @@ describe('campaignSendPlanProgress', () => {
 
 	it('says the quiet part when the plan is longer than we will enumerate', () => {
 		const progress = campaignSendPlanProgress({
-			planDayIndex: 2,
-			planTotalDays: MAX_PLAN_DAYS,
+			plan: plan({ planDayIndex: 2, planTotalDays: MAX_PLAN_DAYS, plannedTotal: 900_000 }),
 			enqueuedCount: 30_000,
-			plannedTotal: 900_000,
 		});
 		expect(progress.isTruncated).toBe(true);
 		expect(progress.isMultiDay).toBe(true);
+	});
+
+	it('says the quiet part about the denominator too (plan D14)', () => {
+		const bounded = campaignSendPlanProgress({
+			plan: plan({
+				planDayIndex: 0,
+				planTotalDays: 4,
+				plannedTotal: 1_500,
+				isPlannedTotalLowerBound: true,
+			}),
+			enqueuedCount: 500,
+		});
+		// A count that stopped early is a FLOOR, and the copy renders it as one.
+		expect(bounded.isTotalLowerBound).toBe(true);
+		expect(bounded.total).toBe(1_500);
+	});
+
+	it('has nothing to hedge when there is no denominator at all', () => {
+		const none = campaignSendPlanProgress({
+			plan: plan({ planTotalDays: 4, isPlannedTotalLowerBound: true }),
+			enqueuedCount: 500,
+		});
+		expect(none.total).toBe(0);
+		expect(none.isTotalLowerBound).toBe(false);
 	});
 
 	it('is never an error state, whatever the row holds', () => {
@@ -99,9 +126,8 @@ describe('campaignSendPlanProgress', () => {
 		];
 		for (const state of hostile) {
 			const progress = campaignSendPlanProgress({
-				...state,
+				plan: plan({ ...state, plannedTotal: -1 }),
 				enqueuedCount: Number.NaN,
-				plannedTotal: -1,
 			});
 			expect(progress.day).toBeGreaterThanOrEqual(1);
 			expect(progress.totalDays).toBeGreaterThanOrEqual(1);

@@ -14,13 +14,15 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { loadWarmingCapacity } from '../delivery/warmingCapacity';
+import { applyPaceToCapacityByDay, loadCampaignPaceMultiplier } from '../delivery/rampPaceInputs';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { audienceValidator } from './audience';
 import { countAudience } from './audienceCandidates';
 import { totalPlannableCapacity } from './capacityPlan';
-import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './multiDaySendPlan';
+import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './sendPlanProgress';
 
 /**
  * Documents the plan's audience count may read. Deliberately SMALLER than the
@@ -31,37 +33,94 @@ import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './multi
  */
 const PLAN_AUDIENCE_DOCUMENT_BUDGET = 3_000;
 
+export interface SendPlanCapacity {
+	readonly capacityByDay: number[];
+	/**
+	 * The audience size, or `null` when it was not counted on this hop.
+	 * `isPlannedTotalLowerBound` says WHICH OF TWO THINGS the number is: an
+	 * audience size, or the floor under one (plan D14). The distinction is
+	 * load-bearing — a lower bound may lengthen the plan, may never shorten it,
+	 * and may never be read as "the audience is finished".
+	 */
+	readonly plannedTotal: number | null;
+	readonly isPlannedTotalLowerBound: boolean;
+}
+
 export const getSendPlanCapacity = internalQuery({
 	args: {
 		audience: audienceValidator,
 		/** Skip the audience count once the walk already has a denominator. */
 		countAudienceSize: v.boolean(),
 	},
-	handler: async (ctx, args): Promise<{ capacityByDay: number[]; plannedTotal: number | null }> => {
+	handler: async (ctx, args): Promise<SendPlanCapacity> => {
 		const now = Date.now();
 		const projection = await loadWarmingCapacity(ctx, { now });
 		// NO PROJECTION IS NOT A ZERO PROJECTION. An empty array is the planner's
 		// "unknown capacity" reading and imposes no budget at all.
-		if (projection === null) return { capacityByDay: [], plannedTotal: null };
-		if (!args.countAudienceSize) {
-			return { capacityByDay: projection.byDay, plannedTotal: null };
+		//
+		// THE PACE ACTUATOR'S DIAL IS APPLIED HERE (plan D3): the controller's
+		// second dial decides how fast volume may grow against measured evidence,
+		// and this is the campaign-facing cap Convex itself meters. A retreat
+		// therefore shortens today's slice and lengthens the plan on the very next
+		// hop — which is exactly the reversibility the AIMD asymmetry promises.
+		const capacityByDay =
+			projection === null ? [] : await applyPaceMultiplier(ctx, projection.byDay);
+		if (projection === null || !args.countAudienceSize) {
+			return { capacityByDay, plannedTotal: null, isPlannedTotalLowerBound: false };
 		}
 		const counted = await countAudience(ctx, args.audience, {
-			ceiling: totalPlannableCapacity(projection.byDay) + 1,
+			ceiling: totalPlannableCapacity(capacityByDay) + 1,
 			documentBudget: PLAN_AUDIENCE_DOCUMENT_BUDGET,
 		});
-		return { capacityByDay: projection.byDay, plannedTotal: counted.eligible };
+		// `suppression_truncated` is an OVER-count: it bounds the audience in
+		// NEITHER direction, so it licenses nothing at all and is discarded rather
+		// than quoted as a floor (see `AudienceCountCompleteness`). The other two
+		// partial readings are honest lower bounds and are kept as such.
+		if (counted.completeness === 'suppression_truncated') {
+			return { capacityByDay, plannedTotal: null, isPlannedTotalLowerBound: false };
+		}
+		return {
+			capacityByDay,
+			plannedTotal: counted.eligible,
+			isPlannedTotalLowerBound: counted.completeness !== 'exact',
+		};
 	},
 });
+
+/**
+ * The campaign stream's pace multiplier, applied to a capacity projection.
+ *
+ * No organization yet (a fresh install) is a supported configuration, not an
+ * error: the projection passes through unmodified and the walk behaves exactly
+ * as it did before the dial existed (plan D2).
+ */
+async function applyPaceMultiplier(ctx: QueryCtx, byDay: number[]): Promise<number[]> {
+	let organizationId: string;
+	try {
+		organizationId = await getSingletonOrganizationId(ctx);
+	} catch {
+		return byDay;
+	}
+	const multiplier = await loadCampaignPaceMultiplier(ctx, {
+		organizationId,
+		stream: 'campaign',
+	});
+	return applyPaceToCapacityByDay(byDay, multiplier);
+}
 
 /**
  * THE PROGRESS LINE — "Sending over 4 days · day 1 of 4 · 5 000 of 20 000".
  *
  * Present from the moment the send starts, and NEVER an error state: a
  * multi-day send is a normal, visible state for a warming deployment (plan
- * D14). A campaign with no walk in flight simply answers `null`, which the UI
- * renders as nothing at all rather than as a problem.
+ * D14). A campaign with no walk IN FLIGHT answers `null`, which the UI renders
+ * as nothing at all rather than as a problem — and that is why the phase is
+ * checked at all: `campaignSendJobs` rows outlive the walk, and the report page
+ * is mostly read for campaigns that finished sending days ago. A present-tense
+ * sentence about a finished send is worse than no sentence.
  */
+// all-members: campaign send progress — the same member-visible surface as the
+// campaign report it renders on (see campaigns/analytics.ts).
 export const getCampaignSendPlan = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args): Promise<CampaignSendPlanProgress | null> => {
@@ -69,12 +128,17 @@ export const getCampaignSendPlan = authedQuery({
 			.query('campaignSendJobs')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
 			.first();
-		if (!job) return null;
+		if (!job || job.phase !== 'resolving') return null;
 		return campaignSendPlanProgress({
-			planDayIndex: job.planDayIndex,
-			planTotalDays: job.planTotalDays,
+			plan: {
+				planDayKey: job.planDayKey,
+				enqueuedToday: job.enqueuedToday,
+				planDayIndex: job.planDayIndex,
+				planTotalDays: job.planTotalDays,
+				plannedTotal: job.plannedTotal,
+				isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
+			},
 			enqueuedCount: job.enqueuedCount,
-			plannedTotal: job.plannedTotal,
 		});
 	},
 });

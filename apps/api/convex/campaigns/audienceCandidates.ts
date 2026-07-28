@@ -138,6 +138,14 @@ export const COUNT_CEILING = 25_000;
  * what is left of the multi-day plan's daily slice (`min(SEND_PAGE_SIZE,
  * remainingToday)`) so a page can never overshoot the day's warming capacity. A
  * second copy of the number would let the two disagree about how big a page is.
+ *
+ * WHY PAGES AT ALL: each page is one `.paginate()` (topic:
+ * `contactTopics.by_topic`; segment: `contacts.by_deleted_at` pinned to
+ * `deletedAt === undefined`) plus, for the topic branch, one batched
+ * `ctx.db.get` fan-out over the page's `contactId`s — so a topic or segment of
+ * any size resolves in bounded pages of reads rather than one `.collect()` plus
+ * N sequential point-reads, keeping any single query under the Convex
+ * per-query document-read limit.
  */
 export const SEND_PAGE_SIZE = 500;
 

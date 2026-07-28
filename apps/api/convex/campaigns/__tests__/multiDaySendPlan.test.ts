@@ -10,7 +10,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { orderByEngagement, planTodaysSlice, type SendPlanState } from '../multiDaySendPlan';
+import {
+	orderByEngagement,
+	planTodaysSlice,
+	remainingRecipients,
+	type RemainingRecipients,
+	type SendPlanState,
+} from '../multiDaySendPlan';
 import { utcDayKey } from '../../lib/utcDay';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -24,13 +30,21 @@ const NO_PLAN: SendPlanState = {
 	enqueuedToday: undefined,
 	planDayIndex: undefined,
 	planTotalDays: undefined,
+	plannedTotal: undefined,
+	isPlannedTotalLowerBound: undefined,
 };
+
+/** An audience counted to the end: the number IS the size. */
+const exact = (count: number): RemainingRecipients => ({ kind: 'exact', count });
+/** A count that stopped early: the number is a FLOOR under the size. */
+const atLeast = (count: number): RemainingRecipients => ({ kind: 'atLeast', count });
+const UNKNOWN: RemainingRecipients = { kind: 'unknown' };
 
 describe("planTodaysSlice — today's slice", () => {
 	it('budgets exactly today’s projected capacity', () => {
 		const slice = planTodaysSlice({
 			state: NO_PLAN,
-			remaining: 20_000,
+			remaining: exact(20_000),
 			capacityByDay: [5_000, 5_000, 5_000, 5_000],
 			now: NOON,
 		});
@@ -45,7 +59,7 @@ describe("planTodaysSlice — today's slice", () => {
 	it('counts what today has already carried', () => {
 		const slice = planTodaysSlice({
 			state: { ...NO_PLAN, planDayKey: TODAY, enqueuedToday: 4_500, planDayIndex: 0 },
-			remaining: 15_500,
+			remaining: exact(15_500),
 			capacityByDay: [5_000, 5_000, 5_000, 5_000],
 			now: NOON,
 		});
@@ -56,7 +70,7 @@ describe("planTodaysSlice — today's slice", () => {
 	it('exhausts the day and resumes at the NEXT CAP WINDOW, not a blind retry', () => {
 		const slice = planTodaysSlice({
 			state: { ...NO_PLAN, planDayKey: TODAY, enqueuedToday: 5_000, planDayIndex: 0 },
-			remaining: 15_000,
+			remaining: exact(15_000),
 			capacityByDay: [5_000, 5_000, 5_000, 5_000],
 			now: NOON,
 		});
@@ -68,7 +82,7 @@ describe("planTodaysSlice — today's slice", () => {
 	it('a projected ZERO for today is a real reading and exhausts the day', () => {
 		const slice = planTodaysSlice({
 			state: NO_PLAN,
-			remaining: 1_000,
+			remaining: exact(1_000),
 			capacityByDay: [0, 5_000],
 			now: NOON,
 		});
@@ -79,7 +93,7 @@ describe("planTodaysSlice — today's slice", () => {
 	it('does not exhaust a day once the audience is covered', () => {
 		const slice = planTodaysSlice({
 			state: { ...NO_PLAN, planDayKey: TODAY, enqueuedToday: 5_000 },
-			remaining: 0,
+			remaining: exact(0),
 			capacityByDay: [5_000, 5_000],
 			now: NOON,
 		});
@@ -91,8 +105,14 @@ describe("planTodaysSlice — today's slice", () => {
 describe('planTodaysSlice — resuming across days', () => {
 	it('rolls the day over: the counter restarts and the plan advances a day', () => {
 		const slice = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: 5_000, planDayIndex: 0, planTotalDays: 4 },
-			remaining: 15_000,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: 5_000,
+				planDayIndex: 0,
+				planTotalDays: 4,
+			},
+			remaining: exact(15_000),
 			capacityByDay: [5_000, 5_000, 5_000],
 			now: NOON + DAY,
 		});
@@ -105,8 +125,14 @@ describe('planTodaysSlice — resuming across days', () => {
 
 	it('a walk re-driven days later resumes as the NEXT day of the plan', () => {
 		const slice = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: 5_000, planDayIndex: 1, planTotalDays: 4 },
-			remaining: 10_000,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: 5_000,
+				planDayIndex: 1,
+				planTotalDays: 4,
+			},
+			remaining: exact(10_000),
 			capacityByDay: [5_000, 5_000],
 			now: NOON + 3 * DAY,
 		});
@@ -119,15 +145,21 @@ describe('planTodaysSlice — a capacity change mid-plan', () => {
 	it('re-lengthens the plan when capacity shrinks', () => {
 		const before = planTodaysSlice({
 			state: NO_PLAN,
-			remaining: 20_000,
+			remaining: exact(20_000),
 			capacityByDay: [10_000, 10_000],
 			now: NOON,
 		});
 		expect(before.totalDays).toBe(2);
 
 		const after = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: 2_000, planDayIndex: 0, planTotalDays: 2 },
-			remaining: 18_000,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: 2_000,
+				planDayIndex: 0,
+				planTotalDays: 2,
+			},
+			remaining: exact(18_000),
 			// The pace actuator retreated, or an IP left the pool.
 			capacityByDay: [2_000, 2_000, 2_000],
 			now: NOON,
@@ -140,8 +172,14 @@ describe('planTodaysSlice — a capacity change mid-plan', () => {
 
 	it('re-shortens the plan when capacity grows', () => {
 		const after = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: 1_000, planDayIndex: 0, planTotalDays: 6 },
-			remaining: 9_000,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: 1_000,
+				planDayIndex: 0,
+				planTotalDays: 6,
+			},
+			remaining: exact(9_000),
 			capacityByDay: [10_000, 10_000],
 			now: NOON,
 		});
@@ -154,7 +192,7 @@ describe('planTodaysSlice — unmeasured capacity never withholds mail (D2)', ()
 	it('imposes NO budget when there is no projection at all', () => {
 		const slice = planTodaysSlice({
 			state: NO_PLAN,
-			remaining: 20_000,
+			remaining: exact(20_000),
 			capacityByDay: [],
 			now: NOON,
 		});
@@ -164,25 +202,35 @@ describe('planTodaysSlice — unmeasured capacity never withholds mail (D2)', ()
 		expect(slice.resumeAt).toBeUndefined();
 	});
 
-	it('imposes no budget when the plan cannot be built at all', () => {
-		// A projection that plateaus at zero before the audience is covered is the
-		// planner's "cannot be planned" sentinel — unknown, and unknown allows.
+	it('an UNPLANNABLE LENGTH still imposes today’s budget', () => {
+		// A projection that plateaus at zero before the audience is covered yields
+		// the planner's "cannot be planned" sentinel. That is an unknown LENGTH —
+		// it is NOT permission to empty a 20 000-recipient audience into a queue
+		// that expires it, which is what conflating the two used to do.
 		const slice = planTodaysSlice({
 			state: NO_PLAN,
-			remaining: 20_000,
+			remaining: exact(20_000),
 			capacityByDay: [0, 0],
 			now: NOON,
 		});
-		expect(slice.remainingToday).toBeUndefined();
-		expect(slice.isDayExhausted).toBe(false);
+		expect(slice.capacityToday).toBe(0);
+		expect(slice.remainingToday).toBe(0);
+		expect(slice.isDayExhausted).toBe(true);
+		expect(slice.totalDays).toBe(0);
 	});
 
 	it('an UNKNOWN remaining count still respects the day budget', () => {
 		// The walker only asks while it still has pages, so "unknown" means "at
 		// least one" — never zero, which would waive the budget entirely.
 		const slice = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: 5_000, planDayIndex: 0, planTotalDays: 4 },
-			remaining: undefined,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: 5_000,
+				planDayIndex: 0,
+				planTotalDays: 4,
+			},
+			remaining: UNKNOWN,
 			capacityByDay: [5_000, 5_000],
 			now: NOON,
 		});
@@ -192,14 +240,92 @@ describe('planTodaysSlice — unmeasured capacity never withholds mail (D2)', ()
 
 	it('survives a hostile clock and hostile counters', () => {
 		const slice = planTodaysSlice({
-			state: { planDayKey: TODAY, enqueuedToday: Number.NaN, planDayIndex: -3, planTotalDays: 0 },
-			remaining: Number.NaN,
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				enqueuedToday: Number.NaN,
+				planDayIndex: -3,
+				planTotalDays: 0,
+			},
+			remaining: exact(Number.NaN),
 			capacityByDay: [Number.NaN, 5_000],
 			now: Number.NaN,
 		});
 		expect(Number.isFinite(slice.dayIndex)).toBe(true);
 		expect(slice.dayIndex).toBeGreaterThanOrEqual(0);
 		expect(slice.enqueuedToday).toBe(0);
+	});
+});
+
+describe('planTodaysSlice — a LOWER-BOUND denominator (the truncated count)', () => {
+	/**
+	 * The failure this pins: `countAudience` reads a bounded number of documents,
+	 * so a large topic audience comes back truncated. Treating that floor as the
+	 * audience size made the plan look finished, waived the day budget, and let
+	 * the walker empty the whole audience into a queue that expires the tail —
+	 * on exactly the campaigns the multi-day plan exists for.
+	 */
+	it('keeps today’s budget when the count is only a floor', () => {
+		const slice = planTodaysSlice({
+			state: NO_PLAN,
+			// 1 500 counted of a real 20 000: the read budget ran out.
+			remaining: atLeast(1_500),
+			capacityByDay: [5_000, 5_000, 5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.remainingToday).toBe(5_000);
+		expect(slice.capacityToday).toBe(5_000);
+	});
+
+	it('a floor of ZERO never means "the audience is finished"', () => {
+		const slice = planTodaysSlice({
+			state: { ...NO_PLAN, planDayKey: TODAY, enqueuedToday: 5_000 },
+			remaining: atLeast(0),
+			capacityByDay: [5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.remainingToday).toBe(0);
+		expect(slice.isDayExhausted).toBe(true);
+	});
+
+	it('LENGTHENS the plan rather than shortening it', () => {
+		const slice = planTodaysSlice({
+			// The walk already believes the plan is four days long.
+			state: { ...NO_PLAN, planDayKey: TODAY, planDayIndex: 0, planTotalDays: 4 },
+			// A floor that would compute one day on its own.
+			remaining: atLeast(1_500),
+			capacityByDay: [5_000, 5_000, 5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(4);
+	});
+});
+
+describe('remainingRecipients — how well the denominator is known', () => {
+	it('is UNKNOWN when the count was never taken', () => {
+		expect(remainingRecipients(NO_PLAN, 100)).toEqual({ kind: 'unknown' });
+	});
+
+	it('is EXACT when the count finished, and nets off what has gone out', () => {
+		expect(remainingRecipients({ ...NO_PLAN, plannedTotal: 20_000 }, 5_000)).toEqual({
+			kind: 'exact',
+			count: 15_000,
+		});
+	});
+
+	it('is a FLOOR when the count stopped early', () => {
+		expect(
+			remainingRecipients({ ...NO_PLAN, plannedTotal: 1_500, isPlannedTotalLowerBound: true }, 500)
+		).toEqual({ kind: 'atLeast', count: 1_000 });
+	});
+
+	it('never goes negative when more went out than the count found', () => {
+		expect(
+			remainingRecipients(
+				{ ...NO_PLAN, plannedTotal: 1_500, isPlannedTotalLowerBound: true },
+				9_000
+			)
+		).toEqual({ kind: 'atLeast', count: 0 });
 	});
 });
 

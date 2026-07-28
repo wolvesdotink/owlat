@@ -48,17 +48,6 @@ import {
 	type SegmentFilters,
 } from './audienceCandidates';
 
-/*
- * The page size for one Audience-resolution hop is `SEND_PAGE_SIZE`, shared
- * with the send walker from `audienceCandidates.ts`. Each page is one
- * `.paginate()` (topic: `contactTopics.by_topic`; segment:
- * `contacts.by_deleted_at` pinned to `deletedAt === undefined`) plus, for the
- * topic branch, one batched `ctx.db.get` fan-out over the page's `contactId`s —
- * so a topic/segment of any size resolves in bounded pages of reads rather than
- * one `.collect()` + N sequential point-reads, keeping any single query under
- * the Convex per-query document-read limit.
- */
-
 /** One resolved page: the eligible recipients, the next cursor, the raw
  *  candidate count examined on this page. `nextCursor === null` ⇒ exhausted. */
 export interface ResolvedPage {
