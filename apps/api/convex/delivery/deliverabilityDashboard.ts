@@ -14,9 +14,13 @@
  * same arithmetic over the same rows.
  *
  * D2. A deployment with no reference transport is a SUPPORTED CONFIGURATION,
- * not an incomplete setup. `reference` is `null` for every cell, the two-armed
- * gates hold (they never fail), confidence says "low" and names what would
- * improve it. Nothing throws, nothing renders as an error, nothing is blocked.
+ * not an incomplete setup. `reference` is `null` for every cell, the
+ * TRAILING-BASELINE evaluator runs instead of the two-armed one — the standalone
+ * implementation is the honest answer for a standalone deployment, not a
+ * fallback — and `dashboardConfidence` caps the level at what the missing
+ * measurement inputs allow, so the screen says "measurement confidence: low" and
+ * names what would improve it (plan D14) rather than grading a column of holds
+ * `high`. Nothing throws, nothing renders as an error, nothing is blocked.
  */
 
 import {
@@ -31,6 +35,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
+import { hasSeedAccounts } from '../analytics/seedAccounts';
 import {
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
@@ -38,7 +43,7 @@ import {
 } from '../analytics/transportOutcomeSummary';
 import { referenceRelayTransportId } from './alignmentPreflight';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
-import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
+import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import type { RampGateResult } from './ramp/gateTypes';
 import {
@@ -51,13 +56,6 @@ import {
 
 /** Route-state rows for one provider — one per stream plus the legacy row. */
 const ROUTE_STATE_SCAN_LIMIT = 16;
-
-/**
- * Seed placement lands in a later piece (P1-7 owns the seed table and the
- * confidence model with it). Declared ONCE so the per-cell judgement and the
- * screen-level flag cannot drift apart on the day seeds arrive.
- */
-const SEED_COVERAGE_UNAVAILABLE = false;
 
 /**
  * The cell's route-state row: the per-stream row when the controller has
@@ -164,6 +162,23 @@ export const getDeliverabilityDashboard = authedQuery({
 		const referenceTransportId = await referenceRelayTransportId(ctx);
 		const hasReferenceArm = referenceTransportId !== null;
 		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
+		// THE EVALUATOR IS CHOSEN BY THE DEPLOYMENT, not by the window or the cell.
+		// Running the two-armed evaluator against `reference === null` grades a
+		// column of holds as high-confidence direct measurement; the
+		// trailing-baseline implementation is what a standalone cell is actually
+		// measured by, so it is what the screen reports (plan D3, D14).
+		const evaluator = hasReferenceArm ? referenceArmGateEvaluator : trailingBaselineGateEvaluator;
+		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
+		// there seed mailboxes at all), not a per-cell one, and it only lowers
+		// confidence — a deployment with none is supported, never nagged (plan D2).
+		// The per-cell PLACEMENT sweep is a separate wiring job (the roll-up is per
+		// destination provider, the gate input is per cell); until it lands, gate 5
+		// holds and that hold costs the ramp nothing, because it is optional.
+		// ONE row through the seed index, not a placement window: the screen needs
+		// the boolean, and the roll-up it used to buy it from scans the probe
+		// index, expands one observation per probe and fans out a `db.get` per
+		// account — all of it discarded.
+		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
 		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
 
 		const cells: DashboardCellView[] = [];
@@ -194,7 +209,7 @@ export const getDeliverabilityDashboard = authedQuery({
 					: summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
 			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
 
-			const evaluation = referenceArmGateEvaluator.evaluate({
+			const evaluation = evaluator.evaluate({
 				config: RAMP_STREAM_CONFIGS[cell.stream],
 				own,
 				reference,
@@ -214,7 +229,8 @@ export const getDeliverabilityDashboard = authedQuery({
 					own,
 					reference,
 					evaluation,
-					hasSeedCoverage: SEED_COVERAGE_UNAVAILABLE,
+					hasSeedCoverage,
+					hasReferenceArm,
 					trend: buildDashboardTrend({
 						ownBuckets,
 						referenceBuckets,
@@ -230,7 +246,7 @@ export const getDeliverabilityDashboard = authedQuery({
 			windowStart: window.sinceDay,
 			windowEnd: window.untilDay,
 			referenceTransportId,
-			hasSeedCoverage: SEED_COVERAGE_UNAVAILABLE,
+			hasSeedCoverage,
 			cells,
 		};
 	},

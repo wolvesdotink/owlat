@@ -249,6 +249,10 @@
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
 		},
+		"./smtpBlockCategories": {
+			"types": "./src/smtpBlockCategories.ts",
+			"import": "./src/smtpBlockCategories.ts"
+		},
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"

@@ -85,10 +85,24 @@ export interface EngagementGateThresholds {
 	 * that is noise, and comparing against noise would retreat a healthy cell.
 	 */
 	readonly baselineMinSample: number;
+	/**
+	 * THE STANDALONE SUBSTITUTION (plan D14): with no reference arm, the cell's
+	 * recent engagement is compared against its OWN 30-day EWMA-style trailing
+	 * window, and the floor is relaxed from 0.95 to 0.85.
+	 *
+	 * Relaxed because the comparison got weaker, not because we got braver. The
+	 * concurrent ratio holds subject, content, timing and audience constant by
+	 * construction; a week-against-month comparison holds NONE of them. A
+	 * redesigned newsletter that opens 20% worse is indistinguishable from a 20%
+	 * placement loss, so this threshold is set to catch only LARGE moves — and the
+	 * gate that carries it may never justify an INCREASE, only a decrease.
+	 */
+	readonly trailingBaselineRatio: number;
 }
 
 export const ENGAGEMENT_GATE_THRESHOLDS: EngagementGateThresholds = {
 	minRatio: 0.95,
 	absoluteFloorRatio: 0.7,
 	baselineMinSample: 1200,
+	trailingBaselineRatio: 0.85,
 };

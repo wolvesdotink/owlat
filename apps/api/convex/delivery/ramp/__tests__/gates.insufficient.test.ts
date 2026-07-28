@@ -9,18 +9,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	evaluateComplaintGate,
-	evaluateDeferralGate,
-	evaluateHardBounceGate,
-	evaluateSeedPlacementGate,
-} from '../gates';
+import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../gates';
+import { evaluateSeedPlacementGate } from '../seedGate';
 import { OPTIONAL_RAMP_GATES, RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
-import { arm, input, NOW, seeds } from './gateFixtures';
+import { arm, describeEquipped, input, NOW, seeds } from './gateFixtures';
 
 const STALE_AT = NOW - RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs - 1;
 
-describe('gate 1 — hard bounce minimum sample', () => {
+describeEquipped('gate 1 — hard bounce minimum sample', () => {
 	it('holds one send below the floor even at a 100% hard-bounce rate', () => {
 		const sent = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
 		const result = evaluateHardBounceGate(
@@ -105,7 +101,7 @@ describe('gate 2 — deferral minimum sample', () => {
 	});
 });
 
-describe('gate 3 — complaint minimum sample', () => {
+describeEquipped('gate 3 — complaint minimum sample', () => {
 	it('holds one send below the floor even at a 100% complaint rate', () => {
 		const sent = RAMP_GATE_SAMPLE_FLOORS.complaint - 1;
 		const result = evaluateComplaintGate(
@@ -133,7 +129,7 @@ describe('gate 3 — complaint minimum sample', () => {
 	});
 });
 
-describe('gate 5 — seed placement minimum sample (optional gate)', () => {
+describeEquipped('gate 5 — seed placement minimum sample (optional gate)', () => {
 	it('holds below the seed floor, and the gate is one the ramp treats as optional', () => {
 		const result = evaluateSeedPlacementGate(
 			input({
@@ -176,23 +172,26 @@ describe('gate 5 — seed placement minimum sample (optional gate)', () => {
 	});
 });
 
-describe('the own-arm absolute breach is the one thing thin reference data cannot suppress', () => {
-	it('fails on an ample own arm over the ceiling with no reference arm at all', () => {
-		const result = evaluateHardBounceGate(
-			input({ own: arm({ sent: 10_000, hardBounced: 2_000 }), reference: null })
-		);
-		expect(result.status).toBe('fail');
-		expect(result.reason).toBe('absolute_threshold_breached');
-	});
+describeEquipped(
+	'the own-arm absolute breach is the one thing thin reference data cannot suppress',
+	() => {
+		it('fails on an ample own arm over the ceiling with no reference arm at all', () => {
+			const result = evaluateHardBounceGate(
+				input({ own: arm({ sent: 10_000, hardBounced: 2_000 }), reference: null })
+			);
+			expect(result.status).toBe('fail');
+			expect(result.reason).toBe('absolute_threshold_breached');
+		});
 
-	it('fails on an ample own arm over the ceiling with a thin reference arm', () => {
-		const result = evaluateComplaintGate(
-			input({
-				own: arm({ sent: 100_000, complained: 1_000 }),
-				reference: arm({ sent: 10 }),
-			})
-		);
-		expect(result.status).toBe('fail');
-		expect(result.reason).toBe('absolute_threshold_breached');
-	});
-});
+		it('fails on an ample own arm over the ceiling with a thin reference arm', () => {
+			const result = evaluateComplaintGate(
+				input({
+					own: arm({ sent: 100_000, complained: 1_000 }),
+					reference: arm({ sent: 10 }),
+				})
+			);
+			expect(result.status).toBe('fail');
+			expect(result.reason).toBe('absolute_threshold_breached');
+		});
+	}
+);

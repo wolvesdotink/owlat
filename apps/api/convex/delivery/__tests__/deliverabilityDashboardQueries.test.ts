@@ -376,6 +376,119 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		expect(cell.confidence.improvements).toContain('add_seed_mailboxes');
 	});
 
+	/**
+	 * THE REGRESSION THIS TEST EXISTS FOR (plan D14).
+	 *
+	 * A standalone cell with real volume decides its DEFERRAL gate — which is
+	 * genuinely high-confidence direct measurement — while the two-armed gates
+	 * have nothing to compare against and hold. Folding a holding gate's grade
+	 * into the cell's confidence, or running the two-armed evaluator against
+	 * `reference === null`, both end at "measurement confidence: high" printed
+	 * beside a column of "not enough data yet". The screen must never say that
+	 * for this configuration: the plan's sentence is "low — connect a relay or
+	 * add seed mailboxes to improve".
+	 */
+	it('never renders HIGH confidence for a cell with no reference arm', async () => {
+		const t = convexTest(schema, modules);
+		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		await t.run(async (ctx) => {
+			// Ample volume, nothing wrong with it: the deferral gate DECIDES, and it
+			// decides at `high`. That is the input that used to reach the wire as a
+			// high-confidence cell.
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day, sent: 50_000, delivered: 49_800 })
+			);
+		});
+
+		const dashboard = await t.query(
+			api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
+			{}
+		);
+		for (const cell of dashboard.cells) {
+			expect(cell.confidence.level).not.toBe('high');
+			expect(['none', 'low', 'medium']).toContain(cell.confidence.level);
+		}
+
+		const cell = gmailCell(dashboard);
+		expect(cell.confidence.level).toBe('low');
+		expect(cell.confidence.improvements).toContain('connect_reference_transport');
+		// AND THE STANDALONE EVALUATOR IS THE ONE THAT RAN. Gate 3 on a deployment
+		// with no complaint feedback loop is the unsubscribe PROXY, graded medium;
+		// the two-armed evaluator's gate 3 is direct complaint measurement graded
+		// high, so the grade on this row is the evaluator's fingerprint.
+		const complaint = cell.gates.find((gate) => gate.gate === 'complaint');
+		expect(complaint?.confidence).toBe('medium');
+		// A gate that measured nothing contributes no grade: the deferral gate
+		// decided at `high` and the cell is still not `high`.
+		const deferral = cell.gates.find((gate) => gate.gate === 'deferral');
+		expect(deferral?.confidence).toBe('high');
+	});
+
+	/**
+	 * SEED COVERAGE IS "DOES THE ORG OWN A SEED MAILBOX", read from the ACCOUNTS.
+	 *
+	 * It used to be read off a whole placement roll-up whose other three fields
+	 * were discarded. The boolean has to keep meaning the same thing after that
+	 * shortcut: an org with a live seed account but no probes yet still HAS the
+	 * instrument, so the improvement drops and the one-armed cap rises to
+	 * `medium` — before a single probe has been classified. A read that needed
+	 * observations to notice a mailbox would tell the operator who just connected
+	 * one that nothing had changed.
+	 */
+	it('counts a seed MAILBOX as coverage, before any probe has been classified', async () => {
+		const t = convexTest(schema, modules);
+		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day, sent: 50_000, delivered: 49_800 })
+			);
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'user-1',
+				organizationId: DASHBOARD_ORG,
+				address: 'owlat.seed.0@gmail.example',
+				domain: 'gmail.example',
+				kind: 'external' as const,
+				status: 'active' as const,
+				usedBytes: 0,
+				uidValidity: day,
+				createdAt: day,
+				updatedAt: day,
+			});
+			await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-1',
+				organizationId: DASHBOARD_ORG,
+				mailboxId,
+				purpose: 'seed' as const,
+				seedProvider: 'gmail' as const,
+				imapHost: 'imap.gmail.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.gmail.example',
+				smtpPort: 587,
+				isSmtpSecure: false,
+				authMethod: 'password' as const,
+				imapUsername: 'login-0',
+				secretCiphertext: 'ct',
+				secretIv: 'iv',
+				secretAuthTag: 'tag',
+				secretEnvelopeVersion: 1,
+				status: 'pending' as const,
+				createdAt: day,
+				updatedAt: day,
+			});
+		});
+
+		const cell = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		);
+		expect(cell.confidence.improvements).not.toContain('add_seed_mailboxes');
+		// Still never `high`: there is no second arm, and that cap is unmoved.
+		expect(cell.confidence.level).toBe('medium');
+		expect(cell.confidence.improvements).toContain('connect_reference_transport');
+	});
+
 	it('holds on thin data instead of failing, and says how thin', async () => {
 		const t = convexTest(schema, modules);
 		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;

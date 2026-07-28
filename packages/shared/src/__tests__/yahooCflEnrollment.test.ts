@@ -289,7 +289,7 @@ describe('a report is ground truth', () => {
 
 	it('never lets a report alone yield high-confidence complaint measurement', () => {
 		// The adversarial end-to-end: the crafted report is refused, so the derived
-		// state stays `not_started` and the substitution keeps the tightened proxy
+		// state stays `not_started` and the substitution keeps the unsubscribe proxy
 		// with its confidence caveat (D14) instead of asserting direct measurement.
 		const forged = applyYahooCflEvent(
 			emptyYahooCflEnrollment(),
@@ -298,7 +298,7 @@ describe('a report is ground truth', () => {
 		);
 		const { state } = deriveYahooCflState(forged.record, T0 + DAY);
 		// The derived state is what the substitution keys off, and it stays
-		// `not_started` — so the yahoo cell keeps the tightened proxy with its
+		// `not_started` — so the yahoo cell keeps the unsubscribe proxy with its
 		// confidence caveat instead of asserting direct measurement. The
 		// substitution itself is pinned next to the ramp thresholds it reads, in
 		// `apps/api/convex/delivery/ramp/__tests__/yahooAbsent.test.ts`.

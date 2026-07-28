@@ -24,7 +24,8 @@ import {
 	type TransportOutcomeSummary,
 } from '../../analytics/transportOutcomeSummary';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
-import type { RampGateEvaluation } from '../ramp/gateTypes';
+import { DIRECT_MEASUREMENT } from '../ramp/gateGrades';
+import type { RampGateConfidence, RampGateEvaluation } from '../ramp/gateTypes';
 import {
 	buildDashboardCellView,
 	buildDashboardTrend,
@@ -60,14 +61,22 @@ function bucket(
 
 const ABOVE_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce + 1;
 const BELOW_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
-const AT_ENGAGEMENT_FLOOR = RAMP_GATE_SAMPLE_FLOORS.engagement;
-const BELOW_ENGAGEMENT_FLOOR = RAMP_GATE_SAMPLE_FLOORS.engagement - 1;
 
+/**
+ * THE LEVEL IS THE EVALUATOR'S, NOT THE SCREEN'S.
+ *
+ * `dashboardConfidence` translates `RampGateEvaluation.measuredConfidence` and adds the
+ * improvement codes; it never re-derives a level from the arms or the sample.
+ * That is the whole point of the table below: the same traffic with a different
+ * `evaluated` grade renders a different level, and the same `evaluated` grade
+ * with different traffic renders the same one.
+ */
 interface ConfidenceCase {
 	readonly name: string;
-	readonly own: TransportOutcomeSummary;
-	readonly reference: TransportOutcomeSummary | null;
+	readonly ownSent: number;
+	readonly hasReferenceArm: boolean;
 	readonly hasSeedCoverage: boolean;
+	readonly evaluated: RampGateConfidence;
 	readonly level: DashboardConfidenceLevel;
 	readonly improvements: readonly DashboardConfidenceImprovement[];
 }
@@ -75,82 +84,81 @@ interface ConfidenceCase {
 const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 	{
 		name: 'nothing sent, standalone, no seeds — none, and both invitations',
-		own: summary(),
-		reference: null,
+		ownSent: 0,
+		hasReferenceArm: false,
+		// An evaluation nothing contributed to grades `low`; a window with no
+		// traffic in it is still reported as `none`, because a confidence beside no
+		// measurement at all is a number nobody should read.
+		evaluated: 'low',
 		hasSeedCoverage: false,
 		level: 'none',
 		improvements: ['connect_reference_transport', 'add_seed_mailboxes'],
 	},
 	{
 		name: 'nothing sent with both a reference arm and seeds — still none, nothing to offer',
-		own: summary(),
-		reference: summary({ sent: 5000 }),
+		ownSent: 0,
+		hasReferenceArm: true,
+		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'none',
 		improvements: [],
 	},
 	{
-		name: 'standalone with plenty of volume — low, and only the relay invitation',
-		own: summary({ sent: 100_000, calibrationSent: 100_000 }),
-		reference: null,
+		name: 'a healthy STANDALONE cell reaches the wire at the MEDIUM the evaluator graded it',
+		// The configuration the whole confidence model exists for: no reference arm,
+		// gate 3 on the unsubscribe proxy, so the weakest contributor is `medium`.
+		ownSent: 100_000,
+		hasReferenceArm: false,
+		evaluated: 'medium',
+		hasSeedCoverage: true,
+		level: 'medium',
+		improvements: ['connect_reference_transport'],
+	},
+	{
+		name: 'a standalone cell graded LOW is not upgraded on its way to the screen',
+		ownSent: 100_000,
+		hasReferenceArm: false,
+		evaluated: 'low',
 		hasSeedCoverage: true,
 		level: 'low',
 		improvements: ['connect_reference_transport'],
 	},
 	{
-		name: 'two arms but below the bounce floor — low, and asks for volume',
-		own: summary({ sent: BELOW_BOUNCE_FLOOR }),
-		reference: summary({ sent: BELOW_BOUNCE_FLOOR }),
-		hasSeedCoverage: true,
-		level: 'low',
-		improvements: ['send_more_volume'],
-	},
-	{
-		name: 'own arm is huge but the reference arm is a handful of sends — low, not medium',
-		// The two-armed gates are all holding on `reference_sample_below_floor`
-		// here, so anything above `low` would contradict the gate column (D14).
-		own: summary({ sent: 5_000, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: 2, calibrationSent: 0 }),
-		hasSeedCoverage: true,
-		level: 'low',
-		improvements: ['send_more_volume'],
-	},
-	{
-		name: 'reference arm one send below the bounce floor — still low',
-		own: summary({ sent: 5_000, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: BELOW_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		hasSeedCoverage: true,
-		level: 'low',
-		improvements: ['send_more_volume'],
-	},
-	{
-		name: 'two arms above the bounce floor, calibration slice still thin — medium',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: BELOW_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		name: 'a STANDALONE cell whose gates all graded HIGH is still capped at medium (D14)',
+		// THE REGRESSION THIS TABLE EXISTS FOR. A one-armed cell whose only DECIDED
+		// gate is the (genuinely high-confidence) deferral check must not tell the
+		// operator the cell is well-measured: there is no second arm, and the screen
+		// says so.
+		ownSent: 100_000,
+		hasReferenceArm: false,
+		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'medium',
-		improvements: ['send_more_volume'],
+		improvements: ['connect_reference_transport'],
 	},
 	{
-		name: 'two arms, own calibrated but the reference arm is not — still medium',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: BELOW_ENGAGEMENT_FLOOR }),
+		name: 'a thin window keeps the evaluator’s level and gains only the volume advice',
+		ownSent: BELOW_BOUNCE_FLOOR,
+		hasReferenceArm: true,
+		evaluated: 'high',
 		hasSeedCoverage: true,
-		level: 'medium',
+		level: 'high',
 		improvements: ['send_more_volume'],
 	},
 	{
-		name: 'two arms, both calibration slices at the floor — high, nothing to improve',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		name: 'two arms, everything measured on our own wire — high, nothing to improve',
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: true,
+		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'high',
 		improvements: [],
 	},
 	{
 		name: 'high measurement with no seeds — still high, seeds are an invitation not a gate (D2)',
-		own: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
-		reference: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: true,
+		evaluated: 'high',
 		hasSeedCoverage: false,
 		level: 'high',
 		improvements: ['add_seed_mailboxes'],
@@ -161,9 +169,10 @@ describe('dashboardConfidence', () => {
 	for (const testCase of CONFIDENCE_CASES) {
 		it(testCase.name, () => {
 			const result = dashboardConfidence({
-				own: testCase.own,
-				reference: testCase.reference,
+				ownSent: testCase.ownSent,
+				hasReferenceArm: testCase.hasReferenceArm,
 				hasSeedCoverage: testCase.hasSeedCoverage,
+				evaluated: testCase.evaluated,
 			});
 			expect(result.level).toBe(testCase.level);
 			expect([...result.improvements].sort()).toEqual([...testCase.improvements].sort());
@@ -184,18 +193,54 @@ describe('dashboardConfidence', () => {
 		]);
 	});
 
-	it('never asks for volume twice', () => {
-		for (const reference of [
-			summary({ sent: ABOVE_BOUNCE_FLOOR }),
-			summary({ sent: BELOW_BOUNCE_FLOOR }),
-		]) {
+	it('passes EVERY grade through unchanged on a two-armed cell', () => {
+		for (const evaluated of ['low', 'medium', 'high'] as const) {
 			const result = dashboardConfidence({
-				own: summary({ sent: BELOW_BOUNCE_FLOOR }),
-				reference,
+				ownSent: ABOVE_BOUNCE_FLOOR,
+				hasReferenceArm: true,
 				hasSeedCoverage: true,
+				evaluated,
 			});
-			expect(result.improvements.filter((code) => code === 'send_more_volume')).toHaveLength(1);
+			expect(result.level).toBe(evaluated);
 		}
+	});
+
+	it('never renders HIGH for a cell with no reference arm, whatever the gates graded', () => {
+		for (const evaluated of ['low', 'medium', 'high'] as const) {
+			for (const hasSeedCoverage of [true, false]) {
+				const result = dashboardConfidence({
+					ownSent: ABOVE_BOUNCE_FLOOR,
+					hasReferenceArm: false,
+					hasSeedCoverage,
+					evaluated,
+				});
+				expect(result.level).not.toBe('high');
+			}
+		}
+	});
+
+	it('reads D14’s sentence literally: neither input present caps the cell at LOW', () => {
+		const result = dashboardConfidence({
+			ownSent: ABOVE_BOUNCE_FLOOR,
+			hasReferenceArm: false,
+			hasSeedCoverage: false,
+			evaluated: 'high',
+		});
+		expect(result.level).toBe('low');
+		expect([...result.improvements].sort()).toEqual([
+			'add_seed_mailboxes',
+			'connect_reference_transport',
+		]);
+	});
+
+	it('never asks for volume twice', () => {
+		const result = dashboardConfidence({
+			ownSent: BELOW_BOUNCE_FLOOR,
+			hasReferenceArm: true,
+			hasSeedCoverage: true,
+			evaluated: 'high',
+		});
+		expect(result.improvements.filter((code) => code === 'send_more_volume')).toHaveLength(1);
 	});
 });
 
@@ -340,8 +385,11 @@ describe('buildDashboardCellView', () => {
 					ownRate: 0.004,
 					referenceRate: 0.003,
 				},
+				...DIRECT_MEASUREMENT,
 			},
 		],
+		measuredConfidence: 'high',
+		increaseEvidence: true,
 		evaluatedAt: 1,
 	};
 
@@ -356,6 +404,7 @@ describe('buildDashboardCellView', () => {
 			reference: null,
 			evaluation,
 			hasSeedCoverage: false,
+			hasReferenceArm: false,
 			trend: [],
 		});
 		expect(view.own).toBe(own);
@@ -375,8 +424,39 @@ describe('buildDashboardCellView', () => {
 			reference: null,
 			evaluation,
 			hasSeedCoverage: false,
+			hasReferenceArm: false,
 			trend: [],
 		});
 		expect(view.cleanStreakIncludingThisWindow).toBe(evaluation.cleanStreak);
+	});
+
+	/**
+	 * THE CELL-LEVEL NUMBER THE UI RENDERS IS THE EVALUATOR'S (plan D5, D14).
+	 *
+	 * A healthy standalone cell is graded `medium` by the decision core — gate 3
+	 * is running the unsubscribe proxy, which is the weakest link. The screen must
+	 * report that same `medium`; the placeholder it replaced said `low`, and a
+	 * controller and a dashboard that disagree about a number is the D5 failure
+	 * mode landing in the one configuration D14 says to tell the truth to.
+	 */
+	it('carries a standalone evaluation’s MEDIUM to the wire, and does not upgrade a LOW', () => {
+		for (const graded of ['medium', 'low'] as const satisfies readonly RampGateConfidence[]) {
+			const view = buildDashboardCellView({
+				cell: { stream: 'campaign', destinationProvider: 'gmail' },
+				cellKey: 'campaign:gmail',
+				ownShare: 1,
+				phaseCeiling: null,
+				own: summary({ sent: 50_000, delivered: 49_000 }),
+				// Standalone: the configuration the old heuristic pinned at `low`
+				// regardless of what the gates actually measured.
+				reference: null,
+				evaluation: { ...evaluation, measuredConfidence: graded },
+				hasSeedCoverage: true,
+				hasReferenceArm: false,
+				trend: [],
+			});
+			expect(view.confidence.level).toBe(graded);
+			expect(view.confidence.improvements).toContain('connect_reference_transport');
+		}
 	});
 });

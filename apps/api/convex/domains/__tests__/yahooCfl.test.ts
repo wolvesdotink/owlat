@@ -298,7 +298,7 @@ describe('report observation keeps the enrollment live', () => {
 		// And the guide the operator sees still reports the substituted proxy.
 		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide?.state).toBe('not_started');
-		expect(guide?.complaintSignal.confidence).toBe('low');
+		expect(guide?.complaintSignal.confidence).toBe('medium');
 		expect(guide?.complaintSignal.source).toBe('unsubscribe_rate_proxy');
 	});
 
@@ -572,18 +572,18 @@ describe('the re-check, derived on read', () => {
 });
 
 describe('D2 — never enrolling is a supported configuration', () => {
-	it('serves the guide with the tightened proxy substitution and no error state', async () => {
+	it('serves the guide with the relative proxy substitution and no error state', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedDomain(t, { domain: 'mail.p.test' });
 		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide?.state).toBe('not_started');
 		expect(guide?.complaintSignal).toMatchObject({
 			source: 'unsubscribe_rate_proxy',
-			thresholdRate: 0.0005,
-			confidence: 'low',
+			trip: { kind: 'trailing_multiple', multiple: 3, series: 'unsubscribe_rate' },
+			confidence: 'medium',
 			isBlocking: false,
 		});
-		expect(guide?.complaintSignal.confidenceNote).toContain('Measurement confidence: low');
+		expect(guide?.complaintSignal.confidenceNote).toContain('Measurement confidence: medium');
 		expect(guide?.complaintSignal.caveat).toContain('would measure complaints directly');
 		// Reading the guide writes nothing: absence is not a row to be created.
 		expect(await enrollmentRows(t)).toHaveLength(0);
@@ -594,11 +594,11 @@ describe('D2 — never enrolling is a supported configuration', () => {
 		const domainId = await seedDomain(t, { domain: 'mail.q.test' });
 		// `getGuide` takes only a domain id. The CFBL-Address feed lands with P2-7;
 		// until then the server answers `false` itself, so a caller cannot steer the
-		// reported confidence or the displayed threshold (D20 — no speculative seam).
+		// reported confidence or the displayed trip point (D20 — no speculative seam).
 		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide?.complaintSignal).toMatchObject({
 			source: 'unsubscribe_rate_proxy',
-			confidence: 'low',
+			confidence: 'medium',
 			isBlocking: false,
 		});
 	});
