@@ -63,6 +63,8 @@ export function passingGate(
 			ownRate: 0.004,
 			referenceRate: 0.003,
 		},
+		confidence: 'high',
+		mayJustifyIncrease: true,
 	};
 }
 
@@ -82,6 +84,8 @@ export function failingGate(
 			ownRate: 0.041,
 			referenceRate: 0.002,
 		},
+		confidence: 'high',
+		mayJustifyIncrease: true,
 	};
 }
 
@@ -101,6 +105,8 @@ export function holdingGate(
 			ownRate: null,
 			referenceRate: null,
 		},
+		confidence: 'high',
+		mayJustifyIncrease: true,
 	};
 }
 
@@ -125,5 +131,30 @@ export function cellView(
 		},
 		trend: [],
 		...overrides,
+	};
+}
+
+/**
+ * The BLOCK-MESSAGE HARD STOP — the one verdict whose sample is not denominated
+ * in sends. `ownSample` counts CLASSIFIED SMTP RESPONSES and `minSample` is the
+ * floor in those same units, which is why `gateExplanation` branches on the
+ * reason rather than printing the generic "N sends" sentence.
+ */
+export function blockMessageHalt(): DeliverabilityDashboardGate {
+	return {
+		gate: 'deferral',
+		status: 'halt',
+		reason: 'block_message_detected',
+		measurement: {
+			thresholdRate: 0.005,
+			toleranceValuePp: null,
+			ownSample: 240,
+			referenceSample: null,
+			minSample: 20,
+			ownRate: 0.05,
+			referenceRate: null,
+		},
+		confidence: 'high',
+		mayJustifyIncrease: true,
 	};
 }

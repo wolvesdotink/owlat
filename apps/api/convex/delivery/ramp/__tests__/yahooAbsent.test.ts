@@ -233,9 +233,7 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 		const trip = MULTIPLE * TRAILING_UNSUBSCRIBE;
 		// `inclusive_fail`, matching UNSUBSCRIBE_PROXY_SPEC: exactly 3x FAILS.
 		expect(substitutionFails('not_started', trip, TRAILING_UNSUBSCRIBE)).toBe(true);
-		expect(substitutionFails('not_started', trip - JUST_ABOVE, TRAILING_UNSUBSCRIBE)).toBe(
-			false
-		);
+		expect(substitutionFails('not_started', trip - JUST_ABOVE, TRAILING_UNSUBSCRIBE)).toBe(false);
 	});
 
 	it('never trips the proxy on a trailing rate that cannot be a denominator', () => {

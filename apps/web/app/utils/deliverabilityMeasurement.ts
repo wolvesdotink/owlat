@@ -141,6 +141,13 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			case 'reference_rate_unmeasurable':
 			case 'baseline_rate_unmeasurable':
 				return 'The recorded counters for this window could not be read as a rate, so this check is holding.';
+			case 'reference_not_a_denominator':
+			case 'baseline_not_a_denominator':
+				// NOT a fault, and the sentence must not read like one: the series this
+				// check compares against is a perfectly good number that a relative
+				// comparison cannot be built on — most often a clean window with nothing
+				// in the numerator at all.
+				return 'The window this check compares against is too clean to compare with — there is no relative verdict to give yet.';
 			case 'evidence_absent':
 				return 'Nothing has been measured for this cell yet.';
 			default: {
@@ -158,6 +165,13 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const threshold = formatPercentage(measurement.thresholdRate, 2);
 	const reference =
 		measurement.referenceRate === null ? null : formatPercentage(measurement.referenceRate, 2);
+	// THE ONE VERDICT WHOSE DENOMINATOR IS NOT SENDS. The block-message hard stop
+	// counts CLASSIFIED SMTP RESPONSES (see `ownSample` in the server's
+	// `gateTypes.ts`), so the generic sentence below would print a response count
+	// under the word "sends" — on the one verdict that stops a cell outright.
+	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
+		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
+	}
 	const comparison =
 		reference === null
 			? ''

@@ -149,15 +149,30 @@ interface RampGateMeasurementBase {
 	readonly ratioCeiling?: number;
 	/** The arm-vs-arm tolerance in percentage points, or `null` when the gate has none. */
 	readonly toleranceValuePp: number | null;
-	/** Denominator behind `ownRate` (sends, or seeds for the placement gate). */
+	/**
+	 * Denominator behind `ownRate`. It is SENDS on every gate and every reason but
+	 * two, and the two are named by their `gate`/`reason` rather than left for a
+	 * renderer to guess:
+	 *
+	 *  - gate `seed_placement` counts SEED MAILBOXES;
+	 *  - reason `block_message_detected` counts CLASSIFIED SMTP RESPONSES — the
+	 *    block-message hard stop measures the share of a receiver's answers that
+	 *    said "we are refusing this sender", which has nothing to do with how many
+	 *    messages were handed over.
+	 *
+	 * A renderer that prints "N sends" unconditionally is wrong on both, and under
+	 * plan D12 the audit row and the admin notification render from exactly this
+	 * field — see `gateExplanation` in `apps/web/app/utils/deliverabilityMeasurement.ts`
+	 * for the branch that keeps the sentence true.
+	 */
 	readonly ownSample: number;
 	/** Denominator behind `referenceRate`, or `null` when absent. */
 	readonly referenceSample: number | null;
 	/**
-	 * Minimum sample the gate requires of the OWN (recent) arm — the denominator
-	 * behind `ownSample` — before it may return a verdict. It means the same
-	 * thing on every verdict of every gate, so a generic renderer can print it
-	 * next to `ownSample` without branching on `reason`.
+	 * Minimum sample the gate requires of the OWN (recent) arm before it may
+	 * return a verdict. ALWAYS IN THE SAME UNIT AS `ownSample` — the two are a
+	 * pair, and the unit is the one `ownSample` documents above, so "24 of 20" is
+	 * always a like-for-like comparison even where that unit is not sends.
 	 */
 	readonly minSample: number;
 	/**

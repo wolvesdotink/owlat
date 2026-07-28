@@ -171,3 +171,33 @@ describe('the block stop outranks the rate check', () => {
 		expect(evaluation.reason).toBe('halt_threshold_breached');
 	});
 });
+
+/**
+ * THE UNIT THE HALT IS DENOMINATED IN (plan D12).
+ *
+ * Every other `deferral` verdict counts SENDS. This one counts CLASSIFIED SMTP
+ * RESPONSES, because the question it answers is "what share of the receiver's
+ * answers said it is refusing this sender", which has nothing to do with how many
+ * messages were handed over. `ownSample` and `minSample` are a PAIR and are
+ * pinned here in the same unit, and `gateTypes.ts` documents that pairing so the
+ * renderer branches on the reason instead of printing "N sends".
+ */
+describe('the halt reports its sample in classified responses, not sends', () => {
+	it('pins ownSample to the observed responses and minSample to their floor', () => {
+		const built = standaloneInput({
+			// Ten thousand SENDS, two hundred classified responses. The two numbers are
+			// deliberately far apart: a measurement that reported the send count would
+			// be off by fifty times and would still look plausible on screen.
+			own: arm({ sent: 10_000, deferred: 200 }),
+			smtpBlocks: blocks(50, 200),
+		});
+		const result = evaluateSmtpBlockMessages(built);
+		expect(result).not.toBeNull();
+		expect(result?.measurement.ownSample).toBe(200);
+		expect(result?.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.smtpBlock);
+		// The rate is the block SHARE OF THOSE RESPONSES, compared against the halt
+		// threshold in the same unit.
+		expect(result?.measurement.ownRate).toBeCloseTo(50 / 200, 10);
+		expect(result?.measurement.thresholdRate).toBe(RAMP_GATE_THRESHOLDS.smtpBlockHalt as number);
+	});
+});
