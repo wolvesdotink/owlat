@@ -188,10 +188,21 @@ export const enqueueCampaignEmails = internalMutation({
 			organizationId: args.organizationId,
 			stream: 'campaign',
 			sendKind: 'campaign',
+			// THE anti-cohort salt (plan D7): without it a contact would sit in
+			// the same arm for every campaign forever and the two arms would be
+			// two fixed cohorts, so every ratio the ramp controller reads would
+			// compare cohort quality rather than transport quality.
+			campaignId: args.campaignId,
 			routing: { messageType: 'campaign', from: args.from },
 			recipients: args.emails.map((recipient) => ({
 				sendId: recipient.emailSendId,
 				email: recipient.email,
+				contactId: recipient.contactId,
+				// Already projected onto the envelope by audience resolution, so
+				// stratified assignment costs no additional read.
+				...(recipient.engagementScore !== undefined
+					? { engagementScore: recipient.engagementScore }
+					: {}),
 			})),
 		});
 
@@ -441,7 +452,19 @@ export const enqueueNonCampaignSend = internalMutation({
 			stream,
 			sendKind: 'transactional',
 			routing: { messageType: stream, from: args.from },
-			recipients: [{ sendId, email: args.email }],
+			// No campaign salt: an automation step or a 1:1 reply is its own
+			// single-recipient experiment. The split then salts with the SEND id
+			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
+			// re-drawn on every message instead of being pinned for the life of
+			// the mix version — the fixed-cohort bias D7 exists to prevent, and
+			// `automation` is a first-class high-volume stream, not an edge.
+			recipients: [
+				{
+					sendId,
+					email: args.email,
+					...(args.contactId !== undefined ? { contactId: args.contactId } : {}),
+				},
+			],
 		});
 
 		await transactionalEmailPool.enqueueAction(

@@ -18,7 +18,7 @@ import {
 	summarizeTransportOutcomes,
 } from '../transportOutcomes';
 import { startOfDayUtc } from '../../lib/clock';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	bucketRow,
 	GMAIL_CAMPAIGN_CELL,

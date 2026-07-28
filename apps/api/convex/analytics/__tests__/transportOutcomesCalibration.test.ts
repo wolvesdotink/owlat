@@ -16,7 +16,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { recordTransportOutcomeForCell, summarizeTransportOutcomes } from '../transportOutcomes';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	GMAIL_CAMPAIGN_CELL,
 	OUTCOME_ORG,

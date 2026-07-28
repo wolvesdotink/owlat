@@ -1,3 +1,5 @@
+import type { ProviderRouteStrategy } from './providerRouteOptions';
+
 export interface TransportCatalogOption {
 	readonly kind: string;
 	readonly label: string;
@@ -62,7 +64,12 @@ export function seedRouteProviders(
 	return providers;
 }
 
-export type RouteStrategy = 'single' | 'priority_failover' | 'workload_split';
+/**
+ * The strategy union, sourced from the option module rather than re-spelled:
+ * only `workload_split` carries per-provider weights, and a second copy of the
+ * union is a copy that will be missed when a kind is added.
+ */
+export type RouteStrategy = ProviderRouteStrategy;
 
 /**
  * Canonical write form: keep registered transports in their edited order and

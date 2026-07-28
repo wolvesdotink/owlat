@@ -332,7 +332,11 @@ export const dispatch = internalMutation({
 			stream: 'transactional',
 			sendKind: 'transactional',
 			routing: { messageType: 'transactional', from },
-			recipients: [{ sendId, email: args.email }],
+			// No campaign salt: a transactional send is its own single-recipient
+			// experiment. The contact id is the stable per-recipient identity and
+			// the SEND id is the salt, so the arm is re-drawn per message rather
+			// than pinning the contact to one arm forever (plan D7).
+			recipients: [{ sendId, email: args.email, contactId: resolved.contactId }],
 		});
 
 		await transactionalEmailPool.enqueueAction(

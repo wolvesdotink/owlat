@@ -34,8 +34,9 @@
  *     (`workload_split` draws at random per call). This seam resolves once
  *     per cell, but the worker draws again independently per recipient at
  *     dispatch, so one draw stamped on N rows would be wrong for roughly
- *     half of them. P2-5 replaces the draw with the deterministic
- *     per-recipient hash; until then the honest record is silence.
+ *     half of them, and the honest record is silence. `adaptive_mix` is the
+ *     answer to that: it decides per RECIPIENT from a stable hash, so it IS
+ *     deterministic and IS recordable.
  *
  * In every case: a guessed arm is worse than a missing row.
  */
@@ -43,11 +44,17 @@
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { resolveRoute, type ProviderRouteConfig, type ResolvedRoute } from './routing';
 import { isDeterministicRouteStrategy } from './strategies';
+import type { MixAssignment, MixContext, MixRecipientIdentity } from './strategies';
 import type {
 	DeliverabilityStream,
 	DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
-import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
+import {
+	loadRouteStateCell,
+	loadStreamlessRouteState,
+	mixCellStateFor,
+	type RouteStateCellRows,
+} from '../deliverabilityRouteState';
 import {
 	configuredSendProviderKinds,
 	freshFallbackReasons,
@@ -56,7 +63,7 @@ import {
 	type MessageType,
 } from './routeInputs';
 
-/** Batch-wide inputs for {@link prepareCellRouteResolver}. */
+/** Batch-wide inputs for {@link prepareCellMixResolver}. */
 export interface CellRouteContext {
 	/** Envelope From; feeds the shipped relay-domain verification input. */
 	readonly from?: string;
@@ -72,29 +79,51 @@ export interface CellRouteContext {
 }
 
 /**
- * Resolve one cell, given a batch's already-read inputs. Issues at most TWO
- * document reads per call — the cell's per-stream and stream-less
- * `deliverabilityRouteStates` rows, both indexed point reads.
+ * A cell's answer for ONE recipient: the route, plus the mix decision that
+ * produced it when the cell is running `adaptive_mix`.
+ *
+ * `mix` is non-null only when the strategy actually split — a deliverability
+ * fallback, the env fallback and every other strategy carry `null`, because
+ * there was no per-recipient decision to record.
  */
-export type CellRouteResolver = (
-	destinationProvider: DestinationProviderKey
-) => Promise<ResolvedRoute | null>;
+export interface CellRouteOutcome {
+	readonly route: ResolvedRoute;
+	readonly mix: MixAssignment | null;
+}
 
 /**
- * Prepare-once, resolve-per-cell.
+ * Resolve one cell FOR ONE RECIPIENT. The cell's two route-state rows are read
+ * at most once per destination provider for the life of the prepared resolver
+ * and memoized, so calling this per recipient costs pure computation and no
+ * additional reads — the `O(distinct providers)` read bound the batch callers
+ * depend on (D16) is preserved even though the decision is now per recipient.
+ */
+export type CellMixResolver = (
+	destinationProvider: DestinationProviderKey,
+	recipient: MixRecipientIdentity
+) => Promise<CellRouteOutcome | null>;
+
+/**
+ * Prepare-once, resolve-per-recipient.
  *
  * Three of the four inputs a cell decision needs — the route config, the
  * configured-kind set and the relay-domain verification — do not depend on the
  * destination provider at all. Reading them once per BATCH instead of once per
  * cell keeps a mixed page from issuing up to `DESTINATION_PROVIDER_KEYS.length`
  * redundant copies of each, and every read avoided is a read the enqueue
- * transaction does not carry.
+ * transaction does not carry. The cell's own two route-state rows are memoized
+ * per destination provider for the same reason.
+ *
+ * The mix decision is taken exactly ONCE, inside the strategy, and travels back
+ * on the resolved route (`ResolvedRoute.mix`). Evaluating the same pure function
+ * a second time here would give the identical answer — and would be a second
+ * place that has to keep agreeing with the first one forever.
  */
-export async function prepareCellRouteResolver(
+export async function prepareCellMixResolver(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
 	context: CellRouteContext
-): Promise<CellRouteResolver> {
+): Promise<CellMixResolver> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -113,17 +142,38 @@ export async function prepareCellRouteResolver(
 		context.now
 	);
 	const isDeterministic = isDeterministicRouteStrategy(routeConfig?.strategy);
-	return async (destinationProvider) => {
+	const isAdaptiveMix = routeConfig?.strategy === 'adaptive_mix';
+	// One read of the cell's two route-state rows per DISTINCT destination
+	// provider, however many recipients the batch resolves.
+	const cellRows = new Map<DestinationProviderKey, RouteStateCellRows>();
+
+	return async (destinationProvider, recipient) => {
 		// BOTH rows of the cell: the per-stream row carries the controller's
 		// share, the stream-less row carries the infrastructure signals. Reading
 		// only one would let an empty per-stream row shadow a fresh
 		// `dnsbl_listed` / `breaker_open` verdict and record `own` for a cell the
 		// shipped router is relaying — wrong about exactly the case this table
 		// exists to measure.
-		const providerCell = await loadRouteStateCell(ctx, context.organizationId, {
-			stream: context.stream,
-			destinationProvider,
-		});
+		let providerCell = cellRows.get(destinationProvider);
+		if (providerCell === undefined) {
+			providerCell = await loadRouteStateCell(ctx, context.organizationId, {
+				stream: context.stream,
+				destinationProvider,
+			});
+			cellRows.set(destinationProvider, providerCell);
+		}
+		const mixContext: MixContext | undefined = isAdaptiveMix
+			? {
+					kind: 'decide',
+					input: {
+						// D1's resolution expression, owned by one helper next to
+						// `loadRouteStateCell` so this site and the dispatch-time
+						// replay in `route.ts` can never drift apart.
+						cell: mixCellStateFor(providerCell),
+						recipient,
+					},
+				}
+			: undefined;
 		const resolved = resolveRoute(
 			routeConfig as ProviderRouteConfig | null,
 			undefined,
@@ -135,12 +185,19 @@ export async function prepareCellRouteResolver(
 				),
 				isWarmupOverflow: false,
 				isRelayDomainVerified,
-			}
+			},
+			mixContext
 		);
 		// Only an `org_config` selection came out of the strategy; a
 		// deliverability fallback and the env fallback are both deterministic by
 		// construction.
-		if (resolved?.source === 'org_config' && !isDeterministic) return null;
-		return resolved;
+		if (resolved === null) return null;
+		if (resolved.source === 'org_config' && !isDeterministic) return null;
+		// The decision the strategy actually took, read back rather than redone.
+		// A deliverability fallback and the env fallback carry none, because no
+		// per-recipient decision produced them.
+		const mix: MixAssignment | null =
+			resolved.source === 'org_config' ? (resolved.mix ?? null) : null;
+		return { route: resolved, mix };
 	};
 }

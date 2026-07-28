@@ -54,6 +54,7 @@ import type * as analytics_complianceTelemetry from "../analytics/complianceTele
 import type * as analytics_cronRegistration from "../analytics/cronRegistration.js";
 import type * as analytics_dashboard from "../analytics/dashboard.js";
 import type * as analytics_engagementActivity from "../analytics/engagementActivity.js";
+import type * as analytics_engagementPercentile from "../analytics/engagementPercentile.js";
 import type * as analytics_engagementScore from "../analytics/engagementScore.js";
 import type * as analytics_engagementScoreSync from "../analytics/engagementScoreSync.js";
 import type * as analytics_evalHarness from "../analytics/evalHarness.js";
@@ -284,6 +285,7 @@ import type * as delivery_relayReturnPathProbe from "../delivery/relayReturnPath
 import type * as delivery_readinessValidators from "../delivery/readinessValidators.js";
 import type * as delivery_routingReentry from "../delivery/routingReentry.js";
 import type * as delivery_seedShadowCopy from "../delivery/seedShadowCopy.js";
+import type * as delivery_sendAssignmentRouting from "../delivery/sendAssignmentRouting.js";
 import type * as delivery_sendAssignments from "../delivery/sendAssignments.js";
 import type * as delivery_sendCompletion from "../delivery/sendCompletion.js";
 import type * as delivery_sendComposition_archive_snapshot_index from "../delivery/sendComposition/archive_snapshot/index.js";
@@ -520,12 +522,17 @@ import type * as lib_sendProviders_returnPathAuthorization from "../lib/sendProv
 import type * as lib_sendProviders_returnPathCapability from "../lib/sendProviders/returnPathCapability.js";
 import type * as lib_sendProviders_returnPathProbe from "../lib/sendProviders/returnPathProbe.js";
 import type * as lib_sendProviders_route from "../lib/sendProviders/route.js";
+import type * as lib_sendProviders_routeDeliverabilityInput from "../lib/sendProviders/routeDeliverabilityInput.js";
 import type * as lib_sendProviders_routeInputs from "../lib/sendProviders/routeInputs.js";
+import type * as lib_sendProviders_routeMixContext from "../lib/sendProviders/routeMixContext.js";
 import type * as lib_sendProviders_routing from "../lib/sendProviders/routing.js";
 import type * as lib_sendProviders_ses_index from "../lib/sendProviders/ses/index.js";
 import type * as lib_sendProviders_smtp_config from "../lib/sendProviders/smtp/config.js";
 import type * as lib_sendProviders_smtp_index from "../lib/sendProviders/smtp/index.js";
 import type * as lib_sendProviders_smtp_returnPath from "../lib/sendProviders/smtp/returnPath.js";
+import type * as lib_sendProviders_strategies_adaptive_mix_hash from "../lib/sendProviders/strategies/adaptive_mix/hash.js";
+import type * as lib_sendProviders_strategies_adaptive_mix_index from "../lib/sendProviders/strategies/adaptive_mix/index.js";
+import type * as lib_sendProviders_strategies_adaptive_mix_mix from "../lib/sendProviders/strategies/adaptive_mix/mix.js";
 import type * as lib_sendProviders_strategies_index from "../lib/sendProviders/strategies/index.js";
 import type * as lib_sendProviders_strategies_priority_failover_index from "../lib/sendProviders/strategies/priority_failover/index.js";
 import type * as lib_sendProviders_strategies_single_index from "../lib/sendProviders/strategies/single/index.js";
@@ -893,6 +900,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/cronRegistration": typeof analytics_cronRegistration;
   "analytics/dashboard": typeof analytics_dashboard;
   "analytics/engagementActivity": typeof analytics_engagementActivity;
+  "analytics/engagementPercentile": typeof analytics_engagementPercentile;
   "analytics/engagementScore": typeof analytics_engagementScore;
   "analytics/engagementScoreSync": typeof analytics_engagementScoreSync;
   "analytics/evalHarness": typeof analytics_evalHarness;
@@ -1123,6 +1131,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/readinessValidators": typeof delivery_readinessValidators;
   "delivery/routingReentry": typeof delivery_routingReentry;
   "delivery/seedShadowCopy": typeof delivery_seedShadowCopy;
+  "delivery/sendAssignmentRouting": typeof delivery_sendAssignmentRouting;
   "delivery/sendAssignments": typeof delivery_sendAssignments;
   "delivery/sendCompletion": typeof delivery_sendCompletion;
   "delivery/sendComposition/archive_snapshot/index": typeof delivery_sendComposition_archive_snapshot_index;
@@ -1359,12 +1368,17 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/returnPathCapability": typeof lib_sendProviders_returnPathCapability;
   "lib/sendProviders/returnPathProbe": typeof lib_sendProviders_returnPathProbe;
   "lib/sendProviders/route": typeof lib_sendProviders_route;
+  "lib/sendProviders/routeDeliverabilityInput": typeof lib_sendProviders_routeDeliverabilityInput;
   "lib/sendProviders/routeInputs": typeof lib_sendProviders_routeInputs;
+  "lib/sendProviders/routeMixContext": typeof lib_sendProviders_routeMixContext;
   "lib/sendProviders/routing": typeof lib_sendProviders_routing;
   "lib/sendProviders/ses/index": typeof lib_sendProviders_ses_index;
   "lib/sendProviders/smtp/config": typeof lib_sendProviders_smtp_config;
   "lib/sendProviders/smtp/index": typeof lib_sendProviders_smtp_index;
   "lib/sendProviders/smtp/returnPath": typeof lib_sendProviders_smtp_returnPath;
+  "lib/sendProviders/strategies/adaptive_mix/hash": typeof lib_sendProviders_strategies_adaptive_mix_hash;
+  "lib/sendProviders/strategies/adaptive_mix/index": typeof lib_sendProviders_strategies_adaptive_mix_index;
+  "lib/sendProviders/strategies/adaptive_mix/mix": typeof lib_sendProviders_strategies_adaptive_mix_mix;
   "lib/sendProviders/strategies/index": typeof lib_sendProviders_strategies_index;
   "lib/sendProviders/strategies/priority_failover/index": typeof lib_sendProviders_strategies_priority_failover_index;
   "lib/sendProviders/strategies/single/index": typeof lib_sendProviders_strategies_single_index;

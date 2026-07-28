@@ -4,7 +4,7 @@ import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	classifySeedFolder,
 	isSeedProbeId,

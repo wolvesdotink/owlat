@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');

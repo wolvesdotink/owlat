@@ -31,7 +31,7 @@ import { startOfDayUtc } from '../../lib/clock';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../ramp/engagementConfig';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
 import type { DeliverabilityDashboard } from '../deliverabilityDashboard';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const DASHBOARD_ORG = 'org_dashboard';
 const OTHER_ORG = 'org_intruder';
