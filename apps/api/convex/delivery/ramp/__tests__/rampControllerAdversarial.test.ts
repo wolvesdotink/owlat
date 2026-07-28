@@ -306,7 +306,7 @@ describe('a stale or replayed evaluation can never buy a step', () => {
 		);
 		expect(decision.reason).toBe('evidence_stale');
 		expect(decision.share).toBe(0.4);
-		expect(decision.frozenUntil).toBeUndefined();
+		expect(decision.freeze?.until).toBeUndefined();
 	});
 });
 
@@ -417,7 +417,7 @@ describe('degenerate numbers fail closed', () => {
 
 	it('never carries a degenerate GREEN-SINCE instant back onto the row either', () => {
 		// Same class of defect, same downstream readers: the holding rungs write
-		// `greenSince` straight back as the row's `healthySince`, so an unreadable
+		// `greenSince` straight back onto the row's own `greenSince` column, so an unreadable
 		// stored instant would report the cell as green since NaN — or since a
 		// moment in the future — until something else happened to overwrite it.
 		for (const greenSince of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
@@ -541,7 +541,7 @@ describe('clock skew', () => {
 			const decision = nextShare(controllerInput({ mix: mixState({ share: 0.3 }), now }));
 			expect(decision.reason).toBe('clock_unusable');
 			expect(decision.share).toBe(0.3);
-			expect(decision.frozenUntil).toBeUndefined();
+			expect(decision.freeze?.until).toBeUndefined();
 		}
 	});
 
@@ -590,8 +590,8 @@ describe('clock skew', () => {
 		expect(decision.share).toBe(0.2);
 		// And a fabricated expiry EXTENDS nothing either: the freeze the row ends up
 		// carrying is the breaker's own 6h, not a century of it.
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
-		expect(decision.freezeReason).toBe('breaker');
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freeze?.origin).toBe('breaker');
 	});
 
 	// The same property against a LIVE, legitimate gate-cooldown freeze: it can
@@ -618,11 +618,11 @@ describe('clock skew', () => {
 		// back a day and a half of evaluation windows would invert the AIMD
 		// asymmetry — an infrastructure incident SPEEDING UP a cell that had just
 		// breached a gate.
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
-		expect(decision.freezeReason).toBe('breaker');
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
+		expect(decision.freeze?.origin).toBe('breaker');
 		// The BREAKER freeze does not advance the gate ladder — the rung the next
 		// breach doubles from is untouched by an infrastructure incident.
-		expect(decision.cooldownMs).toBeUndefined();
+		expect(decision.freeze?.ladderMs).toBeUndefined();
 	});
 
 	// The mirror: a hard stop that outlasts the running freeze DOES push the end
@@ -643,8 +643,8 @@ describe('clock skew', () => {
 		);
 		expect(decision.reason).toBe('dnsbl');
 		expect(decision.share).toBe(0);
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
-		expect(decision.freezeReason).toBe('dnsbl');
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freeze?.origin).toBe('dnsbl');
 	});
 
 	it('a non-finite stored freeze does not pin the cell forever', () => {
@@ -682,6 +682,6 @@ describe('the tripwire cannot be turned into a decrease on its own', () => {
 		);
 		expect(corroborated.share).toBe(0.2);
 		expect(corroborated.reason).toBe('deferral');
-		expect(corroborated.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownBaseMs);
+		expect(corroborated.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownBaseMs);
 	});
 });

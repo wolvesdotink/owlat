@@ -56,10 +56,11 @@ import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
 } from './deliverabilityValidators';
+import { rampDecisionChangedState } from './ramp/controllerTypes';
 import type { RampDecision, RampFreezeOrigin } from './ramp/controllerTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
-export const RAMP_CELLS_PER_TICK = 5;
+const RAMP_CELLS_PER_TICK = 5;
 /** Route-state rows are refreshed on every tick; the TTL matches the snapshot's. */
 const ROUTE_STATE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -90,7 +91,7 @@ async function refreshRouteStateLease(
 /**
  * THE THREE FREEZE COLUMNS MOVE TOGETHER, or they do not move at all.
  *
- * `fallbackActiveSince` (the ladder's anchor), `frozenUntil` (the expiry) and
+ * `freezeStartedAt` (the ladder's anchor), `frozenUntil` (the expiry) and
  * `freezeReason` (which rung it belongs to) are three views of ONE fact, and
  * every defect this write path has had came from computing them separately: an
  * expiry carried forward past a corrupt value, an origin left pointing at the
@@ -113,25 +114,26 @@ function resolveFreezeFields(
 	decision: RampDecision,
 	now: number
 ): {
-	fallbackActiveSince: number | undefined;
+	freezeStartedAt: number | undefined;
 	frozenUntil: number | undefined;
 	freezeReason: RampFreezeOrigin | undefined;
 } {
 	const carried = readActiveFreeze(perStream, now, RAMP_MAX_FREEZE_MS);
 	const running = carried.kind === 'active' ? carried : undefined;
+	const imposed = decision.freeze;
 	return {
 		// The GATE-COOLDOWN ladder's clock: start, expiry and rung move together,
 		// and only a LADDER freeze re-stamps the start. A hard-stop freeze (breaker
 		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
 		// alone — otherwise an infrastructure incident would re-arm the "repeat
 		// within 24h" window and double the next gate cooldown off a stale rung.
-		fallbackActiveSince: decision.cooldownMs === undefined ? perStream.fallbackActiveSince : now,
+		freezeStartedAt: imposed?.ladderMs === undefined ? perStream.freezeStartedAt : now,
 		// A new freeze REPLACES the pair whole. It can only ever be later than the
 		// one it replaces — the decision function lengthens rather than shortens
 		// (`extendFreezeUntil`) — so the row never loses time it had already been
 		// told to serve, and the origin becomes the rung that just fired.
-		frozenUntil: decision.frozenUntil ?? running?.until,
-		freezeReason: decision.frozenUntil !== undefined ? decision.freezeReason : running?.origin,
+		frozenUntil: imposed?.until ?? running?.until,
+		freezeReason: imposed?.origin ?? running?.origin,
 	};
 }
 
@@ -164,8 +166,8 @@ async function applyDecision(
 		// expiry whose origin drifted out of step would answer that question with
 		// the last incident's name.
 		...resolveFreezeFields(perStream, decision, now),
-		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
-		healthySince: decision.greenSince,
+		cooldownMs: decision.freeze?.ladderMs ?? perStream.cooldownMs,
+		greenSince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,
 		// Only a COUNTED window moves the anchor: an evaluation that did not count
 		// must leave the previous one in place, or every hourly tick would push the
@@ -250,12 +252,12 @@ export const runRampController = internalMutation({
 			// 0.5)` is the floor), yet `applyDecision` has just rewritten the freeze
 			// expiry, the cooldown rung, the clean streak, the green clock and the
 			// graduation pin. That is a real automatic change and belongs in
-			// `auditLogs`. `cooldownMs` is what makes it visible: it is set only by a
-			// LADDER freeze, i.e. a breached gate, which is the one hold that changes
-			// durable state. The same discriminator drives the admin notice — see
-			// `rampDecisionAdminNotice` for why it is exact. An ordinary hold rewrites
-			// nothing but the lease and stays out of the log.
-			if (decision.direction === 'hold' && decision.cooldownMs === undefined) continue;
+			// `auditLogs`. `rampDecisionChangedState` is that predicate, and it is
+			// SHARED with the admin notice rather than spelled out twice: the log and
+			// the notice must never be able to disagree about whether something
+			// happened. An ordinary hold rewrites nothing but the lease and stays out
+			// of the log — see `rampDecisionAdminNotice` for why it is exact.
+			if (!rampDecisionChangedState(decision)) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
 				organizationId,

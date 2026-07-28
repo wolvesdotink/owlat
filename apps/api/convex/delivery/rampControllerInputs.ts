@@ -158,9 +158,9 @@ function readMixState(row: ManagedRouteState): RampMixState {
 		cleanStreak: row.cleanStreak,
 		frozenUntil: row.frozenUntil,
 		freezeReason: row.freezeReason,
-		freezeStartedAt: row.fallbackActiveSince,
+		freezeStartedAt: row.freezeStartedAt,
 		cooldownMs: row.cooldownMs,
-		greenSince: row.healthySince,
+		greenSince: row.greenSince,
 		graduatedAt: row.graduatedAt,
 		lastCountedAt: row.lastCountedAt,
 	};

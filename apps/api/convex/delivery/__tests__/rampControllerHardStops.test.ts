@@ -247,7 +247,7 @@ describe('hard stops reach the controller through real route-state rows', () => 
 			const rows = await ctx.db.query('deliverabilityRouteStates').collect();
 			const cell = rows.find((row) => row.stream === 'campaign');
 			if (cell) {
-				await ctx.db.patch(cell._id, { fallbackActiveSince: anchor, cooldownMs: 6 * HOUR_MS });
+				await ctx.db.patch(cell._id, { freezeStartedAt: anchor, cooldownMs: 6 * HOUR_MS });
 			}
 		});
 
@@ -256,7 +256,7 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		const row = await cellRow(t);
 		// Re-stamping the anchor here would re-arm the ladder's 24h repeat window,
 		// so the NEXT gate breach would double off a stale rung.
-		expect(row?.fallbackActiveSince).toBe(anchor);
+		expect(row?.freezeStartedAt).toBe(anchor);
 		expect(row?.cooldownMs).toBe(6 * HOUR_MS);
 		expect(row?.frozenUntil ?? 0).toBeGreaterThanOrEqual(at + RAMP_AIMD.breakerFreezeMs);
 	});
@@ -336,7 +336,7 @@ describe('a stored share that is not a share', () => {
 			// off a value we could not read.
 			expect(row?.ownShare ?? 0).toBeLessThanOrEqual(held);
 			expect(row?.graduatedAt).toBeUndefined();
-			expect(row?.healthySince).toBeUndefined();
+			expect(row?.greenSince).toBeUndefined();
 
 			const rows = await decisions(t);
 			expect(rows).toHaveLength(1);

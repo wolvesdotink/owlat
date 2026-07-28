@@ -56,15 +56,28 @@ export const deliverabilityRoutingTables = {
 				observedAt: v.number(),
 			})
 		),
-		// Also the AIMD freeze clock / clean-streak clock: no parallel fields.
-		// `fallbackActiveSince` is the instant the current GATE-COOLDOWN freeze
-		// started — the ladder's "repeat within 24h" anchor — and only a ladder
-		// freeze re-stamps it, so an infrastructure freeze (breaker, blocklist)
-		// cannot re-arm the repeat window and inflate the next gate cooldown.
-		// `healthySince` is the instant the cell last became continuously green
-		// (the graduation clock).
+		// THE SHIPPED HYSTERESIS CLOCKS, and they belong to the SNAPSHOT writer
+		// alone: `fallbackActiveSince` is when relay fallback started and
+		// `healthySince` is when the provider slice became continuously healthy.
+		// `applySnapshot` reads and stamps both on the STREAM-LESS row.
 		fallbackActiveSince: v.optional(v.number()),
 		healthySince: v.optional(v.number()),
+		// THE RAMP'S OWN CLOCKS, deliberately NOT the two above. They mean different
+		// things on a per-stream row, and one column with two meanings across two row
+		// shapes is the objection `decidedAt` is kept clear of. The rows do not
+		// collide today only because `applySnapshot` loads the stream-less row — and
+		// the day a per-stream snapshot writer lands, sharing the columns would let
+		// its hysteresis silently re-arm the ramp's 24h repeat window and double a
+		// cooldown off a rung nothing breached.
+		//
+		// `freezeStartedAt` is the instant the current GATE-COOLDOWN freeze started —
+		// the ladder's "repeat within 24h" anchor — and only a ladder freeze
+		// re-stamps it, so an infrastructure freeze (breaker, blocklist) cannot
+		// re-arm the repeat window and inflate the next gate cooldown. `greenSince`
+		// is the instant the cell last became continuously green (the graduation
+		// clock).
+		freezeStartedAt: v.optional(v.number()),
+		greenSince: v.optional(v.number()),
 		// The freeze's EXPIRY and its LENGTH — the two things a start instant
 		// cannot express. `cooldownMs` is the AIMD ladder position (6h, doubling to
 		// 48h) the next gate breach doubles from; a fixed hard-stop freeze (breaker
