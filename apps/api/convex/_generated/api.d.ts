@@ -290,6 +290,13 @@ import type * as delivery_rampControllerInputs from "../delivery/rampControllerI
 import type * as delivery_rampControllerWrites from "../delivery/rampControllerWrites.js";
 import type * as delivery_rampMixDecisions from "../delivery/rampMixDecisions.js";
 import type * as delivery_rampPaceInputs from "../delivery/rampPaceInputs.js";
+import type * as delivery_rampControlAudit from "../delivery/rampControlAudit.js";
+import type * as delivery_rampControlQueries from "../delivery/rampControlQueries.js";
+import type * as delivery_rampControls from "../delivery/rampControls.js";
+import type * as delivery_rampIndependence from "../delivery/rampIndependence.js";
+import type * as delivery_rampPresets from "../delivery/rampPresets.js";
+import type * as delivery_ramp_controlOverride from "../delivery/ramp/controlOverride.js";
+import type * as delivery_ramp_presetConfig from "../delivery/ramp/presetConfig.js";
 import type * as delivery_ramp_controllerBounds from "../delivery/ramp/controllerBounds.js";
 import type * as delivery_ramp_controllerConfig from "../delivery/ramp/controllerConfig.js";
 import type * as delivery_ramp_controllerNarrative from "../delivery/ramp/controllerNarrative.js";
@@ -1182,6 +1189,13 @@ declare const fullApi: ApiFromModules<{
   "delivery/rampControllerWrites": typeof delivery_rampControllerWrites;
   "delivery/rampMixDecisions": typeof delivery_rampMixDecisions;
   "delivery/rampPaceInputs": typeof delivery_rampPaceInputs;
+  "delivery/rampControlAudit": typeof delivery_rampControlAudit;
+  "delivery/rampControlQueries": typeof delivery_rampControlQueries;
+  "delivery/rampControls": typeof delivery_rampControls;
+  "delivery/rampIndependence": typeof delivery_rampIndependence;
+  "delivery/rampPresets": typeof delivery_rampPresets;
+  "delivery/ramp/controlOverride": typeof delivery_ramp_controlOverride;
+  "delivery/ramp/presetConfig": typeof delivery_ramp_presetConfig;
   "delivery/ramp/controllerBounds": typeof delivery_ramp_controllerBounds;
   "delivery/ramp/controllerConfig": typeof delivery_ramp_controllerConfig;
   "delivery/ramp/controllerNarrative": typeof delivery_ramp_controllerNarrative;
