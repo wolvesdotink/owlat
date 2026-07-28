@@ -133,6 +133,11 @@ describe('mixDecisions — a row for every evaluation', () => {
 		expect(evaluation['failedGate']).toBe('hard_bounce');
 		expect(Array.isArray(evaluation['perGate'])).toBe(true);
 		expect((evaluation['perGate'] as unknown[]).length).toBe(5);
+		// The outcome block carries the pin explicitly, `null` when there is none —
+		// an absent key would be indistinguishable from an older row shape.
+		const outcome = snapshot['outcome'] as Record<string, unknown>;
+		expect(outcome['pinChange']).toBeNull();
+		expect(outcome['graduatedAt']).toBeNull();
 	});
 
 	it('names the failing gate and the remedy on a DECREASE', async () => {
@@ -603,6 +608,61 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		expect(row?.message).toContain('40%');
 		expect(row?.message).not.toContain('100%');
 		expect(row?.message).not.toContain('standby');
+	});
+
+	/**
+	 * `graduated` IS THE STEADY STATE OF A PINNED CELL, not only the tick it pins.
+	 * Two things follow, and both are asserted here: the decision table has to
+	 * record the PIN, or the graduation row is indistinguishable from the hundreds
+	 * of identical `graduated` rows after it; and only the AWARD tick may word
+	 * itself as a transition.
+	 */
+	it('records the graduation pin, and only the award tick claims the transition', async () => {
+		const t = convexTest(schema, modules);
+		const award = controllerInput({
+			mix: mixState({ share: 1, cleanStreak: 41, greenSince: NOW - 20 * DAY }),
+			evaluation: cleanEvaluation(41),
+		});
+		const hold = controllerInput({
+			mix: mixState({
+				share: 1,
+				cleanStreak: 41,
+				greenSince: NOW - DAY,
+				graduatedAt: NOW - 6 * DAY,
+			}),
+			evaluation: cleanEvaluation(41),
+		});
+		expect(nextShare(award).pinChange).toBe('awarded');
+		expect(nextShare(hold).pinChange).toBeUndefined();
+		await record(t, award);
+		await record(t, hold);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(2);
+		const [awardRow, holdRow] = rows;
+		expect(awardRow?.reason).toBe('graduated');
+		expect(holdRow?.reason).toBe('graduated');
+
+		const awardOutcome = (JSON.parse(awardRow?.snapshot ?? '{}') as Record<string, unknown>)[
+			'outcome'
+		] as Record<string, unknown>;
+		expect(awardOutcome['pinChange']).toBe('awarded');
+		expect(awardOutcome['graduatedAt']).toBe(NOW);
+		expect(awardRow?.message).toContain('Graduated');
+		expect(awardRow?.message).toContain('drops to standby');
+
+		const holdOutcome = (JSON.parse(holdRow?.snapshot ?? '{}') as Record<string, unknown>)[
+			'outcome'
+		] as Record<string, unknown>;
+		// The pin is still on the row, so the audit trail can date it; there is just
+		// no transition on this tick.
+		expect(holdOutcome['pinChange']).toBeNull();
+		expect(holdOutcome['graduatedAt']).toBe(NOW - 6 * DAY);
+		// …and the sentence does not re-claim fourteen green days it did not have.
+		expect(holdRow?.message).toContain('graduated and pinned');
+		expect(holdRow?.message).toContain('the relay is on standby');
+		expect(holdRow?.message).not.toContain('Graduated');
+		expect(holdRow?.message).not.toContain('14 days');
 	});
 });
 

@@ -68,11 +68,17 @@ function rampDecisionSnapshot(input: RampControllerInput, decision: RampDecision
 						evaluatedAt: input.evaluation.evaluatedAt,
 						perGate: input.evaluation.perGate,
 					},
+		// The PIN belongs in the decision table, not only in `auditLogs`: `graduated`
+		// is the steady state of a pinned cell, so without `pinChange` the tick that
+		// awarded the pin is indistinguishable from the hundreds of identical rows
+		// after it, and this is the table the delivery dashboard reads.
 		outcome: {
 			share: decision.share,
 			reason: decision.reason,
 			direction: decision.direction,
 			ceiling: decision.ceiling,
+			pinChange: decision.pinChange ?? null,
+			graduatedAt: decision.graduatedAt ?? null,
 		},
 	});
 }
