@@ -188,10 +188,9 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// `startsAt` is passed in rather than read off `scheduledStartAt` so the
 	// persisted instant is the one `handleSchedule` validated against a LIVE
 	// clock at click time.
-	const executeSchedule = async (startsAt: number | null) => {
+	const executeSchedule = async (startsAt: number) => {
 		if (!campaignId.value) return;
 
-		if (startsAt === null) return; // handleSchedule has already surfaced why
 		// Only the wall-clock hour/minute is read off this Date; the persisted
 		// instant is `startsAt` itself.
 		const scheduledDateTime = new Date(startsAt);
