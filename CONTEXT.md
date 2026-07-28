@@ -1489,8 +1489,24 @@ route through it so a count can never disagree with a send:
   internalQuery; the **Campaign send orchestrator (module)**'s
   audience-resolution step. Materializes the rows. (`frozenFilters`
   rides *inside* the `audience` segment case, not as a sibling arg.)
-- `countRecipients({ audience }) → { total, eligible }` — public
-  query; the wizard's audience-size readout. Runs the *identical*
+- `countRecipients({ audience }) → { total, eligible, completeness }` —
+  public query; the wizard's audience-size readout. `completeness` is
+  the **discriminant that says what the two numbers license**, and it
+  is load-bearing — the wizard branches on it (`SetupAudiencePicker`),
+  and reading it wrong renders an *over*-count as "at least":
+  - `exact` — the predicate ran to completion over the whole audience.
+    `eligible` is quotable as the audience size.
+  - `candidate_capped` — the candidate scan stopped at its ceiling.
+    `eligible` is a **lower bound** ("at least N"); the real audience
+    is at least this big.
+  - `read_budget_exhausted` — the document budget ran out mid-count.
+    Also a **lower bound**, same copy, different cause.
+  - `suppression_truncated` — the suppression set could not be read in
+    full, so candidates were filtered through a *subset* of the
+    blocklist. `eligible` is an **over-count** that bounds the audience
+    in NEITHER direction: it licenses no decision, must never be shown
+    as "at least", and the capacity gate treats it as unmeasured.
+  Runs the *identical*
   predicate but accumulates integers instead of rows, so `eligible`
   equals the number actually delivered. `total` is the raw membership
   (topic) / live-match (segment) count; the `total - eligible` gap is
