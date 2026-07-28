@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { convexTest, type TestConvex } from 'convex-test';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { applyEffects } from '../../delivery/sendLifecycle/effects';
 import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
@@ -10,7 +11,29 @@ import {
 } from '../../delivery/suppressionMirror';
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
-import { NOW, daysAgo, harness } from './sunsetFixtures';
+import { internal } from '../../_generated/api';
+import { NOW, daysAgo, harness, modules } from './sunsetFixtures';
+
+// The non-campaign chokepoint schedules a workpool action. The Workpool
+// component is not registered in convex-test and the worker would need provider
+// credentials, so it is stubbed the same way `delivery/__tests__/enqueue.test.ts`
+// stubs it — the assertions here are all on pre-dispatch DB state.
+vi.mock('../../delivery/workpool', () => ({
+	transactionalEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
+	campaignEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
+}));
+
+/** The sunset module map minus the modules that cannot load without a provider. */
+const enqueueModules = Object.fromEntries(
+	Object.entries(modules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('posthog') &&
+			!path.includes('delivery/worker.ts') &&
+			!path.includes('campaigns/testSend') &&
+			!path.includes('delivery/workpool')
+	)
+);
 
 /**
  * REGRESSION: the sunset engine REUSES the shipped suppression path — it does
@@ -343,6 +366,90 @@ describe('sunset suppression reuses the shipped path', () => {
 				const rows = await ctx.db.query('blockedEmails').collect();
 				expect(rows).toHaveLength(1);
 				expect(rows[0]?.bounceType).toBe('hard');
+			});
+		});
+	});
+
+	/**
+	 * THE CHOKEPOINT GATES AT THE SCOPE OF THE MAIL IT IS WRITING.
+	 *
+	 * `enqueueNonCampaignSend` is the single suppression gate for two very
+	 * different kinds: an `automation` step is marketing and takes the strict
+	 * scope, while an `agent_reply` is a 1:1 answer to a human who wrote in and
+	 * takes the transactional one. A hygiene row must not throw away that reply —
+	 * mailbox-level evidence still must.
+	 */
+	describe('the non-campaign chokepoint gates per kind', () => {
+		// The workpool target module is filtered out of this harness, so the
+		// scheduled task cannot resolve it. That rejection is expected here and is
+		// the only one swallowed.
+		const onRejection = (err: Error) => {
+			if (!err.message?.includes('Could not find module')) throw err;
+		};
+		beforeEach(() => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'test-key');
+			vi.stubEnv('EMAIL_PROVIDER', 'mta');
+			process.on('unhandledRejection', onRejection);
+		});
+		afterEach(() => {
+			process.removeListener('unhandledRejection', onRejection);
+			vi.unstubAllEnvs();
+		});
+
+		async function blocklist(
+			t: TestConvex<typeof schema>,
+			email: string,
+			reason: 'unengaged' | 'bounced'
+		) {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('blockedEmails', { email, reason, createdAt: daysAgo(1) });
+			});
+		}
+
+		function send(
+			t: TestConvex<typeof schema>,
+			kind: 'automation' | 'agent_reply',
+			email: string
+		) {
+			return t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+				kind,
+				email,
+				subject: 'Re: your question',
+				html: '<p>Re: your question</p>',
+				from: 'Owlat <noreply@example.com>',
+			});
+		}
+
+		it('an unengaged row blocks the automation kind and lets the 1:1 reply through', async () => {
+			const t = convexTest(schema, enqueueModules);
+			await blocklist(t, 'quiet@example.com', 'unengaged');
+
+			await expect(send(t, 'automation', 'quiet@example.com')).rejects.toThrow('recipient_blocked');
+			await t.run(async (ctx) => {
+				expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
+			});
+
+			const { sendId } = await send(t, 'agent_reply', 'quiet@example.com');
+			await t.run(async (ctx) => {
+				const row = await ctx.db.get(sendId);
+				expect(row?.kind).toBe('agent_reply');
+				expect(row?.status).toBe('queued');
+			});
+		});
+
+		it('a bounced row blocks BOTH kinds — mailbox evidence gates every scope', async () => {
+			const t = convexTest(schema, enqueueModules);
+			await blocklist(t, 'broken@example.com', 'bounced');
+
+			await expect(send(t, 'automation', 'broken@example.com')).rejects.toThrow(
+				'recipient_blocked'
+			);
+			await expect(send(t, 'agent_reply', 'broken@example.com')).rejects.toThrow(
+				'recipient_blocked'
+			);
+			await t.run(async (ctx) => {
+				expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
 			});
 		});
 	});

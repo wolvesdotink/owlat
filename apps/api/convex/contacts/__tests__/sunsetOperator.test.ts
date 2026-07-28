@@ -417,6 +417,55 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 			expect(await ctx.db.get(blockedEmailId)).toBeNull();
 		});
 	});
+
+	it('restores the LIVE contact when a soft-deleted duplicate shares the address', async () => {
+		const t = harness();
+		const { liveId, deletedId, blockedEmailId } = await t.run(async (ctx) => {
+			// Inserted FIRST so it sorts ahead of the live row on the non-unique
+			// `by_email` index — the shape that used to send `remove` down the
+			// plain-delete path and strand the live contact on `suppressed`.
+			const deleted = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'duplicate@example.com',
+					createdAt: daysAgo(600),
+					deletedAt: daysAgo(400),
+					sunsetStage: 'suppressed',
+				})
+			);
+			const live = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'duplicate@example.com',
+					createdAt: daysAgo(500),
+					sunsetStage: 'suppressed',
+					sunsetStageAt: daysAgo(1),
+				})
+			);
+			const blocked = await ctx.db.insert('blockedEmails', {
+				email: 'duplicate@example.com',
+				reason: 'unengaged',
+				createdAt: daysAgo(1),
+			});
+			return { liveId: live, deletedId: deleted, blockedEmailId: blocked };
+		});
+
+		await t.withIdentity(identity).mutation(api.blockedEmails.remove, { blockedEmailId });
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(blockedEmailId)).toBeNull();
+			const live = await ctx.db.get(liveId);
+			expect(live?.sunsetStage).toBe('engaged');
+			expect(live?.sunsetExemptAt).toBeTypeOf('number');
+			// The soft-deleted row is untouched — restore never resurrects it.
+			const deleted = await ctx.db.get(deletedId);
+			expect(deleted?.sunsetStage).toBe('suppressed');
+			expect(deleted?.sunsetExemptAt).toBeUndefined();
+			const audits = await ctx.db.query('auditLogs').collect();
+			const restored = audits.find((log) => log.action === 'contact.sunset_restored');
+			expect(restored?.resourceId).toBe(liveId);
+		});
+	});
 });
 
 describe('blockedEmails.getCountsByReason — the unengaged class is counted', () => {
@@ -497,7 +546,7 @@ describe('restoreSunsetContact / setSunsetContactExemption', () => {
 		const result = await t
 			.withIdentity(identity)
 			.mutation(api.contacts.sunset.restoreSunsetContact, { contactId });
-		expect(result).toMatchObject({ restored: true, removedSuppression: true, outcome: 'restored' });
+		expect(result).toEqual({ outcome: 'restored' });
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(0);

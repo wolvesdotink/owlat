@@ -375,8 +375,6 @@ export const listSunsetStage = authedQuery({
 export const restoreSunsetContact = authedMutation({
 	args: { contactId: v.id('contacts') },
 	returns: v.object({
-		restored: v.boolean(),
-		removedSuppression: v.boolean(),
 		outcome: v.union(
 			v.literal('restored'),
 			v.literal('not_found'),

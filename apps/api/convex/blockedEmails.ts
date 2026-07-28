@@ -183,25 +183,29 @@ export const remove = authedMutation({
 		// override that stops the engine touching the contact again, and it emits
 		// its own `contact.sunset_restored` audit entry.
 		if (blockedEmail.reason === 'unengaged') {
+			// `by_email` is NOT unique and `contacts` is a soft-delete table, so the
+			// live-row filter belongs IN the query (CONVENTIONS.md): a soft-deleted
+			// duplicate sorting first would otherwise send the operator down the
+			// plain delete below, leaving the live contact pinned at
+			// `sunsetStage: 'suppressed'` with no blocklist row behind it and the
+			// engine holding on `already_suppressed` forever.
 			const contact = await ctx.db
 				.query('contacts')
 				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
+				.filter((q) => q.eq(q.field('deletedAt'), undefined))
 				.first();
-			if (contact !== null && contact.deletedAt === undefined) {
+			if (contact !== null) {
 				const restore = await restoreSunsetSuppression(ctx, {
 					contactId: contact._id,
 					actorUserId: session.userId,
 					now: Date.now(),
 				});
-				// Only short-circuit when the restore actually took the row away. If
-				// the contact's stored address normalizes differently from the
-				// blocklist key it will have removed nothing, and the operator's
-				// "Remove" must still remove the row they clicked on.
-				if (restore.removedSuppression) return { success: true };
+				// The restore removed the row and reset the stage — nothing left to do.
+				if (restore.outcome === 'restored') return { success: true };
 			}
-			// No contact row behind the address (imported, merged away,
-			// hard-deleted), or the restore did not match this row: there is no
-			// stage to reset, so the plain delete below is the whole job.
+			// No live contact row behind the address (imported, merged away,
+			// hard-deleted): there is no stage to reset, so the plain delete below
+			// is the whole job.
 		}
 
 		await ctx.db.delete(args.blockedEmailId);

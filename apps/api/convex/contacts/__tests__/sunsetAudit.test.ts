@@ -168,7 +168,7 @@ describe('sunset restore path', () => {
 					now: NOW,
 				})
 		);
-		expect(result).toEqual({ restored: true, removedSuppression: true, outcome: 'restored' });
+		expect(result).toEqual({ outcome: 'restored' });
 
 		await t.run(async (ctx) => {
 			const contact = await ctx.db.get(contactId);
@@ -295,11 +295,7 @@ describe('sunset restore is a restore, not an exemption toggle', () => {
 					now: NOW,
 				})
 		);
-		expect(result).toEqual({
-			restored: false,
-			removedSuppression: false,
-			outcome: 'not_suppressed',
-		});
+		expect(result).toEqual({ outcome: 'not_suppressed' });
 
 		await t.run(async (ctx) => {
 			const contact = await ctx.db.get(contactId);

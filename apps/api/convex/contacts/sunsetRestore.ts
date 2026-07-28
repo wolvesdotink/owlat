@@ -15,9 +15,6 @@ import { recordAuditLog } from '../lib/auditLog';
 import { normalizeEmail } from '../lib/inputGuards';
 
 export type SunsetRestoreResult = {
-	restored: boolean;
-	/** True when a `reason: 'unengaged'` blocklist row was removed. */
-	removedSuppression: boolean;
 	/**
 	 * WHAT HAPPENED, not why. Named `outcome` rather than `reason` because
 	 * `sunsetPolicy.ts` owns `SunsetReason` — the engine's decision vocabulary —
@@ -67,11 +64,11 @@ export async function restoreSunsetSuppression(
 ): Promise<SunsetRestoreResult> {
 	const contact = await ctx.db.get(args.contactId);
 	if (!contact || contact.deletedAt !== undefined) {
-		return { restored: false, removedSuppression: false, outcome: 'not_found' };
+		return { outcome: 'not_found' };
 	}
 	const email = contact.email;
 	if (email === undefined || email.trim().length === 0) {
-		return { restored: false, removedSuppression: false, outcome: 'no_email' };
+		return { outcome: 'no_email' };
 	}
 
 	const blocked = await ctx.db
@@ -83,10 +80,10 @@ export async function restoreSunsetSuppression(
 		// NOT A RESTORE. There is nothing suppressed to bring back, so this call
 		// does not quietly become `setSunsetExemption` — that is a separate,
 		// explicit operator action with its own audit entry.
-		return { restored: false, removedSuppression: false, outcome: 'not_suppressed' };
+		return { outcome: 'not_suppressed' };
 	}
 	if (blocked.reason !== 'unengaged') {
-		return { restored: false, removedSuppression: false, outcome: 'not_sunset_suppressed' };
+		return { outcome: 'not_sunset_suppressed' };
 	}
 
 	await ctx.db.delete(blocked._id);
@@ -116,7 +113,7 @@ export async function restoreSunsetSuppression(
 		},
 	});
 
-	return { restored: true, removedSuppression: true, outcome: 'restored' };
+	return { outcome: 'restored' };
 }
 
 /** Toggle the operator override for one contact. Audited either way. */
