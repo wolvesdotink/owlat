@@ -13,8 +13,9 @@
  * that claim was false). This module is the producer. The share controller's
  * stratified assignment (plan P2-5) derives a recipient's percentile within a
  * cell from the same score via the sibling `engagementPercentile.ts` — the
- * scoring logic is NOT duplicated there. The `contactActivities` catalog adapter lives in the
- * sibling `engagementActivity.ts`, so this file stays closed arithmetic.
+ * scoring logic is NOT duplicated there. The `contactActivities` catalog
+ * adapter lives in the sibling `engagementActivity.ts`, so this file stays
+ * closed arithmetic.
  *
  * THE MODEL. One exponentially-decayed accumulator, folded activity by
  * activity in chronological order:
