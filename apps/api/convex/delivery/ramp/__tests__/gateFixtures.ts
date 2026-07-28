@@ -22,7 +22,7 @@ import {
 	type TransportOutcomeSummary,
 } from '../../../analytics/transportOutcomeSummary';
 import type { EngagementGateInput } from '../engagementGate';
-import { RAMP_STREAM_CONFIGS, type RampStreamConfig } from '../gateConfig';
+import { RAMP_GATE_THRESHOLDS, RAMP_STREAM_CONFIGS, type RampStreamConfig } from '../gateConfig';
 import type {
 	RampGateEvaluationInput,
 	SeedPlacementObservation,
@@ -32,6 +32,46 @@ import { externalDataAllowed, rampGateMatrixMode, type RampGateMatrixMode } from
 
 /** A fixed, arbitrary clock. Every suite injects it; nothing reads a real one. */
 export const NOW = 1_760_000_000_000;
+
+/**
+ * THE HOSTILE-INPUT CATALOGUE, declared ONCE for both adversarial suites.
+ *
+ * `gates.adversarial.test.ts` attacks the reference-arm implementation and
+ * `standaloneAdversarial.test.ts` attacks the trailing-baseline one, and the two
+ * used to spell the same three poison values and the same beyond-skew timestamp
+ * in two shapes. Two spellings of one catalogue is two chances for a new poison
+ * shape to reach one implementation's suite and not the other's — which is
+ * precisely the degraded-path rot the second suite exists to prevent (plan D3).
+ * A value added here reaches both legs of the matrix at once.
+ */
+export const POISON_RATE_VALUES: ReadonlyArray<readonly [label: string, value: number]> = [
+	['NaN', Number.NaN],
+	['Infinity', Number.POSITIVE_INFINITY],
+	['negative', -1],
+];
+
+/**
+ * Every derived rate a hostile or buggy producer could poison, set to one value.
+ *
+ * ALL FOUR at once, and deliberately so: a suite that poisoned only the rate the
+ * gate under test reads would still pass if a later refactor made that gate read
+ * a different one.
+ */
+export function poisonedRates(value: number): Partial<TransportOutcomeSummary> {
+	return {
+		hardBounceRate: value,
+		deferralRate: value,
+		complaintRate: value,
+		unsubscribeRate: value,
+	};
+}
+
+/**
+ * An observation timestamp BEYOND the skew tolerance, so it is not merely a
+ * little early. Derived from the shipped tolerance rather than hand-written, so
+ * widening the tolerance cannot silently turn these cases into fresh evidence.
+ */
+export const BEYOND_SKEW = NOW + RAMP_GATE_THRESHOLDS.maxFutureSkewMs + 60_000;
 
 /**
  * WHICH LEG OF THE CI MATRIX THIS PROCESS IS, and — the load-bearing part —

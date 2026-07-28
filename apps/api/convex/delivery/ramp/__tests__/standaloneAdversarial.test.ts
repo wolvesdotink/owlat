@@ -24,7 +24,6 @@
 
 import { describe, expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
-import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import { trailingBaselineGateEvaluator } from '../gateEvaluation';
 import { evaluateStandaloneSeedPlacementGate } from '../gates';
 import type { RampGateEvaluationInput, RampGateResult } from '../gateTypes';
@@ -35,38 +34,24 @@ import {
 	evaluateTrailingEngagementGate,
 	evaluateTrailingHardBounceGate,
 } from '../trailingBaselineGates';
-import { NOW, arm, blocks, engagementInput, seeds, standaloneInput } from './gateFixtures';
+import {
+	BEYOND_SKEW,
+	POISON_RATE_VALUES,
+	arm,
+	blocks,
+	engagementInput,
+	poisonedRates,
+	seeds,
+	standaloneInput,
+} from './gateFixtures';
 
-/** Every rate a hostile producer could poison, in one place. */
-const POISONED_RATES = {
-	hardBounceRate: Number.NaN,
-	deferralRate: Number.NaN,
-	complaintRate: Number.NaN,
-	unsubscribeRate: Number.NaN,
-} as const;
-
-const INFINITE_RATES = {
-	hardBounceRate: Number.POSITIVE_INFINITY,
-	deferralRate: Number.POSITIVE_INFINITY,
-	complaintRate: Number.POSITIVE_INFINITY,
-	unsubscribeRate: Number.POSITIVE_INFINITY,
-} as const;
-
-const NEGATIVE_RATES = {
-	hardBounceRate: -1,
-	deferralRate: -1,
-	complaintRate: -1,
-	unsubscribeRate: -1,
-} as const;
-
-const POISONS: ReadonlyArray<readonly [string, Partial<TransportOutcomeSummary>]> = [
-	['NaN', POISONED_RATES],
-	['Infinity', INFINITE_RATES],
-	['negative', NEGATIVE_RATES],
-];
-
-/** Beyond the skew tolerance, so the observation is not merely a little early. */
-const FUTURE = NOW + RAMP_GATE_THRESHOLDS.maxFutureSkewMs + 60_000;
+/**
+ * The hostile-rate catalogue, BUILT FROM THE SHARED TABLE in `gateFixtures` — the
+ * same table `gates.adversarial.test.ts` builds its own from, so a poison shape
+ * added there reaches both implementations.
+ */
+const POISONS: ReadonlyArray<readonly [string, Partial<TransportOutcomeSummary>]> =
+	POISON_RATE_VALUES.map(([label, value]) => [label, poisonedRates(value)] as const);
 
 const AMPLE = { sent: 10_000, hardBounced: 100, deferred: 100, complained: 5, unsubscribed: 30 };
 const AMPLE_BASELINE = {
@@ -235,7 +220,7 @@ describe('standalone — clock skew', () => {
 	it('a future-dated OWN arm holds and never passes', () => {
 		expectNoPassAndNoIncrease(
 			bare({
-				own: arm({ ...AMPLE, lastRecordedAt: FUTURE }),
+				own: arm({ ...AMPLE, lastRecordedAt: BEYOND_SKEW }),
 				ownTrailingBaseline: arm(AMPLE_BASELINE),
 			})
 		);
@@ -245,7 +230,7 @@ describe('standalone — clock skew', () => {
 		expectBaselineDependentGatesHold(
 			bare({
 				own: arm(AMPLE),
-				ownTrailingBaseline: arm({ ...AMPLE_BASELINE, lastRecordedAt: FUTURE }),
+				ownTrailingBaseline: arm({ ...AMPLE_BASELINE, lastRecordedAt: BEYOND_SKEW }),
 			})
 		);
 	});
@@ -253,7 +238,7 @@ describe('standalone — clock skew', () => {
 	it('a future-dated block window cannot halt', () => {
 		const built = bare({
 			own: arm(AMPLE),
-			smtpBlocks: blocks(900, 1_000, { observedAt: FUTURE }),
+			smtpBlocks: blocks(900, 1_000, { observedAt: BEYOND_SKEW }),
 		});
 		expect(evaluateSmtpBlockMessages(built)).toBeNull();
 	});
@@ -313,7 +298,7 @@ describe('standalone — gate 4 under attack', () => {
 	});
 
 	it('holds on a future-dated baseline rather than trusting it', () => {
-		const result = trailingEngagement({}, { lastRecordedAt: FUTURE });
+		const result = trailingEngagement({}, { lastRecordedAt: BEYOND_SKEW });
 		expect(result).toMatchObject({
 			status: 'insufficient_data',
 			reason: 'baseline_evidence_stale',
