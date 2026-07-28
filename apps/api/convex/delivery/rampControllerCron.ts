@@ -321,7 +321,17 @@ async function applyDecision(
 		// alone — otherwise an infrastructure incident would re-arm the "repeat
 		// within 24h" window and double the next gate cooldown off a stale rung.
 		fallbackActiveSince: decision.cooldownMs === undefined ? perStream.fallbackActiveSince : now,
-		frozenUntil: decision.frozenUntil ?? perStream.frozenUntil,
+		// …but the freeze EXPIRY is not carried forward once it has passed. The pure
+		// rung already ignores an expired instant (`now < mix.frozenUntil` is
+		// false), so leaving it on the row changes no decision — it only makes
+		// every reader of the row (the delivery dashboard, the `mix` blob in
+		// `mixDecisions.snapshot`) report the cell as "frozen until <a past
+		// instant>" for ever. Clearing it keeps the row's story true.
+		frozenUntil:
+			decision.frozenUntil ??
+			(perStream.frozenUntil !== undefined && perStream.frozenUntil > now
+				? perStream.frozenUntil
+				: undefined),
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
 		graduatedAt: decision.graduatedAt,

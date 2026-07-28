@@ -17,12 +17,16 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import type { Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { createTestInstanceSettings } from '../../__tests__/factories';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../deliverabilityRouting';
 import { cleanEvaluation } from '../ramp/__tests__/controllerFixtures';
+import {
+	RAMP_FIXTURE_SHARE,
+	readManagedCell,
+	seedRampCell,
+	type SeedRampCellOptions,
+} from './rampCronFixtures';
 import { modules } from './testModules';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
@@ -36,80 +40,17 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 const ORG = 'org_ramp_hard_stops';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-const CELL_SHARE = 0.5;
+const CELL_SHARE = RAMP_FIXTURE_SHARE;
 
 type Harness = ReturnType<typeof convexTest>;
-/**
- * DERIVED FROM THE SCHEMA, never hand-copied: a new member of
- * `DELIVERABILITY_SIGNAL_SOURCES` must not be able to leave this fixture behind.
- */
-type Signal = Doc<'deliverabilityRouteStates'>['signals'][number];
 
-interface SeedOptions {
-	/** Signals on the POOL row (`provider: 'all'`) — where the MTA files them. */
-	readonly poolSignals?: readonly Signal[];
-	/** Signals on the cell's own provider slice. */
-	readonly providerSignals?: readonly Signal[];
-	readonly abuseStatus?: 'clean' | 'suspended';
-	/** The share stored on the managed cell's row, degenerate values included. */
-	readonly ownShare?: number;
-	/**
-	 * How long ago the POOL row was last written. The shipped router stops acting
-	 * on a route state it has not heard from within
-	 * `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the controller must agree with it.
-	 */
-	readonly poolAgeMs?: number;
-	/** The clean streak stored on the managed cell's row. */
-	readonly cleanStreak?: number;
-}
+type SeedOptions = Omit<SeedRampCellOptions, 'organizationId'>;
 
 async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
-	const now = Date.now();
-	const base = {
-		organizationId: ORG,
-		isFallbackActive: false,
-		snapshotGeneratedAt: now,
-		expiresAt: now + DAY_MS,
-		updatedAt: now,
-	};
-	await t.run(async (ctx) => {
-		await ctx.db.insert(
-			'instanceSettings',
-			createTestInstanceSettings({ abuseStatus: options.abuseStatus ?? 'clean' })
-		);
-		// The pool-wide slice the MTA writes its blocklist verdicts to.
-		await ctx.db.insert('deliverabilityRouteStates', {
-			...base,
-			destinationProvider: 'all' as const,
-			updatedAt: now - (options.poolAgeMs ?? 0),
-			signals: [...(options.poolSignals ?? [])],
-		});
-		// The provider slice (stream-less: the snapshot's own row).
-		await ctx.db.insert('deliverabilityRouteStates', {
-			...base,
-			destinationProvider: 'gmail' as const,
-			signals: [...(options.providerSignals ?? [])],
-		});
-		// The MANAGED cell: the controller's own per-stream row.
-		await ctx.db.insert('deliverabilityRouteStates', {
-			...base,
-			destinationProvider: 'gmail' as const,
-			stream: 'campaign' as const,
-			ownShare: options.ownShare ?? CELL_SHARE,
-			phaseCeiling: 1,
-			cleanStreak: options.cleanStreak ?? 3,
-			mixVersion: 2,
-			signals: [],
-		});
-	});
+	await seedRampCell(t, { organizationId: ORG, ...options });
 }
 
-async function cellRow(t: Harness) {
-	const rows = await t.run(
-		async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
-	);
-	return rows.find((row) => row.stream === 'campaign');
-}
+const cellRow = readManagedCell;
 
 async function decisions(t: Harness) {
 	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
@@ -174,6 +115,37 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		expect(row?.ownShare).toBe(CELL_SHARE);
 		expect(row?.frozenUntil).toBeUndefined();
 		expect((await decisions(t))[0]?.reason).toBe('holding');
+	});
+
+	// AN EXPIRED FREEZE IS NOT A FREEZE. The rung already ignores a past instant,
+	// so leaving it on the row changes no decision — it only leaves every reader
+	// of the row (the delivery dashboard, the `mix` blob in the audit snapshot)
+	// saying "frozen until <a moment last week>" for ever. The cooldown LADDER, by
+	// contrast, is the rung position and its repeat-window anchor: it must survive.
+	it('clears an expired freeze instant off the row while keeping the cooldown ladder', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now();
+		await seed(t, { frozenUntil: at - HOUR_MS, cooldownMs: RAMP_AIMD.cooldownBaseMs });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await cellRow(t);
+		expect(row?.frozenUntil).toBeUndefined();
+		expect(row?.cooldownMs).toBe(RAMP_AIMD.cooldownBaseMs);
+		expect(row?.ownShare).toBe(CELL_SHARE);
+		expect((await decisions(t))[0]?.reason).toBe('holding');
+	});
+
+	it('keeps a freeze instant that has NOT yet expired', async () => {
+		const t = convexTest(schema, modules);
+		const until = Date.now() + 3 * HOUR_MS;
+		await seed(t, { frozenUntil: until });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await cellRow(t);
+		expect(row?.frozenUntil).toBe(until);
+		expect((await decisions(t))[0]?.reason).toBe('frozen');
 	});
 
 	it('an open circuit breaker on the cell provider halves the share and freezes 6h', async () => {
