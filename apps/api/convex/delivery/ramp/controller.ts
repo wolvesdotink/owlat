@@ -15,7 +15,10 @@
  *   2. abuse status         -> 0
  *   3. circuit breaker      -> s x 0.5, freeze 6h
  *   4. critical blocklist   -> 0, freeze 24h
+ *  4b. unreadable stored share -> hold at the clamped value; never add to a
+ *                             number we cannot read
  *   5. active freeze        -> hold
+ *  5a. no evaluation at all -> hold; the graduation clock stops
  *  5b. stale/skewed evidence -> hold; evidence has an expiry, both directions
  *   6. gate halt / fail     -> max(floor, s x 0.5), freeze COOLDOWN
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
@@ -292,7 +295,7 @@ function decide(args: DecideArgs): DecisionDraft {
 		return { ...held, reason: 'frozen' };
 	}
 
-	// No evaluation at all is thin evidence, not a failure (plan D10). It holds
+	// 5a. No evaluation at all is thin evidence, not a failure (plan D10). It holds
 	// the share and the streak — but it stops the GRADUATION clock, because
 	// graduation demands fourteen days of positive evidence and an unmeasured
 	// window is not evidence of health. Deferring a pin costs nothing; awarding
