@@ -49,7 +49,7 @@ export type SunsetRestoreResult = {
  * THE OVERRIDE IS PERMANENT AND VISIBLE, NOT PERMANENT AND HIDDEN. It has no
  * expiry on purpose: an operator who reached for "restore" is asserting they
  * know something the engine does not, and quietly re-arming auto-suppression
- * after some interval would take that assertion away without telling anyone. It
+ * after some interval would take that assertion away without telling anyone.
  * It is instead RECORDED where it can be read back: the restore writes a
  * `contact.sunset_restored` audit entry naming the actor, and
  * `contacts.sunset.listSunsetStage` projects the override as `isExempt` so any
