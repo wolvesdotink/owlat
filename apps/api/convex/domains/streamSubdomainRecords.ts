@@ -7,10 +7,22 @@
  * bounce host — so the operator copies one table into their DNS provider once
  * instead of walking a per-subdomain wizard three times.
  *
- * It composes the SHIPPED builders (`spf.ts`, `dmarc.ts`) rather than
- * re-implementing record syntax: a second SPF or DMARC renderer is exactly the
- * kind of duplicate that drifts, and the shipped ones already carry the
- * qualifier handling, the relay-term budget and the RFC 7489 tag ordering.
+ * IT REPUBLISHES THE SHIPPED TABLE, IT DOES NOT COMPOSE A SECOND ONE. This is
+ * the invariant the module lives or dies on, because the operator sees these
+ * rows NEXT TO the ones the domain screen already shows for the same host: two
+ * rows labelled SPF with different values is not a wizard, it is a way to break
+ * a verified domain. So every From-domain row is built from the SAME input the
+ * shipped provider adapter (`providers/mta/index.ts`) uses —
+ *   • SPF   ← `MTA_SPF_INCLUDE`, and OMITTED when it is unset, exactly as there;
+ *   • DKIM  ← the selector the MTA minted for that host and the record value it
+ *             stored, verbatim, or NO row value at all when the host has not
+ *             been registered yet;
+ *   • DMARC ← the operator's own persisted policy and knobs.
+ * The pool IPs and the relay terms stay on the RETURN-PATH host, which is the
+ * only host `MTA_IP_POOLS` and `MTA_RETURN_PATH_RELAY_SPF` authorise in the
+ * shipped code. Record syntax comes from the shipped builders (`spf.ts`,
+ * `dmarc.ts`) — a second SPF or DMARC renderer is exactly the kind of duplicate
+ * that drifts.
  *
  * IT PUBLISHES THE OPERATOR'S DMARC, NOT A TIGHTER ONE. `sp=`, `pct=`, `adkim=`
  * and `aspf=` are shipped, persisted settings, and a one-pass generator that
@@ -26,8 +38,8 @@
  * SINGLE IP IS THE COMMON CASE: with one address both pools authorise that one
  * address and every record still renders. Nothing here requires two IPs.
  *
- * Pure — no clock, no db, no env. Pool IPs, relay terms, selectors and the
- * DMARC policy are all parameters.
+ * Pure — no clock, no db, no env. The SPF include, the pool IPs, the relay
+ * terms, the minted selectors and the DMARC policy are all parameters.
  */
 
 import { zoneRelativeHost, type DnsName } from '@owlat/shared/dnsZone';
@@ -41,13 +53,13 @@ import {
 	type SpfQualifier,
 } from './spf';
 import {
-	DEFAULT_ARM_SELECTOR_SUFFIXES,
-	armDkimSelector,
-	normalizePoolIps,
+	STREAM_SUBDOMAIN_ROLES,
 	planStreamSubdomains,
 	resolveCellSendingIdentity,
+	type ArmDkimSelectors,
 	type SendingStream,
 	type SigningSubdomainPlan,
+	type SigningSubdomainRole,
 	type SubdomainLayoutInput,
 	type SubdomainLayoutProposal,
 	type TransportArm,
@@ -66,17 +78,20 @@ interface StreamSubdomainRecordBase {
 }
 
 /**
- * A DKIM public key we hold, or the fact that we do not hold one yet.
+ * A DKIM record we can actually publish, or the fact that we cannot yet.
  *
- * `pending` carries NO VALUE ON PURPOSE. An empty `p=` is not "not filled in
- * yet": RFC 6376 §3.6.1 defines `p=` with an empty value as THIS KEY HAS BEEN
- * REVOKED. On a one-pass "copy this table into your DNS provider" surface, an
- * empty-`p=` row is a revocation the operator publishes for the very selector
- * they are about to sign with. Modelling the pending state as a variant with no
- * `value` field means the wizard cannot render a copyable value for it even by
- * accident.
+ * `published` carries the selector the MTA MINTED for this host and the record
+ * value the shipped generator emitted for it, VERBATIM — the wizard republishes
+ * the shipped row, it does not compose a second one. `pending` carries NO VALUE
+ * AND NO SELECTOR on purpose: an empty `p=` is not "not filled in yet" (RFC 6376
+ * §3.6.1 defines it as a REVOCATION), and a selector we invented is a name
+ * nothing in this system signs with. Modelling both as a variant with no fields
+ * means the wizard cannot render a copyable value or a fictional selector for a
+ * subdomain that has not been added yet, even by accident.
  */
-export type StreamSubdomainDkimKey = { status: 'published'; value: string } | { status: 'pending' };
+export type StreamSubdomainDkimKey =
+	| { status: 'published'; selector: string; value: string }
+	| { status: 'pending' };
 
 /**
  * One generated row. A DISCRIMINATED UNION on `purpose` rather than a bag of
@@ -98,14 +113,18 @@ export type StreamSubdomainRecord =
 /** The value a row can be copied into a DNS provider with, or `null`. */
 export function streamSubdomainRecordValue(record: StreamSubdomainRecord): string | null {
 	if (record.purpose !== 'dkim') return record.value;
-	return record.key.status === 'published' ? `v=DKIM1; k=rsa; p=${record.key.value}` : null;
+	// The shipped generator's value, verbatim — see StreamSubdomainDkimKey.
+	return record.key.status === 'published' ? record.key.value : null;
 }
+
+/** The selectors that exist per signing role, indexed for the D11 guard. */
+export type SigningSelectorsByRole = Readonly<Record<SigningSubdomainRole, ArmDkimSelectors>>;
 
 export interface StreamSubdomainRecordSet {
 	layout: SubdomainLayoutProposal;
 	records: StreamSubdomainRecord[];
-	/** The suffixes these rows were generated with — the guard re-reads them. */
-	armSelectorSuffixes: Record<TransportArm, string>;
+	/** The selectors these rows were generated from — the guard re-reads them. */
+	signingSelectors: SigningSelectorsByRole;
 }
 
 /** A domain with no registrable zone renders an explanation, never a stack. */
@@ -113,7 +132,20 @@ export type StreamSubdomainRecordResult =
 	| { ok: true; recordSet: StreamSubdomainRecordSet }
 	| { ok: false; reason: 'invalid_domain' };
 
-export interface StreamSubdomainRecordInput extends SubdomainLayoutInput {
+/**
+ * The DKIM identity the MTA already minted for one proposed host.
+ *
+ * Both fields come from the SHIPPED registration path — `selector` is
+ * `sendingDomainMtaIdentities.dkimSelector` and `recordValue` is the value the
+ * provider adapter stored on `domains.dnsRecords.dkim` — so a wizard row built
+ * from them is byte-identical to the row the domain screen already shows.
+ */
+export interface SubdomainSigningIdentity {
+	selector: string;
+	recordValue: string;
+}
+
+export interface StreamSubdomainRecordOptions {
 	/** DMARC policy published on every sending subdomain — the `p=` tag. */
 	dmarcPolicy: DmarcPolicy;
 	/**
@@ -130,21 +162,30 @@ export interface StreamSubdomainRecordInput extends SubdomainLayoutInput {
 	/** SPF trailing qualifier; the shipped default is the soft-fail `~all`. */
 	spfQualifier?: SpfQualifier;
 	/**
-	 * Extra SPF mechanisms authorising a relay/ESP arm (`include:…`). They are
-	 * added to the SAME record as the pool IPs — one record per host, per RFC
-	 * 7208 §3.2 — which is what keeps both arms of a cell SPF-authorised on one
-	 * From domain (D11).
+	 * `MTA_SPF_INCLUDE`, verbatim — THE ONE SOURCE OF A FROM-DOMAIN SPF RECORD.
+	 *
+	 * The shipped provider adapter publishes exactly `v=spf1 include:<this>
+	 * <qualifier>` on a sending domain and OMITS the record entirely when the
+	 * variable is unset. The wizard does the same thing from the same input, so
+	 * the two tables cannot disagree for a host they both cover. It deliberately
+	 * does NOT enumerate `MTA_IP_POOLS` here: the pool IPs authorise the RETURN
+	 * PATH host, which is where {@link buildReturnPathMailFromRecords} puts them.
 	 */
-	relaySpfTerms?: readonly string[];
+	spfInclude?: string;
+	/**
+	 * Extra SPF mechanisms authorising a relay/ESP arm (`include:…`), scoped to
+	 * the RETURN-PATH HOST — which is the only thing `MTA_RETURN_PATH_RELAY_SPF`
+	 * authorises in the shipped code. They never reach a From domain.
+	 */
+	returnPathRelaySpfTerms?: readonly string[];
 	/** The MTA's inbound EHLO host, for the bounce host's MX row. */
 	mailHost?: string;
-	/** Known DKIM public keys, keyed by subdomain role. */
-	dkimPublicKeys?: { transactional?: string; bulk?: string };
 	/**
-	 * Per-arm DKIM selector suffixes. Two suffixes ⇒ two selectors UNDER THE
-	 * SAME SUBDOMAIN — never two subdomains.
+	 * The DKIM identities that ALREADY EXIST for the proposed hosts, by role. A
+	 * role with no entry has not been added as a sending domain yet, so its DKIM
+	 * row is pending rather than invented.
 	 */
-	armSelectorSuffixes?: Record<TransportArm, string>;
+	signingIdentities?: Readonly<Partial<Record<SigningSubdomainRole, SubdomainSigningIdentity>>>;
 	/**
 	 * A reference transport (relay/ESP) is connected.
 	 *
@@ -157,6 +198,9 @@ export interface StreamSubdomainRecordInput extends SubdomainLayoutInput {
 	referenceArmConfigured?: boolean;
 }
 
+export interface StreamSubdomainRecordInput
+	extends SubdomainLayoutInput, StreamSubdomainRecordOptions {}
+
 /** `<selector>._domainkey.<host>` → `<selector>`, or `null` if it is not one. */
 export function dkimSelectorLabel(recordHost: string, subdomain: string): string | null {
 	const suffix = `._domainkey.${subdomain}`;
@@ -168,19 +212,22 @@ export function dkimSelectorLabel(recordHost: string, subdomain: string): string
 function dkimRows(input: {
 	subdomain: SigningSubdomainPlan;
 	root: DnsName;
-	publicKey: string | undefined;
-	suffixes: Record<TransportArm, string>;
+	identity: SubdomainSigningIdentity | undefined;
 	referenceArmConfigured: boolean;
 }): StreamSubdomainRecord[] {
-	const base = input.subdomain.dkimSelectorBase;
 	const arms: TransportArm[] = input.referenceArmConfigured ? ['own', 'reference'] : ['own'];
 	return arms.map((arm): StreamSubdomainRecord => {
-		const selector = armDkimSelector(base, arm, input.suffixes);
+		// The reference arm signs with the ESP's key under its own selector, which
+		// we never hold; the own arm's is minted once the name is registered.
+		const identity = arm === 'own' ? input.identity : undefined;
 		// THE SAME SUBDOMAIN FOR BOTH ARMS. Only the selector label differs —
-		// which is exactly what D11 permits and all it permits.
-		const host = `${selector}._domainkey.${input.subdomain.host}`;
-		// The reference arm signs with the ESP's key, which we never hold.
-		const key = arm === 'own' ? input.publicKey : undefined;
+		// which is exactly what D11 permits and all it permits. With no selector
+		// yet the row still names the `_domainkey` parent it will live under, so
+		// nothing has to invent a label to have a host.
+		const host =
+			identity === undefined
+				? `_domainkey.${input.subdomain.host}`
+				: `${identity.selector}._domainkey.${input.subdomain.host}`;
 		return {
 			subdomain: input.subdomain.host,
 			purpose: 'dkim',
@@ -188,56 +235,61 @@ function dkimRows(input: {
 			host,
 			relativeHost: zoneRelativeHost(host, input.root),
 			arm,
-			key: key === undefined ? { status: 'pending' } : { status: 'published', value: key },
+			key:
+				identity === undefined
+					? { status: 'pending' }
+					: { status: 'published', selector: identity.selector, value: identity.recordValue },
 		};
 	});
 }
 
 /**
- * Generate every record for the proposed layout in ONE pass.
+ * Generate every record for an ALREADY-PLANNED layout in ONE pass.
  *
  * Order is stable and grouped by subdomain (SPF → DKIM → DMARC, then the bounce
  * host's SPF + MX) so the wizard's table and its tests read the same way.
  */
-export function generateStreamSubdomainRecords(
-	input: StreamSubdomainRecordInput
-): StreamSubdomainRecordResult {
-	const planned = planStreamSubdomains(input);
-	if (!planned.ok) return planned;
-	const layout = planned.proposal;
+export function buildStreamSubdomainRecords(
+	layout: SubdomainLayoutProposal,
+	options: StreamSubdomainRecordOptions
+): StreamSubdomainRecordSet {
 	const root = layout.root;
-	const { ip4, ip6 } = normalizePoolIps(input.sendingIps);
-	const qualifier = input.spfQualifier ?? DEFAULT_SPF_QUALIFIER;
-	const relayTerms = input.relaySpfTerms ?? [];
-	const suffixes = input.armSelectorSuffixes ?? DEFAULT_ARM_SELECTOR_SUFFIXES;
+	const qualifier = options.spfQualifier ?? DEFAULT_SPF_QUALIFIER;
+	const relayTerms = options.returnPathRelaySpfTerms ?? [];
+	const spfInclude = options.spfInclude;
 	const records: StreamSubdomainRecord[] = [];
+	const signingSelectors: Record<SigningSubdomainRole, ArmDkimSelectors> = {
+		transactional: {},
+		bulk: {},
+	};
 
-	const signing: SigningSubdomainPlan[] = [
-		layout.subdomainsByRole.transactional,
-		layout.subdomainsByRole.bulk,
+	const signing: readonly (readonly [SigningSubdomainRole, SigningSubdomainPlan])[] = [
+		['transactional', layout.subdomainsByRole.transactional],
+		['bulk', layout.subdomainsByRole.bulk],
 	];
 
-	for (const subdomain of signing) {
-		records.push({
-			subdomain: subdomain.host,
-			purpose: 'spf',
-			type: 'TXT',
-			host: subdomain.host,
-			relativeHost: subdomain.relativeHost,
-			value: buildSpfRecordValue({ ip4, ip6, extra: relayTerms, qualifier }),
-		});
+	for (const [role, subdomain] of signing) {
+		// Byte-for-byte what the shipped adapter emits for this host, INCLUDING
+		// emitting nothing at all when the include is unset.
+		if (spfInclude) {
+			records.push({
+				subdomain: subdomain.host,
+				purpose: 'spf',
+				type: 'TXT',
+				host: subdomain.host,
+				relativeHost: subdomain.relativeHost,
+				value: buildSpfRecordValue({ include: spfInclude, qualifier }),
+			});
+		}
 
-		const publicKey =
-			subdomain.role === 'transactional'
-				? input.dkimPublicKeys?.transactional
-				: input.dkimPublicKeys?.bulk;
+		const identity = options.signingIdentities?.[role];
+		if (identity !== undefined) signingSelectors[role] = { own: identity.selector };
 		records.push(
 			...dkimRows({
 				subdomain,
 				root,
-				publicKey,
-				suffixes,
-				referenceArmConfigured: input.referenceArmConfigured === true,
+				identity,
+				referenceArmConfigured: options.referenceArmConfigured === true,
 			})
 		);
 
@@ -249,27 +301,28 @@ export function generateStreamSubdomainRecords(
 			host: dmarcHost,
 			relativeHost: zoneRelativeHost(dmarcHost, root),
 			value: buildDmarcRecordValue(subdomain.host, {
-				policy: input.dmarcPolicy,
-				...(input.dmarcSubdomainPolicy === undefined
+				policy: options.dmarcPolicy,
+				...(options.dmarcSubdomainPolicy === undefined
 					? {}
-					: { subdomainPolicy: input.dmarcSubdomainPolicy }),
-				...(input.dmarcPct === undefined ? {} : { pct: input.dmarcPct }),
-				...(input.dmarcAdkim === undefined ? {} : { adkim: input.dmarcAdkim }),
-				...(input.dmarcAspf === undefined ? {} : { aspf: input.dmarcAspf }),
-				...(input.dmarcRua === undefined ? {} : { rua: input.dmarcRua }),
+					: { subdomainPolicy: options.dmarcSubdomainPolicy }),
+				...(options.dmarcPct === undefined ? {} : { pct: options.dmarcPct }),
+				...(options.dmarcAdkim === undefined ? {} : { adkim: options.dmarcAdkim }),
+				...(options.dmarcAspf === undefined ? {} : { aspf: options.dmarcAspf }),
+				...(options.dmarcRua === undefined ? {} : { rua: options.dmarcRua }),
 			}),
 		});
 	}
 
 	// The bounce/VERP host: SPF for the bounce envelope and an MX so remote MTAs
 	// can DELIVER the DSN back. It signs nothing and warms nothing, so it gets
-	// no DKIM selector and no DMARC row of its own.
+	// no DKIM selector and no DMARC row of its own. THIS is where the pool IPs
+	// and the relay terms belong — and the only place either appears.
 	const bounceRecords =
 		buildReturnPathMailFromRecords(
 			layout.bounceHost,
-			[...ip4, ...ip6],
+			layout.sendingIps,
 			qualifier,
-			input.mailHost,
+			options.mailHost,
 			relayTerms
 		) ?? [];
 	for (const record of bounceRecords) {
@@ -291,7 +344,16 @@ export function generateStreamSubdomainRecords(
 		records.push(row);
 	}
 
-	return { ok: true, recordSet: { layout, records, armSelectorSuffixes: suffixes } };
+	return { layout, records, signingSelectors };
+}
+
+/** Plan the layout and generate its records in one call (the pure entry point). */
+export function generateStreamSubdomainRecords(
+	input: StreamSubdomainRecordInput
+): StreamSubdomainRecordResult {
+	const planned = planStreamSubdomains(input);
+	if (!planned.ok) return planned;
+	return { ok: true, recordSet: buildStreamSubdomainRecords(planned.proposal, input) };
 }
 
 // ============ THE D11 GUARDS (both can fail) ============
@@ -359,11 +421,12 @@ export interface UnpublishedSigningSelector {
  * notices. Comparing the two arms' From domains proves nothing (they are
  * derived from the stream alone and cannot differ); comparing what we sign with
  * against what we published can genuinely fail, and does the moment either side
- * grows its own copy of the arm-suffix default.
+ * stops reading the SAME minted selector — a rotation applied to the identity
+ * row but not to the generated table, say.
  *
- * Only arms that actually have a published row are checked — standalone there
- * is no reference row, and its absence is a supported configuration (D2), not a
- * violation.
+ * Only arms that actually PUBLISH a selector are checked — a pending row names
+ * no selector, and standalone there is no reference row at all. Both absences
+ * are supported configurations (D2), not violations.
  */
 export function findUnpublishedSigningSelectors(
 	recordSet: StreamSubdomainRecordSet
@@ -390,16 +453,14 @@ export function findUnpublishedSigningSelectors(
 				layout,
 				stream,
 				arm,
-				armSelectorSuffix: recordSet.armSelectorSuffixes,
+				armSelectors: recordSet.signingSelectors[STREAM_SUBDOMAIN_ROLES[stream]],
 			});
-			if (!labels.includes(identity.dkimSelector)) {
-				mismatches.push({
-					stream,
-					arm,
-					host,
-					signsWith: identity.dkimSelector,
-					published: [...labels],
-				});
+			const signsWith = identity.dkimSelector;
+			// No selector for this arm yet ⇒ nothing is being signed with a name we
+			// failed to publish. That is the standalone / not-yet-added case.
+			if (signsWith === null) continue;
+			if (!labels.includes(signsWith)) {
+				mismatches.push({ stream, arm, host, signsWith, published: [...labels] });
 			}
 		}
 	}
