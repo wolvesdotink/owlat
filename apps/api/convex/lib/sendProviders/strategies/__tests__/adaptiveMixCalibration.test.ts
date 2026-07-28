@@ -147,6 +147,57 @@ describe('adaptive_mix — assignment rows carry the calibration flag', () => {
 		expect(rows.every((row) => (row.arm === 'own') === (row.transport === 'mta'))).toBe(true);
 	});
 
+	it('never marks a row calibration when the deployment has no reference arm', async () => {
+		// The row-level D2 proof. With only the own MTA configured there is no
+		// second arm to compare against: a `reference` decision still DISPATCHES
+		// on the MTA, so a row that recorded `isCalibration: true` would hand the
+		// engagement-ratio gate a one-armed sample — every "reference" member of
+		// the slice having been sent through the own transport anyway.
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'adaptive_mix',
+				providers: [{ providerType: 'mta', isEnabled: true }],
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail',
+				stream: 'campaign',
+				isFallbackActive: false,
+				ownShare: 0.4,
+				mixVersion: 5,
+				signals: [],
+				snapshotGeneratedAt: now,
+				expiresAt: now + 600_000,
+				updatedAt: now,
+			});
+		});
+		const contactIds = syntheticContactIds(400, 'solo');
+		await t.run(async (ctx) => {
+			await recordSendAssignments(ctx, {
+				organizationId: ORG,
+				stream: 'campaign',
+				sendKind: 'campaign',
+				campaignId: 'cmp-solo',
+				routing: { messageType: 'campaign', from: 'news@example.com' },
+				recipients: contactIds.map((contactId, index) => ({
+					sendId: `solo-${index}`,
+					email: `user${index}@gmail.com`,
+					contactId,
+				})),
+			});
+		});
+		const rows = await t.run(async (ctx) => await ctx.db.query('sendAssignments').collect());
+		expect(rows.length).toBe(400);
+		expect(rows.every((row) => row.transport === 'mta')).toBe(true);
+		expect(rows.every((row) => row.arm === 'own')).toBe(true);
+		expect(rows.some((row) => row.isCalibration)).toBe(false);
+	});
+
 	it('records no calibration rows under a shipped (non-splitting) strategy', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
