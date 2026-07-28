@@ -279,6 +279,7 @@ import type * as delivery_postmasterCards from "../delivery/postmasterCards.js";
 import type * as delivery_ramp_actuatorComposition from "../delivery/ramp/actuatorComposition.js";
 import type * as delivery_ramp_aimd from "../delivery/ramp/aimd.js";
 import type * as delivery_ramp_capacityProjection from "../delivery/ramp/capacityProjection.js";
+import type * as delivery_ramp_controlOverride from "../delivery/ramp/controlOverride.js";
 import type * as delivery_ramp_controller from "../delivery/ramp/controller.js";
 import type * as delivery_ramp_paceActuator from "../delivery/ramp/paceActuator.js";
 import type * as delivery_ramp_paceCeiling from "../delivery/ramp/paceCeiling.js";
@@ -290,13 +291,12 @@ import type * as delivery_rampControllerInputs from "../delivery/rampControllerI
 import type * as delivery_rampControllerWrites from "../delivery/rampControllerWrites.js";
 import type * as delivery_rampMixDecisions from "../delivery/rampMixDecisions.js";
 import type * as delivery_rampPaceInputs from "../delivery/rampPaceInputs.js";
+
 import type * as delivery_rampControlAudit from "../delivery/rampControlAudit.js";
 import type * as delivery_rampControlQueries from "../delivery/rampControlQueries.js";
 import type * as delivery_rampControls from "../delivery/rampControls.js";
 import type * as delivery_rampIndependence from "../delivery/rampIndependence.js";
 import type * as delivery_rampPresets from "../delivery/rampPresets.js";
-import type * as delivery_ramp_controlOverride from "../delivery/ramp/controlOverride.js";
-import type * as delivery_ramp_presetConfig from "../delivery/ramp/presetConfig.js";
 import type * as delivery_ramp_controllerBounds from "../delivery/ramp/controllerBounds.js";
 import type * as delivery_ramp_controllerConfig from "../delivery/ramp/controllerConfig.js";
 import type * as delivery_ramp_controllerNarrative from "../delivery/ramp/controllerNarrative.js";
@@ -312,6 +312,7 @@ import type * as delivery_ramp_gateGrades from "../delivery/ramp/gateGrades.js";
 import type * as delivery_ramp_gateMeasurement from "../delivery/ramp/gateMeasurement.js";
 import type * as delivery_ramp_gateTypes from "../delivery/ramp/gateTypes.js";
 import type * as delivery_ramp_gates from "../delivery/ramp/gates.js";
+import type * as delivery_ramp_presetConfig from "../delivery/ramp/presetConfig.js";
 import type * as delivery_ramp_seedGate from "../delivery/ramp/seedGate.js";
 import type * as delivery_ramp_sndsGate from "../delivery/ramp/sndsGate.js";
 import type * as delivery_ramp_trailingBaselineGates from "../delivery/ramp/trailingBaselineGates.js";
@@ -1182,6 +1183,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/relayReturnPathProbe": typeof delivery_relayReturnPathProbe;
   "delivery/postmasterCards": typeof delivery_postmasterCards;
   "delivery/ramp/capacityProjection": typeof delivery_ramp_capacityProjection;
+  "delivery/ramp/controlOverride": typeof delivery_ramp_controlOverride;
   "delivery/ramp/controller": typeof delivery_ramp_controller;
   "delivery/rampCapacityInputs": typeof delivery_rampCapacityInputs;
   "delivery/rampControllerCron": typeof delivery_rampControllerCron;
@@ -1189,13 +1191,12 @@ declare const fullApi: ApiFromModules<{
   "delivery/rampControllerWrites": typeof delivery_rampControllerWrites;
   "delivery/rampMixDecisions": typeof delivery_rampMixDecisions;
   "delivery/rampPaceInputs": typeof delivery_rampPaceInputs;
+
   "delivery/rampControlAudit": typeof delivery_rampControlAudit;
   "delivery/rampControlQueries": typeof delivery_rampControlQueries;
   "delivery/rampControls": typeof delivery_rampControls;
   "delivery/rampIndependence": typeof delivery_rampIndependence;
   "delivery/rampPresets": typeof delivery_rampPresets;
-  "delivery/ramp/controlOverride": typeof delivery_ramp_controlOverride;
-  "delivery/ramp/presetConfig": typeof delivery_ramp_presetConfig;
   "delivery/ramp/controllerBounds": typeof delivery_ramp_controllerBounds;
   "delivery/ramp/controllerConfig": typeof delivery_ramp_controllerConfig;
   "delivery/ramp/controllerNarrative": typeof delivery_ramp_controllerNarrative;
@@ -1211,6 +1212,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/gateMeasurement": typeof delivery_ramp_gateMeasurement;
   "delivery/ramp/gateTypes": typeof delivery_ramp_gateTypes;
   "delivery/ramp/gates": typeof delivery_ramp_gates;
+  "delivery/ramp/presetConfig": typeof delivery_ramp_presetConfig;
   "delivery/ramp/seedGate": typeof delivery_ramp_seedGate;
   "delivery/ramp/sndsGate": typeof delivery_ramp_sndsGate;
   "delivery/ramp/trailingBaselineGates": typeof delivery_ramp_trailingBaselineGates;
