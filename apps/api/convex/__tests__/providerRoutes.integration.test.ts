@@ -111,6 +111,35 @@ describe('providerRoutes mutation contracts', () => {
 		expect(id).toBeTruthy();
 	});
 
+	it('keeps a controller-owned strategy through an unrelated edit', async () => {
+		// The operator UI never OFFERS `adaptive_mix` — the ramp controller writes
+		// it — but a route already carrying it goes back through this mutation on
+		// every unrelated save. A validator that did not accept the kind the
+		// schema stores would reject that save, and the settings page would
+		// silently downgrade the route to a pickable strategy.
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		await t.mutation(api.providerRoutes.setRoute, {
+			...singleMtaRoute,
+			strategy: 'adaptive_mix' as const,
+		});
+
+		const [saved] = await t.query(api.providerRoutes.listRoutes, {});
+		expect(saved?.strategy).toBe('adaptive_mix');
+
+		// The unrelated edit: toggle a provider, echoing back the strategy the
+		// page read, exactly as the settings form serializes it.
+		await t.mutation(api.providerRoutes.setRoute, {
+			messageType: 'campaign' as const,
+			strategy: 'adaptive_mix' as const,
+			providers: [{ providerType: 'mta', isEnabled: false }],
+		});
+
+		const [edited] = await t.query(api.providerRoutes.listRoutes, {});
+		expect(edited?.strategy).toBe('adaptive_mix');
+		expect(edited?.providers.map((provider) => provider.isEnabled)).toEqual([false]);
+	});
+
 	it('rejects an unknown retired transport even when the client marks it disabled', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 

@@ -22,7 +22,7 @@ import {
 	summarizeTransportOutcomes,
 	TRANSPORT_OUTCOME_SHARD_COUNT,
 } from '../transportOutcomes';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import { GMAIL_CAMPAIGN_CELL, OUTCOME_ORG, seedAssignedSend } from './transportOutcomesFixtures';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {

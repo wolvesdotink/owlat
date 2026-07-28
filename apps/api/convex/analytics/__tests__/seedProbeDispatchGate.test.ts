@@ -20,7 +20,7 @@ import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow } from '../seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;

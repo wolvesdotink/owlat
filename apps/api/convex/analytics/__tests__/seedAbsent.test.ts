@@ -8,7 +8,7 @@ import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
 import { evaluateSeedPlacementGate } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';

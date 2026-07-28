@@ -12,7 +12,7 @@ import type { CampaignEnvelopeInput } from '../../delivery/seedShadowCopy';
 import { buildComposeInput } from '../../delivery/worker';
 import { composeForSend } from '../../delivery/sendComposition';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_seed_secrets';

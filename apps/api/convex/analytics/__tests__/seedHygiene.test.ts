@@ -6,7 +6,7 @@ import { insertExternalAccountRow } from '../../mail/externalAccountShared';
 import { summarizeSeedPlacementWindow } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	planSeedHygiene,
 	shouldRemindSeedRotation,

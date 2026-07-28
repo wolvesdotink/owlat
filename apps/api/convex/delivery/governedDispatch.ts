@@ -190,6 +190,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		startedAt: retryState.startedAt,
 		deliveryDomain: request.deliveryDomain,
 		mtaReconciliation: retryState.acceptanceReconciliation === true,
+		// The recorded experiment row is keyed by this id: dispatching on the
+		// arm it names is what keeps the measured denominators honest.
+		sendId: request.sendRef.id,
 	});
 	if (routing.kind === 'defer') {
 		if (retryState.acceptanceReconciliation) {

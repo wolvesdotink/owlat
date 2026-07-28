@@ -25,10 +25,12 @@
  *     Health-driven failover is re-resolved authoritatively at dispatch, so
  *     what this table records is the DELIVERABILITY decision for the cell.
  *
- * What this piece does NOT do: choose the arm. Today the row records what the
- * SHIPPED router already decided (`mta` → `own`, anything else → `reference`).
- * The deterministic per-recipient hash, stratification and the calibration
- * slice arrive with the mix controller and will bump `mixVersion`.
+ * The arm itself is chosen by the ROUTER, never here: under the shipped
+ * strategies the row records what the router decided (`mta` → `own`, anything
+ * else → `reference`); under `adaptive_mix` the router's decision IS the
+ * deterministic per-recipient split, and the mix decision it hands back
+ * (`isCalibration`, `mixVersion`, `engagementRank`) is recorded verbatim. There
+ * is exactly one decision, taken in one place.
  */
 
 import { v } from 'convex/values';
@@ -40,24 +42,27 @@ import {
 } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { extractDomainOrNull } from '@owlat/shared';
 import {
 	deliverabilityCellKey,
 	parseDeliverabilityCellKey,
 	type DeliverabilityCellKey,
 	type DeliverabilityStream,
-	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import { resolveNow } from '../lib/clock';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import {
-	normalizeDestinationDomain,
-	resolveDestinationProvider,
-} from '../lib/sendProviders/destinationProvider';
-import { prepareCellRouteResolver, type CellRouteResolver } from '../lib/sendProviders/cellRoute';
+import type { MixAssignment, MixRecipientIdentity } from '../lib/sendProviders/strategies';
+import { DEFAULT_MIX_VERSION, OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies';
 import type { MessageType } from '../lib/sendProviders/routeInputs';
 import type { SendProviderKind } from '../lib/sendProviders/types';
-import { logWarn } from '../lib/runtimeLog';
+import {
+	buildEngagementRanker,
+	buildTransportLookup,
+	destinationProvidersForEmails,
+} from './sendAssignmentRouting';
+
+// The classification seam lives next door but is part of THIS module's public
+// surface: it is what the write-amplification regression asserts against.
+export { destinationProvidersForEmails } from './sendAssignmentRouting';
 
 /** Assignment rows age out after 90 days (D16 — write amplification is bounded). */
 export const SEND_ASSIGNMENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -70,15 +75,6 @@ export const DEFAULT_CELL_PAGE_SIZE = 100;
 
 /** Hard ceiling on the cell/window read — a per-recipient table (D16). */
 export const MAX_CELL_PAGE_SIZE = 500;
-
-/**
- * Mix version 0 = "no controller-driven mix in effect". The row records the
- * shipped router's own decision. The mix controller writes version >= 1.
- */
-export const ROUTER_ONLY_MIX_VERSION = 0;
-
-/** The own-MTA transport key. Every other catalog transport is a reference arm. */
-const OWN_TRANSPORT_KEY = 'mta';
 
 /**
  * Derived from the schema rather than re-declared, so the literal sets cannot
@@ -99,49 +95,7 @@ export type SendAssignmentKind = Doc<'sendAssignments'>['sendKind'];
  * `sendAssignments.transport` column stores the same kind for the same reason.
  */
 export function armForTransport(transport: SendProviderKind): SendAssignmentArm {
-	return transport === OWN_TRANSPORT_KEY ? 'own' : 'reference';
-}
-
-/**
- * Memoizing batch wrapper around the SHIPPED MX-learned classifier
- * (`lib/sendProviders/destinationProvider.ts` — the same read the route
- * resolver does). One indexed point read per DISTINCT, case-normalized domain
- * across the batch; never a table scan, never a second domain map.
- *
- * Exported so the write-amplification regression can assert the read count
- * BEHAVIOURALLY (k distinct domains ⇒ exactly k `by_org_domain` reads),
- * rather than only inspecting the source for a memo map.
- *
- * An address whose domain does not parse is OMITTED from the map rather than
- * classified as `other`: we cannot say which cell it belongs to, and a
- * guessed cell is worse than a missing row. The caller skips it.
- */
-export async function destinationProvidersForEmails(
-	ctx: Pick<MutationCtx, 'db'>,
-	organizationId: string,
-	emails: readonly string[],
-	now: number
-): Promise<Map<string, DestinationProviderKey>> {
-	const byDomain = new Map<string, DestinationProviderKey>();
-	const byEmail = new Map<string, DestinationProviderKey>();
-	for (const email of emails) {
-		const rawDomain = extractDomainOrNull(email);
-		if (rawDomain === null) continue;
-		// Defence in depth, not a correction: `extractDomainOrNull` goes through
-		// `parseAddress`, which already lowercases, so this is a no-op for every
-		// address that arrives here today. It is applied anyway because the memo
-		// key must agree with the key `resolveDestinationProvider` normalizes to
-		// internally — otherwise a future non-address caller (that helper takes a
-		// bare `domain: string`) would split one domain across two memo slots.
-		const domain = normalizeDestinationDomain(rawDomain);
-		let provider = byDomain.get(domain);
-		if (provider === undefined) {
-			provider = await resolveDestinationProvider(ctx, organizationId, domain, now);
-			byDomain.set(domain, provider);
-		}
-		byEmail.set(email, provider);
-	}
-	return byEmail;
+	return transport === OWN_ARM_TRANSPORT_KIND ? 'own' : 'reference';
 }
 
 /**
@@ -174,8 +128,24 @@ export interface SendAssignmentRecipient {
 	/** `emailSends` / `transactionalSends` id, as a string. */
 	readonly sendId: string;
 	readonly email: string;
-	/** Optional engagement percentile rank, when the producer already knows it. */
-	readonly engagementRank?: number;
+	/**
+	 * THE per-recipient salt for the deterministic mix split (D7). Absent for a
+	 * send with no contact row (a preview, an agent reply to an unknown
+	 * address); the split then salts with `sendId`, which is stable, unique and
+	 * uncorrelated with anything — see `MixRecipientIdentity.fallbackKey`.
+	 */
+	readonly contactId?: string;
+	/**
+	 * `contacts.engagementScore` (0-100) as the producer already carries it.
+	 * Converted to a percentile WITHIN this batch's cohort through the shipped
+	 * percentile helper — this module never re-implements scoring.
+	 *
+	 * A producer may NOT hand in a ready-made percentile. A supplied rank would
+	 * bypass the minimum-cohort rule ("thin data holds", D10) and the finiteness
+	 * treatment the cohort path applies, and there is no caller that knows a
+	 * percentile the batch does not: the ranking cohort IS the batch.
+	 */
+	readonly engagementScore?: number;
 }
 
 /**
@@ -183,9 +153,11 @@ export interface SendAssignmentRecipient {
  *
  * There is exactly ONE way, deliberately: the writer always re-resolves
  * in-transaction through the health-free cell seam
- * (`lib/sendProviders/cellRoute.ts prepareCellRouteResolver`), once per DISTINCT
- * destination provider (at most `DESTINATION_PROVIDER_KEYS.length`
- * resolutions, never one per recipient).
+ * (`lib/sendProviders/cellRoute.ts prepareCellMixResolver`). The seam reads the
+ * cell's route state once per DISTINCT destination provider (at most
+ * `DESTINATION_PROVIDER_KEYS.length` reads, never one per recipient) and then
+ * decides per RECIPIENT — under `adaptive_mix` the arm is a function of the
+ * recipient, so a per-provider answer would be wrong for most of the batch.
  *
  * No producer may hand in a transport it resolved itself. Two reasons, both
  * learned the hard way:
@@ -225,6 +197,19 @@ export interface RecordSendAssignmentsInput {
 	readonly sendKind: SendAssignmentKind;
 	readonly routing: SendAssignmentRouting;
 	readonly recipients: readonly SendAssignmentRecipient[];
+	/**
+	 * THE anti-cohort salt (D7). Salting the split with `contactId` alone would
+	 * pin a contact to one arm forever and turn the two arms into two fixed
+	 * cohorts, so every ratio the controller reads would compare cohort quality
+	 * instead of transport quality. A campaign passes its campaign id; a
+	 * transactional send has no campaign and passes nothing, and each such send
+	 * is its own single-recipient experiment.
+	 */
+	readonly campaignId?: string;
+	/**
+	 * Fallback values for the mix fields, used only when the route did NOT come
+	 * from a per-recipient split (every shipped strategy).
+	 */
 	readonly mixVersion?: number;
 	readonly isCalibration?: boolean;
 	readonly now?: number;
@@ -250,130 +235,65 @@ export async function recordSendAssignments(
 		input.recipients.map((recipient) => recipient.email),
 		now
 	);
-	const transportFor = await buildTransportLookup(ctx, {
+	const resolveFor = await buildTransportLookup(ctx, {
 		routing: input.routing,
 		stream: input.stream,
 		organizationId,
-		destinationProviders: new Set(providers.values()),
 		now,
 	});
-	const mixVersion = input.mixVersion ?? ROUTER_ONLY_MIX_VERSION;
-	const isCalibration = input.isCalibration ?? false;
+	const fallbackMixVersion = input.mixVersion ?? DEFAULT_MIX_VERSION;
+	const fallbackIsCalibration = input.isCalibration ?? false;
+	// The ranker is partitioned by the SAME classification the cell key is built
+	// from, so a recipient's percentile and the share it is cut against describe
+	// the same population.
+	const rankFor = buildEngagementRanker(input.recipients, providers);
 
 	let written = 0;
 	for (const recipient of input.recipients) {
 		const destinationProvider = providers.get(recipient.email);
 		// An address whose domain does not parse has no cell we can name.
 		if (destinationProvider === undefined) continue;
-		const transport = transportFor(destinationProvider);
+		const engagementRank = rankFor(recipient);
+		const identity: MixRecipientIdentity = {
+			...(recipient.contactId !== undefined ? { contactId: recipient.contactId } : {}),
+			...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
+			...(engagementRank !== undefined ? { engagementRank } : {}),
+			fallbackKey: recipient.sendId,
+		};
+		const outcome = await resolveFor(destinationProvider, identity);
 		// An unresolvable route means we do not know what the worker will do,
 		// and a guessed arm is worse than a missing row.
-		if (transport === null) continue;
+		if (outcome === null) continue;
+		const transport = outcome.route.providerType;
+		const mix: MixAssignment | null = outcome.mix;
 		const cell: DeliverabilityCellKey = deliverabilityCellKey({
 			stream: input.stream,
 			destinationProvider,
 		});
+		// The rank RECORDED is the one the decision actually used, so an audit of
+		// a stratified row can reproduce it. When the router did not split, the
+		// producer's rank (if any) is recorded as the observation it is.
+		const recordedRank = mix?.engagementRank ?? engagementRank;
+		const arm = armForTransport(transport);
+		// What makes a row calibration is decided in ONE place — the strategy,
+		// which is the only module that can see whether the route has two arms to
+		// compare. Here we copy the flag through.
+		const isCalibration = mix !== null ? mix.isCalibration : fallbackIsCalibration;
 		await ctx.db.insert('sendAssignments', {
 			organizationId,
 			sendId: recipient.sendId,
 			sendKind: input.sendKind,
 			cell,
 			transport,
-			arm: armForTransport(transport),
+			arm,
 			isCalibration,
-			mixVersion,
-			...(recipient.engagementRank !== undefined
-				? { engagementRank: recipient.engagementRank }
-				: {}),
+			mixVersion: mix?.mixVersion ?? fallbackMixVersion,
+			...(recordedRank !== undefined ? { engagementRank: recordedRank } : {}),
 			assignedAt: now,
 		});
 		written += 1;
 	}
 	return written;
-}
-
-interface TransportLookupInput {
-	readonly routing: SendAssignmentRouting;
-	readonly stream: DeliverabilityStream;
-	readonly organizationId: string;
-	/** The DISTINCT destination providers present in the batch. */
-	readonly destinationProviders: ReadonlySet<DestinationProviderKey>;
-	readonly now: number;
-}
-
-/**
- * Build the destination-provider → transport lookup for one batch.
- *
- * The route decision this record needs depends on the recipient ONLY through
- * its destination-provider classification: `deliverabilityRouteStates` is
- * keyed `by_org_provider_stream` and the stream is fixed for the batch, and
- * every other input the cell seam reads
- * (`providerRoutes`, the relay-domain verification, the org-wide state) is
- * per-batch or org-wide. Taking the DISTINCT provider set — rather than the
- * recipients — makes the "one resolution per cell" bound structural: this
- * function cannot issue more than `DESTINATION_PROVIDER_KEYS.length`
- * resolutions no matter how large the batch is.
- *
- * The resolution goes through the cell seam, NOT the full per-message
- * resolver: the full one reads `providerHealth`, a document patched once per
- * dispatch, and pulling that hotspot into a campaign enqueue transaction would
- * make concurrent dispatches force OCC retries of a transaction that must not
- * fail. Health-driven failover is re-resolved authoritatively by the worker at
- * dispatch time.
- *
- * The seam is PREPARED once for the batch (`prepareCellRouteResolver`) and
- * then invoked per distinct provider: the route config, the configured-kind
- * set and the relay-domain verification are destination-provider independent,
- * so preparing once turns "at most 5 resolutions" into "at most 5 point reads
- * plus one fixed prologue" rather than 5 copies of everything.
- *
- * Route resolution can THROW (`DeliverabilityRouteError`,
- * `GlobalDeliveryCircuitOpenError`). Recording the experiment must never be
- * able to fail a send, so a throw degrades that provider to "unresolved" —
- * no row — and the enqueue proceeds untouched. The prologue is wrapped for the
- * same reason: if preparing the seam throws, the whole batch degrades to "no
- * rows", never to a failed enqueue.
- */
-async function buildTransportLookup(
-	ctx: MutationCtx,
-	input: TransportLookupInput
-): Promise<(destinationProvider: DestinationProviderKey) => SendProviderKind | null> {
-	const { routing } = input;
-	const byProvider = new Map<DestinationProviderKey, SendProviderKind | null>();
-	let resolveCell: CellRouteResolver;
-	try {
-		resolveCell = await prepareCellRouteResolver(ctx, routing.messageType, {
-			...(routing.from !== undefined ? { from: routing.from } : {}),
-			now: input.now,
-			organizationId: input.organizationId,
-			stream: input.stream,
-		});
-	} catch (error) {
-		logWarn(
-			'[sendAssignments] cell route seam unavailable; recording no assignments:',
-			error instanceof Error ? error.name : 'UnknownError'
-		);
-		return () => null;
-	}
-	for (const destinationProvider of input.destinationProviders) {
-		let resolvedTransport: SendProviderKind | null = null;
-		try {
-			const resolved = await resolveCell(destinationProvider);
-			resolvedTransport = resolved?.providerType ?? null;
-		} catch (error) {
-			// Never the recipient address and never `from`: an assignment log
-			// line must not become a PII sink. Provider + error name is enough
-			// to tell "this cell is unroutable today" from "the resolver is
-			// systematically throwing and the experiment record is empty".
-			logWarn(
-				`[sendAssignments] route resolution failed for cell provider ${destinationProvider}:`,
-				error instanceof Error ? error.name : 'UnknownError'
-			);
-			resolvedTransport = null;
-		}
-		byProvider.set(destinationProvider, resolvedTransport);
-	}
-	return (destinationProvider) => byProvider.get(destinationProvider) ?? null;
 }
 
 /**
