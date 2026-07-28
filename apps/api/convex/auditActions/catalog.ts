@@ -165,10 +165,12 @@ export const AUDIT_ACTION_LITERALS = [
 	// Abuse-status changes (any source — admin override, MTA circuit breaker,
 	// reputation auto-enforcement). See ADR-0011.
 	action('abuse_status_changed'),
-	// Deliverability ramp — the AIMD controller changed a cell's own-MTA share.
-	// Fired only on an actual move (no-ops are audited in `mixDecisions`, which
-	// records EVERY evaluation). See the deliverability plan, decision D12.
-	action('deliverability_ramp.share_changed'),
+	// Deliverability ramp — the AIMD controller applied a decision that CHANGED a
+	// cell's durable ramp state: the own-MTA share moved, or a gate breach imposed
+	// a fresh freeze and cooldown rung on a cell already sitting on the share
+	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
+	// which records EVERY evaluation. See the deliverability plan, decision D12.
+	action('deliverability_ramp.decision_applied'),
 	// Postbox outbound state transitions (per recipient). Fired by the
 	// Postbox outbound lifecycle module on every transition. See ADR-0012.
 	action('postbox_outbound_transition'),

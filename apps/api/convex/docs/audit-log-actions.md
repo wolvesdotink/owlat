@@ -90,7 +90,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `agent.demotion_acknowledged` | `autonomy_rule` | `{ category, sender }` |
 | `knowledge.edge_backfill_started` / `edge_backfill_cancelled` | `knowledge_config` | `{ jobId }` |
 | `abuse_status_changed` | `instance_settings` | `{ previousStatus, newStatus, reason, changedBy }` (see ADR-0011) |
-| `deliverability_ramp.share_changed` | `deliverability_ramp` | `{ cell, fromShare, toShare, direction, reason, failedGate?, verdict }` — the AIMD ramp controller moved a cell's own-MTA share |
+| `deliverability_ramp.decision_applied` | `deliverability_ramp` | `{ cell, fromShare, toShare, direction, reason, failedGate?, verdict }` — the AIMD ramp controller applied a decision that changed a cell's durable ramp state (the share moved, or a gate breach froze a cell already on the share floor) |
 | `postbox_outbound_transition` | `mail_message` | `{ mailboxId, recipientIdx, from, to, aggregateBefore, aggregateAfter, at, bounceMessage?, errorMessage?, errorCode? }` (see ADR-0012) |
 | `plugin.action_completed` / `plugin.action_failed` / `plugin.action_denied` | `plugin` | Dedicated `organizationId` + `pluginId`; allowlisted `{ operation, outcome, attempts?, usageAvailable?, chargedMicrousd?, actualMicrousd?, reasonCode? }`. Never storage keys/values/cursors, prompts/results, secrets, or raw errors. |
 | `connected_app.registered` / `connected_app.enabled` / `connected_app.disabled` / `connected_app.revoked` / `connected_app.deleted` / `connected_app.secret_rotated` | `connected_app` | Tier-2 connected-app lifecycle (`connectedApps/*`). Dedicated `organizationId` + `pluginId`; scalar `{ pluginId, capabilityCount }`. Never the endpoint URL, the shared secret, or its sealed envelope. |

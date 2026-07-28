@@ -202,11 +202,22 @@ export const runRampController = internalMutation({
 			}
 
 			await applyDecision(ctx, { perStream, decision, now });
-			if (decision.direction === 'hold') continue;
+			// EVERY AUTOMATIC CHANGE IS AUDITED (plan D12) — which is a wider predicate
+			// than "the share moved". A gate breach on a cell already sitting on
+			// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
+			// 0.5)` is the floor), yet `applyDecision` has just rewritten the freeze
+			// expiry, the cooldown rung, the clean streak, the green clock and the
+			// graduation pin. That is a real automatic change and belongs in
+			// `auditLogs`. `cooldownMs` is what makes it visible: it is set only by a
+			// LADDER freeze, i.e. a breached gate, which is the one hold that changes
+			// durable state. The same discriminator drives the admin notice — see
+			// `rampDecisionAdminNotice` for why it is exact. An ordinary hold rewrites
+			// nothing but the lease and stays out of the log.
+			if (decision.direction === 'hold' && decision.cooldownMs === undefined) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
 				organizationId,
-				action: 'deliverability_ramp.share_changed',
+				action: 'deliverability_ramp.decision_applied',
 				resource: 'deliverability_ramp',
 				resourceId: deliverabilityCellKey(cell),
 				details: {

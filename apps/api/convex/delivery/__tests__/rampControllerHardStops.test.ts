@@ -83,7 +83,7 @@ describe('hard stops reach the controller through real route-state rows', () => 
 
 		const auditLogs = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
 		expect(auditLogs).toHaveLength(1);
-		expect(auditLogs[0]?.action).toBe('deliverability_ramp.share_changed');
+		expect(auditLogs[0]?.action).toBe('deliverability_ramp.decision_applied');
 	});
 
 	it('a WARNING listing on the pool is not a hard stop', async () => {
