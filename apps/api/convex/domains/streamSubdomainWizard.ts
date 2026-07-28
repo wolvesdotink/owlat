@@ -24,6 +24,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { offerBimiRecord, type BimiOffer } from './bimi';
 import { parsePoolIpsLenient, parseReturnPathRelaySpfTerms, resolveSpfQualifier } from './spf';
 import {
@@ -79,6 +80,9 @@ export type StreamSubdomainWizardResult =
 export const getStreamSubdomainPlan = authedQuery({
 	args: { domainId: v.id('domains') },
 	handler: async (ctx, args): Promise<StreamSubdomainWizardResult> => {
+		// Domain-level sending configuration, the same gate as every other read and
+		// write on this wizard: only owners/admins see or change it.
+		await requireOrgPermission(ctx, 'organization:manage');
 		const domain = await ctx.db.get(args.domainId);
 		if (domain === null) return { ok: false, reason: 'unknown_domain' };
 
