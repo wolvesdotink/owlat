@@ -24,12 +24,11 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import type { DatabaseReader } from '../_generated/server';
+import { MS_PER_DAY } from '../lib/constants';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import type { RampIntegrationPresence } from './ramp/degradationMatrix';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import type { RampReadCtx } from './rampReadCtx';
 
 /**
  * How recently an integration must have produced data to count as connected.
@@ -47,7 +46,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * this piece exists to prevent. Three days is the smallest window that still
  * tolerates the feeds' own jitter; the boundary is fixture-pinned.
  */
-export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * DAY_MS;
+export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * MS_PER_DAY;
 
 /**
  * How far back a cell's reference arm is looked for.
@@ -69,20 +68,8 @@ const CFL_ENROLLMENT_SCAN_LIMIT = 20;
  */
 export type RampDeploymentPresence = Omit<RampIntegrationPresence, 'reference_transport'>;
 
-/**
- * READER-TYPED, per ADR-0042's rule for a summarizer: these functions only read,
- * so they take the narrowest handle that can express that. A `MutationCtx` here
- * would let a future edit write from what is meant to be a pure observation, and
- * would keep the dashboard query from reusing the very reader the controller
- * decided on — the two disagreeing about a number is the failure ADR-0042 is
- * about.
- */
-export interface RampPresenceReader {
-	readonly db: DatabaseReader;
-}
-
 export async function loadRampDeploymentPresence(
-	ctx: RampPresenceReader,
+	ctx: RampReadCtx,
 	args: { readonly organizationId: string; readonly now: number }
 ): Promise<RampDeploymentPresence> {
 	const since = args.now - RAMP_INTEGRATION_FRESHNESS_MS;
@@ -149,7 +136,7 @@ export function withReferenceArm(
  * once so the two callers cannot disagree about what "has a relay" means.
  */
 export async function loadReferenceArmPresence(
-	ctx: RampPresenceReader,
+	ctx: RampReadCtx,
 	args: { readonly organizationId: string; readonly cell: DeliverabilityCell; readonly now: number }
 ): Promise<boolean> {
 	const summary = await summarizeTransportOutcomes(ctx.db, {

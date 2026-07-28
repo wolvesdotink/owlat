@@ -11,7 +11,8 @@
  */
 
 import { parsePoolIpsLenient } from '../domains/spf';
-import { DAY_MS, utcDayStart } from './sndsFeed';
+import { DAY_MS } from './sndsFeed';
+import { startOfDayUtc } from '../lib/clock';
 
 /**
  * How far back a feed row may reach and still be stored.
@@ -35,7 +36,7 @@ export const SNDS_MAX_FEEDS = 8;
  * is exactly how a day gets dispatched and then rejected for no visible reason.
  */
 export function oldestStorableDay(now: number): number {
-	return utcDayStart(now) - SNDS_INGEST_MAX_AGE_MS;
+	return startOfDayUtc(now) - SNDS_INGEST_MAX_AGE_MS;
 }
 
 /**

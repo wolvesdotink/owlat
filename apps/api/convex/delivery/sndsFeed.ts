@@ -17,6 +17,7 @@
  */
 
 import { normalizeIpAddress } from '@owlat/shared/ipAddress';
+import { startOfDayUtc } from '../lib/clock';
 
 /**
  * Complaint-rate bands, ordered. `unknown` is first and is NOT a severity: it
@@ -383,10 +384,6 @@ export function parseSndsFeed(body: string, maxRows: number = SNDS_MAX_ROWS): Sn
 	return { rows, dropped, truncated };
 }
 
-export function utcDayStart(timestamp: number): number {
-	return Math.floor(timestamp / DAY_MS) * DAY_MS;
-}
-
 /**
  * The distinct (IP, day) cells one fold may hold.
  *
@@ -444,7 +441,7 @@ export function foldedSndsDays(fold: SndsDayFold): SndsDayObservation[] {
 export function foldSndsDays(fold: SndsDayFold, rows: readonly SndsFeedRow[]): void {
 	const byCell = fold.byCell;
 	for (const row of rows) {
-		const periodStart = utcDayStart(row.activityStart);
+		const periodStart = startOfDayUtc(row.activityStart);
 		const key = sndsCellKey(row.ip, periodStart);
 		const existing = byCell.get(key);
 		if (existing === undefined) {

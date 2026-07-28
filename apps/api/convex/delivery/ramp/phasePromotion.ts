@@ -22,6 +22,7 @@
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { startOfDayUtc } from '../../lib/clock';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -128,10 +129,6 @@ export interface DnsblDayObservation {
  * not observe is not a streak, and the promotion it would unlock is the most
  * expensive one the ladder has.
  */
-function utcDayStart(at: number): number {
-	return Math.floor(at / DAY_MS) * DAY_MS;
-}
-
 /**
  * The newest day the streak may end on and still be a reading of the PRESENT.
  *
@@ -158,7 +155,7 @@ export function isDnsblObservationCurrent(
 		newest = newest === null ? day.dayStart : Math.max(newest, day.dayStart);
 	}
 	if (newest === null) return false;
-	return utcDayStart(now) - newest <= PROMOTION_DNSBL_MAX_STALENESS_MS;
+	return startOfDayUtc(now) - newest <= PROMOTION_DNSBL_MAX_STALENESS_MS;
 }
 
 export function dnsblCleanStreakDays(days: readonly DnsblDayObservation[]): number {
@@ -268,7 +265,12 @@ export interface PhasePromotionDecision {
 	readonly allowed: boolean;
 	/** Which route permitted it — `null` when none did or none was needed. */
 	readonly viaRoute: PromotionRoute['id'] | null;
-	/** True when the target rung is low enough that no route was consulted. */
+	/**
+	 * True when the target rung is HIGH ENOUGH that a route had to be consulted —
+	 * i.e. above the 0.5 line, or unreadable and therefore treated as the
+	 * strictest case. False is the "no route consulted" case, and it is the one
+	 * that returns early with `allowed: true`.
+	 */
 	readonly evidenceRequired: boolean;
 	/** Every applicable route with its outstanding conditions, for the UI. */
 	readonly routes: readonly PromotionRouteResult[];
