@@ -155,8 +155,18 @@ export function isActionableDeliverabilitySignalSource(
 	return (INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value);
 }
 
+/**
+ * The two fields the blocklist test actually reads. Stored route-state signals
+ * carry no `provider` — the ROW is the provider slice — so the predicate asks
+ * for exactly what it uses and stays callable on both shapes, rather than
+ * forcing a second inline copy on the database side.
+ */
+export type DeliverabilitySignalVerdict = Pick<DeliverabilitySignal, 'source' | 'severity'>;
+
 /** True when at least one pool address is blocklist-ejected, wholly or partly. */
-export function hasCriticalBlocklistSignal(signals: readonly DeliverabilitySignal[]): boolean {
+export function hasCriticalBlocklistSignal(
+	signals: readonly DeliverabilitySignalVerdict[]
+): boolean {
 	return signals.some(
 		(signal) =>
 			signal.severity === 'critical' &&
