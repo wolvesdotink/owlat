@@ -43,6 +43,7 @@ import {
 } from '../analytics/transportOutcomeSummary';
 import type { RampGateConfidence, RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
 import { RAMP_GATE_SAMPLE_FLOORS } from './ramp/gateConfig';
+import { weakestConfidence } from './ramp/gateGrades';
 
 /** Declared ONCE for the whole feature; the query shell imports it from here. */
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -201,9 +202,29 @@ export interface DashboardConfidence {
 
 /**
  * TRANSLATE, DO NOT RE-DERIVE. The level is the evaluator's own
- * `weakestConfidence` fold, passed straight through; the only judgement made
- * here is that a window with nothing in it is graded `none` rather than being
- * given whichever level a column of holds happened to produce.
+ * `weakestConfidence` fold over the gates that actually DECIDED something,
+ * passed through — with exactly two judgements layered on top, both of them
+ * about what was NOT measured rather than about any rate:
+ *
+ *   1. a window with nothing in it is graded `none`, rather than being given
+ *      whichever level a column of holds happened to produce;
+ *   2. a cell is CAPPED by the measurement inputs it does not have, which is
+ *      plan D14's sentence read literally: "measurement confidence: low —
+ *      connect a relay or add seed mailboxes to improve". With NEITHER of those
+ *      the cap is `low`; with seeds but no second arm it is `medium`; a cell
+ *      with a reference arm has no cap, so absent seeds beside one remain an
+ *      invitation rather than a downgrade (plan D2).
+ *
+ *      This is not pessimism about the gates that DID decide — a standalone
+ *      bounce gate really is high-confidence direct measurement, and it still
+ *      says so on its own row. It is honesty about the CELL: with no second arm
+ *      and no view of the spam folder there is no way to tell a degradation from
+ *      a bad week for the whole list, and an operator reading "high" beside a
+ *      column of "not enough data yet" has been told something false.
+ *
+ * THE SIGNATURE IS THE GUARD. It takes the four facts it is allowed to use and
+ * not the outcome summaries, so re-deriving a level from rates — which is what
+ * the placeholder this replaced did — is not reachable from here.
  *
  * The IMPROVEMENT CODES are this module's, because they are the one thing the
  * evaluator does not answer: it grades what it measured, and these name what an
@@ -212,22 +233,24 @@ export interface DashboardConfidence {
  * configuration, not to an incomplete one.
  */
 export function dashboardConfidence(input: {
-	readonly own: TransportOutcomeSummary;
-	readonly reference: TransportOutcomeSummary | null;
+	readonly ownSent: number;
+	readonly hasReferenceArm: boolean;
 	readonly hasSeedCoverage: boolean;
 	readonly evaluated: RampGateConfidence;
 }): DashboardConfidence {
-	const { own, reference, hasSeedCoverage, evaluated } = input;
+	const { ownSent, hasReferenceArm, hasSeedCoverage, evaluated } = input;
 	const improvements: DashboardConfidenceImprovement[] = [];
-	if (reference === null) improvements.push('connect_reference_transport');
+	if (!hasReferenceArm) improvements.push('connect_reference_transport');
 	if (!hasSeedCoverage) improvements.push('add_seed_mailboxes');
 
-	if (own.sent <= 0) return { level: 'none', improvements };
+	if (ownSent <= 0) return { level: 'none', improvements };
 	// A cell whose gates are holding for want of volume is told the one thing
 	// that would unhold them. The LEVEL still comes from the evaluator — this
 	// only adds the advice beside it.
-	if (own.sent < RAMP_GATE_SAMPLE_FLOORS.hardBounce) improvements.push('send_more_volume');
-	return { level: evaluated, improvements };
+	if (ownSent < RAMP_GATE_SAMPLE_FLOORS.hardBounce) improvements.push('send_more_volume');
+
+	const ceiling: RampGateConfidence = hasReferenceArm ? 'high' : hasSeedCoverage ? 'medium' : 'low';
+	return { level: weakestConfidence([evaluated, ceiling]), improvements };
 }
 
 // ============ CELL VIEW ============
@@ -283,6 +306,7 @@ export function buildDashboardCellView(input: {
 	readonly reference: TransportOutcomeSummary | null;
 	readonly evaluation: RampGateEvaluation;
 	readonly hasSeedCoverage: boolean;
+	readonly hasReferenceArm: boolean;
 	readonly trend: readonly DashboardTrendPoint[];
 }): DashboardCellView {
 	const { evaluation } = input;
@@ -299,8 +323,8 @@ export function buildDashboardCellView(input: {
 		requiresCorroboration: evaluation.requiresCorroboration,
 		gates: evaluation.perGate,
 		confidence: dashboardConfidence({
-			own: input.own,
-			reference: input.reference,
+			ownSent: input.own.sent,
+			hasReferenceArm: input.hasReferenceArm,
 			hasSeedCoverage: input.hasSeedCoverage,
 			evaluated: evaluation.confidence,
 		}),
