@@ -29,6 +29,12 @@ describe('zero seed mailboxes is a supported configuration', () => {
 		expect(summary.seedAccountCount).toBe(0);
 		expect(summary.rotationRemindersDue).toBe(0);
 		expect(summary.windowStart).toBe(NOW - SEED_PLACEMENT_WINDOW_MS);
+		// D14 — the reading carries how much it is WORTH, and the one hint that
+		// would improve it. A hint, never an error and never a nag: nothing here
+		// is an unresolved task and nothing gates a send on it.
+		expect(summary.placementSource).toBe('self_hosted_seeds');
+		expect(summary.placementConfidence).toBe('none');
+		expect(summary.placementImprovement).toBe('add_seed_mailboxes');
 	});
 
 	it('finds no seed accounts and reports no reminder', async () => {

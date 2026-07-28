@@ -225,6 +225,10 @@
 			"types": "./src/seedPlacement.ts",
 			"import": "./src/seedPlacement.ts"
 		},
+		"./placementAdapter": {
+			"types": "./src/placementAdapter.ts",
+			"import": "./src/placementAdapter.ts"
+		},
 		"./deliverabilityAlignment": {
 			"types": "./src/deliverabilityAlignment.ts",
 			"import": "./src/deliverabilityAlignment.ts"

@@ -46,11 +46,16 @@ import {
 	classifySeedFolder,
 	evaluateSeedPlacementGate,
 	planSeedHygiene,
-	summarizeSeedPlacement,
 	type SeedGateResult,
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
+import {
+	resolvePlacementAdapter,
+	type PlacementImprovementHint,
+	type PlacementSourceKind,
+} from '@owlat/shared/placementAdapter';
+import type { SeedConfidence } from '@owlat/shared/seedPlacement';
 import { loadSeedAccounts } from './seedAccounts';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
@@ -297,6 +302,23 @@ export interface SeedPlacementSummary {
 	/** Seeds the operator should rotate. Advisory only. */
 	rotationRemindersDue: number;
 	windowStart: number;
+	/** Which placement adapter produced {@link rollups} (P4-7). */
+	placementSource: PlacementSourceKind;
+	/**
+	 * How much this reading is worth (D14). Placement evidence is NEVER high
+	 * confidence whoever gathered it; the one grade it can carry is the gate's
+	 * own `SEED_GATE_CONFIDENCE`, imported rather than restated so the screen
+	 * and the controller cannot hold two opinions of one reading. `none` means
+	 * there is nothing to read at all yet — the ABSENCE of a grade, not a
+	 * weaker one — and the screen says so instead of quoting a percentage.
+	 */
+	placementConfidence: SeedConfidence;
+	/**
+	 * The ONE advisory the reading may carry, for rendering next to the
+	 * confidence label. A hint, never an error, never a "setup incomplete" nag
+	 * and never a reason to withhold a screen or a send (D2).
+	 */
+	placementImprovement: PlacementImprovementHint;
 }
 
 /**
@@ -336,11 +358,28 @@ export async function summarizeSeedPlacementWindow(
 	}
 
 	const accounts = await loadSeedAccounts(db, organizationId, now);
+	// Gate 5 reads its evidence through the placement ADAPTER rather than the
+	// roll-up directly (P4-7). With no commercial placement key — the default and
+	// expected configuration — this resolves to the self-hosted seed adapter and
+	// the reading is byte-identical to the shipped one; a deployment that later
+	// adds a panel feeds the SAME gate through the SAME interface (D2: the key is
+	// an upgrade, its absence changes nothing).
+	const placement = resolvePlacementAdapter({
+		seedMailboxCount: accounts.length,
+		commercialApiConfigured: false,
+	});
 	return {
-		rollups: summarizeSeedPlacement(observations),
+		rollups: placement.adapter.summarize({ kind: 'self_hosted_seeds', observations }),
 		seedAccountCount: accounts.length,
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
+		// The resolution's own verdict, carried through rather than recomputed:
+		// this IS D14's "measurement confidence — add seed mailboxes" hint, and
+		// it is the resolution that decides both the grade and the hint, not the
+		// screen.
+		placementSource: placement.kind,
+		placementConfidence: placement.confidence,
+		placementImprovement: placement.improvement,
 	};
 }
 
