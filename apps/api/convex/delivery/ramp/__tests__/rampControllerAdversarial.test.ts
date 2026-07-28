@@ -87,6 +87,63 @@ describe('a forged snapshot cannot buy more than one step', () => {
 		expect(decision.reason).toBe('healthy');
 	});
 
+	it('a CRAFTED graduation pin cannot buy more than one step either', () => {
+		// The most valuable row an attacker (or a corrupt write) could plant: a
+		// graduation instant plus an ancient green clock on a cell sitting at the
+		// initial 2%. The graduation rung may only hold or lower, so this is worth
+		// exactly one +5pp step — the same as any other clean window.
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					cleanStreak: 1,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+				}),
+				evaluation: forgedPerfection(),
+			})
+		);
+		expect(decision.share).toBe(0.07);
+		expect(decision.reason).toBe('healthy');
+		expect(decision.share).toBeLessThanOrEqual(0.02 + 0.05);
+	});
+
+	it('a crafted pin cannot buy a step the window has already been paid for', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					// K_CLEAN already satisfied, so the window anchor is the ONLY thing
+					// left between this crafted row and a step.
+					cleanStreak: 3,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+					lastCountedAt: NOW - 1_000,
+				}),
+				evaluation: forgedPerfection(),
+			})
+		);
+		expect(decision.share).toBe(0.02);
+		expect(decision.reason).toBe('window_open');
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('a crafted pin cannot skip K_CLEAN', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+				}),
+				// One clean window only: nowhere near K_CLEAN.
+				evaluation: cleanEvaluation(0),
+			})
+		);
+		expect(decision.share).toBe(0.02);
+		expect(decision.reason).toBe('building_confidence');
+	});
+
 	it('replaying the SAME evaluation INSIDE one window buys nothing at all', () => {
 		const evaluation = forgedPerfection();
 		let share = 0.4;
@@ -223,6 +280,20 @@ describe('degenerate numbers fail closed', () => {
 			expect(decision.reason).not.toBe('graduated');
 			expect(decision.graduatedAt).toBeUndefined();
 			expect(decision.greenSince).toBe(NOW);
+		}
+	});
+
+	it('never carries a degenerate graduation instant back onto the row', () => {
+		// The pin is the one stored instant a DOWNSTREAM reader acts on, so an
+		// unreadable one must not survive a hold: the decision function ignores it
+		// either way, but the row it writes back would keep saying "graduated".
+		for (const graduatedAt of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			for (const evaluation of [thinEvaluation(3), cleanEvaluation(3)]) {
+				const decision = nextShare(
+					controllerInput({ mix: mixState({ share: 0.5, graduatedAt }), evaluation })
+				);
+				expect(decision.graduatedAt).toBeUndefined();
+			}
 		}
 	});
 

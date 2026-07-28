@@ -9,17 +9,23 @@
  * hold a graduated cell below 1.0 without the cell having failed anything — and
  * a pin that evaporated on the next tick would make it re-earn fourteen days
  * for a physical limit. That is a two-tick fact, so it is tested over two ticks.
+ *
+ * The pin is also NOT a shortcut. The graduation rung may hold a cell or pull it
+ * back to a bound, never raise it: restoring a bounded pin is an increase like
+ * any other and is paid for in K_CLEAN, one counted window and one +step.
  */
 
 import { describe, expect, it } from 'vitest';
 import { nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
+import { describeRampDecision } from '../controllerNarrative';
 import { isFallbackActiveForShare } from '@owlat/shared/deliverabilityRouting';
 import {
 	breachedEvaluation,
 	cleanEvaluation,
 	controllerInput,
 	DAY,
+	GMAIL_CAMPAIGN,
 	mixState,
 	NOW,
 	thinEvaluation,
@@ -128,7 +134,7 @@ describe('graduation', () => {
 		expect(second.greenSince).toBe(NOW - FOURTEEN_DAYS);
 	});
 
-	it('restores a bounded pin to full share once the cap lifts — but not for free', () => {
+	it('restores a bounded pin one AIMD STEP at a time, keeping the pin as it climbs', () => {
 		const bound = mixState({
 			share: 0.4,
 			cleanStreak: 41,
@@ -147,10 +153,71 @@ describe('graduation', () => {
 		expect(tooSoon.reason).toBe('window_open');
 		expect(tooSoon.graduatedAt).toBe(NOW - 6 * DAY);
 
+		// ...and it costs a STEP. The graduation rung may hold or lower, never
+		// raise: a pinned cell that the cap released does not leap back to 1.0 in
+		// one evaluation, it pays +5pp per counted window like every other increase.
 		const restored = nextShare(controllerInput({ mix: bound, evaluation: cleanEvaluation(41) }));
-		expect(restored.share).toBe(1);
-		expect(restored.reason).toBe('graduated');
+		expect(restored.share).toBe(0.45);
+		expect(restored.reason).toBe('healthy');
+		expect(restored.direction).toBe('increase');
+		// The pin survives the climb — the cell never stopped being graduated.
 		expect(restored.graduatedAt).toBe(NOW - 6 * DAY);
+		expect(restored.greenSince).toBe(NOW - 20 * DAY);
+	});
+
+	it('re-pins at full share only when the step arithmetic finally gets there', () => {
+		const graduatedAt = NOW - 6 * DAY;
+		const bound = mixState({
+			share: 0.96,
+			cleanStreak: 41,
+			greenSince: NOW - 20 * DAY,
+			graduatedAt,
+		});
+		const stepped = nextShare(controllerInput({ mix: bound, evaluation: cleanEvaluation(41) }));
+		expect(stepped.share).toBe(1);
+		expect(stepped.reason).toBe('healthy');
+
+		const pinned = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: stepped.share,
+					cleanStreak: stepped.cleanStreak,
+					greenSince: stepped.greenSince,
+					graduatedAt: stepped.graduatedAt,
+					lastCountedAt: stepped.countedAt,
+				}),
+				evaluation: cleanEvaluation(42),
+				now: NOW + DAY,
+			})
+		);
+		expect(pinned.share).toBe(1);
+		expect(pinned.reason).toBe('graduated');
+		expect(pinned.graduatedAt).toBe(graduatedAt);
+	});
+
+	it('does not claim the relay is on standby while a bounded pin sits below 1.0', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					cleanStreak: 41,
+					greenSince: NOW - 20 * DAY,
+					graduatedAt: NOW - 6 * DAY,
+				}),
+				evaluation: cleanEvaluation(41),
+				// Exactly the bound the cell already sits at: hold, reason `graduated`.
+				capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+			})
+		);
+		expect(decision.share).toBe(0.4);
+		expect(decision.reason).toBe('graduated');
+
+		const sentence = describeRampDecision(GMAIL_CAMPAIGN, decision);
+		expect(sentence).toContain('40%');
+		expect(sentence).not.toContain('100%');
+		expect(sentence).not.toContain('standby');
+		// The relay is demonstrably still carrying the rest of this cell.
+		expect(isFallbackActiveForShare(decision.share)).toBe(true);
 	});
 
 	it('keeps an existing graduation instant rather than restamping it', () => {

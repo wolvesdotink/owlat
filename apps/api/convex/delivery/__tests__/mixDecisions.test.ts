@@ -24,6 +24,7 @@ import {
 	breachedEvaluation,
 	cleanEvaluation,
 	controllerInput,
+	DAY,
 	GMAIL_CAMPAIGN,
 	mixState,
 	NOW,
@@ -233,7 +234,7 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 			{ mix: mixState({ share: 0.4, cleanStreak: 3, lastCountedAt: NOW - 1_000 }) },
 		],
 		['healthy', {}],
-		['graduated', { mix: mixState({ share: 1, greenSince: NOW - 20 * 24 * 60 * 60 * 1000 }) }],
+		['graduated', { mix: mixState({ share: 1, greenSince: NOW - 20 * DAY }) }],
 		['gate breach', { evaluation: breachedEvaluation('deferral') }],
 	];
 
@@ -260,6 +261,33 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 			expect(row.reason.length).toBeGreaterThan(0);
 			expect(typeof row.snapshot).toBe('string');
 		}
+	});
+
+	it('never tells an operator the relay is on standby while it carries the cell', async () => {
+		const t = convexTest(schema, modules);
+		// A GRADUATED cell the warming cap has bounded to 40%. The pin is real, but
+		// the relay is demonstrably still carrying the other 60%, so the recorded
+		// sentence must be built from the SHARE and not from the reason alone.
+		const input = controllerInput({
+			mix: mixState({
+				share: 0.4,
+				cleanStreak: 41,
+				greenSince: NOW - 20 * DAY,
+				graduatedAt: NOW - 6 * DAY,
+			}),
+			evaluation: cleanEvaluation(41),
+			capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+		});
+		expect(nextShare(input).reason).toBe('graduated');
+		await record(t, input);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		const row = rows[0];
+		expect(row?.reason).toBe('graduated');
+		expect(row?.toShare).toBe(0.4);
+		expect(row?.message).toContain('40%');
+		expect(row?.message).not.toContain('100%');
+		expect(row?.message).not.toContain('standby');
 	});
 });
 
