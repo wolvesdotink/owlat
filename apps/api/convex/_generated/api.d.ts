@@ -305,6 +305,7 @@ import type * as delivery_ramp_rampFraming from "../delivery/ramp/rampFraming.js
 import type * as delivery_ramp_setupFork from "../delivery/ramp/setupFork.js";
 import type * as delivery_rampIntegrationPresence from "../delivery/rampIntegrationPresence.js";
 import type * as delivery_rampPromotionEvidence from "../delivery/rampPromotionEvidence.js";
+import type * as delivery_rampReadCtx from "../delivery/rampReadCtx.js";
 import type * as delivery_relayReturnPath from "../delivery/relayReturnPath.js";
 import type * as delivery_relayReturnPathProbe from "../delivery/relayReturnPathProbe.js";
 import type * as delivery_readinessValidators from "../delivery/readinessValidators.js";
@@ -1183,6 +1184,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/setupFork": typeof delivery_ramp_setupFork;
   "delivery/rampIntegrationPresence": typeof delivery_rampIntegrationPresence;
   "delivery/rampPromotionEvidence": typeof delivery_rampPromotionEvidence;
+  "delivery/rampReadCtx": typeof delivery_rampReadCtx;
   "delivery/readinessValidators": typeof delivery_readinessValidators;
   "delivery/routingReentry": typeof delivery_routingReentry;
   "delivery/seedShadowCopy": typeof delivery_seedShadowCopy;
