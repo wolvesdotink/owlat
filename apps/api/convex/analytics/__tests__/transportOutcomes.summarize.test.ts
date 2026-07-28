@@ -24,7 +24,7 @@ import {
 } from '../transportOutcomes';
 import { summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 import {
 	bucketRow,
 	DAY_MS,

@@ -16,7 +16,7 @@ import { createTestSendAssignment } from '../../__tests__/factories';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
 
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');

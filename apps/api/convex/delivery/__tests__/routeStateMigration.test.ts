@@ -23,7 +23,7 @@ import {
 	deliverabilityStreamValidator,
 } from '../deliverabilityValidators';
 
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');

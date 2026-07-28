@@ -17,7 +17,7 @@ import {
 	SEND_ASSIGNMENT_RETENTION_MS,
 } from '../sendAssignments';
 
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 const NOW = 1_800_000_000_000;
 

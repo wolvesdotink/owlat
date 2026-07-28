@@ -33,7 +33,7 @@ import { SEND_PROVIDER_KINDS, sendProviderCatalogEntry } from '../../lib/sendPro
 import { resolveDestinationProvider } from '../../lib/sendProviders/destinationProvider';
 import type { SendProviderKind } from '../../lib/sendProviders/types';
 
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModules';
 
 // `vi.hoisted` so the mock factory below (hoisted above the imports) can close
 // over these without hitting the temporal dead zone.
