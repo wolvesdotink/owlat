@@ -32,6 +32,7 @@ import { v } from 'convex/values';
 import {
 	allDeliverabilityCells,
 	deliverabilityCellKey,
+	hasCriticalBlocklistSignal,
 	isFallbackActiveForShare,
 	resolveOwnShare,
 	type DeliverabilityCell,
@@ -40,16 +41,24 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
-import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
-import { summarizeTransportOutcomeArms } from '../analytics/transportOutcomes';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import {
+	summarizeTransportOutcomeArms,
+	summarizeTransportOutcomes,
+} from '../analytics/transportOutcomes';
 import { recordAuditLog } from '../lib/auditLog';
 import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { nextShare } from './ramp/controller';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
-import { loadRampCapacity } from './rampCapacity';
+import { UNCONSTRAINED_RAMP_CAPACITY } from './rampCapacity';
 import { recordMixDecision } from './rampMixDecisions';
+import {
+	deliverabilityStreamValidator,
+	destinationProviderValidator,
+} from './deliverabilityValidators';
 import type { RampControllerInput, RampDecision, RampMixState } from './ramp/controllerTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
@@ -65,18 +74,33 @@ const ENGAGEMENT_RECENT_MS = 7 * DAY_MS;
 const ENGAGEMENT_BASELINE_MS = 30 * DAY_MS;
 
 /**
- * The deployment's tenant, read off the route-state table. Owlat is
- * single-organization-per-deployment, so any route-state row names it; `null`
- * means routing state has never been written and there is nothing to ramp.
- * The table holds at most a couple of dozen rows, so the unindexed peek is
- * cheaper than a component round-trip and cannot throw.
+ * The deployment's tenant, through the SAME resolver every other org-scoped
+ * background writer uses (`analytics/transportOutcomes.ts` does exactly this).
+ * A cron must never be able to fail on an auth lookup, so a throw is read as
+ * "no organization yet" — a supported configuration, not an error (plan D2).
  */
 async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | null> {
-	const row = await ctx.db.query('deliverabilityRouteStates').first();
-	return row?.organizationId ?? null;
+	try {
+		return await getSingletonOrganizationId(ctx);
+	} catch {
+		return null;
+	}
 }
 
-/** Infrastructure verdicts, read off whichever route-state rows exist. */
+/**
+ * Infrastructure verdicts, read off whichever route-state rows exist.
+ *
+ * WHICH ROWS MATTER IS NOT THE SAME PER SIGNAL. `breaker_open` is emitted per
+ * destination provider, so the cell's own rows carry it. Pool-level blocklist
+ * and quarantine signals are emitted by the MTA against the WHOLE pool with
+ * `provider: 'all'`, and `applySnapshot` files them onto the `'all'` row only —
+ * so a controller that read the cell's rows alone would never see one, and the
+ * plan's critical-blocklist hard stop would be dead code. Every caller passes
+ * the pool row as well.
+ *
+ * The blocklist test itself is the SHIPPED predicate, not a local copy: one
+ * definition of "critically blocklisted" for routing and for the ramp.
+ */
 function readHardStopSignals(
 	rows: readonly (Doc<'deliverabilityRouteStates'> | null)[],
 	isSendingPermitted: boolean
@@ -84,15 +108,9 @@ function readHardStopSignals(
 	let isCircuitBreakerOpen = false;
 	let isPoolBlocklisted = false;
 	for (const row of rows) {
-		for (const signal of row?.signals ?? []) {
-			if (signal.source === 'breaker_open') isCircuitBreakerOpen = true;
-			if (
-				signal.severity === 'critical' &&
-				(signal.source === 'dnsbl_listed' || signal.source === 'dnsbl_partial')
-			) {
-				isPoolBlocklisted = true;
-			}
-		}
+		const signals = row?.signals ?? [];
+		if (signals.some((signal) => signal.source === 'breaker_open')) isCircuitBreakerOpen = true;
+		if (hasCriticalBlocklistSignal(signals)) isPoolBlocklisted = true;
 	}
 	return { isSendingAllowed: isSendingPermitted, isCircuitBreakerOpen, isPoolBlocklisted };
 }
@@ -134,18 +152,26 @@ async function loadCellInput(
 	const cellKey = deliverabilityCellKey(cell);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
 	if (!perStream || perStream.ownShare === undefined) return null;
+	// The POOL-WIDE slice as well: every blocklist / quarantine signal the MTA
+	// reports is filed against `provider: 'all'`, so it lives on no cell's row.
+	const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
 	const mix = readMixState(perStream);
 
 	const window = { organizationId, cell: cellKey, since: now - RAMP_WINDOW_MS };
 	const { own, reference } = await summarizeTransportOutcomeArms(ctx.db, window);
-	const recent = await summarizeTransportOutcomeArms(ctx.db, {
+	// The engagement baselines are OWN-ARM ONLY (that gate compares the own arm
+	// to its own past), so they read one arm rather than both: a reference-arm
+	// summary here would be a second indexed collect thrown away.
+	const ownRecent = await summarizeTransportOutcomes(ctx.db, {
 		organizationId,
 		cell: cellKey,
+		arm: 'own',
 		since: now - ENGAGEMENT_RECENT_MS,
 	});
-	const prior = await summarizeTransportOutcomeArms(ctx.db, {
+	const ownPriorBaseline = await summarizeTransportOutcomes(ctx.db, {
 		organizationId,
 		cell: cellKey,
+		arm: 'own',
 		since: now - ENGAGEMENT_BASELINE_MS,
 		until: now - ENGAGEMENT_RECENT_MS,
 	});
@@ -158,8 +184,8 @@ async function loadCellInput(
 		cell,
 		own,
 		reference: referenceArm,
-		ownRecent: recent.own,
-		ownPriorBaseline: prior.own,
+		ownRecent,
+		ownPriorBaseline,
 		now,
 	});
 
@@ -172,17 +198,19 @@ async function loadCellInput(
 		now,
 	});
 
-	const capacity = await loadRampCapacity(ctx.db, { organizationId, cell: cellKey, now });
-
 	return {
 		perStream,
 		input: {
 			cell,
 			config: RAMP_STREAM_CONFIGS[cell.stream],
 			mix,
-			signals: readHardStopSignals([perStream, streamless], args.isSendingPermitted),
+			signals: readHardStopSignals([perStream, streamless, pool], args.isSendingPermitted),
 			evaluation,
-			capacity,
+			// P3-3 owns the real per-(IP x mailbox provider) projection; until it
+			// lands the controller is bounded by its PHASE CEILING alone. A stand-in
+			// projection here would be a rule with no fixture and a ceiling nobody
+			// designed (see rampCapacity.ts).
+			capacity: UNCONSTRAINED_RAMP_CAPACITY,
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},
@@ -190,11 +218,35 @@ async function loadCellInput(
 }
 
 /**
+ * KEEP THE CELL'S RAMP STATE ALIVE.
+ *
+ * `deliverabilityRouteStates` rows carry a 24h `expiresAt` and the shipped
+ * 5-minute sweep deletes anything past it. That TTL is right for a cached MTA
+ * snapshot; it is WRONG for the durable AIMD state the ramp keeps on the
+ * per-stream row (share, phase ceiling, clean streak, graduation clock). A
+ * paused controller — or any deploy/outage gap over a day — would otherwise
+ * lose the row, and a missing row resolves to share 1.0: the exact opposite of
+ * "pinned at its current share".
+ *
+ * So EVERY evaluation refreshes the lease, including the ones that write no
+ * share. The refresh touches nothing else.
+ */
+async function refreshRouteStateLease(
+	ctx: MutationCtx,
+	perStream: Doc<'deliverabilityRouteStates'>,
+	now: number
+): Promise<void> {
+	await ctx.db.patch(perStream._id, { expiresAt: now + ROUTE_STATE_TTL_MS, updatedAt: now });
+}
+
+/**
  * Persist one decision onto the cell's per-stream route-state row.
  *
- * `mixVersion` advances ONLY when the share actually moves: it salts
- * per-recipient assignment (plan D7), so bumping it on a no-op would reshuffle
- * every recipient's arm for no reason and destroy the comparison in flight.
+ * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
+ * D7), so it names a mix GENERATION, not a step: bumping it on an ordinary
+ * +5pp promotion would re-shuffle every recipient's arm mid-comparison, ~20
+ * times during a single ramp. It advances only on a deliberate generation
+ * change (a phase promotion), where re-randomising is the point.
  */
 async function applyDecision(
 	ctx: MutationCtx,
@@ -205,16 +257,17 @@ async function applyDecision(
 	}
 ): Promise<void> {
 	const { perStream, decision, now } = args;
-	const moved = decision.direction !== 'hold';
 	const fields = {
 		isFallbackActive: isFallbackActiveForShare(decision.share),
 		ownShare: decision.share,
 		phaseCeiling: decision.phaseCeiling,
 		cleanStreak: decision.cleanStreak,
-		mixVersion: (perStream.mixVersion ?? 0) + (moved ? 1 : 0),
-		// The freeze clock: START, EXPIRY and LADDER POSITION move together, and a
-		// decision that imposed no new freeze leaves all three exactly as they were.
-		fallbackActiveSince: decision.frozenUntil === undefined ? perStream.fallbackActiveSince : now,
+		// The GATE-COOLDOWN ladder's clock: start, expiry and rung move together,
+		// and only a LADDER freeze re-stamps the start. A hard-stop freeze (breaker
+		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
+		// alone — otherwise an infrastructure incident would re-arm the "repeat
+		// within 24h" window and double the next gate cooldown off a stale rung.
+		fallbackActiveSince: decision.cooldownMs === undefined ? perStream.fallbackActiveSince : now,
 		frozenUntil: decision.frozenUntil ?? perStream.frozenUntil,
 		cooldownMs: decision.cooldownMs ?? perStream.cooldownMs,
 		healthySince: decision.greenSince,
@@ -240,11 +293,8 @@ export const runRampController = internalMutation({
 		const cursor = Number.isFinite(rawCursor) ? Math.max(0, Math.floor(rawCursor)) : 0;
 		if (cursor >= cells.length) return { evaluated: 0, done: true as const };
 
-		// The tenant comes from the route-state rows themselves rather than from the
-		// auth component: this deployment hosts exactly one organization, the ramp
-		// only ever touches cells that already HAVE a row, and a cron must never be
-		// able to fail on an auth lookup. No rows means nothing to ramp — a
-		// supported configuration, not an error (plan D2).
+		// No organization yet means nothing to ramp — a supported configuration,
+		// not an error (plan D2). See `resolveRampOrganizationId`.
 		const organizationId = await resolveRampOrganizationId(ctx);
 		if (organizationId === null) return { evaluated: 0, done: true as const };
 
@@ -273,9 +323,13 @@ export const runRampController = internalMutation({
 			// no-ops, and including while the kill switch is pinning every cell.
 			await recordMixDecision(ctx, { organizationId, cell, input, decision, at: now });
 
-			// A PAUSED CONTROLLER WRITES NO SHARE. It still evaluates and still
-			// audits, so an operator can watch what it would have done.
-			if (isKillSwitchEngaged) continue;
+			// A PAUSED CONTROLLER WRITES NO SHARE. It still evaluates, still audits —
+			// so an operator can watch what it would have done — and still renews the
+			// row's lease, because "pinned" has to survive longer than the cache TTL.
+			if (isKillSwitchEngaged) {
+				await refreshRouteStateLease(ctx, perStream, now);
+				continue;
+			}
 
 			await applyDecision(ctx, { perStream, decision, now });
 			if (decision.direction === 'hold') continue;
@@ -309,8 +363,10 @@ export const runRampController = internalMutation({
 
 /**
  * THE GLOBAL KILL SWITCH (plan P3-2's named mitigation for controller
- * complexity). Admin-facing writes live in the settings surface; this internal
- * mutation is the seam an operator runbook and the tests drive.
+ * complexity). The OPERATOR path is `workspaces/settings.update`
+ * (`isRampControllerPaused`), which is permission-gated and audits the change;
+ * this internal mutation is the seam an incident runbook and the tests drive
+ * when there is no session to act through.
  */
 export const setRampControllerPaused = internalMutation({
 	args: { isPaused: v.boolean() },
@@ -326,16 +382,21 @@ export const setRampControllerPaused = internalMutation({
  * Promote a cell one rung up the phase ladder (0.25 -> 0.5 -> 0.8 -> 1.0). A
  * deliberate act, never something the hourly AIMD loop does on its own: the
  * ladder exists precisely so that the biggest steps stay human-authorised.
+ *
+ * A promotion IS a new mix generation, so it is also the one place that
+ * advances `mixVersion` (plan D7): the cohort is deliberately re-randomised
+ * when the phase changes, and never on an ordinary AIMD step.
  */
 export const promoteRampPhase = internalMutation({
-	args: { stream: v.string(), destinationProvider: v.string() },
+	args: {
+		stream: deliverabilityStreamValidator,
+		destinationProvider: destinationProviderValidator,
+	},
 	handler: async (ctx, args) => {
-		const cell = allDeliverabilityCells().find(
-			(candidate) =>
-				candidate.stream === args.stream &&
-				candidate.destinationProvider === args.destinationProvider
-		);
-		if (!cell) return { ok: false as const };
+		const cell: DeliverabilityCell = {
+			stream: args.stream,
+			destinationProvider: args.destinationProvider,
+		};
 		const organizationId = await resolveRampOrganizationId(ctx);
 		if (organizationId === null) return { ok: false as const };
 		const { perStream } = await loadRouteStateCell(ctx, organizationId, cell);
@@ -343,7 +404,11 @@ export const promoteRampPhase = internalMutation({
 		// One rung, through the ladder helper: an arbitrary caller-supplied ceiling
 		// would let a promotion skip 0.5 and 0.8 straight to 1.0.
 		const phaseCeiling = nextPhaseCeiling(perStream.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING);
-		await ctx.db.patch(perStream._id, { phaseCeiling, updatedAt: Date.now() });
+		await ctx.db.patch(perStream._id, {
+			phaseCeiling,
+			mixVersion: (perStream.mixVersion ?? 0) + 1,
+			updatedAt: Date.now(),
+		});
 		return { ok: true as const, phaseCeiling };
 	},
 });
