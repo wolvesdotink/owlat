@@ -115,9 +115,21 @@ function readHardStopSignals(
 	return { isSendingAllowed: isSendingPermitted, isCircuitBreakerOpen, isPoolBlocklisted };
 }
 
+/**
+ * The STORED state, read out verbatim.
+ *
+ * `share` is deliberately NOT normalised here. `resolveOwnShare` clamps a stored
+ * `ownShare` on the way out, which is right for every routing reader — but
+ * handing the controller a clamped value would mean a row holding `-0.5`, `1.5`
+ * or `NaN` arrives as a perfectly ordinary `0` or `1`, the decision function's
+ * `share_unreadable` rung could never fire in production, and a corrupt row
+ * would be stepped UP on the next clean tick (or start a graduation clock).
+ * `resolveOwnShare` stays as the fallback for the ABSENT-share case only, which
+ * is the one case it is being asked a question about.
+ */
 function readMixState(row: Doc<'deliverabilityRouteStates'> | null): RampMixState {
 	return {
-		share: resolveOwnShare(row),
+		share: row?.ownShare ?? resolveOwnShare(row),
 		phaseCeiling: row?.phaseCeiling,
 		cleanStreak: row?.cleanStreak,
 		frozenUntil: row?.frozenUntil,

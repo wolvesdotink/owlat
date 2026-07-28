@@ -17,6 +17,7 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
+import type { Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { createTestInstanceSettings } from '../../__tests__/factories';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
@@ -36,16 +37,11 @@ const HOUR_MS = 60 * 60 * 1000;
 const CELL_SHARE = 0.5;
 
 type Harness = ReturnType<typeof convexTest>;
-type Signal = {
-	source:
-		| 'dnsbl_listed'
-		| 'dnsbl_partial'
-		| 'ip_quarantined'
-		| 'breaker_open'
-		| 'persistent_defers';
-	severity: 'warning' | 'critical';
-	observedAt: number;
-};
+/**
+ * DERIVED FROM THE SCHEMA, never hand-copied: a new member of
+ * `DELIVERABILITY_SIGNAL_SOURCES` must not be able to leave this fixture behind.
+ */
+type Signal = Doc<'deliverabilityRouteStates'>['signals'][number];
 
 interface SeedOptions {
 	/** Signals on the POOL row (`provider: 'all'`) — where the MTA files them. */
@@ -53,6 +49,8 @@ interface SeedOptions {
 	/** Signals on the cell's own provider slice. */
 	readonly providerSignals?: readonly Signal[];
 	readonly abuseStatus?: 'clean' | 'suspended';
+	/** The share stored on the managed cell's row, degenerate values included. */
+	readonly ownShare?: number;
 }
 
 async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
@@ -86,7 +84,7 @@ async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
 			...base,
 			destinationProvider: 'gmail' as const,
 			stream: 'campaign' as const,
-			ownShare: CELL_SHARE,
+			ownShare: options.ownShare ?? CELL_SHARE,
 			phaseCeiling: 1,
 			cleanStreak: 3,
 			mixVersion: 2,
@@ -236,6 +234,46 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		expect(await decisions(t)).toHaveLength(0);
 		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
 	});
+});
+
+/**
+ * A DEGENERATE STORED SHARE, END TO END. The pure suite proves the rung; this
+ * proves the shell does not sand the input off before the rung can see it —
+ * every routing reader clamps a stored share, and a controller handed the
+ * clamped value would read `-0.5` as a perfectly ordinary 0 and add to it.
+ */
+describe('a stored share that is not a share', () => {
+	const cases: readonly {
+		readonly label: string;
+		readonly stored: number;
+		readonly held: number;
+	}[] = [
+		{ label: 'NaN', stored: Number.NaN, held: 0 },
+		{ label: 'negative', stored: -0.5, held: 0 },
+		{ label: 'above one', stored: 1.5, held: 1 },
+	];
+
+	for (const { label, stored, held } of cases) {
+		it(`holds a ${label} share at the clamped value and never steps it up`, async () => {
+			const t = convexTest(schema, modules);
+			await seed(t, { ownShare: stored });
+
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+			const row = await cellRow(t);
+			expect(row?.ownShare).toBe(held);
+			// Never above the clamped reading, and never a graduation clock started
+			// off a value we could not read.
+			expect(row?.ownShare ?? 0).toBeLessThanOrEqual(held);
+			expect(row?.graduatedAt).toBeUndefined();
+			expect(row?.healthySince).toBeUndefined();
+
+			const rows = await decisions(t);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.reason).toBe('share_unreadable');
+			expect(rows[0]?.direction).toBe('hold');
+		});
+	}
 });
 
 describe('the phase ladder', () => {

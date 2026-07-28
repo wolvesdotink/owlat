@@ -63,7 +63,12 @@ export type RampDecisionDirection = 'increase' | 'decrease' | 'hold';
  * boundary instead would hide the hostile input the plan requires us to handle.
  */
 export interface RampMixState {
-	/** Resolved own share (`ownShare ?? (isFallbackActive ? 0 : 1)`), unsanitised. */
+	/**
+	 * The STORED own share, verbatim and unsanitised — `-0.5`, `1.5` and `NaN`
+	 * all reach the decision function as themselves. Only an ABSENT stored share
+	 * is resolved by the caller (to `isFallbackActive ? 0 : 1`, plan D1), because
+	 * absence is the one case that has a defined answer.
+	 */
 	readonly share: number;
 	readonly phaseCeiling: number | undefined;
 	readonly cleanStreak: number | undefined;
