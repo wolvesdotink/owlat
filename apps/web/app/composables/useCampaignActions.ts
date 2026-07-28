@@ -1,6 +1,7 @@
-import { ref, type Ref, type ComputedRef } from 'vue';
+import { computed, ref, type Ref, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
+import { parseScheduledStart } from '~/lib/campaignSchedule';
 import { useCapacityRefusal } from './useCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
@@ -88,6 +89,16 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// Honored by both the draft `schedule` and the `reschedule` path.
 	const useRecipientTimezone = ref(false);
 
+	/**
+	 * The chosen send start as epoch ms, or `null` when it is unset, unparseable
+	 * or already past. The single source the schedule mutation args, the
+	 * pre-submit validation and the capacity PREVIEW all read — see
+	 * {@link parseScheduledStart} for why they may not each derive their own.
+	 */
+	const scheduledStartAt = computed<number | null>(() =>
+		parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
+	);
+
 	const initializeSchedule = (scheduledAt: number | undefined, recipientTimezone?: boolean) => {
 		if (scheduledAt) {
 			const date = new Date(scheduledAt);
@@ -169,7 +180,11 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	const executeSchedule = async () => {
 		if (!campaignId.value) return;
 
-		const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
+		const startsAt = scheduledStartAt.value;
+		if (startsAt === null) return; // handleSchedule has already surfaced why
+		// Only the wall-clock hour/minute is read off this Date; the persisted
+		// instant is `startsAt` itself.
+		const scheduledDateTime = new Date(startsAt);
 
 		isSaving.value = true;
 		saveError.value = '';
@@ -230,8 +245,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			return;
 		}
 
-		const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
-		if (scheduledDateTime.getTime() <= Date.now()) {
+		if (scheduledStartAt.value === null) {
 			saveError.value = 'Scheduled time must be in the future';
 			return;
 		}
@@ -286,6 +300,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		saveError,
 		scheduledDate,
 		scheduledTime,
+		scheduledStartAt,
 		useRecipientTimezone,
 		initializeSchedule,
 		handleSave,

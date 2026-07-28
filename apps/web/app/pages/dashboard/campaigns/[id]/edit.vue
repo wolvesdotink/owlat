@@ -40,6 +40,7 @@ const {
 	archiveEnabled,
 	scheduledDate,
 	scheduledTime,
+	scheduledStartAt,
 	useRecipientTimezone,
 
 	// Computed
@@ -156,14 +157,6 @@ const sendEstimate = computed(() => {
 		isFullyWarmed: sendEstimateRaw.value.isFullyWarmed,
 		message: sendEstimateRaw.value.message,
 	};
-});
-
-/** The chosen send start, or `null` when it is unset, unparseable or past. */
-const scheduledStartAt = computed(() => {
-	if (!scheduledDate.value || !scheduledTime.value) return null;
-	const at = new Date(`${scheduledDate.value}T${scheduledTime.value}`).getTime();
-	if (!Number.isFinite(at) || at <= Date.now()) return null;
-	return at;
 });
 
 // The BINDING capacity plan, previewed BEFORE the operator presses send.

@@ -379,6 +379,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		archiveEnabled,
 		scheduledDate: actions.scheduledDate,
 		scheduledTime: actions.scheduledTime,
+		scheduledStartAt: actions.scheduledStartAt,
 		useRecipientTimezone: actions.useRecipientTimezone,
 
 		// Computed
