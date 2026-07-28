@@ -122,8 +122,8 @@ const silentDays = computed(() => {
 
 /**
  * "Start over" clears OUR record — and, once the ramp's substitution table
- * consumes it, drops the yahoo cell from the direct complaint threshold to the
- * tighter unsubscribe proxy. That is a real consequence of one click, so it is
+ * consumes it, drops the yahoo cell from the direct complaint ceiling to the
+ * unsubscribe-rate proxy. That is a real consequence of one click, so it is
  * named in full before the mutation fires.
  */
 const RESET_CONFIRMATION = [
@@ -131,7 +131,7 @@ const RESET_CONFIRMATION = [
 	'',
 	'• Our record is cleared — the submitted and enrolled dates are lost.',
 	'• Yahoo’s own enrollment is untouched. If it is still live, the next Yahoo complaint will not restore this record; re-submit the form step to record it again.',
-	'• Yahoo complaint measurement falls back to the unsubscribe-rate proxy at a tighter threshold, with lower confidence.',
+	'• Yahoo complaint measurement falls back to the unsubscribe-rate proxy — a sharp rise against this cell’s own recent history — with lower confidence.',
 ].join('\n');
 
 async function submit() {

@@ -126,7 +126,8 @@ export const AUDIT_ACTION_LITERALS = [
 	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
 	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
 	// submitted/enrolled dates and downgrades the yahoo cell's complaint
-	// measurement to the tightened proxy, doubling the gate's strictness.
+	// measurement to the unsubscribe-rate proxy, a weaker signal on a
+	// relative rule rather than Yahoo's own absolute complaint feed.
 	action('sending_domain.yahoo_cfl_changed'),
 	// Blocklist
 	action('blocklist.added'),

@@ -50,7 +50,7 @@ function complaintSignalFor(state: YahooCflEnrollmentState) {
 	return state === 'enrolled'
 		? {
 				source: 'yahoo_cfl' as const,
-				thresholdRate: 0.001,
+				trip: { kind: 'absolute_rate' as const, thresholdRate: 0.001 },
 				confidence: 'high' as const,
 				confidenceNote:
 					'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
@@ -58,10 +58,14 @@ function complaintSignalFor(state: YahooCflEnrollmentState) {
 			}
 		: {
 				source: 'unsubscribe_rate_proxy' as const,
-				thresholdRate: 0.0005,
-				confidence: 'low' as const,
+				trip: {
+					kind: 'trailing_multiple' as const,
+					multiple: 3,
+					series: 'unsubscribe_rate' as const,
+				},
+				confidence: 'medium' as const,
 				confidenceNote:
-					'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold.',
+					'Measurement confidence: medium — no Yahoo complaint feed, so a sharp rise in one-click unsubscribes against this cell’s own recent history stands in for complaints.',
 				caveat:
 					'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
 				isBlocking: false as const,
@@ -323,8 +327,8 @@ describe('D2 — never enrolling is a supported configuration', () => {
 	it('states the substituted signal and its caveat instead of a nag', () => {
 		const w = mountPanel(NOT_STARTED);
 		const confidence = w.get('[data-testid="yahoocfl-confidence"]').text();
-		expect(confidence).toContain('Measurement confidence: low');
-		expect(confidence).toContain('unsubscribes stand in for complaints');
+		expect(confidence).toContain('Measurement confidence: medium');
+		expect(confidence).toContain('one-click unsubscribes');
 		// No nag, no error, no "incomplete" framing anywhere on the panel.
 		const text = w.text().toLowerCase();
 		expect(text).not.toContain('incomplete');

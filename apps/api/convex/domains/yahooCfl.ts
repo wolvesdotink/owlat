@@ -17,7 +17,7 @@
  *
  * D2 (additive-only third-party rule): every function here tolerates absence.
  * No enrollment row means `not_started`, which yields the documented
- * substitution (CFBL feed, else the tightened unsubscribe proxy) with a
+ * substitution (CFBL feed, else the unsubscribe-rate proxy) with a
  * confidence caveat. Nothing here throws on absence, blocks a send, blocks a
  * phase promotion, or renders a "setup incomplete" nag.
  */
@@ -200,7 +200,7 @@ export interface YahooCflEventResult {
  * Every event is audited, including the refusals: these are `organization:manage`
  * writes to domain-level sending configuration, and `reset` in particular is
  * destructive (it clears the submitted/enrolled dates) AND downgrades the yahoo
- * cell's complaint measurement from Yahoo's own feed to the tightened
+ * cell's complaint measurement from Yahoo's own feed to the
  * unsubscribe proxy. A downgrade of a gate's strictness that no one can trace to
  * an actor is exactly the kind of change that gets experienced as a bug.
  */
@@ -371,7 +371,7 @@ export const observeReport = internalMutation({
 		// so the clock it is handed is untrusted. A non-finite or non-positive `at`
 		// would be absorbed by the pure core's `Math.max` and pin the row
 		// permanently `enrolled` / never `lapsed`, holding the yahoo complaint gate
-		// on the looser direct threshold instead of the tightened proxy.
+		// on the direct absolute threshold instead of the relative proxy.
 		// A rejected input never reached a domain lookup, so it is reported as
 		// `matchedDomain: false` with its own reason — the caller can tell "not our
 		// domain" from "unusable clock" instead of reading one conflated flag.
