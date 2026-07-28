@@ -93,6 +93,8 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Held ${where} at ${percent(decision.share)}: the seed-placement tripwire fired alone. Seeds are too small a sample to act on without the deferral or bounce gate agreeing.`;
 		case 'capacity_unknown':
 			return `Held ${where} at ${percent(decision.share)}: the warming-capacity projection was unusable, so no ceiling could be computed. The controller does not ramp hardest when it understands least.`;
+		case 'window_open':
+			return `Held ${where} at ${percent(decision.share)}: this evaluation window has already been counted. The controller measures a full day before it steps up again, so the same day of data cannot be spent twice.`;
 		case 'building_confidence':
 			return `Held ${where} at ${percent(decision.share)}: the window was clean, but the controller requires several consecutive clean windows before it increases.`;
 		// A CEILING CAN PULL A CELL DOWN, not only stop it going up — so the verb

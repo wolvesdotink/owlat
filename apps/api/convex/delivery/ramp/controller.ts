@@ -18,11 +18,13 @@
  *   5. active freeze        -> hold
  *   6. gate halt / fail     -> max(floor, s x 0.5), freeze COOLDOWN
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
- *   8. capacity ceiling
- *   9. K_CLEAN              -> hold while building confidence
- *  10. additive increase    -> min(ceiling, s + step)
+ *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
+ *                             graduated cell is bounded by the warming cap
+ *   9. graduation           -> pin at min(1, ceiling)
+ *  10. K_CLEAN              -> hold while building confidence
+ *  11. additive increase    -> min(ceiling, s + step), at most once per window
  *
- * Every rule above 8 either HOLDS or LOWERS the share. An increase is reachable
+ * Every rule above 11 either HOLDS or LOWERS the share. An increase is reachable
  * from exactly one branch, at the very bottom, and only after every hard stop
  * declined, the gate aggregate returned `pass`, the capacity projection was
  * usable and the clean streak reached K_CLEAN. That is the invariant the
@@ -73,6 +75,26 @@ function sanitizeStreak(value: number | undefined): number {
 function sanitizeGreenSince(stored: number | undefined, now: number): number {
 	if (stored === undefined || !Number.isFinite(stored) || stored <= 0 || stored > now) return now;
 	return stored;
+}
+
+/**
+ * Has a whole evaluation window elapsed since the last COUNTED one?
+ *
+ * The cron ticks hourly against a 24h outcome window, so without this the same
+ * day of data would be counted 24 times and K_CLEAN = 3 would cost three hours
+ * instead of three days. A window counts once.
+ *
+ * Degenerate anchors fail CLOSED, in the direction that cannot advance a cell:
+ * an anchor AHEAD of the clock reads as "just counted" (hold), while an absent
+ * or unreadable one reads as "never counted" — there is no anchor to have
+ * counted against, and refusing forever would strand the cell.
+ */
+export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now: number): boolean {
+	if (lastCountedAt === undefined || !Number.isFinite(lastCountedAt) || lastCountedAt <= 0) {
+		return true;
+	}
+	if (lastCountedAt > now) return false;
+	return now - lastCountedAt >= RAMP_AIMD.evaluationWindowMs;
 }
 
 function directionOf(fromShare: number, share: number): RampDecisionDirection {
@@ -134,6 +156,14 @@ interface DecisionDraft {
 	readonly cleanStreak: number;
 	readonly greenSince?: number | undefined;
 	readonly graduatedAt?: number | undefined;
+	/**
+	 * The cell is GRADUATED. Normally the pin is read off the share (s = 1.0), but
+	 * a graduated cell that a capacity ceiling has temporarily bounded below 1.0 is
+	 * still pinned — the warming cap is a physical limit, not a demotion.
+	 */
+	readonly isPinned?: boolean;
+	/** `now` when this evaluation counted as a window; absent when it did not. */
+	readonly countedAt?: number | undefined;
 	readonly ceiling: number;
 }
 
@@ -161,9 +191,13 @@ export function nextShare(input: RampControllerInput): RampDecision {
 	const frozenUntil =
 		freezeMs === undefined || !isClockUsable ? undefined : now + Math.max(0, freezeMs);
 	// A share that left 1.0 is no longer graduated, whatever the row says: the
-	// pin is a property of the share, not a badge the row keeps forever.
+	// pin is a property of the share, not a badge the row keeps forever. The one
+	// exception is the graduation branch itself bounding a pinned cell by the
+	// warming cap — a physical limit the cell did not fail its way into.
 	const graduatedAt =
-		share >= OWN_SHARE_CEILING ? (draft.graduatedAt ?? mix.graduatedAt) : undefined;
+		draft.isPinned === true || share >= OWN_SHARE_CEILING
+			? (draft.graduatedAt ?? mix.graduatedAt)
+			: undefined;
 
 	return {
 		share,
@@ -178,6 +212,7 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		phaseCeiling,
 		greenSince: draft.greenSince,
 		graduatedAt,
+		countedAt: draft.countedAt,
 		ceiling: draft.ceiling,
 	};
 }
@@ -326,36 +361,63 @@ function decide(args: DecideArgs): DecisionDraft {
 	// clock ⇒ start counting from now, which can only DELAY a pin.
 	const greenSince =
 		fromShare >= OWN_SHARE_CEILING ? sanitizeGreenSince(mix.greenSince, now) : undefined;
-	const green = { ...held, verdict: 'pass' as const, cleanStreak: streak, greenSince };
-
-	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
-	// and the relay drops to priority_failover standby.
-	if (greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs) {
-		return {
-			...green,
-			share: OWN_SHARE_CEILING,
-			reason: 'graduated',
-			graduatedAt: mix.graduatedAt ?? now,
-			ceiling: OWN_SHARE_CEILING,
-		};
-	}
+	// A CLEAN WINDOW COUNTS ONCE. The cron ticks hourly against a 24h outcome
+	// window, so an ungated streak would reach K_CLEAN in three HOURS off three
+	// overlapping reads of the same day. Only a counted window extends the streak
+	// or unlocks an increase; between counts the cell holds exactly where it is.
+	const isWindowCounted = isEvaluationWindowElapsed(mix.lastCountedAt, now);
+	const countedStreak = isWindowCounted ? streak : storedStreak;
+	const green = {
+		...held,
+		verdict: 'pass' as const,
+		cleanStreak: countedStreak,
+		greenSince,
+		countedAt: isWindowCounted ? now : undefined,
+	};
 
 	// 8. CAPACITY CEILING. Unusable projection holds; it never becomes "no limit".
+	//    Computed BEFORE graduation on purpose: a pinned cell is the cell carrying
+	//    the most volume, so exempting it from the warming cap would exempt exactly
+	//    the wrong one.
 	const capacityBound = capacityCeiling(capacity);
 	if (capacityBound === null) return { ...green, reason: 'capacity_unknown' };
 	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, phaseCeiling);
 	const bindingReason: RampDecisionReason =
 		capacityBound < phaseCeiling ? 'capacity_ceiling' : 'phase_ceiling';
 
-	// 9. K_CLEAN. Confidence is spent, not assumed.
-	if (streak < config.cleanWindowsRequired) {
+	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
+	// and the relay drops to priority_failover standby.
+	//
+	// The PIN SURVIVES A CAPACITY BOUND but does not override it: a graduated cell
+	// still gives way to the warming cap, and when it does the sentence names the
+	// ceiling rather than claiming a graduation move the operator did not see.
+	if (greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs) {
+		const pinned = Math.min(OWN_SHARE_CEILING, ceiling);
+		return {
+			...green,
+			share: pinned,
+			reason: pinned >= fromShare ? 'graduated' : bindingReason,
+			graduatedAt: mix.graduatedAt ?? now,
+			isPinned: true,
+			ceiling,
+		};
+	}
+
+	// 10. K_CLEAN. Confidence is spent, not assumed — and it is spent in WINDOWS,
+	//     so the streak read here is the one this window is allowed to have moved.
+	if (countedStreak < config.cleanWindowsRequired) {
 		return { ...green, reason: 'building_confidence', ceiling };
 	}
 
-	// 10. ADDITIVE INCREASE — the ONLY branch that can raise a share.
+	// 11. ADDITIVE INCREASE — the ONLY branch that can raise a share, and at most
+	//     ONCE PER EVALUATION WINDOW. A ceiling pull-back below is deliberately
+	//     NOT window-gated: retreats stay instant, advances stay expensive.
 	const step: number = ppToFraction(config.increaseStep);
 	const bounded = Math.min(ceiling, fromShare + step);
-	if (bounded > fromShare) return { ...green, share: bounded, reason: 'healthy', ceiling };
+	if (bounded > fromShare) {
+		if (!isWindowCounted) return { ...green, reason: 'window_open', ceiling };
+		return { ...green, share: bounded, reason: 'healthy', ceiling };
+	}
 	// A CEILING IS NOT A BREACH. When the ceiling sits below the current share it
 	// pulls the cell back to it, but never below the soft floor: nothing here
 	// measured anything wrong, and only a gate failure or a hard stop may take a

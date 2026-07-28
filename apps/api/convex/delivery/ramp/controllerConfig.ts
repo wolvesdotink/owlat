@@ -49,6 +49,21 @@ export interface RampAimdConfig {
 	readonly capacitySafety: number;
 	/** How long s = 1.0 must hold, all gates green, before the cell graduates. */
 	readonly graduationHoldMs: number;
+	/**
+	 * THE LENGTH OF ONE EVALUATION WINDOW, and therefore the minimum spacing
+	 * between two COUNTED clean windows.
+	 *
+	 * The cron ticks hourly; the gates read a 24h window of outcomes. Without this
+	 * constant, K_CLEAN = 3 would be satisfied by three overlapping reads of the
+	 * SAME day taken an hour apart, and a green cell could take ~20 additive steps
+	 * from 0.02 to its phase ceiling inside a single day — which is precisely the
+	 * "expensive to advance" half of D9's asymmetry deleted. A window counts only
+	 * once, and only a counted window extends the streak or permits an increase.
+	 *
+	 * It is ONE number for both the gate query and the streak spacing on purpose:
+	 * two would be able to disagree about what "a window" means.
+	 */
+	readonly evaluationWindowMs: number;
 }
 
 export const RAMP_AIMD: RampAimdConfig = {
@@ -61,6 +76,7 @@ export const RAMP_AIMD: RampAimdConfig = {
 	blocklistFreezeMs: 24 * HOUR_MS,
 	capacitySafety: 0.8,
 	graduationHoldMs: 14 * DAY_MS,
+	evaluationWindowMs: DAY_MS,
 };
 
 /**

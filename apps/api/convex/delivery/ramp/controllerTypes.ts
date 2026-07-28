@@ -41,6 +41,12 @@ export type RampControlReason =
 	| 'awaiting_corroboration'
 	/** The capacity projection was unusable, so no ceiling could be computed. */
 	| 'capacity_unknown'
+	/**
+	 * Clean, but the current evaluation WINDOW has already been counted. The cron
+	 * ticks hourly against a 24h window, so counting every tick would let three
+	 * overlapping reads of the same day satisfy K_CLEAN.
+	 */
+	| 'window_open'
 	/** Clean, but not clean for K_CLEAN consecutive windows yet. */
 	| 'building_confidence'
 	/** The warming-cap-derived ceiling is what bounds the share. */
@@ -81,6 +87,13 @@ export interface RampMixState {
 	/** The instant the cell last became continuously green (graduation clock). */
 	readonly greenSince: number | undefined;
 	readonly graduatedAt: number | undefined;
+	/**
+	 * The instant the last COUNTED evaluation window was counted, or `undefined`
+	 * for a cell that has never had one. Two counted windows must be at least
+	 * `RAMP_AIMD.evaluationWindowMs` apart, so that K_CLEAN measures independent
+	 * windows rather than overlapping hourly reads of the same day.
+	 */
+	readonly lastCountedAt: number | undefined;
 }
 
 /**
@@ -152,6 +165,12 @@ export interface RampDecision {
 	/** The instant this cell became continuously green, or `undefined`. */
 	readonly greenSince: number | undefined;
 	readonly graduatedAt: number | undefined;
+	/**
+	 * Set to `now` when this evaluation COUNTED as a window (and is therefore the
+	 * anchor the next window is measured from); `undefined` when it did not, in
+	 * which case the caller must leave the stored anchor alone.
+	 */
+	readonly countedAt: number | undefined;
 	/** The effective ceiling this decision was bounded by. */
 	readonly ceiling: number;
 }
