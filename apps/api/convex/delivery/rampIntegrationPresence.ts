@@ -24,8 +24,9 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import type { MutationCtx } from '../_generated/server';
+import type { DatabaseReader } from '../_generated/server';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
+import { RAMP_AIMD } from './ramp/controllerConfig';
 import type { RampIntegrationPresence } from './ramp/degradationMatrix';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,12 +34,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * How recently an integration must have produced data to count as connected.
  *
- * Generous (30 days) on purpose: these feeds are daily-to-weekly and a
- * fortnight's silence from Google Postmaster is normal for a low-volume domain.
- * The window exists to notice an integration that has genuinely stopped, not to
- * flap the ramp's constants on ordinary reporting gaps.
+ * THREE DAYS: three cadences of a DAILY feed. Google Postmaster, SNDS, the CFL
+ * enrollment feed and the seed probes all report daily, so the flap guard only
+ * has to absorb an ordinary missed day or two — two spare cadences do that, and
+ * a wider window buys nothing but staleness.
+ *
+ * THE ACCEPTANCE CRITERION IS "WITHIN ONE WINDOW" (the piece's own), and the
+ * evaluation window is `RAMP_AIMD.evaluationWindowMs` — 24h. A 30-day window
+ * would have kept the EQUIPPED constants (full step, K_CLEAN 3, no doubled
+ * dwell, no capped ceiling) running for thirty windows after a key was revoked,
+ * which is exactly the "the degraded path is never taken so it rots" failure
+ * this piece exists to prevent. Three days is the smallest window that still
+ * tolerates the feeds' own jitter; the boundary is fixture-pinned.
  */
-export const RAMP_INTEGRATION_FRESHNESS_MS = 30 * DAY_MS;
+export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * DAY_MS;
+
+/**
+ * How far back a cell's reference arm is looked for.
+ *
+ * THE SAME WINDOW `loadCellInput` JUDGES THE ARM OVER, deliberately: "does this
+ * cell have a relay?" must be one fact, and two readers answering it over
+ * different spans is how the promotion path and the controller come to disagree
+ * about which actuator a cell is on.
+ */
+export const RAMP_REFERENCE_ARM_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 
 /** Enrollment rows scanned when looking for a live feedback loop. */
 const CFL_ENROLLMENT_SCAN_LIMIT = 20;
@@ -50,8 +69,20 @@ const CFL_ENROLLMENT_SCAN_LIMIT = 20;
  */
 export type RampDeploymentPresence = Omit<RampIntegrationPresence, 'reference_transport'>;
 
+/**
+ * READER-TYPED, per ADR-0042's rule for a summarizer: these functions only read,
+ * so they take the narrowest handle that can express that. A `MutationCtx` here
+ * would let a future edit write from what is meant to be a pure observation, and
+ * would keep the dashboard query from reusing the very reader the controller
+ * decided on — the two disagreeing about a number is the failure ADR-0042 is
+ * about.
+ */
+export interface RampPresenceReader {
+	readonly db: DatabaseReader;
+}
+
 export async function loadRampDeploymentPresence(
-	ctx: MutationCtx,
+	ctx: RampPresenceReader,
 	args: { readonly organizationId: string; readonly now: number }
 ): Promise<RampDeploymentPresence> {
 	const since = args.now - RAMP_INTEGRATION_FRESHNESS_MS;
@@ -82,11 +113,21 @@ export async function loadRampDeploymentPresence(
 		google_postmaster: postmasterRow !== null,
 		microsoft_snds: sndsRow !== null,
 		seed_mailboxes: seedRow !== null,
+		// WHAT IS ACTUALLY OBSERVED TODAY is a live Yahoo CFL enrollment — that is
+		// the only feedback loop this deployment enrols in so far. The matrix key is
+		// the general one ("any FBL enrollment") because the plan's row is, and
+		// because a JMRP enrollment is meant to satisfy the same key rather than a
+		// second one; when JMRP lands it is an extra clause HERE, not a new entry in
+		// the table and not a second confidence note.
 		complaint_feedback_loop: enrollments.some((row) => row.state === 'enrolled'),
 		// NOTHING IN THIS DEPLOYMENT INTEGRATES A COMMERCIAL PLACEMENT SERVICE, and
 		// the matrix says that costs nothing — self-hosted seeds are the EXPECTED
 		// configuration for placement (plan D17). Hard `false` rather than a
 		// speculative credential lookup for a product we do not integrate (D20).
+		//
+		// Its table entry therefore carries `offersImprovement: false`: permanently
+		// absent AND permanently free, so it contributes neither a note nor an offer
+		// and no cell renders an affordance nobody can take up.
 		commercial_placement_api: false,
 	};
 }
@@ -108,14 +149,14 @@ export function withReferenceArm(
  * once so the two callers cannot disagree about what "has a relay" means.
  */
 export async function loadReferenceArmPresence(
-	ctx: MutationCtx,
+	ctx: RampPresenceReader,
 	args: { readonly organizationId: string; readonly cell: DeliverabilityCell; readonly now: number }
 ): Promise<boolean> {
 	const summary = await summarizeTransportOutcomes(ctx.db, {
 		organizationId: args.organizationId,
 		cell: deliverabilityCellKey(args.cell),
 		arm: 'reference',
-		since: args.now - RAMP_INTEGRATION_FRESHNESS_MS,
+		since: args.now - RAMP_REFERENCE_ARM_WINDOW_MS,
 	});
 	return summary.sent > 0;
 }
