@@ -90,3 +90,53 @@ export function capacityScheduleHeadline(plan: CampaignCapacitySchedulePlan): st
 	if (plan.audienceUnderCounted) return `Sending over at least ${plan.days} ${dayWord}`;
 	return `Sending over ${plan.days} ${dayWord}`;
 }
+
+/** One UTC day, in ms. The backend slices the schedule on UTC day boundaries. */
+export const CAPACITY_DAY_MS = 86_400_000;
+
+/**
+ * UTC start of the day slice `index` sends on.
+ *
+ * The plan's days are UTC days anchored on the SEND START (which is the
+ * scheduled time, not `now` — a campaign scheduled three days out starts its
+ * first slice three days out), and `finishesAt` is the EXCLUSIVE end of the
+ * last sliced day. Deriving every row's date backwards from `finishesAt` is
+ * what keeps the panel's dates and the backend's slices from drifting: there
+ * is exactly one anchor, and the caller never re-derives one from `Date.now()`.
+ */
+export function capacitySliceDayStart(plan: CampaignCapacitySchedulePlan, index: number): number {
+	return plan.finishesAt - (plan.days - index) * CAPACITY_DAY_MS;
+}
+
+/**
+ * Format a UTC day for display.
+ *
+ * ALWAYS in UTC, never the viewer's zone. The plan's instants are UTC day
+ * boundaries, so rendering them locally shifts every date by a day for half the
+ * world and would show two operators two different finish dates for the same
+ * plan.
+ */
+export function formatCapacityDay(atMs: number, style: 'long' | 'short' = 'long'): string {
+	return new Date(atMs).toLocaleDateString('en-US', {
+		timeZone: 'UTC',
+		weekday: style === 'long' ? 'long' : 'short',
+		month: style === 'long' ? 'long' : 'short',
+		day: 'numeric',
+	});
+}
+
+/**
+ * The last day recipients actually go out on (ms inside it).
+ *
+ * `finishesAt` is a HALF-OPEN interval end — the UTC midnight that starts the
+ * day AFTER the last sending day — so it is closed exactly once, here, at the
+ * render boundary. Formatting `finishesAt` itself would name the wrong day.
+ */
+export function capacityFinishDayAt(plan: CampaignCapacitySchedulePlan): number {
+	return plan.finishesAt - 1;
+}
+
+/** Is `dayStartMs` inside the same UTC day as `now`? */
+export function isCapacityDayToday(dayStartMs: number, now: number): boolean {
+	return Math.floor(dayStartMs / CAPACITY_DAY_MS) === Math.floor(now / CAPACITY_DAY_MS);
+}

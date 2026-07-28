@@ -10,7 +10,15 @@
 import { describe, it, expect } from 'vitest';
 import type { OperationError } from '@owlat/shared/operationError';
 
-import { capacityRefusalPlan, capacityScheduleHeadline } from '../campaignCapacityRefusal';
+import {
+	capacityFinishDayAt,
+	capacityRefusalPlan,
+	capacityScheduleHeadline,
+	capacitySliceDayStart,
+	formatCapacityDay,
+	isCapacityDayToday,
+	type CampaignCapacitySchedulePlan,
+} from '../campaignCapacityRefusal';
 
 function refusal(capacityPlan: unknown): OperationError {
 	return {
@@ -106,5 +114,48 @@ describe('capacityScheduleHeadline', () => {
 		expect(capacityScheduleHeadline({ ...VALID_PLAN, days: 1, slices: [1] })).toBe(
 			'Sending over 1 day'
 		);
+	});
+});
+
+describe('capacity plan dates', () => {
+	// Five days ending at Jan 10 00:00 UTC — the only shape the backend emits
+	// (`capacityPlan.ts`: utcDayStart(startsAt) + days * MS_PER_DAY). The slices
+	// therefore send on Jan 5..Jan 9 UTC.
+	const PLAN: CampaignCapacitySchedulePlan = {
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: Date.UTC(2026, 0, 10),
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+
+	it('anchors slice 0 on the send start, not on the finish', () => {
+		expect(capacitySliceDayStart(PLAN, 0)).toBe(Date.UTC(2026, 0, 5));
+		expect(capacitySliceDayStart(PLAN, PLAN.days - 1)).toBe(Date.UTC(2026, 0, 9));
+	});
+
+	it('closes the half-open finish interval inside the last sending day', () => {
+		const at = capacityFinishDayAt(PLAN);
+		expect(at).toBeLessThan(PLAN.finishesAt);
+		expect(at).toBeGreaterThanOrEqual(Date.UTC(2026, 0, 9));
+		expect(formatCapacityDay(at)).toBe('Friday, January 9');
+	});
+
+	it('formats in UTC regardless of the viewer timezone', () => {
+		// A UTC midnight is the previous local day in every negative offset and the
+		// same local day in every positive one, so a locally-formatted plan shows
+		// two operators two different dates. These assertions are timezone-free by
+		// construction: the formatter is pinned to UTC.
+		expect(formatCapacityDay(Date.UTC(2026, 0, 5))).toBe('Monday, January 5');
+		expect(formatCapacityDay(Date.UTC(2026, 0, 5, 23, 59, 59, 999))).toBe('Monday, January 5');
+		expect(formatCapacityDay(Date.UTC(2026, 0, 6), 'short')).toBe('Tue, Jan 6');
+	});
+
+	it('calls a day "today" only when it is the current UTC day', () => {
+		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 5, 12))).toBe(true);
+		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 5))).toBe(true);
+		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 4, 23, 59))).toBe(false);
+		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 6))).toBe(false);
 	});
 });

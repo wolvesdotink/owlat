@@ -15,7 +15,11 @@
  * quoted as a finish date, and an under-counted audience is quoted as a floor.
  */
 import {
+	capacityFinishDayAt,
 	capacityScheduleHeadline,
+	capacitySliceDayStart,
+	formatCapacityDay,
+	isCapacityDayToday,
 	type CampaignCapacitySchedulePlan,
 } from '~/lib/campaignCapacityRefusal';
 
@@ -23,6 +27,11 @@ const props = defineProps<{
 	plan: CampaignCapacitySchedulePlan;
 	/** Shown when the operator can dismiss the panel and change the send options. */
 	dismissible?: boolean;
+	/**
+	 * Clock override for tests; defaults to the render-time wall clock. Only used
+	 * to decide which row (if any) is labelled "Today".
+	 */
+	now?: number;
 }>();
 
 defineEmits<{ dismiss: [] }>();
@@ -32,15 +41,25 @@ const headline = computed(() => capacityScheduleHeadline(props.plan));
 /** A finish date is only honest when the enumeration actually reached the end. */
 const finishesOn = computed(() => {
 	if (props.plan.truncated) return null;
-	return new Date(props.plan.finishesAt).toLocaleDateString('en-US', {
-		weekday: 'long',
-		month: 'long',
-		day: 'numeric',
-	});
+	return formatCapacityDay(capacityFinishDayAt(props.plan));
 });
 
-/** The first few days of the plan, so "over N days" is concrete rather than abstract. */
-const previewSlices = computed(() => props.plan.slices.slice(0, 5));
+/**
+ * The first few days of the plan, so "over N days" is concrete rather than
+ * abstract. Each row carries its OWN date, derived from the plan: the slices are
+ * anchored on the send START, not on `now`, so a campaign scheduled three days
+ * out must not label its first slice "Today".
+ */
+const previewSlices = computed(() => {
+	const now = props.now ?? Date.now();
+	return props.plan.slices.slice(0, 5).map((recipients, index) => {
+		const dayStart = capacitySliceDayStart(props.plan, index);
+		return {
+			recipients,
+			label: isCapacityDayToday(dayStart, now) ? 'Today' : formatCapacityDay(dayStart, 'short'),
+		};
+	});
+});
 const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5));
 </script>
 
@@ -64,8 +83,8 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 					:key="index"
 					class="flex items-center justify-between text-sm text-text-secondary"
 				>
-					<span>{{ index === 0 ? 'Today' : `Day ${index + 1}` }}</span>
-					<span class="tabular-nums">{{ slice.toLocaleString() }} recipients</span>
+					<span>{{ slice.label }}</span>
+					<span class="tabular-nums">{{ slice.recipients.toLocaleString() }} recipients</span>
 				</li>
 				<li v-if="hiddenSliceCount > 0" class="text-sm text-text-tertiary">
 					+{{ hiddenSliceCount }} more {{ hiddenSliceCount === 1 ? 'day' : 'days' }}
