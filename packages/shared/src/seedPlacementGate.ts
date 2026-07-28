@@ -1,18 +1,18 @@
 /**
- * Seed placement — the ROLL-UP, the corroboration rule, and gate 5.
+ * Seed placement — THE ROLL-UP (the measurement).
  *
  * Split out of `seedPlacement.ts` purely for size (CONVENTIONS' ~500 LOC
  * guideline); `@owlat/shared/seedPlacement` re-exports everything here, so it
  * stays the one import surface and no caller has to know about the seam.
+ * `seedPlacementTripwire.ts` is the sibling on the other side of the
+ * `SeedProviderRollup`: it owns the corroboration rule and gate 5's verdict —
+ * what the controller may DO about a reading — while every threshold that
+ * PRODUCES a reading stays here.
  *
  * D17 — A TRIPWIRE, NOT A GAUGE. Nothing this module returns is a placement
  * percentage: the roll-up is a STATUS per mailbox provider, the reference-arm
  * comparison is a STATUS, and `sampleSize` counts OBSERVATIONS rather than
- * measuring placement. Every degraded reading — a collapse, missing probes, a
- * provider sitting below the reached threshold, a provider behind the reference
- * arm — is SUSPECT until the deferral or the bounce gate corroborates it, and
- * uncorroborated it HOLDS the gate (`insufficient_data`) rather than passing it,
- * because a pass would feed the clean streak that authorises an increase.
+ * measuring placement.
  *
  * GATE 5 IS TWO CLAUSES, per the plan's signal table: the own arm's reached
  * share must clear `SEED_REACHED_THRESHOLD` AND, when a reference transport
@@ -20,11 +20,32 @@
  * Standalone there is no reference arm and the absolute clause is the whole
  * gate (D3's substitution).
  *
+ * THE DIVISION OF LABOUR, because gate 5 has exactly one implementation and it
+ * is this one:
+ *
+ *   - THIS MODULE (with its tripwire sibling) owns the MEASUREMENT: the
+ *     per-provider roll-up, the thresholds and the tolerance that turn probes
+ *     into a STATUS, the minimum sample, and the confidence a seed reading
+ *     carries (`SEED_GATE_CONFIDENCE`).
+ *     `analytics/seedPlacement.getGateVerdict` is the Convex surface that feeds
+ *     it real probes.
+ *   - `delivery/ramp/seedGate.ts` owns the TRANSLATION: it consumes the
+ *     `SeedProviderRollup` statuses produced here and restates them in the
+ *     controller's `RampGateResult` vocabulary (freshness cascade, reason
+ *     codes, the aggregator's precedence). It derives NO rate of its own and
+ *     declares NO threshold of its own — a second home for the 90 % line is a
+ *     second answer to "did the seeds reach the inbox", and the controller and
+ *     the dashboard must never be able to disagree about a number (ADR-0042).
+ *
  * Pure: no clock, no I/O, every input a parameter (D15).
  */
 
 import type { DestinationProviderKey } from './deliverabilityRouting';
-import { isSeedPlacementReached, type SeedPlacement } from './seedPlacementFolders';
+import {
+	SEED_PLACEMENTS,
+	isSeedPlacementReached,
+	type SeedPlacement,
+} from './seedPlacementFolders';
 
 // ============ ROLL-UP (STATUS, NEVER A NUMBER) ============
 
@@ -93,10 +114,21 @@ export type SeedPlacementStatus =
 	| 'collapse_suspected';
 
 /**
- * What a seed reading is worth. D14/D17 — say the quiet part out loud: seeds
- * are never high confidence, so the only values are `none` and `low`.
+ * WHAT A SEED READING IS WORTH — ONE ANSWER, ONE HOME.
+ *
+ * The plan's "gates, degraded honestly" table grades gate 5 MEDIUM: a small
+ * sample, but a DIRECT observation of the spam folder rather than a proxy for
+ * one. That grade is declared here, beside the thresholds that produce the
+ * reading, and the controller's gate-5 result imports it (`SEED_TRIPWIRE` in
+ * `delivery/ramp/gateGrades.ts`) instead of restating it — two spellings of one
+ * confidence level is two different sentences on one screen.
+ *
+ * `none` is not a weaker grade, it is the ABSENCE of one: below the minimum
+ * sample there is no reading to grade (D10 — insufficient_data HOLDS).
  */
-export type SeedConfidence = 'none' | 'low';
+export const SEED_GATE_CONFIDENCE = 'medium';
+
+export type SeedConfidence = 'none' | typeof SEED_GATE_CONFIDENCE;
 
 /**
  * The own arm's standing against the reference arm — gate 5's second clause,
@@ -152,14 +184,74 @@ function readArm(observations: readonly SeedObservation[]): ArmReading {
 	};
 }
 
+/**
+ * Per-placement PROBE COUNTS for one arm — the same evidence as a
+ * `SeedObservation[]`, in the form a caller that already has counters holds it.
+ *
+ * Omitted placements are zero. Negative, fractional and non-finite counts are
+ * scrubbed rather than trusted: a sample size is the one number the
+ * `insufficient_data` rule turns on, so it may never be a caller's typo.
+ */
+export type SeedArmPlacementCounts = Partial<Readonly<Record<SeedPlacement, number>>>;
+
+function safeProbeCount(value: number | undefined): number {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value);
+}
+
+function readArmCounts(counts: SeedArmPlacementCounts | null | undefined): ArmReading {
+	let sampleSize = 0;
+	let reached = 0;
+	let anyMissing = false;
+	for (const placement of SEED_PLACEMENTS) {
+		const count = safeProbeCount(counts?.[placement]);
+		if (count <= 0) continue;
+		sampleSize += count;
+		if (isSeedPlacementReached(placement)) reached += count;
+		if (placement === 'missing') anyMissing = true;
+	}
+	if (sampleSize === 0) return { sampleSize: 0, reachedShare: 0, anyMissing: false };
+	return { sampleSize, reachedShare: reached / sampleSize, anyMissing };
+}
+
+/**
+ * The roll-up from COUNTS rather than from one object per probe.
+ *
+ * THE SAME MEASUREMENT, NOT A SECOND ONE. Both entry points reduce their input
+ * to the same `ArmReading` pair and hand it to the same `rollupFromArms`, so the
+ * thresholds, the minimum sample and the confidence keep the single home this
+ * module gives them. A caller that already counts its probes (the ramp's gate 5
+ * holds three integers per arm) can ask its question without first expanding
+ * those integers into thousands of throwaway objects for this module to count
+ * back down again.
+ */
+export function summarizeSeedProviderCounts(
+	provider: DestinationProviderKey,
+	arms: {
+		readonly own?: SeedArmPlacementCounts | null;
+		readonly reference?: SeedArmPlacementCounts | null;
+	}
+): SeedProviderRollup {
+	return rollupFromArms(provider, readArmCounts(arms.own), readArmCounts(arms.reference));
+}
+
 export function summarizeSeedProvider(
 	provider: DestinationProviderKey,
 	observations: readonly SeedObservation[]
 ): SeedProviderRollup {
 	const mine = observations.filter((o) => o.provider === provider);
-	const own = readArm(mine.filter((o) => o.arm === 'own'));
-	const reference = readArm(mine.filter((o) => o.arm === 'reference'));
+	return rollupFromArms(
+		provider,
+		readArm(mine.filter((o) => o.arm === 'own')),
+		readArm(mine.filter((o) => o.arm === 'reference'))
+	);
+}
 
+function rollupFromArms(
+	provider: DestinationProviderKey,
+	own: ArmReading,
+	reference: ArmReading
+): SeedProviderRollup {
 	// The comparison needs BOTH arms to clear the minimum sample; below it the
 	// second clause holds rather than guessing (D10 — insufficient_data HOLDS).
 	const referenceStatus: SeedReferenceStatus =
@@ -194,7 +286,7 @@ export function summarizeSeedProvider(
 		provider,
 		status,
 		sampleSize: own.sampleSize,
-		confidence: 'low',
+		confidence: SEED_GATE_CONFIDENCE,
 		anyMissing: own.anyMissing,
 		reference: referenceStatus,
 		referenceSampleSize: reference.sampleSize,
@@ -207,211 +299,4 @@ export function summarizeSeedPlacement(
 	const providers = new Set<DestinationProviderKey>();
 	for (const observation of observations) providers.add(observation.provider);
 	return [...providers].map((provider) => summarizeSeedProvider(provider, observations));
-}
-
-// ============ THE CORROBORATION RULE (D17) ============
-
-/**
- * The other two outcome gates' current readings. A seed collapse across eight
- * mailboxes is not, on its own, permitted to halve a healthy deployment's
- * share — a real placement collapse shows up in deferrals or bounces too.
- */
-export interface SeedCorroboration {
-	deferralGateBreached: boolean;
-	bounceGateBreached: boolean;
-}
-
-/**
- * What a provider's reading MEANS to the controller, as a discriminated union.
- *
- * The discriminant, not the reason string, is what the gate switches on. An
- * earlier shape carried `action: 'hold' | 'act'` and left the gate to re-derive
- * "is this hold a suspicion?" by matching a subset of the reason literals — and
- * a hold whose reason was not in that subset silently read as CLEAN. That is
- * exactly how a below-threshold provider came to license an increase. With
- * three distinct outcomes the only way to count a provider as clean is to
- * return `clean`, so the mistake is not available.
- *
- *   - `act`      — a suspicion the deferral or bounce gate CORROBORATES: fail.
- *   - `suspect`  — a suspicion nothing corroborates: HOLD (never a pass, and
- *                  never a decrease either).
- *   - `clean`    — gate 5's clauses are satisfied. The only pass.
- *   - `insufficient` — below the minimum sample; no verdict in any direction.
- */
-export type SeedTripwireOutcome = 'act' | 'suspect' | 'clean' | 'insufficient';
-
-/** Suspicions: a reason to doubt with nothing yet confirming it. */
-export type SeedSuspicionReason =
-	| 'seeds_below_reached_threshold_awaiting_corroboration'
-	| 'seed_probes_missing_awaiting_corroboration'
-	| 'seed_collapse_awaiting_corroboration'
-	| 'seeds_below_reference_awaiting_corroboration';
-
-/** The same four suspicions, corroborated by the deferral or the bounce gate. */
-export type SeedCorroboratedReason =
-	| 'seeds_below_reached_threshold_corroborated'
-	| 'seed_probes_missing_corroborated'
-	| 'seed_collapse_corroborated'
-	| 'seeds_below_reference_corroborated';
-
-export type SeedTripwireResolution =
-	| { outcome: 'insufficient'; reason: 'insufficient_seed_sample' }
-	| { outcome: 'clean'; reason: 'seeds_reaching_inbox' }
-	| { outcome: 'suspect'; reason: SeedSuspicionReason }
-	| { outcome: 'act'; reason: SeedCorroboratedReason };
-
-export function resolveSeedTripwire(
-	rollup: SeedProviderRollup,
-	corroboration: SeedCorroboration
-): SeedTripwireResolution {
-	const corroborated = corroboration.deferralGateBreached || corroboration.bounceGateBreached;
-	const gated = (
-		corroboratedReason: SeedCorroboratedReason,
-		awaitingReason: SeedSuspicionReason
-	): SeedTripwireResolution =>
-		corroborated
-			? { outcome: 'act', reason: corroboratedReason }
-			: { outcome: 'suspect', reason: awaitingReason };
-	/** Two call sites (the `mixed` and `inbox_dominant` branches). */
-	const belowReference = (): SeedTripwireResolution =>
-		gated('seeds_below_reference_corroborated', 'seeds_below_reference_awaiting_corroboration');
-
-	switch (rollup.status) {
-		case 'insufficient_data':
-			return { outcome: 'insufficient', reason: 'insufficient_seed_sample' };
-		case 'collapse_suspected':
-			return gated('seed_collapse_corroborated', 'seed_collapse_awaiting_corroboration');
-		case 'mixed':
-			// D17 calls MISSING the most alarming outcome and the one no other
-			// signal surfaces at all — so a degraded provider that is also LOSING
-			// probes is named for what it is, behind the same corroboration gate a
-			// collapse sits behind.
-			if (rollup.anyMissing) {
-				return gated(
-					'seed_probes_missing_corroborated',
-					'seed_probes_missing_awaiting_corroboration'
-				);
-			}
-			// Gate 5's SECOND clause. Behind the same corroboration gate as the
-			// first: a seed reading is a tripwire whichever clause trips it.
-			if (rollup.reference === 'below_reference') return belowReference();
-			// GATE 5'S FIRST CLAUSE, ENFORCED. `mixed` is BELOW
-			// SEED_REACHED_THRESHOLD by construction — a material share of every
-			// probe is being filed to spam, binned, or lost — so it is a suspicion,
-			// never a clean reading. Reporting it clean is what let the controller
-			// count the gate towards the K_CLEAN streak and ramp the share UP while
-			// the seeds said the opposite, and standalone (where there is no
-			// reference arm and this clause IS the whole gate, D3) it was the only
-			// clause left. Uncorroborated it HOLDS, exactly like a collapse.
-			return gated(
-				'seeds_below_reached_threshold_corroborated',
-				'seeds_below_reached_threshold_awaiting_corroboration'
-			);
-		case 'inbox_dominant':
-			// Above SEED_REACHED_THRESHOLD the provider is healthy enough that a
-			// single stray disappearance is noise, not a signal — but the reference
-			// arm can still be doing measurably better, which is the comparison the
-			// plan's second clause exists to make.
-			if (rollup.reference === 'below_reference') return belowReference();
-			return { outcome: 'clean', reason: 'seeds_reaching_inbox' };
-	}
-}
-
-// ============ GATE 5 ============
-
-export type SeedGateVerdict = 'pass' | 'fail' | 'insufficient_data';
-
-export interface SeedGateResult {
-	verdict: SeedGateVerdict;
-	reason: string;
-	confidence: SeedConfidence;
-	/** Providers whose collapse is corroborated — the human-readable "what broke". */
-	failedProviders: DestinationProviderKey[];
-	/**
-	 * Providers sitting on an UNcorroborated suspicion. Never acted on (no
-	 * decrease), and never counted as clean either — their presence turns the
-	 * verdict into `insufficient_data`, which HOLDS.
-	 */
-	suspectProviders: DestinationProviderKey[];
-}
-
-/**
- * Gate 5 of the AIMD controller. With no seed mailboxes connected — the
- * default for a fresh install — this returns `insufficient_data` and the
- * controller HOLDS (D10): the gate can neither advance nor retreat the share.
- */
-export function evaluateSeedPlacementGate(input: {
-	rollups: readonly SeedProviderRollup[];
-	corroboration: SeedCorroboration;
-}): SeedGateResult {
-	const usable = input.rollups.filter((r) => r.status !== 'insufficient_data');
-	if (usable.length === 0) {
-		return {
-			verdict: 'insufficient_data',
-			reason:
-				input.rollups.length === 0 ? 'no_seed_mailboxes_connected' : 'insufficient_seed_sample',
-			confidence: 'none',
-			failedProviders: [],
-			suspectProviders: [],
-		};
-	}
-
-	const failedProviders: DestinationProviderKey[] = [];
-	const suspectProviders: DestinationProviderKey[] = [];
-	for (const rollup of usable) {
-		const resolution = resolveSeedTripwire(rollup, input.corroboration);
-		switch (resolution.outcome) {
-			case 'act':
-				failedProviders.push(rollup.provider);
-				break;
-			case 'suspect':
-				suspectProviders.push(rollup.provider);
-				break;
-			case 'clean':
-			case 'insufficient':
-				// `insufficient` cannot reach here (those rollups are filtered above),
-				// and `clean` is the ONLY reading that contributes to a pass — by
-				// contributing nothing to either list.
-				break;
-		}
-	}
-
-	if (failedProviders.length > 0) {
-		return {
-			verdict: 'fail',
-			reason: `seed_tripwire_corroborated:${failedProviders.join(',')}`,
-			confidence: 'low',
-			failedProviders,
-			suspectProviders,
-		};
-	}
-
-	// AN UNCORROBORATED SUSPICION IS NOT A PASS.
-	//
-	// D17 is right that it may not ACT — eight consumer mailboxes may not halve a
-	// healthy deployment's share on their own. But `pass` is not the neutral
-	// answer it looks like: the controller counts a passing gate towards the
-	// K_CLEAN streak that authorises an additive increase, so reading `pass` here
-	// would let the share ramp UP while the seed mailboxes are being filtered to
-	// spam. `insufficient_data` is the correct verdict for "we have a reason to
-	// doubt and nothing that confirms it": it HOLDS, moving the share neither up
-	// nor down, which is also D14's rule that a weak signal may never be the sole
-	// basis for an increase.
-	if (suspectProviders.length > 0) {
-		return {
-			verdict: 'insufficient_data',
-			reason: `seed_tripwire_awaiting_corroboration:${suspectProviders.join(',')}`,
-			confidence: 'low',
-			failedProviders: [],
-			suspectProviders,
-		};
-	}
-
-	return {
-		verdict: 'pass',
-		reason: 'seeds_reaching_inbox',
-		confidence: 'low',
-		failedProviders: [],
-		suspectProviders,
-	};
 }

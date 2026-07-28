@@ -5,7 +5,7 @@ import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow, SEED_PLACEMENT_WINDOW_MS } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
-import { evaluateSeedPlacementGate } from '@owlat/shared/seedPlacement';
+import { evaluateSeedPlacementGate, SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
@@ -297,7 +297,7 @@ describe('the shipped gate query acts on a corroborated collapse', () => {
 		});
 		expect(verdict.verdict).toBe('fail');
 		expect(verdict.failedProviders).toEqual(['gmail']);
-		expect(verdict.confidence).toBe('low');
+		expect(verdict.confidence).toBe(SEED_GATE_CONFIDENCE);
 		// D17 — a STATUS, never a number: no rate leaks out of the shipped query.
 		expect(verdict).not.toHaveProperty('placementRate');
 	});

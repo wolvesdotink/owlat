@@ -71,8 +71,14 @@ import {
 	type RampGateSampleFloors,
 	type RampGateThresholds,
 } from './gateConfig';
-import { armEvidence, evidenceReason, insufficient, safeEngagementRate } from './gateEvidence';
-import type { RampGateResult } from './gateTypes';
+import {
+	armEvidence,
+	evidenceReason,
+	insufficient,
+	notADenominatorReason,
+	safeEngagementRate,
+} from './gateEvidence';
+import type { RampGateGrade, RampGateResult } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 
@@ -141,7 +147,7 @@ function calibrationEngagement(
  * The handful of things that differ between the concurrent ratio and the
  * slow-poison floor. Everything else about them is one cascade.
  */
-interface EngagementComparisonSpec {
+export interface EngagementComparisonSpec {
 	/** The window being judged. */
 	readonly recentOf: (input: EngagementGateInput) => TransportOutcomeSummary;
 	readonly recentFloorOf: (floors: RampGateSampleFloors) => number;
@@ -168,7 +174,19 @@ interface EngagementComparisonSpec {
 	readonly referenceArm: 'reference' | 'baseline';
 	/** The recent rate must be at least this multiple of the reference rate. */
 	readonly ratioFloor: number;
-	readonly failReason: 'reference_tolerance_breached' | 'absolute_threshold_breached';
+	readonly failReason:
+		| 'reference_tolerance_breached'
+		| 'absolute_threshold_breached'
+		| 'trailing_baseline_breached';
+	/**
+	 * The confidence this comparison is worth, and whether its `pass` may justify
+	 * an INCREASE (plan D14). Data, not an `if`: the concurrent ratio holds subject,
+	 * content and audience constant by construction and is worth acting on in both
+	 * directions, while the standalone trailing variant (P1-7) cannot tell a
+	 * redesigned newsletter from a placement loss and may therefore only ever cause
+	 * a DECREASE.
+	 */
+	readonly grade: RampGateGrade;
 }
 
 /** Gate 4a — the concurrent ratio, own arm against the reference transport. */
@@ -181,6 +199,7 @@ const RATIO_SPEC: EngagementComparisonSpec = {
 	referenceArm: 'reference',
 	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.minRatio,
 	failReason: 'reference_tolerance_breached',
+	grade: { confidence: 'high', mayJustifyIncrease: true },
 };
 
 /**
@@ -202,6 +221,7 @@ const FLOOR_SPEC: EngagementComparisonSpec = {
 	referenceArm: 'baseline',
 	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.absoluteFloorRatio,
 	failReason: 'absolute_threshold_breached',
+	grade: { confidence: 'high', mayJustifyIncrease: true },
 };
 
 /**
@@ -222,7 +242,7 @@ const FLOOR_SPEC: EngagementComparisonSpec = {
  * nearest double to a product), and the measurement reports the multiple in
  * `ratioFloor` and the absolute rate it works out to in `thresholdRate`.
  */
-function evaluateEngagementComparison(
+export function evaluateEngagementComparison(
 	spec: EngagementComparisonSpec,
 	input: EngagementGateInput
 ): RampGateResult {
@@ -268,11 +288,12 @@ function evaluateEngagementComparison(
 		thresholds.maxEvidenceAgeMs
 	);
 	if (recentEvidence !== 'fresh' || recent.rate === null) {
-		return insufficient('engagement_ratio', evidenceReason(recentEvidence, 'own'), {
-			...holdShape,
-			ownRate: recent.rate,
-			referenceRate: reference?.rate ?? null,
-		});
+		return insufficient(
+			'engagement_ratio',
+			evidenceReason(recentEvidence, 'own'),
+			{ ...holdShape, ownRate: recent.rate, referenceRate: reference?.rate ?? null },
+			spec.grade
+		);
 	}
 
 	const referenceEvidence = armEvidence(
@@ -283,20 +304,26 @@ function evaluateEngagementComparison(
 		thresholds,
 		referenceMaxAgeMs
 	);
-	// A rate of exactly zero reaches `evidenceReason('fresh', …)` alongside a
-	// poisoned one, and correctly so: both mean "this series cannot act as a
-	// denominator", which is a hold and never a pass.
-	if (
-		referenceEvidence !== 'fresh' ||
-		!reference ||
-		reference.rate === null ||
-		reference.rate <= 0
-	) {
-		return insufficient('engagement_ratio', evidenceReason(referenceEvidence, spec.referenceArm), {
-			...holdShape,
-			ownRate: recent.rate,
-			referenceRate: reference?.rate ?? null,
-		});
+	if (referenceEvidence !== 'fresh' || !reference || reference.rate === null) {
+		return insufficient(
+			'engagement_ratio',
+			evidenceReason(referenceEvidence, spec.referenceArm),
+			{ ...holdShape, ownRate: recent.rate, referenceRate: reference?.rate ?? null },
+			spec.grade
+		);
+	}
+
+	// A rate of exactly zero is a HOLD and never a pass — but it is a different
+	// story from a poisoned bucket, and the two used to share `*_rate_unmeasurable`
+	// between them. The evidence here is fresh, ample and numeric; there is simply
+	// no denominator to divide by, which is what `notADenominatorReason` says.
+	if (!(reference.rate > 0)) {
+		return insufficient(
+			'engagement_ratio',
+			notADenominatorReason(spec.referenceArm),
+			{ ...holdShape, ownRate: recent.rate, referenceRate: reference.rate },
+			spec.grade
+		);
 	}
 
 	const measurement = {
@@ -312,12 +339,14 @@ function evaluateEngagementComparison(
 				status: 'pass',
 				reason: 'within_threshold',
 				measurement,
+				...spec.grade,
 			}
 		: {
 				gate: 'engagement_ratio',
 				status: 'fail',
 				reason: spec.failReason,
 				measurement,
+				...spec.grade,
 			};
 }
 

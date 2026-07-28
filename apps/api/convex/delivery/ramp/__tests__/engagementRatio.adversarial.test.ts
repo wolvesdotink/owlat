@@ -11,14 +11,14 @@
  * the one verdict that spends reputation.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import type { TransportOutcomeSummary } from '../../../analytics/transportOutcomeSummary';
 import {
 	evaluateEngagementFloorGate,
 	evaluateEngagementGate,
 	evaluateEngagementRatioGate,
 } from '../engagementGate';
-import { NOW, arm, engagementCell, engagementInput } from './gateFixtures';
+import { NOW, arm, describeEquipped, engagementCell, engagementInput } from './gateFixtures';
 
 const HEALTHY = arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 });
 
@@ -27,7 +27,7 @@ function poisoned(overrides: Partial<TransportOutcomeSummary>): TransportOutcome
 	return arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 }, overrides);
 }
 
-describe('gate 4 — adversarial inputs', () => {
+describeEquipped('gate 4 — adversarial inputs', () => {
 	it('HOLDS on a NaN own rate rather than dividing by it', () => {
 		const result = evaluateEngagementRatioGate(
 			engagementInput({ own: poisoned({ calibrationOpenRate: Number.NaN }), reference: HEALTHY })

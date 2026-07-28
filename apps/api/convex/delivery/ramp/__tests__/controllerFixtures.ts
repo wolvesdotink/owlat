@@ -53,12 +53,21 @@ const HELD: RampGateHoldMeasurement = {
 	referenceRate: null,
 };
 
+/**
+ * A gate's grade. HIGH and increase-justifying by default: these fixtures exist
+ * to exercise the CONTROLLER, so the gate layer's own confidence asymmetry
+ * (plan D14 — `gates.matrix.test.ts` owns it) must not silently turn a fixture's
+ * clean window into a hold here.
+ */
+const GRADE = { confidence: 'high', mayJustifyIncrease: true } as const;
+
 export function passing(gate: RampGateId): RampGateResult {
-	return { gate, status: 'pass', reason: 'within_threshold', measurement: DECIDED };
+	return { ...GRADE, gate, status: 'pass', reason: 'within_threshold', measurement: DECIDED };
 }
 
 export function failing(gate: RampGateId): RampGateResult {
 	return {
+		...GRADE,
 		gate,
 		status: 'fail',
 		reason: 'absolute_threshold_breached',
@@ -68,6 +77,7 @@ export function failing(gate: RampGateId): RampGateResult {
 
 export function halting(gate: RampGateId): RampGateResult {
 	return {
+		...GRADE,
 		gate,
 		status: 'halt',
 		reason: 'halt_threshold_breached',
@@ -77,6 +87,7 @@ export function halting(gate: RampGateId): RampGateResult {
 
 export function holding(gate: RampGateId): RampGateResult {
 	return {
+		...GRADE,
 		gate,
 		status: 'insufficient_data',
 		reason: 'own_sample_below_floor',

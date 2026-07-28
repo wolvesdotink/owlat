@@ -119,8 +119,24 @@ export function gateStatusLabel(status: GateStatus): string {
  * window"), because "insufficient data" on its own reads as a fault in the
  * product rather than as a fact about the traffic.
  */
+/**
+ * WHAT `ownSample` / `minSample` ARE COUNTING for a given gate.
+ *
+ * Almost every verdict is denominated in SENDS, and the server's `ownSample`
+ * docblock (`gateTypes.ts`) names the two that are not: `seed_placement` counts
+ * SEED MAILBOXES, and the `block_message_detected` halt counts CLASSIFIED SMTP
+ * RESPONSES. Under D17 the placement gate is a tripwire whose numbers an
+ * operator reads directly, and under D12 the same fields render into the audit
+ * row and the admin notification — so the unit is decided once, here, rather
+ * than assumed to be "sends" by each sentence.
+ */
+function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
+	return gate === 'seed_placement' ? 'seed mailboxes' : 'sends';
+}
+
 export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const { measurement } = gate;
+	const unit = sampleUnit(gate.gate);
 	if (gate.status === 'insufficient_data') {
 		// Bound to a LOCAL: switching on `gate.reason` narrows `gate` itself, so the
 		// exhaustiveness check below would read a property off `never` instead of
@@ -128,9 +144,12 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 		const { reason } = gate;
 		switch (reason) {
 			case 'own_sample_below_floor':
-				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} sends this window.`;
+				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} this window.`;
 			case 'reference_sample_below_floor':
-				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} sends on the comparison transport this window.`;
+				// The unit is the GATE's, not the sentence's: the seed gate's second sweep is
+				// denominated in MAILBOXES, and it reaches this reason whenever that sweep
+				// is thin.
+				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport this window.`;
 			case 'baseline_sample_below_floor':
 				return `Not enough history yet — this cell has not sent enough over the past 30 days to be compared with its own past.`;
 			case 'own_evidence_stale':
@@ -141,6 +160,13 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			case 'reference_rate_unmeasurable':
 			case 'baseline_rate_unmeasurable':
 				return 'The recorded counters for this window could not be read as a rate, so this check is holding.';
+			case 'reference_not_a_denominator':
+			case 'baseline_not_a_denominator':
+				// NOT a fault, and the sentence must not read like one: the series this
+				// check compares against is a perfectly good number that a relative
+				// comparison cannot be built on — most often a clean window with nothing
+				// in the numerator at all.
+				return 'The window this check compares against is too clean to compare with — there is no relative verdict to give yet.';
 			case 'evidence_absent':
 				return 'Nothing has been measured for this cell yet.';
 			default: {
@@ -158,11 +184,19 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const threshold = formatPercentage(measurement.thresholdRate, 2);
 	const reference =
 		measurement.referenceRate === null ? null : formatPercentage(measurement.referenceRate, 2);
+	// THE VERDICT WHOSE SENTENCE IS NOT A RATE-AGAINST-A-LIMIT AT ALL. The
+	// block-message hard stop counts CLASSIFIED SMTP RESPONSES (see `ownSample` in
+	// the server's `gateTypes.ts`), and it reads as a share OF those responses
+	// rather than as a rate over a sample — so it gets its own whole sentence, not
+	// just its own unit noun (`sampleUnit` above covers the seed gate that way).
+	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
+		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
+	}
 	const comparison =
 		reference === null
 			? ''
-			: ` Comparison transport: ${reference} over ${formatNumber(measurement.referenceSample ?? 0)} sends.`;
-	return `${own ?? '—'} over ${formatNumber(measurement.ownSample)} sends, against a limit of ${threshold}.${comparison}`;
+			: ` Comparison transport: ${reference} over ${formatNumber(measurement.referenceSample ?? 0)} ${unit}.`;
+	return `${own ?? '—'} over ${formatNumber(measurement.ownSample)} ${unit}, against a limit of ${threshold}.${comparison}`;
 }
 
 // ============ CONFIDENCE (D14) ============

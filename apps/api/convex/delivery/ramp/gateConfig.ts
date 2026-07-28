@@ -17,6 +17,11 @@ import {
 	DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
 	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
+import {
+	SEED_MIN_OBSERVATIONS,
+	SEED_REACHED_THRESHOLD,
+	SEED_REFERENCE_TOLERANCE,
+} from '@owlat/shared/seedPlacement';
 import type { RampGateId } from './gateTypes';
 
 /** A rate in [0, 1]. 0.02 means 2%. */
@@ -55,8 +60,14 @@ export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(
  * Gates whose FAIL is a tripwire rather than a measurement (plan D17). Seeds are
  * 5-10 mailboxes: a collapse across all of them is actionable at any sample
  * size, but it is SUSPECT on its own and the controller (P3-2) must corroborate
- * it against the deferral or bounce gate before acting. Declared here so the
- * controller keys off a name rather than re-deriving the policy.
+ * it against the deferral or bounce gate before acting.
+ *
+ * THE RULE ITSELF IS NOT HERE, and deliberately: `resolveSeedTripwire` in
+ * `@owlat/shared/seedPlacement` is the one implementation of "what does an
+ * uncorroborated suspicion mean", reachable through
+ * `analytics.seedPlacement.getGateVerdict`. This set only NAMES the gates it
+ * applies to, so the controller reaches for that rule instead of writing a
+ * second copy of it.
  */
 export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>([
 	'seed_placement',
@@ -90,7 +101,34 @@ export interface RampGateSampleFloors {
 	 * silently moving the other.
 	 */
 	readonly engagementRecent: number;
-	/** Seeds per arm before the placement tripwire may return a verdict (D17). */
+	/**
+	 * Calibration-slice sends the STANDALONE trailing engagement gate requires
+	 * (plan D10's second minimum: >=2000 sends over a 7-day window).
+	 *
+	 * 5x the concurrent floor, and deliberately so. The concurrent gate compares
+	 * two arms of the SAME send, so subject, content, timing and audience are held
+	 * constant by construction and 400 per arm resolves a 5% relative move. The
+	 * trailing variant compares two DIFFERENT WEEKS, where every one of those
+	 * factors has moved; a floor that ignored the extra variance would let ordinary
+	 * editorial noise retreat a healthy cell.
+	 */
+	readonly engagementTrailing: number;
+	/**
+	 * Classified SMTP responses before the block-message hard stop may fire.
+	 *
+	 * Small (tens, not hundreds) and deliberately so: the denominator here is
+	 * FAILURE RESPONSES, not sends, and a healthy cell produces very few of them.
+	 * A floor scaled to the send counters would mean the block detector never
+	 * reached its minimum sample on precisely the cells that are working.
+	 */
+	readonly smtpBlock: number;
+	/**
+	 * Seeds per arm before the placement tripwire may return a verdict (D17).
+	 *
+	 * DERIVED, not declared: the roll-up in `@owlat/shared/seedPlacement` is what
+	 * actually enforces it, and gate 5 reports this number beside the sample it
+	 * counted. Two spellings of one floor is a screen that says "3 of 5".
+	 */
 	readonly seedPlacement: number;
 }
 
@@ -100,7 +138,9 @@ export const RAMP_GATE_SAMPLE_FLOORS: RampGateSampleFloors = {
 	complaint: 1000,
 	engagement: 400,
 	engagementRecent: 400,
-	seedPlacement: 5,
+	engagementTrailing: 2000,
+	smtpBlock: 20,
+	seedPlacement: SEED_MIN_OBSERVATIONS,
 };
 
 /**
@@ -121,9 +161,49 @@ export interface RampGateThresholds {
 	readonly complaintMax: RateFraction;
 	/** Gate 3: own arm may exceed the reference arm by at most this much. */
 	readonly complaintTolerance: PercentagePoints;
-	/** Gate 5: own-arm seed inbox floor, absolute. */
+	/**
+	 * STANDALONE gate 1: the own arm's hard-bounce rate may be at most this
+	 * MULTIPLE of the cell's own 30-day trailing rate, on top of the absolute 2%
+	 * ceiling. A dimensionless multiple, not a rate and not percentage points.
+	 *
+	 * 1.5x rather than a tighter number because a trailing self-comparison carries
+	 * list-decay and seasonal noise that a concurrent arm comparison does not: the
+	 * absolute ceiling is the precise instrument here, and this one exists to catch
+	 * a cell whose bounce rate is climbing fast while still nominally "under 2%".
+	 */
+	readonly hardBounceTrailingMultiple: number;
+	/**
+	 * STANDALONE gate 3: with no feedback loop, the one-click UNSUBSCRIBE rate at
+	 * or above this multiple of the cell's own trailing unsubscribe rate is treated
+	 * as a complaint-equivalent breach.
+	 *
+	 * Wide (3x) because it is a PROXY and is labelled as one: unsubscribes move
+	 * with campaign content, so a narrow multiple would retreat the ramp for
+	 * editorial reasons. A tripling against the cell's own recent history is not
+	 * editorial.
+	 */
+	readonly unsubscribeProxyMultiple: number;
+	/**
+	 * STANDALONE gate 2: the share of classified SMTP responses that may be BLOCK
+	 * messages before the cell HALTS.
+	 *
+	 * Not zero. A single misconfigured receiver returning a policy rejection is
+	 * noise on any real volume, and a halt on one response would make the ramp
+	 * unusable. 0.5% of a window's classified responses saying "we are refusing
+	 * this sender" is not noise.
+	 */
+	readonly smtpBlockHalt: RateFraction;
+	/**
+	 * Gate 5: own-arm seed inbox floor, absolute — and the reference tolerance
+	 * below it.
+	 *
+	 * BOTH ARE DERIVED FROM `@owlat/shared/seedPlacement`, which is where the
+	 * roll-up that applies them lives. Gate 5 never compares a rate against
+	 * either of these: it consumes the roll-up's STATUS and reports these two
+	 * numbers only so the screen can render the line the verdict was measured
+	 * against (plan D5 — the controller and the dashboard may not disagree).
+	 */
 	readonly seedInboxMin: RateFraction;
-	/** Gate 5: own arm may fall below the reference arm by at most this much. */
 	readonly seedInboxTolerance: PercentagePoints;
 	/**
 	 * Evidence older than this is not evidence. A gate whose arm has no fresher
@@ -176,27 +256,15 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	deferralHalt: rateFraction(0.25),
 	complaintMax: rateFraction(0.001),
 	complaintTolerance: percentagePoints(0.05),
-	seedInboxMin: rateFraction(0.9),
-	seedInboxTolerance: percentagePoints(5),
+	hardBounceTrailingMultiple: 1.5,
+	unsubscribeProxyMultiple: 3,
+	smtpBlockHalt: rateFraction(0.005),
+	seedInboxMin: rateFraction(SEED_REACHED_THRESHOLD),
+	seedInboxTolerance: percentagePoints(SEED_REFERENCE_TOLERANCE * 100),
 	maxEvidenceAgeMs: 48 * HOUR_MS,
 	maxBaselineAgeMs: 33 * DAY_MS,
 	maxFutureSkewMs: DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
 };
-
-/**
- * The complaint trip point when NO complaint feed exists at all and the
- * unsubscribe rate has to stand in for one (plan D2 / D14 — see
- * `./yahooComplaintSignal`).
- *
- * Lives next to `RAMP_GATE_THRESHOLDS.complaintMax` and is branded the same way
- * for the same reason: the substituted threshold and the real one are read at
- * the same call site, and the controller and the wizard must never be able to
- * disagree about either number.
- *
- * An unsubscribe is a much weaker and much more common signal than a spam
- * report, so the equivalent trip point is TIGHTENED rather than reused.
- */
-export const UNSUBSCRIBE_PROXY_COMPLAINT_MAX: RateFraction = rateFraction(0.0005);
 
 /**
  * Per-stream ramp constants (plan D6/D9). Defined ONCE here; the AIMD
@@ -204,6 +272,13 @@ export const UNSUBSCRIBE_PROXY_COMPLAINT_MAX: RateFraction = rateFraction(0.0005
  *
  * Transactional starts at zero and ramps LAST — it is the mail a failure hurts
  * most — but once started it moves in the smallest steps.
+ *
+ * THIS TABLE IS THE EQUIPPED HALF ONLY. The plan's standalone substitution
+ * raises K_CLEAN from 3 to 5 and halves the step when there is no reference
+ * transport, because the evidence behind each clean window is weaker. Those
+ * numbers are the AIMD ACTUATOR's (P3-2) and land with it: nothing in this piece
+ * consumes them, and a field here with no reader would be the speculative seam
+ * plan D20 forbids. Read `cleanWindowsRequired` as "with a reference arm".
  */
 export interface RampStreamConfig {
 	readonly stream: DeliverabilityStream;

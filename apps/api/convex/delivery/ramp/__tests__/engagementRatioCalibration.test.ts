@@ -12,9 +12,10 @@
  * losing by half. The gate must believe the slice.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { evaluateEngagementGate, evaluateEngagementRatioGate } from '../engagementGate';
-import { arm, engagementInput } from './gateFixtures';
+import type { EngagementGateInput } from '../engagementGate';
+import { arm, describeEquipped, engagementInput } from './gateFixtures';
 
 /** Stratified: 50% opens. Calibration slice: 10% opens. */
 const OWN_FLATTERED_BY_STRATIFICATION = arm({
@@ -36,12 +37,18 @@ const REFERENCE_UNDERSOLD_BY_STRATIFICATION = arm({
 	calibrationClicked: 80,
 });
 
-const INPUT = engagementInput({
-	own: OWN_FLATTERED_BY_STRATIFICATION,
-	reference: REFERENCE_UNDERSOLD_BY_STRATIFICATION,
-});
+/**
+ * Built LAZILY, not at module scope: the standalone leg of the ramp gate matrix
+ * refuses a reference arm, and a fixture constructed at import time would take
+ * the whole file down with it instead of skipping the cases that need one.
+ */
+const INPUT = (): EngagementGateInput =>
+	engagementInput({
+		own: OWN_FLATTERED_BY_STRATIFICATION,
+		reference: REFERENCE_UNDERSOLD_BY_STRATIFICATION,
+	});
 
-describe('gate 4 — calibration slice only', () => {
+describeEquipped('gate 4 — calibration slice only', () => {
 	it('the fixture really does tell two opposite stories', () => {
 		expect(OWN_FLATTERED_BY_STRATIFICATION.openRate).toBeCloseTo(0.5, 10);
 		expect(REFERENCE_UNDERSOLD_BY_STRATIFICATION.openRate).toBeCloseTo(0.1, 10);
@@ -50,26 +57,26 @@ describe('gate 4 — calibration slice only', () => {
 	});
 
 	it('FAILS the cell whose stratified numbers look great and whose slice is bad', () => {
-		const result = evaluateEngagementRatioGate(INPUT);
+		const result = evaluateEngagementRatioGate(INPUT());
 		expect(result.status).toBe('fail');
 		expect(result.reason).toBe('reference_tolerance_breached');
 	});
 
 	it('reports the CALIBRATION rates in the measurement, never the general ones', () => {
-		const { ownRate, referenceRate } = evaluateEngagementRatioGate(INPUT).measurement;
+		const { ownRate, referenceRate } = evaluateEngagementRatioGate(INPUT()).measurement;
 		expect(ownRate).toBeCloseTo(0.1, 10);
 		expect(referenceRate).toBeCloseTo(0.2, 10);
 		expect(ownRate).not.toBeCloseTo(0.5, 3);
 	});
 
 	it('denominates the sample on calibrationSent, not on sent', () => {
-		const { ownSample, referenceSample } = evaluateEngagementRatioGate(INPUT).measurement;
+		const { ownSample, referenceSample } = evaluateEngagementRatioGate(INPUT()).measurement;
 		expect(ownSample).toBe(1_000);
 		expect(referenceSample).toBe(1_000);
 	});
 
 	it('is INDIFFERENT to the general counters — moving them changes nothing', () => {
-		const baseline = evaluateEngagementRatioGate(INPUT);
+		const baseline = evaluateEngagementRatioGate(INPUT());
 		const generalCountersInverted = evaluateEngagementRatioGate(
 			engagementInput({
 				own: arm({
@@ -94,7 +101,7 @@ describe('gate 4 — calibration slice only', () => {
 	});
 
 	it('holds the same restriction through the composed gate 4', () => {
-		expect(evaluateEngagementGate(INPUT).status).toBe('fail');
+		expect(evaluateEngagementGate(INPUT()).status).toBe('fail');
 	});
 
 	it('a cell whose slice is healthy PASSES even when its stratified numbers are poor', () => {
