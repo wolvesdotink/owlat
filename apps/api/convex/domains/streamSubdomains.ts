@@ -47,6 +47,9 @@ export type SendingStream = GovernedMessageType;
 /** What a subdomain in the proposed layout is FOR. */
 export type SendingSubdomainRole = 'transactional' | 'bulk' | 'bounce';
 
+/** A role that actually sends, and therefore signs and warms. */
+export type SigningSubdomainRole = Exclude<SendingSubdomainRole, 'bounce'>;
+
 /** The label each role takes under the registrable root. */
 export const STREAM_SUBDOMAIN_LABELS = {
 	transactional: 'mail',
@@ -113,29 +116,18 @@ export interface SendingSubdomainPlan {
 	pool: GovernedIpPool | null;
 	/** False only for the bounce host. */
 	sends: boolean;
-	/**
-	 * The BASE of this host's DKIM selectors — never a selector that is published
-	 * or signed with. The real selector is `${base}-${armSuffix}`
-	 * ({@link DEFAULT_ARM_SELECTOR_SUFFIXES}), because the two arms of a cell sign
-	 * with different keys under the SAME `d=` (D11). Signing with the base alone
-	 * would use a selector that has no DNS record. The base is never shared with
-	 * another subdomain: one rotation must not touch two reputations.
-	 */
-	dkimSelectorBase: string | null;
 }
 
-/** A role that SENDS: it always has an IP pool and a DKIM selector base. */
+/** A role that SENDS: it always has an IP pool. */
 export type SigningSubdomainPlan = SendingSubdomainPlan & {
 	sends: true;
 	pool: GovernedIpPool;
-	dkimSelectorBase: string;
 };
 
 /** The return-path host: it signs nothing and warms nothing. */
 export type BounceSubdomainPlan = SendingSubdomainPlan & {
 	sends: false;
 	pool: null;
-	dkimSelectorBase: null;
 };
 
 /**
@@ -158,36 +150,30 @@ export interface SubdomainLayoutProposal {
 	streamHosts: Record<SendingStream, DnsName>;
 	/** The return-path host every stream shares. */
 	bounceHost: DnsName;
+	/**
+	 * The deployment's sending IPs, parsed, normalised and de-duped once (IPv4
+	 * first). They authorise the RETURN-PATH host's SPF and nothing else — a From
+	 * domain's SPF comes from `MTA_SPF_INCLUDE`, exactly as the shipped provider
+	 * adapter builds it.
+	 */
+	sendingIps: string[];
 	/** True when both pools resolve to the same single IP — the common case. */
 	poolsCollapsed: boolean;
 	advice: SubdomainAdviceKey[];
 }
 
 /**
- * Per-subdomain DKIM selectors.
+ * WHERE A SUBDOMAIN'S DKIM SELECTOR COMES FROM.
  *
- * Each sending subdomain gets its OWN selector because each is its own signing
- * identity: reusing one selector across `mail.` and `news.` means one key
- * rotation touches both reputations at once and one leaked key compromises
- * both. Callers pass explicit selectors when they already have identity rows;
- * otherwise the default derives a stable, distinct selector per role from a
- * caller-supplied base (never from a clock — this module is pure).
+ * Nowhere in this module. Each sending subdomain IS its own sending domain, so
+ * the MTA mints exactly one selector for it at registration and signs with that
+ * one (`domains/providers/mta/index.ts` → `sendingDomainMtaIdentities`), and
+ * `delivery/alignmentPreflight.ts` reads the very same row for the own arm.
+ * A selector this module DERIVED would be a name nothing in the system signs
+ * with and nothing publishes, so the layout carries no selector at all: known
+ * selectors are supplied by the caller that read the identity row, and a
+ * subdomain that has not been added yet honestly has none yet.
  */
-export interface SubdomainDkimSelectors {
-	transactional: string;
-	bulk: string;
-}
-
-/**
- * Derive per-role selectors from one base, e.g. the domain's existing
- * `sendingDomainMtaIdentities.dkimSelector`.
- */
-export function deriveSubdomainDkimSelectors(base: string): SubdomainDkimSelectors {
-	const trimmed = base.trim().toLowerCase();
-	const root = trimmed === '' ? 'owlat' : trimmed;
-	return { transactional: `${root}-mail`, bulk: `${root}-news` };
-}
-
 export interface SubdomainLayoutInput {
 	/** Any host under the operator's zone; the registrable root is derived. */
 	domain: string;
@@ -197,9 +183,6 @@ export interface SubdomainLayoutInput {
 	 * (a relay-only deployment); it collapses the same way.
 	 */
 	sendingIps?: readonly string[];
-	dkimSelectors?: SubdomainDkimSelectors;
-	/** Base for {@link deriveSubdomainDkimSelectors} when selectors are not given. */
-	dkimSelectorBase?: string;
 }
 
 /** Pool IPs, parsed once and read the same way by every consumer. */
@@ -258,10 +241,8 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 	const root = zone.registrable;
 	// One distinct address (or none) means the two pools are the same address.
 	// That is the COMMON case for a self-hoster, not a degraded one.
-	const poolsCollapsed = normalizePoolIps(input.sendingIps).distinctCount < 2;
-
-	const selectors =
-		input.dkimSelectors ?? deriveSubdomainDkimSelectors(input.dkimSelectorBase ?? 'owlat');
+	const pool = normalizePoolIps(input.sendingIps);
+	const poolsCollapsed = pool.distinctCount < 2;
 
 	// The brand exists so downstream pieces cannot fabricate a DnsName, so the
 	// hosts go through `asDnsName` rather than a cast. A label that will not name
@@ -288,7 +269,6 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 			streams: streamsFor('transactional'),
 			pool: SUBDOMAIN_ROLE_POOLS.transactional,
 			sends: true,
-			dkimSelectorBase: selectors.transactional,
 		},
 		bulk: {
 			role: 'bulk',
@@ -298,7 +278,6 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 			streams: streamsFor('bulk'),
 			pool: SUBDOMAIN_ROLE_POOLS.bulk,
 			sends: true,
-			dkimSelectorBase: selectors.bulk,
 		},
 		bounce: {
 			role: 'bounce',
@@ -308,7 +287,6 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 			streams: [],
 			pool: null,
 			sends: false,
-			dkimSelectorBase: null,
 		},
 	};
 	// Stable order: the two sending hosts first, the return path last — the order
@@ -341,6 +319,7 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 			subdomainsByRole,
 			streamHosts,
 			bounceHost,
+			sendingIps: [...pool.ip4, ...pool.ip6],
 			poolsCollapsed,
 			advice,
 		},
@@ -353,28 +332,16 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 export type TransportArm = 'own' | 'reference';
 
 /**
- * The suffix each arm's DKIM selector carries under the SAME subdomain.
+ * The selector each arm of a cell signs with under the SAME subdomain.
  *
- * ONE declaration, consumed by BOTH the signing side
- * ({@link resolveCellSendingIdentity}) and the publishing side
- * (`streamSubdomainRecords.dkimRows`). Two copies of this default is a silent
- * DKIM outage waiting to happen: mail signed with a selector that has no
- * published TXT record fails DKIM for every message on that subdomain, and
- * nothing in the send path notices.
+ * NOT DERIVED, SUPPLIED. The own arm's selector is the one the MTA minted for
+ * that subdomain (`sendingDomainMtaIdentities.dkimSelector`, which is also what
+ * `delivery/alignmentPreflight.ts` reads); the reference arm's comes from the
+ * ESP. `null` means "no selector exists yet" — the subdomain has not been added,
+ * or the relay has not published one — which is a supported state (D2), not a
+ * defect, and is why nothing here invents a name to fill the gap.
  */
-export const DEFAULT_ARM_SELECTOR_SUFFIXES: Record<TransportArm, string> = {
-	own: 'a',
-	reference: 'b',
-};
-
-/** The full selector an arm signs with under a subdomain's selector base. */
-export function armDkimSelector(
-	base: string,
-	arm: TransportArm,
-	suffixes: Record<TransportArm, string> = DEFAULT_ARM_SELECTOR_SUFFIXES
-): string {
-	return `${base}-${suffixes[arm]}`;
-}
+export type ArmDkimSelectors = Readonly<Partial<Record<TransportArm, string>>>;
 
 export interface CellSendingIdentity {
 	stream: SendingStream;
@@ -388,9 +355,10 @@ export interface CellSendingIdentity {
 	/**
 	 * The ONE thing D11 allows to differ per arm: each transport signs with its
 	 * own key under the SAME `d=`, so `Received` headers and the selector are
-	 * the only observable difference between the arms.
+	 * the only observable difference between the arms. `null` when that arm has
+	 * no selector yet.
 	 */
-	dkimSelector: string;
+	dkimSelector: string | null;
 }
 
 /**
@@ -405,21 +373,17 @@ export function resolveCellSendingIdentity(input: {
 	layout: SubdomainLayoutProposal;
 	stream: SendingStream;
 	arm: TransportArm;
-	/** Per-arm selector suffix; defaults keep both arms under one `d=`. */
-	armSelectorSuffix?: Record<TransportArm, string>;
+	/** The selectors that actually exist for this stream's host, per arm. */
+	armSelectors?: ArmDkimSelectors;
 }): CellSendingIdentity {
 	const host = input.layout.streamHosts[input.stream];
-	const role = STREAM_SUBDOMAIN_ROLES[input.stream];
-	// Total mapping: every sending role has a plan, and every plan a base — no
-	// scan, no optional chain, no fallback base that matches no published record.
-	const base = input.layout.subdomainsByRole[role].dkimSelectorBase;
 	return {
 		stream: input.stream,
 		arm: input.arm,
 		fromDomain: host,
 		dkimDomain: host,
 		returnPathDomain: input.layout.bounceHost,
-		dkimSelector: armDkimSelector(base, input.arm, input.armSelectorSuffix),
+		dkimSelector: input.armSelectors?.[input.arm] ?? null,
 	};
 }
 
