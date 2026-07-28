@@ -233,7 +233,7 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		const after = await cellRow(t);
 		expect(after?.frozenUntil).toBeUndefined();
 		const second = await decisions(t);
-		expect(second.at(-1)?.reason).not.toBe('freeze_unreadable');
+		expect(second[second.length - 1]?.reason).not.toBe('freeze_unreadable');
 	});
 
 	it('a breaker freeze leaves the gate-cooldown ladder and its anchor alone', async () => {
