@@ -88,7 +88,16 @@ export type CellVolumeProjection =
 			readonly ownDailyVolume: number;
 			/** How many complete trailing days carried data. */
 			readonly observedDays: number;
-			/** `ownDailyVolume / dailyVolume`, clamped to [0, 1]. */
+			/**
+			 * THE TYPICAL DAILY MIX: the median of the PER-DAY ratios `own_d/total_d`,
+			 * clamped to [0, 1].
+			 *
+			 * Deliberately not `trailingStatistic(owns) / trailingStatistic(totals)`.
+			 * Those two statistics are taken independently, so on jagged data the own
+			 * arm's peak days need not be the total's peak days and their ratio is
+			 * not any day's mix — it can sit above every observed day's ratio. A
+			 * median over the daily ratios is a number that actually occurred.
+			 */
 			readonly ownFraction: number;
 	  };
 
@@ -160,7 +169,6 @@ export function projectCellVolume(
 
 	const ordered = [...byDay.entries()].sort(([a], [b]) => a - b);
 	const totals = ordered.map(([, value]) => value.total);
-	const owns = ordered.map(([, value]) => Math.min(value.own, value.total));
 
 	const dailyVolume = trailingStatistic(totals);
 	// A ZERO PROJECTION NEVER LEAVES THIS FUNCTION. It is the numerator of every
@@ -169,13 +177,26 @@ export function projectCellVolume(
 	// will send nothing, so give it everything".
 	if (!(dailyVolume > 0)) return { kind: 'unknown', reason: 'no_volume' };
 
-	const ownDailyVolume = Math.min(trailingStatistic(owns), dailyVolume);
+	// THE MIX IS MEASURED PER DAY, then a median is taken over those ratios — see
+	// `ownFraction` above for why the ratio of two independently-taken statistics
+	// is not the same number and is not a mix any day actually had. A day with no
+	// demand contributes no ratio rather than a zero one: it is a day with no mix,
+	// not a day the own arm carried nothing of.
+	const ratios: number[] = [];
+	for (const [, value] of ordered) {
+		if (!(value.total > 0)) continue;
+		const own = Math.min(value.own, value.total);
+		ratios.push(Math.min(1, Math.max(0, own / value.total)));
+	}
+	const ownFraction = ratios.length === 0 ? 0 : Math.min(1, Math.max(0, median(ratios)));
 	return {
 		kind: 'projected',
 		dailyVolume,
-		ownDailyVolume,
+		// Derived FROM the mix rather than measured beside it, so the two can never
+		// disagree about what fraction of the projected day the own arm carries.
+		ownDailyVolume: dailyVolume * ownFraction,
 		observedDays: byDay.size,
-		ownFraction: Math.min(1, Math.max(0, ownDailyVolume / dailyVolume)),
+		ownFraction,
 	};
 }
 
@@ -199,33 +220,43 @@ export function remainingDemandToday(dailyVolume: number, now: number): number |
 	if (!Number.isFinite(now)) return null;
 	const elapsed = now - startOfDayUtc(now);
 	const remainingFraction = 1 - elapsed / MS_PER_DAY;
+	// `elapsed` is never negative for a finite `now`, so `remainingFraction` is
+	// never above 1 and there is nothing to clamp on that side.
 	if (!(remainingFraction >= CAPACITY_MIN_DAY_FRACTION_REMAINING)) return null;
-	if (remainingFraction > 1) return null;
 	return dailyVolume * remainingFraction;
 }
 
 /**
- * WHAT SHARE OF THE OWN ARM'S ASSIGNED TRAFFIC NEVER REACHED IT — the reactive
- * half, seen from the controller's side.
+ * HOW FAR THE TRAILING WEEK'S DELIVERED MIX SITS BELOW THE SHARE IN FORCE NOW —
+ * the reactive half, seen from the controller's side.
  *
  * A `warmup_overflow` reroute writes its outcome under the arm that actually
  * carried the send (`sendAssignments.armForTransport`), so a rerouted recipient
  * lands in the `reference` arm: the cell's trailing `own` volume falls while its
- * `total` does not, and this ratio is how far the delivered mix fell short of
- * the assigned share. It is EVIDENCE, not a decision — it is carried into the
- * `mixDecisions` audit snapshot (plan D12) so an operator can see that the own
- * arm did not carry what it was promised, and no rung reads it.
+ * `total` does not, and this ratio is how far the delivered mix fell short. It
+ * is EVIDENCE, not a decision — it is carried into the `mixDecisions` audit
+ * snapshot (plan D12) so an operator can see that the own arm did not carry what
+ * it was assigned, and no rung reads it.
+ *
+ * IT IS A LAGGING INDICATOR, AND THE NAME SAYS SO. The two sides are measured
+ * over different intervals: `projection.ownFraction` is the trailing week's
+ * median daily mix, while `currentShare` is the INSTANTANEOUS stored share. A
+ * share the controller raised yesterday therefore reads as a shortfall for up to
+ * a week, with no reroute involved at all — which is why this is not called a
+ * miss RATE and must not be read as a reroute measurement. What it does say
+ * truthfully, at any moment, is "the own arm is not currently carrying the share
+ * this cell is set to", and both causes of that are worth surfacing.
  *
  * `null` whenever the question is meaningless: an unusable projection, or a cell
- * assigned no own traffic at all (there is nothing to have missed).
+ * assigned no own traffic at all (there is nothing to have fallen short of).
  */
-export function rerouteMissRate(
+export function deliveredShareShortfall(
 	projection: CellVolumeProjection,
-	assignedShare: number
+	currentShare: number
 ): number | null {
 	if (projection.kind !== 'projected') return null;
-	if (!Number.isFinite(assignedShare) || assignedShare <= 0) return null;
-	const shortfall = assignedShare - projection.ownFraction;
+	if (!Number.isFinite(currentShare) || currentShare <= 0) return null;
+	const shortfall = currentShare - projection.ownFraction;
 	if (shortfall <= 0) return 0;
-	return Math.min(1, shortfall / assignedShare);
+	return Math.min(1, shortfall / currentShare);
 }

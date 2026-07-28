@@ -190,11 +190,15 @@ export async function loadCellInput(
 		 */
 		pool: Doc<'deliverabilityRouteStates'> | null;
 		/**
-		 * The tick's ONE capacity reading, also read once by the caller: the bound is
-		 * deployment-level by derivation (see `rampCapacityInputs.ts`), so reading it
-		 * per cell would be the same fifteen index reads repeated fifteen times.
+		 * The tick's ONE capacity reading, LAZY and memoized by the caller: the
+		 * bound is deployment-level by derivation (see `rampCapacityInputs.ts`), so
+		 * reading it per cell would be the same index reads repeated once per cell
+		 * — and a slice with no ramp-managed cell in it (the normal state during
+		 * rollout, plan D1) must not pay for a reading no cell will consume, which
+		 * is why it is a thunk rather than a value. Called only AFTER this cell is
+		 * known to be managed.
 		 */
-		capacity: RampCapacityContext;
+		capacity: () => Promise<RampCapacityContext>;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		now: number;
@@ -274,12 +278,13 @@ export async function loadCellInput(
 				now,
 			}),
 			evaluation,
-			// THE PREDICTIVE CAPACITY BOUND (P3-3), read ONCE for the tick and
-			// specialised here with this cell's own trailing evidence for the audit
-			// row. The share the shortfall is measured against is the STORED one —
-			// what the cell was actually assigned over the trailing window — so a
-			// `warmup_overflow` reroute reads as the miss it was.
-			capacity: capacityInputForCell(args.capacity, cell, mix.share),
+			// THE PREDICTIVE CAPACITY BOUND (P3-3), read ONCE for the tick — lazily,
+			// so an unmanaged slice never pays for it — and specialised here with this
+			// cell's own trailing evidence for the audit row. The shortfall is
+			// measured against the STORED share, which makes it a LAGGING indicator
+			// (see `deliveredShareShortfall`): a `warmup_overflow` reroute shows up in
+			// it, and so does a share the controller itself raised yesterday.
+			capacity: capacityInputForCell(await args.capacity(), cell, mix.share),
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},

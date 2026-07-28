@@ -7,6 +7,7 @@
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
+import type { CellVolumeUnknownReason } from './capacityProjection';
 import type { RampStreamConfig } from './gateConfig';
 import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
@@ -186,6 +187,23 @@ export interface RampHardStopSignals {
  * reading is a different thing — it is a ceiling we cannot compute at all — and
  * it holds.
  */
+/**
+ * WHY a known cap could not be turned into a ceiling — a CLOSED union, never a
+ * free string, so the audit snapshot cannot carry a reason no reader recognises
+ * and a switch over it stays exhaustive (plan D12).
+ *
+ * The per-cell reasons come straight through from `projectCellVolume`, because
+ * "this cell has never sent" and "this cell is paused" are different facts an
+ * operator needs told apart; the two deployment-level ones are the sum being
+ * unprojectable at all and the day being too nearly over to measure.
+ */
+export type RampCapacityUnknownReason =
+	/** No cell in the deployment projected any demand to divide the cap by. */
+	| 'demand_unprojectable'
+	/** Too little of the UTC day is left for the remaining-day ratio to mean anything. */
+	| 'day_almost_over'
+	| CellVolumeUnknownReason;
+
 export type RampCapacityInput =
 	/** No warming reading at all; only the phase ceiling binds (plan D2). */
 	| { readonly kind: 'unconstrained' }
@@ -194,7 +212,7 @@ export type RampCapacityInput =
 	 * brand-new deployment, a paused week, the last sliver of a UTC day). HOLD:
 	 * neither an unbounded ceiling nor a zero one.
 	 */
-	| { readonly kind: 'unknown'; readonly reason: string }
+	| { readonly kind: 'unknown'; readonly reason: RampCapacityUnknownReason }
 	| {
 			readonly kind: 'projected';
 			/** Sends of warming-cap headroom left for the rest of today. */
@@ -212,13 +230,19 @@ export type RampCapacityInput =
 			 * D12) and read by NO rung. The numbers above are deployment-level by
 			 * derivation, so without this the row could not say which cell's demand
 			 * contributed what, nor that the own arm failed to carry the share it was
-			 * assigned (`rerouteMissRate`).
+			 * assigned (`deliveredShareShortfall`).
 			 */
 			readonly cellEvidence?: {
 				readonly projectedCellVolume: number;
 				readonly observedDays: number;
+				/** The trailing week's MEDIAN DAILY own/total mix. */
 				readonly ownFraction: number;
-				readonly missRate: number | null;
+				/**
+				 * How far that trailing mix sits below the share in force NOW. A
+				 * LAGGING indicator by construction — see `deliveredShareShortfall`
+				 * — so a dashboard must not present it as a count of reroutes.
+				 */
+				readonly deliveredShareShortfall: number | null;
 			};
 	  };
 

@@ -10,22 +10,41 @@
  *   ⇒ share_c <= headroom / sum(demand_c)   for every cell
  *
  * The shipped warming sync reports headroom for the CAMPAIGN POOL, not per
- * (IP x mailbox provider) — one number, shared by all fifteen cells — so a
- * ceiling divided by ONE cell's demand would let the fifteen of them promise
- * fifteen times the cap. The denominator is the deployment's projected demand,
- * summed over PER-CELL projections (`projectCellVolume`), and the ceiling that
- * comes out is legitimately the same for every cell.
+ * (IP x mailbox provider) — one number, shared by every cell it governs — so a
+ * ceiling divided by ONE cell's demand would let all of them promise the cap
+ * over and over. The denominator is the projected demand of the cells that pool
+ * actually carries, summed over PER-CELL projections (`projectCellVolume`), and
+ * the ceiling that comes out is legitimately the same for each of them.
+ *
+ * WHICH POOL THE BOUND GOVERNS, AND THEREFORE WHICH CELLS IT BINDS.
+ * `loadWarmingCapacity` sums `ip.active && ip.pool === 'campaign'` — CAMPAIGN
+ * POOL headroom, nothing else. The numerator and the denominator must describe
+ * the same population, so the denominator sums only the streams that dispatch
+ * through that pool: `campaign` and `automation`. The `transactional` stream is
+ * excluded on both sides — every transactional dispatch site in this codebase
+ * (`systemMail`, `mail/outbound`, `mail/deliveryHooks`) sends `ipPool:
+ * 'transactional'`, and the MTA adapter's default is `'transactional'` too — so
+ * a transactional cell is NOT bounded by this reading at all. Bounding it by a
+ * cap that does not govern it would throttle the stream the plan (D6) wants to
+ * ramp last and fastest, for no measured reason.
+ *
+ * That also stops the plan's SAFETY = 0.8 double-counting itself. The 20% it
+ * holds back is explicitly the reserve for TRANSACTIONAL BURSTS against the
+ * shared IPs; summing transactional demand into the denominator as well would
+ * charge that traffic to the ramp twice.
  *
  * NOTHING HERE DECIDES ANYTHING. Every rule lives in `delivery/ramp/`: the
  * projection statistic, the zero-demand refusal and the end-of-day guard are all
  * in `ramp/capacityProjection.ts`, and the arithmetic is `ramp/controllerBounds`.
  * This module reads rows and hands them over.
  *
- * READ COST. One `warmingState` row plus two bounded index reads per cell — the
- * cell's own and reference outcome shards over eight UTC days. The cron ticks
- * hourly in three slices, so this is thirty bounded reads three times an hour on
- * a background mutation, against the alternative of plumbing a demand total
- * through the cursor chain and having a second, staler source of truth for it.
+ * READ COST. One `warmingState` row plus two bounded index reads per governed
+ * cell — the cell's own and reference outcome shards over eight UTC days —
+ * issued CONCURRENTLY, because the cells are independent. The alternative was
+ * plumbing a demand total through the cursor chain and keeping a second, staler
+ * source of truth for it. The reading is also taken LAZILY: a slice with no
+ * ramp-managed cell in it (the normal state during rollout, plan D1) never asks
+ * for it at all.
  *
  * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No warming state, a stale
  * sync, a graduated pool: every one of them answers `unconstrained` — the cell
@@ -38,6 +57,7 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 	type DeliverabilityCellKey,
+	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { MS_PER_DAY } from '../lib/constants';
@@ -46,14 +66,15 @@ import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
 import {
 	CAPACITY_TRAILING_DAYS,
+	deliveredShareShortfall,
 	projectCellVolume,
 	remainingDemandToday,
-	rerouteMissRate,
 	type CellVolumeDay,
 	type CellVolumeProjection,
+	type CellVolumeUnknownReason,
 } from './ramp/capacityProjection';
 import { loadWarmingCapacity } from './warmingCapacity';
-import type { RampCapacityInput } from './ramp/controllerTypes';
+import type { RampCapacityInput, RampCapacityUnknownReason } from './ramp/controllerTypes';
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -67,7 +88,18 @@ export interface RampCapacityContext {
 }
 
 /** The reading a deployment with no usable warming state gets (plan D2). */
-export const UNCONSTRAINED_CAPACITY: RampCapacityInput = { kind: 'unconstrained' };
+const UNCONSTRAINED_CAPACITY: RampCapacityInput = { kind: 'unconstrained' };
+
+/**
+ * The streams the CAMPAIGN warming pool carries, and therefore the only cells
+ * this bound may bind or be divided by. See the module doc for why
+ * `transactional` is on neither side of the ratio.
+ */
+const CAMPAIGN_POOL_STREAMS: readonly DeliverabilityStream[] = ['campaign', 'automation'];
+
+function isCampaignPoolCell(cell: DeliverabilityCell): boolean {
+	return CAMPAIGN_POOL_STREAMS.includes(cell.stream);
+}
 
 /**
  * One cell's trailing days, from the shard rows of BOTH arms.
@@ -96,6 +128,29 @@ async function readCellVolumeDays(
 }
 
 /**
+ * THE REASON THE CELLS AGREE ON, or the generic one when they do not.
+ *
+ * D12 wants an operator told WHY, not merely that. "Every governed cell has
+ * never sent" (`no_history`) and "every governed cell is paused"
+ * (`no_volume`) are different situations with different responses, and both are
+ * lost if the tick reports one hardcoded string. A mixed set has no single true
+ * answer, so it reports the generic one honestly instead of picking a winner.
+ */
+function sharedUnknownReason(
+	projected: readonly (readonly [DeliverabilityCellKey, CellVolumeProjection])[]
+): RampCapacityUnknownReason {
+	let shared: CellVolumeUnknownReason | null = null;
+	for (const [, projection] of projected) {
+		// A cell that DID project, in a tick whose total is nevertheless zero, has
+		// no unknown reason to contribute.
+		if (projection.kind !== 'unknown') return 'demand_unprojectable';
+		if (shared === null) shared = projection.reason;
+		else if (shared !== projection.reason) return 'demand_unprojectable';
+	}
+	return shared ?? 'demand_unprojectable';
+}
+
+/**
  * Build the tick's capacity reading. Reads only; decides nothing.
  *
  * The order of the two refusals matters. NO WARMING READING is checked first and
@@ -117,22 +172,36 @@ export async function loadRampCapacityContext(
 	// One extra day of slack on the lower bound: `readCellArmBuckets` floors it to
 	// a UTC day, and the projection re-applies the exact window itself.
 	const since = startOfDayUtc(now) - (CAPACITY_TRAILING_DAYS + 1) * MS_PER_DAY;
+	// THE CELLS ARE INDEPENDENT, so their reads are issued together rather than
+	// one round trip after another: the loop this replaces paid a serial trip per
+	// cell for a reading no cell's answer depends on.
+	const governed = allDeliverabilityCells().filter(isCampaignPoolCell);
+	const projected = await Promise.all(
+		governed.map(async (cell) => {
+			const key = deliverabilityCellKey(cell);
+			const days = await readCellVolumeDays(ctx, { organizationId, cell: key, since });
+			return [key, projectCellVolume(days, now)] as const;
+		})
+	);
 	let projectedVolume = 0;
-	for (const cell of allDeliverabilityCells()) {
-		const key = deliverabilityCellKey(cell);
-		const projection = projectCellVolume(
-			await readCellVolumeDays(ctx, { organizationId, cell: key, since }),
-			now
-		);
+	for (const [key, projection] of projected) {
 		projections.set(key, projection);
 		if (projection.kind === 'projected') projectedVolume += projection.dailyVolume;
+	}
+
+	// NO GOVERNED CELL PROJECTED ANYTHING is its own answer, told apart from the
+	// end-of-day refusal below so the audit row can say which it was (plan D12).
+	// When every governed cell agrees on WHY — a brand-new deployment, a paused
+	// week — that reason is carried through verbatim rather than flattened.
+	if (!(projectedVolume > 0)) {
+		return { base: { kind: 'unknown', reason: sharedUnknownReason(projected) }, projections };
 	}
 
 	// The remaining day's demand against the remaining day's cap — like for like,
 	// so the ceiling does not sawtooth through every afternoon.
 	const demandAhead = remainingDemandToday(projectedVolume, now);
 	if (demandAhead === null) {
-		return { base: { kind: 'unknown', reason: 'demand_unprojectable' }, projections };
+		return { base: { kind: 'unknown', reason: 'day_almost_over' }, projections };
 	}
 	return {
 		base: {
@@ -152,11 +221,22 @@ export async function loadRampCapacityContext(
 export function capacityInputForCell(
 	context: RampCapacityContext,
 	cell: DeliverabilityCell,
-	assignedShare: number
+	currentShare: number
 ): RampCapacityInput {
+	// A CELL THE CAMPAIGN POOL DOES NOT CARRY IS NOT BOUNDED BY ITS CAP. The
+	// transactional stream dispatches through the transactional pool, so this
+	// reading says nothing about it — and a reading that says nothing constrains
+	// nothing (plan D2). Its phase ceiling and its gates still bind.
+	if (!isCampaignPoolCell(cell)) return UNCONSTRAINED_CAPACITY;
 	const { base } = context;
-	if (base.kind !== 'projected') return base;
 	const projection = context.projections.get(deliverabilityCellKey(cell));
+	// THE CELL'S OWN REASON BEATS THE TICK'S. When the deployment could not be
+	// projected, the audit row should say whether THIS cell is brand-new, paused
+	// or clock-broken rather than repeating the aggregate verdict (plan D12).
+	if (base.kind === 'unknown') {
+		return projection?.kind === 'unknown' ? { kind: 'unknown', reason: projection.reason } : base;
+	}
+	if (base.kind !== 'projected') return base;
 	if (projection === undefined || projection.kind !== 'projected') return base;
 	return {
 		...base,
@@ -164,7 +244,7 @@ export function capacityInputForCell(
 			projectedCellVolume: projection.dailyVolume,
 			observedDays: projection.observedDays,
 			ownFraction: projection.ownFraction,
-			missRate: rerouteMissRate(projection, assignedShare),
+			deliveredShareShortfall: deliveredShareShortfall(projection, currentShare),
 		},
 	};
 }
