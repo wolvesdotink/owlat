@@ -226,6 +226,32 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 		expect(route?.providerType).toBe('ses');
 	});
 
+	it.each([
+		['no reference transport', [{ providerType: 'mta', isEnabled: true }] as ProviderEntry[]],
+		['no own MTA', [{ providerType: 'ses', isEnabled: true }] as ProviderEntry[]],
+	])('clears the calibration flag on a ONE-ARMED route (%s)', (_label, entries) => {
+		// A calibration row is a member of a randomized COMPARISON. With one arm
+		// configured every slice member dispatches on the same transport, so the
+		// cohort would be one-armed — the bias D8 carves the slice out to avoid.
+		// The strategy is the only module that can see both arms, so it is the
+		// one that clears the flag; the recorder copies it through.
+		let sawSliceMember = false;
+		for (const contactId of AUDIENCE.slice(0, 400)) {
+			const input = {
+				cell: { ownShare: 0.4, mixVersion: 5 },
+				recipient: { contactId, campaignId: 'cmp-one-armed' },
+			};
+			if (decideMixAssignment(input).isCalibration) sawSliceMember = true;
+			const route = adaptiveMixStrategy.select(entries, undefined, undefined, {
+				kind: 'decide',
+				input,
+			});
+			expect(route?.mix?.isCalibration).toBe(false);
+		}
+		// The guard is only meaningful if the slice was non-empty to begin with.
+		expect(sawSliceMember).toBe(true);
+	});
+
 	it('ignores an unknown destination provider by construction', () => {
 		// The cell axis never reaches the decision function: the classifier's
 		// answer selects WHICH cell's share is read, and an unclassifiable
