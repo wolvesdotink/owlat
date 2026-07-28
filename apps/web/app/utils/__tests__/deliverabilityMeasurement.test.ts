@@ -4,10 +4,12 @@
  * `gateExplanation` renders the numbers an operator acts on, and under plan D12
  * the same fields feed the audit row and the admin notification. Almost every
  * verdict is denominated in SENDS, and the generic sentence says so in words —
- * so the exceptions have to be branched on rather than assumed away. There is
- * exactly one today: the block-message hard stop counts CLASSIFIED SMTP
- * RESPONSES, and printing "24 sends" under a verdict that stopped a cell is a
- * number the operator would act on and be wrong about.
+ * so the exceptions have to be branched on rather than assumed away. There are
+ * exactly two: the block-message hard stop counts CLASSIFIED SMTP RESPONSES,
+ * and the seed-placement gate counts SEED MAILBOXES. Printing "24 sends" under
+ * a verdict that stopped a cell — or "10 sends" under a placement tripwire whose
+ * whole sample is ten mailboxes — is a number the operator would act on and be
+ * wrong about.
  *
  * The hold vocabulary is covered here too, because the switch is exhaustive on
  * purpose: a new `RampGateHoldReason` must arrive with its own sentence, and a
@@ -21,6 +23,8 @@ import {
 	failingGate,
 	holdingGate,
 	passingGate,
+	seedPlacementGate,
+	seedPlacementHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
 	gateExplanation,
@@ -48,6 +52,24 @@ describe('gateExplanation — units', () => {
 
 	it('prints the own sample against its floor in the SAME unit on a hold', () => {
 		expect(gateExplanation(holdingGate())).toContain('124 of 400 sends');
+	});
+
+	it('never calls a seed mailbox a send, on either sentence', () => {
+		// `evaluateSeedGate` denominates BOTH `ownSample` and `minSample` in seed
+		// mailboxes, so the decided sentence and the below-floor hold are both wrong
+		// under the generic noun — and a placement tripwire is a number the operator
+		// reads directly (D17).
+		const decided = gateExplanation(seedPlacementGate());
+		expect(decided).toContain('over 10 seed mailboxes');
+		expect(decided).not.toContain('sends');
+
+		const held = gateExplanation(seedPlacementHold());
+		expect(held).toContain('8 of 20 seed mailboxes');
+		expect(held).not.toContain('sends');
+	});
+
+	it('still reports the placement limit the seed gate compared against', () => {
+		expect(gateExplanation(seedPlacementGate())).toContain('90.00%');
 	});
 });
 

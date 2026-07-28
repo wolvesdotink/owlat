@@ -135,6 +135,56 @@ export function cellView(
 }
 
 /**
+ * THE SEED-PLACEMENT GATE — the other verdict whose sample is not denominated in
+ * sends. `evaluateSeedGate` sets `ownSample` to the number of SEED MAILBOXES and
+ * `minSample` to the floor in those same units, so both the decided sentence and
+ * the below-floor hold have to say "seed mailboxes" rather than "sends". Under
+ * D17 seeds are a tripwire an operator reads directly and under D12 the same
+ * numbers render into the audit row, so the noun has to be right.
+ *
+ * The counts are deliberately tiny — 5-10 mailboxes per provider is the whole
+ * sample, which is exactly why calling them sends would be so misleading.
+ */
+export function seedPlacementGate(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'fail',
+		reason: 'absolute_threshold_breached',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 10,
+			referenceSample: null,
+			minSample: 8,
+			ownRate: 0.85,
+			referenceRate: null,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/** The seed gate BELOW its mailbox floor — the hold sentence, in mailboxes. */
+export function seedPlacementHold(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'insufficient_data',
+		reason: 'own_sample_below_floor',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 8,
+			referenceSample: null,
+			minSample: 20,
+			ownRate: null,
+			referenceRate: null,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/**
  * The BLOCK-MESSAGE HARD STOP — the one verdict whose sample is not denominated
  * in sends. `ownSample` counts CLASSIFIED SMTP RESPONSES and `minSample` is the
  * floor in those same units, which is why `gateExplanation` branches on the
