@@ -128,6 +128,39 @@ export interface DnsblDayObservation {
  * not observe is not a streak, and the promotion it would unlock is the most
  * expensive one the ladder has.
  */
+function utcDayStart(at: number): number {
+	return Math.floor(at / DAY_MS) * DAY_MS;
+}
+
+/**
+ * The newest day the streak may end on and still be a reading of the PRESENT.
+ *
+ * Today's own day is still in progress and yesterday's is the newest complete
+ * one, so either is current. Anything older means the observer stopped: a run of
+ * fourteen clean days that ended a week ago says nothing about this week, and
+ * treating it as a pass is how a paused controller promotes a cell nobody
+ * watched.
+ */
+export const PROMOTION_DNSBL_MAX_STALENESS_MS = DAY_MS;
+
+/**
+ * Whether the observations reach up to `now`. False for an empty list — a window
+ * nobody watched is never current.
+ */
+export function isDnsblObservationCurrent(
+	days: readonly DnsblDayObservation[],
+	now: number
+): boolean {
+	if (!Number.isFinite(now)) return false;
+	let newest: number | null = null;
+	for (const day of days) {
+		if (!Number.isFinite(day.dayStart)) continue;
+		newest = newest === null ? day.dayStart : Math.max(newest, day.dayStart);
+	}
+	if (newest === null) return false;
+	return utcDayStart(now) - newest <= PROMOTION_DNSBL_MAX_STALENESS_MS;
+}
+
 export function dnsblCleanStreakDays(days: readonly DnsblDayObservation[]): number {
 	const sorted = [...days].sort((a, b) => b.dayStart - a.dayStart);
 	let streak = 0;
@@ -188,11 +221,16 @@ export function derivePromotionConditions(
 				: 'unmet';
 
 	const streak = dnsblCleanStreakDays(evidence.dnsblDays);
-	// COVERAGE IS PART OF THE CONDITION. Fewer observed days than the streak
-	// demands is not a short streak, it is a window we did not watch — `unknown`,
-	// never a pass.
+	// COVERAGE AND RECENCY ARE BOTH PART OF THE CONDITION.
+	//
+	// Fewer observed days than the streak demands is not a short streak, it is a
+	// window we did not watch — `unknown`, never a pass. And a run that does not
+	// reach up to `now` is not a reading of the present: fourteen clean days that
+	// ended last week is exactly the shape a controller that stopped ticking
+	// leaves behind, and it must not unlock the most expensive rung on the ladder.
 	const dnsbl: PromotionConditionState =
-		evidence.dnsblDays.length < PROMOTION_DNSBL_CLEAN_DAYS
+		evidence.dnsblDays.length < PROMOTION_DNSBL_CLEAN_DAYS ||
+		!isDnsblObservationCurrent(evidence.dnsblDays, now)
 			? 'unknown'
 			: streak >= PROMOTION_DNSBL_CLEAN_DAYS
 				? 'met'
@@ -256,8 +294,14 @@ export function evaluatePhasePromotion(args: {
 	readonly now: number;
 }): PhasePromotionDecision {
 	const { targetCeiling, provider, evidence, now } = args;
-	const evidenceRequired =
-		Number.isFinite(targetCeiling) && targetCeiling > PROMOTION_EVIDENCE_REQUIRED_ABOVE;
+	// A TARGET WE CANNOT READ IS THE STRICTEST CASE, NOT THE LOOSEST. Treating a
+	// NaN or infinite rung as "below the line" would return `allowed: true` and
+	// skip both routes — a degenerate input opening the most expensive promotion
+	// on the ladder. It is unreachable through the shipped caller, which
+	// normalises the rung first, but this function's exported contract IS the
+	// gate, so it fails closed on its own.
+	const targetUnreadable = !Number.isFinite(targetCeiling);
+	const evidenceRequired = targetUnreadable || targetCeiling > PROMOTION_EVIDENCE_REQUIRED_ABOVE;
 	const conditions = derivePromotionConditions(evidence, now);
 	const routes: PromotionRouteResult[] = PROMOTION_ROUTES.filter((route) =>
 		routeApplies(route, provider)
@@ -270,6 +314,9 @@ export function evaluatePhasePromotion(args: {
 
 	if (!evidenceRequired) {
 		return { allowed: true, viaRoute: null, evidenceRequired: false, routes };
+	}
+	if (targetUnreadable) {
+		return { allowed: false, viaRoute: null, evidenceRequired: true, routes };
 	}
 	const satisfied = routes.find((result) => result.satisfied);
 	return {
