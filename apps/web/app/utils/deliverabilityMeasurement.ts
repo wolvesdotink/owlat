@@ -1,0 +1,277 @@
+/**
+ * Deliverability measurement screen — presentation only (plan D2, D5, D14).
+ *
+ * THE RULE: nothing in this module divides. Every rate on this screen is
+ * DERIVED ON READ by the server's one summarizer (ADR-0042 / plan D5), and the
+ * screen's job is to format the number it was handed and to put the right
+ * sentence next to it. A percentage here is a unit conversion of a server rate,
+ * never a rate computed from two counters — that is precisely how a dashboard
+ * and a controller end up disagreeing about the same traffic.
+ *
+ * STATES ARE THE FEATURE. `insufficient_data` is not a failure, an absent
+ * reference transport is not an incomplete setup, and a quiet cell is not a
+ * problem. The copy below says so in words, and the tones below say so in
+ * colour: nothing that is merely UNMEASURED is ever rendered in an error tone
+ * (plan D2).
+ */
+
+import type { FunctionReturnType } from 'convex/server';
+import type { api } from '@owlat/api';
+import { formatNumber, formatPercentage } from '~/utils/formatters';
+
+export type DeliverabilityDashboard = FunctionReturnType<
+	typeof api.delivery.deliverabilityDashboard.getDeliverabilityDashboard
+>;
+export type DeliverabilityDashboardCell = DeliverabilityDashboard['cells'][number];
+export type DeliverabilityDashboardGate = DeliverabilityDashboardCell['gates'][number];
+export type DeliverabilityArmSummary = DeliverabilityDashboardCell['own'];
+export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence'];
+
+/**
+ * The headline, D14 literally: without a reference transport the feature is
+ * "Warm-up autopilot" (how much can I send today, and what is holding it back),
+ * not a degraded "Sending independence".
+ */
+export function measurementHeadline(referenceTransportId: string | null): string {
+	return referenceTransportId === null ? 'Warm-up autopilot' : 'Sending independence';
+}
+
+export function measurementSubhead(referenceTransportId: string | null): string {
+	return referenceTransportId === null
+		? 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.'
+		: `How your own server compares with ${referenceTransportId} on the same traffic. Read-only — nothing here changes your sending.`;
+}
+
+const STREAM_LABELS = {
+	campaign: 'Campaign',
+	automation: 'Automation',
+	transactional: 'Transactional',
+} as const;
+
+const PROVIDER_LABELS = {
+	gmail: 'Gmail',
+	microsoft: 'Microsoft',
+	yahoo: 'Yahoo',
+	apple: 'Apple',
+	other: 'Everywhere else',
+} as const;
+
+export function streamLabel(stream: DeliverabilityDashboardCell['cell']['stream']): string {
+	return STREAM_LABELS[stream];
+}
+
+export function providerLabel(
+	provider: DeliverabilityDashboardCell['cell']['destinationProvider']
+): string {
+	return PROVIDER_LABELS[provider];
+}
+
+export function cellLabel(cell: DeliverabilityDashboardCell['cell']): string {
+	return `${streamLabel(cell.stream)} → ${providerLabel(cell.destinationProvider)}`;
+}
+
+// ============ GATES ============
+
+const GATE_LABELS = {
+	hard_bounce: 'Hard bounces',
+	deferral: 'Deferrals',
+	complaint: 'Complaints',
+	engagement_ratio: 'Engagement',
+	seed_placement: 'Seed placement',
+} as const;
+
+export function gateLabel(gate: DeliverabilityDashboardGate['gate']): string {
+	return GATE_LABELS[gate];
+}
+
+export type GateTone = 'ok' | 'attention' | 'stop' | 'neutral';
+
+export type GateStatus = DeliverabilityDashboardGate['status'];
+
+/**
+ * How each verdict is presented — its TONE and its WORDS, decided together in
+ * one table rather than in two switches over the same union.
+ *
+ * The pairing is the point: `insufficient_data` reads "Not enough data yet" and
+ * is rendered NEUTRAL, because the measurement is thin and thin is not broken
+ * (plan D10/D2). Splitting tone and label across two functions is how a status
+ * ends up with alarming colour and calm words.
+ */
+export const GATE_STATUS_PRESENTATION = {
+	pass: { tone: 'ok', label: 'Healthy' },
+	fail: { tone: 'attention', label: 'Needs attention' },
+	halt: { tone: 'stop', label: 'Stopped' },
+	insufficient_data: { tone: 'neutral', label: 'Not enough data yet' },
+} as const satisfies Record<GateStatus, { tone: GateTone; label: string }>;
+
+export function gateTone(status: GateStatus): GateTone {
+	return GATE_STATUS_PRESENTATION[status].tone;
+}
+
+export function gateStatusLabel(status: GateStatus): string {
+	return GATE_STATUS_PRESENTATION[status].label;
+}
+
+/**
+ * The sentence under a gate's verdict — the numbers that produced it, in words.
+ *
+ * A holding gate says how far off the floor it is ("124 of 400 sends this
+ * window"), because "insufficient data" on its own reads as a fault in the
+ * product rather than as a fact about the traffic.
+ */
+export function gateExplanation(gate: DeliverabilityDashboardGate): string {
+	const { measurement } = gate;
+	if (gate.status === 'insufficient_data') {
+		// Bound to a LOCAL: switching on `gate.reason` narrows `gate` itself, so the
+		// exhaustiveness check below would read a property off `never` instead of
+		// proving the union was covered.
+		const { reason } = gate;
+		switch (reason) {
+			case 'own_sample_below_floor':
+				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} sends this window.`;
+			case 'reference_sample_below_floor':
+				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} sends on the comparison transport this window.`;
+			case 'baseline_sample_below_floor':
+				return `Not enough history yet — this cell has not sent enough over the past 30 days to be compared with its own past.`;
+			case 'own_evidence_stale':
+			case 'reference_evidence_stale':
+			case 'baseline_evidence_stale':
+				return 'No recent sending in this cell, so there is nothing fresh to measure.';
+			case 'own_rate_unmeasurable':
+			case 'reference_rate_unmeasurable':
+			case 'baseline_rate_unmeasurable':
+				return 'The recorded counters for this window could not be read as a rate, so this check is holding.';
+			case 'evidence_absent':
+				return 'Nothing has been measured for this cell yet.';
+			default: {
+				// EXHAUSTIVE ON PURPOSE. A `default` that fell through to the "N of M
+				// sends this window" sentence would put a confident, wrong number under
+				// any hold reason a later gate adds — say a baseline reason, whose
+				// sample is not this window's at all. A new `RampGateHoldReason` must
+				// fail the typecheck here and be given its own sentence.
+				const unhandled: never = reason;
+				return unhandled;
+			}
+		}
+	}
+	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
+	const threshold = formatPercentage(measurement.thresholdRate, 2);
+	const reference =
+		measurement.referenceRate === null ? null : formatPercentage(measurement.referenceRate, 2);
+	const comparison =
+		reference === null
+			? ''
+			: ` Comparison transport: ${reference} over ${formatNumber(measurement.referenceSample ?? 0)} sends.`;
+	return `${own ?? '—'} over ${formatNumber(measurement.ownSample)} sends, against a limit of ${threshold}.${comparison}`;
+}
+
+// ============ CONFIDENCE (D14) ============
+
+export function confidenceLabel(level: DeliverabilityConfidence['level']): string {
+	switch (level) {
+		case 'none':
+			return 'Nothing sent yet';
+		case 'low':
+			return 'Measurement confidence: low';
+		case 'medium':
+			return 'Measurement confidence: medium';
+		case 'high':
+			return 'Measurement confidence: high';
+	}
+}
+
+/**
+ * What would make this cell's measurement better, as an INVITATION. Never a
+ * warning, never a nag: the absence of a relay or of seed mailboxes is a
+ * supported configuration (plan D2).
+ */
+export function improvementCopy(
+	improvement: DeliverabilityConfidence['improvements'][number]
+): string {
+	switch (improvement) {
+		case 'connect_reference_transport':
+			return 'Connect a relay you already pay for to compare the same traffic side by side.';
+		case 'add_seed_mailboxes':
+			return 'Add seed mailboxes to spot a placement collapse the other signals cannot see.';
+		case 'send_more_volume':
+			return 'Send more in this cell — the checks need a larger sample before they can decide.';
+	}
+}
+
+// ============ ARM COMPARISON ============
+
+export interface ArmMetricRow {
+	readonly key: string;
+	readonly label: string;
+	/** Absolute count, formatted. */
+	readonly ownCount: string;
+	readonly referenceCount: string | null;
+	/** Server-derived rate, formatted — never computed here. */
+	readonly ownRate: string | null;
+	readonly referenceRate: string | null;
+}
+
+interface MetricSpec {
+	readonly key: string;
+	readonly label: string;
+	readonly count: (summary: DeliverabilityArmSummary) => number;
+	readonly rate?: (summary: DeliverabilityArmSummary) => number;
+}
+
+/**
+ * The comparison table's rows. Each one names the COUNTER it prints and, where
+ * the server derived one, the RATE field it prints — both read straight off the
+ * summary. There is no arithmetic in this table.
+ */
+const METRIC_SPECS: readonly MetricSpec[] = [
+	{ key: 'sent', label: 'Sent', count: (s) => s.sent },
+	{ key: 'delivered', label: 'Delivered', count: (s) => s.delivered, rate: (s) => s.deliveryRate },
+	{
+		key: 'hardBounced',
+		label: 'Hard bounces',
+		count: (s) => s.hardBounced,
+		rate: (s) => s.hardBounceRate,
+	},
+	{ key: 'softBounced', label: 'Soft bounces', count: (s) => s.softBounced },
+	{
+		key: 'complained',
+		label: 'Complaints',
+		count: (s) => s.complained,
+		rate: (s) => s.complaintRate,
+	},
+	{ key: 'opened', label: 'Opens', count: (s) => s.opened, rate: (s) => s.openRate },
+	{ key: 'clicked', label: 'Clicks', count: (s) => s.clicked, rate: (s) => s.clickRate },
+	{
+		key: 'unsubscribed',
+		label: 'Unsubscribes',
+		count: (s) => s.unsubscribed,
+		rate: (s) => s.unsubscribeRate,
+	},
+];
+
+export function armMetricRows(
+	own: DeliverabilityArmSummary,
+	reference: DeliverabilityArmSummary | null
+): ArmMetricRow[] {
+	return METRIC_SPECS.map((spec) => ({
+		key: spec.key,
+		label: spec.label,
+		ownCount: formatNumber(spec.count(own)),
+		referenceCount: reference === null ? null : formatNumber(spec.count(reference)),
+		ownRate: spec.rate === undefined ? null : formatPercentage(spec.rate(own), 2),
+		referenceRate:
+			spec.rate === undefined || reference === null
+				? null
+				: formatPercentage(spec.rate(reference), 2),
+	}));
+}
+
+/** A cell nobody has sent through this window — empty, and calm about it. */
+export function isZeroVolume(cell: DeliverabilityDashboardCell): boolean {
+	return cell.own.sent === 0 && (cell.reference === null || cell.reference.sent === 0);
+}
+
+/** Share of the cell the own server carries, as a display string (D1). */
+export function ownShareLabel(cell: DeliverabilityDashboardCell): string {
+	return formatPercentage(cell.ownShare, 0);
+}

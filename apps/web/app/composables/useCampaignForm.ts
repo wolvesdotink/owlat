@@ -363,6 +363,8 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		segments,
 		emailTemplates,
 		audienceCount,
+		/** The resolved audience selector, or `null` until one is chosen. */
+		audience,
 
 		// Form state
 		campaignName,
@@ -377,6 +379,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		archiveEnabled,
 		scheduledDate: actions.scheduledDate,
 		scheduledTime: actions.scheduledTime,
+		scheduledStartAt: actions.scheduledStartAt,
 		useRecipientTimezone: actions.useRecipientTimezone,
 
 		// Computed
@@ -406,6 +409,8 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		handleUnschedule: actions.handleUnschedule,
 		handleCancel: actions.handleCancel,
 		handleBack: actions.handleBack,
+		capacitySchedule: actions.capacitySchedule,
+		dismissCapacitySchedule: actions.dismissCapacitySchedule,
 
 		// Helpers
 		validateForm,

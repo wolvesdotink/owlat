@@ -1,6 +1,8 @@
-import { ref, type Ref, type ComputedRef } from 'vue';
+import { computed, ref, type Ref, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
+import { parseScheduledStart } from '~/lib/campaignSchedule';
+import { useCapacityRefusal } from './useCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
@@ -39,13 +41,26 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	const router = useRouter();
 	const { showToast } = useToast();
 
+	/**
+	 * The multi-day schedule pre-flight handed back instead of starting the
+	 * campaign, or `null`. NOT an error state: capacity is a schedule, and the
+	 * caller renders it as one (deliverability plan D14).
+	 */
+	const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
+
 	// Mutations
 	const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
 		label: 'Send campaign now',
+		onError: claimCapacityRefusal,
 	});
 	const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 		label: 'Schedule campaign',
+		onError: claimCapacityRefusal,
 	});
+	// No `onError` claim here, deliberately: `campaigns.scheduling.reschedule`
+	// does not run pre-flight (only `schedule` does), so it cannot refuse for
+	// capacity and the handler could only ever return false. Whether rescheduling
+	// should also run the capacity gate is a separate decision.
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
 		label: 'Reschedule campaign',
 	});
@@ -73,6 +88,24 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// chosen wall-clock time in their own timezone (mirrors the wizard Review step).
 	// Honored by both the draft `schedule` and the `reschedule` path.
 	const useRecipientTimezone = ref(false);
+
+	/**
+	 * The chosen send start as epoch ms for the capacity PREVIEW, or `null` when
+	 * it is unset, unparseable or already past.
+	 *
+	 * Reactive on the two form controls only: `Date.now()` is not a tracked
+	 * dependency, so this value is the parse as of the last edit of the date or
+	 * time, not as of the moment it is read. That is exactly right for a preview
+	 * (it must stay a `computed` so `useOrganizationQuery` re-runs when the
+	 * controls change, and a few minutes of clock staleness changes no answer it
+	 * gives), and exactly wrong for a submit-time past-check — an editor left
+	 * open past the chosen instant would still see a cached non-null. The submit
+	 * path therefore calls {@link parseScheduledStart} itself with a live clock;
+	 * the derivation is still the one in `campaignSchedule.ts`.
+	 */
+	const scheduledStartAt = computed<number | null>(() =>
+		parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
+	);
 
 	const initializeSchedule = (scheduledAt: number | undefined, recipientTimezone?: boolean) => {
 		if (scheduledAt) {
@@ -122,6 +155,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
+		capacitySchedule.value = null;
 
 		try {
 			if (isDraft.value) {
@@ -151,13 +185,19 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	};
 
 	// Schedule
-	const executeSchedule = async () => {
+	// `startsAt` is passed in rather than read off `scheduledStartAt` so the
+	// persisted instant is the one `handleSchedule` validated against a LIVE
+	// clock at click time.
+	const executeSchedule = async (startsAt: number) => {
 		if (!campaignId.value) return;
 
-		const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
+		// Only the wall-clock hour/minute is read off this Date; the persisted
+		// instant is `startsAt` itself.
+		const scheduledDateTime = new Date(startsAt);
 
 		isSaving.value = true;
 		saveError.value = '';
+		capacitySchedule.value = null;
 
 		try {
 			if (isDraft.value) {
@@ -214,13 +254,16 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			return;
 		}
 
-		const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
-		if (scheduledDateTime.getTime() <= Date.now()) {
+		// Derived here with a live clock, not read off the preview computed: a
+		// start that was future when the controls were last touched may be past
+		// by the time the operator presses the button.
+		const startsAt = parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now());
+		if (startsAt === null) {
 			saveError.value = 'Scheduled time must be in the future';
 			return;
 		}
 
-		await executeSchedule();
+		await executeSchedule(startsAt);
 	};
 
 	// Unschedule
@@ -270,6 +313,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		saveError,
 		scheduledDate,
 		scheduledTime,
+		scheduledStartAt,
 		useRecipientTimezone,
 		initializeSchedule,
 		handleSave,
@@ -278,5 +322,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleUnschedule,
 		handleCancel,
 		handleBack,
+		capacitySchedule,
+		dismissCapacitySchedule,
 	};
 }

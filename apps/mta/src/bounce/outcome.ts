@@ -10,9 +10,12 @@
  * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
  */
 
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { BounceEffect } from './effects.js';
+import type { FblSourceIspToken } from './fblProcessor.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
+import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
 
 /**
  * The reducer's return type. `effects` runs through `applyEffects` in the
@@ -80,9 +83,71 @@ function applyFeedbackProvenancePolicy(
 	return { effects: events.filter((effect) => effect.kind === 'notify_convex') };
 }
 
+/**
+ * An ARF `Reported-Domain` that is safe to forward to Convex, else undefined.
+ *
+ * The value is internet-controlled report text. It is only ever used to LOOK UP
+ * one of our own sending domains, so anything that cannot be a DNS name is
+ * dropped rather than sanitised — a dropped hint costs a feedback-loop liveness
+ * observation, while an oversized one would invalidate the whole complaint event
+ * and the complaint itself would never reach the blocklist.
+ *
+ * Acceptance goes through the SHIPPED strict FQDN validator (the one the
+ * return-path host is registered with), not a second looser regex: a laxer local
+ * check accepted `.`, `..`, `-a.example`, empty labels and over-long labels,
+ * none of which can be one of our sending domains.
+ */
+function safeReportedDomain(value: string | undefined): string | undefined {
+	return normalizeReturnPathHost(value) ?? undefined;
+}
+
+/**
+ * The FBL ISP token → destination-provider CELL key. The mapping is TOTAL and
+ * the COMPILER enforces it: `satisfies Record<FblSourceIspToken, …>` means a
+ * token added to `fblProcessor.isp()` without a row here fails to build, rather
+ * than silently dropping that ISP's complaints out of the ramp's cell axis.
+ *
+ * `fblProcessor.isp()` resolves its own fixed token enum (it doubles as a
+ * bounded Prometheus label), which is NOT the ramp's cell axis: it says `google`
+ * where the cell axis says `gmail`, and it names FBL operators the cell axis
+ * folds into `other`. `aol` maps to `yahoo` because that is exactly what the
+ * SHIPPED classifier does with `aol.com` (`destinationProviderForDomain`) — the
+ * two must agree or a Yahoo-operated complaint would land in a different cell
+ * than the send it complains about. The two tokens that happen to spell a
+ * destination-provider key (`microsoft`, `yahoo`) are listed like every other
+ * one rather than passed through by a coincidence-of-spelling branch: a
+ * passthrough would make those rows unreachable dead code (D20).
+ */
+const FBL_ISP_TO_CELL = {
+	microsoft: 'microsoft',
+	yahoo: 'yahoo',
+	aol: 'yahoo',
+	google: 'gmail',
+	comcast: 'other',
+	mailru: 'other',
+} as const satisfies Record<FblSourceIspToken, DestinationProviderKey>;
+
+/**
+ * The resolved feedback-loop ISP that is safe to forward, else undefined.
+ *
+ * Sibling of `safeReportedDomain` so both forwarded ARF provenance fields have
+ * ONE shape and one place to change. Only a key of the shipped
+ * destination-provider union is forwarded — the webhook event types it as that
+ * union, so an unresolved (`undefined`) ISP is simply not sent, and a consumer
+ * comparing it against `'yahoo'` compares against a checked constant. The map is
+ * total over `FblSourceIspToken`, so a resolved token ALWAYS has a cell.
+ */
+function safeSourceIsp(value: FblSourceIspToken | undefined): DestinationProviderKey | undefined {
+	if (value === undefined) return undefined;
+	return FBL_ISP_TO_CELL[value];
+}
+
 function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeReduction {
 	const { arf } = attempt;
-	const sourceIsp = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
+	// The SHIPPED metric contract: the ISP label on `fbl_complaint` is re-parsed
+	// from the classifier's message text, NOT from `arf.sourceIsp`. Named for where
+	// it comes from so it cannot be confused with the forwarded provenance below.
+	const ispFromMessage = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
 	const effects: BounceEffect[] = [];
 
 	if (arf.organizationId) {
@@ -96,7 +161,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 	effects.push({
 		kind: 'metric_inc',
 		metric: 'fbl_complaint',
-		isp: sourceIsp,
+		isp: ispFromMessage,
 		attributed: arf.originalMessageId ? 'yes' : 'no',
 	});
 
@@ -110,7 +175,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 			kind: 'metric_inc',
 			metric: 'fbl_complaint_by_campaign',
 			campaign: arf.campaignId,
-			isp: sourceIsp,
+			isp: ispFromMessage,
 		});
 		effects.push({
 			kind: 'campaign_complaint_record',
@@ -126,6 +191,9 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 	// Without this fallback a redacted complaint would only bump a metric and
 	// never reach the blocklist/reputation path — silently inflating the
 	// complaint rate past the Gmail <0.3% threshold.
+	const reportedDomain = safeReportedDomain(arf.reportedDomain);
+	const reportSourceIsp = safeSourceIsp(arf.sourceIsp);
+
 	if (arf.originalMessageId || arf.recipient) {
 		effects.push({
 			kind: 'notify_convex',
@@ -135,6 +203,15 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 				...(arf.recipient ? { recipient: arf.recipient } : {}),
 				organizationId: arf.organizationId,
 				message: arf.message,
+				// RFC 5965 `Reported-Domain` (OUR sending/DKIM domain) plus the
+				// resolved feedback-loop ISP. Convex uses the pair to keep a
+				// DKIM-domain-based feedback-loop enrollment (Yahoo's CFL) marked
+				// live. Both are BOUNDED here, not downstream: the reported domain
+				// is internet-controlled ARF text, and an oversized value that
+				// failed the webhook event validator would drop the whole
+				// complaint — a complaint must always reach the blocklist.
+				...(reportedDomain ? { reportedDomain } : {}),
+				...(reportSourceIsp ? { sourceIsp: reportSourceIsp } : {}),
 				timestamp: Date.now(),
 			},
 		});

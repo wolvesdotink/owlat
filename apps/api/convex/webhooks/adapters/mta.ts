@@ -236,6 +236,16 @@ export const mtaAdapter: InboundAdapter = {
 				// Prefer Message-ID attribution; fall back to the recipient
 				// address (RFC 5965 §3.2) so a Gmail-redacted FBL still
 				// suppresses the complainer. Drop only when neither is present.
+				//
+				// `reportedDomain` / `sourceIsp` ride along on BOTH shapes: they say
+				// which of our DKIM domains the report named and which ISP filed it,
+				// independent of which attribution handle the report carried. NOT to be
+				// confused with `arf.feedbackProvenance` (production vs member-preview
+				// delivery domain) — hence the `fblReport` prefix.
+				const fblReportProvenance = {
+					...(payload.reportedDomain ? { reportedDomain: payload.reportedDomain } : {}),
+					...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
+				};
 				if (payload.messageId) {
 					return {
 						kind: 'email.complained',
@@ -243,6 +253,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...fblReportProvenance,
 					};
 				}
 				if (payload.recipient) {
@@ -252,6 +263,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...fblReportProvenance,
 					};
 				}
 				return null;

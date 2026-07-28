@@ -51,9 +51,6 @@ const SES_DEFAULT_SPF_MECHANISM = 'include:amazonses.com';
  */
 const ALIGNMENT_READINESS_LIMIT = 50;
 
-/** Upper bound on the (per-messageType) route rows we inspect for a relay. */
-const PROVIDER_ROUTE_SCAN_LIMIT = 16;
-
 /**
  * A target's reference arm, minus `none`. The sweep only ever targets a domain
  * that HAS a second arm (see `buildTarget`), so the standalone case is excluded
@@ -88,21 +85,22 @@ function ownSpfMechanisms(): string[] {
 	return poolIps.map((ip) => `${ip.includes(':') ? 'ip6' : 'ip4'}:${ip}`);
 }
 
-/** Relay SPF mechanisms from the identity's generated record, else SES's default. */
-function relaySpfMechanisms(record: string | undefined): string[] {
-	const mechanisms = parseSpfMechanisms(record ?? '');
-	return mechanisms.length > 0 ? mechanisms : [SES_DEFAULT_SPF_MECHANISM];
-}
+/** Upper bound on the (per-messageType) route rows we inspect for a relay. */
+const PROVIDER_ROUTE_SCAN_LIMIT = 16;
 
 /**
- * Which non-MTA transports are actually configured, from the SHIPPED surfaces:
- * every enabled `providerRoutes` entry plus the single-transport `EMAIL_PROVIDER`
- * env. The shipped transport set is wider than SES (`mta`/`ses`/`resend`/`smtp`
- * plus `plugin.*`), so answering this question from the SES identity table alone
- * would report "single arm" for a Resend/SMTP/plugin relay and let two genuinely
- * unaligned arms ramp.
+ * Every configured non-MTA transport kind, from the SHIPPED surfaces: each
+ * enabled `providerRoutes` entry plus the single-transport `EMAIL_PROVIDER` env.
+ * The shipped transport set is wider than SES (`mta`/`ses`/`resend`/`smtp` plus
+ * `plugin.*`), so answering this from the SES identity table alone would report
+ * "single arm" for a Resend/SMTP/plugin relay and let two genuinely unaligned
+ * arms ramp.
+ *
+ * Exported because the return-path read needs the SAME answer: which transport
+ * is the second arm is one question, and two implementations of it would drift
+ * into telling the operator two different stories about one configuration.
  */
-async function configuredRelayKinds(ctx: QueryCtx): Promise<string[]> {
+export async function configuredRelayKinds(ctx: QueryCtx): Promise<string[]> {
 	// One row per messageType — tiny by construction, and bounded anyway.
 	const routes = await ctx.db.query('providerRoutes').take(PROVIDER_ROUTE_SCAN_LIMIT);
 	const kinds = new Set<string>();
@@ -116,6 +114,32 @@ async function configuredRelayKinds(ctx: QueryCtx): Promise<string[]> {
 		kinds.add(envProvider);
 	}
 	return [...kinds].sort();
+}
+
+/**
+ * The REFERENCE transport id — the second arm — or null when there is not
+ * exactly one.
+ *
+ * Deliberately not "the active transport": on a standalone deployment the
+ * active transport is the own MTA, and answering the reference question with it
+ * would describe our own infrastructure under copy that says "this provider".
+ * Zero relays is the standalone configuration (null, and the caller says so
+ * plainly); more than one means there is no single second arm to describe, which
+ * is exactly the answer {@link referenceFor} gives that configuration.
+ *
+ * A kind maps onto its DEFAULT transport id, which is the kind itself
+ * (`defaultSendTransportId`); an id this deployment cannot resolve is resolved
+ * by every caller to a degraded posture rather than an error (D2).
+ */
+export async function referenceRelayTransportId(ctx: QueryCtx): Promise<string | null> {
+	const kinds = await configuredRelayKinds(ctx);
+	return kinds.length === 1 ? (kinds[0] ?? null) : null;
+}
+
+/** Relay SPF mechanisms from the identity's generated record, else SES's default. */
+function relaySpfMechanisms(record: string | undefined): string[] {
+	const mechanisms = parseSpfMechanisms(record ?? '');
+	return mechanisms.length > 0 ? mechanisms : [SES_DEFAULT_SPF_MECHANISM];
 }
 
 /**
@@ -194,6 +218,27 @@ async function buildTarget(
 	domain: Doc<'domains'>,
 	relayKinds: readonly string[]
 ): Promise<AlignmentTarget | null> {
+	const arms = await buildArms(ctx, domain, relayKinds);
+	if (arms === null) return null;
+	const { ownArm, reference } = arms;
+	if (reference.kind === 'none') return null;
+	return { domain: domain.domain, ownArm, reference };
+}
+
+/**
+ * The two ARMS for one domain — the ONE assembly, called by the sweep
+ * ({@link buildTarget}, which then applies its two documented skips) and by the
+ * wizard's live read ({@link getAlignmentArms}, which does not).
+ *
+ * Null means the domain has no own-MTA signing identity, so there is no first
+ * arm to compare anything against. Both callers treat that as "nothing to do",
+ * never as an error.
+ */
+async function buildArms(
+	ctx: QueryCtx,
+	domain: Doc<'domains'>,
+	relayKinds: readonly string[]
+): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> {
 	const mtaIdentity = await ctx.db
 		.query('sendingDomainMtaIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
@@ -203,10 +248,7 @@ async function buildTarget(
 		.query('sendingDomainSesIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.unique();
-	const reference = referenceFor(domain, sesIdentity, relayKinds);
-	if (reference.kind === 'none') return null;
 	return {
-		domain: domain.domain,
 		ownArm: {
 			label: 'own MTA',
 			fromDomain: domain.domain,
@@ -214,7 +256,7 @@ async function buildTarget(
 			dkimSelectors: [mtaIdentity.dkimSelector],
 			spfMechanisms: ownSpfMechanisms(),
 		},
-		reference,
+		reference: referenceFor(domain, sesIdentity, relayKinds),
 	};
 }
 
@@ -351,6 +393,65 @@ export const getAlignmentGateState = internalQuery({
 			referenceArm: referencePresence(reference),
 			state: state ? { verdict: state.verdict, checkedAt: state.checkedAt } : null,
 		};
+	},
+});
+
+/**
+ * The two ARMS for one sending domain, for the transport connection wizard's
+ * live alignment step (P2-4).
+ *
+ * The wizard runs the SHIPPED pure evaluator in the browser against live DNS
+ * (DNS-over-HTTPS — Convex queries cannot resolve DNS), so it needs the same
+ * arm descriptors the sweep builds. They come from the SAME {@link buildArms}
+ * the sweep calls, rather than a second assembly here or a re-derivation on the
+ * client, so the wizard's verdict and the controller's gate can never be
+ * computed from two different pictures of the configuration.
+ *
+ * `domain` is OPTIONAL, and omitting it is the page's normal call: the wizard
+ * asks "which domain do we sign as?", and the answer is a fact about the
+ * `domains` table, not something the client can derive from the transport
+ * status. Omitted, this picks the first verified domain that HAS an own-MTA
+ * signing identity — the only kind of domain step 3 can compare at all.
+ *
+ * Nothing secret crosses this seam: domain names, DKIM selectors and SPF
+ * mechanisms are all published DNS facts. No credential, sealed or otherwise,
+ * is read or returned.
+ *
+ * D2: a domain with no reference transport returns `{ kind: 'none' }` — the
+ * evaluator turns that into a `single_arm` PASS, so a standalone deployment
+ * walks the wizard cleanly instead of meeting an error.
+ */
+// all-members: published DNS facts only (domain, selectors, SPF mechanisms) —
+// the same member-visible floor as the readiness read below.
+export const getAlignmentArms = authedQuery({
+	args: { domain: v.optional(v.string()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
+		const relayKinds = await configuredRelayKinds(ctx);
+		if (args.domain !== undefined) {
+			const fromDomain = normalizeDomain(args.domain);
+			const domain = await ctx.db
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
+				.unique();
+			if (domain === null) return null;
+			const arms = await buildArms(ctx, domain, relayKinds);
+			return arms === null ? null : { domain: domain.domain, ...arms };
+		}
+		// Bounded by the same page size as the readiness read: a deployment with
+		// more verified domains than this still gets an answer for the first one
+		// that can be compared, and the operator can name another explicitly.
+		const verified = await ctx.db
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
+			.take(ALIGNMENT_READINESS_LIMIT);
+		for (const domain of verified) {
+			const arms = await buildArms(ctx, domain, relayKinds);
+			if (arms !== null) return { domain: domain.domain, ...arms };
+		}
+		return null;
 	},
 });
 

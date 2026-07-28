@@ -19,6 +19,7 @@ import {
 	type ProviderRouteConfig,
 	type ProviderHealthStatus,
 	type ResolvedRoute,
+	type DeliverabilityRouteInput,
 } from './routing';
 import { loadStreamlessRouteState } from '../deliverabilityRouteState';
 import type { MixContext } from './strategies';
@@ -82,6 +83,39 @@ function probeableCandidateKind(
 }
 
 /**
+ * Everything the READ half of route resolution yields: the route row, the
+ * provider-health snapshots mapped to the strategy-facing shape, and the
+ * readiness verdict for every candidate provider kind. Callers that need more
+ * than the selected route — the campaign warming-cap gate needs the row and
+ * the readiness set too — load this once and select from it, instead of
+ * re-reading `providerRoutes` and re-running `isSendProviderReady`, which would
+ * double the OCC read set they carry inside `schedule` / `sendNow`.
+ */
+export type SendRouteFacts = {
+	routeConfig: Doc<'providerRoutes'> | null;
+	healthStatuses: ProviderHealthStatus[];
+	/**
+	 * LOAD-BEARING TOTALITY INVARIANT — do not narrow. This set is
+	 * `readySendProviderKinds`, i.e. TOTAL over the ENABLED entries of
+	 * `routeConfig.providers` plus the `EMAIL_PROVIDER` env default — which is
+	 * exactly the set the warming-cap gate reads. It is POSITIVE-ONLY: "not
+	 * ready" and "never evaluated" are indistinguishable to a reader, so a kind
+	 * missing from the candidate pass silently reads as not-ready.
+	 *
+	 * `campaignWarmingCapBinds` (warmingCapGate.ts) walks `routeConfig.providers`
+	 * and asks `readyKinds.has(kind)` for each ENABLED entry rather than calling
+	 * `isSendProviderReady` again — disabled entries are skipped before the
+	 * lookup, so excluding them here is exact, not a narrowing. Restricting the
+	 * candidate pass FURTHER, to the subset `resolveRoute` happens to need, would
+	 * make those lookups answer `false` for kinds that are in fact ready, and the
+	 * gate would quote the operator a multi-day plan for a campaign that fits.
+	 * Pinned by the disabled-entry fixtures in
+	 * `__tests__/preflightBinding.test.ts`.
+	 */
+	readyKinds: ReadonlySet<SendProviderKind>;
+};
+
+/**
  * Resolve the send route for a message type from the current transaction.
  * Reads the route config (indexed) + all provider health, maps health rows
  * to the strategy-facing shape, and returns the resolved route. Pure
@@ -107,18 +141,8 @@ async function resolveSendRouteWithInputs(
 	addressContext: SendRouteAddressContext | undefined,
 	precomputed: PrecomputedRouteInputs | undefined
 ): Promise<SendRouteResolution> {
-	const routeConfig = await ctx.db
-		.query('providerRoutes')
-		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
-		.first();
-
-	const healthRecords = await ctx.db.query('providerHealth').collect(); // bounded: providerHealth has one row per provider kind (3 today)
-	const healthStatuses: ProviderHealthStatus[] = healthRecords.map((h) => ({
-		providerType: h.providerType,
-		status: h.status,
-		successRate: h.successRate,
-	}));
-	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
+	const facts = await loadSendRouteFacts(ctx, messageType);
+	const { routeConfig } = facts;
 
 	// One resolution of tenant + cell for BOTH consumers below, and only when
 	// one of them can actually use it — an unaddressed base-only resolution on a
@@ -145,24 +169,68 @@ async function resolveSendRouteWithInputs(
 		precomputed ? precomputed.mix : mixContextFor(ctx, routeConfig, addressContext, resolvedCell),
 	]);
 
+	return { route: selectRouteFromFacts(facts, messageType, deliverability, mix), mix };
+}
+
+/**
+ * The read half of {@link resolveSendRouteFromDb}: one pass over
+ * `providerRoutes` + `providerHealth` + provider readiness. Exposed so a caller
+ * that must survive a {@link selectRouteFromFacts} throw — `resolveRoute`
+ * signals an unusable relay configuration by throwing — still has the row and
+ * the readiness set it read (see {@link SendRouteFacts}).
+ */
+export async function loadSendRouteFacts(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType
+): Promise<SendRouteFacts> {
+	const routeConfig = await ctx.db
+		.query('providerRoutes')
+		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
+		.first();
+
+	const healthRecords = await ctx.db.query('providerHealth').collect(); // bounded: providerHealth has one row per provider kind (3 today)
+	const healthStatuses: ProviderHealthStatus[] = healthRecords.map((h) => ({
+		providerType: h.providerType,
+		status: h.status,
+		successRate: h.successRate,
+	}));
+	// TOTAL over the ENABLED entries of `routeConfig.providers` + the env default
+	// — see the invariant on `SendRouteFacts.readyKinds` before narrowing this.
+	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
+
+	return { routeConfig, healthStatuses, readyKinds };
+}
+
+/**
+ * The select half of {@link resolveSendRouteFromDb}: runs the pure
+ * `resolveRoute` dispatcher over already-loaded {@link SendRouteFacts}. Throws
+ * exactly what `resolveRoute` throws.
+ */
+export function selectRouteFromFacts(
+	facts: SendRouteFacts,
+	messageType: MessageType,
+	deliverability?: DeliverabilityRouteInput,
+	/**
+	 * The per-recipient mix context. `undefined` for every caller that has no
+	 * recipient identity to resolve one from (and for every strategy but
+	 * `adaptive_mix`, which is the only one that reads it).
+	 */
+	mix?: MixContext
+): ResolvedRoute | null {
 	const resolved = resolveRoute(
-		routeConfig as ProviderRouteConfig | null,
-		healthStatuses,
-		(kind) => readyKinds.has(kind),
+		facts.routeConfig as ProviderRouteConfig | null,
+		facts.healthStatuses,
+		(kind) => facts.readyKinds.has(kind),
 		deliverability,
 		mix
 	);
+	if (!resolved) return null;
 	return {
-		route: resolved
-			? {
-					...resolved,
-					warmupOverflowEnabled: Boolean(
-						messageType === 'campaign' &&
-						routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-					),
-				}
-			: null,
-		mix,
+		...resolved,
+		warmupOverflowEnabled: Boolean(
+			messageType === 'campaign' &&
+			facts.routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+		),
 	};
 }
 
@@ -240,7 +308,7 @@ export type RoutingDeferralCode =
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
 
-function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
+export function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
 	if (error instanceof GlobalDeliveryCircuitOpenError) return error.code;
 	if (error instanceof DeliverabilityRouteError) return error.code;
 	return null;
