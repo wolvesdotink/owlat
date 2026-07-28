@@ -22,6 +22,7 @@ import {
 	mixState,
 	NOW,
 } from '../ramp/__tests__/controllerFixtures';
+import { readManagedCell, seedRampCell } from './rampCronFixtures';
 import { modules } from './testModules';
 
 // The cron resolves its tenant through the shared singleton-org helper, which
@@ -37,6 +38,10 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 		// check is satisfied as an owner — the gate itself is covered where it
 		// belongs, in workspaces/__tests__/settings.test.ts.
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// `authedMutation` resolves the mutation context BEFORE the handler runs, so
+		// the real `requireOrgMember` would throw `unauthenticated` on a harness with
+		// no session and the operator path could never be reached.
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -46,50 +51,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type Harness = ReturnType<typeof convexTest>;
 
 async function seed(t: Harness, options: { isPaused: boolean }): Promise<void> {
-	const now = Date.now();
-	await t.run(async (ctx) => {
-		await ctx.db.insert(
-			'instanceSettings',
-			createTestInstanceSettings({
-				abuseStatus: 'clean' as const,
-				isRampControllerPaused: options.isPaused,
-			})
-		);
-		// The stream-less row the MTA snapshot owns, plus one MANAGED cell.
-		await ctx.db.insert('deliverabilityRouteStates', {
-			organizationId: ORG,
-			destinationProvider: 'gmail' as const,
-			isFallbackActive: false,
-			signals: [],
-			snapshotGeneratedAt: now,
-			expiresAt: now + DAY_MS,
-			updatedAt: now,
-		});
-		await ctx.db.insert('deliverabilityRouteStates', {
-			organizationId: ORG,
-			destinationProvider: 'gmail' as const,
-			stream: 'campaign' as const,
-			isFallbackActive: true,
-			ownShare: 0.1,
-			phaseCeiling: 1,
-			cleanStreak: 9,
-			mixVersion: 3,
-			signals: [],
-			snapshotGeneratedAt: now,
-			expiresAt: now + DAY_MS,
-			updatedAt: now,
-		});
+	await seedRampCell(t, {
+		organizationId: ORG,
+		isPaused: options.isPaused,
+		ownShare: 0.1,
+		isFallbackActive: true,
+		cleanStreak: 9,
+		mixVersion: 3,
 	});
 }
 
-async function managedRow(t: Harness) {
-	// A whole-table read rather than an index scan: the harness ctx is untyped
-	// for named indexes, and the table holds two rows in this fixture.
-	const rows = await t.run(
-		async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
-	);
-	return rows.find((row) => row.stream === 'campaign');
-}
+const managedRow = readManagedCell;
 
 describe('the kill switch, in the decision function', () => {
 	it('pins every cell of the grid before any other logic', () => {
@@ -173,8 +145,8 @@ describe('the kill switch, through the cron', () => {
 		const rows = await t.run(
 			async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
 		);
-		// Still exactly the two seeded rows: the controller never seeds a cell.
-		expect(rows).toHaveLength(2);
+		// Still exactly the three seeded rows: the controller never seeds a cell.
+		expect(rows).toHaveLength(3);
 		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 		expect(decisions.map((row) => row.cell)).toEqual(['campaign:gmail']);
 	});
