@@ -13,13 +13,16 @@
  * yourself typing `/` next to a counter in this file, you are writing the bug
  * D5 exists to prevent.
  *
- * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The level on
- * the wire is `RampGateEvaluation.confidence` — the weakest grade among the
- * gates that actually contributed, decided by the same pure core the controller
- * runs. This module only translates it: `none` when nothing was sent, and the
- * machine-readable improvement codes, which are the one part the evaluator does
- * not produce (it grades what it measured; the codes name what would raise the
- * grade).
+ * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
+ * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest
+ * level among the gates that actually DECIDED something, produced by the same
+ * pure core the controller runs. Two judgements are layered on top of it here,
+ * and BOTH are about what the deployment could not measure rather than about
+ * any rate: `none` when nothing was sent, and the cap by the missing
+ * instruments. That is why the two levels are NAMED APART — the evaluation's
+ * number grades the DECISION (and is what the D12 audit row records), the level
+ * this module produces grades the CELL (and is what the screen renders). See
+ * `dashboardConfidence` and `RampGateEvaluation.measuredConfidence`.
  *
  * A placeholder used to derive the level here from (is there a second arm) plus
  * (is the sample above the floors). It was replaced rather than extended,
@@ -201,10 +204,11 @@ export interface DashboardConfidence {
 }
 
 /**
- * TRANSLATE, DO NOT RE-DERIVE. The level is the evaluator's own
- * `weakestConfidence` fold over the gates that actually DECIDED something,
- * passed through — with exactly two judgements layered on top, both of them
- * about what was NOT measured rather than about any rate:
+ * TRANSLATE, DO NOT RE-DERIVE. The level starts as the evaluator's own
+ * `weakestConfidence` fold over the gates that actually DECIDED something
+ * (`RampGateEvaluation.measuredConfidence`) — with exactly two judgements
+ * layered on top, both of them about what was NOT measured rather than about
+ * any rate:
  *
  *   1. a window with nothing in it is graded `none`, rather than being given
  *      whichever level a column of holds happened to produce;
@@ -326,7 +330,7 @@ export function buildDashboardCellView(input: {
 			ownSent: input.own.sent,
 			hasReferenceArm: input.hasReferenceArm,
 			hasSeedCoverage: input.hasSeedCoverage,
-			evaluated: evaluation.confidence,
+			evaluated: evaluation.measuredConfidence,
 		}),
 		trend: input.trend,
 	};

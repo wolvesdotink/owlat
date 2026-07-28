@@ -88,7 +88,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		if (!contributes(result)) continue;
 		contributed = true;
 		// A GATE THAT MEASURED NOTHING HAS NO CONFIDENCE TO CONTRIBUTE (plan D14).
-		// `confidence` grades how much a VERDICT is worth, and a hold is not a
+		// `measuredConfidence` grades how much a VERDICT is worth, and a hold is not a
 		// verdict — folding a holding gate's grade in would let a column of "not
 		// enough data yet" fold to `high` and tell the operator the cell is
 		// well-measured precisely when nothing measured it. Holds still contribute
@@ -137,7 +137,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		perGate,
 		// No DECIDED gate means no measurement, and "we measured nothing" is the
 		// lowest confidence there is — never the `high` an empty list would fold to.
-		confidence: confidences.length > 0 ? weakestConfidence(confidences) : 'low',
+		measuredConfidence: confidences.length > 0 ? weakestConfidence(confidences) : 'low',
 		increaseEvidence,
 		evaluatedAt: now,
 	};

@@ -298,12 +298,26 @@ export interface RampGateEvaluation {
 	readonly cleanStreak: number;
 	readonly perGate: readonly RampGateResult[];
 	/**
-	 * The WEAKEST confidence among the gates that contributed (plan D14). This is
-	 * the number the cell renders as "measurement confidence", and the reason the
-	 * standalone UI can honestly offer "connect a relay or add seed mailboxes to
-	 * improve" instead of pretending a proxy is a measurement.
+	 * The WEAKEST confidence among the gates that DECIDED something (plan D14) —
+	 * `low` when none did, because an evaluation nobody measured is not a
+	 * well-measured one.
+	 *
+	 * PER-INSTRUMENT, AND NOT THE CELL'S CONFIDENCE. It grades the verdicts this
+	 * evaluation actually reached: a standalone cell whose deferral gate decides
+	 * at `high` while the two-armed gates hold measures `high` HERE, and that is
+	 * the true sentence about the instrument. It is NOT the true sentence about
+	 * the CELL, which has no second arm to tell a degradation from a bad week for
+	 * the whole list — that judgement is `dashboardConfidence`'s, which caps this
+	 * number by the measurement inputs the deployment does not have and is what
+	 * the screen renders.
+	 *
+	 * THE TWO ARE NAMED APART ON PURPOSE. The audit row (plan D12) and the
+	 * decrease notification record what the DECISION was worth, which is this
+	 * one; anything answering "how well is this cell measured" wants the view's
+	 * level instead. One name over both is how they drift back into two
+	 * definitions of the same word.
 	 */
-	readonly confidence: RampGateConfidence;
+	readonly measuredConfidence: RampGateConfidence;
 	/**
 	 * Whether ANY contributing gate passed with `mayJustifyIncrease`. When this is
 	 * false the verdict can never be `pass`, so a low-confidence gate cannot be the
