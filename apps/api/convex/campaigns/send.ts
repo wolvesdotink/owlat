@@ -16,6 +16,7 @@ import {
 	remainingRecipients,
 	type SendPlanState,
 } from './multiDaySendPlan';
+import { nextUtcDayStart } from '../lib/utcDay';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -685,7 +686,13 @@ export const resolveCampaignPage = internalAction({
 						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
 					}),
 		};
-		if (slice.isDayExhausted && slice.resumeAt !== undefined) {
+		// A spent day ALWAYS parks. The planner gives the resume instant with the
+		// verdict, and the fallback exists only so a spent budget can never fall
+		// through into the page read below with nothing left to enqueue.
+		const parkUntil = slice.isDayExhausted
+			? (slice.resumeAt ?? nextUtcDayStart(Date.now()))
+			: undefined;
+		if (parkUntil !== undefined) {
 			// Today's slice is spent. PARK the walk until the next cap window: the
 			// checkpoint carries `resumeAt`, which both records the day's counters and
 			// takes the row out of the stuck-walk watchdog's reach — a 24h park is far
@@ -695,13 +702,13 @@ export const resolveCampaignPage = internalAction({
 			const parked = await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
 				campaignId: args.campaignId,
 				plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday },
-				resumeAt: slice.resumeAt,
+				resumeAt: parkUntil,
 			});
 			// IDEMPOTENT RESUME. The row was already parked for exactly this window,
 			// so a hop is already pending and a second one would apply this page's
 			// counters twice.
 			if (!parked.isResumeAlreadyScheduled) {
-				await ctx.scheduler.runAt(slice.resumeAt, internal.campaigns.send.resolveCampaignPage, {
+				await ctx.scheduler.runAt(parkUntil, internal.campaigns.send.resolveCampaignPage, {
 					campaignId: args.campaignId,
 				});
 			}
