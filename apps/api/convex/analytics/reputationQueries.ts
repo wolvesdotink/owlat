@@ -133,8 +133,13 @@ export const getCampaignSendEstimate = authedQuery({
 		// `active`, so a deactivated high-cap IP made this readout claim "fits
 		// today" about a campaign the gate refused as a multi-day schedule. One
 		// projection, one population, one answer.
+		//
+		// The singleton this handler already read is handed straight over rather
+		// than letting the projection read it again: one document charged instead
+		// of two, and — the reason that matters — the two halves of this answer
+		// cannot end up describing different rows.
 		const now = Date.now();
-		const projection = await loadWarmingCapacity(ctx, { now });
+		const projection = await loadWarmingCapacity(ctx, { now, warmingState });
 
 		// `null` is "capacity unknown" — the gate is equally undecided there, so the
 		// stale roll-up is only ever a DISPLAY fallback and can no longer contradict
