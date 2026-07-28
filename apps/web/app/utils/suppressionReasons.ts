@@ -30,6 +30,15 @@ export type SuppressionReasonPresentation = {
 	/** Plain-language label — explains WHY, no jargon. */
 	label: string;
 	/**
+	 * The notice HEADLINE on the contact profile — what this suppression actually
+	 * stops. Not constant across reasons: `unengaged` is a MARKETING-ONLY hygiene
+	 * row (`isMarketingOnlyBlockReason`, apps/api/convex/delivery/suppressionMirror.ts),
+	 * so that address still receives transactional mail, double-opt-in
+	 * confirmations and 1:1 agent replies. Saying "not receiving mail" there would
+	 * push the operator into a manual removal they do not need.
+	 */
+	headline: string;
+	/**
 	 * The inline phrase used mid-sentence on the contact profile, e.g.
 	 * "…— bounced on Mar 3.". Takes the pre-formatted date label.
 	 */
@@ -38,6 +47,7 @@ export type SuppressionReasonPresentation = {
 
 export const SUPPRESSION_REASON_PRESENTATION = {
 	bounced: {
+		headline: 'Not receiving mail',
 		badge: 'bg-error/20 text-error border-error/30',
 		tone: 'text-error',
 		icon: 'lucide:mail',
@@ -45,6 +55,7 @@ export const SUPPRESSION_REASON_PRESENTATION = {
 		phrase: (dateLabel: string) => `bounced on ${dateLabel}`,
 	},
 	complained: {
+		headline: 'Not receiving mail',
 		badge: 'bg-warning/20 text-warning border-warning/30',
 		tone: 'text-warning',
 		icon: 'lucide:message-square-warning',
@@ -52,13 +63,15 @@ export const SUPPRESSION_REASON_PRESENTATION = {
 		phrase: (dateLabel: string) => `complained on ${dateLabel}`,
 	},
 	unengaged: {
-		badge: 'bg-bg-elevated text-text-secondary border-border',
+		headline: 'Not receiving campaigns',
+		badge: 'bg-bg-elevated text-text-secondary border-border-default',
 		tone: 'text-text-secondary',
 		icon: 'lucide:moon',
 		label: 'Unengaged — ignored every message for months',
 		phrase: (dateLabel: string) => `paused on ${dateLabel} after months with no opens or clicks`,
 	},
 	manual: {
+		headline: 'Not receiving mail',
 		badge: 'bg-brand/20 text-brand border-brand/30',
 		tone: 'text-brand',
 		icon: 'lucide:user-x',

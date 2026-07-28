@@ -27,9 +27,13 @@ const emit = defineEmits<{ remove: [] }>();
 // wording comes from the SAME table the suppression list renders from, so the
 // two surfaces cannot describe the same reason differently, and a new schema
 // literal is a compile error rather than a silent "manually suppressed".
-const reasonPhrase = computed(() =>
-	suppressionReasonPresentation(props.reason).phrase(props.dateLabel)
-);
+const presentation = computed(() => suppressionReasonPresentation(props.reason));
+const reasonPhrase = computed(() => presentation.value.phrase(props.dateLabel));
+// The headline is reason-specific too: an `unengaged` row is marketing-only, so
+// that address still gets transactional mail, DOI confirmations and 1:1 agent
+// replies. Presenting it as "not receiving mail" would read like a hard block
+// and invite a manual removal the operator does not need.
+const headline = computed(() => presentation.value.headline);
 </script>
 
 <template>
@@ -39,7 +43,7 @@ const reasonPhrase = computed(() =>
 	>
 		<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
 		<p class="text-text-secondary">
-			<span class="font-medium text-text-primary">Not receiving mail</span>
+			<span class="font-medium text-text-primary">{{ headline }}</span>
 			— {{ reasonPhrase }}.
 			<button
 				v-if="canManage"
