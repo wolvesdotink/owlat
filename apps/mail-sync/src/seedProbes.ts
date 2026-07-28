@@ -161,7 +161,9 @@ async function classifyOne(
 		organizationId: item.organizationId,
 		probeId,
 		folderName: location ? location.folderName : null,
-		...(location?.specialUse !== undefined ? { specialUse: location.specialUse } : {}),
+		...(location !== null && location.specialUse !== undefined
+			? { specialUse: location.specialUse }
+			: {}),
 		now: deps.now(),
 		clickRoll: deps.random(),
 	});
