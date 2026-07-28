@@ -20,6 +20,8 @@ import { extractDomainOrNull } from '@owlat/shared';
 import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { authedQuery } from '../lib/authedFunctions';
+import { referenceRelayTransportId } from './alignmentPreflight';
 import {
 	isCustomReturnPathSupported,
 	resolveReturnPathCapability,
@@ -391,3 +393,44 @@ export async function relayReturnPathHostFor(
 		? host
 		: undefined;
 }
+
+/**
+ * The recorded return-path posture of the REFERENCE transport, for the transport
+ * connection wizard's fourth step (P2-4).
+ *
+ * Two things separate this from {@link transportReturnPathCapability}, which it
+ * otherwise resolves through the exact same {@link returnPathCapabilityFor}
+ * (one resolver, so the wizard and the dashboard can never report different
+ * measurement quality for the same transport):
+ *
+ *  - it answers for the transport the operator is CONNECTING, not the one the
+ *    deployment is currently sending through. On a standalone deployment the
+ *    active transport is the own MTA, and reporting its posture under wizard
+ *    copy that says "this provider" would describe our own infrastructure as if
+ *    it were the ESP. `transportId` is therefore resolved from the configured
+ *    relay surface, and `transportId: null` — no relay, or more than one — is a
+ *    first-class answer the UI states plainly (D2);
+ *  - it is member-visible, where the internal one is for the ramp.
+ *
+ * The posture is RECORDED, never gated on. It settles only once a real bounce
+ * comes back through the probe, so a transport connected moments ago reads
+ * `unknown` — which the wizard says in as many words rather than implying that
+ * something is missing.
+ */
+// all-members: a capability verdict and its reason code — no credential, no
+// endpoint, no secret. The same member-visible floor as the delivery readiness
+// reads.
+export const getReturnPathReadiness = authedQuery({
+	args: { transportId: v.optional(v.string()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ transportId: string | null } & ResolvedReturnPathCapability> => {
+		const transportId = args.transportId ?? (await referenceRelayTransportId(ctx));
+		if (transportId === null) return { transportId: null, ...unresolvableReturnPathCapability };
+		return {
+			transportId,
+			...(await returnPathCapabilityFor(ctx, transportId, Date.now())),
+		};
+	},
+});

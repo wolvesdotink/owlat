@@ -221,6 +221,21 @@ export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	readonly lastRecordedAt: number | null;
 }
 
+/**
+ * WHAT THE SUMMARIZER ACTUALLY READS: the counters, the bucket's day, and its
+ * freshness stamp. Deliberately NARROWER than `Doc<'transportOutcomes'>` — the
+ * summation has no business knowing about `_id`, `organizationId`, `cell` or
+ * `arm`, and typing the parameter as the full document forces every caller that
+ * builds rows (fixtures, a future in-memory pre-aggregation) to fabricate system
+ * fields it cannot legally invent. A real document satisfies this shape, so
+ * nothing at the call sites changes.
+ */
+export interface TransportOutcomeBucketCounts extends TransportOutcomeTotals {
+	/** UTC start-of-day bucket the row belongs to. */
+	readonly periodStart: number;
+	readonly lastRecordedAt?: number;
+}
+
 /** A zeroed counter set — the insert shape and the summation identity. */
 export const ZERO_TRANSPORT_OUTCOME_TOTALS: TransportOutcomeTotals = {
 	sent: 0,
@@ -284,7 +299,7 @@ export function transportOutcomeWindowBounds(window: TransportOutcomeWindow | un
  * dashboard both depend on is exhaustively unit-testable.
  */
 export function summarizeTransportOutcomeBuckets(
-	buckets: readonly TransportOutcomeBucket[],
+	buckets: readonly TransportOutcomeBucketCounts[],
 	window?: TransportOutcomeWindow
 ): TransportOutcomeSummary {
 	const { sinceDay, until } = transportOutcomeWindowBounds(window);

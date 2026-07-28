@@ -1,10 +1,11 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
 import {
 	isCustomReturnPathSupported,
 	measurementQualityOf,
+	unresolvableReturnPathCapability,
 } from '../../lib/sendProviders/returnPathCapability';
 import {
 	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
@@ -26,6 +27,20 @@ import { resolveLastMileRoutePlanFromDb } from '../../lib/sendProviders/route';
  * both of which change the answers, because a verdict decays after its TTL and
  * a verdict from the future is refused as clock skew.
  */
+
+// `getReturnPathReadiness` is an `authedQuery`, so the member floor has to be
+// satisfied for the wizard's step-4 read to run at all. Only the two session
+// helpers are replaced; everything else in the module is the real thing.
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
+	);
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),
+		requireOrgMember: vi.fn(async () => ({ userId: 'test-user', role: 'admin' as const })),
+	};
+});
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const deliveryGlob = Object.fromEntries(
@@ -615,5 +630,119 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		await authorizeReturnPath(t);
 		vi.stubEnv('MTA_RETURN_PATH_RELAY_SPF', '');
 		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
+	});
+});
+
+/**
+ * Step 4 of the transport connection wizard reads the RECORDED return-path
+ * posture of the REFERENCE transport — the one being connected — never of the
+ * transport the deployment happens to be sending through. On a standalone
+ * deployment that is the own MTA, and describing our own infrastructure under
+ * copy that says "this provider" is the exact bug `referenceRelayTransportId`
+ * was added to prevent, so the resolution is pinned here.
+ *
+ * D2 runs through all of it: no relay, two relays and a transport id this
+ * deployment cannot resolve all answer with the degraded posture and none of
+ * them throws.
+ */
+describe('getReturnPathReadiness resolves the REFERENCE transport', () => {
+	async function seedRelayRoute(t: ReturnType<typeof convexTest>, kinds: string[]): Promise<void> {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'priority_failover',
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					...kinds.map((providerType) => ({ providerType, isEnabled: true })),
+				],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+	}
+
+	function readiness(t: ReturnType<typeof convexTest>, transportId?: string) {
+		return t.query(
+			api.delivery.relayReturnPath.getReturnPathReadiness,
+			transportId === undefined ? {} : { transportId }
+		);
+	}
+
+	it('answers transportId: null with the degraded posture when no relay is configured', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+
+		const result = await readiness(t);
+		expect(result.transportId).toBeNull();
+		expect(result).toMatchObject(unresolvableReturnPathCapability);
+		expect(measurementQualityOf(result)).toBe('degraded');
+		expect(isCustomReturnPathSupported(result)).toBe(false);
+	});
+
+	it('never returns the own MTA as the reference arm', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRelayRoute(t, []);
+
+		expect((await readiness(t)).transportId).toBeNull();
+	});
+
+	it('returns the single configured relay, and the SAME posture the resolver gives it', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRelayRoute(t, [TRANSPORT_ID]);
+		// A settled probe, so the assertion is not trivially satisfied by two
+		// `unknown`s agreeing with each other.
+		await submit(t);
+		vi.setSystemTime(T0 + 60_000);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+			probeMessageId: returnPathProbeMessageId(PROBE_ID),
+			at: Date.now(),
+		});
+
+		const result = await readiness(t);
+		expect(result.transportId).toBe(TRANSPORT_ID);
+		expect(result.capability).toBe('supported');
+		// ONE resolver: the wizard's read and the send path's read cannot report
+		// different measurement quality for the same transport.
+		expect(result).toMatchObject(await capability(t));
+	});
+
+	it('picks up the ENV-configured relay when there is no providerRoutes row', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', TRANSPORT_ID);
+		const t = convexTest(schema, modules);
+
+		expect((await readiness(t)).transportId).toBe(TRANSPORT_ID);
+	});
+
+	it('answers null when more than one relay is enabled — there is no single second arm', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRelayRoute(t, ['smtp', 'resend']);
+
+		const result = await readiness(t);
+		expect(result.transportId).toBeNull();
+		expect(result).toMatchObject(unresolvableReturnPathCapability);
+	});
+
+	it('falls through to the degraded posture for a relay kind it cannot resolve — never throws', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRelayRoute(t, ['plugin.not-installed']);
+
+		const result = await readiness(t);
+		expect(result.transportId).toBe('plugin.not-installed');
+		expect(result).toMatchObject(unresolvableReturnPathCapability);
+		expect(measurementQualityOf(result)).toBe('degraded');
+	});
+
+	it('lets an explicit transportId override the resolution', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRelayRoute(t, ['resend']);
+
+		const result = await readiness(t, TRANSPORT_ID);
+		expect(result.transportId).toBe(TRANSPORT_ID);
+		expect(result.capability).toBe('unknown');
 	});
 });

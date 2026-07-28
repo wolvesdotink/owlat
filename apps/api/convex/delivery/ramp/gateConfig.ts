@@ -81,6 +81,15 @@ export interface RampGateSampleFloors {
 	readonly complaint: number;
 	/** Calibration-slice sends per arm for the concurrent engagement gate (D10). */
 	readonly engagement: number;
+	/**
+	 * Calibration-slice sends in the RECENT window of the slow-poison floor (D10).
+	 *
+	 * A distinct knob from `engagement` even though the two currently agree: they
+	 * govern different windows (one evaluation window vs the trailing recent one)
+	 * and a controller that changes its cadence must be able to move one without
+	 * silently moving the other.
+	 */
+	readonly engagementRecent: number;
 	/** Seeds per arm before the placement tripwire may return a verdict (D17). */
 	readonly seedPlacement: number;
 }
@@ -90,6 +99,7 @@ export const RAMP_GATE_SAMPLE_FLOORS: RampGateSampleFloors = {
 	deferral: 200,
 	complaint: 1000,
 	engagement: 400,
+	engagementRecent: 400,
 	seedPlacement: 5,
 };
 
@@ -127,6 +137,24 @@ export interface RampGateThresholds {
 	 */
 	readonly maxEvidenceAgeMs: number;
 	/**
+	 * The SAME rule for a series whose window is HISTORICAL BY CONTRACT.
+	 *
+	 * `maxEvidenceAgeMs` encodes "never increase a share on an observation older
+	 * than one clean window" — a statement about CONCURRENT evidence, and the only
+	 * kind gates 1/2/3/5 and gate 4a ever read. The slow-poison floor (gate 4b)
+	 * compares the recent window against the cell's PRIOR 30-day window, which
+	 * ENDS a week ago and may have gone quiet at its own start, so its newest
+	 * observation is between 7 and 30 days old on every healthy input. Judged by
+	 * the concurrent rule it is unconditionally stale and the tripwire never
+	 * actuates.
+	 *
+	 * So the baseline gets its own allowance — 33 days, the full width of the
+	 * contracted window plus slack — rather than `maxEvidenceAgeMs` being widened,
+	 * which would loosen "never increase without fresh evidence" (plan D9/D10) for
+	 * every gate that legitimately depends on it.
+	 */
+	readonly maxBaselineAgeMs: number;
+	/**
 	 * Clock skew tolerance for `lastRecordedAt` in the future. Beyond it the
 	 * evidence is not trusted and the gate holds.
 	 *
@@ -139,6 +167,7 @@ export interface RampGateThresholds {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	hardBounceMax: rateFraction(0.02),
@@ -150,8 +179,24 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	seedInboxMin: rateFraction(0.9),
 	seedInboxTolerance: percentagePoints(5),
 	maxEvidenceAgeMs: 48 * HOUR_MS,
+	maxBaselineAgeMs: 33 * DAY_MS,
 	maxFutureSkewMs: DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
 };
+
+/**
+ * The complaint trip point when NO complaint feed exists at all and the
+ * unsubscribe rate has to stand in for one (plan D2 / D14 — see
+ * `./yahooComplaintSignal`).
+ *
+ * Lives next to `RAMP_GATE_THRESHOLDS.complaintMax` and is branded the same way
+ * for the same reason: the substituted threshold and the real one are read at
+ * the same call site, and the controller and the wizard must never be able to
+ * disagree about either number.
+ *
+ * An unsubscribe is a much weaker and much more common signal than a spam
+ * report, so the equivalent trip point is TIGHTENED rather than reused.
+ */
+export const UNSUBSCRIBE_PROXY_COMPLAINT_MAX: RateFraction = rateFraction(0.0005);
 
 /**
  * Per-stream ramp constants (plan D6/D9). Defined ONCE here; the AIMD

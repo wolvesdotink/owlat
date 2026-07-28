@@ -50,9 +50,19 @@ export type RampGateHoldReason =
 	| 'reference_sample_below_floor'
 	| 'own_evidence_stale'
 	| 'reference_evidence_stale'
-	/** The stored rate was NaN, infinite or negative — a poisoned bucket, not a thin one. */
+	/** The stored rate was NaN, infinite or out of range — a poisoned bucket, not a thin one. */
 	| 'own_rate_unmeasurable'
 	| 'reference_rate_unmeasurable'
+	/**
+	 * The slow-poison floor's second series is the cell's OWN prior window, not a
+	 * second transport, so it gets its own vocabulary: an operator told
+	 * "reference evidence stale" would go looking for a relay problem that does
+	 * not exist, when the actual fix is "this cell has not sent enough, long
+	 * enough, to be compared against its own past".
+	 */
+	| 'baseline_sample_below_floor'
+	| 'baseline_evidence_stale'
+	| 'baseline_rate_unmeasurable'
 	| 'evidence_absent';
 
 /**
@@ -73,14 +83,44 @@ export type RampGateReason = RampGateDecidedReason | RampGateHaltReason | RampGa
 interface RampGateMeasurementBase {
 	/** The absolute threshold this gate compared against, as a fraction. */
 	readonly thresholdRate: number;
+	/**
+	 * The RELATIVE floor a ratio gate applied, as a dimensionless multiple of
+	 * `referenceRate` — 0.95 means "the own arm may engage 5% relatively worse".
+	 * `thresholdRate` is the absolute rate that multiple works out to, so the two
+	 * are never the same number in the same unit.
+	 *
+	 * A separate field rather than an overloaded `thresholdRate`: both are small
+	 * numbers, and an audit row (plan D12) that cannot tell "a ratio floor of
+	 * 0.95" from "an engagement floor of 95%" is a record nobody can act on. Only
+	 * the engagement family sets it; the ceiling gates leave it absent.
+	 */
+	readonly ratioFloor?: number;
 	/** The arm-vs-arm tolerance in percentage points, or `null` when the gate has none. */
 	readonly toleranceValuePp: number | null;
 	/** Denominator behind `ownRate` (sends, or seeds for the placement gate). */
 	readonly ownSample: number;
 	/** Denominator behind `referenceRate`, or `null` when absent. */
 	readonly referenceSample: number | null;
-	/** Minimum sample this gate requires per arm before it may return a verdict. */
+	/**
+	 * Minimum sample the gate requires of the OWN (recent) arm — the denominator
+	 * behind `ownSample` — before it may return a verdict. It means the same
+	 * thing on every verdict of every gate, so a generic renderer can print it
+	 * next to `ownSample` without branching on `reason`.
+	 */
 	readonly minSample: number;
+	/**
+	 * Minimum sample the gate requires of the SECOND series — the denominator
+	 * behind `referenceSample` — when that series has a floor of its own.
+	 *
+	 * A separate field rather than an overloaded `minSample`: the engagement
+	 * family's two sub-gates compare against different second series (the
+	 * concurrent reference arm, and the cell's own 30-day trailing baseline)
+	 * whose floors differ by 3x, and an audit row (plan D12) that reports one
+	 * arm's floor beside the other arm's sample asserts something false about
+	 * both. Only the engagement family sets it; the ceiling gates leave it
+	 * absent, as do one-armed gates.
+	 */
+	readonly referenceMinSample?: number;
 }
 
 /**
