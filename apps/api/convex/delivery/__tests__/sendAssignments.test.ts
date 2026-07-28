@@ -1189,7 +1189,7 @@ describe('sendAssignments — non-campaign write path', () => {
 		// rather than only asserted in prose.
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.delivery.enqueue.enqueueTestSend, {
+		await t.mutation(internal.delivery.enqueueTestSend.enqueueTestSend, {
 			email: 'operator@gmail.com',
 			organizationId: ORG,
 			from: 'news@example.com',

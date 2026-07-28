@@ -32,6 +32,14 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `contact.deleted` | `contact` | `{ email }` (soft-delete; hard cascade happens in cron; also emitted per-row by `bulkDelete`) |
 | `contact.imported` | `contact` | `{ count, source }` |
 | `contact.merged` | `contact` | `{ sourceContactId, sourceEmail }` (target is `resourceId`; source hard-deleted) |
+| `contact.sunset_reengagement` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_suppressed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` + `detailsBlob` (the full decision snapshot: facts, policy, verdict) |
+| `contact.sunset_resumed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_restored` | `contact` | `{ email, fromStage, exempted: true }` (operator-driven) |
+| `contact.sunset_exemption_changed` | `contact` | `{ email, exempt }` |
+| `contact.sunset_policy_updated` | `settings` | `{ topicId, changedFields, clearedFields, isEnabled, reengageAfterDays, suppressAfterDays }` (the values are the RESULTING row, `null` where it inherits) |
+| `contact.sunset_sweep_summary` | `settings` | `{ actor: 'sunset_engine', scanned, suppressed, reengaged, resumed, deferredSuppressions, suppressionCeiling, isSuppressionCeilingHit, message }`, plus `isClockSkewed: true` on the clock-abort variant only — one aggregated row per sweep tick that suppressed, or refused to suppress, anything |
+| `contact.sunset_clock_confirmed` | `settings` | `{ clockVerifiedAt, message }` (operator re-arm after a clock stall; `contacts/sunset:confirmSunsetClock`) |
 | `topic.created` / `topic.updated` / `topic.deleted` | `topic` | `{ name }` |
 | `email_template.created` | `email_template` | `{ name, type }` |
 | `email_template.updated` | `email_template` | `detailsBlob: { changes: {...} }` |

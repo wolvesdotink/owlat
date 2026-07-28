@@ -2,7 +2,7 @@ import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
-import { isSuppressed } from '../lib/suppression';
+import { isSuppressed, type SuppressionScope } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
@@ -29,9 +29,6 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
  */
 export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 
-/** Test-preview Sends outlive the MTA's four-day queue ceiling, then self-delete. */
-export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
 // Per ADR-0006, the workpool `onComplete` callback is owned by the Send
 // completion (module) at `delivery/sendCompletion.ts` — each enqueue below
 // wires it directly via `internal.delivery.sendCompletion.completeSend`. The
@@ -40,84 +37,11 @@ export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 // contact-activity insert, attachment-cleanup loop, provider health tracking)
 // is gone; every concern moved to the lifecycle effect list or to the Send
 // completion module.
-
-/**
- * Queue a member-only test preview through the same durable governed path as
- * every other Send. The caller owns recipient/sender authorization; this
- * mutation owns the durable SendRef, workpool completion, and bounded cleanup.
- */
-export const enqueueTestSend = internalMutation({
-	args: {
-		email: v.string(),
-		organizationId: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		html: v.string(),
-	},
-	handler: async (ctx, args) => {
-		if (!(await selectedSendProviderReady(ctx, undefined))) {
-			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
-		}
-		const queuedAt = Date.now();
-		const sendId = await ctx.db.insert('transactionalSends', {
-			kind: 'test' as const,
-			email: args.email,
-			subject: args.subject,
-			status: 'queued',
-			queuedAt,
-		});
-
-		await transactionalEmailPool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{
-				envelopeInput: {
-					kind: 'transactional' as const,
-					deliveryDomain: 'member_test' as const,
-					messageType: 'transactional' as const,
-					emailPurpose: 'transactional' as const,
-					to: args.email,
-					from: args.from,
-					replyTo: args.replyTo,
-					organizationId: args.organizationId,
-					sendId,
-					template: { subject: args.subject, htmlContent: args.html },
-				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: { kind: 'transactional' as const, id: sendId } },
-			}
-		);
-		await ctx.scheduler.runAfter(
-			TEST_SEND_RETENTION_MS,
-			internal.delivery.enqueue.deleteExpiredTestSend,
-			{ sendId, queuedAt }
-		);
-		return { sendId };
-	},
-});
-
-/** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
-export const deleteExpiredTestSend = internalMutation({
-	args: { sendId: v.id('transactionalSends'), queuedAt: v.number() },
-	handler: async (ctx, args) => {
-		const send = await ctx.db.get(args.sendId);
-		if (!send || send.kind !== 'test' || send.queuedAt !== args.queuedAt) return false;
-		const remainingMs = args.queuedAt + TEST_SEND_RETENTION_MS - Date.now();
-		if (remainingMs > 0) {
-			await ctx.scheduler.runAfter(
-				remainingMs,
-				internal.delivery.enqueue.deleteExpiredTestSend,
-				args
-			);
-			return false;
-		}
-		await ctx.db.delete(args.sendId);
-		return true;
-	},
-});
+//
+// The member-only TEST PREVIEW producer and its retention callback live in the
+// sibling `delivery/enqueueTestSend.ts` — a preview has no contact, so it has
+// none of this module's contact-shaped concerns (suppression, engagement score,
+// experiment assignment, seed probe) and carries a retention concern of its own.
 
 /**
  * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
@@ -302,6 +226,29 @@ export const enqueueCampaignEmails = internalMutation({
 	},
 });
 
+/** The kinds of mail `enqueueNonCampaignSend` writes. */
+const nonCampaignSendKindValidator = v.union(v.literal('automation'), v.literal('agent_reply'));
+
+/** @see nonCampaignSendKindValidator */
+export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
+
+/**
+ * Which {@link SuppressionScope} each non-campaign kind is gated at.
+ *
+ * TOTAL BY CONSTRUCTION, and deliberately so. The `satisfies
+ * Record<NonCampaignSendKind, SuppressionScope>` makes adding a third literal
+ * to {@link nonCampaignSendKindValidator} a COMPILE ERROR until the new kind
+ * names its scope — where a ternary with a permissive else-branch would have
+ * silently handed it the transactional reading and stopped marketing-hygiene
+ * rows blocking it. `lib/suppression.ts` states the same invariant for the
+ * default: forgetting to think about scope must yield the blocking behaviour,
+ * never the permissive one.
+ */
+const SUPPRESSION_SCOPE_BY_KIND = {
+	automation: 'marketing',
+	agent_reply: 'transactional',
+} as const satisfies Record<NonCampaignSendKind, SuppressionScope>;
+
 /**
  * Shared writer for the three NON-campaign, non-template-API Send sources:
  * automation email steps and agent approved-replies (and, in principle, any
@@ -328,7 +275,7 @@ export const enqueueCampaignEmails = internalMutation({
  */
 export const enqueueNonCampaignSend = internalMutation({
 	args: {
-		kind: v.union(v.literal('automation'), v.literal('agent_reply')),
+		kind: nonCampaignSendKindValidator,
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
 		automationId: v.optional(v.id('automations')),
@@ -365,7 +312,22 @@ export const enqueueNonCampaignSend = internalMutation({
 		// The shared `isSuppressed` owns the normalization + `by_email` point
 		// read; this path's POLICY is to THROW before the row insert, so no
 		// `transactionalSends` row is produced for a suppressed address.
-		if (await isSuppressed(ctx, args.email)) {
+		//
+		// THE SCOPE IS PER-KIND, because this producer writes two very different
+		// kinds of mail. An `automation` step is marketing — it takes the strict
+		// scope, so a marketing-hygiene row (`unengaged`) blocks it like every
+		// other reason. An `agent_reply` is a 1:1 answer to a human who wrote in;
+		// it carries no List-Unsubscribe, is classified as the `transactional`
+		// stream for routing a few lines below, and must not be thrown away
+		// because the same person stopped opening campaigns — that inbound is the
+		// clearest possible evidence they are still there. Bounce, complaint and
+		// manual rows still block it: `isMarketingOnlyBlockReason` is false for
+		// those, so the transactional scope keeps blocking on mailbox evidence.
+		//
+		// The mapping is the TOTAL table above, not a ternary: a future kind has
+		// to name its scope to compile.
+		const suppressionScope = SUPPRESSION_SCOPE_BY_KIND[args.kind];
+		if (await isSuppressed(ctx, args.email, { scope: suppressionScope })) {
 			throw new Error(RECIPIENT_BLOCKED_ERROR);
 		}
 
