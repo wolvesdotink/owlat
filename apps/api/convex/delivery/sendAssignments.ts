@@ -275,17 +275,10 @@ export async function recordSendAssignments(
 		// producer's rank (if any) is recorded as the observation it is.
 		const recordedRank = mix?.engagementRank ?? engagementRank;
 		const arm = armForTransport(transport);
-		// A calibration row is a member of a RANDOMIZED COMPARISON, so it only
-		// counts while the decision could actually be honoured. On a deployment
-		// with no reference transport configured (D2 — a supported
-		// configuration, not an incomplete setup) a `reference` decision still
-		// dispatches on the own MTA, and marking those rows calibration would
-		// hand the engagement-ratio gate a one-armed sample: exactly the
-		// degenerate cell `calibrationSliceFor` zeroes the slice for. The row is
-		// still written — the send happened and belongs in the denominators — it
-		// simply is not part of the experiment.
-		const isCalibration =
-			mix !== null ? mix.isCalibration && arm === mix.arm : fallbackIsCalibration;
+		// What makes a row calibration is decided in ONE place — the strategy,
+		// which is the only module that can see whether the route has two arms to
+		// compare. Here we copy the flag through.
+		const isCalibration = mix !== null ? mix.isCalibration : fallbackIsCalibration;
 		await ctx.db.insert('sendAssignments', {
 			organizationId,
 			sendId: recipient.sendId,

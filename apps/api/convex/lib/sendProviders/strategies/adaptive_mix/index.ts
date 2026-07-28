@@ -77,9 +77,24 @@ export const adaptiveMixStrategy: SendRouteStrategyModule<'adaptive_mix'> = {
 		// replay. Answering anyway would be a guess; the caller falls back.
 		if (!mix) return null;
 
-		const decision = mix.kind === 'decide' ? decideMixAssignment(mix.input) : null;
-		const arm: MixArm = decision?.arm ?? (mix.kind === 'assigned' ? mix.arm : 'reference');
+		const decided = mix.kind === 'decide' ? decideMixAssignment(mix.input) : null;
+		const arm: MixArm = decided?.arm ?? (mix.kind === 'assigned' ? mix.arm : 'reference');
 		const { own, reference } = armEntries(entries);
+		// A calibration row is a member of a RANDOMIZED COMPARISON, so the slice
+		// only exists while the route can express one. On a deployment with only
+		// one arm configured — no reference transport (D2: a supported
+		// configuration, not an incomplete setup), or no own MTA — every slice
+		// member dispatches on the same transport, and marking those rows
+		// calibration would hand the engagement-ratio gate a one-armed sample:
+		// exactly the degenerate cell `calibrationSliceFor` zeroes the slice for.
+		// The rows are still written — the sends happened and belong in the
+		// denominators — they simply are not part of the experiment. THIS IS THE
+		// ONLY PLACE that decides whether a row is calibration; the recorder
+		// copies the flag through.
+		const decision =
+			decided !== null && decided.isCalibration && (own === undefined || reference === undefined)
+				? { ...decided, isCalibration: false }
+				: decided;
 		// THE ADDITIVE-ONLY THIRD-PARTY RULE (D2): a cell whose share says
 		// "reference" on a deployment with no reference transport configured
 		// still sends — on the own MTA. Absence of an external account lowers
