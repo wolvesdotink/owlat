@@ -20,7 +20,7 @@
  *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
  *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
  *                             graduated cell is bounded by the warming cap
- *   9. graduation           -> pin at min(1, ceiling)
+ *   9. graduation           -> pin at max(floor, min(1, ceiling))
  *  10. K_CLEAN              -> hold while building confidence
  *  11. additive increase    -> min(ceiling, s + step), at most once per window
  *
@@ -174,13 +174,15 @@ interface DecisionDraft {
 	readonly isLadderFreeze?: boolean;
 	readonly cleanStreak: number;
 	readonly greenSince?: number | undefined;
-	readonly graduatedAt?: number | undefined;
 	/**
-	 * The cell is GRADUATED. Normally the pin is read off the share (s = 1.0), but
-	 * a graduated cell that a capacity ceiling has temporarily bounded below 1.0 is
-	 * still pinned — the warming cap is a physical limit, not a demotion.
+	 * The graduation pin to STORE. Every rung sets it explicitly: it is carried
+	 * forward by default and REVOKED — set to `undefined` — only by a hard stop or
+	 * a breached gate. It is deliberately not derived from the share, because a
+	 * graduated cell that the warming cap has bounded below 1.0 has not been
+	 * demoted, and re-deriving the pin would make it re-earn fourteen days for a
+	 * physical limit it never failed.
 	 */
-	readonly isPinned?: boolean;
+	readonly graduatedAt?: number | undefined;
 	/** `now` when this evaluation counted as a window; absent when it did not. */
 	readonly countedAt?: number | undefined;
 	readonly ceiling: number;
@@ -209,14 +211,11 @@ export function nextShare(input: RampControllerInput): RampDecision {
 	const freezeMs = draft.freezeMs;
 	const frozenUntil =
 		freezeMs === undefined || !isClockUsable ? undefined : now + Math.max(0, freezeMs);
-	// A share that left 1.0 is no longer graduated, whatever the row says: the
-	// pin is a property of the share, not a badge the row keeps forever. The one
-	// exception is the graduation branch itself bounding a pinned cell by the
-	// warming cap — a physical limit the cell did not fail its way into.
-	const graduatedAt =
-		draft.isPinned === true || share >= OWN_SHARE_CEILING
-			? (draft.graduatedAt ?? mix.graduatedAt)
-			: undefined;
+	// The pin is whatever the rung decided. It is NOT re-derived from the share
+	// here: a graduated cell bounded below 1.0 by the warming cap is still
+	// graduated, while a cell that FAILED its way down had its pin revoked by the
+	// rung that lowered it — which is the only place that knows the difference.
+	const graduatedAt = draft.graduatedAt;
 
 	return {
 		share,
@@ -269,10 +268,17 @@ function decide(args: DecideArgs): DecisionDraft {
 	if (!isClockUsable) return { ...held, reason: 'clock_unusable' };
 
 	// 2-4. HARD STOPS, in the plan's order. They bypass the gates entirely and
-	//      each resets the clean streak: a cell in one of these states has no
-	//      clean history to spend.
+	//      each resets the clean streak AND REVOKES THE GRADUATION PIN: a cell in
+	//      one of these states has no clean history left to spend.
 	if (!signals.isSendingAllowed) {
-		return { ...held, share: 0, reason: 'abuse_status', cleanStreak: 0, greenSince: undefined };
+		return {
+			...held,
+			share: 0,
+			reason: 'abuse_status',
+			cleanStreak: 0,
+			greenSince: undefined,
+			graduatedAt: undefined,
+		};
 	}
 	if (signals.isCircuitBreakerOpen) {
 		return {
@@ -281,6 +287,7 @@ function decide(args: DecideArgs): DecisionDraft {
 			reason: 'breaker',
 			cleanStreak: 0,
 			greenSince: undefined,
+			graduatedAt: undefined,
 			freezeMs: RAMP_AIMD.breakerFreezeMs,
 		};
 	}
@@ -291,6 +298,7 @@ function decide(args: DecideArgs): DecisionDraft {
 			reason: 'dnsbl',
 			cleanStreak: 0,
 			greenSince: undefined,
+			graduatedAt: undefined,
 			freezeMs: RAMP_AIMD.blocklistFreezeMs,
 		};
 	}
@@ -337,6 +345,7 @@ function decide(args: DecideArgs): DecisionDraft {
 				failedGate,
 				cleanStreak: streak,
 				greenSince: undefined,
+				graduatedAt: undefined,
 			};
 		}
 		// `halt` is a hard stop rather than a step down: it goes straight to the
@@ -354,6 +363,7 @@ function decide(args: DecideArgs): DecisionDraft {
 			failedGate,
 			cleanStreak: streak,
 			greenSince: undefined,
+			graduatedAt: undefined,
 			freezeMs: nextCooldownMs(mix, now),
 			isLadderFreeze: true,
 		};
@@ -378,8 +388,18 @@ function decide(args: DecideArgs): DecisionDraft {
 	// clock in the future is nonsense, and one far enough in the past would hand
 	// out a graduation pin on the first passing tick. Unreadable or ahead of the
 	// clock ⇒ start counting from now, which can only DELAY a pin.
+	//
+	// A GRADUATED cell keeps its clock while it sits below 1.0, because the only
+	// thing that can put it there is a capacity bound: every gate failure and
+	// every hard stop above cleared `graduatedAt` on its way past. Reading the pin
+	// off the share alone would revoke a graduation the tick AFTER the warming cap
+	// bound it, and the cell would have to climb back at +5pp and re-hold fourteen
+	// days for a limit it never failed.
+	const isGraduated = readStoredInstant(mix.graduatedAt, now) !== null;
 	const greenSince =
-		fromShare >= OWN_SHARE_CEILING ? sanitizeGreenSince(mix.greenSince, now) : undefined;
+		fromShare >= OWN_SHARE_CEILING || isGraduated
+			? sanitizeGreenSince(mix.greenSince, now)
+			: undefined;
 	// A CLEAN WINDOW COUNTS ONCE. The cron ticks hourly against a 24h outcome
 	// window, so an ungated streak would reach K_CLEAN in three HOURS off three
 	// overlapping reads of the same day. Only a counted window extends the streak
@@ -411,13 +431,22 @@ function decide(args: DecideArgs): DecisionDraft {
 	// still gives way to the warming cap, and when it does the sentence names the
 	// ceiling rather than claiming a graduation move the operator did not see.
 	if (greenSince !== undefined && now - greenSince >= RAMP_AIMD.graduationHoldMs) {
-		const pinned = Math.min(OWN_SHARE_CEILING, ceiling);
+		// The pinned target is the ceiling — but NEVER below the soft floor. A
+		// capacity ceiling is not a breach, and this module allows only a gate
+		// failure or a hard stop to take a cell to zero; a warming cap with no
+		// headroom left projects a ceiling of 0, and honouring that literally would
+		// switch a healthy graduated cell off entirely.
+		const pinTarget = Math.max(RAMP_AIMD.shareFloor, Math.min(OWN_SHARE_CEILING, ceiling));
+		// Retreats are instant, RESTORES ARE NOT: lifting a bounded pin back toward
+		// 1.0 is an increase and costs a counted window like every other one.
+		const pinned = pinTarget > fromShare && !isWindowCounted ? fromShare : pinTarget;
+		const reason: RampDecisionReason =
+			pinned < fromShare ? bindingReason : pinTarget > pinned ? 'window_open' : 'graduated';
 		return {
 			...green,
 			share: pinned,
-			reason: pinned >= fromShare ? 'graduated' : bindingReason,
+			reason,
 			graduatedAt: mix.graduatedAt ?? now,
-			isPinned: true,
 			ceiling,
 		};
 	}
