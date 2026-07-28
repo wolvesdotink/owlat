@@ -289,6 +289,47 @@ describe('graduation', () => {
 		expect(decision.reason).toBe('phase_ceiling');
 	});
 
+	// D17: a lone seed tripwire is SUSPECT and the controller explicitly declines
+	// to act on it. Revoking the pin on that same evidence would be acting on it —
+	// and an expensive action at that, since the next clean window restarts the
+	// hold clock from zero and the cell would owe another fourteen days.
+	it('an UNCORROBORATED tripwire holds the cell AND keeps its graduation pin', () => {
+		const graduatedAt = NOW - 20 * DAY;
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 1,
+					cleanStreak: 40,
+					greenSince: NOW - 40 * DAY,
+					graduatedAt,
+				}),
+				evaluation: breachedEvaluation('seed_placement', { previousCleanStreak: 40 }),
+			})
+		);
+		expect(decision.reason).toBe('awaiting_corroboration');
+		expect(decision.share).toBe(1);
+		expect(decision.graduatedAt).toBe(graduatedAt);
+		// The window is still not green, so the hold clock does reset.
+		expect(decision.greenSince).toBeUndefined();
+	});
+
+	it('but a gate the controller DOES act on revokes the pin', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 1,
+					cleanStreak: 40,
+					greenSince: NOW - 40 * DAY,
+					graduatedAt: NOW - 20 * DAY,
+				}),
+				evaluation: breachedEvaluation('deferral', { previousCleanStreak: 40 }),
+			})
+		);
+		expect(decision.reason).toBe('deferral');
+		expect(decision.share).toBe(0.5);
+		expect(decision.graduatedAt).toBeUndefined();
+	});
+
 	it('a hard stop un-pins a graduated cell', () => {
 		const decision = nextShare(
 			controllerInput({

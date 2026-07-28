@@ -222,12 +222,15 @@ function decide(args: DecideArgs): DecisionDraft {
 		share: fromShare,
 		verdict: 'not_evaluated' as const,
 		cleanStreak: storedStreak,
-		greenSince: mix.greenSince,
-		// The graduation pin is the one carried-forward instant a DOWNSTREAM reader
-		// acts on — the dashboard and the `mix` blob in `mixDecisions.snapshot` both
-		// read the row, not this function — so it is sanitised on the way through
-		// rather than only at the point of use. A row holding NaN, a negative or a
-		// future instant would otherwise report the cell as graduated for ever.
+		// BOTH carried-forward instants are sanitised on the way through, for the
+		// same reason: a DOWNSTREAM reader acts on them — the dashboard and the
+		// `mix` blob in `mixDecisions.snapshot` both read the row, not this
+		// function — and every rung that returns `held` unchanged (`kill_switch`,
+		// `clock_unusable`, `share_unreadable`, `frozen`, the capacity paths) writes
+		// them straight back. A row holding NaN, a negative or a future instant
+		// would otherwise report the cell as graduated, or as green since some
+		// impossible moment, for ever.
+		greenSince: readStoredInstant(mix.greenSince, now) ?? undefined,
 		graduatedAt: readStoredInstant(mix.graduatedAt, now) ?? undefined,
 		ceiling: phaseCeiling,
 	};
@@ -326,8 +329,12 @@ function decide(args: DecideArgs): DecisionDraft {
 				verdict: evaluation.verdict,
 				failedGate,
 				cleanStreak: streak,
+				// The window is not green, so the hold clock resets — but the
+				// GRADUATION PIN is carried through (`held.graduatedAt`) on purpose.
+				// Revoking it here would apply a fourteen-day state penalty on the
+				// strength of a signal this very branch has decided not to believe;
+				// the pin is revoked only by a hard stop or a gate we DID act on.
 				greenSince: undefined,
-				graduatedAt: undefined,
 			};
 		}
 		// `halt` is a hard stop rather than a step down: it goes straight to the

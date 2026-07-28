@@ -412,6 +412,43 @@ describe('degenerate numbers fail closed', () => {
 		}
 	});
 
+	it('never carries a degenerate GREEN-SINCE instant back onto the row either', () => {
+		// Same class of defect, same downstream readers: the holding rungs write
+		// `greenSince` straight back as the row's `healthySince`, so an unreadable
+		// stored instant would report the cell as green since NaN — or since a
+		// moment in the future — until something else happened to overwrite it.
+		for (const greenSince of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			const held = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince }),
+					evaluation: thinEvaluation(3),
+				})
+			);
+			expect(held.reason).toBe('holding');
+			expect(held.greenSince).toBeUndefined();
+
+			// And through the rung that returns the held state completely untouched.
+			const pinned = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince }),
+					isKillSwitchEngaged: true,
+				})
+			);
+			expect(pinned.reason).toBe('kill_switch');
+			expect(pinned.greenSince).toBeUndefined();
+		}
+		// The control: a readable instant IS carried through unchanged.
+		const readable = NOW - 3 * DAY;
+		expect(
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince: readable }),
+					evaluation: thinEvaluation(3),
+				})
+			).greenSince
+		).toBe(readable);
+	});
+
 	it('snaps a corrupt phase ceiling DOWN to the lowest rung, never up', () => {
 		for (const ceiling of [Number.NaN, -1, 0, 0.24, undefined]) {
 			const decision = nextShare(
