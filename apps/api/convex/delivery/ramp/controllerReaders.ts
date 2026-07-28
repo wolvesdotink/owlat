@@ -24,7 +24,7 @@
  * environment. `now` is a parameter.
  */
 
-import { clampOwnShare } from '@owlat/shared/deliverabilityRouting';
+import { clampOwnShare, OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import type { RampFreezeOrigin } from './controllerTypes';
 import type { RampGateThresholds } from './gateConfig';
 
@@ -37,6 +37,22 @@ const SHARE_PRECISION = 10_000;
 
 export function roundShare(value: number): number {
 	return Math.round(clampOwnShare(value) * SHARE_PRECISION) / SHARE_PRECISION;
+}
+
+/**
+ * IS THE STORED SHARE A SHARE AT ALL?
+ *
+ * `roundShare` above already CLAMPS whatever the row holds, so nothing
+ * downstream can act on `-0.5`, `1.5` or `NaN`. This is the other half of the
+ * same reading: a row holding one of those is a row we do not UNDERSTAND, and
+ * the one thing the controller must not do with a value it cannot read is add a
+ * step to it. It lives here beside the clamp because "what does this stored
+ * number mean" is this module's whole job — the precedence ladder should read as
+ * one named question per rung, not as a hand-rolled three-part predicate in the
+ * middle of the hard stops.
+ */
+export function isStoredShareReadable(stored: number): boolean {
+	return Number.isFinite(stored) && stored >= 0 && stored <= OWN_SHARE_CEILING;
 }
 
 export function sanitizeStreak(value: number | undefined): number {

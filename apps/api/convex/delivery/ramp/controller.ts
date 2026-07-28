@@ -56,6 +56,7 @@ import {
 import {
 	extendFreezeUntil,
 	isEvidenceUsable,
+	isStoredShareReadable,
 	readActiveFreeze,
 	readStoredInstant,
 	roundShare,
@@ -261,9 +262,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     holding -0.5 or 1.5 or NaN is a row we do not understand, and the one
 	//     thing we must not do with a value we do not understand is add to it.
 	//     Hold at the clamped value; the hard stops above can still zero it.
-	if (!Number.isFinite(mix.share) || mix.share < 0 || mix.share > OWN_SHARE_CEILING) {
-		return { ...held, reason: 'share_unreadable' };
-	}
+	if (!isStoredShareReadable(mix.share)) return { ...held, reason: 'share_unreadable' };
 
 	// 5. An unexpired freeze holds, however good the gates look — WHOEVER stamped
 	//    it. This rung asks only whether one is in force; only the breaker rung
