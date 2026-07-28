@@ -21,6 +21,12 @@
  *   - force-advance from a single click. The consequence-naming phrase is
  *     checked HERE, server-side, so a client that skipped its dialog is refused
  *     by the same rule the dialog renders.
+ *   - raise a share past a hard stop. Force-advance and reset-to-phase can write
+ *     a share directly, so they ask `readRampIncreaseBlock` — the controller's
+ *     own readers — before any INCREASE, and are refused calmly while the global
+ *     kill switch is engaged, while sending is abuse-suspended, while a breaker
+ *     or critical blocklist listing stands, or inside a live cooldown. Moving a
+ *     cell DOWN is never blocked by any of them.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
@@ -33,13 +39,13 @@ import {
 	clampOwnShare,
 	deliverabilityCellKey,
 	isFallbackActiveForShare,
+	OWN_SHARE_CEILING,
 	resolveOwnShare,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
 import {
 	FORCE_ADVANCE_CONFIRMATION,
 	isConfirmationPhraseMatch,
-	isRampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -54,6 +60,7 @@ import {
 	destinationProviderValidator,
 	rampPresetValidator,
 } from './deliverabilityValidators';
+import { readRampIncreaseBlock } from './rampControllerInputs';
 import { recordOperatorRampAction } from './rampControlAudit';
 
 const cellArgs = {
@@ -62,7 +69,16 @@ const cellArgs = {
 } as const;
 
 /** Why a control could not be applied — always calm, never an exception. */
-export type RampControlRefusal = 'cell_not_ramp_managed' | 'no_organization';
+export type RampControlRefusal =
+	| 'cell_not_ramp_managed'
+	| 'no_organization'
+	// The global kill switch is engaged: "everything held still" means everything.
+	| 'controller_paused'
+	// Abuse suspension, an open breaker, a critical blocklist listing or a live
+	// cooldown. Named as one arm on purpose — the UI's remedy is the same
+	// ("clear the condition, then try again") and enumerating which hard stop
+	// fired would tell a caller more about the deployment than a refusal should.
+	| 'hard_stop_active';
 
 export interface RampControlResult {
 	readonly applied: boolean;
@@ -234,6 +250,19 @@ export const forceAdvanceCellShare = adminMutation({
 		if (typeof target === 'string') return refused(target);
 		const now = Date.now();
 		const share = clampOwnShare(args.share);
+		// A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS. Raising the
+		// share is refused while the ramp is globally paused or while a hard stop is
+		// live; lowering it never is. Same shape as `promoteRampPhase`, and through
+		// the controller's own readers rather than a second copy of the rules.
+		if (share > target.share) {
+			const block = await readRampIncreaseBlock(ctx, {
+				organizationId: target.organizationId,
+				cell: target.cell,
+				perStream: target.row,
+				now,
+			});
+			if (block !== null) return refused(block);
+		}
 		await ctx.db.patch(target.row._id, {
 			ownShare: share,
 			// The derived view of the share stays consistent with it (plan D1).
@@ -241,9 +270,15 @@ export const forceAdvanceCellShare = adminMutation({
 			// A manual move is a new mix generation: the cohort is deliberately
 			// re-randomised, exactly as it is on a phase promotion (plan D7).
 			mixVersion: (target.row.mixVersion ?? 0) + 1,
-			// The streak is NOT carried across a move nobody measured.
+			// The streak is NOT carried across a move nobody measured — and neither
+			// is the GRADUATION PIN when the move lands below 1.0. A graduated cell
+			// hand-moved to 25% is not graduated: leaving the pin in place would
+			// render it as "Graduated" in the Cells grid and count it as no longer
+			// leaning on the relay in the removal-safety projection, while three
+			// quarters of its mail was back on the relay.
 			cleanStreak: 0,
 			greenSince: undefined,
+			...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
 			decidedAt: now,
 		});
 		await recordOperatorRampAction(ctx, {
@@ -255,7 +290,12 @@ export const forceAdvanceCellShare = adminMutation({
 			fromShare: target.share,
 			toShare: share,
 			message: `An operator forced ${deliverabilityCellKey(target.cell)} to ${Math.round(share * 100)}% without waiting for the gates. The clean streak restarts at zero; the next evaluation measures the result and will retreat if it is bad.`,
-			detail: { forcedShare: share },
+			detail: {
+				forcedShare: share,
+				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
+					? { pinChange: 'revoked' }
+					: {}),
+			},
 			at: now,
 		});
 		return { applied: true, share };
@@ -285,6 +325,18 @@ export const resetCellPhase = adminMutation({
 		if (typeof target === 'string') return refused(target);
 		const now = Date.now();
 		const share = Math.min(target.share, args.phaseCeiling);
+		// A reset never raises the share (`Math.min` above), so it can only be an
+		// increase by way of the CEILING it hands the controller for the next tick.
+		// That is still an advance past the evidence, so it meets the same guard.
+		if (args.phaseCeiling > (target.row.phaseCeiling ?? args.phaseCeiling)) {
+			const block = await readRampIncreaseBlock(ctx, {
+				organizationId: target.organizationId,
+				cell: target.cell,
+				perStream: target.row,
+				now,
+			});
+			if (block !== null) return refused(block);
+		}
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
 			ownShare: share,
@@ -292,6 +344,9 @@ export const resetCellPhase = adminMutation({
 			mixVersion: (target.row.mixVersion ?? 0) + 1,
 			cleanStreak: 0,
 			greenSince: undefined,
+			// See `forceAdvanceCellShare`: a cell put back on a lower rung has not
+			// graduated, and the pin must not outlive the share that earned it.
+			...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
 			decidedAt: now,
 		});
 		await recordOperatorRampAction(ctx, {
@@ -303,7 +358,12 @@ export const resetCellPhase = adminMutation({
 			fromShare: target.share,
 			toShare: share,
 			message: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`,
-			detail: { phaseCeiling: args.phaseCeiling },
+			detail: {
+				phaseCeiling: args.phaseCeiling,
+				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
+					? { pinChange: 'revoked' }
+					: {}),
+			},
 			at: now,
 		});
 		return { applied: true, share };
@@ -326,9 +386,6 @@ export const setStreamPreset = adminMutation({
 	handler: async (ctx, args): Promise<{ applied: boolean }> => {
 		const { userId } = await getMutationContext(ctx);
 		const organizationId = await getSingletonOrganizationId(ctx);
-		if (args.preset !== null && !isRampPreset(args.preset)) {
-			throwInvalidInput('Unknown ramp preset.');
-		}
 		const now = Date.now();
 		const existing = await ctx.db
 			.query('rampStreamPresets')
