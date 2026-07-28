@@ -68,9 +68,15 @@ const RECORD_LABELS: Record<PlanRecord['purpose'], string> = {
  * Our own selector appears the moment the name is registered; the relay's key
  * lives at the ESP and adding the name will never produce it. One sentence for
  * both would be wrong for one of them.
+ *
+ * The relay sentence has to NAME THE SELECTOR, because the only host this row
+ * can show is the bare `_domainkey.<subdomain>` parent — a TXT published there
+ * is at a name no verifier queries. The record belongs at
+ * `<their selector>._domainkey.<subdomain>`, and the operator learns the
+ * selector from the same dashboard as the value.
  */
-const RELAY_PENDING_EXPLANATION =
-	'Your relay provides this key — copy the DKIM value from its dashboard and publish it under this name. Adding the subdomain here does not generate it.';
+const relayPendingExplanation = (subdomain: string): string =>
+	`Your relay signs with its OWN selector, so this record's name is not the one above: create <selector>._domainkey.${subdomain} using the selector and DKIM value from your relay's dashboard. Adding the subdomain here never generates either.`;
 
 /**
  * Flatten the generated rows into what DNSRecordPanel renders.
@@ -106,8 +112,12 @@ const recordPanels = computed(() =>
 			},
 			pendingExplanation:
 				record.purpose === 'dkim' && record.arm === 'reference'
-					? RELAY_PENDING_EXPLANATION
+					? relayPendingExplanation(record.subdomain)
 					: undefined,
+			// No selector yet ⇒ no name yet. The row still has to exist (it is
+			// work the operator owes DNS), but the parent is context, not a paste
+			// target — see DNSRecordPanel's `hostNotYetKnown`.
+			hostNotYetKnown: record.purpose === 'dkim' && record.value === null,
 		}))
 );
 
@@ -196,6 +206,7 @@ const bimiOffers = computed(() =>
 				:label="panel.label"
 				:domain="ready.domain"
 				:pending-explanation="panel.pendingExplanation"
+				:host-not-yet-known="panel.hostNotYetKnown"
 			/>
 		</div>
 

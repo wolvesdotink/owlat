@@ -58,6 +58,18 @@ interface Props {
 	 * pending is the one that gets to say so.
 	 */
 	pendingExplanation?: string;
+	/**
+	 * True when this record's NAME is not knowable yet.
+	 *
+	 * A DKIM row whose selector has not been minted — or is held by a relay and
+	 * never will be by us — has no name to paste: the only string available is
+	 * the bare `_domainkey.<subdomain>` PARENT, and a TXT record published there
+	 * is at a name no verifier ever queries. Offering it as the primary paste
+	 * target is worse than offering nothing, so the panel shows the parent as
+	 * context and says what the real name will look like instead of handing over
+	 * a copy button for a name that cannot work.
+	 */
+	hostNotYetKnown?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -238,7 +250,20 @@ const diagnostic = computed(() => {
 			     copy for providers that want the FQDN. -->
 			<div>
 				<p class="text-xs text-text-tertiary mb-1">Host / Name</p>
-				<div class="flex items-center gap-2">
+				<!-- The name is not knowable yet: the only string we hold is the
+				     `_domainkey` PARENT, and nothing queries a record published
+				     there. Say what the real name will look like; offer no copy
+				     button for a name that cannot work. -->
+				<p
+					v-if="hostNotYetKnown"
+					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
+					data-testid="dns-host-pending"
+				>
+					Name not known yet — it is
+					<span class="font-mono">&lt;selector&gt;.{{ hostDisplay.primary }}</span
+					>, and the selector comes with the value below.
+				</p>
+				<div v-else class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
 						data-testid="dns-host-primary"
@@ -256,7 +281,11 @@ const diagnostic = computed(() => {
 				</div>
 
 				<!-- Secondary: fully-qualified name + its own copy affordance. -->
-				<div v-if="hostDisplay.fqdn" class="mt-2" data-testid="dns-host-fqdn-row">
+				<div
+					v-if="hostDisplay.fqdn && !hostNotYetKnown"
+					class="mt-2"
+					data-testid="dns-host-fqdn-row"
+				>
 					<p class="text-xs text-text-tertiary mb-1">Full name</p>
 					<div class="flex items-center gap-2">
 						<code
@@ -283,7 +312,7 @@ const diagnostic = computed(() => {
 				     shared return-path domain), so there is no zone-relative form to
 				     paste here — show the absolute name and say where it belongs. -->
 				<p
-					v-if="hostDisplay.outOfZone"
+					v-if="hostDisplay.outOfZone && !hostNotYetKnown"
 					class="text-xs text-text-tertiary mt-1"
 					data-testid="dns-out-of-zone"
 				>

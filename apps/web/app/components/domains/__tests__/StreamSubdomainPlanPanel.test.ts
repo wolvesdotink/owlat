@@ -229,6 +229,56 @@ describe('a pending row explains itself in the terms of THAT row', () => {
 		const pending = w.find('[data-testid="dns-value-pending"]');
 		expect(pending.text()).toContain('relay');
 		expect(pending.text()).not.toContain('create the name first');
+		// It must name the SELECTOR the record actually lives under, because the
+		// only host this row can show is the `_domainkey` parent.
+		expect(pending.text()).toContain('<selector>._domainkey.news.example.com');
+	});
+
+	it('never offers the bare _domainkey parent as a copyable name', () => {
+		// Publishing a TXT at `_domainkey.news.example.com` is publishing at a name
+		// no verifier ever queries — the record belongs under the selector. So the
+		// row shows the parent as CONTEXT and offers no host paste target at all.
+		const w = mountPanel(
+			planFixture({
+				records: [
+					{
+						subdomain: 'news.example.com',
+						host: '_domainkey.news.example.com',
+						relativeHost: '_domainkey.news',
+						purpose: 'dkim',
+						type: 'TXT',
+						value: null,
+						arm: 'reference',
+					},
+				],
+			})
+		);
+		expect(w.find('[data-testid="dns-host-primary"]').exists()).toBe(false);
+		expect(w.find('[data-testid="dns-host-fqdn"]').exists()).toBe(false);
+		const host = w.find('[data-testid="dns-host-pending"]');
+		expect(host.exists()).toBe(true);
+		// The parent appears only inside the selector-shaped name, as context.
+		expect(host.text()).toContain('<selector>._domainkey.news');
+	});
+
+	it('still offers a copyable name once the selector is known', () => {
+		const w = mountPanel(
+			planFixture({
+				records: [
+					{
+						subdomain: 'news.example.com',
+						host: 'sel._domainkey.news.example.com',
+						relativeHost: 'sel._domainkey.news',
+						purpose: 'dkim',
+						type: 'TXT',
+						value: 'v=DKIM1; k=rsa; p=BBBB',
+						arm: 'own',
+					},
+				],
+			})
+		);
+		expect(w.find('[data-testid="dns-host-pending"]').exists()).toBe(false);
+		expect(w.find('[data-testid="dns-host-primary"]').text()).toBe('sel._domainkey.news');
 	});
 });
 
