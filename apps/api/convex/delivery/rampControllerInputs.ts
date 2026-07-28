@@ -195,8 +195,10 @@ export async function loadCellInput(
 		 * reading it per cell would be the same index reads repeated once per cell
 		 * — and a slice with no ramp-managed cell in it (the normal state during
 		 * rollout, plan D1) must not pay for a reading no cell will consume, which
-		 * is why it is a thunk rather than a value. Called only AFTER this cell is
-		 * known to be managed.
+		 * is why it is a thunk rather than a value. It is handed to
+		 * `capacityInputForCell` UNRESOLVED, so a slice of cells the campaign pool
+		 * does not govern — the stream-major cursor produces exactly such slices —
+		 * does not resolve it either.
 		 */
 		capacity: () => Promise<RampCapacityContext>;
 		isKillSwitchEngaged: boolean;
@@ -284,7 +286,7 @@ export async function loadCellInput(
 			// measured against the STORED share, which makes it a LAGGING indicator
 			// (see `deliveredShareShortfall`): a `warmup_overflow` reroute shows up in
 			// it, and so does a share the controller itself raised yesterday.
-			capacity: capacityInputForCell(await args.capacity(), cell, mix.share),
+			capacity: await capacityInputForCell(args.capacity, cell, mix.share),
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},
