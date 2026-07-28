@@ -11,6 +11,9 @@
  * THE CHOICE IS THE ACTUATOR'S, not a `hasRelay` boolean's. The actuator comes
  * out of the substitution table (`degradation.actuator`), so framing, gate
  * selection and ramp constants all move together off one fact.
+ *
+ * CONSUMED BY the delivery screens piece (P4-9) — this module is the model the
+ * ramp screen's header renders, staged here beside the actuator that selects it.
  */
 
 import type { RampActuator } from './degradation';

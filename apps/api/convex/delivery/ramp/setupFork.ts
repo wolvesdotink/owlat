@@ -13,6 +13,10 @@
  *
  * THE FORK IS THE ACTUATOR CHOICE (D3), and it says so: one controller, two
  * actuators, and the path an operator picks is which one it drives.
+ *
+ * CONSUMED BY the delivery screens piece (P4-9) — this module is the model the
+ * setup screen renders. It is staged here, beside the actuator it names, so the
+ * screen cannot invent a third path or a `recommended` badge of its own.
  */
 
 import type { RampActuator } from './degradation';

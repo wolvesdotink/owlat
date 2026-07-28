@@ -28,7 +28,6 @@ import {
 	entryAppliesToProvider,
 	RAMP_DEGRADATION_MATRIX,
 	COMPLAINT_PROXY_TOLERANCE,
-	type RampIntegrationId,
 	type RampIntegrationPresence,
 	type RampSubstituteSource,
 	type RampSubstitutionEntry,
@@ -52,13 +51,6 @@ import type { RampGateConfidence } from './gateTypes';
  */
 export type RampActuator = 'share' | 'pace';
 
-/** One "connect X and it buys Y" affordance. An offer, never a warning (D2). */
-export interface RampImprovementOffer {
-	readonly integration: RampIntegrationId;
-	readonly label: string;
-	readonly improvement: string;
-}
-
 export interface RampDegradation {
 	readonly provider: DestinationProviderKey;
 	/** Absent integrations that GOVERN this cell, in table order. */
@@ -71,10 +63,19 @@ export interface RampDegradation {
 	readonly dwellMultiplier: number;
 	readonly ceilingPhaseDelta: number;
 	readonly complaintMaxOverride: RateFraction | undefined;
+	/**
+	 * The furthest warming-schedule DAY the pace actuator may reach.
+	 * CONSUMED BY the pace-actuator piece (P4-4), which is what clamps the warming
+	 * schedule; resolved here because it is the substitution table's number and
+	 * this is the table's one fold.
+	 */
 	readonly paceCeilingDay: number | undefined;
 	readonly confidence: RampGateConfidence;
-	readonly notes: readonly string[];
-	readonly improvements: readonly RampImprovementOffer[];
+	/**
+	 * NO `notes` AND NO `improvements` HERE ON PURPOSE. Both are 1:1 projections
+	 * of `absent` — two representations of one fact, free to drift — so the copy is
+	 * derived where it is rendered, in `./measurementConfidence.ts`, from this list.
+	 */
 	/** ALWAYS false. Absence never blocks anything (D2). */
 	readonly isBlocking: false;
 }
@@ -100,8 +101,6 @@ export function resolveRampDegradation(args: {
 	let ceilingPhaseDelta = 0;
 	let complaintMaxOverride: RateFraction | undefined;
 	let paceCeilingDay: number | undefined;
-	const notes: string[] = [];
-	const improvements: RampImprovementOffer[] = [];
 	const confidences: RampGateConfidence[] = [];
 
 	for (const entry of absent) {
@@ -121,14 +120,11 @@ export function resolveRampDegradation(args: {
 					: rateFraction(Math.min(complaintMaxOverride, entry.complaintMaxOverride));
 		}
 		if (entry.paceCeilingDay !== undefined) {
-			paceCeilingDay = Math.min(paceCeilingDay ?? entry.paceCeilingDay, entry.paceCeilingDay);
+			paceCeilingDay =
+				paceCeilingDay === undefined
+					? entry.paceCeilingDay
+					: Math.min(paceCeilingDay, entry.paceCeilingDay);
 		}
-		notes.push(entry.confidenceNote);
-		improvements.push({
-			integration: entry.integration,
-			label: entry.label,
-			improvement: entry.improvement,
-		});
 		confidences.push(entry.confidence);
 	}
 
@@ -144,8 +140,6 @@ export function resolveRampDegradation(args: {
 		complaintMaxOverride,
 		paceCeilingDay,
 		confidence: weakestConfidence(confidences),
-		notes,
-		improvements,
 		isBlocking: false,
 	};
 }

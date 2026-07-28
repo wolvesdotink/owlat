@@ -11,12 +11,24 @@
  * SUPPORTED CONFIGURATION (D2), so this surface is `info` and can be nothing
  * else: no error state, no unresolvable warning, no "setup incomplete" nag. The
  * type makes the other tones unrepresentable and a fixture asserts it.
+ *
+ * CONSUMED BY the delivery screens piece (P4-9) — this module is the model the
+ * cell card renders, staged here beside the table it reads so the copy and the
+ * constants the controller acted on cannot come from two places.
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { RampIntegrationId } from './degradationMatrix';
 import { weakestConfidence } from './gateGrades';
 import type { RampGateConfidence } from './gateTypes';
-import type { RampDegradation, RampImprovementOffer } from './degradation';
+import type { RampDegradation } from './degradation';
+
+/** One "connect X and it buys Y" affordance. An offer, never a warning (D2). */
+export interface RampImprovementOffer {
+	readonly integration: RampIntegrationId;
+	readonly label: string;
+	readonly improvement: string;
+}
 
 /** The only tone this surface has. An offer is not a warning. */
 export const RAMP_CONFIDENCE_TONE = 'info';
@@ -60,12 +72,24 @@ export function rampCellConfidence(args: {
 }): RampCellConfidence {
 	const { degradation, evaluated } = args;
 	const level = weakestConfidence([evaluated, degradation.confidence]);
+	// DERIVED HERE, NOT STORED ON THE RESOLUTION. The copy is a projection of the
+	// absent list, and only this surface renders it — a second stored copy on
+	// `RampDegradation` would be the same fact in two places, free to drift.
+	//
+	// An entry whose offer this deployment cannot take up contributes NEITHER a
+	// note nor an offer: an affordance nobody can act on is a nag (D2), and it
+	// would otherwise sit on every cell in every deployment for ever.
+	const offered = degradation.absent.filter((entry) => entry.offersImprovement);
 	return {
 		provider: degradation.provider,
 		level,
 		headline: CONFIDENCE_HEADLINE[level],
-		notes: degradation.notes,
-		improvements: degradation.improvements,
+		notes: offered.map((entry) => entry.confidenceNote),
+		improvements: offered.map((entry) => ({
+			integration: entry.integration,
+			label: entry.label,
+			improvement: entry.improvement,
+		})),
 		tone: RAMP_CONFIDENCE_TONE,
 		isBlocking: false,
 	};

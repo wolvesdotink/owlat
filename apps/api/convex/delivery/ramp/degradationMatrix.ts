@@ -125,6 +125,17 @@ export interface RampSubstitutionEntry {
 	 * An offer, never a warning and never a nag (D2).
 	 */
 	readonly improvement: string;
+	/**
+	 * WHETHER THIS DEPLOYMENT CAN ACT ON THE OFFER AT ALL.
+	 *
+	 * `false` for an integration Owlat does not implement: its absence costs
+	 * nothing and there is no button to press, so surfacing its note and its offer
+	 * on every cell for ever would be an unactionable permanent nag — precisely
+	 * what D2 forbids. The entry still exists (the table is the plan's table, and
+	 * the absence has a stated, non-alarming answer); it simply contributes no
+	 * copy. Every entry an operator CAN act on carries `true`.
+	 */
+	readonly offersImprovement: boolean;
 	/** Always false, as a FIELD so a fixture asserts D2 rather than assuming it. */
 	readonly isBlocking: false;
 }
@@ -155,6 +166,7 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: low — with no reference transport there is no concurrent arm to compare against, so this cell is measured against its own recent history.',
 		improvement:
 			'Connect a transport you already pay for to add a side-by-side comparison arm — it raises this cell to high confidence and lets the ramp advance in full steps.',
+		offersImprovement: true,
 		isBlocking: false,
 	},
 	{
@@ -168,6 +180,7 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: medium — Gmail reputation is inferred from our own bounce, deferral and complaint rates plus seed placement at Gmail.',
 		improvement:
 			'Connect Google Postmaster Tools to read Gmail’s own reputation and spam-rate reporting for this domain — it halves the dwell time this cell serves before each phase promotion.',
+		offersImprovement: true,
 		isBlocking: false,
 	},
 	{
@@ -184,6 +197,7 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell reads Microsoft’s SMTP reply text instead.',
 		improvement:
 			'Connect Microsoft SNDS to measure this IP’s complaint band directly — it lifts the Microsoft cell’s phase ceiling by one rung and halves its dwell time.',
+		offersImprovement: true,
 		isBlocking: false,
 	},
 	{
@@ -199,6 +213,7 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: medium — complaints are counted from CFBL-Address reports and the one-click unsubscribe rate rather than from a provider feedback loop.',
 		improvement:
 			'Enrol in a provider feedback loop to count complaints directly — it restores the standard 0.1% complaint threshold in place of the tightened 0.05% proxy line.',
+		offersImprovement: true,
 		isBlocking: false,
 	},
 	{
@@ -214,6 +229,7 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: low — nothing is currently observing where this mail lands, so inbox placement is unmeasured.',
 		improvement:
 			'Add seed mailboxes to watch inbox placement directly — it is what lets daily capacity grow past the day-14 step of the warm-up schedule.',
+		offersImprovement: true,
 		isBlocking: false,
 	},
 	{
@@ -229,6 +245,12 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 			'Measurement confidence: unchanged — inbox placement is measured with your own seed mailboxes, which is the expected configuration.',
 		improvement:
 			'A commercial placement service can widen the seed panel across more providers; nothing about the ramp depends on one.',
+		// NOT AN OFFER THIS DEPLOYMENT CAN TAKE UP. Owlat integrates no commercial
+		// placement service, so this entry is absent in EVERY deployment for ever.
+		// Rendering its note and its offer on every cell would be a permanent,
+		// unactionable nag — the exact thing D2 forbids — so it contributes only its
+		// (unchanged) confidence and nothing else.
+		offersImprovement: false,
 		isBlocking: false,
 	},
 ];
