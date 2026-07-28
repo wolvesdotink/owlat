@@ -53,9 +53,15 @@ export const deliverabilityRoutingTables = {
 		// hourly AIMD loop moves the SHARE, never the rung, so a tick must not be
 		// able to restart a dwell the cell has already served.
 		//
-		// Absent on every row promoted before this column existed, and absent is
-		// UNKNOWN rather than zero — the standalone promotion route reports the
-		// dwell condition as unmeasured rather than quietly counting it as served.
+		// Absent on a row that reached its rung any other way — seeded, hand-patched,
+		// or written before this column existed. Absence must NEVER be permanent
+		// though: dwell is one of the four conditions on the standalone promotion
+		// route, and for a provider with no external route that is the only route
+		// there is, so an anchor nobody ever writes would leave the cell
+		// unpromotable for ever with no operator remedy (plan D2). The controller
+		// therefore ADOPTS the row's creation instant the first time it manages a
+		// row without one — the earliest moment the rung could have been set, so the
+		// backfill can only understate the dwell served, never manufacture it.
 		phaseCeilingSince: v.optional(v.number()),
 		cleanStreak: v.optional(v.number()),
 		mixVersion: v.optional(v.number()),

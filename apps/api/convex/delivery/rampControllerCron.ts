@@ -168,6 +168,17 @@ async function applyDecision(
 		isFallbackActive: isFallbackActiveForShare(decision.share),
 		ownShare: decision.share,
 		phaseCeiling: decision.phaseCeiling,
+		// THE DWELL ANCHOR, BACKFILLED ONCE AND NEVER MOVED HERE.
+		//
+		// Only `promoteRampPhase` sets this on a rung change, so a row that reached
+		// its rung any other way (seeded, hand-patched, or written before the column
+		// existed) would carry none — and dwell is one of the four conditions on the
+		// standalone promotion route, the ONLY route a yahoo/apple/other cell has.
+		// Left absent, that cell could never be promoted again by anyone. Adopting
+		// the row's creation instant (never `now`, which would restart the dwell on
+		// every hourly tick) makes the anchor explicit and stable, and matches what
+		// `loadRampPromotionEvidence` falls back to for a row it has not yet seen.
+		phaseCeilingSince: perStream.phaseCeilingSince ?? perStream._creationTime,
 		cleanStreak: decision.cleanStreak,
 		// THE THREE FREEZE COLUMNS, resolved together — see `resolveFreezeFields`.
 		// They are one fact: the breaker rung reads the pair to tell its OWN freeze
