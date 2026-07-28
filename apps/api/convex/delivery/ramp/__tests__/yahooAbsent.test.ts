@@ -27,11 +27,13 @@ import {
 import { RAMP_GATE_THRESHOLDS, rateFraction } from '../gateConfig';
 import { PROXY_MEASUREMENT } from '../gateGrades';
 import { evaluateComplaintGate } from '../gates';
-import { UNSUBSCRIBE_PROXY_SPEC } from '../trailingBaselineGates';
+import { CFBL_COMPLAINT_SPEC, UNSUBSCRIBE_PROXY_SPEC } from '../trailingBaselineGates';
 import {
 	YAHOO_COMPLAINT_SIGNAL_SOURCES,
-	yahooComplaintGateFails,
+	compareYahooComplaintRate,
 	yahooComplaintSubstitution,
+	type YahooComplaintComparison,
+	type YahooComplaintSubstitution,
 } from '../yahooComplaintSignal';
 import { arm, input, itEquipped } from './gateFixtures';
 
@@ -111,9 +113,35 @@ describe('the substitution table always yields a usable gate', () => {
 		expect(comparison.of(RAMP_GATE_THRESHOLDS)).toBe(
 			published.trip.kind === 'trailing_multiple' ? published.trip.multiple : null
 		);
-		// ONE confidence label for one rule.
+		// ONE confidence label for one rule — for THIS branch. See the CFBL fixture
+		// below for the branch that deliberately does NOT match its spec's grade.
 		expect(published.confidence).toBe(UNSUBSCRIBE_PROXY_SPEC.grade.confidence);
 		expect(published.confidence).toBe(PROXY_MEASUREMENT.confidence);
+	});
+
+	/**
+	 * THE ONE DELIBERATE DIVERGENCE, pinned so it cannot become a drift.
+	 *
+	 * The proxy fixture above asserts the published confidence EQUALS the running
+	 * gate's grade, and a reader would reasonably generalise that to all three
+	 * branches. It does not hold for `cfbl_address`: `CFBL_COMPLAINT_SPEC.grade`
+	 * grades the SOURCE (a real complaint feed off our own wire, `high`), while
+	 * the substitution grades that source AS A STAND-IN FOR YAHOO — and Yahoo does
+	 * not serve RFC 9477 CFBL-Address, so for the yahoo cell it is a partial view
+	 * and sits exactly one rank lower. Changing either number now has to be a
+	 * decision.
+	 */
+	it('grades the CFBL branch one rank BELOW the running gate’s source grade', () => {
+		const RANKS: readonly YahooComplaintSubstitution['confidence'][] = ['low', 'medium', 'high'];
+		const published = yahooComplaintSubstitution({
+			enrollmentState: 'not_started',
+			hasCfblAddress: true,
+		});
+		expect(published.source).toBe('cfbl_address');
+		expect(CFBL_COMPLAINT_SPEC.grade.confidence).toBe('high');
+		expect(RANKS.indexOf(published.confidence)).toBe(
+			RANKS.indexOf(CFBL_COMPLAINT_SPEC.grade.confidence) - 1
+		);
 	});
 
 	it('never blocks and never errors, in EVERY state and both feed configurations', () => {
@@ -163,7 +191,7 @@ describe('the substitution table always yields a usable gate', () => {
 });
 
 /**
- * `thresholdRate` + `yahooComplaintGateFails` are the contract P3-8 consumes,
+ * `thresholdRate` + `compareYahooComplaintRate` are the contract P3-8 consumes,
  * and the shipped gate publishes a field of the same name — so the comparison
  * boundary is pinned rather than left to the reader. Gate 3 is
  * `complaint <= 0.1%`: exactly the threshold PASSES, anything above it fails.
@@ -190,12 +218,12 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 	}
 
 	/** The shipped comparator, applied to the substitution the given state selects. */
-	function substitutionFails(
+	function substitutionVerdict(
 		enrollmentState: YahooCflEnrollmentState,
 		rate: number,
 		trailingRate: number | null = null
-	): boolean {
-		return yahooComplaintGateFails(
+	): YahooComplaintComparison {
+		return compareYahooComplaintRate(
 			rateFraction(rate),
 			yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: false }),
 			trailingRate === null ? null : rateFraction(trailingRate)
@@ -225,31 +253,51 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 			hasCfblAddress: false,
 		});
 		expect(enrolled.trip).toEqual({ kind: 'absolute_rate', thresholdRate: DIRECT });
-		expect(substitutionFails('enrolled', DIRECT)).toBe(false);
-		expect(substitutionFails('enrolled', DIRECT + JUST_ABOVE)).toBe(true);
+		expect(substitutionVerdict('enrolled', DIRECT)).toBe('no_breach');
+		expect(substitutionVerdict('enrolled', DIRECT + JUST_ABOVE)).toBe('breach');
 	});
 
 	it('fails the proxy AT the multiple of the cell’s own trailing rate, not above it', () => {
 		const trip = MULTIPLE * TRAILING_UNSUBSCRIBE;
 		// `inclusive_fail`, matching UNSUBSCRIBE_PROXY_SPEC: exactly 3x FAILS.
-		expect(substitutionFails('not_started', trip, TRAILING_UNSUBSCRIBE)).toBe(true);
-		expect(substitutionFails('not_started', trip - JUST_ABOVE, TRAILING_UNSUBSCRIBE)).toBe(false);
+		expect(substitutionVerdict('not_started', trip, TRAILING_UNSUBSCRIBE)).toBe('breach');
+		expect(substitutionVerdict('not_started', trip - JUST_ABOVE, TRAILING_UNSUBSCRIBE)).toBe(
+			'no_breach'
+		);
 	});
 
 	it('never trips the proxy on a trailing rate that cannot be a denominator', () => {
 		// Absent, zero and non-finite baselines are a comparison that cannot be
-		// built — the running gate HOLDS on them (D10), so the published comparator
-		// must not report a breach either.
+		// built — the running gate HOLDS on them with `baseline_not_a_denominator`
+		// (D10). `not_comparable` is the comparator's word for that hold, and it is
+		// deliberately NOT `no_breach`: a caller that reads "cannot tell" as
+		// "healthy" advances a cell on a number nobody has.
 		for (const trailing of [null, 0, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
-			expect(substitutionFails('not_started', 0.9, trailing)).toBe(false);
+			expect(substitutionVerdict('not_started', 0.9, trailing)).toBe('not_comparable');
+		}
+	});
+
+	it('reports an unreadable OBSERVED rate as not comparable on BOTH trip kinds', () => {
+		// The running gate's `own_rate_unmeasurable` hold, in comparator form. An
+		// `Infinity` must not be laundered into a confident breach against a real
+		// threshold, and it must not be reported as healthy either — on either
+		// branch, whatever the baseline says.
+		for (const observed of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(substitutionVerdict('enrolled', observed)).toBe('not_comparable');
+			expect(substitutionVerdict('enrolled', observed, TRAILING_UNSUBSCRIBE)).toBe(
+				'not_comparable'
+			);
+			expect(substitutionVerdict('not_started', observed, TRAILING_UNSUBSCRIBE)).toBe(
+				'not_comparable'
+			);
 		}
 	});
 
 	it('ignores the trailing rate entirely on an absolute trip point', () => {
 		// The baseline is an argument of the COMPARATOR, not of the trip point: a
 		// feedback-loop cell compares against 0.1% whatever its history says.
-		expect(substitutionFails('enrolled', DIRECT + JUST_ABOVE, 1)).toBe(true);
-		expect(substitutionFails('enrolled', DIRECT, 0)).toBe(false);
+		expect(substitutionVerdict('enrolled', DIRECT + JUST_ABOVE, 1)).toBe('breach');
+		expect(substitutionVerdict('enrolled', DIRECT, 0)).toBe('no_breach');
 	});
 });
 
