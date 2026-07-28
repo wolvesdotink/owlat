@@ -1,0 +1,687 @@
+/**
+ * HOSTILE INPUT. The reviewer's question for this piece is precedence and
+ * monotonic safety: prove that NO input — crafted, stale, degenerate or hostile
+ * — can increase a share while a hard stop is active or the data is thin.
+ *
+ * So this file is written as an attack, not as coverage. Each case is an
+ * attempt to reach the one branch that raises a share, and each asserts that
+ * the attempt failed.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { nextShare } from '../controller';
+import { capacityCeiling, isEvaluationWindowElapsed } from '../controllerBounds';
+import { RAMP_AIMD } from '../controllerConfig';
+import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
+import { aggregateRampGates } from '../gateEvaluation';
+import type { RampGateEvaluation } from '../gateTypes';
+import type { RampControllerInput } from '../controllerTypes';
+import {
+	breachedEvaluation,
+	cleanEvaluation,
+	controllerInput,
+	DAY,
+	failing,
+	HOUR,
+	mixState,
+	NOW,
+	passing,
+	thinEvaluation,
+} from './controllerFixtures';
+
+/** An evaluation crafted to look as green as a caller could possibly make it. */
+function forgedPerfection(now = NOW): RampGateEvaluation {
+	return {
+		...aggregateRampGates({
+			perGate: [passing('hard_bounce'), passing('deferral'), passing('complaint')],
+			previousCleanStreak: Number.MAX_SAFE_INTEGER,
+			now,
+		}),
+		// Hand-forged fields the aggregator would never emit together.
+		cleanStreak: Number.MAX_SAFE_INTEGER,
+		verdict: 'pass',
+	};
+}
+
+const HOSTILE_NUMBERS = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+
+describe('a crafted snapshot cannot bypass a hard stop', () => {
+	const attacks: ReadonlyArray<[string, Partial<RampControllerInput>]> = [
+		['kill switch', { isKillSwitchEngaged: true }],
+		[
+			'abuse status',
+			{
+				signals: { isSendingAllowed: false, isCircuitBreakerOpen: false, isPoolBlocklisted: false },
+			},
+		],
+		[
+			'circuit breaker',
+			{ signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false } },
+		],
+		[
+			'critical blocklist',
+			{ signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true } },
+		],
+		['active freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + DAY }) }],
+		['unreadable freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + 10_000 * DAY }) }],
+	];
+
+	for (const [name, overrides] of attacks) {
+		it(`never increases past the ${name}`, () => {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: Number.MAX_SAFE_INTEGER }),
+					evaluation: forgedPerfection(),
+					capacity: { kind: 'projected', warmingCapRemaining: 1e9, projectedVolume: 1 },
+					...overrides,
+				})
+			);
+			expect(decision.direction).not.toBe('increase');
+			expect(decision.share).toBeLessThanOrEqual(0.4);
+		});
+	}
+});
+
+describe('a forged snapshot cannot buy more than one step', () => {
+	it('caps a MAX_SAFE_INTEGER clean streak at exactly one additive step', () => {
+		const decision = nextShare(
+			controllerInput({ mix: mixState({ share: 0.4 }), evaluation: forgedPerfection() })
+		);
+		expect(decision.share).toBe(0.45);
+		expect(decision.reason).toBe('healthy');
+	});
+
+	it('a CRAFTED graduation pin cannot buy more than one step either', () => {
+		// The most valuable row an attacker (or a corrupt write) could plant: a
+		// graduation instant plus an ancient green clock on a cell sitting at the
+		// initial 2%. The graduation rung may only hold or lower, so this is worth
+		// exactly one +5pp step — the same as any other clean window.
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					cleanStreak: 1,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+				}),
+				evaluation: forgedPerfection(),
+			})
+		);
+		expect(decision.share).toBe(0.07);
+		expect(decision.reason).toBe('healthy');
+		expect(decision.share).toBeLessThanOrEqual(0.02 + 0.05);
+	});
+
+	it('a crafted pin cannot buy a step the window has already been paid for', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					// K_CLEAN already satisfied, so the window anchor is the ONLY thing
+					// left between this crafted row and a step.
+					cleanStreak: 3,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+					lastCountedAt: NOW - 1_000,
+				}),
+				evaluation: forgedPerfection(),
+			})
+		);
+		expect(decision.share).toBe(0.02);
+		expect(decision.reason).toBe('window_open');
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('a crafted pin cannot skip K_CLEAN', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.02,
+					graduatedAt: NOW - 6 * DAY,
+					greenSince: NOW - 20 * DAY,
+				}),
+				// One clean window only: nowhere near K_CLEAN.
+				evaluation: cleanEvaluation(0),
+			})
+		);
+		expect(decision.share).toBe(0.02);
+		expect(decision.reason).toBe('building_confidence');
+	});
+
+	it('replaying the SAME evaluation INSIDE one window buys nothing at all', () => {
+		const evaluation = forgedPerfection();
+		let share = 0.4;
+		let lastCountedAt: number | undefined;
+		// The first call has no anchor to have counted against, so it buys the one
+		// step a clean window is worth...
+		const first = nextShare(controllerInput({ mix: mixState({ share }), evaluation }));
+		share = first.share;
+		lastCountedAt = first.countedAt ?? lastCountedAt;
+		expect(share).toBe(0.45);
+		expect(lastCountedAt).toBe(NOW);
+
+		// ...and every replay against the SAME window buys zero, however many times
+		// it is fired. Carrying the anchor forward is what the cron does.
+		for (let replay = 0; replay < 2; replay += 1) {
+			const decision = nextShare(
+				controllerInput({ mix: mixState({ share, cleanStreak: 3, lastCountedAt }), evaluation })
+			);
+			expect(decision.reason).toBe('window_open');
+			expect(decision.direction).toBe('hold');
+			expect(decision.share).toBe(0.45);
+			// A replay is not a counted window, so it must not push the anchor out.
+			expect(decision.countedAt).toBeUndefined();
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+		}
+		expect(share).toBe(0.45);
+	});
+
+	it('buys exactly one step per ELAPSED window, not one per call', () => {
+		let share = 0.4;
+		let lastCountedAt: number | undefined;
+		let now = NOW;
+		for (let window = 0; window < 3; window += 1) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share, cleanStreak: 3, lastCountedAt }),
+					// A FRESH aggregate per window, because that is what a real tick
+					// produces: replaying ONE object across three advanced clocks would
+					// be the staleness attack below, not the window-spacing rule.
+					evaluation: forgedPerfection(now),
+					now,
+				})
+			);
+			expect(decision.reason).toBe('healthy');
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+			now += RAMP_AIMD.evaluationWindowMs;
+		}
+		expect(share).toBe(0.55);
+	});
+});
+
+/**
+ * EVIDENCE HAS AN EXPIRY.
+ *
+ * The window anchor spaces two decisions apart; it says nothing about how old
+ * the EVIDENCE behind them is. Without a freshness rule, one aggregate computed
+ * once and replayed on the following windows buys a step per window for ever —
+ * the cell's clock advances, the evidence never does. Both directions of the
+ * shipped freshness/skew model are pinned here: too old, and stamped ahead of
+ * the clock.
+ */
+describe('a stale or replayed evaluation can never buy a step', () => {
+	const { maxEvidenceAgeMs, maxFutureSkewMs } = RAMP_GATE_THRESHOLDS;
+
+	it('holds on an aggregate older than the evidence-age allowance', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3 }),
+				evaluation: cleanEvaluation(50, NOW - 400 * DAY),
+			})
+		);
+		expect(decision.reason).toBe('evidence_stale');
+		expect(decision.direction).toBe('hold');
+		expect(decision.share).toBe(0.4);
+	});
+
+	it('holds one millisecond past the allowance and steps one millisecond inside it', () => {
+		const decide = (evaluatedAt: number) =>
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+		expect(decide(NOW - maxEvidenceAgeMs).reason).toBe('healthy');
+		expect(decide(NOW - maxEvidenceAgeMs - 1).reason).toBe('evidence_stale');
+	});
+
+	it('holds on an aggregate stamped further ahead of the clock than the skew allowance', () => {
+		const decide = (evaluatedAt: number) =>
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+		expect(decide(NOW + maxFutureSkewMs).reason).toBe('healthy');
+		expect(decide(NOW + maxFutureSkewMs + 1).reason).toBe('evidence_stale');
+	});
+
+	it('holds on an aggregate with no usable timestamp at all', () => {
+		for (const evaluatedAt of HOSTILE_NUMBERS) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+			expect(decision.reason).toBe('evidence_stale');
+			expect(decision.direction).toBe('hold');
+		}
+	});
+
+	it('replaying ONE aggregate across elapsed windows buys exactly one step, then nothing', () => {
+		// The attack the window anchor alone does not stop: hold the evidence
+		// still, advance the clock a day at a time. The first window is real and is
+		// paid for; every later one is a replay of evidence that has expired.
+		const evaluation = forgedPerfection();
+		let share = 0.4;
+		let lastCountedAt: number | undefined;
+		let now = NOW;
+		const reasons: string[] = [];
+		for (let window = 0; window < 5; window += 1) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share, cleanStreak: 3, lastCountedAt }),
+					evaluation,
+					now,
+				})
+			);
+			reasons.push(decision.reason);
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+			// Three days a tick: comfortably past both the counted-window spacing and
+			// the evidence-age allowance, so only the FIRST window is real evidence.
+			now += 3 * DAY;
+		}
+		expect(reasons[0]).toBe('healthy');
+		expect(reasons.slice(1)).toEqual([
+			'evidence_stale',
+			'evidence_stale',
+			'evidence_stale',
+			'evidence_stale',
+		]);
+		expect(share).toBe(0.45);
+	});
+
+	it('still lowers nothing on stale evidence — a hold is a hold in both directions', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3 }),
+				evaluation: breachedEvaluation('deferral', { now: NOW - 400 * DAY }),
+			})
+		);
+		expect(decision.reason).toBe('evidence_stale');
+		expect(decision.share).toBe(0.4);
+		expect(decision.freeze?.until).toBeUndefined();
+	});
+});
+
+describe('degenerate numbers fail closed', () => {
+	it('never increases from a stored share outside [0, 1]', () => {
+		for (const share of [-5, -0.0001, 1.5, 42, ...HOSTILE_NUMBERS]) {
+			const decision = nextShare(controllerInput({ mix: mixState({ share }) }));
+			expect(decision.reason).toBe('share_unreadable');
+			expect(decision.direction).toBe('hold');
+			expect(decision.share).toBeGreaterThanOrEqual(0);
+			expect(decision.share).toBeLessThanOrEqual(1);
+		}
+	});
+
+	it('holds rather than ramping when the capacity projection is unreadable', () => {
+		for (const bad of [...HOSTILE_NUMBERS, -1]) {
+			expect(
+				capacityCeiling({ kind: 'projected', warmingCapRemaining: bad, projectedVolume: 1_000 })
+			).toBeNull();
+			expect(
+				capacityCeiling({ kind: 'projected', warmingCapRemaining: 1_000, projectedVolume: bad })
+			).toBeNull();
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.3 }),
+					capacity: { kind: 'projected', warmingCapRemaining: bad, projectedVolume: 1_000 },
+				})
+			);
+			expect(decision.direction).toBe('hold');
+			expect(decision.reason).toBe('capacity_unknown');
+		}
+	});
+
+	it('treats a ZERO-VOLUME cell as unconstrained by capacity, not as infinite headroom', () => {
+		// The two readings that both mean "nothing bounds this cell" are DIFFERENT
+		// SHAPES on purpose: "no projection exists yet" and "a real projection of
+		// zero volume" are the same ceiling but not the same fact, and a magic pair
+		// of zeros standing for the first would make them indistinguishable.
+		expect(capacityCeiling({ kind: 'unconstrained' })).toBe(1);
+		expect(capacityCeiling({ kind: 'projected', warmingCapRemaining: 0, projectedVolume: 0 })).toBe(
+			1
+		);
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.3 }),
+				capacity: { kind: 'unconstrained' },
+				// A cell with no volume cannot reach any sample floor, so the gates hold
+				// and the share does not move — the capacity ceiling never gets a say.
+				evaluation: thinEvaluation(9),
+			})
+		);
+		expect(decision.share).toBe(0.3);
+		expect(decision.reason).toBe('holding');
+	});
+
+	it('never divides its way to an increase on a zero cap with real volume', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.3 }),
+				capacity: { kind: 'projected', warmingCapRemaining: 0, projectedVolume: 1_000 },
+			})
+		);
+		// The ceiling pulls the cell back hard — but NOT past the soft floor. No
+		// gate failed here, and only a gate breach or a hard stop may take a cell
+		// to zero; a green cell keeps the trickle that lets it be re-measured.
+		expect(decision.share).toBe(0.01);
+		expect(decision.reason).toBe('capacity_ceiling');
+		expect(decision.direction).toBe('decrease');
+	});
+
+	it('cannot turn the ceiling floor into an increase for a cell below it', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.005 }),
+				capacity: { kind: 'projected', warmingCapRemaining: 0, projectedVolume: 1_000 },
+			})
+		);
+		expect(decision.share).toBe(0.005);
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('never grants graduation off a degenerate green clock', () => {
+		for (const greenSince of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			const decision = nextShare(
+				controllerInput({ mix: mixState({ share: 1, cleanStreak: 40, greenSince }) })
+			);
+			// The clock restarts at `now`: a stored instant we cannot trust may only
+			// ever DELAY a pin, never grant one.
+			expect(decision.reason).not.toBe('graduated');
+			expect(decision.graduatedAt).toBeUndefined();
+			expect(decision.greenSince).toBe(NOW);
+		}
+	});
+
+	it('never carries a degenerate graduation instant back onto the row', () => {
+		// The pin is the one stored instant a DOWNSTREAM reader acts on, so an
+		// unreadable one must not survive a hold: the decision function ignores it
+		// either way, but the row it writes back would keep saying "graduated".
+		for (const graduatedAt of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			for (const evaluation of [thinEvaluation(3), cleanEvaluation(3)]) {
+				const decision = nextShare(
+					controllerInput({ mix: mixState({ share: 0.5, graduatedAt }), evaluation })
+				);
+				expect(decision.graduatedAt).toBeUndefined();
+			}
+		}
+	});
+
+	it('never carries a degenerate GREEN-SINCE instant back onto the row either', () => {
+		// Same class of defect, same downstream readers: the holding rungs write
+		// `greenSince` straight back onto the row's own `greenSince` column, so an unreadable
+		// stored instant would report the cell as green since NaN — or since a
+		// moment in the future — until something else happened to overwrite it.
+		for (const greenSince of [0, -1, Number.NaN, NOW + DAY, Number.POSITIVE_INFINITY]) {
+			const held = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince }),
+					evaluation: thinEvaluation(3),
+				})
+			);
+			expect(held.reason).toBe('holding');
+			expect(held.greenSince).toBeUndefined();
+
+			// And through the rung that returns the held state completely untouched.
+			const pinned = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince }),
+					isKillSwitchEngaged: true,
+				})
+			);
+			expect(pinned.reason).toBe('kill_switch');
+			expect(pinned.greenSince).toBeUndefined();
+		}
+		// THE CONTROL, and it has to run through a rung that returns `held`
+		// VERBATIM. The thin-data rung above deliberately clears `greenSince` for
+		// every input (the graduation clock stops on unmeasured evidence), so it
+		// could never distinguish "sanitised away" from "held unchanged". The
+		// rungs whose contract is the carried-forward instant are `kill_switch`,
+		// `clock_unusable`, `share_unreadable` and `frozen` — use two of them.
+		const readable = NOW - 3 * DAY;
+		expect(
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince: readable }),
+					isKillSwitchEngaged: true,
+				})
+			).greenSince
+		).toBe(readable);
+		expect(
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince: readable, frozenUntil: NOW + HOUR }),
+					evaluation: cleanEvaluation(3),
+				})
+			).greenSince
+		).toBe(readable);
+	});
+
+	it('snaps a corrupt phase ceiling DOWN to the lowest rung, never up', () => {
+		for (const ceiling of [Number.NaN, -1, 0, 0.24, undefined]) {
+			const decision = nextShare(
+				controllerInput({ mix: mixState({ share: 0.9, phaseCeiling: ceiling }) })
+			);
+			expect(decision.phaseCeiling).toBe(0.25);
+			expect(decision.direction).not.toBe('increase');
+		}
+		// 1.9 is above every rung: it snaps DOWN to 1, not up to 1.9.
+		expect(
+			nextShare(controllerInput({ mix: mixState({ share: 0.9, phaseCeiling: 1.9 }) })).phaseCeiling
+		).toBe(1);
+	});
+
+	it('treats a corrupt clean streak as zero rather than as instant confidence', () => {
+		for (const streak of [Number.NaN, Number.POSITIVE_INFINITY, -10]) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.3, cleanStreak: streak }),
+					evaluation: { ...cleanEvaluation(0), cleanStreak: streak },
+				})
+			);
+			expect(decision.reason).toBe('building_confidence');
+			expect(decision.share).toBe(0.3);
+		}
+	});
+});
+
+describe('the window anchor, read directly', () => {
+	// The predicate decides whether a clean window may be SPENT, so its
+	// degenerate readings are asserted here rather than inferred through the
+	// ladder: absent or unreadable means "never counted" (a cell with no anchor
+	// must not be stranded), and AHEAD OF THE CLOCK means "just counted" — the
+	// one direction that cannot hand out a step.
+	const cases: ReadonlyArray<[string, number | undefined, boolean]> = [
+		['no anchor at all', undefined, true],
+		['a zero anchor', 0, true],
+		['a negative anchor', -1, true],
+		['NaN', Number.NaN, true],
+		// Both infinities are UNREADABLE rather than "in the future": an anchor no
+		// arithmetic can subtract from would strand the cell forever if it counted
+		// as one, and the step it unlocks still has to be paid for with a green
+		// window and a satisfied K_CLEAN.
+		['+Infinity', Number.POSITIVE_INFINITY, true],
+		['-Infinity', Number.NEGATIVE_INFINITY, true],
+		['an anchor ten days in the future', NOW + 10 * DAY, false],
+		['exactly one window ago', NOW - RAMP_AIMD.evaluationWindowMs, true],
+		['one millisecond short of a window', NOW - RAMP_AIMD.evaluationWindowMs + 1, false],
+		['the current instant', NOW, false],
+		['a week ago', NOW - 7 * DAY, true],
+	];
+
+	for (const [name, anchor, expected] of cases) {
+		it(`${name} reads as ${expected ? 'elapsed' : 'open'}`, () => {
+			expect(isEvaluationWindowElapsed(anchor, NOW)).toBe(expected);
+		});
+	}
+
+	it('an anchor stamped in the future holds the cell instead of unlocking a step', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3, lastCountedAt: NOW + 10 * DAY }),
+			})
+		);
+		expect(decision.reason).toBe('window_open');
+		expect(decision.share).toBe(0.4);
+		expect(decision.countedAt).toBeUndefined();
+	});
+});
+
+describe('clock skew', () => {
+	it('refuses to decide against a non-finite clock', () => {
+		for (const now of HOSTILE_NUMBERS) {
+			const decision = nextShare(controllerInput({ mix: mixState({ share: 0.3 }), now }));
+			expect(decision.reason).toBe('clock_unusable');
+			expect(decision.share).toBe(0.3);
+			expect(decision.freeze?.until).toBeUndefined();
+		}
+	});
+
+	// A FABRICATED EXPIRY IS NOT A FREEZE, AND NOT A LICENCE EITHER. No rung of
+	// this controller can stamp an expiry beyond the longest cooldown it imposes,
+	// so one a century out is a corrupt write. It must not buy a step — and it
+	// must not pin the cell for ever under a sentence promising an instant the
+	// hold ends at, which is why it lands on its own reason.
+	it('a freeze stamped far beyond any cooldown holds under its own reason', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.3, frozenUntil: NOW + 10_000 * DAY }),
+				evaluation: cleanEvaluation(99),
+			})
+		);
+		expect(decision.reason).toBe('freeze_unreadable');
+		expect(decision.share).toBe(0.3);
+		expect(decision.direction).toBe('hold');
+	});
+
+	it('a freeze at the outer edge of the cooldown ladder is still believed', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.3,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: 'gate_breach',
+				}),
+				evaluation: cleanEvaluation(99),
+			})
+		);
+		expect(decision.reason).toBe('frozen');
+	});
+
+	// DEGENERATE STORED STATE MUST NEVER WEAKEN A HARD STOP. The breaker rung
+	// declines to re-charge its retreat only while ITS OWN freeze runs; a corrupt
+	// far-future expiry is nobody's freeze, so the halving still happens.
+	it('a corrupt far-future freeze cannot suppress the breaker retreat', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, frozenUntil: NOW + 10_000 * DAY }),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.share).toBe(0.2);
+		// And a fabricated expiry EXTENDS nothing either: the freeze the row ends up
+		// carrying is the breaker's own 6h, not a century of it.
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freeze?.origin).toBe('breaker');
+	});
+
+	// The same property against a LIVE, legitimate gate-cooldown freeze: it can
+	// run for up to 48h, and for none of those hours may it absorb the retreat a
+	// newly-open circuit breaker costs.
+	it('a live gate-cooldown freeze cannot absorb a newly-open breaker', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: 'gate_breach',
+					cooldownMs: RAMP_AIMD.cooldownMaxMs,
+					freezeStartedAt: NOW - HOUR,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
+			})
+		);
+		expect(decision.reason).toBe('breaker');
+		expect(decision.share).toBe(0.2);
+		// …and the retreat does not SHORTEN the cooldown either. The cell keeps the
+		// 48h it was already serving and the freeze becomes the breaker's: a hard
+		// stop may lengthen a freeze, never cut one. Halving the share while handing
+		// back a day and a half of evaluation windows would invert the AIMD
+		// asymmetry — an infrastructure incident SPEEDING UP a cell that had just
+		// breached a gate.
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
+		expect(decision.freeze?.origin).toBe('breaker');
+		// The BREAKER freeze does not advance the gate ladder — the rung the next
+		// breach doubles from is untouched by an infrastructure incident.
+		expect(decision.freeze?.ladderMs).toBeUndefined();
+	});
+
+	// The mirror: a hard stop that outlasts the running freeze DOES push the end
+	// out. "Only ever lengthened" is a rule in both directions, or it is just
+	// "whichever fired last wins" with extra words.
+	it('a hard stop that outlasts the running freeze pushes the expiry out', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					frozenUntil: NOW + HOUR,
+					freezeReason: 'gate_breach',
+					cooldownMs: 6 * HOUR,
+					freezeStartedAt: NOW - 5 * HOUR,
+				}),
+				signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true },
+			})
+		);
+		expect(decision.reason).toBe('dnsbl');
+		expect(decision.share).toBe(0);
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freeze?.origin).toBe('dnsbl');
+	});
+
+	it('a non-finite stored freeze does not pin the cell forever', () => {
+		const decision = nextShare(
+			controllerInput({ mix: mixState({ share: 0.3, frozenUntil: Number.NaN }) })
+		);
+		expect(decision.reason).toBe('healthy');
+	});
+});
+
+describe('the tripwire cannot be turned into a decrease on its own', () => {
+	it('halves only once a real gate corroborates the seed collapse', () => {
+		const alone = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4 }),
+				evaluation: breachedEvaluation('seed_placement'),
+			})
+		);
+		expect(alone.share).toBe(0.4);
+
+		const corroborated = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4 }),
+				evaluation: aggregateRampGates({
+					perGate: [
+						passing('hard_bounce'),
+						failing('deferral'),
+						passing('complaint'),
+						failing('seed_placement'),
+					],
+					previousCleanStreak: 5,
+					now: NOW,
+				}),
+			})
+		);
+		expect(corroborated.share).toBe(0.2);
+		expect(corroborated.reason).toBe('deferral');
+		expect(corroborated.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownBaseMs);
+	});
+});

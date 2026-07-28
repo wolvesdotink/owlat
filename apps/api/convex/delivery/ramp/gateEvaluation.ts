@@ -41,7 +41,6 @@ import type {
 	RampGateEvaluation,
 	RampGateEvaluationInput,
 	RampGateEvaluator,
-	RampGateId,
 	RampGateResult,
 	RampGateStatus,
 	RampVerdict,
@@ -77,16 +76,17 @@ function contributes(result: RampGateResult): boolean {
  */
 export function aggregateRampGates(args: RampGateAggregationInput): RampGateEvaluation {
 	const { perGate, previousCleanStreak, now } = args;
-	let contributed = false;
-	let contributedVerdict: RampVerdict = 'pass';
-	let failedGate: RampGateId | undefined;
-	let rank = -1;
+	// The WINNING RESULT is carried whole rather than shredded into a rank, a
+	// verdict and a gate id: the verdict and the gate that produced it are one
+	// fact, and keeping them together is what lets the returned union promise a
+	// named gate on every `fail`/`halt` without a re-derivation the type system
+	// would have to be talked into believing.
+	let winner: RampGateResult | undefined;
 	let increaseEvidence = false;
 	const confidences: RampGateConfidence[] = [];
 
 	for (const result of perGate) {
 		if (!contributes(result)) continue;
-		contributed = true;
 		// A GATE THAT MEASURED NOTHING HAS NO CONFIDENCE TO CONTRIBUTE (plan D14).
 		// `measuredConfidence` grades how much a VERDICT is worth, and a hold is not a
 		// verdict — folding a holding gate's grade in would let a column of "not
@@ -95,17 +95,17 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		// to the VERDICT above; they contribute nothing to the grade.
 		if (result.status !== 'insufficient_data') confidences.push(result.confidence);
 		if (result.status === 'pass' && result.mayJustifyIncrease) increaseEvidence = true;
-		const resultRank = STATUS_RANK[result.status];
-		if (resultRank > rank) {
-			rank = resultRank;
-			contributedVerdict = result.status;
-			failedGate = result.status === 'pass' ? undefined : result.gate;
+		// STRICTLY greater: the FIRST gate at the winning rank is the one named,
+		// and gates arrive in the plan's numbering, so the earliest, most
+		// fundamental problem is the one reported.
+		if (winner === undefined || STATUS_RANK[result.status] > STATUS_RANK[winner.status]) {
+			winner = result;
 		}
 	}
 
 	// An evaluation nothing contributed to is evidence-free, and evidence-free is
 	// exactly the state `pass` must not be reachable from.
-	const contributedOrHold: RampVerdict = contributed ? contributedVerdict : 'insufficient_data';
+	const contributedOrHold: RampVerdict = winner === undefined ? 'insufficient_data' : winner.status;
 
 	// THE ASYMMETRY (plan D14). A window in which everything that passed was a
 	// low-confidence gate is not a clean window — it is a window with no evidence
@@ -123,16 +123,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 	// could not measure is neither clean nor dirty.
 	const cleanStreak =
 		verdict === 'pass' ? previous + 1 : verdict === 'insufficient_data' ? previous : 0;
-
-	const requiresCorroboration =
-		(verdict === 'fail' || verdict === 'halt') &&
-		failedGate !== undefined &&
-		CORROBORATION_REQUIRED_RAMP_GATES.has(failedGate);
-
-	return {
-		verdict,
-		...(failedGate === undefined ? {} : { failedGate }),
-		requiresCorroboration,
+	const base = {
 		cleanStreak,
 		perGate,
 		// No DECIDED gate means no measurement, and "we measured nothing" is the
@@ -140,6 +131,24 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		measuredConfidence: confidences.length > 0 ? weakestConfidence(confidences) : 'low',
 		increaseEvidence,
 		evaluatedAt: now,
+	} as const;
+
+	// A BREACH IS NAMED, always: the branch is taken off the winning RESULT, so
+	// the gate that produced the verdict travels with it and no re-derivation is
+	// needed to satisfy the union.
+	if (winner !== undefined && (winner.status === 'fail' || winner.status === 'halt')) {
+		return {
+			...base,
+			verdict: winner.status,
+			failedGate: winner.gate,
+			requiresCorroboration: CORROBORATION_REQUIRED_RAMP_GATES.has(winner.gate),
+		};
+	}
+	return {
+		...base,
+		verdict: verdict === 'pass' ? 'pass' : 'insufficient_data',
+		...(winner === undefined || winner.status === 'pass' ? {} : { failedGate: winner.gate }),
+		requiresCorroboration: false,
 	};
 }
 

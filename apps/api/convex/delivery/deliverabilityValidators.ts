@@ -98,3 +98,49 @@ export const alignmentCheckValidator = v.object({
 	detail: v.string(),
 	remedy: v.string(),
 });
+
+/**
+ * THE RAMP CONTROLLER'S GATES, as a stored vocabulary. Mirrors `RampGateId` in
+ * delivery/ramp/gateTypes.ts; parity is asserted in
+ * delivery/__tests__/mixDecisions.test.ts.
+ */
+export const rampGateIdValidator = v.union(
+	v.literal('hard_bounce'),
+	v.literal('deferral'),
+	v.literal('complaint'),
+	v.literal('engagement_ratio'),
+	v.literal('seed_placement')
+);
+
+/**
+ * WHY A CONTROLLER DECIDED WHAT IT DECIDED, as a stored vocabulary.
+ *
+ * Mirrors `RampDecisionReason` (= `RampControlReason | RampGateId`) in
+ * delivery/ramp/controllerTypes.ts, which is what `controllerNarrative.ts`
+ * switches on EXHAUSTIVELY to guarantee the 100%-human-readable-reason KPI. A
+ * plain `v.string()` at the write boundary would leave that guarantee with no
+ * counterpart in the stored data: a renamed or mistyped reason would land in
+ * `mixDecisions` unremarked and nothing would ever read it back. Parity with
+ * the TS union is asserted in delivery/__tests__/mixDecisions.test.ts.
+ */
+export const rampDecisionReasonValidator = v.union(
+	v.literal('kill_switch'),
+	v.literal('clock_unusable'),
+	v.literal('abuse_status'),
+	v.literal('breaker'),
+	v.literal('dnsbl'),
+	v.literal('frozen'),
+	v.literal('share_unreadable'),
+	v.literal('freeze_unreadable'),
+	v.literal('holding'),
+	v.literal('evidence_stale'),
+	v.literal('awaiting_corroboration'),
+	v.literal('capacity_unknown'),
+	v.literal('window_open'),
+	v.literal('building_confidence'),
+	v.literal('capacity_ceiling'),
+	v.literal('phase_ceiling'),
+	v.literal('healthy'),
+	v.literal('graduated'),
+	rampGateIdValidator
+);

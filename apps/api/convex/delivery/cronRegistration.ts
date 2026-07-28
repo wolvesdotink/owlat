@@ -87,6 +87,29 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// THE AIMD RAMP CONTROLLER (plan D13). Convex owns the decision — it has the
+	// reputation and outcome data, and it reads MTA state through the existing
+	// /ip-reputation sync. Hourly, and BOUNDED per tick: each run takes a slice of
+	// the (stream x destinationProvider) grid and self-schedules for the rest.
+	//
+	// A cell with no stored share is skipped, so on a deployment that never opted
+	// into the ramp this cron reads a handful of index misses and writes nothing.
+	crons.hourly(
+		'evaluate deliverability ramp',
+		{ minuteUTC: 40 },
+		internal.delivery.rampControllerCron.runRampController,
+		{}
+	);
+
+	// Ramp decisions share the assignment/outcome retention horizon (90 days):
+	// they explain a record that is gone by then anyway.
+	crons.interval(
+		'cleanup ramp mix decisions',
+		{ hours: 6 },
+		internal.delivery.rampMixDecisions.cleanupExpiredDecisions,
+		{}
+	);
+
 	crons.interval(
 		'cleanup MTA IP readiness alerts',
 		{ hours: 24 },
