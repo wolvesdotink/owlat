@@ -22,14 +22,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import { resolveRampDegradation } from '../degradation';
+import { absent } from './controllerFixtures';
 import {
 	entryAppliesToProvider,
 	RAMP_DEGRADATION_MATRIX,
-	RAMP_FULLY_EQUIPPED,
 	RAMP_INTEGRATION_IDS,
 	RAMP_SUBSTITUTE_SOURCES,
-	type RampIntegrationId,
-	type RampIntegrationPresence,
 } from '../degradationMatrix';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -62,16 +60,38 @@ function sourceWithoutComments(file: string): string {
 		.replace(/^\s*\/\/.*$/gm, '');
 }
 
-describe('no conditional on the decision path names an integration', () => {
+/**
+ * EVERY NON-COMMENT LINE, not only the conditionals.
+ *
+ * The guard used to pre-filter on `if (` / `?` before applying the vocabulary,
+ * which made a bare integration-presence READ — `presence.complaint_feedback_loop`
+ * passed straight into a gate — invisible to it. A read is the same defect as a
+ * branch: it is the decision path consulting an ACCOUNT instead of the fold's
+ * resolution, and it is exactly what this suite exists to forbid. So the
+ * vocabulary now runs over the whole module.
+ */
+describe('the decision path never names an integration', () => {
 	for (const file of DECISION_PATH) {
-		it(`${basename(file)} branches on measurements, never on accounts`, () => {
+		it(`${basename(file)} reads measurements, never accounts`, () => {
 			const offending = sourceWithoutComments(file)
 				.split('\n')
-				.filter((line) => /\bif\s*\(|\?/.test(line))
 				.filter((line) => INTEGRATION_VOCABULARY.test(line));
 			expect(offending).toEqual([]);
 		});
 	}
+});
+
+/**
+ * AND THE GUARD ITSELF IS GUARDED. A vocabulary that matches nothing anywhere
+ * would make every assertion above pass vacuously, so it is pinned against a
+ * module that legitimately DOES name integrations — the table.
+ */
+describe('the vocabulary actually matches integration names', () => {
+	it('fires on the table that names them', () => {
+		const matrix = sourceWithoutComments(join(rampDir, 'degradationMatrix.ts'));
+		const hits = matrix.split('\n').filter((line) => INTEGRATION_VOCABULARY.test(line));
+		expect(hits.length).toBeGreaterThan(0);
+	});
 });
 
 describe('the table has exactly one fold', () => {
@@ -88,14 +108,9 @@ describe('the table has exactly one fold', () => {
 		expect(inputs).toMatch(/degradedStreamConfig\(/);
 		expect(inputs).toMatch(/degradedCeilingCap\(/);
 		expect(inputs).toMatch(/usesTrailingBaseline\(/);
+		expect(inputs).toMatch(/usesUnsubscribeProxy\(/);
 	});
 });
-
-function absent(id: RampIntegrationId): RampIntegrationPresence {
-	const presence: Record<RampIntegrationId, boolean> = { ...RAMP_FULLY_EQUIPPED };
-	presence[id] = false;
-	return presence;
-}
 
 describe('every table entry is exercised', () => {
 	it('declares an entry for every integration, and no orphan entries', () => {

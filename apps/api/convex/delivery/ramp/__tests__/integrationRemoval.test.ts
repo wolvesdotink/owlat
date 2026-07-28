@@ -32,13 +32,10 @@ import {
 	resolveRampDegradation,
 	usesTrailingBaseline,
 } from '../degradation';
-import {
-	RAMP_FULLY_EQUIPPED,
-	type RampIntegrationId,
-	type RampIntegrationPresence,
-} from '../degradationMatrix';
+import { RAMP_FULLY_EQUIPPED } from '../degradationMatrix';
 import { rampCellConfidence } from '../measurementConfidence';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+import { absent } from './controllerFixtures';
 
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
@@ -48,12 +45,6 @@ vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
 	};
 });
 
-function without(id: RampIntegrationId): RampIntegrationPresence {
-	const presence: Record<RampIntegrationId, boolean> = { ...RAMP_FULLY_EQUIPPED };
-	presence[id] = false;
-	return presence;
-}
-
 describe('removing a connected integration degrades within one window', () => {
 	it('falls back to the substitute gate the moment the reference transport goes', () => {
 		const before = resolveRampDegradation({
@@ -61,7 +52,7 @@ describe('removing a connected integration degrades within one window', () => {
 			provider: 'gmail',
 		});
 		const after = resolveRampDegradation({
-			presence: without('reference_transport'),
+			presence: absent('reference_transport'),
 			provider: 'gmail',
 		});
 		expect(usesTrailingBaseline(before)).toBe(false);
@@ -72,7 +63,7 @@ describe('removing a connected integration degrades within one window', () => {
 
 	it('falls back to SMTP classification the moment SNDS goes', () => {
 		const after = resolveRampDegradation({
-			presence: without('microsoft_snds'),
+			presence: absent('microsoft_snds'),
 			provider: 'microsoft',
 		});
 		expect(after.substitutes).toEqual(['smtp_classification']);
@@ -81,7 +72,7 @@ describe('removing a connected integration degrades within one window', () => {
 
 	it('falls back to the unsubscribe proxy the moment the feedback loop goes', () => {
 		const after = resolveRampDegradation({
-			presence: without('complaint_feedback_loop'),
+			presence: absent('complaint_feedback_loop'),
 			provider: 'other',
 		});
 		expect(after.substitutes).toContain('unsubscribe_rate_proxy');
@@ -95,7 +86,7 @@ describe('removing a connected integration degrades within one window', () => {
 describe('the confidence drop names the integration that would restore it', () => {
 	it('names Google Postmaster on the gmail cell', () => {
 		const degradation = resolveRampDegradation({
-			presence: without('google_postmaster'),
+			presence: absent('google_postmaster'),
 			provider: 'gmail',
 		});
 		const confidence = rampCellConfidence({ degradation, evaluated: 'high' });
@@ -108,7 +99,7 @@ describe('the confidence drop names the integration that would restore it', () =
 
 	it('names seed mailboxes — the one absence with no substitute at all', () => {
 		const degradation = resolveRampDegradation({
-			presence: without('seed_mailboxes'),
+			presence: absent('seed_mailboxes'),
 			provider: 'gmail',
 		});
 		expect(degradation.substitutes).toHaveLength(0);
@@ -122,7 +113,7 @@ describe('the confidence drop names the integration that would restore it', () =
 
 describe('the ramp continues at reduced speed rather than halting', () => {
 	const degradation = resolveRampDegradation({
-		presence: without('reference_transport'),
+		presence: absent('reference_transport'),
 		provider: 'gmail',
 	});
 	const base = RAMP_STREAM_CONFIGS.campaign;
