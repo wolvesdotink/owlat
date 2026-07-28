@@ -3,6 +3,7 @@ import {
 	evaluateSeedPlacementGate,
 	resolveSeedTripwire,
 	SEED_COLLAPSE_THRESHOLD,
+	SEED_GATE_CONFIDENCE,
 	SEED_MIN_OBSERVATIONS,
 	SEED_REACHED_THRESHOLD,
 	SEED_REFERENCE_TOLERANCE,
@@ -103,8 +104,8 @@ describe('the roll-up is a status, not a gauge (D17)', () => {
 		expect(rollup.reference).toBe('no_reference_arm');
 	});
 
-	it('never claims more than low confidence — seeds are a weak signal and say so', () => {
-		expect(rollup.confidence).toBe('low');
+	it('never claims more than the shared seed grade — seeds are a coarse signal and say so', () => {
+		expect(rollup.confidence).toBe(SEED_GATE_CONFIDENCE);
 	});
 
 	it('flags a probe that vanished, the outcome no other signal surfaces', () => {

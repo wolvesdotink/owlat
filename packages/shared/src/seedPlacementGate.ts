@@ -20,6 +20,22 @@
  * Standalone there is no reference arm and the absolute clause is the whole
  * gate (D3's substitution).
  *
+ * THE DIVISION OF LABOUR, because gate 5 has exactly one implementation and it
+ * is this one:
+ *
+ *   - THIS MODULE owns the MEASUREMENT: the per-provider roll-up, the
+ *     thresholds and the tolerance that turn probes into a STATUS, the minimum
+ *     sample, the corroboration rule, and the confidence a seed reading carries
+ *     (`SEED_GATE_CONFIDENCE`). `analytics/seedPlacement.getGateVerdict` is the
+ *     Convex surface that feeds it real probes.
+ *   - `delivery/ramp/seedGate.ts` owns the TRANSLATION: it consumes the
+ *     `SeedProviderRollup` statuses produced here and restates them in the
+ *     controller's `RampGateResult` vocabulary (freshness cascade, reason
+ *     codes, the aggregator's precedence). It derives NO rate of its own and
+ *     declares NO threshold of its own — a second home for the 90 % line is a
+ *     second answer to "did the seeds reach the inbox", and the controller and
+ *     the dashboard must never be able to disagree about a number (ADR-0042).
+ *
  * Pure: no clock, no I/O, every input a parameter (D15).
  */
 
@@ -93,10 +109,21 @@ export type SeedPlacementStatus =
 	| 'collapse_suspected';
 
 /**
- * What a seed reading is worth. D14/D17 — say the quiet part out loud: seeds
- * are never high confidence, so the only values are `none` and `low`.
+ * WHAT A SEED READING IS WORTH — ONE ANSWER, ONE HOME.
+ *
+ * The plan's "gates, degraded honestly" table grades gate 5 MEDIUM: a small
+ * sample, but a DIRECT observation of the spam folder rather than a proxy for
+ * one. That grade is declared here, beside the thresholds that produce the
+ * reading, and the controller's gate-5 result imports it (`SEED_TRIPWIRE` in
+ * `delivery/ramp/gateGrades.ts`) instead of restating it — two spellings of one
+ * confidence level is two different sentences on one screen.
+ *
+ * `none` is not a weaker grade, it is the ABSENCE of one: below the minimum
+ * sample there is no reading to grade (D10 — insufficient_data HOLDS).
  */
-export type SeedConfidence = 'none' | 'low';
+export const SEED_GATE_CONFIDENCE = 'medium';
+
+export type SeedConfidence = 'none' | typeof SEED_GATE_CONFIDENCE;
 
 /**
  * The own arm's standing against the reference arm — gate 5's second clause,
@@ -194,7 +221,7 @@ export function summarizeSeedProvider(
 		provider,
 		status,
 		sampleSize: own.sampleSize,
-		confidence: 'low',
+		confidence: SEED_GATE_CONFIDENCE,
 		anyMissing: own.anyMissing,
 		reference: referenceStatus,
 		referenceSampleSize: reference.sampleSize,
@@ -380,7 +407,7 @@ export function evaluateSeedPlacementGate(input: {
 		return {
 			verdict: 'fail',
 			reason: `seed_tripwire_corroborated:${failedProviders.join(',')}`,
-			confidence: 'low',
+			confidence: SEED_GATE_CONFIDENCE,
 			failedProviders,
 			suspectProviders,
 		};
@@ -401,7 +428,7 @@ export function evaluateSeedPlacementGate(input: {
 		return {
 			verdict: 'insufficient_data',
 			reason: `seed_tripwire_awaiting_corroboration:${suspectProviders.join(',')}`,
-			confidence: 'low',
+			confidence: SEED_GATE_CONFIDENCE,
 			failedProviders: [],
 			suspectProviders,
 		};
@@ -410,7 +437,7 @@ export function evaluateSeedPlacementGate(input: {
 	return {
 		verdict: 'pass',
 		reason: 'seeds_reaching_inbox',
-		confidence: 'low',
+		confidence: SEED_GATE_CONFIDENCE,
 		failedProviders: [],
 		suspectProviders,
 	};

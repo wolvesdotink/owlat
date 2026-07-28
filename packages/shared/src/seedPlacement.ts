@@ -119,6 +119,7 @@ export interface SeedProbeWorkPage {
 export {
 	SEED_PLACEMENTS,
 	classifySeedFolder,
+	isSeedPlacementReached,
 	type SeedPlacement,
 	type SeedFolderClassification,
 } from './seedPlacementFolders';
@@ -131,6 +132,7 @@ import type { SeedPlacement } from './seedPlacementFolders';
 // `@owlat/shared/seedPlacement` stays the one import surface.
 export {
 	SEED_COLLAPSE_THRESHOLD,
+	SEED_GATE_CONFIDENCE,
 	SEED_MIN_OBSERVATIONS,
 	SEED_REACHED_THRESHOLD,
 	SEED_REFERENCE_TOLERANCE,
