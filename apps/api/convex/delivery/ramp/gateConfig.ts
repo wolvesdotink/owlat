@@ -242,6 +242,21 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 };
 
 /**
+ * The complaint trip point when NO complaint feed exists at all and the
+ * unsubscribe rate has to stand in for one (plan D2 / D14 — see
+ * `./yahooComplaintSignal`).
+ *
+ * Lives next to `RAMP_GATE_THRESHOLDS.complaintMax` and is branded the same way
+ * for the same reason: the substituted threshold and the real one are read at
+ * the same call site, and the controller and the wizard must never be able to
+ * disagree about either number.
+ *
+ * An unsubscribe is a much weaker and much more common signal than a spam
+ * report, so the equivalent trip point is TIGHTENED rather than reused.
+ */
+export const UNSUBSCRIBE_PROXY_COMPLAINT_MAX: RateFraction = rateFraction(0.0005);
+
+/**
  * Per-stream ramp constants (plan D6/D9). Defined ONCE here; the AIMD
  * controller (P3-2) reuses this object rather than re-declaring the numbers.
  *
