@@ -128,7 +128,8 @@ export type WarmingCapVerdict = { binds: true } | { binds: false; why: WarmingCa
  * filters route entries through `isSendProviderReady`, so an enabled but
  * credential-less SES entry alongside the MTA is not a route and must not turn
  * this gate off. Readiness comes from `SendRouteFacts.readyKinds`, which is
- * total over `routeConfig.providers` by contract.
+ * total over the ENABLED entries of `routeConfig.providers` by contract — and
+ * the loop below asks it only about enabled entries, so the two agree exactly.
  *
  * Lives here rather than in the gate because this module already owns both
  * reads — the campaign route row and the relay-domain re-verification.
