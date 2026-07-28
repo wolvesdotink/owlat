@@ -70,8 +70,6 @@ describe('measurement cell card — insufficient data is not a failure', () => {
 				confidence: {
 					level: 'low',
 					improvements: ['send_more_volume'],
-					ownSample: 124,
-					minSample: 400,
 				},
 			})
 		);
@@ -94,7 +92,7 @@ describe('measurement cell card — zero volume', () => {
 				reference: armSummary(),
 				verdict: 'insufficient_data',
 				gates: [holdingGate()],
-				confidence: { level: 'none', improvements: [], ownSample: 0, minSample: 400 },
+				confidence: { level: 'none', improvements: [] },
 			})
 		);
 
@@ -116,8 +114,6 @@ describe('measurement cell card — standalone (no reference arm)', () => {
 				confidence: {
 					level: 'low',
 					improvements: ['connect_reference_transport', 'add_seed_mailboxes'],
-					ownSample: 1000,
-					minSample: 400,
 				},
 			}),
 			null
@@ -143,8 +139,6 @@ describe('measurement cell card — standalone (no reference arm)', () => {
 				confidence: {
 					level: 'low',
 					improvements: ['connect_reference_transport'],
-					ownSample: 1000,
-					minSample: 400,
 				},
 			}),
 			null

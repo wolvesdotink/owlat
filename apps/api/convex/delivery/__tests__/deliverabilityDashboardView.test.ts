@@ -106,6 +106,24 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		improvements: ['send_more_volume'],
 	},
 	{
+		name: 'own arm is huge but the reference arm is a handful of sends — low, not medium',
+		// The two-armed gates are all holding on `reference_sample_below_floor`
+		// here, so anything above `low` would contradict the gate column (D14).
+		own: summary({ sent: 5_000, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		reference: summary({ sent: 2, calibrationSent: 0 }),
+		hasSeedCoverage: true,
+		level: 'low',
+		improvements: ['send_more_volume'],
+	},
+	{
+		name: 'reference arm one send below the bounce floor — still low',
+		own: summary({ sent: 5_000, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		reference: summary({ sent: BELOW_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
+		hasSeedCoverage: true,
+		level: 'low',
+		improvements: ['send_more_volume'],
+	},
+	{
 		name: 'two arms above the bounce floor, calibration slice still thin — medium',
 		own: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: BELOW_ENGAGEMENT_FLOOR }),
 		reference: summary({ sent: ABOVE_BOUNCE_FLOOR, calibrationSent: AT_ENGAGEMENT_FLOOR }),
@@ -149,8 +167,6 @@ describe('dashboardConfidence', () => {
 			});
 			expect(result.level).toBe(testCase.level);
 			expect([...result.improvements].sort()).toEqual([...testCase.improvements].sort());
-			expect(result.ownSample).toBe(testCase.own.sent);
-			expect(result.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagement);
 		});
 	}
 
@@ -169,12 +185,17 @@ describe('dashboardConfidence', () => {
 	});
 
 	it('never asks for volume twice', () => {
-		const result = dashboardConfidence({
-			own: summary({ sent: BELOW_BOUNCE_FLOOR }),
-			reference: summary({ sent: ABOVE_BOUNCE_FLOOR }),
-			hasSeedCoverage: true,
-		});
-		expect(result.improvements.filter((code) => code === 'send_more_volume')).toHaveLength(1);
+		for (const reference of [
+			summary({ sent: ABOVE_BOUNCE_FLOOR }),
+			summary({ sent: BELOW_BOUNCE_FLOOR }),
+		]) {
+			const result = dashboardConfidence({
+				own: summary({ sent: BELOW_BOUNCE_FLOOR }),
+				reference,
+				hasSeedCoverage: true,
+			});
+			expect(result.improvements.filter((code) => code === 'send_more_volume')).toHaveLength(1);
+		}
 	});
 });
 

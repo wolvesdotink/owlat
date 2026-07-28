@@ -122,8 +122,6 @@ export function cellView(
 		confidence: {
 			level: 'high',
 			improvements: [],
-			ownSample: 1000,
-			minSample: 400,
 		},
 		trend: [],
 		...overrides,

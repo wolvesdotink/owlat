@@ -167,9 +167,9 @@ export function buildDashboardTrend(input: {
  *  - `none`   — nothing was sent in the window. Not a problem, not a warning.
  *  - `low`    — one arm only, or a sample below the gates' floors. The ramp
  *               still moves; it just moves on thinner evidence.
- *  - `medium` — two arms, above the bounce/deferral floors, but the engagement
- *               comparison's calibration slice is still too thin.
- *  - `high`   — two arms, every floor met.
+ *  - `medium` — two arms, BOTH above the bounce/deferral floors, but the
+ *               engagement comparison's calibration slice is still too thin.
+ *  - `high`   — two arms, every floor met on both of them.
  */
 export type DashboardConfidenceLevel = 'none' | 'low' | 'medium' | 'high';
 
@@ -185,10 +185,6 @@ export type DashboardConfidenceImprovement =
 export interface DashboardConfidence {
 	readonly level: DashboardConfidenceLevel;
 	readonly improvements: readonly DashboardConfidenceImprovement[];
-	/** Sends observed on the own arm this window — the denominator behind the level. */
-	readonly ownSample: number;
-	/** The floor `ownSample` is measured against, so the UI never hard-codes 400. */
-	readonly minSample: number;
 }
 
 export function dashboardConfidence(input: {
@@ -197,25 +193,31 @@ export function dashboardConfidence(input: {
 	readonly hasSeedCoverage: boolean;
 }): DashboardConfidence {
 	const { own, reference, hasSeedCoverage } = input;
-	const ownSample = own.sent;
-	const minSample = RAMP_GATE_SAMPLE_FLOORS.engagement;
+	// The floor the two-armed gates actually apply to a raw send count. The
+	// calibration slice has its own, larger floor below.
+	const armFloor = RAMP_GATE_SAMPLE_FLOORS.hardBounce;
+	const calibrationFloor = RAMP_GATE_SAMPLE_FLOORS.engagement;
 	const improvements: DashboardConfidenceImprovement[] = [];
 	if (reference === null) improvements.push('connect_reference_transport');
 	if (!hasSeedCoverage) improvements.push('add_seed_mailboxes');
 
-	if (ownSample <= 0) {
-		return { level: 'none', improvements, ownSample, minSample };
+	if (own.sent <= 0) {
+		return { level: 'none', improvements };
 	}
-	if (ownSample < RAMP_GATE_SAMPLE_FLOORS.hardBounce) improvements.push('send_more_volume');
+	// BOTH arms are measured against the floor, not just the own one: a cell
+	// whose reference arm has a handful of sends has every two-armed gate
+	// holding on `reference_sample_below_floor`, so calling that `medium`
+	// would put a confident number beside a column of "not enough data yet".
+	const thin = own.sent < armFloor || (reference !== null && reference.sent < armFloor);
+	if (thin) improvements.push('send_more_volume');
 
-	if (reference === null || ownSample < RAMP_GATE_SAMPLE_FLOORS.hardBounce) {
-		return { level: 'low', improvements, ownSample, minSample };
+	if (reference === null || thin) {
+		return { level: 'low', improvements };
 	}
-	const calibrated = own.calibrationSent >= minSample && reference.calibrationSent >= minSample;
-	if (!calibrated && !improvements.includes('send_more_volume')) {
-		improvements.push('send_more_volume');
-	}
-	return { level: calibrated ? 'high' : 'medium', improvements, ownSample, minSample };
+	const calibrated =
+		own.calibrationSent >= calibrationFloor && reference.calibrationSent >= calibrationFloor;
+	if (!calibrated) improvements.push('send_more_volume');
+	return { level: calibrated ? 'high' : 'medium', improvements };
 }
 
 // ============ CELL VIEW ============
