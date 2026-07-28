@@ -131,15 +131,20 @@ describe('one IP: the generated records are correct', () => {
 		sendingIps: ONE_IP,
 		dmarcPolicy: 'none',
 		mailHost: 'mta.example.com',
+		spfInclude: 'spf.owlat.example',
 	});
 
-	it('authorises the one address on BOTH subdomains', () => {
+	it('publishes one SPF record per host, and the one address on the bounce host', () => {
 		const spf = records.filter((r) => r.purpose === 'spf');
 		expect(spf).toHaveLength(3); // mail. + news. + bounces.
-		for (const row of spf) expect(valueOf(row)).toBe('v=spf1 ip4:203.0.113.10 ~all');
+		for (const row of spf.filter((r) => r.subdomain !== 'bounces.example.com')) {
+			expect(valueOf(row)).toBe('v=spf1 include:spf.owlat.example ~all');
+		}
+		const bounce = spf.find((r) => r.subdomain === 'bounces.example.com');
+		expect(valueOf(bounce)).toBe('v=spf1 ip4:203.0.113.10 ~all');
 	});
 
-	it('still gives each subdomain its own DKIM selector', () => {
+	it('still gives each subdomain its own DKIM row under its own host', () => {
 		const dkim = records.filter((r) => r.purpose === 'dkim');
 		expect(dkim).toHaveLength(2);
 		expect(new Set(dkim.map((r) => r.host)).size).toBe(2);
@@ -162,9 +167,15 @@ describe('with no pool IPs the SPF record still renders', () => {
 			domain: 'example.com',
 			sendingIps: [],
 			dmarcPolicy: 'none',
-			relaySpfTerms: ['include:amazonses.com'],
+			spfInclude: 'spf.owlat.example',
+			returnPathRelaySpfTerms: ['include:amazonses.com'],
 		});
 		const spf = records.find((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
-		expect(valueOf(spf)).toBe('v=spf1 include:amazonses.com ~all');
+		expect(valueOf(spf)).toBe('v=spf1 include:spf.owlat.example ~all');
+		// With no pool IPs there is no return-path SPF record to add the relay
+		// terms to, and the wizard invents neither.
+		expect(records.some((r) => r.subdomain === 'bounces.example.com' && r.purpose === 'spf')).toBe(
+			false
+		);
 	});
 });

@@ -173,3 +173,76 @@ describe('D2 — BIMI never blocks anything', () => {
 		expect(offer.ineligibleReason).toBeNull();
 	});
 });
+
+describe('a logo or VMC URL that cannot be published degrades to no record', () => {
+	// A BIMI record is `tag=value` pairs separated by `;` with no escaping, so a
+	// value carrying a separator or whitespace stops meaning what the screen
+	// showed the operator. The offer must refuse it rather than emit it.
+	const eligible = { domain: 'mail.example.com', dmarcPolicy: 'reject' as const };
+
+	const unpublishable = [
+		'http://example.com/logo.svg',
+		'ftp://example.com/logo.svg',
+		'https://example.com/a;b.svg',
+		'https://example.com/a b.svg',
+		'https://example.com/a\tb.svg',
+		'https://example.com/a\nb.svg',
+		'not-a-url',
+		'//example.com/logo.svg',
+	];
+
+	it.each(unpublishable)('rejects %j as a logo URL and emits no record', (logoUrl) => {
+		const offer = offerBimiRecord({ ...eligible, logoUrl });
+		expect(offer.record).toBeNull();
+		expect(offer.rejectedInputs).toEqual(['logoUrl']);
+		// Still an offer, never an error state (D2).
+		expect(offer.offered).toBe(true);
+		expect(offer.required).toBe(false);
+		expect(offer.nag).toBe(false);
+	});
+
+	it.each(unpublishable)('rejects %j as a VMC URL and emits no record', (vmcUrl) => {
+		const offer = offerBimiRecord({ ...eligible, logoUrl: LOGO, vmcUrl });
+		// A logo-only record would look like it carries the certificate it does
+		// not, at exactly the two receivers that need one.
+		expect(offer.record).toBeNull();
+		expect(offer.rejectedInputs).toEqual(['vmcUrl']);
+		expect(offer.offered).toBe(true);
+	});
+
+	it('never emits a value carrying an injected tag separator', () => {
+		const offer = offerBimiRecord({
+			...eligible,
+			logoUrl: 'https://example.com/logo.svg; a=https://evil.example/vmc.pem',
+		});
+		expect(offer.record).toBeNull();
+	});
+
+	it('names BOTH rejected inputs when both are unusable', () => {
+		const offer = offerBimiRecord({ ...eligible, logoUrl: 'nope', vmcUrl: 'also-nope' });
+		expect(offer.rejectedInputs).toEqual(['logoUrl', 'vmcUrl']);
+	});
+
+	it('an ABSENT logo is not a rejection — it is simply no record yet', () => {
+		const offer = offerBimiRecord(eligible);
+		expect(offer.record).toBeNull();
+		expect(offer.rejectedInputs).toEqual([]);
+	});
+
+	it('a well-formed pair still produces the record, VMC tag included', () => {
+		const offer = offerBimiRecord({ ...eligible, logoUrl: LOGO, vmcUrl: VMC });
+		expect(offer.record?.value).toBe(`v=BIMI1; l=${LOGO}; a=${VMC};`);
+		expect(offer.rejectedInputs).toEqual([]);
+	});
+
+	it('an ineligible domain reports no rejections either — it renders nothing', () => {
+		const offer = offerBimiRecord({
+			domain: 'mail.example.com',
+			dmarcPolicy: 'none',
+			logoUrl: 'x',
+		});
+		expect(offer.offered).toBe(false);
+		expect(offer.record).toBeNull();
+		expect(offer.rejectedInputs).toEqual([]);
+	});
+});

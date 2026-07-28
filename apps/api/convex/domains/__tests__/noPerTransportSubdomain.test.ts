@@ -28,14 +28,14 @@ import {
 	type StreamSubdomainRecordSet,
 } from '../streamSubdomainRecords';
 import {
-	DEFAULT_ARM_SELECTOR_SUFFIXES,
+	STREAM_SUBDOMAIN_ROLES,
 	planStreamSubdomains,
 	resolveCellSendingIdentity,
 	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
 
-function layoutOf(domain: string, base: string): SubdomainLayoutProposal {
-	const result = planStreamSubdomains({ domain, dkimSelectorBase: base });
+function layoutOf(domain: string): SubdomainLayoutProposal {
+	const result = planStreamSubdomains({ domain });
 	if (!result.ok) throw new Error(`expected a layout for ${domain}`);
 	return result.proposal;
 }
@@ -46,14 +46,21 @@ function recordSetOf(input: StreamSubdomainRecordInput): StreamSubdomainRecordSe
 	return result.recordSet;
 }
 
-const LAYOUT = layoutOf('example.com', 's1711');
+const LAYOUT = layoutOf('example.com');
+
+/** The selectors the MTA minted for the two sending names. */
+const MINTED = {
+	transactional: { selector: 's1711-mail', recordValue: 'v=DKIM1; k=rsa; p=AAAA' },
+	bulk: { selector: 's1711-news', recordValue: 'v=DKIM1; k=rsa; p=BBBB' },
+} as const;
 
 const BOTH_ARMS: StreamSubdomainRecordInput = {
 	domain: 'example.com',
 	sendingIps: ['203.0.113.10'],
 	dmarcPolicy: 'none',
 	mailHost: 'mta.example.com',
-	dkimSelectorBase: 's1711',
+	spfInclude: 'spf.owlat.example',
+	signingIdentities: MINTED,
 	referenceArmConfigured: true,
 };
 
@@ -76,33 +83,29 @@ describe('both arms of a cell share one sending identity', () => {
 	});
 
 	it('the ONE permitted difference is the DKIM selector', () => {
-		const own = resolveCellSendingIdentity({ layout: LAYOUT, stream: 'campaign', arm: 'own' });
-		const reference = resolveCellSendingIdentity({
-			layout: LAYOUT,
-			stream: 'campaign',
-			arm: 'reference',
-		});
-		expect(own.dkimSelector).not.toBe(reference.dkimSelector);
-	});
-
-	it('a custom per-arm selector suffix still cannot move the domain', () => {
-		const suffixes = { own: 'mta', reference: 'esp' };
+		const armSelectors = { own: 's1711-news', reference: 'esp-key-7' };
 		const own = resolveCellSendingIdentity({
 			layout: LAYOUT,
 			stream: 'campaign',
 			arm: 'own',
-			armSelectorSuffix: suffixes,
+			armSelectors,
 		});
 		const reference = resolveCellSendingIdentity({
 			layout: LAYOUT,
 			stream: 'campaign',
 			arm: 'reference',
-			armSelectorSuffix: suffixes,
+			armSelectors,
 		});
-		expect(own.dkimSelector).toBe('s1711-news-mta');
-		expect(reference.dkimSelector).toBe('s1711-news-esp');
+		expect(own.dkimSelector).not.toBe(reference.dkimSelector);
 		expect(own.fromDomain).toBe(reference.fromDomain);
 		expect(own.dkimDomain).toBe(reference.dkimDomain);
+	});
+
+	it('an arm with no selector yet reports null rather than inventing one', () => {
+		// A derived name would be a selector nothing signs with and nothing
+		// publishes — the exact defect the arm-suffix scheme used to ship.
+		const identity = resolveCellSendingIdentity({ layout: LAYOUT, stream: 'campaign', arm: 'own' });
+		expect(identity.dkimSelector).toBeNull();
 	});
 
 	it('the STREAM is what moves the domain — per-stream is the correct axis', () => {
@@ -122,60 +125,57 @@ describe('THE GUARD: what we sign with is what we published', () => {
 		expect(findUnpublishedSigningSelectors(recordSetOf(BOTH_ARMS))).toEqual([]);
 	});
 
-	it('holds for custom per-arm suffixes too', () => {
-		const recordSet = recordSetOf({
-			...BOTH_ARMS,
-			armSelectorSuffixes: { own: 'mta', reference: 'esp' },
-		});
+	it('holds standalone, where only the own arm has a published row', () => {
+		const recordSet = recordSetOf({ ...BOTH_ARMS, referenceArmConfigured: false });
 		expect(findUnpublishedSigningSelectors(recordSet)).toEqual([]);
 	});
 
-	it('holds standalone, where only the own arm has a published row', () => {
-		const recordSet = recordSetOf({ ...BOTH_ARMS, referenceArmConfigured: false });
+	it('holds when nothing is minted yet — a pending row publishes no selector', () => {
+		const recordSet = recordSetOf({ ...BOTH_ARMS, signingIdentities: {} });
 		expect(findUnpublishedSigningSelectors(recordSet)).toEqual([]);
 	});
 
 	it('the signing selector is EXACTLY the published label for that stream and arm', () => {
 		const recordSet = recordSetOf(BOTH_ARMS);
 		for (const stream of GOVERNED_MESSAGE_TYPES) {
-			for (const arm of ['own', 'reference'] as const) {
-				const identity = resolveCellSendingIdentity({ layout: recordSet.layout, stream, arm });
-				const row = recordSet.records.find(
-					(entry) =>
-						entry.purpose === 'dkim' && entry.arm === arm && entry.subdomain === identity.dkimDomain
-				);
-				expect(row).toBeDefined();
-				expect(row && dkimSelectorLabel(row.host, row.subdomain)).toBe(identity.dkimSelector);
-			}
+			const identity = resolveCellSendingIdentity({
+				layout: recordSet.layout,
+				stream,
+				arm: 'own',
+				armSelectors: recordSet.signingSelectors[STREAM_SUBDOMAIN_ROLES[stream]],
+			});
+			const row = recordSet.records.find(
+				(entry) =>
+					entry.purpose === 'dkim' && entry.arm === 'own' && entry.subdomain === identity.dkimDomain
+			);
+			expect(row).toBeDefined();
+			expect(row && dkimSelectorLabel(row.host, row.subdomain)).toBe(identity.dkimSelector);
 		}
 	});
 
 	it('CAN FAIL: a published selector that drifts from the signed one is reported', () => {
-		// Exactly the shape of the bug this guard exists for — the arm-suffix
-		// default growing a second, divergent copy. Mail would then be signed with
-		// a selector that has no TXT record and DKIM would fail silently for every
-		// message on the subdomain.
+		// Exactly the shape of the bug this guard exists for — the publishing side
+		// reading a rotated selector the signing side did not. Mail would then be
+		// signed with a selector that has no TXT record and DKIM would fail
+		// silently for every message on the subdomain.
 		const recordSet = recordSetOf(BOTH_ARMS);
 		const drifted: StreamSubdomainRecordSet = {
 			...recordSet,
 			records: recordSet.records.map((record) =>
 				record.purpose === 'dkim' && record.arm === 'own'
-					? { ...record, host: record.host.replace('-a._domainkey', '-z._domainkey') }
+					? { ...record, host: record.host.replace('s1711-', 's9999-') }
 					: record
 			),
 		};
 		const mismatches = findUnpublishedSigningSelectors(drifted);
 		expect(mismatches.length).toBeGreaterThan(0);
 		expect(mismatches.every((entry) => entry.arm === 'own')).toBe(true);
-		expect(mismatches[0]?.signsWith).toContain(`-${DEFAULT_ARM_SELECTOR_SUFFIXES.own}`);
+		expect(mismatches[0]?.signsWith).toContain('s1711-');
 	});
 });
 
 describe('the generated records cannot express a per-transport subdomain', () => {
-	const recordSet = recordSetOf({
-		...BOTH_ARMS,
-		armSelectorSuffixes: { own: 'mta', reference: 'esp' },
-	});
+	const recordSet = recordSetOf(BOTH_ARMS);
 	const records = recordSet.records;
 
 	it('no arm gets a sending host of its own', () => {
@@ -204,15 +204,17 @@ describe('the generated records cannot express a per-transport subdomain', () =>
 		}
 	});
 
-	it('the two arms sign under the SAME subdomain with different selectors', () => {
+	it('the two arms sign under the SAME subdomain', () => {
 		const byArm = new Map<string, string>();
 		for (const row of records) {
 			if (row.purpose !== 'dkim' || row.subdomain !== 'news.example.com') continue;
 			byArm.set(row.arm, row.host);
 		}
 		expect(byArm.size).toBe(2);
-		expect(byArm.get('own')).toBe('s1711-news-mta._domainkey.news.example.com');
-		expect(byArm.get('reference')).toBe('s1711-news-esp._domainkey.news.example.com');
+		expect(byArm.get('own')).toBe('s1711-news._domainkey.news.example.com');
+		// The relay's key is the ESP's, so its row is pending — but it is pending
+		// UNDER THE SAME NAME, which is the whole of what D11 permits.
+		expect(byArm.get('reference')).toBe('_domainkey.news.example.com');
 	});
 
 	it('no record host contains a transport name as a SUBDOMAIN label', () => {

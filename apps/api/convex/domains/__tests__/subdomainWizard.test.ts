@@ -3,10 +3,14 @@
  *
  * Pins the proposed layout and the ONE-PASS generation of SPF + a per-subdomain
  * DKIM selector + DMARC for every stream subdomain, including the bounces/VERP
- * host.
+ * host — AND pins that the rows the wizard renders for a host are byte-identical
+ * to the ones the shipped provider adapter generates for that same host. The
+ * panel is mounted next to the shipped table, so "identical" is not a nicety:
+ * two rows labelled SPF with different values for one name is a way to break a
+ * verified domain.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	generateStreamSubdomainRecords,
 	streamSubdomainRecordValue,
@@ -15,17 +19,28 @@ import {
 } from '../streamSubdomainRecords';
 import {
 	SUBDOMAIN_ADVICE_COPY,
-	deriveSubdomainDkimSelectors,
 	planStreamSubdomains,
 	type SubdomainLayoutInput,
 	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
+
+const MINTED_SELECTOR = 'owlat-1711';
+const MINTED_DKIM_VALUE = 'v=DKIM1; k=rsa; p=MIIBIjAN-fixture';
+
+vi.mock('../../lib/emailProviders/mtaIdentity', () => ({
+	createMtaIdentityManager: () => ({
+		registerDomain: () =>
+			Promise.resolve({ selector: MINTED_SELECTOR, dnsRecord: MINTED_DKIM_VALUE }),
+		deleteDomain: () => Promise.resolve(),
+	}),
+}));
 
 const BASE = {
 	domain: 'example.com',
 	sendingIps: ['203.0.113.10', '203.0.113.11'],
 	dmarcPolicy: 'none' as const,
 	mailHost: 'mta.example.com',
+	spfInclude: 'spf.owlat.example',
 };
 
 function layoutOf(input: SubdomainLayoutInput): SubdomainLayoutProposal {
@@ -67,10 +82,9 @@ describe('the proposed layout', () => {
 		expect(layout.subdomainsByRole.bulk.pool).toBe('campaign');
 	});
 
-	it('the bounce host sends nothing, so it has no selector and no pool', () => {
+	it('the bounce host sends nothing, so it has no pool', () => {
 		const bounce = layout.subdomainsByRole.bounce;
 		expect(bounce.sends).toBe(false);
-		expect(bounce.dkimSelectorBase).toBeNull();
 		expect(bounce.pool).toBeNull();
 		expect(layout.bounceHost).toBe('bounces.example.com');
 	});
@@ -90,11 +104,10 @@ describe('the proposed layout', () => {
 		expect(SUBDOMAIN_ADVICE_COPY.no_reputation_inheritance).toMatch(/warm-?up/i);
 	});
 
-	it('derives a DISTINCT selector base per sending subdomain', () => {
-		const selectors = deriveSubdomainDkimSelectors('s1711');
-		expect(selectors.transactional).not.toBe(selectors.bulk);
-		const bases = layout.subdomains.filter((s) => s.sends).map((s) => s.dkimSelectorBase);
-		expect(new Set(bases).size).toBe(bases.length);
+	it('carries no DKIM selector of its own — selectors are minted, not derived', () => {
+		// A selector this module invented would be a name nothing in the system
+		// signs with and nothing publishes. The layout must not offer one.
+		expect(JSON.stringify(layout)).not.toContain('Selector');
 	});
 
 	it('splits a multi-label public suffix at the registrable zone', () => {
@@ -143,45 +156,65 @@ describe('one-pass record generation', () => {
 		}
 	});
 
-	it('publishes ONE SPF record per subdomain, authorising the pool', () => {
+	it('publishes ONE SPF record per subdomain, from the deployment include', () => {
 		const spf = records.filter((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
 		expect(spf).toHaveLength(1);
 		expect(spf[0] && streamSubdomainRecordValue(spf[0])).toBe(
-			'v=spf1 ip4:203.0.113.10 ip4:203.0.113.11 ~all'
+			'v=spf1 include:spf.owlat.example ~all'
 		);
 		expect(spf[0]?.host).toBe('news.example.com');
 		expect(spf[0]?.relativeHost).toBe('news');
 	});
 
-	it('gives each subdomain its OWN DKIM selector under its OWN host', () => {
+	it('never enumerates the pool IPs on a From domain — they authorise the bounce host', () => {
+		for (const row of records.filter((r) => r.subdomain !== 'bounces.example.com')) {
+			expect(streamSubdomainRecordValue(row) ?? '').not.toContain('203.0.113.10');
+		}
+	});
+
+	it('omits the From-domain SPF entirely when no include is configured', () => {
+		// The shipped adapter omits it and logs; a wizard that invented a record in
+		// its place would replace the operator's SPF with a different one.
+		const withoutInclude = recordsOf({ ...BASE, spfInclude: undefined });
+		expect(
+			withoutInclude.filter((r) => r.purpose === 'spf' && r.subdomain !== 'bounces.example.com')
+		).toHaveLength(0);
+	});
+
+	it('gives each subdomain its OWN DKIM row under its OWN host', () => {
 		const dkim = records.filter(isDkim);
 		const hosts = dkim.map((r) => r.host);
-		expect(hosts).toEqual([
-			expect.stringContaining('._domainkey.mail.example.com'),
-			expect.stringContaining('._domainkey.news.example.com'),
-		]);
+		expect(hosts).toEqual(['_domainkey.mail.example.com', '_domainkey.news.example.com']);
 		expect(new Set(hosts).size).toBe(hosts.length);
 	});
 
-	it('a PENDING DKIM row carries no copyable value at all', () => {
+	it('a PENDING DKIM row carries no copyable value and no invented selector', () => {
 		// An empty `p=` is not "blank": RFC 6376 §3.6.1 defines it as a REVOCATION.
 		// On a copy-this-table surface that would revoke the selector the mail is
 		// about to be signed with, so the pending row must structurally have no
-		// value — not an empty one.
+		// value — not an empty one — and no selector label either.
 		const dkim = records.filter(isDkim);
 		expect(dkim).not.toHaveLength(0);
 		for (const row of dkim) {
 			expect(row.key.status).toBe('pending');
 			expect(streamSubdomainRecordValue(row)).toBeNull();
 			expect(JSON.stringify(row)).not.toContain('p=');
+			expect(JSON.stringify(row)).not.toContain('selector');
 		}
 	});
 
-	it('carries the DKIM public key through when the identity already exists', () => {
+	it('carries the MINTED selector and its published value once the name exists', () => {
 		const dkim = recordsOf({
 			...BASE,
-			dkimPublicKeys: { transactional: 'AAAA', bulk: 'BBBB' },
+			signingIdentities: {
+				transactional: { selector: 'owlat-a', recordValue: 'v=DKIM1; k=rsa; p=AAAA' },
+				bulk: { selector: 'owlat-b', recordValue: 'v=DKIM1; k=rsa; p=BBBB' },
+			},
 		}).filter(isDkim);
+		expect(dkim.map((r) => r.host)).toEqual([
+			'owlat-a._domainkey.mail.example.com',
+			'owlat-b._domainkey.news.example.com',
+		]);
 		expect(dkim.map((r) => streamSubdomainRecordValue(r))).toEqual([
 			'v=DKIM1; k=rsa; p=AAAA',
 			'v=DKIM1; k=rsa; p=BBBB',
@@ -245,18 +278,23 @@ describe('one-pass record generation', () => {
 		expect(spf && streamSubdomainRecordValue(spf)).toContain('ip4:203.0.113.10');
 	});
 
-	it('authorises a relay arm on the SAME record rather than a second one', () => {
-		const withRelay = recordsOf({ ...BASE, relaySpfTerms: ['include:amazonses.com'] });
-		const spf = withRelay.filter((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
-		expect(spf).toHaveLength(1);
-		expect(spf[0] && streamSubdomainRecordValue(spf[0])).toBe(
-			'v=spf1 ip4:203.0.113.10 ip4:203.0.113.11 include:amazonses.com ~all'
+	it('keeps the relay authorisation on the bounce host, never on a From domain', () => {
+		// MTA_RETURN_PATH_RELAY_SPF authorises the relay to stamp the bounce
+		// envelope. Leaking it onto a From domain publishes an authorisation the
+		// shipped generator never grants there.
+		const withRelay = recordsOf({ ...BASE, returnPathRelaySpfTerms: ['include:amazonses.com'] });
+		const bounceSpf = withRelay.find(
+			(r) => r.purpose === 'spf' && r.subdomain === 'bounces.example.com'
 		);
+		expect(bounceSpf && streamSubdomainRecordValue(bounceSpf)).toContain('include:amazonses.com');
+		for (const row of withRelay.filter((r) => r.subdomain !== 'bounces.example.com')) {
+			expect(streamSubdomainRecordValue(row) ?? '').not.toContain('amazonses.com');
+		}
 	});
 
 	it('renders rather than throws on a malformed pool IP', () => {
 		const degraded = recordsOf({ ...BASE, sendingIps: ['not-an-ip', '203.0.113.10'] });
-		const spf = degraded.find((r) => r.purpose === 'spf' && r.subdomain === 'mail.example.com');
+		const spf = degraded.find((r) => r.purpose === 'spf' && r.subdomain === 'bounces.example.com');
 		expect(spf && streamSubdomainRecordValue(spf)).toBe('v=spf1 ip4:203.0.113.10 ~all');
 	});
 
@@ -270,8 +308,72 @@ describe('one-pass record generation', () => {
 		const spf = recordsOf({
 			...BASE,
 			sendingIps: ['2001:DB8::1', '2001:db8::1'],
-		}).find((r) => r.purpose === 'spf' && r.subdomain === 'news.example.com');
+		}).find((r) => r.purpose === 'spf' && r.subdomain === 'bounces.example.com');
 		const value = spf === undefined ? '' : (streamSubdomainRecordValue(spf) ?? '');
 		expect(value.match(/ip6:/g)).toHaveLength(1);
+	});
+});
+
+describe('shipped-generator parity for a host both tables cover', () => {
+	// The panel is mounted inside the SAME expanded record row as the shipped
+	// SPF/DKIM panels, and `mail.`/`news.` are exactly the names the Add-Domain
+	// form suggests — so the collision is the common case, not an edge. These
+	// fixtures pin the two generators to one value each.
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	async function shippedRecordsFor(host: string) {
+		const { mtaProvider } = await import('../providers/mta/index');
+		return mtaProvider.registerDomain(host);
+	}
+
+	it('emits the SAME SPF value the shipped adapter emits for that host', async () => {
+		vi.stubEnv('MTA_SPF_INCLUDE', 'spf.owlat.example');
+		vi.stubEnv('MTA_IP_POOLS', '');
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', '');
+		const shipped = await shippedRecordsFor('news.example.com');
+		const wizard = recordsOf(BASE).find(
+			(r) => r.purpose === 'spf' && r.subdomain === 'news.example.com'
+		);
+		expect(shipped.dnsRecords.spf?.value).toBeDefined();
+		expect(wizard && streamSubdomainRecordValue(wizard)).toBe(shipped.dnsRecords.spf?.value);
+	});
+
+	it('omits SPF in BOTH tables when the deployment has no include', async () => {
+		vi.stubEnv('MTA_SPF_INCLUDE', '');
+		vi.stubEnv('MTA_IP_POOLS', '');
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', '');
+		const shipped = await shippedRecordsFor('news.example.com');
+		expect(shipped.dnsRecords.spf).toBeUndefined();
+		const wizard = recordsOf({ ...BASE, spfInclude: '' }).filter(
+			(r) => r.purpose === 'spf' && r.subdomain === 'news.example.com'
+		);
+		expect(wizard).toHaveLength(0);
+	});
+
+	it('emits the SAME DKIM host and value the shipped adapter emits', async () => {
+		vi.stubEnv('MTA_SPF_INCLUDE', 'spf.owlat.example');
+		vi.stubEnv('MTA_IP_POOLS', '');
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', '');
+		const shipped = await shippedRecordsFor('news.example.com');
+		const shippedDkim = shipped.dnsRecords.dkim?.[0];
+		expect(shippedDkim).toBeDefined();
+		if (shippedDkim === undefined) return;
+
+		const wizard = recordsOf({
+			...BASE,
+			signingIdentities: {
+				bulk: {
+					selector: shipped.identity.dkimSelector,
+					recordValue: shippedDkim.value,
+				},
+			},
+		}).find((r): r is DkimRow => isDkim(r) && r.subdomain === 'news.example.com');
+
+		// The shipped row's host is relative to its own domain; the wizard's is
+		// absolute because the table spans three names.
+		expect(wizard?.host).toBe(`${shippedDkim.host}.news.example.com`);
+		expect(wizard && streamSubdomainRecordValue(wizard)).toBe(shippedDkim.value);
 	});
 });
