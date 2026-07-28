@@ -83,6 +83,34 @@ export function getSeedProbeListUnsubscribeHeader(
 }
 
 /**
+ * The IN-BODY unsubscribe/preference footer URLs for a seed shadow copy.
+ *
+ * The footer is a feature filters weigh, in the message whose filtering we are
+ * measuring, so a probe that lacks it is measuring a materially different mail
+ * than subscribers receive. It cannot be the CONTACT footer — a probe has no
+ * contact — so both slots point at the probe's own one-click target, the same
+ * namespaced token the RFC 8058 header carries.
+ *
+ * ONE honest residual: a probe has no preferences to manage, so the two links
+ * resolve to the same probe endpoint rather than to two. The rendered SHAPE —
+ * a footer with a Manage Preferences and an Unsubscribe link — is what the
+ * filter sees and it matches the real send's byte for byte apart from the two
+ * hrefs.
+ */
+export function getSeedProbeFooterUrls(
+	convexSiteUrl: string,
+	organizationId: string,
+	probeId: string
+): { unsubscribeUrl: string; preferenceUrl: string } {
+	const token = makeContactToken(
+		SEED_PROBE_TOKEN_PREFIX,
+		encodeSeedProbeTokenPayload(organizationId, probeId)
+	);
+	const url = `${convexSiteUrl}/unsub/probe/${encodeURIComponent(token)}`;
+	return { unsubscribeUrl: url, preferenceUrl: url };
+}
+
+/**
  * The result of validating a seed-probe one-click token. Deliberately NOT
  * `TokenValidation`: the payload of a probe token is an ORG + PROBE id, and
  * reading it out of a field called `contactId` would erase at the boundary

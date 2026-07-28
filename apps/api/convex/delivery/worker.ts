@@ -7,6 +7,7 @@ import {
 	getUnsubscribeUrl,
 	getListUnsubscribeHeader,
 	getSeedProbeListUnsubscribeHeader,
+	getSeedProbeFooterUrls,
 } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
@@ -187,14 +188,30 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	const isTopic = envelopeInput.audienceType !== 'segment';
 	const hasContact = envelopeInput.contactInfo.contactId !== undefined;
 
+	// The in-body footer, for a subscriber's copy and for a seed shadow copy
+	// alike. A probe has no contact and no `siteUrl`, but it MUST still render
+	// the footer: it is a feature filters weigh, and its absence would make the
+	// probe a materially different message than the one being measured. The probe
+	// footer is keyed by the opaque probe id, so it can no more reach a contact
+	// record than the header pair can.
+	const seedProbeFooter =
+		isTopic && envelopeInput.seedProbeId !== undefined && envelopeInput.convexSiteUrl !== undefined
+			? getSeedProbeFooterUrls(
+					envelopeInput.convexSiteUrl,
+					envelopeInput.organizationId ?? '',
+					envelopeInput.seedProbeId
+				)
+			: undefined;
 	const unsubscribeUrl =
-		isTopic && hasContact && envelopeInput.siteUrl
+		seedProbeFooter?.unsubscribeUrl ??
+		(isTopic && hasContact && envelopeInput.siteUrl
 			? getUnsubscribeUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined;
+			: undefined);
 	const preferenceUrl =
-		isTopic && hasContact && envelopeInput.siteUrl
+		seedProbeFooter?.preferenceUrl ??
+		(isTopic && hasContact && envelopeInput.siteUrl
 			? getPreferenceUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined;
+			: undefined);
 	const listUnsubscribe = resolveListUnsubscribeHeader(envelopeInput);
 	const listUnsubscribeHeader =
 		listUnsubscribe.scope === 'none' ? undefined : listUnsubscribe.header;

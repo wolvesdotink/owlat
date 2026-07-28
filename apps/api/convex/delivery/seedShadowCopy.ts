@@ -30,14 +30,19 @@
  * RESIDUAL WIRE DELTAS — the complete list, because "identical" is the claim
  * this whole measurement rests on:
  *
- *   a. `siteUrl` (the in-body unsubscribe/preference footer) and
- *      `viewInBrowserUrl` (a contact-scoped archive token) are dropped: both
- *      are only meaningful with a `contactId`. The RFC 8058 header pair and
- *      the tracking pixel / wrapped links are NOT dropped — they are re-keyed
- *      to the probe id, because those are the features a filter weighs.
- *   b. Merge tags render the neutral placeholders above rather than the
+ *   a. `viewInBrowserUrl` (a contact-scoped archive token) is dropped: it is
+ *      only meaningful with a `contactId`. Everything a FILTER weighs is kept
+ *      and re-keyed to the probe id instead of dropped — the RFC 8058 header
+ *      pair, the tracking pixel, the wrapped links, and the in-body
+ *      unsubscribe/preference FOOTER (`delivery/worker.ts` mints it from
+ *      `getSeedProbeFooterUrls` when the envelope carries a probe id, so the
+ *      probe does not have to carry the contact-scoped `siteUrl`).
+ *   b. The probe's two footer links point at the same probe one-click target:
+ *      a probe has no preferences to manage. The rendered footer's SHAPE is
+ *      identical; two hrefs differ.
+ *   c. Merge tags render the neutral placeholders above rather than the
  *      subscriber's own name.
- *   c. The `X-Owlat-Seed-Probe` header is added.
+ *   d. The `X-Owlat-Seed-Probe` header is added.
  *
  * D2: zero seed mailboxes is a supported configuration. With an empty seed
  * list this enqueues nothing and reports `{ enqueued: 0 }`; it never throws
@@ -112,11 +117,12 @@ export function buildSeedShadowEnvelope(
 	// reading — the MTA treats an absent score as "unknown" and applies
 	// `PRIORITY_BANDS.DEFAULT`, whereas cloning the last subscriber's score
 	// would let an unrelated contact's engagement reorder the measurement.
-	// `siteUrl` (the in-body unsubscribe/preference footer) and
-	// `viewInBrowserUrl` (a contact-scoped archive token) are deliberately
-	// dropped: both are only meaningful with a `contactId`, which a shadow copy
-	// does not have. This is the piece's one residual wire delta from a real
-	// send, and it is documented on the card.
+	// `siteUrl` is not copied and does not need to be: it is the CONTACT-scoped
+	// footer origin, and the worker mints the probe's footer from
+	// `convexSiteUrl` + the probe id instead, so the shadow copy still renders
+	// the in-body unsubscribe/preference footer a real recipient's copy carries.
+	// `viewInBrowserUrl` (a contact-scoped archive token) IS dropped: there is no
+	// probe-scoped equivalent, and an archive link is not a feature filters weigh.
 	return shadow;
 }
 
