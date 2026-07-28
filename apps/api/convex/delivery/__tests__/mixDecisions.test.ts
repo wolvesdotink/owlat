@@ -6,13 +6,17 @@
  *   - the gate snapshot round-trips, so a decision can be replayed;
  *   - every retreat with a NAMED cause carries an admin notice that names the
  *     gate that broke and says what to do about it — including the one that
- *     cannot lower the share because the cell is already on the floor;
+ *     cannot lower the share because the cell is already on the floor, and
+ *     EXCLUDING the hourly re-entry of a hard stop that has already been
+ *     announced and has changed nothing since;
+ *   - `auditLogs` follows the CHANGE, not the number: an automatic change that
+ *     the share cannot express is still an automatic change;
  *   - 100% of decisions carry a human-readable reason. That is the KPI, and it
  *     is asserted over every reachable decision reason, not a sample.
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
@@ -31,13 +35,26 @@ import {
 	controllerInput,
 	DAY,
 	GMAIL_CAMPAIGN,
+	HOUR,
 	mixState,
 	NOW,
 	thinEvaluation,
 } from '../ramp/__tests__/controllerFixtures';
+import { seedRampCell } from './rampCronFixtures';
 import { modules } from '../../__tests__/testModules';
 
 const ORG = 'org_ramp_audit';
+
+// The cron-level cases below resolve the tenant through the shipped singleton
+// resolver; the pure cases in this file insert with `ORG` directly, so both
+// halves have to agree on the same tenant.
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_audit'),
+	};
+});
 
 type Harness = ReturnType<typeof convexTest>;
 
@@ -234,6 +251,110 @@ describe('mixDecisions — a row for every evaluation', () => {
 	});
 });
 
+/**
+ * ONE INCIDENT, ONE NOTICE — AND ONE NOTICE PER INCIDENT.
+ *
+ * The hard-stop rungs sit ABOVE the `frozen` rung, so a listing that persists
+ * for a day is re-entered on all twenty-four hourly ticks with the cell already
+ * at zero. Announcing each of those is how a notice channel teaches its readers
+ * to ignore it. The mirror-image failure is silence on the breach that CANNOT
+ * move the number: a cell pinned on the share floor still takes a fresh freeze
+ * and another rung of the cooldown ladder every time a gate breaks.
+ *
+ * `cooldownMs` separates them exactly, because only a LADDER freeze — a breached
+ * gate — sets it.
+ */
+describe('mixDecisions — the notice fires on a change, not on a condition', () => {
+	const BLOCKLISTED = {
+		isSendingAllowed: true,
+		isCircuitBreakerOpen: false,
+		isPoolBlocklisted: true,
+	} as const;
+
+	it('announces a persistent blocklist listing once, not on every tick', async () => {
+		const t = convexTest(schema, modules);
+		// Tick 1: the listing appears and the share is stopped.
+		await record(t, controllerInput({ mix: mixState({ share: 0.5 }), signals: BLOCKLISTED }));
+		// Tick 2, an hour later: the same listing, the cell already at zero, the
+		// earlier freeze still in force. Nothing has changed but the clock.
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({ share: 0, frozenUntil: NOW + 20 * HOUR }),
+				signals: BLOCKLISTED,
+				now: NOW + HOUR,
+			})
+		);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(2);
+		// Both evaluations are audited (D12) — only the ANNOUNCEMENT is once.
+		expect(rows[0]?.direction).toBe('decrease');
+		expect(rows[0]?.adminNotice).toContain('blocklist');
+		expect(rows[1]?.reason).toBe('dnsbl');
+		expect(rows[1]?.direction).toBe('hold');
+		expect(rows[1]?.adminNotice).toBeUndefined();
+		// …and the repeat's sentence does not claim a move it did not make.
+		expect(rows[1]?.message).not.toContain('Stopped');
+		expect(rows[1]?.message).toContain('Held');
+	});
+
+	it('announces every floored breach, because each one is a fresh freeze', async () => {
+		const t = convexTest(schema, modules);
+		const floored = { share: RAMP_AIMD.shareFloor } as const;
+		// Breach 1 on a cell already at the floor: the share cannot fall.
+		await record(
+			t,
+			controllerInput({
+				mix: mixState(floored),
+				evaluation: breachedEvaluation('hard_bounce'),
+			})
+		);
+		// Breach 2, after the first freeze expired: a new freeze and the next rung
+		// of the cooldown ladder. Still a hold, still an incident.
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({
+					...floored,
+					freezeStartedAt: NOW,
+					cooldownMs: RAMP_AIMD.cooldownBaseMs,
+					frozenUntil: NOW + RAMP_AIMD.cooldownBaseMs,
+				}),
+				evaluation: breachedEvaluation('hard_bounce', { now: NOW + 7 * HOUR }),
+				now: NOW + 7 * HOUR,
+			})
+		);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(2);
+		for (const row of rows) {
+			expect(row.direction).toBe('hold');
+			expect(row.reason).toBe('hard_bounce');
+			expect(row.adminNotice).toContain('hard bounce');
+		}
+	});
+
+	it('never announces the seed tripwire while it is still uncorroborated', async () => {
+		// It carries a `failedGate`, so a cause-only trigger would announce it — but
+		// this is the branch in which the controller has decided NOT to act on the
+		// signal (plan D17). Nothing moved and nothing froze; the remedy sentence
+		// would be "go and find out whether this is real".
+		const t = convexTest(schema, modules);
+		await record(
+			t,
+			controllerInput({
+				mix: mixState({ share: 0.4 }),
+				evaluation: breachedEvaluation('seed_placement'),
+			})
+		);
+		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];
+		expect(row?.reason).toBe('awaiting_corroboration');
+		expect(row?.failedGate).toBe('seed_placement');
+		expect(row?.adminNotice).toBeUndefined();
+	});
+});
+
 describe('mixDecisions — the human-readable-reason KPI', () => {
 	const scenarios: ReadonlyArray<[string, Partial<RampControllerInput>]> = [
 		['kill switch', { isKillSwitchEngaged: true }],
@@ -318,6 +439,64 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		}
 	});
 
+	/**
+	 * THE STEADY STATE OF A HARD STOP is its own sentence, not the retreat's.
+	 *
+	 * `abuse_status`, `breaker` and `dnsbl` all sit ABOVE the `frozen` rung, so
+	 * while the condition holds the controller re-enters them every hour with the
+	 * cell already stopped and `fromShare === share`. Rendering the retreat verb
+	 * there produces "Stopped campaign mail to gmail (0% -> 0%)" — the same
+	 * no-op-looking sentence for a real event that the gate and ceiling arms take
+	 * their verb from `direction` to avoid.
+	 */
+	const steadyStateHardStops: ReadonlyArray<[string, Partial<RampControllerInput>]> = [
+		[
+			'abuse',
+			{
+				signals: { isSendingAllowed: false, isCircuitBreakerOpen: false, isPoolBlocklisted: false },
+			},
+		],
+		[
+			'breaker',
+			{ signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false } },
+		],
+		[
+			'dnsbl',
+			{ signals: { isSendingAllowed: true, isCircuitBreakerOpen: false, isPoolBlocklisted: true } },
+		],
+	];
+
+	it('words a hard stop that is merely STILL TRUE as a hold, not as a fresh retreat', async () => {
+		const t = convexTest(schema, modules);
+		for (const [, overrides] of steadyStateHardStops) {
+			// The share the cell is ALREADY at once the hard stop has bitten: zero for
+			// abuse/dnsbl, and a breaker that keeps halving converges there too.
+			const input = controllerInput({ mix: mixState({ share: 0 }), ...overrides });
+			const decision = nextShare(input);
+			expect(decision.direction).toBe('hold');
+			const message = describeRampDecision(GMAIL_CAMPAIGN, decision);
+			expect(message).toContain('campaign mail to gmail');
+			expect(message.startsWith('Held ')).toBe(true);
+			// No "(0% -> 0%)" move fragment, and none of the retreat verbs.
+			expect(message).not.toContain('->');
+			expect(message).not.toContain('Stopped');
+			expect(message).not.toContain('Halved');
+			// The cause and the remedy survive the re-wording — the sentence is still
+			// what an operator reads to find out what is holding the cell down.
+			expect(message.length).toBeGreaterThan(20);
+			await record(t, input);
+		}
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(steadyStateHardStops.length);
+		for (const row of rows) {
+			expect(row.direction).toBe('hold');
+			// Already announced on the tick that moved the share: a steady state is
+			// not a new incident.
+			expect(row.adminNotice).toBeUndefined();
+		}
+	});
+
 	it('never tells an operator the relay is on standby while it carries the cell', async () => {
 		const t = convexTest(schema, modules);
 		// A GRADUATED cell the warming cap has bounded to 40%. The pin is real, but
@@ -343,6 +522,101 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		expect(row?.message).toContain('40%');
 		expect(row?.message).not.toContain('100%');
 		expect(row?.message).not.toContain('standby');
+	});
+});
+
+/**
+ * `auditLogs` FOLLOWS THE CHANGE, NOT THE NUMBER (plan D12).
+ *
+ * The card's predicate is "every automatic change also emits an audit-log
+ * entry", which is wider than "the share moved". A gate breach on a cell already
+ * on the share floor holds the number while rewriting the freeze expiry, the
+ * cooldown rung, the clean streak, the green clock and the graduation pin — a
+ * real automatic change. A hard stop that is merely still true rewrites none of
+ * those, and a paused controller writes nothing at all.
+ *
+ * These go through the CRON, because the predicate lives there: a pure fixture
+ * could not tell the difference between "not audited" and "not reached".
+ */
+describe('mixDecisions — the audit log follows the change', () => {
+	const DAY_MS = 24 * 60 * 60 * 1000;
+
+	async function auditLogs(t: Harness) {
+		return await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
+	}
+
+	/** One day's worth of own-arm outcomes, well past the hard-bounce ceiling. */
+	async function seedBreachingOutcomes(t: Harness): Promise<void> {
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('transportOutcomes', {
+				organizationId: ORG,
+				cell: 'campaign:gmail',
+				arm: 'own' as const,
+				periodStart: Math.floor(now / DAY_MS) * DAY_MS,
+				shardKey: 0,
+				sent: 1_000,
+				delivered: 800,
+				deferred: 0,
+				softBounced: 0,
+				hardBounced: 200,
+				complained: 0,
+				opened: 0,
+				clicked: 0,
+				unsubscribed: 0,
+				calibrationSent: 0,
+				calibrationOpened: 0,
+				calibrationClicked: 0,
+				lastRecordedAt: now,
+			});
+		});
+	}
+
+	it('audits a breach that cannot lower the share any further', async () => {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_AIMD.shareFloor });
+		await seedBreachingOutcomes(t);
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.reason).toBe('hard_bounce');
+		// The share is already as low as a SOFT failure takes it, so nothing moved…
+		expect(rows[0]?.direction).toBe('hold');
+		expect(rows[0]?.toShare).toBe(RAMP_AIMD.shareFloor);
+		// …but the row did: a fresh freeze and the first rung of the ladder.
+		const cell = await t.run(
+			async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
+		);
+		const managed = cell.find((row) => row.stream === 'campaign');
+		expect(managed?.cooldownMs).toBe(RAMP_AIMD.cooldownBaseMs);
+		expect(managed?.frozenUntil).toBeGreaterThan(Date.now());
+
+		const logs = await auditLogs(t);
+		expect(logs).toHaveLength(1);
+		expect(logs[0]?.action).toBe('deliverability_ramp.decision_applied');
+	});
+
+	it('writes no audit entry for a hard stop that is merely still true', async () => {
+		const t = convexTest(schema, modules);
+		// Already stopped by an earlier tick, and the listing has not cleared.
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0,
+			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: Date.now() }],
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.reason).toBe('dnsbl');
+		expect(rows[0]?.direction).toBe('hold');
+		// The evaluation is still recorded — the audit trail is complete — it is the
+		// INCIDENT channels that stay quiet.
+		expect(rows[0]?.adminNotice).toBeUndefined();
+		expect(await auditLogs(t)).toHaveLength(0);
 	});
 });
 
