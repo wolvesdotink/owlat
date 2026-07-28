@@ -43,7 +43,13 @@ import type {
 } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 
-const HARD_BOUNCE_SPEC: CeilingGateSpec = {
+/**
+ * Exported for the decidability assertion in `gates.units.test.ts` only — a
+ * ceiling spec that can neither breach an absolute ceiling nor be compared
+ * against a second series would pass unconditionally, and that invariant is
+ * asserted over every shipped spec rather than merely documented.
+ */
+export const HARD_BOUNCE_SPEC: CeilingGateSpec = {
 	gate: 'hard_bounce',
 	rateOf: (summary) => summary.hardBounceRate,
 	thresholdOf: (thresholds) => thresholds.hardBounceMax,
@@ -58,7 +64,8 @@ const HARD_BOUNCE_SPEC: CeilingGateSpec = {
 	grade: DIRECT_MEASUREMENT,
 };
 
-const COMPLAINT_SPEC: CeilingGateSpec = {
+/** Exported for the same decidability assertion as `HARD_BOUNCE_SPEC`. */
+export const COMPLAINT_SPEC: CeilingGateSpec = {
 	gate: 'complaint',
 	rateOf: (summary) => summary.complaintRate,
 	thresholdOf: (thresholds) => thresholds.complaintMax,

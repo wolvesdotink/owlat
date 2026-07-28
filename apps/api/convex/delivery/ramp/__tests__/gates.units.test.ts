@@ -25,13 +25,62 @@ import {
 	RAMP_GATE_THRESHOLDS,
 	RAMP_STREAM_CONFIGS,
 } from '../gateConfig';
+import { ceilingGateSpecIsDecidable } from '../ceilingGate';
+import type { CeilingGateSpec } from '../ceilingGate';
 import {
+	COMPLAINT_SPEC,
 	evaluateComplaintGate,
 	evaluateDeferralGate,
 	evaluateHardBounceGate,
 	evaluateSeedPlacementGate,
+	HARD_BOUNCE_SPEC,
 } from '../gates';
+import {
+	CFBL_COMPLAINT_SPEC,
+	TRAILING_HARD_BOUNCE_SPEC,
+	UNSUBSCRIBE_PROXY_SPEC,
+} from '../trailingBaselineGates';
 import { arm, describeEquipped, input, seeds } from './gateFixtures';
+
+/**
+ * EVERY SHIPPED CEILING SPEC MUST BE ABLE TO FAIL SOMETHING.
+ *
+ * A spec with no absolute ceiling and no second series can only ever return
+ * `pass`, which is worse than having no gate: it looks like evidence, it feeds
+ * `increaseEvidence`, and it advances the clean streak. The standalone
+ * substitutions are where this is easy to get wrong — the unsubscribe proxy
+ * deliberately has NO absolute ceiling, so it is decidable only because it
+ * carries a second series, and a later edit that dropped that series would leave
+ * a gate that unconditionally approves an increase.
+ *
+ * Runs in BOTH matrix legs: it inspects specs and reads no fixture.
+ */
+const SHIPPED_CEILING_SPECS: ReadonlyArray<readonly [string, CeilingGateSpec]> = [
+	['gate 1 — reference arm', HARD_BOUNCE_SPEC],
+	['gate 3 — reference arm', COMPLAINT_SPEC],
+	['gate 1 — trailing baseline', TRAILING_HARD_BOUNCE_SPEC],
+	['gate 3 — CFBL', CFBL_COMPLAINT_SPEC],
+	['gate 3 — unsubscribe proxy', UNSUBSCRIBE_PROXY_SPEC],
+];
+
+describe('every shipped ceiling spec is decidable', () => {
+	for (const [name, spec] of SHIPPED_CEILING_SPECS) {
+		it(`${name} can fail something`, () => {
+			expect(ceilingGateSpecIsDecidable(spec, RAMP_GATE_THRESHOLDS)).toBe(true);
+		});
+	}
+
+	it('a spec with neither an absolute ceiling nor a second series is NOT decidable', () => {
+		// The shape the assertion above exists to catch, stated once so the
+		// invariant is pinned by a case that would otherwise never occur.
+		const undecidable: CeilingGateSpec = {
+			...UNSUBSCRIBE_PROXY_SPEC,
+			thresholdOf: () => null,
+			secondSeries: null,
+		};
+		expect(ceilingGateSpecIsDecidable(undecidable, RAMP_GATE_THRESHOLDS)).toBe(false);
+	});
+});
 
 const STREAM_CONFIGS = DELIVERABILITY_STREAM_KEYS.map((stream) => RAMP_STREAM_CONFIGS[stream]);
 
