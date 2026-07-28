@@ -38,7 +38,12 @@ export const PROVIDER_ROUTE_STRATEGY_LABELS: Record<ProviderRouteStrategy, strin
  * the only thing handling an unrecognised kind.
  */
 export function strategyLabelFor(strategy: string): string {
-	return (PROVIDER_ROUTE_STRATEGY_LABELS as Readonly<Record<string, string>>)[strategy] ?? strategy;
+	const labels: Readonly<Record<string, string>> = PROVIDER_ROUTE_STRATEGY_LABELS;
+	// Own keys only: a server-supplied string that happens to name something on
+	// Object.prototype ('toString', 'constructor') is a MISS, and returning the
+	// inherited value would render a function where a label belongs.
+	const label = Object.hasOwn(labels, strategy) ? labels[strategy] : undefined;
+	return label ?? strategy;
 }
 
 export const PROVIDER_ROUTE_MESSAGE_TYPES: {
