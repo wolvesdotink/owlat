@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { capacityCeiling, isEvaluationWindowElapsed, nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
+import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import { aggregateRampGates } from '../gateEvaluation';
 import type { RampGateEvaluation } from '../gateTypes';
 import type { RampControllerInput } from '../controllerTypes';
@@ -68,7 +69,7 @@ describe('a crafted snapshot cannot bypass a hard stop', () => {
 				controllerInput({
 					mix: mixState({ share: 0.4, cleanStreak: Number.MAX_SAFE_INTEGER }),
 					evaluation: forgedPerfection(),
-					capacity: { warmingCapRemaining: 1e9, projectedVolume: 1 },
+					capacity: { kind: 'projected', warmingCapRemaining: 1e9, projectedVolume: 1 },
 					...overrides,
 				})
 			);
@@ -174,7 +175,6 @@ describe('a forged snapshot cannot buy more than one step', () => {
 	});
 
 	it('buys exactly one step per ELAPSED window, not one per call', () => {
-		const evaluation = forgedPerfection();
 		let share = 0.4;
 		let lastCountedAt: number | undefined;
 		let now = NOW;
@@ -182,7 +182,10 @@ describe('a forged snapshot cannot buy more than one step', () => {
 			const decision = nextShare(
 				controllerInput({
 					mix: mixState({ share, cleanStreak: 3, lastCountedAt }),
-					evaluation,
+					// A FRESH aggregate per window, because that is what a real tick
+					// produces: replaying ONE object across three advanced clocks would
+					// be the staleness attack below, not the window-spacing rule.
+					evaluation: forgedPerfection(now),
 					now,
 				})
 			);
@@ -193,13 +196,114 @@ describe('a forged snapshot cannot buy more than one step', () => {
 		}
 		expect(share).toBe(0.55);
 	});
+});
 
-	it('a stale evaluation is still bounded by the step, never by its age', () => {
-		const stale = cleanEvaluation(50, NOW - 400 * DAY);
+/**
+ * EVIDENCE HAS AN EXPIRY.
+ *
+ * The window anchor spaces two decisions apart; it says nothing about how old
+ * the EVIDENCE behind them is. Without a freshness rule, one aggregate computed
+ * once and replayed on the following windows buys a step per window for ever —
+ * the cell's clock advances, the evidence never does. Both directions of the
+ * shipped freshness/skew model are pinned here: too old, and stamped ahead of
+ * the clock.
+ */
+describe('a stale or replayed evaluation can never buy a step', () => {
+	const { maxEvidenceAgeMs, maxFutureSkewMs } = RAMP_GATE_THRESHOLDS;
+
+	it('holds on an aggregate older than the evidence-age allowance', () => {
 		const decision = nextShare(
-			controllerInput({ mix: mixState({ share: 0.4 }), evaluation: stale })
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3 }),
+				evaluation: cleanEvaluation(50, NOW - 400 * DAY),
+			})
 		);
-		expect(decision.share).toBe(0.45);
+		expect(decision.reason).toBe('evidence_stale');
+		expect(decision.direction).toBe('hold');
+		expect(decision.share).toBe(0.4);
+	});
+
+	it('holds one millisecond past the allowance and steps one millisecond inside it', () => {
+		const decide = (evaluatedAt: number) =>
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+		expect(decide(NOW - maxEvidenceAgeMs).reason).toBe('healthy');
+		expect(decide(NOW - maxEvidenceAgeMs - 1).reason).toBe('evidence_stale');
+	});
+
+	it('holds on an aggregate stamped further ahead of the clock than the skew allowance', () => {
+		const decide = (evaluatedAt: number) =>
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+		expect(decide(NOW + maxFutureSkewMs).reason).toBe('healthy');
+		expect(decide(NOW + maxFutureSkewMs + 1).reason).toBe('evidence_stale');
+	});
+
+	it('holds on an aggregate with no usable timestamp at all', () => {
+		for (const evaluatedAt of HOSTILE_NUMBERS) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.4, cleanStreak: 3 }),
+					evaluation: cleanEvaluation(50, evaluatedAt),
+				})
+			);
+			expect(decision.reason).toBe('evidence_stale');
+			expect(decision.direction).toBe('hold');
+		}
+	});
+
+	it('replaying ONE aggregate across elapsed windows buys exactly one step, then nothing', () => {
+		// The attack the window anchor alone does not stop: hold the evidence
+		// still, advance the clock a day at a time. The first window is real and is
+		// paid for; every later one is a replay of evidence that has expired.
+		const evaluation = forgedPerfection();
+		let share = 0.4;
+		let lastCountedAt: number | undefined;
+		let now = NOW;
+		const reasons: string[] = [];
+		for (let window = 0; window < 5; window += 1) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share, cleanStreak: 3, lastCountedAt }),
+					evaluation,
+					now,
+				})
+			);
+			reasons.push(decision.reason);
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+			// Three days a tick: comfortably past both the counted-window spacing and
+			// the evidence-age allowance, so only the FIRST window is real evidence.
+			now += 3 * DAY;
+		}
+		expect(reasons[0]).toBe('healthy');
+		expect(reasons.slice(1)).toEqual([
+			'evidence_stale',
+			'evidence_stale',
+			'evidence_stale',
+			'evidence_stale',
+		]);
+		expect(share).toBe(0.45);
+	});
+
+	it('still lowers nothing on stale evidence — a hold is a hold in both directions', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3 }),
+				evaluation: breachedEvaluation('deferral', { now: NOW - 400 * DAY }),
+			})
+		);
+		expect(decision.reason).toBe('evidence_stale');
+		expect(decision.share).toBe(0.4);
+		expect(decision.frozenUntil).toBeUndefined();
 	});
 });
 
@@ -216,12 +320,16 @@ describe('degenerate numbers fail closed', () => {
 
 	it('holds rather than ramping when the capacity projection is unreadable', () => {
 		for (const bad of [...HOSTILE_NUMBERS, -1]) {
-			expect(capacityCeiling({ warmingCapRemaining: bad, projectedVolume: 1_000 })).toBeNull();
-			expect(capacityCeiling({ warmingCapRemaining: 1_000, projectedVolume: bad })).toBeNull();
+			expect(
+				capacityCeiling({ kind: 'projected', warmingCapRemaining: bad, projectedVolume: 1_000 })
+			).toBeNull();
+			expect(
+				capacityCeiling({ kind: 'projected', warmingCapRemaining: 1_000, projectedVolume: bad })
+			).toBeNull();
 			const decision = nextShare(
 				controllerInput({
 					mix: mixState({ share: 0.3 }),
-					capacity: { warmingCapRemaining: bad, projectedVolume: 1_000 },
+					capacity: { kind: 'projected', warmingCapRemaining: bad, projectedVolume: 1_000 },
 				})
 			);
 			expect(decision.direction).toBe('hold');
@@ -230,11 +338,18 @@ describe('degenerate numbers fail closed', () => {
 	});
 
 	it('treats a ZERO-VOLUME cell as unconstrained by capacity, not as infinite headroom', () => {
-		expect(capacityCeiling({ warmingCapRemaining: 0, projectedVolume: 0 })).toBe(1);
+		// The two readings that both mean "nothing bounds this cell" are DIFFERENT
+		// SHAPES on purpose: "no projection exists yet" and "a real projection of
+		// zero volume" are the same ceiling but not the same fact, and a magic pair
+		// of zeros standing for the first would make them indistinguishable.
+		expect(capacityCeiling({ kind: 'unconstrained' })).toBe(1);
+		expect(capacityCeiling({ kind: 'projected', warmingCapRemaining: 0, projectedVolume: 0 })).toBe(
+			1
+		);
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.3 }),
-				capacity: { warmingCapRemaining: 0, projectedVolume: 0 },
+				capacity: { kind: 'unconstrained' },
 				// A cell with no volume cannot reach any sample floor, so the gates hold
 				// and the share does not move — the capacity ceiling never gets a say.
 				evaluation: thinEvaluation(9),
@@ -248,7 +363,7 @@ describe('degenerate numbers fail closed', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.3 }),
-				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 0, projectedVolume: 1_000 },
 			})
 		);
 		// The ceiling pulls the cell back hard — but NOT past the soft floor. No
@@ -263,7 +378,7 @@ describe('degenerate numbers fail closed', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.005 }),
-				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 0, projectedVolume: 1_000 },
 			})
 		);
 		expect(decision.share).toBe(0.005);

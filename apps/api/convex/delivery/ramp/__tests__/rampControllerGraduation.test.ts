@@ -20,6 +20,7 @@ import { nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
 import { describeRampDecision } from '../controllerNarrative';
 import { isFallbackActiveForShare } from '@owlat/shared/deliverabilityRouting';
+import type { RampCapacityInput } from '../controllerTypes';
 import {
 	breachedEvaluation,
 	cleanEvaluation,
@@ -69,7 +70,7 @@ describe('graduation', () => {
 				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
 				evaluation: cleanEvaluation(40),
 				// Half the projected volume of headroom, times the 0.8 safety margin.
-				capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 500, projectedVolume: 1_000 },
 			})
 		);
 		// A graduated cell is the cell carrying the most volume, so it is the LAST
@@ -89,7 +90,7 @@ describe('graduation', () => {
 				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
 				evaluation: cleanEvaluation(40),
 				// No headroom left at all: the projection says the cap is spent.
-				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 0, projectedVolume: 1_000 },
 			})
 		);
 		// A capacity ceiling is not a breach, and only a gate failure or a hard stop
@@ -100,7 +101,11 @@ describe('graduation', () => {
 	});
 
 	it('keeps the pin across a SECOND tick spent under the capacity bound', () => {
-		const capacity = { warmingCapRemaining: 500, projectedVolume: 1_000 };
+		const capacity: RampCapacityInput = {
+			kind: 'projected',
+			warmingCapRemaining: 500,
+			projectedVolume: 1_000,
+		};
 		const first = nextShare(
 			controllerInput({
 				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
@@ -206,7 +211,7 @@ describe('graduation', () => {
 				}),
 				evaluation: cleanEvaluation(41),
 				// Exactly the bound the cell already sits at: hold, reason `graduated`.
-				capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 500, projectedVolume: 1_000 },
 			})
 		);
 		expect(decision.share).toBe(0.4);

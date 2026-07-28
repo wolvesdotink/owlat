@@ -140,7 +140,7 @@ export const CLEAR_SIGNALS: RampHardStopSignals = {
 };
 
 /** Capacity that never binds: no volume projected, so nothing to bound. */
-export const OPEN_CAPACITY: RampCapacityInput = { warmingCapRemaining: 0, projectedVolume: 0 };
+export const OPEN_CAPACITY: RampCapacityInput = { kind: 'unconstrained' };
 
 export function mixState(overrides: Partial<RampMixState> = {}): RampMixState {
 	return {

@@ -21,6 +21,8 @@ import type { Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { createTestInstanceSettings } from '../../__tests__/factories';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../deliverabilityRouting';
+import { cleanEvaluation } from '../ramp/__tests__/controllerFixtures';
 import { modules } from './testModules';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
@@ -51,6 +53,14 @@ interface SeedOptions {
 	readonly abuseStatus?: 'clean' | 'suspended';
 	/** The share stored on the managed cell's row, degenerate values included. */
 	readonly ownShare?: number;
+	/**
+	 * How long ago the POOL row was last written. The shipped router stops acting
+	 * on a route state it has not heard from within
+	 * `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the controller must agree with it.
+	 */
+	readonly poolAgeMs?: number;
+	/** The clean streak stored on the managed cell's row. */
+	readonly cleanStreak?: number;
 }
 
 async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
@@ -71,6 +81,7 @@ async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
 		await ctx.db.insert('deliverabilityRouteStates', {
 			...base,
 			destinationProvider: 'all' as const,
+			updatedAt: now - (options.poolAgeMs ?? 0),
 			signals: [...(options.poolSignals ?? [])],
 		});
 		// The provider slice (stream-less: the snapshot's own row).
@@ -86,7 +97,7 @@ async function seed(t: Harness, options: SeedOptions = {}): Promise<void> {
 			stream: 'campaign' as const,
 			ownShare: options.ownShare ?? CELL_SHARE,
 			phaseCeiling: 1,
-			cleanStreak: 3,
+			cleanStreak: options.cleanStreak ?? 3,
 			mixVersion: 2,
 			signals: [],
 		});
@@ -143,6 +154,25 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
 
 		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
+		expect((await decisions(t))[0]?.reason).toBe('holding');
+	});
+
+	// ONE DEFINITION OF "STILL TRUE". The shipped router stops acting on a route
+	// state it has not heard from inside the signal-age window; a controller that
+	// kept acting on the same row would let a signal that went stale rather than
+	// being cleared walk the cell toward zero over successive 6h freezes.
+	it('ignores a critical listing on a route state the router has already aged out', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: Date.now() }],
+			poolAgeMs: DELIVERABILITY_SIGNAL_MAX_AGE_MS + 60_000,
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await cellRow(t);
+		expect(row?.ownShare).toBe(CELL_SHARE);
+		expect(row?.frozenUntil).toBeUndefined();
 		expect((await decisions(t))[0]?.reason).toBe('holding');
 	});
 
@@ -274,6 +304,54 @@ describe('a stored share that is not a share', () => {
 			expect(rows[0]?.direction).toBe('hold');
 		});
 	}
+});
+
+/**
+ * EVIDENCE FRESHNESS, WIRED.
+ *
+ * The pure suite proves the rung; this proves the shell reaches it — and, in the
+ * ordinary case, that the shell never trips it by accident. A live tick computes
+ * its gate aggregate against the same instant it hands the controller, so the
+ * rung is inert in production; a caller that supplies an aggregate it did not
+ * just compute is exactly what the rung exists for.
+ */
+describe('a gate aggregate that is not a reading of the present', () => {
+	it('holds the cell instead of stepping it up', async () => {
+		const t = convexTest(schema, modules);
+		// K_CLEAN already satisfied and no window anchor: with FRESH evidence this
+		// tick would be an additive step, so the age is the only thing stopping it.
+		await seed(t, { cleanStreak: 3 });
+		const gateEvaluation = await import('../ramp/gateEvaluation');
+		const spy = vi
+			.spyOn(gateEvaluation.referenceArmGateEvaluator, 'evaluate')
+			.mockImplementation((input) => cleanEvaluation(3, input.now - 400 * DAY_MS));
+
+		try {
+			await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect((await cellRow(t))?.ownShare).toBe(CELL_SHARE);
+		const rows = await decisions(t);
+		expect(rows[0]?.reason).toBe('evidence_stale');
+		expect(rows[0]?.direction).toBe('hold');
+	});
+
+	it('is never what an ordinary tick decides — the shell dates its own evidence', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, { cleanStreak: 3 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = (await decisions(t))[0];
+		expect(row?.reason).not.toBe('evidence_stale');
+		const snapshot = JSON.parse(row?.snapshot ?? '{}') as {
+			now?: number;
+			evaluation?: { evaluatedAt?: number } | null;
+		};
+		expect(snapshot.evaluation?.evaluatedAt).toBe(snapshot.now);
+	});
 });
 
 describe('the phase ladder', () => {

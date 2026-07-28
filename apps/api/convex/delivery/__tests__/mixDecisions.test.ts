@@ -19,7 +19,10 @@ import { createTestInstanceSettings } from '../../__tests__/factories';
 import { nextShare } from '../ramp/controller';
 import { recordMixDecision } from '../rampMixDecisions';
 import { describeRampDecision } from '../ramp/controllerNarrative';
-import type { RampControllerInput } from '../ramp/controllerTypes';
+import type { Infer } from 'convex/values';
+import { rampDecisionReasonValidator, rampGateIdValidator } from '../deliverabilityValidators';
+import type { RampControllerInput, RampDecisionReason } from '../ramp/controllerTypes';
+import type { RampGateId } from '../ramp/gateTypes';
 import {
 	breachedEvaluation,
 	cleanEvaluation,
@@ -92,14 +95,18 @@ describe('mixDecisions — a row for every evaluation', () => {
 		const input = controllerInput({
 			mix: mixState({ share: 0.4 }),
 			evaluation: breachedEvaluation('hard_bounce'),
-			capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+			capacity: { kind: 'projected', warmingCapRemaining: 500, projectedVolume: 1_000 },
 		});
 		await record(t, input);
 
 		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 		const snapshot = JSON.parse(rows[0]?.snapshot ?? '{}') as Record<string, unknown>;
 		expect(snapshot['cell']).toBe('campaign:gmail');
-		expect(snapshot['capacity']).toEqual({ warmingCapRemaining: 500, projectedVolume: 1_000 });
+		expect(snapshot['capacity']).toEqual({
+			kind: 'projected',
+			warmingCapRemaining: 500,
+			projectedVolume: 1_000,
+		});
 		expect(snapshot['signals']).toEqual(input.signals);
 		const evaluation = snapshot['evaluation'] as Record<string, unknown>;
 		expect(evaluation['verdict']).toBe('fail');
@@ -172,7 +179,7 @@ describe('mixDecisions — a row for every evaluation', () => {
 			t,
 			controllerInput({
 				mix: mixState({ share: 0.5 }),
-				capacity: { warmingCapRemaining: 1, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 1, projectedVolume: 1_000 },
 			})
 		);
 		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];
@@ -221,10 +228,17 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		// `evaluation: null` is deliberately absent: it is the SAME `holding`
 		// reason as thin evidence, and this table asserts one scenario per reason.
 		['holding', { evaluation: thinEvaluation(0) }],
+		['stale evidence', { evaluation: cleanEvaluation(3, NOW - 400 * DAY) }],
 		['tripwire alone', { evaluation: breachedEvaluation('seed_placement') }],
-		['capacity unknown', { capacity: { warmingCapRemaining: Number.NaN, projectedVolume: 1 } }],
+		[
+			'capacity unknown',
+			{ capacity: { kind: 'projected', warmingCapRemaining: Number.NaN, projectedVolume: 1 } },
+		],
 		['building confidence', { evaluation: cleanEvaluation(0) }],
-		['capacity ceiling', { capacity: { warmingCapRemaining: 1, projectedVolume: 1_000 } }],
+		[
+			'capacity ceiling',
+			{ capacity: { kind: 'projected', warmingCapRemaining: 1, projectedVolume: 1_000 } },
+		],
 		['phase ceiling', { mix: mixState({ share: 0.25, phaseCeiling: 0.25 }) }],
 		// K_CLEAN is already satisfied, so the ONLY thing between this cell and an
 		// additive step is the window anchor — without the streak it would fall into
@@ -276,7 +290,7 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 				graduatedAt: NOW - 6 * DAY,
 			}),
 			evaluation: cleanEvaluation(41),
-			capacity: { warmingCapRemaining: 500, projectedVolume: 1_000 },
+			capacity: { kind: 'projected', warmingCapRemaining: 500, projectedVolume: 1_000 },
 		});
 		expect(nextShare(input).reason).toBe('graduated');
 		await record(t, input);
@@ -288,6 +302,29 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		expect(row?.message).toContain('40%');
 		expect(row?.message).not.toContain('100%');
 		expect(row?.message).not.toContain('standby');
+	});
+});
+
+/**
+ * THE STORED VOCABULARY AND THE TS UNION ARE ONE.
+ *
+ * `controllerNarrative.ts` switches EXHAUSTIVELY on `RampDecisionReason`, which
+ * is what guarantees every decision has a sentence. A `v.string()` column would
+ * leave that guarantee with no counterpart in the stored data. These are
+ * compile-time assertions: a reason added to the type without a literal in the
+ * validator (or the reverse) makes `true` unassignable and fails typecheck.
+ */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const REASON_VOCABULARY_MATCHES: Exact<
+	Infer<typeof rampDecisionReasonValidator>,
+	RampDecisionReason
+> = true;
+const GATE_VOCABULARY_MATCHES: Exact<Infer<typeof rampGateIdValidator>, RampGateId> = true;
+
+describe('mixDecisions — the stored reason vocabulary', () => {
+	it('is exactly the union the narrative switches on', () => {
+		expect(REASON_VOCABULARY_MATCHES).toBe(true);
+		expect(GATE_VOCABULARY_MATCHES).toBe(true);
 	});
 });
 

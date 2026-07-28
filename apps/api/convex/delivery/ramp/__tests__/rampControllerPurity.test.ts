@@ -6,48 +6,25 @@
  * exhaustively testable against fixtures — and the fixtures are the only reason
  * anyone can trust a controller that halves production traffic unattended.
  *
- * Enforced two ways: behaviourally (the same input yields the same output with
- * the system clock moved by a year, and no output depends on wall time), and
- * textually (the module source contains no clock, database or env reference).
+ * Enforced BEHAVIOURALLY here: the same input yields the same output with the
+ * system clock moved by a year, no output depends on wall time, and every
+ * instant the decision emits is derived from the `now` parameter.
+ *
+ * The SOURCE-LEVEL half of the guarantee lives in `gates.purity.test.ts`, which
+ * ENUMERATES `delivery/ramp/*.ts` and bans a strictly larger set (a clock,
+ * randomness, an env read, a database handle and a Convex function wrapper).
+ * That guard already covers every module this suite exercises, and a second
+ * hand-written module list beside it is precisely the drift the enumerating
+ * guard exists to prevent — so there is deliberately no second copy here.
  */
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { capacityCeiling, nextCooldownMs, nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
 import { breachedEvaluation, controllerInput, DAY, mixState, NOW } from './controllerFixtures';
 
-const PURE_MODULES = ['../controller.ts', '../controllerConfig.ts', '../controllerNarrative.ts'];
-
-/**
- * The module's CODE, with comments removed — these modules document the rule
- * they obey ("no `Date.now()`"), and a guard that cannot tell the prohibition
- * from the violation is a guard that fires on its own documentation.
- */
-function sourceOf(relativePath: string): string {
-	return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
-
 afterEach(() => {
 	vi.useRealTimers();
-});
-
-describe('no ambient dependencies in the source', () => {
-	for (const modulePath of PURE_MODULES) {
-		it(`${modulePath} reads no clock, database or environment`, () => {
-			const source = sourceOf(modulePath);
-			expect(source).not.toMatch(/Date\.now\(/);
-			expect(source).not.toMatch(/new Date\(/);
-			expect(source).not.toMatch(/performance\.now\(/);
-			expect(source).not.toMatch(/process\.env/);
-			expect(source).not.toMatch(/Math\.random\(/);
-			expect(source).not.toMatch(/\bctx\b/);
-			expect(source).not.toMatch(/_generated/);
-		});
-	}
 });
 
 describe('behavioural purity', () => {
@@ -92,8 +69,8 @@ describe('behavioural purity', () => {
 
 	it('the helpers are pure too', () => {
 		expect(nextCooldownMs(mixState(), NOW)).toBe(nextCooldownMs(mixState(), NOW));
-		expect(capacityCeiling({ warmingCapRemaining: 80, projectedVolume: 100 })).toBe(
-			capacityCeiling({ warmingCapRemaining: 80, projectedVolume: 100 })
-		);
+		expect(
+			capacityCeiling({ kind: 'projected', warmingCapRemaining: 80, projectedVolume: 100 })
+		).toBe(capacityCeiling({ kind: 'projected', warmingCapRemaining: 80, projectedVolume: 100 }));
 	});
 });

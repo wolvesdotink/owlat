@@ -162,7 +162,10 @@ describe('the evaluation window is counted once', () => {
 		for (let tick = 0; tick < 72; tick += 1) {
 			const now = NOW + tick * HOUR;
 			const decision = nextShare(
-				controllerInput({ mix, evaluation: cleanEvaluation(mix.cleanStreak ?? 0), now })
+				// A FRESH aggregate every tick, which is what an hourly cron produces:
+				// the spacing rule under test is the window anchor, not the age of the
+				// evidence (that has its own fixtures in the adversarial suite).
+				controllerInput({ mix, evaluation: cleanEvaluation(mix.cleanStreak ?? 0, now), now })
 			);
 			if (decision.countedAt !== undefined) counted += 1;
 			if (decision.direction === 'increase') increases += 1;

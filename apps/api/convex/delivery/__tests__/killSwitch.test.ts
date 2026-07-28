@@ -11,7 +11,7 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { allDeliverabilityCells } from '@owlat/shared/deliverabilityRouting';
 import { createTestInstanceSettings } from '../../__tests__/factories';
 import { nextShare } from '../ramp/controller';
@@ -32,6 +32,11 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_kill_switch'),
+		// The OPERATOR path to the switch is `workspaces/settings.update`, which is
+		// gated on `settings:manage`. The harness has no session, so the permission
+		// check is satisfied as an owner — the gate itself is covered where it
+		// belongs, in workspaces/__tests__/settings.test.ts.
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -103,7 +108,7 @@ describe('the kill switch, in the decision function', () => {
 						isCircuitBreakerOpen: true,
 						isPoolBlocklisted: true,
 					},
-					capacity: { warmingCapRemaining: 1e9, projectedVolume: 1 },
+					capacity: { kind: 'projected', warmingCapRemaining: 1e9, projectedVolume: 1 },
 				})
 			);
 			expect(decision.share).toBe(0.37);
@@ -234,13 +239,48 @@ describe('the kill switch, through the cron', () => {
 		}
 	});
 
-	it('can be toggled through its own mutation', async () => {
+	// THE OPERATOR PATH, not a test-only seam: the switch is engaged through the
+	// same permission-gated, audited settings mutation an admin uses from the
+	// product, and the very next controller tick honours it.
+	it('is engaged through the operator settings path and honoured on the next tick', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, { isPaused: false });
-		await t.mutation(internal.delivery.rampControllerCron.setRampControllerPaused, {
-			isPaused: true,
-		});
+
+		await t.mutation(api.workspaces.settings.update, { isRampControllerPaused: true });
 		const settings = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
 		expect(settings?.isRampControllerPaused).toBe(true);
+
+		const before = await managedRow(t);
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+		const after = await managedRow(t);
+		expect(after?.ownShare).toBe(before?.ownShare);
+		const decisions = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+		expect(decisions[0]?.reason).toBe('kill_switch');
+	});
+
+	// A PROMOTION IS A MOVE. It raises the phase ceiling AND bumps `mixVersion`,
+	// which re-shuffles which arm every recipient of the cell lands in (plan D7) —
+	// the last thing anyone wants mid-incident, while the controller is
+	// deliberately frozen. "Everything held still" has to mean everything.
+	it('refuses a phase promotion while the switch is engaged', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, { isPaused: true });
+		// Off the top rung, so an honoured promotion would demonstrably move both
+		// the ceiling and the mix generation.
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('deliverabilityRouteStates').collect();
+			const cell = rows.find((row) => row.stream === 'campaign');
+			if (cell) await ctx.db.patch(cell._id, { phaseCeiling: 0.25 });
+		});
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, {
+			stream: 'campaign' as const,
+			destinationProvider: 'gmail' as const,
+		});
+
+		expect(result).toEqual({ ok: false });
+		const row = await managedRow(t);
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.mixVersion).toBe(3);
 	});
 });

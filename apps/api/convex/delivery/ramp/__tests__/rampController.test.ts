@@ -196,7 +196,7 @@ describe('nextShare — ceilings and confidence', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.5, cleanStreak: 3, lastCountedAt: NOW - HOUR }),
-				capacity: { warmingCapRemaining: 100, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 100, projectedVolume: 1_000 },
 				evaluation: cleanEvaluation(3),
 			})
 		);
@@ -220,7 +220,7 @@ describe('nextShare — ceilings and confidence', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.5 }),
-				capacity: { warmingCapRemaining: 100, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: 100, projectedVolume: 1_000 },
 			})
 		);
 		// 100/1000 x SAFETY 0.8 = 0.08
@@ -251,7 +251,7 @@ describe('nextShare — ceilings and confidence', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.3 }),
-				capacity: { warmingCapRemaining: Number.NaN, projectedVolume: 1_000 },
+				capacity: { kind: 'projected', warmingCapRemaining: Number.NaN, projectedVolume: 1_000 },
 			})
 		);
 		expect(decision.share).toBe(0.3);
