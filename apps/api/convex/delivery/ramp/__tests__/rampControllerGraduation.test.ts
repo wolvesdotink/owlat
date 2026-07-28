@@ -2,9 +2,13 @@
  * GRADUATION (plan D9): s = 1.0 held FOURTEEN days with every gate green pins
  * the cell, and the relay drops to priority_failover standby.
  *
- * Thirteen days does not. One non-green window resets the clock. The pin is a
- * property of the share, not a badge the row keeps — a graduated cell that ever
- * leaves 1.0 is no longer graduated.
+ * Thirteen days does not. One non-green window resets the clock.
+ *
+ * The pin is REVOKED by a hard stop or a breached gate, and by nothing else. It
+ * is deliberately NOT re-derived from the share, because the warming cap can
+ * hold a graduated cell below 1.0 without the cell having failed anything — and
+ * a pin that evaporated on the next tick would make it re-earn fourteen days
+ * for a physical limit. That is a two-tick fact, so it is tested over two ticks.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -71,6 +75,82 @@ describe('graduation', () => {
 		// ...but the cell is still graduated: capacity is a physical limit, not a
 		// gate the cell failed.
 		expect(decision.graduatedAt).toBe(NOW);
+	});
+
+	it('never lets a capacity ceiling of ZERO switch a graduated cell off', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
+				evaluation: cleanEvaluation(40),
+				// No headroom left at all: the projection says the cap is spent.
+				capacity: { warmingCapRemaining: 0, projectedVolume: 1_000 },
+			})
+		);
+		// A capacity ceiling is not a breach, and only a gate failure or a hard stop
+		// may take a cell to zero. The trickle is what lets it be re-measured.
+		expect(decision.share).toBe(RAMP_AIMD.shareFloor);
+		expect(decision.reason).toBe('capacity_ceiling');
+		expect(decision.graduatedAt).toBe(NOW);
+	});
+
+	it('keeps the pin across a SECOND tick spent under the capacity bound', () => {
+		const capacity = { warmingCapRemaining: 500, projectedVolume: 1_000 };
+		const first = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, cleanStreak: 40, greenSince: NOW - FOURTEEN_DAYS }),
+				evaluation: cleanEvaluation(40),
+				capacity,
+			})
+		);
+		expect(first.share).toBe(0.4);
+		expect(first.graduatedAt).toBe(NOW);
+
+		// The cron writes the decision back and ticks again a day later. Reading the
+		// pin off the share would lose it here, and the cell would have to climb
+		// from 0.4 at +5pp and re-hold fourteen days.
+		const second = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: first.share,
+					cleanStreak: first.cleanStreak,
+					greenSince: first.greenSince,
+					graduatedAt: first.graduatedAt,
+					lastCountedAt: first.countedAt,
+				}),
+				evaluation: cleanEvaluation(41),
+				capacity,
+				now: NOW + DAY,
+			})
+		);
+		expect(second.share).toBe(0.4);
+		expect(second.reason).toBe('graduated');
+		expect(second.graduatedAt).toBe(NOW);
+		expect(second.greenSince).toBe(NOW - FOURTEEN_DAYS);
+	});
+
+	it('restores a bounded pin to full share once the cap lifts — but not for free', () => {
+		const bound = mixState({
+			share: 0.4,
+			cleanStreak: 41,
+			greenSince: NOW - 20 * DAY,
+			graduatedAt: NOW - 6 * DAY,
+		});
+
+		// A restore is an INCREASE, so it costs a counted window like any other.
+		const tooSoon = nextShare(
+			controllerInput({
+				mix: { ...bound, lastCountedAt: NOW - 1_000 },
+				evaluation: cleanEvaluation(41),
+			})
+		);
+		expect(tooSoon.share).toBe(0.4);
+		expect(tooSoon.reason).toBe('window_open');
+		expect(tooSoon.graduatedAt).toBe(NOW - 6 * DAY);
+
+		const restored = nextShare(controllerInput({ mix: bound, evaluation: cleanEvaluation(41) }));
+		expect(restored.share).toBe(1);
+		expect(restored.reason).toBe('graduated');
+		expect(restored.graduatedAt).toBe(NOW - 6 * DAY);
 	});
 
 	it('keeps an existing graduation instant rather than restamping it', () => {

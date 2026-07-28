@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { capacityCeiling, nextShare } from '../controller';
+import { capacityCeiling, isEvaluationWindowElapsed, nextShare } from '../controller';
 import { RAMP_AIMD } from '../controllerConfig';
 import { aggregateRampGates } from '../gateEvaluation';
 import type { RampGateEvaluation } from '../gateTypes';
@@ -87,11 +87,52 @@ describe('a forged snapshot cannot buy more than one step', () => {
 		expect(decision.reason).toBe('healthy');
 	});
 
-	it('replaying the SAME evaluation still buys only one step per call', () => {
+	it('replaying the SAME evaluation INSIDE one window buys nothing at all', () => {
 		const evaluation = forgedPerfection();
 		let share = 0.4;
-		for (let replay = 0; replay < 3; replay += 1) {
-			share = nextShare(controllerInput({ mix: mixState({ share }), evaluation })).share;
+		let lastCountedAt: number | undefined;
+		// The first call has no anchor to have counted against, so it buys the one
+		// step a clean window is worth...
+		const first = nextShare(controllerInput({ mix: mixState({ share }), evaluation }));
+		share = first.share;
+		lastCountedAt = first.countedAt ?? lastCountedAt;
+		expect(share).toBe(0.45);
+		expect(lastCountedAt).toBe(NOW);
+
+		// ...and every replay against the SAME window buys zero, however many times
+		// it is fired. Carrying the anchor forward is what the cron does.
+		for (let replay = 0; replay < 2; replay += 1) {
+			const decision = nextShare(
+				controllerInput({ mix: mixState({ share, cleanStreak: 3, lastCountedAt }), evaluation })
+			);
+			expect(decision.reason).toBe('window_open');
+			expect(decision.direction).toBe('hold');
+			expect(decision.share).toBe(0.45);
+			// A replay is not a counted window, so it must not push the anchor out.
+			expect(decision.countedAt).toBeUndefined();
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+		}
+		expect(share).toBe(0.45);
+	});
+
+	it('buys exactly one step per ELAPSED window, not one per call', () => {
+		const evaluation = forgedPerfection();
+		let share = 0.4;
+		let lastCountedAt: number | undefined;
+		let now = NOW;
+		for (let window = 0; window < 3; window += 1) {
+			const decision = nextShare(
+				controllerInput({
+					mix: mixState({ share, cleanStreak: 3, lastCountedAt }),
+					evaluation,
+					now,
+				})
+			);
+			expect(decision.reason).toBe('healthy');
+			share = decision.share;
+			lastCountedAt = decision.countedAt ?? lastCountedAt;
+			now += RAMP_AIMD.evaluationWindowMs;
 		}
 		expect(share).toBe(0.55);
 	});
@@ -210,6 +251,48 @@ describe('degenerate numbers fail closed', () => {
 			expect(decision.reason).toBe('building_confidence');
 			expect(decision.share).toBe(0.3);
 		}
+	});
+});
+
+describe('the window anchor, read directly', () => {
+	// The predicate decides whether a clean window may be SPENT, so its
+	// degenerate readings are asserted here rather than inferred through the
+	// ladder: absent or unreadable means "never counted" (a cell with no anchor
+	// must not be stranded), and AHEAD OF THE CLOCK means "just counted" — the
+	// one direction that cannot hand out a step.
+	const cases: ReadonlyArray<[string, number | undefined, boolean]> = [
+		['no anchor at all', undefined, true],
+		['a zero anchor', 0, true],
+		['a negative anchor', -1, true],
+		['NaN', Number.NaN, true],
+		// Both infinities are UNREADABLE rather than "in the future": an anchor no
+		// arithmetic can subtract from would strand the cell forever if it counted
+		// as one, and the step it unlocks still has to be paid for with a green
+		// window and a satisfied K_CLEAN.
+		['+Infinity', Number.POSITIVE_INFINITY, true],
+		['-Infinity', Number.NEGATIVE_INFINITY, true],
+		['an anchor ten days in the future', NOW + 10 * DAY, false],
+		['exactly one window ago', NOW - RAMP_AIMD.evaluationWindowMs, true],
+		['one millisecond short of a window', NOW - RAMP_AIMD.evaluationWindowMs + 1, false],
+		['the current instant', NOW, false],
+		['a week ago', NOW - 7 * DAY, true],
+	];
+
+	for (const [name, anchor, expected] of cases) {
+		it(`${name} reads as ${expected ? 'elapsed' : 'open'}`, () => {
+			expect(isEvaluationWindowElapsed(anchor, NOW)).toBe(expected);
+		});
+	}
+
+	it('an anchor stamped in the future holds the cell instead of unlocking a step', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: 3, lastCountedAt: NOW + 10 * DAY }),
+			})
+		);
+		expect(decision.reason).toBe('window_open');
+		expect(decision.share).toBe(0.4);
+		expect(decision.countedAt).toBeUndefined();
 	});
 });
 

@@ -225,7 +225,13 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 		['building confidence', { evaluation: cleanEvaluation(0) }],
 		['capacity ceiling', { capacity: { warmingCapRemaining: 1, projectedVolume: 1_000 } }],
 		['phase ceiling', { mix: mixState({ share: 0.25, phaseCeiling: 0.25 }) }],
-		['window already counted', { mix: mixState({ share: 0.4, lastCountedAt: NOW - 1_000 }) }],
+		// K_CLEAN is already satisfied, so the ONLY thing between this cell and an
+		// additive step is the window anchor — without the streak it would fall into
+		// `building_confidence` and this row would silently stop covering `window_open`.
+		[
+			'window already counted',
+			{ mix: mixState({ share: 0.4, cleanStreak: 3, lastCountedAt: NOW - 1_000 }) },
+		],
 		['healthy', {}],
 		['graduated', { mix: mixState({ share: 1, greenSince: NOW - 20 * 24 * 60 * 60 * 1000 }) }],
 		['gate breach', { evaluation: breachedEvaluation('deferral') }],
