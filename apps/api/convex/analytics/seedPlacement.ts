@@ -306,8 +306,11 @@ export interface SeedPlacementSummary {
 	placementSource: PlacementSourceKind;
 	/**
 	 * How much this reading is worth (D14). Placement evidence is NEVER high
-	 * confidence whoever gathered it — `none` means there is nothing to read at
-	 * all yet, and the screen says so instead of quoting a percentage.
+	 * confidence whoever gathered it; the one grade it can carry is the gate's
+	 * own `SEED_GATE_CONFIDENCE`, imported rather than restated so the screen
+	 * and the controller cannot hold two opinions of one reading. `none` means
+	 * there is nothing to read at all yet — the ABSENCE of a grade, not a
+	 * weaker one — and the screen says so instead of quoting a percentage.
 	 */
 	placementConfidence: SeedConfidence;
 	/**
@@ -371,8 +374,9 @@ export async function summarizeSeedPlacementWindow(
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
 		// The resolution's own verdict, carried through rather than recomputed:
-		// this IS D14's "measurement confidence: low — add seed mailboxes" hint,
-		// and it is the resolution that decides it, not the screen.
+		// this IS D14's "measurement confidence — add seed mailboxes" hint, and
+		// it is the resolution that decides both the grade and the hint, not the
+		// screen.
 		placementSource: placement.kind,
 		placementConfidence: placement.confidence,
 		placementImprovement: placement.improvement,

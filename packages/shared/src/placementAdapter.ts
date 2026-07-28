@@ -44,6 +44,7 @@ import type {
 } from './seedPlacement';
 import {
 	SEED_ACCOUNTS_PER_ORG_LIMIT,
+	SEED_GATE_CONFIDENCE,
 	evaluateSeedPlacementGate,
 	summarizeSeedPlacement,
 } from './seedPlacement';
@@ -90,8 +91,11 @@ export interface PlacementAdapter {
 	readonly kind: PlacementSourceKind;
 	/**
 	 * D14/D17 — placement evidence is never high confidence, whoever gathered
-	 * it. A commercial panel is a bigger sample of the same weak signal, so it
-	 * reads `low` too rather than promoting itself to a gauge.
+	 * it. The grade has ONE home (`SEED_GATE_CONFIDENCE`, declared beside the
+	 * thresholds that produce the reading) and both implementations import it:
+	 * a commercial panel is a bigger sample of the SAME signal, so it reads
+	 * exactly what the self-hosted path reads rather than promoting itself to a
+	 * gauge. Restating the grade here would be a second opinion of one number.
 	 */
 	readonly confidence: SeedConfidence;
 	/**
@@ -166,7 +170,7 @@ export function commercialReportsToObservations(
 /** THE DEFAULT: seed mailboxes shipped in P2-6. */
 export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 	kind: 'self_hosted_seeds',
-	confidence: 'low',
+	confidence: SEED_GATE_CONFIDENCE,
 	summarize(evidence: PlacementEvidence): SeedProviderRollup[] {
 		if (evidence.kind !== 'self_hosted_seeds') return [];
 		return summarizeSeedPlacement(evidence.observations);
@@ -176,7 +180,7 @@ export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 /** STRICTLY AN UPGRADE: a commercial placement panel. */
 export const commercialPlacementApiAdapter: PlacementAdapter = {
 	kind: 'commercial_api',
-	confidence: 'low',
+	confidence: SEED_GATE_CONFIDENCE,
 	summarize(evidence: PlacementEvidence): SeedProviderRollup[] {
 		if (evidence.kind !== 'commercial_api') return [];
 		return summarizeSeedPlacement(commercialReportsToObservations(evidence.reports));
@@ -231,9 +235,11 @@ export function resolvePlacementAdapter(config: PlacementSourceConfig): Placemen
 		adapter: selfHostedSeedPlacementAdapter,
 		kind: DEFAULT_PLACEMENT_SOURCE_KIND,
 		// No seed mailbox has ever been observed, so there is nothing to be
-		// confident about yet. `none` is what the roll-up itself reports for an
-		// empty sample, so the two agree.
-		confidence: seeds > 0 ? 'low' : 'none',
+		// confident about yet. `none` is the ABSENCE of a grade — not a weaker
+		// one — and is what the roll-up itself reports for an empty sample, so
+		// the two agree. With seeds connected the reading carries the gate's own
+		// grade, imported rather than restated.
+		confidence: seeds > 0 ? SEED_GATE_CONFIDENCE : 'none',
 		improvement: seeds > 0 ? 'none' : 'add_seed_mailboxes',
 		blocking: false,
 	};

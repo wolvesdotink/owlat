@@ -23,6 +23,7 @@ import {
 	selfHostedSeedPlacementAdapter,
 	type PlacementAdapter,
 } from '../placementAdapter';
+import { SEED_GATE_CONFIDENCE } from '../seedPlacement';
 import type { SeedCorroboration, SeedObservation } from '../seedPlacement';
 
 const QUIET: SeedCorroboration = { deferralGateBreached: false, bounceGateBreached: false };
@@ -51,7 +52,9 @@ describe('exactly two implementations', () => {
 		];
 		for (const adapter of adapters) {
 			expect(PLACEMENT_SOURCE_KINDS).toContain(adapter.kind);
-			expect(adapter.confidence).toBe('low');
+			// The grade has ONE home; asserting the constant rather than a literal
+			// is what stops the adapter drifting away from the gate it feeds.
+			expect(adapter.confidence).toBe(SEED_GATE_CONFIDENCE);
 			expect(typeof adapter.summarize).toBe('function');
 		}
 	});
@@ -97,7 +100,7 @@ describe('the self-hosted path is the default', () => {
 		expect(resolution.kind).toBe('self_hosted_seeds');
 		expect(resolution.adapter).toBe(selfHostedSeedPlacementAdapter);
 		expect(resolution.improvement).toBe('none');
-		expect(resolution.confidence).toBe('low');
+		expect(resolution.confidence).toBe(SEED_GATE_CONFIDENCE);
 	});
 
 	it('a commercial key is an UPGRADE that wins when present', () => {
