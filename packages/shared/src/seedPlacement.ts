@@ -147,7 +147,9 @@ export {
 	type SeedProviderRollup,
 	type SeedReferenceStatus,
 	type SeedTransportArm,
-	type SeedTripwireAction,
+	type SeedCorroboratedReason,
+	type SeedSuspicionReason,
+	type SeedTripwireOutcome,
 	type SeedTripwireResolution,
 } from './seedPlacementGate';
 

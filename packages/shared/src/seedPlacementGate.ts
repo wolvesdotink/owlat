@@ -8,10 +8,11 @@
  * D17 — A TRIPWIRE, NOT A GAUGE. Nothing this module returns is a placement
  * percentage: the roll-up is a STATUS per mailbox provider, the reference-arm
  * comparison is a STATUS, and `sampleSize` counts OBSERVATIONS rather than
- * measuring placement. A provider-wide collapse is SUSPECT until the deferral
- * or the bounce gate corroborates it — and uncorroborated it HOLDS the gate
- * (`insufficient_data`) rather than passing it, because a pass would feed the
- * clean streak that authorises an increase.
+ * measuring placement. Every degraded reading — a collapse, missing probes, a
+ * provider sitting below the reached threshold, a provider behind the reference
+ * arm — is SUSPECT until the deferral or the bounce gate corroborates it, and
+ * uncorroborated it HOLDS the gate (`insufficient_data`) rather than passing it,
+ * because a pass would feed the clean streak that authorises an increase.
  *
  * GATE 5 IS TWO CLAUSES, per the plan's signal table: the own arm's reached
  * share must clear `SEED_REACHED_THRESHOLD` AND, when a reference transport
@@ -53,8 +54,9 @@ export const SEED_MIN_OBSERVATIONS = 3;
 /**
  * Share of probes that must reach the inbox or a tab for a provider to read
  * healthy. This is the plan's gate-5 first clause verbatim (`inbox >= 90 %`);
- * below it the provider reads `mixed`, which — unlike `inbox_dominant` — can
- * act once corroborated if any probe is also MISSING.
+ * below it the provider reads `mixed`, which is a SUSPICION rather than a clean
+ * reading: it holds the gate uncorroborated and fails it once the deferral or
+ * the bounce gate corroborates. Only `inbox_dominant` ever passes.
  *
  * Exported so the fixtures pin the CONSTANT rather than a copy of its value.
  */
@@ -219,30 +221,44 @@ export interface SeedCorroboration {
 	bounceGateBreached: boolean;
 }
 
-export type SeedTripwireAction = 'hold' | 'act';
+/**
+ * What a provider's reading MEANS to the controller, as a discriminated union.
+ *
+ * The discriminant, not the reason string, is what the gate switches on. An
+ * earlier shape carried `action: 'hold' | 'act'` and left the gate to re-derive
+ * "is this hold a suspicion?" by matching a subset of the reason literals — and
+ * a hold whose reason was not in that subset silently read as CLEAN. That is
+ * exactly how a below-threshold provider came to license an increase. With
+ * three distinct outcomes the only way to count a provider as clean is to
+ * return `clean`, so the mistake is not available.
+ *
+ *   - `act`      — a suspicion the deferral or bounce gate CORROBORATES: fail.
+ *   - `suspect`  — a suspicion nothing corroborates: HOLD (never a pass, and
+ *                  never a decrease either).
+ *   - `clean`    — gate 5's clauses are satisfied. The only pass.
+ *   - `insufficient` — below the minimum sample; no verdict in any direction.
+ */
+export type SeedTripwireOutcome = 'act' | 'suspect' | 'clean' | 'insufficient';
 
-export interface SeedTripwireResolution {
-	action: SeedTripwireAction;
-	reason:
-		| 'insufficient_seed_sample'
-		| 'seeds_reaching_inbox'
-		| 'seeds_mixed_no_collapse'
-		| 'seed_probes_missing_awaiting_corroboration'
-		| 'seed_probes_missing_corroborated'
-		| 'seed_collapse_awaiting_corroboration'
-		| 'seed_collapse_corroborated'
-		| 'seeds_below_reference_awaiting_corroboration'
-		| 'seeds_below_reference_corroborated';
-}
+/** Suspicions: a reason to doubt with nothing yet confirming it. */
+export type SeedSuspicionReason =
+	| 'seeds_below_reached_threshold_awaiting_corroboration'
+	| 'seed_probes_missing_awaiting_corroboration'
+	| 'seed_collapse_awaiting_corroboration'
+	| 'seeds_below_reference_awaiting_corroboration';
 
-/** True for every reason that is a suspicion the corroboration gate is holding. */
-function isAwaitingSeedCorroboration(reason: SeedTripwireResolution['reason']): boolean {
-	return (
-		reason === 'seed_collapse_awaiting_corroboration' ||
-		reason === 'seed_probes_missing_awaiting_corroboration' ||
-		reason === 'seeds_below_reference_awaiting_corroboration'
-	);
-}
+/** The same four suspicions, corroborated by the deferral or the bounce gate. */
+export type SeedCorroboratedReason =
+	| 'seeds_below_reached_threshold_corroborated'
+	| 'seed_probes_missing_corroborated'
+	| 'seed_collapse_corroborated'
+	| 'seeds_below_reference_corroborated';
+
+export type SeedTripwireResolution =
+	| { outcome: 'insufficient'; reason: 'insufficient_seed_sample' }
+	| { outcome: 'clean'; reason: 'seeds_reaching_inbox' }
+	| { outcome: 'suspect'; reason: SeedSuspicionReason }
+	| { outcome: 'act'; reason: SeedCorroboratedReason };
 
 export function resolveSeedTripwire(
 	rollup: SeedProviderRollup,
@@ -250,41 +266,54 @@ export function resolveSeedTripwire(
 ): SeedTripwireResolution {
 	const corroborated = corroboration.deferralGateBreached || corroboration.bounceGateBreached;
 	const gated = (
-		corroboratedReason: SeedTripwireResolution['reason'],
-		awaitingReason: SeedTripwireResolution['reason']
+		corroboratedReason: SeedCorroboratedReason,
+		awaitingReason: SeedSuspicionReason
 	): SeedTripwireResolution =>
 		corroborated
-			? { action: 'act', reason: corroboratedReason }
-			: { action: 'hold', reason: awaitingReason };
+			? { outcome: 'act', reason: corroboratedReason }
+			: { outcome: 'suspect', reason: awaitingReason };
 	const collapse = (): SeedTripwireResolution =>
 		gated('seed_collapse_corroborated', 'seed_collapse_awaiting_corroboration');
 	const probesMissing = (): SeedTripwireResolution =>
 		gated('seed_probes_missing_corroborated', 'seed_probes_missing_awaiting_corroboration');
 	const belowReference = (): SeedTripwireResolution =>
 		gated('seeds_below_reference_corroborated', 'seeds_below_reference_awaiting_corroboration');
+	const belowReachedThreshold = (): SeedTripwireResolution =>
+		gated(
+			'seeds_below_reached_threshold_corroborated',
+			'seeds_below_reached_threshold_awaiting_corroboration'
+		);
 
 	switch (rollup.status) {
 		case 'insufficient_data':
-			return { action: 'hold', reason: 'insufficient_seed_sample' };
+			return { outcome: 'insufficient', reason: 'insufficient_seed_sample' };
 		case 'collapse_suspected':
 			return collapse();
 		case 'mixed':
 			// D17 calls MISSING the most alarming outcome and the one no other
 			// signal surfaces at all — so a degraded provider that is also LOSING
-			// probes is actionable, behind the same corroboration gate a collapse
-			// sits behind. Degradation without disappearance stays a hold.
+			// probes is named for what it is, behind the same corroboration gate a
+			// collapse sits behind.
 			if (rollup.anyMissing) return probesMissing();
 			// Gate 5's SECOND clause. Behind the same corroboration gate as the
 			// first: a seed reading is a tripwire whichever clause trips it.
 			if (rollup.reference === 'below_reference') return belowReference();
-			return { action: 'hold', reason: 'seeds_mixed_no_collapse' };
+			// GATE 5'S FIRST CLAUSE, ENFORCED. `mixed` is BELOW
+			// SEED_REACHED_THRESHOLD by construction — a material share of every
+			// probe is being filed to spam, binned, or lost — so it is a suspicion,
+			// never a clean reading. Reporting it clean is what let the controller
+			// count the gate towards the K_CLEAN streak and ramp the share UP while
+			// the seeds said the opposite, and standalone (where there is no
+			// reference arm and this clause IS the whole gate, D3) it was the only
+			// clause left. Uncorroborated it HOLDS, exactly like a collapse.
+			return belowReachedThreshold();
 		case 'inbox_dominant':
 			// Above SEED_REACHED_THRESHOLD the provider is healthy enough that a
 			// single stray disappearance is noise, not a signal — but the reference
 			// arm can still be doing measurably better, which is the comparison the
 			// plan's second clause exists to make.
 			if (rollup.reference === 'below_reference') return belowReference();
-			return { action: 'hold', reason: 'seeds_reaching_inbox' };
+			return { outcome: 'clean', reason: 'seeds_reaching_inbox' };
 	}
 }
 
@@ -331,29 +360,39 @@ export function evaluateSeedPlacementGate(input: {
 	const suspectProviders: DestinationProviderKey[] = [];
 	for (const rollup of usable) {
 		const resolution = resolveSeedTripwire(rollup, input.corroboration);
-		if (resolution.action === 'act') failedProviders.push(rollup.provider);
-		else if (isAwaitingSeedCorroboration(resolution.reason)) {
-			suspectProviders.push(rollup.provider);
+		switch (resolution.outcome) {
+			case 'act':
+				failedProviders.push(rollup.provider);
+				break;
+			case 'suspect':
+				suspectProviders.push(rollup.provider);
+				break;
+			case 'clean':
+			case 'insufficient':
+				// `insufficient` cannot reach here (those rollups are filtered above),
+				// and `clean` is the ONLY reading that contributes to a pass — by
+				// contributing nothing to either list.
+				break;
 		}
 	}
 
 	if (failedProviders.length > 0) {
 		return {
 			verdict: 'fail',
-			reason: `seed_collapse_corroborated:${failedProviders.join(',')}`,
+			reason: `seed_tripwire_corroborated:${failedProviders.join(',')}`,
 			confidence: 'low',
 			failedProviders,
 			suspectProviders,
 		};
 	}
 
-	// An UNCORROBORATED collapse is not a pass.
+	// AN UNCORROBORATED SUSPICION IS NOT A PASS.
 	//
 	// D17 is right that it may not ACT — eight consumer mailboxes may not halve a
 	// healthy deployment's share on their own. But `pass` is not the neutral
 	// answer it looks like: the controller counts a passing gate towards the
 	// K_CLEAN streak that authorises an additive increase, so reading `pass` here
-	// would let the share ramp UP while every seed mailbox is being filtered to
+	// would let the share ramp UP while the seed mailboxes are being filtered to
 	// spam. `insufficient_data` is the correct verdict for "we have a reason to
 	// doubt and nothing that confirms it": it HOLDS, moving the share neither up
 	// nor down, which is also D14's rule that a weak signal may never be the sole
@@ -361,7 +400,7 @@ export function evaluateSeedPlacementGate(input: {
 	if (suspectProviders.length > 0) {
 		return {
 			verdict: 'insufficient_data',
-			reason: `seed_collapse_awaiting_corroboration:${suspectProviders.join(',')}`,
+			reason: `seed_tripwire_awaiting_corroboration:${suspectProviders.join(',')}`,
 			confidence: 'low',
 			failedProviders: [],
 			suspectProviders,
