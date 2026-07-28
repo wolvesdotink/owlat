@@ -10,6 +10,7 @@
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { aggregateRampGates } from '../gateEvaluation';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
+import { externalDataAllowed, rampGateMatrixMode } from './gateMatrixMode';
 import type {
 	RampGateDecidedMeasurement,
 	RampGateEvaluation,
@@ -33,21 +34,36 @@ export const GMAIL_CAMPAIGN: DeliverabilityCell = {
 	destinationProvider: 'gmail',
 };
 
+/**
+ * THE STANDALONE LEG IS A DIFFERENT WORLD, NOT THE SAME ONE WITH EXTRA ASSERTIONS.
+ *
+ * `ramp-gate-matrix` runs everything under `ramp/` twice, and these fixtures feed
+ * all six controller suites. If they carried a reference arm unconditionally, the
+ * standalone leg would execute those suites byte-identically to the equipped leg —
+ * two green checks, one configuration actually tested, which is exactly the
+ * failure `gateMatrixMode.ts` exists to prevent. So the measurement literals are
+ * DERIVED from the leg: standalone builds every measurement with no second arm at
+ * all. The controller reads only the aggregate verdict, so this costs nothing
+ * behaviourally — and a future piece that makes a reference arm load-bearing in
+ * the controller fails the standalone leg on its own PR.
+ */
+const REFERENCE_ARM_PRESENT = externalDataAllowed(rampGateMatrixMode());
+
 const DECIDED: RampGateDecidedMeasurement = {
 	thresholdRate: 0.02,
 	toleranceValuePp: null,
 	ownSample: 5_000,
-	referenceSample: 5_000,
+	referenceSample: REFERENCE_ARM_PRESENT ? 5_000 : null,
 	minSample: 200,
 	ownRate: 0.005,
-	referenceRate: 0.005,
+	referenceRate: REFERENCE_ARM_PRESENT ? 0.005 : null,
 };
 
 const HELD: RampGateHoldMeasurement = {
 	thresholdRate: 0.02,
 	toleranceValuePp: null,
 	ownSample: 10,
-	referenceSample: null,
+	referenceSample: REFERENCE_ARM_PRESENT ? 10 : null,
 	minSample: 200,
 	ownRate: null,
 	referenceRate: null,
