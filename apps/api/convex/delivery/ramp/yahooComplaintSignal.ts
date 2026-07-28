@@ -87,10 +87,31 @@ export interface YahooComplaintSubstitution {
 	 * applies exactly this rule. The dashboard states what the controller
 	 * enforces, or the two can disagree about a number (plan D5).
 	 *
-	 * `yahooComplaintGateFails` below is this field as code — consume it rather
+	 * `compareYahooComplaintRate` below is this field as code — consume it rather
 	 * than re-deriving the comparison.
 	 */
 	trip: YahooComplaintTrip;
+	/**
+	 * HOW WELL WE ARE MEASURING **YAHOO** COMPLAINTS FOR THIS CELL — deliberately
+	 * NOT the same question as the running gate's `grade.confidence`.
+	 *
+	 * The running gate grades a SOURCE in general (`CFBL_COMPLAINT_SPEC.grade` is
+	 * `DIRECT_MEASUREMENT` / `high`: an RFC 9477 CFBL-Address feed is a real
+	 * complaint feed, counted off our own wire). This field grades that source AS
+	 * A STAND-IN FOR YAHOO, and Yahoo does not serve CFBL-Address — so for the
+	 * yahoo cell specifically a CFBL feed is a partial view of the complaints we
+	 * wanted, and it is graded one rank below the source's own grade.
+	 *
+	 * THE DIVERGENCE IS INTENDED AND IT IS PINNED. The `unsubscribe_rate_proxy`
+	 * branch DOES equal `UNSUBSCRIBE_PROXY_SPEC.grade.confidence` (a proxy is a
+	 * proxy in both framings) and a fixture asserts it, so do not read that as an
+	 * invariant across all three branches: a second fixture asserts the
+	 * `cfbl_address` branch sits exactly one rank below
+	 * `CFBL_COMPLAINT_SPEC.grade.confidence`. Changing either side has to be a
+	 * decision, not a drift. The two labels also render on different screens (this
+	 * one on the Yahoo CFL wizard panel, the grade on the delivery measurement
+	 * screens), so there is no operator-visible contradiction.
+	 */
 	confidence: 'high' | 'medium' | 'low';
 	/**
 	 * The confidence sentence shown on the cell, ALWAYS present — including the
@@ -113,7 +134,22 @@ export interface YahooComplaintSubstitution {
 }
 
 /**
- * Does gate 3 FAIL the yahoo cell at this rate, under this substitution?
+ * THREE-VALUED ON PURPOSE — "cannot tell" is not "fine".
+ *
+ * The running gate distinguishes `pass` from `own_rate_unmeasurable` from
+ * `baseline_not_a_denominator`, because a hold has to NAME the thing to fix
+ * (plan D12). A boolean comparator would fold the last two into the first, and
+ * P3-8's substitution table — the consumer of this module — would read
+ * "unmeasurable" as "healthy" and let a cell advance on a number nobody
+ * actually has.
+ *
+ * `not_comparable` maps to a HOLD, never to a breach and never to a pass: the
+ * comparison could not be built, so absence still blocks nothing (plan D2/D10).
+ */
+export type YahooComplaintComparison = 'breach' | 'no_breach' | 'not_comparable';
+
+/**
+ * Does gate 3 breach for the yahoo cell at this rate, under this substitution?
  *
  * The COMPARATOR that goes with `trip`. Published rather than left to each caller
  * for the reason a trip point without a comparator is only half a contract: two
@@ -121,26 +157,30 @@ export interface YahooComplaintSubstitution {
  * that had an executable owner every consumer — P3-8's substitution table, the
  * dashboard, the tests — re-derived the boundary and could disagree about it.
  *
+ * A non-finite OBSERVED rate is `not_comparable` on BOTH trip kinds — the
+ * counters for the window could not be read as a rate at all, which is the
+ * running gate's `own_rate_unmeasurable` hold, and an `Infinity` must not be
+ * laundered into a confident breach against a real threshold.
+ *
  * `ownTrailingRate` is the cell's own 30-day trailing rate of the same series,
  * and is only consulted by the `trailing_multiple` trip. A trailing rate that
- * cannot be a DENOMINATOR — absent, non-finite or zero — is not a failure: it is
- * a comparison that cannot be built, which the running gate reports as
- * `baseline_not_a_denominator` and holds on (plan D10). Reporting `false` here
- * says "this rate is not a breach", which is the honest answer and the one that
- * keeps absence from blocking anything (plan D2).
+ * cannot be a DENOMINATOR — absent, non-finite or zero — is `not_comparable`
+ * too, matching the running gate's `baseline_not_a_denominator`.
  */
-export function yahooComplaintGateFails(
+export function compareYahooComplaintRate(
 	rate: RateFraction,
 	substitution: YahooComplaintSubstitution,
 	ownTrailingRate: RateFraction | null = null
-): boolean {
+): YahooComplaintComparison {
 	const observed = rate as number;
-	if (!Number.isFinite(observed)) return false;
+	if (!Number.isFinite(observed)) return 'not_comparable';
 	const { trip } = substitution;
-	if (trip.kind === 'absolute_rate') return observed > (trip.thresholdRate as number);
+	if (trip.kind === 'absolute_rate') {
+		return observed > (trip.thresholdRate as number) ? 'breach' : 'no_breach';
+	}
 	const baseline = ownTrailingRate === null ? null : (ownTrailingRate as number);
-	if (baseline === null || !Number.isFinite(baseline) || baseline <= 0) return false;
-	return observed >= baseline * trip.multiple;
+	if (baseline === null || !Number.isFinite(baseline) || baseline <= 0) return 'not_comparable';
+	return observed >= baseline * trip.multiple ? 'breach' : 'no_breach';
 }
 
 /**
@@ -181,6 +221,10 @@ export function yahooComplaintSubstitution(input: {
 		return {
 			source: 'cfbl_address',
 			trip: { kind: 'absolute_rate', thresholdRate: RAMP_GATE_THRESHOLDS.complaintMax },
+			// ONE RANK BELOW `CFBL_COMPLAINT_SPEC.grade.confidence` ON PURPOSE, and
+			// pinned by a fixture. The feed itself is a direct measurement; it is a
+			// PARTIAL view of YAHOO, which does not serve RFC 9477 CFBL-Address. See
+			// the field docs on `YahooComplaintSubstitution.confidence`.
 			confidence: 'medium',
 			confidenceNote:
 				'Measurement confidence: medium — Yahoo complaints are counted from the CFBL-Address feed.',
