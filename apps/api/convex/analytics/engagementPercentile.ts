@@ -10,19 +10,9 @@
  */
 
 /**
- * The seam plan P2-5 consumes for stratified assignment: a contact's percentile
- * (0-1) within a cohort of scores. `cohortAscending` must be sorted ascending;
- * the result is the fraction of the cohort scoring at or below `score`.
- *
- * An empty cohort has no ordering information, so it returns the neutral 0.5
- * rather than pretending the contact is at either extreme.
- */
-export function engagementPercentile(cohortAscending: readonly number[], score: number): number {
-	return engagementPercentileRange(cohortAscending, score).upper;
-}
-
-/**
- * The percentile INTERVAL a score occupies: `lower` is the fraction of the
+ * The seam plan P2-5 consumes for stratified assignment: the percentile
+ * INTERVAL a score occupies within a cohort. `cohortAscending` must be sorted
+ * ascending. `lower` is the fraction of the
  * cohort scoring strictly below it, `upper` the fraction scoring at or below.
  *
  * The two differ exactly when the score is TIED, and the width of the gap is

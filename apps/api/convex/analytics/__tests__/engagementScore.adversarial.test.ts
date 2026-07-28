@@ -8,7 +8,7 @@ import {
 	type EngagementActivity,
 	type EngagementScoreState,
 } from '../engagementScore';
-import { engagementPercentile } from '../engagementPercentile';
+import { engagementPercentileRange } from '../engagementPercentile';
 
 /**
  * Hostile and degenerate inputs to the engagement score (deliverability plan
@@ -237,7 +237,7 @@ describe('bounded work', () => {
 describe('percentile guards', () => {
 	it('stays in [0, 1] for hostile inputs', () => {
 		for (const score of [Number.NaN, -1e9, 1e9, 0]) {
-			const p = engagementPercentile([0, 1, 2, 3], score);
+			const p = engagementPercentileRange([0, 1, 2, 3], score).upper;
 			expect(p).toBeGreaterThanOrEqual(0);
 			expect(p).toBeLessThanOrEqual(1);
 		}

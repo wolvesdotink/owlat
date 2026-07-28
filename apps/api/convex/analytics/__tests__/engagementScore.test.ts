@@ -12,7 +12,7 @@ import {
 	type EngagementScoreInputs,
 	type EngagementScoreResult,
 } from '../engagementScore';
-import { engagementPercentile } from '../engagementPercentile';
+import { engagementPercentileRange } from '../engagementPercentile';
 
 /**
  * The band-distribution fixture matrix for the contact engagement score
@@ -269,27 +269,27 @@ describe('engagementBand', () => {
 	});
 });
 
-describe('engagementPercentile (the P2-5 stratification seam)', () => {
+describe('engagementPercentileRange (the P2-5 stratification seam)', () => {
 	const cohort = [0, 5, 12, 40, 55, 70, 88, 95];
 
 	it('returns the fraction of the cohort at or below the score', () => {
-		expect(engagementPercentile(cohort, 95)).toBe(1);
-		expect(engagementPercentile(cohort, 0)).toBe(1 / 8);
-		expect(engagementPercentile(cohort, 55)).toBe(5 / 8);
-		expect(engagementPercentile(cohort, -1)).toBe(0);
+		expect(engagementPercentileRange(cohort, 95).upper).toBe(1);
+		expect(engagementPercentileRange(cohort, 0).upper).toBe(1 / 8);
+		expect(engagementPercentileRange(cohort, 55).upper).toBe(5 / 8);
+		expect(engagementPercentileRange(cohort, -1).upper).toBe(0);
 	});
 
 	it('interpolates a score not present in the cohort', () => {
-		expect(engagementPercentile(cohort, 41)).toBe(4 / 8);
+		expect(engagementPercentileRange(cohort, 41).upper).toBe(4 / 8);
 	});
 
 	it('returns a neutral 0.5 for an empty cohort rather than an extreme', () => {
-		expect(engagementPercentile([], 42)).toBe(0.5);
+		expect(engagementPercentileRange([], 42).upper).toBe(0.5);
 	});
 
 	it('handles duplicate cohort values', () => {
-		expect(engagementPercentile([10, 10, 10, 10], 10)).toBe(1);
-		expect(engagementPercentile([10, 10, 10, 10], 9)).toBe(0);
+		expect(engagementPercentileRange([10, 10, 10, 10], 10).upper).toBe(1);
+		expect(engagementPercentileRange([10, 10, 10, 10], 9).upper).toBe(0);
 	});
 });
 
