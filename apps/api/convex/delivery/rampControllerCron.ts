@@ -52,6 +52,7 @@ import { readActiveFreeze } from './ramp/controllerReaders';
 import { nextShare } from './ramp/controller';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import { loadRampCapacityContext } from './rampCapacityInputs';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -215,6 +216,13 @@ export const runRampController = internalMutation({
 		// per cell: the pool row carries the same verdict for all fifteen cells.
 		const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
 
+		// Cell-independent for the same reason, and by DERIVATION rather than by
+		// approximation: the warming cap is one pool-wide number, so the bound that
+		// keeps every cell's own-arm volume inside it divides that cap by the
+		// DEPLOYMENT'S projected demand (see `rampCapacityInputs.ts`). Read once per
+		// tick; each cell then attaches its own trailing evidence for the audit row.
+		const capacity = await loadRampCapacityContext(ctx, { organizationId, now });
+
 		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
 		let evaluated = 0;
 		for (const cell of slice) {
@@ -222,6 +230,7 @@ export const runRampController = internalMutation({
 				organizationId,
 				cell,
 				pool,
+				capacity,
 				isKillSwitchEngaged,
 				isSendingPermitted,
 				now,

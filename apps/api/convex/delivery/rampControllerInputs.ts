@@ -40,6 +40,7 @@ import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
+import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
 import type {
 	RampControllerInput,
 	RampHardStopSignals,
@@ -188,6 +189,12 @@ export async function loadCellInput(
 		 * here would be the same index lookup repeated once per cell.
 		 */
 		pool: Doc<'deliverabilityRouteStates'> | null;
+		/**
+		 * The tick's ONE capacity reading, also read once by the caller: the bound is
+		 * deployment-level by derivation (see `rampCapacityInputs.ts`), so reading it
+		 * per cell would be the same fifteen index reads repeated fifteen times.
+		 */
+		capacity: RampCapacityContext;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		now: number;
@@ -245,8 +252,8 @@ export async function loadCellInput(
 	// no reference arm (`referenceArm === null` above) wants that twin rather than
 	// this one — evaluated by the reference implementation it can only ever hold.
 	// P3-8's substitution table is what selects between them; the hard-coded
-	// evaluator here is STAGED, exactly like `capacity: { kind: 'unconstrained' }`
-	// below is staged for P3-3.
+	// evaluator here is STAGED, exactly as the capacity input below was until P3-3
+	// replaced its stand-in with a real projection.
 	const evaluation = referenceArmGateEvaluator.evaluate({
 		config: RAMP_STREAM_CONFIGS[cell.stream],
 		own,
@@ -267,12 +274,12 @@ export async function loadCellInput(
 				now,
 			}),
 			evaluation,
-			// P3-3 owns the real per-(IP x mailbox provider) projection; until it
-			// lands the controller is bounded by its PHASE CEILING alone. A stand-in
-			// projection here would be a rule with no fixture and a ceiling nobody
-			// designed — see `RampCapacityInput`, where "no projection" is its own
-			// shape rather than a pair of zeros a real reading could also produce.
-			capacity: { kind: 'unconstrained' },
+			// THE PREDICTIVE CAPACITY BOUND (P3-3), read ONCE for the tick and
+			// specialised here with this cell's own trailing evidence for the audit
+			// row. The share the shortfall is measured against is the STORED one —
+			// what the cell was actually assigned over the trailing window — so a
+			// `warmup_overflow` reroute reads as the miss it was.
+			capacity: capacityInputForCell(args.capacity, cell, mix.share),
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},
