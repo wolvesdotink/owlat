@@ -251,9 +251,9 @@ export const sweepSunsetPolicy = internalMutation({
 		//
 		// THE OPERATOR'S RE-ARM STAMP IS A SECOND SOURCE, and it is what stops this
 		// guard from latching on forever. The sweep is the ONLY writer of the
-		// evaluation stamps, so a deployment paused for longer than the tolerance
-		// could never refresh them by itself: no tick would run, so no stamp would
-		// be written, so no tick would ever run again. `confirmSunsetClock`
+		// heartbeat, so a deployment paused for longer than the tolerance could
+		// never refresh it by itself: no tick would run, so no heartbeat would be
+		// written, so no tick would ever run again. `confirmSunsetClock`
 		// (contacts/sunset.ts) lets an operator who has checked the clock record
 		// that fact; the LATER of the two readings is what `now` is judged against.
 		const policyRows = await loadSunsetPolicyRows(ctx);
@@ -271,14 +271,15 @@ export const sweepSunsetPolicy = internalMutation({
 
 		// THE SKEW CHECK IS A HEAD-OF-TICK ABORT, NOT A PER-CONTACT HOLD.
 		//
-		// It has to be, because the sweep's own freshness stamps ARE the
-		// corroboration source. Checking per contact — after the row has already
-		// been stamped with the suspect `now` — protects exactly one tick: the
-		// next one reads back the stamps this one wrote, finds them an hour old,
-		// and concludes the clock is fine. So: decide once, before any write, and
-		// on failure return having written NOTHING to `sunsetEvaluatedAt`. The
-		// corroboration source stays uncontaminated and every later tick
-		// re-detects the same skew until an operator fixes the clock.
+		// It has to be, because the sweep's own heartbeat IS the corroboration
+		// source. Checking after the heartbeat had been advanced to the suspect
+		// `now` would protect exactly one tick: the next one would read back what
+		// this one wrote, find it an hour old, and conclude the clock is fine. So:
+		// decide once, before any write, and on failure advance NEITHER the
+		// heartbeat nor any contact's `sunsetEvaluatedAt` (`recordSweepClockState`
+		// records the refusal without touching the heartbeat). The corroboration
+		// source stays uncontaminated and every later tick re-detects the same skew
+		// until an operator fixes the clock.
 		if (!isClockCorroborated(now, corroboratingInstant)) {
 			// Make the refusal a STORED FACT so the operator query can read it back
 			// instead of recomputing it against a clock it has no subscription to.
