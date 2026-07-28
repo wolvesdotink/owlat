@@ -253,6 +253,7 @@ async function changePreset(
 							:stream="stream"
 							:preset="presetFor(stream)"
 							:default-preset="controls.defaultPreset"
+							:has-reference-arm="controls.referenceTransportId !== null"
 							:busy="isChangingPreset"
 							@change="(preset) => changePreset(stream, preset)"
 						/>

@@ -30,28 +30,27 @@ const props = defineProps<{
 	/** The stored choice, or `null` when the stream is on the default. */
 	preset: RampPreset | null;
 	defaultPreset: RampPreset;
+	/**
+	 * Whether the deployment has a reference arm configured. Stated by the view
+	 * object the parent renders from (`RampControlsView.referenceTransportId`)
+	 * rather than inferred from the pace, so the D14 copy below depends on the
+	 * fact instead of on a constant that happens to correlate with it.
+	 */
+	hasReferenceArm: boolean;
 	busy?: boolean;
 }>();
 
 const emit = defineEmits<{ change: [preset: RampPreset | null] }>();
 
-const groupId = useId();
 const defaultLabel = computed(
 	() => RAMP_PRESET_OPTIONS.find((option) => option.value === props.defaultPreset)?.label ?? ''
 );
-/**
- * A conservative DEFAULT is exactly the plan's standalone substitution, so it is
- * how this component knows there is no reference arm — without reaching for a
- * second source of truth that could disagree with the one that sets the pace.
- */
-const isStandalone = computed(() => props.defaultPreset === 'conservative');
+const isStandalone = computed(() => !props.hasReferenceArm);
 </script>
 
 <template>
 	<fieldset class="space-y-2" :data-testid="`ramp-preset-${stream}`">
-		<legend :id="groupId" class="text-sm font-medium text-text-primary">
-			{{ streamLabel(stream) }} mail
-		</legend>
+		<legend class="text-sm font-medium text-text-primary">{{ streamLabel(stream) }} mail</legend>
 		<p class="text-xs text-text-secondary">Default for this deployment: {{ defaultLabel }}.</p>
 		<div class="space-y-1">
 			<label class="flex items-start gap-2 text-sm">
