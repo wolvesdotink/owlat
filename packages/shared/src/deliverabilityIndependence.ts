@@ -226,9 +226,13 @@ export function spendAvoidedMinorUnits(input: {
 	readonly minorUnitsPerThousand: number | null;
 }): number | null {
 	const { ownSends, minorUnitsPerThousand } = input;
+	// THE PRICE IS VALIDATED FIRST, and the order is the contract: a corrupt or
+	// negative price is unanswerable at ANY volume, so it must not be able to
+	// answer `0` just because the volume happens to be zero. `0` means "we know
+	// the price and nothing was avoided"; `null` means "we cannot say".
 	if (minorUnitsPerThousand === null) return null;
-	if (!Number.isFinite(ownSends) || ownSends <= 0) return 0;
 	if (!Number.isFinite(minorUnitsPerThousand) || minorUnitsPerThousand < 0) return null;
+	if (!Number.isFinite(ownSends) || ownSends <= 0) return 0;
 	return Math.round((ownSends / 1000) * minorUnitsPerThousand);
 }
 
@@ -248,10 +252,6 @@ export function ownSendsSince(points: readonly IndependenceDayPoint[], sinceDay:
 
 export const RAMP_PRESET_KEYS = ['conservative', 'balanced', 'aggressive'] as const;
 export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
-
-export function isRampPreset(value: unknown): value is RampPreset {
-	return typeof value === 'string' && (RAMP_PRESET_KEYS as readonly string[]).includes(value);
-}
 
 /**
  * WHAT A PRESET ACTUALLY CHANGES — a substitution over the shipped constant
