@@ -21,6 +21,7 @@ import {
 	controllerInput,
 	DAY,
 	failing,
+	HOUR,
 	mixState,
 	NOW,
 	passing,
@@ -437,13 +438,26 @@ describe('degenerate numbers fail closed', () => {
 			expect(pinned.reason).toBe('kill_switch');
 			expect(pinned.greenSince).toBeUndefined();
 		}
-		// The control: a readable instant IS carried through unchanged.
+		// THE CONTROL, and it has to run through a rung that returns `held`
+		// VERBATIM. The thin-data rung above deliberately clears `greenSince` for
+		// every input (the graduation clock stops on unmeasured evidence), so it
+		// could never distinguish "sanitised away" from "held unchanged". The
+		// rungs whose contract is the carried-forward instant are `kill_switch`,
+		// `clock_unusable`, `share_unreadable` and `frozen` — use two of them.
 		const readable = NOW - 3 * DAY;
 		expect(
 			nextShare(
 				controllerInput({
 					mix: mixState({ share: 0.5, greenSince: readable }),
-					evaluation: thinEvaluation(3),
+					isKillSwitchEngaged: true,
+				})
+			).greenSince
+		).toBe(readable);
+		expect(
+			nextShare(
+				controllerInput({
+					mix: mixState({ share: 0.5, greenSince: readable, frozenUntil: NOW + HOUR }),
+					evaluation: cleanEvaluation(3),
 				})
 			).greenSince
 		).toBe(readable);
