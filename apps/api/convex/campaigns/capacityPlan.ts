@@ -26,6 +26,7 @@
  */
 
 import { MS_PER_DAY } from '../lib/constants';
+import { utcDayStart } from '../lib/utcDay';
 
 /**
  * Hard bound on how many days a returned plan may span. A plan longer than
@@ -114,11 +115,6 @@ export interface CampaignCapacitySchedule {
 }
 
 export type CampaignCapacityPlan = { fits: true } | CampaignCapacitySchedule;
-
-/** Start of the UTC day containing `now`. */
-function utcDayStart(now: number): number {
-	return Math.floor(now / MS_PER_DAY) * MS_PER_DAY;
-}
 
 /** Non-negative finite integer, or 0 for anything hostile (NaN, -1, Infinity). */
 function sanitizeCount(value: number): number {

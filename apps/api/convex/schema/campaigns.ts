@@ -65,6 +65,27 @@ const campaignSendJobs = defineTable({
 	enqueuedCount: v.number(),
 	// Running total of raw candidates examined (the count denominator).
 	totalCandidates: v.number(),
+	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+	// with no relay to overflow to sends a large campaign over several days: the
+	// walker enqueues only today's capacity slice and resumes in the next cap
+	// window. All four are OPTIONAL and absent on every pre-migration row — a walk
+	// with no plan state is an ordinary same-day send, which is what every shipped
+	// row is.
+	//
+	// `planDayKey` is the `YYYY-MM-DD` UTC day `enqueuedToday` counts for; a hop
+	// that finds a different key has rolled over to a new day and starts the
+	// counter again. `planDayIndex` counts the days the plan was ACTIVE on (not
+	// calendar days elapsed) and `planTotalDays` is what the projection last said
+	// the plan spans — both are operator-facing ("day 2 of 4") and are recomputed
+	// on every hop, so a capacity change mid-plan simply re-lengthens the plan.
+	planDayKey: v.optional(v.string()),
+	enqueuedToday: v.optional(v.number()),
+	planDayIndex: v.optional(v.number()),
+	planTotalDays: v.optional(v.number()),
+	// The audience size the plan was built from, for the progress line's
+	// denominator ("5 000 of 20 000"). A LOWER bound whenever the bounded count
+	// stopped early, which is why the copy never presents it as a promise.
+	plannedTotal: v.optional(v.number()),
 	startedAt: v.number(),
 	updatedAt: v.number(),
 })
