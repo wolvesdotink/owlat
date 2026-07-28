@@ -279,7 +279,10 @@ export interface RampDecision {
 	readonly ceiling: number;
 }
 
-/** A graduation pin awarded to, or revoked from, a cell that did not have it. */
+/**
+ * A graduation pin AWARDED to a cell that did not have one, or REVOKED from a
+ * cell that did.
+ */
 export type RampPinChange = 'awarded' | 'revoked';
 
 /**
