@@ -50,8 +50,16 @@
  * `__tests__/sunset*.test.ts` are fully deterministic.
  */
 
-/** One day in milliseconds — the unit every sunset window and interval is written in. */
-export const MS_PER_DAY = 86_400_000;
+import { MS_PER_DAY } from '../lib/constants';
+
+/**
+ * One day in milliseconds — the unit every sunset window and interval is
+ * written in. Re-exported from `lib/constants.ts` rather than redeclared:
+ * there is ONE definition of where a day starts in this app, and the sunset
+ * modules read it from here. It is a plain number with no db, clock or env
+ * read behind it, so the purity of this core is unaffected.
+ */
+export { MS_PER_DAY };
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
