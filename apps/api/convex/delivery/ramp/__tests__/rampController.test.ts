@@ -55,7 +55,7 @@ describe('nextShare — hard stops, in precedence order', () => {
 		);
 		expect(decision.share).toBe(0);
 		expect(decision.reason).toBe('abuse_status');
-		expect(decision.frozenUntil).toBeUndefined();
+		expect(decision.freeze?.until).toBeUndefined();
 	});
 
 	it('halves and freezes for 6h when the circuit breaker is open, beating the blocklist', () => {
@@ -67,12 +67,12 @@ describe('nextShare — hard stops, in precedence order', () => {
 		);
 		expect(decision.share).toBe(0.3);
 		expect(decision.reason).toBe('breaker');
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.breakerFreezeMs);
 		// The freeze is ATTRIBUTED, which is what lets the next tick tell its own
 		// freeze from an unrelated cooldown it must not be absorbed by.
-		expect(decision.freezeReason).toBe('breaker');
+		expect(decision.freeze?.origin).toBe('breaker');
 		// A hard-stop freeze does NOT advance the gate-cooldown ladder.
-		expect(decision.cooldownMs).toBeUndefined();
+		expect(decision.freeze?.ladderMs).toBeUndefined();
 	});
 
 	it('does not re-halve on an open breaker while the freeze it stamped is running', () => {
@@ -96,8 +96,8 @@ describe('nextShare — hard stops, in precedence order', () => {
 		expect(decision.direction).toBe('hold');
 		expect(decision.cleanStreak).toBe(0);
 		// No NEW freeze: the one already in force is what holds the cell.
-		expect(decision.frozenUntil).toBeUndefined();
-		expect(decision.freezeReason).toBeUndefined();
+		expect(decision.freeze?.until).toBeUndefined();
+		expect(decision.freeze?.origin).toBeUndefined();
 	});
 
 	// THE DISCRIMINATING PAIR. The suppression above is the BREAKER'S OWN freeze
@@ -133,8 +133,8 @@ describe('nextShare — hard stops, in precedence order', () => {
 			// holds rather than halving a second time for the same incident. The
 			// EXPIRY is the later of the two: the breaker's 6h does not cut the 48h
 			// the cell was already serving, because a freeze is only ever lengthened.
-			expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
-			expect(decision.freezeReason).toBe('breaker');
+			expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
+			expect(decision.freeze?.origin).toBe('breaker');
 		});
 	}
 
@@ -151,8 +151,8 @@ describe('nextShare — hard stops, in precedence order', () => {
 			})
 		);
 		expect(decision.share).toBe(0);
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
-		expect(decision.freezeReason).toBe('dnsbl');
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freeze?.origin).toBe('dnsbl');
 	});
 
 	it('halves again once the breaker freeze has expired and the breaker is still open', () => {
@@ -169,7 +169,7 @@ describe('nextShare — hard stops, in precedence order', () => {
 		);
 		expect(decision.share).toBe(0.15);
 		expect(decision.reason).toBe('breaker');
-		expect(decision.frozenUntil).toBe(NOW + 7 * HOUR + RAMP_AIMD.breakerFreezeMs);
+		expect(decision.freeze?.until).toBe(NOW + 7 * HOUR + RAMP_AIMD.breakerFreezeMs);
 	});
 
 	it('zeroes and freezes for 24h on a critical pool blocklist listing', () => {
@@ -181,8 +181,8 @@ describe('nextShare — hard stops, in precedence order', () => {
 		);
 		expect(decision.share).toBe(0);
 		expect(decision.reason).toBe('dnsbl');
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
-		expect(decision.freezeReason).toBe('dnsbl');
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.blocklistFreezeMs);
+		expect(decision.freeze?.origin).toBe('dnsbl');
 	});
 
 	it('holds a frozen cell however green its gates are', () => {
@@ -210,8 +210,8 @@ describe('nextShare — gate verdicts', () => {
 		expect(decision.failedGate).toBe('hard_bounce');
 		expect(decision.direction).toBe('decrease');
 		expect(decision.cleanStreak).toBe(0);
-		expect(decision.frozenUntil).toBe(NOW + RAMP_AIMD.cooldownBaseMs);
-		expect(decision.cooldownMs).toBe(RAMP_AIMD.cooldownBaseMs);
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownBaseMs);
+		expect(decision.freeze?.ladderMs).toBe(RAMP_AIMD.cooldownBaseMs);
 	});
 
 	it('drops a HALT straight to the floor rather than one step down', () => {

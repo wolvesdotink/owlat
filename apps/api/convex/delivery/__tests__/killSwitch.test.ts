@@ -86,8 +86,8 @@ describe('the kill switch, in the decision function', () => {
 			expect(decision.share).toBe(0.37);
 			expect(decision.reason).toBe('kill_switch');
 			expect(decision.direction).toBe('hold');
-			expect(decision.frozenUntil).toBeUndefined();
-			expect(decision.cooldownMs).toBeUndefined();
+			expect(decision.freeze?.until).toBeUndefined();
+			expect(decision.freeze?.ladderMs).toBeUndefined();
 		}
 	});
 });

@@ -36,7 +36,7 @@ import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
 import { describeRampDecision, rampDecisionAdminNotice } from './ramp/controllerNarrative';
 
 /** Decisions age out with the experiment record they explain (plan D16). */
-export const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 200;
 
 /**
@@ -44,7 +44,7 @@ const CLEANUP_BATCH_SIZE = 200;
  * predicate — so it is stored as a string rather than a nested object, and a
  * decision can be replayed against the pure function that made it.
  */
-export function rampDecisionSnapshot(input: RampControllerInput, decision: RampDecision): string {
+function rampDecisionSnapshot(input: RampControllerInput, decision: RampDecision): string {
 	return JSON.stringify({
 		cell: deliverabilityCellKey(input.cell),
 		now: Number.isFinite(input.now) ? input.now : null,
@@ -109,7 +109,7 @@ export async function recordMixDecision(
 		...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
 		// See the module header and `rampDecisionAdminNotice` for the predicate.
 		...(adminNotice === undefined ? {} : { adminNotice }),
-		...(decision.frozenUntil === undefined ? {} : { frozenUntil: decision.frozenUntil }),
+		...(decision.freeze === undefined ? {} : { frozenUntil: decision.freeze.until }),
 		snapshot: rampDecisionSnapshot(input, decision),
 		expiresAt: at + MIX_DECISION_RETENTION_MS,
 	});

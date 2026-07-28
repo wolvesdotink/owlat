@@ -63,46 +63,13 @@ import {
 	sanitizeStreak,
 } from './controllerReaders';
 import { ppToFraction } from './gateConfig';
-import type { RampGateId } from './gateTypes';
+import { rampDecisionDirection } from './controllerTypes';
 import type {
 	RampControllerInput,
 	RampDecision,
-	RampDecisionDirection,
+	RampDecisionDraft,
 	RampDecisionReason,
-	RampFreezeOrigin,
 } from './controllerTypes';
-
-function directionOf(fromShare: number, share: number): RampDecisionDirection {
-	if (share > fromShare) return 'increase';
-	if (share < fromShare) return 'decrease';
-	return 'hold';
-}
-
-interface DecisionDraft {
-	readonly share: number;
-	readonly reason: RampDecisionReason;
-	readonly verdict: RampDecision['verdict'];
-	readonly failedGate?: RampGateId | undefined;
-	readonly freezeMs?: number | undefined;
-	/** Which rung stamped `freezeMs`. Set by every rung that sets a freeze. */
-	readonly freezeReason?: RampFreezeOrigin | undefined;
-	/** Freeze imposed by a hard stop: it does NOT advance the gate-cooldown ladder. */
-	readonly isLadderFreeze?: boolean;
-	readonly cleanStreak: number;
-	readonly greenSince?: number | undefined;
-	/**
-	 * The graduation pin to STORE. Every rung sets it explicitly: it is carried
-	 * forward by default and REVOKED — set to `undefined` — only by a hard stop or
-	 * a breached gate. It is deliberately not derived from the share, because a
-	 * graduated cell that the warming cap has bounded below 1.0 has not been
-	 * demoted, and re-deriving the pin would make it re-earn fourteen days for a
-	 * physical limit it never failed.
-	 */
-	readonly graduatedAt?: number | undefined;
-	/** `now` when this evaluation counted as a window; absent when it did not. */
-	readonly countedAt?: number | undefined;
-	readonly ceiling: number;
-}
 
 /**
  * THE decision. Pure — `now` is a parameter and nothing here reads a clock, a
@@ -143,14 +110,20 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		share,
 		fromShare,
 		reason: draft.reason,
-		direction: directionOf(fromShare, share),
+		direction: rampDecisionDirection(fromShare, share),
 		verdict: draft.verdict,
 		failedGate: draft.failedGate,
-		frozenUntil,
-		// The origin travels with the instant and never without it: a freeze the
-		// clock could not date is not a freeze, so it has no origin to record.
-		freezeReason: frozenUntil === undefined ? undefined : draft.freezeReason,
-		cooldownMs: draft.isLadderFreeze === true ? freezeMs : undefined,
+		// ONE MEMBER, so an origin can never travel without an instant: a freeze the
+		// clock could not date is not a freeze at all, and there is no shape here in
+		// which it could carry a rung name anyway.
+		freeze:
+			frozenUntil === undefined || draft.freezeReason === undefined
+				? undefined
+				: {
+						until: frozenUntil,
+						origin: draft.freezeReason,
+						...(draft.isLadderFreeze === true ? { ladderMs: freezeMs } : {}),
+					},
 		cleanStreak: draft.cleanStreak,
 		phaseCeiling,
 		greenSince: draft.greenSince,
@@ -173,7 +146,7 @@ interface DecideArgs {
  * property, and splitting it across helpers would put the thing a reviewer must
  * verify in three files. Each rung returns; none falls through.
  */
-function decide(args: DecideArgs): DecisionDraft {
+function decide(args: DecideArgs): RampDecisionDraft {
 	const { fromShare, phaseCeiling, storedStreak, isClockUsable, input } = args;
 	const { mix, signals, evaluation, capacity, config, now } = input;
 	const held = {

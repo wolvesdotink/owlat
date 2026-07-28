@@ -207,7 +207,7 @@ describe('mixDecisions — a row for every evaluation', () => {
 		expect(decision.direction).toBe('hold');
 		expect(decision.failedGate).toBe('hard_bounce');
 		// The retreat still costs the cell a freeze: this is an incident, not a no-op.
-		expect(decision.frozenUntil).toBeGreaterThan(NOW);
+		expect(decision.freeze?.until).toBeGreaterThan(NOW);
 
 		await record(t, input);
 		const row = (await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect()))[0];

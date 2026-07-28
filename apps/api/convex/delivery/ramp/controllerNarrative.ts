@@ -12,7 +12,9 @@
 
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
+import { rampDecisionChangedState } from './controllerTypes';
 import type { RampDecision, RampDecisionReason } from './controllerTypes';
+import type { RampGateId } from './gateTypes';
 
 /**
  * The retreats an operator must be TOLD about: something measured or something
@@ -31,22 +33,35 @@ function percent(share: number): string {
 	return `${Math.round(share * 1000) / 10}%`;
 }
 
-/** What the operator should DO about a breached gate, per gate. */
+/**
+ * What the operator should DO about a breached gate, per gate. EXHAUSTIVE BY
+ * CONSTRUCTION: a `Record<RampGateId, string>` rather than a switch with a
+ * `default` arm, so a sixth gate fails to compile here instead of quietly
+ * rendering a generic sentence. `describeRampDecision` indexes the same table,
+ * so the gate list is written once in this file rather than twice.
+ */
+const RAMP_GATE_REMEDIES: Record<RampGateId, string> = {
+	hard_bounce:
+		'Clean the list: hard bounces are addresses that do not exist, and they cost reputation on every send.',
+	deferral:
+		'The receiver is throttling us. Check the pool IPs for a blocklist listing and let the warming schedule catch up.',
+	complaint:
+		'Recipients are marking this stream as spam. Review the audience, the sending frequency and the unsubscribe path.',
+	engagement_ratio:
+		'Mail through our own IP is engaging measurably worse than the reference arm — usually placement, sometimes a content change.',
+	seed_placement:
+		'Seed mailboxes moved from inbox to spam or went missing. Corroborate against the deferral and bounce gates before acting.',
+};
+
+/**
+ * The remedy for THIS decision's breached gate. The single guard is here rather
+ * than in the table: a decision can reach a gate arm without a `failedGate`
+ * recorded, and a generic sentence is the right answer for that one case only.
+ */
 function gateRemedy(decision: RampDecision): string {
-	switch (decision.failedGate) {
-		case 'hard_bounce':
-			return 'Clean the list: hard bounces are addresses that do not exist, and they cost reputation on every send.';
-		case 'deferral':
-			return 'The receiver is throttling us. Check the pool IPs for a blocklist listing and let the warming schedule catch up.';
-		case 'complaint':
-			return 'Recipients are marking this stream as spam. Review the audience, the sending frequency and the unsubscribe path.';
-		case 'engagement_ratio':
-			return 'Mail through our own IP is engaging measurably worse than the reference arm — usually placement, sometimes a content change.';
-		case 'seed_placement':
-			return 'Seed mailboxes moved from inbox to spam or went missing. Corroborate against the deferral and bounce gates before acting.';
-		default:
-			return 'Review the delivery dashboard for the failing measurement.';
-	}
+	const gate = decision.failedGate;
+	if (gate === undefined) return 'Review the delivery dashboard for the failing measurement.';
+	return RAMP_GATE_REMEDIES[gate];
 }
 
 /**
@@ -69,8 +84,10 @@ function gateRemedy(decision: RampDecision): string {
  * that persists for a day would post twenty-four identical incident notices for
  * one incident, and a notice channel that repeats itself stops being read.
  *
- * `cooldownMs` is the exact discriminator between them. It is set ONLY by a
- * LADDER freeze (`isLadderFreeze` in `controller.ts`) — a breached gate — which
+ * The freeze's LADDER POSITION is the exact discriminator between them, and
+ * `rampDecisionChangedState` is the one spelling of it that this function and
+ * the cron's audit emit share. It is set ONLY by a LADDER freeze
+ * (`isLadderFreeze` in `controller.ts`) — a breached gate — which
  * is a fresh freeze and a fresh rung of the cooldown ladder every time it fires,
  * i.e. genuinely new every tick. Hard-stop freezes deliberately leave it
  * undefined, so a persistent hard stop announces itself on the tick that moved
@@ -103,8 +120,9 @@ export function rampDecisionAdminNotice(
 ): string | undefined {
 	const isNamed =
 		decision.failedGate !== undefined || NOTIFIABLE_RETREAT_REASONS.has(decision.reason);
-	const hasChanged = decision.direction !== 'hold' || decision.cooldownMs !== undefined;
-	return isNamed && hasChanged ? describeRampDecision(cell, decision) : undefined;
+	return isNamed && rampDecisionChangedState(decision)
+		? describeRampDecision(cell, decision)
+		: undefined;
 }
 
 /**

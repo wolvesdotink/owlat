@@ -64,8 +64,8 @@ describe('behavioural purity', () => {
 				evaluation: breachedEvaluation('complaint', { now: at }),
 			})
 		);
-		expect(decision.cooldownMs).toBe(RAMP_AIMD.cooldownBaseMs);
-		expect(decision.frozenUntil).toBe(at + RAMP_AIMD.cooldownBaseMs);
+		expect(decision.freeze?.ladderMs).toBe(RAMP_AIMD.cooldownBaseMs);
+		expect(decision.freeze?.until).toBe(at + RAMP_AIMD.cooldownBaseMs);
 	});
 
 	it('the helpers are pure too', () => {

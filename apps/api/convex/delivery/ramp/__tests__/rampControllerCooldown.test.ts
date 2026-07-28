@@ -71,23 +71,23 @@ describe('freezes through the decision function', () => {
 				evaluation: breachedEvaluation('complaint'),
 			})
 		);
-		expect(first.cooldownMs).toBe(6 * HOUR);
-		expect(first.frozenUntil).toBe(NOW + 6 * HOUR);
+		expect(first.freeze?.ladderMs).toBe(6 * HOUR);
+		expect(first.freeze?.until).toBe(NOW + 6 * HOUR);
 
 		const second = nextShare(
 			controllerInput({
 				now: NOW + 7 * HOUR,
 				mix: mixState({
 					share: first.share,
-					cooldownMs: first.cooldownMs,
+					cooldownMs: first.freeze?.ladderMs,
 					freezeStartedAt: NOW,
-					frozenUntil: first.frozenUntil,
+					frozenUntil: first.freeze?.until,
 				}),
 				evaluation: breachedEvaluation('complaint', { now: NOW + 7 * HOUR }),
 			})
 		);
-		expect(second.cooldownMs).toBe(12 * HOUR);
-		expect(second.frozenUntil).toBe(NOW + 7 * HOUR + 12 * HOUR);
+		expect(second.freeze?.ladderMs).toBe(12 * HOUR);
+		expect(second.freeze?.until).toBe(NOW + 7 * HOUR + 12 * HOUR);
 	});
 
 	// AN INFRASTRUCTURE FREEZE IS NOT A LADDER RUNG. A breaker freeze in between
@@ -101,14 +101,14 @@ describe('freezes through the decision function', () => {
 				evaluation: breachedEvaluation('complaint'),
 			})
 		);
-		expect(breach.cooldownMs).toBe(6 * HOUR);
+		expect(breach.freeze?.ladderMs).toBe(6 * HOUR);
 
 		const breaker = nextShare(
 			controllerInput({
 				now: NOW + 30 * HOUR,
 				mix: mixState({
 					share: breach.share,
-					cooldownMs: breach.cooldownMs,
+					cooldownMs: breach.freeze?.ladderMs,
 					freezeStartedAt: NOW,
 				}),
 				signals: { isSendingAllowed: true, isCircuitBreakerOpen: true, isPoolBlocklisted: false },
@@ -116,20 +116,20 @@ describe('freezes through the decision function', () => {
 		);
 		// A hard stop imposes an expiry but claims NO ladder rung — which is what
 		// keeps the shell from re-stamping the ladder's anchor.
-		expect(breaker.cooldownMs).toBeUndefined();
+		expect(breaker.freeze?.ladderMs).toBeUndefined();
 
 		const second = nextShare(
 			controllerInput({
 				now: NOW + 31 * HOUR,
 				mix: mixState({
 					share: breaker.share,
-					cooldownMs: breach.cooldownMs,
+					cooldownMs: breach.freeze?.ladderMs,
 					freezeStartedAt: NOW,
 				}),
 				evaluation: breachedEvaluation('complaint', { now: NOW + 31 * HOUR }),
 			})
 		);
-		expect(second.cooldownMs).toBe(6 * HOUR);
+		expect(second.freeze?.ladderMs).toBe(6 * HOUR);
 	});
 
 	it('holds a frozen cell against a perfect gate sweep', () => {

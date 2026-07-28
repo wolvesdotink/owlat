@@ -1,9 +1,9 @@
 /**
  * The AIMD ramp controller's vocabulary (plan D9, D12, D15).
  *
- * Types only, so the pure decision function, the cron shell that feeds it and
- * the audit writer that records it share one contract without importing each
- * other.
+ * Shared vocabulary: the types the pure decision function, the cron shell that
+ * feeds it and the audit writer that records it all agree on, plus the two tiny
+ * total derivations over them that more than one of those callers needs.
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -206,6 +206,35 @@ export interface RampControllerInput {
 	readonly now: number;
 }
 
+/**
+ * A FREEZE, WHOLE. The instant it ends, the rung that imposed it, and — only for
+ * a gate breach — the cooldown-ladder position the next breach doubles from.
+ */
+export interface RampDecisionFreeze {
+	/** Absolute instant the cell is frozen until. */
+	readonly until: number;
+	/**
+	 * Which rung stamped it. A freeze whose origin nobody recorded is exactly the
+	 * state the breaker rung must not mistake for its own, which is why it cannot
+	 * be omitted here.
+	 */
+	readonly origin: RampFreezeOrigin;
+	/**
+	 * The next COOLDOWN-LADDER position — present ONLY on a gate-breach freeze,
+	 * and deliberately absent on a hard-stop freeze even though the breaker's 6h
+	 * and the blocklist's 24h are real freezes that really are imposed (`until`
+	 * is where those show up). Only a breach advances the ladder.
+	 *
+	 * Two readers depend on exactly that asymmetry, so it is load-bearing rather
+	 * than incidental: `rampDecisionAdminNotice` and the audit-log emit in
+	 * `rampControllerCron` — both through `rampDecisionChangedState` — use it to
+	 * tell a FRESH INCIDENT (a new breach, with a new rung and new durable state)
+	 * from a CONDITION that is merely still true an hour later. A hold with a
+	 * ladder position changed something; a hold without one did not.
+	 */
+	readonly ladderMs?: number | undefined;
+}
+
 export interface RampDecision {
 	/** The share to store, already clamped to [0, 1]. */
 	readonly share: number;
@@ -215,28 +244,14 @@ export interface RampDecision {
 	/** `not_evaluated` when the decision was made before any gate was consulted. */
 	readonly verdict: RampVerdict | 'not_evaluated';
 	readonly failedGate: RampGateId | undefined;
-	/** Absolute instant the cell is frozen until, or `undefined` for no new freeze. */
-	readonly frozenUntil: number | undefined;
 	/**
-	 * Which rung stamped `frozenUntil`. Always set together with it and always
-	 * absent without it: a freeze whose origin nobody recorded is exactly the
-	 * state the breaker rung must not mistake for its own.
+	 * The freeze this decision imposes, or `undefined` for no new freeze. ONE
+	 * member rather than three loose columns: the expiry, the rung it belongs to
+	 * and the ladder position always travelled together, and "an origin never
+	 * travels without an instant" was previously a prose rule kept true by a
+	 * runtime ternary. As a nested member it is a property of the TYPE.
 	 */
-	readonly freezeReason: RampFreezeOrigin | undefined;
-	/**
-	 * The next COOLDOWN-LADDER position — set ONLY by a gate-breach freeze, and
-	 * deliberately `undefined` for a hard-stop freeze even though the breaker's
-	 * 6h and the blocklist's 24h are real freezes that really are imposed
-	 * (`frozenUntil` is where those show up). Only a breach advances the ladder.
-	 *
-	 * Two readers depend on exactly that asymmetry, so it is load-bearing rather
-	 * than incidental: `rampDecisionAdminNotice` and the audit-log emit in
-	 * `rampControllerCron` both use it to tell a FRESH INCIDENT — a new breach,
-	 * with a new rung and new durable state — from a CONDITION that is merely
-	 * still true an hour later. A hold with a `cooldownMs` changed something; a
-	 * hold without one did not.
-	 */
-	readonly cooldownMs: number | undefined;
+	readonly freeze: RampDecisionFreeze | undefined;
 	/** Clean-streak to store (already folded through the gate aggregate). */
 	readonly cleanStreak: number;
 	readonly phaseCeiling: number;
@@ -251,4 +266,62 @@ export interface RampDecision {
 	readonly countedAt: number | undefined;
 	/** The effective ceiling this decision was bounded by. */
 	readonly ceiling: number;
+}
+
+/**
+ * WHAT A RUNG RETURNS, before the shell turns it into a decision.
+ *
+ * `controller.ts` exists to hold the PRECEDENCE LADDER and nothing else, so the
+ * draft shape and the direction derivation live here with the rest of the
+ * vocabulary rather than crowding the one function a reviewer must read end to
+ * end.
+ */
+export interface RampDecisionDraft {
+	readonly share: number;
+	readonly reason: RampDecisionReason;
+	readonly verdict: RampDecision['verdict'];
+	readonly failedGate?: RampGateId | undefined;
+	/** How long THIS rung's freeze runs. The shell turns it into an instant. */
+	readonly freezeMs?: number | undefined;
+	/** Which rung stamped `freezeMs`. Set by every rung that sets a freeze. */
+	readonly freezeReason?: RampFreezeOrigin | undefined;
+	/** Freeze imposed by a hard stop: it does NOT advance the gate-cooldown ladder. */
+	readonly isLadderFreeze?: boolean;
+	readonly cleanStreak: number;
+	readonly greenSince?: number | undefined;
+	/**
+	 * The graduation pin to STORE. Every rung sets it explicitly: it is carried
+	 * forward by default and REVOKED — set to `undefined` — only by a hard stop or
+	 * a breached gate. It is deliberately not derived from the share, because a
+	 * graduated cell that the warming cap has bounded below 1.0 has not been
+	 * demoted, and re-deriving the pin would make it re-earn fourteen days for a
+	 * physical limit it never failed.
+	 */
+	readonly graduatedAt?: number | undefined;
+	/** `now` when this evaluation counted as a window; absent when it did not. */
+	readonly countedAt?: number | undefined;
+	readonly ceiling: number;
+}
+
+export function rampDecisionDirection(fromShare: number, share: number): RampDecisionDirection {
+	if (share > fromShare) return 'increase';
+	if (share < fromShare) return 'decrease';
+	return 'hold';
+}
+
+/**
+ * DID THIS DECISION CHANGE DURABLE STATE? One rule, one spelling.
+ *
+ * A gate breach on a cell already sitting on the share floor returns direction
+ * `hold` — `max(floor, floor x 0.5)` is the floor — yet it rewrites the freeze
+ * expiry, the cooldown rung, the clean streak and the green clock. That is a
+ * real automatic change: it belongs in the audit log and it earns an admin
+ * notice. The ladder position is the exact discriminator, because only a breach
+ * sets one.
+ *
+ * The audit emit and the admin notice MUST agree about this, so they share the
+ * predicate rather than each spelling out the same condition.
+ */
+export function rampDecisionChangedState(decision: RampDecision): boolean {
+	return decision.direction !== 'hold' || decision.freeze?.ladderMs !== undefined;
 }
