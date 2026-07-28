@@ -24,17 +24,22 @@ import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures'
 const ORG = 'org_ramp_controls';
 const OTHER_ORG = 'org_ramp_controls_other';
 
+// `vi.hoisted`, not a bare const: `vi.mock` is hoisted above the imports, so a
+// factory closing over an ordinary module-level binding would read it before it
+// is initialised. The tenant has to be mutable — the cross-tenant test moves the
+// SESSION while leaving the cell arguments alone.
+const session = vi.hoisted(() => ({ organizationId: 'org_ramp_controls' }));
+
 // The mutations resolve their tenant through the shared singleton-org helper,
 // which talks to the auth component; the harness has no component, so the suite
 // mocks it exactly as the ramp cron suites do. `getMutationContext` and the
 // admin floor are mocked for the same reason — the role gate itself is covered
 // where it belongs, in the authedFunctions suites.
-const organizationId = { current: ORG };
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
 	return {
 		...actual,
-		getSingletonOrganizationId: vi.fn(async () => organizationId.current),
+		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
@@ -45,7 +50,7 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
 
 function harness(): Harness {
-	organizationId.current = ORG;
+	session.organizationId = ORG;
 	return convexTest(schema, modules);
 }
 
@@ -234,7 +239,7 @@ describe('cross-tenant', () => {
 
 		// The caller's session now resolves to a DIFFERENT organization. The cell
 		// arguments are unchanged: only the tenant moved.
-		organizationId.current = OTHER_ORG;
+		session.organizationId = OTHER_ORG;
 		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
 			...CELL,
 			isPaused: true,
@@ -242,7 +247,7 @@ describe('cross-tenant', () => {
 		expect(result.applied).toBe(false);
 		expect(result.refusal).toBe('cell_not_ramp_managed');
 
-		organizationId.current = ORG;
+		session.organizationId = ORG;
 		const row = await readManagedCell(t);
 		expect(row?.operatorPausedAt).toBeUndefined();
 		expect(await decisions(t)).toHaveLength(0);
@@ -252,7 +257,7 @@ describe('cross-tenant', () => {
 	it('files a preset against the caller’s own organization only', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG });
-		organizationId.current = OTHER_ORG;
+		session.organizationId = OTHER_ORG;
 		await t.mutation(api.delivery.rampControls.setStreamPreset, {
 			stream: 'campaign',
 			preset: 'aggressive',
