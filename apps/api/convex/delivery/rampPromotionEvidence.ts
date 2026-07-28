@@ -21,79 +21,95 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { isSeedPlacementReached } from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
-import type { DatabaseReader } from '../_generated/server';
+import { MS_PER_DAY } from '../lib/constants';
+import { startOfDayUtc } from '../lib/clock';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import { complaintBandSeverity } from './sndsFeed';
+import type { RampReadCtx } from './rampReadCtx';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { RAMP_GATE_THRESHOLDS } from './ramp/gateConfig';
 import { PROMOTION_BASE_DWELL_MS, type RampPromotionEvidence } from './ramp/phasePromotion';
 import type { RampDegradation } from './ramp/degradation';
 
-/**
- * READER-TYPED (ADR-0042). Everything below observes and nothing writes, so the
- * handle is a `DatabaseReader` rather than a mutation context: the dashboard
- * query and the controller must be able to read the SAME evidence through the
- * same functions, or they will eventually disagree about a number.
- */
-export interface RampEvidenceReader {
-	readonly db: DatabaseReader;
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /** How far back the evidence readers look. One week, the plan's window. */
-const EVIDENCE_WINDOW_MS = 7 * DAY_MS;
+const EVIDENCE_WINDOW_MS = 7 * MS_PER_DAY;
 /** DNSBL day coverage the streak condition needs. Two weeks, plus slack. */
-const DNSBL_WINDOW_MS = 21 * DAY_MS;
+const DNSBL_WINDOW_MS = 21 * MS_PER_DAY;
 /** Bounded scans — a promotion must never be able to read an unbounded table. */
 const SCAN_LIMIT = 64;
 const DECISION_SCAN_LIMIT = 600;
-/** Verified sending domains considered when reading Google's compliance verdict. */
-const DOMAIN_SCAN_LIMIT = 32;
+/**
+ * The largest verified-domain population the compliance reader will JUDGE. It
+ * reads one row beyond this to detect its own truncation and answers `null`
+ * rather than folding a partial subset — see `latestGoogleCompliancePassAt`.
+ */
+const DOMAIN_SCAN_LIMIT = 256;
 
 /** The lowest SNDS complaint band — anything worse is not a green band. */
 const SNDS_GREEN_SEVERITY = 0;
 
-function utcDayStart(at: number): number {
-	return Math.floor(at / DAY_MS) * DAY_MS;
+/** The newest passing Compliance Status reading for ONE domain, or `null`. */
+async function domainCompliancePassAt(
+	ctx: RampReadCtx,
+	domain: string,
+	since: number
+): Promise<number | null> {
+	const rows = await ctx.db
+		.query('googlePostmasterCompliance')
+		.withIndex('by_domain_period', (q) => q.eq('domain', domain).gte('periodStart', since))
+		.take(SCAN_LIMIT);
+	let latest: number | null = null;
+	for (const row of rows) {
+		// A COMPLIANCE PASS IS EVERY CHECK PASSING. A row with no checks at all is
+		// not a pass — an empty list would otherwise satisfy `every` vacuously and
+		// promote a cell on a reading Google never made.
+		if (row.checks.length === 0) continue;
+		if (!row.checks.every((check) => check.state === 'passing')) continue;
+		latest = latest === null ? row.fetchedAt : Math.max(latest, row.fetchedAt);
+	}
+	return latest;
 }
 
 /**
- * When every VERIFIED SENDING DOMAIN last read as compliant at Google.
+ * When EVERY VERIFIED SENDING DOMAIN IN THE DEPLOYMENT last read as compliant at
+ * Google — per domain, folded with a MINIMUM.
  *
- * SCOPED TO THE DOMAINS THAT CARRY THE TRAFFIC, per domain, and folded with a
- * MINIMUM. Google's Compliance Status is a per-domain verdict, so a deployment-
- * wide `by_period` scan would let one healthy domain's pass promote a cell whose
- * mail leaves on a different, failing domain. A domain with no reading at all
- * yields `null` for the whole deployment — an unread domain is not a passing one.
+ * Google's Compliance Status is a per-domain verdict, so a deployment-wide
+ * `by_period` scan would let one healthy domain's pass promote a cell whose mail
+ * leaves on a different, failing domain. The invariant is therefore TOTAL: a
+ * domain with no passing reading yields `null` for the whole deployment, because
+ * an unread domain is not a passing one.
  *
- * Bounded: a handful of verified domains, one bounded index read each.
+ * WHICH MEANS THE READ MUST COVER THE WHOLE POPULATION IT CLAIMS TO JUDGE. This
+ * is the evidence route for crossing the 0.5 rung on the gmail cell — the most
+ * expensive promotion the ladder has — and a plain `.take(N)` made the invariant
+ * quietly stop holding at domain N + 1, letting an arbitrary partial subset
+ * satisfy it. That is fail-OPEN in the one place we cannot afford it.
+ *
+ * So the scan reads ONE MORE ROW THAN IT WILL ACCEPT and treats an overflow as
+ * an unread population — `null`, "not a pass". Either the read saw every
+ * verified domain and the fold is exact, or it did not and it says so. A
+ * promotion must never read an unbounded table, and the only bounded answer that
+ * does not invent a verdict is the one that fails CLOSED.
+ *
+ * Absence is still never a block (plan D2): `null` here costs the `google_
+ * compliance` route, and the standalone route is unaffected.
  */
 async function latestGoogleCompliancePassAt(
-	ctx: RampEvidenceReader,
+	ctx: RampReadCtx,
 	since: number
 ): Promise<number | null> {
 	const domains = await ctx.db
 		.query('domains')
 		.withIndex('by_status', (q) => q.eq('status', 'verified'))
-		.take(DOMAIN_SCAN_LIMIT);
-	if (domains.length === 0) return null;
+		.take(DOMAIN_SCAN_LIMIT + 1);
+	// NO VERIFIED DOMAIN AT ALL is not a pass either — there is no reading to
+	// promote on, which is the same answer as an unread one.
+	if (domains.length === 0 || domains.length > DOMAIN_SCAN_LIMIT) return null;
 
 	let oldest: number | null = null;
 	for (const domain of domains) {
-		const rows = await ctx.db
-			.query('googlePostmasterCompliance')
-			.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain).gte('periodStart', since))
-			.take(SCAN_LIMIT);
-		let latest: number | null = null;
-		for (const row of rows) {
-			// A COMPLIANCE PASS IS EVERY CHECK PASSING. A row with no checks at all is
-			// not a pass — an empty list would otherwise satisfy `every` vacuously and
-			// promote a cell on a reading Google never made.
-			if (row.checks.length === 0) continue;
-			if (!row.checks.every((check) => check.state === 'passing')) continue;
-			latest = latest === null ? row.fetchedAt : Math.max(latest, row.fetchedAt);
-		}
+		const latest = await domainCompliancePassAt(ctx, domain.domain, since);
 		if (latest === null) return null;
 		oldest = oldest === null ? latest : Math.min(oldest, latest);
 	}
@@ -108,10 +124,7 @@ async function latestGoogleCompliancePassAt(
  * addresses. So "the relevant cell" and "this deployment's pool" are the same
  * scope here, and the asymmetry with the per-domain Google read is intended.
  */
-async function latestSndsGreenBandAt(
-	ctx: RampEvidenceReader,
-	since: number
-): Promise<number | null> {
+async function latestSndsGreenBandAt(ctx: RampReadCtx, since: number): Promise<number | null> {
 	const rows = await ctx.db
 		.query('sndsIpDailyStats')
 		.withIndex('by_period', (q) => q.gte('periodStart', since))
@@ -126,7 +139,7 @@ async function latestSndsGreenBandAt(
 }
 
 async function latestSeedProbePassAt(
-	ctx: RampEvidenceReader,
+	ctx: RampReadCtx,
 	args: {
 		organizationId: string;
 		since: number;
@@ -198,7 +211,7 @@ function snapshotPoolBlocklisted(snapshot: string | undefined): boolean | null {
  * manufactured by a query's page size in the first place.
  */
 async function dnsblDays(
-	ctx: RampEvidenceReader,
+	ctx: RampReadCtx,
 	args: { organizationId: string; cell: DeliverabilityCell; now: number }
 ): Promise<{ dayStart: number; clean: boolean }[]> {
 	const rows = await ctx.db
@@ -213,7 +226,7 @@ async function dnsblDays(
 		.take(DECISION_SCAN_LIMIT);
 	const byDay = new Map<number, boolean>();
 	for (const row of rows) {
-		const day = utcDayStart(row.at);
+		const day = startOfDayUtc(row.at);
 		const listed = snapshotPoolBlocklisted(row.snapshot);
 		const clean = listed === false && (byDay.get(day) ?? true);
 		byDay.set(day, clean);
@@ -223,7 +236,7 @@ async function dnsblDays(
 
 /** The worst own-arm deferral rate across EVERY cell in the grid. */
 async function worstCellDeferralRate(
-	ctx: RampEvidenceReader,
+	ctx: RampReadCtx,
 	args: { organizationId: string; now: number }
 ): Promise<number | null> {
 	let worst: number | null = null;
@@ -251,7 +264,7 @@ async function worstCellDeferralRate(
  * multiplied together at two different call sites.
  */
 export async function loadRampPromotionEvidence(
-	ctx: RampEvidenceReader,
+	ctx: RampReadCtx,
 	args: {
 		organizationId: string;
 		cell: DeliverabilityCell;
