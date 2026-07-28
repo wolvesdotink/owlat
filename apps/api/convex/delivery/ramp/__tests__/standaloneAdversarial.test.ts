@@ -185,7 +185,7 @@ describe('standalone — poisoned rates', () => {
 	it('a poisoned OWN rate is reported as unmeasurable, not as a thin window', () => {
 		// The reason code is what the audit row and the admin notification render
 		// from (plan D12); a poisoned bucket and a small one need different fixes.
-		const built = bare({ own: arm(AMPLE, POISONED_RATES) });
+		const built = bare({ own: arm(AMPLE, poisonedRates(Number.NaN)) });
 		expect(evaluateTrailingHardBounceGate(built)).toMatchObject({
 			status: 'insufficient_data',
 			reason: 'own_rate_unmeasurable',
@@ -196,7 +196,7 @@ describe('standalone — poisoned rates', () => {
 		// An operator with no relay must never be sent looking for one.
 		const built = bare({
 			own: arm(AMPLE),
-			ownTrailingBaseline: arm(AMPLE_BASELINE, POISONED_RATES),
+			ownTrailingBaseline: arm(AMPLE_BASELINE, poisonedRates(Number.NaN)),
 		});
 		expect(evaluateTrailingHardBounceGate(built)).toMatchObject({
 			status: 'insufficient_data',
