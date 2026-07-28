@@ -263,6 +263,7 @@ import type * as delivery_ramp_gateGrades from "../delivery/ramp/gateGrades.js";
 import type * as delivery_ramp_gateMeasurement from "../delivery/ramp/gateMeasurement.js";
 import type * as delivery_ramp_gateTypes from "../delivery/ramp/gateTypes.js";
 import type * as delivery_ramp_gates from "../delivery/ramp/gates.js";
+import type * as delivery_ramp_seedGate from "../delivery/ramp/seedGate.js";
 import type * as delivery_ramp_trailingBaselineGates from "../delivery/ramp/trailingBaselineGates.js";
 import type * as delivery_ramp_yahooComplaintSignal from "../delivery/ramp/yahooComplaintSignal.js";
 import type * as delivery_relayReturnPath from "../delivery/relayReturnPath.js";
@@ -1080,6 +1081,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/gateMeasurement": typeof delivery_ramp_gateMeasurement;
   "delivery/ramp/gateTypes": typeof delivery_ramp_gateTypes;
   "delivery/ramp/gates": typeof delivery_ramp_gates;
+  "delivery/ramp/seedGate": typeof delivery_ramp_seedGate;
   "delivery/ramp/trailingBaselineGates": typeof delivery_ramp_trailingBaselineGates;
   "delivery/ramp/yahooComplaintSignal": typeof delivery_ramp_yahooComplaintSignal;
   "delivery/readinessValidators": typeof delivery_readinessValidators;
