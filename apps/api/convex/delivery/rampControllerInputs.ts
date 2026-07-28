@@ -40,6 +40,7 @@ import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
+import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
 import type {
 	RampControllerInput,
 	RampHardStopSignals,
@@ -188,6 +189,18 @@ export async function loadCellInput(
 		 * here would be the same index lookup repeated once per cell.
 		 */
 		pool: Doc<'deliverabilityRouteStates'> | null;
+		/**
+		 * The tick's ONE capacity reading, LAZY and memoized by the caller: the
+		 * bound is deployment-level by derivation (see `rampCapacityInputs.ts`), so
+		 * reading it per cell would be the same index reads repeated once per cell
+		 * — and a slice with no ramp-managed cell in it (the normal state during
+		 * rollout, plan D1) must not pay for a reading no cell will consume, which
+		 * is why it is a thunk rather than a value. It is handed to
+		 * `capacityInputForCell` UNRESOLVED, so a slice of cells the campaign pool
+		 * does not govern — the stream-major cursor produces exactly such slices —
+		 * does not resolve it either.
+		 */
+		capacity: () => Promise<RampCapacityContext>;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		now: number;
@@ -245,8 +258,8 @@ export async function loadCellInput(
 	// no reference arm (`referenceArm === null` above) wants that twin rather than
 	// this one — evaluated by the reference implementation it can only ever hold.
 	// P3-8's substitution table is what selects between them; the hard-coded
-	// evaluator here is STAGED, exactly like `capacity: { kind: 'unconstrained' }`
-	// below is staged for P3-3.
+	// evaluator here is STAGED, exactly as the capacity input below was until P3-3
+	// replaced its stand-in with a real projection.
 	const evaluation = referenceArmGateEvaluator.evaluate({
 		config: RAMP_STREAM_CONFIGS[cell.stream],
 		own,
@@ -267,12 +280,13 @@ export async function loadCellInput(
 				now,
 			}),
 			evaluation,
-			// P3-3 owns the real per-(IP x mailbox provider) projection; until it
-			// lands the controller is bounded by its PHASE CEILING alone. A stand-in
-			// projection here would be a rule with no fixture and a ceiling nobody
-			// designed — see `RampCapacityInput`, where "no projection" is its own
-			// shape rather than a pair of zeros a real reading could also produce.
-			capacity: { kind: 'unconstrained' },
+			// THE PREDICTIVE CAPACITY BOUND (P3-3), read ONCE for the tick — lazily,
+			// so an unmanaged slice never pays for it — and specialised here with this
+			// cell's own trailing evidence for the audit row. The shortfall is
+			// measured against the STORED share, which makes it a LAGGING indicator
+			// (see `deliveredShareShortfall`): a `warmup_overflow` reroute shows up in
+			// it, and so does a share the controller itself raised yesterday.
+			capacity: await capacityInputForCell(args.capacity, cell, mix.share),
 			isKillSwitchEngaged: args.isKillSwitchEngaged,
 			now,
 		},

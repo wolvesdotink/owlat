@@ -52,6 +52,7 @@ import { readActiveFreeze } from './ramp/controllerReaders';
 import { nextShare } from './ramp/controller';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -215,6 +216,25 @@ export const runRampController = internalMutation({
 		// per cell: the pool row carries the same verdict for all fifteen cells.
 		const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
 
+		// Cell-independent for the same reason, and by DERIVATION rather than by
+		// approximation: the warming cap is one pool-wide number, so the bound that
+		// keeps every governed cell's own-arm volume inside it divides that cap by
+		// the projected demand of the cells that pool carries (see
+		// `rampCapacityInputs.ts`). Read once per tick; each cell then attaches its
+		// own trailing evidence for the audit row.
+		//
+		// AND READ LAZILY. During rollout (plan D1) most slices contain no
+		// ramp-managed cell at all, and the reading is a bounded index read per
+		// governed cell. Deferring it until the first managed cell asks means a
+		// deployment that has warming state but has not opted any cell into the ramp
+		// — the normal state for a long while — pays nothing for a context no cell
+		// would have consumed. Memoized, so the cells in a slice still share one.
+		let capacityContext: RampCapacityContext | null = null;
+		const capacity = async (): Promise<RampCapacityContext> => {
+			capacityContext ??= await loadRampCapacityContext(ctx, { organizationId, now });
+			return capacityContext;
+		};
+
 		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
 		let evaluated = 0;
 		for (const cell of slice) {
@@ -222,6 +242,7 @@ export const runRampController = internalMutation({
 				organizationId,
 				cell,
 				pool,
+				capacity,
 				isKillSwitchEngaged,
 				isSendingPermitted,
 				now,

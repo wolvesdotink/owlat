@@ -129,8 +129,12 @@ export function nextCooldownMs(mix: RampMixState, now: number): number {
  * clean its gates are; promotion between rungs is a separate, deliberate act
  * (manual or criteria-gated) rather than something the hourly AIMD loop does on
  * its own — that is the point of having a ladder at all.
+ *
+ * EXPORTED so a fixture can assert that the ceiling it passes is a real rung:
+ * `normalizePhaseCeiling` snaps anything else onto the lowest one, which is a
+ * silent way for a test to stop testing the branch it names.
  */
-const RAMP_PHASE_CEILINGS = [0.25, 0.5, 0.8, 1] as const;
+export const RAMP_PHASE_CEILINGS = [0.25, 0.5, 0.8, 1] as const;
 
 export const RAMP_INITIAL_PHASE_CEILING: number = RAMP_PHASE_CEILINGS[0];
 

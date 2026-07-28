@@ -7,6 +7,7 @@
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
+import type { CellVolumeUnknownReason } from './capacityProjection';
 import type { RampStreamConfig } from './gateConfig';
 import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
@@ -164,30 +165,85 @@ export interface RampHardStopSignals {
  * not be the same value. `kind` is the difference, in the type rather than
  * in a constant whose meaning depends on a short-circuit three modules away.
  *
- * WHY NOT SHIP A STAND-IN PROJECTION MEANWHILE. The obvious approximation — the
- * deployment-wide remaining warming headroom over one cell's trailing volume —
- * is wrong in both directions. The numerator is shared by all fifteen cells, so
- * each one claims the whole deployment's headroom and the ceiling is far LOOSER
- * than the plan intends; and as the day's sends approach the cap that numerator
- * decays toward zero against a trailing-24h denominator that does not, so the
- * ceiling collapses and retreats cells whose gates are all green — a daily
- * sawtooth into the relay, with an admin notice attached to each one. A ceiling
- * nobody designed is worse than no ceiling at all. ABSENCE IS NOT A CONSTRAINT
- * (plan D2): a missing reading is never evidence of a full cap.
+ * WHAT P3-3 ACTUALLY SUPPLIES, and how it answers the two hazards this comment
+ * used to reject a stand-in for. The shipped warming sync reports headroom for
+ * the CAMPAIGN POOL as a whole, not per (IP x mailbox provider), so a ceiling
+ * that divided the pool's headroom by ONE cell's volume would hand the same
+ * numerator to all fifteen cells and the sum of what they were allowed would
+ * exceed the cap fifteenfold. The bound that actually holds comes straight out
+ * of the constraint it has to satisfy — with a share `s_c` and a projected
+ * demand `V_c` per cell, own-arm volume is `sum(s_c * V_c)`, so
+ * `s_c <= headroom / sum(V_c)` for every cell is what keeps the total inside the
+ * cap. The denominator is therefore the DEPLOYMENT'S projected demand, summed
+ * over per-cell projections, and the resulting ceiling is legitimately the same
+ * number for every cell. The second hazard — a remaining cap decaying toward
+ * zero against a denominator that does not, sawtoothing healthy cells into the
+ * relay every afternoon — is answered by comparing like with like: both sides
+ * are what is LEFT OF TODAY (`remainingDemandToday`), and the last sliver of the
+ * day holds rather than decides.
+ *
+ * ABSENCE IS NOT A CONSTRAINT (plan D2): a missing warming reading is never
+ * evidence of a full cap, so it stays `unconstrained`. An unusable DEMAND
+ * reading is a different thing — it is a ceiling we cannot compute at all — and
+ * it holds.
  */
+/**
+ * WHY a known cap could not be turned into a ceiling — a CLOSED union, never a
+ * free string, so the audit snapshot cannot carry a reason no reader recognises
+ * and a switch over it stays exhaustive (plan D12).
+ *
+ * The per-cell reasons come straight through from `projectCellVolume`, because
+ * "this cell has never sent" and "this cell is paused" are different facts an
+ * operator needs told apart; the two deployment-level ones are the sum being
+ * unprojectable at all and the day being too nearly over to measure.
+ */
+export type RampCapacityUnknownReason =
+	/** No cell in the deployment projected any demand to divide the cap by. */
+	| 'demand_unprojectable'
+	/** Too little of the UTC day is left for the remaining-day ratio to mean anything. */
+	| 'day_almost_over'
+	| CellVolumeUnknownReason;
+
 export type RampCapacityInput =
-	/** No per-cell warming projection is available; only the phase ceiling binds. */
+	/** No warming reading at all; only the phase ceiling binds (plan D2). */
 	| { readonly kind: 'unconstrained' }
+	/**
+	 * A warming cap is known but the demand it must be divided by is not (a
+	 * brand-new deployment, a paused week, the last sliver of a UTC day). HOLD:
+	 * neither an unbounded ceiling nor a zero one.
+	 */
+	| { readonly kind: 'unknown'; readonly reason: RampCapacityUnknownReason }
 	| {
 			readonly kind: 'projected';
-			/** Sends of warming-cap headroom left for this cell in the window. */
+			/** Sends of warming-cap headroom left for the rest of today. */
 			readonly warmingCapRemaining: number;
 			/**
-			 * Sends this cell is projected to make in the window. ZERO means "nothing
-			 * to send", which is not a constraint — a cell with no projected volume
-			 * is bounded by its phase ceiling alone.
+			 * Sends the DEPLOYMENT is projected to make in the rest of today — the
+			 * denominator that keeps the sum of every cell's own-arm volume inside the
+			 * cap (see above). ZERO means "nothing to send", which is not a constraint;
+			 * P3-3's projection never produces it, because a zero projection is an
+			 * `unknown` decided in `projectCellVolume` rather than a division here.
 			 */
 			readonly projectedVolume: number;
+			/**
+			 * THIS CELL'S own trailing evidence, carried for the audit snapshot (plan
+			 * D12) and read by NO rung. The numbers above are deployment-level by
+			 * derivation, so without this the row could not say which cell's demand
+			 * contributed what, nor that the own arm failed to carry the share it was
+			 * assigned (`deliveredShareShortfall`).
+			 */
+			readonly cellEvidence?: {
+				readonly projectedCellVolume: number;
+				readonly observedDays: number;
+				/** The trailing week's MEDIAN DAILY own/total mix. */
+				readonly ownFraction: number;
+				/**
+				 * How far that trailing mix sits below the share in force NOW. A
+				 * LAGGING indicator by construction — see `deliveredShareShortfall`
+				 * — so a dashboard must not present it as a count of reroutes.
+				 */
+				readonly deliveredShareShortfall: number | null;
+			};
 	  };
 
 export interface RampControllerInput {

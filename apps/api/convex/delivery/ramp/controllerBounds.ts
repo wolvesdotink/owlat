@@ -39,20 +39,31 @@ export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now
  * an unbounded ceiling: a controller that treated an unreadable projection as
  * "no limit" would ramp hardest exactly when it understood the least.
  *
- * A projected volume of zero is not unusable, it is "nothing to send", which
- * imposes no capacity limit at all; such a cell is bounded by its phase ceiling
- * and — far earlier — by gates that cannot reach their sample floors.
+ * A projected volume of ZERO is one of those unusable readings and HOLDS too
+ * (plan P3-3): a deployment we measured no demand for is a deployment we cannot
+ * size a ceiling for, and `headroom / 0` is the division the whole degenerate
+ * rule exists to forbid. Neither an infinite ceiling nor a zero one — a hold.
  */
 export function capacityCeiling(capacity: RampCapacityInput): number | null {
-	// NO PROJECTION is not a spent cap: the cell is bounded by its phase ceiling
-	// alone until P3-3 supplies a real per-cell reading (plan D2 — absence never
-	// constrains). It is a distinct SHAPE, not a pair of zeros, precisely so it
-	// cannot be confused with a cell whose cap is spent and whose volume is zero.
+	// NO WARMING READING AT ALL is not a spent cap: the cell is bounded by its
+	// phase ceiling alone (plan D2 — absence never constrains). It is a distinct
+	// SHAPE, not a pair of zeros, precisely so it cannot be confused with a cell
+	// whose cap is spent and whose volume is zero.
 	if (capacity.kind === 'unconstrained') return OWN_SHARE_CEILING;
+	// A KNOWN CAP OVER AN UNKNOWN DEMAND is the opposite case, and the one the
+	// projection reports for a brand-new cell, a paused week or the last sliver
+	// of a UTC day. There is no ceiling to compute, so the cell HOLDS (plan D10):
+	// never an unbounded ceiling, never a zero one, and never a division by a
+	// projection of zero — that division is refused in `projectCellVolume`, one
+	// module upstream, and this is where the refusal arrives.
+	if (capacity.kind === 'unknown') return null;
 	const { warmingCapRemaining, projectedVolume } = capacity;
 	if (!Number.isFinite(warmingCapRemaining) || warmingCapRemaining < 0) return null;
-	if (!Number.isFinite(projectedVolume) || projectedVolume < 0) return null;
-	if (projectedVolume === 0) return OWN_SHARE_CEILING;
+	// ZERO IS NOT "NO LIMIT". A zero denominator is refused here as well as one
+	// module upstream (`projectCellVolume` answers `no_volume` rather than a
+	// projection of zero), so no caller — present or future — can reach the
+	// division. Both refusals answer the same thing: HOLD.
+	if (!Number.isFinite(projectedVolume) || projectedVolume <= 0) return null;
 	const ratio = (warmingCapRemaining / projectedVolume) * RAMP_AIMD.capacitySafety;
 	if (!Number.isFinite(ratio)) return null;
 	return Math.min(OWN_SHARE_CEILING, Math.max(0, ratio));

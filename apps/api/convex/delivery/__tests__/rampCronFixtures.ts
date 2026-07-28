@@ -13,16 +13,22 @@
  * mocks `getSingletonOrganizationId` with its own tenant.
  */
 
-import type { convexTest } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import type { Doc } from '../../_generated/dataModel';
+import type schema from '../../schema';
 import { createTestInstanceSettings } from '../../__tests__/factories';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { MS_PER_DAY } from '../../lib/constants';
 
 /** The default share on the managed cell when a suite does not name one. */
 export const RAMP_FIXTURE_SHARE = 0.5;
 
-type Harness = ReturnType<typeof convexTest>;
+/**
+ * The convex-test runner PARAMETERIZED by this app's schema — DEFINED ONCE for
+ * every ramp fixture and suite. The unbound `ReturnType<typeof convexTest>`
+ * hands `t.run` a database handle with no schema behind it, so a document read
+ * back out of it has no fields and `.withIndex(...)` stops typechecking.
+ */
+export type Harness = TestConvex<typeof schema>;
 
 /**
  * DERIVED FROM THE SCHEMA, never hand-copied: a new member of
@@ -72,7 +78,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 		isFallbackActive: false,
 		signals: [],
 		snapshotGeneratedAt: now,
-		expiresAt: now + DAY_MS,
+		expiresAt: now + MS_PER_DAY,
 		updatedAt: now,
 	};
 	await t.run(async (ctx) => {
