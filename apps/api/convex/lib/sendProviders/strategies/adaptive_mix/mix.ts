@@ -127,8 +127,14 @@ export interface MixAssignment {
 	/** The resolved, clamped share this decision was taken against. */
 	readonly ownShare: number;
 	readonly mixVersion: number;
-	/** The recipient's slot in `[0, MIX_BUCKET_SPACE)`. */
-	readonly bucket: number;
+	/**
+	 * The recipient's slot in `[0, MIX_BUCKET_SPACE)`, or `null` on the three
+	 * branches that decide the arm WITHOUT taking a hash: both degenerate
+	 * shares and the unidentifiable recipient. `null` is "never hashed", which
+	 * a hard-coded `0` could not be told apart from "hashed to slot 0" — a
+	 * distinction any future reader (or persister) of this field needs.
+	 */
+	readonly bucket: number | null;
 	/**
 	 * Why this decision came out the way it did. DIAGNOSTIC ONLY: it is not
 	 * persisted on the assignment row, because the audit trail D12 asks for is
@@ -325,7 +331,7 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 			isCalibration: false,
 			ownShare,
 			mixVersion,
-			bucket: 0,
+			bucket: null,
 			basis: 'degenerate_reference',
 		};
 	}
@@ -335,7 +341,7 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 			isCalibration: false,
 			ownShare,
 			mixVersion,
-			bucket: 0,
+			bucket: null,
 			basis: 'degenerate_own',
 		};
 	}
@@ -347,7 +353,7 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 			isCalibration: false,
 			ownShare,
 			mixVersion,
-			bucket: 0,
+			bucket: null,
 			basis: 'unidentified',
 		};
 	}

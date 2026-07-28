@@ -109,8 +109,28 @@ describe('adaptive_mix — split matrix', () => {
 		});
 		expect(decision.ownShare).toBe(1);
 		expect(decision.mixVersion).toBe(3);
-		expect(decision.bucket).toBeGreaterThanOrEqual(0);
-		expect(decision.bucket).toBeLessThan(MIX_BUCKET_SPACE);
+		// A share of 1 short-circuits above the hash, so there is no slot to
+		// report — `null` says "never hashed" rather than "hashed to slot 0".
+		expect(decision.bucket).toBeNull();
+	});
+
+	it('reports a real slot only on the branches that actually hash', () => {
+		const hashed = decideMixAssignment({
+			cell: { ownShare: 0.4, mixVersion: 2 },
+			recipient: { contactId: 'c1', campaignId: 'cmp' },
+		});
+		expect(hashed.bucket).toBeGreaterThanOrEqual(0);
+		expect(hashed.bucket).toBeLessThan(MIX_BUCKET_SPACE);
+
+		// Both degenerate shares and the unidentifiable recipient decide the arm
+		// without a hash, and all three say so.
+		for (const decision of [
+			decideMixAssignment({ cell: { ownShare: 0, mixVersion: 2 }, recipient: { contactId: 'c1' } }),
+			decideMixAssignment({ cell: { ownShare: 1, mixVersion: 2 }, recipient: { contactId: 'c1' } }),
+			decideMixAssignment({ cell: { ownShare: 0.4, mixVersion: 2 }, recipient: {} }),
+		]) {
+			expect(decision.bucket).toBeNull();
+		}
 	});
 
 	it('routes the strategy module to the arm the decision names', () => {
