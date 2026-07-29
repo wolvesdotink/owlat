@@ -208,6 +208,7 @@ export function paceState(overrides: Partial<PaceState> = {}): PaceState {
 		freezeStartedAt: undefined,
 		cooldownMs: undefined,
 		lastEvaluatedUtcDay: undefined,
+		deferredAt: undefined,
 		...overrides,
 	};
 }

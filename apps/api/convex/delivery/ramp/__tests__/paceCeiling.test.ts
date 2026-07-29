@@ -133,6 +133,25 @@ describe('effectiveDailyCap — degenerate input', () => {
 		).toBe(200);
 	});
 
+	// A GRADUATED POOL WITH AN UNREADABLE CELL CAP MUST NOT BECOME UNBOUNDED.
+	// "Graduated" is `cellCap === Infinity` — a cap known to be unlimited. `NaN` is
+	// a reading we could not use, and everywhere else here an unusable reading
+	// fails CLOSED. A ceiling that does not bind is deliberate; a CAP that does
+	// not bind, derived from a number nobody could read, is not.
+	it('a graduated ceiling over an UNREADABLE cell cap still bounds the cap', () => {
+		for (const cellCap of [Number.NaN, 0, -5]) {
+			const cap = effectiveDailyCap({ cellCap, baseScheduleCap: Infinity, multiplier: 1 });
+			expect(cap).toBe(50);
+			expect(Number.isFinite(cap)).toBe(true);
+		}
+	});
+
+	it('a graduated ceiling over a genuinely unlimited cell cap is unbounded', () => {
+		expect(effectiveDailyCap({ cellCap: Infinity, baseScheduleCap: Infinity, multiplier: 1 })).toBe(
+			Infinity
+		);
+	});
+
 	it('never returns zero — a cap of nothing can never be re-measured', () => {
 		const cap = effectiveDailyCap({
 			cellCap: 1,

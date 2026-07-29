@@ -79,6 +79,15 @@ export interface SeedRampCellOptions {
 	 * starting point, and the reading the actuator must hold on (plan D10).
 	 */
 	readonly warming?: { readonly dailyCap: number; readonly sentToday: number };
+	/**
+	 * How long ago the warming sync last wrote. The utilisation reading has a
+	 * MUCH tighter staleness bound than the capacity projection's, because
+	 * `sentToday` / `dailyCap` reset at the UTC boundary and yesterday's counters
+	 * describe a day that is over.
+	 */
+	readonly warmingAgeMs?: number;
+	/** The composition interlock's anchor: when a pace increase was withheld. */
+	readonly paceDeferredAt?: number;
 }
 
 /** Seeds instance settings plus the pool / provider / managed row triple. */
@@ -134,6 +143,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			...(options.paceLastEvaluatedUtcDay === undefined
 				? {}
 				: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
+			...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
 		});
 		if (options.warming !== undefined) {
 			await ctx.db.insert('warmingState', {
@@ -154,7 +164,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 						active: true,
 					},
 				],
-				syncedAt: now,
+				syncedAt: now - (options.warmingAgeMs ?? 0),
 			});
 		}
 	});

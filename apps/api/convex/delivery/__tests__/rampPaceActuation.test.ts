@@ -154,6 +154,105 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		expect((await decision(t))?.paceReason).toBe('kill_switch');
 	});
 
+	// THE STALE-BUT-EXERCISED READING. `sentToday` / `dailyCap` reset at the UTC
+	// boundary, so a warming row from hours ago describes a day that is over — and
+	// a 900/1000 reading from it would otherwise satisfy `isCapExercised` and buy
+	// today's +STEP. The rule the one sanctioned D19 change exists to enforce is
+	// that an unexercised cap is not evidence, so a broken measurement pipe must
+	// read `unknown` and HOLD (plan D10).
+	it('a STALE warming reading is unknown even when it looks exercised, and holds', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			paceMultiplier: 1,
+			paceCleanStreak: 3,
+			warming: { dailyCap: 1_000, sentToday: 900 },
+			warmingAgeMs: 2 * 60 * 60 * 1000,
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceMultiplier).toBe(1);
+		// And the day stays UNCOUNTED, so the tick after the pipe recovers can
+		// still evaluate this day once.
+		expect(row?.paceLastEvaluatedUtcDay).toBeUndefined();
+		expect(JSON.parse((await decision(t))?.snapshot ?? '{}')).toMatchObject({
+			pace: { utilisation: { kind: 'unknown' } },
+		});
+	});
+
+	// A FRESH reading of the same shape is the control for the fixture above: the
+	// only thing that changed is the age of the snapshot.
+	it('the same reading, fresh, is measured evidence', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			paceMultiplier: 1,
+			paceCleanStreak: 3,
+			warming: { dailyCap: 1_000, sentToday: 900 },
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		expect(JSON.parse((await decision(t))?.snapshot ?? '{}')).toMatchObject({
+			pace: { utilisation: { kind: 'measured', sent: 900, enforcedCap: 1_000 } },
+		});
+	});
+
+	// THE INTERLOCK OUTLIVES THE TICK THAT FIRED IT (plan D3). The cron ticks
+	// hourly against a day-long share window, so the withheld step has to stay
+	// withheld across ticks — the pure suite pins the rule, this pins the column.
+	it('the deferral anchor survives a tick that did not fire the interlock', async () => {
+		const t = convexTest(schema, modules);
+		const deferredAt = Date.now() - 60 * 60 * 1000;
+		await seed(t, {
+			paceMultiplier: 1,
+			paceCleanStreak: 3,
+			paceDeferredAt: deferredAt,
+			warming: { dailyCap: 1_000, sentToday: 900 },
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		// STAMPED ONLY BY THE INTERLOCK, and never cleared by an ordinary tick: the
+		// rung that reads it is written against elapsed time, so a tick that did not
+		// defer anything must leave the anchor exactly where it found it. Losing it
+		// here is how the withheld step would be taken an hour later instead of a
+		// window later. (The rung's own behaviour is pinned in the pure suite,
+		// `ramp/__tests__/actuatorComposition.test.ts`, where a gate verdict can be
+		// made green.)
+		expect(row?.paceDeferredAt).toBe(deferredAt);
+		expect(row?.paceMultiplier).toBe(1);
+		expect(row?.paceLastEvaluatedUtcDay).toBeUndefined();
+	});
+
+	// D12: EVERY DECREASE emits an admin notification naming the gate that broke.
+	// A pace-only retreat is reachable because the two dials keep separate freeze
+	// columns: the share sits inside an earlier cooldown and holds, while the pace
+	// dial — whose own freeze has expired — halves on the same breach.
+	it('a PACE-ONLY retreat still produces an admin notice', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now();
+		await seed(t, {
+			paceMultiplier: 1,
+			// The SHARE is frozen by an earlier cooldown, so it can only hold.
+			frozenUntil: at + 6 * 60 * 60 * 1000,
+			freezeReason: 'gate_breach',
+			warming: { dailyCap: 1_000, sentToday: 900 },
+			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: at }],
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const audited = await decision(t);
+		expect(audited?.direction).toBe('decrease');
+		expect(audited?.paceDirection).toBe('decrease');
+		const notice = audited?.adminNotice ?? '';
+		// The notice names the pace dial and the cause, not only the share's.
+		expect(notice).toContain('warm-up pace');
+		expect(notice).toContain('blocklist');
+	});
+
 	it('NO warming state at all is a supported configuration, not an error (D2/D10)', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, { paceMultiplier: 1 });

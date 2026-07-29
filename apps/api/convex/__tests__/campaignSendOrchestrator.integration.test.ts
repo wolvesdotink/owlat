@@ -1105,6 +1105,81 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		);
 	});
 
+	// A PARKED ROW MUST LEAVE THE WATCHDOG'S STALE RANGE, not merely be skipped
+	// inside it. `redriveStuckSendJobs` pages `by_phase_updatedAt` and takes 50
+	// rows BEFORE it skips parked ones, so a park that kept a park-time
+	// `updatedAt` would sit in that range for the whole ~24h it waits — and enough
+	// concurrent parked walks fill the page entirely, so a genuinely stranded walk
+	// is never reached. The park therefore stamps the RESUME INSTANT.
+	it('a crowd of parked walks does not starve a genuinely stuck walk of its re-drive', async () => {
+		const t = convexTest(schema, modules);
+		const stuck = await setupWalker(t, 600);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: stuck.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: stuck.campaignId });
+		// This one is genuinely stranded mid-walk: stale, resolving, not parked.
+		await t.run(async (ctx) => {
+			const job = await ctx.db
+				.query('campaignSendJobs')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', stuck.campaignId))
+				.first();
+			await ctx.db.patch(job!._id, { updatedAt: Date.now() - 11 * 60 * 1000 });
+		});
+
+		// Sixty PARKED walks, all older than the staleness threshold — more than the
+		// watchdog's page of 50, and every one of them ahead of the stranded walk in
+		// `updatedAt` order if the park had back-dated them.
+		const now = Date.now();
+		const audience = (await getJob(t, stuck.campaignId))!.audience;
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 60; index += 1) {
+				const campaignId = await ctx.db.insert('campaigns', {
+					name: `parked-${index}`,
+					status: 'sending',
+					createdAt: now,
+					updatedAt: now,
+				});
+				await ctx.db.insert('campaignSendJobs', {
+					campaignId,
+					phase: 'resolving',
+					variantMode: 'plain',
+					cursor: '',
+					audience,
+					enqueuedCount: 0,
+					totalCandidates: 0,
+					resumeAt: now + 12 * 60 * 60 * 1000,
+					// What `recordSendPlanDay` now writes for a park: the resume
+					// instant, which keeps the row out of `updatedAt < cutoff`.
+					updatedAt: now + 12 * 60 * 60 * 1000,
+					startedAt: now - 60 * 60 * 1000,
+				});
+			}
+		});
+
+		const result = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
+		// The stranded walk is found and re-driven; no parked row is.
+		expect(result.redriven).toBe(1);
+	});
+
+	it('the park stamps the RESUME INSTANT on updatedAt so the row leaves the stale range', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		const parked = await getJob(t, data.campaignId);
+		expect(parked?.resumeAt).toBeDefined();
+		expect(parked?.updatedAt).toBe(parked?.resumeAt);
+		// A hop that makes progress clears both again.
+		vi.setSystemTime(new Date(Date.now() + DAY_MS));
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		const resumed = await getJob(t, data.campaignId);
+		expect(resumed?.resumeAt).toBeUndefined();
+		expect(resumed?.updatedAt).toBeLessThanOrEqual(Date.now());
+	});
+
 	it('resumes on the FOLLOWING day from the committed cursor, with the day counter reset', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupWalker(t, 6);
