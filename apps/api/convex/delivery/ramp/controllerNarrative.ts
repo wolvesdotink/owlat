@@ -381,6 +381,12 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'capacity_unknown':
 		case 'capacity_ceiling':
 		case 'phase_ceiling':
+		// The substitution table's phase cap is a SHARE ceiling too — it caps the
+		// phase ladder, which the pace dial does not climb. It was missing from
+		// this group and fell through to an undefined sentence; the reason union
+		// is exhaustive at compile time but a missing arm returns nothing at
+		// runtime, which is exactly what `__tests__/paceNarrative.test.ts` is for.
+		case 'degradation_ceiling':
 		case 'window_open':
 		case 'graduated':
 			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}.`;
