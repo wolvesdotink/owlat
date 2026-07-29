@@ -273,6 +273,7 @@ import type * as delivery_observationRetention from "../delivery/observationRete
 import type * as delivery_preferences from "../delivery/preferences.js";
 import type * as delivery_preferencesHttp from "../delivery/preferencesHttp.js";
 import type * as delivery_preferencesQueries from "../delivery/preferencesQueries.js";
+import type * as delivery_pacedWarmingCapacity from "../delivery/pacedWarmingCapacity.js";
 import type * as delivery_postmaster from "../delivery/postmaster.js";
 import type * as delivery_postmasterCards from "../delivery/postmasterCards.js";
 import type * as delivery_ramp_actuatorComposition from "../delivery/ramp/actuatorComposition.js";
@@ -1162,6 +1163,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/preferences": typeof delivery_preferences;
   "delivery/preferencesHttp": typeof delivery_preferencesHttp;
   "delivery/preferencesQueries": typeof delivery_preferencesQueries;
+  "delivery/pacedWarmingCapacity": typeof delivery_pacedWarmingCapacity;
   "delivery/postmaster": typeof delivery_postmaster;
   "delivery/ramp/actuatorComposition": typeof delivery_ramp_actuatorComposition;
   "delivery/ramp/aimd": typeof delivery_ramp_aimd;
