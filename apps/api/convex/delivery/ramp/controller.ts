@@ -48,7 +48,11 @@
 
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { aimdDecrease, aimdIncrease } from './aimd';
-import { capacityCeiling, isEvaluationWindowElapsed } from './controllerBounds';
+import {
+	capacityCeiling,
+	isEvaluationWindowElapsed,
+	resolveCeilingBound,
+} from './controllerBounds';
 import {
 	nextCooldownMs,
 	normalizePhaseCeiling,
@@ -67,12 +71,7 @@ import {
 } from './controllerReaders';
 import { ppToFraction } from './gateConfig';
 import { rampDecisionDirection, rampPinChange } from './controllerTypes';
-import type {
-	RampControllerInput,
-	RampDecision,
-	RampDecisionDraft,
-	RampDecisionReason,
-} from './controllerTypes';
+import type { RampControllerInput, RampDecision, RampDecisionDraft } from './controllerTypes';
 
 /**
  * THE decision. Pure — `now` is a parameter and nothing here reads a clock, a
@@ -139,6 +138,7 @@ export function nextShare(input: RampControllerInput): RampDecision {
 		pinChange,
 		countedAt: draft.countedAt,
 		ceiling: draft.ceiling,
+		cappedBy: draft.cappedBy,
 	};
 }
 
@@ -157,7 +157,7 @@ interface DecideArgs {
  */
 function decide(args: DecideArgs): RampDecisionDraft {
 	const { fromShare, phaseCeiling, storedStreak, isClockUsable, input } = args;
-	const { mix, signals, evaluation, capacity, config, now } = input;
+	const { mix, signals, evaluation, capacity, config, now, phaseCeilingCap } = input;
 	const held = {
 		share: fromShare,
 		verdict: 'not_evaluated' as const,
@@ -235,10 +235,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		}
 		return {
 			...held,
-			// THE SHARED AIMD ARITHMETIC, with `floor: 0` stated explicitly: a hard
-			// stop retreats PAST the soft floor — that is what makes it hard — and
-			// saying so here is what keeps the pace actuator's identical retreat one
-			// function away rather than one copy away (plan D3).
+			// THE SHARED AIMD ARITHMETIC (D3) — `floor: 0`: a hard stop retreats PAST the floor.
 			share: aimdDecrease(fromShare, { floor: 0, decreaseFactor: RAMP_AIMD.decreaseFactor }),
 			reason: 'breaker',
 			cleanStreak: 0,
@@ -413,9 +410,17 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//    the wrong one.
 	const capacityBound = capacityCeiling(capacity);
 	if (capacityBound === null) return { ...green, reason: 'capacity_unknown' };
-	const ceiling = Math.min(OWN_SHARE_CEILING, capacityBound, phaseCeiling);
-	const bindingReason: RampDecisionReason =
-		capacityBound < phaseCeiling ? 'capacity_ceiling' : 'phase_ceiling';
+	// 8b. WHICH OF THE THREE CEILINGS BINDS — the capacity projection, the stored
+	//     phase rung, or the substitution table's cap (P3-8). The arithmetic and
+	//     the remedy each one implies live in `controllerBounds`; this rung only
+	//     applies the answer, so the ladder stays a ladder.
+	const bound = resolveCeilingBound({
+		capacityBound,
+		phaseCeiling,
+		phaseCeilingCap,
+		ceilingCapSource: input.ceilingCapSource,
+	});
+	const { ceiling, cappedBy } = bound;
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.
@@ -461,7 +466,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		// so an upward pin target falls through to rungs 10 and 11 rather than
 		// jumping the cell to its ceiling in a single evaluation.
 		if (pinTarget < fromShare) {
-			return { ...pinnedGreen, share: pinTarget, reason: bindingReason, ceiling };
+			return { ...pinnedGreen, share: pinTarget, reason: bound.reason, ceiling, cappedBy };
 		}
 		if (pinTarget === fromShare) {
 			return { ...pinnedGreen, share: pinTarget, reason: 'graduated', ceiling };
@@ -491,5 +496,5 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// the floor may only ever soften a retreat, never become an increase in
 	// disguise for a cell sitting below it.
 	const target = Math.min(fromShare, Math.max(RAMP_AIMD.shareFloor, bounded));
-	return { ...pinnedGreen, share: target, reason: bindingReason, ceiling };
+	return { ...pinnedGreen, share: target, reason: bound.reason, ceiling, cappedBy };
 }

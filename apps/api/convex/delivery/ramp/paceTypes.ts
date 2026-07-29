@@ -116,6 +116,20 @@ export interface PaceControllerInput {
 	/** The gate aggregate, or `null` when none could be produced. `null` HOLDS. */
 	readonly evaluation: RampGateEvaluation | null;
 	readonly utilisation: PaceUtilisationReading;
+	/**
+	 * THE SUBSTITUTION TABLE'S STEP FACTOR for this cell (plan D3) —
+	 * `RampDegradation.stepMultiplier`, applied to `PACE_AIMD.increaseStep`.
+	 *
+	 * IT IS PASSED RAW RATHER THAN READ OFF `config`, and that is not an
+	 * oversight: `degradedStreamConfig` folds the same factor into
+	 * `RampStreamConfig.increaseStep`, which is in PERCENTAGE POINTS OF SHARE.
+	 * The pace dial's step is in MULTIPLIER units, so reading the folded field
+	 * would apply the share's number to the wrong quantity. One factor, two
+	 * units, applied where each unit lives.
+	 *
+	 * Absent (or degenerate) means 1 — the equipped identity.
+	 */
+	readonly stepMultiplier?: number | undefined;
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
 }

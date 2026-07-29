@@ -120,7 +120,13 @@ describe('the pace dial reaches every campaign-facing consumer, or none', () => 
 		expect(walker.capacityByDay).toEqual(shared?.byDay);
 	});
 
-	it('a retreated dial lengthens the plan, and it lengthens it the SAME way for everyone', async () => {
+	// THE PROJECTION-LEVEL HALF of the agreement: the dialed projection lengthens
+	// the plan, and the walker's capacity produces the same length. The BINDING
+	// gate's own entry point is asserted separately, in
+	// `pacedCapacityPreflight.integration.test.ts`, because "two callers of
+	// `buildCapacitySchedule` agree" cannot tell you whether
+	// `campaigns/capacityPreflight.ts` reads the dialed projection at all.
+	it('a retreated dial lengthens the projection, and the walker reads the same one', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t);
 		const audience = await seedAudience(t);
@@ -144,10 +150,9 @@ describe('the pace dial reaches every campaign-facing consumer, or none', () => 
 			countAudienceSize: false,
 		});
 
-		// THE PRE-FLIGHT AND THE WALKER SIZE THE SAME PLAN. Both go through
-		// `loadPacedWarmingCapacity`, so the day count the gate blesses is the day
-		// count the walker will actually take — the disagreement this module exists
-		// to make impossible.
+		// ONE PROJECTION, ONE LENGTH. Both sides go through
+		// `loadPacedWarmingCapacity`, so the day count derived from the shared loader
+		// is the day count the walker will actually take.
 		const dialedDays = buildCapacitySchedule({
 			audienceSize,
 			remainingCapacityByDay: dialed?.byDay ?? [],

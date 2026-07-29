@@ -130,6 +130,18 @@ export function isCapExercised(reading: PaceUtilisationReading): boolean {
 	return sent / enforcedCap >= PACE_MINIMUM_UTILISATION;
 }
 
+/**
+ * The substitution table's step factor, read defensively. A missing, non-finite
+ * or non-positive factor is the EQUIPPED identity (1) rather than a step of zero
+ * or a negative one: a degenerate substitution must never be able to stall the
+ * only dial a standalone deployment has, and must never turn an increase into a
+ * retreat that no gate asked for.
+ */
+function sanitizeStepMultiplier(factor: number | undefined): number {
+	if (factor === undefined || !Number.isFinite(factor) || factor <= 0) return 1;
+	return Math.min(1, factor);
+}
+
 /** THE decision. Pure — `now` is a parameter. */
 export function nextPaceMultiplier(input: PaceControllerInput): PaceDecision {
 	const { pace, now } = input;
@@ -363,21 +375,26 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 
 	// 10. K_CLEAN. Confidence is spent, not assumed.
 	//
-	//     P3-8 OWNS THE SUBSTITUTION FOR THIS DIAL. `cleanWindowsRequired` is
-	//     documented in `gateConfig.ts` as the EQUIPPED half only ("with a
-	//     reference arm", 3), and the pace dial only ever runs standalone — where
-	//     the plan's substitution table mandates K_CLEAN 3 -> 5 and a halved step.
-	//     Both substitutions arrive with P3-8's table; nothing here branches on
-	//     the configuration itself (plan D3).
+	//     THE SUBSTITUTION IS LIVE, and it arrives through TWO different doors
+	//     because it is carried in two different units. K_CLEAN comes in FOLDED:
+	//     `degradedStreamConfig` writes the table's `cleanWindowsRequired` onto
+	//     `RampStreamConfig`, so the 3 -> 5 the standalone row mandates is already
+	//     in `config` by the time this rung reads it. The halved STEP cannot come
+	//     the same way — the folded `increaseStep` is in percentage points of
+	//     SHARE — so it arrives RAW as `input.stepMultiplier` and is applied to
+	//     `PACE_AIMD.increaseStep` at rung 11. Nothing here branches on the
+	//     configuration itself (plan D3).
 	if (streak < config.cleanWindowsRequired) {
 		return { ...counted, reason: 'building_confidence' };
 	}
 
 	// 11. ADDITIVE INCREASE — the ONLY branch that can raise the multiplier, and
-	//     at most once per UTC day by the guard at rung 8.
+	//     at most once per UTC day by the guard at rung 8. The step is the table's
+	//     (see rung 10): a deployment missing a measurement integration climbs in
+	//     smaller increments, it does not climb on a different ladder.
 	const bounded = aimdIncrease(fromMultiplier, {
 		ceiling: PACE_AIMD.multiplierCeiling,
-		step: PACE_AIMD.increaseStep,
+		step: PACE_AIMD.increaseStep * sanitizeStepMultiplier(input.stepMultiplier),
 	});
 	if (bounded > fromMultiplier) return { ...counted, multiplier: bounded, reason: 'healthy' };
 	// Already at M_MAX. The published schedule is what limits the cap from here.

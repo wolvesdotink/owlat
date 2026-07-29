@@ -15,7 +15,20 @@ import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { rampDecisionChangedState } from './controllerTypes';
 import type { RampDecision, RampDecisionReason } from './controllerTypes';
 import type { RampGateId } from './gateTypes';
+import { RAMP_DEGRADATION_BY_INTEGRATION } from './degradationMatrix';
 import type { PaceDecision, PaceDecisionReason } from './paceTypes';
+
+/**
+ * The missing integration, NAMED — the table's own operator-facing label, never
+ * a second copy of it. `undefined` only when the ceiling rung produced no cap
+ * source at all, in which case the sentence stays honest by generalising rather
+ * than by guessing.
+ */
+function cappingIntegration(decision: RampDecision): string {
+	const id = decision.cappedBy;
+	const entry = id === undefined ? undefined : RAMP_DEGRADATION_BY_INTEGRATION.get(id);
+	return entry === undefined ? 'a missing measurement integration' : entry.label;
+}
 
 function percent(share: number): string {
 	return `${Math.round(share * 1000) / 10}%`;
@@ -197,6 +210,15 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return decision.direction === 'decrease'
 				? `Reduced ${where} (${move}): the cell is above its phase ceiling and has been brought back to it. No gate failed — promote the phase to allow more.`
 				: `Held ${where} at ${percent(decision.share)}: the cell is at its phase ceiling. Promote the phase to let it go further.`;
+		// NOT "PROMOTE THE PHASE": the rung is already promoted and the controller
+		// is capping it. The remedy is the missing integration, and it applies
+		// itself — nothing for the operator to undo afterwards.
+		case 'degradation_ceiling': {
+			const capper = cappingIntegration(decision);
+			return decision.direction === 'decrease'
+				? `Reduced ${where} (${move}): ${capper} is not reporting, which caps this cell one phase below its promoted rung, and it was above that cap. No gate failed — the cap lifts by itself once that integration reports again.`
+				: `Held ${where} at ${percent(decision.share)}: ${capper} is not reporting, which caps this cell one phase below its promoted rung. The cap lifts by itself once that integration reports again.`;
+		}
 		case 'healthy':
 			return `Increased ${where} (${move}): every gate is green and the clean streak is long enough.`;
 		// A GRADUATED CELL CAN SIT BELOW FULL SHARE — the warming cap bounds a pin

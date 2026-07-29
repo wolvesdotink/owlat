@@ -8,11 +8,17 @@
  * dial and its audit row to disk. A decision function with no caller ramps
  * nothing, and no fixture over the pure core can tell you that.
  *
- * WHAT IS DELIBERATELY NOT HERE: a pace INCREASE through the cron. The read half
- * still selects `referenceArmGateEvaluator` (see `rampControllerInputs.ts`),
- * which can only ever HOLD a deployment with no reference arm; the standalone
- * evaluator's selection is P3-8's substitution table. The increase ladder itself
- * is exhaustively fixture-pinned in `ramp/__tests__/paceActuator.test.ts`.
+ * AND WHICH DIAL THE CRON DRIVES AT ALL. The substitution table (P3-8's
+ * `ramp/degradation.ts`) answers that, and the cron consults it through the read
+ * half's resolution — so the ACTUATOR SELECTION is pinned here, at the boundary
+ * the cron actually reads it from. Without it the composition interlock is
+ * handed a live share decision on a deployment that has no share to move, and
+ * the pace dial — the only dial such a deployment owns — is held back for a
+ * whole evaluation window every time the share steps.
+ *
+ * WHAT IS DELIBERATELY NOT HERE: a pace INCREASE through the cron. The increase
+ * ladder itself is exhaustively fixture-pinned in
+ * `ramp/__tests__/paceActuator.test.ts`.
  */
 
 import { convexTest } from 'convex-test';
@@ -21,7 +27,17 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { PACE_AIMD } from '../ramp/paceConfig';
-import { readManagedCell, seedRampCell, type SeedRampCellOptions } from './rampCronFixtures';
+import {
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+	type SeedRampCellOptions,
+} from './rampCronFixtures';
+import { loadCellInput } from '../rampControllerInputs';
+import { loadRampDeploymentPresence } from '../rampIntegrationPresence';
+import { loadRampCapacityContext } from '../rampCapacityInputs';
+import { loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
@@ -34,8 +50,6 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 
 const ORG = 'org_ramp_pace';
 
-type Harness = ReturnType<typeof convexTest>;
-
 async function seed(
 	t: Harness,
 	options: Omit<SeedRampCellOptions, 'organizationId'> = {}
@@ -47,6 +61,75 @@ async function decision(t: Harness) {
 	const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 	return rows[0];
 }
+
+/**
+ * WHICH ACTUATOR THE CRON SELECTS for the campaign/gmail cell, read the way the
+ * cron reads it: off the resolution `loadCellInput` returns, not off a second
+ * fold that could disagree with the constants the tick was built from.
+ */
+async function selectedActuator(t: Harness): Promise<'share' | 'pace'> {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		const pool = await loadStreamlessRouteState(ctx, ORG, 'all');
+		const presence = await loadRampDeploymentPresence(ctx, { organizationId: ORG, now });
+		const loaded = await loadCellInput(ctx, {
+			organizationId: ORG,
+			cell: { stream: 'campaign', destinationProvider: 'gmail' },
+			pool,
+			capacity: async () => await loadRampCapacityContext(ctx, { organizationId: ORG, now }),
+			presence,
+			isKillSwitchEngaged: false,
+			isSendingPermitted: true,
+			now,
+		});
+		if (loaded === null) throw new Error('the seeded cell is not ramp-managed');
+		return loaded.degradation.actuator;
+	});
+}
+
+describe('the cron selects the actuator from the substitution table (D3)', () => {
+	it('a deployment with NO reference transport drives the PACE dial', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, { paceMultiplier: 1, warming: { dailyCap: 1_000, sentToday: 900 } });
+		// Own traffic only — a zero-third-party deployment, which is a SUPPORTED
+		// configuration and not a degraded one (plan D2). This is the exact
+		// configuration the standalone twin exists for.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+
+		expect(await selectedActuator(t)).toBe('pace');
+	});
+
+	it('a live reference arm hands the cell back to the SHARE dial', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, { paceMultiplier: 1, warming: { dailyCap: 1_000, sentToday: 900 } });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+
+		expect(await selectedActuator(t)).toBe('share');
+	});
+
+	// THE CONSEQUENCE OF THE SELECTION, on the row the cron writes: a standalone
+	// cell hands `composeActuators` no share, so the interlock has nothing to
+	// interlock and can never stamp the deferral anchor that would hold the pace
+	// ladder for a whole share evaluation window.
+	it('a standalone cell is never deferred by a share it does not control', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			paceMultiplier: 1,
+			paceCleanStreak: 3,
+			warming: { dailyCap: 1_000, sentToday: 900 },
+		});
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceDeferredAt).toBeUndefined();
+		const audited = await decision(t);
+		expect(audited?.isPaceDeferred).toBe(false);
+		expect(audited?.paceReason).not.toBe('share_moved_first');
+	});
+});
 
 describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 	it('writes the dial on an ordinary hold, and counts no UTC day', async () => {

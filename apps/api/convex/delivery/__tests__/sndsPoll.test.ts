@@ -22,11 +22,11 @@ import {
 	parseSndsTimestamp,
 	SNDS_COMPLAINT_BANDS,
 	sndsCellKey,
-	utcDayStart,
 	type SndsComplaintBand,
 	type SndsDayObservation,
 	type SndsFeedRow,
 } from '../sndsFeed';
+import { startOfDayUtc } from '../../lib/clock';
 
 import { modules } from './helpers/convexModules';
 
@@ -299,7 +299,7 @@ describe('SNDS feed parsing', () => {
 			})
 		);
 		expect(aggregateSndsDays(parsed.rows)[0]?.periodStart).toBe(Date.UTC(2026, 6, 20));
-		expect(utcDayStart(Date.UTC(2026, 6, 20, 23, 59, 59))).toBe(Date.UTC(2026, 6, 20));
+		expect(startOfDayUtc(Date.UTC(2026, 6, 20, 23, 59, 59))).toBe(Date.UTC(2026, 6, 20));
 	});
 
 	it('keeps a partial row that stops after the complaint band', () => {

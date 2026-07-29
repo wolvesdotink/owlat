@@ -66,6 +66,15 @@ function rampDecisionSnapshot(
 			increaseStep: input.config.increaseStep,
 			cleanWindowsRequired: input.config.cleanWindowsRequired,
 		},
+		// THE SUBSTITUTION TABLE'S CONTRIBUTION, recorded alongside the constants it
+		// produced. Without it a `degradation_ceiling` row states a cap and cannot
+		// say which integration produced it — and the KPI is that 100% of decisions
+		// carry a reason a human can act on (plan D12).
+		degradation: {
+			phaseCeilingCap: input.phaseCeilingCap,
+			absent: input.absentIntegrations,
+			ceilingCappedBy: input.ceilingCapSource ?? null,
+		},
 		evaluation:
 			input.evaluation === null
 				? null
