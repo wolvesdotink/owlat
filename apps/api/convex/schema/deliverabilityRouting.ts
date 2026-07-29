@@ -6,6 +6,7 @@ import {
 	deliverabilitySignalSourceValidator,
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
+	paceDecisionReasonValidator,
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
 } from '../delivery/deliverabilityValidators';
@@ -128,6 +129,39 @@ export const deliverabilityRoutingTables = {
 		// controller stamping that column would re-arm every signal on the row as
 		// "fresh" on every tick, for ever — one column with two meanings across two
 		// row shapes, the same objection `snapshotGeneratedAt` is kept clear of.
+		// THE SECOND ACTUATOR'S STATE (plan D3, P3-7). Standalone there is no mix to
+		// control — s === 1 by definition — so the controller writes a WARMING-PACE
+		// MULTIPLIER against the per-(IP x mailboxProvider) daily cap instead. Same
+		// gates, same AIMD, same freeze ladder; a different dial. Every field is
+		// optional and absent on every row written before the pace actuator existed,
+		// where an absent multiplier means the published schedule, unmodified.
+		//
+		// The freeze columns are the pace actuator's OWN and deliberately not the
+		// share's: the two dials retreat independently, and one column shared
+		// between them would let a share cooldown suppress a pace retreat (or the
+		// reverse) for reasons neither actuator measured.
+		paceMultiplier: v.optional(v.number()),
+		paceCleanStreak: v.optional(v.number()),
+		paceFrozenUntil: v.optional(v.number()),
+		paceFreezeStartedAt: v.optional(v.number()),
+		paceCooldownMs: v.optional(v.number()),
+		paceFreezeReason: v.optional(
+			v.union(v.literal('gate_breach'), v.literal('breaker'), v.literal('dnsbl'))
+		),
+		// THE PER-UTC-DAY IDEMPOTENCY ANCHOR (plan D19), as the `YYYY-MM-DD` key the
+		// shipped MTA evaluator stores in `lastEvaluatedDate` — same shape, same
+		// meaning. The controller ticks hourly and a warming schedule must advance
+		// AT MOST ONCE per UTC day, so a tick that finds today's key here holds.
+		paceLastEvaluatedUtcDay: v.optional(v.string()),
+		// THE COMPOSITION INTERLOCK'S MEMORY (plan D3). The instant a pace increase
+		// was WITHHELD because the share moved first in the same tick. The interlock
+		// has to outlive the tick that fired it: the cron ticks hourly while the
+		// share's evaluation window is a whole day, so an in-memory hand-off would
+		// only postpone the pace step by an hour and both dials would still have
+		// increased inside one window — the thing D3 forbids. The pace ladder holds
+		// on this anchor until a whole `RAMP_AIMD.evaluationWindowMs` has passed.
+		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
+		paceDeferredAt: v.optional(v.number()),
 		decidedAt: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
@@ -203,6 +237,25 @@ export const deliverabilityRoutingTables = {
 		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),
 		frozenUntil: v.optional(v.number()),
+		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION (plan D3, D12). One
+		// controller decides both dials in one tick, so one row records both —
+		// splitting them across two rows would make "what did the controller do to
+		// this cell at 14:00" a join. Absent on a row written for a deployment with
+		// no pace state, which is every row written before the pace dial existed.
+		//
+		// `isPaceDeferred` is the COMPOSITION INTERLOCK, recorded rather than
+		// inferred: share moves first and pace moves second, and a cell may never
+		// increase both in one window. When the interlock fires, `paceReason` reads
+		// `share_moved_first` and the multiplier holds — which is a decision an
+		// operator is entitled to see spelled out, not one they should have to
+		// reconstruct by comparing two numbers.
+		fromPaceMultiplier: v.optional(v.number()),
+		toPaceMultiplier: v.optional(v.number()),
+		paceDirection: v.optional(
+			v.union(v.literal('increase'), v.literal('decrease'), v.literal('hold'))
+		),
+		paceReason: v.optional(paceDecisionReasonValidator),
+		isPaceDeferred: v.optional(v.boolean()),
 		// JSON snapshot of every gate's inputs and the hard-stop signals, so a
 		// decision can be replayed against the pure function that made it. A blob
 		// rather than a nested object: it is evidence, never a query predicate.

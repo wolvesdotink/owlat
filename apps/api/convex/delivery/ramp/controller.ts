@@ -47,6 +47,7 @@
  */
 
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
+import { aimdDecrease, aimdIncrease } from './aimd';
 import {
 	capacityCeiling,
 	isEvaluationWindowElapsed,
@@ -234,7 +235,8 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		}
 		return {
 			...held,
-			share: fromShare * RAMP_AIMD.decreaseFactor,
+			// THE SHARED AIMD ARITHMETIC (D3) — `floor: 0`: a hard stop retreats PAST the floor.
+			share: aimdDecrease(fromShare, { floor: 0, decreaseFactor: RAMP_AIMD.decreaseFactor }),
 			reason: 'breaker',
 			cleanStreak: 0,
 			greenSince: undefined,
@@ -336,7 +338,10 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		const share =
 			evaluation.verdict === 'halt'
 				? RAMP_AIMD.shareFloor
-				: Math.max(RAMP_AIMD.shareFloor, fromShare * RAMP_AIMD.decreaseFactor);
+				: aimdDecrease(fromShare, {
+						floor: RAMP_AIMD.shareFloor,
+						decreaseFactor: RAMP_AIMD.decreaseFactor,
+					});
 		return {
 			...held,
 			share,
@@ -478,7 +483,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     ONCE PER EVALUATION WINDOW. A ceiling pull-back below is deliberately
 	//     NOT window-gated: retreats stay instant, advances stay expensive.
 	const step: number = ppToFraction(config.increaseStep);
-	const bounded = Math.min(ceiling, fromShare + step);
+	const bounded = aimdIncrease(fromShare, { ceiling, step });
 	if (bounded > fromShare) {
 		if (!isWindowCounted) return { ...pinnedGreen, reason: 'window_open', ceiling };
 		return { ...pinnedGreen, share: bounded, reason: 'healthy', ceiling };

@@ -74,6 +74,26 @@ export interface SeedRampCellOptions {
 	readonly cooldownMs?: number;
 	/** The graduation pin already on the row — the cell has PINNED at full share. */
 	readonly graduatedAt?: number;
+	/** The SECOND actuator's stored dial, degenerate values included. */
+	readonly paceMultiplier?: number;
+	readonly paceCleanStreak?: number;
+	/** The pace dial's per-UTC-day idempotency anchor (`YYYY-MM-DD`). */
+	readonly paceLastEvaluatedUtcDay?: string;
+	/**
+	 * A warming sync reading for the pace actuator's utilisation evidence.
+	 * Omitted means NO warming state at all — the standalone deployment's normal
+	 * starting point, and the reading the actuator must hold on (plan D10).
+	 */
+	readonly warming?: { readonly dailyCap: number; readonly sentToday: number };
+	/**
+	 * How long ago the warming sync last wrote. The utilisation reading has a
+	 * MUCH tighter staleness bound than the capacity projection's, because
+	 * `sentToday` / `dailyCap` reset at the UTC boundary and yesterday's counters
+	 * describe a day that is over.
+	 */
+	readonly warmingAgeMs?: number;
+	/** The composition interlock's anchor: when a pace increase was withheld. */
+	readonly paceDeferredAt?: number;
 }
 
 /** Seeds instance settings plus the pool / provider / managed row triple. */
@@ -122,7 +142,37 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
 			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
 			...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
+			...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
+			...(options.paceCleanStreak === undefined
+				? {}
+				: { paceCleanStreak: options.paceCleanStreak }),
+			...(options.paceLastEvaluatedUtcDay === undefined
+				? {}
+				: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
+			...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
 		});
+		if (options.warming !== undefined) {
+			await ctx.db.insert('warmingState', {
+				phase: 'ramp',
+				totalDailyCap: options.warming.dailyCap,
+				totalSentToday: options.warming.sentToday,
+				ipCount: 1,
+				ips: [
+					{
+						ip: '203.0.113.10',
+						phase: 'ramp',
+						currentDay: 1,
+						dailyCap: options.warming.dailyCap,
+						sentToday: options.warming.sentToday,
+						bounceRate: 0,
+						deferralRate: 0,
+						pool: 'campaign',
+						active: true,
+					},
+				],
+				syncedAt: now - (options.warmingAgeMs ?? 0),
+			});
+		}
 	});
 }
 

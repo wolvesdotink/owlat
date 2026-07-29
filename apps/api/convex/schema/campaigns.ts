@@ -65,6 +65,44 @@ const campaignSendJobs = defineTable({
 	enqueuedCount: v.number(),
 	// Running total of raw candidates examined (the count denominator).
 	totalCandidates: v.number(),
+	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+	// with no relay to overflow to sends a large campaign over several days: the
+	// walker enqueues only today's capacity slice and resumes in the next cap
+	// window. All four are OPTIONAL and absent on every pre-migration row — a walk
+	// with no plan state is an ordinary same-day send, which is what every shipped
+	// row is.
+	//
+	// `planDayKey` is the `YYYY-MM-DD` UTC day `enqueuedToday` counts for; a hop
+	// that finds a different key has rolled over to a new day and starts the
+	// counter again. `planDayIndex` counts the days the plan was ACTIVE on (not
+	// calendar days elapsed) and `planTotalDays` is what the projection last said
+	// the plan spans — both are operator-facing ("day 2 of 4") and are recomputed
+	// on every hop, so a capacity change mid-plan simply re-lengthens the plan.
+	planDayKey: v.optional(v.string()),
+	enqueuedToday: v.optional(v.number()),
+	planDayIndex: v.optional(v.number()),
+	planTotalDays: v.optional(v.number()),
+	// The audience size the plan was built from, for the progress line's
+	// denominator ("5 000 of 20 000") — and whether that number is the audience
+	// size or only a FLOOR under it, because the bounded count stopped early.
+	// The flag is load-bearing rather than cosmetic: a lower bound may lengthen a
+	// plan, may never shorten one, and may never be read as "the audience is
+	// finished". The copy says "of at least N" when it is set.
+	plannedTotal: v.optional(v.number()),
+	isPlannedTotalLowerBound: v.optional(v.boolean()),
+	// "THE COUNT HAS BEEN ATTEMPTED" — set once per walk, never cleared until the
+	// row is reset for a new walk. One reading (an over-count truncated by
+	// suppression) is counted and yet UNUSABLE, so `plannedTotal` alone cannot
+	// tell "not counted yet" from "counted, no usable answer" — and the walk would
+	// re-run a bounded but far from free audience count on EVERY remaining hop.
+	isPlannedTotalCountAttempted: v.optional(v.boolean()),
+	// A DELIBERATELY PARKED WALK's resume instant. Today's slice is spent and the
+	// walk is waiting for the next cap window — up to ~24h out, far past the
+	// stuck-walk watchdog's staleness threshold. Without this the watchdog would
+	// re-drive the parked row every five minutes, and each re-drive would park it
+	// again and schedule ANOTHER resume hop at the same instant. Cleared on every
+	// hop that makes progress, so a walk that genuinely dies is still re-driven.
+	resumeAt: v.optional(v.number()),
 	startedAt: v.number(),
 	updatedAt: v.number(),
 })

@@ -988,3 +988,253 @@ describe('Campaign send walker — stuck-walk watchdog (redriveStuckSendJobs)', 
 		expect(backstop.redriven).toBe(1);
 	});
 });
+
+// ─── The MULTI-DAY SEND PLAN, through the real walker ───────────────────────
+// The pure planner has its own suite (`campaigns/__tests__/multiDaySendPlan`).
+// What is asserted HERE is the half that only exists in `resolveCampaignPage`:
+// the page narrowed to today's slice, the park at the next UTC boundary, the
+// checkpoint it writes, the watchdog's blindness to a parked walk, the resume
+// on the following day, and a capacity change mid-plan.
+describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
+	const DAY_MS = 24 * 60 * 60 * 1000;
+
+	/** One active, day-1 campaign IP with `dailyCap` sends left today. */
+	async function seedCapacity(t: TestConvex<typeof schema>, dailyCap: number) {
+		await t.run(async (ctx) => {
+			const existing = await ctx.db.query('warmingState').first();
+			const row = {
+				phase: 'ramp',
+				totalDailyCap: dailyCap,
+				totalSentToday: 0,
+				ipCount: 1,
+				ips: [
+					{
+						ip: '203.0.113.10',
+						phase: 'ramp',
+						currentDay: 1,
+						dailyCap,
+						sentToday: 0,
+						bounceRate: 0,
+						deferralRate: 0,
+						pool: 'campaign',
+						active: true,
+					},
+				],
+				syncedAt: Date.now(),
+			};
+			if (existing) await ctx.db.patch(existing._id, row);
+			else await ctx.db.insert('warmingState', row);
+		});
+	}
+
+	async function scoreContacts(t: TestConvex<typeof schema>, scores: readonly number[]) {
+		await t.run(async (ctx) => {
+			const contacts = await ctx.db.query('contacts').collect();
+			contacts.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
+			for (const [index, contact] of contacts.entries()) {
+				const score = scores[index];
+				if (score !== undefined) await ctx.db.patch(contact._id, { engagementScore: score });
+			}
+		});
+	}
+
+	it('enqueues exactly today’s slice, in ENGAGEMENT ORDER, and parks at the next cap window', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		// w0..w5 alphabetically; the day-1 page is the first two candidates, and
+		// within the page the better-engaged recipient goes first.
+		await scoreContacts(t, [10, 90, 50, 40, 30, 20]);
+
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		// EXACTLY today's slice — not the page size, and not the audience.
+		expect(await countSends(t, data.campaignId)).toBe(2);
+		const afterDayOne = await getJob(t, data.campaignId);
+		expect(afterDayOne?.phase).toBe('resolving');
+		expect(afterDayOne?.enqueuedToday).toBe(2);
+		expect(afterDayOne?.planDayIndex).toBe(0);
+		expect(afterDayOne?.planTotalDays).toBeGreaterThan(1);
+
+		const order = await t.run(async (ctx) => {
+			const sends = await ctx.db
+				.query('emailSends')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', data.campaignId))
+				.collect();
+			return sends.map((s) => s.contactEmail);
+		});
+		expect(order[0]).toBe('w1@example.com');
+		expect(order[1]).toBe('w0@example.com');
+
+		// The NEXT hop finds the budget spent and parks at the UTC boundary.
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		expect(await countSends(t, data.campaignId)).toBe(2);
+		const parked = await getJob(t, data.campaignId);
+		expect(parked?.phase).toBe('resolving');
+		expect(parked?.resumeAt).toBe(Math.floor(Date.now() / DAY_MS) * DAY_MS + DAY_MS);
+	});
+
+	it('a PARKED walk is invisible to the stuck-walk watchdog', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		// A park lasts up to ~24h — far past the 10-minute staleness threshold. If
+		// the watchdog re-drove it, each re-drive would park it again and schedule
+		// ANOTHER resume hop for the same instant.
+		await t.run(async (ctx) => {
+			const job = await ctx.db
+				.query('campaignSendJobs')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', data.campaignId))
+				.first();
+			await ctx.db.patch(job!._id, { updatedAt: Date.now() - 11 * 60 * 1000 });
+		});
+		expect((await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {})).redriven).toBe(
+			0
+		);
+
+		// And the park is not permanent: once its instant has passed, a walk that
+		// never woke up is re-driven exactly as any other stranded one.
+		vi.setSystemTime(new Date(Date.now() + DAY_MS));
+		expect((await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {})).redriven).toBe(
+			1
+		);
+	});
+
+	// A PARKED ROW MUST LEAVE THE WATCHDOG'S STALE RANGE, not merely be skipped
+	// inside it. `redriveStuckSendJobs` pages `by_phase_updatedAt` and takes 50
+	// rows BEFORE it skips parked ones, so a park that kept a park-time
+	// `updatedAt` would sit in that range for the whole ~24h it waits — and enough
+	// concurrent parked walks fill the page entirely, so a genuinely stranded walk
+	// is never reached. The park therefore stamps the RESUME INSTANT.
+	it('a crowd of parked walks does not starve a genuinely stuck walk of its re-drive', async () => {
+		const t = convexTest(schema, modules);
+		const stuck = await setupWalker(t, 600);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: stuck.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: stuck.campaignId });
+		// This one is genuinely stranded mid-walk: stale, resolving, not parked.
+		await t.run(async (ctx) => {
+			const job = await ctx.db
+				.query('campaignSendJobs')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', stuck.campaignId))
+				.first();
+			await ctx.db.patch(job!._id, { updatedAt: Date.now() - 11 * 60 * 1000 });
+		});
+
+		// Sixty PARKED walks, all older than the staleness threshold — more than the
+		// watchdog's page of 50, and every one of them ahead of the stranded walk in
+		// `updatedAt` order if the park had back-dated them.
+		const now = Date.now();
+		const audience = (await getJob(t, stuck.campaignId))!.audience;
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 60; index += 1) {
+				const campaignId = await ctx.db.insert('campaigns', {
+					name: `parked-${index}`,
+					status: 'sending',
+					createdAt: now,
+					updatedAt: now,
+				});
+				await ctx.db.insert('campaignSendJobs', {
+					campaignId,
+					phase: 'resolving',
+					variantMode: 'plain',
+					cursor: '',
+					audience,
+					enqueuedCount: 0,
+					totalCandidates: 0,
+					resumeAt: now + 12 * 60 * 60 * 1000,
+					// What `recordSendPlanDay` now writes for a park: the resume
+					// instant, which keeps the row out of `updatedAt < cutoff`.
+					updatedAt: now + 12 * 60 * 60 * 1000,
+					startedAt: now - 60 * 60 * 1000,
+				});
+			}
+		});
+
+		const result = await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {});
+		// The stranded walk is found and re-driven; no parked row is.
+		expect(result.redriven).toBe(1);
+	});
+
+	it('the park stamps the RESUME INSTANT on updatedAt so the row leaves the stale range', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		const parked = await getJob(t, data.campaignId);
+		expect(parked?.resumeAt).toBeDefined();
+		expect(parked?.updatedAt).toBe(parked?.resumeAt);
+		// A hop that makes progress clears both again.
+		vi.setSystemTime(new Date(Date.now() + DAY_MS));
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		const resumed = await getJob(t, data.campaignId);
+		expect(resumed?.resumeAt).toBeUndefined();
+		expect(resumed?.updatedAt).toBeLessThanOrEqual(Date.now());
+	});
+
+	it('resumes on the FOLLOWING day from the committed cursor, with the day counter reset', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		vi.setSystemTime(new Date(Date.now() + DAY_MS));
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		// Day two carried its own slice and nobody was sent twice.
+		expect(await countSends(t, data.campaignId)).toBe(4);
+		const job = await getJob(t, data.campaignId);
+		expect(job?.planDayIndex).toBe(1);
+		expect(job?.enqueuedToday).toBe(2);
+		expect(job?.resumeAt).toBeUndefined();
+		await t.run(async (ctx) => {
+			const sends = await ctx.db
+				.query('emailSends')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', data.campaignId))
+				.collect();
+			expect(new Set(sends.map((s) => String(s.contactId))).size).toBe(4);
+		});
+	});
+
+	it('handles a capacity change mid-plan: the plan re-shortens and the walk finishes', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await seedCapacity(t, 2);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		const longPlan = (await getJob(t, data.campaignId))?.planTotalDays ?? 0;
+		expect(longPlan).toBeGreaterThan(1);
+
+		// An IP joins the pool the next day: the remainder now fits in one day.
+		vi.setSystemTime(new Date(Date.now() + DAY_MS));
+		await seedCapacity(t, 500);
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		const job = await getJob(t, data.campaignId);
+		expect(job?.phase).toBe('done');
+		expect(job?.planTotalDays).toBeLessThan(longPlan);
+		expect(await countSends(t, data.campaignId)).toBe(6);
+	});
+
+	it('with NO warming state at all the walk is exactly the shipped single-day one (D2)', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 6);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		const job = await getJob(t, data.campaignId);
+		expect(job?.phase).toBe('done');
+		expect(await countSends(t, data.campaignId)).toBe(6);
+	});
+});

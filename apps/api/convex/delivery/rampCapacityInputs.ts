@@ -169,6 +169,10 @@ export async function loadRampCapacityContext(
 	const { organizationId, now } = args;
 	const projections = new Map<DeliverabilityCellKey, CellVolumeProjection>();
 
+	// DELIBERATELY THE UNDIALED PROJECTION, unlike every campaign-facing consumer
+	// (`delivery/pacedWarmingCapacity.ts`): this is the CONTROLLER'S OWN capacity
+	// ceiling, and feeding it the pace dial would close a loop in which a retreat
+	// shrinks the ceiling that justifies the next retreat.
 	const warming = await loadWarmingCapacity(ctx, { now });
 	if (warming === null) return { base: UNCONSTRAINED_CAPACITY, projections };
 

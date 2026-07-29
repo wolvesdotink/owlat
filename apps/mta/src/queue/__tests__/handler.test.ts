@@ -1157,14 +1157,19 @@ describe('handleEmailJob', () => {
 	// throttle / warming cap / no-IP) re-enqueue with the computed delay and
 	// the handler RESOLVES (no throw) so GroupMQ does not increment attempts.
 
-	it('PR-04 (b): warming cap reached re-enqueues (300000ms) and does not throw', async () => {
+	// P3-7: a spent DAILY warming cap now re-enqueues at the next cap window
+	// (bounded by `capDeferDelayMs`) rather than at a blind 300 s — the verdict
+	// cannot change until the day's counter resets. The re-enqueue-instead-of-
+	// throw behaviour this case exists to pin is unchanged; only the delay is.
+	it('PR-04 (b): warming cap reached re-enqueues at the cap window and does not throw', async () => {
 		const { checkCap } = await import('../../intelligence/warming.js');
+		const { capDeferDelayMs } = await import('../../intelligence/warmingCapWindow.js');
 		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
 
 		await expect(run(createJob())).resolves.toBeUndefined();
 
 		expect(queue.add).toHaveBeenCalledTimes(1);
-		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, 300_000);
+		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, capDeferDelayMs(Date.now()));
 	});
 
 	it('PR-04 (b): warming-capped 5x in a row stays retryable (re-enqueued, never dead-lettered)', async () => {

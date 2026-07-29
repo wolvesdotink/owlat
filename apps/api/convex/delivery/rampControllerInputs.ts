@@ -44,6 +44,7 @@ import {
 	resolveRampDegradation,
 	usesTrailingBaseline,
 	usesUnsubscribeProxy,
+	type RampDegradation,
 } from './ramp/degradation';
 import { withReferenceArm, type RampDeploymentPresence } from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
@@ -220,7 +221,18 @@ export async function loadCellInput(
 		isSendingPermitted: boolean;
 		now: number;
 	}
-): Promise<{ input: RampControllerInput; perStream: Doc<'deliverabilityRouteStates'> } | null> {
+): Promise<{
+	input: RampControllerInput;
+	perStream: Doc<'deliverabilityRouteStates'>;
+	/**
+	 * THE CELL'S SUBSTITUTION RESOLUTION, returned rather than re-derived by the
+	 * caller. The cron needs exactly one field off it — `actuator`, which dial
+	 * this cell drives (plan D3) — and resolving it a second time up there would
+	 * be a second read of the table, free to disagree with the constants this
+	 * input was actually built from.
+	 */
+	degradation: RampDegradation;
+} | null> {
 	const { organizationId, cell, pool, now } = args;
 	const cellKey = deliverabilityCellKey(cell);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
@@ -303,6 +315,7 @@ export async function loadCellInput(
 
 	return {
 		perStream,
+		degradation,
 		input: {
 			cell,
 			config,

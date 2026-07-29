@@ -3,13 +3,20 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { CampaignRecipient } from './audienceCandidates';
+import { SEND_PAGE_SIZE, type CampaignRecipient } from './audienceCandidates';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
+import {
+	orderByEngagement,
+	planTodaysSlice,
+	remainingRecipients,
+	type SendPlanState,
+} from './multiDaySendPlan';
+import { nextUtcDayStart } from '../lib/utcDay';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -627,11 +634,123 @@ export const resolveCampaignPage = internalAction({
 			return { done: true, pageEnqueued: 0 };
 		}
 
+		// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+		// with no relay to overflow to cannot deliver a large campaign in one day,
+		// and enqueueing the whole audience anyway does not make it faster — it makes
+		// the tail expire at `maxMessageAgeMs` after churning the MTA's queue for
+		// hours. So the walker takes only TODAY'S CAPACITY SLICE and resumes in the
+		// next cap window.
+		//
+		// UNMEASURED CAPACITY IMPOSES NO BUDGET: with no warming projection the slice
+		// is `undefined` and every line below behaves exactly as the shipped walker.
+		const planCapacity = await ctx.runQuery(
+			internal.campaigns.sendPlanQueries.getSendPlanCapacity,
+			{
+				audience: job.audience,
+				// ONCE PER WALK. `plannedTotal === undefined` alone would re-run the
+				// count on every hop of a walk whose count came back counted-but-
+				// unusable, because that verdict writes no total by design.
+				countAudienceSize:
+					job.plannedTotal === undefined && job.isPlannedTotalCountAttempted !== true,
+			}
+		);
+		/** Has this walk now paid for its audience count, whatever it returned? */
+		const isPlannedTotalCounted =
+			job.isPlannedTotalCountAttempted === true || planCapacity.isPlannedTotalCounted;
+		// The denominator is counted ONCE per walk and then carried on the row —
+		// together with whether it is the audience size or only a floor under one,
+		// because a floor may lengthen the plan and may never shorten it.
+		const planState: SendPlanState =
+			planCapacity.plannedTotal === null
+				? {
+						planDayKey: job.planDayKey,
+						enqueuedToday: job.enqueuedToday,
+						planDayIndex: job.planDayIndex,
+						planTotalDays: job.planTotalDays,
+						plannedTotal: job.plannedTotal,
+						isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
+					}
+				: {
+						planDayKey: job.planDayKey,
+						enqueuedToday: job.enqueuedToday,
+						planDayIndex: job.planDayIndex,
+						planTotalDays: job.planTotalDays,
+						plannedTotal: planCapacity.plannedTotal,
+						isPlannedTotalLowerBound: planCapacity.isPlannedTotalLowerBound,
+					};
+		const slice = planTodaysSlice({
+			state: planState,
+			remaining: remainingRecipients(planState, job.enqueuedCount),
+			capacityByDay: planCapacity.capacityByDay,
+			now: Date.now(),
+		});
+		/** The plan state this hop checkpoints, whichever branch it takes. */
+		const planCheckpoint = {
+			planDayKey: slice.dayKey,
+			planDayIndex: slice.dayIndex,
+			planTotalDays: slice.totalDays,
+			...(planState.plannedTotal === undefined
+				? {}
+				: {
+						plannedTotal: planState.plannedTotal,
+						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
+					}),
+			...(isPlannedTotalCounted ? { isPlannedTotalCountAttempted: true } : {}),
+		};
+		// A spent day ALWAYS parks. The planner gives the resume instant with the
+		// verdict, and the fallback exists only so a spent budget can never fall
+		// through into the page read below with nothing left to enqueue.
+		const parkUntil = slice.isDayExhausted
+			? (slice.resumeAt ?? nextUtcDayStart(Date.now()))
+			: undefined;
+		if (parkUntil !== undefined) {
+			// Today's slice is spent. PARK the walk until the next cap window: the
+			// checkpoint carries `resumeAt`, which both records the day's counters and
+			// takes the row out of the stuck-walk watchdog's reach — a 24h park is far
+			// past its staleness threshold, and a re-drive would schedule a second
+			// resume hop for the same instant. `recordSendPlanDay` owns the
+			// `updatedAt` touch, so there is no separate `touchSendJob` here.
+			const parked = await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
+				campaignId: args.campaignId,
+				plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday },
+				resumeAt: parkUntil,
+			});
+			// IDEMPOTENT RESUME. The row was already parked for exactly this window,
+			// so a hop is already pending and a second one would apply this page's
+			// counters twice.
+			if (!parked.isResumeAlreadyScheduled) {
+				await ctx.scheduler.runAt(parkUntil, internal.campaigns.send.resolveCampaignPage, {
+					campaignId: args.campaignId,
+				});
+			}
+			return { done: false, pageEnqueued: 0 };
+		}
+
 		// Resolve ONE page at the job cursor — the bounded read that replaces the
-		// whole-audience resolve.
+		// whole-audience resolve, NARROWED to what is left of today's slice so a
+		// page can never overshoot the day's capacity. `remainingToday` is
+		// `undefined` for "no day budget applies" (no projection, or an exact
+		// denominator that is already satisfied), which resolves a full page exactly
+		// as the shipped walker does — and it is never 0 here, because a spent
+		// budget took the park branch above.
+		//
+		// THE DAY BUDGET HAS TO BOUND THE READ, not just the enqueue, and the reason
+		// is the CURSOR. The cursor is the walk's only record of progress and it
+		// advances by exactly what was read, so anything read and not enqueued is
+		// dropped. Truncating the enqueue while HOLDING the cursor does not fix
+		// that: the next day re-reads the identical page, orders it by the same
+		// engagement scores, selects the identical prefix, and `createBatch`'s
+		// idempotency guard turns the whole hop into a no-op — the walk stops
+		// advancing rather than resuming. The amplification this costs is bounded
+		// and self-limiting: a hop that spends the day's budget parks until the next
+		// cap window, so the extra hops only appear while a run of candidates is
+		// ineligible and enqueues nothing.
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,
+			...(slice.remainingToday === undefined
+				? {}
+				: { numItems: Math.min(SEND_PAGE_SIZE, slice.remainingToday) }),
 		});
 
 		const audienceType = job.audience.kind;
@@ -786,7 +905,17 @@ export const resolveCampaignPage = internalAction({
 				variant: 'A' | 'B' | undefined;
 			};
 			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
-			for (const recipient of page.recipients) {
+			// ENGAGEMENT ORDER (plan P0-2/P0-3, P3-7). Each day's slice should be the
+			// best remaining audience: engaged recipients open, and openers are what a
+			// receiver reads as a positive signal on a warming IP — so the ideal
+			// warming behaviour and the ideal recipient experience are the same order.
+			//
+			// WITHIN THE PAGE, honestly. Pages arrive in the audience index's order, so
+			// this orders each slice rather than the whole audience; a globally ordered
+			// walk would need an engagement-ordered index, which is not this piece's
+			// scope. The property that matters for the daily slice still holds when a
+			// day is one page, and never regresses when it is more.
+			for (const recipient of orderByEngagement(page.recipients)) {
 				const variant = bucketFor(String(recipient._id));
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
@@ -881,6 +1010,17 @@ export const resolveCampaignPage = internalAction({
 			nextCursor: page.nextCursor,
 			pageEnqueued,
 			pageCandidates: page.pageCandidates,
+		});
+
+		// Record what today's slice has carried so far. Written AFTER the advance so
+		// the two never disagree about a page, and written on every hop — including
+		// the ones that enqueued nothing — because the day-of-N line has to be there
+		// from the first moment (plan D14), not once a plan turns out to be long.
+		// No `resumeAt`: this hop made progress, so any previous park is cleared and
+		// the stuck-walk watchdog can see the row again.
+		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
+			campaignId: args.campaignId,
+			plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday + pageEnqueued },
 		});
 
 		if (page.nextCursor !== null) {

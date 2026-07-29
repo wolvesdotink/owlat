@@ -34,24 +34,20 @@ import { v } from 'convex/values';
 import {
 	allDeliverabilityCells,
 	deliverabilityCellKey,
-	isFallbackActiveForShare,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { recordAuditLog } from '../lib/auditLog';
-import {
-	nextPhaseCeiling,
-	RAMP_INITIAL_PHASE_CEILING,
-	RAMP_MAX_FREEZE_MS,
-} from './ramp/controllerConfig';
-import { readActiveFreeze } from './ramp/controllerReaders';
+import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { nextShare } from './ramp/controller';
+import { nextPaceMultiplier } from './ramp/paceActuator';
+import { composeActuators } from './ramp/actuatorComposition';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
 import {
 	loadRampDeploymentPresence,
 	loadReferenceArmPresence,
@@ -66,147 +62,11 @@ import {
 	destinationProviderValidator,
 } from './deliverabilityValidators';
 import { rampDecisionChangedState } from './ramp/controllerTypes';
-import type { RampDecision, RampFreezeOrigin } from './ramp/controllerTypes';
+import { applyDecision, refreshRouteStateLease } from './rampControllerWrites';
+import type { PaceUtilisationReading } from './ramp/paceTypes';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 const RAMP_CELLS_PER_TICK = 5;
-/** Route-state rows are refreshed on every tick; the TTL matches the snapshot's. */
-const ROUTE_STATE_TTL_MS = 24 * 60 * 60 * 1000;
-
-/**
- * KEEP THE CELL'S RAMP STATE ALIVE.
- *
- * `deliverabilityRouteStates` rows carry a 24h `expiresAt` and the shipped
- * 5-minute sweep deletes anything past it. That TTL is right for a cached MTA
- * snapshot; it is WRONG for the durable AIMD state the ramp keeps on the
- * per-stream row (share, phase ceiling, clean streak, graduation clock). A
- * paused controller — or any deploy/outage gap over a day — would otherwise
- * lose the row, and a missing row resolves to share 1.0: the exact opposite of
- * "pinned at its current share".
- *
- * So EVERY evaluation refreshes the lease, including the ones that write no
- * share. The refresh touches nothing else — and in particular NOT `updatedAt`,
- * which is the shipped router's signal-freshness clock and not the ramp's (see
- * `applyDecision`).
- */
-async function refreshRouteStateLease(
-	ctx: MutationCtx,
-	perStream: Doc<'deliverabilityRouteStates'>,
-	now: number
-): Promise<void> {
-	await ctx.db.patch(perStream._id, { expiresAt: now + ROUTE_STATE_TTL_MS });
-}
-
-/**
- * THE THREE FREEZE COLUMNS MOVE TOGETHER, or they do not move at all.
- *
- * `freezeStartedAt` (the ladder's anchor), `frozenUntil` (the expiry) and
- * `freezeReason` (which rung it belongs to) are three views of ONE fact, and
- * every defect this write path has had came from computing them separately: an
- * expiry carried forward past a corrupt value, an origin left pointing at the
- * previous incident. Resolving them in one place makes "they agree" a property
- * of the code rather than of three ternaries that happen to line up.
- *
- * THE CARRY-FORWARD TEST IS THE RUNGS' OWN (`readActiveFreeze`), deliberately —
- * not an inline `frozenUntil > now`. Only a freeze the decision function would
- * BELIEVE survives the tick: an expired one is dropped (the pure rung already
- * ignores it, so leaving it on the row would only make the dashboard and the
- * `mix` blob report the cell as frozen until a past instant for ever), and an
- * UNREADABLE one is dropped too. That second case is the whole point: the
- * `freeze_unreadable` rung holds the cell for the tick that reads it, and if the
- * write path carried the unusable instant forward that hold would be permanent
- * rather than one tick, which is neither what the rung's sentence promises nor
- * something an operator could clear.
- */
-function resolveFreezeFields(
-	perStream: Doc<'deliverabilityRouteStates'>,
-	decision: RampDecision,
-	now: number
-): {
-	freezeStartedAt: number | undefined;
-	frozenUntil: number | undefined;
-	freezeReason: RampFreezeOrigin | undefined;
-} {
-	const carried = readActiveFreeze(perStream, now, RAMP_MAX_FREEZE_MS);
-	const running = carried.kind === 'active' ? carried : undefined;
-	const imposed = decision.freeze;
-	return {
-		// The GATE-COOLDOWN ladder's clock: start, expiry and rung move together,
-		// and only a LADDER freeze re-stamps the start. A hard-stop freeze (breaker
-		// 6h, critical blocklist 24h) sets the expiry and leaves the ladder's anchor
-		// alone — otherwise an infrastructure incident would re-arm the "repeat
-		// within 24h" window and double the next gate cooldown off a stale rung.
-		freezeStartedAt: imposed?.ladderMs === undefined ? perStream.freezeStartedAt : now,
-		// A new freeze REPLACES the pair whole. It can only ever be later than the
-		// one it replaces — the decision function lengthens rather than shortens
-		// (`extendFreezeUntil`) — so the row never loses time it had already been
-		// told to serve, and the origin becomes the rung that just fired.
-		frozenUntil: imposed?.until ?? running?.until,
-		freezeReason: imposed?.origin ?? running?.origin,
-	};
-}
-
-/**
- * Persist one decision onto the cell's per-stream route-state row.
- *
- * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
- * D7), so it names a mix GENERATION, not a step: bumping it on an ordinary
- * +5pp promotion would re-shuffle every recipient's arm mid-comparison, ~20
- * times during a single ramp. It advances only on a deliberate generation
- * change (a phase promotion), where re-randomising is the point.
- */
-async function applyDecision(
-	ctx: MutationCtx,
-	args: {
-		perStream: Doc<'deliverabilityRouteStates'>;
-		decision: RampDecision;
-		now: number;
-	}
-): Promise<void> {
-	const { perStream, decision, now } = args;
-	const fields = {
-		isFallbackActive: isFallbackActiveForShare(decision.share),
-		ownShare: decision.share,
-		phaseCeiling: decision.phaseCeiling,
-		// THE DWELL ANCHOR, BACKFILLED ONCE AND NEVER MOVED HERE.
-		//
-		// Only `promoteRampPhase` sets this on a rung change, so a row that reached
-		// its rung any other way (seeded, hand-patched, or written before the column
-		// existed) would carry none — and dwell is one of the four conditions on the
-		// standalone promotion route, the ONLY route a yahoo/apple/other cell has.
-		// Left absent, that cell could never be promoted again by anyone. Adopting
-		// the row's creation instant (never `now`, which would restart the dwell on
-		// every hourly tick) makes the anchor explicit and stable, and matches what
-		// `loadRampPromotionEvidence` falls back to for a row it has not yet seen.
-		phaseCeilingSince: perStream.phaseCeilingSince ?? perStream._creationTime,
-		cleanStreak: decision.cleanStreak,
-		// THE THREE FREEZE COLUMNS, resolved together — see `resolveFreezeFields`.
-		// They are one fact: the breaker rung reads the pair to tell its OWN freeze
-		// from an unrelated cooldown it must not let absorb its retreat, and an
-		// expiry whose origin drifted out of step would answer that question with
-		// the last incident's name.
-		...resolveFreezeFields(perStream, decision, now),
-		cooldownMs: decision.freeze?.ladderMs ?? perStream.cooldownMs,
-		greenSince: decision.greenSince,
-		graduatedAt: decision.graduatedAt,
-		// Only a COUNTED window moves the anchor: an evaluation that did not count
-		// must leave the previous one in place, or every hourly tick would push the
-		// next countable window another hour out and the streak could never grow.
-		lastCountedAt: decision.countedAt ?? perStream.lastCountedAt,
-		// NEITHER `snapshotGeneratedAt` NOR `updatedAt` IS TOUCHED, for one reason:
-		// both belong to the SNAPSHOT WRITER. `snapshotGeneratedAt` means "the
-		// instant the MTA generated the snapshot" and is `applySnapshot`'s
-		// idempotency comparand; `updatedAt` is the shipped ROUTER'S SIGNAL-FRESHNESS
-		// clock — `routeInputs.ts` only honours a signal on a row it has heard from
-		// within `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the per-stream row is in
-		// that scan. An hourly controller stamping it would silently re-arm every
-		// signal on the row as "fresh" on every tick, indefinitely. The controller's
-		// own clock is `decidedAt`, which nothing else reads.
-		decidedAt: now,
-		expiresAt: now + ROUTE_STATE_TTL_MS,
-	};
-	await ctx.db.patch(perStream._id, fields);
-}
 
 /**
  * The hourly tick. `cursor` is an index into the stable cell grid, so a tick
@@ -254,6 +114,17 @@ export const runRampController = internalMutation({
 			return capacityContext;
 		};
 
+		// THE PACE ACTUATOR'S EVIDENCE, read ONCE per tick and LAZILY, for the same
+		// two reasons the capacity context is: the warming sync reports one
+		// pool-wide utilisation reading that every cell in the slice shares, and a
+		// slice with no ramp-managed cell in it must not pay for a reading no cell
+		// would consume.
+		let utilisationReading: PaceUtilisationReading | null = null;
+		const utilisation = async (): Promise<PaceUtilisationReading> => {
+			utilisationReading ??= await loadPaceUtilisation(ctx, { now });
+			return utilisationReading;
+		};
+
 		// WHICH INTEGRATIONS THIS DEPLOYMENT HAS, read ONCE per tick: every entry but
 		// the reference arm is deployment-level, so reading it per cell would repeat
 		// the same four index lookups fifteen times. The substitution table (plan D3)
@@ -276,13 +147,78 @@ export const runRampController = internalMutation({
 			// An unmanaged cell is not an evaluation: there is no share to decide
 			// about, and inventing one would change shipped routing.
 			if (loaded === null) continue;
-			const { input, perStream } = loaded;
+			const { input, perStream, degradation } = loaded;
+			// WHICH DIAL THIS CELL DRIVES (plan D3), off the substitution table and
+			// not off a `hasRelay` boolean here: `resolveRampDegradation` returns
+			// 'pace' exactly when the reference transport is absent, which is the
+			// same mechanism that chose this cell's evaluator, its K_CLEAN and its
+			// ceiling cap. Standalone is therefore the DEGENERATE CASE the
+			// composition function already documents (`share: null`) rather than a
+			// branch scattered through the controller.
+			const isPaceActuated = degradation.actuator === 'pace';
 			const decision = nextShare(input);
+			// THE SECOND ACTUATOR, on the SAME gates, the SAME hard stops and the
+			// SAME kill switch (plan D3). Standalone it is the only dial that moves —
+			// s === 1 by definition — and with a reference arm it is the slow,
+			// reputation-bearing half of a composed decision.
+			const paceReading = await utilisation();
+			const paceDecision = nextPaceMultiplier({
+				config: input.config,
+				pace: readPaceState(perStream),
+				signals: input.signals,
+				evaluation: input.evaluation,
+				utilisation: paceReading,
+				// The table's step factor, RAW — see `PaceControllerInput.stepMultiplier`
+				// for why it cannot travel folded into `config` the way K_CLEAN does.
+				stepMultiplier: degradation.stepMultiplier,
+				isKillSwitchEngaged,
+				now,
+			});
+			// THE COMPOSITION ORDER IS FIXED (plan D3): share moves FIRST (cheap and
+			// instantly reversible — the relay absorbs the difference), pace moves
+			// SECOND (slow and reputation-bearing), and a cell may NEVER increase both
+			// in one window. The interlock lives in one pure function so that
+			// property is a fixture rather than an inline conditional here — and it
+			// is enforced in TWO places on purpose: this call withholds the step on
+			// the tick the share moved, and the anchor it stamps
+			// (`paceDeferredAt`) keeps the pace ladder holding for the rest of the
+			// share's evaluation window. This cron ticks hourly; the window is a day.
+			// A PACE-ACTUATED CELL HANDS THE COMPOSITION NO SHARE — the `share: null`
+			// degenerate case the composition module documents, now reachable from
+			// production. It is not cosmetic: the interlock defers a pace increase for
+			// a WHOLE share evaluation window whenever the share stepped, so handing it
+			// a live share decision on a deployment that has no reference transport to
+			// shift traffic to would hold the only dial this cell owns for the entire
+			// ramp — the headline deliverable of the standalone twin, starved.
+			//
+			// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the
+			// PACE dial back, and the share half of the row is still the deployment's
+			// safety interlock: a hard stop zeroes it, a critical blocklist freezes it,
+			// and `isFallbackActive` is derived from it. Declining to write it on a
+			// pace-actuated cell would silently drop shipped hard-stop behaviour on
+			// exactly the configuration this piece exists to serve.
+			const composed = composeActuators({
+				share: isPaceActuated ? null : decision,
+				pace: paceDecision,
+			});
 			evaluated += 1;
 
 			// THE AUDIT ROW COMES FIRST AND ALWAYS (plan D12) — including for the
-			// no-ops, and including while the kill switch is pinning every cell.
-			await recordMixDecision(ctx, { organizationId, cell, input, decision, at: now });
+			// no-ops, and including while the kill switch is pinning every cell. It
+			// carries BOTH actuators, so "what did the controller do to this cell at
+			// 14:00" is one row rather than a join.
+			await recordMixDecision(ctx, {
+				organizationId,
+				cell,
+				input,
+				decision,
+				pace: {
+					decision: composed.pace,
+					utilisation: paceReading,
+					isDeferred: composed.isPaceDeferred,
+				},
+				at: now,
+			});
 
 			// A PAUSED CONTROLLER WRITES NO SHARE. It still evaluates, still audits —
 			// so an operator can watch what it would have done — and still renews the
@@ -292,7 +228,13 @@ export const runRampController = internalMutation({
 				continue;
 			}
 
-			await applyDecision(ctx, { perStream, decision, now });
+			await applyDecision(ctx, {
+				perStream,
+				decision,
+				pace: composed.pace,
+				isPaceDeferred: composed.isPaceDeferred,
+				now,
+			});
 			// EVERY AUTOMATIC CHANGE IS AUDITED (plan D12) — which is a wider predicate
 			// than "the share moved". A gate breach on a cell already sitting on
 			// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
@@ -312,7 +254,17 @@ export const runRampController = internalMutation({
 			// the relay drops to `priority_failover` standby. `decision.pinChange`
 			// carries that transition, so the tick a cell graduates — and the tick a
 			// hard stop takes the pin away again — are both in the audit log.
-			if (!rampDecisionChangedState(decision)) continue;
+			// AND THE SAME PREDICATE APPLIES TO THE SECOND DIAL, in the same shape as
+			// `rampDecisionChangedState`: the dial MOVED, or a gate breach advanced
+			// the cooldown ladder. A pace retreat on a cell whose share held is a real
+			// automatic change and an operator cannot explain one no log records —
+			// while a hard stop that is merely STILL TRUE an hour later re-stamps a
+			// freeze without changing anything, and must stay as quiet here as it does
+			// on the share side.
+			const isPaceChanged =
+				composed.pace.multiplier !== composed.pace.fromMultiplier ||
+				composed.pace.freeze?.ladderMs !== undefined;
+			if (!rampDecisionChangedState(decision) && !isPaceChanged) continue;
 			await recordAuditLog(ctx, {
 				userId: 'system',
 				organizationId,
@@ -328,6 +280,13 @@ export const runRampController = internalMutation({
 					verdict: decision.verdict,
 					...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
 					...(decision.pinChange === undefined ? {} : { pinChange: decision.pinChange }),
+					// The pace dial is part of the same automatic change and is logged
+					// with it: an operator reading the audit trail must be able to see
+					// which of the two dials moved, and why.
+					fromPaceMultiplier: composed.pace.fromMultiplier,
+					toPaceMultiplier: composed.pace.multiplier,
+					paceDirection: composed.pace.direction,
+					paceReason: composed.pace.reason,
 				},
 			});
 		}
