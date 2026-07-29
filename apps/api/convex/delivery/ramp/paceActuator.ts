@@ -25,6 +25,7 @@
  *   6. gate halt / fail       -> max(M_MIN, m x 0.5), freeze COOLDOWN
  *   7. insufficient data      -> hold (plan D10: never up, and never DOWN either)
  *   8. day already advanced   -> hold  (THE PRESERVED PER-UTC-DAY GUARD, D19)
+ *  8b. share moved first      -> hold  (THE COMPOSITION INTERLOCK, D3)
  *   9. low utilisation        -> hold  (THE ONE SANCTIONED CHANGE, D19)
  *  10. K_CLEAN                -> hold while building confidence
  *  11. additive increase      -> min(M_MAX, m + STEP), at most once per UTC day
@@ -60,6 +61,7 @@
 
 import { aimdClamp, aimdDecrease, aimdIncrease } from './aimd';
 import { utcDayKey } from '../../lib/utcDay';
+import { isEvaluationWindowElapsed } from './controllerBounds';
 import { nextCooldownMs, RAMP_AIMD, RAMP_MAX_FREEZE_MS } from './controllerConfig';
 import {
 	extendFreezeUntil,
@@ -329,6 +331,22 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	//    which no real day key can equal.
 	if (today === pace.lastEvaluatedUtcDay) {
 		return { ...green, reason: 'day_already_advanced' };
+	}
+
+	// 8b. THE COMPOSITION INTERLOCK, ACROSS THE WHOLE WINDOW (plan D3).
+	//     `composeActuators` withholds a pace increase on the tick the share moved
+	//     and records the instant; this rung is what makes that deferral survive
+	//     the window rather than the hour. Without it the next hourly tick would
+	//     find the share holding (`window_open`) and take the pace step anyway —
+	//     both reputation-bearing dials moved inside one evaluation window, and
+	//     nobody could read the result of the experiment.
+	//
+	//     THE DAY IS DELIBERATELY LEFT UNCOUNTED, for the same reason the interlock
+	//     does not count it: the cell earned this step and is being asked to wait,
+	//     not penalised, so the first tick after the window can still take it.
+	//     Retreats are untouched — every rung that lowers the dial sits above.
+	if (!isEvaluationWindowElapsed(pace.deferredAt, now)) {
+		return { ...green, reason: 'share_moved_first' };
 	}
 
 	// 9. THE ONE SANCTIONED BEHAVIOUR CHANGE (plan D19). An unexercised cap is not

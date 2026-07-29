@@ -137,6 +137,15 @@ export const deliverabilityRoutingTables = {
 		// meaning. The controller ticks hourly and a warming schedule must advance
 		// AT MOST ONCE per UTC day, so a tick that finds today's key here holds.
 		paceLastEvaluatedUtcDay: v.optional(v.string()),
+		// THE COMPOSITION INTERLOCK'S MEMORY (plan D3). The instant a pace increase
+		// was WITHHELD because the share moved first in the same tick. The interlock
+		// has to outlive the tick that fired it: the cron ticks hourly while the
+		// share's evaluation window is a whole day, so an in-memory hand-off would
+		// only postpone the pace step by an hour and both dials would still have
+		// increased inside one window — the thing D3 forbids. The pace ladder holds
+		// on this anchor until a whole `RAMP_AIMD.evaluationWindowMs` has passed.
+		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
+		paceDeferredAt: v.optional(v.number()),
 		decidedAt: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),

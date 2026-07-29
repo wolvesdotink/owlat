@@ -16,8 +16,18 @@
  * dials moving together is exactly the experiment whose result nobody can read:
  * if the next window degrades, which move caused it? So when the share
  * increases, the pace increase is DEFERRED to the next window rather than
- * cancelled — and deliberately does not count the UTC day, so tomorrow's tick
- * can still take the step it was owed.
+ * cancelled — and deliberately does not count the UTC day, so the tick that
+ * finally takes the step is still allowed to take it.
+ *
+ * THE DEFERRAL OUTLIVES THE TICK, and it has to. This function only ever sees
+ * ONE tick, while the controller cron ticks HOURLY against a share evaluation
+ * window of `RAMP_AIMD.evaluationWindowMs` — so an interlock that lived only
+ * inside the call would postpone the pace step by an hour, the next tick would
+ * find the share holding on `window_open`, and both dials would have increased
+ * inside one window regardless. That is why the deferral is RECORDED
+ * (`deferredAt`) and enforced a second time, one rung above the pace increase,
+ * by `nextPaceMultiplier` reading the persisted anchor. This function fires the
+ * interlock; that rung is what makes it last a window.
  *
  * WHAT IS NOT INTERLOCKED, and why. RETREATS compose freely in both directions
  * and at the same time: the asymmetry in D9 is the whole point, and a rule that

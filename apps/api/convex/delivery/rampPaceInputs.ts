@@ -23,8 +23,6 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { MS_PER_DAY } from '../lib/constants';
-import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { effectiveDailyCap } from './ramp/paceCeiling';
 import { PACE_INITIAL_MULTIPLIER } from './ramp/paceConfig';
 import type { PaceState, PaceUtilisationReading } from './ramp/paceTypes';
@@ -32,11 +30,23 @@ import type { PaceState, PaceUtilisationReading } from './ramp/paceTypes';
 type Ctx = MutationCtx | QueryCtx;
 
 /**
- * Warming state older than this says nothing about today's utilisation. The
- * sync runs every five minutes, so a day of silence means the pipe is broken —
- * and a broken measurement pipe is thin evidence, never a verdict (plan D10).
+ * Warming state older than this says nothing about TODAY'S utilisation.
+ *
+ * DELIBERATELY MUCH TIGHTER THAN `warmingCapacity.ts`'s day, because the two
+ * readings answer different questions. That module asks "how big is the cap",
+ * which changes slowly and must never block a send on a stale reading. This one
+ * asks "was the cap EXERCISED", and `sentToday` / `dailyCap` are counters that
+ * reset at the UTC boundary: a reading from yesterday describes a day that is
+ * over, and accepting it would let a stale snapshot satisfy `isCapExercised` and
+ * buy the day's +STEP. That is the exact rule the one sanctioned D19 change
+ * exists to enforce — an unexercised cap is not evidence of anything.
+ *
+ * The /ip-reputation sync runs every five minutes, so this is a handful of
+ * missed syncs and no more. Past it the reading is `unknown`, the actuator HOLDS
+ * (plan D10), and a broken measurement pipe slows the ramp instead of steering
+ * it.
  */
-const WARMING_STATE_MAX_AGE_MS = MS_PER_DAY;
+const WARMING_STATE_MAX_AGE_MS = 30 * 60 * 1000;
 
 /**
  * The STORED pace state of a cell, read out VERBATIM.
@@ -59,6 +69,7 @@ export function readPaceState(row: Doc<'deliverabilityRouteStates'>): PaceState 
 		freezeStartedAt: row.paceFreezeStartedAt,
 		cooldownMs: row.paceCooldownMs,
 		lastEvaluatedUtcDay: row.paceLastEvaluatedUtcDay,
+		deferredAt: row.paceDeferredAt,
 	};
 }
 
@@ -79,6 +90,7 @@ export async function loadPaceUtilisation(
 	const warmingState = await ctx.db.query('warmingState').first();
 	if (!warmingState) return { kind: 'unknown' };
 	if (!Number.isFinite(args.now)) return { kind: 'unknown' };
+	if (!Number.isFinite(warmingState.syncedAt)) return { kind: 'unknown' };
 	if (args.now - warmingState.syncedAt > WARMING_STATE_MAX_AGE_MS) return { kind: 'unknown' };
 
 	let sent = 0;
@@ -115,11 +127,30 @@ export async function loadCampaignPaceMultiplier(
 	ctx: Ctx,
 	args: { organizationId: string; stream: DeliverabilityStream }
 ): Promise<number> {
+	const cells = allDeliverabilityCells().filter((cell) => cell.stream === args.stream);
+	// THE PER-STREAM ROW ONLY, off `by_org_provider_stream` DIRECTLY. The general
+	// `loadRouteStateCell` also loads the stream-less row, which the pace dial
+	// never carries and this function never reads — five wasted document reads on
+	// a path a walker hop takes every time it asks for its day budget. The reads
+	// are independent, so they go out together rather than one round trip at a
+	// time.
+	const rows = await Promise.all(
+		cells.map((cell) =>
+			ctx.db
+				.query('deliverabilityRouteStates')
+				.withIndex('by_org_provider_stream', (q) =>
+					q
+						.eq('organizationId', args.organizationId)
+						.eq('destinationProvider', cell.destinationProvider)
+						.eq('stream', cell.stream)
+				)
+				.first()
+		)
+	);
+
 	let smallest = PACE_INITIAL_MULTIPLIER;
-	for (const cell of allDeliverabilityCells()) {
-		if (cell.stream !== args.stream) continue;
-		const { perStream } = await loadRouteStateCell(ctx, args.organizationId, cell);
-		const stored = perStream?.paceMultiplier;
+	for (const row of rows) {
+		const stored = row?.paceMultiplier;
 		// An absent dial is the published schedule, unmodified; an unreadable one
 		// is not a reason to slow a deployment down (plan D2).
 		if (stored === undefined || !Number.isFinite(stored) || stored <= 0) continue;
@@ -137,6 +168,25 @@ export async function loadCampaignPaceMultiplier(
  * does not exist.
  */
 export function applyPaceToCapacityByDay(byDay: readonly number[], multiplier: number): number[] {
+	// ONLY THE RETREAT HALF OF THE DIAL REACHES PRODUCTION THROUGH HERE, and that
+	// is a deliberate scope line rather than an oversight. Say it plainly so a
+	// later piece cannot read `effectiveDailyCap`'s two separate caps and assume
+	// the increase is already live:
+	//
+	//   · m < 1 (retreat) is applied HERE, to the pool-wide campaign projection —
+	//     which is the campaign-facing cap Convex itself meters, so a retreat
+	//     shortens today's slice on the very next walker hop.
+	//   · m > 1 (increase) is NOT applied here and MUST NOT BE: the published base
+	//     schedule is a HARD CEILING for the current day (plan D19) and this
+	//     projection is stated in terms of it. The increase buys per-(IP x
+	//     mailboxProvider) headroom BELOW that published cap, which lives in the
+	//     MTA's own provider store — publishing the dial into that store is a NEW
+	//     Convex -> MTA surface and belongs to P3-8, together with the standalone
+	//     gate-evaluator substitution table (`paceActuator.ts` rung 10).
+	//
+	// Both caps are still passed separately below rather than collapsed, because
+	// `effectiveDailyCap` is the one place the day's ceiling is applied and the
+	// one place that distinction is allowed to be made.
 	if (multiplier >= PACE_INITIAL_MULTIPLIER) return [...byDay];
 	return byDay.map((cap) =>
 		cap <= 0 ? 0 : effectiveDailyCap({ cellCap: cap, baseScheduleCap: cap, multiplier })

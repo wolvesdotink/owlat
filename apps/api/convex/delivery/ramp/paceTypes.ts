@@ -40,7 +40,8 @@ export type PaceControlReason =
 	 * The composition interlock (plan D3). The SHARE moved first this window —
 	 * cheap and instantly reversible, because the relay absorbs the difference —
 	 * so the reputation-bearing pace dial waits. A cell may never increase both in
-	 * one window.
+	 * one window, and "window" means the share's whole evaluation window, not the
+	 * hour the two decisions happened to share.
 	 */
 	| 'share_moved_first'
 	/** The stored multiplier was not one (outside [M_MIN, M_MAX], or non-finite). */
@@ -75,6 +76,18 @@ export interface PaceState {
 	 * has never been evaluated.
 	 */
 	readonly lastEvaluatedUtcDay: string | undefined;
+	/**
+	 * THE COMPOSITION INTERLOCK'S ANCHOR (plan D3): the instant a pace increase
+	 * was last WITHHELD because the share moved first. Absent for a cell that has
+	 * never been deferred — the standalone case, where there is no share decision
+	 * at all and the interlock has nothing to interlock.
+	 *
+	 * It is an INSTANT and not a UTC day key because the property it enforces is
+	 * stated in windows: the share's evaluation window is
+	 * `RAMP_AIMD.evaluationWindowMs`, which starts when the share moved and has
+	 * nothing to do with where midnight falls.
+	 */
+	readonly deferredAt: number | undefined;
 }
 
 /**

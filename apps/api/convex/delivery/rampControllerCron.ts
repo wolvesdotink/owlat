@@ -158,10 +158,12 @@ async function applyDecision(
 		decision: RampDecision;
 		/** The SECOND actuator's decision, written in the SAME patch — see below. */
 		pace: PaceDecision;
+		/** Did the composition interlock withhold a pace increase on THIS tick? */
+		isPaceDeferred: boolean;
 		now: number;
 	}
 ): Promise<void> {
-	const { perStream, decision, pace, now } = args;
+	const { perStream, decision, pace, isPaceDeferred, now } = args;
 	const fields = {
 		isFallbackActive: isFallbackActiveForShare(decision.share),
 		ownShare: decision.share,
@@ -195,7 +197,7 @@ async function applyDecision(
 		// One controller decided both dials from one set of gates in one tick, so
 		// one write applies both: two patches would leave a window in which the row
 		// carried a share from this tick and a pace from the last.
-		...paceFields(perStream, pace, now),
+		...paceFields(perStream, pace, isPaceDeferred, now),
 	};
 	await ctx.db.patch(perStream._id, fields);
 }
@@ -213,6 +215,11 @@ async function applyDecision(
  * evaluation that held — thin evidence, an unexercised cap, or the composition
  * interlock deferring the step — deliberately leaves the anchor where it found
  * it, so a later tick the same day can still evaluate that day once.
+ *
+ * `paceDeferredAt` IS THE INTERLOCK'S MEMORY (plan D3). It is stamped on the
+ * tick the interlock fired and left alone otherwise — including on the tick that
+ * finally takes the deferred step, because the rung that reads it is written
+ * against elapsed time and not against a flag anyone has to remember to clear.
  */
 interface PaceRowFields {
 	paceMultiplier: number;
@@ -222,11 +229,13 @@ interface PaceRowFields {
 	paceFreezeReason: RampFreezeOrigin | undefined;
 	paceCooldownMs: number | undefined;
 	paceLastEvaluatedUtcDay: string | undefined;
+	paceDeferredAt: number | undefined;
 }
 
 function paceFields(
 	perStream: Doc<'deliverabilityRouteStates'>,
 	pace: PaceDecision,
+	isPaceDeferred: boolean,
 	now: number
 ): PaceRowFields {
 	const stored = {
@@ -243,6 +252,7 @@ function paceFields(
 		paceFreezeReason: freeze.freezeReason,
 		paceCooldownMs: pace.freeze?.ladderMs ?? perStream.paceCooldownMs,
 		paceLastEvaluatedUtcDay: pace.countedUtcDay ?? perStream.paceLastEvaluatedUtcDay,
+		paceDeferredAt: isPaceDeferred ? now : perStream.paceDeferredAt,
 	};
 }
 
@@ -338,7 +348,11 @@ export const runRampController = internalMutation({
 			// instantly reversible — the relay absorbs the difference), pace moves
 			// SECOND (slow and reputation-bearing), and a cell may NEVER increase both
 			// in one window. The interlock lives in one pure function so that
-			// property is a fixture rather than an inline conditional here.
+			// property is a fixture rather than an inline conditional here — and it
+			// is enforced in TWO places on purpose: this call withholds the step on
+			// the tick the share moved, and the anchor it stamps
+			// (`paceDeferredAt`) keeps the pace ladder holding for the rest of the
+			// share's evaluation window. This cron ticks hourly; the window is a day.
 			const composed = composeActuators({ share: decision, pace: paceDecision });
 			evaluated += 1;
 
@@ -367,7 +381,13 @@ export const runRampController = internalMutation({
 				continue;
 			}
 
-			await applyDecision(ctx, { perStream, decision, pace: composed.pace, now });
+			await applyDecision(ctx, {
+				perStream,
+				decision,
+				pace: composed.pace,
+				isPaceDeferred: composed.isPaceDeferred,
+				now,
+			});
 			// EVERY AUTOMATIC CHANGE IS AUDITED (plan D12) — which is a wider predicate
 			// than "the share moved". A gate breach on a cell already sitting on
 			// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
