@@ -17,7 +17,7 @@ import { v } from 'convex/values';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { loadWarmingCapacity } from '../delivery/warmingCapacity';
+import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import {
 	campaignWarmingCapBinds,
 	type WarmingCapNotBindingReason,
@@ -180,7 +180,11 @@ async function measureCampaignCapacity(
 		requestedStart !== undefined && Number.isFinite(requestedStart)
 			? Math.max(options.now, requestedStart)
 			: options.now;
-	const projection = await loadWarmingCapacity(ctx, { now: options.now, startsAt });
+	// THE SAME PACED PROJECTION THE WALKER METERS AGAINST
+	// (`delivery/pacedWarmingCapacity.ts`). Reading the UNDIALED projection here
+	// would let this gate bless a plan the dialed walker cannot finish inside the
+	// retention horizon — the exact failure the multi-day plan exists to prevent.
+	const projection = await loadPacedWarmingCapacity(ctx, { now: options.now, startsAt });
 	if (projection === null) {
 		return { capacityKnown: false, fits: true, unknownReason: 'no_projection' };
 	}

@@ -14,11 +14,9 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { loadWarmingCapacity } from '../delivery/warmingCapacity';
-import { applyPaceToCapacityByDay, loadCampaignPaceMultiplier } from '../delivery/rampPaceInputs';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import { audienceValidator } from './audience';
 import { countAudience } from './audienceCandidates';
 import { totalPlannableCapacity } from './capacityPlan';
@@ -44,6 +42,18 @@ export interface SendPlanCapacity {
 	 */
 	readonly plannedTotal: number | null;
 	readonly isPlannedTotalLowerBound: boolean;
+	/**
+	 * Did the count ACTUALLY RUN on this hop, whatever verdict it reached?
+	 *
+	 * Distinct from `plannedTotal !== null` because one reading — an over-count
+	 * truncated by suppression — is counted and yet UNUSABLE, and without this
+	 * flag the walk could not tell "not counted yet" from "counted, and the answer
+	 * was no answer". It would then re-run a 3 000-document count on EVERY
+	 * remaining hop of the walk, which for a large audience is tens of thousands
+	 * of wasted document reads on the send path. The count is attempted ONCE per
+	 * walk, exactly as this module's own doc claims.
+	 */
+	readonly isPlannedTotalCounted: boolean;
 }
 
 export const getSendPlanCapacity = internalQuery({
@@ -54,19 +64,25 @@ export const getSendPlanCapacity = internalQuery({
 	},
 	handler: async (ctx, args): Promise<SendPlanCapacity> => {
 		const now = Date.now();
-		const projection = await loadWarmingCapacity(ctx, { now });
+		// THE PACED PROJECTION, from the ONE place that derives it
+		// (`delivery/pacedWarmingCapacity.ts`). The binding pre-flight and the
+		// operator-facing send estimate read the SAME function, so the day count the
+		// gate blessed, the day count the screen quotes and the day budget this
+		// walker meters can never disagree — the disagreement this repo already paid
+		// for once (`analytics/reputationQueries.ts`: "one projection, one
+		// population, one answer").
+		//
 		// NO PROJECTION IS NOT A ZERO PROJECTION. An empty array is the planner's
 		// "unknown capacity" reading and imposes no budget at all.
-		//
-		// THE PACE ACTUATOR'S DIAL IS APPLIED HERE (plan D3): the controller's
-		// second dial decides how fast volume may grow against measured evidence,
-		// and this is the campaign-facing cap Convex itself meters. A retreat
-		// therefore shortens today's slice and lengthens the plan on the very next
-		// hop — which is exactly the reversibility the AIMD asymmetry promises.
-		const capacityByDay =
-			projection === null ? [] : await applyPaceMultiplier(ctx, projection.byDay);
+		const projection = await loadPacedWarmingCapacity(ctx, { now });
+		const capacityByDay = projection === null ? [] : projection.byDay;
 		if (projection === null || !args.countAudienceSize) {
-			return { capacityByDay, plannedTotal: null, isPlannedTotalLowerBound: false };
+			return {
+				capacityByDay,
+				plannedTotal: null,
+				isPlannedTotalLowerBound: false,
+				isPlannedTotalCounted: false,
+			};
 		}
 		const counted = await countAudience(ctx, args.audience, {
 			ceiling: totalPlannableCapacity(capacityByDay) + 1,
@@ -76,37 +92,26 @@ export const getSendPlanCapacity = internalQuery({
 		// NEITHER direction, so it licenses nothing at all and is discarded rather
 		// than quoted as a floor (see `AudienceCountCompleteness`). The other two
 		// partial readings are honest lower bounds and are kept as such.
+		//
+		// IT IS STILL A COUNT THAT RAN. Re-running it every hop would not turn it
+		// usable — the audience has not changed — so the verdict is recorded and the
+		// walk stops paying for it.
 		if (counted.completeness === 'suppression_truncated') {
-			return { capacityByDay, plannedTotal: null, isPlannedTotalLowerBound: false };
+			return {
+				capacityByDay,
+				plannedTotal: null,
+				isPlannedTotalLowerBound: false,
+				isPlannedTotalCounted: true,
+			};
 		}
 		return {
 			capacityByDay,
 			plannedTotal: counted.eligible,
 			isPlannedTotalLowerBound: counted.completeness !== 'exact',
+			isPlannedTotalCounted: true,
 		};
 	},
 });
-
-/**
- * The campaign stream's pace multiplier, applied to a capacity projection.
- *
- * No organization yet (a fresh install) is a supported configuration, not an
- * error: the projection passes through unmodified and the walk behaves exactly
- * as it did before the dial existed (plan D2).
- */
-async function applyPaceMultiplier(ctx: QueryCtx, byDay: number[]): Promise<number[]> {
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return byDay;
-	}
-	const multiplier = await loadCampaignPaceMultiplier(ctx, {
-		organizationId,
-		stream: 'campaign',
-	});
-	return applyPaceToCapacityByDay(byDay, multiplier);
-}
 
 /**
  * THE PROGRESS LINE — "Sending over 4 days · day 1 of 4 · 5 000 of 20 000".

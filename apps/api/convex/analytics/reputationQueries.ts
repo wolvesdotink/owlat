@@ -11,7 +11,7 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
-import { loadWarmingCapacity } from '../delivery/warmingCapacity';
+import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import { MAX_PLAN_DAYS, buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
@@ -132,14 +132,16 @@ export const getCampaignSendEstimate = authedQuery({
 		// IP population: that roll-up counts every campaign-pool IP regardless of
 		// `active`, so a deactivated high-cap IP made this readout claim "fits
 		// today" about a campaign the gate refused as a multi-day schedule. One
-		// projection, one population, one answer.
+		// projection, one population, one answer — and the pace actuator's dial is
+		// part of that one answer, so this readout goes through
+		// `loadPacedWarmingCapacity` exactly as the gate and the walker do.
 		//
 		// The singleton this handler already read is handed straight over rather
 		// than letting the projection read it again: one document charged instead
 		// of two, and — the reason that matters — the two halves of this answer
 		// cannot end up describing different rows.
 		const now = Date.now();
-		const projection = await loadWarmingCapacity(ctx, { now, warmingState });
+		const projection = await loadPacedWarmingCapacity(ctx, { now, warmingState });
 
 		// `null` is "capacity unknown" — the gate is equally undecided there, so the
 		// stale roll-up is only ever a DISPLAY fallback and can no longer contradict
