@@ -81,6 +81,7 @@ export const createSendJob = internalMutation({
 			planTotalDays: undefined,
 			plannedTotal: undefined,
 			isPlannedTotalLowerBound: undefined,
+			plannedTotalCountAttempted: undefined,
 			resumeAt: undefined,
 			updatedAt: now,
 		};
@@ -194,6 +195,7 @@ const sendPlanStateValidator = v.object({
 	planTotalDays: v.number(),
 	plannedTotal: v.optional(v.number()),
 	isPlannedTotalLowerBound: v.optional(v.boolean()),
+	plannedTotalCountAttempted: v.optional(v.boolean()),
 });
 
 export const recordSendPlanDay = internalMutation({
@@ -216,6 +218,21 @@ export const recordSendPlanDay = internalMutation({
 		// The row was ALREADY parked for exactly this window, so a hop for it is
 		// already pending and a second one would double every counter it writes.
 		const isResumeAlreadyScheduled = args.resumeAt !== undefined && job.resumeAt === args.resumeAt;
+		// A PARKED ROW LEAVES THE WATCHDOG'S STALE RANGE INSTEAD OF FILLING IT.
+		// `redriveStuckSendJobs` pages `by_phase_updatedAt` and only then skips
+		// parked rows, so a park stamped at park time sits inside `updatedAt <
+		// cutoff` for the whole ~24h it waits — and enough concurrent parked walks
+		// fill the page entirely, starving a genuinely stranded walk of its
+		// re-drive. Stamping the RESUME INSTANT keeps the row out of the range
+		// until its window opens, which is exactly when it becomes re-drivable
+		// again. A resume instant that is not in the future cannot do that job, so
+		// it falls back to the clock rather than back-dating the row.
+		const now = Date.now();
+		const parkedUntil = args.resumeAt;
+		const updatedAt =
+			parkedUntil !== undefined && Number.isFinite(parkedUntil) && parkedUntil > now
+				? parkedUntil
+				: now;
 		await ctx.db.patch(job._id, {
 			planDayKey: plan.planDayKey,
 			enqueuedToday: plan.enqueuedToday,
@@ -231,8 +248,11 @@ export const recordSendPlanDay = internalMutation({
 						plannedTotal: plan.plannedTotal,
 						isPlannedTotalLowerBound: plan.isPlannedTotalLowerBound === true,
 					}),
+			// Also SET-ONLY: a walk that already attempted the count must never be
+			// told to attempt it again by a later hop that simply skipped it.
+			...(plan.plannedTotalCountAttempted === true ? { plannedTotalCountAttempted: true } : {}),
 			resumeAt: args.resumeAt,
-			updatedAt: Date.now(),
+			updatedAt,
 		});
 		return { isResumeAlreadyScheduled };
 	},
@@ -287,10 +307,16 @@ const STUCK_SEND_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes without progre
  * would not just be pointless: each re-drive would park it again and schedule
  * ANOTHER hop at the same instant, so a day of parking would accumulate a
  * scheduler storm of duplicate hops that all fire together at the UTC boundary
- * and apply the same page's counters over and over. `resumeAt` in the future is
- * what makes such a row invisible here, and it is cleared by the first hop that
- * makes progress — so a park that never wakes up is still re-driven once its
- * instant has passed.
+ * and apply the same page's counters over and over.
+ *
+ * TWO THINGS KEEP A PARKED ROW OUT OF THE WAY, and the order matters. The park
+ * stamps `updatedAt` AT THE RESUME INSTANT (`recordSendPlanDay`), so the row
+ * leaves the `updatedAt < cutoff` range entirely rather than sitting in it for a
+ * day — which is what stops a crowd of parked walks filling this page and
+ * starving a genuinely stranded one of its re-drive. The `resumeAt` test below
+ * is the belt to that braces: it also covers rows parked before that rule
+ * existed. Both are cleared by the first hop that makes progress, so a park that
+ * never wakes up is still re-driven once its instant has passed.
  */
 export const redriveStuckSendJobs = internalMutation({
 	args: {},

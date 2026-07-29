@@ -645,8 +645,18 @@ export const resolveCampaignPage = internalAction({
 		// is `undefined` and every line below behaves exactly as the shipped walker.
 		const planCapacity = await ctx.runQuery(
 			internal.campaigns.sendPlanQueries.getSendPlanCapacity,
-			{ audience: job.audience, countAudienceSize: job.plannedTotal === undefined }
+			{
+				audience: job.audience,
+				// ONCE PER WALK. `plannedTotal === undefined` alone would re-run the
+				// count on every hop of a walk whose count came back counted-but-
+				// unusable, because that verdict writes no total by design.
+				countAudienceSize:
+					job.plannedTotal === undefined && job.plannedTotalCountAttempted !== true,
+			}
 		);
+		/** Has this walk now paid for its audience count, whatever it returned? */
+		const isPlannedTotalCounted =
+			job.plannedTotalCountAttempted === true || planCapacity.isPlannedTotalCounted;
 		// The denominator is counted ONCE per walk and then carried on the row —
 		// together with whether it is the audience size or only a floor under one,
 		// because a floor may lengthen the plan and may never shorten it.
@@ -685,6 +695,7 @@ export const resolveCampaignPage = internalAction({
 						plannedTotal: planState.plannedTotal,
 						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
 					}),
+			...(isPlannedTotalCounted ? { plannedTotalCountAttempted: true } : {}),
 		};
 		// A spent day ALWAYS parks. The planner gives the resume instant with the
 		// verdict, and the fallback exists only so a spent budget can never fall
@@ -722,6 +733,18 @@ export const resolveCampaignPage = internalAction({
 		// denominator that is already satisfied), which resolves a full page exactly
 		// as the shipped walker does — and it is never 0 here, because a spent
 		// budget took the park branch above.
+		//
+		// THE DAY BUDGET HAS TO BOUND THE READ, not just the enqueue, and the reason
+		// is the CURSOR. The cursor is the walk's only record of progress and it
+		// advances by exactly what was read, so anything read and not enqueued is
+		// dropped. Truncating the enqueue while HOLDING the cursor does not fix
+		// that: the next day re-reads the identical page, orders it by the same
+		// engagement scores, selects the identical prefix, and `createBatch`'s
+		// idempotency guard turns the whole hop into a no-op — the walk stops
+		// advancing rather than resuming. The amplification this costs is bounded
+		// and self-limiting: a hop that spends the day's budget parks until the next
+		// cap window, so the extra hops only appear while a run of candidates is
+		// ineligible and enqueues nothing.
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,

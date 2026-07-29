@@ -139,6 +139,13 @@ export const COUNT_CEILING = 25_000;
  * remainingToday)`) so a page can never overshoot the day's warming capacity. A
  * second copy of the number would let the two disagree about how big a page is.
  *
+ * THE NARROWING BOUNDS THE READ BECAUSE THE CURSOR ADVANCES BY THE READ.
+ * Everything a page resolves and does not enqueue is past the committed cursor
+ * and therefore dropped, so bounding only the ENQUEUE — and holding the cursor
+ * instead — does not work: the next day re-reads the identical page, orders it
+ * identically, selects the identical prefix, and `createBatch`'s idempotency
+ * guard makes the hop a no-op. The walk stops advancing rather than resuming.
+ *
  * WHY PAGES AT ALL: each page is one `.paginate()` (topic:
  * `contactTopics.by_topic`; segment: `contacts.by_deleted_at` pinned to
  * `deletedAt === undefined`) plus, for the topic branch, one batched
