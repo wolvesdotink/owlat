@@ -36,6 +36,7 @@ import {
 } from './rampCronFixtures';
 import { loadCellInput } from '../rampControllerInputs';
 import { loadRampDeploymentPresence } from '../rampIntegrationPresence';
+import { loadRampPresets } from '../rampPresets';
 import { loadRampCapacityContext } from '../rampCapacityInputs';
 import { loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import { modules } from '../../__tests__/testModules';
@@ -80,6 +81,14 @@ async function selectedActuator(t: Harness): Promise<'share' | 'pace'> {
 			presence,
 			isKillSwitchEngaged: false,
 			isSendingPermitted: true,
+			// READ THE WAY THE CRON READS THEM (P3-6). The operator's per-stream
+			// aggressiveness tunes the same constants the actuator selection is
+			// built from, so a harness that skipped them would be asking a
+			// different question than the tick does.
+			...(await loadRampPresets(ctx, ORG).then((p) => ({
+				presets: p.presets,
+				presetFallback: p.fallback,
+			}))),
 			now,
 		});
 		if (loaded === null) throw new Error('the seeded cell is not ramp-managed');

@@ -401,6 +401,16 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'degradation_ceiling':
 		case 'window_open':
 		case 'graduated':
+		// THE OPERATOR'S CONTROLS ARE SHARE-ONLY (P3-6). A pause, a pin, a forced
+		// advance and a phase reset all rewrite a SHARE decision; the pace ladder
+		// is never handed one, so these rungs cannot reach this dial. They join
+		// the share-only group for the same reason the ceilings do — and the
+		// compile-time exhaustiveness over `PaceDecisionReason` is what forced
+		// the question the moment the two vocabularies met.
+		case 'operator_pause':
+		case 'operator_pin':
+		case 'operator_force_advance':
+		case 'operator_phase_reset':
 			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}.`;
 	}
 }

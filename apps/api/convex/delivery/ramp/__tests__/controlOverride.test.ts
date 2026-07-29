@@ -36,6 +36,9 @@ function decision(overrides: Partial<RampDecision> = {}): RampDecision {
 		pinChange: undefined,
 		countedAt: NOW,
 		ceiling: 0.5,
+		// P3-8 folds the substitution table into the decision; a fixture that
+		// omits it is not a RampDecision.
+		cappedBy: undefined,
 		...overrides,
 	};
 }
