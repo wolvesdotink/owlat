@@ -89,7 +89,14 @@ export function effectiveDailyCap(input: EffectiveDailyCapInput): number {
 	// GRADUATED, and no cell cap either: the published schedule imposes no ceiling
 	// and there is nothing to multiply, so neither does this. Bounding it by
 	// exercised volume would re-impose a cap the IP has already outgrown.
-	if (baseScheduleCap === Infinity && !Number.isFinite(cellCap)) return Infinity;
+	//
+	// `cellCap === Infinity` AND NOT `!Number.isFinite(cellCap)`. The intent is
+	// GRADUATED — a cap that is known to be unbounded — and `NaN` is not that: it
+	// is a reading we could not use, and everywhere else in this module a reading
+	// we cannot use fails CLOSED. A ceiling that "does not bind" is deliberate; an
+	// unbounded CAP produced from an unreadable number is not, so a `NaN` cell cap
+	// falls through to the policy minimum below.
+	if (baseScheduleCap === Infinity && cellCap === Infinity) return Infinity;
 	// The CEILING. A ceiling we cannot read is not a ceiling — an unreadable
 	// published cap must not silently pin the cell to the policy minimum, so it
 	// simply does not bind.

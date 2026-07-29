@@ -15,6 +15,7 @@ import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { rampDecisionChangedState } from './controllerTypes';
 import type { RampDecision, RampDecisionReason } from './controllerTypes';
 import type { RampGateId } from './gateTypes';
+import type { PaceDecision, PaceDecisionReason } from './paceTypes';
 
 function percent(share: number): string {
 	return `${Math.round(share * 1000) / 10}%`;
@@ -231,4 +232,142 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 				: `Held ${where} at the ${percent(decision.share)} floor: ${breached} again, and the share is already as low as a soft failure takes it. ${gateRemedy(decision)}`;
 		}
 	}
+}
+
+/**
+ * THE PACE DIAL'S SENTENCE (plan D12), in the SAME vocabulary as the share's.
+ *
+ * It lives in this file rather than a parallel one for the reason the pace
+ * fixtures live with the share fixtures: the two actuators answer the same
+ * questions in the same order, and a second narrative module is a second module
+ * that can drift into calling the same rung by a different name.
+ *
+ * The multiplier is rendered as a MULTIPLIER (`1.00x -> 0.50x`) and never as a
+ * percentage: a share is a proportion of traffic, a pace is a factor on a cap,
+ * and rendering both as "50%" is how an operator ends up reading a halved
+ * warming pace as half the mail.
+ */
+function multiple(multiplier: number): string {
+	return `${(Math.round(multiplier * 100) / 100).toFixed(2)}x`;
+}
+
+/**
+ * The pace decisions with a NAMED CAUSE — the same three hard stops and the same
+ * gates as the share's `NOTIFIABLE_REASONS`, and deliberately the same set: a
+ * breach that is worth telling an operator about when it moves the share is
+ * worth telling them about when it moves the reputation-bearing dial instead.
+ */
+const NOTIFIABLE_PACE_REASONS: ReadonlySet<PaceDecisionReason> = NOTIFIABLE_REASONS;
+
+/**
+ * THE ADMIN NOTICE FOR A PACE RETREAT (plan D12).
+ *
+ * IT IS ITS OWN NOTICE BECAUSE A PACE-ONLY RETREAT IS REACHABLE. The two dials
+ * keep separate freeze columns by design, so a share still inside an earlier
+ * gate cooldown returns `frozen` — a hold, and not notifiable — while the pace
+ * dial, whose own freeze has expired, halves and freezes on the same breach.
+ * Deriving the notice from the share decision alone would write that incident to
+ * the audit row and tell nobody. D12: every DECREASE names the gate that broke
+ * and what to do about it.
+ *
+ * The predicate mirrors the share's exactly, and for the same two reasons: a
+ * NAMED cause (so ceiling pull-backs and the un-corroborated tripwire stay
+ * quiet) that also CHANGED something (so a dial already on the floor still
+ * announces a fresh breach, while a persistent hard stop announces itself once).
+ */
+export function paceDecisionAdminNotice(
+	cell: DeliverabilityCell,
+	decision: PaceDecision
+): string | undefined {
+	const isChanged =
+		decision.multiplier !== decision.fromMultiplier || decision.freeze?.ladderMs !== undefined;
+	return NOTIFIABLE_PACE_REASONS.has(decision.reason) && isChanged
+		? describePaceDecision(cell, decision)
+		: undefined;
+}
+
+/**
+ * One sentence for the pace dial, in the operator's terms.
+ *
+ * Exhaustive over `PaceDecisionReason`, which is the share's union plus the five
+ * reasons only this dial can reach — so a new rung cannot ship without a
+ * sentence. The share-only rungs (a phase ceiling, a graduation, an unreadable
+ * SHARE) are grouped into one arm: the pace ladder cannot produce them, and
+ * writing five sentences nobody can trigger would be five sentences nobody
+ * maintains.
+ */
+export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDecision): string {
+	const where = `${cell.stream} mail to ${cell.destinationProvider}`;
+	const move = `${multiple(decision.fromMultiplier)} -> ${multiple(decision.multiplier)}`;
+	const isDown = decision.direction === 'decrease';
+
+	switch (decision.reason) {
+		case 'kill_switch':
+			return `Warm-up pace paused: ${where} is pinned at ${multiple(decision.multiplier)} by the global kill switch.`;
+		case 'clock_unusable':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the evaluation clock was unusable, and the controller never decides against a broken clock.`;
+		case 'abuse_status':
+			return isDown
+				? `Cut the warm-up pace for ${where} to the minimum (${move}): the organization's abuse status forbids sending. Resolve the account status first.`
+				: `Held the warm-up pace for ${where} at the minimum: the organization's abuse status still forbids sending. Resolve the account status first.`;
+		case 'breaker':
+			return isDown
+				? `Halved the warm-up pace for ${where} (${move}): the MTA circuit breaker is open for this provider. Frozen for at least 6h while the breaker recovers.`
+				: `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the breaker is still open, and the retreat for this incident has already been charged.`;
+		case 'dnsbl':
+			return isDown
+				? `Cut the warm-up pace for ${where} to the minimum (${move}): a pool IP carries a critical blocklist listing. Frozen for at least 24h — start the delisting flow from the Delivery checklist.`
+				: `Held the warm-up pace for ${where} at the minimum: a pool IP still carries a critical blocklist listing. Start the delisting flow from the Delivery checklist.`;
+		case 'frozen':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: an earlier pace decision froze this cell and the cooldown has not expired.`;
+		case 'freeze_unreadable':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the stored freeze expiry was further out than any cooldown this controller imposes, so it was not believed — and an unreadable freeze is not a reason to step up.`;
+		case 'multiplier_unreadable':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the stored pace multiplier was not a usable value and has been read back inside its bounds. The controller does not add to a number it cannot read.`;
+		case 'holding':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: not enough fresh evidence to decide. The controller never increases on thin data, and never decreases on it either.`;
+		case 'evidence_stale':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the measurements behind this decision were not a reading of the present. The dial neither rises nor falls on evidence it cannot date.`;
+		case 'awaiting_corroboration':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the seed-placement tripwire fired alone. Seeds are too small a sample to act on without the deferral or bounce gate agreeing.`;
+		case 'day_already_advanced':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: today's schedule advance has already been taken. A warming schedule advances at most once per UTC day, however often the controller ticks.`;
+		case 'share_moved_first':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the transport share moved first this window. A cell never increases both dials in one window — the pace step is owed and will be taken once the window closes.`;
+		case 'low_utilisation':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the current daily cap was not exercised enough for this window to say anything. An unexercised cap is not evidence, so the dial waits for the volume rather than growing a cap nothing is filling.`;
+		case 'building_confidence':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: the window was clean, but the controller requires several consecutive clean windows before it speeds up.`;
+		case 'schedule_ceiling':
+			return `Held the warm-up pace for ${where} at its maximum: what limits the daily cap from here is the published warming schedule, which the controller may never exceed for the current day.`;
+		case 'healthy':
+			return `Increased the warm-up pace for ${where} (${move}): every gate is green, the clean streak is long enough and the current cap is genuinely being used.`;
+		case 'hard_bounce':
+		case 'deferral':
+		case 'complaint':
+		case 'engagement_ratio':
+		case 'seed_placement': {
+			const breached = `the ${decision.reason.replace(/_/g, ' ')} gate breached`;
+			return isDown
+				? `Reduced the warm-up pace for ${where} (${move}): ${breached}. ${paceGateRemedy(decision)}`
+				: `Held the warm-up pace for ${where} at its ${multiple(decision.multiplier)} minimum: ${breached} again, and the dial is already as low as it goes. ${paceGateRemedy(decision)}`;
+		}
+		// SHARE-ONLY RUNGS. The pace ladder has no share to read, no phase ceiling
+		// and no graduation, so none of these is reachable here — they are in the
+		// union only because the two actuators share one reason vocabulary.
+		case 'share_unreadable':
+		case 'capacity_unknown':
+		case 'capacity_ceiling':
+		case 'phase_ceiling':
+		case 'window_open':
+		case 'graduated':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}.`;
+	}
+}
+
+/** The pace dial's gate remedy — the SAME table the share's sentences index. */
+function paceGateRemedy(decision: PaceDecision): string {
+	const gate = decision.failedGate;
+	if (gate === undefined) return 'Review the delivery dashboard for the failing measurement.';
+	return RAMP_GATE_REMEDIES[gate];
 }

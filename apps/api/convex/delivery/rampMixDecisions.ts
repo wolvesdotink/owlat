@@ -34,7 +34,11 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
 import type { PaceDecision, PaceUtilisationReading } from './ramp/paceTypes';
-import { describeRampDecision, rampDecisionAdminNotice } from './ramp/controllerNarrative';
+import {
+	describeRampDecision,
+	paceDecisionAdminNotice,
+	rampDecisionAdminNotice,
+} from './ramp/controllerNarrative';
 
 /** Decisions age out with the experiment record they explain (plan D16). */
 const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -134,7 +138,24 @@ export async function recordMixDecision(
 ): Promise<void> {
 	const { organizationId, cell, input, decision, pace, at } = args;
 	const message = describeRampDecision(cell, decision);
-	const adminNotice = rampDecisionAdminNotice(cell, decision);
+	// THE NOTICE COVERS BOTH DIALS (plan D12). A PACE-ONLY RETREAT IS REACHABLE:
+	// the two actuators keep separate freeze columns by design, so a share still
+	// inside an earlier gate cooldown returns `frozen` — a hold, and not
+	// notifiable — while the pace dial, whose own freeze has expired, halves and
+	// freezes on the same breach. Deriving the notice from the share alone would
+	// write that incident to the audit row and tell nobody, and "every DECREASE
+	// emits an admin notification naming the gate that broke" would be false for
+	// the reputation-bearing half of the controller.
+	//
+	// When BOTH dials have something to say the two sentences are joined rather
+	// than one being dropped: they are one tick's decision about one cell, and an
+	// operator reading "the share halved" without "and so did the warming pace"
+	// has half the incident.
+	const notices = [
+		rampDecisionAdminNotice(cell, decision),
+		pace === undefined ? undefined : paceDecisionAdminNotice(cell, pace.decision),
+	].filter((notice): notice is string => notice !== undefined);
+	const adminNotice = notices.length === 0 ? undefined : notices.join(' ');
 	await ctx.db.insert('mixDecisions', {
 		organizationId,
 		cell: deliverabilityCellKey(cell),

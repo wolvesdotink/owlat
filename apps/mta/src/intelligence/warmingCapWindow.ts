@@ -32,9 +32,7 @@
  * Pure: `now` is a parameter.
  */
 
-import { utcDateKey } from './warmingKeys.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { MS_PER_UTC_DAY, utcDateKey } from './warmingKeys.js';
 
 /**
  * Never defer by less than this. A few milliseconds before midnight the honest
@@ -62,7 +60,7 @@ export function nextCapWindowDelayMs(now: number): number {
 	if (!Number.isFinite(now)) return MINIMUM_CAP_DEFER_MS;
 	const dayStart = Date.parse(`${utcDateKey(now)}T00:00:00.000Z`);
 	if (!Number.isFinite(dayStart)) return MINIMUM_CAP_DEFER_MS;
-	return Math.max(MINIMUM_CAP_DEFER_MS, dayStart + MS_PER_DAY - now);
+	return Math.max(MINIMUM_CAP_DEFER_MS, dayStart + MS_PER_UTC_DAY - now);
 }
 
 /**
