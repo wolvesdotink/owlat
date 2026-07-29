@@ -181,8 +181,7 @@ export function applyPaceToCapacityByDay(byDay: readonly number[], multiplier: n
 	//     projection is stated in terms of it. The increase buys per-(IP x
 	//     mailboxProvider) headroom BELOW that published cap, which lives in the
 	//     MTA's own provider store — publishing the dial into that store is a NEW
-	//     Convex -> MTA surface and belongs to P3-8, together with the standalone
-	//     gate-evaluator substitution table (`paceActuator.ts` rung 10).
+	//     Convex -> MTA surface, and no piece on this branch owns it yet.
 	//
 	// Both caps are still passed separately below rather than collapsed, because
 	// `effectiveDailyCap` is the one place the day's ceiling is applied and the
