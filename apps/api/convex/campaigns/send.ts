@@ -651,12 +651,12 @@ export const resolveCampaignPage = internalAction({
 				// count on every hop of a walk whose count came back counted-but-
 				// unusable, because that verdict writes no total by design.
 				countAudienceSize:
-					job.plannedTotal === undefined && job.plannedTotalCountAttempted !== true,
+					job.plannedTotal === undefined && job.isPlannedTotalCountAttempted !== true,
 			}
 		);
 		/** Has this walk now paid for its audience count, whatever it returned? */
 		const isPlannedTotalCounted =
-			job.plannedTotalCountAttempted === true || planCapacity.isPlannedTotalCounted;
+			job.isPlannedTotalCountAttempted === true || planCapacity.isPlannedTotalCounted;
 		// The denominator is counted ONCE per walk and then carried on the row —
 		// together with whether it is the audience size or only a floor under one,
 		// because a floor may lengthen the plan and may never shorten it.
@@ -695,7 +695,7 @@ export const resolveCampaignPage = internalAction({
 						plannedTotal: planState.plannedTotal,
 						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
 					}),
-			...(isPlannedTotalCounted ? { plannedTotalCountAttempted: true } : {}),
+			...(isPlannedTotalCounted ? { isPlannedTotalCountAttempted: true } : {}),
 		};
 		// A spent day ALWAYS parks. The planner gives the resume instant with the
 		// verdict, and the fallback exists only so a spent budget can never fall

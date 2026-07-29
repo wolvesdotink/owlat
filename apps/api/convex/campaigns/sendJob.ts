@@ -81,7 +81,7 @@ export const createSendJob = internalMutation({
 			planTotalDays: undefined,
 			plannedTotal: undefined,
 			isPlannedTotalLowerBound: undefined,
-			plannedTotalCountAttempted: undefined,
+			isPlannedTotalCountAttempted: undefined,
 			resumeAt: undefined,
 			updatedAt: now,
 		};
@@ -195,7 +195,7 @@ const sendPlanStateValidator = v.object({
 	planTotalDays: v.number(),
 	plannedTotal: v.optional(v.number()),
 	isPlannedTotalLowerBound: v.optional(v.boolean()),
-	plannedTotalCountAttempted: v.optional(v.boolean()),
+	isPlannedTotalCountAttempted: v.optional(v.boolean()),
 });
 
 export const recordSendPlanDay = internalMutation({
@@ -250,7 +250,7 @@ export const recordSendPlanDay = internalMutation({
 					}),
 			// Also SET-ONLY: a walk that already attempted the count must never be
 			// told to attempt it again by a later hop that simply skipped it.
-			...(plan.plannedTotalCountAttempted === true ? { plannedTotalCountAttempted: true } : {}),
+			...(plan.isPlannedTotalCountAttempted === true ? { isPlannedTotalCountAttempted: true } : {}),
 			resumeAt: args.resumeAt,
 			updatedAt,
 		});

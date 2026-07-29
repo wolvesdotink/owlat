@@ -95,7 +95,7 @@ const campaignSendJobs = defineTable({
 	// suppression) is counted and yet UNUSABLE, so `plannedTotal` alone cannot
 	// tell "not counted yet" from "counted, no usable answer" — and the walk would
 	// re-run a bounded but far from free audience count on EVERY remaining hop.
-	plannedTotalCountAttempted: v.optional(v.boolean()),
+	isPlannedTotalCountAttempted: v.optional(v.boolean()),
 	// A DELIBERATELY PARKED WALK's resume instant. Today's slice is spent and the
 	// walk is waiting for the next cap window — up to ~24h out, far past the
 	// stuck-walk watchdog's staleness threshold. Without this the watchdog would
