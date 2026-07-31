@@ -27,11 +27,20 @@
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import {
+	deliverabilityCellKey,
+	isDestinationProviderKey,
 	resolveOwnShare,
 	type DeliverabilityCell,
 	type DeliverabilitySignalProvider,
 } from '@owlat/shared/deliverabilityRouting';
 import type { MixCellState } from './sendProviders/strategies';
+
+/**
+ * Row cap for a whole-organization scan. The cell space is
+ * streams x providers (15 today) plus the stream-less snapshot rows, so this is
+ * generous headroom rather than a limit any real organization can reach.
+ */
+const ROUTE_STATE_SCAN_LIMIT = 128;
 
 /** The all-stream row for a provider slice: what the MTA snapshot maintains. */
 export async function loadStreamlessRouteState(
@@ -98,4 +107,35 @@ export async function loadRouteStateCell(
 export function mixCellStateFor(cell: RouteStateCellRows): MixCellState {
 	const shareRow = cell.perStream ?? cell.streamless;
 	return { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion };
+}
+
+/**
+ * Every ramp-managed row for an organization, keyed by `deliverabilityCellKey`.
+ *
+ * Whole-screen readers (the controls grid, the independence summary) want all
+ * cells at once rather than one `loadRouteStateCell` per cell. Stream-less rows
+ * are skipped here on purpose: they are the MTA snapshot's, carry no cell
+ * identity, and have no key in this map. The key format lives in ONE place so
+ * changing it cannot silently fork between callers.
+ */
+export async function loadRouteStatesByCell(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string
+): Promise<Map<string, Doc<'deliverabilityRouteStates'>>> {
+	const rows = await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
+		.take(ROUTE_STATE_SCAN_LIMIT);
+	const byCell = new Map<string, Doc<'deliverabilityRouteStates'>>();
+	for (const row of rows) {
+		const stream = row.stream;
+		// A row is a CELL only if it has both halves of the pair: the stream-less
+		// snapshot rows and the pool-wide `'all'` slice are neither, and the type
+		// says so — `destinationProvider` on the table admits `'all'`.
+		if (stream === undefined) continue;
+		const destinationProvider = row.destinationProvider;
+		if (!isDestinationProviderKey(destinationProvider)) continue;
+		byCell.set(deliverabilityCellKey({ stream, destinationProvider }), row);
+	}
+	return byCell;
 }

@@ -64,6 +64,8 @@ import {
 import { rampDecisionChangedState } from './ramp/controllerTypes';
 import { applyDecision, refreshRouteStateLease } from './rampControllerWrites';
 import type { PaceUtilisationReading } from './ramp/paceTypes';
+import { applyRampCellControl } from './ramp/controlOverride';
+import { loadRampPresets } from './rampPresets';
 
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 const RAMP_CELLS_PER_TICK = 5;
@@ -94,6 +96,11 @@ export const runRampController = internalMutation({
 		// Cell-independent, so it is read ONCE for the whole slice rather than once
 		// per cell: the pool row carries the same verdict for all fifteen cells.
 		const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
+
+		// AT MOST THREE ROWS, READ ONCE for the whole slice: the per-stream
+		// aggressiveness presets (P3-6). `balanced` is the identity, so a deployment
+		// that has never chosen one runs the shipped constants unchanged.
+		const { presets, fallback: presetFallback } = await loadRampPresets(ctx, organizationId);
 
 		// Cell-independent for the same reason, and by DERIVATION rather than by
 		// approximation: the warming cap is one pool-wide number, so the bound that
@@ -142,6 +149,8 @@ export const runRampController = internalMutation({
 				presence,
 				isKillSwitchEngaged,
 				isSendingPermitted,
+				presets,
+				presetFallback,
 				now,
 			});
 			// An unmanaged cell is not an evaluation: there is no share to decide
@@ -156,7 +165,22 @@ export const runRampController = internalMutation({
 			// composition function already documents (`share: null`) rather than a
 			// branch scattered through the controller.
 			const isPaceActuated = degradation.actuator === 'pace';
-			const decision = nextShare(input);
+			// THE OPERATOR'S HAND, applied AFTER the pure ladder and BEFORE anything is
+			// recorded (P3-6): a pause suppresses an increase and a pin caps one, and
+			// neither can hold a retreat. Rewriting the decision here — rather than
+			// threading a control flag through the ladder — is what keeps the audit row
+			// honest: it records what the operator's setting actually produced, and the
+			// controller's own rungs stay untouched.
+			//
+			// SCOPE, HONESTLY: this governs the SHARE dial only. On a pace-actuated
+			// cell the composition below is handed `share: null`, so a pause or pin set
+			// on such a cell does not reach the dial that actually moves. P3-6 predates
+			// the pace actuator and never claimed that reach; carrying the operator's
+			// hand onto the pace ladder is a follow-up, not something to invent here.
+			const decision = applyRampCellControl(nextShare(input), {
+				pausedAt: perStream.operatorPausedAt,
+				pinnedShare: perStream.operatorPinnedShare,
+			});
 			// THE SECOND ACTUATOR, on the SAME gates, the SAME hard stops and the
 			// SAME kill switch (plan D3). Standalone it is the only dial that moves —
 			// s === 1 by definition — and with a reference arm it is the slow,

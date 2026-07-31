@@ -273,12 +273,15 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
  * Transactional starts at zero and ramps LAST — it is the mail a failure hurts
  * most — but once started it moves in the smallest steps.
  *
- * THIS TABLE IS THE EQUIPPED HALF ONLY. The plan's standalone substitution
- * raises K_CLEAN from 3 to 5 and halves the step when there is no reference
- * transport, because the evidence behind each clean window is weaker. Those
- * numbers are the AIMD ACTUATOR's (P3-2) and land with it: nothing in this piece
- * consumes them, and a field here with no reader would be the speculative seam
- * plan D20 forbids. Read `cleanWindowsRequired` as "with a reference arm".
+ * THIS TABLE IS THE EQUIPPED HALF ONLY — read `cleanWindowsRequired` as "with a
+ * reference arm". The plan's standalone substitution (K_CLEAN 3 -> 5, step
+ * halved, because the evidence behind each clean window is weaker without a
+ * reference arm) is APPLIED IN EXACTLY ONE PLACE: it IS the `conservative`
+ * preset, which `defaultRampPreset(false)` selects for a standalone deployment
+ * (`ramp/presetConfig.ts` + `@owlat/shared/deliverabilityIndependence`). There is
+ * deliberately no second standalone constant table and no pending substitution
+ * to land later — two places applying the same halving would compound it to
+ * x0.25 and K_CLEAN 7, numbers that appear nowhere in the plan.
  */
 export interface RampStreamConfig {
 	readonly stream: DeliverabilityStream;

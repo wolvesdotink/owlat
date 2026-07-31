@@ -31,12 +31,12 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { isSendingAllowed } from '../workspaces/abuseGate';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
-import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
 	degradedCeilingCap,
@@ -47,6 +47,8 @@ import {
 	type RampDegradation,
 } from './ramp/degradation';
 import { withReferenceArm, type RampDeploymentPresence } from './rampIntegrationPresence';
+import { rampConfigForStream, type RampPresetsByStream } from './ramp/presetConfig';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
@@ -177,6 +179,62 @@ function readMixState(row: ManagedRouteState): RampMixState {
 }
 
 /**
+ * IS AN OPERATOR ALLOWED TO RAISE THIS CELL RIGHT NOW?
+ *
+ * The controls (P3-6) can write a share directly, which means they can reach
+ * past the decision function that normally enforces the plan's hard stops. That
+ * would make every hard stop optional in exactly the situation it exists for:
+ * while the ramp is globally paused for an incident, while the organization is
+ * abuse-suspended, while a critical blocklist freeze is running or while the
+ * cell is inside a cooldown, an operator could raise the share and the router
+ * would read the raised value until the next hourly tick pulled it back.
+ *
+ * So the mutations ask HERE, through the SAME readers the controller uses —
+ * `readHardStopSignals`, the same staleness filter, the same abuse predicate,
+ * the same stored freeze — rather than through a second copy of the rules that
+ * could drift away from them.
+ *
+ * ONE-DIRECTIONAL, exactly like the operator's pause and pin. This bounds
+ * INCREASES only; a retreat is always permitted, because a safety response an
+ * operator cannot reach downward is not a safety response either.
+ */
+export type RampIncreaseBlock = 'controller_paused' | 'hard_stop_active';
+
+export async function readRampIncreaseBlock(
+	ctx: MutationCtx,
+	args: {
+		organizationId: string;
+		cell: DeliverabilityCell;
+		perStream: Doc<'deliverabilityRouteStates'>;
+		now: number;
+	}
+): Promise<RampIncreaseBlock | null> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	// The global kill switch first, and it refuses on its own terms: "everything
+	// held still" has to mean everything, including a hand on the control.
+	if (settings?.isRampControllerPaused === true) return 'controller_paused';
+	const pool = await loadStreamlessRouteState(ctx, args.organizationId, 'all');
+	const streamless = await loadStreamlessRouteState(
+		ctx,
+		args.organizationId,
+		args.cell.destinationProvider
+	);
+	const signals = readHardStopSignals([args.perStream, streamless, pool], {
+		isSendingPermitted: isSendingAllowed(settings?.abuseStatus),
+		now: args.now,
+	});
+	if (!signals.isSendingAllowed) return 'hard_stop_active';
+	if (signals.isCircuitBreakerOpen) return 'hard_stop_active';
+	if (signals.isPoolBlocklisted) return 'hard_stop_active';
+	// A cooldown the controller stamped is evidence-bearing state, not a
+	// preference: raising through it would discard the retreat that set it.
+	if (args.perStream.frozenUntil !== undefined && args.now < args.perStream.frozenUntil) {
+		return 'hard_stop_active';
+	}
+	return null;
+}
+
+/**
  * Build the controller input for one cell. Reads only; decides nothing.
  *
  * `null` means the cell is UNMANAGED: no per-stream row carries a share, so the
@@ -219,6 +277,14 @@ export async function loadCellInput(
 		presence: RampDeploymentPresence;
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
+		/**
+		 * THE PER-STREAM PRESETS (P3-6), read ONCE for the whole tick: at most three
+		 * rows, shared by every cell in the slice. `balanced` is the identity, so a
+		 * deployment with no preset rows runs the shipped constants unchanged.
+		 */
+		presets: RampPresetsByStream;
+		/** The deployment default when a stream has no preset row (plan D14). */
+		presetFallback: RampPreset;
 		now: number;
 	}
 ): Promise<{
@@ -235,6 +301,7 @@ export async function loadCellInput(
 } | null> {
 	const { organizationId, cell, pool, now } = args;
 	const cellKey = deliverabilityCellKey(cell);
+	const config = rampConfigForStream(cell.stream, args.presets, args.presetFallback);
 	const { perStream, streamless } = await loadRouteStateCell(ctx, organizationId, cell);
 	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
@@ -287,14 +354,20 @@ export async function loadCellInput(
 	// anywhere else in the controller: a conditional naming an integration would be
 	// a substitution living outside the table, which is the exact failure mode the
 	// table exists to prevent.
+	//
+	// THE OPERATOR'S PRESET AND THE TABLE COMPOSE IN THIS ORDER (plan D9 then D3):
+	// `config` above is the per-stream constant table tuned by the operator's
+	// aggressiveness preset; the table's tightening is applied ON TOP of it here,
+	// LAST, so a missing integration always slows a cell down and an "aggressive"
+	// preset can never out-argue a safety substitution.
 	const presence = withReferenceArm(args.presence, referenceArm !== null);
 	const degradation = resolveRampDegradation({ presence, provider: cell.destinationProvider });
-	const config = degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation);
+	const degradedConfig = degradedStreamConfig(config, degradation);
 	const evaluator = usesTrailingBaseline(degradation)
 		? trailingBaselineGateEvaluator
 		: referenceArmGateEvaluator;
 	const evaluation = evaluator.evaluate({
-		config,
+		config: degradedConfig,
 		own,
 		reference: referenceArm,
 		// The trailing twin's second series, DISJOINT from the evaluation window by
@@ -318,7 +391,13 @@ export async function loadCellInput(
 		degradation,
 		input: {
 			cell,
-			config,
+			// THE DEGRADED CONFIG, not the preset-tuned one. The controller decides
+			// off `input.config` — `cleanWindowsRequired` gates the increase and
+			// `increaseStep` sizes it — so handing it the pre-table config would
+			// leave the substitution reaching the GATE EVALUATION and nothing else,
+			// and the audit snapshot would report constants the tick never used.
+			// This is one config for the whole tick, by construction (plan D3, D12).
+			config: degradedConfig,
 			mix,
 			// THE CEILING CAP IS THE TABLE'S TOO (the Microsoft cell caps one rung
 			// lower while SNDS is absent). Passed as a BOUND rather than folded into

@@ -172,6 +172,20 @@ export const AUDIT_ACTION_LITERALS = [
 	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
 	// which records EVERY evaluation. See the deliverability plan, decision D12.
 	action('deliverability_ramp.decision_applied'),
+	// Deliverability ramp — an OPERATOR moved the ramp by hand (P3-6). Separate
+	// literals from `decision_applied` on purpose: an audit trail that presented a
+	// person's pin as the controller's judgement would be actively misleading six
+	// weeks later, when the only question anyone has is why a cell stopped moving.
+	// `force_advanced` in particular is the one action here that can lose
+	// reputation, and it is reachable only behind a typed, consequence-naming
+	// confirmation.
+	action('deliverability_ramp.cell_paused'),
+	action('deliverability_ramp.cell_resumed'),
+	action('deliverability_ramp.cell_pinned'),
+	action('deliverability_ramp.cell_unpinned'),
+	action('deliverability_ramp.force_advanced'),
+	action('deliverability_ramp.phase_reset'),
+	action('deliverability_ramp.preset_changed'),
 	// Postbox outbound state transitions (per recipient). Fired by the
 	// Postbox outbound lifecycle module on every transition. See ADR-0012.
 	action('postbox_outbound_transition'),

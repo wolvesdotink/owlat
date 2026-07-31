@@ -25,6 +25,7 @@ import {
 	getCurrentInstance,
 	getCurrentScope,
 	onScopeDispose,
+	useId,
 } from 'vue';
 
 // Make Vue reactivity primitives available globally (Nuxt auto-imports these)
@@ -49,6 +50,8 @@ vi.stubGlobal('triggerRef', triggerRef);
 vi.stubGlobal('getCurrentInstance', getCurrentInstance);
 vi.stubGlobal('getCurrentScope', getCurrentScope);
 vi.stubGlobal('onScopeDispose', onScopeDispose);
+// Nuxt auto-imports `useId` too; components that label a control by id need it.
+vi.stubGlobal('useId', useId);
 
 // Type augmentation for global scope
 declare global {
@@ -73,5 +76,6 @@ declare global {
 	const getCurrentInstance: (typeof import('vue'))['getCurrentInstance'];
 	const getCurrentScope: (typeof import('vue'))['getCurrentScope'];
 	const onScopeDispose: (typeof import('vue'))['onScopeDispose'];
+	const useId: (typeof import('vue'))['useId'];
 	type Ref<T> = import('vue').Ref<T>;
 }

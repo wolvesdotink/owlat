@@ -81,7 +81,23 @@ export type RampControlReason =
 	/** An additive increase. The only reason that ever raises a share. */
 	| 'healthy'
 	/** s = 1.0 held 14 days with every gate green: the cell PINS. */
-	| 'graduated';
+	| 'graduated'
+	/**
+	 * AN OPERATOR HELD THE CELL (P3-6). The controller evaluated and would have
+	 * advanced; the operator's pause suppressed the increase. A pause NEVER
+	 * suppresses a retreat, so this reason can only ever appear on a hold.
+	 */
+	| 'operator_pause'
+	/** An operator's pinned share is what bounded the decision. */
+	| 'operator_pin'
+	/**
+	 * An operator advanced the share by hand, past the evidence (P3-6). Written by
+	 * the control mutation, never by a rung — the controller has no way to reach
+	 * this decision on its own, which is the point.
+	 */
+	| 'operator_force_advance'
+	/** An operator reset the cell to a phase rung by hand. */
+	| 'operator_phase_reset';
 
 export type RampDecisionReason = RampControlReason | RampGateId;
 

@@ -1,5 +1,6 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 
 /** Convex validators for the shared, fixed deliverability taxonomy. */
 export const destinationProviderValidator = v.union(
@@ -143,6 +144,14 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('degradation_ceiling'),
 	v.literal('healthy'),
 	v.literal('graduated'),
+	// THE OPERATOR'S OWN REASONS (plan D12). A human hand on the ramp is still a
+	// decision, and a decision with no audit row is exactly the silence D12
+	// forbids — so an operator hold, pin, force-advance or phase reset writes a
+	// `mixDecisions` row with a reason of its own rather than borrowing a gate's.
+	v.literal('operator_pause'),
+	v.literal('operator_pin'),
+	v.literal('operator_force_advance'),
+	v.literal('operator_phase_reset'),
 	rampGateIdValidator
 );
 
@@ -163,3 +172,24 @@ export const paceDecisionReasonValidator = v.union(
 	v.literal('multiplier_unreadable'),
 	v.literal('schedule_ceiling')
 );
+
+/**
+ * The per-stream aggressiveness preset (plan D9, P3-6).
+ *
+ * The literals are re-listed rather than mapped from `RAMP_PRESET_KEYS`, because
+ * a `v.union(...keys.map(v.literal))` erases to `Validator<string>` and would
+ * cost every stored column and every argument its closed union. The assertion
+ * below is what stops the two lists drifting: adding a key to
+ * `RAMP_PRESET_KEYS` without adding it here is a compile error, and vice versa.
+ */
+export const rampPresetValidator = v.union(
+	v.literal('conservative'),
+	v.literal('balanced'),
+	v.literal('aggressive')
+);
+
+type ValidatedRampPreset = Infer<typeof rampPresetValidator>;
+/** Mutual assignability, expressed without either parameter constraining the other. */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+type AssertTrue<T extends true> = T;
+export type _RampPresetValidatorMatchesShared = AssertTrue<Exact<ValidatedRampPreset, RampPreset>>;

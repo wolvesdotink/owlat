@@ -9,6 +9,7 @@ import {
 	paceDecisionReasonValidator,
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
+	rampPresetValidator,
 } from '../delivery/deliverabilityValidators';
 
 /**
@@ -163,6 +164,15 @@ export const deliverabilityRoutingTables = {
 		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
 		paceDeferredAt: v.optional(v.number()),
 		decidedAt: v.optional(v.number()),
+		// THE OPERATOR'S HAND ON THE RAMP (P3-6), and both fields are deliberately
+		// one-directional. `operatorPausedAt` suppresses INCREASES only and
+		// `operatorPinnedShare` caps them; neither can block a retreat, because a
+		// safety response an operator can switch off is not a safety response. The
+		// controller's rungs are untouched — `applyRampCellControl` rewrites the
+		// decision AFTER the pure function has made it, so the audit row records
+		// what the operator's setting actually produced.
+		operatorPausedAt: v.optional(v.number()),
+		operatorPinnedShare: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),
 		expiresAt: v.number(),
 		updatedAt: v.number(),
@@ -236,6 +246,15 @@ export const deliverabilityRoutingTables = {
 		// admin-visible, mirroring `mtaIpReadinessAlerts` — the shipped shape for a
 		// delivery incident an operator must see.
 		adminNotice: v.optional(v.string()),
+		// THE NOTICE'S OWN CLOCK, and the only reason it exists as a second column
+		// is that Convex indexes cannot be partial. Written ONLY on a row that
+		// carries an `adminNotice`, and always equal to `at` on those rows, so the
+		// `by_org_notice` index below contains exactly the retreats and nothing
+		// else. Without it the feed can only take a fixed page of `by_org_time` —
+		// which the controller fills with roughly a hundred no-op rows a day, so a
+		// retreat older than a day or two could never appear in a screen whose
+		// whole promise (D12) is that every decrease surfaces here.
+		noticeAt: v.optional(v.number()),
 		frozenUntil: v.optional(v.number()),
 		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION (plan D3, D12). One
 		// controller decides both dials in one tick, so one row records both —
@@ -266,5 +285,31 @@ export const deliverabilityRoutingTables = {
 		// index is keyed by organization first and there is no unscoped variant for
 		// a caller to reach for.
 		.index('by_org_cell_time', ['organizationId', 'cell', 'at'])
+		// THE LAST DECISION PER CELL, in ONE bounded page. The Cells and Controls
+		// screens want fifteen cells' most recent rows; scanning `by_org_cell_time`
+		// once per cell reads fifteen pages to build one grid.
+		.index('by_org_time', ['organizationId', 'at'])
+		// THE ADMIN NOTIFICATION FEED (plan D12). `noticeAt` is set only on rows
+		// carrying an `adminNotice`, so this index holds exactly the retreats and a
+		// range read over it never pages past a no-op.
+		.index('by_org_notice', ['organizationId', 'noticeAt'])
 		.index('by_expires_at', ['expiresAt']),
+
+	// The per-stream aggressiveness preset (plan D9, P3-6).
+	//
+	// A ROW ONLY WHERE A HUMAN CHOSE ONE. Absence is the default — `balanced`
+	// with a relay, `conservative` standalone (plan D14) — so a deployment that
+	// never opens the Controls screen has no rows here and runs exactly the
+	// shipped constants. The preset is a SUBSTITUTION over `RAMP_STREAM_CONFIGS`
+	// (`applyRampPreset` in @owlat/shared), never a second constant table, and it
+	// can only make the ADVANCE cheaper or dearer: there is no field here that
+	// could touch the multiplicative decrease, the floor, the cooldown ladder or
+	// any hard stop.
+	rampStreamPresets: defineTable({
+		organizationId: v.string(),
+		stream: deliverabilityStreamValidator,
+		preset: rampPresetValidator,
+		updatedAt: v.number(),
+		updatedByUserId: v.string(),
+	}).index('by_org_stream', ['organizationId', 'stream']),
 };

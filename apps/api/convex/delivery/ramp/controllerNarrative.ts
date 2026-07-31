@@ -243,6 +243,18 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 		// DIRECTION too, for the same reason the two ceiling arms above do. "Reduced
 		// ... (1% -> 1%)" reads as a no-op sentence for what is actually a fresh
 		// breach, a fresh freeze and another rung of the cooldown ladder.
+		// THE OPERATOR'S OWN REASONS (P3-6). Each one names the HUMAN as the cause,
+		// because the worst thing an audit trail can do is present a person's
+		// decision as the controller's judgement — an operator who pinned a cell
+		// last month and forgot must be able to read why it stopped moving.
+		case 'operator_pause':
+			return `Held ${where} at ${percent(decision.share)}: this cell is paused by an operator. The gates are still measured and a retreat would still be applied — only the increase is held.`;
+		case 'operator_pin':
+			return `Held ${where} at ${percent(decision.share)}: an operator pinned this cell at that share. Unpin it on the Delivery controls screen to let the ramp continue.`;
+		case 'operator_force_advance':
+			return `Advanced ${where} by hand (${move}): an operator forced the share past the evidence. The gates did not authorise this move; the next evaluation measures the result and will retreat if it is bad.`;
+		case 'operator_phase_reset':
+			return `Reset ${where} to a phase rung by hand (${move}): an operator changed the phase ceiling. The clean streak restarts from zero and the ramp re-earns its way up.`;
 		case 'hard_bounce':
 		case 'deferral':
 		case 'complaint':
@@ -389,6 +401,16 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'degradation_ceiling':
 		case 'window_open':
 		case 'graduated':
+		// THE OPERATOR'S CONTROLS ARE SHARE-ONLY (P3-6). A pause, a pin, a forced
+		// advance and a phase reset all rewrite a SHARE decision; the pace ladder
+		// is never handed one, so these rungs cannot reach this dial. They join
+		// the share-only group for the same reason the ceilings do — and the
+		// compile-time exhaustiveness over `PaceDecisionReason` is what forced
+		// the question the moment the two vocabularies met.
+		case 'operator_pause':
+		case 'operator_pin':
+		case 'operator_force_advance':
+		case 'operator_phase_reset':
 			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}.`;
 	}
 }

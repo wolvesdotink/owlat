@@ -221,6 +221,10 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
+		"./deliverabilityIndependence": {
+			"types": "./src/deliverabilityIndependence.ts",
+			"import": "./src/deliverabilityIndependence.ts"
+		},
 		"./seedPlacement": {
 			"types": "./src/seedPlacement.ts",
 			"import": "./src/seedPlacement.ts"
