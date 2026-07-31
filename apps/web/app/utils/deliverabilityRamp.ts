@@ -215,6 +215,10 @@ const REASON_LABELS = {
 	building_confidence: 'Building a clean streak',
 	capacity_ceiling: 'Remaining warming capacity',
 	phase_ceiling: 'The phase ceiling',
+	// P3-8's cap: the substitution table lowers the phase ceiling a rung while an
+	// integration is missing, which is a DIFFERENT fact from having reached the
+	// ceiling this cell was granted — the operator can act on one and not the other.
+	degradation_ceiling: 'A ceiling lowered by a missing integration',
 	healthy: 'Nothing — every gate is green',
 	graduated: 'Nothing — the cell is graduated and pinned',
 	operator_pause: 'Your pause on this cell',
