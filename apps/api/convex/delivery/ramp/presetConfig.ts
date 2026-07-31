@@ -5,15 +5,16 @@
  * A SUBSTITUTION, NEVER A SECOND TABLE. `RAMP_STREAM_CONFIGS` remains the only
  * constant table in the ramp; a preset scales the additive step and adds clean
  * windows on top of K_CLEAN, and `balanced` is the identity — so a deployment
- * WITH A RELAY that has never opened the Controls screen runs byte-identical
- * constants to the ones it ran before this shipped.
+ * that has never opened the Controls screen runs byte-identical constants to the
+ * ones it ran before this shipped, standalone or not.
  *
- * A STANDALONE DEPLOYMENT DEFAULTS TO `conservative`, and that is deliberate
- * rather than incidental: `conservative` IS the plan's standalone substitution
- * (K_CLEAN 3 -> 5, step halved), applied HERE and nowhere else. `gateConfig.ts`
- * carries no second standalone table waiting to land, because applying the same
- * halving twice would compound it. The exact resulting constants are pinned by
- * fixture in `__tests__/controlOverride.test.ts`.
+ * A PRESET IS THE OPERATOR'S CHOICE, NEVER AN INFERENCE ABOUT THE DEPLOYMENT.
+ * What a STANDALONE deployment costs (K_CLEAN 3 -> 5, step halved) is the
+ * SUBSTITUTION TABLE's answer and is applied by `./degradation.ts` — see the
+ * note in `delivery/rampPresets.ts` for why defaulting the fallback to
+ * `conservative` here made the same fact halve the same step twice. The
+ * composition is pinned by fixture in
+ * `__tests__/presetDegradationComposition.test.ts`.
  *
  * WHAT A PRESET CANNOT REACH, by the shape of `RampPresetTuning` rather than by
  * a rule someone has to remember: the multiplicative decrease, the share floor,
@@ -32,10 +33,11 @@ export type RampPresetsByStream = Partial<Record<DeliverabilityStream, RampPrese
 /**
  * The config one stream runs under.
  *
- * `fallback` is the deployment's default (plan D14: `conservative` standalone,
- * `balanced` with a relay) and is a PARAMETER rather than a lookup, because the
- * thing that decides it — whether a reference transport exists — is a database
- * read the caller has already made and this module must never make.
+ * `fallback` is what a stream with no preset row runs, and it is a PARAMETER
+ * rather than a constant so the Controls screen can preview a preset the
+ * operator is considering without writing a row first. The controller passes
+ * `balanced` — the identity — because an unconfigured deployment has chosen
+ * nothing and only a choice belongs here.
  */
 export function rampConfigForStream(
 	stream: DeliverabilityStream,

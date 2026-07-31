@@ -391,7 +391,13 @@ export async function loadCellInput(
 		degradation,
 		input: {
 			cell,
-			config,
+			// THE DEGRADED CONFIG, not the preset-tuned one. The controller decides
+			// off `input.config` — `cleanWindowsRequired` gates the increase and
+			// `increaseStep` sizes it — so handing it the pre-table config would
+			// leave the substitution reaching the GATE EVALUATION and nothing else,
+			// and the audit snapshot would report constants the tick never used.
+			// This is one config for the whole tick, by construction (plan D3, D12).
+			config: degradedConfig,
 			mix,
 			// THE CEILING CAP IS THE TABLE'S TOO (the Microsoft cell caps one rung
 			// lower while SNDS is absent). Passed as a BOUND rather than folded into

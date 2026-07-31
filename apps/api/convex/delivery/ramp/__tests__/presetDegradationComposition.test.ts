@@ -18,23 +18,24 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { rampConfigForStream } from '../presetConfig';
 import { degradedStreamConfig, resolveRampDegradation } from '../degradation';
+import { RAMP_FULLY_EQUIPPED, type RampIntegrationPresence } from '../degradationMatrix';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 
-const EQUIPPED = {
-	reference_transport: true,
-	google_postmaster: true,
-	microsoft_snds: true,
-	complaint_feedback_loop: true,
-	seed_mailboxes: true,
-	commercial_placement_api: true,
-} as const;
-
-const STANDALONE = { ...EQUIPPED, reference_transport: false } as const;
+/**
+ * The ONE integration these cases turn on, absent. Derived from the shipped
+ * equipped map rather than hand-listed, so a new table row cannot leave this
+ * fixture quietly claiming an integration is present that nobody has heard of.
+ */
+const STANDALONE: RampIntegrationPresence = {
+	...RAMP_FULLY_EQUIPPED,
+	reference_transport: false,
+};
 
 /** The controller's own composition: preset first, table last. */
-function composed(presence: typeof EQUIPPED, preset: 'conservative' | 'balanced' | 'aggressive') {
+function composed(presence: RampIntegrationPresence, preset: RampPreset) {
 	const degradation = resolveRampDegradation({ presence, provider: 'gmail' });
 	return degradedStreamConfig(rampConfigForStream('campaign', {}, preset), degradation);
 }
@@ -50,7 +51,7 @@ describe('an absent reference transport slows the ramp exactly once', () => {
 	});
 
 	it('leaves an equipped deployment on the shipped constants', () => {
-		const config = composed(EQUIPPED, 'balanced');
+		const config = composed(RAMP_FULLY_EQUIPPED, 'balanced');
 		expect(config.increaseStep as number).toBeCloseTo(shipped.increaseStep as number, 10);
 		expect(config.cleanWindowsRequired).toBe(shipped.cleanWindowsRequired);
 	});
