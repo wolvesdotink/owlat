@@ -111,6 +111,31 @@ describe('DNSBL fully listed pool halts and alerts', () => {
 		).toBe(false);
 		expect(await selectIp(redis, 'campaign', config.ipPools)).toBe('10.0.0.2');
 	});
+
+	it('alerts once for a standing halt, and again once the halt has lifted and returned', async () => {
+		const haltAlerts = () =>
+			vi
+				.mocked(notifyConvex)
+				.mock.calls.map((call) => call[0])
+				.filter((event) => event.event === 'all_ips_blocked').length;
+		const { deps } = createRecordingLookupDeps();
+
+		allIpsListedOnSpamhaus();
+		await runDnsblCheck(redis, config, deps);
+		// A halt persists for as long as delisting takes; a critical alert every
+		// 15 minutes would bury the one the operator has to act on.
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(1);
+
+		// Delisted: the halt lifts, so the next one is a new event, not a repeat.
+		vi.mocked(resolve4).mockRejectedValue(dnsError('ENOTFOUND'));
+		await runDnsblCheck(redis, config, deps);
+		expect(await redis.get('mta:emergency:all_ips_blocked')).toBeNull();
+
+		allIpsListedOnSpamhaus();
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(2);
+	});
 });
 
 describe('DNSBL halt alert survives Convex ingress for a large pool', () => {
