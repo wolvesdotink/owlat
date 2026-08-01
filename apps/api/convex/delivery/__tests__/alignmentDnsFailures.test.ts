@@ -74,6 +74,40 @@ describe('observeTxt failure mapping', () => {
 		expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
 	});
 
+	/**
+	 * THE LOSER OF THE RACE IS DRAINED. The bounded resolver retries for twice
+	 * the deadline, so a dead nameserver rejects long after the observation was
+	 * answered and the sweep moved on. That rejection must not surface: an
+	 * unobserved one in the Node action runtime takes the whole hourly sweep down
+	 * mid-page, and the domains after it wait for the next run.
+	 */
+	it('does not surface a rejection that arrives after the deadline was answered', async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown): void => {
+			unhandled.push(reason);
+		};
+		process.on('unhandledRejection', onUnhandled);
+		try {
+			const observation = await observeTxt(
+				'acme.com',
+				{
+					resolveTxt: () =>
+						new Promise<string[][]>((_resolve, reject) => {
+							setTimeout(() => reject(new Error('ESERVFAIL after two tries')), 30);
+						}),
+				},
+				5
+			);
+			expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
+			// Past the resolver's own rejection, and past the microtask turn an
+			// unhandled rejection would be reported on.
+			await new Promise((resolve) => setTimeout(resolve, 80));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off('unhandledRejection', onUnhandled);
+		}
+	});
+
 	it('treats an unrecognised or code-less failure as UNKNOWN, not as absent', async () => {
 		expect(await observeTxt('acme.com', failing('EBADSOMETHING'))).toEqual({
 			state: 'unknown',
