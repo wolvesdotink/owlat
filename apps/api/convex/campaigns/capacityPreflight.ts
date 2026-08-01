@@ -172,6 +172,18 @@ async function measureCampaignCapacity(
 		return { capacityKnown: false, fits: true, unknownReason: capVerdict.why };
 	}
 
+	// ONLY THE OWN ARM MEETS THE CAP. Under a split route (`adaptive_mix`) the
+	// reference arm's share of the audience relays out unmetered, so the warming
+	// projection bounds `ownArmShare x audience` and nothing more — measuring the
+	// whole audience against it would quote a 95%-relayed campaign a multi-day
+	// plan it does not need (D2). The share is a FLOOR (see `warmingCapGate`), so
+	// the scaled count is a lower bound on own-arm volume and refusing on it stays
+	// sound; the plan that comes back is the own MTA's schedule, which is what
+	// paces the campaign, and rounds UP so a fractional message is never dropped.
+	// Every non-splitting strategy answers 1 and this is the identity.
+	const ownArmVolume = (recipients: number): number =>
+		Math.ceil(recipients * capVerdict.ownArmShare);
+
 	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
 	// `startsAt` (NaN, a timestamp in the past) collapses to `now`, so neither
 	// the projection nor the pure planner has to defend against it.
@@ -202,9 +214,13 @@ async function measureCampaignCapacity(
 	// Bound the CANDIDATE count by CAPACITY, not by audience size. The verdict
 	// is already decided once the count exceeds everything the deployment could
 	// possibly send across the whole plan window, so there is no reason to stream
-	// tens of thousands of audience documents inside a send mutation.
+	// tens of thousands of audience documents inside a send mutation. The ceiling
+	// is stated in RECIPIENTS, so a split route has to count `1/share` as many of
+	// them before the own arm's volume can reach that capacity.
 	const counted = await countAudience(ctx, options.audience, {
-		ceiling: totalPlannableCapacity(remainingCapacityByDay) + 1,
+		ceiling: Math.ceil(
+			(totalPlannableCapacity(remainingCapacityByDay) + 1) / capVerdict.ownArmShare
+		),
 		documentBudget: AUDIENCE_DOCUMENT_BUDGET,
 	});
 
@@ -230,7 +246,7 @@ async function measureCampaignCapacity(
 			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 			now: startsAt,
 		});
-		if (counted.eligible <= horizonCapacity) {
+		if (ownArmVolume(counted.eligible) <= horizonCapacity) {
 			return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
 		}
 	}
@@ -239,7 +255,7 @@ async function measureCampaignCapacity(
 		// `eligible` is a lower bound whenever the count did not run to completion,
 		// and refusing on a lower bound is sound: a bigger audience fits even less
 		// well.
-		audienceSize: counted.eligible,
+		audienceSize: ownArmVolume(counted.eligible),
 		remainingCapacityByDay,
 		maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 		now: startsAt,

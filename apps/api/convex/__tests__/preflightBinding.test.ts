@@ -26,6 +26,7 @@ import {
 	DAY_MS,
 	MIDNIGHT,
 	runPreflight,
+	seedCampaignCellShares,
 	seedCampaignRoute,
 	seedVerifiedRelayIdentity,
 	seedWarmingState,
@@ -43,8 +44,13 @@ import {
 } from '../campaigns/capacityPreflight';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const { sessionOrganizationMock } = await import('./sessionOrganizationMock');
-	return await sessionOrganizationMock();
+	const { sessionOrganizationMock, MOCK_SINGLETON_ORG } = await import('./sessionOrganizationMock');
+	return {
+		...(await sessionOrganizationMock()),
+		// The ramp cells the `adaptive_mix` suite seeds belong to a tenant, and the
+		// warming-cap gate resolves it exactly the way the dispatch path does.
+		getSingletonOrganizationId: vi.fn().mockResolvedValue(MOCK_SINGLETON_ORG),
+	};
 });
 
 const modules = import.meta.glob('../**/*.*s');
@@ -566,6 +572,107 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+});
+
+/**
+ * A SPLIT ROUTE IS JUDGED ON THE OWN ARM'S SHARE — and never on `EMAIL_PROVIDER`.
+ *
+ * `adaptive_mix` decides per recipient, and this gate has a whole audience and
+ * no recipient: the strategy therefore returns null, the resolver falls through
+ * to the env default, and a verdict read off that base route is a verdict read
+ * off an env var. Both directions of that reading do real damage, and the same
+ * 600-recipient audience against the same day-1 IP pins both.
+ */
+describe('pre-flight capacity gate — adaptive_mix splits the audience, the env does not', () => {
+	it('refuses the unfinishable own-arm campaign even when EMAIL_PROVIDER names the relay', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// The relay is configured and ready, but no cell has been ramped onto it:
+		// every recipient is still on the capped MTA. Reading `EMAIL_PROVIDER`
+		// here let exactly this campaign through, to expire its tail in the queue.
+		process.env['EMAIL_PROVIDER'] = 'ses';
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+		expect(result.capacityPlan?.days).toBe(5);
+	});
+
+	it('measures a half-relayed campaign against the half that meets the cap', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		process.env['EMAIL_PROVIDER'] = 'ses';
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.5);
+
+		// 300 own-arm messages against 500 of horizon capacity: it fits, and it
+		// fits MEASURABLY — `capacityKnown: true` is what separates this from the
+		// old "the env says SES, so nothing is known" pass.
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	it('never quotes a multi-day plan to a 95%-relayed campaign', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// `EMAIL_PROVIDER` is the own MTA (the suite default), which is what used
+		// to refuse this send over five days — for the 30 messages the own arm
+		// actually carries, all of which fit today.
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.05);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	it('holds and allows when the mix leaves the own arm carrying nothing', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'not_own_mta',
+		});
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 });
 

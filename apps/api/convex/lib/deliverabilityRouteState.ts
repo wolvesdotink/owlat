@@ -32,6 +32,8 @@ import {
 	resolveOwnShare,
 	type DeliverabilityCell,
 	type DeliverabilitySignalProvider,
+	type DeliverabilityStream,
+	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import type { MixCellState } from './sendProviders/strategies';
 
@@ -107,6 +109,49 @@ export async function loadRouteStateCell(
 export function mixCellStateFor(cell: RouteStateCellRows): MixCellState {
 	const shareRow = cell.perStream ?? cell.streamless;
 	return { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion };
+}
+
+/** A cell the organization has no row for at all: the un-migrated default. */
+export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = { perStream: null, streamless: null };
+
+/**
+ * Every cell of ONE stream — BOTH rows each — from a single indexed scan.
+ *
+ * `loadRouteStateCell` answers for one destination provider and costs two
+ * reads; a caller that has to judge a WHOLE stream would pay ten. The campaign
+ * warming-cap gate is exactly that caller: it judges an audience, not a
+ * recipient, so it has no single cell to look up.
+ *
+ * Unlike `loadRouteStatesByCell` the stream-less rows are KEPT, because they are
+ * the other half of the `perStream ?? streamless` share resolution: dropping
+ * them would read a cell whose controller row does not exist yet as
+ * un-degraded, while the MTA snapshot says the relay is engaged for it.
+ *
+ * Providers with no row are simply absent from the map — a reader defaults them
+ * to {@link EMPTY_ROUTE_STATE_CELL} rather than to a fabricated row.
+ */
+export async function loadStreamRouteStateCells(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string,
+	stream: DeliverabilityStream
+): Promise<Map<DestinationProviderKey, RouteStateCellRows>> {
+	const rows = await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
+		.take(ROUTE_STATE_SCAN_LIMIT);
+	const cells = new Map<DestinationProviderKey, RouteStateCellRows>();
+	for (const row of rows) {
+		const destinationProvider = row.destinationProvider;
+		// The pool-wide `'all'` slice is infrastructure, not a cell.
+		if (!isDestinationProviderKey(destinationProvider)) continue;
+		// Another stream's controller row says nothing about this one.
+		if (row.stream !== undefined && row.stream !== stream) continue;
+		const cell = cells.get(destinationProvider) ?? { perStream: null, streamless: null };
+		if (row.stream === undefined) cell.streamless = row;
+		else cell.perStream = row;
+		cells.set(destinationProvider, cell);
+	}
+	return cells;
 }
 
 /**
