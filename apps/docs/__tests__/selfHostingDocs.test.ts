@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { selectRuntimeEnvVars } from '@owlat/shared/convexRuntimeEnv';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, relative } from 'node:path';
@@ -180,12 +181,57 @@ describe('self-host template: deliverability operator knobs', () => {
 		});
 	}
 
-	it('states that leaving the knobs unset degrades measurement rather than blocking', () => {
-		// The one thing an operator template must not imply is that an unset
-		// optional knob is a broken install.
-		expect(selfhostEnv).toMatch(/degraded-measurement/);
-		expect(selfhostEnv).toMatch(/[Uu]nset changes nothing and blocks nothing/);
-		expect(selfhostEnv).toMatch(/never blocks a send/);
-		expect(selfhostEnv).toMatch(/supported configuration/);
+	/**
+	 * The template's blocks are separated by `── … ──` rules; a phrase found
+	 * anywhere in the file would let one block lose its reassurance while another
+	 * block's copy keeps the assertion green.
+	 */
+	const blockContaining = (key: string) => {
+		const index = selfhostEnv.indexOf(key);
+		if (index === -1) throw new Error(`${key} is not in .env.selfhost.example`);
+		const rules = [...selfhostEnv.matchAll(/^# ──.*$/gm)];
+		const start = rules.filter((m) => m.index < index).at(-1)?.index ?? 0;
+		const end = rules.find((m) => m.index > index)?.index ?? selfhostEnv.length;
+		return selfhostEnv.slice(start, end);
+	};
+
+	it.each([
+		['MTA_RETURN_PATH_RELAY_SPF', /[Uu]nset changes nothing and blocks nothing/],
+		['MTA_BIMI_LOGO_URL', /never blocks a send/],
+		['SNDS_DATA_FEED_URLS', /supported configuration/],
+	])(
+		'%s says in its own block that leaving it unset costs measurement, not sends',
+		(key, phrase) => {
+			// The one thing an operator template must not imply is that an unset
+			// optional knob is a broken install.
+			expect(blockContaining(key)).toMatch(phrase);
+		}
+	);
+
+	it('warns that a named instance\'s "__" credentials are not pushed by setup', () => {
+		// SEND_TRANSPORT_INSTANCES rides the push; the suffixed credentials it
+		// names cannot (the suffix is operator-invented, so nothing enumerates
+		// them). An operator who set both here would get a declared transport that
+		// fails closed on its first send with nothing to read about why.
+		const block = blockContaining('SEND_TRANSPORT_INSTANCES');
+		expect(block).toMatch(/convex env set SMTP_RELAY_HOST__BACKUP/);
+		expect(block).toMatch(/DO NOT GO IN THIS FILE/);
+		expect(block).not.toMatch(/^# SMTP_RELAY_\w+__BACKUP=/m);
+	});
+
+	it('pushes the instance declaration and none of its suffixed credentials', () => {
+		// The behaviour the warning describes. If a later piece teaches
+		// selectRuntimeEnvVars to project the suffixed keys, this fails and the
+		// template text above must be retired with it.
+		const pushed = new Map(
+			selectRuntimeEnvVars({
+				SEND_TRANSPORT_INSTANCES: 'smtp#backup',
+				SMTP_RELAY_HOST__BACKUP: 'smtp.postmarkapp.com',
+				SMTP_RELAY_USERNAME__BACKUP: 'apikey',
+				SMTP_RELAY_PASSWORD__BACKUP: 'secret',
+			})
+		);
+		expect(pushed.get('SEND_TRANSPORT_INSTANCES')).toBe('smtp#backup');
+		expect([...pushed.keys()].filter((key) => key.includes('__BACKUP'))).toEqual([]);
 	});
 });
