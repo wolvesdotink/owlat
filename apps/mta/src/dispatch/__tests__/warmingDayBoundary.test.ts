@@ -28,6 +28,7 @@ import {
 	warmingProviderDailyStatsKey,
 	warmingProviderStateKey,
 } from '../../intelligence/warmingKeys.js';
+import { recordProviderWarmingSend } from '../../intelligence/warmingProviderStore.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { EmailJob } from '../../types.js';
 
@@ -149,12 +150,6 @@ describe('warming records book into the attempt day, not the apply day', () => {
 		// against yesterday's sends would throttle the first campaign of the day.
 		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
 		expect(await redis.get(warmingBulkDailyKey(IP, APPLIED_DAY))).toBeNull();
-		// The per-provider counter rolls on its own stored day, so the stamped day
-		// must be what the state records — otherwise the next attempt reads the
-		// counter as belonging to a finished day and starts the cap over.
-		expect(await redis.hget(warmingProviderStateKey(IP, 'gmail'), 'sentTodayReset')).toBe(
-			GATED_DAY
-		);
 	});
 
 	it('counts a pressure deferral and its volume-pressure verdict against the same day', async () => {
@@ -166,5 +161,52 @@ describe('warming records book into the attempt day, not the apply day', () => {
 		expect(await redis.hget(stats, 'deferred')).toBe('1');
 		expect(await redis.hget(stats, 'pressure')).toBe('1');
 		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', APPLIED_DAY))).toBe(0);
+	});
+
+	it('never rewinds the live day’s rolling counter to book a late effect', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// The new day opens and takes traffic before the crashed worker's successor
+		// gets round to the journalled effect from the finished one.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		for (let index = 0; index < 3; index += 1) {
+			await recordProviderWarmingSend(
+				redis,
+				{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+				'campaign'
+			);
+		}
+
+		await replayWarmingEffects(reduction);
+
+		// `sentToday`/`sentTodayReset` is ONE rolling slot, not a per-day key: a
+		// stale stamp would zero it and hand the IP its whole per-provider
+		// allowance for the live day a second time.
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('3');
+		// The late send is not lost: its own day's stats hash — what the ramp
+		// evaluates — still counts it.
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+	});
+
+	it('rolls the counter forward for the first send of a newer day', async () => {
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: GATED_DAY },
+			'campaign'
+		);
+
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+			'campaign'
+		);
+
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('1');
 	});
 });
