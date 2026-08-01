@@ -4,9 +4,11 @@
  * grep, and a grep that stops matching is indistinguishable from a codebase
  * that stopped violating it.
  *
- * The bracket cases are why this file exists: `process.env['FOO']` is the same
- * read as `process.env.FOO` and is the form a runtime-computed key takes, which
- * is precisely what the EnvKey union exists to prevent.
+ * The non-dotted cases are why this file exists: bracket, destructuring and
+ * optional-chaining reads are the same read as `process.env.FOO`, and the first
+ * two are the forms a runtime-computed key takes — precisely what the EnvKey
+ * union exists to prevent. The rule matches the object, not any access syntax,
+ * so the failing set below is a sample of an open class rather than the list.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -89,10 +91,38 @@ describe('check-env.sh', () => {
 		).toBe(1);
 	});
 
-	it('exempts lib/env.ts itself in both access forms (it is the one reader)', () => {
+	it('fails a destructured process.env read', () => {
+		expect(
+			lintTree('destructured', {
+				'delivery/poller.ts': 'const { SNDS_DATA_FEED_URLS } = process.env;\n',
+			})
+		).toBe(1);
+	});
+
+	it('fails an optional-chained process.env read', () => {
+		expect(
+			lintTree('optional-chain', {
+				'delivery/poller.ts': 'const url = process.env?.SNDS_DATA_FEED_URLS;\n',
+			})
+		).toBe(1);
+	});
+
+	it('fails an enumeration of process.env', () => {
+		// No key at all, so no union to violate — and every value in the sandbox
+		// reachable without one.
+		expect(
+			lintTree('enumerated', {
+				'delivery/poller.ts': 'const all = Object.entries(process.env);\n',
+			})
+		).toBe(1);
+	});
+
+	it('exempts lib/env.ts itself in every access form (it is the one reader)', () => {
 		expect(
 			lintTree('env-module', {
-				'lib/env.ts': 'export const get = (k: string) => process.env[k] ?? process.env.FALLBACK;\n',
+				'lib/env.ts':
+					'const { NODE_ENV } = process.env;\n' +
+					'export const get = (k: string) => process.env[k] ?? process.env.FALLBACK ?? NODE_ENV;\n',
 			})
 		).toBe(0);
 	});
