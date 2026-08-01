@@ -164,6 +164,50 @@ export function seedPlacementGate(): DeliverabilityDashboardGate {
 	};
 }
 
+/** The seed gate CLEAN — the sentence a healthy placement sweep renders. */
+export function seedPlacementPass(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'pass',
+		reason: 'within_threshold',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 10,
+			referenceSample: 10,
+			minSample: 8,
+			ownRate: 1,
+			referenceRate: 1,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/**
+ * The seed gate's COMPARATIVE breach: both sweeps are large enough, and the own
+ * arm is behind the relay by more than the tolerance. The two sample sizes are
+ * the only numbers this verdict may quote.
+ */
+export function seedPlacementReferenceBreach(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'fail',
+		reason: 'reference_tolerance_breached',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 10,
+			referenceSample: 12,
+			minSample: 8,
+			ownRate: 0.9,
+			referenceRate: 1,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
 /** The seed gate BELOW its mailbox floor — the hold sentence, in mailboxes. */
 export function seedPlacementHold(): DeliverabilityDashboardGate {
 	return {

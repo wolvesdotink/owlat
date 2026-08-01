@@ -134,6 +134,42 @@ function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
 	return gate === 'seed_placement' ? 'seed mailboxes' : 'sends';
 }
 
+/**
+ * THE SEED GATE'S DECIDED SENTENCE — status words and MAILBOX COUNTS, and no
+ * share of anything (plan D17).
+ *
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and the two modules that produce the
+ * reading enforce that on their own side: `seedPlacementGate.ts` keeps both
+ * arms' shares inside itself and hands out a STATUS, and `placementAdapter.ts`
+ * takes COUNTS, never a percentage, from a commercial panel. Rendering the same
+ * verdict as "85.00% over 10 seed mailboxes, against a limit of 90.00%" undoes
+ * both: it invites an operator to read one mailbox as ten percentage points, to
+ * chase the gap between two five-probe sweeps, and to treat a number with a
+ * ±10pp resolution as a measurement of their inbox placement.
+ *
+ * The mailbox COUNT stays, because it is the honesty input — how thin the sweep
+ * was is exactly what a reader needs to weigh the status beside it.
+ */
+function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
+	const mailboxes = formatNumber(gate.measurement.ownSample);
+	switch (gate.reason) {
+		case 'within_threshold':
+			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox.`;
+		case 'reference_tolerance_breached':
+			return `Fewer of the ${mailboxes} seed mailboxes reached the inbox than of the ${formatNumber(gate.measurement.referenceSample ?? 0)} the comparison transport swept.`;
+		case 'trailing_baseline_breached':
+			return `Fewer of the ${mailboxes} seed mailboxes reached the inbox than this cell's own recent sweeps did.`;
+		case 'absolute_threshold_breached':
+			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox — they were filtered to spam or not found in any folder.`;
+		default:
+			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
+			// seed gate has no other decided or halting outcome today, and a reason
+			// added later gets the status word and the sweep size until it earns its
+			// own sentence. That sentence can be thin; it cannot be wrong.
+			return `${gateStatusLabel(gate.status)} — this check swept ${mailboxes} seed mailboxes.`;
+	}
+}
+
 export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const { measurement } = gate;
 	const unit = sampleUnit(gate.gate);
@@ -180,6 +216,9 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			}
 		}
 	}
+	// THE VERDICT THAT MAY NOT QUOTE A RATE AT ALL — decided BEFORE any rate is
+	// formatted, so the D17 sentence cannot pick one up by accident.
+	if (gate.gate === 'seed_placement') return seedPlacementExplanation(gate);
 	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
 	const threshold = formatPercentage(measurement.thresholdRate, 2);
 	const reference =
@@ -187,8 +226,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// THE VERDICT WHOSE SENTENCE IS NOT A RATE-AGAINST-A-LIMIT AT ALL. The
 	// block-message hard stop counts CLASSIFIED SMTP RESPONSES (see `ownSample` in
 	// the server's `gateTypes.ts`), and it reads as a share OF those responses
-	// rather than as a rate over a sample — so it gets its own whole sentence, not
-	// just its own unit noun (`sampleUnit` above covers the seed gate that way).
+	// rather than as a rate over a sample — so it gets its own whole sentence.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
 		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
 	}

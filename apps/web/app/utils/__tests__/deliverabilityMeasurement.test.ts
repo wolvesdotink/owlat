@@ -11,6 +11,11 @@
  * whole sample is ten mailboxes — is a number the operator would act on and be
  * wrong about.
  *
+ * AND THE SEED GATE MAY NOT QUOTE A RATE AT ALL (plan D17). Its unit is right
+ * and its sentence is still a gauge if it prints a share against a threshold, so
+ * the placement suite below asserts the ABSENCE of one alongside the words that
+ * replace it.
+ *
  * The hold vocabulary is covered here too, because the switch is exhaustive on
  * purpose: a new `RampGateHoldReason` must arrive with its own sentence, and a
  * sentence that reads like a fault under a reason that is not one is the D2
@@ -25,6 +30,8 @@ import {
 	passingGate,
 	seedPlacementGate,
 	seedPlacementHold,
+	seedPlacementPass,
+	seedPlacementReferenceBreach,
 	seedPlacementReferenceHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
@@ -58,10 +65,9 @@ describe('gateExplanation — units', () => {
 	it('never calls a seed mailbox a send, on either sentence', () => {
 		// `evaluateSeedGate` denominates BOTH `ownSample` and `minSample` in seed
 		// mailboxes, so the decided sentence and the below-floor hold are both wrong
-		// under the generic noun — and a placement tripwire is a number the operator
-		// reads directly (D17).
+		// under the generic noun.
 		const decided = gateExplanation(seedPlacementGate());
-		expect(decided).toContain('over 10 seed mailboxes');
+		expect(decided).toContain('10 seed mailboxes');
 		expect(decided).not.toContain('sends');
 
 		const held = gateExplanation(seedPlacementHold());
@@ -74,9 +80,51 @@ describe('gateExplanation — units', () => {
 		expect(referenceHeld).toContain('3 of 5 seed mailboxes');
 		expect(referenceHeld).not.toContain('sends');
 	});
+});
 
-	it('still reports the placement limit the seed gate compared against', () => {
-		expect(gateExplanation(seedPlacementGate())).toContain('90.00%');
+/**
+ * D17 — SEEDS ARE A TRIPWIRE, NOT A GAUGE.
+ *
+ * `seedPlacementGate.ts` keeps both arms' shares inside itself and hands out a
+ * STATUS; `placementAdapter.ts` takes COUNTS from a commercial panel, "never a
+ * percentage". A screen that renders the same verdict as "85.00% … against a
+ * limit of 90.00%" is a third answer neither module would give — and one
+ * mailbox in a ten-probe sweep moves it ten points.
+ */
+describe('gateExplanation — the seed gate states a status, never a placement rate', () => {
+	const PERCENTAGE = /\d\s*%|\d+\.\d+%/;
+
+	it('quotes no share, threshold or tolerance on a decided placement verdict', () => {
+		for (const gate of [seedPlacementPass(), seedPlacementGate(), seedPlacementReferenceBreach()]) {
+			const sentence = gateExplanation(gate);
+			expect(sentence).not.toMatch(PERCENTAGE);
+			// The three numbers the shipped sentence leaked: the own share, the
+			// inbox floor, and the reference tolerance in percentage points.
+			expect(sentence).not.toContain('85');
+			expect(sentence).not.toContain('90');
+			expect(sentence).not.toContain('limit');
+		}
+	});
+
+	it('says a clean sweep reached the inbox, in mailboxes', () => {
+		const sentence = gateExplanation(seedPlacementPass());
+		expect(sentence).toContain('Effectively all of the 10 seed mailboxes reached the inbox');
+	});
+
+	it('says an absolute breach missed the inbox, and where those mailboxes went', () => {
+		const sentence = gateExplanation(seedPlacementGate());
+		expect(sentence).toContain('Some of the 10 seed mailboxes did not reach the inbox');
+		expect(sentence).toContain('filtered to spam or not found in any folder');
+	});
+
+	it('states the comparative breach as two sweeps, not as a gap in points', () => {
+		// `reference_tolerance_breached` is the one seed verdict about the RELAY,
+		// and the honest form of it is "fewer of ours than of theirs" — the size of
+		// the gap is exactly the number D17 forbids quoting.
+		const sentence = gateExplanation(seedPlacementReferenceBreach());
+		expect(sentence).toContain('Fewer of the 10 seed mailboxes reached the inbox');
+		expect(sentence).toContain('12 the comparison transport swept');
+		expect(sentence).not.toContain('Comparison transport:');
 	});
 });
 
