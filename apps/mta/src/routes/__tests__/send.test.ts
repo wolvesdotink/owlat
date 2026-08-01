@@ -20,6 +20,7 @@ import type Redis from 'ioredis';
 import RedisMock from 'ioredis-mock';
 import { createApp, type AuthContext } from '../../server.js';
 import { buildGroupKey, extractDomain } from '../../queue/groups.js';
+import { PRIORITY_BANDS } from '../../intelligence/engagementPriority.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 
 vi.mock('../../redis.js', () => ({
@@ -831,5 +832,42 @@ describe('POST /send — job construction and routing', () => {
 		const res = await post(buildApp(queue, fakeRedis()), validBody());
 
 		expect(res.status).toBe(500);
+	});
+});
+
+describe('POST /send — engagement score is validated, never cast', () => {
+	/** Enqueue one message and report the banding inputs it produced. */
+	async function enqueue(body: string) {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), body);
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as {
+			data: Record<string, unknown>;
+			orderMs: number;
+		};
+		return { score: arg.data['engagementScore'], orderMs: arg.orderMs };
+	}
+
+	it('bands a genuine score and carries it onto the job', async () => {
+		expect(await enqueue(validBody({ engagementScore: 90 }))).toEqual({
+			score: 90,
+			orderMs: PRIORITY_BANDS.HIGH,
+		});
+	});
+
+	it.each([
+		['a numeric string', validBody({ engagementScore: '90' })],
+		['a boolean', validBody({ engagementScore: true })],
+		['an object', validBody({ engagementScore: { valueOf: 90 } })],
+		['above the producer range', validBody({ engagementScore: 150 })],
+		['below the producer range', validBody({ engagementScore: -5 })],
+		// JSON has no NaN/Infinity literal, but an overflowing exponent parses to
+		// Infinity — which compares `>=` against every cut.
+		[
+			'an overflowing exponent',
+			validBody({ engagementScore: 0 }).replace('"engagementScore":0', '"engagementScore":1e999'),
+		],
+	])('drops %s and bands DEFAULT', async (_label, body) => {
+		expect(await enqueue(body)).toEqual({ score: undefined, orderMs: PRIORITY_BANDS.DEFAULT });
 	});
 });

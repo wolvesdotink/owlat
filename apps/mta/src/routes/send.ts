@@ -34,6 +34,17 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
+/**
+ * The engagement score reaches priority banding through `>=` comparisons, where
+ * a JSON string ("90") coerces and buys HIGH priority, and it is journalled onto
+ * the job. Only a finite number inside the producer's 0-100 range is a score;
+ * anything else is absent and bands DEFAULT.
+ */
+function engagementScoreOrAbsent(value: unknown): number | undefined {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+	return value >= 0 && value <= 100 ? value : undefined;
+}
+
 interface SendRequest {
 	messageId: string;
 	workAttemptId?: string;
@@ -54,7 +65,8 @@ interface SendRequest {
 	organizationId: string;
 	messageType?: 'campaign' | 'transactional' | 'automation';
 	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	engagementScore?: number;
+	/** Unvalidated JSON — read it through `engagementScoreOrAbsent`, never raw. */
+	engagementScore?: unknown;
 	dkimDomain: string;
 	/**
 	 * Postbox-only: the allowed-from set for the originating mailbox.
@@ -413,6 +425,7 @@ export function createSendHandler(
 		}
 
 		// Build job
+		const engagementScore = engagementScoreOrAbsent(body.engagementScore);
 		const job: EmailJob = {
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
@@ -429,7 +442,7 @@ export function createSendHandler(
 			ipPool: body.ipPool,
 			organizationId: body.organizationId,
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
-			engagementScore: body.engagementScore,
+			engagementScore,
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: mode === 'governed' ? body.routingReentry!.retryState.startedAt : Date.now(),
 			...(routingLease ? { routingLease } : {}),
@@ -444,7 +457,7 @@ export function createSendHandler(
 		// Calculate group key and priority
 		const domain = extractDomain(body.to);
 		const groupId = buildGroupKey(body.ipPool, domain);
-		const priority = mapToPriority(body.engagementScore);
+		const priority = mapToPriority(engagementScore);
 
 		try {
 			// GroupMQ identity is attempt-scoped. `job.data.messageId` remains the
