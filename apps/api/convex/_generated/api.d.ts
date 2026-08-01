@@ -367,6 +367,7 @@ import type * as delivery_tracking from "../delivery/tracking.js";
 import type * as delivery_trackingHttp from "../delivery/trackingHttp.js";
 import type * as delivery_unsubscribe from "../delivery/unsubscribe.js";
 import type * as delivery_unsubscribeHttp from "../delivery/unsubscribeHttp.js";
+import type * as delivery_unsubscribeOutcome from "../delivery/unsubscribeOutcome.js";
 import type * as delivery_unsubscribeQueries from "../delivery/unsubscribeQueries.js";
 import type * as delivery_warmingCapacity from "../delivery/warmingCapacity.js";
 import type * as delivery_warmingSync from "../delivery/warmingSync.js";
@@ -1265,6 +1266,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/trackingHttp": typeof delivery_trackingHttp;
   "delivery/unsubscribe": typeof delivery_unsubscribe;
   "delivery/unsubscribeHttp": typeof delivery_unsubscribeHttp;
+  "delivery/unsubscribeOutcome": typeof delivery_unsubscribeOutcome;
   "delivery/unsubscribeQueries": typeof delivery_unsubscribeQueries;
   "delivery/warmingCapacity": typeof delivery_warmingCapacity;
   "delivery/warmingSync": typeof delivery_warmingSync;

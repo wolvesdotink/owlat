@@ -22,7 +22,14 @@ import { startOfDayUtc } from '../lib/clock';
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
 export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
 
-/** The outcome vocabulary. One event bumps one general counter. */
+/**
+ * The outcome vocabulary. One event bumps one general counter.
+ *
+ * `unsubscribed` is the only one that is NOT a Send lifecycle transition — it is
+ * a recipient action on a contact-keyed public endpoint, joined back to a send
+ * by `delivery/unsubscribeOutcome.ts`. It is in this vocabulary because the
+ * standalone ramp's gate 3 is derived from its rate.
+ */
 export type TransportOutcomeEvent =
 	| 'sent'
 	| 'delivered'

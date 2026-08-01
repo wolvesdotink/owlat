@@ -51,6 +51,11 @@ export interface SeededSend {
 
 export interface SeedSendOptions {
 	readonly status?: Doc<'emailSends'>['status'];
+	/**
+	 * Reuse an existing contact instead of minting one — for a case that seeds a
+	 * contact SEVERAL sends and cares which one a join picks.
+	 */
+	readonly contactId?: Id<'contacts'>;
 	/** Omit to seed a send with NO assignment row (the seed-probe seam). */
 	readonly assignment?: {
 		readonly organizationId?: string;
@@ -71,9 +76,10 @@ export async function seedAssignedSend(
 	options: SeedSendOptions = {}
 ): Promise<SeededSend> {
 	const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-	const contact = createTestContact();
-	const contactId = await ctx.db.insert('contacts', contact);
-	const email = contact.email;
+	const existing = options.contactId ? await ctx.db.get(options.contactId) : null;
+	const contact = existing ?? createTestContact();
+	const contactId = existing?._id ?? (await ctx.db.insert('contacts', contact));
+	const email = contact.email ?? 'seeded@example.com';
 	const sendId = await ctx.db.insert(
 		'emailSends',
 		createTestEmailSend({

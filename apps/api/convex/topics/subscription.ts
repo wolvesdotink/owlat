@@ -94,6 +94,16 @@ interface UnsubscribeEffectFlags {
 	clearFormSubmissionConfirmations: boolean;
 	incrementCampaignUnsubscribedStats: boolean;
 	fireTopicUnsubscribedWebhook: boolean;
+	/**
+	 * Whether this unsubscribe is a RECEIVER-SIDE signal, i.e. the recipient
+	 * reached for a link in a message we sent. Only those belong in the
+	 * `unsubscribed` transport-outcome counter the standalone ramp's complaint
+	 * proxy is derived from (`delivery/unsubscribeOutcome.ts`): an operator's
+	 * bulk removal or an API caller's list hygiene says nothing about where our
+	 * mail landed, and counting it would retreat a cell's ramp for an action the
+	 * receivers never took.
+	 */
+	recordTransportUnsubscribeOutcome: boolean;
 }
 
 function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): UnsubscribeEffectFlags {
@@ -103,12 +113,17 @@ function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): Unsubscribe
 				clearFormSubmissionConfirmations: true,
 				incrementCampaignUnsubscribedStats: true,
 				fireTopicUnsubscribedWebhook: true,
+				recordTransportUnsubscribeOutcome: true,
 			};
 		case 'preferences_page':
 			return {
 				clearFormSubmissionConfirmations: true,
 				incrementCampaignUnsubscribedStats: false,
 				fireTopicUnsubscribedWebhook: true,
+				// The preference centre is only reachable through the footer link of
+				// a message we sent, so leaving from it is the same receiver-side
+				// signal the one-click target is.
+				recordTransportUnsubscribeOutcome: true,
 			};
 		case 'admin':
 		case 'public_api':
@@ -116,6 +131,7 @@ function effectFlagsForUnsubscribeSource(source: UnsubscribeSource): Unsubscribe
 				clearFormSubmissionConfirmations: false,
 				incrementCampaignUnsubscribedStats: false,
 				fireTopicUnsubscribedWebhook: false,
+				recordTransportUnsubscribeOutcome: false,
 			};
 	}
 }
@@ -443,6 +459,16 @@ async function applyUnsubscribeCallEffects(
 		// Off the synchronous path — see recordCampaignUnsubscribe.
 		await ctx.scheduler.runAfter(0, internal.topics.subscription.recordCampaignUnsubscribe, {
 			contactId: args.contactId,
+		});
+	}
+
+	if (flags.recordTransportUnsubscribeOutcome) {
+		// Scheduled for the same reason the campaign counter above it is: the
+		// RFC 8058 one-click response must not wait on an OCC retry of a shared
+		// outcome shard during a post-blast unsubscribe burst.
+		await ctx.scheduler.runAfter(0, internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			contactId: args.contactId,
+			at: args.now,
 		});
 	}
 
