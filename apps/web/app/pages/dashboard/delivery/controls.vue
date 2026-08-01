@@ -41,9 +41,18 @@ const {
 	error,
 	refetch,
 } = useOrganizationQuery(api.delivery.rampControlQueries.getRampControls);
-const { data: notices } = useOrganizationQuery(
-	api.delivery.rampControlQueries.listRampAdminNotices
-);
+/**
+ * THE SECOND READ NEEDS ITS OWN BOUNDARY, because its empty state is
+ * affirmatively GOOD NEWS. "Nothing has been pulled back" under a faulted query
+ * tells an operator the controller has not retreated when nobody knows whether
+ * it has — the one place on this screen where a lost read reads as reassurance.
+ */
+const {
+	data: notices,
+	isLoading: noticesLoading,
+	error: noticesError,
+	refetch: refetchNotices,
+} = useOrganizationQuery(api.delivery.rampControlQueries.listRampAdminNotices);
 
 const noticesHeadingId = useId();
 
@@ -264,11 +273,27 @@ async function changePreset(
 					<h2 :id="noticesHeadingId" class="text-base font-semibold text-text-primary">
 						Automatic pull-backs
 					</h2>
-					<DeliveryRampDecreaseNotices
-						class="mt-3"
-						:notices="notices ?? []"
-						:labelled-by="noticesHeadingId"
-					/>
+					<UiQueryBoundary
+						:loading="noticesLoading"
+						:error="noticesError"
+						error-title="Couldn’t load the automatic pull-backs"
+						error-message="This list could not be read. It is not shown empty: an empty list here means the controller has pulled nothing back, and that is not something to claim while the read is failing."
+						@retry="refetchNotices"
+					>
+						<template #loading>
+							<div
+								class="mt-3 h-16 animate-pulse rounded-lg bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading automatic pull-backs"
+							/>
+						</template>
+						<DeliveryRampDecreaseNotices
+							class="mt-3"
+							:notices="notices ?? []"
+							:labelled-by="noticesHeadingId"
+						/>
+					</UiQueryBoundary>
 				</UiCard>
 			</div>
 		</UiQueryBoundary>

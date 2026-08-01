@@ -32,10 +32,14 @@ const { data: domainRows, isLoading: domainsLoading } = useOrganizationQuery(
 );
 
 // Google Postmaster Tools: additive-only, so an unconnected account renders a
-// calm invitation rather than a warning.
-const { data: postmasterStatus, isLoading: postmasterLoading } = useOrganizationQuery(
-	api.delivery.postmaster.getPostmasterStatus
-);
+// calm invitation rather than a warning. The `error` goes down with it — a
+// faulted read must not render as "Not connected", which is a claim about the
+// deployment this page has not been able to check.
+const {
+	data: postmasterStatus,
+	isLoading: postmasterLoading,
+	error: postmasterError,
+} = useOrganizationQuery(api.delivery.postmaster.getPostmasterStatus);
 
 // Delivery-rate history for the trend chart.
 const { data: snapshots } = useOrganizationQuery(
@@ -311,6 +315,7 @@ const sendingDetail = computed(() => {
 			<DeliveryPostmasterComplianceCard
 				:status="postmasterStatus"
 				:is-loading="postmasterLoading"
+				:error="postmasterError"
 			/>
 
 			<!-- Domain table -->
