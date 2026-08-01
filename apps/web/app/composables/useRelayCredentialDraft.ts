@@ -204,13 +204,21 @@ export function useRelayCredentialDraft(
  * The sealed env patch, through the SHIPPED endpoint. The one place a credential
  * leaves the browser — the server allowlists the keys and seals the values, and
  * nothing it returns carries one back.
+ *
+ * `relayRemovalConfirmation` is the typed phrase, forwarded UNCHECKED: the
+ * endpoint decides whether this change removes a relay cells are still leaning
+ * on and whether the phrase matches, so a caller that never rendered the dialog
+ * meets the same rule (`RELAY_REMOVAL_CONFIRMATION`) as one that did.
  */
-export async function applyTransportEnv(draft: EmailStepDraft): Promise<ApplyTransportResponse> {
+export async function applyTransportEnv(
+	draft: EmailStepDraft,
+	relayRemovalConfirmation?: string
+): Promise<ApplyTransportResponse> {
 	// An empty base, so only the transport keys are sent; the backend allowlists
 	// and clears the rest.
 	const providerEnv = buildProviderEnv({}, draft);
 	return await $fetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
 		method: 'POST',
-		body: { providerEnv },
+		body: { providerEnv, relayRemovalConfirmation },
 	});
 }

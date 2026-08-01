@@ -7,9 +7,16 @@
  * leaning on. Neither may be reachable from a single click, so both come through
  * here — and "cannot fire from a single click" is enforced by the shape of the
  * component rather than by a habit: the confirm button is disabled until the
- * exact phrase has been typed, and the phrase is the same constant the SERVER
- * checks (`@owlat/shared/deliverabilityIndependence`), so a client that skipped
- * this dialog meets the same rule anyway.
+ * exact phrase has been typed.
+ *
+ * THE PHRASE IS NOT WHAT MAKES EITHER ACTION SAFE — THE SERVER CHECK IS. Both
+ * constants live in `@owlat/shared/deliverabilityIndependence` and both are
+ * re-checked where the change actually happens: `FORCE_ADVANCE_CONFIRMATION` by
+ * `delivery.rampControls.forceAdvanceCellShare`, and `RELAY_REMOVAL_CONFIRMATION`
+ * by `POST /api/delivery/apply-transport` (which is where a transport is
+ * repointed, from the editor AND from the connection wizard). A caller that
+ * never rendered this dialog meets the same rule; a dialog with no server check
+ * behind it is decoration, and this component may not be used that way.
  *
  * `aria-modal` IS A PROMISE ABOUT THE KEYBOARD, so this component keeps it:
  * focus moves into the phrase input on open, Tab cycles inside the dialog rather

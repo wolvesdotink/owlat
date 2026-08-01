@@ -5,17 +5,19 @@ import {
 	type OutboundTlsMode,
 } from '~/composables/setupOutboundTls';
 import {
-	emailStepIsValid,
 	validateEmailStep,
 	type EmailStepDraft,
 	type ProviderChoice,
 } from '~/composables/useSetupWizard';
+import { api } from '@owlat/api';
+import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
 	RELAY_PROVIDER_OPTIONS,
 	applyTransportEnv,
 	useRelayCredentialDraft,
 	type RelayProviderOption,
 } from '~/composables/useRelayCredentialDraft';
+import { formatShortDate } from '~/utils/formatters';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -24,6 +26,15 @@ import {
  * ever hand-editing `.env`. Existing secrets are NEVER shown — the credential
  * fields start blank, and applying re-enters them; the backend never returns a
  * value. Editing is an explicit action revealed behind "Change provider".
+ *
+ * ONE OF THESE CHANGES IS NOT LIKE THE OTHERS. Rotating a credential or moving
+ * between two relays keeps a second arm; switching to the built-in MTA
+ * DISCONNECTS the relay, and any cell the ramp has not graduated is still
+ * sending part of its mail through it. That traffic does not move gently — it
+ * all moves at once, which is the failure the ramp exists to avoid. So this
+ * button opens the same consequence dialog the Independence screen opens, with
+ * the same phrase, and the endpoint re-checks the phrase server-side: the dialog
+ * is what an operator sees, not what makes the change safe.
  */
 
 const props = defineProps<{
@@ -109,7 +120,18 @@ const draft = computed<EmailStepDraft>(() => ({
 const submitted = ref(false);
 const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
-const isValid = computed(() => emailStepIsValid(draft.value));
+
+/**
+ * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S. `validateEmailStep` also
+ * demands the sending IPs and the EHLO hostname behind their PTR records
+ * whenever the built-in MTA is chosen, because the SETUP wizard collects them on
+ * that same step. This editor swaps a transport on a running instance: it does
+ * not render those fields and could not write them anyway — they are not in
+ * `PROVIDER_ENV_KEYS`, and the apply endpoint rejects any key that is not.
+ * Gating Apply on a field the screen has no way to fill made "Run your own MTA"
+ * a button that did nothing at all, with no sentence to say why.
+ */
+const isValid = computed(() => Object.keys(errors.value).every((key) => key === 'mtaIdentity'));
 
 // Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
 const canTest = relay.canValidateLive;
@@ -135,20 +157,77 @@ async function handleTest() {
 	}
 }
 
+// ── Disconnecting the relay ──────────────────────────────────────────────────
+/**
+ * The same removal-safety read the Independence screen renders, so the two
+ * screens cannot disagree about which cells are still leaning on the relay. The
+ * consequence sentence is this screen's; the FACTS in it are the server's.
+ */
+const { data: independence } = useOrganizationQuery(
+	api.delivery.rampIndependence.getIndependenceSummary
+);
+
+const relayRemoval = computed(() => independence.value?.relayRemoval ?? null);
+
+/** Cells that would be moved onto the own server at once by applying this draft. */
+const dependentCells = computed<readonly string[]>(() => {
+	const removal = relayRemoval.value;
+	return removal === null || removal.kind === 'safe' ? [] : removal.dependentCells;
+});
+
+const projectedSafeAt = computed<number | null>(() => {
+	const removal = relayRemoval.value;
+	return removal === null || removal.kind === 'safe' ? null : removal.projectedSafeAt;
+});
+
+const referenceTransportId = computed<string | null>(
+	() => independence.value?.referenceTransportId ?? null
+);
+
+/**
+ * Would APPLYING THIS DRAFT pull a relay cells are still leaning on? Selecting
+ * the built-in MTA is the only draft that disconnects anything — the same rule
+ * the endpoint applies to the resulting env, so the dialog appears exactly when
+ * the server would demand the phrase.
+ */
+const removesReferenceArm = computed(
+	() =>
+		provider.value === 'mta' &&
+		referenceTransportId.value !== null &&
+		relayRemoval.value?.kind === 'unsafe'
+);
+
+const isRemovalDialogOpen = ref(false);
+
 // ── Apply ────────────────────────────────────────────────────────────────────
 const applying = ref(false);
 const applyError = ref('');
 const restartNotice = ref('');
 
-async function handleApply() {
+function handleApply(): Promise<void> | void {
 	submitted.value = true;
 	applyError.value = '';
 	restartNotice.value = '';
 	if (!isValid.value) return;
+	// NOTHING IS SENT YET. The button opens the dialog; only the typed phrase
+	// applies the change.
+	if (removesReferenceArm.value) {
+		isRemovalDialogOpen.value = true;
+		return;
+	}
+	return apply();
+}
+
+function confirmRelayRemoval(confirmation: string): Promise<void> {
+	isRemovalDialogOpen.value = false;
+	return apply(confirmation);
+}
+
+async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	applying.value = true;
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
-		const res = await applyTransportEnv(draft.value);
+		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
 		if (!res.ok) {
 			applyError.value = res.message;
 			return;
@@ -171,6 +250,7 @@ async function handleApply() {
 
 function cancel() {
 	isEditing.value = false;
+	isRemovalDialogOpen.value = false;
 	submitted.value = false;
 	testResult.value = null;
 	applyError.value = '';
@@ -372,6 +452,30 @@ function cancel() {
 				</UiButton>
 				<UiButton variant="ghost" :disabled="applying || testing" @click="cancel">Cancel</UiButton>
 			</div>
+
+			<!-- The one transport change that can lose reputation names what it costs. -->
+			<DeliveryRampConfirmDialog
+				:open="isRemovalDialogOpen"
+				title="Disconnect the relay?"
+				:phrase="RELAY_REMOVAL_CONFIRMATION"
+				confirm-label="Disconnect and switch to my own MTA"
+				:busy="applying"
+				@cancel="isRemovalDialogOpen = false"
+				@confirm="confirmRelayRemoval"
+			>
+				<template #consequence>
+					<p data-testid="transport-removal-consequence">
+						{{ dependentCells.length }} cells have not graduated yet. Switching to your own MTA moves
+						every message they currently send through {{ referenceTransportId }} onto your own
+						server immediately — not gradually — and the reputation that transport has built for
+						your domain stops being available to fall back on.
+					</p>
+					<p v-if="projectedSafeAt !== null" data-testid="transport-removal-dialog-date">
+						On the current pace, waiting until about {{ formatShortDate(projectedSafeAt) }} would
+						avoid that entirely.
+					</p>
+				</template>
+			</DeliveryRampConfirmDialog>
 		</div>
 
 		<div v-else class="px-6 py-5">

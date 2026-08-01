@@ -81,9 +81,10 @@ const projectedSafeAt = computed(() => {
 
 function confirmRelayRemoval(): void {
 	isRemovalDialogOpen.value = false;
-	// The removal itself lives with the transport's own configuration; this
-	// screen owns the CONSEQUENCE, which is the part the transport screen has no
-	// way to know about.
+	// THIS ROUTE ONLY NAVIGATES, and it is not what makes the removal safe: the
+	// change itself happens on the config screen, whose apply path opens this same
+	// dialog and whose endpoint re-checks the phrase server-side. The typed phrase
+	// here is what stops "Disconnect the relay…" reading as a menu item.
 	void navigateTo('/dashboard/delivery/config');
 }
 </script>
