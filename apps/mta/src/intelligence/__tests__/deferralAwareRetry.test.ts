@@ -174,6 +174,7 @@ describe('deferral-aware retry', () => {
 				ip,
 				eligibilityGeneration: 0,
 				providerVolumePressure,
+				utcDate: '2026-03-01',
 				durationMs: 42,
 			};
 		}

@@ -12,6 +12,7 @@ import type { EmailJobResult } from '../types.js';
 import type { CtxWithProviderPressure } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { utcDateKey } from '../intelligence/warmingKeys.js';
 import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
@@ -154,7 +155,7 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
-		normalizeAttemptSnapshot(entry['attempt']);
+		normalizeAttemptSnapshot(entry['attempt'], entry['reservedAt'] as number);
 		return entry as unknown as InFlightSmtpOutcome;
 	}
 	if (entry['state'] === 'effects_applied') {
@@ -174,16 +175,23 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 	) {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
-	normalizeAttemptSnapshot(entry['attempt']);
+	normalizeAttemptSnapshot(entry['attempt'], entry['completedAt'] as number);
 	return entry as unknown as CompletedSmtpOutcome;
 }
 
 /** Fill in fields added after an entry was written, so a replay never sees a hole. */
-function normalizeAttemptSnapshot(value: unknown): void {
+function normalizeAttemptSnapshot(value: unknown, attemptedAtMs: number): void {
 	if (!value || typeof value !== 'object') return;
 	const attempt = value as Record<string, unknown>;
 	if (typeof attempt['providerVolumePressure'] !== 'number') {
 		attempt['providerVolumePressure'] = 0;
+	}
+	// Entries written before the warming day was pinned to the attempt. The
+	// journal's own reading for this attempt is the closest available stand-in
+	// for the day the cap gates measured — and unlike the current wall clock it
+	// is stable across replays, which is the whole point of carrying it.
+	if (typeof attempt['utcDate'] !== 'string') {
+		attempt['utcDate'] = utcDateKey(attemptedAtMs);
 	}
 }
 
@@ -208,6 +216,11 @@ function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
 		attempt['providerVolumePressure'] !== undefined &&
 		typeof attempt['providerVolumePressure'] !== 'number'
 	) {
+		return false;
+	}
+	// Same tolerance for the attempt's warming day, added in the same spirit:
+	// a legacy entry carries none and is normalized, never rejected.
+	if (attempt['utcDate'] !== undefined && typeof attempt['utcDate'] !== 'string') {
 		return false;
 	}
 	const destination = attempt['destination'];
@@ -291,6 +304,7 @@ export async function reserveSmtpOutcome(
 			ip: attempt.ip,
 			eligibilityGeneration: attempt.eligibilityGeneration,
 			providerVolumePressure: attempt.providerVolumePressure,
+			utcDate: attempt.utcDate,
 		},
 	};
 	const raw = JSON.stringify(entry);

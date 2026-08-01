@@ -173,18 +173,21 @@ describe('applyEffects — per-effect dispatch', () => {
 					result: 'send',
 					providerKey: 'gmail',
 					pool: 'campaign',
+					utcDate: '2026-03-01',
 				},
 				{
 					kind: 'warming_record',
 					ip: '10.0.0.2',
 					result: 'bounce',
 					providerKey: 'gmail',
+					utcDate: '2026-03-01',
 				},
 				{
 					kind: 'warming_record',
 					ip: '10.0.0.3',
 					result: 'deferral',
 					providerKey: 'gmail',
+					utcDate: '2026-03-01',
 				},
 			],
 			deps
@@ -307,6 +310,7 @@ describe('applyEffects — ordering', () => {
 				ip: '10.0.0.1',
 				result: 'bounce',
 				providerKey: 'gmail',
+				utcDate: '2026-03-01',
 			},
 			{ kind: 'suppress_recipient', address: 'a@b.c', reason: 'hard_bounce' },
 		];

@@ -99,6 +99,7 @@ function reduceDelivered(
 				reservation: job.routingLease?.warmingReservation,
 				providerKey,
 				pool: ctx.pool,
+				utcDate: ctx.utcDate,
 			},
 			{
 				kind: 'metrics_record',
@@ -159,7 +160,7 @@ function reduceHardBounce(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -230,13 +231,14 @@ function reduceDeferred(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'warming_record', ip, result: 'deferral', providerKey },
+			{ kind: 'warming_record', ip, result: 'deferral', providerKey, utcDate: ctx.utcDate },
 			...(volumePressure
 				? [
 						{
 							kind: 'warming_provider_pressure',
 							ip,
 							providerKey,
+							utcDate: ctx.utcDate,
 						} as const satisfies DispatchEffect,
 					]
 				: []),
@@ -299,7 +301,7 @@ function reduceNonRetryableDeferral(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -375,7 +377,7 @@ function reduceSoftBounce(
 				providerKey,
 				...probeReceipt(job),
 			},
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{ kind: 'domain_failure_record', domain },
 			{
 				kind: 'metrics_record',

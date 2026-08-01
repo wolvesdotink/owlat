@@ -42,6 +42,7 @@ function attempt(messageId: string): CtxWithProviderPressure {
 		ip: '192.0.2.1',
 		eligibilityGeneration: 1,
 		providerVolumePressure: 0,
+		utcDate: '2026-03-01',
 	};
 }
 
