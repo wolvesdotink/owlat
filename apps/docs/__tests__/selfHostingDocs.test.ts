@@ -122,3 +122,70 @@ describe('self-host templates: no extracted control-plane (Nest) leftovers', () 
 		});
 	}
 });
+
+/**
+ * The two .env templates have DIFFERENT audiences — .env.example is for
+ * contributors running `bun run dev`, .env.selfhost.example for operators
+ * running docker compose — and an operator knob documented only in the
+ * contributor template is a knob operators never learn exists. The
+ * deliverability knobs are the ones that drifted: each is unset-by-default and
+ * silently costs measurement quality rather than erroring, so nothing else in
+ * the product would ever tell an operator about them.
+ *
+ * The list is cross-checked against the EnvKey union so a rename in code fails
+ * here instead of leaving two templates describing a variable nothing reads.
+ */
+describe('self-host template: deliverability operator knobs', () => {
+	const contributorEnv = readFileSync(resolve(repoRoot, '.env.example'), 'utf8');
+	const selfhostEnv = readFileSync(resolve(repoRoot, '.env.selfhost.example'), 'utf8');
+	const envKeySource = readFileSync(resolve(repoRoot, 'apps/api/convex/lib/env.ts'), 'utf8');
+
+	const knobs = [
+		'MTA_RETURN_PATH_RELAY_SPF',
+		'MTA_BIMI_LOGO_URL',
+		'MTA_BIMI_VMC_URL',
+		'MTA_BIMI_SELECTOR',
+		'SEND_TRANSPORT_INSTANCES',
+		'SNDS_DATA_FEED_URLS',
+	];
+
+	// Whole-word match so MTA_BIMI_SELECTOR can't be satisfied by a longer name.
+	const documents = (text: string, key: string) =>
+		new RegExp(`(^|[^A-Za-z0-9_])${key}([^A-Za-z0-9_]|$)`).test(text);
+
+	for (const key of knobs) {
+		it(`${key} is a real EnvKey and both templates document it`, () => {
+			expect(envKeySource).toContain(`| '${key}'`);
+			expect(documents(contributorEnv, key)).toBe(true);
+			expect(documents(selfhostEnv, key)).toBe(true);
+		});
+	}
+
+	it('tells operators the VERP signing key is projected, never hand-copied', () => {
+		// MTA_BOUNCE_VERP_KEY / MTA_RETURN_PATH_DOMAIN are the two knobs an
+		// operator must NOT set: setup derives them from BOUNCE_VERP_KEY /
+		// RETURN_PATH_DOMAIN, and a hand-copied signing key that differs by one
+		// character mints tokens the MTA will never verify — which reads
+		// downstream as "the relay arm produced no bounces", not as an error.
+		expect(documents(selfhostEnv, 'MTA_BOUNCE_VERP_KEY')).toBe(true);
+		expect(documents(selfhostEnv, 'MTA_RETURN_PATH_DOMAIN')).toBe(true);
+		expect(selfhostEnv).not.toMatch(/^MTA_BOUNCE_VERP_KEY=/m);
+		expect(selfhostEnv).not.toMatch(/^MTA_RETURN_PATH_DOMAIN=/m);
+	});
+
+	for (const key of knobs) {
+		it(`${key} ships commented out, so copying the template enables nothing`, () => {
+			expect(selfhostEnv).toMatch(new RegExp(`^# ${key}=`, 'm'));
+			expect(selfhostEnv).not.toMatch(new RegExp(`^${key}=`, 'm'));
+		});
+	}
+
+	it('states that leaving the knobs unset degrades measurement rather than blocking', () => {
+		// The one thing an operator template must not imply is that an unset
+		// optional knob is a broken install.
+		expect(selfhostEnv).toMatch(/degraded-measurement/);
+		expect(selfhostEnv).toMatch(/[Uu]nset changes nothing and blocks nothing/);
+		expect(selfhostEnv).toMatch(/never blocks a send/);
+		expect(selfhostEnv).toMatch(/supported configuration/);
+	});
+});
