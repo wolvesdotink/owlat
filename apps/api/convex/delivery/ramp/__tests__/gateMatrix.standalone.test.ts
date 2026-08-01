@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	RAMP_GATE_MATRIX_ENV,
+	RAMP_GATE_MATRIX_SENTINEL_ENV,
 	externalDataAllowed,
 	matrixEvaluator,
 	rampGateMatrixMode,
@@ -50,6 +51,16 @@ describe('the CI matrix exists and runs both configurations', () => {
 
 	it('passes the mode through the environment variable this suite reads', () => {
 		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_ENV}: \${{ matrix.mode }}`);
+	});
+
+	it('sets the sentinel that makes a missing mode fatal, in that job only', () => {
+		// The sentinel is what distinguishes "the matrix lost its mode" from "some
+		// other job imported this file"; if only the mode survives a future edit,
+		// the missing-mode case degrades to a silent default again.
+		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_SENTINEL_ENV}: '1'`);
+		expect(WORKFLOW.match(new RegExp(`^\\s+${RAMP_GATE_MATRIX_SENTINEL_ENV}:`, 'gm'))).toHaveLength(
+			1
+		);
 	});
 
 	it('is wired into the required status check, not left dangling', () => {
@@ -127,24 +138,33 @@ describe(`the ${MODE} leg`, () => {
 		});
 	});
 
-	it('rejects a MISSING mode under CI, where broken plumbing looks exactly like a default', () => {
+	it('rejects a MISSING mode inside the matrix, where broken plumbing looks like a default', () => {
 		// The unrecognised-value case above only catches a typo. An env var that
 		// never arrived — a renamed matrix key, a lost `env:` block — arrives as
 		// undefined, and defaulting it would run the equipped leg twice and report
 		// two green checks for a degraded path nobody exercised.
-		withEnv({ [RAMP_GATE_MATRIX_ENV]: undefined, CI: 'true' }, () => {
-			expect(() => rampGateMatrixMode()).toThrow(/unset under CI/);
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: undefined, [RAMP_GATE_MATRIX_SENTINEL_ENV]: '1' }, () => {
+			expect(() => rampGateMatrixMode()).toThrow(/is set but/);
 		});
 		// An empty value is the same broken plumbing, not a request for the default.
-		withEnv({ [RAMP_GATE_MATRIX_ENV]: '', CI: 'true' }, () => {
-			expect(() => rampGateMatrixMode()).toThrow(/unset under CI/);
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: '', [RAMP_GATE_MATRIX_SENTINEL_ENV]: '1' }, () => {
+			expect(() => rampGateMatrixMode()).toThrow(/is set but/);
 		});
 	});
 
-	it('still defaults to the equipped leg for a plain local vitest run', () => {
-		withEnv({ [RAMP_GATE_MATRIX_ENV]: undefined, CI: undefined }, () => {
-			expect(rampGateMatrixMode()).toBe('reference_arm');
-		});
+	it('defaults to the equipped leg for every run that is NOT a matrix leg', () => {
+		// The shape CI actually produces on the sharded `test-api` job and on any
+		// full-suite run: CI is set, the mode is not, and this module is imported
+		// anyway because it sits under the convex/**/__tests__ glob. Keying the
+		// throw on CI failed all three shards; only the sentinel may make it fatal.
+		for (const ci of [undefined, 'true', 'false', '1']) {
+			withEnv(
+				{ [RAMP_GATE_MATRIX_ENV]: undefined, [RAMP_GATE_MATRIX_SENTINEL_ENV]: undefined, CI: ci },
+				() => {
+					expect(rampGateMatrixMode()).toBe('reference_arm');
+				}
+			);
+		}
 	});
 });
 
