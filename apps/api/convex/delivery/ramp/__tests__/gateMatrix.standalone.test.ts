@@ -122,13 +122,45 @@ describe(`the ${MODE} leg`, () => {
 	});
 
 	it('rejects an unrecognised mode rather than falling back to the equipped one', () => {
-		const previous = process.env[RAMP_GATE_MATRIX_ENV];
-		process.env[RAMP_GATE_MATRIX_ENV] = 'not_a_mode';
-		try {
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: 'not_a_mode' }, () => {
 			expect(() => rampGateMatrixMode()).toThrow(RAMP_GATE_MATRIX_ENV);
-		} finally {
-			if (previous === undefined) delete process.env[RAMP_GATE_MATRIX_ENV];
-			else process.env[RAMP_GATE_MATRIX_ENV] = previous;
-		}
+		});
+	});
+
+	it('rejects a MISSING mode under CI, where broken plumbing looks exactly like a default', () => {
+		// The unrecognised-value case above only catches a typo. An env var that
+		// never arrived — a renamed matrix key, a lost `env:` block — arrives as
+		// undefined, and defaulting it would run the equipped leg twice and report
+		// two green checks for a degraded path nobody exercised.
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: undefined, CI: 'true' }, () => {
+			expect(() => rampGateMatrixMode()).toThrow(/unset under CI/);
+		});
+		// An empty value is the same broken plumbing, not a request for the default.
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: '', CI: 'true' }, () => {
+			expect(() => rampGateMatrixMode()).toThrow(/unset under CI/);
+		});
+	});
+
+	it('still defaults to the equipped leg for a plain local vitest run', () => {
+		withEnv({ [RAMP_GATE_MATRIX_ENV]: undefined, CI: undefined }, () => {
+			expect(rampGateMatrixMode()).toBe('reference_arm');
+		});
 	});
 });
+
+/** Run `body` with `vars` applied to the environment, restoring it afterwards. */
+function withEnv(vars: Record<string, string | undefined>, body: () => void): void {
+	const previous = new Map(Object.keys(vars).map((key) => [key, process.env[key]]));
+	try {
+		for (const [key, value] of Object.entries(vars)) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		body();
+	} finally {
+		for (const [key, value] of previous) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	}
+}
