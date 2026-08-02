@@ -26,10 +26,16 @@ const {
 	error: overviewError,
 } = useOrganizationQuery(api.analytics.reputationQueries.getSendingOverview);
 
-// Domain table: every sending domain + auth summary + 30-day volume.
-const { data: domainRows, isLoading: domainsLoading } = useOrganizationQuery(
-	api.analytics.reputationQueries.getDeliveryDomainTable
-);
+// Domain table: every sending domain + auth summary + 30-day volume. The `error`
+// travels with it for the same reason the Postmaster one does — the table's empty
+// state is "No sending domains yet", with a link into the setup flow, and a read
+// that failed has not established that.
+const {
+	data: domainRows,
+	isLoading: domainsLoading,
+	error: domainsError,
+	refetch: refetchDomains,
+} = useOrganizationQuery(api.analytics.reputationQueries.getDeliveryDomainTable);
 
 // Google Postmaster Tools: additive-only, so an unconnected account renders a
 // calm invitation rather than a warning. The `error` goes down with it — a
@@ -318,8 +324,27 @@ const sendingDetail = computed(() => {
 				:error="postmasterError"
 			/>
 
-			<!-- Domain table -->
-			<DeliveryDomainTable v-if="!domainsLoading" :rows="domainRows ?? []" />
+			<!-- Domain table. Behind its own boundary: an empty domain list here reads
+				 "No sending domains yet — add a domain and publish its DNS records" and
+				 points into the setup flow, which is a claim about the deployment that a
+				 faulted read has not earned. -->
+			<UiQueryBoundary
+				:loading="domainsLoading"
+				:error="domainsError"
+				error-title="Couldn’t load your sending domains"
+				error-message="This list could not be read. It is not shown empty: an empty list here means you have no sending domains set up, and that is not something to claim while the read is failing."
+				@retry="refetchDomains"
+			>
+				<template #loading>
+					<div
+						class="h-40 animate-pulse rounded-xl bg-bg-surface"
+						role="status"
+						aria-live="polite"
+						aria-label="Loading sending domains"
+					/>
+				</template>
+				<DeliveryDomainTable :rows="domainRows ?? []" />
+			</UiQueryBoundary>
 
 			<!-- Quiet suppressions summary -->
 			<NuxtLink

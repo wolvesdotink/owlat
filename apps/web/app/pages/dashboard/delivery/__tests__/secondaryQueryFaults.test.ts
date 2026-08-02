@@ -27,6 +27,8 @@ import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import CellsPage from '../cells.vue';
 import ControlsPage from '../controls.vue';
+import DeliveryHubPage from '../index.vue';
+import DomainTable from '~/components/delivery/DomainTable.vue';
 import RampCellsGrid from '~/components/delivery/RampCellsGrid.vue';
 import RampCellControls from '~/components/delivery/RampCellControls.vue';
 import RampConfirmDialog from '~/components/delivery/RampConfirmDialog.vue';
@@ -249,6 +251,117 @@ describe('the Gmail compliance card', () => {
 
 		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="postmaster-unavailable"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+});
+
+/**
+ * THE SAME DEFECT, PINNED AT PAGE LEVEL.
+ *
+ * A card that handles its own fault correctly is only half the fix: the page has
+ * to HAND it the fault. Mounting the cards directly leaves `:error="…"` a single
+ * attribute nobody tests — delete it and the shipped bug is back with every suite
+ * green. So the hub is mounted whole here, with the faults delivered through the
+ * same keyed query stub, and both reassuring sentences are asserted ABSENT.
+ */
+describe('the delivery hub page', () => {
+	/** The one read the page's own boundary gates — healthy in every case here. */
+	const sendingOverview = {
+		warming: null,
+		volume: null,
+		reputation: null,
+		abuseStatus: 'clean',
+	};
+
+	function stubHubQueries(overrides: readonly (readonly [AnyQuery, StubbedQuery])[]): void {
+		stubQueries([
+			[api.analytics.reputationQueries.getSendingOverview, { data: sendingOverview }],
+			[api.analytics.reputationSnapshots.getDeliverySnapshots, { data: [] }],
+			[api.blockedEmails.getCountsByReason, { data: null }],
+			...overrides,
+		]);
+	}
+
+	const hubOptions = {
+		stubs: {
+			Icon: true,
+			UiIconBox: true,
+			UiSpinner: true,
+			UiStatTile: true,
+			UiTrendChart: true,
+			DeliveryReadinessPanel: true,
+			DeliveryTransportCard: true,
+			DeliveryComplianceTelemetryCard: true,
+			DeliverySendingDetails: true,
+			UiCard: passthroughCard,
+			UiButton: { template: '<button><slot /></button>' },
+			NuxtLink: { template: '<a><slot /></a>' },
+			// Rendered rather than shrugged off: the assertions below are about the
+			// WORDS an empty state puts on the screen, and a `true` stub would make
+			// every one of them pass against a component that rendered nothing.
+			UiEmptyState: {
+				props: ['icon', 'title', 'description'],
+				template: '<div><h3>{{ title }}</h3><p>{{ description }}</p><slot name="action" /></div>',
+			},
+		},
+		components: {
+			UiQueryBoundary: QueryBoundary,
+			UiErrorAlert: ErrorAlert,
+			DeliveryPostmasterComplianceCard: PostmasterComplianceCard,
+			DeliveryDomainTable: DomainTable,
+		},
+	};
+
+	beforeEach(() => {
+		vi.stubGlobal('useOrganizationContext', () => ({ isLoading: ref(false) }));
+		vi.stubGlobal('useDeliveryHealth', () => ({
+			level: ref('ok'),
+			reason: ref(''),
+			isVisible: ref(false),
+			dotClass: ref(''),
+		}));
+	});
+
+	it('does not report Gmail "Not connected" when the postmaster read failed', () => {
+		stubHubQueries([
+			[api.analytics.reputationQueries.getDeliveryDomainTable, { data: [] }],
+			[api.delivery.postmaster.getPostmasterStatus, { error: new Error('postmaster unavailable') }],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('Not connected');
+		expect(wrapper.find('[data-testid="postmaster-unavailable"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('does not say there are no sending domains when the domain read failed', () => {
+		stubHubQueries([
+			[
+				api.analytics.reputationQueries.getDeliveryDomainTable,
+				{ error: new Error('domains unavailable') },
+			],
+			[api.delivery.postmaster.getPostmasterStatus, { data: { connected: false, domains: [] } }],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		// The empty state points into the domain SETUP flow, which is the wrong
+		// place to send an operator whose domains are set up and unreadable.
+		expect(wrapper.text()).not.toContain('No sending domains yet');
+		expect(wrapper.text()).not.toContain('Add a domain and publish its DNS records');
+		expect(wrapper.text()).toContain('Couldn’t load your sending domains');
+		wrapper.unmount();
+	});
+
+	it('keeps both calm empty states when the two reads answered with nothing', () => {
+		stubHubQueries([
+			[api.analytics.reputationQueries.getDeliveryDomainTable, { data: [] }],
+			[api.delivery.postmaster.getPostmasterStatus, { data: { connected: false, domains: [] } }],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('No sending domains yet');
 		wrapper.unmount();
 	});
 });
