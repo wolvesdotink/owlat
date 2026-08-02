@@ -150,7 +150,11 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 				entry['phase'] !== 'uncertain') ||
 			(entry['phase'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
 			(entry['reservationToken'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
-			typeof entry['reservedAt'] !== 'number' ||
+			// Finite, not merely numeric: the day fallback below dates the entry from
+			// this reading, and `new Date(Infinity)` throws past this module's own
+			// controlled error. JSON has no Infinity literal but an overflowing
+			// exponent parses to one.
+			!Number.isFinite(entry['reservedAt']) ||
 			!isAttemptSnapshot(entry['attempt'])
 		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
@@ -168,7 +172,8 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		!entry['result'] ||
 		typeof entry['result'] !== 'object' ||
 		typeof entry['durationMs'] !== 'number' ||
-		typeof entry['completedAt'] !== 'number' ||
+		// Finite for the same reason as `reservedAt` above.
+		!Number.isFinite(entry['completedAt']) ||
 		!isAttemptSnapshot(entry['attempt']) ||
 		!entry['outcome'] ||
 		!entry['reduction']
