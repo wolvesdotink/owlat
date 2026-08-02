@@ -192,9 +192,27 @@ describe('applyEffects — per-effect dispatch', () => {
 			],
 			deps
 		);
-		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1', undefined);
-		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
-		expect(warming.recordDeferral).toHaveBeenCalledWith(expect.anything(), '10.0.0.3');
+		// The attempt's day reaches the per-IP store too, not only its per-provider
+		// twin: both mirror one outcome and may not disagree about the day.
+		expect(warming.recordSend).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.1',
+			undefined,
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordBounce).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.2',
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordDeferral).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.3',
+			undefined,
+			'2026-03-01'
+		);
 	});
 
 	it('metrics_record → metrics.record with the full arg list', async () => {

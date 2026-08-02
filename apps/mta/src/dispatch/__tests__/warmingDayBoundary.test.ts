@@ -25,6 +25,7 @@ import { initializeWarming } from '../../intelligence/warming.js';
 import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
 import {
 	warmingBulkDailyKey,
+	warmingDailyStatsKey,
 	warmingProviderDailyStatsKey,
 	warmingProviderStateKey,
 } from '../../intelligence/warmingKeys.js';
@@ -150,6 +151,11 @@ describe('warming records book into the attempt day, not the apply day', () => {
 		// against yesterday's sends would throttle the first campaign of the day.
 		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
 		expect(await redis.get(warmingBulkDailyKey(IP, APPLIED_DAY))).toBeNull();
+		// The per-IP twin of the same effect books the same day — `evaluateDay`
+		// reads this hash for the bounce and deferral rates that advance the
+		// per-IP schedule, and the two mirrors may not disagree about the day.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+		expect(await redis.exists(warmingDailyStatsKey(IP, APPLIED_DAY))).toBe(0);
 	});
 
 	it('counts a pressure deferral and its volume-pressure verdict against the same day', async () => {
@@ -161,6 +167,8 @@ describe('warming records book into the attempt day, not the apply day', () => {
 		expect(await redis.hget(stats, 'deferred')).toBe('1');
 		expect(await redis.hget(stats, 'pressure')).toBe('1');
 		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', APPLIED_DAY))).toBe(0);
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'deferred')).toBe('1');
+		expect(await redis.exists(warmingDailyStatsKey(IP, APPLIED_DAY))).toBe(0);
 	});
 
 	it('never rewinds the live day’s rolling counter to book a late effect', async () => {

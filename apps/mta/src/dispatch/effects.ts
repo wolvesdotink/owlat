@@ -243,25 +243,29 @@ function fireAndForget(
 	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
-/** The shipped per-IP warming accounting — unchanged. */
+/**
+ * The per-IP warming accounting. It takes the attempt's day for the same reason
+ * its per-provider twin below does — the two mirror one outcome and must agree
+ * on which day it happened. Only the per-day stats key moves; see `recordSend`.
+ */
 function applyPerIpWarmingRecord(
 	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
 	deps: PhaseDeps,
 	downstreamIdentity?: DurableEffectIdentity
 ): Promise<unknown> {
 	if (effect.result === 'send') {
-		return downstreamIdentity
-			? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
-			: warming.recordSend(deps.redis, effect.ip, effect.reservation);
+		return warming.recordSend(
+			deps.redis,
+			effect.ip,
+			effect.reservation,
+			downstreamIdentity,
+			effect.utcDate
+		);
 	}
 	if (effect.result === 'bounce') {
-		return downstreamIdentity
-			? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
-			: warming.recordBounce(deps.redis, effect.ip);
+		return warming.recordBounce(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
 	}
-	return downstreamIdentity
-		? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
-		: warming.recordDeferral(deps.redis, effect.ip);
+	return warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
 }
 
 /** The additive per-(IP x mailbox provider) mirror of the same outcome. */
