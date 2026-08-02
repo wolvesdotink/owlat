@@ -847,7 +847,9 @@ describe('handleEmailJob', () => {
 			redis,
 			'10.0.0.1',
 			undefined,
-			expect.stringMatching(/^effect:v1:/)
+			expect.stringMatching(/^effect:v1:/),
+			// The day the attempt was gated on, carried onto the effect.
+			expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
 		);
 	});
 

@@ -40,6 +40,7 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 		ip: '10.0.0.1',
 		eligibilityGeneration: 1,
 		providerVolumePressure: 0,
+		utcDate: '2026-03-01',
 		durationMs: 421,
 		...overrides,
 	};

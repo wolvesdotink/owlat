@@ -42,6 +42,7 @@ describe('DNSBL fully listed pool halts and alerts', () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		vi.mocked(notifyConvex).mockResolvedValue(true);
 		redis = new Redis();
 		await redis.flushall();
 		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
@@ -111,6 +112,58 @@ describe('DNSBL fully listed pool halts and alerts', () => {
 		).toBe(false);
 		expect(await selectIp(redis, 'campaign', config.ipPools)).toBe('10.0.0.2');
 	});
+
+	it('alerts once for a standing halt, and again once the halt has lifted and returned', async () => {
+		const haltAlerts = () =>
+			vi
+				.mocked(notifyConvex)
+				.mock.calls.map((call) => call[0])
+				.filter((event) => event.event === 'all_ips_blocked').length;
+		const { deps } = createRecordingLookupDeps();
+
+		allIpsListedOnSpamhaus();
+		await runDnsblCheck(redis, config, deps);
+		// A halt persists for as long as delisting takes; a critical alert every
+		// 15 minutes would bury the one the operator has to act on.
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(1);
+
+		// Delisted: the halt lifts, so the next one is a new event, not a repeat.
+		vi.mocked(resolve4).mockRejectedValue(dnsError('ENOTFOUND'));
+		await runDnsblCheck(redis, config, deps);
+		expect(await redis.get('mta:emergency:all_ips_blocked')).toBeNull();
+
+		allIpsListedOnSpamhaus();
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(2);
+	});
+
+	it('gives the day’s slot back when the alert throws, but not when the DLQ took it', async () => {
+		const haltAlerts = () =>
+			vi
+				.mocked(notifyConvex)
+				.mock.calls.map((call) => call[0])
+				.filter((event) => event.event === 'all_ips_blocked').length;
+		const { deps } = createRecordingLookupDeps();
+		allIpsListedOnSpamhaus();
+
+		// A THROWN alert never reached the notifier's own durability, so the halt
+		// is still unannounced and the next sweep must retry it.
+		vi.mocked(notifyConvex).mockImplementation(async (event) => {
+			if (event.event !== 'all_ips_blocked') return true;
+			throw new Error('convex unreachable');
+		});
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(1);
+
+		// `false` is the other case: the notifier stored the event in the DLQ, which
+		// owns its redelivery, so the slot stays consumed and the sweep stays quiet.
+		vi.mocked(notifyConvex).mockResolvedValue(false);
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(2);
+		await runDnsblCheck(redis, config, deps);
+		expect(haltAlerts()).toBe(2);
+	});
 });
 
 describe('DNSBL halt alert survives Convex ingress for a large pool', () => {
@@ -127,6 +180,7 @@ describe('DNSBL halt alert survives Convex ingress for a large pool', () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		vi.mocked(notifyConvex).mockResolvedValue(true);
 		redis = new Redis();
 		await redis.flushall();
 		for (const ip of [

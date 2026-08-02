@@ -37,7 +37,6 @@ import type {
 	MtaWebhookEvent,
 	MetricOutcome,
 } from '../types.js';
-import { utcDateKey } from '../intelligence/warmingKeys.js';
 import {
 	recordProviderVolumePressure,
 	recordProviderWarmingOutcome,
@@ -102,6 +101,12 @@ export type DispatchEffect =
 			 * headroom out of the same daily cap.
 			 */
 			pool: IpPoolType;
+			/**
+			 * The attempt's UTC day (`YYYY-MM-DD`), carried rather than re-read at
+			 * apply time so a replayed or midnight-straddling effect books into the
+			 * day its capacity was taken from.
+			 */
+			utcDate: string;
 	  }
 	| {
 			/** A bounce or a deferral: counted, but it consumes no capacity. */
@@ -109,6 +114,8 @@ export type DispatchEffect =
 			ip: string;
 			result: 'bounce' | 'deferral';
 			providerKey: DestinationProviderKey;
+			/** The attempt's UTC day — see the `send` branch. */
+			utcDate: string;
 	  }
 	| {
 			/**
@@ -119,6 +126,8 @@ export type DispatchEffect =
 			kind: 'warming_provider_pressure';
 			ip: string;
 			providerKey: DestinationProviderKey;
+			/** The attempt's UTC day — see the `warming_record` `send` branch. */
+			utcDate: string;
 	  }
 	| {
 			kind: 'metrics_record';
@@ -234,25 +243,29 @@ function fireAndForget(
 	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
-/** The shipped per-IP warming accounting — unchanged. */
+/**
+ * The per-IP warming accounting. It takes the attempt's day for the same reason
+ * its per-provider twin below does — the two mirror one outcome and must agree
+ * on which day it happened. Only the per-day stats key moves; see `recordSend`.
+ */
 function applyPerIpWarmingRecord(
 	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
 	deps: PhaseDeps,
 	downstreamIdentity?: DurableEffectIdentity
 ): Promise<unknown> {
 	if (effect.result === 'send') {
-		return downstreamIdentity
-			? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
-			: warming.recordSend(deps.redis, effect.ip, effect.reservation);
+		return warming.recordSend(
+			deps.redis,
+			effect.ip,
+			effect.reservation,
+			downstreamIdentity,
+			effect.utcDate
+		);
 	}
 	if (effect.result === 'bounce') {
-		return downstreamIdentity
-			? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
-			: warming.recordBounce(deps.redis, effect.ip);
+		return warming.recordBounce(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
 	}
-	return downstreamIdentity
-		? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
-		: warming.recordDeferral(deps.redis, effect.ip);
+	return warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
 }
 
 /** The additive per-(IP x mailbox provider) mirror of the same outcome. */
@@ -264,7 +277,7 @@ function applyPerProviderWarmingRecord(
 	const ref = {
 		ip: effect.ip,
 		provider: effect.providerKey,
-		utcDate: utcDateKey(),
+		utcDate: effect.utcDate,
 	};
 	if (effect.result === 'send') {
 		return recordProviderWarmingSend(deps.redis, ref, effect.pool, downstreamIdentity);
@@ -344,7 +357,7 @@ function applyOne(
 		case 'warming_provider_pressure':
 			return recordProviderVolumePressure(
 				deps.redis,
-				{ ip: effect.ip, provider: effect.providerKey, utcDate: utcDateKey() },
+				{ ip: effect.ip, provider: effect.providerKey, utcDate: effect.utcDate },
 				PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
 				downstreamIdentity
 			);

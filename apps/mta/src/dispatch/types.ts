@@ -53,6 +53,14 @@ export interface CtxWithProviderPressure extends CtxWithIp {
 	 * outcome reducer can lengthen retry backoff without touching Redis.
 	 */
 	readonly providerVolumePressure: number;
+	/**
+	 * The UTC day this attempt was gated against, as `YYYY-MM-DD`. Carried so
+	 * every warming record books into the day whose cap admitted the attempt:
+	 * re-reading the clock when the effects are applied books a midnight-
+	 * straddling attempt — and any journal replay — into the wrong day, which
+	 * skews the completed-previous-day evaluation window.
+	 */
+	readonly utcDate: string;
 }
 
 /**

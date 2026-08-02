@@ -33,6 +33,22 @@ import {
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
+/** Set while the fully-listed halt alert has already been sent for the day. */
+const ALL_IPS_BLOCKED_ALERT_KEY = 'mta:dnsbl:all-ips-blocked-alerted';
+const DAY_SECONDS = 24 * 60 * 60;
+/**
+ * Addresses whose zone lookups may be in flight at once.
+ *
+ * The bound has to hold in both directions. Unbounded, the sweep fires every
+ * address x every zone at the same handful of public resolvers and earns the
+ * rate-limit answers this module reads as `unknown`. Strictly sequential, each
+ * address costs up to `LOOKUP_TOTAL_BUDGET_MS` and the total is linear in pool
+ * size — which the boot sweep pays before delivery workers are enabled, and
+ * which the periodic sweep cannot afford at all because `startDnsblChecker`'s
+ * interval has no in-flight guard, so an overrunning sweep would overlap the
+ * next tick and double the very query load this bound exists to cut.
+ */
+export const SWEEP_ADDRESS_CONCURRENCY = 4;
 
 interface DnsblResult extends Pick<DnsblListDefinition, 'id' | 'name' | 'severity'> {
 	status: DnsblStatus;
@@ -95,10 +111,23 @@ export async function runDnsblCheck(
 
 	logger.info({ ips: uniqueIps }, 'Running DNSBL check');
 
-	const observations = await Promise.all(
-		uniqueIps.map(async (ip) => {
-			const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
-			return { ip, generation, results: await checkAllZones(ip, config, deps) };
+	// A FIXED NUMBER OF ADDRESSES AT A TIME, zones in parallel within an address.
+	// Every address x every zone at once is a burst of hundreds of queries at the
+	// same handful of public resolvers every 15 minutes, which is precisely what
+	// earns the 127.255.255.x rate-limit answers this module must then read as
+	// `unknown` — and an `unknown` preserves quarantine and holds the ramp
+	// controller.
+	const observations: Array<{ ip: string; generation: number; results: DnsblResult[] }> = [];
+	let cursor = 0;
+	await Promise.all(
+		Array.from({ length: Math.min(SWEEP_ADDRESS_CONCURRENCY, uniqueIps.length) }, async () => {
+			while (cursor < uniqueIps.length) {
+				const index = cursor;
+				cursor += 1;
+				const ip = uniqueIps[index]!;
+				const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
+				observations[index] = { ip, generation, results: await checkAllZones(ip, config, deps) };
+			}
 		})
 	);
 
@@ -135,8 +164,14 @@ export async function runDnsblCheck(
 		// "unknown" from the absence of a listing.
 		updates.push('unknownOn', unknownOn.join(','));
 		updates.push('listedOn', listedOn.join(','));
-		const previousSpamhausStatus = await redis.hget(hashKey, 'spamhaus');
-		const previousStatus = await redis.hget(hashKey, 'overallStatus');
+		// Both prior fields live in one hash: one round trip, and both are read at
+		// the same instant, so the two transition gates below cannot disagree
+		// about which sweep they are comparing against.
+		const [previousSpamhausStatus = null, previousStatus = null] = await redis.hmget(
+			hashKey,
+			'spamhaus',
+			'overallStatus'
+		);
 		const newStatus =
 			spamhaus.status === 'listed'
 				? 'critical'
@@ -259,24 +294,43 @@ export async function runDnsblCheck(
 			// also travel structurally in `blocklists`, so nothing is actually lost.
 			const message =
 				prefix + boundedListingDetail(listings, ALERT_MESSAGE_MAX_LENGTH - prefix.length);
+			// The halt itself is logged every sweep — that is the operator's local
+			// heartbeat that mail is still parked.
 			logger.error(
 				{ ips: uniqueIps, blocklists },
 				'ALL IPs blocklisted or unmeasurable — sending halted, nothing leaves the pool'
 			);
-			await notifyConvex(
-				{
-					event: 'all_ips_blocked',
-					severity: 'critical',
-					blocklists,
-					message,
-					timestamp: Date.now(),
-				},
-				config,
-				redis
-			).catch(() => {});
+			// The CONVEX alert is not: a halt persists for as long as delisting takes,
+			// and one critical alert every 15 minutes buries the first one. Gate it
+			// the way the per-IP transitions above gate on previous state — the flag
+			// is the state here, so the key is cleared when the halt lifts and a
+			// still-standing halt re-announces itself once a day.
+			if ((await redis.set(ALL_IPS_BLOCKED_ALERT_KEY, '1', 'EX', DAY_SECONDS, 'NX')) === 'OK') {
+				await notifyConvex(
+					{
+						event: 'all_ips_blocked',
+						severity: 'critical',
+						blocklists,
+						message,
+						timestamp: Date.now(),
+					},
+					config,
+					redis
+				).catch(() =>
+					// A THROWN alert never reached the notifier's own durability, so it
+					// must not consume the day's slot: drop the dedup key and the next
+					// sweep retries it. A `false` return is the other case and keeps the
+					// key deliberately — that event is already in the dead-letter queue,
+					// which owns its redelivery, so re-alerting would duplicate it.
+					redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {})
+				);
+			}
 		} else {
 			logger.error({ ips: uniqueIps }, 'ALL IPs unavailable — emergency state');
 		}
+	} else {
+		// The halt lifted: the next one is a new event and alerts immediately.
+		await redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {});
 	}
 }
 
