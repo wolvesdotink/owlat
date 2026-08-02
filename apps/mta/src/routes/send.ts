@@ -29,21 +29,12 @@ import {
 	parseIntakeReceipt,
 } from './sendReceipt.js';
 
+import { readEngagementScore } from './sendEngagementScore.js';
+
 export { createSendReceiptHandler } from './sendReceipt.js';
 
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
-
-/**
- * The engagement score reaches priority banding through `>=` comparisons, where
- * a JSON string ("90") coerces and buys HIGH priority, and it is journalled onto
- * the job. Only a finite number inside the producer's 0-100 range is a score;
- * anything else is absent and bands DEFAULT.
- */
-function engagementScoreOrAbsent(value: unknown): number | undefined {
-	if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-	return value >= 0 && value <= 100 ? value : undefined;
-}
 
 interface SendRequest {
 	messageId: string;
@@ -65,7 +56,7 @@ interface SendRequest {
 	organizationId: string;
 	messageType?: 'campaign' | 'transactional' | 'automation';
 	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	/** Unvalidated JSON — read it through `engagementScoreOrAbsent`, never raw. */
+	/** Unvalidated JSON — read it through `readEngagementScore`, never raw. */
 	engagementScore?: unknown;
 	dkimDomain: string;
 	/**
@@ -425,22 +416,7 @@ export function createSendHandler(
 		}
 
 		// Build job
-		const engagementScore = engagementScoreOrAbsent(body.engagementScore);
-		// Banding DEFAULT rather than rejecting keeps a non-essential field from
-		// failing a send, but a producer that regresses to `"90"` would otherwise
-		// lose HIGH banding permanently with no signal anywhere.
-		if (body.engagementScore !== undefined && engagementScore === undefined) {
-			logger.warn(
-				{
-					messageId: body.messageId,
-					// A bounded RENDERING, never the parsed value: it is unvalidated
-					// producer JSON of any size, and the quotes are what identify the
-					// regression — `"90"` and `90` are indistinguishable otherwise.
-					engagementScore: JSON.stringify(body.engagementScore)?.slice(0, 64),
-				},
-				'Ignoring a malformed engagement score — banding DEFAULT'
-			);
-		}
+		const engagementScore = readEngagementScore(body.messageId, body.engagementScore);
 		const job: EmailJob = {
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
