@@ -12,7 +12,7 @@
  * branch is reachable without a live Redis/queue or a real server.
  */
 
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { Hono } from 'hono';
 import type { Queue } from 'groupmq';
@@ -20,7 +20,8 @@ import type Redis from 'ioredis';
 import RedisMock from 'ioredis-mock';
 import { createApp, type AuthContext } from '../../server.js';
 import { buildGroupKey, extractDomain } from '../../queue/groups.js';
-import { PRIORITY_BANDS } from '../../intelligence/engagementPriority.js';
+import { PRIORITY_BANDS, priorityToOrderMs } from '../../intelligence/engagementPriority.js';
+import { logger } from '../../monitoring/logger.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 
 vi.mock('../../redis.js', () => ({
@@ -836,6 +837,10 @@ describe('POST /send — job construction and routing', () => {
 });
 
 describe('POST /send — engagement score is validated, never cast', () => {
+	const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+	beforeEach(() => warn.mockClear());
+
 	/** Enqueue one message and report the banding inputs it produced. */
 	async function enqueue(body: string) {
 		const queue = fakeQueue();
@@ -849,10 +854,30 @@ describe('POST /send — engagement score is validated, never cast', () => {
 	}
 
 	it('bands a genuine score and carries it onto the job', async () => {
+		// Through `priorityToOrderMs`, not the band constant: the two are equal only
+		// because that encoding currently returns the priority verbatim above LOW.
 		expect(await enqueue(validBody({ engagementScore: 90 }))).toEqual({
 			score: 90,
-			orderMs: PRIORITY_BANDS.HIGH,
+			orderMs: priorityToOrderMs(PRIORITY_BANDS.HIGH),
 		});
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it('logs the drop so a producer that regresses to a cast is findable', async () => {
+		await enqueue(validBody({ engagementScore: '90' }));
+
+		// Rendered, so the quotes that identify the regression survive the log line.
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ messageId: 'msg-1', engagementScore: '"90"' }),
+			expect.stringContaining('engagement score')
+		);
+	});
+
+	it('bounds the rendering of an oversized score rather than logging it whole', async () => {
+		await enqueue(validBody({ engagementScore: { note: 'x'.repeat(4096) } }));
+
+		const logged = warn.mock.calls[0]?.[0] as { engagementScore?: string };
+		expect(logged.engagementScore?.length).toBeLessThanOrEqual(64);
 	});
 
 	it.each([
@@ -868,6 +893,9 @@ describe('POST /send — engagement score is validated, never cast', () => {
 			validBody({ engagementScore: 0 }).replace('"engagementScore":0', '"engagementScore":1e999'),
 		],
 	])('drops %s and bands DEFAULT', async (_label, body) => {
-		expect(await enqueue(body)).toEqual({ score: undefined, orderMs: PRIORITY_BANDS.DEFAULT });
+		expect(await enqueue(body)).toEqual({
+			score: undefined,
+			orderMs: priorityToOrderMs(PRIORITY_BANDS.DEFAULT),
+		});
 	});
 });

@@ -426,6 +426,21 @@ export function createSendHandler(
 
 		// Build job
 		const engagementScore = engagementScoreOrAbsent(body.engagementScore);
+		// Banding DEFAULT rather than rejecting keeps a non-essential field from
+		// failing a send, but a producer that regresses to `"90"` would otherwise
+		// lose HIGH banding permanently with no signal anywhere.
+		if (body.engagementScore !== undefined && engagementScore === undefined) {
+			logger.warn(
+				{
+					messageId: body.messageId,
+					// A bounded RENDERING, never the parsed value: it is unvalidated
+					// producer JSON of any size, and the quotes are what identify the
+					// regression — `"90"` and `90` are indistinguishable otherwise.
+					engagementScore: JSON.stringify(body.engagementScore)?.slice(0, 64),
+				},
+				'Ignoring a malformed engagement score — banding DEFAULT'
+			);
+		}
 		const job: EmailJob = {
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
