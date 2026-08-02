@@ -18,6 +18,19 @@ import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliver
 
 const props = defineProps<{
 	cell: RampCellControl;
+	/**
+	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14). The phase rung bounds the
+	 * SHARE dial, so on a deployment with no second sender the rung is stored but
+	 * DORMANT: the server takes it and leaves the share alone. Saying so is the
+	 * difference between a control that reads as a 75% cut and one that reads as
+	 * what it does.
+	 *
+	 * Configuration, not measurement — the server decides on observed relay
+	 * traffic for the cell, so the two can differ for one window on a relay that
+	 * was just connected or just removed. That is why this only changes what the
+	 * note SAYS: the share itself is held or cut by the server either way.
+	 */
+	hasReferenceArm?: boolean;
 	busy?: boolean;
 }>();
 
@@ -65,11 +78,23 @@ const TOP_RUNG = PHASE_RUNGS.at(-1) ?? 1;
 const isDisabled = computed(() => props.busy === true || !props.cell.isRampManaged);
 
 /**
- * The rung the cell stands on. A managed row with no stored ceiling is on the
- * ladder's FIRST rung — the same reading the server takes, so the buttons this
- * component offers and the moves the server accepts cannot disagree.
+ * The rung the cell stands on, read the way the SERVER reads it
+ * (`normalizePhaseCeiling`): a stored ceiling snaps DOWN onto a rung, and an
+ * absent or unreadable one sits on the ladder's FIRST rung.
+ *
+ * THE ROUNDING IS THE POINT, not a detail of the fallback. `phaseCeiling` is an
+ * unconstrained number on the row, and a raw reading disagreed with the server
+ * below the ladder: on a row carrying 0.1 the server accepts a reset to 0.25
+ * while every rung button here was disabled, so the screen that owns the move
+ * could not make it. Above the ladder it disagreed the other way — a stored 1.2
+ * left "Promote a phase" live on a cell the server answers as already at the top.
  */
-const currentRung = computed(() => props.cell.phaseCeiling ?? PHASE_RUNGS[0]);
+function rungFor(phaseCeiling: number | null): number {
+	if (phaseCeiling === null || !Number.isFinite(phaseCeiling)) return PHASE_RUNGS[0];
+	return PHASE_RUNGS.filter((rung) => rung <= phaseCeiling).at(-1) ?? PHASE_RUNGS[0];
+}
+
+const currentRung = computed(() => rungFor(props.cell.phaseCeiling));
 
 /**
  * A RESET ONLY EVER GOES DOWN. Raising a ceiling is a PROMOTION and runs the
@@ -223,11 +248,14 @@ function clampPercent(value: number): number {
 				{{ Math.round(rung * 100) }}%
 			</button>
 		</div>
-		<p class="text-xs text-text-secondary">
-			Resetting a phase restarts the clean streak: the cell re-earns its way up from the rung you
-			pick. Only rungs at or below the cell's current
-			{{ Math.round(currentRung * 100) }}% ceiling are a reset — going higher is a promotion, which
-			is its own control below.
+		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
+			{{
+				hasReferenceArm === false
+					? `Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.`
+					: `Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.`
+			}}
+			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
+			reset — going higher is a promotion, which is its own control below.
 		</p>
 
 		<!--

@@ -306,9 +306,16 @@ async function changePreset(
 						values — the destructive control would then propose a share the
 						operator chose for a different cell.
 					-->
+					<!--
+						AND THE SAME FACT THE PRESET PICKER ALREADY GETS. A phase rung bounds
+						the SHARE dial, so with no relay the rung is stored but dormant: the
+						server takes it and leaves the share alone. Naming it as a ceiling
+						that governs would describe a 75% cut this deployment cannot make.
+					-->
 					<DeliveryRampCellControls
 						:key="selectedCell.cellKey"
 						:cell="selectedCell"
+						:has-reference-arm="controls.referenceTransportId !== null"
 						:busy="isCellBusy"
 						@enroll="enroll"
 						@pause="pause"

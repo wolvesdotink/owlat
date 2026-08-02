@@ -105,6 +105,63 @@ describe('calm states', () => {
 	});
 
 	/**
+	 * A STORED RUNG IS AN UNCONSTRAINED NUMBER, and the server snaps it DOWN onto
+	 * the ladder before deciding anything. A raw reading here disagreed with that
+	 * in both directions: a row below the ladder disabled every rung button while
+	 * the server accepted the reset, and a row above it left "Promote a phase"
+	 * live on a cell the server answers as already at the top.
+	 */
+	it('reads a rung that is not on the ladder the way the server does', () => {
+		const below = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.1 }) },
+		});
+		// The screen that owns the move has to be able to make it.
+		expect(below.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
+			undefined
+		);
+		expect(
+			below.find('[data-testid="ramp-control-phase-0.5"]').attributes('disabled')
+		).toBeDefined();
+		below.unmount();
+
+		const above = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 1.2 }) },
+		});
+		expect(
+			above.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
+		).toBeDefined();
+		expect(above.find('[data-testid="ramp-control-phase-1"]').attributes('disabled')).toBe(
+			undefined
+		);
+		above.unmount();
+	});
+
+	/**
+	 * A DORMANT RUNG SAID PLAINLY (plan D3, D14). With no relay the phase ladder
+	 * bounds nothing — the server records the rung and holds the share — so copy
+	 * calling it the cell's governing ceiling describes a 75% cut this deployment
+	 * cannot make and would not want.
+	 */
+	it('says the rung is recorded, not applied, when there is no relay', () => {
+		const standalone = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasReferenceArm: false },
+		});
+		const note = standalone.find('[data-testid="ramp-reset-note"]').text();
+		expect(note).toContain('share stays where it is');
+		expect(note).not.toMatch(/brings the share back/i);
+		expect(standalone.html()).not.toMatch(ALARM);
+		standalone.unmount();
+
+		const withRelay = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasReferenceArm: true },
+		});
+		expect(withRelay.find('[data-testid="ramp-reset-note"]').text()).toContain(
+			'brings the share back'
+		);
+		withRelay.unmount();
+	});
+
+	/**
 	 * A BUTTON THAT CANNOT WORK IS A DEAD END. `promoteCellPhase` answers a cell
 	 * already on the top rung with `{applied: false}` and NO refusal, so a live
 	 * button there fires a mutation and nothing appears at all.
