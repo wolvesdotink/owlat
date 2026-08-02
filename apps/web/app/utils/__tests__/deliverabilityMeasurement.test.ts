@@ -32,6 +32,7 @@ import {
 	seedPlacementHold,
 	seedPlacementPass,
 	seedPlacementReferenceBreach,
+	seedPlacementReferenceBreachOutgrown,
 	seedPlacementReferenceHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
@@ -106,25 +107,44 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		}
 	});
 
-	it('says a clean sweep reached the inbox, in mailboxes', () => {
+	it('says a clean sweep reached the inbox OR A TAB, in mailboxes', () => {
+		// `isSeedPlacementReached` counts `category` — a Gmail tab — as reached, and
+		// `inbox_dominant` is documented as "the inbox or a tab". "Reached the inbox"
+		// alone reports a Promotions-filed probe as a miss the gate did not find.
 		const sentence = gateExplanation(seedPlacementPass());
-		expect(sentence).toContain('Effectively all of the 10 seed mailboxes reached the inbox');
+		expect(sentence).toContain(
+			'Effectively all of the 10 seed mailboxes reached the inbox or a tab'
+		);
 	});
 
-	it('says an absolute breach missed the inbox, and where those mailboxes went', () => {
+	it('says an absolute breach missed, and covers every placement that counts as missing', () => {
 		const sentence = gateExplanation(seedPlacementGate());
-		expect(sentence).toContain('Some of the 10 seed mailboxes did not reach the inbox');
-		expect(sentence).toContain('filtered to spam or not found in any folder');
+		expect(sentence).toContain('Some of the 10 seed mailboxes did not reach the inbox or a tab');
+		// Not-reached is spam, deleted OR missing — the shipped sentence named two
+		// of the three and left an auto-deleted probe unaccounted for.
+		expect(sentence).toContain('filtered to spam, deleted, or not found in any folder');
 	});
 
-	it('states the comparative breach as two sweeps, not as a gap in points', () => {
-		// `reference_tolerance_breached` is the one seed verdict about the RELAY,
-		// and the honest form of it is "fewer of ours than of theirs" — the size of
-		// the gap is exactly the number D17 forbids quoting.
+	it('states the comparative breach as a rate comparison, with the sweeps beside it', () => {
+		// `reference_tolerance_breached` is the one seed verdict about the RELAY, and
+		// it compares two SHARES over independently-sized sweeps. The sizes are
+		// context; the size of the GAP is the number D17 forbids quoting.
 		const sentence = gateExplanation(seedPlacementReferenceBreach());
-		expect(sentence).toContain('Fewer of the 10 seed mailboxes reached the inbox');
-		expect(sentence).toContain('12 the comparison transport swept');
+		expect(sentence).toContain('less often than the comparison transport');
+		expect(sentence).toContain('10 swept here, 12 there');
 		expect(sentence).not.toContain('Comparison transport:');
+	});
+
+	it('stays true when the own sweep has outgrown the comparison one', () => {
+		// THE DEFECT THIS PINS: 16 of 20 here against 5 of 5 there breaches the
+		// tolerance, and MORE mailboxes reached the inbox on this side — so the
+		// count-flavoured "fewer of ours reached than of theirs" was a false
+		// sentence, in the ordinary late-ramp shape rather than an exotic one.
+		const sentence = gateExplanation(seedPlacementReferenceBreachOutgrown());
+		expect(sentence).toContain('less often than the comparison transport');
+		expect(sentence).toContain('20 swept here, 5 there');
+		expect(sentence).not.toContain('Fewer');
+		expect(sentence).not.toMatch(PERCENTAGE);
 	});
 });
 

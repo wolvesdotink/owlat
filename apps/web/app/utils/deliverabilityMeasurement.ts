@@ -149,18 +149,33 @@ function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
  *
  * The mailbox COUNT stays, because it is the honesty input — how thin the sweep
  * was is exactly what a reader needs to weigh the status beside it.
+ *
+ * A COMPARATIVE VERDICT IS A COMPARISON OF TWO SHARES, and the sentence has to
+ * read as one. The two sweeps are sized independently, and the own arm
+ * OUTGROWING the reference one is the ordinary late-ramp shape — 16 of 20 here
+ * against 5 of 5 there breaches the tolerance while more mailboxes reached the
+ * inbox on this side, so "fewer of ours reached than of theirs" is not a
+ * paraphrase of the verdict, it is a false statement about it. The counts are
+ * quoted as SWEEP SIZES beside the comparison, never as its subject.
+ *
+ * "REACHED" IS THE SHARED MODULE'S WORD, and it means the inbox OR a tab:
+ * `isSeedPlacementReached` counts `inbox` and `category`, and
+ * `SeedPlacementStatus.inbox_dominant` is documented as "effectively everything
+ * reached the inbox or a tab". A sentence that says "the inbox" alone calls a
+ * Gmail Promotions probe a miss on the clean verdict and, symmetrically, has to
+ * account for the `deleted` placement on the breach.
  */
 function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
 	const mailboxes = formatNumber(gate.measurement.ownSample);
 	switch (gate.reason) {
 		case 'within_threshold':
-			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox.`;
+			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox or a tab.`;
 		case 'reference_tolerance_breached':
-			return `Fewer of the ${mailboxes} seed mailboxes reached the inbox than of the ${formatNumber(gate.measurement.referenceSample ?? 0)} the comparison transport swept.`;
+			return `This cell's seed mailboxes reached the inbox or a tab less often than the comparison transport's did — ${mailboxes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
 		case 'trailing_baseline_breached':
-			return `Fewer of the ${mailboxes} seed mailboxes reached the inbox than this cell's own recent sweeps did.`;
+			return `This cell's seed mailboxes reached the inbox or a tab less often than its own recent sweeps did — ${mailboxes} swept this window.`;
 		case 'absolute_threshold_breached':
-			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox — they were filtered to spam or not found in any folder.`;
+			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
 		default:
 			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
 			// seed gate has no other decided or halting outcome today, and a reason
