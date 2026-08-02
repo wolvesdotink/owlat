@@ -29,10 +29,7 @@ const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
 type Harness = ReturnType<typeof convexTest>;
 
 /** One route-state row. `stream` absent writes the MTA snapshot's row. */
-async function seedRow(
-	t: Harness,
-	row: { stream?: 'campaign'; ownShare: number }
-): Promise<void> {
+async function seedRow(t: Harness, row: { stream?: 'campaign'; ownShare: number }): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('deliverabilityRouteStates', {
 			organizationId: ORG,
@@ -94,9 +91,8 @@ describe('loadRouteStatesByCell — the same tie-break, so the grid agrees with 
 
 		const share = await t.run(async (ctx) => {
 			const byCell = await loadRouteStatesByCell(ctx, ORG);
-			return byCell.get(
-				deliverabilityCellKey({ stream: 'campaign', destinationProvider: 'gmail' })
-			)?.ownShare;
+			return byCell.get(deliverabilityCellKey({ stream: 'campaign', destinationProvider: 'gmail' }))
+				?.ownShare;
 		});
 
 		expect(share).toBe(0.25);
