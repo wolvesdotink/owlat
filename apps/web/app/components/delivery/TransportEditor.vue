@@ -5,6 +5,7 @@ import {
 	type OutboundTlsMode,
 } from '~/composables/setupOutboundTls';
 import {
+	transportStepIsValid,
 	validateEmailStep,
 	type EmailStepDraft,
 	type ProviderChoice,
@@ -131,16 +132,14 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 /**
- * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S. `validateEmailStep` also
- * demands the sending IPs and the EHLO hostname behind their PTR records
- * whenever the built-in MTA is chosen, because the SETUP wizard collects them on
- * that same step. This editor swaps a transport on a running instance: it does
- * not render those fields and could not write them anyway — they are not in
- * `PROVIDER_ENV_KEYS`, and the apply endpoint rejects any key that is not.
- * Gating Apply on a field the screen has no way to fill made "Run your own MTA"
- * a button that did nothing at all, with no sentence to say why.
+ * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S — decided in
+ * `useSetupWizard`, beside the rules themselves, rather than by listing here the
+ * one key to ignore. `transportStepIsValid` names the errors a transport-only
+ * screen OWNS and is exhaustive over `EmailStepErrors`, so the next field that
+ * step gains must be classified there instead of silently gating this Apply
+ * button on a field this screen does not render.
  */
-const isValid = computed(() => Object.keys(errors.value).every((key) => key === 'mtaIdentity'));
+const isValid = computed(() => transportStepIsValid(draft.value));
 
 // Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
 const canTest = relay.canValidateLive;

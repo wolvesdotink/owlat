@@ -210,6 +210,45 @@ export function emailStepIsValid(draft: EmailStepDraft): boolean {
 }
 
 /**
+ * WHICH OF THE EMAIL STEP'S RULES A TRANSPORT-ONLY SCREEN CAN MEET.
+ *
+ * The in-app transport editor swaps the transport on a RUNNING instance. It
+ * renders the provider picker, the credential fields and the From identity —
+ * and nothing else — so it can clear those errors and no others.
+ * `mtaIdentity` is the setup wizard's: the sending IPs and the EHLO hostname
+ * behind their PTR records are collected on that same step, are not in
+ * `PROVIDER_ENV_KEYS`, and the apply endpoint rejects any key that is not. An
+ * editor gated on that field is a screen where "Run your own MTA" does nothing
+ * at all, with no sentence to say why.
+ *
+ * `satisfies Record<keyof EmailStepErrors, boolean>` is the point of the table:
+ * the NEXT field the wizard adds to that step has to be classified here or the
+ * build fails — which is the opposite of the previous shape, an inverted
+ * allowlist that would have silently killed Apply on the new field instead.
+ */
+const TRANSPORT_EDITOR_OWNED_ERRORS = {
+	provider: true,
+	resendKey: true,
+	ses: true,
+	smtp: true,
+	fromEmail: true,
+	mtaIdentity: false,
+} as const satisfies Record<keyof EmailStepErrors, boolean>;
+
+/**
+ * Validity for a surface that changes the TRANSPORT ONLY: every rule the screen
+ * can actually satisfy is satisfied. Lives here, beside {@link validateEmailStep}
+ * itself, so the rules and the subset that applies to a given screen cannot be
+ * edited a package apart from each other.
+ */
+export function transportStepIsValid(draft: EmailStepDraft): boolean {
+	const errors = validateEmailStep(draft);
+	return (Object.keys(errors) as (keyof EmailStepErrors)[]).every(
+		(key) => !TRANSPORT_EDITOR_OWNED_ERRORS[key]
+	);
+}
+
+/**
  * Build the env patch for the email step from the current draft, starting from
  * the existing env. Pure so it can be unit-tested and reused by the page's
  * `next()` handler. Resend keys are validated over the network in the page
