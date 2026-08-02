@@ -40,7 +40,10 @@ import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
  * that a removal is unsafe — so the endpoint refuses fail-closed, and that
  * refusal is a request for the phrase rather than an error. It is routed to the
  * dialog on the `needsRelayRemovalConfirmation` flag, never printed: a rule an
- * operator is given no way to meet is a dead end, not a safeguard.
+ * operator is given no way to meet is a dead end, not a safeguard. Its SENTENCE
+ * travels with it — the endpoint's read is a different read from this screen's,
+ * and on that path it is the only one that knows how many cells are still
+ * leaning on the relay and what date waiting would make it free.
  */
 
 const props = defineProps<{
@@ -170,9 +173,37 @@ async function handleTest() {
  * that WARNS and the screen that CHANGES cannot disagree about which cells are
  * still leaning on the relay.
  */
-const { removesReferenceArm, removalConsequence } = useRelayRemovalGuard(provider);
+const { removesReferenceArm, removalConsequence, dependentCellCount } =
+	useRelayRemovalGuard(provider);
 
 const isRemovalDialogOpen = ref(false);
+
+/**
+ * The consequence the SERVER quoted when it refused, kept verbatim.
+ *
+ * The two removal reads are independent — this screen's live subscription and
+ * the endpoint's own HTTP query — so the server routinely knows what this
+ * browser does not, and its refusal already names the cell count and the
+ * projected safe date. Dropping it left the dialog saying "could not be
+ * established" on the one action that cannot be undone, while the answer sat
+ * unread in the response.
+ */
+const refusalConsequence = ref<string | null>(null);
+
+/**
+ * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read
+ * produces a figure-free sentence in two states that look different and read the
+ * same: it never answered, and it answered `safe` a moment before the server's
+ * read found four cells still leaning on the relay. Both are the state where the
+ * refusal is the only sentence with numbers in it. The local copy is preferred
+ * when it HAS them because it is a computed off the live query — it keeps
+ * improving as the read advances, and a captured string cannot.
+ */
+const dialogConsequence = computed<string>(() => {
+	const local = removalConsequence.value.consequence;
+	if ((dependentCellCount.value ?? 0) > 0) return local;
+	return refusalConsequence.value ?? local;
+});
 
 // ── Apply ────────────────────────────────────────────────────────────────────
 const applying = ref(false);
@@ -200,6 +231,9 @@ function confirmRelayRemoval(confirmation: string): Promise<void> {
 
 async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	applying.value = true;
+	// Each attempt re-derives its own refusal: a sentence from the previous one
+	// would be quoted at an operator whose deployment has since moved on.
+	refusalConsequence.value = null;
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
 		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
@@ -211,6 +245,10 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 			// "Couldn't apply" left the operator reading "type REMOVE THE RELAY" on a
 			// screen with nowhere to type it, so the refusal opens the dialog instead.
 			if (res.needsRelayRemovalConfirmation === true) {
+				// Its message is the SHARED consequence sentence, built from the read
+				// this browser could not make — so it is carried into the dialog rather
+				// than discarded with the response.
+				refusalConsequence.value = res.message;
 				isRemovalDialogOpen.value = true;
 				return;
 			}
@@ -240,6 +278,7 @@ function cancel() {
 	testResult.value = null;
 	applyError.value = '';
 	restartNotice.value = '';
+	refusalConsequence.value = null;
 }
 </script>
 
@@ -449,7 +488,7 @@ function cancel() {
 				@confirm="confirmRelayRemoval"
 			>
 				<template #consequence>
-					<p data-testid="transport-removal-consequence">{{ removalConsequence.consequence }}</p>
+					<p data-testid="transport-removal-consequence">{{ dialogConsequence }}</p>
 					<p v-if="removalConsequence.safeDate !== null" data-testid="transport-removal-dialog-date">
 						{{ removalConsequence.safeDate }}
 					</p>

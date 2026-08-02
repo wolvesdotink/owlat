@@ -31,6 +31,15 @@ export interface RelayRemovalGuard {
 	readonly removesReferenceArm: ComputedRef<boolean>;
 	/** The consequence sentence for the confirmation dialog. */
 	readonly removalConsequence: ComputedRef<RelayRemovalConsequence>;
+	/**
+	 * How many cells THIS BROWSER'S read found still leaning on the relay, or
+	 * `null` when that read did not answer. Exposed because it is the one thing
+	 * that says whether {@link removalConsequence} carries figures at all: the
+	 * endpoint makes its own, independent read, so a caller holding a refusal has
+	 * to be able to tell a sentence with a cell count in it from the figure-free
+	 * one this guard produces on a `null` — and on a `safe` that lost the race.
+	 */
+	readonly dependentCellCount: ComputedRef<number | null>;
 }
 
 /**
@@ -81,5 +90,6 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 				projectedSafeAt: projectedSafeAt.value,
 			})
 		),
+		dependentCellCount: computed(() => dependentCells.value?.length ?? null),
 	};
 }

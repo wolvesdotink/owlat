@@ -241,6 +241,84 @@ describe('the transport editor when its own removal read did not answer', () => 
 		wrapper.unmount();
 	});
 
+	/**
+	 * The refusal's own read answered even though this browser's did not, and its
+	 * message carries the cell count and the projected safe date. Rendering the
+	 * local guard's figure-free sentence instead throws away the most actionable
+	 * fact the feature produces, on the one action that cannot be undone.
+	 */
+	function refusedWithFigures() {
+		return {
+			...refusedPendingConfirmation(),
+			message:
+				'4 cells have not graduated yet and still send part of their mail through resend. ' +
+				'Disconnecting it moves all of that traffic onto your own server immediately — not ' +
+				'gradually — and the reputation resend has built for your domain stops being available ' +
+				'to fall back on. On the current pace, waiting until about 14 Aug 2026 would avoid that ' +
+				`entirely. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
+		};
+	}
+
+	it('shows the server’s cell count and safe date when only the server’s read answered', async () => {
+		summary.value = undefined;
+		summaryError.value = new Error('independence read unavailable');
+		fetchMock.mockResolvedValueOnce(refusedWithFigures());
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		await flushPromises();
+
+		const consequence = wrapper.find('[data-testid="transport-removal-consequence"]').text();
+		expect(consequence).toContain('4 cells have not graduated yet');
+		expect(consequence).toContain('14 Aug 2026');
+		expect(consequence).not.toContain('could not be established');
+		wrapper.unmount();
+	});
+
+	// The other way the local copy has no figures: it answered `safe` a moment
+	// before the endpoint's independent read found cells still leaning on the
+	// relay. "Read answered" is not the same question as "read has something to
+	// say", and only the second one may pick the sentence.
+	it('prefers the server’s figures over a local read that came back safe', async () => {
+		summary.value = independenceSummary({ relayRemoval: { kind: 'safe' } });
+		fetchMock.mockResolvedValueOnce(refusedWithFigures());
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="transport-removal-consequence"]').text()).toContain(
+			'4 cells have not graduated yet'
+		);
+		wrapper.unmount();
+	});
+
+	// The live query is the better source WHEN IT HAS ONE: it re-renders as the
+	// read advances, and a string captured off one response cannot.
+	it('keeps its own live copy when its read found the cells itself', async () => {
+		fetchMock.mockResolvedValueOnce(refusedWithFigures());
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		// The local read said "unsafe", so the dialog opened WITHOUT a request; the
+		// phrase then draws the refusal out of the mocked endpoint.
+		await wrapper.find('[data-testid="ramp-confirm-input"]').setValue(RELAY_REMOVAL_CONFIRMATION);
+		await wrapper.find('[data-testid="ramp-confirm-submit"]').trigger('click');
+		await flushPromises();
+
+		const consequence = wrapper.find('[data-testid="transport-removal-consequence"]').text();
+		expect(consequence).toContain('1 cell has not graduated yet');
+		expect(consequence).not.toContain('4 cells have not graduated yet');
+		wrapper.unmount();
+	});
+
 	it('still reports a refusal that no phrase can clear as an error', async () => {
 		fetchMock.mockResolvedValueOnce({
 			ok: false,
