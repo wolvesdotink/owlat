@@ -411,22 +411,66 @@ describe('adaptive_mix — a relayed cell contributes nothing to the floor', () 
 	});
 
 	/**
-	 * The pool-wide `'all'` row is not a cell, but a fresh breaker on it relays
-	 * EVERY cell — `cellRoute` passes it alongside both rows of whichever cell it
-	 * is resolving — so no cell has a positive guaranteed share.
+	 * The pool-wide `'all'` row is not a cell, but a fresh breaker on it DEFERS
+	 * every cell rather than relaying it: `cellRoute` short-circuits the whole
+	 * resolver to null before `resolveRoute` is reached. A deferred message is not
+	 * own-arm volume either, so no cell has a positive guaranteed share.
 	 */
-	it('zeroes every cell’s floor on a fresh pool-wide breaker', async () => {
-		const t = convexTest(schema, modules);
-		configureSesEnv();
-		await seedRoute(t, HATCH_ON);
+	async function seedFreshPoolWideBreaker(t: Harness): Promise<void> {
 		await seedEveryCellShare(t, 0.9);
 		await seedRouteState(t, {
 			destinationProvider: 'all',
 			isFallbackActive: true,
 			signals: [{ source: 'breaker_open', severity: 'critical' }],
 		});
+	}
+
+	it('zeroes every cell’s floor on a fresh pool-wide breaker', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, HATCH_ON);
+		await seedFreshPoolWideBreaker(t);
 
 		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0, peak: 0.9 } });
+	});
+
+	/**
+	 * AND WITH THE HATCH OFF TOO, unlike every per-cell reason above. The circuit
+	 * is read BEFORE `deliverabilityFallback` on both dispatch paths — `cellRoute`
+	 * returns the null resolver, `resolveRoute` throws
+	 * `GlobalDeliveryCircuitOpenError` on its first line — and `applySnapshot`
+	 * writes the `'all'` row whatever the hatch says. Keeping the stored 0.9 here
+	 * would license a multi-day refusal against a campaign that ships the moment
+	 * the transient circuit closes: the same false blocker the per-cell correction
+	 * removes.
+	 */
+	it('zeroes the floor on a pool-wide breaker with the escape hatch OFF', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, MIXED_ROUTE);
+		await seedFreshPoolWideBreaker(t);
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0, peak: 0.9 } });
+	});
+
+	/**
+	 * A STALE breaker defers nothing: the dispatch path drops the row past
+	 * `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, so the stream dispatches on its stored
+	 * shares again and the refusal this deployment can still make comes back.
+	 */
+	it('keeps the stored shares when the pool-wide breaker is stale', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, MIXED_ROUTE);
+		await seedEveryCellShare(t, 0.9);
+		await seedRouteState(t, {
+			destinationProvider: 'all',
+			isFallbackActive: true,
+			signals: [{ source: 'breaker_open', severity: 'critical' }],
+			updatedAt: NOW - DELIVERABILITY_SIGNAL_MAX_AGE_MS - 1,
+		});
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.9, peak: 0.9 } });
 	});
 });
 

@@ -11,8 +11,9 @@
  * WHAT THIS SEAM CANNOT DO, said out loud (D14). The stream's own-arm FLOOR is
  * zero as soon as ONE cell carries nothing on the own MTA — a stored share of 0,
  * or (see {@link campaignStreamShare}) a fresh actionable signal that the
- * dispatch path relays the whole cell on — and a zero floor can never refuse
- * anything, because a lower bound of zero on own-arm volume exceeds no capacity.
+ * dispatch path relays or defers the whole cell on — and a zero floor can never
+ * refuse anything, because a lower bound of zero on own-arm volume exceeds no
+ * capacity.
  * In a ramping deployment at least one such cell is ordinary, so P0-5's REFUSAL
  * is unenforceable here most of the time: a campaign whose recipients all sit in
  * un-degraded cells is answered "capacity unknown, allowed", and its tail can
@@ -35,7 +36,7 @@
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { SendRouteFacts } from './route';
 import { loadSendRouteFacts, routingDeferralCode, selectRouteFromFacts } from './route';
-import { freshFallbackReasons } from './routeInputs';
+import { freshFallbackReasons, isGlobalBreakerOpenState } from './routeInputs';
 import { relayDomainVerified } from './relayDomainVerification';
 import type { ResolvedRoute } from './routing';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
@@ -123,8 +124,9 @@ export interface OwnArmShareBounds {
 	 * The smallest own-arm share any cell of the stream carries — the LOWER bound
 	 * on own-arm volume, whatever the audience's per-cell composition turns out
 	 * to be. Zero whenever ANY cell is fully off the own arm, by a stored share of
-	 * zero or by a fresh actionable signal the escape hatch acts on, which is why
-	 * a refusal is often unavailable (see the module doc).
+	 * zero, by a fresh actionable signal the escape hatch relays on, or by the
+	 * pool-wide circuit deferring the whole stream — which is why a refusal is
+	 * often unavailable (see the module doc).
 	 */
 	readonly floor: number;
 	/**
@@ -205,6 +207,19 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * (`resolveRoute` returns the strategy's selection) and the stored share is the
  * whole answer.
  *
+ * THE POOL-WIDE BREAKER IS NOT A HATCH DECISION. A fresh `breaker_open` on the
+ * `'all'` row DEFERS the whole stream rather than relaying it, and it does so
+ * hatch on or hatch off: `cellRoute` short-circuits every cell to `null` before
+ * `resolveRoute` is reached, and `resolveRoute` throws
+ * `GlobalDeliveryCircuitOpenError` on its first line, before
+ * `deliverabilityFallback` is consulted. A deferred message is not own-MTA
+ * volume either, so every cell's guaranteed lower bound is zero with the hatch
+ * off too — and `applySnapshot` writes that row whatever the hatch says, so
+ * keeping the stored shares there would over-count own-arm volume in the
+ * direction that REFUSES: a multi-day refusal quoted to a campaign that ships as
+ * soon as the transient circuit closes. Hence one unconditional read of the row
+ * and a floor condition with no hatch term.
+ *
  * ONLY THE FLOOR IS CORRECTED. Over-estimating the PEAK can only turn "it fits"
  * into "unmeasured", which allows either way, so it stays the plain share
  * extreme.
@@ -212,9 +227,7 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * READS A WHOLE-ORGANIZATION RANGE, inside a send mutation: the OCC footprint
  * that buys is stated on `loadStreamRouteStateCells` (D16). A gate judging an
  * AUDIENCE has no single cell to point-read, so the range is what the question
- * costs. The pool-wide `'all'` row is one extra point read on top, and only when
- * the escape hatch is on: a fresh breaker there relays EVERY cell, exactly as
- * `cellRoute` reads it.
+ * costs. The pool-wide `'all'` row is one extra point read on top.
  */
 async function campaignStreamShare(
 	ctx: QueryCtx | MutationCtx,
@@ -242,10 +255,11 @@ async function campaignStreamShare(
 	}
 	const [cells, globalState] = await Promise.all([
 		loadStreamRouteStateCells(ctx, organizationId, 'campaign'),
-		options.isEscapeHatchEnabled
-			? loadStreamlessRouteState(ctx, organizationId, 'all')
-			: Promise.resolve(null),
+		loadStreamlessRouteState(ctx, organizationId, 'all'),
 	]);
+	// The circuit is read before the hatch on both dispatch paths, so it zeroes
+	// every cell's floor on its own.
+	const isDeferredPoolWide = isGlobalBreakerOpenState(globalState, options.now);
 	let floor = OWN_SHARE_CEILING;
 	let peak = OWN_SHARE_FLOOR;
 	for (const provider of DESTINATION_PROVIDER_KEYS) {
@@ -254,11 +268,12 @@ async function campaignStreamShare(
 		peak = Math.max(peak, ownShare);
 		// EVERY row a routing decision keys off, in the order `cellRoute` passes
 		// them: the pool-wide row, the cell's infrastructure row and the
-		// controller's own. Any one of them may hold the fresh actionable verdict.
+		// controller's own. Any one of them may hold the fresh actionable verdict,
+		// and the pool-wide row carries non-breaker verdicts too.
 		const isRelayedByReason =
 			options.isEscapeHatchEnabled &&
 			freshFallbackReasons([globalState, cell.streamless, cell.perStream], options.now).length > 0;
-		floor = Math.min(floor, isRelayedByReason ? OWN_SHARE_FLOOR : ownShare);
+		floor = Math.min(floor, isDeferredPoolWide || isRelayedByReason ? OWN_SHARE_FLOOR : ownShare);
 	}
 	return { floor, peak };
 }
