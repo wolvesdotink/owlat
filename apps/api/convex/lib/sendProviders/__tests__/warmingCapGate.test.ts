@@ -20,6 +20,8 @@ import schema from '../../../schema';
 import { modules } from '../../../__tests__/testModules';
 import {
 	DESTINATION_PROVIDER_KEYS,
+	type DeliverabilitySignalProvider,
+	type DeliverabilityStream,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import { campaignWarmingCapBinds, type WarmingCapVerdict } from '../warmingCapGate';
@@ -105,16 +107,17 @@ async function seedRoute(
 }
 
 /**
- * One `deliverabilityRouteStates` row. `stream: 'campaign'` is the ramp
- * controller's per-stream row (the one that carries a share); omitting the
- * stream writes the MTA snapshot's stream-less row, whose `isFallbackActive` is
- * the legacy share expression.
+ * One `deliverabilityRouteStates` row. A `stream` is the ramp controller's
+ * per-stream row (the one that carries a share); omitting it writes the MTA
+ * snapshot's stream-less row, whose `isFallbackActive` is the legacy share
+ * expression. `destinationProvider: 'all'` is the pool-wide infrastructure
+ * slice, which is not a ramp cell at all.
  */
 async function seedRouteState(
 	t: Harness,
 	row: {
-		destinationProvider: DestinationProviderKey;
-		stream?: 'campaign';
+		destinationProvider: DeliverabilitySignalProvider;
+		stream?: DeliverabilityStream;
 		ownShare?: number;
 		isFallbackActive?: boolean;
 	}
@@ -206,6 +209,30 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		// The MTA snapshot says the relay is engaged for gmail; the controller's
 		// own row is the share, and `perStream ?? streamless` must prefer it.
 		await seedRouteState(t, { destinationProvider: 'gmail', isFallbackActive: true });
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.4, peak: 0.4 } });
+	});
+
+	/**
+	 * ONE STREAM'S CELLS, AND NOTHING ELSE. The controller writes a row per
+	 * (stream, provider), so the same provider carries a transactional share and a
+	 * campaign share at once — reading the wrong one answers the campaign verdict
+	 * off transactional mail's ramp. The pool-wide `'all'` slice is infrastructure
+	 * rather than a cell and must not enter the extremes either.
+	 */
+	it('ignores another stream’s controller row and the pool-wide slice', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, MIXED_ROUTE);
+		await seedEveryCellShare(t, 0.4);
+		// Transactional mail is much further up its ramp than campaign mail, and
+		// the infrastructure slice says the relay is engaged pool-wide.
+		await seedRouteState(t, {
+			destinationProvider: 'gmail',
+			stream: 'transactional',
+			ownShare: 0.9,
+		});
+		await seedRouteState(t, { destinationProvider: 'all', isFallbackActive: true });
 
 		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.4, peak: 0.4 } });
 	});
