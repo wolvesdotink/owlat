@@ -80,6 +80,15 @@ describe('observeTxt failure mapping', () => {
 	 * answered and the sweep moved on. That rejection must not surface: an
 	 * unobserved one in the Node action runtime takes the whole hourly sweep down
 	 * mid-page, and the domains after it wait for the next run.
+	 *
+	 * WHAT THIS CAN AND CANNOT CATCH TODAY. `Promise.race` subscribes to the
+	 * loser, so it observes the late rejection on its own and this passes with
+	 * `withDeadline`'s explicit drain removed — the pin is on the INVARIANT, not
+	 * on the line that currently provides it. It earns its place against the
+	 * refactor that stops handing `work` to `Promise.race` — a settle flag, an
+	 * `AbortController`, a timer-first restructuring — where the drain becomes
+	 * the only subscriber and its absence is a crashed sweep in production
+	 * rather than a failed assertion here.
 	 */
 	it('does not surface a rejection that arrives after the deadline was answered', async () => {
 		const unhandled: unknown[] = [];
