@@ -9,7 +9,8 @@
  * not have, and about a relay it could not name.
  */
 import { describe, expect, it } from 'vitest';
-import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import { independenceSubhead, relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import { measurementSubhead } from '~/utils/deliverabilityMeasurement';
 
 const REFERENCE = 'ses';
 
@@ -22,7 +23,7 @@ describe('relayRemovalConsequenceCopy', () => {
 		});
 
 		expect(consequence).toContain('1 cell has not graduated yet');
-		expect(consequence).toContain('still sends part of its mail through ses');
+		expect(consequence).toContain('still sends part of its mail through Amazon SES');
 		// The defect this pins: "1 cells have not graduated yet", shipped on two
 		// screens while the server's own refusal got it right.
 		expect(consequence).not.toContain('1 cells');
@@ -36,7 +37,7 @@ describe('relayRemovalConsequenceCopy', () => {
 		});
 
 		expect(consequence).toContain('2 cells have not graduated yet');
-		expect(consequence).toContain('still send part of their mail through ses');
+		expect(consequence).toContain('still send part of their mail through Amazon SES');
 	});
 
 	it('names the consequence itself, not the risk in general', () => {
@@ -111,5 +112,42 @@ describe('relayRemovalConsequenceCopy', () => {
 				projectedSafeAt: null,
 			}).safeDate
 		).toBeNull();
+	});
+});
+
+/**
+ * THE RELAY HAS A NAME, AND THE PROSE USES IT.
+ *
+ * `referenceTransportId` is the stored transport KIND — `ses`, `smtp` — which is
+ * what the operator typed into `EMAIL_PROVIDER`, not what the product calls that
+ * transport anywhere else. Printing it verbatim put "instead of ses" on the
+ * screen people screenshot while the transport card, three clicks away, called
+ * the same thing "Amazon SES".
+ */
+describe('naming the reference transport', () => {
+	it('names the relay the way the transport card does', () => {
+		expect(independenceSubhead('ses')).toContain('instead of Amazon SES');
+		expect(independenceSubhead('smtp')).toContain('instead of SMTP relay');
+		expect(measurementSubhead('ses')).toContain('compares with Amazon SES');
+		expect(independenceSubhead('ses')).not.toContain(' ses');
+	});
+
+	it('falls back to the raw kind rather than dropping an unknown transport', () => {
+		// The reference arm is whatever `EMAIL_PROVIDER` was set to, so a kind this
+		// build does not know must still read as itself.
+		expect(independenceSubhead('postmark')).toContain('instead of postmark');
+		expect(measurementSubhead('postmark')).toContain('compares with postmark');
+		expect(
+			relayRemovalConsequenceCopy({
+				dependentCells: ['campaign:gmail'],
+				referenceTransportId: 'postmark',
+				projectedSafeAt: null,
+			}).consequence
+		).toContain('through postmark');
+	});
+
+	it('leaves the standalone sentences alone — there is no relay to name', () => {
+		expect(independenceSubhead(null)).toContain('There is no relay to move away from');
+		expect(measurementSubhead(null)).toContain('What your own server is sending');
 	});
 });

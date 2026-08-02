@@ -41,6 +41,19 @@ export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
 	smtp: 'SMTP relay',
 };
 
+/**
+ * The operator's name for a stored transport kind, wherever prose has to NAME
+ * the second arm — "instead of Amazon SES", not "instead of ses".
+ *
+ * FALLS BACK TO THE RAW VALUE ON PURPOSE. The reference transport is whatever
+ * `EMAIL_PROVIDER` was set to, so a kind this build does not know must still
+ * read as itself; printing nothing, or "Unknown", would leave the sentence
+ * naming a relay the operator cannot identify.
+ */
+export function transportLabel(kind: string): string {
+	return isDeliveryProviderKind(kind) ? TRANSPORT_LABEL[kind] : kind;
+}
+
 /** One-line description of how each transport delivers mail. */
 const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
 	mta: 'Owlat’s built-in mail server sends your mail directly and manages IP warm-up.',

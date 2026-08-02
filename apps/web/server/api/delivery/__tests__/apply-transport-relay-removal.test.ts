@@ -126,7 +126,8 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 		// The refusal names the consequence, not just the rule — in the SAME words
 		// the dialog that collects the phrase uses (`relayRemovalConsequenceCopy`).
 		expect(res.message).toContain('2 cells have not graduated yet');
-		expect(res.message).toContain('ses');
+		// And it names the relay the way every screen does, not by its stored kind.
+		expect(res.message).toContain('Amazon SES');
 		// The flag is what makes the refusal actionable: a client whose own removal
 		// read faulted learns from THIS response that a phrase is wanted, and can
 		// open its dialog instead of printing the demand with nowhere to meet it.

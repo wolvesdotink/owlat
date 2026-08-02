@@ -55,8 +55,17 @@ describe('measurement cell card — healthy cell', () => {
 	});
 
 	it('names the reference transport as the comparison column', () => {
+		// The transport's NAME, not its stored kind: the column heads the relay's
+		// numbers, and `resend` is what `EMAIL_PROVIDER` says rather than what the
+		// transport card calls that transport everywhere else.
 		const wrapper = mountCard(cellView(), 'resend');
-		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('resend');
+		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('Resend');
+		wrapper.unmount();
+	});
+
+	it('falls back to the raw kind for a transport this build does not know', () => {
+		const wrapper = mountCard(cellView(), 'postmark');
+		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('postmark');
 		wrapper.unmount();
 	});
 });

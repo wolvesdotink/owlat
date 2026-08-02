@@ -18,6 +18,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { transportLabel } from '~/utils/transportState';
 
 export type DeliverabilityDashboard = FunctionReturnType<
 	typeof api.delivery.deliverabilityDashboard.getDeliverabilityDashboard
@@ -36,10 +37,16 @@ export function measurementHeadline(referenceTransportId: string | null): string
 	return referenceTransportId === null ? 'Warm-up autopilot' : 'Sending independence';
 }
 
+/**
+ * THE SECOND ARM IS NAMED THE WAY THE OPERATOR CHOSE IT. The reference
+ * transport reaches this screen as its stored KIND (`ses`, `smtp`), which is a
+ * configuration value rather than a name — `transportLabel` turns it back into
+ * the words the transport card and the DNS guidance already use.
+ */
 export function measurementSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
 		? 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.'
-		: `How your own server compares with ${referenceTransportId} on the same traffic. Read-only — nothing here changes your sending.`;
+		: `How your own server compares with ${transportLabel(referenceTransportId)} on the same traffic. Read-only — nothing here changes your sending.`;
 }
 
 const STREAM_LABELS = {
