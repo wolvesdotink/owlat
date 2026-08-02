@@ -55,10 +55,11 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 	const relayRemoval = computed(() => independence.value?.relayRemoval ?? null);
 
 	/**
-	 * Cells that would be moved onto the own server at once, or `null` while the
-	 * read has not answered — which is NOT "no cells": the dialog can also be
-	 * opened by the endpoint's fail-closed refusal, and the copy has to be honest
-	 * about knowing nothing rather than claim zero.
+	 * Cells that would be moved onto the own server at once, `[]` when the read
+	 * answered that every cell has graduated, and `null` while it has not answered
+	 * at all — which is NOT "no cells": the dialog can also be opened by the
+	 * endpoint's fail-closed refusal, and the copy has to be honest about knowing
+	 * nothing rather than claim zero.
 	 */
 	const dependentCells = computed<readonly string[] | null>(() => {
 		const removal = relayRemoval.value;
@@ -105,13 +106,14 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 		removalConsequence: localConsequence,
 		/**
 		 * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read
-		 * produces a figure-free sentence in two states that look different and read
-		 * the same: it never answered, and it answered `safe` a moment before the
-		 * server's read found four cells still leaning on the relay. Both are the
-		 * state where the refusal is the only sentence with numbers in it. The local
-		 * copy is preferred when it HAS them because it is a computed off the live
-		 * query — it keeps improving as the read advances, and a captured string
-		 * cannot.
+		 * has no cells to count in two states: it never answered, and it answered
+		 * `safe` a moment before the server's read found four cells still leaning on
+		 * the relay. Both are the state where the refusal is the only sentence with
+		 * numbers in it, and on the second one the local sentence is worse than
+		 * figure-free — it would tell an operator nothing is leaning on the relay
+		 * inside the dialog the server opened by refusing. The local copy is
+		 * preferred when it HAS figures because it is a computed off the live query:
+		 * it keeps improving as the read advances, and a captured string cannot.
 		 */
 		dialogConsequence: computed(() => {
 			const local = localConsequence.value.consequence;

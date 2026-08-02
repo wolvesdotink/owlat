@@ -54,17 +54,34 @@ describe('relayRemovalConsequenceCopy', () => {
 		// A COUNT WE DO NOT HAVE IS NOT ZERO. This is the shape behind the
 		// endpoint's fail-closed refusal — nothing was read, so nothing may be
 		// asserted about which cells are safe.
-		for (const dependentCells of [null, []]) {
-			const { consequence } = relayRemovalConsequenceCopy({
-				dependentCells,
-				referenceTransportId: null,
-				projectedSafeAt: null,
-			});
+		const { consequence } = relayRemovalConsequenceCopy({
+			dependentCells: null,
+			referenceTransportId: null,
+			projectedSafeAt: null,
+		});
 
-			expect(consequence).toContain('could not be established');
-			expect(consequence).not.toContain('0 cell');
-			expect(consequence).toContain('immediately — not gradually');
-		}
+		expect(consequence).toContain('could not be established');
+		expect(consequence).not.toContain('0 cell');
+		expect(consequence).toContain('immediately — not gradually');
+	});
+
+	it('says a read that found every cell graduated is safe, not unestablished', () => {
+		// AND ZERO IS NOT A COUNT WE DO NOT HAVE. An empty list is an ANSWER, and
+		// routing it through the unknown arm made the Independence dialog refuse to
+		// call safe a deployment the card above the button had just called safe.
+		const { consequence, safeDate } = relayRemovalConsequenceCopy({
+			dependentCells: [],
+			referenceTransportId: REFERENCE,
+			projectedSafeAt: null,
+		});
+
+		expect(consequence).toContain('Every cell has graduated');
+		expect(consequence).toContain('would not move any traffic');
+		expect(consequence).not.toContain('could not be established');
+		expect(consequence).not.toContain('cannot be treated as safe');
+		// The one thing disconnecting still costs a graduated deployment.
+		expect(consequence).toContain('stops being available to fall back on');
+		expect(safeDate).toBeNull();
 	});
 
 	it('calls an unnamed second arm the relay rather than printing null', () => {

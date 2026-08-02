@@ -70,10 +70,20 @@ const headlineValue = computed(() => {
 
 const isRemovalDialogOpen = ref(false);
 
-const dependentCells = computed(() => {
+/**
+ * `null` while the summary has not arrived, `[]` once it has and every cell has
+ * graduated. Two different facts, and the consequence copy renders them as two
+ * different sentences — collapsing them put "this cannot be treated as safe" in
+ * the dialog of a deployment whose card, two lines above the button that opens
+ * it, said every cell had graduated.
+ */
+const dependentCells = computed<readonly string[] | null>(() => {
 	const removal = summary.value?.relayRemoval;
-	return removal === undefined || removal.kind === 'safe' ? [] : removal.dependentCells;
+	if (removal === undefined) return null;
+	return removal.kind === 'safe' ? [] : removal.dependentCells;
 });
+
+const isRemovalSafe = computed(() => summary.value?.relayRemoval.kind === 'safe');
 
 const projectedSafeAt = computed(() => {
 	const removal = summary.value?.relayRemoval;
@@ -84,7 +94,10 @@ const projectedSafeAt = computed(() => {
  * The consequence sentence is the SHARED one — the transport editor's dialog and
  * the endpoint's refusal build theirs from the same helper, so an operator who
  * reads it here and then meets it again on the screen that actually disconnects
- * cannot be told two different stakes for one click.
+ * cannot be told two different stakes for one click. THE CARD AND THE DIALOG ON
+ * THIS SCREEN RENDER THE SAME STRING for the same reason: the button sits below
+ * the card, and a second hand-written sentence in the dialog is the shortest
+ * distance to two claims about one click.
  */
 const removalConsequence = computed(() =>
 	relayRemovalConsequenceCopy({
@@ -172,11 +185,11 @@ function confirmRelayRemoval(): void {
 				<UiCard v-if="!isStandalone">
 					<h2 class="text-base font-semibold text-text-primary">Disconnecting the relay</h2>
 					<p
-						v-if="dependentCells.length === 0"
+						v-if="isRemovalSafe"
 						class="mt-2 text-sm text-text-secondary"
 						data-testid="relay-removal-safe"
 					>
-						Every cell has graduated. Disconnecting the relay now would not move any traffic.
+						{{ removalConsequence.consequence }}
 					</p>
 					<template v-else>
 						<p class="mt-2 text-sm text-text-secondary" data-testid="relay-removal-dependent">

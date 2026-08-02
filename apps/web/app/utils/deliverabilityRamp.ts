@@ -259,8 +259,11 @@ export interface RelayRemovalConsequence {
 
 export interface RelayRemovalFacts {
 	/**
-	 * The cells still leaning on the relay. `null` — or an empty list under a
-	 * refusal — means the removal read did not answer, which is NOT zero cells.
+	 * The cells still leaning on the relay. THE EMPTY LIST AND `null` ARE
+	 * DIFFERENT FACTS and the caller may not collapse them: `[]` is a read that
+	 * answered and found every cell graduated, `null` is a read that did not
+	 * answer at all. Passing an empty list for the second one puts a "cannot be
+	 * treated as safe" sentence on a deployment that has nothing left to lose.
 	 */
 	readonly dependentCells: readonly string[] | null;
 	/** The second arm's transport id, or null when it could not be read. */
@@ -279,23 +282,31 @@ export interface RelayRemovalFacts {
  * The FACTS are the server's (`relayRemoval` off `getIndependenceSummary`); only
  * the words are here.
  *
- * A COUNT WE DO NOT HAVE IS NOT ZERO. An absent or empty cell list means the
- * removal read did not answer — the browser's faulted, or the server's did and
- * it refused fail-closed — so the copy says the situation could not be
- * established rather than printing "0 cells have not graduated yet" under a
- * refusal that exists precisely because nothing is known.
+ * A COUNT WE DO NOT HAVE IS NOT ZERO, AND ZERO IS NOT A COUNT WE DO NOT HAVE.
+ * Three states, three sentences: `null` is a read that never answered (the
+ * browser's faulted, or the server's did and it refused fail-closed) and may not
+ * print "0 cells have not graduated yet"; an EMPTY list is a read that answered
+ * and found every cell graduated, and may not print "could not be established"
+ * over a deployment the same screen has just called safe.
  */
 export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
 	const relay = facts.referenceTransportId ?? 'the relay';
-	const count = facts.dependentCells?.length ?? 0;
-	const standing =
-		count === 0
-			? `Which cells are still leaning on ${relay} could not be established, so this cannot be treated as safe. Disconnecting it moves whatever they still send`
-			: count === 1
-				? `1 cell has not graduated yet and still sends part of its mail through ${relay}. Disconnecting it moves all of that traffic`
-				: `${formatNumber(count)} cells have not graduated yet and still send part of their mail through ${relay}. Disconnecting it moves all of that traffic`;
+	const lostFallback = `the reputation ${relay} has built for your domain stops being available to fall back on`;
+	// The tail every arm that MOVES traffic shares; the safe arm ends differently
+	// because nothing moves and only the fallback is given up.
+	const moved = ` onto your own server immediately — not gradually — and ${lostFallback}.`;
+	const cells = facts.dependentCells;
+	const count = cells?.length ?? 0;
+	const consequence =
+		cells === null
+			? `Which cells are still leaning on ${relay} could not be established, so this cannot be treated as safe. Disconnecting it moves whatever they still send${moved}`
+			: count === 0
+				? `Every cell has graduated, so nothing is still leaning on ${relay}. Disconnecting it now would not move any traffic onto your own server — only ${lostFallback}.`
+				: count === 1
+					? `1 cell has not graduated yet and still sends part of its mail through ${relay}. Disconnecting it moves all of that traffic${moved}`
+					: `${formatNumber(count)} cells have not graduated yet and still send part of their mail through ${relay}. Disconnecting it moves all of that traffic${moved}`;
 	return {
-		consequence: `${standing} onto your own server immediately — not gradually — and the reputation ${relay} has built for your domain stops being available to fall back on.`,
+		consequence,
 		safeDate:
 			facts.projectedSafeAt === null
 				? null
