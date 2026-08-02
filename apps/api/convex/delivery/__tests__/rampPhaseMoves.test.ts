@@ -186,6 +186,40 @@ describe('a reset where the phase ladder does not bind', () => {
 		expect(await auditActions(t)).toContain('deliverability_ramp.phase_reset');
 	});
 
+	/**
+	 * THE GRADUATION CLOCK IS AN EVIDENCE CLOCK, so a reset restarts it on the
+	 * path where nothing else moves too. Holding it would let a standalone cell
+	 * run out its fourteenth green day and PIN two days after an operator took it
+	 * off its rung — a graduation awarded over the very stretch the reset declared
+	 * untrusted, and the cheapest possible one to buy: on a standalone cell the
+	 * reset costs no traffic at all.
+	 *
+	 * The pin ALREADY on the row is a different fact: it claims this cell's mail
+	 * is carried by its own server, and that claim survives because the share did.
+	 */
+	it('restarts the graduation clock while holding the share and an existing pin', async () => {
+		const t = harness();
+		const graduatedAt = Date.now() - 1_000;
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			greenSince: Date.now() - 13 * 24 * HOUR_MS,
+			graduatedAt,
+		});
+
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.5,
+		});
+
+		expect(result).toEqual({ applied: true, share: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.greenSince).toBeUndefined();
+		expect(row?.ownShare).toBe(1);
+		expect(row?.graduatedAt).toBe(graduatedAt);
+	});
+
 	it('cuts the same cell to the rung once a relay arm carries it', async () => {
 		const t = harness();
 		await seedRampCell(t, {
@@ -193,6 +227,7 @@ describe('a reset where the phase ladder does not bind', () => {
 			ownShare: 1,
 			phaseCeiling: 1,
 			mixVersion: 2,
+			greenSince: Date.now() - 13 * 24 * HOUR_MS,
 			graduatedAt: Date.now() - 1_000,
 		});
 		// The fold reads MEASUREMENT, not configuration: reference-arm outcome rows
@@ -210,6 +245,8 @@ describe('a reset where the phase ladder does not bind', () => {
 		expect(row?.isFallbackActive).toBe(true);
 		expect(row?.mixVersion).toBe(3);
 		expect(row?.graduatedAt).toBeUndefined();
+		// The clocks restart on this path for the same reason they do on the other.
+		expect(row?.greenSince).toBeUndefined();
 		expect((await decisions(t))[0]?.direction).toBe('decrease');
 	});
 });

@@ -336,6 +336,16 @@ export const forceAdvanceCellShare = adminMutation({
  * the ladder BINDS, which is the fold's answer and not this mutation's (see
  * `bindsPhaseLadder`). A standalone cell keeps its share and takes the rung.
  *
+ * A RESET RESTARTS THE EVIDENCE CLOCKS ON BOTH PATHS — the clean streak, the
+ * rung's dwell anchor and the green (graduation) clock. All three measure the
+ * stretch an operator has just declared they do not trust, and a standalone cell
+ * that kept a thirteen-day green clock would run out its fourteenth day and PIN
+ * two days after being taken off its rung. WHAT FOLLOWS THE SHARE — the boolean
+ * view, the mix generation and the graduation pin already on the row — moves
+ * only where the share moved: the pin is a claim about which sender carries the
+ * cell's mail, so a cut below full share revokes it and a held share leaves the
+ * claim true. Earned-ness is not what spares it; the share is.
+ *
  * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
  * ceiling re-shuffles which arm every recipient of the cell lands in and opens
  * the share to the next rung, which is exactly the move plan D3's evidence gate
@@ -373,11 +383,11 @@ export const resetCellPhase = adminMutation({
 		// re-randomise a cohort with one arm in it — the move `phaseLadderBounds`
 		// was added to prevent, arrived at from the operator's door instead.
 		//
-		// THE RUNG STILL GOES DOWN, and so does the streak. The rung is stored
-		// state the promotion gate makes the cell re-earn, and restarting the clean
-		// streak is the reason this control exists; both are meaningful on a cell
-		// whose share nothing is bounding today, and the rung binds again the tick
-		// a second sender is observed.
+		// THE RUNG STILL GOES DOWN, and so do the evidence clocks. The rung is
+		// stored state the promotion gate makes the cell re-earn, and restarting
+		// the measurement is the reason this control exists; both are meaningful on
+		// a cell whose share nothing is bounding today, and the rung binds again
+		// the tick a second sender is observed.
 		const bindsLadder = bindsPhaseLadder(
 			await loadCellDegradation(ctx, {
 				organizationId: target.organizationId,
@@ -394,11 +404,16 @@ export const resetCellPhase = adminMutation({
 			// dwell already served, and the standalone promotion route — the only route
 			// a yahoo/apple/other cell has — would hand the ceiling straight back.
 			phaseCeilingSince: now,
+			// THE OTHER TWO EVIDENCE CLOCKS RESTART TOO, on both paths and for the
+			// same reason: they measure the stretch this reset declares untrusted.
+			// The green one is the fourteen-day graduation hold, so a standalone cell
+			// whose share was held would otherwise finish it and PIN days after an
+			// operator put it back on a lower rung.
 			cleanStreak: 0,
 			greenSince: undefined,
-			// NO SHARE MOVED, SO NOTHING DERIVED FROM ONE MOVES EITHER: the boolean
-			// view, the mix generation and the graduation pin all describe traffic
-			// this reset did not touch.
+			// WHAT FOLLOWS THE SHARE MOVES ONLY WHERE THE SHARE MOVED: the boolean
+			// view, the mix generation and the graduation pin all describe a traffic
+			// split this reset did not touch on a standalone cell.
 			...(bindsLadder
 				? {
 						ownShare: share,

@@ -87,6 +87,12 @@ export interface SeedRampCellOptions {
 	readonly cooldownMs?: number;
 	/** The graduation pin already on the row — the cell has PINNED at full share. */
 	readonly graduatedAt?: number;
+	/**
+	 * The GRADUATION CLOCK: when the cell last became continuously green. Fourteen
+	 * days of it is what awards the pin, so a seeded value is how a suite says
+	 * "this cell is most of the way to graduating".
+	 */
+	readonly greenSince?: number;
 	/** The SECOND actuator's stored dial, degenerate values included. */
 	readonly paceMultiplier?: number;
 	readonly paceCleanStreak?: number;
@@ -156,6 +162,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 				...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
 				...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
 				...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
+				...(options.greenSince === undefined ? {} : { greenSince: options.greenSince }),
 				...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
 				...(options.paceCleanStreak === undefined
 					? {}
