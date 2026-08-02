@@ -251,8 +251,8 @@ function clampPercent(value: number): number {
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
 				hasReferenceArm === false
-					? `Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.`
-					: `Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.`
+					? 'Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.'
+					: 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
 			}}
 			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
 			reset — going higher is a promotion, which is its own control below.
