@@ -14,13 +14,18 @@
  *   - every write that SETS a rung stamps `phaseCeilingSince`, because the dwell
  *     clock is one of the four standalone conditions and a rung with no anchor
  *     leaves a yahoo/apple/other cell unpromotable for ever;
- *   - a row with no stored share is not the ramp's to promote.
+ *   - a row with no stored share is not the ramp's to promote;
+ *   - and the MACHINE entry (`rampControllerCron.promoteRampPhase`) answers the
+ *     same rule. Both entries now share one implementation, so every arm the
+ *     shell flattens — the refusals, the top rung, the outstanding evidence — is
+ *     exercised through the shell too: a second entry that drifts is the exact
+ *     failure that shape exists to prevent.
  */
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
 
@@ -225,6 +230,144 @@ describe('promotion is the upward door', () => {
 			destinationProvider: 'yahoo' as const,
 		});
 		expect(result).toEqual({ applied: false, refusal: 'cell_not_ramp_managed' });
+	});
+});
+
+/**
+ * A STORED RUNG IS AN UNCONSTRAINED NUMBER in the schema, so both paths read it
+ * through the ladder's own `normalizePhaseCeiling` rather than raw. Comparing a
+ * normalised next rung against a RAW current one is how a degenerate row talks a
+ * gate into a move nobody asked for.
+ */
+describe('a rung that is not on the ladder', () => {
+	it('is at the top when it stands above it, and is not "promoted" downward', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1.2, mixVersion: 2 });
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		// Raw, this read `nextPhaseCeiling(1.2) === 1`, `1 !== 1.2`, "not at the
+		// top" — and patched the ceiling DOWN to 1.0 while writing an audit row
+		// claiming a promotion to 100% and spending a mix generation on it.
+		expect(result).toEqual({ applied: false, phaseCeiling: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(1.2);
+		expect(row?.mixVersion).toBe(2);
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	it('is on the first rung when it stands below it, so a reset can still reach it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.1 });
+
+		// Raw, `0.25 > 0.1` read as an upward move and refused: a cell stranded
+		// below the ladder could never be put back on it by anyone.
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+});
+
+/**
+ * THE MACHINE ENTRY — a scheduler or another server-side flow, with no operator
+ * to attribute the move to. It is a SHELL over `applyRampPhasePromotion`, and
+ * the whole point of that shape is that it cannot answer differently from the
+ * operator's door; every arm it flattens is pinned here through the shell.
+ */
+describe('the machine entry runs the same rule', () => {
+	it('promotes one rung and stamps the dwell anchor, writing no operator audit', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			mixVersion: 2,
+		});
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, CELL);
+		expect(result).toEqual({ ok: true, phaseCeiling: 0.5 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.5);
+		expect(row?.mixVersion).toBe(3);
+		// There is nobody to name, so this entry deliberately writes no D12 pair.
+		expect(await auditActions(t)).toHaveLength(0);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	/**
+	 * A PER-STREAM ROW WITH NO STORED SHARE IS NOT THE RAMP'S. The old machine
+	 * entry checked only that a row EXISTED, so it would happily patch a rung onto
+	 * a cell the controller still skips — and the next enrolment would inherit it.
+	 */
+	it('refuses a per-stream row that carries no share, and patches nothing', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: false,
+				signals: [],
+				mixVersion: 4,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 60_000,
+				updatedAt: now,
+			});
+		});
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, CELL);
+		expect(result).toEqual({ ok: false });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBeUndefined();
+		expect(row?.phaseCeilingSince).toBeUndefined();
+		expect(row?.mixVersion).toBe(4);
+	});
+
+	/**
+	 * THE HARD STOPS BOUND THIS ENTRY TOO, which they did not before: it checked
+	 * the global kill switch and nothing else, so a cell inside a cooldown from an
+	 * earlier retreat could be handed a rung by a scheduler.
+	 */
+	it('refuses inside a live cooldown from an earlier retreat', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			frozenUntil: Date.now() + HOUR_MS,
+			freezeReason: 'gate_breach',
+		});
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, CELL);
+		expect(result).toEqual({ ok: false });
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+
+	it('reports the top rung as a success rather than a failure', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1, mixVersion: 2 });
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, CELL);
+		// Nothing to promote is not a refusal: the caller asked for a state the
+		// cell already has. The cohort is not re-randomised for a no-op.
+		expect(result).toEqual({ ok: true, phaseCeiling: 1 });
+		expect((await readManagedCell(t))?.mixVersion).toBe(2);
+	});
+
+	it('names the outstanding conditions when the evidence is short', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4, phaseCeiling: 0.5 });
+
+		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, CELL);
+		expect(result.ok).toBe(false);
+		expect(result.phaseCeiling).toBe(0.5);
+		expect(result.outstanding).toContain('dnsbl_clean_streak');
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.5);
 	});
 });
 

@@ -29,7 +29,7 @@ import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
-import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
+import { nextPhaseCeiling, normalizePhaseCeiling } from './ramp/controllerConfig';
 import { evaluatePhasePromotion, type PromotionConditionId } from './ramp/phasePromotion';
 import { resolveRampDegradation } from './ramp/degradation';
 import { loadRampPromotionEvidence } from './rampPromotionEvidence';
@@ -101,7 +101,15 @@ export async function applyRampPhasePromotion(
 
 	// One rung, through the ladder helper: an arbitrary caller-supplied ceiling
 	// would let a promotion skip 0.5 and 0.8 straight to 1.0.
-	const current = perStream.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING;
+	//
+	// BOTH SIDES OF THE COMPARISON COME OFF ONE READING. `phaseCeiling` is an
+	// unconstrained optional number in the schema and `nextPhaseCeiling`
+	// normalises internally, so comparing the RAW stored value against the
+	// normalised next rung made a row carrying 1.2 answer `1 !== 1.2`: not at the
+	// top, therefore "promoted" — patching the ceiling DOWN to 1.0 while writing
+	// an audit row claiming a promotion to 100% and spending a mix generation on
+	// it. A degenerate rung must fail closed like every other stored value here.
+	const current = normalizePhaseCeiling(perStream.phaseCeiling);
 	const phaseCeiling = nextPhaseCeiling(current);
 	const share = resolveOwnShare(perStream);
 	// Already at the top rung: nothing to promote, and re-randomising the cohort

@@ -59,7 +59,7 @@ import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOr
 import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
-import { RAMP_INITIAL_PHASE_CEILING, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
+import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -352,11 +352,15 @@ export const resetCellPhase = adminMutation({
 		if (typeof target === 'string') return refused(target);
 		const now = Date.now();
 		const share = Math.min(target.share, args.phaseCeiling);
-		// A row with no stored ceiling is sitting on the ladder's first rung — the
-		// same reading the promotion path takes — so "is this upward?" is answered
-		// against that rung rather than against the argument, which would compare a
-		// value with itself and wave every raise through.
-		const currentCeiling = target.row.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING;
+		// THE SAME READING THE PROMOTION PATH TAKES, through the same helper — a row
+		// with no stored ceiling sits on the ladder's first rung, and a degenerate
+		// one snaps DOWN onto a real rung rather than standing above the ladder. So
+		// "is this upward?" is answered against the rung the cell is actually on,
+		// not against the argument (which would compare a value with itself and wave
+		// every raise through) and not against a raw stored number (which would read
+		// a corrupt 1.2 as a rung above the top and let a raise to 1.0 through as a
+		// "reset").
+		const currentCeiling = normalizePhaseCeiling(target.row.phaseCeiling);
 		if (args.phaseCeiling > currentCeiling) return refused('phase_increase_requires_promotion');
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
