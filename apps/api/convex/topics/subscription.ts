@@ -726,7 +726,14 @@ export const unsubscribeMany = internalMutation({
 
 const unsubscribeAllForContactArgsValidator = {
 	contactId: v.id('contacts'),
+	/** The single-topic unsubscribe link. IGNORED when `topicIds` is also given. */
 	topicId: v.optional(v.id('topics')),
+	/**
+	 * The preference centre's batch save. WINS over `topicId` when both are
+	 * given: the array is the richer spelling of the same scope, so the union
+	 * would silently widen a caller's intent and the singular would silently
+	 * narrow it. Neither one present is the global opt-out — see the handler.
+	 */
 	topicIds: v.optional(v.array(v.id('topics'))),
 	source: unsubscribeSourceValidator,
 	reason: v.optional(v.string()),
@@ -739,7 +746,8 @@ const unsubscribeAllForContactArgsValidator = {
  * Contact from every Topic they belong to AND is a contact-level opt-out.
  * `topicId` is the single-topic unsubscribe link; `topicIds` is the preference
  * centre's batch save — several toggles, ONE recipient action, so an empty
- * array is an empty scope and never a global opt-out.
+ * array is an empty scope and never a global opt-out. Two spellings of one
+ * scope: given BOTH, `topicIds` wins and `topicId` is dropped.
  *
  * Per-contact effects (form-clear, campaign-stats, the transport-outcome
  * attribution, a single webhook with the array of removed topics) fire ONCE for
@@ -765,8 +773,9 @@ export const unsubscribeAllForContact = internalMutation({
 		}
 
 		const now = Date.now();
-		// One scope, however it was spelled — and its ABSENCE is what makes this
-		// call a global opt-out.
+		// One scope, however it was spelled — `topicIds` wins the pair, as the
+		// args doc states — and its ABSENCE is what makes this call a global
+		// opt-out.
 		const scopedTopicIds = args.topicIds ?? (args.topicId ? [args.topicId] : undefined);
 
 		// A global unsubscribe is a contact-level marketing opt-out, not just a

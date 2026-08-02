@@ -878,6 +878,81 @@ describe('subscription.unsubscribeAllForContact', () => {
 		if (outcomes[0]!.ok) expect(outcomes[0]!.action).toBe('not_member');
 	});
 
+	// The case above is the EARLY RETURN — nothing in scope at all. A batch save
+	// where only SOME of the scoped topics have a membership goes down the other
+	// path, and a caller lines the outcomes up against the toggles it sent: a
+	// scoped topic that answered with nothing would leave it unable to tell an
+	// applied toggle from a dropped one.
+	it('answers every scoped topic, membership or not', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await createContact(t);
+		const memberA = await createTopic(t, false, 'A');
+		const memberB = await createTopic(t, false, 'B');
+		const strangerC = await createTopic(t, false, 'C');
+
+		for (const topicId of [memberA, memberB]) {
+			await t.mutation(internal.topics.subscription.subscribe, {
+				topicId,
+				contactId,
+				source: 'admin',
+			});
+		}
+
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicIds: [memberA, memberB, strangerC],
+			source: 'preferences_page',
+		});
+
+		expect(outcomes).toHaveLength(3);
+		// Removals come first and the topics with nothing to remove follow, so the
+		// (topic, action) pairs are compared as a set rather than positionally.
+		expect(
+			outcomes.map((outcome) => [
+				String(outcome.topicId),
+				outcome.ok ? outcome.action : `not_ok:${outcome.reason}`,
+			])
+		).toEqual(
+			expect.arrayContaining([
+				[String(memberA), 'unsubscribed'],
+				[String(memberB), 'unsubscribed'],
+				[String(strangerC), 'not_member'],
+			])
+		);
+		expect(await getMembership(t, contactId, memberA)).toBeNull();
+		expect(await getMembership(t, contactId, memberB)).toBeNull();
+	});
+
+	// Two spellings of one scope. The args doc names which one wins; this is that
+	// precedence, so it cannot drift into "whichever the handler reads first".
+	it('lets topicIds win when topicId is passed alongside it', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await createContact(t);
+		const named = await createTopic(t, false, 'named');
+		const listed = await createTopic(t, false, 'listed');
+
+		for (const topicId of [named, listed]) {
+			await t.mutation(internal.topics.subscription.subscribe, {
+				topicId,
+				contactId,
+				source: 'admin',
+			});
+		}
+
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicId: named,
+			topicIds: [listed],
+			source: 'public_email_link',
+		});
+
+		expect(outcomes).toHaveLength(1);
+		expect(await getMembership(t, contactId, listed)).toBeNull();
+		expect(await getMembership(t, contactId, named)).not.toBeNull();
+		// Still a SCOPED call, so no contact-level opt-out was stamped.
+		expect((await getContact(t, contactId))?.unsubscribedAt).toBeUndefined();
+	});
+
 	it('returns contact_not_found for unknown contactId', async () => {
 		const t = convexTest(schema, modules);
 		const fakeContactId = await t.run(async (ctx) => {
