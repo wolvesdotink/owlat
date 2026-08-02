@@ -30,6 +30,11 @@ import {
 	warmingProviderStateKey,
 } from '../../intelligence/warmingKeys.js';
 import { recordProviderWarmingSend } from '../../intelligence/warmingProviderStore.js';
+import {
+	finalizeSmtpOutcome,
+	readSmtpOutcome,
+	reserveSmtpOutcome,
+} from '../../queue/smtpOutcomeJournal.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { EmailJob } from '../../types.js';
 
@@ -113,14 +118,18 @@ describe('warming records book into the attempt day, not the apply day', () => {
 
 	afterEach(() => vi.useRealTimers());
 
-	/** Gate an attempt at 23:59:30 and reduce its outcome, as a worker would. */
-	async function gateAndReduce(outcome: DispatchOutcome): Promise<OutcomeReduction> {
+	/** Gate an attempt at 23:59:30, as a worker would. */
+	async function gateAttempt(): Promise<AttemptCtx> {
 		const gated = await warmingCapPhase.run(deps, ctxWithIp());
 		expect(gated.kind).toBe('continue');
 		if (gated.kind !== 'continue') throw new Error('warming cap withheld the attempt');
 		expect(gated.ctx.utcDate).toBe(GATED_DAY);
-		const attempt: AttemptCtx = { ...gated.ctx, durationMs: 12 };
-		return reduce(outcome, attempt);
+		return { ...gated.ctx, durationMs: 12 };
+	}
+
+	/** Gate an attempt and reduce its outcome, as a worker would. */
+	async function gateAndReduce(outcome: DispatchOutcome): Promise<OutcomeReduction> {
+		return reduce(outcome, await gateAttempt());
 	}
 
 	/**
@@ -198,6 +207,79 @@ describe('warming records book into the attempt day, not the apply day', () => {
 			'1'
 		);
 		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+	});
+
+	it('gives a journalled effect written before the day existed the attempt’s day', async () => {
+		const attempt = await gateAttempt();
+		// What the previous build persisted for an attempt it did not get to apply:
+		// neither the snapshot nor the effects beside it carry a day at all.
+		const { job: _job, ...snapshot } = attempt;
+		const legacySnapshot = { ...snapshot, utcDate: undefined };
+		const legacyReduction = JSON.parse(
+			JSON.stringify(reduce(deliveredOutcome, attempt))
+		) as OutcomeReduction;
+		for (const effect of legacyReduction.effects) {
+			delete (effect as Record<string, unknown>)['utcDate'];
+		}
+		const reserved = await reserveSmtpOutcome(
+			redis,
+			'job-legacy',
+			attempt.job.messageId,
+			legacySnapshot as never,
+			{ now: Date.parse(GATED_AT), capacity: 10 }
+		);
+		if (reserved.kind !== 'fresh') throw new Error('expected a fresh reservation');
+		await finalizeSmtpOutcome(
+			redis,
+			reserved.entry,
+			reserved.raw,
+			{ success: true, smtpCode: 250 },
+			12,
+			deliveredOutcome,
+			legacyReduction,
+			{ now: Date.parse(GATED_AT) + 1_000 }
+		);
+
+		// The deploy happens, the day rolls over, and a successor worker applies
+		// the entry the interrupted one left behind.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		const replayed = await readSmtpOutcome(redis, 'job-legacy', attempt.job.messageId);
+		if (replayed?.entry.state !== 'completed') throw new Error('expected a completed entry');
+		expect(replayed.entry.attempt.utcDate).toBe(GATED_DAY);
+		await applyEffects(
+			replayed.entry.reduction.effects.filter(
+				(effect: DispatchEffect) =>
+					effect.kind === 'warming_record' || effect.kind === 'warming_provider_pressure'
+			),
+			deps
+		);
+
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+		// The keys an absent day used to name, and the rolling counter it used to
+		// leave untouched: ioredis renders it as '', which sorts below every stored
+		// day, so the monotonic script took neither the roll nor the increment.
+		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', 'undefined'))).toBe(0);
+		expect(await redis.exists(warmingBulkDailyKey(IP, 'undefined'))).toBe(0);
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(GATED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('1');
+	});
+
+	it('rejects a stored warming day that is not a real day', async () => {
+		const attempt = await gateAttempt();
+		const { job: _job, ...snapshot } = attempt;
+		// A day above every real one pins `sentTodayReset` forward and stops this
+		// IP/provider counter for good, so the shape is checked, not assumed.
+		const forged = { ...snapshot, utcDate: '9999-99-99T00:00:00Z' };
+		await expect(
+			reserveSmtpOutcome(redis, 'job-forged', attempt.job.messageId, forged as never, {
+				now: Date.parse(GATED_AT),
+				capacity: 10,
+			})
+		).rejects.toThrow('invalid attempt snapshot');
 	});
 
 	it('rolls the counter forward for the first send of a newer day', async () => {

@@ -15,6 +15,7 @@ import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effect
 import {
 	isAttemptSnapshot,
 	normalizeAttemptSnapshot,
+	normalizeReductionEffects,
 	type SmtpAttemptSnapshot,
 } from './smtpOutcomeSnapshot.js';
 
@@ -184,6 +185,10 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
 	normalizeAttemptSnapshot(entry['attempt'], entry['completedAt'] as number);
+	// The stored effects are applied verbatim, so they are normalized here too —
+	// against the day the snapshot above just settled on, which is what the cap
+	// gates measured and what the entry's per-IP twin already books into.
+	normalizeReductionEffects(entry['reduction'], (entry['attempt'] as { utcDate: string }).utcDate);
 	return entry as unknown as CompletedSmtpOutcome;
 }
 

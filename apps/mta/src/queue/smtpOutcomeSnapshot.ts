@@ -1,14 +1,14 @@
 /**
- * The attempt snapshot a journal entry carries, and its codec.
+ * The payloads a journal entry replays — the attempt snapshot and the reducer's
+ * effect list — and their codec.
  *
- * The snapshot is the reducer's immutable input, captured before the SMTP
- * transaction and replayed verbatim afterwards, so validation and the
- * fill-in of fields added after an entry was written belong together and
- * apart from the journal's Redis protocol.
+ * Both are captured around the SMTP transaction and replayed verbatim
+ * afterwards, so validation and the fill-in of fields added after an entry was
+ * written belong together and apart from the journal's Redis protocol.
  */
 
 import type { CtxWithProviderPressure } from '../dispatch/types.js';
-import { utcDateKey } from '../intelligence/warmingKeys.js';
+import { isUtcDateKey, utcDateKey } from '../intelligence/warmingKeys.js';
 
 export type SmtpAttemptSnapshot = Omit<CtxWithProviderPressure, 'job'>;
 
@@ -23,8 +23,41 @@ export function normalizeAttemptSnapshot(value: unknown, attemptedAtMs: number):
 	// journal's own reading for this attempt is the closest available stand-in
 	// for the day the cap gates measured — and unlike the current wall clock it
 	// is stable across replays, which is the whole point of carrying it.
-	if (typeof attempt['utcDate'] !== 'string') {
+	if (!isUtcDateKey(attempt['utcDate'])) {
 		attempt['utcDate'] = utcDateKey(attemptedAtMs);
+	}
+}
+
+/**
+ * Warming effect kinds whose day is applied verbatim from the journal.
+ *
+ * Each feeds `utcDate` into a per-day key and into the per-provider Lua's day
+ * comparison, so it is exactly the set that must never replay without one.
+ */
+const WARMING_EFFECT_KINDS = new Set(['warming_record', 'warming_provider_pressure']);
+
+/**
+ * Give a journalled effect the attempt's day when it carries none.
+ *
+ * `applyCompletedAttempt` applies `reduction.effects` straight from the entry,
+ * so an effect written before the day was carried reaches Redis as an
+ * `undefined` key suffix and an empty Lua ARGV — which names a
+ * `:daily:undefined` bucket and sorts below every stored day, so the monotonic
+ * per-provider counter takes neither its roll nor its increment branch and the
+ * send is never counted at all. The attempt's day is what the cap gates
+ * measured, so it is the day its own effects book into.
+ */
+export function normalizeReductionEffects(value: unknown, utcDate: string): void {
+	if (!value || typeof value !== 'object') return;
+	const effects = (value as Record<string, unknown>)['effects'];
+	if (!Array.isArray(effects)) return;
+	for (const effect of effects) {
+		if (!effect || typeof effect !== 'object') continue;
+		const record = effect as Record<string, unknown>;
+		if (!WARMING_EFFECT_KINDS.has(String(record['kind']))) continue;
+		// A stored day of the wrong shape is replaced, not preserved: the Lua's
+		// ordering assumption makes an unparseable day worse than an absent one.
+		if (!isUtcDateKey(record['utcDate'])) record['utcDate'] = utcDate;
 	}
 }
 
@@ -51,9 +84,12 @@ export function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot 
 	) {
 		return false;
 	}
-	// Same tolerance for the attempt's warming day, added in the same spirit:
-	// a legacy entry carries none and is normalized, never rejected.
-	if (attempt['utcDate'] !== undefined && typeof attempt['utcDate'] !== 'string') {
+	// Same tolerance for the attempt's warming day, added in the same spirit: a
+	// legacy entry carries none and is normalized, never rejected. A PRESENT day
+	// must be a real `YYYY-MM-DD` though — it is compared lexicographically
+	// inside the per-provider Lua, so a value above every real day would pin the
+	// rolling reset forward and stop that IP/provider counter for good.
+	if (attempt['utcDate'] !== undefined && !isUtcDateKey(attempt['utcDate'])) {
 		return false;
 	}
 	const destination = attempt['destination'];
