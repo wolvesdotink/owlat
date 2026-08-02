@@ -47,10 +47,16 @@ const {
 	error: postmasterError,
 } = useOrganizationQuery(api.delivery.postmaster.getPostmasterStatus);
 
-// Delivery-rate history for the trend chart.
-const { data: snapshots } = useOrganizationQuery(
-	api.analytics.reputationSnapshots.getDeliverySnapshots
-);
+// Delivery-rate history for the trend chart. The `error` travels with it for the
+// same reason as the two above: an empty history renders "Collecting history —
+// full trends in a week", which is a claim about how long this deployment has
+// been sending, and a read that answered nothing has not established it.
+const {
+	data: snapshots,
+	isLoading: snapshotsLoading,
+	error: snapshotsError,
+	refetch: refetchSnapshots,
+} = useOrganizationQuery(api.analytics.reputationSnapshots.getDeliverySnapshots);
 
 // Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
 const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
@@ -90,7 +96,9 @@ const abuseWarning = computed(() => {
 // --- Stat tiles ---
 // Yesterday's rolling rates — the point just before the newest snapshot — so the
 // bounce/complaint tiles can show a real day-over-day delta direction instead of
-// a hardcoded one. `null` until at least two days of history exist.
+// a hardcoded one. `null` until at least two days of history exist — and `null`
+// again when the history read faulted, which drops the delta off the tiles
+// rather than drawing one against a day nobody could read.
 const previousRates = computed(() => {
 	const points = snapshots.value ?? [];
 	const prev = points[points.length - 2];
@@ -307,14 +315,33 @@ const sendingDetail = computed(() => {
 							</p>
 						</div>
 					</div>
-					<UiTrendChart
-						:data="trendData"
-						:format-value="formatRate"
-						aria-label="30-day delivery rate trend"
-					/>
-					<p v-if="collectingHistory" class="text-xs text-text-tertiary">
-						Collecting history — full trends in a week.
-					</p>
+					<!-- Behind its own boundary: an empty history draws a flat chart under
+						 "Collecting history — full trends in a week", which tells an operator
+						 with three weeks of sending behind them that this deployment is new. -->
+					<UiQueryBoundary
+						:loading="snapshotsLoading"
+						:error="snapshotsError"
+						error-title="Couldn’t load your delivery-rate history"
+						error-message="This trend could not be read. It is not shown empty: an empty chart here means you have only just started sending, and that is not something to claim while the read is failing."
+						@retry="refetchSnapshots"
+					>
+						<template #loading>
+							<div
+								class="h-40 animate-pulse rounded-xl bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading delivery-rate history"
+							/>
+						</template>
+						<UiTrendChart
+							:data="trendData"
+							:format-value="formatRate"
+							aria-label="30-day delivery rate trend"
+						/>
+						<p v-if="collectingHistory" class="mt-3 text-xs text-text-tertiary">
+							Collecting history — full trends in a week.
+						</p>
+					</UiQueryBoundary>
 				</div>
 			</UiCard>
 

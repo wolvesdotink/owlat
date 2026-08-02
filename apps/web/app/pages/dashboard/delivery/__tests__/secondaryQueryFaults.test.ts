@@ -353,6 +353,26 @@ describe('the delivery hub page', () => {
 		wrapper.unmount();
 	});
 
+	it('does not say history is still being collected when the history read failed', () => {
+		// "Collecting history — full trends in a week" is a claim about how long
+		// this DEPLOYMENT has been sending. A faulted read leaves behind the same
+		// empty array a week-old install has, so an operator with three weeks of
+		// sending behind them was told the product had only just met them.
+		stubHubQueries([
+			[api.analytics.reputationQueries.getDeliveryDomainTable, { data: [] }],
+			[api.delivery.postmaster.getPostmasterStatus, { data: { connected: false, domains: [] } }],
+			[
+				api.analytics.reputationSnapshots.getDeliverySnapshots,
+				{ error: new Error('snapshots unavailable') },
+			],
+		]);
+		const wrapper = mount(DeliveryHubPage, { global: hubOptions });
+
+		expect(wrapper.text()).not.toContain('Collecting history');
+		expect(wrapper.text()).toContain('Couldn’t load your delivery-rate history');
+		wrapper.unmount();
+	});
+
 	it('keeps both calm empty states when the two reads answered with nothing', () => {
 		stubHubQueries([
 			[api.analytics.reputationQueries.getDeliveryDomainTable, { data: [] }],
@@ -362,6 +382,9 @@ describe('the delivery hub page', () => {
 
 		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('No sending domains yet');
+		// The history read ANSWERED, with nothing, so the sentence about a young
+		// deployment is earned and stays.
+		expect(wrapper.text()).toContain('Collecting history');
 		wrapper.unmount();
 	});
 });
