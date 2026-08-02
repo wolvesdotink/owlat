@@ -123,6 +123,16 @@ export type CapacityUnknownReason =
 	| 'audience_under_counted'
 	/** The projection carries no plannable capacity at all (the planner's `days === 0`). */
 	| 'unplannable_projection'
+	/**
+	 * The audience finishes inside the horizon at the own arm's share FLOOR but
+	 * not at its PEAK. Under a split route (`adaptive_mix`) how much of an
+	 * audience meets the warming cap depends on how it falls across the ramp
+	 * cells, and nothing has counted that: the campaign is neither provably
+	 * unfinishable (so refusing would be a false blocker, D2) nor provably fine
+	 * (so claiming `capacityKnown: true` would be the exact tail-expiry this gate
+	 * exists to prevent). "Unmeasured" is the only honest answer, and it allows.
+	 */
+	| 'mix_composition_unknown'
 	/** The measurement itself threw; the gate failed open. */
 	| 'measurement_failed';
 
@@ -172,17 +182,20 @@ async function measureCampaignCapacity(
 		return { capacityKnown: false, fits: true, unknownReason: capVerdict.why };
 	}
 
-	// ONLY THE OWN ARM MEETS THE CAP. Under a split route (`adaptive_mix`) the
-	// reference arm's share of the audience relays out unmetered, so the warming
-	// projection bounds `ownArmShare x audience` and nothing more — measuring the
-	// whole audience against it would quote a 95%-relayed campaign a multi-day
-	// plan it does not need (D2). The share is a FLOOR (see `warmingCapGate`), so
-	// the scaled count is a lower bound on own-arm volume and refusing on it stays
-	// sound; the plan that comes back is the own MTA's schedule, which is what
-	// paces the campaign, and rounds UP so a fractional message is never dropped.
-	// Every non-splitting strategy answers 1 and this is the identity.
-	const ownArmVolume = (recipients: number): number =>
-		Math.ceil(recipients * capVerdict.ownArmShare);
+	// ONLY THE OWN ARM MEETS THE CAP, AND ITS TWO BOUNDS SAY DIFFERENT THINGS.
+	// Under a split route (`adaptive_mix`) the reference arm's share of the
+	// audience relays out unmetered, so the warming projection bounds own-arm
+	// volume and nothing more — measuring the whole audience against it would
+	// quote a 95%-relayed campaign a multi-day plan it does not need (D2). But
+	// own-arm volume is `sum over cells of share_c x audience_c` and nothing has
+	// counted THIS audience by cell, so only two statements are sound: at least
+	// `floor x audience` messages meet the cap, and at most `peak x audience` do.
+	// The floor is therefore what may license a REFUSAL and the peak is what may
+	// license "it fits" — an audience between them is unmeasured. Rounds UP so a
+	// fractional message is never dropped; every non-splitting strategy answers
+	// floor === peak === 1, where both statements collapse into the identity.
+	const { floor: ownArmFloor, peak: ownArmPeak } = capVerdict.ownArmShare;
+	const ownArmVolume = (recipients: number, share: number): number => Math.ceil(recipients * share);
 
 	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
 	// `startsAt` (NaN, a timestamp in the past) collapses to `now`, so neither
@@ -217,10 +230,15 @@ async function measureCampaignCapacity(
 	// tens of thousands of audience documents inside a send mutation. The ceiling
 	// is stated in RECIPIENTS, so a split route has to count `1/share` as many of
 	// them before the own arm's volume can reach that capacity.
+	//
+	// The share that sets it is the FLOOR, whose threshold is the later of the
+	// two — except at a floor of ZERO, where no count can ever produce a refusal
+	// and the division has no answer: there the PEAK's threshold is the point
+	// past which the verdict is "unmeasured" however many more recipients there
+	// turn out to be. A binding verdict always has a positive peak.
+	const countingShare = ownArmFloor > 0 ? ownArmFloor : ownArmPeak;
 	const counted = await countAudience(ctx, options.audience, {
-		ceiling: Math.ceil(
-			(totalPlannableCapacity(remainingCapacityByDay) + 1) / capVerdict.ownArmShare
-		),
+		ceiling: Math.ceil((totalPlannableCapacity(remainingCapacityByDay) + 1) / countingShare),
 		documentBudget: AUDIENCE_DOCUMENT_BUDGET,
 	});
 
@@ -246,22 +264,45 @@ async function measureCampaignCapacity(
 			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 			now: startsAt,
 		});
-		if (ownArmVolume(counted.eligible) <= horizonCapacity) {
+		if (ownArmVolume(counted.eligible, ownArmFloor) <= horizonCapacity) {
 			return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
 		}
 	}
 
-	const plan = planCampaignCapacity({
-		// `eligible` is a lower bound whenever the count did not run to completion,
-		// and refusing on a lower bound is sound: a bigger audience fits even less
-		// well.
-		audienceSize: ownArmVolume(counted.eligible),
-		remainingCapacityByDay,
-		maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-		now: startsAt,
-	});
+	const planFor = (share: number): CampaignCapacityPlan =>
+		planCampaignCapacity({
+			// `eligible` is a lower bound whenever the count did not run to
+			// completion, and refusing on a lower bound is sound: a bigger audience
+			// fits even less well.
+			audienceSize: ownArmVolume(counted.eligible, share),
+			remainingCapacityByDay,
+			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+			now: startsAt,
+		});
 
-	return toAssessment(plan, { audienceUnderCounted: counted.completeness !== 'exact' });
+	// THE FLOOR DECIDES THE REFUSAL, THE PEAK DECIDES THE APPROVAL. A floor plan
+	// that does not fit is a sound refusal — own-arm volume can only be larger —
+	// and the schedule it carries is the own MTA's, which is what paces the
+	// campaign. A floor plan that FITS is not yet an approval: with the peak over
+	// the horizon, whether this campaign's tail expires depends on how its
+	// recipients fall across the ramp cells, and nobody has counted that. Saying
+	// `capacityKnown: true` there would be the P0-5 tail-expiry itself, dressed as
+	// a measurement.
+	const floorPlan = planFor(ownArmFloor);
+	if (floorPlan.fits && ownArmPeak > ownArmFloor && !planFor(ownArmPeak).fits) {
+		return { capacityKnown: false, fits: true, unknownReason: 'mix_composition_unknown' };
+	}
+
+	return toAssessment(floorPlan, {
+		// A REFUSAL BUILT FROM THE FLOOR IS A LOWER BOUND ON THE PLAN, and the copy
+		// has to say so. An incomplete count is one source of that ("at least N
+		// recipients"); a heterogeneous mix is the other, because the schedule is
+		// enumerated over `floor x audience` while the own arm may have to carry up
+		// to `peak x audience` — quoting its day count as the finish date would
+		// promise a campaign it will beat by days (D14). Both select the same "at
+		// least N days" copy.
+		audienceUnderCounted: counted.completeness !== 'exact' || ownArmPeak > ownArmFloor,
+	});
 }
 
 /**

@@ -24,15 +24,30 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { campaignWarmingCapBinds, type WarmingCapVerdict } from '../warmingCapGate';
 
-/** The tenant the seeded route states belong to; `null` makes the lookup throw. */
-const singletonOrg = vi.hoisted(() => ({ id: 'org_warming_cap' as string | null }));
+const singletonOrg = vi.hoisted(() => ({
+	/**
+	 * The tenant the seeded route states belong to. `null` makes the lookup throw
+	 * the REAL "no organization configured" error — a `forbidden` ConvexError,
+	 * which is the only throw the gate is allowed to read as "no tenant".
+	 */
+	id: 'org_warming_cap' as string | null,
+	/** A lookup failure that is NOT "no organization": a component read that broke. */
+	failure: null as Error | null,
+}));
 
 vi.mock('../../sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../sessionOrganization')>();
+	const { ConvexError } = await import('convex/values');
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => {
-			if (singletonOrg.id === null) throw new Error('No organization configured');
+			if (singletonOrg.failure !== null) throw singletonOrg.failure;
+			if (singletonOrg.id === null) {
+				throw new ConvexError({
+					category: 'forbidden',
+					message: 'No organization configured on this Owlat instance',
+				});
+			}
 			return singletonOrg.id;
 		}),
 	};
@@ -45,6 +60,7 @@ const FROM = 'sender@warming.example.com';
 
 beforeEach(() => {
 	singletonOrg.id = 'org_warming_cap';
+	singletonOrg.failure = null;
 	process.env['EMAIL_PROVIDER'] = 'mta';
 	process.env['MTA_API_URL'] = 'http://mta:3100';
 	process.env['MTA_API_KEY'] = 'test-key';
@@ -118,10 +134,23 @@ async function seedRouteState(
 	});
 }
 
-/** Every campaign cell of the stream at one share. */
-async function seedEveryCellShare(t: Harness, ownShare: number): Promise<void> {
+/**
+ * Every campaign cell of the stream at one share, except the cells named in
+ * `perCell`. Exactly one row per cell, so a heterogeneous mix is expressed by
+ * the row that is written rather than by which of two rows for the same cell
+ * the scan happens to return last.
+ */
+async function seedEveryCellShare(
+	t: Harness,
+	ownShare: number,
+	perCell: Partial<Record<DestinationProviderKey, number>> = {}
+): Promise<void> {
 	for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
-		await seedRouteState(t, { destinationProvider, stream: 'campaign', ownShare });
+		await seedRouteState(t, {
+			destinationProvider,
+			stream: 'campaign',
+			ownShare: perCell[destinationProvider] ?? ownShare,
+		});
 	}
 }
 
@@ -149,24 +178,24 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		process.env['EMAIL_PROVIDER'] = 'ses';
 		await seedRoute(t, MIXED_ROUTE);
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 1 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 1, peak: 1 } });
 	});
 
-	it('binds on the own arm FLOOR when the controller has split the cells', async () => {
+	it('carries BOTH bounds when the controller has split the cells unevenly', async () => {
 		const t = convexTest(schema, modules);
 		configureSesEnv();
 		process.env['EMAIL_PROVIDER'] = 'ses';
 		await seedRoute(t, MIXED_ROUTE);
-		// The floor over the stream, not the mean and not the peak: an audience of
-		// unknown composition still puts at least 25% of itself on the own MTA.
-		await seedEveryCellShare(t, 0.6);
-		await seedRouteState(t, {
-			destinationProvider: 'gmail',
-			stream: 'campaign',
-			ownShare: 0.25,
-		});
+		// Neither number answers for the audience on its own: one of unknown
+		// composition puts at least 25% and at most 60% of itself on the own MTA,
+		// and the caller needs both — the floor to refuse with, the peak to
+		// approve with.
+		await seedEveryCellShare(t, 0.6, { gmail: 0.25 });
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 0.25 });
+		expect(await verdictFor(t)).toEqual({
+			binds: true,
+			ownArmShare: { floor: 0.25, peak: 0.6 },
+		});
 	});
 
 	it('reads the per-stream share over the stream-less row for the same cell', async () => {
@@ -178,7 +207,7 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		// own row is the share, and `perStream ?? streamless` must prefer it.
 		await seedRouteState(t, { destinationProvider: 'gmail', isFallbackActive: true });
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 0.4 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.4, peak: 0.4 } });
 	});
 
 	it('does not bind when NO cell dispatches on the own MTA', async () => {
@@ -190,16 +219,18 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		expect(await verdictFor(t)).toEqual({ binds: false, why: 'not_own_mta' });
 	});
 
-	it('reads a fully relayed cell beside un-migrated ones as UNKNOWN, not as reassurance', async () => {
+	it('binds with a ZERO FLOOR when one cell is fully relayed beside un-migrated ones', async () => {
 		const t = convexTest(schema, modules);
 		configureSesEnv();
 		await seedRoute(t, MIXED_ROUTE);
-		// One cell fully on the relay, the rest un-migrated: how much of THIS
+		// One cell fully on the relay, the rest un-migrated. How much of THIS
 		// audience meets the cap depends on a composition nobody has counted, so
-		// the gate holds and says the capacity reading is missing data.
+		// the floor says nothing (a lower bound of zero refuses nothing) while the
+		// peak still says "at most all of it" — which is what lets the caller tell
+		// a campaign that provably fits from one it cannot measure.
 		await seedRouteState(t, { destinationProvider: 'gmail', stream: 'campaign', ownShare: 0 });
 
-		expect(await verdictFor(t)).toEqual({ binds: false, why: 'dispatch_unknown' });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0, peak: 1 } });
 	});
 
 	it('binds on the WHOLE audience when no reference transport is configured', async () => {
@@ -210,7 +241,7 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		await seedRoute(t, MIXED_ROUTE);
 		await seedEveryCellShare(t, 0.1);
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 1 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 1, peak: 1 } });
 	});
 
 	it('does not bind when the own MTA is not an enabled+ready entry at all', async () => {
@@ -240,10 +271,10 @@ describe('adaptive_mix — where the env fallback genuinely governs', () => {
 		});
 		await seedEveryCellShare(t, 0);
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 1 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 1, peak: 1 } });
 	});
 
-	it('falls back to the env default when the tenant cannot be resolved', async () => {
+	it('falls back to the env default when the deployment has NO organization', async () => {
 		const t = convexTest(schema, modules);
 		configureSesEnv();
 		await seedRoute(t, MIXED_ROUTE);
@@ -252,7 +283,25 @@ describe('adaptive_mix — where the env fallback genuinely governs', () => {
 		// env fallback carries the send and the gate must agree with it.
 		singletonOrg.id = null;
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 1 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 1, peak: 1 } });
+	});
+
+	/**
+	 * A BROKEN TENANT READ IS NOT AN UNCONFIGURED DEPLOYMENT. Reading it as one
+	 * hands the whole campaign verdict to `EMAIL_PROVIDER` — the reading this
+	 * module exists to remove — and does it silently, on a deployment whose cells
+	 * say something else entirely. It propagates instead; the pre-flight's
+	 * fail-open turns it into `measurement_failed` (capacity unmeasured, send
+	 * allowed), which is the same outcome said out loud.
+	 */
+	it('does not read a failed tenant lookup as "no tenant"', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, MIXED_ROUTE);
+		await seedEveryCellShare(t, 0);
+		singletonOrg.failure = new Error('component read failed');
+
+		await expect(verdictFor(t)).rejects.toThrow('component read failed');
 	});
 });
 
@@ -266,7 +315,7 @@ describe('the shipped strategies still answer over the whole audience', () => {
 		// A stored share steers nothing while the org runs a shipped strategy.
 		await seedEveryCellShare(t, 0.2);
 
-		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: 1 });
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 1, peak: 1 } });
 	});
 
 	it('still reads workload_split off the enabled+ready kind set', async () => {

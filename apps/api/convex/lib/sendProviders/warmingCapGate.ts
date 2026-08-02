@@ -7,6 +7,21 @@
  * — and it is its own module because answering it means combining the shipped
  * route resolution with the relay-identity proof, which is a distinct concern
  * from resolving where a single message goes.
+ *
+ * WHAT THIS SEAM CANNOT DO, said out loud (D14). `resolveOwnShare` answers 0 for
+ * any cell whose fallback is active, so ONE open breaker or ONE DNSBL-degraded
+ * cell pulls the stream's own-arm FLOOR to zero — and a zero floor can never
+ * refuse anything, because a lower bound of zero on own-arm volume exceeds no
+ * capacity. In a ramping deployment at least one such cell is ordinary, so P0-5's
+ * REFUSAL is unenforceable here most of the time: a campaign whose recipients all
+ * sit in un-degraded cells is answered "capacity unknown, allowed", and its tail
+ * can still expire at `maxMessageAgeMs`. The PEAK keeps the approval side honest
+ * there — a campaign that fits at the peak is measured, not merely waved through
+ * — but nothing recovers the refusal short of counting the audience BY CELL,
+ * i.e. the denormalized audience counter the `COUNT_CEILING` follow-up names,
+ * extended to a per-cell histogram. Until then this gate binds a warming
+ * deployment whose cells are all un-degraded, which is the configuration P0-5
+ * was written for.
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
@@ -16,7 +31,7 @@ import { relayDomainVerified } from './relayDomainVerification';
 import type { ResolvedRoute } from './routing';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
 import { isSendProviderKind, type SendProviderKind } from './types';
-import { extractDomainOrNull } from '@owlat/shared';
+import { extractDomainOrNull, extractOperationError } from '@owlat/shared';
 import {
 	DESTINATION_PROVIDER_KEYS,
 	OWN_SHARE_CEILING,
@@ -85,24 +100,48 @@ export type WarmingCapNotBindingReason =
 	 */
 	| 'dispatch_unknown';
 
+/**
+ * How much of an audience the own arm carries, bounded on BOTH sides.
+ *
+ * Own-arm volume is `sum over cells of share_c x audience_c`, and nobody has
+ * counted this audience by cell, so the two bounds are not interchangeable and
+ * neither one decides alone: only the floor may license a refusal, only the peak
+ * may license "it fits", and an audience between them is unmeasured.
+ */
+export interface OwnArmShareBounds {
+	/**
+	 * The smallest own-arm share any cell of the stream carries — the LOWER bound
+	 * on own-arm volume, whatever the audience's per-cell composition turns out
+	 * to be. Zero whenever ANY cell is fully relayed, which is why a refusal is
+	 * often unavailable (see the module doc).
+	 */
+	readonly floor: number;
+	/**
+	 * The largest — the UPPER bound, and the only one an "it fits" answer may be
+	 * derived from.
+	 */
+	readonly peak: number;
+}
+
 /** Does the own-MTA warming cap bind campaign traffic, and if not, why not. */
 export type WarmingCapVerdict =
 	| {
 			binds: true;
 			/**
-			 * The fraction of the audience the own MTA has to carry, so the caller
+			 * How much of the audience the own MTA has to carry, so the caller
 			 * measures the warming projection against the traffic that is actually
 			 * subject to the cap rather than against the whole audience.
 			 *
-			 * `OWN_SHARE_CEILING` (1) for every strategy that puts a whole audience
-			 * on one transport — which is every shipped strategy. Under
-			 * `adaptive_mix` it is the stream's FLOOR share (see
-			 * {@link campaignStreamShare}), the only bound that holds whatever the
-			 * audience's per-cell composition turns out to be. ALWAYS GREATER THAN
-			 * ZERO: an own arm carrying nothing is not a binding verdict, it is
-			 * `not_own_mta`.
+			 * Both bounds are `OWN_SHARE_CEILING` (1) for every strategy that puts a
+			 * whole audience on one transport — which is every shipped strategy — and
+			 * under `adaptive_mix` they are the extremes over the stream's cells (see
+			 * {@link campaignStreamShare}). THE PEAK is always greater than zero: an
+			 * own arm carrying nothing ANYWHERE is not a binding verdict, it is
+			 * `not_own_mta`. The floor may well be zero, and a binding verdict with a
+			 * zero floor still says something — it just says only "at most this much
+			 * meets the cap", never "at least".
 			 */
-			ownArmShare: number;
+			ownArmShare: OwnArmShareBounds;
 	  }
 	| { binds: false; why: WarmingCapNotBindingReason };
 
@@ -111,42 +150,54 @@ export type WarmingCapVerdict =
  * all — the two halves of the verdict that the dispatch surface decides, before
  * warm-up overflow is considered.
  */
-type CampaignDispatch = { ownArmShare: number } | { why: WarmingCapNotBindingReason };
+type CampaignDispatch = { ownArmShare: OwnArmShareBounds } | { why: WarmingCapNotBindingReason };
 
-/** The own-arm share across a stream's cells: its floor and its peak. */
-interface StreamShareBounds {
-	/** The smallest own-arm share any cell of the stream carries. */
-	floor: number;
-	/** The largest — `0` means no cell dispatches on the own MTA at all. */
-	peak: number;
-}
+/**
+ * Every strategy that puts a WHOLE audience on ONE transport: both bounds
+ * coincide at the ceiling and the caller's two decisions collapse into one.
+ */
+const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
+	floor: OWN_SHARE_CEILING,
+	peak: OWN_SHARE_CEILING,
+});
 
 /**
  * The own arm's share bounds across the campaign stream's cells, or `null` when
- * the tenant cannot be resolved.
+ * this deployment has no organization to resolve cells for.
  *
- * THE FLOOR, NOT THE MEAN AND NOT THE PEAK. Own-arm volume is
+ * BOTH BOUNDS, BECAUSE NEITHER DECIDES ALONE. Own-arm volume is
  * `sum over cells of share_c x audience_c`, and this gate judges an AUDIENCE,
  * not a recipient: the per-cell composition is only knowable by counting it, at
- * a cost the send mutation cannot pay. The minimum share over the stream's cells
- * is the one bound that holds for every composition — at least
- * `floor x audience` messages must go through the own MTA — so a refusal
- * derived from it is sound. The peak would refuse campaigns that fit (D2), and
- * a mean would do both.
+ * a cost the send mutation cannot pay. So the minimum share over the cells
+ * bounds that volume from below — at least `floor x audience` messages must go
+ * through the own MTA, which is what makes a refusal sound — and the maximum
+ * bounds it from above, which is what makes an APPROVAL sound. Carrying only
+ * the floor would let the gate assert "it fits" on a campaign whose recipients
+ * all sit in the cells the own MTA still carries whole; a mean would be unsound
+ * in both directions.
  *
  * A cell with no rows resolves to `OWN_SHARE_CEILING`: the un-migrated default,
  * where the own MTA carries the whole cell.
  */
-async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<StreamShareBounds | null> {
+async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<OwnArmShareBounds | null> {
 	let organizationId: string;
 	try {
 		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		// No resolvable tenant means no mix context at dispatch either
-		// (`mixContextFor` returns undefined), so `adaptive_mix` selects nothing
-		// and the resolver's env fallback is what actually carries the campaign.
-		// The caller then reads the verdict off the base route, exactly as it does
-		// for a deterministic strategy.
+	} catch (error) {
+		// ONLY "this deployment has no single organization" — a `forbidden` throw —
+		// reads as "no tenant", and that case is benign: with no tenant there is no
+		// mix context at dispatch either (`mixContextFor` returns undefined), so
+		// `adaptive_mix` selects nothing and the resolver's env fallback is what
+		// actually carries the campaign. The caller then reads the verdict off the
+		// base route, exactly as it does for a deterministic strategy.
+		//
+		// A TRANSIENT FAILURE OF THE COMPONENT READ IS NOT THAT. Swallowing it here
+		// would hand the whole campaign verdict back to `EMAIL_PROVIDER` — the
+		// reading this module exists to remove — and it would be indistinguishable
+		// from an unconfigured deployment. It propagates instead, and the
+		// pre-flight's fail-open records it as `measurement_failed`: capacity
+		// unmeasured, send allowed, and said out loud (D12).
+		if (extractOperationError(error)?.category !== 'forbidden') throw error;
 		return null;
 	}
 	const cells = await loadStreamRouteStateCells(ctx, organizationId, 'campaign');
@@ -167,7 +218,7 @@ async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<StreamS
  */
 function adaptiveMixDispatch(
 	enabledKinds: readonly SendProviderKind[],
-	share: StreamShareBounds
+	share: OwnArmShareBounds
 ): CampaignDispatch {
 	// The own arm has to be a dispatch path at all: with no enabled+ready MTA
 	// entry, `adaptiveMixStrategy` sends even an own-arm decision to the
@@ -177,14 +228,17 @@ function adaptiveMixDispatch(
 	// the strategy's additive-only rule (D2) sends the whole cell on the own MTA
 	// however low the stored share is, so the cap binds against ALL of it.
 	if (enabledKinds.every((kind) => kind === OWN_ARM_TRANSPORT_KIND)) {
-		return { ownArmShare: OWN_SHARE_CEILING };
+		return { ownArmShare: WHOLE_AUDIENCE_SHARE };
 	}
-	if (share.floor > OWN_SHARE_FLOOR) return { ownArmShare: share.floor };
-	// A floor of zero. Either NO cell dispatches on the own MTA — the cap cannot
-	// strand anything — or some do and some do not, in which case how much of
-	// this audience meets the cap depends on a composition nobody has counted.
-	// The second is missing data, not reassurance, and it is reported as such.
-	return { why: share.peak > OWN_SHARE_FLOOR ? 'dispatch_unknown' : 'not_own_mta' };
+	// A PEAK of zero means no cell dispatches on the own MTA at all: the cap
+	// cannot strand this campaign whatever its composition. Any peak above it
+	// binds — including one whose floor is zero, which is the mixed case where
+	// some cells are fully relayed and some are not. That verdict cannot refuse
+	// (a zero lower bound exceeds no capacity), but it still bounds the campaign
+	// from above, which is exactly what separates "it fits" from "nobody has
+	// counted this audience by cell".
+	if (share.peak === OWN_SHARE_FLOOR) return { why: 'not_own_mta' };
+	return { ownArmShare: share };
 }
 
 /**
@@ -243,7 +297,7 @@ async function campaignDispatchSurface(
 		// consulting `baseRoute` is sound in exactly this case.
 		if (input.enabledKinds.length > 0) {
 			return input.enabledKinds.every((kind) => kind === OWN_ARM_TRANSPORT_KIND)
-				? { ownArmShare: OWN_SHARE_CEILING }
+				? { ownArmShare: WHOLE_AUDIENCE_SHARE }
 				: { why: 'not_own_mta' };
 		}
 	} else if (input.strategy === 'adaptive_mix' && input.enabledKinds.length > 0) {
@@ -256,7 +310,7 @@ async function campaignDispatchSurface(
 	// hold and allow (D10).
 	if (!input.baseRoute) return { why: 'dispatch_unknown' };
 	if (input.baseRoute.providerType !== OWN_ARM_TRANSPORT_KIND) return { why: 'not_own_mta' };
-	return { ownArmShare: OWN_SHARE_CEILING };
+	return { ownArmShare: WHOLE_AUDIENCE_SHARE };
 }
 
 /**
@@ -292,9 +346,13 @@ async function campaignDispatchSurface(
  * A BINDING verdict carries `ownArmShare`, because "the cap binds" and "the cap
  * binds ALL of it" stopped being the same statement once a cell's traffic could
  * be SPLIT between the arms. The caller measures the warming projection against
- * `ownArmShare x audience`: quoting a 95%-relayed campaign a multi-day plan
- * computed over its whole audience would be exactly the false blocker D2
- * forbids.
+ * `share x audience`: quoting a 95%-relayed campaign a multi-day plan computed
+ * over its whole audience would be exactly the false blocker D2 forbids. It
+ * carries BOTH bounds of that share and the two license different sentences —
+ * refuse on the floor, approve on the peak, report the gap as unmeasured — for
+ * the reason `campaignStreamShare` states: the composition of the audience
+ * across the cells is not known here, and a single number would have to pretend
+ * it is.
  *
  * Either way the entries are judged READY, not merely enabled — `resolveRoute`
  * filters route entries through `isSendProviderReady`, so an enabled but

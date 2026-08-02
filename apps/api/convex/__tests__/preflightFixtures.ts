@@ -7,7 +7,10 @@
 
 import { beforeEach, afterEach, vi } from 'vitest';
 import type { TestConvex } from 'convex-test';
-import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
+import {
+	DESTINATION_PROVIDER_KEYS,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import { MOCK_SINGLETON_ORG } from './sessionOrganizationMock';
 import {
 	validateReadyToSend,
@@ -193,23 +196,35 @@ export async function seedCampaignRoute(
 }
 
 /**
- * The campaign stream's ramp cells, all five at ONE own-arm share.
+ * The campaign stream's ramp cells: every one of the five at `ownShare`, except
+ * the cells named in `perCell`.
  *
- * The warming-cap gate reads the FLOOR over the stream, so a fixture that
- * seeded a single cell would be quoting the un-migrated default (1) for the
- * other four — which is a different configuration, not a smaller one. The rows
- * belong to `MOCK_SINGLETON_ORG`, which is what the suite's session mock
- * resolves the tenant to.
+ * All five, because the warming-cap gate reads bounds OVER THE STREAM — a
+ * fixture that seeded a single cell would be quoting the un-migrated default (1)
+ * for the other four, which is a different configuration rather than a smaller
+ * one. And `perCell`, because a uniform mix makes the gate's floor and its peak
+ * the same number: only a HETEROGENEOUS one can tell a verdict that refuses on
+ * the floor and approves on the peak apart from a verdict that does both on one
+ * of them. Exactly one row per cell either way, so no lookup depends on which
+ * of two rows for the same cell the scan happens to return last.
+ *
+ * The rows belong to `MOCK_SINGLETON_ORG`, which is what the suite's session
+ * mock resolves the tenant to.
  */
-export async function seedCampaignCellShares(t: TestRunner, ownShare: number): Promise<void> {
+export async function seedCampaignCellShares(
+	t: TestRunner,
+	ownShare: number,
+	perCell: Partial<Record<DestinationProviderKey, number>> = {}
+): Promise<void> {
 	await t.run(async (ctx) => {
 		for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
+			const share = perCell[destinationProvider] ?? ownShare;
 			await ctx.db.insert('deliverabilityRouteStates', {
 				organizationId: MOCK_SINGLETON_ORG,
 				destinationProvider,
 				stream: 'campaign',
-				ownShare,
-				isFallbackActive: ownShare < 1,
+				ownShare: share,
+				isFallbackActive: share < 1,
 				signals: [],
 				snapshotGeneratedAt: MIDNIGHT,
 				expiresAt: MIDNIGHT + DAY_MS,
