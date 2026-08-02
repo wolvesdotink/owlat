@@ -411,6 +411,16 @@ export async function loadCellInput(
 			// The cap's CAUSE travels with the cap, so the audit row and the operator
 			// sentence can name the integration whose return would lift it (plan D12).
 			ceilingCapSource: degradation.ceilingCappedBy,
+			// DOES A PHASE CEILING APPLY TO THIS CELL AT ALL — the fold's answer,
+			// read off the SAME resolution that chose the evaluator, the K_CLEAN and
+			// the cap above. Both phase bounds govern the SHARE dial, so they bind
+			// exactly the cells that have one; a cell driving the pace dial carries
+			// its stored rung untouched and starts obeying it again the tick a second
+			// sender is observed. Encoding "no ceiling" as the ladder's TOP RUNG
+			// instead would hand that cell a ceiling nobody promoted it to, and the
+			// AIMD ladder could then climb through every rung without the promotion
+			// gate ever being consulted (plan D3).
+			isPhaseLadderBinding: degradation.actuator === 'share',
 			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
 			// the constants this tick used, so a decision can be explained without
 			// re-deriving what the deployment looked like at the time.

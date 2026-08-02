@@ -154,17 +154,6 @@ export const RAMP_PHASE_CEILINGS = [0.25, 0.5, 0.8, 1] as const;
 export const RAMP_INITIAL_PHASE_CEILING: number = RAMP_PHASE_CEILINGS[0];
 
 /**
- * The ladder's top rung — the "no phase restriction" position.
- *
- * Named because a PACE-ACTUATED cell (no reference transport, plan D3) enrols on
- * it: with no second sender there is no mix to hold back, s = 1 by definition,
- * and a lower rung would have the share ladder pulling traffic toward a relay
- * that does not exist. The dial that ramps such a cell is the warming pace.
- */
-export const RAMP_TOP_PHASE_CEILING: number =
-	RAMP_PHASE_CEILINGS[RAMP_PHASE_CEILINGS.length - 1] ?? 1;
-
-/**
  * Snap a stored ceiling onto the ladder, rounding DOWN to the nearest rung.
  *
  * Fails closed by construction: a corrupt, absent or out-of-range stored value

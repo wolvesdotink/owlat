@@ -15,7 +15,7 @@ import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import { RAMP_AIMD } from './controllerConfig';
 import { isStoredInstantAhead, readStoredInstant } from './controllerReaders';
 import type { RampIntegrationId } from './degradationMatrix';
-import type { RampCapacityInput, RampDecisionReason } from './controllerTypes';
+import type { RampCapacityInput, RampControllerInput, RampDecisionReason } from './controllerTypes';
 
 /**
  * Has a whole evaluation window elapsed since the last COUNTED one?
@@ -71,6 +71,52 @@ export function capacityCeiling(capacity: RampCapacityInput): number | null {
 	return Math.min(OWN_SHARE_CEILING, Math.max(0, ratio));
 }
 
+/** The two PHASE bounds a tick applies, and the cause the cap would name. */
+export interface RampPhaseBounds {
+	readonly phaseCeiling: number;
+	readonly phaseCeilingCap: number;
+	readonly ceilingCapSource: RampIntegrationId | undefined;
+}
+
+/**
+ * WHICH PHASE BOUNDS THIS TICK ACTUALLY APPLIES (plan D3).
+ *
+ * The ladder bounds the SHARE dial — how much of a cell the own MTA carries
+ * while the rest stays with a second sender — so it bounds only a cell that HAS
+ * one. `isPhaseLadderBinding` is the substitution fold's answer, re-read every
+ * tick from observed traffic, and when it is false BOTH phase bounds fall away:
+ * the stored rung and the table's cap on it would otherwise pull mail back
+ * toward a destination the deployment does not have.
+ *
+ * IT NEVER TOUCHES THE STORED RUNG. `nextShare` carries `mix.phaseCeiling` out on
+ * the decision and the write path puts it back unchanged, so a cell that later
+ * acquires a second sender stands exactly where it was promoted to and has to
+ * earn every rung above it through the promotion gate. Encoding "no ceiling
+ * applies" as the ladder's TOP RUNG instead — on the row, at enrolment — would
+ * bank a ceiling nobody was promoted to, and the AIMD ladder could then climb to
+ * full share with that gate never consulted.
+ *
+ * NO CAUSE TO NAME when nothing binds: `ceilingCapSource` travels with the cap
+ * it explains, so dropping the cap drops the name with it (plan D12).
+ */
+export function phaseLadderBounds(
+	input: RampControllerInput,
+	phaseCeiling: number
+): RampPhaseBounds {
+	if (!input.isPhaseLadderBinding) {
+		return {
+			phaseCeiling: OWN_SHARE_CEILING,
+			phaseCeilingCap: OWN_SHARE_CEILING,
+			ceilingCapSource: undefined,
+		};
+	}
+	return {
+		phaseCeiling,
+		phaseCeilingCap: input.phaseCeilingCap,
+		ceilingCapSource: input.ceilingCapSource,
+	};
+}
+
 /** Which of the three ceilings bound the cell, and — for the cap — what caused it. */
 export interface RampCeilingBound {
 	/** The effective ceiling: the LOWEST of the three, never above full share. */
@@ -99,12 +145,9 @@ export interface RampCeilingBound {
  * become a ceiling of NaN — which keeps this arithmetic incapable of raising
  * anything.
  */
-export function resolveCeilingBound(args: {
-	readonly capacityBound: number;
-	readonly phaseCeiling: number;
-	readonly phaseCeilingCap: number;
-	readonly ceilingCapSource: RampIntegrationId | undefined;
-}): RampCeilingBound {
+export function resolveCeilingBound(
+	args: RampPhaseBounds & { readonly capacityBound: number }
+): RampCeilingBound {
 	const { capacityBound, phaseCeiling, phaseCeilingCap, ceilingCapSource } = args;
 	const capBound = Number.isFinite(phaseCeilingCap) ? Math.max(0, phaseCeilingCap) : phaseCeiling;
 	const effectivePhaseCeiling = Math.min(phaseCeiling, capBound);

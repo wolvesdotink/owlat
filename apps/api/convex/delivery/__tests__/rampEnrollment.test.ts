@@ -12,7 +12,8 @@
  *     none (there is no second sender to hold traffic back for);
  *   - the rung and its DWELL ANCHOR are stamped together, because dwell is one of
  *     the four conditions on the only promotion route a yahoo/apple/other cell
- *     has;
+ *     has — and the rung is the ladder's FIRST one on BOTH paths, because a rung
+ *     is earned and the actuator is not a property of the enrolment;
  *   - it writes the D12 audit pair, so the first entry in a cell's timeline says
  *     who put it on the ramp and at what share;
  *   - an already-managed cell is refused rather than reset, and an enrolment that
@@ -23,11 +24,17 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import { RAMP_STREAM_CONFIGS } from '../ramp/gateConfig';
-import { RAMP_INITIAL_PHASE_CEILING, RAMP_TOP_PHASE_CEILING } from '../ramp/controllerConfig';
-import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+import { RAMP_INITIAL_PHASE_CEILING } from '../ramp/controllerConfig';
+import { resolveRampDegradation } from '../ramp/degradation';
+import {
+	loadRampDeploymentPresence,
+	loadReferenceArmPresence,
+	withReferenceArm,
+} from '../rampIntegrationPresence';
+import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
 
 const ORG = 'org_ramp_enrollment';
 const OTHER_ORG = 'org_ramp_enrollment_other';
@@ -92,6 +99,22 @@ async function holdProviderSliceInFallback(t: Harness): Promise<void> {
 	});
 }
 
+/**
+ * WHICH ACTUATOR THE CONTROLLER MEASURES for this cell — through the same
+ * readers the tick and the promotion path use, so the divergence this asserts is
+ * the real one and not a second fold's opinion of it.
+ */
+async function measuredActuator(t: Harness): Promise<'share' | 'pace'> {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		const presence = withReferenceArm(
+			await loadRampDeploymentPresence(ctx, { organizationId: ORG, now }),
+			await loadReferenceArmPresence(ctx, { organizationId: ORG, cell: CELL, now })
+		);
+		return resolveRampDegradation({ presence, provider: CELL.destinationProvider }).actuator;
+	});
+}
+
 async function auditActions(t: Harness): Promise<string[]> {
 	const rows = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
 	return rows.map((row) => row.action);
@@ -151,7 +174,7 @@ describe('the ESP path', () => {
 });
 
 describe('the own-server path', () => {
-	it('opens at full share on the ladder’s top rung when there is no relay', async () => {
+	it('opens at full share when there is no relay, on the ladder’s FIRST rung', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
 
@@ -161,10 +184,66 @@ describe('the own-server path', () => {
 		const row = await readManagedCell(t);
 		expect(row?.ownShare).toBe(1);
 		expect(row?.isFallbackActive).toBe(false);
-		// THE RUNG IS THE TOP ONE ON PURPOSE. The phase ladder bounds the SHARE
-		// dial; on the first rung the controller would pull three quarters of this
-		// cell back toward a relay the deployment does not have.
-		expect(row?.phaseCeiling).toBe(RAMP_TOP_PHASE_CEILING);
+		// THE RUNG IS EARNED, NEVER GRANTED. The phase ladder bounds the SHARE dial
+		// and this cell has no second sender, so the ladder does not bind it at all
+		// — an answer the controller re-resolves every tick from observed traffic.
+		// Stamping the TOP rung here instead would bank a ceiling nobody was
+		// promoted to.
+		expect(row?.phaseCeiling).toBe(RAMP_INITIAL_PHASE_CEILING);
+	});
+
+	/**
+	 * THE ACTUATOR IS NOT A PROPERTY OF THE ENROLMENT (plan D3). It is re-resolved
+	 * every tick from OBSERVED reference-arm traffic, so a cell enrolled with no
+	 * relay can be share-actuated next week — an operator connects an ESP, or a
+	 * force-advance, a pin or a hard stop puts traffic on it. A ceiling banked at
+	 * enrolment time would let the AIMD ladder climb back through 0.5 and 0.8 with
+	 * the promotion gate never consulted, which is the exact recover-after-an-
+	 * incident case that gate exists for.
+	 */
+	it('banks no ceiling for the day the cell becomes share-actuated', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		const enrolled = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(enrolled.path).toBe('own_server');
+
+		// A relay now carries part of this cell: the reference arm is PRESENT, and
+		// the substitution fold hands the cell to the share actuator from this tick.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(RAMP_INITIAL_PHASE_CEILING);
+		// And the only way up is still one rung at a time, through the gate.
+		const promoted = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(promoted.phaseCeiling).toBe(0.5);
+	});
+});
+
+/**
+ * THE FORK AND THE CONTROLLER READ TWO DIFFERENT FACTS, and the divergence is
+ * bounded: enrolment reads CONFIGURATION (a relay is connected) because that is
+ * all that exists before the cell has ever been cut, while every tick reads
+ * MEASUREMENT (reference-arm rows for this cell). They converge because the
+ * opening cut is what produces the traffic the measurement then sees.
+ */
+describe('the fork’s answer and the controller’s converge', () => {
+	it('opens on the ESP path with no relay traffic yet, and the tick agrees once there is', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		await connectRelay(t);
+
+		// No outcome rows at all: nothing has been sent through either arm, so the
+		// controller still measures this cell as standalone.
+		const result = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(result.path).toBe('esp_relay');
+		expect(await measuredActuator(t)).toBe('pace');
+
+		// The cut lands: the relay carries 98% of the cell, and the arm it fills is
+		// exactly the presence the fold reads.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 20 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 980 });
+		expect(await measuredActuator(t)).toBe('share');
 	});
 });
 
@@ -235,6 +314,88 @@ describe('a per-stream row with no stored share', () => {
 		// The generation advances from the one the row already carried, so a cell
 		// re-enrolled after a spell off the ramp cannot reuse an old assignment.
 		expect(perStream[0]?.mixVersion).toBe(5);
+	});
+
+	/**
+	 * OPENING STATE MEANS OPENING STATE. A share-less row was written by something
+	 * that is not the ramp, so anything ramp-shaped on it was set for no enrolment
+	 * anybody made: an operator pause or pin would silently hold or cap a ramp its
+	 * owner never touched, and the pace dial would start the second actuator
+	 * somewhere nobody put it.
+	 */
+	it('clears the operator’s hand and the pace dial it inherited', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: false,
+				signals: [],
+				operatorPausedAt: now - 1_000,
+				operatorPinnedShare: 0.1,
+				lastCountedAt: now - 1_000,
+				paceMultiplier: 0.5,
+				paceCleanStreak: 4,
+				paceLastEvaluatedUtcDay: '2026-01-01',
+				paceDeferredAt: now - 1_000,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 60_000,
+				updatedAt: now,
+			});
+		});
+
+		await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeUndefined();
+		expect(row?.operatorPinnedShare).toBeUndefined();
+		expect(row?.lastCountedAt).toBeUndefined();
+		expect(row?.paceMultiplier).toBeUndefined();
+		expect(row?.paceCleanStreak).toBeUndefined();
+		expect(row?.paceLastEvaluatedUtcDay).toBeUndefined();
+		expect(row?.paceDeferredAt).toBeUndefined();
+	});
+
+	/**
+	 * THE SHARE FREEZE IS THE ONE THING THAT SURVIVES. A cooldown is evidence a
+	 * retreat happened, and the ramp's standing rule is that nobody raises through
+	 * one — so enrolment must not become a laundering path for it: cut the cell,
+	 * re-enrol, penalty gone.
+	 */
+	it('does not launder a stored cooldown off the row', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		const now = Date.now();
+		const frozenUntil = now + 6 * 60 * 60 * 1000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: false,
+				signals: [],
+				frozenUntil,
+				freezeReason: 'gate_breach' as const,
+				cooldownMs: 6 * 60 * 60 * 1000,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 60_000,
+				updatedAt: now,
+			});
+		});
+
+		// A CUT toward the relay is never blocked, so this enrolment applies — and
+		// the freeze it found is still standing afterwards.
+		await connectRelay(t);
+		const result = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(result.enrolled).toBe(true);
+
+		const row = await readManagedCell(t);
+		expect(row?.frozenUntil).toBe(frozenUntil);
+		expect(row?.freezeReason).toBe('gate_breach');
+		expect(row?.cooldownMs).toBe(6 * 60 * 60 * 1000);
 	});
 });
 

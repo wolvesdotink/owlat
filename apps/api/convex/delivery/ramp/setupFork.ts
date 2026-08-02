@@ -11,11 +11,26 @@
  * invariant is asserted by a fixture instead of resting on nobody adding a
  * badge later.
  *
- * THE FORK IS THE ACTUATOR CHOICE (D3), and it says so: one controller, two
- * actuators, and the path an operator picks is which one it drives.
+ * THE FORK NAMES AN ACTUATOR; IT DOES NOT DECIDE ONE (D3). One controller, two
+ * actuators, and the path an operator picks is the one they mean to run — but
+ * the actuator the controller actually drives is re-resolved on EVERY tick by
+ * `resolveRampDegradation`, from reference-arm traffic OBSERVED for that cell,
+ * and never from this table.
+ *
+ * THE TWO READ DIFFERENT FACTS, ON PURPOSE. This table reads CONFIGURATION —
+ * all that exists at the instant of enrolment, because a cell that has never
+ * been cut has no relay traffic to observe — and the controller reads
+ * MEASUREMENT. On a freshly-configured relay they disagree for one window: the
+ * cell opens at its stream's share while the controller still runs the
+ * standalone twin over it. They CONVERGE BY THEMSELVES and in the safe
+ * direction, because the opening cut is what creates the traffic the
+ * measurement then sees, and the standalone constants are the stricter ones. So
+ * `actuator` here is the path's DESCRIPTION — the thing the copy beside it
+ * promises — and nothing durable is stamped from it: `delivery/rampEnrollment.ts`
+ * writes the ladder's first rung on BOTH paths for exactly that reason.
  *
  * `resolveSetupPath` IS CONSUMED: `delivery/rampEnrollment.ts` reads it to learn
- * which dial a newly-enrolled cell starts on. `resolveSetupFork` — the rendering
+ * which SHARE a newly-enrolled cell opens on. `resolveSetupFork` — the rendering
  * shape, with both paths and the preselection — is still staged for a setup
  * screen that does not exist yet; the enrolment mutation is the door until it
  * does. Both answers come off ONE table so the screen, when it arrives, cannot
@@ -93,11 +108,15 @@ export function resolveSetupFork(args: {
 }
 
 /**
- * THE PATH A CELL IS ENROLLED ON, and therefore WHICH DIAL the ramp will drive
+ * THE PATH A CELL IS ENROLLED ON, and therefore WHICH SHARE it opens at
  * (D3 x D14). The fork's preselection IS the answer: 'esp_relay' exactly when a
  * relay is configured, and no preselection means there is no second sender to
  * move traffic away from — the own-server path, by definition rather than by
  * default.
+ *
+ * NOT "which dial the ramp will drive": that is measured per tick, not chosen
+ * here — see the header. This answers the one question enrolment has to settle
+ * at the instant it writes, which is how much of the cell the own MTA opens on.
  *
  * Derived FROM the fork rather than beside it, so what a setup screen would
  * OFFER and what enrolment actually WRITES cannot describe the same

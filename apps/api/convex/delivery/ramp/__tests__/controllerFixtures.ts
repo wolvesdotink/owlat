@@ -274,6 +274,11 @@ export function controllerInput(overrides: Partial<RampControllerInput> = {}): R
 		phaseCeilingCap: 1,
 		// Nothing caps the equipped deployment, so nothing names a cap either.
 		ceilingCapSource: undefined,
+		// A deployment with a second sender drives the SHARE dial, so the phase
+		// ladder BINDS — the production case for every suite that reasons about a
+		// ceiling. Defaulting this to `false` would silently unbind the ceiling in
+		// every fixture that does not mention it.
+		isPhaseLadderBinding: true,
 		// Equipped: nothing absent. Carried for the audit row, never for a decision.
 		absentIntegrations: [],
 		isKillSwitchEngaged: false,

@@ -9,13 +9,30 @@
  * door, and this is it: an admin-gated, org-scoped, audited act that turns the
  * shipped boolean into a measured share.
  *
- * WHICH DIAL THE CELL STARTS ON IS THE SETUP FORK'S ANSWER (D14 x D3), read from
+ * WHICH SHARE THE CELL OPENS ON IS THE SETUP FORK'S ANSWER (D14 x D3), read from
  * `ramp/setupFork.ts` rather than decided here. With a relay configured the cell
  * enrols on the ESP path and opens at its stream's `initialShareFraction` — a
  * measured sliver of traffic on the own MTA, the rest still on the relay.
  * Standalone there is no second sender to hold anything back for: the own MTA
  * already carries the mail, s = 1 by definition, and the dial that actually
  * moves is the warming pace.
+ *
+ * THE FORK AND THE CONTROLLER READ TWO DIFFERENT FACTS, AND THEY ARE ALLOWED TO.
+ * The fork reads CONFIGURATION — "is a relay connected" (`configuredRelayKinds`),
+ * the only fact available at the instant of enrolment, because a cell that has
+ * never been cut has no relay traffic to observe. Every later tick reads
+ * MEASUREMENT — reference-arm outcome rows for this cell in the last 24h, folded
+ * by `resolveRampDegradation`. On a freshly-configured relay those disagree for
+ * one window: enrolment opens the cell at 2%, and until that 2% cut has actually
+ * produced relay traffic the controller still treats the cell as pace-actuated.
+ * THE DIVERGENCE CONVERGES BY ITSELF, and in the safe direction — the cut is
+ * what creates the traffic the measurement then sees, and while it has not the
+ * controller runs the standalone (stricter) constants. Enrolment must NOT read
+ * the measurement instead: it would answer "pace" for every ESP enrolment ever
+ * made, and no cell would ever open at its stream's share.
+ *
+ * AND NEITHER FACT IS WRITTEN DOWN AS A RUNG. The actuator is a property of the
+ * tick, never of the enrolment (see `phaseCeiling` below).
  *
  * THE OPENING SHARE CAN BE A CUT. On a healthy provider slice an unmanaged cell
  * resolves to 1.0 (`resolveOwnShare` over the stream-less row), so enrolling a
@@ -42,7 +59,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { configuredRelayKinds } from './alignmentPreflight';
-import { RAMP_INITIAL_PHASE_CEILING, RAMP_TOP_PHASE_CEILING } from './ramp/controllerConfig';
+import { RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { resolveSetupPath, type RampSetupPathId } from './ramp/setupFork';
 import { readRampIncreaseBlock } from './rampControllerInputs';
@@ -101,16 +118,20 @@ export const enrollCell = adminMutation({
 		// back for, so it opens at 1 and the WARMING PACE is the dial that ramps;
 		// anything less would route mail to a relay this deployment does not have.
 		//
-		// AND THE RUNG COMES WITH IT. The phase ladder bounds the SHARE dial, so on
-		// the own-server path it would be a ceiling on a number the plan pins at 1:
-		// the first rung would have the controller pulling three quarters of the
-		// cell back toward a relay this deployment does not have. Pace-actuated cells
-		// therefore enrol on the ladder's top rung and ramp on the warming pace.
-		const isShareActuated = setup.actuator === 'share';
-		const share = isShareActuated
-			? RAMP_STREAM_CONFIGS[args.stream].initialShareFraction
-			: OWN_SHARE_CEILING;
-		const phaseCeiling = isShareActuated ? RAMP_INITIAL_PHASE_CEILING : RAMP_TOP_PHASE_CEILING;
+		// THE RUNG IS THE LADDER'S FIRST ONE ON BOTH PATHS. A rung is EARNED — the
+		// promotion gate is the only thing that raises one — while WHETHER the
+		// ladder binds a cell at all is a property of the TICK, re-resolved from the
+		// actuator on every evaluation (`isPhaseLadderBinding`). So the own-server
+		// path does not need the top rung to keep the controller off its share, and
+		// stamping one here would be worse than useless: the actuator is not a
+		// property of the enrolment, and the day a relay appears the cell would be
+		// standing on a ceiling nobody was promoted to, free to climb to full share
+		// without the evidence gate ever being consulted.
+		const share =
+			setup.actuator === 'share'
+				? RAMP_STREAM_CONFIGS[args.stream].initialShareFraction
+				: OWN_SHARE_CEILING;
+		const phaseCeiling = RAMP_INITIAL_PHASE_CEILING;
 
 		// TODAY'S EFFECTIVE SHARE is the shipped resolution over whichever row
 		// governs the cell now — the per-stream row if one exists without a share,
@@ -156,6 +177,25 @@ export const enrollCell = adminMutation({
  * cell's recipients are being assigned to two arms for the first time, and a
  * cell re-enrolled after a spell off the ramp must not reuse the previous
  * generation's assignment.
+ *
+ * OPENING STATE MEANS OPENING STATE. A share-less per-stream row can only have
+ * been written by something that is not the ramp, so anything ramp-shaped
+ * already on it was set for no enrolment anybody made: the operator's HAND
+ * (`operatorPausedAt`, `operatorPinnedShare`) would silently pause or cap a
+ * ramp its owner never touched, the counted-window anchor would postpone the
+ * first countable window by up to a day, and the whole PACE dial — multiplier,
+ * streak, freeze triple, the per-UTC-day anchor and the interlock's memory —
+ * would start the second actuator somewhere nobody put it. All of them are
+ * cleared here.
+ *
+ * THE SHARE FREEZE IS THE ONE EXCEPTION, and it survives deliberately.
+ * `frozenUntil` / `freezeStartedAt` / `freezeReason` / `cooldownMs` are
+ * EVIDENCE-BEARING — a retreat someone's mail paid for — and the ramp's
+ * standing rule is that a cooldown is never raised through
+ * (`readRampIncreaseBlock` refuses an enrolment that would raise the share
+ * inside one). Clearing them here would make enrolment a laundering path for
+ * exactly that state: cut the cell, then re-enrol with the ladder's penalty
+ * gone. A freeze is left to expire on its own clock, as everywhere else.
  */
 async function writeEnrolledCell(
 	ctx: MutationCtx,
@@ -182,6 +222,19 @@ async function writeEnrolledCell(
 		// the clock; it does not award anything.
 		graduatedAt: undefined,
 		greenSince: undefined,
+		// NOBODY SET THESE FOR THIS ENROLMENT — see above. The operator's hand and
+		// the window anchor first, then the whole second dial.
+		operatorPausedAt: undefined,
+		operatorPinnedShare: undefined,
+		lastCountedAt: undefined,
+		paceMultiplier: undefined,
+		paceCleanStreak: undefined,
+		paceFrozenUntil: undefined,
+		paceFreezeStartedAt: undefined,
+		paceFreezeReason: undefined,
+		paceCooldownMs: undefined,
+		paceLastEvaluatedUtcDay: undefined,
+		paceDeferredAt: undefined,
 		// The ramp's own clock. See `applyDecision` for why `updatedAt` is the
 		// snapshot writer's and is left alone on a row that already exists.
 		decidedAt: now,
