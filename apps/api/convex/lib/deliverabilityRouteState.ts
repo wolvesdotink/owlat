@@ -61,12 +61,20 @@ export async function loadStreamlessRouteState(
 		.first();
 }
 
-/** Both rows backing one ramp cell. Either may be absent. */
+/**
+ * Both rows backing one ramp cell. Either may be absent.
+ *
+ * READ-ONLY, because one instance of this shape — {@link EMPTY_ROUTE_STATE_CELL}
+ * — is a module-level default SHARED by every reader in the isolate. A loader
+ * that assigned into a cell it had just defaulted would poison that default for
+ * all of them, and the symptom (route-state rows surfacing on cells that have
+ * none) lands nowhere near the assignment. Build a new object instead.
+ */
 export interface RouteStateCellRows {
 	/** The ramp controller's row: the cell's share. Absent until P3-2 writes one. */
-	perStream: Doc<'deliverabilityRouteStates'> | null;
+	readonly perStream: Doc<'deliverabilityRouteStates'> | null;
 	/** The MTA snapshot's (and legacy) row: the infrastructure verdict + signals. */
-	streamless: Doc<'deliverabilityRouteStates'> | null;
+	readonly streamless: Doc<'deliverabilityRouteStates'> | null;
 }
 
 /**
@@ -111,8 +119,17 @@ export function mixCellStateFor(cell: RouteStateCellRows): MixCellState {
 	return { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion };
 }
 
-/** A cell the organization has no row for at all: the un-migrated default. */
-export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = { perStream: null, streamless: null };
+/**
+ * A cell the organization has no row for at all: the un-migrated default.
+ *
+ * FROZEN. It is one object handed to every reader that defaults a missing cell,
+ * so a stray write to it would be a write to all of them; the readonly fields
+ * catch that at compile time and this catches it at runtime.
+ */
+export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = Object.freeze({
+	perStream: null,
+	streamless: null,
+});
 
 /**
  * Every cell of ONE stream — BOTH rows each — from a single indexed scan.
@@ -146,10 +163,14 @@ export async function loadStreamRouteStateCells(
 		if (!isDestinationProviderKey(destinationProvider)) continue;
 		// Another stream's controller row says nothing about this one.
 		if (row.stream !== undefined && row.stream !== stream) continue;
-		const cell = cells.get(destinationProvider) ?? { perStream: null, streamless: null };
-		if (row.stream === undefined) cell.streamless = row;
-		else cell.perStream = row;
-		cells.set(destinationProvider, cell);
+		// A NEW cell each time, never an assignment into the one already in the
+		// map: that object is `EMPTY_ROUTE_STATE_CELL` until the first row for the
+		// provider arrives, and the shared default is not this loader's to write.
+		const cell = cells.get(destinationProvider) ?? EMPTY_ROUTE_STATE_CELL;
+		cells.set(
+			destinationProvider,
+			row.stream === undefined ? { ...cell, streamless: row } : { ...cell, perStream: row }
+		);
 	}
 	return cells;
 }
