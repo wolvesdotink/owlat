@@ -37,6 +37,7 @@ import {
 import type { Id } from '../_generated/dataModel';
 import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/preflight';
 import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
+import { planTodaysSlice } from '../campaigns/multiDaySendPlan';
 import {
 	assessCampaignCapacity,
 	assessCountedPlan,
@@ -653,6 +654,69 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 
 		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * THE SHARE SCALING STOPS AT THE GATE, and that is pinned rather than implied.
+	 *
+	 * The pre-flight measures own-arm volume; the walker's day budget and the
+	 * wizard's estimate meter the WHOLE audience against the same paced
+	 * projection. On the same 5% fixture the gate says "fits" and both of those
+	 * say five days — the walker because it really does pace all 600 recipients
+	 * through the day budget, the estimate because it quotes what the walker will
+	 * do. Nothing here is a defect the gate introduced (its scaling only ever
+	 * ALLOWS more, so the cost is an over-long plan, never an expired tail), but
+	 * it is a divergence an operator can see on one screen, so the two answers
+	 * this build gives are written down. `campaigns/sendPlanQueries.ts` says which
+	 * is authoritative and what would close it; if that lands, this test changes.
+	 */
+	it('leaves the walker and the estimate metering the whole audience', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.05);
+
+		// The gate: 30 own-arm messages against 500 of horizon capacity.
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+
+		// The advisory readout the campaign editor renders beside it: 600 against
+		// the same 0 / 100 / 200 / 200 / 700 projection.
+		const estimate = await t.query(api.analytics.reputationQueries.getCampaignSendEstimate, {
+			recipientCount: 600,
+		});
+		expect(estimate.estimatedDays).toBe(5);
+
+		// And the actuator, which is what the operator will actually watch happen.
+		const audience = await t.run(async (ctx) => (await ctx.db.get(campaignId))?.audience);
+		if (!audience) throw new Error('campaign missing its audience');
+		const capacity = await t.query(internal.campaigns.sendPlanQueries.getSendPlanCapacity, {
+			audience,
+			countAudienceSize: true,
+		});
+		expect(capacity.plannedTotal).toBe(600);
+		if (capacity.plannedTotal === null) throw new Error('the walk counted no denominator');
+		const slice = planTodaysSlice({
+			state: {
+				planDayKey: undefined,
+				enqueuedToday: undefined,
+				planDayIndex: undefined,
+				planTotalDays: undefined,
+				plannedTotal: undefined,
+				isPlannedTotalLowerBound: undefined,
+			},
+			remaining: { kind: 'exact', count: capacity.plannedTotal },
+			capacityByDay: capacity.capacityByDay,
+			now: MIDNIGHT,
+		});
+		expect(slice.totalDays).toBe(5);
 	});
 
 	it('holds and allows when the mix leaves the own arm carrying nothing', async () => {
