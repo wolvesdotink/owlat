@@ -31,13 +31,8 @@ import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOr
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { nextPhaseCeiling, normalizePhaseCeiling } from './ramp/controllerConfig';
 import { evaluatePhasePromotion, type PromotionConditionId } from './ramp/phasePromotion';
-import { resolveRampDegradation } from './ramp/degradation';
 import { loadRampPromotionEvidence } from './rampPromotionEvidence';
-import {
-	loadRampDeploymentPresence,
-	loadReferenceArmPresence,
-	withReferenceArm,
-} from './rampIntegrationPresence';
+import { loadCellDegradation } from './rampIntegrationPresence';
 import { readRampIncreaseBlock } from './rampControllerInputs';
 import { recordOperatorRampAction } from './rampControlAudit';
 import type { RampControlRefusal } from './rampControls';
@@ -122,14 +117,7 @@ export async function applyRampPhasePromotion(
 	// conditions. Below that line no route is consulted and the promotion is the
 	// ordinary ladder step it has always been — so a deployment with no external
 	// account is slowed, never stopped (plan D2).
-	const presence = withReferenceArm(
-		await loadRampDeploymentPresence(ctx, { organizationId, now }),
-		await loadReferenceArmPresence(ctx, { organizationId, cell, now })
-	);
-	const degradation = resolveRampDegradation({
-		presence,
-		provider: cell.destinationProvider,
-	});
+	const degradation = await loadCellDegradation(ctx, { organizationId, cell, now });
 	const promotion = evaluatePhasePromotion({
 		targetCeiling: phaseCeiling,
 		provider: cell.destinationProvider,

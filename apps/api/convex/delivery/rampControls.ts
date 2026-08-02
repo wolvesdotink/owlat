@@ -60,6 +60,8 @@ import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
 import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
+import { bindsPhaseLadder } from './ramp/degradation';
+import { loadCellDegradation } from './rampIntegrationPresence';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -330,7 +332,9 @@ export const forceAdvanceCellShare = adminMutation({
  * ceiling would invent a rung the promotion path can never reach and leave the
  * cell somewhere the phase ladder has no name for. Resetting DOWN also brings
  * the share back under the new ceiling immediately — leaving a cell above a
- * ceiling it was just given would be a ceiling in name only.
+ * ceiling it was just given would be a ceiling in name only — but only on a cell
+ * the ladder BINDS, which is the fold's answer and not this mutation's (see
+ * `bindsPhaseLadder`). A standalone cell keeps its share and takes the rung.
  *
  * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
  * ceiling re-shuffles which arm every recipient of the cell lands in and opens
@@ -351,7 +355,6 @@ export const resetCellPhase = adminMutation({
 		const target = await resolveControlTarget(ctx, args);
 		if (typeof target === 'string') return refused(target);
 		const now = Date.now();
-		const share = Math.min(target.share, args.phaseCeiling);
 		// THE SAME READING THE PROMOTION PATH TAKES, through the same helper — a row
 		// with no stored ceiling sits on the ladder's first rung, and a degenerate
 		// one snaps DOWN onto a real rung rather than standing above the ladder. So
@@ -362,6 +365,27 @@ export const resetCellPhase = adminMutation({
 		// "reset").
 		const currentCeiling = normalizePhaseCeiling(target.row.phaseCeiling);
 		if (args.phaseCeiling > currentCeiling) return refused('phase_increase_requires_promotion');
+		// THE SHARE IS CUT ONLY WHERE THE LADDER ACTUALLY BINDS IT (plan D3), and
+		// the fold answers that here exactly as it answers it on every tick. On a
+		// standalone cell there is no second sender: cutting an enrolled cell from
+		// 1.0 to the 25% rung would move three quarters of its mail toward a relay
+		// that does not exist, flip `isFallbackActive`, revoke a graduation pin and
+		// re-randomise a cohort with one arm in it — the move `phaseLadderBounds`
+		// was added to prevent, arrived at from the operator's door instead.
+		//
+		// THE RUNG STILL GOES DOWN, and so does the streak. The rung is stored
+		// state the promotion gate makes the cell re-earn, and restarting the clean
+		// streak is the reason this control exists; both are meaningful on a cell
+		// whose share nothing is bounding today, and the rung binds again the tick
+		// a second sender is observed.
+		const bindsLadder = bindsPhaseLadder(
+			await loadCellDegradation(ctx, {
+				organizationId: target.organizationId,
+				cell: target.cell,
+				now,
+			})
+		);
+		const share = bindsLadder ? Math.min(target.share, args.phaseCeiling) : target.share;
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
 			// THE DWELL CLOCK RESTARTS HERE. It measures time served AT A RUNG, and a
@@ -370,14 +394,22 @@ export const resetCellPhase = adminMutation({
 			// dwell already served, and the standalone promotion route — the only route
 			// a yahoo/apple/other cell has — would hand the ceiling straight back.
 			phaseCeilingSince: now,
-			ownShare: share,
-			isFallbackActive: isFallbackActiveForShare(share),
-			mixVersion: (target.row.mixVersion ?? 0) + 1,
 			cleanStreak: 0,
 			greenSince: undefined,
-			// See `forceAdvanceCellShare`: a cell put back on a lower rung has not
-			// graduated, and the pin must not outlive the share that earned it.
-			...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
+			// NO SHARE MOVED, SO NOTHING DERIVED FROM ONE MOVES EITHER: the boolean
+			// view, the mix generation and the graduation pin all describe traffic
+			// this reset did not touch.
+			...(bindsLadder
+				? {
+						ownShare: share,
+						isFallbackActive: isFallbackActiveForShare(share),
+						mixVersion: (target.row.mixVersion ?? 0) + 1,
+						// See `forceAdvanceCellShare`: a cell put back on a lower rung has
+						// not graduated, and the pin must not outlive the share that
+						// earned it.
+						...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
+					}
+				: {}),
 			decidedAt: now,
 		});
 		await recordOperatorRampAction(ctx, {
@@ -388,10 +420,15 @@ export const resetCellPhase = adminMutation({
 			reason: 'operator_phase_reset',
 			fromShare: target.share,
 			toShare: share,
-			message: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`,
+			message: bindsLadder
+				? `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`
+				: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero. There is no second sender to hold a share back for, so the share stays at ${Math.round(share * 100)}% and the rung applies again if a relay ever carries this cell.`,
 			detail: {
 				phaseCeiling: args.phaseCeiling,
-				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
+				// The rung was recorded but nothing was cut — the one fact this row
+				// would otherwise be read as claiming.
+				...(bindsLadder ? {} : { shareHeld: true }),
+				...(bindsLadder && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
 					? { pinChange: 'revoked' }
 					: {}),
 			},

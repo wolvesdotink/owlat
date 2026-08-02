@@ -27,7 +27,12 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
-import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+import {
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 
 const ORG = 'org_ramp_phase_moves';
 const HOUR_MS = 60 * 60 * 1000;
@@ -130,6 +135,87 @@ describe('reset-to-phase is downward-only', () => {
 		// dwell already served, and the standalone route would hand the ceiling
 		// straight back.
 		expect(row?.phaseCeilingSince).toBeGreaterThan(staleAnchor);
+	});
+});
+
+/**
+ * A RUNG BOUNDS THE SHARE DIAL, SO IT BOUNDS ONLY A CELL THAT HAS ONE (plan D3).
+ *
+ * The controller re-reads that every tick (`phaseLadderBounds` drops both phase
+ * bounds on a pace-actuated cell), and the operator's door has to read it the
+ * same way: on a standalone deployment an enrolled cell sits at full share, and
+ * the one enabled rung button would otherwise cut three quarters of its mail
+ * toward a relay that does not exist — flipping the derived boolean, revoking a
+ * graduation pin and spending a mix generation on a cohort with one arm in it.
+ */
+describe('a reset where the phase ladder does not bind', () => {
+	it('takes the lower rung without touching a standalone cell’s share', async () => {
+		const t = harness();
+		const graduatedAt = Date.now() - 1_000;
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			cleanStreak: 3,
+			mixVersion: 2,
+			graduatedAt,
+		});
+
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		// THE MOVE THE REVIEW ASKED FOR: one click must not land an enrolled
+		// standalone cell at 25% of its own traffic.
+		expect(result).toEqual({ applied: true, share: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(1);
+		expect(row?.isFallbackActive).toBe(false);
+		// No share moved, so no cohort is re-randomised and no pin is revoked.
+		expect(row?.mixVersion).toBe(2);
+		expect(row?.graduatedAt).toBe(graduatedAt);
+		// The rung and the streak ARE the reset — both are stored state the cell
+		// re-earns, and the rung binds again the tick a relay carries this cell.
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.phaseCeilingSince).toBeGreaterThan(0);
+		expect(row?.cleanStreak).toBe(0);
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		// The timeline must not report a cut that did not happen.
+		expect(recorded[0]?.fromShare).toBe(1);
+		expect(recorded[0]?.toShare).toBe(1);
+		expect(recorded[0]?.direction).toBe('hold');
+		expect(recorded[0]?.message).toContain('no second sender');
+		expect(await auditActions(t)).toContain('deliverability_ramp.phase_reset');
+	});
+
+	it('cuts the same cell to the rung once a relay arm carries it', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			mixVersion: 2,
+			graduatedAt: Date.now() - 1_000,
+		});
+		// The fold reads MEASUREMENT, not configuration: reference-arm outcome rows
+		// for this cell inside the evaluation window are what "has a relay" means.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+
+		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		expect(result).toEqual({ applied: true, share: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.isFallbackActive).toBe(true);
+		expect(row?.mixVersion).toBe(3);
+		expect(row?.graduatedAt).toBeUndefined();
+		expect((await decisions(t))[0]?.direction).toBe('decrease');
 	});
 });
 

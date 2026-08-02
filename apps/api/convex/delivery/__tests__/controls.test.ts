@@ -19,7 +19,12 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { modules } from '../../__tests__/testModules';
-import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+import {
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 
 const ORG = 'org_ramp_controls';
 const OTHER_ORG = 'org_ramp_controls_other';
@@ -197,6 +202,10 @@ describe('reset to a phase', () => {
 	it('brings the share back under the new ceiling and restarts the streak', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, cleanStreak: 3 });
+		// THE CUT IS THE ESP PATH'S, so the cell needs the relay arm that makes the
+		// ladder bind it. Without one there is nowhere for the cut mail to go, and
+		// the reset holds the share instead — pinned in `rampPhaseMoves.test.ts`.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBe(0.25);
@@ -353,6 +362,9 @@ describe('a hand-moved cell does not keep its graduation pin', () => {
 			phaseCeiling: 1,
 			graduatedAt: Date.now() - 1_000,
 		});
+		// The pin follows the SHARE, and only a cell the ladder binds has its share
+		// cut by a reset; a standalone cell keeps both.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
 		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
 	});

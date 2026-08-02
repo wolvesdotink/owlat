@@ -39,6 +39,7 @@ import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeS
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
+	bindsPhaseLadder,
 	degradedCeilingCap,
 	degradedStreamConfig,
 	resolveRampDegradation,
@@ -420,7 +421,7 @@ export async function loadCellInput(
 			// instead would hand that cell a ceiling nobody promoted it to, and the
 			// AIMD ladder could then climb through every rung without the promotion
 			// gate ever being consulted (plan D3).
-			isPhaseLadderBinding: degradation.actuator === 'share',
+			isPhaseLadderBinding: bindsPhaseLadder(degradation),
 			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
 			// the constants this tick used, so a decision can be explained without
 			// re-deriving what the deployment looked like at the time.
