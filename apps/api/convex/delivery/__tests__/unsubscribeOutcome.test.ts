@@ -59,9 +59,19 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 afterEach(() => vi.useRealTimers());
 
 /** A topic the seeded contact is a member of — the thing an unsubscribe removes. */
-async function joinTopic(ctx: { db: DatabaseWriter }, contactId: Id<'contacts'>): Promise<void> {
+async function joinTopic(
+	ctx: { db: DatabaseWriter },
+	contactId: Id<'contacts'>
+): Promise<Id<'topics'>> {
 	const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 	await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
+	return topicId;
+}
+
+/** Every scheduled run of the attribution recorder, however it was reached. */
+async function scheduledRecorderRuns(ctx: { db: DatabaseWriter }): Promise<unknown[]> {
+	const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+	return scheduled.filter((job) => job.name.includes('recordUnsubscribeOutcome'));
 }
 
 async function seedContact(ctx: { db: DatabaseWriter }): Promise<Id<'contacts'>> {
@@ -137,6 +147,44 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 				unsubscribed: 1,
 			});
 			// The uniqueness gate, on the send the unsubscribe was attributed to.
+			expect((await ctx.db.get(attributedSendId))?.unsubscribedAt).toBeGreaterThan(0);
+		});
+	});
+
+	// THE SEGMENT-AUDIENCE RECIPIENT. A campaign whose audience is a segment
+	// resolves its recipients from the contacts table, so they have no
+	// `contactTopics` row at all — and `resolveListUnsubscribeHeader` still gives
+	// them the contact one-click pair. Their unsubscribe deletes no membership
+	// and removes no list; if the counter only had a writer when a membership
+	// died, a segment-sending deployment would hold gate 3 at
+	// `insufficient_data` forever, which is the defect this emitter closes.
+	it('records for a recipient with no topic memberships at all', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let sendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'delivered', assignment: {} });
+			contactId = seeded.contactId;
+			sendId = seeded.sendId;
+		});
+		if (!contactId || !sendId) throw new Error('seed failed');
+		const attributedSendId = sendId;
+
+		// The endpoint's own answer for this contact: nothing to remove.
+		const result = await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, {
+			contactId,
+		});
+		expect(result).toEqual({ success: true, alreadyUnsubscribed: true });
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			// The opt-out itself landed — the contact is out of every segment.
+			expect((await ctx.db.get(contactId!))?.unsubscribedAt).toBeGreaterThan(0);
+			expect(sumCounters(await readBuckets(ctx))).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
 			expect((await ctx.db.get(attributedSendId))?.unsubscribedAt).toBeGreaterThan(0);
 		});
 	});
@@ -369,6 +417,95 @@ describe('one unsubscribe per send, however often the link is exercised', () => 
 				...ZERO_TRANSPORT_OUTCOME_TOTALS,
 				unsubscribed: 1,
 			});
+		});
+	});
+});
+
+/**
+ * The preference centre is the OTHER receiver-side source. It is only reachable
+ * through the footer link of a message we sent, so leaving from it is the same
+ * signal the one-click target is — and it is the source with the fan-out
+ * problem: one save can switch off any number of topics.
+ */
+describe('the preference centre', () => {
+	it('records a global unsubscribe made from the preference page', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+			});
+			await joinTopic(ctx, seeded.contactId);
+			contactId = seeded.contactId;
+		});
+		if (!contactId) throw new Error('seed failed');
+
+		expect(
+			await t.mutation(internal.delivery.preferencesQueries.updateContactPreferences, {
+				contactId,
+				globalUnsubscribe: true,
+			})
+		).toEqual({ success: true });
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(buckets[0]?.cell).toBe(MICROSOFT_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+		});
+	});
+
+	// One save is ONE recipient action. Attributing it once per topic switched
+	// off would schedule N runs of the same contact→send join, all contending on
+	// the same send row for a numerator that may only move once.
+	it('attributes a save that switches three topics off exactly once', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let topicIds: Id<'topics'>[] = [];
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'delivered', assignment: {} });
+			contactId = seeded.contactId;
+			topicIds = [
+				await joinTopic(ctx, contactId),
+				await joinTopic(ctx, contactId),
+				await joinTopic(ctx, contactId),
+			];
+		});
+		if (!contactId) throw new Error('seed failed');
+
+		await t.mutation(internal.delivery.preferencesQueries.updateContactPreferences, {
+			contactId,
+			topicUpdates: topicIds.map((topicId) => ({ topicId, subscribed: false })),
+		});
+		// Counted BEFORE the queue drains: the claim is about how many runs the
+		// save scheduled, which the recorder's own idempotence would otherwise
+		// hide behind an identical counter.
+		await t.run(async (ctx) => {
+			expect(await scheduledRecorderRuns(ctx)).toHaveLength(1);
+		});
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			expect(sumCounters(await readBuckets(ctx))).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+			// All three memberships are gone — coalescing the effects did not
+			// coalesce the deletions.
+			const memberships = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId!))
+				.collect();
+			expect(memberships).toHaveLength(0);
+			// A topic-scoped save is NOT a contact-level opt-out: the contact stays
+			// reachable by a segment audience they still match.
+			expect((await ctx.db.get(contactId!))?.unsubscribedAt).toBeUndefined();
 		});
 	});
 });

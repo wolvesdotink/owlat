@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 
 // Internal query to get contact preferences for the preference center
 export const getContactPreferences = internalQuery({
@@ -50,9 +51,13 @@ export const getContactPreferences = internalQuery({
  *     the preference-center link and is actively opting in (legacy comment:
  *     "user is actively opting in via preference center so no DOI required
  *     for this action").
- *   - Unsubscribe: `source: 'preferences_page'` — the module's source→effects
- *     map fires the `topic.unsubscribed` Webhook event and clears form-
- *     submission confirmations so a future resubscribe re-runs DOI.
+ *   - Unsubscribe: every topic switched off in ONE `unsubscribeAllForContact`
+ *     call scoped to those topics, with `source: 'preferences_page'` — the
+ *     module's source→effects map fires the `topic.unsubscribed` Webhook event
+ *     (once, listing them all), clears form-submission confirmations so a future
+ *     resubscribe re-runs DOI, and attributes the departure to the send it
+ *     answers. A topic scope is NOT a global opt-out: `contacts.unsubscribedAt`
+ *     stays clear unless `globalUnsubscribe` was asked for.
  *
  * `globalUnsubscribe: true` removes the Contact from every Topic in one
  * action via `unsubscribeAllForContact` (same module entry the public
@@ -91,21 +96,33 @@ export const updateContactPreferences = internalMutation({
 		}
 
 		if (args.topicUpdates) {
-			for (const update of args.topicUpdates) {
-				if (update.subscribed) {
-					await ctx.runMutation(internal.topics.subscription.subscribe, {
-						topicId: update.topicId,
-						contactId: args.contactId,
-						source: 'preferences_page',
-						skipDoi: true,
-					});
-				} else {
-					await ctx.runMutation(internal.topics.subscription.unsubscribe, {
-						topicId: update.topicId,
-						contactId: args.contactId,
-						source: 'preferences_page',
-					});
-				}
+			// Last write wins per topic, so a payload naming the same topic twice
+			// settles where it would have when every toggle was its own call.
+			const settled = new Map<Id<'topics'>, boolean>();
+			for (const update of args.topicUpdates) settled.set(update.topicId, update.subscribed);
+
+			for (const [topicId, subscribed] of settled) {
+				if (!subscribed) continue;
+				await ctx.runMutation(internal.topics.subscription.subscribe, {
+					topicId,
+					contactId: args.contactId,
+					source: 'preferences_page',
+					skipDoi: true,
+				});
+			}
+
+			// ONE call for every topic switched off, not one per topic. A save is a
+			// single recipient action and the module's per-call effects are
+			// denominated in actions: N calls fired N `topic.unsubscribed` webhooks
+			// for one save and scheduled N transport-outcome attributions that all
+			// redid the same contact→send join and contended on the same send row.
+			const removed = [...settled].filter(([, on]) => !on).map(([topicId]) => topicId);
+			if (removed.length > 0) {
+				await ctx.runMutation(internal.topics.subscription.unsubscribeAllForContact, {
+					contactId: args.contactId,
+					topicIds: removed,
+					source: 'preferences_page',
+				});
 			}
 		}
 

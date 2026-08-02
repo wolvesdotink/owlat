@@ -12,7 +12,7 @@
  * Five entry points keyed by shape:
  *   subscribe / subscribeMany                — one topic, one-or-many contacts
  *   unsubscribe / unsubscribeMany            — one topic, one-or-many contacts
- *   unsubscribeAllForContact                 — one contact, one-or-all topics
+ *   unsubscribeAllForContact                 — one contact, some-or-all topics
  *
  * Per-call effects (cached count patch, contact.updatedAt patch, form-clear,
  * campaign-stats, webhook) fire ONCE per call regardless of how many memberships
@@ -431,6 +431,25 @@ async function fireTopicUnsubscribedWebhook(
 	});
 }
 
+/**
+ * Hand the contact's departure to the transport-outcome recorder, ONCE per call.
+ *
+ * Scheduled for the same reason `recordCampaignUnsubscribe` is: the RFC 8058
+ * one-click response must not wait on an OCC retry of a shared outcome shard
+ * during a post-blast unsubscribe burst. One schedule per call, not per
+ * membership — every run redoes the same contact→send join and contends on the
+ * same send row, and all but the first would decide `already_attributed`.
+ */
+async function scheduleTransportUnsubscribeOutcome(
+	ctx: MutationCtx,
+	args: { contactId: Id<'contacts'>; now: number }
+): Promise<void> {
+	await ctx.scheduler.runAfter(0, internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+		contactId: args.contactId,
+		at: args.now,
+	});
+}
+
 // ─── Per-call effect runner ─────────────────────────────────────────────────
 
 async function applyUnsubscribeCallEffects(
@@ -440,6 +459,9 @@ async function applyUnsubscribeCallEffects(
 		removedTopics: Array<{ topicId: Id<'topics'>; topicName: string }>;
 		source: UnsubscribeSource;
 		now: number;
+		// Set by the global-opt-out entry point, which schedules the recorder
+		// before it knows whether any membership will be deleted.
+		transportOutcomeAlreadyScheduled?: boolean;
 	}
 ): Promise<void> {
 	if (args.removedTopics.length === 0) return;
@@ -463,14 +485,8 @@ async function applyUnsubscribeCallEffects(
 		});
 	}
 
-	if (flags.recordTransportUnsubscribeOutcome) {
-		// Scheduled for the same reason the campaign counter above it is: the
-		// RFC 8058 one-click response must not wait on an OCC retry of a shared
-		// outcome shard during a post-blast unsubscribe burst.
-		await ctx.scheduler.runAfter(0, internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
-			contactId: args.contactId,
-			at: args.now,
-		});
+	if (flags.recordTransportUnsubscribeOutcome && args.transportOutcomeAlreadyScheduled !== true) {
+		await scheduleTransportUnsubscribeOutcome(ctx, { contactId: args.contactId, now: args.now });
 	}
 
 	if (flags.fireTopicUnsubscribedWebhook) {
@@ -711,18 +727,25 @@ export const unsubscribeMany = internalMutation({
 const unsubscribeAllForContactArgsValidator = {
 	contactId: v.id('contacts'),
 	topicId: v.optional(v.id('topics')),
+	topicIds: v.optional(v.array(v.id('topics'))),
 	source: unsubscribeSourceValidator,
 	reason: v.optional(v.string()),
 };
 
 /**
- * Unsubscribe a Contact from one or all of its Topics.
+ * Unsubscribe a Contact from some or all of its Topics.
  *
- * `topicId === undefined` removes the Contact from every Topic they belong
- * to. Per-contact effects (form-clear, campaign-stats, single webhook with
- * the array of removed topics) fire ONCE for the call regardless of how
- * many memberships are deleted. Per-membership effects (delete row,
- * activity row, per-topic cachedMemberCount decrement) fire N times.
+ * NO topic scope at all (`topicId` and `topicIds` both absent) removes the
+ * Contact from every Topic they belong to AND is a contact-level opt-out.
+ * `topicId` is the single-topic unsubscribe link; `topicIds` is the preference
+ * centre's batch save — several toggles, ONE recipient action, so an empty
+ * array is an empty scope and never a global opt-out.
+ *
+ * Per-contact effects (form-clear, campaign-stats, the transport-outcome
+ * attribution, a single webhook with the array of removed topics) fire ONCE for
+ * the call regardless of how many memberships are deleted. Per-membership
+ * effects (delete row, activity row, per-topic cachedMemberCount decrement) fire
+ * N times.
  *
  * This is the entry point used by the public unsubscribe link.
  */
@@ -741,18 +764,36 @@ export const unsubscribeAllForContact = internalMutation({
 			};
 		}
 
-		// A global unsubscribe (no `topicId`) is a contact-level marketing
-		// opt-out, not just a membership delete. Record it as a persistent
-		// `contacts.unsubscribedAt` signal that the Audience resolution (module)
-		// consults — segment campaigns select from the contacts table
-		// independent of topic membership, so without this a globally-
-		// unsubscribed Contact stays reachable by any matching segment
-		// (CAN-SPAM/GDPR). Stamped even when the Contact has no live memberships
-		// to delete, because a segment can still match them. See the
-		// `unsubscribedAt` field doc in schema/contacts.ts.
-		const isGlobalUnsubscribe = args.topicId === undefined;
+		const now = Date.now();
+		// One scope, however it was spelled — and its ABSENCE is what makes this
+		// call a global opt-out.
+		const scopedTopicIds = args.topicIds ?? (args.topicId ? [args.topicId] : undefined);
+
+		// A global unsubscribe is a contact-level marketing opt-out, not just a
+		// membership delete. Record it as a persistent `contacts.unsubscribedAt`
+		// signal that the Audience resolution (module) consults — segment
+		// campaigns select from the contacts table independent of topic
+		// membership, so without this a globally-unsubscribed Contact stays
+		// reachable by any matching segment (CAN-SPAM/GDPR). Stamped even when the
+		// Contact has no live memberships to delete, because a segment can still
+		// match them. See the `unsubscribedAt` field doc in schema/contacts.ts.
+		const isGlobalUnsubscribe = scopedTopicIds === undefined;
 		if (isGlobalUnsubscribe && contact.unsubscribedAt === undefined) {
-			await ctx.db.patch(args.contactId, { unsubscribedAt: Date.now() });
+			await ctx.db.patch(args.contactId, { unsubscribedAt: now });
+		}
+
+		const flags = effectFlagsForUnsubscribeSource(args.source);
+		// A global opt-out is the recipient's signal WHETHER OR NOT it finds
+		// membership rows to delete. A segment-audience campaign resolves its
+		// recipients from the contacts table and still gives them the contact
+		// one-click pair (`resolveListUnsubscribeHeader`), so those recipients
+		// have no `contactTopics` row at all — gating the transport outcome on a
+		// deletion would leave its counter without a writer, and the standalone
+		// ramp's gate 3 at `insufficient_data`, on every segment-sending
+		// deployment. The per-send stamp, not this call, is the uniqueness gate.
+		const emitsTransportOutcome = isGlobalUnsubscribe && flags.recordTransportUnsubscribeOutcome;
+		if (emitsTransportOutcome) {
+			await scheduleTransportUnsubscribeOutcome(ctx, { contactId: args.contactId, now });
 		}
 
 		const memberships = await ctx.db
@@ -760,18 +801,21 @@ export const unsubscribeAllForContact = internalMutation({
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
 			.collect(); // bounded: one contact's topic memberships
 
-		// Filter to one topic if requested.
-		const inScope = args.topicId
-			? memberships.filter((m) => m.topicId === args.topicId)
+		// Filter to the requested topics if a scope was given.
+		const inScope = scopedTopicIds
+			? memberships.filter((m) => scopedTopicIds.includes(m.topicId))
 			: memberships;
 
 		if (inScope.length === 0) {
 			return {
-				outcomes: args.topicId ? [{ ok: true, action: 'not_member', topicId: args.topicId }] : [],
+				outcomes: (scopedTopicIds ?? []).map((topicId) => ({
+					ok: true,
+					action: 'not_member',
+					topicId,
+				})),
 			};
 		}
 
-		const now = Date.now();
 		const reason = args.reason ?? defaultUnsubscribeReason(args.source);
 		const outcomes: UnsubscribeOutcome[] = [];
 		const removedContexts: Array<{
@@ -811,6 +855,14 @@ export const unsubscribeAllForContact = internalMutation({
 			}
 		}
 
+		// A requested topic the Contact was never a member of still gets an answer,
+		// so a batch's outcomes line up with what was asked for.
+		for (const topicId of scopedTopicIds ?? []) {
+			if (!inScope.some((m) => m.topicId === topicId)) {
+				outcomes.push({ ok: true, action: 'not_member', topicId });
+			}
+		}
+
 		// One cachedMemberCount patch per affected topic.
 		for (const [topicId, deletionCount] of perTopicDeletions) {
 			const topic = await ctx.db.get(topicId);
@@ -827,6 +879,7 @@ export const unsubscribeAllForContact = internalMutation({
 				removedTopics: removedContexts,
 				source: args.source,
 				now,
+				transportOutcomeAlreadyScheduled: emitsTransportOutcome,
 			});
 		}
 
