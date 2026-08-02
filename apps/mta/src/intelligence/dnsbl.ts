@@ -36,6 +36,19 @@ const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
 /** Set while the fully-listed halt alert has already been sent for the day. */
 const ALL_IPS_BLOCKED_ALERT_KEY = 'mta:dnsbl:all-ips-blocked-alerted';
 const DAY_SECONDS = 24 * 60 * 60;
+/**
+ * Addresses whose zone lookups may be in flight at once.
+ *
+ * The bound has to hold in both directions. Unbounded, the sweep fires every
+ * address x every zone at the same handful of public resolvers and earns the
+ * rate-limit answers this module reads as `unknown`. Strictly sequential, each
+ * address costs up to `LOOKUP_TOTAL_BUDGET_MS` and the total is linear in pool
+ * size — which the boot sweep pays before delivery workers are enabled, and
+ * which the periodic sweep cannot afford at all because `startDnsblChecker`'s
+ * interval has no in-flight guard, so an overrunning sweep would overlap the
+ * next tick and double the very query load this bound exists to cut.
+ */
+export const SWEEP_ADDRESS_CONCURRENCY = 4;
 
 interface DnsblResult extends Pick<DnsblListDefinition, 'id' | 'name' | 'severity'> {
 	status: DnsblStatus;
@@ -98,17 +111,25 @@ export async function runDnsblCheck(
 
 	logger.info({ ips: uniqueIps }, 'Running DNSBL check');
 
-	// ONE ADDRESS AT A TIME, zones in parallel within an address — the same bound
-	// `runIpAuditSweep` keeps. Every address x every zone at once is a burst of
-	// hundreds of queries at the same handful of public resolvers every 15
-	// minutes, which is precisely what earns the 127.255.255.x rate-limit answers
-	// this module must then read as `unknown` — and an `unknown` preserves
-	// quarantine and holds the ramp controller.
+	// A FIXED NUMBER OF ADDRESSES AT A TIME, zones in parallel within an address.
+	// Every address x every zone at once is a burst of hundreds of queries at the
+	// same handful of public resolvers every 15 minutes, which is precisely what
+	// earns the 127.255.255.x rate-limit answers this module must then read as
+	// `unknown` — and an `unknown` preserves quarantine and holds the ramp
+	// controller.
 	const observations: Array<{ ip: string; generation: number; results: DnsblResult[] }> = [];
-	for (const ip of uniqueIps) {
-		const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
-		observations.push({ ip, generation, results: await checkAllZones(ip, config, deps) });
-	}
+	let cursor = 0;
+	await Promise.all(
+		Array.from({ length: Math.min(SWEEP_ADDRESS_CONCURRENCY, uniqueIps.length) }, async () => {
+			while (cursor < uniqueIps.length) {
+				const index = cursor;
+				cursor += 1;
+				const ip = uniqueIps[index]!;
+				const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
+				observations[index] = { ip, generation, results: await checkAllZones(ip, config, deps) };
+			}
+		})
+	);
 
 	// Zone names per address, kept for the halt-and-alert payload so the operator
 	// is told exactly which addresses are listed and on which blocklists.
@@ -296,8 +317,11 @@ export async function runDnsblCheck(
 					config,
 					redis
 				).catch(() =>
-					// A failed alert must not consume the day's slot: drop the dedup key
-					// so the next sweep retries it.
+					// A THROWN alert never reached the notifier's own durability, so it
+					// must not consume the day's slot: drop the dedup key and the next
+					// sweep retries it. A `false` return is the other case and keeps the
+					// key deliberately — that event is already in the dead-letter queue,
+					// which owns its redelivery, so re-alerting would duplicate it.
 					redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {})
 				);
 			}
