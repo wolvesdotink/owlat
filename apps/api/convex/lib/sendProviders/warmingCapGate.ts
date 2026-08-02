@@ -178,6 +178,11 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  *
  * A cell with no rows resolves to `OWN_SHARE_CEILING`: the un-migrated default,
  * where the own MTA carries the whole cell.
+ *
+ * READS A WHOLE-ORGANIZATION RANGE, inside a send mutation: the OCC footprint
+ * that buys is stated on `loadStreamRouteStateCells` (D16). A gate judging an
+ * AUDIENCE has no single cell to point-read, so the range is what the question
+ * costs.
  */
 async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<OwnArmShareBounds | null> {
 	let organizationId: string;

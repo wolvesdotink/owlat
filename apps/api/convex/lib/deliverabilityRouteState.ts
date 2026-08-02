@@ -146,6 +146,18 @@ export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = Object.freeze({
  *
  * Providers with no row are simply absent from the map — a reader defaults them
  * to {@link EMPTY_ROUTE_STATE_CELL} rather than to a fabricated row.
+ *
+ * OCC FOOTPRINT (D16). This is an INDEX RANGE over the whole organization, so a
+ * caller inside a mutation — the campaign warming-cap gate runs in
+ * `campaigns.scheduling.schedule` / `campaigns.campaigns.sendNow` — puts EVERY
+ * route-state row of the organization in that mutation's read set, where the MTA
+ * snapshot (~10 minutes) and the ramp controller (hourly) both write. The
+ * dispatch path's point read touches one cell and conflicts with nothing else;
+ * this one conflicts with any route-state write in flight. The trade is
+ * deliberate and small — the range is `ROUTE_STATE_SCAN_LIMIT` rows of a table
+ * written on a ten-minute cadence, and Convex retries the mutation — but it is a
+ * real widening, so a caller that only needs ONE cell must keep using
+ * {@link loadRouteStateCell}.
  */
 export async function loadStreamRouteStateCells(
 	ctx: QueryCtx | MutationCtx,
