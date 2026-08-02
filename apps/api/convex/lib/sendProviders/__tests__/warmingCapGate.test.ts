@@ -21,9 +21,11 @@ import { modules } from '../../../__tests__/testModules';
 import {
 	DESTINATION_PROVIDER_KEYS,
 	type DeliverabilitySignalProvider,
+	type DeliverabilitySignalSource,
 	type DeliverabilityStream,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../../delivery/deliverabilityRouting';
 import { campaignWarmingCapBinds, type WarmingCapVerdict } from '../warmingCapGate';
 
 const singletonOrg = vi.hoisted(() => ({
@@ -93,6 +95,11 @@ async function seedRoute(
 	config: {
 		strategy: 'single' | 'priority_failover' | 'workload_split' | 'adaptive_mix';
 		providers: Array<{ providerType: string; isEnabled: boolean }>;
+		deliverabilityFallback?: {
+			isEnabled: boolean;
+			relayProviderType: string;
+			isWarmupOverflowEnabled: boolean;
+		};
 	}
 ): Promise<void> {
 	await t.run(async (ctx) => {
@@ -100,6 +107,9 @@ async function seedRoute(
 			messageType: 'campaign',
 			strategy: config.strategy,
 			providers: config.providers,
+			...(config.deliverabilityFallback
+				? { deliverabilityFallback: config.deliverabilityFallback }
+				: {}),
 			createdAt: NOW,
 			updatedAt: NOW,
 		});
@@ -112,6 +122,10 @@ async function seedRoute(
  * snapshot's stream-less row, whose `isFallbackActive` is the legacy share
  * expression. `destinationProvider: 'all'` is the pool-wide infrastructure
  * slice, which is not a ramp cell at all.
+ *
+ * `signals` defaults to none. A row with no signals can never carry a routing
+ * REASON however degraded its share reads, so a fixture that means "the shipped
+ * router is relaying this cell" has to write one.
  */
 async function seedRouteState(
 	t: Harness,
@@ -120,6 +134,11 @@ async function seedRouteState(
 		stream?: DeliverabilityStream;
 		ownShare?: number;
 		isFallbackActive?: boolean;
+		signals?: Array<{
+			source: DeliverabilitySignalSource;
+			severity: 'warning' | 'critical';
+		}>;
+		updatedAt?: number;
 	}
 ): Promise<void> {
 	await t.run(async (ctx) => {
@@ -129,10 +148,13 @@ async function seedRouteState(
 			...(row.stream === undefined ? {} : { stream: row.stream }),
 			...(row.ownShare === undefined ? {} : { ownShare: row.ownShare }),
 			isFallbackActive: row.isFallbackActive ?? false,
-			signals: [],
-			snapshotGeneratedAt: NOW,
+			signals: (row.signals ?? []).map((signal) => ({
+				...signal,
+				observedAt: row.updatedAt ?? NOW,
+			})),
+			snapshotGeneratedAt: row.updatedAt ?? NOW,
 			expiresAt: NOW + 86_400_000,
-			updatedAt: NOW,
+			updatedAt: row.updatedAt ?? NOW,
 		});
 	});
 }
@@ -284,6 +306,127 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
 		await seedEveryCellShare(t, 1);
 
 		expect(await verdictFor(t)).toEqual({ binds: false, why: 'not_own_mta' });
+	});
+});
+
+/**
+ * THE FLOOR HAS TO ANSWER FOR WHAT THE ROUTER ACTUALLY DOES, not for what the
+ * controller wrote.
+ *
+ * `resolveOwnShare` reads `perStream ?? streamless`, so a cell whose controller
+ * row says 0.9 answers 0.9 even while the MTA snapshot's row for that cell
+ * carries a fresh `dnsbl_listed`. The dispatch path does not split that cell 90
+ * / 10: `cellRoute` hands the signal to `resolveRoute` as an active reason and
+ * one active reason overrides the strategy outright, so with the escape hatch on
+ * every recipient of the cell goes to the relay. A floor of 0.9 there
+ * OVER-counts own-arm volume — and the floor is what licenses the refusal, so
+ * the error lands as a multi-day refusal quoted to a campaign that dispatches to
+ * SES. That is the false blocker D2 forbids, in the one configuration this
+ * branch exists for: a ramped cell carrying a live infrastructure signal.
+ */
+describe('adaptive_mix — a relayed cell contributes nothing to the floor', () => {
+	/** The escape hatch armed, with warm-up overflow off so the cap still binds. */
+	const HATCH_ON: Parameters<typeof seedRoute>[1] = {
+		...MIXED_ROUTE,
+		deliverabilityFallback: {
+			isEnabled: true,
+			relayProviderType: 'ses',
+			isWarmupOverflowEnabled: false,
+		},
+	};
+
+	/**
+	 * Every cell ramped to 0.9, and gmail's SNAPSHOT row carrying a real critical
+	 * blocklist listing — the shape the reviewer's case names: a controller share
+	 * beside an infrastructure verdict the controller has not seen yet.
+	 */
+	async function seedRampedGmailListing(
+		t: Harness,
+		overrides: {
+			signals?: Array<{ source: DeliverabilitySignalSource; severity: 'warning' | 'critical' }>;
+			updatedAt?: number;
+		} = {}
+	): Promise<void> {
+		await seedEveryCellShare(t, 0.9);
+		await seedRouteState(t, {
+			destinationProvider: 'gmail',
+			isFallbackActive: true,
+			signals: overrides.signals ?? [{ source: 'dnsbl_listed', severity: 'critical' }],
+			...(overrides.updatedAt === undefined ? {} : { updatedAt: overrides.updatedAt }),
+		});
+	}
+
+	it('zeroes the floor for a cell the escape hatch relays whole', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, HATCH_ON);
+		await seedRampedGmailListing(t);
+
+		// At most 90% of any audience meets the cap, and — since an all-gmail
+		// audience meets none of it — at least none of it does.
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0, peak: 0.9 } });
+	});
+
+	/**
+	 * WITHOUT THE HATCH THE REASON IS INERT. `resolveRoute` returns the
+	 * strategy's own selection when `deliverabilityFallback` is off, so the
+	 * controller's share really is the whole answer and zeroing the floor would
+	 * throw away a refusal this deployment can still make.
+	 */
+	it('keeps the stored share when the escape hatch is off', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, MIXED_ROUTE);
+		await seedRampedGmailListing(t);
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.9, peak: 0.9 } });
+	});
+
+	it('ignores a signal too old to be a routing reason', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, HATCH_ON);
+		// The dispatch path drops a stale row's reasons, so the cell dispatches on
+		// its stored share again and the floor has to follow it back up.
+		await seedRampedGmailListing(t, { updatedAt: NOW - DELIVERABILITY_SIGNAL_MAX_AGE_MS - 1 });
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.9, peak: 0.9 } });
+	});
+
+	/**
+	 * An ADVISORY reading ("the blocklist lookup did not complete") is recorded
+	 * for measurement and never relays a cell. Reading "any signal" instead of the
+	 * actionable set would surrender the refusal on a deployment whose resolver is
+	 * merely rate-limited.
+	 */
+	it('ignores an advisory reading, which relays nothing', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, HATCH_ON);
+		await seedRampedGmailListing(t, {
+			signals: [{ source: 'dnsbl_unknown', severity: 'warning' }],
+		});
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0.9, peak: 0.9 } });
+	});
+
+	/**
+	 * The pool-wide `'all'` row is not a cell, but a fresh breaker on it relays
+	 * EVERY cell — `cellRoute` passes it alongside both rows of whichever cell it
+	 * is resolving — so no cell has a positive guaranteed share.
+	 */
+	it('zeroes every cell’s floor on a fresh pool-wide breaker', async () => {
+		const t = convexTest(schema, modules);
+		configureSesEnv();
+		await seedRoute(t, HATCH_ON);
+		await seedEveryCellShare(t, 0.9);
+		await seedRouteState(t, {
+			destinationProvider: 'all',
+			isFallbackActive: true,
+			signals: [{ source: 'breaker_open', severity: 'critical' }],
+		});
+
+		expect(await verdictFor(t)).toEqual({ binds: true, ownArmShare: { floor: 0, peak: 0.9 } });
 	});
 });
 

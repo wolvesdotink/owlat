@@ -8,25 +8,34 @@
  * route resolution with the relay-identity proof, which is a distinct concern
  * from resolving where a single message goes.
  *
- * WHAT THIS SEAM CANNOT DO, said out loud (D14). `resolveOwnShare` answers 0 for
- * any cell whose fallback is active, so ONE open breaker or ONE DNSBL-degraded
- * cell pulls the stream's own-arm FLOOR to zero — and a zero floor can never
- * refuse anything, because a lower bound of zero on own-arm volume exceeds no
- * capacity. In a ramping deployment at least one such cell is ordinary, so P0-5's
- * REFUSAL is unenforceable here most of the time: a campaign whose recipients all
- * sit in un-degraded cells is answered "capacity unknown, allowed", and its tail
- * can still expire at `maxMessageAgeMs`. The PEAK keeps the approval side honest
+ * WHAT THIS SEAM CANNOT DO, said out loud (D14). The stream's own-arm FLOOR is
+ * zero as soon as ONE cell carries nothing on the own MTA — a stored share of 0,
+ * or (see {@link campaignStreamShare}) a fresh actionable signal that the
+ * dispatch path relays the whole cell on — and a zero floor can never refuse
+ * anything, because a lower bound of zero on own-arm volume exceeds no capacity.
+ * In a ramping deployment at least one such cell is ordinary, so P0-5's REFUSAL
+ * is unenforceable here most of the time: a campaign whose recipients all sit in
+ * un-degraded cells is answered "capacity unknown, allowed", and its tail can
+ * still expire at `maxMessageAgeMs`. The PEAK keeps the approval side honest
  * there — a campaign that fits at the peak is measured, not merely waved through
  * — but nothing recovers the refusal short of counting the audience BY CELL,
  * i.e. the denormalized audience counter the `COUNT_CEILING` follow-up names,
  * extended to a per-cell histogram. Until then this gate binds a warming
  * deployment whose cells are all un-degraded, which is the configuration P0-5
  * was written for.
+ *
+ * AND WHAT IT ANSWERS ABOUT A CAMPAIGN IT DOES NOT ACTUATE. The share carried
+ * back here scales the PRE-FLIGHT's measurement only. The multi-day send walker
+ * and the wizard's day estimate meter the whole audience against the same paced
+ * projection, so under `adaptive_mix` they quote a longer plan than this gate
+ * measured; `campaigns/sendPlanQueries.ts` states which answer is authoritative
+ * and what closes the gap.
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { SendRouteFacts } from './route';
 import { loadSendRouteFacts, routingDeferralCode, selectRouteFromFacts } from './route';
+import { freshFallbackReasons } from './routeInputs';
 import { relayDomainVerified } from './relayDomainVerification';
 import type { ResolvedRoute } from './routing';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
@@ -40,6 +49,7 @@ import {
 import {
 	EMPTY_ROUTE_STATE_CELL,
 	loadStreamRouteStateCells,
+	loadStreamlessRouteState,
 	mixCellStateFor,
 } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
@@ -112,8 +122,9 @@ export interface OwnArmShareBounds {
 	/**
 	 * The smallest own-arm share any cell of the stream carries — the LOWER bound
 	 * on own-arm volume, whatever the audience's per-cell composition turns out
-	 * to be. Zero whenever ANY cell is fully relayed, which is why a refusal is
-	 * often unavailable (see the module doc).
+	 * to be. Zero whenever ANY cell is fully off the own arm, by a stored share of
+	 * zero or by a fresh actionable signal the escape hatch acts on, which is why
+	 * a refusal is often unavailable (see the module doc).
 	 */
 	readonly floor: number;
 	/**
@@ -179,12 +190,36 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * A cell with no rows resolves to `OWN_SHARE_CEILING`: the un-migrated default,
  * where the own MTA carries the whole cell.
  *
+ * THE STORED SHARE IS NOT THE WHOLE FLOOR. `resolveOwnShare` reads
+ * `perStream ?? streamless`, so a controller row carrying 0.9 answers 0.9 even
+ * while the MTA snapshot's row for the same cell carries a fresh `dnsbl_listed`
+ * or `breaker_open` verdict — and the dispatch path does NOT split that cell 90
+ * / 10. `cellRoute` feeds those signals to `resolveRoute` as `activeReasons`,
+ * and one active reason overrides the strategy outright (routing.ts): with the
+ * escape hatch enabled the whole cell relays, and where the relay proof is
+ * missing it defers instead. Neither outcome is own-MTA volume, so the cell's
+ * guaranteed lower bound is ZERO, and reading 0.9 would over-count own-arm
+ * volume in the direction that REFUSES — the false blocker D2 forbids. The
+ * reasons are therefore recomputed per cell from the rows already scanned, and
+ * only while the escape hatch is on: with it off the reason is inert
+ * (`resolveRoute` returns the strategy's selection) and the stored share is the
+ * whole answer.
+ *
+ * ONLY THE FLOOR IS CORRECTED. Over-estimating the PEAK can only turn "it fits"
+ * into "unmeasured", which allows either way, so it stays the plain share
+ * extreme.
+ *
  * READS A WHOLE-ORGANIZATION RANGE, inside a send mutation: the OCC footprint
  * that buys is stated on `loadStreamRouteStateCells` (D16). A gate judging an
  * AUDIENCE has no single cell to point-read, so the range is what the question
- * costs.
+ * costs. The pool-wide `'all'` row is one extra point read on top, and only when
+ * the escape hatch is on: a fresh breaker there relays EVERY cell, exactly as
+ * `cellRoute` reads it.
  */
-async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<OwnArmShareBounds | null> {
+async function campaignStreamShare(
+	ctx: QueryCtx | MutationCtx,
+	options: { now: number; isEscapeHatchEnabled: boolean }
+): Promise<OwnArmShareBounds | null> {
 	let organizationId: string;
 	try {
 		organizationId = await getSingletonOrganizationId(ctx);
@@ -205,13 +240,25 @@ async function campaignStreamShare(ctx: QueryCtx | MutationCtx): Promise<OwnArmS
 		if (extractOperationError(error)?.category !== 'forbidden') throw error;
 		return null;
 	}
-	const cells = await loadStreamRouteStateCells(ctx, organizationId, 'campaign');
+	const [cells, globalState] = await Promise.all([
+		loadStreamRouteStateCells(ctx, organizationId, 'campaign'),
+		options.isEscapeHatchEnabled
+			? loadStreamlessRouteState(ctx, organizationId, 'all')
+			: Promise.resolve(null),
+	]);
 	let floor = OWN_SHARE_CEILING;
 	let peak = OWN_SHARE_FLOOR;
 	for (const provider of DESTINATION_PROVIDER_KEYS) {
-		const { ownShare } = mixCellStateFor(cells.get(provider) ?? EMPTY_ROUTE_STATE_CELL);
-		floor = Math.min(floor, ownShare);
+		const cell = cells.get(provider) ?? EMPTY_ROUTE_STATE_CELL;
+		const { ownShare } = mixCellStateFor(cell);
 		peak = Math.max(peak, ownShare);
+		// EVERY row a routing decision keys off, in the order `cellRoute` passes
+		// them: the pool-wide row, the cell's infrastructure row and the
+		// controller's own. Any one of them may hold the fresh actionable verdict.
+		const isRelayedByReason =
+			options.isEscapeHatchEnabled &&
+			freshFallbackReasons([globalState, cell.streamless, cell.perStream], options.now).length > 0;
+		floor = Math.min(floor, isRelayedByReason ? OWN_SHARE_FLOOR : ownShare);
 	}
 	return { floor, peak };
 }
@@ -287,6 +334,13 @@ async function campaignDispatchSurface(
 		strategy: string | undefined;
 		enabledKinds: readonly SendProviderKind[];
 		baseRoute: ResolvedRoute | null;
+		/**
+		 * Is `deliverabilityFallback` on? It decides whether a cell's fresh
+		 * actionable signal takes traffic off the own arm at all — see
+		 * {@link campaignStreamShare}.
+		 */
+		isEscapeHatchEnabled: boolean;
+		now: number;
 	}
 ): Promise<CampaignDispatch> {
 	if (input.strategy === 'workload_split') {
@@ -306,7 +360,10 @@ async function campaignDispatchSurface(
 				: { why: 'not_own_mta' };
 		}
 	} else if (input.strategy === 'adaptive_mix' && input.enabledKinds.length > 0) {
-		const share = await campaignStreamShare(ctx);
+		const share = await campaignStreamShare(ctx, {
+			now: input.now,
+			isEscapeHatchEnabled: input.isEscapeHatchEnabled,
+		});
 		if (share !== null) return adaptiveMixDispatch(input.enabledKinds, share);
 	}
 
@@ -394,6 +451,8 @@ export async function campaignWarmingCapBinds(
 		strategy: routeConfig?.strategy,
 		enabledKinds,
 		baseRoute,
+		isEscapeHatchEnabled: fallbackConfig?.isEnabled === true,
+		now: options.now,
 	});
 	if ('why' in dispatch) return { binds: false, why: dispatch.why };
 	const bindingVerdict: WarmingCapVerdict = { binds: true, ownArmShare: dispatch.ownArmShare };
