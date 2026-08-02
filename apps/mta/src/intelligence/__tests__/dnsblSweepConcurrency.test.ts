@@ -38,11 +38,39 @@ const IPS = Array.from({ length: 9 }, (_, index) => `10.0.0.${index + 1}`);
 const config = createDnsblTestConfig({
 	ipPools: { transactional: IPS.slice(0, 5), campaign: IPS.slice(5) },
 });
-const ZONES_PER_IP = configuredDnsblZones(config, 'ipv4').length;
+const ZONES = configuredDnsblZones(config, 'ipv4');
+const ZONES_PER_IP = ZONES.length;
 
 /** `1.0.0.10.zen.spamhaus.org` → `10.0.0.1`. IPv4 pools only in this fixture. */
 function queriedIp(hostname: string): string {
 	return hostname.split('.').slice(0, 4).reverse().join('.');
+}
+
+function queriedZoneIndex(hostname: string): number {
+	return ZONES.findIndex((zone) => hostname.endsWith(zone.zone));
+}
+
+const VERDICTS = ['clean', 'listed', 'unknown'] as const;
+
+/**
+ * A per-address answer no other address in the fixture gives.
+ *
+ * The address index in base 3 picks one verdict per zone, so the nine addresses
+ * hold nine distinct zone triples: an answer attributed to the wrong address
+ * cannot coincide with that address's own.
+ */
+function verdictFor(ip: string, zoneIndex: number): (typeof VERDICTS)[number] {
+	const index = IPS.indexOf(ip);
+	return VERDICTS[Math.floor(index / 3 ** zoneIndex) % 3]!;
+}
+
+/** The resolver answer that produces `verdictFor`'s verdict. */
+async function answerFor(hostname: string): Promise<string[]> {
+	const verdict = verdictFor(queriedIp(hostname), queriedZoneIndex(hostname));
+	if (verdict === 'listed') return ['127.0.0.2'];
+	// The reserved rate-limit block: an answer, but not evidence either way.
+	if (verdict === 'unknown') return ['127.255.255.254'];
+	throw dnsError('ENOTFOUND');
 }
 
 describe('DNSBL sweep bounds its resolver fan-out', () => {
@@ -85,19 +113,38 @@ describe('DNSBL sweep bounds its resolver fan-out', () => {
 		expect(peakInFlight).toBeGreaterThanOrEqual(ZONES_PER_IP);
 	});
 
-	it('records every address exactly once regardless of the order the workers finish in', async () => {
+	it('attributes each address’s zone answers to that address whatever order they arrive in', async () => {
 		vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
 			// Reverse-ordered latency, so the pool's workers complete out of order.
 			const rank = Number(queriedIp(hostname).split('.')[3]);
 			await new Promise((resolve) => setTimeout(resolve, IPS.length - rank));
-			throw dnsError('ENOTFOUND');
+			return answerFor(hostname);
 		});
 
 		await runDnsblCheck(redis, config, createRecordingLookupDeps().deps);
 
+		// Every address measured exactly once — no query duplicated, none skipped.
+		expect(vi.mocked(resolve4)).toHaveBeenCalledTimes(IPS.length * ZONES_PER_IP);
+		const patterns = new Set<string>();
 		for (const ip of IPS) {
+			const expected = ZONES.map((_, zoneIndex) => verdictFor(ip, zoneIndex));
+			patterns.add(expected.join('/'));
 			const status = await getDnsblStatus(redis, ip);
-			expect(status?.['overallStatus']).toBe('clean');
+			// Per zone, not the collapsed roll-up: a scrambled result is only
+			// visible where the answers are still told apart.
+			expect(ZONES.map((zone) => status?.[zone.id])).toEqual(expected);
+			expect(status?.['listedOn']).toBe(
+				ZONES.filter((_, index) => expected[index] === 'listed')
+					.map((zone) => zone.name)
+					.join(',')
+			);
+			expect(status?.['unknownOn']).toBe(
+				ZONES.filter((_, index) => expected[index] === 'unknown')
+					.map((zone) => zone.name)
+					.join(',')
+			);
 		}
+		// The pin only holds because no two addresses share an answer pattern.
+		expect(patterns.size).toBe(IPS.length);
 	});
 });
