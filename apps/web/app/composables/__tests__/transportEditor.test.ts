@@ -4,11 +4,13 @@ import {
 	PROVIDER_ENV_KEYS,
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
+	type EmailStepDraft,
+} from '../useSetupWizard';
+import {
 	emailStepIsValid,
 	transportStepIsValid,
 	validateEmailStep,
-	type EmailStepDraft,
-} from '../useSetupWizard';
+} from '../setupWizardValidation';
 
 /**
  * The in-app transport editor (`components/delivery/TransportEditor.vue`) reuses

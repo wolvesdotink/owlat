@@ -4,12 +4,8 @@ import {
 	seedOutboundTlsMode,
 	type OutboundTlsMode,
 } from '~/composables/setupOutboundTls';
-import {
-	transportStepIsValid,
-	validateEmailStep,
-	type EmailStepDraft,
-	type ProviderChoice,
-} from '~/composables/useSetupWizard';
+import type { EmailStepDraft, ProviderChoice } from '~/composables/useSetupWizard';
+import { transportStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
 	RELAY_PROVIDER_OPTIONS,
@@ -133,7 +129,7 @@ const showErrors = computed(() => submitted.value);
 
 /**
  * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S — decided in
- * `useSetupWizard`, beside the rules themselves, rather than by listing here the
+ * `setupWizardValidation`, beside the rules themselves, rather than by listing here the
  * one key to ignore. `transportStepIsValid` names the errors a transport-only
  * screen OWNS and is exhaustive over `EmailStepErrors`, so the next field that
  * step gains must be classified there instead of silently gating this Apply
@@ -172,37 +168,10 @@ async function handleTest() {
  * that WARNS and the screen that CHANGES cannot disagree about which cells are
  * still leaning on the relay.
  */
-const { removesReferenceArm, removalConsequence, dependentCellCount } =
+const { removesReferenceArm, removalConsequence, dialogConsequence, noteServerRefusal } =
 	useRelayRemovalGuard(provider);
 
 const isRemovalDialogOpen = ref(false);
-
-/**
- * The consequence the SERVER quoted when it refused, kept verbatim.
- *
- * The two removal reads are independent — this screen's live subscription and
- * the endpoint's own HTTP query — so the server routinely knows what this
- * browser does not, and its refusal already names the cell count and the
- * projected safe date. Dropping it left the dialog saying "could not be
- * established" on the one action that cannot be undone, while the answer sat
- * unread in the response.
- */
-const refusalConsequence = ref<string | null>(null);
-
-/**
- * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read
- * produces a figure-free sentence in two states that look different and read the
- * same: it never answered, and it answered `safe` a moment before the server's
- * read found four cells still leaning on the relay. Both are the state where the
- * refusal is the only sentence with numbers in it. The local copy is preferred
- * when it HAS them because it is a computed off the live query — it keeps
- * improving as the read advances, and a captured string cannot.
- */
-const dialogConsequence = computed<string>(() => {
-	const local = removalConsequence.value.consequence;
-	if ((dependentCellCount.value ?? 0) > 0) return local;
-	return refusalConsequence.value ?? local;
-});
 
 // ── Apply ────────────────────────────────────────────────────────────────────
 const applying = ref(false);
@@ -230,9 +199,7 @@ function confirmRelayRemoval(confirmation: string): Promise<void> {
 
 async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	applying.value = true;
-	// Each attempt re-derives its own refusal: a sentence from the previous one
-	// would be quoted at an operator whose deployment has since moved on.
-	refusalConsequence.value = null;
+	noteServerRefusal(null);
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
 		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
@@ -247,7 +214,7 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 				// Its message is the SHARED consequence sentence, built from the read
 				// this browser could not make — so it is carried into the dialog rather
 				// than discarded with the response.
-				refusalConsequence.value = res.message;
+				noteServerRefusal(res.message);
 				isRemovalDialogOpen.value = true;
 				return;
 			}
@@ -277,7 +244,7 @@ function cancel() {
 	testResult.value = null;
 	applyError.value = '';
 	restartNotice.value = '';
-	refusalConsequence.value = null;
+	noteServerRefusal(null);
 }
 </script>
 

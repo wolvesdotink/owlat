@@ -16,7 +16,7 @@
  * faulted. So a `false` here means "nothing known to hold back", never "safe".
  */
 
-import { computed, type ComputedRef, type Ref } from 'vue';
+import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import {
 	relayRemovalConsequenceCopy,
@@ -29,17 +29,16 @@ export interface RelayRemovalGuard {
 	 * KNOWN to still be leaning on, and the draft would pull it.
 	 */
 	readonly removesReferenceArm: ComputedRef<boolean>;
-	/** The consequence sentence for the confirmation dialog. */
+	/** This browser's own consequence copy — the safe date is read off it. */
 	readonly removalConsequence: ComputedRef<RelayRemovalConsequence>;
+	/** The sentence the dialog shows: whichever read actually has figures. */
+	readonly dialogConsequence: ComputedRef<string>;
 	/**
-	 * How many cells THIS BROWSER'S read found still leaning on the relay, or
-	 * `null` when that read did not answer. Exposed because it is the one thing
-	 * that says whether {@link removalConsequence} carries figures at all: the
-	 * endpoint makes its own, independent read, so a caller holding a refusal has
-	 * to be able to tell a sentence with a cell count in it from the figure-free
-	 * one this guard produces on a `null` — and on a `safe` that lost the race.
+	 * Hand over the consequence the ENDPOINT quoted when it refused, or `null` to
+	 * forget it. Every apply attempt re-derives its own: a sentence kept from the
+	 * previous one would be quoted at an operator whose deployment has moved on.
 	 */
-	readonly dependentCellCount: ComputedRef<number | null>;
+	noteServerRefusal(consequence: string | null): void;
 }
 
 /**
@@ -76,6 +75,26 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 		() => independence.value?.referenceTransportId ?? null
 	);
 
+	const localConsequence = computed(() =>
+		relayRemovalConsequenceCopy({
+			dependentCells: dependentCells.value,
+			referenceTransportId: referenceTransportId.value,
+			projectedSafeAt: projectedSafeAt.value,
+		})
+	);
+
+	/**
+	 * The consequence the SERVER quoted when it refused, kept verbatim.
+	 *
+	 * The two removal reads are independent — this composable's live subscription
+	 * and the endpoint's own HTTP query — so the server routinely knows what the
+	 * browser does not, and its refusal already names the cell count and the
+	 * projected safe date. Dropping it left the dialog saying the situation could
+	 * not be established on the one action that cannot be undone, while the answer
+	 * sat unread in the response.
+	 */
+	const serverConsequence = ref<string | null>(null);
+
 	return {
 		removesReferenceArm: computed(
 			() =>
@@ -83,13 +102,24 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 				referenceTransportId.value !== null &&
 				relayRemoval.value?.kind === 'unsafe'
 		),
-		removalConsequence: computed(() =>
-			relayRemovalConsequenceCopy({
-				dependentCells: dependentCells.value,
-				referenceTransportId: referenceTransportId.value,
-				projectedSafeAt: projectedSafeAt.value,
-			})
-		),
-		dependentCellCount: computed(() => dependentCells.value?.length ?? null),
+		removalConsequence: localConsequence,
+		/**
+		 * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read
+		 * produces a figure-free sentence in two states that look different and read
+		 * the same: it never answered, and it answered `safe` a moment before the
+		 * server's read found four cells still leaning on the relay. Both are the
+		 * state where the refusal is the only sentence with numbers in it. The local
+		 * copy is preferred when it HAS them because it is a computed off the live
+		 * query — it keeps improving as the read advances, and a captured string
+		 * cannot.
+		 */
+		dialogConsequence: computed(() => {
+			const local = localConsequence.value.consequence;
+			if ((dependentCells.value?.length ?? 0) > 0) return local;
+			return serverConsequence.value ?? local;
+		}),
+		noteServerRefusal(consequence: string | null): void {
+			serverConsequence.value = consequence;
+		},
 	};
 }
