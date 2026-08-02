@@ -86,6 +86,16 @@ interface ApplyResult {
 	 * meet it.
 	 */
 	needsRelayRemovalConfirmation?: true;
+	/**
+	 * THE CONSEQUENCE WITHOUT THE INSTRUCTION, for the caller that renders it in a
+	 * dialog: that dialog already carries "Type REMOVE THE RELAY to confirm" as
+	 * the label of the input directly below this text, so the combined message
+	 * stated the same instruction twice on the one path where an operator is
+	 * reading carefully. `message` keeps both sentences, because a caller reading
+	 * the HTTP response on its own — a script, a log line, curl — has no such
+	 * label and would otherwise be told a rule with no way to meet it.
+	 */
+	relayRemovalConsequence?: string;
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
@@ -99,6 +109,7 @@ function askForRelayRemovalPhrase(consequence: string): ApplyResult {
 	return {
 		...refuse(`${consequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`),
 		needsRelayRemovalConfirmation: true,
+		relayRemovalConsequence: consequence,
 	};
 }
 

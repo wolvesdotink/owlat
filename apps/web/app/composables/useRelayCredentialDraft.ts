@@ -73,6 +73,12 @@ export interface ApplyTransportResponse {
 	 * an error string demands a phrase on a screen with nowhere to type it.
 	 */
 	needsRelayRemovalConfirmation?: true;
+	/**
+	 * The same consequence as `message`, minus its closing "type the phrase"
+	 * sentence — the field a DIALOG renders, because the dialog states that
+	 * instruction itself in the label of the input directly below the consequence.
+	 */
+	relayRemovalConsequence?: string;
 }
 
 /** The pre-apply live handshake's contract. */

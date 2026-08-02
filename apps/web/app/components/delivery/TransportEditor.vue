@@ -211,10 +211,14 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 			// "Couldn't apply" left the operator reading "type REMOVE THE RELAY" on a
 			// screen with nowhere to type it, so the refusal opens the dialog instead.
 			if (res.needsRelayRemovalConfirmation === true) {
-				// Its message is the SHARED consequence sentence, built from the read
-				// this browser could not make — so it is carried into the dialog rather
-				// than discarded with the response.
-				noteServerRefusal(res.message);
+				// Its consequence is the SHARED sentence, built from the read this
+				// browser could not make — so it is carried into the dialog rather than
+				// discarded with the response. THE CONSEQUENCE FIELD, NOT THE MESSAGE:
+				// the message closes with "type REMOVE THE RELAY to disconnect it
+				// anyway", which this dialog then states again in the label of its own
+				// input, directly below. The message is only the fallback for a refusal
+				// that carries no separate consequence.
+				noteServerRefusal(res.relayRemovalConsequence ?? res.message);
 				isRemovalDialogOpen.value = true;
 				return;
 			}

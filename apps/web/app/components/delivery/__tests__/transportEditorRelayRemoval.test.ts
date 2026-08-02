@@ -184,14 +184,23 @@ describe('the transport editor’s relay-removal confirmation', () => {
  * opens the dialog.
  */
 describe('the transport editor when its own removal read did not answer', () => {
-	/** The endpoint's fail-closed refusal, flagged as one the phrase clears. */
+	/**
+	 * The endpoint's fail-closed refusal, in the shape the route returns it: the
+	 * consequence on its own, plus a `message` that closes with the instruction
+	 * for a caller reading the response with no dialog around it.
+	 */
 	function refusedPendingConfirmation() {
+		const consequence =
+			'Which cells are still leaning on the relay could not be established, so this cannot be ' +
+			'treated as safe. Disconnecting it moves whatever they still send onto your own server ' +
+			'immediately — not gradually.';
 		return {
 			ok: false,
 			applied: false,
 			requiresRestart: false,
 			needsRelayRemovalConfirmation: true,
-			message: `Which cells are still leaning on the relay could not be established. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
+			relayRemovalConsequence: consequence,
+			message: `${consequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
 		};
 	}
 
@@ -248,14 +257,16 @@ describe('the transport editor when its own removal read did not answer', () => 
 	 * fact the feature produces, on the one action that cannot be undone.
 	 */
 	function refusedWithFigures() {
+		const consequence =
+			'4 cells have not graduated yet and still send part of their mail through resend. ' +
+			'Disconnecting it moves all of that traffic onto your own server immediately — not ' +
+			'gradually — and the reputation resend has built for your domain stops being available ' +
+			'to fall back on. On the current pace, waiting until about 14 Aug 2026 would avoid that ' +
+			'entirely.';
 		return {
 			...refusedPendingConfirmation(),
-			message:
-				'4 cells have not graduated yet and still send part of their mail through resend. ' +
-				'Disconnecting it moves all of that traffic onto your own server immediately — not ' +
-				'gradually — and the reputation resend has built for your domain stops being available ' +
-				'to fall back on. On the current pace, waiting until about 14 Aug 2026 would avoid that ' +
-				`entirely. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
+			relayRemovalConsequence: consequence,
+			message: `${consequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
 		};
 	}
 
@@ -274,6 +285,14 @@ describe('the transport editor when its own removal read did not answer', () => 
 		expect(consequence).toContain('4 cells have not graduated yet');
 		expect(consequence).toContain('14 Aug 2026');
 		expect(consequence).not.toContain('could not be established');
+		// AND IT DOES NOT REPEAT THE DIALOG'S OWN INSTRUCTION. The refusal's
+		// `message` closes with "type REMOVE THE RELAY to disconnect it anyway",
+		// which the input's label states three lines below — so the dialog renders
+		// the consequence field, and the phrase appears once, where it is typed.
+		expect(consequence).not.toContain('to disconnect it anyway');
+		expect(consequence).not.toContain(RELAY_REMOVAL_CONFIRMATION);
+		const labels = wrapper.findAll('label').map((node) => node.text().replace(/\s+/g, ' '));
+		expect(labels).toContain(`Type ${RELAY_REMOVAL_CONFIRMATION} to confirm`);
 		wrapper.unmount();
 	});
 

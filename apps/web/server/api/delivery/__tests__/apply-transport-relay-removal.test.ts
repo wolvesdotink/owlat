@@ -46,6 +46,7 @@ interface ApplyResult {
 	applied: boolean;
 	requiresRestart: boolean;
 	needsRelayRemovalConfirmation?: true;
+	relayRemovalConsequence?: string;
 }
 
 let body: unknown;
@@ -132,6 +133,21 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 		expect(res.needsRelayRemovalConfirmation).toBe(true);
 		expect(pushMock).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
+	});
+
+	it('separates the consequence from the instruction to type the phrase', async () => {
+		const res = await callRoute();
+
+		// TWO READERS, TWO SHAPES. A dialog renders the consequence directly above
+		// its own "Type REMOVE THE RELAY to confirm" label, so a consequence that
+		// ends in that instruction states it twice; a script reading the response on
+		// its own has no label and needs it. So both are returned, and the sentence
+		// the dialog takes carries no instruction.
+		expect(res.relayRemovalConsequence).toContain('2 cells have not graduated yet');
+		expect(res.relayRemovalConsequence).not.toContain(RELAY_REMOVAL_CONFIRMATION);
+		expect(res.message).toBe(
+			`${res.relayRemovalConsequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`
+		);
 	});
 
 	it('quotes the projected safe date the operator could wait for instead', async () => {
