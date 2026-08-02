@@ -86,6 +86,14 @@ const DEADLINE = Symbol('alignment-dns-deadline');
 
 async function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T | typeof DEADLINE> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	// DRAIN THE LOSER. The bounded resolver keeps retrying for `tries x timeout`
+	// — twice this deadline — so a dead nameserver rejects long after the race is
+	// over, with the sweep already several domains further on. `Promise.race`
+	// observes that late rejection today; the explicit drain is what keeps this
+	// module from DEPENDING on that, since an unobserved rejection in the Node
+	// action runtime takes the whole hourly sweep down mid-page. Same idiom as
+	// `plugins/cronRuntime.ts`.
+	void work.catch(() => undefined);
 	try {
 		return await Promise.race([
 			work,

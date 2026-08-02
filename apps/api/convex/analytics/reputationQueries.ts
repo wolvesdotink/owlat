@@ -132,9 +132,17 @@ export const getCampaignSendEstimate = authedQuery({
 		// IP population: that roll-up counts every campaign-pool IP regardless of
 		// `active`, so a deactivated high-cap IP made this readout claim "fits
 		// today" about a campaign the gate refused as a multi-day schedule. One
-		// projection, one population, one answer — and the pace actuator's dial is
+		// projection, one IP population, one answer — and the pace actuator's dial is
 		// part of that one answer, so this readout goes through
 		// `loadPacedWarmingCapacity` exactly as the gate and the walker do.
+		//
+		// ONE ANSWER ABOUT THE IPs — NOT ABOUT THE AUDIENCE. This readout meters the
+		// WHOLE `recipientCount` against that projection, exactly as the multi-day
+		// walker meters the whole audience, while the binding gate scales by the own
+		// arm's share of the campaign stream. So on an `adaptive_mix` deployment the
+		// gate can answer "fits" where this quotes five days — deliberately, because
+		// the walker really will take five days. `campaigns/sendPlanQueries.ts` holds
+		// the rest of that note, including what would close the gap.
 		//
 		// The singleton this handler already read is handed straight over rather
 		// than letting the projection read it again: one document charged instead

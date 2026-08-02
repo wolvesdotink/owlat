@@ -26,6 +26,7 @@ import {
 	DAY_MS,
 	MIDNIGHT,
 	runPreflight,
+	seedCampaignCellShares,
 	seedCampaignRoute,
 	seedVerifiedRelayIdentity,
 	seedWarmingState,
@@ -36,15 +37,23 @@ import {
 import type { Id } from '../_generated/dataModel';
 import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/preflight';
 import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
+import { planTodaysSlice } from '../campaigns/multiDaySendPlan';
 import {
 	assessCampaignCapacity,
+	assessCountedPlan,
+	audienceCountCeiling,
 	toAssessment,
 	type CampaignCapacityAssessment,
 } from '../campaigns/capacityPreflight';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const { sessionOrganizationMock } = await import('./sessionOrganizationMock');
-	return await sessionOrganizationMock();
+	const { sessionOrganizationMock, MOCK_SINGLETON_ORG } = await import('./sessionOrganizationMock');
+	return {
+		...(await sessionOrganizationMock()),
+		// The ramp cells the `adaptive_mix` suite seeds belong to a tenant, and the
+		// warming-cap gate resolves it exactly the way the dispatch path does.
+		getSingletonOrganizationId: vi.fn().mockResolvedValue(MOCK_SINGLETON_ORG),
+	};
 });
 
 const modules = import.meta.glob('../**/*.*s');
@@ -569,6 +578,285 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 	});
 });
 
+/**
+ * A SPLIT ROUTE IS JUDGED ON THE OWN ARM'S SHARE — and never on `EMAIL_PROVIDER`.
+ *
+ * `adaptive_mix` decides per recipient, and this gate has a whole audience and
+ * no recipient: the strategy therefore returns null, the resolver falls through
+ * to the env default, and a verdict read off that base route is a verdict read
+ * off an env var. Both directions of that reading do real damage, and the same
+ * 600-recipient audience against the same day-1 IP pins both.
+ */
+describe('pre-flight capacity gate — adaptive_mix splits the audience, the env does not', () => {
+	it('refuses the unfinishable own-arm campaign even when EMAIL_PROVIDER names the relay', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// The relay is configured and ready, but no cell has been ramped onto it:
+		// every recipient is still on the capped MTA. Reading `EMAIL_PROVIDER`
+		// here let exactly this campaign through, to expire its tail in the queue.
+		process.env['EMAIL_PROVIDER'] = 'ses';
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+		expect(result.capacityPlan?.days).toBe(5);
+	});
+
+	it('measures a half-relayed campaign against the half that meets the cap', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		process.env['EMAIL_PROVIDER'] = 'ses';
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.5);
+
+		// 300 own-arm messages against 500 of horizon capacity: it fits, and it
+		// fits MEASURABLY — `capacityKnown: true` is what separates this from the
+		// old "the env says SES, so nothing is known" pass.
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	it('never quotes a multi-day plan to a 95%-relayed campaign', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		// `EMAIL_PROVIDER` is the own MTA (the suite default), which is what used
+		// to refuse this send over five days — for the 30 messages the own arm
+		// actually carries, all of which fit today.
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.05);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * THE SHARE SCALING STOPS AT THE GATE, and that is pinned rather than implied.
+	 *
+	 * The pre-flight measures own-arm volume; the walker's day budget and the
+	 * wizard's estimate meter the WHOLE audience against the same paced
+	 * projection. On the same 5% fixture the gate says "fits" and both of those
+	 * say five days — the walker because it really does pace all 600 recipients
+	 * through the day budget, the estimate because it quotes what the walker will
+	 * do. Nothing here is a defect the gate introduced (its scaling only ever
+	 * ALLOWS more, so the cost is an over-long plan, never an expired tail), but
+	 * it is a divergence an operator can see on one screen, so the two answers
+	 * this build gives are written down. `campaigns/sendPlanQueries.ts` says which
+	 * is authoritative and what would close it; if that lands, this test changes.
+	 */
+	it('leaves the walker and the estimate metering the whole audience', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.05);
+
+		// The gate: 30 own-arm messages against 500 of horizon capacity.
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+
+		// The advisory readout the campaign editor renders beside it: 600 against
+		// the same 0 / 100 / 200 / 200 / 700 projection.
+		const estimate = await t.query(api.analytics.reputationQueries.getCampaignSendEstimate, {
+			recipientCount: 600,
+		});
+		expect(estimate.estimatedDays).toBe(5);
+
+		// And the actuator, which is what the operator will actually watch happen.
+		const audience = await t.run(async (ctx) => (await ctx.db.get(campaignId))?.audience);
+		if (!audience) throw new Error('campaign missing its audience');
+		const capacity = await t.query(internal.campaigns.sendPlanQueries.getSendPlanCapacity, {
+			audience,
+			countAudienceSize: true,
+		});
+		expect(capacity.plannedTotal).toBe(600);
+		if (capacity.plannedTotal === null) throw new Error('the walk counted no denominator');
+		const slice = planTodaysSlice({
+			state: {
+				planDayKey: undefined,
+				enqueuedToday: undefined,
+				planDayIndex: undefined,
+				planTotalDays: undefined,
+				plannedTotal: undefined,
+				isPlannedTotalLowerBound: undefined,
+			},
+			remaining: { kind: 'exact', count: capacity.plannedTotal },
+			capacityByDay: capacity.capacityByDay,
+			now: MIDNIGHT,
+		});
+		expect(slice.totalDays).toBe(5);
+	});
+
+	it('holds and allows when the mix leaves the own arm carrying nothing', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0);
+
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'not_own_mta',
+		});
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * A HETEROGENEOUS MIX IS THE RAMP'S STEADY STATE — the controller writes a
+	 * share PER CELL — and it is the configuration where the floor and the peak
+	 * stop being the same number. Every uniform fixture above is blind to the
+	 * difference.
+	 */
+	it('does not claim a campaign fits when only its LOWEST-share cell says so', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		// Gmail is 95% relayed; every other cell is still entirely on the own MTA.
+		// An audience with no gmail addresses in it puts all 600 messages on the
+		// capped arm — 500 of horizon capacity — so scaling by the floor (0.05)
+		// and calling the resulting 30 a measurement would bless exactly the
+		// tail-expiry this gate exists to prevent.
+		await seedCampaignCellShares(t, 1, { gmail: 0.05 });
+
+		expect(await assessCampaign(t, campaignId)).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'mix_composition_unknown',
+		});
+		// Unmeasured still ALLOWS: refusing on the peak would block the audience
+		// that really is 95% gmail, which fits in a single day (D2).
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	it('still measures a heterogeneous mix whose HIGHEST-share cell fits', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		// Peak 0.5: however this audience falls across the cells, at most 300 of
+		// the 600 meet the cap and 500 fit inside the horizon. Composition it does
+		// not know cannot make this campaign not fit, so it is measured, not held.
+		await seedCampaignCellShares(t, 0.5, { gmail: 0.05 });
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * A cell whose fallback is fully engaged (share 0) is ordinary in a ramping
+	 * deployment, and it drives the stream's floor to zero — which is why this
+	 * seam can never REFUSE such a campaign (see the `warmingCapGate` module
+	 * doc). The peak is what keeps the other half of the answer honest: a
+	 * campaign that fits at the peak is measured rather than waved through as
+	 * "nothing is known".
+	 */
+	it('measures a campaign against the peak when one cell is fully relayed', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.5, { gmail: 0 });
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: true, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * The refusal side of a heterogeneous mix. The schedule is enumerated over
+	 * `floor x audience` — the volume the own arm is GUARANTEED to carry — so it
+	 * is a lower bound on the days this campaign needs, and the copy has to say
+	 * "at least" rather than quote a finish date the send will miss (D14).
+	 */
+	it('marks a refusal built from the floor as a lower bound on the plan', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		// Floor 0.9, peak 1: even the guaranteed 540 own-arm messages overrun the
+		// 500 the horizon carries, so the refusal is sound — but the real own-arm
+		// volume can be anything up to 600, and the plan does not know which.
+		await seedCampaignCellShares(t, 1, { gmail: 0.9 });
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+		expect(result.capacityPlan?.covered).toBe(540);
+		expect(result.capacityPlan?.audienceUnderCounted).toBe(true);
+		expect(result.message).toContain('at least');
+	});
+});
+
 describe('getCampaignCapacityPlan — the UI preview', () => {
 	it('reports capacityKnown: false when nothing can be measured', async () => {
 		const t = convexTest(schema, modules);
@@ -729,6 +1017,111 @@ describe('toAssessment — the planner-verdict mapping', () => {
 		expect(assessment.schedule.audienceUnderCounted).toBe(true);
 		expect(assessment.schedule.truncated).toBe(false);
 		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
+	});
+});
+
+/**
+ * THE COUNT-COMPLETENESS RULE, pinned where it is reachable.
+ *
+ * A count that stopped short is "at least N", and N fitting says nothing about
+ * the audience behind it — so it may license a REFUSAL (the real audience is only
+ * bigger) and never an approval. The binding path cannot seed the case: the
+ * candidate ceiling is 25,001 recipients under a 2% own-arm share and the
+ * document budget stops the scan thousands of rows before that, so the rule is
+ * pinned on the pure helper the gate decides through (as `toAssessment` is).
+ */
+describe('assessCountedPlan — a stopped count never licenses "it fits"', () => {
+	const refusal = {
+		fits: false as const,
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: MIDNIGHT + 5 * DAY_MS,
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+
+	it('measures a fitting plan when the count ran to the end', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'exact' })).toEqual({
+			capacityKnown: true,
+			fits: true,
+		});
+	});
+
+	/**
+	 * 25,000 counted recipients at a 2% own-arm share are 500 messages, which fits
+	 * a 500-message horizon — while the audience behind the ceiling can be
+	 * millions of contacts whose own-arm tail expires in the queue. That is the
+	 * P0-5 failure itself, dressed as a measurement.
+	 */
+	it('holds a fitting plan built from a CAPPED count as unmeasured', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'candidate_capped' })).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
+	});
+
+	it('holds a fitting plan built from a budget-stopped count as unmeasured', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'read_budget_exhausted' })).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
+	});
+
+	it('still REFUSES on a capped count, and marks the plan as a lower bound', () => {
+		const assessment = assessCountedPlan(refusal, { completeness: 'candidate_capped' });
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
+	});
+
+	it('quotes an exact single-share refusal as the plan it actually is', () => {
+		const assessment = assessCountedPlan(refusal, { completeness: 'exact' });
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(false);
+		expect(describeCapacitySchedule(assessment.schedule)).toContain('about 5 days');
+	});
+
+	it('marks an exact refusal over a heterogeneous mix as a lower bound too', () => {
+		const assessment = assessCountedPlan(refusal, {
+			completeness: 'exact',
+			ownArmBoundsDiffer: true,
+		});
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+	});
+});
+
+describe('audienceCountCeiling — counting far enough to keep the refusal available', () => {
+	it('stops one recipient past everything the plan window could carry', () => {
+		expect(audienceCountCeiling(500, { floor: 1, peak: 1 })).toBe(501);
+	});
+
+	/**
+	 * Own-arm volume is `share x recipients`, so 500 of capacity takes 25,050
+	 * recipients to exceed at a 2% floor. Counting to 501 instead would stop while
+	 * the verdict is still undecided and answer "unmeasured" where a refusal was
+	 * available.
+	 */
+	it('counts 1/share as many recipients when the own arm carries a fraction', () => {
+		expect(audienceCountCeiling(500, { floor: 0.02, peak: 0.5 })).toBe(25_050);
+	});
+
+	/**
+	 * A zero lower bound exceeds no capacity, so the floor sets no threshold at
+	 * all; the peak's is the point past which more recipients cannot change the
+	 * answer either way.
+	 */
+	it('falls back to the PEAK when the floor is zero', () => {
+		expect(audienceCountCeiling(500, { floor: 0, peak: 0.5 })).toBe(1_002);
 	});
 });
 
