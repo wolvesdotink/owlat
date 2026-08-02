@@ -135,6 +135,23 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		expect(sentence).not.toContain('Comparison transport:');
 	});
 
+	it('invents no baseline story for a decided reason the seed gate does not produce', () => {
+		// `trailing_baseline_breached` is in the shared fail-reason union but is the
+		// ENGAGEMENT and CEILING gates' word: `seedGate.ts` decides exactly
+		// `within_threshold`, `absolute_threshold_breached` and
+		// `reference_tolerance_breached`, and the standalone evaluator drops the
+		// comparative clause rather than swapping a baseline one in. So a seed
+		// verdict carrying it gets the status word and the sweep size — never a
+		// sentence about "its own recent sweeps" that no gate computed.
+		const sentence = gateExplanation({
+			...seedPlacementReferenceBreach(),
+			reason: 'trailing_baseline_breached',
+		});
+		expect(sentence).toBe('Needs attention — this check swept 10 seed mailboxes.');
+		expect(sentence).not.toContain('own recent sweeps');
+		expect(sentence).not.toMatch(PERCENTAGE);
+	});
+
 	it('stays true when the own sweep has outgrown the comparison one', () => {
 		// THE DEFECT THIS PINS: 16 of 20 here against 5 of 5 there breaches the
 		// tolerance, and MORE mailboxes reached the inbox on this side — so the

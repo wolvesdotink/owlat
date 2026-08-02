@@ -172,15 +172,21 @@ function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
 			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox or a tab.`;
 		case 'reference_tolerance_breached':
 			return `This cell's seed mailboxes reached the inbox or a tab less often than the comparison transport's did — ${mailboxes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
-		case 'trailing_baseline_breached':
-			return `This cell's seed mailboxes reached the inbox or a tab less often than its own recent sweeps did — ${mailboxes} swept this window.`;
 		case 'absolute_threshold_breached':
 			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
 		default:
 			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
-			// seed gate has no other decided or halting outcome today, and a reason
-			// added later gets the status word and the sweep size until it earns its
-			// own sentence. That sentence can be thin; it cannot be wrong.
+			// seed gate decides exactly the three reasons above (`seedGate.ts` —
+			// everything else it returns is a hold, which never reaches here), and a
+			// reason added later gets the status word and the sweep size until it
+			// earns its own sentence. That sentence can be thin; it cannot be wrong.
+			//
+			// So there is no `trailing_baseline_breached` arm. That reason is the
+			// engagement and ceiling gates' word for a cell falling behind its OWN
+			// past, and the standalone seed evaluator does not swap a baseline clause
+			// in for the comparative one — it drops the second clause entirely. Copy
+			// written ahead of a variant that does not exist is the speculative seam
+			// `trailingBaselineGates.ts` cites plan D20 against.
 			return `${gateStatusLabel(gate.status)} — this check swept ${mailboxes} seed mailboxes.`;
 	}
 }
