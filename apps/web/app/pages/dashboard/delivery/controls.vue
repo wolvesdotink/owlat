@@ -16,6 +16,13 @@
  * FORCE-ADVANCE IS THE ONLY ONE BEHIND A TYPED CONFIRMATION, because it is the
  * only one that can lose reputation. The phrase is checked again by the mutation,
  * so skipping this dialog does not skip the rule.
+ *
+ * READING IS EVERYONE'S, WRITING IS THE ADMINS'. Both queries behind this screen
+ * are all-members — what the ramp is doing and what it pulled back is not
+ * privileged information — but every one of the five writes is an
+ * `adminMutation`. Offering the controls to an editor is therefore offering a
+ * button whose only possible answer is `forbidden`, so they are not rendered and
+ * the screen says why instead.
  */
 import { api } from '@owlat/api';
 import {
@@ -34,6 +41,15 @@ import {
 useHead({ title: 'Delivery controls — Owlat' });
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
+
+/**
+ * TWO PERMISSION READS, DELIBERATELY. `canManageOrganization` is false until the
+ * role RESOLVES, which is the safe direction for a control — a member never sees
+ * a write button flash before it is taken away. `showAdminGate` only asserts
+ * once the role has resolved to a non-admin, so the explanation below is not
+ * shown to an admin during first paint.
+ */
+const { canManageOrganization, showAdminGate } = usePermissions();
 
 const {
 	data: controls,
@@ -210,7 +226,17 @@ async function changePreset(
 					</p>
 				</UiCard>
 
-				<UiCard>
+				<!-- Not a nag and not an error: the ramp's state is on this page either
+				     way, and what an editor is missing is the hand on it. -->
+				<UiCard v-if="showAdminGate">
+					<p class="text-sm text-text-secondary" data-testid="ramp-controls-admin-only">
+						Changing the ramp — holding a cell, capping it, pushing it, or choosing a pace — is
+						limited to workspace owners and admins. Everything the controller is doing is still
+						shown below.
+					</p>
+				</UiCard>
+
+				<UiCard v-if="canManageOrganization">
 					<h2 class="text-base font-semibold text-text-primary">Pick a cell</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
 						<button
@@ -227,7 +253,7 @@ async function changePreset(
 					</div>
 				</UiCard>
 
-				<UiCard v-if="selectedCell">
+				<UiCard v-if="canManageOrganization && selectedCell">
 					<!--
 						KEYED BY CELL. Without it Vue reuses the instance across a change of
 						selection and the pin/force number inputs keep the previous cell's
@@ -253,7 +279,7 @@ async function changePreset(
 					</p>
 				</UiCard>
 
-				<UiCard>
+				<UiCard v-if="canManageOrganization">
 					<h2 class="text-base font-semibold text-text-primary">How hard to ramp</h2>
 					<div class="mt-3 space-y-5">
 						<DeliveryRampPresetPicker

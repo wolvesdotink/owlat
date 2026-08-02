@@ -168,6 +168,11 @@ describe('control refusals', () => {
 		vi.stubGlobal('useHead', vi.fn());
 		vi.stubGlobal('definePageMeta', vi.fn());
 		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
+		// The controls are admin-only; a refusal is what an ADMIN meets.
+		vi.stubGlobal('usePermissions', () => ({
+			canManageOrganization: ref(true),
+			showAdminGate: ref(false),
+		}));
 		const answers = new Map<string, unknown>([
 			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView()],
 			[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), []],
