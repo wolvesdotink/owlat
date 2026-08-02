@@ -96,6 +96,8 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// The active transport's effective DKIM d= domain, when it isn't the per-message
 	// From-domain. Read by the outbound DMARC-alignment guard at Convex function
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
+	'OUTBOUND_DKIM_DOMAIN',
+	'SPF_QUALIFIER',
 	// BIMI (P4-7). The DOMAIN WIZARD generates the `_bimi` record at Convex
 	// function runtime, so these must reach the deployment and not merely the
 	// MTA's env — a self-hoster who set them would otherwise find the wizard
@@ -103,8 +105,6 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'MTA_BIMI_LOGO_URL',
 	'MTA_BIMI_VMC_URL',
 	'MTA_BIMI_SELECTOR',
-	'OUTBOUND_DKIM_DOMAIN',
-	'SPF_QUALIFIER',
 	// Mail sync worker
 	'MAIL_SYNC_API_URL',
 	'MAIL_SYNC_API_KEY',

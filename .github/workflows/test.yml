@@ -264,6 +264,12 @@ jobs:
       - name: Run the ramp gate suite (${{ matrix.mode }})
         working-directory: apps/api
         env:
+          # The sentinel is this job's alone: it says "a matrix leg is running",
+          # which is what lets the suite treat a MISSING mode as broken plumbing
+          # rather than as the default. Every other job — the sharded test-api
+          # one runs these files too — sets neither and gets the equipped leg.
+          # Both must be set together or the leg silently collapses.
+          OWLAT_RAMP_GATE_MATRIX: '1'
           OWLAT_RAMP_GATE_MATRIX_MODE: ${{ matrix.mode }}
         run: bunx vitest run convex/delivery/ramp
 
