@@ -29,8 +29,13 @@ const props = defineProps<{
 	 * traffic for the cell, so the two can differ for one window on a relay that
 	 * was just connected or just removed. That is why this only changes what the
 	 * note SAYS: the share itself is held or cut by the server either way.
+	 *
+	 * REQUIRED, so the compiler holds it. Optional, an absent prop read as "there
+	 * is a relay" and restored the "brings the share back" copy — a 75% cut — in
+	 * front of the standalone deployment that cannot make it. A caller who has to
+	 * state the fact cannot forget it.
 	 */
-	hasReferenceArm?: boolean;
+	hasReferenceArm: boolean;
 	busy?: boolean;
 }>();
 
@@ -250,9 +255,9 @@ function clampPercent(value: number): number {
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
-				hasReferenceArm === false
-					? 'Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.'
-					: 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
+				hasReferenceArm
+					? 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
+					: 'Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.'
 			}}
 			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
 			reset — going higher is a promotion, which is its own control below.

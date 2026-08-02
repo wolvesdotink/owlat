@@ -64,7 +64,7 @@ describe('calm states', () => {
 	 */
 	it('offers the way ONTO the ramp on a cell the ramp does not manage', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ isRampManaged: false }) },
+			props: { cell: cellControl({ isRampManaged: false }), hasReferenceArm: true },
 		});
 		const note = wrapper.find('[data-testid="ramp-controls-unmanaged"]').text();
 		expect(note).toContain('not on the ramp yet');
@@ -86,7 +86,7 @@ describe('calm states', () => {
 	 */
 	it('offers only the rungs at or below the cell’s ceiling as a reset', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.5 }) },
+			props: { cell: cellControl({ phaseCeiling: 0.5 }), hasReferenceArm: true },
 		});
 		expect(wrapper.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
 			undefined
@@ -114,7 +114,7 @@ describe('calm states', () => {
 	 */
 	it('reads a rung that is not on the ladder the way the server does', () => {
 		const below = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.1 }) },
+			props: { cell: cellControl({ phaseCeiling: 0.1 }), hasReferenceArm: true },
 		});
 		// The screen that owns the move has to be able to make it.
 		expect(below.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
@@ -126,7 +126,7 @@ describe('calm states', () => {
 		below.unmount();
 
 		const above = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 1.2 }) },
+			props: { cell: cellControl({ phaseCeiling: 1.2 }), hasReferenceArm: true },
 		});
 		expect(
 			above.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
@@ -169,7 +169,7 @@ describe('calm states', () => {
 	 */
 	it('offers no promotion on a cell already at the top rung', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 1 }) },
+			props: { cell: cellControl({ phaseCeiling: 1 }), hasReferenceArm: true },
 		});
 		expect(
 			wrapper.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
