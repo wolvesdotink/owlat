@@ -25,12 +25,15 @@ fi
 fail=0
 
 # ── Guard 1: explicit denylist of retired tokens ──────────────────────────────
-DEAD='bg-bg-surface-elevated|bg-bg-default|text-danger|bg-danger'
+# `text-primary` is boundary-guarded so the legitimate `text-text-primary`,
+# `bg-text-primary` and `--color-text-primary` do not read as hits.
+DEAD='bg-bg-surface-elevated|bg-bg-default|text-danger|bg-danger|bg-surface-subtle|(^|[^-[:alnum:]])text-primary([^-[:alnum:]]|$)'
 hits=$(grep -rnE "$DEAD" app/ --include='*.vue' --include='*.ts' 2>/dev/null || true)
 if [ -n "$hits" ]; then
 	echo "✗ dead design tokens (no matching @theme token → emits zero CSS):"
 	echo "$hits"
-	echo "  Use the canonical names: bg-bg-elevated / bg-bg-base / text-error / bg-error"
+	echo "  Use the canonical names: bg-bg-elevated / bg-bg-base / text-error / bg-error /"
+	echo "  bg-bg-surface / text-brand"
 	fail=1
 fi
 
