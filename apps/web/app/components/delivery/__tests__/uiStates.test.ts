@@ -104,6 +104,24 @@ describe('calm states', () => {
 		wrapper.unmount();
 	});
 
+	/**
+	 * A BUTTON THAT CANNOT WORK IS A DEAD END. `promoteCellPhase` answers a cell
+	 * already on the top rung with `{applied: false}` and NO refusal, so a live
+	 * button there fires a mutation and nothing appears at all.
+	 */
+	it('offers no promotion on a cell already at the top rung', () => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 1 }) },
+		});
+		expect(
+			wrapper.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
+		).toBeDefined();
+		// And it says why, rather than leaving a greyed-out button unexplained.
+		expect(wrapper.find('[data-testid="ramp-promote-note"]').text()).toContain('top phase rung');
+		expect(wrapper.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
 	it('renders insufficient_data as a distance from a floor, in a neutral tone', () => {
 		const wrapper = mount(MeasurementGateList, {
 			props: { gates: [holdingGate()], failedGate: null, requiresCorroboration: false },
@@ -271,8 +289,13 @@ describe('control refusals', () => {
 		wrapper.unmount();
 	});
 
-	/** The page owns the write, so the button has to reach the mutation. */
-	it('puts an unmanaged cell on the ramp from the controls page', async () => {
+	/**
+	 * The page owns the write, so the button has to reach the mutation — and the
+	 * ANSWER has to land on the screen. The setup fork is resolved server-side and
+	 * never chosen by the operator, so which of the two ramps the cell got is
+	 * knowable from this sentence and nowhere else.
+	 */
+	it('puts an unmanaged cell on the ramp and says which ramp it got', async () => {
 		const { run } = stubPage({ enrolled: true, share: 0.02, path: 'esp_relay' }, [
 			cellControl({ isRampManaged: false }),
 		]);
@@ -281,8 +304,50 @@ describe('control refusals', () => {
 		await wrapper.vm.$nextTick();
 		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
 		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
 		expect(run).toHaveBeenCalledWith({ stream: 'campaign', destinationProvider: 'gmail' });
 		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
+		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
+		expect(outcome.text()).toContain('2%');
+		expect(outcome.text()).toContain('relay carries the rest');
+		expect(outcome.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/** The own-server enrolment is a different ramp, and says so. */
+	it('names the standalone ramp when there is no relay to move away from', async () => {
+		stubPage({ enrolled: true, share: 1, path: 'own_server' }, [
+			cellControl({ isRampManaged: false }),
+		]);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
+		expect(outcome.text()).toContain('warm-up pace');
+		expect(outcome.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE TOP RUNG IS AN ANSWER, NOT A REFUSAL, and the page has to render it: the
+	 * server can answer this even when the screen's copy of the rung is behind the
+	 * row's, and a click that produces nothing reads as a broken button.
+	 */
+	it('says there is nothing to promote when the server answers at the top rung', async () => {
+		stubPage({ applied: false, phaseCeiling: 1 }, [cellControl({ phaseCeiling: 0.8 })]);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
+		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
+		expect(outcome.text()).toContain('nothing left to promote');
+		expect(outcome.html()).not.toMatch(ALARM);
 		wrapper.unmount();
 	});
 

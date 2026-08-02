@@ -59,6 +59,8 @@ watch(
 );
 
 const PHASE_RUNGS = [0.25, 0.5, 0.8, 1] as const;
+/** The ladder's top rung: there is nothing above it to be promoted to. */
+const TOP_RUNG = PHASE_RUNGS.at(-1) ?? 1;
 
 const isDisabled = computed(() => props.busy === true || !props.cell.isRampManaged);
 
@@ -77,6 +79,13 @@ const currentRung = computed(() => props.cell.phaseCeiling ?? PHASE_RUNGS[0]);
 function isRungOffered(rung: number): boolean {
 	return rung <= currentRung.value;
 }
+
+/**
+ * AND THE TOP RUNG HAS NOTHING ABOVE IT. `promoteCellPhase` answers a cell that
+ * is already there with `{applied: false}` and NO refusal, so a live button here
+ * would fire a mutation, produce no sentence and no change, and read as broken.
+ */
+const isPromotable = computed(() => currentRung.value < TOP_RUNG);
 
 function clampPercent(value: number): number {
 	if (!Number.isFinite(value)) return 0;
@@ -213,21 +222,38 @@ function clampPercent(value: number): number {
 			>
 				{{ Math.round(rung * 100) }}%
 			</button>
-			<button
-				type="button"
-				:disabled="isDisabled"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
-				data-testid="ramp-control-promote-phase"
-				@click="emit('promotePhase')"
-			>
-				Promote a phase…
-			</button>
 		</div>
 		<p class="text-xs text-text-secondary">
 			Resetting a phase restarts the clean streak: the cell re-earns its way up from the rung you
 			pick. Only rungs at or below the cell's current
-			{{ Math.round(currentRung * 100) }}% ceiling are a reset — going higher is a promotion, and it
-			checks the evidence for the next rung first.
+			{{ Math.round(currentRung * 100) }}% ceiling are a reset — going higher is a promotion, which
+			is its own control below.
+		</p>
+
+		<!--
+			ITS OWN ROW, NOT THE RESET ONE. A promotion is the ladder's most expensive
+			move and its only upward one; sitting under a "Reset to phase" label it
+			read as a reset option, which is the exact confusion this screen is trying
+			to remove. And no trailing ellipsis: that is reserved for the control that
+			opens a confirmation, and this one writes on the click.
+		-->
+		<div class="flex flex-wrap items-center gap-2">
+			<button
+				type="button"
+				:disabled="isDisabled || !isPromotable"
+				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
+				data-testid="ramp-control-promote-phase"
+				@click="emit('promotePhase')"
+			>
+				Promote a phase
+			</button>
+		</div>
+		<p class="text-xs text-text-secondary" data-testid="ramp-promote-note">
+			{{
+				isPromotable
+					? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in. It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.'
+					: 'This cell is already on the top phase rung, so there is nothing left to promote.'
+			}}
 		</p>
 	</section>
 </template>

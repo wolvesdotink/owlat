@@ -29,7 +29,9 @@ import {
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import {
 	rampCellLabel,
+	rampEnrolledSentence,
 	rampPromotionConditionLabel,
+	rampPromotionSentence,
 	rampRefusalSentence,
 	shareLabel,
 	type RampCellControl,
@@ -108,6 +110,19 @@ const isCellBusy = computed(
  */
 const refusal = ref<RampControlRefusal | null>(null);
 
+/**
+ * AND SO IS THE ANSWER WHEN THERE IS NO REFUSAL.
+ *
+ * Pause, pin, force-advance and reset all change a number the operator typed and
+ * can see on the card afterwards. The other two do not: the SETUP FORK is
+ * resolved server-side and never chosen here, so which ramp an enrolment opened
+ * — a sliver against the relay, or the whole cell with the pace as the dial — is
+ * knowable nowhere else; and a promotion at the top rung is a real answer
+ * ("nothing to promote") that carries no refusal, so without this it is a click
+ * with no visible effect at all.
+ */
+const outcome = ref<string | null>(null);
+
 function noteResult(result: { readonly refusal?: RampControlRefusal } | undefined): void {
 	refusal.value = result?.refusal ?? null;
 }
@@ -117,6 +132,16 @@ function noteResult(result: { readonly refusal?: RampControlRefusal } | undefine
  * "Not yet" with no list is the shape of an unactionable refusal (plan D12/D14).
  */
 const outstanding = ref<readonly RampPromotionCondition[]>([]);
+
+/**
+ * Cleared at the START of every attempt, all three together: a sentence from the
+ * last write sitting beside the result of this one is worse than no sentence.
+ */
+function beginWrite(): void {
+	refusal.value = null;
+	outcome.value = null;
+	outstanding.value = [];
+}
 
 const selectedCellKey = ref<string | null>(null);
 const pendingForceShare = ref<number | null>(null);
@@ -132,8 +157,7 @@ const streams: readonly DeliverabilityStream[] = ['campaign', 'automation', 'tra
 
 function selectCell(cellKey: string): void {
 	selectedCellKey.value = cellKey;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 }
 
 function presetFor(stream: DeliverabilityStream): RampPreset | null {
@@ -147,28 +171,37 @@ function cellArgs(cell: RampCellControl) {
 async function enroll(): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	refusal.value = null;
-	outstanding.value = [];
-	noteResult(await enrollCell(cellArgs(cell)));
+	beginWrite();
+	const result = await enrollCell(cellArgs(cell));
+	noteResult(result);
+	// WHICH RAMP THE CELL GOT. The fork is resolved server-side, so the answer
+	// travels back on the result and nowhere else — see `rampEnrolledSentence`.
+	if (result?.enrolled === true && result.share !== undefined && result.path !== undefined) {
+		outcome.value = rampEnrolledSentence(result.share, result.path);
+	}
 	await refetch();
 }
 
 async function promote(): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 	const result = await promotePhase(cellArgs(cell));
 	noteResult(result);
 	outstanding.value = result?.outstanding ?? [];
+	// THE TOP RUNG IS AN ANSWER, NOT A REFUSAL — `{applied: false}` with no
+	// `refusal` and the rung the cell is already on. Rendered rather than
+	// swallowed: a click that produces nothing at all reads as a broken button.
+	if (result?.refusal === undefined && result?.phaseCeiling !== undefined) {
+		outcome.value = rampPromotionSentence(result.applied, result.phaseCeiling);
+	}
 	await refetch();
 }
 
 async function pause(isPaused: boolean): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
 	await refetch();
 }
@@ -176,8 +209,7 @@ async function pause(isPaused: boolean): Promise<void> {
 async function pin(share: number | null): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
 	await refetch();
 }
@@ -185,8 +217,7 @@ async function pin(share: number | null): Promise<void> {
 async function reset(phaseCeiling: number): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
 	await refetch();
 }
@@ -201,8 +232,7 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	const share = pendingForceShare.value;
 	pendingForceShare.value = null;
 	if (cell === null || share === null) return;
-	refusal.value = null;
-	outstanding.value = [];
+	beginWrite();
 	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
 	await refetch();
 }
@@ -211,7 +241,7 @@ async function changePreset(
 	stream: DeliverabilityStream,
 	preset: RampPreset | null
 ): Promise<void> {
-	refusal.value = null;
+	beginWrite();
 	await setStreamPreset({ stream, preset });
 	await refetch();
 }
@@ -294,6 +324,20 @@ async function changePreset(
 						role="status"
 					>
 						{{ rampRefusalSentence(refusal) }}
+					</p>
+					<!--
+						THE ANSWER WHEN THERE WAS NO REFUSAL, in the same slot and the same
+						calm tone. Enrolment's fork is resolved server-side and a promotion at
+						the top rung moves nothing, so both are writes whose only other
+						evidence would be a screen that looks the same afterwards.
+					-->
+					<p
+						v-if="outcome"
+						class="mt-3 text-sm text-text-secondary"
+						data-testid="ramp-control-outcome"
+						role="status"
+					>
+						{{ outcome }}
 					</p>
 					<!--
 						WHAT WOULD UNLOCK THE NEXT RUNG, beside the refusal that named it: a

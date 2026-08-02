@@ -309,9 +309,57 @@ const PROMOTION_CONDITION_LABELS = {
 	deferral_under_threshold_all_cells: 'every cell’s deferral rate under its threshold',
 } as const satisfies Record<RampPromotionCondition, string>;
 
-export function rampPromotionConditionLabel(condition: RampPromotionCondition | string): string {
-	const label = (PROMOTION_CONDITION_LABELS as Record<string, string | undefined>)[condition];
-	return label ?? condition.replace(/_/g, ' ');
+/**
+ * NARROW, AND NO FALLBACK. The map is exhaustive over the union by construction
+ * and the union is read off the mutation, so a widened parameter would only buy
+ * an unreachable branch — one that renders a snake_case identifier, which is the
+ * "goes quiet on a condition" behaviour the map above exists to prevent. A
+ * condition added server-side has to fail the BUILD here rather than degrade at
+ * runtime. (`rampReasonLabel` keeps its fallback for the opposite reason: it
+ * reads ninety days of stored history, where a retired code genuinely arrives.)
+ */
+export function rampPromotionConditionLabel(condition: RampPromotionCondition): string {
+	return PROMOTION_CONDITION_LABELS[condition];
+}
+
+// ============ WHAT A WRITE ACTUALLY DID ============
+
+/**
+ * Which setup path enrolment resolved the cell onto (plan D14), read off the
+ * mutation like every other vocabulary here. The fork is decided SERVER-SIDE and
+ * never chosen by the operator, so the sentence below is the only place they
+ * learn which of the two ramps they got.
+ */
+export type RampEnrollmentPath = NonNullable<
+	FunctionReturnType<typeof api.delivery.rampEnrollment.enrollCell>['path']
+>;
+
+/**
+ * WHAT PUTTING THE CELL ON THE RAMP ACTUALLY DID.
+ *
+ * Without it the only visible effect of an enrolment is the controls going live
+ * — and the two outcomes are genuinely different ramps: a measured sliver of the
+ * cell against the relay, or the whole cell on the own server with the warm-up
+ * pace as the dial that moves. An operator who cannot tell which one they got
+ * cannot read anything else on this screen either.
+ */
+export function rampEnrolledSentence(share: number, path: RampEnrollmentPath): string {
+	return path === 'esp_relay'
+		? `On the ramp at ${shareLabel(share)} of this cell — your relay carries the rest, and the controller moves the share only on the evidence.`
+		: `On the ramp at ${shareLabel(share)} of this cell. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is the dial that ramps.`;
+}
+
+/**
+ * THE PROMOTION'S TWO NON-REFUSAL ANSWERS. "Not yet" has its own refusal
+ * sentence and its own list of conditions; these are the other two — the rung
+ * moved, or the cell was already on the top one. The second is why the button is
+ * disabled up there, and the sentence covers the case where the screen's copy of
+ * the rung is behind the row's.
+ */
+export function rampPromotionSentence(applied: boolean, phaseCeiling: number): string {
+	return applied
+		? `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump — it climbs toward the new ceiling on the ordinary checks.`
+		: `This cell is already on the top phase rung (${shareLabel(phaseCeiling)}), so there is nothing left to promote.`;
 }
 
 // ============ PRESETS ============
