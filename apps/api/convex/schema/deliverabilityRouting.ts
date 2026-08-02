@@ -51,9 +51,10 @@ export const deliverabilityRoutingTables = {
 		phaseCeiling: v.optional(v.number()),
 		// WHEN THE CELL ARRIVED AT ITS CURRENT RUNG — the dwell clock the promotion
 		// rule reads ("2x the normal dwell time at the current ceiling", plan D3's
-		// standalone route). Stamped by `promoteRampPhase` and by nothing else: the
-		// hourly AIMD loop moves the SHARE, never the rung, so a tick must not be
-		// able to restart a dwell the cell has already served.
+		// standalone route). Stamped by the three writes that SET a rung —
+		// enrolment, a promotion and a downward phase reset — and by nothing else:
+		// the hourly AIMD loop moves the SHARE, never the rung, so a tick must not
+		// be able to restart a dwell the cell has already served.
 		//
 		// Absent on a row that reached its rung any other way — seeded, hand-patched,
 		// or written before this column existed. Absence must NEVER be permanent

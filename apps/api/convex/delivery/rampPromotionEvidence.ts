@@ -293,9 +293,10 @@ export async function loadRampPromotionEvidence(
 	// THE DWELL ANCHOR, WITH A FALLBACK — because an absent reading must never
 	// PERMANENTLY block a promotion (plan D2).
 	//
-	// `phaseCeilingSince` is stamped only by `promoteRampPhase`, so a row that
-	// arrived at a rung any other way — seeded, hand-patched, or written before
-	// this column existed — carries none. For a provider with no external route
+	// `phaseCeilingSince` is stamped only by the writes that SET a rung (enrolment,
+	// a promotion, a downward phase reset), so a row that arrived at a rung any
+	// other way — seeded, hand-patched, or written before this column existed —
+	// carries none. For a provider with no external route
 	// (yahoo, apple, other) the standalone route is the ONLY one, dwell is one of
 	// its four conditions, and `null` reports `unknown` for ever: the cell could
 	// never be promoted again, by anyone, with no operator remedy.

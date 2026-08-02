@@ -97,7 +97,11 @@ export type RampControlReason =
 	 */
 	| 'operator_force_advance'
 	/** An operator reset the cell to a phase rung by hand. */
-	| 'operator_phase_reset';
+	| 'operator_phase_reset'
+	/** AN OPERATOR PUT THE CELL ON THE RAMP (opt-in) — its timeline's first decision. */
+	| 'operator_enrollment'
+	/** An operator raised the cell a rung THROUGH the evidence gate; a reset only lowers one. */
+	| 'operator_phase_promotion';
 
 export type RampDecisionReason = RampControlReason | RampGateId;
 

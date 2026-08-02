@@ -76,6 +76,10 @@ const REASONS: Record<PaceDecisionReason, readonly string[]> = {
 	operator_pin: [],
 	operator_force_advance: [],
 	operator_phase_reset: [],
+	// Enrolment and promotion write the SHARE row's opening state and its ceiling;
+	// the pace ladder is never handed either decision.
+	operator_enrollment: [],
+	operator_phase_promotion: [],
 	low_utilisation: [],
 	day_already_advanced: [],
 	share_moved_first: [],

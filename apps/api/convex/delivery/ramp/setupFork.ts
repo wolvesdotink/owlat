@@ -14,9 +14,12 @@
  * THE FORK IS THE ACTUATOR CHOICE (D3), and it says so: one controller, two
  * actuators, and the path an operator picks is which one it drives.
  *
- * CONSUMED BY the delivery screens piece (P4-9) — this module is the model the
- * setup screen renders. It is staged here, beside the actuator it names, so the
- * screen cannot invent a third path or a `recommended` badge of its own.
+ * `resolveSetupPath` IS CONSUMED: `delivery/rampEnrollment.ts` reads it to learn
+ * which dial a newly-enrolled cell starts on. `resolveSetupFork` — the rendering
+ * shape, with both paths and the preselection — is still staged for a setup
+ * screen that does not exist yet; the enrolment mutation is the door until it
+ * does. Both answers come off ONE table so the screen, when it arrives, cannot
+ * offer a path enrolment would not write, or add a `recommended` badge of its own.
  */
 
 import type { RampActuator } from './degradation';
@@ -35,8 +38,14 @@ export interface RampSetupPath {
 	readonly isRecommended: false;
 }
 
-export const RAMP_SETUP_PATHS: readonly RampSetupPath[] = [
-	{
+/**
+ * KEYED, so a path can be looked up TOTALLY. Enrolment reads a path to learn
+ * which dial it is starting; a `find` over the list would hand it an
+ * `undefined` the write path would then have to invent a default for, and that
+ * default would be a second, silent copy of the fork.
+ */
+const RAMP_SETUP_PATHS_BY_ID: Readonly<Record<RampSetupPathId, RampSetupPath>> = {
+	own_server: {
 		id: 'own_server',
 		title: 'Start on my own server',
 		summary:
@@ -46,7 +55,7 @@ export const RAMP_SETUP_PATHS: readonly RampSetupPath[] = [
 		actuator: 'pace',
 		isRecommended: false,
 	},
-	{
+	esp_relay: {
 		id: 'esp_relay',
 		title: 'Ramp up safely using an ESP I already pay for',
 		summary:
@@ -56,6 +65,12 @@ export const RAMP_SETUP_PATHS: readonly RampSetupPath[] = [
 		actuator: 'share',
 		isRecommended: false,
 	},
+};
+
+/** ORDER IS PART OF THE OFFER: the two paths are presented in this order. */
+export const RAMP_SETUP_PATHS: readonly RampSetupPath[] = [
+	RAMP_SETUP_PATHS_BY_ID.own_server,
+	RAMP_SETUP_PATHS_BY_ID.esp_relay,
 ];
 
 export interface RampSetupForkChoice {
@@ -75,4 +90,19 @@ export function resolveSetupFork(args: {
 		paths: RAMP_SETUP_PATHS,
 		preselected: args.hasRelayConfigured ? 'esp_relay' : null,
 	};
+}
+
+/**
+ * THE PATH A CELL IS ENROLLED ON, and therefore WHICH DIAL the ramp will drive
+ * (D3 x D14). The fork's preselection IS the answer: 'esp_relay' exactly when a
+ * relay is configured, and no preselection means there is no second sender to
+ * move traffic away from — the own-server path, by definition rather than by
+ * default.
+ *
+ * Derived FROM the fork rather than beside it, so what a setup screen would
+ * OFFER and what enrolment actually WRITES cannot describe the same
+ * configuration differently.
+ */
+export function resolveSetupPath(args: { readonly hasRelayConfigured: boolean }): RampSetupPath {
+	return RAMP_SETUP_PATHS_BY_ID[resolveSetupFork(args).preselected ?? 'own_server'];
 }

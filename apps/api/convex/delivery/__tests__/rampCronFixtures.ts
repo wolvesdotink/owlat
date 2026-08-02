@@ -55,6 +55,13 @@ export interface SeedRampCellOptions {
 	/** The share stored on the managed cell's row, degenerate values included. */
 	readonly ownShare?: number;
 	/**
+	 * Seed the pool and provider slices WITHOUT the managed per-stream row — the
+	 * pre-enrolment state of every cell in every deployment (plan D1). The
+	 * enrolment suite needs it, and hand-rolling it would be a fourth copy of the
+	 * row triple this fixture exists to keep singular.
+	 */
+	readonly omitManagedCell?: boolean;
+	/**
 	 * How long ago the POOL row was last written. The shipped router stops acting
 	 * on a route state it has not heard from within
 	 * `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the controller must agree with it.
@@ -135,28 +142,30 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			signals: [...(options.providerSignals ?? [])],
 		});
 		// The MANAGED cell: the controller's own per-stream row.
-		await ctx.db.insert('deliverabilityRouteStates', {
-			...base,
-			destinationProvider: 'gmail' as const,
-			stream: 'campaign' as const,
-			isFallbackActive: options.isFallbackActive ?? false,
-			ownShare: options.ownShare ?? RAMP_FIXTURE_SHARE,
-			...(options.omitPhaseCeiling === true ? {} : { phaseCeiling: options.phaseCeiling ?? 1 }),
-			cleanStreak: options.cleanStreak ?? 3,
-			mixVersion: options.mixVersion ?? 2,
-			...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
-			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
-			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
-			...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
-			...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
-			...(options.paceCleanStreak === undefined
-				? {}
-				: { paceCleanStreak: options.paceCleanStreak }),
-			...(options.paceLastEvaluatedUtcDay === undefined
-				? {}
-				: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
-			...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
-		});
+		if (options.omitManagedCell !== true) {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				...base,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: options.isFallbackActive ?? false,
+				ownShare: options.ownShare ?? RAMP_FIXTURE_SHARE,
+				...(options.omitPhaseCeiling === true ? {} : { phaseCeiling: options.phaseCeiling ?? 1 }),
+				cleanStreak: options.cleanStreak ?? 3,
+				mixVersion: options.mixVersion ?? 2,
+				...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
+				...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
+				...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
+				...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
+				...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
+				...(options.paceCleanStreak === undefined
+					? {}
+					: { paceCleanStreak: options.paceCleanStreak }),
+				...(options.paceLastEvaluatedUtcDay === undefined
+					? {}
+					: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
+				...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
+			});
+		}
 		if (options.warming !== undefined) {
 			await ctx.db.insert('warmingState', {
 				phase: 'ramp',

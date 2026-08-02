@@ -21,17 +21,22 @@
  *   - force-advance from a single click. The consequence-naming phrase is
  *     checked HERE, server-side, so a client that skipped its dialog is refused
  *     by the same rule the dialog renders.
- *   - raise a share past a hard stop. Force-advance and reset-to-phase can write
- *     a share directly, so they ask `readRampIncreaseBlock` — the controller's
- *     own readers — before any INCREASE, and are refused calmly while the global
- *     kill switch is engaged, while sending is abuse-suspended, while a breaker
- *     or critical blocklist listing stands, or inside a live cooldown. Moving a
- *     cell DOWN is never blocked by any of them.
+ *   - raise a share past a hard stop. Force-advance writes a share directly, so
+ *     it asks `readRampIncreaseBlock` — the controller's own readers — before any
+ *     INCREASE, and is refused calmly while the global kill switch is engaged,
+ *     while sending is abuse-suspended, while a breaker or critical blocklist
+ *     listing stands, or inside a live cooldown. Moving a cell DOWN is never
+ *     blocked by any of them.
+ *   - raise a PHASE CEILING from here at all. Reset-to-phase is downward-only;
+ *     the upward move is `rampPhasePromotion.promoteCellPhase`, which runs the
+ *     plan's evidence routes. A ceiling that could also rise on a control with no
+ *     evidence behind it would leave the gate guarding one of two doors.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
  * which is the opposite of what the operator asked for, and a behaviour change
- * D1 does not sanction.
+ * D1 does not sanction. Opting in is its own deliberate act, and it has its own
+ * mutation: `rampEnrollment.enrollCell`.
  */
 
 import { v } from 'convex/values';
@@ -68,16 +73,31 @@ const cellArgs = {
 	destinationProvider: destinationProviderValidator,
 } as const;
 
-/** Why a control could not be applied — always calm, never an exception. */
+/**
+ * Why a control could not be applied — always calm, never an exception.
+ *
+ * ONE VOCABULARY FOR EVERY RAMP WRITE, enrolment and promotion included: the
+ * screens render these through a single sentence map, and a second refusal union
+ * would be a second map, free to go quiet on an arm nobody remembered to add.
+ */
 export type RampControlRefusal =
 	| 'cell_not_ramp_managed'
+	// Enrolment only: the cell ALREADY has a stored share. Re-enrolling would
+	// discard the streak, the ceiling and the clocks a live ramp is standing on.
+	| 'cell_already_ramp_managed'
 	// The global kill switch is engaged: "everything held still" means everything.
 	| 'controller_paused'
 	// Abuse suspension, an open breaker, a critical blocklist listing or a live
 	// cooldown. Named as one arm on purpose — the UI's remedy is the same
 	// ("clear the condition, then try again") and enumerating which hard stop
 	// fired would tell a caller more about the deployment than a refusal should.
-	| 'hard_stop_active';
+	| 'hard_stop_active'
+	// A ceiling only ever rises through the evidence gate, so `resetCellPhase`
+	// declines the upward move and names the mutation that owns it.
+	| 'phase_increase_requires_promotion'
+	// The evidence gate consulted its routes and none was satisfied. The
+	// outstanding conditions travel back BY NAME alongside this (plan D12/D14).
+	| 'promotion_evidence_outstanding';
 
 export interface RampControlResult {
 	readonly applied: boolean;
@@ -251,7 +271,7 @@ export const forceAdvanceCellShare = adminMutation({
 		const share = clampOwnShare(args.share);
 		// A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS. Raising the
 		// share is refused while the ramp is globally paused or while a hard stop is
-		// live; lowering it never is. Same shape as `promoteRampPhase`, and through
+		// live; lowering it never is. Same shape as a phase promotion, and through
 		// the controller's own readers rather than a second copy of the rules.
 		if (share > target.share) {
 			const block = await readRampIncreaseBlock(ctx, {
@@ -304,13 +324,21 @@ export const forceAdvanceCellShare = adminMutation({
 // ============ RESET TO A PHASE ============
 
 /**
- * Put a cell back on a phase rung (0.25 / 0.5 / 0.8 / 1.0).
+ * Put a cell back DOWN on a phase rung (0.25 / 0.5 / 0.8 / 1.0).
  *
  * THE RUNG IS VALIDATED AGAINST THE LADDER, not merely clamped: an arbitrary
  * ceiling would invent a rung the promotion path can never reach and leave the
  * cell somewhere the phase ladder has no name for. Resetting DOWN also brings
  * the share back under the new ceiling immediately — leaving a cell above a
  * ceiling it was just given would be a ceiling in name only.
+ *
+ * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
+ * ceiling re-shuffles which arm every recipient of the cell lands in and opens
+ * the share to the next rung, which is exactly the move plan D3's evidence gate
+ * exists to guard. Letting this mutation do it too — on nothing but the hard-stop
+ * check, with no promotion evidence and no typed confirmation — would make the
+ * gate optional, and an optional gate is not a gate. The upward move lives in
+ * `rampPhasePromotion.promoteCellPhase` and nowhere else.
  */
 export const resetCellPhase = adminMutation({
 	args: { ...cellArgs, phaseCeiling: v.number() },
@@ -324,22 +352,20 @@ export const resetCellPhase = adminMutation({
 		if (typeof target === 'string') return refused(target);
 		const now = Date.now();
 		const share = Math.min(target.share, args.phaseCeiling);
-		// A reset never raises the share (`Math.min` above), so it can only be an
-		// increase by way of the CEILING it hands the controller for the next tick.
-		// That is still an advance past the evidence, so it meets the same guard.
 		// A row with no stored ceiling is sitting on the ladder's first rung — the
-		// same reading `promoteRampPhase` takes — so the guard stays live there.
-		if (args.phaseCeiling > (target.row.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING)) {
-			const block = await readRampIncreaseBlock(ctx, {
-				organizationId: target.organizationId,
-				cell: target.cell,
-				perStream: target.row,
-				now,
-			});
-			if (block !== null) return refused(block);
-		}
+		// same reading the promotion path takes — so "is this upward?" is answered
+		// against that rung rather than against the argument, which would compare a
+		// value with itself and wave every raise through.
+		const currentCeiling = target.row.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING;
+		if (args.phaseCeiling > currentCeiling) return refused('phase_increase_requires_promotion');
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
+			// THE DWELL CLOCK RESTARTS HERE. It measures time served AT A RUNG, and a
+			// reset is a deliberate restart at one: a cell dropped from 1.0 to 0.25
+			// that kept its old anchor would arrive on the low rung with that rung's
+			// dwell already served, and the standalone promotion route — the only route
+			// a yahoo/apple/other cell has — would hand the ceiling straight back.
+			phaseCeilingSince: now,
 			ownShare: share,
 			isFallbackActive: isFallbackActiveForShare(share),
 			mixVersion: (target.row.mixVersion ?? 0) + 1,

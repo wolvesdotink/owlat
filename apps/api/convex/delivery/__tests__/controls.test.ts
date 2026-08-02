@@ -209,7 +209,7 @@ describe('reset to a phase', () => {
 /**
  * A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS.
  *
- * `promoteRampPhase` already refuses under the global kill switch; the operator
+ * A phase promotion already refuses under the global kill switch; the operator
  * mutations that write a share directly must refuse under the same conditions,
  * or every hard stop becomes optional in exactly the situation it exists for.
  * Downward moves stay allowed throughout — a retreat is never blocked.
@@ -271,7 +271,14 @@ describe('hard stops bound the operator, not only the controller', () => {
 		expect(result.refusal).toBe('hard_stop_active');
 	});
 
-	it('refuses raising a PHASE ceiling while the kill switch is engaged', async () => {
+	/**
+	 * A CEILING NEVER RISES FROM HERE, hard stop or no hard stop. The upward move
+	 * is `rampPhasePromotion.promoteCellPhase` and its evidence routes; a reset
+	 * that could also raise one would leave that gate guarding one of two doors.
+	 * The rung-level coverage lives in `rampPhaseMoves.test.ts` — this arm is here
+	 * so the CONTROLS' own refusal vocabulary stays pinned beside the others.
+	 */
+	it('refuses raising a PHASE ceiling, and not because of a hard stop', async () => {
 		const t = harness();
 		await seedRampCell(t, {
 			organizationId: ORG,
@@ -284,53 +291,9 @@ describe('hard stops bound the operator, not only the controller', () => {
 			phaseCeiling: 1,
 		});
 		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('controller_paused');
+		expect(result.refusal).toBe('phase_increase_requires_promotion');
 		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
-	});
-
-	/**
-	 * THE ABSENT CEILING IS THE INTERESTING ONE. `phaseCeiling` is optional, so a
-	 * row that predates the controller carries none — and a guard that falls back
-	 * to the ARGUMENT would compare a value against itself and wave every raise
-	 * through. The ladder's first rung is the reading `promoteRampPhase` takes,
-	 * and this asserts the operator path agrees with it.
-	 */
-	it('refuses raising the ceiling of a row with NO stored ceiling under the kill switch', async () => {
-		const t = harness();
-		await seedRampCell(t, {
-			organizationId: ORG,
-			ownShare: 0.2,
-			omitPhaseCeiling: true,
-			isPaused: true,
-		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
-			...CELL,
-			phaseCeiling: 1,
-		});
-		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('controller_paused');
-		const row = await readManagedCell(t);
-		expect(row?.phaseCeiling).toBeUndefined();
-		expect(row?.ownShare).toBe(0.2);
 		expect(await decisions(t)).toHaveLength(0);
-	});
-
-	it('refuses raising the ceiling of a ceiling-less row inside a live cooldown', async () => {
-		const t = harness();
-		await seedRampCell(t, {
-			organizationId: ORG,
-			ownShare: 0.2,
-			omitPhaseCeiling: true,
-			frozenUntil: Date.now() + 60 * 60 * 1000,
-			freezeReason: 'gate_breach',
-		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
-			...CELL,
-			phaseCeiling: 1,
-		});
-		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('hard_stop_active');
-		expect((await readManagedCell(t))?.phaseCeiling).toBeUndefined();
 	});
 
 	it('still lets a ceiling-less row be put on the FIRST rung under the kill switch', async () => {
