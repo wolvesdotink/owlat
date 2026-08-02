@@ -25,11 +25,8 @@
  * operator is told so before they press it.
  */
 import { computed, ref } from 'vue';
-import {
-	emailStepIsValid,
-	validateEmailStep,
-	type EmailStepDraft,
-} from '~/composables/useSetupWizard';
+import type { EmailStepDraft } from '~/composables/useSetupWizard';
+import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
 import {
 	RELAY_PROVIDER_OPTIONS,
 	applyTransportEnv,

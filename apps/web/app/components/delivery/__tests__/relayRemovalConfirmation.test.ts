@@ -94,7 +94,11 @@ function mountPage() {
 describe('the independence screen’s relay-removal route', () => {
 	it('surfaces the projected safe date before anything is confirmed', () => {
 		const wrapper = mountPage();
-		expect(wrapper.find('[data-testid="relay-removal-dependent"]').text()).toContain('1 cells');
+		// One cell reads as one cell. The card, the dialog and the endpoint's own
+		// refusal count with the same helper, so none of them can say "1 cells".
+		expect(wrapper.find('[data-testid="relay-removal-dependent"]').text()).toContain(
+			'1 cell has not graduated yet'
+		);
 		expect(wrapper.find('[data-testid="relay-removal-safe-date"]').text()).toContain(
 			'safe to disconnect around'
 		);
@@ -118,12 +122,25 @@ describe('the independence screen’s relay-removal route', () => {
 		wrapper.unmount();
 	});
 
-	it('says plainly when there is nothing left to lose by disconnecting', () => {
+	it('says plainly when there is nothing left to lose by disconnecting', async () => {
 		data.value = independenceSummary({ relayRemoval: { kind: 'safe' } });
 		const wrapper = mountPage();
 		expect(wrapper.find('[data-testid="relay-removal-safe"]').text()).toContain(
 			'would not move any traffic'
 		);
+
+		// AND THE DIALOG UNDER THE CARD SAYS THE SAME THING. It is rendered in the
+		// safe state too — the button sits outside the card's branches — so a card
+		// reading "every cell has graduated" above a dialog reading "this cannot be
+		// treated as safe" is two contradictory claims about one click, and the
+		// dialog's was the false one: this button only navigates, and the endpoint
+		// lets a graduated deployment through with no phrase at all.
+		await wrapper.find('[data-testid="relay-removal-open"]').trigger('click');
+		const consequence = wrapper.find('[data-testid="relay-removal-consequence"]').text();
+		expect(consequence).toContain('Every cell has graduated');
+		expect(consequence).not.toContain('could not be established');
+		expect(consequence).not.toContain('cannot be treated as safe');
+		expect(wrapper.find('[data-testid="relay-removal-dialog-date"]').exists()).toBe(false);
 		wrapper.unmount();
 	});
 

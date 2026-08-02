@@ -11,6 +11,11 @@
  * whole sample is ten mailboxes — is a number the operator would act on and be
  * wrong about.
  *
+ * AND THE SEED GATE MAY NOT QUOTE A RATE AT ALL (plan D17). Its unit is right
+ * and its sentence is still a gauge if it prints a share against a threshold, so
+ * the placement suite below asserts the ABSENCE of one alongside the words that
+ * replace it.
+ *
  * The hold vocabulary is covered here too, because the switch is exhaustive on
  * purpose: a new `RampGateHoldReason` must arrive with its own sentence, and a
  * sentence that reads like a fault under a reason that is not one is the D2
@@ -25,6 +30,9 @@ import {
 	passingGate,
 	seedPlacementGate,
 	seedPlacementHold,
+	seedPlacementPass,
+	seedPlacementReferenceBreach,
+	seedPlacementReferenceBreachOutgrown,
 	seedPlacementReferenceHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
@@ -58,10 +66,9 @@ describe('gateExplanation — units', () => {
 	it('never calls a seed mailbox a send, on either sentence', () => {
 		// `evaluateSeedGate` denominates BOTH `ownSample` and `minSample` in seed
 		// mailboxes, so the decided sentence and the below-floor hold are both wrong
-		// under the generic noun — and a placement tripwire is a number the operator
-		// reads directly (D17).
+		// under the generic noun.
 		const decided = gateExplanation(seedPlacementGate());
-		expect(decided).toContain('over 10 seed mailboxes');
+		expect(decided).toContain('10 seed mailboxes');
 		expect(decided).not.toContain('sends');
 
 		const held = gateExplanation(seedPlacementHold());
@@ -74,9 +81,87 @@ describe('gateExplanation — units', () => {
 		expect(referenceHeld).toContain('3 of 5 seed mailboxes');
 		expect(referenceHeld).not.toContain('sends');
 	});
+});
 
-	it('still reports the placement limit the seed gate compared against', () => {
-		expect(gateExplanation(seedPlacementGate())).toContain('90.00%');
+/**
+ * D17 — SEEDS ARE A TRIPWIRE, NOT A GAUGE.
+ *
+ * `seedPlacementGate.ts` keeps both arms' shares inside itself and hands out a
+ * STATUS; `placementAdapter.ts` takes COUNTS from a commercial panel, "never a
+ * percentage". A screen that renders the same verdict as "85.00% … against a
+ * limit of 90.00%" is a third answer neither module would give — and one
+ * mailbox in a ten-probe sweep moves it ten points.
+ */
+describe('gateExplanation — the seed gate states a status, never a placement rate', () => {
+	const PERCENTAGE = /\d\s*%|\d+\.\d+%/;
+
+	it('quotes no share, threshold or tolerance on a decided placement verdict', () => {
+		for (const gate of [seedPlacementPass(), seedPlacementGate(), seedPlacementReferenceBreach()]) {
+			const sentence = gateExplanation(gate);
+			expect(sentence).not.toMatch(PERCENTAGE);
+			// The three numbers the shipped sentence leaked: the own share, the
+			// inbox floor, and the reference tolerance in percentage points.
+			expect(sentence).not.toContain('85');
+			expect(sentence).not.toContain('90');
+			expect(sentence).not.toContain('limit');
+		}
+	});
+
+	it('says a clean sweep reached the inbox OR A TAB, in mailboxes', () => {
+		// `isSeedPlacementReached` counts `category` — a Gmail tab — as reached, and
+		// `inbox_dominant` is documented as "the inbox or a tab". "Reached the inbox"
+		// alone reports a Promotions-filed probe as a miss the gate did not find.
+		const sentence = gateExplanation(seedPlacementPass());
+		expect(sentence).toContain(
+			'Effectively all of the 10 seed mailboxes reached the inbox or a tab'
+		);
+	});
+
+	it('says an absolute breach missed, and covers every placement that counts as missing', () => {
+		const sentence = gateExplanation(seedPlacementGate());
+		expect(sentence).toContain('Some of the 10 seed mailboxes did not reach the inbox or a tab');
+		// Not-reached is spam, deleted OR missing — the shipped sentence named two
+		// of the three and left an auto-deleted probe unaccounted for.
+		expect(sentence).toContain('filtered to spam, deleted, or not found in any folder');
+	});
+
+	it('states the comparative breach as a rate comparison, with the sweeps beside it', () => {
+		// `reference_tolerance_breached` is the one seed verdict about the RELAY, and
+		// it compares two SHARES over independently-sized sweeps. The sizes are
+		// context; the size of the GAP is the number D17 forbids quoting.
+		const sentence = gateExplanation(seedPlacementReferenceBreach());
+		expect(sentence).toContain('less often than the comparison transport');
+		expect(sentence).toContain('10 swept here, 12 there');
+		expect(sentence).not.toContain('Comparison transport:');
+	});
+
+	it('invents no baseline story for a decided reason the seed gate does not produce', () => {
+		// `trailing_baseline_breached` is in the shared fail-reason union but is the
+		// ENGAGEMENT and CEILING gates' word: `seedGate.ts` decides exactly
+		// `within_threshold`, `absolute_threshold_breached` and
+		// `reference_tolerance_breached`, and the standalone evaluator drops the
+		// comparative clause rather than swapping a baseline one in. So a seed
+		// verdict carrying it gets the status word and the sweep size — never a
+		// sentence about "its own recent sweeps" that no gate computed.
+		const sentence = gateExplanation({
+			...seedPlacementReferenceBreach(),
+			reason: 'trailing_baseline_breached',
+		});
+		expect(sentence).toBe('Needs attention — this check swept 10 seed mailboxes.');
+		expect(sentence).not.toContain('own recent sweeps');
+		expect(sentence).not.toMatch(PERCENTAGE);
+	});
+
+	it('stays true when the own sweep has outgrown the comparison one', () => {
+		// THE DEFECT THIS PINS: 16 of 20 here against 5 of 5 there breaches the
+		// tolerance, and MORE mailboxes reached the inbox on this side — so the
+		// count-flavoured "fewer of ours reached than of theirs" was a false
+		// sentence, in the ordinary late-ramp shape rather than an exotic one.
+		const sentence = gateExplanation(seedPlacementReferenceBreachOutgrown());
+		expect(sentence).toContain('less often than the comparison transport');
+		expect(sentence).toContain('20 swept here, 5 there');
+		expect(sentence).not.toContain('Fewer');
+		expect(sentence).not.toMatch(PERCENTAGE);
 	});
 });
 

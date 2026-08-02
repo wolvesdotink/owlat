@@ -28,6 +28,7 @@ import {
 	independenceHeadline,
 	independenceSubhead,
 	projectionCopy,
+	relayRemovalConsequenceCopy,
 	spendAvoidedCopy,
 	volumeSentence,
 	shareLabel,
@@ -69,21 +70,49 @@ const headlineValue = computed(() => {
 
 const isRemovalDialogOpen = ref(false);
 
-const dependentCells = computed(() => {
+/**
+ * `null` while the summary has not arrived, `[]` once it has and every cell has
+ * graduated. Two different facts, and the consequence copy renders them as two
+ * different sentences — collapsing them put "this cannot be treated as safe" in
+ * the dialog of a deployment whose card, two lines above the button that opens
+ * it, said every cell had graduated.
+ */
+const dependentCells = computed<readonly string[] | null>(() => {
 	const removal = summary.value?.relayRemoval;
-	return removal === undefined || removal.kind === 'safe' ? [] : removal.dependentCells;
+	if (removal === undefined) return null;
+	return removal.kind === 'safe' ? [] : removal.dependentCells;
 });
+
+const isRemovalSafe = computed(() => summary.value?.relayRemoval.kind === 'safe');
 
 const projectedSafeAt = computed(() => {
 	const removal = summary.value?.relayRemoval;
 	return removal === undefined || removal.kind === 'safe' ? null : removal.projectedSafeAt;
 });
 
+/**
+ * The consequence sentence is the SHARED one — the transport editor's dialog and
+ * the endpoint's refusal build theirs from the same helper, so an operator who
+ * reads it here and then meets it again on the screen that actually disconnects
+ * cannot be told two different stakes for one click. THE CARD AND THE DIALOG ON
+ * THIS SCREEN RENDER THE SAME STRING for the same reason: the button sits below
+ * the card, and a second hand-written sentence in the dialog is the shortest
+ * distance to two claims about one click.
+ */
+const removalConsequence = computed(() =>
+	relayRemovalConsequenceCopy({
+		dependentCells: dependentCells.value,
+		referenceTransportId: referenceTransportId.value,
+		projectedSafeAt: projectedSafeAt.value,
+	})
+);
+
 function confirmRelayRemoval(): void {
 	isRemovalDialogOpen.value = false;
-	// The removal itself lives with the transport's own configuration; this
-	// screen owns the CONSEQUENCE, which is the part the transport screen has no
-	// way to know about.
+	// THIS ROUTE ONLY NAVIGATES, and it is not what makes the removal safe: the
+	// change itself happens on the config screen, whose apply path opens this same
+	// dialog and whose endpoint re-checks the phrase server-side. The typed phrase
+	// here is what stops "Disconnect the relay…" reading as a menu item.
 	void navigateTo('/dashboard/delivery/config');
 }
 </script>
@@ -156,17 +185,15 @@ function confirmRelayRemoval(): void {
 				<UiCard v-if="!isStandalone">
 					<h2 class="text-base font-semibold text-text-primary">Disconnecting the relay</h2>
 					<p
-						v-if="dependentCells.length === 0"
+						v-if="isRemovalSafe"
 						class="mt-2 text-sm text-text-secondary"
 						data-testid="relay-removal-safe"
 					>
-						Every cell has graduated. Disconnecting the relay now would not move any traffic.
+						{{ removalConsequence.consequence }}
 					</p>
 					<template v-else>
 						<p class="mt-2 text-sm text-text-secondary" data-testid="relay-removal-dependent">
-							{{ dependentCells.length }} cells still send part of their mail through
-							{{ referenceTransportId }}. Disconnecting it now moves all of that traffic to your own
-							server at once.
+							{{ removalConsequence.consequence }}
 						</p>
 						<p class="mt-1 text-sm text-text-secondary" data-testid="relay-removal-safe-date">
 							{{
@@ -197,15 +224,9 @@ function confirmRelayRemoval(): void {
 			@confirm="confirmRelayRemoval"
 		>
 			<template #consequence>
-				<p data-testid="relay-removal-consequence">
-					{{ dependentCells.length }} cells have not graduated yet. Disconnecting
-					{{ referenceTransportId }} moves every message they currently send through it onto your
-					own server immediately — not gradually — and the reputation that transport has built for
-					your domain stops being available to fall back on.
-				</p>
-				<p v-if="projectedSafeAt !== null" data-testid="relay-removal-dialog-date">
-					On the current pace, waiting until about {{ formatShortDate(projectedSafeAt) }} would
-					avoid that entirely.
+				<p data-testid="relay-removal-consequence">{{ removalConsequence.consequence }}</p>
+				<p v-if="removalConsequence.safeDate !== null" data-testid="relay-removal-dialog-date">
+					{{ removalConsequence.safeDate }}
 				</p>
 			</template>
 		</DeliveryRampConfirmDialog>

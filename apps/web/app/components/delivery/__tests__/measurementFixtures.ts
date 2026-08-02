@@ -164,6 +164,81 @@ export function seedPlacementGate(): DeliverabilityDashboardGate {
 	};
 }
 
+/** The seed gate CLEAN — the sentence a healthy placement sweep renders. */
+export function seedPlacementPass(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'pass',
+		reason: 'within_threshold',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 10,
+			referenceSample: 10,
+			minSample: 8,
+			ownRate: 1,
+			referenceRate: 1,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/**
+ * The seed gate's COMPARATIVE breach: both sweeps are large enough, and the own
+ * arm is behind the relay by more than the tolerance. The two sample sizes are
+ * the only numbers this verdict may quote.
+ */
+export function seedPlacementReferenceBreach(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'fail',
+		reason: 'reference_tolerance_breached',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 10,
+			referenceSample: 12,
+			minSample: 8,
+			ownRate: 0.9,
+			referenceRate: 1,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
+/**
+ * THE COMPARATIVE BREACH AS IT LOOKS LATE IN THE RAMP: the own arm now sweeps
+ * FOUR TIMES the mailboxes the relay does and still places worse — 16 of 20
+ * reached here (80%) against 5 of 5 there (100%), which breaches the 5pp
+ * tolerance.
+ *
+ * The verdict compares SHARES over independently-sized sweeps, so this is the
+ * shape that makes a count-flavoured sentence ("fewer of ours reached the inbox
+ * than of theirs") literally false — more mailboxes reached the inbox on this
+ * side. It is also the ordinary shape, not an edge case: the own sweep grows
+ * with the share the ramp has moved across.
+ */
+export function seedPlacementReferenceBreachOutgrown(): DeliverabilityDashboardGate {
+	return {
+		gate: 'seed_placement',
+		status: 'fail',
+		reason: 'reference_tolerance_breached',
+		measurement: {
+			thresholdRate: 0.9,
+			toleranceValuePp: 5,
+			ownSample: 20,
+			referenceSample: 5,
+			minSample: 8,
+			ownRate: 0.8,
+			referenceRate: 1,
+		},
+		confidence: 'medium',
+		mayJustifyIncrease: true,
+	};
+}
+
 /** The seed gate BELOW its mailbox floor — the hold sentence, in mailboxes. */
 export function seedPlacementHold(): DeliverabilityDashboardGate {
 	return {
