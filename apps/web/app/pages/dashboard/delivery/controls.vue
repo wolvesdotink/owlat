@@ -147,7 +147,7 @@ async function pause(isPaused: boolean): Promise<void> {
 	if (cell === null) return;
 	refusal.value = null;
 	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
-	await refetch();
+	refetch();
 }
 
 async function pin(share: number | null): Promise<void> {
@@ -155,7 +155,7 @@ async function pin(share: number | null): Promise<void> {
 	if (cell === null) return;
 	refusal.value = null;
 	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
-	await refetch();
+	refetch();
 }
 
 async function reset(phaseCeiling: number): Promise<void> {
@@ -163,7 +163,7 @@ async function reset(phaseCeiling: number): Promise<void> {
 	if (cell === null) return;
 	refusal.value = null;
 	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
-	await refetch();
+	refetch();
 }
 
 /** Force-advance NEVER writes from the button — it only opens the dialog. */
@@ -178,7 +178,7 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	if (cell === null || share === null) return;
 	refusal.value = null;
 	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
-	await refetch();
+	refetch();
 }
 
 async function changePreset(
@@ -187,7 +187,7 @@ async function changePreset(
 ): Promise<void> {
 	refusal.value = null;
 	await setStreamPreset({ stream, preset });
-	await refetch();
+	refetch();
 }
 </script>
 

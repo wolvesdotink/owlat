@@ -28,7 +28,7 @@ import { rampRefusalSentence, type RampControlRefusal } from '~/utils/deliverabi
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
-import { cellControl, controlsView, NOW } from './rampFixtures';
+import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 
@@ -133,6 +133,32 @@ describe('calm states', () => {
 		const timeline = mount(RampDecisionTimeline, { props: { decisions: [], labelledBy: 'h' } });
 		expect(timeline.html()).not.toMatch(ALARM);
 		timeline.unmount();
+	});
+});
+
+/**
+ * THE TWO HISTORY SURFACES SPEAK THE SCREENS' VOCABULARY.
+ *
+ * A retreat notice is read by someone deciding whether to act, so it may not be
+ * the only place on the surface that names a cell by its stored key.
+ */
+describe('the retreat history', () => {
+	it('names the cell the way every other surface does', () => {
+		const wrapper = mount(RampDecreaseNotices, {
+			props: { notices: [adminNotice({ cellKey: 'campaign:gmail' })], labelledBy: 'n' },
+		});
+		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('Campaign → Gmail');
+		wrapper.unmount();
+	});
+
+	it('falls back to the stored key when it cannot be parsed', () => {
+		// Ninety days of history outlives an axis: a row written before a stream was
+		// retired must stay readable rather than render as nothing.
+		const wrapper = mount(RampDecreaseNotices, {
+			props: { notices: [adminNotice({ cellKey: 'newsletter:gmail' })], labelledBy: 'n' },
+		});
+		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('newsletter:gmail');
+		wrapper.unmount();
 	});
 });
 

@@ -22,6 +22,7 @@ import {
 	type IndependenceProjection,
 	type RampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
+import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
 import {
 	cellLabel,
@@ -393,3 +394,16 @@ export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
  * exhaustive originals are the ones worth keeping.
  */
 export { cellLabel as rampCellLabel, providerLabel, streamLabel };
+
+/**
+ * THE SAME CELL, NAMED THE SAME WAY, from a stored KEY rather than a pair.
+ *
+ * The retreat notices carry `campaign:gmail` because that is what the decision
+ * row stores, while every other surface names that cell "Campaign → Gmail". An
+ * unparseable key — a stream retired since the row was written — reads as
+ * itself, because a ninety-day history has to stay readable.
+ */
+export function rampCellKeyLabel(cellKey: string): string {
+	const cell = parseDeliverabilityCellKey(cellKey);
+	return cell === null ? cellKey : cellLabel(cell);
+}

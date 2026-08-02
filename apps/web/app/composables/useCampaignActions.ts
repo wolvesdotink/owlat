@@ -155,7 +155,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
-		capacitySchedule.value = null;
+		dismissCapacitySchedule();
 
 		try {
 			if (isDraft.value) {
@@ -197,7 +197,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
-		capacitySchedule.value = null;
+		dismissCapacitySchedule();
 
 		try {
 			if (isDraft.value) {
