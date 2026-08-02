@@ -141,9 +141,13 @@ export interface SendAssignmentRecipient {
 	 * percentile helper — this module never re-implements scoring.
 	 *
 	 * A producer may NOT hand in a ready-made percentile. A supplied rank would
-	 * bypass the minimum-cohort rule ("thin data holds", D10) and the finiteness
+	 * bypass the minimum-cohort rule ("thin data holds", D10) and the band
 	 * treatment the cohort path applies, and there is no caller that knows a
 	 * percentile the batch does not: the ranking cohort IS the batch.
+	 *
+	 * The RAW stored value is what a producer passes: `buildEngagementRanker`
+	 * applies the envelope's band rule itself, so a producer cannot ship a score
+	 * to ranking that the same send's envelope refuses.
 	 */
 	readonly engagementScore?: number;
 }

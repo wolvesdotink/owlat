@@ -17,6 +17,7 @@ import {
 	buildEngagementRanker,
 	MIN_STRATIFICATION_COHORT,
 } from '../../../../delivery/sendAssignmentRouting';
+import { normalizeEngagementScore } from '../../../../delivery/workerEnvelope';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import {
 	assignRanked,
@@ -185,7 +186,10 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 			...Array.from({ length: thin }, (_, index) => ({
 				sendId: `snd-m-${index}`,
 				email: `m${index}@outlook.com`,
-				engagementScore: 1_000 + index,
+				// Above every gmail score, and inside the 0-100 band `contacts`
+				// stores: an out-of-band score is a scorer defect the ranker drops,
+				// which would make this cell thin for the wrong reason.
+				engagementScore: 80 + index,
 			})),
 		];
 		const providers = new Map<string, DestinationProviderKey>(
@@ -211,6 +215,49 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 		// The thin cell ranks nobody (D10) and falls back to the unbiased bucket,
 		// which realises `s` exactly — a strictly harmless degradation.
 		expect(microsoftRanks.every((rank) => rank === undefined)).toBe(true);
+	});
+
+	it('refuses the scores the ENVELOPE refuses, instead of ranking them top of cell', () => {
+		// One producer, two consumers: the campaign enqueue hands the stored score
+		// to this ranker and to `normalizeEngagementScore` for the durable
+		// envelope. A stored 250 (or -1, or NaN) is an upstream scorer defect the
+		// envelope drops as unknown — and ranked here it would sit at the top of
+		// its cell and take the stratified own-arm cut on the SAME send.
+		const clean = Array.from({ length: MIN_STRATIFICATION_COHORT + 1 }, (_, index) => ({
+			sendId: `snd-c-${index}`,
+			email: `c${index}@gmail.com`,
+			engagementScore: index,
+		}));
+		const corrupt = [250, -1, Number.NaN].map((score, index) => ({
+			sendId: `snd-x-${index}`,
+			email: `x${index}@gmail.com`,
+			engagementScore: score,
+		}));
+		const recipients = [...clean, ...corrupt];
+		const providers = new Map<string, DestinationProviderKey>(
+			recipients.map((recipient) => [recipient.email, 'gmail' as const])
+		);
+		const rankFor = buildEngagementRanker(recipients, providers);
+
+		for (const recipient of corrupt) {
+			// The two consumers agree, which is the whole point.
+			expect(normalizeEngagementScore(recipient.engagementScore)).toBeUndefined();
+			// No rank at all: the decision function reads that as unknown and falls
+			// back to the unbiased hash bucket, never to the own arm.
+			expect(rankFor(recipient)).toBeUndefined();
+			const assignment = decideMixAssignment({
+				cell: { ownShare: 0.1, mixVersion: 3 },
+				recipient: { contactId: recipient.sendId, campaignId: 'cmp-corrupt' },
+			});
+			expect(assignment.basis).not.toBe('stratified');
+		}
+
+		// And they are out of the COHORT as well, so they cannot displace the
+		// honest scores: every clean rank is what it would be without them.
+		const cleanOnly = buildEngagementRanker(clean, providers);
+		expect(clean.map((recipient) => rankFor(recipient))).toEqual(
+			clean.map((recipient) => cleanOnly(recipient))
+		);
 	});
 
 	it('a rank-correlated slice would be caught by this suite', () => {
