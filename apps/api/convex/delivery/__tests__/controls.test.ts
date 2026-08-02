@@ -19,12 +19,7 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { modules } from '../../__tests__/testModules';
-import {
-	readManagedCell,
-	seedArmOutcomes,
-	seedRampCell,
-	type Harness,
-} from './rampCronFixtures';
+import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
 
 const ORG = 'org_ramp_controls';
 const OTHER_ORG = 'org_ramp_controls_other';

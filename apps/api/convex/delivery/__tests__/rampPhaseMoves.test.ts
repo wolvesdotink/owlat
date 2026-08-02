@@ -27,12 +27,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
-import {
-	readManagedCell,
-	seedArmOutcomes,
-	seedRampCell,
-	type Harness,
-} from './rampCronFixtures';
+import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
 
 const ORG = 'org_ramp_phase_moves';
 const HOUR_MS = 60 * 60 * 1000;
