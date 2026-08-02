@@ -20,12 +20,12 @@ import { authedQuery } from '../lib/authedFunctions';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import {
 	campaignWarmingCapBinds,
+	type OwnArmShareBounds,
 	type WarmingCapNotBindingReason,
 } from '../lib/sendProviders/warmingCapGate';
 import { audienceValidator, type StoredAudience } from './audience';
-import { countAudience } from './audienceCandidates';
+import { countAudience, type AudienceCountCompleteness } from './audienceCandidates';
 import {
-	capacityWithinHorizon,
 	planCampaignCapacity,
 	totalPlannableCapacity,
 	usableDayCount,
@@ -56,10 +56,10 @@ type Ctx = MutationCtx | QueryCtx;
  * leaves 10,384 of the 16,384 for everything else.
  *
  * Exhausting it is NOT a refusal and NOT a silent pass: the partial count is
- * kept as a LOWER BOUND on the audience and compared against the capacity
- * inside the retention horizon (see `measureCampaignCapacity`). A floor already
- * above that capacity is a sound refusal; only a floor below it is genuinely
- * unmeasured.
+ * kept as a LOWER BOUND on the audience and planned against the capacity inside
+ * the retention horizon like any other (see {@link assessCountedPlan}). A floor
+ * that capacity cannot carry is a sound refusal; a floor it can carry is
+ * genuinely unmeasured — never an approval.
  *
  * THE HONEST INVARIANT — and its limit. The lower-bound rule only decides the
  * case where the floor EXCEEDS horizon capacity, so THE GATE CAN ONLY BIND
@@ -119,7 +119,7 @@ export type CapacityUnknownReason =
 	| 'projection_shorter_than_horizon'
 	/** The suppression set was truncated, so `eligible` is an over-count that bounds nothing. */
 	| 'audience_over_counted'
-	/** The read budget ran out and the partial count does not exceed horizon capacity. */
+	/** The count stopped short (read budget or candidate ceiling) and the floor it did reach fits. */
 	| 'audience_under_counted'
 	/** The projection carries no plannable capacity at all (the planner's `days === 0`). */
 	| 'unplannable_projection'
@@ -224,21 +224,11 @@ async function measureCampaignCapacity(
 		return { capacityKnown: false, fits: true, unknownReason: 'projection_shorter_than_horizon' };
 	}
 
-	// Bound the CANDIDATE count by CAPACITY, not by audience size. The verdict
-	// is already decided once the count exceeds everything the deployment could
-	// possibly send across the whole plan window, so there is no reason to stream
-	// tens of thousands of audience documents inside a send mutation. The ceiling
-	// is stated in RECIPIENTS, so a split route has to count `1/share` as many of
-	// them before the own arm's volume can reach that capacity.
-	//
-	// The share that sets it is the FLOOR, whose threshold is the later of the
-	// two — except at a floor of ZERO, where no count can ever produce a refusal
-	// and the division has no answer: there the PEAK's threshold is the point
-	// past which the verdict is "unmeasured" however many more recipients there
-	// turn out to be. A binding verdict always has a positive peak.
-	const countingShare = ownArmFloor > 0 ? ownArmFloor : ownArmPeak;
 	const counted = await countAudience(ctx, options.audience, {
-		ceiling: Math.ceil((totalPlannableCapacity(remainingCapacityByDay) + 1) / countingShare),
+		ceiling: audienceCountCeiling(
+			totalPlannableCapacity(remainingCapacityByDay),
+			capVerdict.ownArmShare
+		),
 		documentBudget: AUDIENCE_DOCUMENT_BUDGET,
 	});
 
@@ -248,25 +238,6 @@ async function measureCampaignCapacity(
 	// license a refusal — it is simply "unmeasured".
 	if (counted.completeness === 'suppression_truncated') {
 		return { capacityKnown: false, fits: true, unknownReason: 'audience_over_counted' };
-	}
-
-	// Ran out of read budget before the audience was sized. The partial count is
-	// still a valid LOWER BOUND on the audience, and a lower bound answers one
-	// question soundly: if even the floor already exceeds everything the horizon
-	// can carry, the real audience — which can only be bigger — cannot finish
-	// either, so refusing is sound. A floor at or below horizon capacity decides
-	// nothing, and undecided means allow. Throwing the partial count away instead
-	// would turn the read budget into an OFF switch for the gate on exactly the
-	// large audiences it exists to catch.
-	if (counted.completeness === 'read_budget_exhausted') {
-		const horizonCapacity = capacityWithinHorizon({
-			remainingCapacityByDay,
-			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-			now: startsAt,
-		});
-		if (ownArmVolume(counted.eligible, ownArmFloor) <= horizonCapacity) {
-			return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
-		}
 	}
 
 	const planFor = (share: number): CampaignCapacityPlan =>
@@ -280,28 +251,104 @@ async function measureCampaignCapacity(
 			now: startsAt,
 		});
 
-	// THE FLOOR DECIDES THE REFUSAL, THE PEAK DECIDES THE APPROVAL. A floor plan
-	// that does not fit is a sound refusal — own-arm volume can only be larger —
-	// and the schedule it carries is the own MTA's, which is what paces the
-	// campaign. A floor plan that FITS is not yet an approval: with the peak over
-	// the horizon, whether this campaign's tail expires depends on how its
-	// recipients fall across the ramp cells, and nobody has counted that. Saying
+	const boundsDiffer = ownArmPeak > ownArmFloor;
+	const floorVerdict = assessCountedPlan(planFor(ownArmFloor), {
+		completeness: counted.completeness,
+		ownArmBoundsDiffer: boundsDiffer,
+	});
+
+	// THE FLOOR DECIDES THE REFUSAL, THE PEAK DECIDES THE APPROVAL. A measured
+	// "it fits" off the floor is not yet an approval: with the peak over the
+	// horizon, whether this campaign's tail expires depends on how its recipients
+	// fall across the ramp cells, and nobody has counted that. Saying
 	// `capacityKnown: true` there would be the P0-5 tail-expiry itself, dressed as
-	// a measurement.
-	const floorPlan = planFor(ownArmFloor);
-	if (floorPlan.fits && ownArmPeak > ownArmFloor && !planFor(ownArmPeak).fits) {
+	// a measurement. A refusal, and an already-unmeasured count, both stand as
+	// they are — the peak can only ever turn "it fits" into "unmeasured".
+	if (
+		floorVerdict.capacityKnown &&
+		floorVerdict.fits &&
+		boundsDiffer &&
+		!planFor(ownArmPeak).fits
+	) {
 		return { capacityKnown: false, fits: true, unknownReason: 'mix_composition_unknown' };
 	}
+	return floorVerdict;
+}
 
-	return toAssessment(floorPlan, {
-		// A REFUSAL BUILT FROM THE FLOOR IS A LOWER BOUND ON THE PLAN, and the copy
-		// has to say so. An incomplete count is one source of that ("at least N
-		// recipients"); a heterogeneous mix is the other, because the schedule is
-		// enumerated over `floor x audience` while the own arm may have to carry up
-		// to `peak x audience` — quoting its day count as the finish date would
-		// promise a campaign it will beat by days (D14). Both select the same "at
-		// least N days" copy.
-		audienceUnderCounted: counted.completeness !== 'exact' || ownArmPeak > ownArmFloor,
+/**
+ * CANDIDATE CEILING for the audience count, stated in RECIPIENTS. Pure, and
+ * exported so the scaling is pinned directly rather than inferred from a verdict
+ * two layers up.
+ *
+ * The verdict is decided once own-arm volume exceeds everything the deployment
+ * could send across the whole plan window, so the count stops there rather than
+ * streaming an unbounded audience inside a send mutation. A split route has to
+ * count `1/share` as many RECIPIENTS before the own arm's volume reaches that
+ * capacity, which is what keeps a REFUSAL reachable under a low share.
+ *
+ * The share that sets it is the FLOOR, whose threshold is the later of the two —
+ * except at a floor of ZERO, where no count can ever produce a refusal and the
+ * division has no answer: there the PEAK's threshold is the point past which the
+ * verdict is "unmeasured" however many more recipients turn up. A binding
+ * verdict always has a positive peak.
+ *
+ * WHAT ACTUALLY STOPS THE SCAN IS USUALLY NOT THIS. `countAudience` clamps the
+ * request to `COUNT_CEILING` (25,000) and `AUDIENCE_DOCUMENT_BUDGET` stops the
+ * stream at 6,000 documents — at least one per candidate — so on the shipped
+ * warming projections (a single day-1 IP already plans past a million) this
+ * ceiling never binds, and it is the document budget that ends the count. It
+ * binds only on a projection paced far down. Either way a stopped count cannot
+ * fake a measurement: it reads `candidate_capped` / `read_budget_exhausted`, and
+ * {@link assessCountedPlan} refuses to license "it fits" from one.
+ */
+export function audienceCountCeiling(
+	totalCapacity: number,
+	ownArmShare: OwnArmShareBounds
+): number {
+	const countingShare = ownArmShare.floor > 0 ? ownArmShare.floor : ownArmShare.peak;
+	return Math.ceil((totalCapacity + 1) / countingShare);
+}
+
+/**
+ * The assessment for ONE counted audience, from the plan built over the volume
+ * the own arm is GUARANTEED to carry. Pure, and exported because the count
+ * completeness that reaches it cannot be seeded through the binding path — the
+ * candidate ceiling sits at 25,001 recipients and the document budget stops the
+ * scan thousands of rows earlier.
+ *
+ * THE TWO SIDES ARE NOT SYMMETRIC.
+ *
+ *  - A plan that does NOT fit is a sound refusal on any lower bound: the real
+ *    audience can only be bigger, so it fits even less well.
+ *  - A plan that fits is a MEASUREMENT only when the count was exact. "At least
+ *    N recipients fit" says nothing about the audience behind the N, and calling
+ *    it `capacityKnown: true` is precisely how a 2M-contact audience gets blessed
+ *    off a count that stopped at 25,000. It is unmeasured — which still ALLOWS
+ *    (D2), and says why.
+ *
+ * `suppression_truncated` is excluded by TYPE rather than by branch: an
+ * over-count bounds the audience in neither direction, so it may not license
+ * even the refusal side, and its caller has to have discharged it before it can
+ * reach here.
+ *
+ * `ownArmBoundsDiffer` marks a refusal whose schedule was enumerated over
+ * `floor x audience` while the own arm may have to carry up to `peak x audience`
+ * — a lower bound on the plan, exactly like an incomplete count, and it selects
+ * the same "at least N days" copy (D14).
+ */
+export function assessCountedPlan(
+	plan: CampaignCapacityPlan,
+	options: {
+		completeness: Exclude<AudienceCountCompleteness, 'suppression_truncated'>;
+		ownArmBoundsDiffer?: boolean;
+	}
+): CampaignCapacityAssessment {
+	if (plan.fits) {
+		if (options.completeness === 'exact') return { capacityKnown: true, fits: true };
+		return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
+	}
+	return toAssessment(plan, {
+		audienceUnderCounted: options.completeness !== 'exact' || options.ownArmBoundsDiffer === true,
 	});
 }
 

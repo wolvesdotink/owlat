@@ -39,6 +39,8 @@ import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/pref
 import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
 import {
 	assessCampaignCapacity,
+	assessCountedPlan,
+	audienceCountCeiling,
 	toAssessment,
 	type CampaignCapacityAssessment,
 } from '../campaigns/capacityPreflight';
@@ -951,6 +953,111 @@ describe('toAssessment — the planner-verdict mapping', () => {
 		expect(assessment.schedule.audienceUnderCounted).toBe(true);
 		expect(assessment.schedule.truncated).toBe(false);
 		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
+	});
+});
+
+/**
+ * THE COUNT-COMPLETENESS RULE, pinned where it is reachable.
+ *
+ * A count that stopped short is "at least N", and N fitting says nothing about
+ * the audience behind it — so it may license a REFUSAL (the real audience is only
+ * bigger) and never an approval. The binding path cannot seed the case: the
+ * candidate ceiling is 25,001 recipients under a 2% own-arm share and the
+ * document budget stops the scan thousands of rows before that, so the rule is
+ * pinned on the pure helper the gate decides through (as `toAssessment` is).
+ */
+describe('assessCountedPlan — a stopped count never licenses "it fits"', () => {
+	const refusal = {
+		fits: false as const,
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: MIDNIGHT + 5 * DAY_MS,
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+
+	it('measures a fitting plan when the count ran to the end', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'exact' })).toEqual({
+			capacityKnown: true,
+			fits: true,
+		});
+	});
+
+	/**
+	 * 25,000 counted recipients at a 2% own-arm share are 500 messages, which fits
+	 * a 500-message horizon — while the audience behind the ceiling can be
+	 * millions of contacts whose own-arm tail expires in the queue. That is the
+	 * P0-5 failure itself, dressed as a measurement.
+	 */
+	it('holds a fitting plan built from a CAPPED count as unmeasured', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'candidate_capped' })).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
+	});
+
+	it('holds a fitting plan built from a budget-stopped count as unmeasured', () => {
+		expect(assessCountedPlan({ fits: true }, { completeness: 'read_budget_exhausted' })).toEqual({
+			capacityKnown: false,
+			fits: true,
+			unknownReason: 'audience_under_counted',
+		});
+	});
+
+	it('still REFUSES on a capped count, and marks the plan as a lower bound', () => {
+		const assessment = assessCountedPlan(refusal, { completeness: 'candidate_capped' });
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
+	});
+
+	it('quotes an exact single-share refusal as the plan it actually is', () => {
+		const assessment = assessCountedPlan(refusal, { completeness: 'exact' });
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(false);
+		expect(describeCapacitySchedule(assessment.schedule)).toContain('about 5 days');
+	});
+
+	it('marks an exact refusal over a heterogeneous mix as a lower bound too', () => {
+		const assessment = assessCountedPlan(refusal, {
+			completeness: 'exact',
+			ownArmBoundsDiffer: true,
+		});
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+	});
+});
+
+describe('audienceCountCeiling — counting far enough to keep the refusal available', () => {
+	it('stops one recipient past everything the plan window could carry', () => {
+		expect(audienceCountCeiling(500, { floor: 1, peak: 1 })).toBe(501);
+	});
+
+	/**
+	 * Own-arm volume is `share x recipients`, so 500 of capacity takes 25,050
+	 * recipients to exceed at a 2% floor. Counting to 501 instead would stop while
+	 * the verdict is still undecided and answer "unmeasured" where a refusal was
+	 * available.
+	 */
+	it('counts 1/share as many recipients when the own arm carries a fraction', () => {
+		expect(audienceCountCeiling(500, { floor: 0.02, peak: 0.5 })).toBe(25_050);
+	});
+
+	/**
+	 * A zero lower bound exceeds no capacity, so the floor sets no threshold at
+	 * all; the peak's is the point past which more recipients cannot change the
+	 * answer either way.
+	 */
+	it('falls back to the PEAK when the floor is zero', () => {
+		expect(audienceCountCeiling(500, { floor: 0, peak: 0.5 })).toBe(1_002);
 	});
 });
 
