@@ -38,9 +38,25 @@ import {
 import type { MixCellState } from './sendProviders/strategies';
 
 /**
- * Row cap for a whole-organization scan. The cell space is
- * streams x providers (15 today) plus the stream-less snapshot rows, so this is
- * generous headroom rather than a limit any real organization can reach.
+ * Row cap for a whole-organization scan.
+ *
+ * AN ASSERTION, NOT A PAGE. The cell space is streams x providers (15 today)
+ * plus the handful of stream-less snapshot rows — ~21 against 128 — so no
+ * organization reaches this and neither scanning loader below pages past it.
+ * That matters because truncation would be SILENT and would fail in the
+ * REFUSING direction: a dropped cell defaults to
+ * {@link EMPTY_ROUTE_STATE_CELL}, i.e. share 1, which RAISES the warming-cap
+ * gate's own-arm floor and so licenses a refusal the dropped row might have
+ * removed. If the cell space ever grows towards this number the loaders need
+ * real pagination, not a bigger constant.
+ *
+ * A scan also has to break a TIE the point read never sees: `by_org_provider`
+ * returns every row of a provider slice, so two rows sharing one
+ * `(destinationProvider, stream)` key — unreachable today, since every writer
+ * patches the row it looked up — arrive as two entries. Both loaders keep the
+ * FIRST in index order, which is the row `loadRouteStateCell`'s `.first()`
+ * resolves (both indexes order a fixed key group by `_creationTime`), so the
+ * scan and the point read cannot answer differently about one cell.
  */
 const ROUTE_STATE_SCAN_LIMIT = 128;
 
@@ -179,10 +195,13 @@ export async function loadStreamRouteStateCells(
 		// map: that object is `EMPTY_ROUTE_STATE_CELL` until the first row for the
 		// provider arrives, and the shared default is not this loader's to write.
 		const cell = cells.get(destinationProvider) ?? EMPTY_ROUTE_STATE_CELL;
-		cells.set(
-			destinationProvider,
-			row.stream === undefined ? { ...cell, streamless: row } : { ...cell, perStream: row }
-		);
+		// FIRST WINS, so this scan resolves the same row `loadRouteStateCell`'s
+		// `.first()` does (see `ROUTE_STATE_SCAN_LIMIT`).
+		if (row.stream === undefined) {
+			if (cell.streamless === null) cells.set(destinationProvider, { ...cell, streamless: row });
+		} else if (cell.perStream === null) {
+			cells.set(destinationProvider, { ...cell, perStream: row });
+		}
 	}
 	return cells;
 }
@@ -213,7 +232,9 @@ export async function loadRouteStatesByCell(
 		if (stream === undefined) continue;
 		const destinationProvider = row.destinationProvider;
 		if (!isDestinationProviderKey(destinationProvider)) continue;
-		byCell.set(deliverabilityCellKey({ stream, destinationProvider }), row);
+		// FIRST WINS, the same tie-break the other scanning loader takes.
+		const key = deliverabilityCellKey({ stream, destinationProvider });
+		if (!byCell.has(key)) byCell.set(key, row);
 	}
 	return byCell;
 }
