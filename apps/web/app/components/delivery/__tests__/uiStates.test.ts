@@ -28,6 +28,7 @@ import {
 	rampRefusalSentence,
 	type RampCellControl,
 	type RampControlRefusal,
+	type RampControls,
 } from '~/utils/deliverabilityRamp';
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
@@ -280,14 +281,18 @@ describe('control refusals', () => {
 
 	function stubPage(
 		result: unknown,
-		cells: readonly RampCellControl[] = [cellControl()]
+		cells: readonly RampCellControl[] = [cellControl()],
+		view: Partial<RampControls> = {}
 	): { run: ReturnType<typeof vi.fn> } {
 		const run = vi.fn().mockResolvedValue(result);
 		vi.stubGlobal('useHead', vi.fn());
 		vi.stubGlobal('definePageMeta', vi.fn());
 		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
 		const answers = new Map<string, unknown>([
-			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView({ cells })],
+			[
+				getFunctionName(api.delivery.rampControlQueries.getRampControls),
+				controlsView({ cells, ...view }),
+			],
 			[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), []],
 		]);
 		vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({
@@ -320,6 +325,33 @@ describe('control refusals', () => {
 		expect(note.html()).not.toMatch(ALARM);
 		wrapper.unmount();
 	});
+
+	/**
+	 * ONLY THE PAGE KNOWS WHETHER THERE IS A RELAY, so only the page can pin it.
+	 * The reset note has two branches, but the fact that chooses between them
+	 * reaches the component through one binding on this screen; with the branches
+	 * pinned by direct mounts alone, dropping that binding leaves every test green
+	 * and puts "brings the share back" — a 75% cut a standalone deployment cannot
+	 * make — in front of the operator who must not read it.
+	 */
+	it.each<[string | null, RegExp, RegExp]>([
+		[null, /share stays where it is/i, /brings the share back/i],
+		['ses', /brings the share back/i, /share stays where it is/i],
+	])(
+		'tells a deployment whose relay is %s what a reset does to its share',
+		async (referenceTransportId, expected, refuted) => {
+			stubPage({ applied: true }, [cellControl()], { referenceTransportId });
+			const wrapper = mount(ControlsPage, { global: globalOptions });
+			await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+			await wrapper.vm.$nextTick();
+			const note = wrapper.find('[data-testid="ramp-reset-note"]');
+			expect(note.exists()).toBe(true);
+			expect(note.text()).toMatch(expected);
+			expect(note.text()).not.toMatch(refuted);
+			expect(note.html()).not.toMatch(ALARM);
+			wrapper.unmount();
+		}
+	);
 
 	/**
 	 * THE PROMOTION REFUSAL CARRIES A LIST, and a list the page drops is a "not
