@@ -96,8 +96,13 @@ export const updateContactPreferences = internalMutation({
 		}
 
 		if (args.topicUpdates) {
-			// Last write wins per topic, so a payload naming the same topic twice
-			// settles where it would have when every toggle was its own call.
+			// A save is a SET OF PER-TOPIC INTENTS, not a script to replay. Last write
+			// wins per topic — a payload naming one topic twice lands on its final
+			// toggle and produces no membership churn on the way, so a stale
+			// off-then-on pair cannot fire a `topic.unsubscribed` webhook or spend
+			// the contact's one attributable unsubscribe on a topic they kept. Order
+			// between DIFFERENT topics never decided anything, so settling every
+			// subscribe before every unsubscribe below changes no outcome.
 			const settled = new Map<Id<'topics'>, boolean>();
 			for (const update of args.topicUpdates) settled.set(update.topicId, update.subscribed);
 
