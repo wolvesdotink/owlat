@@ -56,6 +56,13 @@ export interface SeedSendOptions {
 	 * contact SEVERAL sends and cares which one a join picks.
 	 */
 	readonly contactId?: Id<'contacts'>;
+	/**
+	 * The dispatch stamp. Set it where a case seeds one contact several sends
+	 * whose DISPATCH order differs from their creation order — the real shape of a
+	 * pre-created blast audience, and the only way to hold an attribution join to
+	 * ordering by dispatch rather than by row age.
+	 */
+	readonly sentAt?: number;
 	/** Omit to seed a send with NO assignment row (the seed-probe seam). */
 	readonly assignment?: {
 		readonly organizationId?: string;
@@ -93,6 +100,7 @@ export async function seedAssignedSend(
 			contactEmail: email,
 			status: options.status ?? 'queued',
 			providerType: 'mta',
+			...(options.sentAt !== undefined ? { sentAt: options.sentAt } : {}),
 			...(options.providerMessageId !== undefined
 				? { providerMessageId: options.providerMessageId }
 				: {}),

@@ -19,7 +19,7 @@
  *
  * THREE CONSTRAINTS, each of which is why a line below exists:
  *
- *   - ATTRIBUTION IS THE MOST RECENT MARKETING SEND A TRANSPORT ACTUALLY GOT,
+ *   - ATTRIBUTION IS THE LAST-DISPATCHED MARKETING SEND A TRANSPORT ACTUALLY GOT,
  *     through the same join the shipped `campaigns.statsUnsubscribed`
  *     attribution now uses (`marketingSendAttribution.ts`). Transactional and
  *     agent 1:1 mail carries no RFC 8058 pair, and a `test` preview is not
@@ -49,34 +49,44 @@ import type { Id } from '../_generated/dataModel';
 import { resolveNow } from '../lib/clock';
 import { applyEffects, transportOutcomeEffect } from './sendLifecycle/effects';
 import {
+	dispatchedAt,
 	latestAttributableAutomationSend,
 	latestAttributableCampaignSend,
 } from './marketingSendAttribution';
 import type { SendRef } from './sendLifecycle/types';
 
-/** Why an unsubscribe did not reach a counter — returned, never thrown. */
+/**
+ * Where an unsubscribe ended up — returned, never thrown.
+ *
+ * `attributed`, not `recorded`: it names the send that absorbed the departure
+ * and took the stamp, which is not the same claim as a counter having moved. A
+ * send outside the experiment carries no `sendAssignments` row, and the effect
+ * runner degrades that to a warning rather than failing the mutation.
+ */
 export type RecordUnsubscribeOutcomeResult =
-	| 'recorded'
+	| 'attributed'
 	| 'no_marketing_send'
 	| 'already_attributed';
 
 /** The send an unsubscribe is attributed to, plus the state of its gate. */
 interface AttributableSend {
 	readonly ref: SendRef;
-	/** When creation ordered it against the other table's candidate. */
-	readonly createdAt: number;
+	/** When a transport was handed it — how the two tables' candidates are ordered. */
+	readonly dispatchedAt: number;
 	readonly unsubscribedAt: number | undefined;
 }
 
 /**
- * The most recent MARKETING send this contact received, across both send tables.
+ * The last-dispatched MARKETING send this contact received, across both tables.
  *
  * Each table's candidate comes from the shared attribution join
  * (`marketingSendAttribution.ts`), which is also what the campaign-stats writer
- * asks; this function only has to order the two against each other.
- * `_creationTime` does that because it is the only stamp both tables always
- * carry (`transactionalSends.queuedAt` is optional) and because within one
- * contact it is exactly the order the index already returns rows in.
+ * asks; this function only has to order the two against each other, through the
+ * same `dispatchedAt` witness the join orders WITHIN a table by. Creation order
+ * would not do: a blast's rows are pre-created up to a day before they are
+ * dispatched, so a drip created later can still have reached the recipient
+ * first — and the two candidates carry different `sendAssignments` rows, so a
+ * creation-ordered winner puts the numerator on the wrong cell.
  */
 async function latestMarketingSend(
 	ctx: MutationCtx,
@@ -87,17 +97,17 @@ async function latestMarketingSend(
 
 	const campaign: AttributableSend | null = campaignSend && {
 		ref: { kind: 'campaign', id: campaignSend._id },
-		createdAt: campaignSend._creationTime,
+		dispatchedAt: dispatchedAt(campaignSend),
 		unsubscribedAt: campaignSend.unsubscribedAt,
 	};
 	const automation: AttributableSend | null = automationSend && {
 		ref: { kind: 'transactional', id: automationSend._id },
-		createdAt: automationSend._creationTime,
+		dispatchedAt: dispatchedAt(automationSend),
 		unsubscribedAt: automationSend.unsubscribedAt,
 	};
 	if (campaign === null) return automation;
 	if (automation === null) return campaign;
-	return automation.createdAt > campaign.createdAt ? automation : campaign;
+	return automation.dispatchedAt > campaign.dispatchedAt ? automation : campaign;
 }
 
 /**
@@ -129,6 +139,6 @@ export const recordUnsubscribeOutcome = internalMutation({
 		// arm and the calibration flag from the send's assignment row, and it
 		// degrades to a warning rather than failing this mutation.
 		await applyEffects(ctx, [transportOutcomeEffect(send.ref, 'unsubscribed', now)]);
-		return 'recorded';
+		return 'attributed';
 	},
 });

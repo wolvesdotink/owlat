@@ -79,6 +79,18 @@ async function seedContact(ctx: { db: DatabaseWriter }): Promise<Id<'contacts'>>
 }
 
 /**
+ * Two dispatch stamps an hour apart, both in the past.
+ *
+ * Cases that seed a send at `DISPATCHED_LAST` and then CREATE one at
+ * `DISPATCHED_FIRST` invert row age against send order — which is what a
+ * pre-created blast audience does in production, and the only shape that tells
+ * a dispatch-ordered attribution apart from a creation-ordered one.
+ */
+const HOUR_MS = 60 * 60 * 1000;
+const DISPATCHED_FIRST = Date.now() - 2 * HOUR_MS;
+const DISPATCHED_LAST = Date.now() - HOUR_MS;
+
+/**
  * A NON-CAMPAIGN send for a contact, with an assignment row when the case needs
  * the recorder to be able to reach a counter through it.
  */
@@ -89,6 +101,8 @@ async function seedNonCampaignSend(
 		kind: 'automation' | 'transactional' | 'test';
 		cell?: DeliverabilityCellKey;
 		status?: 'queued' | 'delivered';
+		/** The dispatch stamp — see the campaign fixture's `sentAt`. */
+		sentAt?: number;
 	}
 ): Promise<Id<'transactionalSends'>> {
 	const sendId = await ctx.db.insert('transactionalSends', {
@@ -97,6 +111,7 @@ async function seedNonCampaignSend(
 		contactId: options.contactId,
 		status: options.status ?? 'delivered',
 		queuedAt: Date.now(),
+		...(options.sentAt !== undefined ? { sentAt: options.sentAt } : {}),
 		providerType: 'mta',
 	});
 	if (options.cell !== undefined) {
@@ -232,7 +247,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
 				contactId,
 			})
-		).toBe('recorded');
+		).toBe('attributed');
 		await t.run(async (ctx) => {
 			const buckets = await readBuckets(ctx);
 			expect(buckets[0]?.cell).toBe(MICROSOFT_CAMPAIGN_CELL);
@@ -272,6 +287,84 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		});
 		await t.run(async (ctx) => {
 			expect((await readBuckets(ctx))[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
+		});
+	});
+
+	// THE TIMEZONE-STAGGERED BLAST, ACROSS THE TWO TABLES. `createBatch`
+	// pre-creates a campaign's whole audience up to a day before the dispatch
+	// transaction reaches this recipient's timezone, so ROW AGE IS NOT SEND
+	// ORDER: the drip below is created last and delivered first. The two
+	// candidates carry different `sendAssignments` rows, so a creation-ordered
+	// winner would put the numerator — and, through the shared join, the
+	// dashboard number — on a message the contact had not received yet.
+	it('answers with the last-DISPATCHED candidate, not the last-created one', async () => {
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				sentAt: DISPATCHED_LAST,
+				assignment: { cell: GMAIL_CAMPAIGN_CELL },
+			});
+			contactId = seeded.contactId;
+		});
+		if (!contactId) throw new Error('seed failed');
+		// Created after the campaign row, handed to a transport an hour before it.
+		await t.run(async (ctx) => {
+			await seedNonCampaignSend(ctx, {
+				contactId: contactId!,
+				kind: 'automation',
+				cell: MICROSOFT_CAMPAIGN_CELL,
+				sentAt: DISPATCHED_FIRST,
+			});
+		});
+
+		expect(
+			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+				contactId,
+			})
+		).toBe('attributed');
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(buckets[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+		});
+	});
+
+	// The same inversion WITHIN `emailSends` alone — two blasts overlapping in
+	// creation, dispatched in the other order.
+	it('answers with the last-dispatched of two campaign sends', async () => {
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				sentAt: DISPATCHED_LAST,
+				assignment: { cell: GMAIL_CAMPAIGN_CELL },
+			});
+			contactId = seeded.contactId;
+			await seedAssignedSend(ctx, {
+				contactId: seeded.contactId,
+				status: 'delivered',
+				sentAt: DISPATCHED_FIRST,
+				assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+			});
+		});
+		if (!contactId) throw new Error('seed failed');
+
+		await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			contactId,
+		});
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(buckets[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
 		});
 	});
 
@@ -317,7 +410,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
 				contactId,
 			})
-		).toBe('recorded');
+		).toBe('attributed');
 
 		await t.run(async (ctx) => {
 			const buckets = await readBuckets(ctx);
@@ -361,6 +454,104 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 	});
 });
 
+/**
+ * The dashboard number and the ramp counter, on one unsubscribe.
+ *
+ * `campaigns.statsUnsubscribed` (`topics/subscription.recordCampaignUnsubscribe`)
+ * and the `unsubscribed` transport outcome are written by two mutations
+ * scheduled off the same public unsubscribe. They share the attribution join
+ * (`marketingSendAttribution.ts`) precisely so they cannot name different
+ * campaigns for one departure — and the shipped dashboard number is what moves
+ * if the join is wrong, so each case here asserts BOTH writers.
+ */
+describe('both writers name the same campaign', () => {
+	it('credits the delivered campaign, not the queued pre-creation of the next blast', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let deliveredCampaignId: Id<'campaigns'> | undefined;
+		let queuedCampaignId: Id<'campaigns'> | undefined;
+		await t.run(async (ctx) => {
+			const delivered = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				sentAt: DISPATCHED_LAST,
+				assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+			});
+			contactId = delivered.contactId;
+			deliveredCampaignId = delivered.campaignId;
+			// The next blast's audience: created last, handed to no transport yet.
+			queuedCampaignId = (
+				await seedAssignedSend(ctx, {
+					contactId: delivered.contactId,
+					status: 'queued',
+					assignment: { cell: GMAIL_CAMPAIGN_CELL },
+				})
+			).campaignId;
+			await joinTopic(ctx, delivered.contactId);
+		});
+		if (!contactId || !deliveredCampaignId || !queuedCampaignId) throw new Error('seed failed');
+		const [delivered, queued] = [deliveredCampaignId, queuedCampaignId];
+
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, { contactId });
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(delivered))?.statsUnsubscribed).toBe(1);
+			expect((await ctx.db.get(queued))?.statsUnsubscribed).toBe(0);
+			const buckets = await readBuckets(ctx);
+			expect(buckets[0]?.cell).toBe(MICROSOFT_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+		});
+	});
+
+	// Both rows delivered, so neither writer can fall back on status: the only
+	// thing separating them is which one a transport was handed last.
+	it('credits the last-dispatched campaign when a later-created one went out first', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let answeredCampaignId: Id<'campaigns'> | undefined;
+		let earlierCampaignId: Id<'campaigns'> | undefined;
+		await t.run(async (ctx) => {
+			const answered = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				sentAt: DISPATCHED_LAST,
+				assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+			});
+			contactId = answered.contactId;
+			answeredCampaignId = answered.campaignId;
+			earlierCampaignId = (
+				await seedAssignedSend(ctx, {
+					contactId: answered.contactId,
+					status: 'delivered',
+					sentAt: DISPATCHED_FIRST,
+					assignment: { cell: GMAIL_CAMPAIGN_CELL },
+				})
+			).campaignId;
+			await joinTopic(ctx, answered.contactId);
+		});
+		if (!contactId || !answeredCampaignId || !earlierCampaignId) throw new Error('seed failed');
+		const [answered, earlier] = [answeredCampaignId, earlierCampaignId];
+
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, { contactId });
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(answered))?.statsUnsubscribed).toBe(1);
+			expect((await ctx.db.get(earlier))?.statsUnsubscribed).toBe(0);
+			const buckets = await readBuckets(ctx);
+			expect(buckets[0]?.cell).toBe(MICROSOFT_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+		});
+	});
+});
+
 describe('one unsubscribe per send, however often the link is exercised', () => {
 	it('counts a redelivered one-click POST once', async () => {
 		const t = convexTest(schema, modules);
@@ -375,7 +566,7 @@ describe('one unsubscribe per send, however often the link is exercised', () => 
 			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
 				contactId,
 			})
-		).toBe('recorded');
+		).toBe('attributed');
 		expect(
 			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
 				contactId,
@@ -508,6 +699,114 @@ describe('the preference centre', () => {
 			expect((await ctx.db.get(contactId!))?.unsubscribedAt).toBeUndefined();
 		});
 	});
+
+	// A save is a SET OF PER-TOPIC INTENTS, not a script to replay. A payload
+	// naming one topic twice settles on its last toggle, and produces no
+	// membership churn on the way: replaying it in order would delete the kept
+	// topic and re-insert it, leaving a `topic_unsubscribed` activity row on the
+	// contact's timeline for a topic they never left — and, on a payload where
+	// the off/on pair is the ONLY toggle, spending their one attributable
+	// unsubscribe on it.
+	it('settles a topic named twice on its last toggle, with no unsubscribe on the way', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let keptTopicId: Id<'topics'> | undefined;
+		let droppedTopicId: Id<'topics'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'delivered', assignment: {} });
+			contactId = seeded.contactId;
+			keptTopicId = await joinTopic(ctx, seeded.contactId);
+			droppedTopicId = await joinTopic(ctx, seeded.contactId);
+		});
+		if (!contactId || !keptTopicId || !droppedTopicId) throw new Error('seed failed');
+		const [kept, dropped] = [keptTopicId, droppedTopicId];
+
+		await t.mutation(internal.delivery.preferencesQueries.updateContactPreferences, {
+			contactId,
+			topicUpdates: [
+				{ topicId: kept, subscribed: false },
+				{ topicId: dropped, subscribed: false },
+				{ topicId: kept, subscribed: true },
+			],
+		});
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+		await t.run(async (ctx) => {
+			const memberships = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId!))
+				.collect();
+			expect(memberships.map((m) => m.topicId)).toEqual([kept]);
+			// Exactly one departure happened, and it names the topic that was asked
+			// for — the kept topic left no trace of a delete-then-reinsert.
+			const unsubscribeActivities = (
+				await ctx.db
+					.query('contactActivities')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId!))
+					.collect()
+			).filter((activity) => activity.activityType === 'topic_unsubscribed');
+			expect(unsubscribeActivities).toHaveLength(1);
+			expect(unsubscribeActivities[0]?.metadata?.['topicId']).toBe(String(dropped));
+			expect(sumCounters(await readBuckets(ctx))).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+		});
+	});
+
+	// The corollary: the ARRAY ORDER decides nothing. Settling every subscribe
+	// before every unsubscribe is only safe because a topic appears in exactly one
+	// of the two groups, so a payload and its reversal have to land identically.
+	it('settles the same way whichever order the toggles were written in', async () => {
+		vi.useFakeTimers();
+		const t = convexTest(schema, modules);
+
+		/** The topics the contact still belongs to, BY ROLE — the two runs seed
+		 * two different contacts, so raw ids would never compare equal. */
+		async function settle(
+			updates: (ids: { on: Id<'topics'>; off: Id<'topics'> }) => Array<{
+				topicId: Id<'topics'>;
+				subscribed: boolean;
+			}>
+		): Promise<Array<'on' | 'off'>> {
+			let contactId: Id<'contacts'> | undefined;
+			let joined: Id<'topics'> | undefined;
+			let notJoined: Id<'topics'> | undefined;
+			await t.run(async (ctx) => {
+				contactId = await seedContact(ctx);
+				joined = await joinTopic(ctx, contactId);
+				notJoined = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+			});
+			if (!contactId || !joined || !notJoined) throw new Error('seed failed');
+			const [stays, leaves] = [notJoined, joined];
+			await t.mutation(internal.delivery.preferencesQueries.updateContactPreferences, {
+				contactId,
+				topicUpdates: updates({ on: stays, off: leaves }),
+			});
+			await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+			return await t.run(async (ctx) => {
+				const memberships = await ctx.db
+					.query('contactTopics')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId!))
+					.collect();
+				return memberships.map((m) => (m.topicId === stays ? 'on' : 'off'));
+			});
+		}
+
+		const subscribeFirst = await settle(({ on, off }) => [
+			{ topicId: on, subscribed: true },
+			{ topicId: off, subscribed: false },
+		]);
+		const unsubscribeFirst = await settle(({ on, off }) => [
+			{ topicId: off, subscribed: false },
+			{ topicId: on, subscribed: true },
+		]);
+		// The subscribe landed, the unsubscribe landed, and the order did not
+		// change which is which.
+		expect(subscribeFirst).toEqual(['on']);
+		expect(unsubscribeFirst).toEqual(subscribeFirst);
+	});
 });
 
 describe('what may never enter the arm denominators', () => {
@@ -598,7 +897,7 @@ describe('what may never enter the arm denominators', () => {
 			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
 				contactId,
 			})
-		).toBe('recorded');
+		).toBe('attributed');
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
 			// The unsubscribe WAS processed for this send; the stamp says so, so a
