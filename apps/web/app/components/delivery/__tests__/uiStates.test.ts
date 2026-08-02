@@ -24,7 +24,11 @@ import RampDecisionTimeline from '../RampDecisionTimeline.vue';
 import RampPresetPicker from '../RampPresetPicker.vue';
 import ControlsPage from '~/pages/dashboard/delivery/controls.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
-import { rampRefusalSentence, type RampControlRefusal } from '~/utils/deliverabilityRamp';
+import {
+	rampRefusalSentence,
+	type RampCellControl,
+	type RampControlRefusal,
+} from '~/utils/deliverabilityRamp';
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
@@ -51,16 +55,52 @@ describe('calm states', () => {
 		wrapper.unmount();
 	});
 
-	it('offers an improvement rather than a nag on a cell the ramp does not manage', () => {
+	/**
+	 * AN INVITATION, NOT A NAG — and not a false promise either. Nothing puts a
+	 * cell on the ramp on its own, so the copy that used to say it "joins on its
+	 * own, no setup needed" described a thing that never happens; the honest calm
+	 * state is the sentence plus the affordance that makes it true.
+	 */
+	it('offers the way ONTO the ramp on a cell the ramp does not manage', () => {
 		const wrapper = mount(RampCellControls, {
 			props: { cell: cellControl({ isRampManaged: false }) },
 		});
 		const note = wrapper.find('[data-testid="ramp-controls-unmanaged"]').text();
-		expect(note).toContain('joins on its own');
-		expect(note).toContain('no setup needed');
-		// Controls exist but are inert — no dead-end, no error.
+		expect(note).toContain('not on the ramp yet');
+		const enroll = wrapper.find('[data-testid="ramp-control-enroll"]');
+		expect(enroll.exists()).toBe(true);
+		expect(enroll.attributes('disabled')).toBeUndefined();
+		enroll.trigger('click');
+		expect(wrapper.emitted('enroll')).toHaveLength(1);
+		// The other controls exist but are inert — no dead-end, no error.
 		expect(wrapper.find('[data-testid="ramp-control-pause"]').attributes('disabled')).toBeDefined();
 		expect(wrapper.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
+	 * A RESET ONLY GOES DOWN. Offering a rung above the cell's ceiling as a reset
+	 * would present the ladder's most expensive move as its cheapest, and the
+	 * server would refuse it — a button that cannot work is a dead end.
+	 */
+	it('offers only the rungs at or below the cell’s ceiling as a reset', () => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.5 }) },
+		});
+		expect(wrapper.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
+			undefined
+		);
+		expect(wrapper.find('[data-testid="ramp-control-phase-0.5"]').attributes('disabled')).toBe(
+			undefined
+		);
+		expect(
+			wrapper.find('[data-testid="ramp-control-phase-0.8"]').attributes('disabled')
+		).toBeDefined();
+		expect(
+			wrapper.find('[data-testid="ramp-control-phase-1"]').attributes('disabled')
+		).toBeDefined();
+		wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
+		expect(wrapper.emitted('promotePhase')).toHaveLength(1);
 		wrapper.unmount();
 	});
 
@@ -163,13 +203,16 @@ describe('control refusals', () => {
 		},
 	};
 
-	function stubPage(refusal: RampControlRefusal): { run: ReturnType<typeof vi.fn> } {
-		const run = vi.fn().mockResolvedValue({ applied: false, refusal });
+	function stubPage(
+		result: unknown,
+		cells: readonly RampCellControl[] = [cellControl()]
+	): { run: ReturnType<typeof vi.fn> } {
+		const run = vi.fn().mockResolvedValue(result);
 		vi.stubGlobal('useHead', vi.fn());
 		vi.stubGlobal('definePageMeta', vi.fn());
 		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
 		const answers = new Map<string, unknown>([
-			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView()],
+			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView({ cells })],
 			[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), []],
 		]);
 		vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({
@@ -185,8 +228,11 @@ describe('control refusals', () => {
 		['controller_paused', /globally paused/i],
 		['hard_stop_active', /safety hold/i],
 		['cell_not_ramp_managed', /not on the ramp yet/i],
+		['cell_already_ramp_managed', /already on the ramp/i],
+		['phase_increase_requires_promotion', /only ever rises through a promotion/i],
+		['promotion_evidence_outstanding', /evidence for the next phase/i],
 	])('explains the %s refusal calmly instead of showing nothing', async (refusal, sentence) => {
-		stubPage(refusal);
+		stubPage({ applied: false, refusal });
 		const wrapper = mount(ControlsPage, { global: globalOptions });
 		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
 		await wrapper.vm.$nextTick();
@@ -200,13 +246,63 @@ describe('control refusals', () => {
 		wrapper.unmount();
 	});
 
-	/** Every arm has a sentence, and none of them reads as a fault. */
+	/**
+	 * THE PROMOTION REFUSAL CARRIES A LIST, and a list the page drops is a "not
+	 * yet" with nothing to act on — the exact shape D12/D14 exist to prevent.
+	 */
+	it('lists what the next phase rung is still waiting on', async () => {
+		stubPage({
+			applied: false,
+			refusal: 'promotion_evidence_outstanding',
+			phaseCeiling: 0.5,
+			outstanding: ['dnsbl_clean_streak', 'seed_probe_pass_recent'],
+		});
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		const list = wrapper.find('[data-testid="ramp-promotion-outstanding"]');
+		expect(list.exists()).toBe(true);
+		expect(list.text()).toContain('blocklist-clean days');
+		expect(list.text()).toContain('seed-mailbox placement probe');
+		expect(list.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/** The page owns the write, so the button has to reach the mutation. */
+	it('puts an unmanaged cell on the ramp from the controls page', async () => {
+		const { run } = stubPage({ enrolled: true, share: 0.02, path: 'esp_relay' }, [
+			cellControl({ isRampManaged: false }),
+		]);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(run).toHaveBeenCalledWith({ stream: 'campaign', destinationProvider: 'gmail' });
+		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	/**
+	 * Every arm has a sentence, and none of them reads as a fault.
+	 *
+	 * KEYED BY THE UNION rather than listed: a hand-written array silently stops
+	 * covering an arm the server adds, which is how a refusal ships with no
+	 * sentence and an operator watches a click do nothing.
+	 */
 	it('gives every refusal arm a calm sentence that ends in something to do', () => {
-		const arms: readonly RampControlRefusal[] = [
-			'controller_paused',
-			'hard_stop_active',
-			'cell_not_ramp_managed',
-		];
+		const armSet: Record<RampControlRefusal, true> = {
+			controller_paused: true,
+			hard_stop_active: true,
+			cell_not_ramp_managed: true,
+			cell_already_ramp_managed: true,
+			phase_increase_requires_promotion: true,
+			promotion_evidence_outstanding: true,
+		};
+		const arms = Object.keys(armSet) as RampControlRefusal[];
 		for (const arm of arms) {
 			const sentence = rampRefusalSentence(arm);
 			expect(sentence.length).toBeGreaterThan(20);

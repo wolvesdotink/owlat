@@ -16,6 +16,10 @@
  * FORCE-ADVANCE IS THE ONLY ONE BEHIND A TYPED CONFIRMATION, because it is the
  * only one that can lose reputation. The phrase is checked again by the mutation,
  * so skipping this dialog does not skip the rule.
+ *
+ * TWO MOVES THIS PAGE OWNS THAT THE CONTROLS ARE NOT: putting a cell ON the ramp
+ * (nothing else ever writes a cell's first share) and PROMOTING a phase, which is
+ * the one door a ceiling rises through. A reset can only take a rung down.
  */
 import { api } from '@owlat/api';
 import {
@@ -25,10 +29,12 @@ import {
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import {
 	rampCellLabel,
+	rampPromotionConditionLabel,
 	rampRefusalSentence,
 	shareLabel,
 	type RampCellControl,
 	type RampControlRefusal,
+	type RampPromotionCondition,
 } from '~/utils/deliverabilityRamp';
 
 useHead({ title: 'Delivery controls — Owlat' });
@@ -63,6 +69,14 @@ const { run: resetPhase, isLoading: isResetting } = useBackendOperation(
 	api.delivery.rampControls.resetCellPhase,
 	{ label: 'Reset ramp phase' }
 );
+const { run: enrollCell, isLoading: isEnrolling } = useBackendOperation(
+	api.delivery.rampEnrollment.enrollCell,
+	{ label: 'Put a cell on the ramp' }
+);
+const { run: promotePhase, isLoading: isPromoting } = useBackendOperation(
+	api.delivery.rampPhasePromotion.promoteCellPhase,
+	{ label: 'Promote ramp phase' }
+);
 const { run: setStreamPreset, isLoading: isChangingPreset } = useBackendOperation(
 	api.delivery.rampControls.setStreamPreset,
 	{ label: 'Change ramp pace' }
@@ -74,7 +88,13 @@ const { run: setStreamPreset, isLoading: isChangingPreset } = useBackendOperatio
  * double submit against a row that is about to change under it.
  */
 const isCellBusy = computed(
-	() => isPausing.value || isPinning.value || isForcing.value || isResetting.value
+	() =>
+		isPausing.value ||
+		isPinning.value ||
+		isForcing.value ||
+		isResetting.value ||
+		isEnrolling.value ||
+		isPromoting.value
 );
 
 /**
@@ -92,6 +112,12 @@ function noteResult(result: { readonly refusal?: RampControlRefusal } | undefine
 	refusal.value = result?.refusal ?? null;
 }
 
+/**
+ * WHAT THE NEXT RUNG IS STILL WAITING ON, kept beside the refusal that named it.
+ * "Not yet" with no list is the shape of an unactionable refusal (plan D12/D14).
+ */
+const outstanding = ref<readonly RampPromotionCondition[]>([]);
+
 const selectedCellKey = ref<string | null>(null);
 const pendingForceShare = ref<number | null>(null);
 
@@ -107,6 +133,7 @@ const streams: readonly DeliverabilityStream[] = ['campaign', 'automation', 'tra
 function selectCell(cellKey: string): void {
 	selectedCellKey.value = cellKey;
 	refusal.value = null;
+	outstanding.value = [];
 }
 
 function presetFor(stream: DeliverabilityStream): RampPreset | null {
@@ -117,10 +144,31 @@ function cellArgs(cell: RampCellControl) {
 	return { stream: cell.cell.stream, destinationProvider: cell.cell.destinationProvider };
 }
 
+async function enroll(): Promise<void> {
+	const cell = selectedCell.value;
+	if (cell === null) return;
+	refusal.value = null;
+	outstanding.value = [];
+	noteResult(await enrollCell(cellArgs(cell)));
+	await refetch();
+}
+
+async function promote(): Promise<void> {
+	const cell = selectedCell.value;
+	if (cell === null) return;
+	refusal.value = null;
+	outstanding.value = [];
+	const result = await promotePhase(cellArgs(cell));
+	noteResult(result);
+	outstanding.value = result?.outstanding ?? [];
+	await refetch();
+}
+
 async function pause(isPaused: boolean): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
 	refusal.value = null;
+	outstanding.value = [];
 	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
 	await refetch();
 }
@@ -129,6 +177,7 @@ async function pin(share: number | null): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
 	refusal.value = null;
+	outstanding.value = [];
 	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
 	await refetch();
 }
@@ -137,6 +186,7 @@ async function reset(phaseCeiling: number): Promise<void> {
 	const cell = selectedCell.value;
 	if (cell === null) return;
 	refusal.value = null;
+	outstanding.value = [];
 	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
 	await refetch();
 }
@@ -152,6 +202,7 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	pendingForceShare.value = null;
 	if (cell === null || share === null) return;
 	refusal.value = null;
+	outstanding.value = [];
 	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
 	await refetch();
 }
@@ -229,10 +280,12 @@ async function changePreset(
 						:key="selectedCell.cellKey"
 						:cell="selectedCell"
 						:busy="isCellBusy"
+						@enroll="enroll"
 						@pause="pause"
 						@pin="pin"
 						@force-advance="requestForceAdvance"
 						@reset-phase="reset"
+						@promote-phase="promote"
 					/>
 					<p
 						v-if="refusal"
@@ -242,6 +295,19 @@ async function changePreset(
 					>
 						{{ rampRefusalSentence(refusal) }}
 					</p>
+					<!--
+						WHAT WOULD UNLOCK THE NEXT RUNG, beside the refusal that named it: a
+						"not yet" with no list is a refusal an operator cannot act on.
+					-->
+					<ul
+						v-if="outstanding.length > 0"
+						class="mt-2 list-disc pl-5 text-sm text-text-secondary"
+						data-testid="ramp-promotion-outstanding"
+					>
+						<li v-for="condition in outstanding" :key="condition">
+							{{ rampPromotionConditionLabel(condition) }}
+						</li>
+					</ul>
 				</UiCard>
 
 				<UiCard>

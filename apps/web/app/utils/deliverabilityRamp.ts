@@ -154,9 +154,10 @@ export interface RampCellStatus {
  * ONE STATUS PER CELL, decided in ONE table so the word and the colour cannot
  * be chosen in two places and disagree.
  *
- * `unmanaged` and `holding` are NEUTRAL, never warnings: a cell the ramp has not
- * taken over yet and a cell waiting for evidence are both perfectly healthy
- * states of a working deployment (plan D2/D10).
+ * `unmanaged` and `holding` are NEUTRAL, never warnings: a cell nobody has put
+ * on the ramp and a cell waiting for evidence are both perfectly healthy states
+ * of a working deployment (plan D2/D10). Enrolment is an OPT-IN, so `unmanaged`
+ * is a choice not yet made rather than a step not yet finished.
  */
 export function rampCellStatus(cell: RampCellControl): RampCellStatus {
 	if (!cell.isRampManaged) {
@@ -225,6 +226,8 @@ const REASON_LABELS = {
 	operator_pin: 'Your pin on this cell',
 	operator_force_advance: 'A manual advance you made',
 	operator_phase_reset: 'A manual phase reset you made',
+	operator_enrollment: 'Putting this cell on the ramp',
+	operator_phase_promotion: 'A phase promotion you made',
 	hard_bounce: 'The hard-bounce gate',
 	deferral: 'The deferral gate',
 	complaint: 'The complaint gate',
@@ -253,10 +256,11 @@ export function shareLabel(share: number): string {
  * A control the server DECLINED to apply — `{applied: false, refusal}` rather
  * than a thrown error, because none of these is a fault.
  *
- * The type is read off the mutation so the four arms cannot drift from the
- * server's union, and the sentences are calm and end in something the operator
- * can actually do (plan D2): a refusal is the system explaining a rule, not the
- * UI reporting a failure.
+ * The type is read off the mutation so the arms cannot drift from the server's
+ * union — which is ONE union across every ramp write, enrolment and promotion
+ * included — and the sentences are calm and end in something the operator can
+ * actually do (plan D2): a refusal is the system explaining a rule, not the UI
+ * reporting a failure.
  */
 export type RampControlRefusal = NonNullable<
 	FunctionReturnType<typeof api.delivery.rampControls.setCellPause>['refusal']
@@ -268,11 +272,46 @@ const REFUSAL_SENTENCES = {
 	hard_stop_active:
 		'A safety hold is active on this cell — an abuse hold, an open circuit breaker, a critical blocklist listing or a cooldown from an earlier pull-back. Clear it and try again.',
 	cell_not_ramp_managed:
-		'This cell is not on the ramp yet. It starts being managed the first time the controller evaluates it.',
+		'This cell is not on the ramp yet. Put it on the ramp to let the controller decide its share.',
+	cell_already_ramp_managed:
+		'This cell is already on the ramp, so it keeps the streak and the phase it has earned. Use the phase reset to start it over.',
+	phase_increase_requires_promotion:
+		'A phase ceiling only ever rises through a promotion, which checks the evidence for the next rung. Promote the cell instead of resetting it upward.',
+	promotion_evidence_outstanding:
+		'The evidence for the next phase is not in yet. The conditions still outstanding are listed with the cell, and the promotion works as soon as any one route is complete.',
 } as const satisfies Record<RampControlRefusal, string>;
 
 export function rampRefusalSentence(refusal: RampControlRefusal): string {
 	return REFUSAL_SENTENCES[refusal];
+}
+
+// ============ PROMOTION EVIDENCE (D3) ============
+
+/**
+ * A condition the next phase rung is still waiting on.
+ *
+ * Read off the mutation for the same reason the refusals are: the server decides
+ * which routes apply to a cell and which of their conditions are unmet, and a
+ * label map that could go quiet on a condition would leave an operator reading
+ * "not yet" with nothing to act on.
+ */
+export type RampPromotionCondition = NonNullable<
+	FunctionReturnType<typeof api.delivery.rampPhasePromotion.promoteCellPhase>['outstanding']
+>[number];
+
+/** Each condition as the THING TO DO, not as the identifier it is stored under. */
+const PROMOTION_CONDITION_LABELS = {
+	google_compliance_pass: 'Google’s Compliance Status passing for this domain in the last 7 days',
+	snds_complaint_band_green: 'Microsoft SNDS reporting a green complaint band in the last 7 days',
+	dwell_multiple_served: 'longer spent at the current phase',
+	seed_probe_pass_recent: 'a recent passing seed-mailbox placement probe',
+	dnsbl_clean_streak: '14 consecutive blocklist-clean days across every sending IP',
+	deferral_under_threshold_all_cells: 'every cell’s deferral rate under its threshold',
+} as const satisfies Record<RampPromotionCondition, string>;
+
+export function rampPromotionConditionLabel(condition: RampPromotionCondition | string): string {
+	const label = (PROMOTION_CONDITION_LABELS as Record<string, string | undefined>)[condition];
+	return label ?? condition.replace(/_/g, ' ');
 }
 
 // ============ PRESETS ============

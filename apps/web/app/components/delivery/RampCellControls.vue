@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * THE CONTROLS FOR ONE CELL — pause, pin, force-advance, reset to a phase.
+ * THE CONTROLS FOR ONE CELL — enrol, pause, pin, force-advance, reset or promote
+ * a phase.
  *
  * WHAT EACH CONTROL PROMISES IS STATED NEXT TO IT, not in a help centre. A pause
  * suppresses increases and NOT retreats; a pin caps the climb and never holds a
@@ -21,10 +22,12 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+	enroll: [];
 	pause: [isPaused: boolean];
 	pin: [share: number | null];
 	forceAdvance: [share: number];
 	resetPhase: [phaseCeiling: number];
+	promotePhase: [];
 }>();
 
 const headingId = useId();
@@ -59,6 +62,22 @@ const PHASE_RUNGS = [0.25, 0.5, 0.8, 1] as const;
 
 const isDisabled = computed(() => props.busy === true || !props.cell.isRampManaged);
 
+/**
+ * The rung the cell stands on. A managed row with no stored ceiling is on the
+ * ladder's FIRST rung — the same reading the server takes, so the buttons this
+ * component offers and the moves the server accepts cannot disagree.
+ */
+const currentRung = computed(() => props.cell.phaseCeiling ?? PHASE_RUNGS[0]);
+
+/**
+ * A RESET ONLY EVER GOES DOWN. Raising a ceiling is a PROMOTION and runs the
+ * evidence routes; offering it as a reset button would present the ladder's most
+ * expensive move as its cheapest, and the server would refuse it anyway.
+ */
+function isRungOffered(rung: number): boolean {
+	return rung <= currentRung.value;
+}
+
 function clampPercent(value: number): number {
 	if (!Number.isFinite(value)) return 0;
 	return Math.min(100, Math.max(0, Math.round(value)));
@@ -77,17 +96,26 @@ function clampPercent(value: number): number {
 		</header>
 
 		<!--
-			NOT A WARNING. Most cells in most deployments have never been ramp-managed,
-			and that is a normal state of a working install, not something to fix.
+			NOT A WARNING, AND NOT A NAG. Most cells in most deployments have never been
+			ramp-managed, and that is a normal state of a working install (plan D2) —
+			but nothing puts a cell on the ramp on its own, so the invitation to do it
+			belongs here, next to the sentence that says the cell is not on it.
 		-->
-		<p
-			v-if="!cell.isRampManaged"
-			class="text-sm text-text-secondary"
-			data-testid="ramp-controls-unmanaged"
-		>
-			This cell is not on the ramp yet, so there is nothing to control. It joins on its own once the
-			controller starts managing its share — no setup needed.
-		</p>
+		<div v-if="!cell.isRampManaged" class="space-y-2" data-testid="ramp-controls-unmanaged">
+			<p class="text-sm text-text-secondary">
+				This cell is not on the ramp yet, so there is nothing to control. Putting it on the ramp
+				hands its share to the controller, which then moves it only on the evidence.
+			</p>
+			<button
+				type="button"
+				:disabled="busy === true"
+				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
+				data-testid="ramp-control-enroll"
+				@click="emit('enroll')"
+			>
+				Put this cell on the ramp
+			</button>
+		</div>
 
 		<div class="flex flex-wrap gap-2">
 			<button
@@ -178,17 +206,28 @@ function clampPercent(value: number): number {
 				v-for="rung in PHASE_RUNGS"
 				:key="rung"
 				type="button"
-				:disabled="isDisabled"
+				:disabled="isDisabled || !isRungOffered(rung)"
 				class="rounded-md border border-border-subtle px-2 py-1 text-sm disabled:opacity-50"
 				:data-testid="`ramp-control-phase-${rung}`"
 				@click="emit('resetPhase', rung)"
 			>
 				{{ Math.round(rung * 100) }}%
 			</button>
+			<button
+				type="button"
+				:disabled="isDisabled"
+				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
+				data-testid="ramp-control-promote-phase"
+				@click="emit('promotePhase')"
+			>
+				Promote a phase…
+			</button>
 		</div>
 		<p class="text-xs text-text-secondary">
 			Resetting a phase restarts the clean streak: the cell re-earns its way up from the rung you
-			pick.
+			pick. Only rungs at or below the cell's current
+			{{ Math.round(currentRung * 100) }}% ceiling are a reset — going higher is a promotion, and it
+			checks the evidence for the next rung first.
 		</p>
 	</section>
 </template>
