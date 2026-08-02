@@ -88,7 +88,7 @@ const failingDomains = computed(() =>
 			<div
 				v-if="isLoading"
 				data-testid="postmaster-loading"
-				class="h-24 animate-pulse rounded-lg bg-surface-subtle"
+				class="h-24 animate-pulse rounded-lg bg-bg-surface"
 			/>
 
 			<!-- A read that faulted knows nothing — least of all that nobody connected. -->

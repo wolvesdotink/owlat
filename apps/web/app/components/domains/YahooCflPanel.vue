@@ -64,10 +64,10 @@ const STATE_LABELS = {
 } as const;
 
 const STATE_CLASSES = {
-	not_started: 'bg-surface-subtle text-text-secondary',
-	awaiting_yahoo: 'bg-surface-subtle text-text-secondary',
+	not_started: 'bg-bg-surface text-text-secondary',
+	awaiting_yahoo: 'bg-bg-surface text-text-secondary',
 	enrolled: 'bg-success/10 text-success',
-	lapsed: 'bg-surface-subtle text-text-secondary',
+	lapsed: 'bg-bg-surface text-text-secondary',
 } as const;
 
 const state = computed(() => guide.value?.state ?? null);
@@ -195,7 +195,7 @@ async function reset() {
 						:href="step.link"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+						class="mt-1 inline-flex items-center gap-1 text-xs text-brand hover:underline"
 						:data-testid="`yahoocfl-link-${step.id}`"
 					>
 						Open Yahoo's enrollment form
