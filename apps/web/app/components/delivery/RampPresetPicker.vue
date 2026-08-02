@@ -46,10 +46,43 @@ const defaultLabel = computed(
 	() => RAMP_PRESET_OPTIONS.find((option) => option.value === props.defaultPreset)?.label ?? ''
 );
 const isStandalone = computed(() => !props.hasReferenceArm);
+
+/** The DOM value for "no stored row" — `null` is not an attribute value. */
+const DEFAULT_VALUE = 'default';
+
+function radioValue(preset: RampPreset | null): string {
+	return preset ?? DEFAULT_VALUE;
+}
+
+const group = ref<HTMLFieldSetElement | null>(null);
+
+/**
+ * THE STORED PRESET IS THE ONLY TRUTH ON SCREEN.
+ *
+ * A click moves the radio in the DOM before anything is saved, and `:checked`
+ * cannot move it back: the bound value never changed, so Vue has nothing to
+ * patch. A `setStreamPreset` that is refused or fails therefore left the group
+ * showing a pace nobody is on — the one reading an operator will act on. So the
+ * inputs are put back in agreement with the prop on every click, and the
+ * selection moves only when a new `preset` arrives from the server.
+ */
+function syncFromProp(): void {
+	const root = group.value;
+	if (root === null) return;
+	const stored = radioValue(props.preset);
+	for (const input of root.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
+		input.checked = input.value === stored;
+	}
+}
+
+function choose(preset: RampPreset | null): void {
+	emit('change', preset);
+	syncFromProp();
+}
 </script>
 
 <template>
-	<fieldset class="space-y-2" :data-testid="`ramp-preset-${stream}`">
+	<fieldset ref="group" class="space-y-2" :data-testid="`ramp-preset-${stream}`">
 		<legend class="text-sm font-medium text-text-primary">{{ streamLabel(stream) }} mail</legend>
 		<p class="text-xs text-text-secondary">Default for this deployment: {{ defaultLabel }}.</p>
 		<div class="space-y-1">
@@ -57,10 +90,11 @@ const isStandalone = computed(() => !props.hasReferenceArm);
 				<input
 					type="radio"
 					:name="`preset-${stream}`"
+					:value="DEFAULT_VALUE"
 					:checked="preset === null"
 					:disabled="busy === true"
 					data-testid="ramp-preset-default"
-					@change="emit('change', null)"
+					@change="choose(null)"
 				/>
 				<span>
 					<span class="text-text-primary">Use the default</span>
@@ -77,10 +111,11 @@ const isStandalone = computed(() => !props.hasReferenceArm);
 				<input
 					type="radio"
 					:name="`preset-${stream}`"
+					:value="option.value"
 					:checked="preset === option.value"
 					:disabled="busy === true"
 					:data-testid="`ramp-preset-option-${option.value}`"
-					@change="emit('change', option.value)"
+					@change="choose(option.value)"
 				/>
 				<span>
 					<span class="text-text-primary">{{ option.label }}</span>

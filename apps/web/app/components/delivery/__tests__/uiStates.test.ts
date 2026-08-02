@@ -246,6 +246,57 @@ describe('standalone preset trade-off', () => {
 		wrapper.unmount();
 	});
 
+	/**
+	 * THE RADIO IS A CLAIM ABOUT WHAT IS SAVED, and the browser moves it before
+	 * anything is. A `setStreamPreset` that never landed used to leave the group
+	 * sitting on the unsaved option — the operator reads the pace they picked, the
+	 * controller runs the pace they had, and nothing on screen says so.
+	 */
+	it('puts the radio back on the stored pace when the write does not land', async () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: {
+				stream: 'campaign',
+				preset: null,
+				defaultPreset: 'balanced',
+				hasReferenceArm: true,
+			},
+		});
+		const aggressive = wrapper.find<HTMLInputElement>(
+			'[data-testid="ramp-preset-option-aggressive"]'
+		);
+		await aggressive.setValue();
+
+		expect(wrapper.emitted('change')).toEqual([['aggressive']]);
+		// The prop never changed — the mutation was refused, or it failed.
+		expect(aggressive.element.checked).toBe(false);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('moves once the stored pace has actually changed', async () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: {
+				stream: 'campaign',
+				preset: null,
+				defaultPreset: 'balanced',
+				hasReferenceArm: true,
+			},
+		});
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+		await wrapper.setProps({ preset: 'aggressive' });
+
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(true);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(false);
+		wrapper.unmount();
+	});
+
 	it('says nothing extra when a relay is connected', () => {
 		const wrapper = mount(RampPresetPicker, {
 			props: { stream: 'campaign', preset: null, defaultPreset: 'balanced', hasReferenceArm: true },
