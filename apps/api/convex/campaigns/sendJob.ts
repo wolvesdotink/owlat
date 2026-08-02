@@ -79,6 +79,7 @@ export const createSendJob = internalMutation({
 			enqueuedToday: undefined,
 			planDayIndex: undefined,
 			planTotalDays: undefined,
+			isPlanTruncated: undefined,
 			plannedTotal: undefined,
 			isPlannedTotalLowerBound: undefined,
 			isPlannedTotalCountAttempted: undefined,
@@ -193,6 +194,10 @@ const sendPlanStateValidator = v.object({
 	enqueuedToday: v.number(),
 	planDayIndex: v.number(),
 	planTotalDays: v.number(),
+	// Required alongside the length, not optional: both come from the same
+	// recomputed schedule, and a checkpoint carrying one without the other is a
+	// plan whose honesty depends on which hop last wrote it.
+	isPlanTruncated: v.boolean(),
 	plannedTotal: v.optional(v.number()),
 	isPlannedTotalLowerBound: v.optional(v.boolean()),
 	isPlannedTotalCountAttempted: v.optional(v.boolean()),
@@ -238,6 +243,7 @@ export const recordSendPlanDay = internalMutation({
 			enqueuedToday: plan.enqueuedToday,
 			planDayIndex: plan.planDayIndex,
 			planTotalDays: plan.planTotalDays,
+			isPlanTruncated: plan.isPlanTruncated,
 			// Only ever SET, never cleared: the denominator is counted once per walk
 			// and a later hop that skipped the count must not erase it. The
 			// lower-bound flag travels with it so the two can never describe

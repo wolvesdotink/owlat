@@ -68,7 +68,7 @@ const campaignSendJobs = defineTable({
 	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
 	// with no relay to overflow to sends a large campaign over several days: the
 	// walker enqueues only today's capacity slice and resumes in the next cap
-	// window. All four are OPTIONAL and absent on every pre-migration row — a walk
+	// window. Every field is OPTIONAL and absent on a pre-migration row — a walk
 	// with no plan state is an ordinary same-day send, which is what every shipped
 	// row is.
 	//
@@ -82,6 +82,11 @@ const campaignSendJobs = defineTable({
 	enqueuedToday: v.optional(v.number()),
 	planDayIndex: v.optional(v.number()),
 	planTotalDays: v.optional(v.number()),
+	// Whether that length COVERS the audience, recomputed with it on every hop.
+	// Stored rather than derived from `planTotalDays >= MAX_PLAN_DAYS`, because a
+	// plan that covers everyone exactly on the last enumerable day is COMPLETE
+	// and the length alone cannot tell it from one that ran out of days.
+	isPlanTruncated: v.optional(v.boolean()),
 	// The audience size the plan was built from, for the progress line's
 	// denominator ("5 000 of 20 000") — and whether that number is the audience
 	// size or only a FLOOR under it, because the bounded count stopped early.

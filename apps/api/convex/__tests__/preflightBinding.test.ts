@@ -709,6 +709,7 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 				enqueuedToday: undefined,
 				planDayIndex: undefined,
 				planTotalDays: undefined,
+				isPlanTruncated: undefined,
 				plannedTotal: undefined,
 				isPlannedTotalLowerBound: undefined,
 			},

@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { campaignSendPlanProgress } from '../sendPlanProgress';
 import { MAX_PLAN_DAYS } from '../capacityPlan';
-import type { SendPlanState } from '../multiDaySendPlan';
+import { planTodaysSlice, type SendPlanState } from '../multiDaySendPlan';
 
 /** The plan clump, so each case states only the fields it is about. */
 function plan(overrides: Partial<SendPlanState> = {}): SendPlanState {
@@ -23,6 +23,7 @@ function plan(overrides: Partial<SendPlanState> = {}): SendPlanState {
 		enqueuedToday: undefined,
 		planDayIndex: undefined,
 		planTotalDays: undefined,
+		isPlanTruncated: undefined,
 		plannedTotal: undefined,
 		isPlannedTotalLowerBound: undefined,
 		...overrides,
@@ -87,11 +88,58 @@ describe('campaignSendPlanProgress', () => {
 
 	it('says the quiet part when the plan is longer than we will enumerate', () => {
 		const progress = campaignSendPlanProgress({
-			plan: plan({ planDayIndex: 2, planTotalDays: MAX_PLAN_DAYS, plannedTotal: 900_000 }),
+			plan: plan({
+				planDayIndex: 2,
+				planTotalDays: MAX_PLAN_DAYS,
+				isPlanTruncated: true,
+				plannedTotal: 900_000,
+			}),
 			enqueuedCount: 30_000,
 		});
 		expect(progress.isTruncated).toBe(true);
 		expect(progress.isMultiDay).toBe(true);
+	});
+
+	/**
+	 * THE SAME LENGTH, THE OPPOSITE FACT — end to end from the planner that
+	 * produced the checkpoint. Truncation used to be re-derived here as
+	 * `planTotalDays >= MAX_PLAN_DAYS`, which told an operator whose send is
+	 * fully scheduled — the last recipient goes out on day MAX_PLAN_DAYS — that
+	 * it runs "more than 60 days". A schedule that covers its audience is
+	 * complete however long it is (plan D14).
+	 */
+	describe('a plan exactly MAX_PLAN_DAYS long', () => {
+		/** Checkpoint the walker would write for `remaining` at 100/day. */
+		function checkpointFor(remaining: number): SendPlanState {
+			const slice = planTodaysSlice({
+				state: plan(),
+				remaining: { kind: 'exact', count: remaining },
+				capacityByDay: [100],
+				now: Date.UTC(2026, 0, 1, 12),
+			});
+			return plan({
+				planDayKey: slice.dayKey,
+				planDayIndex: slice.dayIndex,
+				planTotalDays: slice.totalDays,
+				isPlanTruncated: slice.isTruncated,
+				plannedTotal: remaining,
+			});
+		}
+
+		it('is COMPLETE when the audience is covered on the last day', () => {
+			const covered = checkpointFor(100 * MAX_PLAN_DAYS);
+			expect(covered.planTotalDays).toBe(MAX_PLAN_DAYS);
+			const progress = campaignSendPlanProgress({ plan: covered, enqueuedCount: 0 });
+			expect(progress.totalDays).toBe(MAX_PLAN_DAYS);
+			expect(progress.isTruncated).toBe(false);
+		});
+
+		it('is TRUNCATED when one recipient is left over', () => {
+			const overflowing = checkpointFor(100 * MAX_PLAN_DAYS + 1);
+			expect(overflowing.planTotalDays).toBe(MAX_PLAN_DAYS);
+			const progress = campaignSendPlanProgress({ plan: overflowing, enqueuedCount: 0 });
+			expect(progress.isTruncated).toBe(true);
+		});
 	});
 
 	it('says the quiet part about the denominator too (plan D14)', () => {

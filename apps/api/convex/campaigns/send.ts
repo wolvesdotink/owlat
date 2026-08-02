@@ -660,24 +660,25 @@ export const resolveCampaignPage = internalAction({
 		// The denominator is counted ONCE per walk and then carried on the row —
 		// together with whether it is the audience size or only a floor under one,
 		// because a floor may lengthen the plan and may never shorten it.
-		const planState: SendPlanState =
-			planCapacity.plannedTotal === null
+		const planState: SendPlanState = {
+			planDayKey: job.planDayKey,
+			enqueuedToday: job.enqueuedToday,
+			planDayIndex: job.planDayIndex,
+			planTotalDays: job.planTotalDays,
+			isPlanTruncated: job.isPlanTruncated,
+			// A hop that did not count keeps the row's denominator; only a hop that
+			// counted may replace it, and the flag travels with the number so the
+			// two can never describe different counts.
+			...(planCapacity.plannedTotal === null
 				? {
-						planDayKey: job.planDayKey,
-						enqueuedToday: job.enqueuedToday,
-						planDayIndex: job.planDayIndex,
-						planTotalDays: job.planTotalDays,
 						plannedTotal: job.plannedTotal,
 						isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
 					}
 				: {
-						planDayKey: job.planDayKey,
-						enqueuedToday: job.enqueuedToday,
-						planDayIndex: job.planDayIndex,
-						planTotalDays: job.planTotalDays,
 						plannedTotal: planCapacity.plannedTotal,
 						isPlannedTotalLowerBound: planCapacity.isPlannedTotalLowerBound,
-					};
+					}),
+		};
 		const slice = planTodaysSlice({
 			state: planState,
 			remaining: remainingRecipients(planState, job.enqueuedCount),
@@ -689,6 +690,7 @@ export const resolveCampaignPage = internalAction({
 			planDayKey: slice.dayKey,
 			planDayIndex: slice.dayIndex,
 			planTotalDays: slice.totalDays,
+			isPlanTruncated: slice.isTruncated,
 			...(planState.plannedTotal === undefined
 				? {}
 				: {
