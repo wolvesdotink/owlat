@@ -71,7 +71,7 @@ describe('reset-to-phase is downward-only', () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
 
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.5,
 		});
@@ -97,14 +97,14 @@ describe('reset-to-phase is downward-only', () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, omitPhaseCeiling: true });
 
-		const raised = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const raised = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 1,
 		});
 		expect(raised.refusal).toBe('phase_increase_requires_promotion');
 		expect((await readManagedCell(t))?.phaseCeiling).toBeUndefined();
 
-		const onFirstRung = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const onFirstRung = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -122,7 +122,7 @@ describe('reset-to-phase is downward-only', () => {
 			if (cell !== undefined) await ctx.db.patch(cell._id, { phaseCeilingSince: staleAnchor });
 		});
 
-		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
 
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBe(0.25);
@@ -156,7 +156,7 @@ describe('a reset where the phase ladder does not bind', () => {
 			graduatedAt,
 		});
 
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -208,7 +208,7 @@ describe('a reset where the phase ladder does not bind', () => {
 			graduatedAt,
 		});
 
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.5,
 		});
@@ -234,7 +234,7 @@ describe('a reset where the phase ladder does not bind', () => {
 		// for this cell inside the evaluation window are what "has a relay" means.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -380,7 +380,7 @@ describe('a rung that is not on the ladder', () => {
 
 		// Raw, `0.25 > 0.1` read as an upward move and refused: a cell stranded
 		// below the ladder could never be put back on it by anyone.
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});

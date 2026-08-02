@@ -68,7 +68,7 @@ const { run: forceAdvance, isLoading: isForcing } = useBackendOperation(
 	{ label: 'Force-advance ramp cell' }
 );
 const { run: resetPhase, isLoading: isResetting } = useBackendOperation(
-	api.delivery.rampControls.resetCellPhase,
+	api.delivery.rampPhaseReset.resetCellPhase,
 	{ label: 'Reset ramp phase' }
 );
 const { run: enrollCell, isLoading: isEnrolling } = useBackendOperation(

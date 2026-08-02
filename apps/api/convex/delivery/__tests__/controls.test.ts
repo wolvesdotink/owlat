@@ -190,7 +190,7 @@ describe('reset to a phase', () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG });
 		await expect(
-			t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
+			t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
 		).rejects.toThrow();
 	});
 
@@ -201,7 +201,7 @@ describe('reset to a phase', () => {
 		// ladder bind it. Without one there is nowhere for the cut mail to go, and
 		// the reset holds the share instead — pinned in `rampPhaseMoves.test.ts`.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
-		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBe(0.25);
 		expect(row?.ownShare).toBe(0.25);
@@ -290,7 +290,7 @@ describe('hard stops bound the operator, not only the controller', () => {
 			phaseCeiling: 0.25,
 			isPaused: true,
 		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 1,
 		});
@@ -308,7 +308,7 @@ describe('hard stops bound the operator, not only the controller', () => {
 			omitPhaseCeiling: true,
 			isPaused: true,
 		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -319,7 +319,7 @@ describe('hard stops bound the operator, not only the controller', () => {
 	it('still lets a phase be reset DOWNWARD while the kill switch is engaged', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, phaseCeiling: 1, isPaused: true });
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -360,7 +360,7 @@ describe('a hand-moved cell does not keep its graduation pin', () => {
 		// The pin follows the SHARE, and only a cell the ladder binds has its share
 		// cut by a reset; a standalone cell keeps both.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
-		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
 		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
 	});
 

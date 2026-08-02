@@ -1,5 +1,5 @@
 /**
- * THE CONTROLS — pause, pin, force-advance, reset-to-phase, presets (P3-6).
+ * THE CONTROLS — pause, pin, force-advance, presets (P3-6).
  *
  * DELIVERABILITY FEATURES FAIL WHEN THEY FEEL LIKE MAGIC. A controller that
  * moves a share on its own is only trustworthy if a human can stop it, hold it,
@@ -27,16 +27,22 @@
  *     while sending is abuse-suspended, while a breaker or critical blocklist
  *     listing stands, or inside a live cooldown. Moving a cell DOWN is never
  *     blocked by any of them.
- *   - raise a PHASE CEILING from here at all. Reset-to-phase is downward-only;
- *     the upward move is `rampPhasePromotion.promoteCellPhase`, which runs the
- *     plan's evidence routes. A ceiling that could also rise on a control with no
- *     evidence behind it would leave the gate guarding one of two doors.
+ *   - move a PHASE CEILING from here at all. The rung has its own two doors and
+ *     they are separate modules: `rampPhaseReset.resetCellPhase` takes it down,
+ *     `rampPhasePromotion.promoteCellPhase` runs the plan's evidence routes to
+ *     take it up. A ceiling that could also rise on a control with no evidence
+ *     behind it would leave the gate guarding one of two doors.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
  * which is the opposite of what the operator asked for, and a behaviour change
  * D1 does not sanction. Opting in is its own deliberate act, and it has its own
  * mutation: `rampEnrollment.enrollCell`.
+ *
+ * THE REFUSAL UNION, THE RESULT SHAPE AND THE TARGET RESOLUTION ARE SHARED, and
+ * they live here because this is where the first control needed them. The two
+ * phase doors and enrolment import them rather than restate them — a second
+ * resolution is a second chance to read a cell without the session's tenant.
  */
 
 import { v } from 'convex/values';
@@ -59,9 +65,6 @@ import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOr
 import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
-import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
-import { bindsPhaseLadder } from './ramp/degradation';
-import { loadCellDegradation } from './rampIntegrationPresence';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -94,8 +97,9 @@ export type RampControlRefusal =
 	// ("clear the condition, then try again") and enumerating which hard stop
 	// fired would tell a caller more about the deployment than a refusal should.
 	| 'hard_stop_active'
-	// A ceiling only ever rises through the evidence gate, so `resetCellPhase`
-	// declines the upward move and names the mutation that owns it.
+	// A ceiling only ever rises through the evidence gate, so
+	// `rampPhaseReset.resetCellPhase` declines the upward move and names the
+	// mutation that owns it.
 	| 'phase_increase_requires_promotion'
 	// The evidence gate consulted its routes and none was satisfied. The
 	// outstanding conditions travel back BY NAME alongside this (plan D12/D14).
@@ -107,7 +111,7 @@ export interface RampControlResult {
 	readonly share?: number;
 }
 
-interface ResolvedCell {
+export interface ResolvedCell {
 	readonly organizationId: string;
 	readonly userId: string;
 	readonly cell: DeliverabilityCell;
@@ -124,7 +128,7 @@ interface ResolvedCell {
  * tenant's row — the index read below is org-leading and there is no argument
  * that could widen it.
  */
-async function resolveControlTarget(
+export async function resolveControlTarget(
 	ctx: MutationCtx,
 	args: {
 		stream: DeliverabilityCell['stream'];
@@ -150,7 +154,7 @@ async function resolveControlTarget(
 	};
 }
 
-function refused(refusal: RampControlRefusal): RampControlResult {
+export function refusedControl(refusal: RampControlRefusal): RampControlResult {
 	return { applied: false, refusal };
 }
 
@@ -168,7 +172,7 @@ export const setCellPause = adminMutation({
 	args: { ...cellArgs, isPaused: v.boolean() },
 	handler: async (ctx, args): Promise<RampControlResult> => {
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const wasPaused = target.row.operatorPausedAt !== undefined;
 		if (wasPaused === args.isPaused) return { applied: false, share: target.share };
@@ -210,7 +214,7 @@ export const pinCellShare = adminMutation({
 	args: { ...cellArgs, share: v.union(v.number(), v.null()) },
 	handler: async (ctx, args): Promise<RampControlResult> => {
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		if (args.share !== null && !Number.isFinite(args.share)) {
 			throwInvalidInput('A pinned share must be a number between 0 and 1.');
 		}
@@ -268,7 +272,7 @@ export const forceAdvanceCellShare = adminMutation({
 			throwInvalidInput('A forced share must be a number between 0 and 1.');
 		}
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const share = clampOwnShare(args.share);
 		// A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS. Raising the
@@ -282,7 +286,7 @@ export const forceAdvanceCellShare = adminMutation({
 				perStream: target.row,
 				now,
 			});
-			if (block !== null) return refused(block);
+			if (block !== null) return refusedControl(block);
 		}
 		await ctx.db.patch(target.row._id, {
 			ownShare: share,
@@ -314,136 +318,6 @@ export const forceAdvanceCellShare = adminMutation({
 			detail: {
 				forcedShare: share,
 				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
-					? { pinChange: 'revoked' }
-					: {}),
-			},
-			at: now,
-		});
-		return { applied: true, share };
-	},
-});
-
-// ============ RESET TO A PHASE ============
-
-/**
- * Put a cell back DOWN on a phase rung (0.25 / 0.5 / 0.8 / 1.0).
- *
- * THE RUNG IS VALIDATED AGAINST THE LADDER, not merely clamped: an arbitrary
- * ceiling would invent a rung the promotion path can never reach and leave the
- * cell somewhere the phase ladder has no name for. Resetting DOWN also brings
- * the share back under the new ceiling immediately — leaving a cell above a
- * ceiling it was just given would be a ceiling in name only — but only on a cell
- * the ladder BINDS, which is the fold's answer and not this mutation's (see
- * `bindsPhaseLadder`). A standalone cell keeps its share and takes the rung.
- *
- * A RESET RESTARTS THE EVIDENCE CLOCKS ON BOTH PATHS — the clean streak, the
- * rung's dwell anchor and the green (graduation) clock. All three measure the
- * stretch an operator has just declared they do not trust, and a standalone cell
- * that kept a thirteen-day green clock would run out its fourteenth day and PIN
- * two days after being taken off its rung. WHAT FOLLOWS THE SHARE — the boolean
- * view, the mix generation and the graduation pin already on the row — moves
- * only where the share moved: the pin is a claim about which sender carries the
- * cell's mail, so a cut below full share revokes it and a held share leaves the
- * claim true. Earned-ness is not what spares it; the share is.
- *
- * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
- * ceiling re-shuffles which arm every recipient of the cell lands in and opens
- * the share to the next rung, which is exactly the move plan D3's evidence gate
- * exists to guard. Letting this mutation do it too — on nothing but the hard-stop
- * check, with no promotion evidence and no typed confirmation — would make the
- * gate optional, and an optional gate is not a gate. The upward move lives in
- * `rampPhasePromotion.promoteCellPhase` and nowhere else.
- */
-export const resetCellPhase = adminMutation({
-	args: { ...cellArgs, phaseCeiling: v.number() },
-	handler: async (ctx, args): Promise<RampControlResult> => {
-		if (!(RAMP_PHASE_CEILINGS as readonly number[]).includes(args.phaseCeiling)) {
-			throwInvalidInput(
-				`A phase ceiling must be one of the ladder's rungs: ${RAMP_PHASE_CEILINGS.join(', ')}.`
-			);
-		}
-		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
-		const now = Date.now();
-		// THE SAME READING THE PROMOTION PATH TAKES, through the same helper — a row
-		// with no stored ceiling sits on the ladder's first rung, and a degenerate
-		// one snaps DOWN onto a real rung rather than standing above the ladder. So
-		// "is this upward?" is answered against the rung the cell is actually on,
-		// not against the argument (which would compare a value with itself and wave
-		// every raise through) and not against a raw stored number (which would read
-		// a corrupt 1.2 as a rung above the top and let a raise to 1.0 through as a
-		// "reset").
-		const currentCeiling = normalizePhaseCeiling(target.row.phaseCeiling);
-		if (args.phaseCeiling > currentCeiling) return refused('phase_increase_requires_promotion');
-		// THE SHARE IS CUT ONLY WHERE THE LADDER ACTUALLY BINDS IT (plan D3), and
-		// the fold answers that here exactly as it answers it on every tick. On a
-		// standalone cell there is no second sender: cutting an enrolled cell from
-		// 1.0 to the 25% rung would move three quarters of its mail toward a relay
-		// that does not exist, flip `isFallbackActive`, revoke a graduation pin and
-		// re-randomise a cohort with one arm in it — the move `phaseLadderBounds`
-		// was added to prevent, arrived at from the operator's door instead.
-		//
-		// THE RUNG STILL GOES DOWN, and so do the evidence clocks. The rung is
-		// stored state the promotion gate makes the cell re-earn, and restarting
-		// the measurement is the reason this control exists; both are meaningful on
-		// a cell whose share nothing is bounding today, and the rung binds again
-		// the tick a second sender is observed.
-		const bindsLadder = bindsPhaseLadder(
-			await loadCellDegradation(ctx, {
-				organizationId: target.organizationId,
-				cell: target.cell,
-				now,
-			})
-		);
-		const share = bindsLadder ? Math.min(target.share, args.phaseCeiling) : target.share;
-		await ctx.db.patch(target.row._id, {
-			phaseCeiling: args.phaseCeiling,
-			// THE DWELL CLOCK RESTARTS HERE. It measures time served AT A RUNG, and a
-			// reset is a deliberate restart at one: a cell dropped from 1.0 to 0.25
-			// that kept its old anchor would arrive on the low rung with that rung's
-			// dwell already served, and the standalone promotion route — the only route
-			// a yahoo/apple/other cell has — would hand the ceiling straight back.
-			phaseCeilingSince: now,
-			// THE OTHER TWO EVIDENCE CLOCKS RESTART TOO, on both paths and for the
-			// same reason: they measure the stretch this reset declares untrusted.
-			// The green one is the fourteen-day graduation hold, so a standalone cell
-			// whose share was held would otherwise finish it and PIN days after an
-			// operator put it back on a lower rung.
-			cleanStreak: 0,
-			greenSince: undefined,
-			// WHAT FOLLOWS THE SHARE MOVES ONLY WHERE THE SHARE MOVED: the boolean
-			// view, the mix generation and the graduation pin all describe a traffic
-			// split this reset did not touch on a standalone cell.
-			...(bindsLadder
-				? {
-						ownShare: share,
-						isFallbackActive: isFallbackActiveForShare(share),
-						mixVersion: (target.row.mixVersion ?? 0) + 1,
-						// See `forceAdvanceCellShare`: a cell put back on a lower rung has
-						// not graduated, and the pin must not outlive the share that
-						// earned it.
-						...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
-					}
-				: {}),
-			decidedAt: now,
-		});
-		await recordOperatorRampAction(ctx, {
-			organizationId: target.organizationId,
-			userId: target.userId,
-			cell: target.cell,
-			action: 'deliverability_ramp.phase_reset',
-			reason: 'operator_phase_reset',
-			fromShare: target.share,
-			toShare: share,
-			message: bindsLadder
-				? `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`
-				: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero. There is no second sender to hold a share back for, so the share stays at ${Math.round(share * 100)}% and the rung applies again if a relay ever carries this cell.`,
-			detail: {
-				phaseCeiling: args.phaseCeiling,
-				// The rung was recorded but nothing was cut — the one fact this row
-				// would otherwise be read as claiming.
-				...(bindsLadder ? {} : { shareHeld: true }),
-				...(bindsLadder && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
 					? { pinChange: 'revoked' }
 					: {}),
 			},
