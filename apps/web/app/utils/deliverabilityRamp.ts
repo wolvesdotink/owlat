@@ -247,6 +247,62 @@ export function shareLabel(share: number): string {
 	return formatPercentage(share, 0);
 }
 
+// ============ DISCONNECTING THE RELAY ============
+
+/** The consequence of pulling the relay, in words. Facts in, sentences out. */
+export interface RelayRemovalConsequence {
+	/** What disconnecting does right now, in this deployment's own numbers. */
+	readonly consequence: string;
+	/** The date waiting would make it free, or null when nothing projects one. */
+	readonly safeDate: string | null;
+}
+
+export interface RelayRemovalFacts {
+	/**
+	 * The cells still leaning on the relay. `null` — or an empty list under a
+	 * refusal — means the removal read did not answer, which is NOT zero cells.
+	 */
+	readonly dependentCells: readonly string[] | null;
+	/** The second arm's transport id, or null when it could not be read. */
+	readonly referenceTransportId: string | null;
+	readonly projectedSafeAt: number | null;
+}
+
+/**
+ * THE RELAY-REMOVAL CONSEQUENCE — ONE SENTENCE, THREE SURFACES.
+ *
+ * The Independence screen, the transport editor and `POST
+ * /api/delivery/apply-transport` all have to name the same consequence for the
+ * same click: the screen that ASKS, the dialog that confirms, and the endpoint
+ * that REFUSES. Three hand-written copies is three chances for them to quote
+ * different stakes, and the operator meets at least two of them in one attempt.
+ * The FACTS are the server's (`relayRemoval` off `getIndependenceSummary`); only
+ * the words are here.
+ *
+ * A COUNT WE DO NOT HAVE IS NOT ZERO. An absent or empty cell list means the
+ * removal read did not answer — the browser's faulted, or the server's did and
+ * it refused fail-closed — so the copy says the situation could not be
+ * established rather than printing "0 cells have not graduated yet" under a
+ * refusal that exists precisely because nothing is known.
+ */
+export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
+	const relay = facts.referenceTransportId ?? 'the relay';
+	const count = facts.dependentCells?.length ?? 0;
+	const standing =
+		count === 0
+			? `Which cells are still leaning on ${relay} could not be established, so this cannot be treated as safe. Disconnecting it moves whatever they still send`
+			: count === 1
+				? `1 cell has not graduated yet and still sends part of its mail through ${relay}. Disconnecting it moves all of that traffic`
+				: `${formatNumber(count)} cells have not graduated yet and still send part of their mail through ${relay}. Disconnecting it moves all of that traffic`;
+	return {
+		consequence: `${standing} onto your own server immediately — not gradually — and the reputation ${relay} has built for your domain stops being available to fall back on.`,
+		safeDate:
+			facts.projectedSafeAt === null
+				? null
+				: `On the current pace, waiting until about ${formatShortDate(facts.projectedSafeAt)} would avoid that entirely.`,
+	};
+}
+
 // ============ REFUSALS ============
 
 /**

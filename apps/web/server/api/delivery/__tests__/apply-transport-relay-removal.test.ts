@@ -45,6 +45,7 @@ interface ApplyResult {
 	message: string;
 	applied: boolean;
 	requiresRestart: boolean;
+	needsRelayRemovalConfirmation?: true;
 }
 
 let body: unknown;
@@ -121,11 +122,35 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 		expect(res.ok).toBe(false);
 		expect(res.applied).toBe(false);
 		expect(res.message).toContain(RELAY_REMOVAL_CONFIRMATION);
-		// The refusal names the consequence, not just the rule.
-		expect(res.message).toContain('2 cells still send');
+		// The refusal names the consequence, not just the rule — in the SAME words
+		// the dialog that collects the phrase uses (`relayRemovalConsequenceCopy`).
+		expect(res.message).toContain('2 cells have not graduated yet');
 		expect(res.message).toContain('ses');
+		// The flag is what makes the refusal actionable: a client whose own removal
+		// read faulted learns from THIS response that a phrase is wanted, and can
+		// open its dialog instead of printing the demand with nowhere to meet it.
+		expect(res.needsRelayRemovalConfirmation).toBe(true);
 		expect(pushMock).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
+	});
+
+	it('quotes the projected safe date the operator could wait for instead', async () => {
+		const safeAt = Date.UTC(2026, 7, 14);
+		answerSummaryWith(
+			summary({
+				relayRemoval: {
+					kind: 'unsafe',
+					dependentCells: ['campaign:gmail'],
+					projectedSafeAt: safeAt,
+				},
+			})
+		);
+
+		const res = await callRoute();
+
+		expect(res.ok).toBe(false);
+		expect(res.message).toContain('1 cell has not graduated yet');
+		expect(res.message).toContain('waiting until about');
 	});
 
 	it('applies the same change once the phrase is typed', async () => {
@@ -173,7 +198,12 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 	});
 
 	it('lets the change through on a deployment that never had a relay', async () => {
-		answerSummaryWith(summary({ referenceTransportId: null }));
+		// THE SUMMARY THE QUERY ACTUALLY RETURNS. `getIndependenceSummary` answers
+		// `{kind:'safe'}` for every deployment with no reference arm, so a standalone
+		// one is not a second shape to recognise here — pinning it as
+		// `referenceTransportId: null` beside an UNSAFE removal would pin a state the
+		// backend cannot produce, and with it a clause that decides nothing.
+		answerSummaryWith(summary({ referenceTransportId: null, relayRemoval: { kind: 'safe' } }));
 
 		expect((await callRoute()).ok).toBe(true);
 		expect(pushMock).toHaveBeenCalledTimes(1);
@@ -188,6 +218,12 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 		// are still leaning on the relay, so it may not answer "safe" for them.
 		expect(res.ok).toBe(false);
 		expect(res.message).toContain(RELAY_REMOVAL_CONFIRMATION);
+		// A count nobody could read is not zero, and the refusal may not say it is.
+		expect(res.message).toContain('could not be established');
+		expect(res.message).not.toContain('0 cell');
+		// And it is still the refusal the phrase clears, so the editor opens its
+		// dialog rather than dead-ending on a demand it cannot meet.
+		expect(res.needsRelayRemovalConfirmation).toBe(true);
 		expect(pushMock).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
 	});

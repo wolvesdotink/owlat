@@ -15,7 +15,7 @@
  * `server/api/delivery/__tests__/apply-transport-relay-removal.test.ts` — which
  * is what makes the rule a rule rather than a habit of this component.)
  */
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref, type Ref } from 'vue';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
@@ -26,10 +26,12 @@ import type { IndependenceSummary } from '~/utils/deliverabilityRamp';
 import { wizardStubs } from './wizardHarness';
 
 const summary: Ref<IndependenceSummary | undefined> = ref(independenceSummary());
+const summaryError: Ref<Error | null> = ref(null);
 const fetchMock = vi.fn();
 
 beforeEach(() => {
 	summary.value = independenceSummary();
+	summaryError.value = null;
 	fetchMock.mockReset().mockResolvedValue({
 		ok: true,
 		applied: true,
@@ -41,7 +43,7 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationQuery', () => ({
 		data: summary,
 		isLoading: ref(false),
-		error: ref(null),
+		error: summaryError,
 		refetch: vi.fn(),
 	}));
 });
@@ -155,7 +157,7 @@ describe('the transport editor’s relay-removal confirmation', () => {
 		wrapper.unmount();
 	});
 
-	it('sends nothing on a standalone deployment either — there is no relay to pull', async () => {
+	it('asks for nothing on a standalone deployment — there is no relay to pull', async () => {
 		summary.value = independenceSummary({
 			referenceTransportId: null,
 			relayRemoval: { kind: 'safe' },
@@ -167,6 +169,95 @@ describe('the transport editor’s relay-removal confirmation', () => {
 
 		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(false);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+		wrapper.unmount();
+	});
+});
+
+/**
+ * THE PATH WHERE THIS SCREEN KNOWS NOTHING.
+ *
+ * The dialog is opened by THIS component's own removal read, and that read can
+ * fault — or simply not have resolved when Apply is pressed. Either way the
+ * endpoint refuses fail-closed and asks for the phrase, and a refusal rendered
+ * under "Couldn't apply" left an operator reading "type REMOVE THE RELAY" on a
+ * screen with no phrase input anywhere on it. The refusal is a request, so it
+ * opens the dialog.
+ */
+describe('the transport editor when its own removal read did not answer', () => {
+	/** The endpoint's fail-closed refusal, flagged as one the phrase clears. */
+	function refusedPendingConfirmation() {
+		return {
+			ok: false,
+			applied: false,
+			requiresRestart: false,
+			needsRelayRemovalConfirmation: true,
+			message: `Which cells are still leaning on the relay could not be established. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`,
+		};
+	}
+
+	it('opens the dialog on the refusal instead of printing the rule', async () => {
+		summary.value = undefined;
+		summaryError.value = new Error('independence read unavailable');
+		fetchMock.mockResolvedValueOnce(refusedPendingConfirmation());
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		await flushPromises();
+
+		// The request WAS made — this screen had no basis to hold it back.
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(true);
+		expect(wrapper.text()).not.toContain('Couldn’t apply');
+		expect(wrapper.text()).not.toContain("Couldn't apply");
+		// And with nothing read, the consequence may not claim zero cells.
+		const consequence = wrapper.find('[data-testid="transport-removal-consequence"]').text();
+		expect(consequence).toContain('could not be established');
+		expect(consequence).not.toContain('0 cell');
+
+		await wrapper.find('[data-testid="ramp-confirm-input"]').setValue(RELAY_REMOVAL_CONFIRMATION);
+		await wrapper.find('[data-testid="ramp-confirm-submit"]').trigger('click');
+		await flushPromises();
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const [, options] = fetchMock.mock.calls[1] as [string, { body: Record<string, unknown> }];
+		expect(options.body['relayRemovalConfirmation']).toBe(RELAY_REMOVAL_CONFIRMATION);
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('opens it on the plain race too — Apply pressed before the read resolves', async () => {
+		summary.value = undefined;
+		fetchMock.mockResolvedValueOnce(refusedPendingConfirmation());
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('still reports a refusal that no phrase can clear as an error', async () => {
+		fetchMock.mockResolvedValueOnce({
+			ok: false,
+			applied: false,
+			requiresRestart: false,
+			message: 'Could not update the delivery provider on the backend: connection refused.',
+		});
+		summary.value = independenceSummary({ relayRemoval: { kind: 'safe' } });
+
+		const wrapper = mountEditor();
+		await beginEditing(wrapper);
+		await chooseOwnMta(wrapper);
+		await applyButton(wrapper).trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(false);
+		expect(wrapper.text()).toContain('connection refused');
 		wrapper.unmount();
 	});
 });

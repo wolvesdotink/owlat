@@ -9,7 +9,6 @@ import {
 	type EmailStepDraft,
 	type ProviderChoice,
 } from '~/composables/useSetupWizard';
-import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
 	RELAY_PROVIDER_OPTIONS,
@@ -17,7 +16,7 @@ import {
 	useRelayCredentialDraft,
 	type RelayProviderOption,
 } from '~/composables/useRelayCredentialDraft';
-import { formatShortDate } from '~/utils/formatters';
+import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -35,6 +34,13 @@ import { formatShortDate } from '~/utils/formatters';
  * button opens the same consequence dialog the Independence screen opens, with
  * the same phrase, and the endpoint re-checks the phrase server-side: the dialog
  * is what an operator sees, not what makes the change safe.
+ *
+ * THE SERVER'S REFUSAL OPENS THE SAME DIALOG. This screen's removal read can be
+ * unresolved (Apply pressed early) or faulted, and both leave it unable to tell
+ * that a removal is unsafe — so the endpoint refuses fail-closed, and that
+ * refusal is a request for the phrase rather than an error. It is routed to the
+ * dialog on the `needsRelayRemovalConfirmation` flag, never printed: a rule an
+ * operator is given no way to meet is a dead end, not a safeguard.
  */
 
 const props = defineProps<{
@@ -159,43 +165,12 @@ async function handleTest() {
 
 // ── Disconnecting the relay ──────────────────────────────────────────────────
 /**
- * The same removal-safety read the Independence screen renders, so the two
- * screens cannot disagree about which cells are still leaning on the relay. The
- * consequence sentence is this screen's; the FACTS in it are the server's.
+ * The removal-safety read + the consequence sentence, in the shared guard: the
+ * Independence screen asks the same question of the same query, so the screen
+ * that WARNS and the screen that CHANGES cannot disagree about which cells are
+ * still leaning on the relay.
  */
-const { data: independence } = useOrganizationQuery(
-	api.delivery.rampIndependence.getIndependenceSummary
-);
-
-const relayRemoval = computed(() => independence.value?.relayRemoval ?? null);
-
-/** Cells that would be moved onto the own server at once by applying this draft. */
-const dependentCells = computed<readonly string[]>(() => {
-	const removal = relayRemoval.value;
-	return removal === null || removal.kind === 'safe' ? [] : removal.dependentCells;
-});
-
-const projectedSafeAt = computed<number | null>(() => {
-	const removal = relayRemoval.value;
-	return removal === null || removal.kind === 'safe' ? null : removal.projectedSafeAt;
-});
-
-const referenceTransportId = computed<string | null>(
-	() => independence.value?.referenceTransportId ?? null
-);
-
-/**
- * Would APPLYING THIS DRAFT pull a relay cells are still leaning on? Selecting
- * the built-in MTA is the only draft that disconnects anything — the same rule
- * the endpoint applies to the resulting env, so the dialog appears exactly when
- * the server would demand the phrase.
- */
-const removesReferenceArm = computed(
-	() =>
-		provider.value === 'mta' &&
-		referenceTransportId.value !== null &&
-		relayRemoval.value?.kind === 'unsafe'
-);
+const { removesReferenceArm, removalConsequence } = useRelayRemovalGuard(provider);
 
 const isRemovalDialogOpen = ref(false);
 
@@ -229,6 +204,16 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 		// The wizard's env patch, literally: one helper, one endpoint.
 		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
 		if (!res.ok) {
+			// A FAIL-CLOSED REFUSAL IS NOT AN ERROR MESSAGE. The endpoint demands the
+			// phrase whenever it cannot establish that the removal is safe — which
+			// includes every apply made before this screen's own removal read
+			// resolved, and every apply made after it faulted. Rendering that under
+			// "Couldn't apply" left the operator reading "type REMOVE THE RELAY" on a
+			// screen with nowhere to type it, so the refusal opens the dialog instead.
+			if (res.needsRelayRemovalConfirmation === true) {
+				isRemovalDialogOpen.value = true;
+				return;
+			}
 			applyError.value = res.message;
 			return;
 		}
@@ -464,15 +449,9 @@ function cancel() {
 				@confirm="confirmRelayRemoval"
 			>
 				<template #consequence>
-					<p data-testid="transport-removal-consequence">
-						{{ dependentCells.length }} cells have not graduated yet. Switching to your own MTA moves
-						every message they currently send through {{ referenceTransportId }} onto your own
-						server immediately — not gradually — and the reputation that transport has built for
-						your domain stops being available to fall back on.
-					</p>
-					<p v-if="projectedSafeAt !== null" data-testid="transport-removal-dialog-date">
-						On the current pace, waiting until about {{ formatShortDate(projectedSafeAt) }} would
-						avoid that entirely.
+					<p data-testid="transport-removal-consequence">{{ removalConsequence.consequence }}</p>
+					<p v-if="removalConsequence.safeDate !== null" data-testid="transport-removal-dialog-date">
+						{{ removalConsequence.safeDate }}
 					</p>
 				</template>
 			</DeliveryRampConfirmDialog>

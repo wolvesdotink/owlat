@@ -28,6 +28,7 @@ import {
 	independenceHeadline,
 	independenceSubhead,
 	projectionCopy,
+	relayRemovalConsequenceCopy,
 	spendAvoidedCopy,
 	volumeSentence,
 	shareLabel,
@@ -78,6 +79,20 @@ const projectedSafeAt = computed(() => {
 	const removal = summary.value?.relayRemoval;
 	return removal === undefined || removal.kind === 'safe' ? null : removal.projectedSafeAt;
 });
+
+/**
+ * The consequence sentence is the SHARED one — the transport editor's dialog and
+ * the endpoint's refusal build theirs from the same helper, so an operator who
+ * reads it here and then meets it again on the screen that actually disconnects
+ * cannot be told two different stakes for one click.
+ */
+const removalConsequence = computed(() =>
+	relayRemovalConsequenceCopy({
+		dependentCells: dependentCells.value,
+		referenceTransportId: referenceTransportId.value,
+		projectedSafeAt: projectedSafeAt.value,
+	})
+);
 
 function confirmRelayRemoval(): void {
 	isRemovalDialogOpen.value = false;
@@ -165,9 +180,7 @@ function confirmRelayRemoval(): void {
 					</p>
 					<template v-else>
 						<p class="mt-2 text-sm text-text-secondary" data-testid="relay-removal-dependent">
-							{{ dependentCells.length }} cells still send part of their mail through
-							{{ referenceTransportId }}. Disconnecting it now moves all of that traffic to your own
-							server at once.
+							{{ removalConsequence.consequence }}
 						</p>
 						<p class="mt-1 text-sm text-text-secondary" data-testid="relay-removal-safe-date">
 							{{
@@ -198,15 +211,9 @@ function confirmRelayRemoval(): void {
 			@confirm="confirmRelayRemoval"
 		>
 			<template #consequence>
-				<p data-testid="relay-removal-consequence">
-					{{ dependentCells.length }} cells have not graduated yet. Disconnecting
-					{{ referenceTransportId }} moves every message they currently send through it onto your
-					own server immediately — not gradually — and the reputation that transport has built for
-					your domain stops being available to fall back on.
-				</p>
-				<p v-if="projectedSafeAt !== null" data-testid="relay-removal-dialog-date">
-					On the current pace, waiting until about {{ formatShortDate(projectedSafeAt) }} would
-					avoid that entirely.
+				<p data-testid="relay-removal-consequence">{{ removalConsequence.consequence }}</p>
+				<p v-if="removalConsequence.safeDate !== null" data-testid="relay-removal-dialog-date">
+					{{ removalConsequence.safeDate }}
 				</p>
 			</template>
 		</DeliveryRampConfirmDialog>

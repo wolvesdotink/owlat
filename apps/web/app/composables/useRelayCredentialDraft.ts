@@ -66,6 +66,13 @@ export interface ApplyTransportResponse {
 	message: string;
 	applied: boolean;
 	requiresRestart: boolean;
+	/**
+	 * The refusal the typed phrase clears, flagged rather than left to be read out
+	 * of the message: the endpoint refuses fail-closed whenever it cannot
+	 * establish that pulling the relay is safe, and a caller that renders that as
+	 * an error string demands a phrase on a screen with nowhere to type it.
+	 */
+	needsRelayRemovalConfirmation?: true;
 }
 
 /** The pre-apply live handshake's contract. */

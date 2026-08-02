@@ -94,7 +94,11 @@ function mountPage() {
 describe('the independence screen’s relay-removal route', () => {
 	it('surfaces the projected safe date before anything is confirmed', () => {
 		const wrapper = mountPage();
-		expect(wrapper.find('[data-testid="relay-removal-dependent"]').text()).toContain('1 cells');
+		// One cell reads as one cell. The card, the dialog and the endpoint's own
+		// refusal count with the same helper, so none of them can say "1 cells".
+		expect(wrapper.find('[data-testid="relay-removal-dependent"]').text()).toContain(
+			'1 cell has not graduated yet'
+		);
 		expect(wrapper.find('[data-testid="relay-removal-safe-date"]').text()).toContain(
 			'safe to disconnect around'
 		);

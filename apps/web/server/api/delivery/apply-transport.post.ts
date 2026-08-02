@@ -62,6 +62,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { ConvexHttpClient } from 'convex/browser';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
+import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 
 interface ApplyBody {
 	/** The provider-key patch from the wizard's `buildProviderEnv` — SET keys only. */
@@ -76,12 +77,29 @@ interface ApplyResult {
 	/** True when the change took effect live; false ⇒ a restart is required. */
 	applied: boolean;
 	requiresRestart: boolean;
+	/**
+	 * Set on the ONE refusal the typed phrase clears. A client cannot read that
+	 * out of the message, and it needs to: the browser's own removal read may be
+	 * unresolved or faulted when Apply is pressed, so the refusal is routinely the
+	 * FIRST thing that knows a confirmation is wanted — and a caller that renders
+	 * it as an error string leaves the operator holding a rule with nowhere to
+	 * meet it.
+	 */
+	needsRelayRemovalConfirmation?: true;
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
 
 function refuse(message: string): ApplyResult {
 	return { ok: false, applied: false, requiresRestart: false, message };
+}
+
+/** A refusal the phrase clears — flagged, so the caller can ASK for it. */
+function askForRelayRemovalPhrase(consequence: string): ApplyResult {
+	return {
+		...refuse(`${consequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`),
+		needsRelayRemovalConfirmation: true,
+	};
 }
 
 type IndependenceSummary = FunctionReturnType<
@@ -112,7 +130,13 @@ async function readIndependenceSummary(
  * about which cells are still leaning on the relay, so it may not answer "safe"
  * on the deployment's behalf; the operator can still proceed by typing the
  * phrase, which is the same consequence confirmation they would have typed
- * anyway.
+ * anyway. Both refusals carry `needsRelayRemovalConfirmation`, because a client
+ * whose own removal read faulted reaches this fail-closed branch on an ordinary
+ * apply and has to be able to ASK for the phrase rather than print the demand.
+ *
+ * The consequence itself is the SHARED sentence (`relayRemovalConsequenceCopy`),
+ * so the refusal and the dialog that collects the phrase cannot quote different
+ * stakes for one click.
  */
 async function unconfirmedRelayRemoval(
 	client: ConvexHttpClient,
@@ -127,15 +151,27 @@ async function unconfirmedRelayRemoval(
 	}
 	const summary = await readIndependenceSummary(client);
 	if (summary === null) {
-		return refuse(
-			`Could not check which cells are still sending through the relay, so this change is not being applied blind. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`
+		// No cell list and no transport id — the copy says the situation could not
+		// be established rather than inventing a count of zero.
+		return askForRelayRemovalPhrase(
+			relayRemovalConsequenceCopy({
+				dependentCells: null,
+				referenceTransportId: null,
+				projectedSafeAt: null,
+			}).consequence
 		);
 	}
-	if (summary.referenceTransportId === null || summary.relayRemoval.kind === 'safe') return null;
-	const dependent = summary.relayRemoval.dependentCells.length;
-	return refuse(
-		`${dependent} ${dependent === 1 ? 'cell still sends' : 'cells still send'} part of their mail through ${summary.referenceTransportId}. Switching to your own MTA moves all of that traffic at once — not gradually — and the reputation that transport built for your domain stops being available to fall back on. Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`
-	);
+	// `getIndependenceSummary` answers `{kind:'safe'}` for every deployment with no
+	// reference arm (`rampIndependence.ts`), so "is there a relay at all" is not a
+	// second question to ask here — asking it anyway would put a second definition
+	// of "no relay" one layer away from its home.
+	if (summary.relayRemoval.kind === 'safe') return null;
+	const { consequence, safeDate } = relayRemovalConsequenceCopy({
+		dependentCells: summary.relayRemoval.dependentCells,
+		referenceTransportId: summary.referenceTransportId,
+		projectedSafeAt: summary.relayRemoval.projectedSafeAt,
+	});
+	return askForRelayRemovalPhrase(safeDate === null ? consequence : `${consequence} ${safeDate}`);
 }
 
 export default defineEventHandler(async (event): Promise<ApplyResult> => {
