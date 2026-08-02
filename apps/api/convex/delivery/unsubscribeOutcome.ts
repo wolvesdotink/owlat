@@ -19,11 +19,14 @@
  *
  * THREE CONSTRAINTS, each of which is why a line below exists:
  *
- *   - ATTRIBUTION IS THE MOST RECENT MARKETING SEND, the same rule the shipped
- *     `campaigns.statsUnsubscribed` attribution already applies. Transactional
- *     and agent 1:1 mail carries no RFC 8058 pair, and a `test` preview is not
+ *   - ATTRIBUTION IS THE MOST RECENT MARKETING SEND A TRANSPORT ACTUALLY GOT,
+ *     through the same join the shipped `campaigns.statsUnsubscribed`
+ *     attribution now uses (`marketingSendAttribution.ts`). Transactional and
+ *     agent 1:1 mail carries no RFC 8058 pair, and a `test` preview is not
  *     telemetry (`withoutTestSendEffects`), so neither may absorb an
- *     unsubscribe and put it into an arm denominator.
+ *     unsubscribe and put it into an arm denominator; an undispatched `queued`
+ *     row may not either, or a blast's pre-created audience would swallow the
+ *     signals answering the campaign before it.
  *   - ONE UNSUBSCRIBE PER SEND. `unsubscribedAt` on the send row is the
  *     uniqueness gate, exactly as `openedAt` is inside `reduceOpened`: a mail
  *     client that POSTs the one-click target twice, or a contact who
@@ -45,6 +48,10 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { resolveNow } from '../lib/clock';
 import { applyEffects, transportOutcomeEffect } from './sendLifecycle/effects';
+import {
+	latestAttributableAutomationSend,
+	latestAttributableCampaignSend,
+} from './marketingSendAttribution';
 import type { SendRef } from './sendLifecycle/types';
 
 /** Why an unsubscribe did not reach a counter — returned, never thrown. */
@@ -62,69 +69,35 @@ interface AttributableSend {
 }
 
 /**
- * How far back through a contact's NON-CAMPAIGN sends the automation candidate
- * is looked for.
- *
- * `transactionalSends` mixes marketing drips with password resets, receipts and
- * agent replies, and a filtered `.first()` would read every one of them for a
- * contact who has received transactional mail and never a drip — an unbounded
- * per-contact read on a table nothing prunes. An unsubscribe answers a RECENT
- * message; a drip buried under this many later transactional messages is not the
- * one being answered, and the campaign candidate below still applies.
- */
-export const AUTOMATION_LOOKBACK_SENDS = 25;
-
-/**
  * The most recent MARKETING send this contact received, across both send tables.
  *
- * Two contact-leading index reads, both bounded — one row from `emailSends`,
- * `AUTOMATION_LOOKBACK_SENDS` from `transactionalSends`. `_creationTime` orders
- * the two candidates against each other because it is the only stamp both tables
- * always carry (`transactionalSends.queuedAt` is optional) and because within one
+ * Each table's candidate comes from the shared attribution join
+ * (`marketingSendAttribution.ts`), which is also what the campaign-stats writer
+ * asks; this function only has to order the two against each other.
+ * `_creationTime` does that because it is the only stamp both tables always
+ * carry (`transactionalSends.queuedAt` is optional) and because within one
  * contact it is exactly the order the index already returns rows in.
- *
- * `kind: 'automation'` is the marketing boundary on the second table: a drip
- * carries the one-click pair (`buildTransactionalListUnsubscribe`), while a
- * transactional API send, an agent reply and a member-only `test` preview do not
- * — attributing an unsubscribe to one of those would move a cell's counter for a
- * message that could not have produced it.
  */
 async function latestMarketingSend(
 	ctx: MutationCtx,
 	contactId: Id<'contacts'>
 ): Promise<AttributableSend | null> {
-	const campaignSend = await ctx.db
-		.query('emailSends')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.order('desc')
-		.first();
-	const recentNonCampaign = await ctx.db
-		.query('transactionalSends')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.order('desc')
-		.take(AUTOMATION_LOOKBACK_SENDS);
-	const automationSend = recentNonCampaign.find((send) => send.kind === 'automation');
+	const campaignSend = await latestAttributableCampaignSend(ctx.db, contactId);
+	const automationSend = await latestAttributableAutomationSend(ctx.db, contactId);
 
-	const candidates: AttributableSend[] = [];
-	if (campaignSend) {
-		candidates.push({
-			ref: { kind: 'campaign', id: campaignSend._id },
-			createdAt: campaignSend._creationTime,
-			unsubscribedAt: campaignSend.unsubscribedAt,
-		});
-	}
-	if (automationSend) {
-		candidates.push({
-			ref: { kind: 'transactional', id: automationSend._id },
-			createdAt: automationSend._creationTime,
-			unsubscribedAt: automationSend.unsubscribedAt,
-		});
-	}
-	return candidates.reduce<AttributableSend | null>(
-		(newest, candidate) =>
-			newest === null || candidate.createdAt > newest.createdAt ? candidate : newest,
-		null
-	);
+	const campaign: AttributableSend | null = campaignSend && {
+		ref: { kind: 'campaign', id: campaignSend._id },
+		createdAt: campaignSend._creationTime,
+		unsubscribedAt: campaignSend.unsubscribedAt,
+	};
+	const automation: AttributableSend | null = automationSend && {
+		ref: { kind: 'transactional', id: automationSend._id },
+		createdAt: automationSend._creationTime,
+		unsubscribedAt: automationSend.unsubscribedAt,
+	};
+	if (campaign === null) return automation;
+	if (automation === null) return campaign;
+	return automation.createdAt > campaign.createdAt ? automation : campaign;
 }
 
 /**

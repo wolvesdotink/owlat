@@ -29,6 +29,7 @@ import { nanoid } from 'nanoid';
 import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
 import { scheduleFanout } from '../webhooks/scheduleFanout';
 import { recordContactActivity } from '../contactActivities/writer';
+import { latestAttributableCampaignSend } from '../delivery/marketingSendAttribution';
 
 // ─── Source discriminators ──────────────────────────────────────────────────
 
@@ -381,15 +382,15 @@ async function clearFormSubmissionConfirmations(
  * row during a post-blast unsubscribe burst, and so `statsUnsubscribed` — an
  * AGGREGATED field — is written by an internal mutation rather than the
  * user-facing unsubscribe mutation (restoring the schema contract).
+ *
+ * WHICH send is the shared join's answer, not this module's: the transport
+ * outcome scheduled beside this counter must not be able to name a different
+ * campaign for the same departure.
  */
 export const recordCampaignUnsubscribe = internalMutation({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
-		const recentEmailSend = await ctx.db
-			.query('emailSends')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.order('desc')
-			.first();
+		const recentEmailSend = await latestAttributableCampaignSend(ctx.db, args.contactId);
 		if (!recentEmailSend) return;
 		const campaign = await ctx.db.get(recentEmailSend.campaignId);
 		if (!campaign) return;

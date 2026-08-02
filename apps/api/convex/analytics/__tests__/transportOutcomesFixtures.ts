@@ -79,7 +79,12 @@ export async function seedAssignedSend(
 	const existing = options.contactId ? await ctx.db.get(options.contactId) : null;
 	const contact = existing ?? createTestContact();
 	const contactId = existing?._id ?? (await ctx.db.insert('contacts', contact));
-	const email = contact.email ?? 'seeded@example.com';
+	// `contactEmail` is the send's SNAPSHOT of the contact it is joined to, so it
+	// may not be invented here: a reused contact carrying no email is a broken
+	// seed, not a send to some made-up address a later assertion could be written
+	// against. The factory always sets one.
+	const email = contact.email;
+	if (email === undefined) throw new Error('seedAssignedSend: reused contact has no email');
 	const sendId = await ctx.db.insert(
 		'emailSends',
 		createTestEmailSend({

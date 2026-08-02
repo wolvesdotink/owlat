@@ -39,7 +39,7 @@ import {
 	sumCounters,
 	uniqueBucketKeys,
 } from '../../analytics/__tests__/transportOutcomesFixtures';
-import { AUTOMATION_LOOKBACK_SENDS } from '../unsubscribeOutcome';
+import { ATTRIBUTION_LOOKBACK_SENDS } from '../marketingSendAttribution';
 import { evaluateStandaloneComplaintGate } from '../ramp/trailingBaselineGates';
 import { input, NOW } from '../ramp/__tests__/gateFixtures';
 
@@ -78,13 +78,14 @@ async function seedNonCampaignSend(
 		contactId: Id<'contacts'>;
 		kind: 'automation' | 'transactional' | 'test';
 		cell?: DeliverabilityCellKey;
+		status?: 'queued' | 'delivered';
 	}
 ): Promise<Id<'transactionalSends'>> {
 	const sendId = await ctx.db.insert('transactionalSends', {
 		kind: options.kind,
 		email: 'recipient@example.com',
 		contactId: options.contactId,
-		status: 'delivered',
+		status: options.status ?? 'delivered',
 		queuedAt: Date.now(),
 		providerType: 'mta',
 	});
@@ -225,6 +226,91 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 			expect((await readBuckets(ctx))[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
 		});
 	});
+
+	// THE NEXT CAMPAIGN'S BACKLOG. `delivery/sends.createBatch` pre-creates the
+	// whole audience in `queued`, and the `sendAssignments` row that carries the
+	// cell is written later, inside the scheduled enqueue transaction. A newest-
+	// row-wins attribution would answer an unsubscribe with a message nobody has
+	// received yet: it would stamp the undispatched row, record nothing, and —
+	// the stamp being the gate — the delivered send that produced the signal
+	// would never be reconsidered. The numerator would lose events precisely
+	// during a blast.
+	it('skips rows no transport has been handed and counts against the delivered send', async () => {
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		let queuedSendId: Id<'emailSends'> | undefined;
+		let failedSendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			const delivered = await seedAssignedSend(ctx, {
+				status: 'delivered',
+				assignment: { cell: GMAIL_CAMPAIGN_CELL },
+			});
+			contactId = delivered.contactId;
+			// Both inserted after it, so a newest-row-wins join picks one of them.
+			failedSendId = (
+				await seedAssignedSend(ctx, {
+					contactId,
+					status: 'failed',
+					assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+				})
+			).sendId;
+			queuedSendId = (
+				await seedAssignedSend(ctx, {
+					contactId,
+					status: 'queued',
+					assignment: { cell: MICROSOFT_CAMPAIGN_CELL },
+				})
+			).sendId;
+		});
+		if (!contactId || !queuedSendId || !failedSendId) throw new Error('seed failed');
+		const [queued, failed] = [queuedSendId, failedSendId];
+
+		expect(
+			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+				contactId,
+			})
+		).toBe('recorded');
+
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+			expect(buckets[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
+			expect(sumCounters(buckets)).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				unsubscribed: 1,
+			});
+			// Neither undispatched row absorbed the gate, so the next campaign's
+			// own unsubscribes remain attributable once it is actually sent.
+			expect((await ctx.db.get(queued))?.unsubscribedAt).toBeUndefined();
+			expect((await ctx.db.get(failed))?.unsubscribedAt).toBeUndefined();
+		});
+	});
+
+	// Same rule on the other table: a drip still sitting in the workpool queue is
+	// not the message being answered.
+	it('skips an undispatched automation drip', async () => {
+		const t = convexTest(schema, modules);
+		let contactId: Id<'contacts'> | undefined;
+		await t.run(async (ctx) => {
+			contactId = await seedContact(ctx);
+			await seedNonCampaignSend(ctx, {
+				contactId,
+				kind: 'automation',
+				cell: GMAIL_CAMPAIGN_CELL,
+				status: 'queued',
+			});
+		});
+		if (!contactId) throw new Error('seed failed');
+
+		expect(
+			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+				contactId,
+			})
+		).toBe('no_marketing_send');
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+		});
+	});
 });
 
 describe('one unsubscribe per send, however often the link is exercised', () => {
@@ -343,7 +429,7 @@ describe('what may never enter the arm denominators', () => {
 				kind: 'automation',
 				cell: GMAIL_CAMPAIGN_CELL,
 			});
-			for (let i = 0; i < AUTOMATION_LOOKBACK_SENDS; i += 1) {
+			for (let i = 0; i < ATTRIBUTION_LOOKBACK_SENDS; i += 1) {
 				await seedNonCampaignSend(ctx, { contactId, kind: 'transactional' });
 			}
 		});

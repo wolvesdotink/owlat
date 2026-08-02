@@ -266,6 +266,7 @@ import type * as delivery_health from "../delivery/health.js";
 import type * as delivery_ipReadinessAlerts from "../delivery/ipReadinessAlerts.js";
 import type * as delivery_lastMileRouting from "../delivery/lastMileRouting.js";
 import type * as delivery_marketingCompliance from "../delivery/marketingCompliance.js";
+import type * as delivery_marketingSendAttribution from "../delivery/marketingSendAttribution.js";
 import type * as delivery_mtaHealth from "../delivery/mtaHealth.js";
 import type * as delivery_messageIdRouting from "../delivery/messageIdRouting.js";
 import type * as delivery_observationFreshness from "../delivery/observationFreshness.js";
@@ -1165,6 +1166,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ipReadinessAlerts": typeof delivery_ipReadinessAlerts;
   "delivery/lastMileRouting": typeof delivery_lastMileRouting;
   "delivery/marketingCompliance": typeof delivery_marketingCompliance;
+  "delivery/marketingSendAttribution": typeof delivery_marketingSendAttribution;
   "delivery/mtaHealth": typeof delivery_mtaHealth;
   "delivery/messageIdRouting": typeof delivery_messageIdRouting;
   "delivery/observationFreshness": typeof delivery_observationFreshness;
