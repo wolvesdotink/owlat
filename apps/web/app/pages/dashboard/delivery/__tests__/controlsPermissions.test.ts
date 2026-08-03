@@ -73,6 +73,7 @@ describe('the ramp controls are admin-only', () => {
 		expect(wrapper.find('[data-testid="ramp-select-campaign:gmail"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="ramp-preset-campaign"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="ramp-controls-admin-only"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(true);
 		wrapper.unmount();
 	});
 
@@ -89,6 +90,13 @@ describe('the ramp controls are admin-only', () => {
 		expect(explanation.exists()).toBe(true);
 		expect(explanation.text()).toMatch(/owners and admins/i);
 
+		// THE HEADER IS A WRITE SURFACE TOO. A lede that opens "hold a cell, cap
+		// it, push it" is the page still offering, one paragraph above the gate,
+		// exactly the five buttons the gate has just taken away.
+		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(false);
+		expect(wrapper.find('header').text()).not.toMatch(/hold a cell/i);
+		expect(wrapper.find('header').text()).toMatch(/what the ramp is doing/i);
+
 		// THE READS STAY. What the controller pulled back is all-members
 		// information, and hiding it would turn a permission into a blind spot.
 		expect(wrapper.find('[data-testid="ramp-notices"]').exists()).toBe(true);
@@ -104,6 +112,10 @@ describe('the ramp controls are admin-only', () => {
 		const wrapper = mount(ControlsPage, { global: globalOptions });
 		expect(wrapper.find('[data-testid="ramp-select-campaign:gmail"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="ramp-controls-admin-only"]').exists()).toBe(false);
+		// The lede's neutral sentence is true whoever is reading, so it stands
+		// while the role resolves — only the action clause waits.
+		expect(wrapper.find('header').text()).toMatch(/what the ramp is doing/i);
+		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(false);
 		wrapper.unmount();
 	});
 });

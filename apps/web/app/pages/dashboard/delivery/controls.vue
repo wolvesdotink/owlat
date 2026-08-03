@@ -195,9 +195,18 @@ async function changePreset(
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
 			<h1 class="text-2xl font-semibold text-text-primary">Delivery controls</h1>
+			<!-- The action clause is the header's half of the admin gate: promising
+			     "hold a cell, cap it, push it" to a member who is about to read that
+			     they may do none of those leaves the lede as the last surface still
+			     offering the buttons the gate takes away. The neutral sentence is
+			     true for everyone, so the clause is ADDED for an admin rather than
+			     swapped — an unresolved role never watches the lede rewrite itself. -->
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				Hold a cell, cap it, push it, or start it over — and choose how hard each stream ramps.
-				Everything here is recorded, including what the controller decided on its own.
+				What the ramp is doing to each stream, and what it pulled back on its own.
+				<span v-if="canManageOrganization" data-testid="ramp-controls-lede-actions">
+					Hold a cell, cap it, push it, or start it over — and choose how hard each stream ramps.
+				</span>
+				Everything here is recorded.
 			</p>
 		</header>
 
