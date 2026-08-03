@@ -28,6 +28,7 @@ import {
 	warmingDailyStatsKey,
 	warmingProviderDailyStatsKey,
 	warmingProviderStateKey,
+	warmingStateKey,
 } from '../../intelligence/warmingKeys.js';
 import { recordProviderWarmingSend } from '../../intelligence/warmingProviderStore.js';
 import {
@@ -207,6 +208,41 @@ describe('warming records book into the attempt day, not the apply day', () => {
 			'1'
 		);
 		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+	});
+
+	it('spends the live day’s per-IP allowance on a late replay, not the per-provider one', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// The new day opens and both dimensions roll onto it: the per-IP slot when
+		// the cap gate measures the first attempt of the day, the per-provider slot
+		// when the first send lands.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		expect((await warmingCapPhase.run(deps, ctxWithIp())).kind).toBe('continue');
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+			'campaign'
+		);
+
+		await replayWarmingEffects(reduction);
+
+		// The two rolling slots take OPPOSITE sides of the same stale replay, and
+		// the docblocks on `applyPerIpWarmingRecord`/`recordSend` argue why. Per-IP:
+		// yesterday's send consumes today's cap, because the alternative — writing a
+		// finished day into the slot — hands the IP its whole daily allowance again.
+		const perIp = warmingStateKey(IP);
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('1');
+		// Per-provider: monotonic, so the live day's count is exactly the live day's
+		// own sends and the stale one is not charged to it.
+		const perProvider = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(perProvider, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perProvider, 'sentToday')).toBe('1');
+		// What they DO agree on: the per-day stats both book into is the day that
+		// admitted the attempt, so neither ramp evaluates a day the other never saw.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
 	});
 
 	it('gives a journalled effect written before the day existed the attempt’s day', async () => {
