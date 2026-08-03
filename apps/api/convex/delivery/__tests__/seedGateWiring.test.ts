@@ -517,7 +517,10 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		// A cell nothing was measured against is not high-confidence direct
 		// measurement, however the relay list reads.
 		expect(view.confidence.level).not.toBe('high');
-		expect(view.confidence.improvements).toContain('connect_reference_transport');
+		// AND IT IS NOT ASKED TO CONNECT THE RELAY IT ALREADY HAS. The cap is this
+		// cell's window; the offer is the deployment's configuration, and
+		// `connectRelay` above is exactly the configuration that can't act on it.
+		expect(view.confidence.improvements).not.toContain('connect_reference_transport');
 	});
 
 	it('grades on the constants the TABLE tightened, not the shipped ones', async () => {

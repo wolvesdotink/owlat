@@ -234,7 +234,7 @@ export interface DashboardConfidence {
  *      a bad week for the whole list, and an operator reading "high" beside a
  *      column of "not enough data yet" has been told something false.
  *
- * THE SIGNATURE IS THE GUARD. It takes the four facts it is allowed to use and
+ * THE SIGNATURE IS THE GUARD. It takes the five facts it is allowed to use and
  * not the outcome summaries, so re-deriving a level from rates — which is what
  * the placeholder this replaced did — is not reachable from here.
  *
@@ -243,16 +243,27 @@ export interface DashboardConfidence {
  * operator could add to make the next grade better. They are advice and never a
  * warning (plan D2) — `connect_reference_transport` is offered to a supported
  * configuration, not to an incomplete one.
+ *
+ * WHICH IS WHY THE CAP AND THE OFFER TAKE DIFFERENT INPUTS. The cap is about
+ * this cell's WINDOW — a cell no relay carried was not compared against
+ * anything, whatever the deployment owns, so `hasReferenceArm` (the measurement)
+ * caps it. The offer is about the DEPLOYMENT: "connect a relay you already pay
+ * for" is advice nobody with a relay connected can act on, and keying it to the
+ * measurement would show it on any cell an existing relay happened not to carry
+ * in the last day — flickering on and off day to day on a low-volume cell of a
+ * fully relayed deployment. So the offer is keyed to `hasRelayConfigured`, and a
+ * connected-but-idle relay caps the level without asking for a second one.
  */
 export function dashboardConfidence(input: {
 	readonly ownSent: number;
 	readonly hasReferenceArm: boolean;
+	readonly hasRelayConfigured: boolean;
 	readonly hasSeedCoverage: boolean;
 	readonly evaluated: RampGateConfidence;
 }): DashboardConfidence {
-	const { ownSent, hasReferenceArm, hasSeedCoverage, evaluated } = input;
+	const { ownSent, hasReferenceArm, hasRelayConfigured, hasSeedCoverage, evaluated } = input;
 	const improvements: DashboardConfidenceImprovement[] = [];
-	if (!hasReferenceArm) improvements.push('connect_reference_transport');
+	if (!hasRelayConfigured) improvements.push('connect_reference_transport');
 	if (!hasSeedCoverage) improvements.push('add_seed_mailboxes');
 
 	if (ownSent <= 0) return { level: 'none', improvements };
@@ -318,7 +329,10 @@ export function buildDashboardCellView(input: {
 	readonly reference: TransportOutcomeSummary | null;
 	readonly evaluation: RampGateEvaluation;
 	readonly hasSeedCoverage: boolean;
+	/** MEASUREMENT: did a relay carry THIS cell in the controller's span. */
 	readonly hasReferenceArm: boolean;
+	/** CONFIGURATION: does the deployment own a relay at all. */
+	readonly hasRelayConfigured: boolean;
 	readonly trend: readonly DashboardTrendPoint[];
 }): DashboardCellView {
 	const { evaluation } = input;
@@ -337,6 +351,7 @@ export function buildDashboardCellView(input: {
 		confidence: dashboardConfidence({
 			ownSent: input.own.sent,
 			hasReferenceArm: input.hasReferenceArm,
+			hasRelayConfigured: input.hasRelayConfigured,
 			hasSeedCoverage: input.hasSeedCoverage,
 			evaluated: evaluation.measuredConfidence,
 		}),

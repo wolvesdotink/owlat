@@ -95,7 +95,7 @@ import {
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
 } from '../analytics/transportOutcomeSummary';
-import { referenceRelayTransportId } from './relayConfiguration';
+import { relayConfiguration } from './relayConfiguration';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
@@ -240,10 +240,13 @@ export const getDeliverabilityDashboard = authedQuery({
 		// stale window look fresh.
 		const now = Date.now();
 		const window = dashboardWindow(now);
-		// CONFIGURATION, and used for exactly one thing: NAMING the second arm in
-		// the screen's copy. It is deliberately not the evaluator predicate — see
-		// the module note.
-		const referenceTransportId = await referenceRelayTransportId(ctx);
+		// BOTH READINGS OF THE RELAY LIST, from ONE scan (`relayConfiguration`), and
+		// neither of them is the evaluator predicate — see the module note.
+		//   - `referenceTransportId` NAMES the second arm for the screen's copy, and
+		//     is null on a two-relay deployment because there is no one arm to name;
+		//   - `isRelayConfigured` answers "does this deployment own a relay AT ALL",
+		//     which is the question the `connect_reference_transport` offer asks.
+		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
 		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
 		// THE DEPLOYMENT HALF OF THE SUBSTITUTION MAP, read ONCE for the whole grid
 		// through the reader the controller's tick uses. Every entry but the
@@ -387,14 +390,17 @@ export const getDeliverabilityDashboard = authedQuery({
 					reference,
 					evaluation,
 					hasSeedCoverage,
-					// THE MEASURED ARM, not the configured one. `dashboardConfidence`
-					// caps the level at `high` only where a concurrent arm actually
-					// produced the comparison the level claims, and it offers
-					// `connect_reference_transport` exactly where none did — both are
-					// statements about this cell's window, and pinning them to the
-					// deployment's relay list graded a cell by a relay that never
-					// carried it.
+					// THE CAP TAKES THE MEASURED ARM: a cell is graded `high` only where
+					// a concurrent arm actually produced the comparison the level claims,
+					// and pinning that to the deployment's relay list graded a cell by a
+					// relay that never carried it.
 					hasReferenceArm,
+					// THE OFFER TAKES THE CONFIGURED ONE, because "connect a relay you
+					// already pay for" is advice about the deployment and nobody with a
+					// relay connected can act on it. Off the measurement it would appear
+					// and disappear day to day on a low-volume cell of a fully relayed
+					// deployment, on the days that relay happened to carry nothing.
+					hasRelayConfigured: isRelayConfigured,
 					trend: buildDashboardTrend({
 						ownBuckets,
 						// THE SAME PREDICATE, OVER THE CHART'S OWN ROWS. A chart is a
