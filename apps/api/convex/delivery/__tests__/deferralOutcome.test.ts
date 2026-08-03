@@ -113,13 +113,11 @@ async function completeDeferred(
 async function originFromMta(reason: string): Promise<'governed' | 'local'> {
 	vi.stubEnv('MTA_API_URL', 'https://mta.test');
 	vi.stubEnv('MTA_API_KEY', 'test-key');
-	const fetchSpy = vi
-		.spyOn(global, 'fetch')
-		.mockResolvedValue(
-			new Response(JSON.stringify({ decision: 'defer', reason, retryAfterMs: 60_000 }), {
-				status: 200,
-			})
-		);
+	const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
+		new Response(JSON.stringify({ decision: 'defer', reason, retryAfterMs: 60_000 }), {
+			status: 200,
+		})
+	);
 	try {
 		const decision = await resolveMtaRoutingDecision(resolveSendTransport('mta'), {
 			messageId: 'send-1',
