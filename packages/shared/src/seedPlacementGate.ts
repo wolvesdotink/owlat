@@ -221,9 +221,9 @@ function readArmCounts(counts: SeedArmPlacementCounts | null | undefined): ArmRe
  * to the same `ArmReading` pair and hand it to the same `rollupFromArms`, so the
  * thresholds, the minimum sample and the confidence keep the single home this
  * module gives them. A caller that already counts its probes (the ramp's gate 5
- * holds three integers per arm) can ask its question without first expanding
- * those integers into thousands of throwaway objects for this module to count
- * back down again.
+ * holds one integer per placement per arm) can ask its question without first
+ * expanding those integers into thousands of throwaway objects for this module
+ * to count back down again.
  */
 export function summarizeSeedProviderCounts(
 	provider: DestinationProviderKey,
