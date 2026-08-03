@@ -204,13 +204,37 @@ export function armWith(
 	return arm(counts, overrides);
 }
 
+/**
+ * The tail of a seed sweep: the two placements the gate does not branch on by
+ * name, plus the clock.
+ *
+ * NAMED RATHER THAN POSITIONAL because they are rare and `seeds(20, 0, 0, 0, 2)`
+ * says nothing. The three common placements stay positional so the suites keep
+ * reading as inbox/spam/missing.
+ */
+export interface SeedSweepTail {
+	readonly category?: number;
+	readonly deleted?: number;
+	readonly observedAt?: number;
+}
+
+/**
+ * One arm's counted sweep, in the shape `analytics/seedPlacementSweeps.ts`
+ * builds: ALL FIVE placements, zero where nothing landed.
+ *
+ * `category` is REACHED and `deleted` is not, so a fixture that could only spell
+ * inbox/spam/missing left the gate's two hardest placements to the e2e suite
+ * alone — and a gate that folded the sweep back down to three would still pass
+ * every suite built on it.
+ */
 export function seeds(
 	inbox: number,
 	spam: number,
 	missing = 0,
-	observedAt = NOW
+	tail: SeedSweepTail = {}
 ): SeedPlacementObservation {
-	return { inbox, spam, missing, observedAt };
+	const { category = 0, deleted = 0, observedAt = NOW } = tail;
+	return { inbox, category, spam, deleted, missing, observedAt };
 }
 
 /**

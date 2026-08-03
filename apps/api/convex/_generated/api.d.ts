@@ -65,6 +65,7 @@ import type * as analytics_reputationQueries from "../analytics/reputationQuerie
 import type * as analytics_reputationSnapshots from "../analytics/reputationSnapshots.js";
 import type * as analytics_seedAccounts from "../analytics/seedAccounts.js";
 import type * as analytics_seedPlacement from "../analytics/seedPlacement.js";
+import type * as analytics_seedPlacementSweeps from "../analytics/seedPlacementSweeps.js";
 import type * as analytics_seedProbeLedger from "../analytics/seedProbeLedger.js";
 import type * as analytics_seedProbePoller from "../analytics/seedProbePoller.js";
 import type * as analytics_seedRotationSweep from "../analytics/seedRotationSweep.js";
@@ -312,6 +313,7 @@ import type * as delivery_ramp_gateEvaluation from "../delivery/ramp/gateEvaluat
 import type * as delivery_ramp_gateEvidence from "../delivery/ramp/gateEvidence.js";
 import type * as delivery_ramp_gateGrades from "../delivery/ramp/gateGrades.js";
 import type * as delivery_ramp_gateMeasurement from "../delivery/ramp/gateMeasurement.js";
+import type * as delivery_ramp_gateObservations from "../delivery/ramp/gateObservations.js";
 import type * as delivery_ramp_gateTypes from "../delivery/ramp/gateTypes.js";
 import type * as delivery_ramp_gates from "../delivery/ramp/gates.js";
 import type * as delivery_ramp_presetConfig from "../delivery/ramp/presetConfig.js";
@@ -966,6 +968,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/reputationSnapshots": typeof analytics_reputationSnapshots;
   "analytics/seedAccounts": typeof analytics_seedAccounts;
   "analytics/seedPlacement": typeof analytics_seedPlacement;
+  "analytics/seedPlacementSweeps": typeof analytics_seedPlacementSweeps;
   "analytics/seedProbeLedger": typeof analytics_seedProbeLedger;
   "analytics/seedProbePoller": typeof analytics_seedProbePoller;
   "analytics/seedRotationSweep": typeof analytics_seedRotationSweep;
@@ -1215,6 +1218,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/gateEvidence": typeof delivery_ramp_gateEvidence;
   "delivery/ramp/gateGrades": typeof delivery_ramp_gateGrades;
   "delivery/ramp/gateMeasurement": typeof delivery_ramp_gateMeasurement;
+  "delivery/ramp/gateObservations": typeof delivery_ramp_gateObservations;
   "delivery/ramp/gateTypes": typeof delivery_ramp_gateTypes;
   "delivery/ramp/gates": typeof delivery_ramp_gates;
   "delivery/ramp/presetConfig": typeof delivery_ramp_presetConfig;

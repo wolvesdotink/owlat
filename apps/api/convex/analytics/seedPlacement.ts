@@ -8,7 +8,7 @@
  * copy into each of them (`delivery/seedShadowCopy.ts`); the shipped IMAP
  * client walks the mailbox, finds the `X-Owlat-Seed-Probe` header and reports
  * which FOLDER the probe landed in. This module is the Convex half: it owns
- * the probe ledger and the roll-up that feeds the controller.
+ * the probe ledger and the per-provider roll-up read out of it.
  *
  * Every decision lives in the pure core (`@owlat/shared/seedPlacement`): this
  * file loads, calls, and writes (D15).
@@ -17,15 +17,23 @@
  * The roll-up is a STATUS per mailbox provider, and a provider-wide collapse
  * is SUSPECT until the deferral or bounce gate corroborates it.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration:
- * `getGateVerdict` answers `insufficient_data`, the controller HOLDS, and
- * nothing errors, warns, or nags.
+ * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration: the
+ * sweeps index comes back empty, gate 5 answers `insufficient_data`, the
+ * controller HOLDS, and nothing errors, warns, or nags.
  *
  * WHAT THIS MODULE OWNS, AND WHAT IT HANDS ON. It owns the probe ledger, the
- * per-provider roll-up, gate 5's verdict, and `getSeedPlacementSummary` for a
- * screen to read. The seed ACCOUNTS themselves — the projection and the
- * rotation nudge — are the domain sibling `analytics/seedAccounts.ts`, and the
- * two ledger sweeps are `analytics/seedProbeLedger.ts`. It does NOT own the CELL
+ * per-provider roll-up, the windowed READ that feeds the ramp controller's
+ * per-cell sweeps, and `getSeedPlacementSummary` for a screen to read.
+ *
+ * GATE 5'S VERDICT IS NOT HERE. `delivery/ramp/seedGate.ts` decides it, over the
+ * per-cell sweeps `analytics/seedPlacementSweeps.ts` reduces from these same
+ * rows; that is the path the controller runs on every tick. `getGateVerdict`
+ * below states the same rule over the PROVIDER roll-up instead and has no
+ * production caller — a parallel route to one rule, tracked in issue #504.
+ *
+ * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
+ * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
+ * `analytics/seedProbeLedger.ts`. It does NOT own the CELL
  * DASHBOARD that renders the status or the confidence line beside it — that is
  * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
  * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
@@ -57,6 +65,11 @@ import {
 } from '@owlat/shared/placementAdapter';
 import type { SeedConfidence } from '@owlat/shared/seedPlacement';
 import { loadSeedAccounts } from './seedAccounts';
+import {
+	buildSeedPlacementSweeps,
+	seedProbeEvidence,
+	type SeedPlacementSweepIndex,
+} from './seedPlacementSweeps';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -64,7 +77,23 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 // ── The module's bounds, grouped: every page size and horizon in one place, so
 // the ledger's cost profile can be read without walking the file.
 
-/** Hard page bound — the ledger is never `.collect()`ed (D16). */
+/**
+ * Hard page bound — the ledger is never `.collect()`ed (D16).
+ *
+ * IT NOW BOUNDS A GATE VERDICT, not just a screen. Since gate 5 reads its
+ * per-cell sweeps off this same page, this number is also the largest sample any
+ * cell's placement verdict can be reached from. One probe set per (campaign,
+ * variant) per seed under a 50-seed cap puts 500 rows at roughly ten campaign
+ * sends, so a high-cadence deployment with a large seed set truncates inside the
+ * seven-day window.
+ *
+ * TRUNCATION IS SAFE IN THIS DIRECTION, which is why the bound stays where it
+ * is: the read is newest-first, so what is dropped is the OLDEST evidence, and a
+ * cell left with too thin a sweep gets `insufficient_data` — a HOLD, and on an
+ * optional gate a hold that costs the ramp nothing (D2/D10). The failure mode of
+ * raising it is a slower read; the failure mode of a tripwire deciding off
+ * stale rows is a verdict about a week that is over.
+ */
 const SEED_PROBE_SCAN_LIMIT = 500;
 
 /**
@@ -322,6 +351,48 @@ export interface SeedPlacementSummary {
 }
 
 /**
+ * THE ONE READ OF THE PROBE LEDGER, and therefore the one definition of the
+ * window and of the page bound. Both summaries below are derived from it, so
+ * "which probes count" cannot come out differently for the provider roll-up and
+ * for the controller's per-cell sweeps.
+ */
+async function readSeedProbeWindow(
+	db: DatabaseReader,
+	organizationId: string,
+	now: number
+): Promise<Doc<'seedPlacementProbes'>[]> {
+	return await db
+		.query('seedPlacementProbes')
+		.withIndex('by_org_and_sent_at', (q) =>
+			q.eq('organizationId', organizationId).gte('sentAt', now - SEED_PLACEMENT_WINDOW_MS)
+		)
+		// Newest first: under volume the tripwire must truncate the OLDEST
+		// evidence, never the freshest.
+		.order('desc')
+		.take(SEED_PROBE_SCAN_LIMIT);
+}
+
+/**
+ * THE RAMP CONTROLLER'S HALF OF THE LEDGER: gate 5's counted sweeps, per cell.
+ *
+ * Deliberately NOT `summarizeSeedPlacementWindow`. The gate needs COUNTS per
+ * `(stream, destinationProvider)` — the roll-up is a status pooled across
+ * streams — and it needs them without the seed-ACCOUNT fan-out, which is one
+ * `db.get` per connected mailbox that no gate verdict reads. Same rows, same
+ * evidence rule, narrower answer.
+ *
+ * A cell absent from the index has no classified probes: gate 5 holds, and
+ * because it is optional the hold costs the ramp nothing (plan D2).
+ */
+export async function summarizeSeedPlacementSweeps(
+	db: DatabaseReader,
+	organizationId: string,
+	now: number
+): Promise<SeedPlacementSweepIndex> {
+	return buildSeedPlacementSweeps(await readSeedProbeWindow(db, organizationId, now));
+}
+
+/**
  * Sum the probe ledger for one org into per-provider STATUSES. Reader-typed so
  * the controller and the dashboard read it through the same path and can never
  * disagree (the ADR-0042 rule applied to a second table).
@@ -332,28 +403,20 @@ export async function summarizeSeedPlacementWindow(
 	now: number
 ): Promise<SeedPlacementSummary> {
 	const windowStart = now - SEED_PLACEMENT_WINDOW_MS;
-	const probes = await db
-		.query('seedPlacementProbes')
-		.withIndex('by_org_and_sent_at', (q) =>
-			q.eq('organizationId', organizationId).gte('sentAt', windowStart)
-		)
-		// Newest first: under volume the tripwire must truncate the OLDEST
-		// evidence, never the freshest.
-		.order('desc')
-		.take(SEED_PROBE_SCAN_LIMIT);
+	const probes = await readSeedProbeWindow(db, organizationId, now);
 
 	const observations: SeedObservation[] = [];
 	for (const probe of probes) {
-		const placement = probe.placement;
-		// Unclassified probes are not yet evidence in either direction.
-		if (placement === undefined) continue;
-		// Which arm carried it is gate 5's second clause. A row with no recorded
-		// arm reads as `own`: standalone is the default configuration, and s === 1
-		// means every probe went through our own MTA.
+		// The evidence rules — unclassified rows are not evidence, an unattributed
+		// row reads as the own arm — are the sweep module's, asked rather than
+		// restated: the provider roll-up here and the per-cell sweeps the ramp
+		// gate reads must never be able to count one ledger two ways.
+		const evidence = seedProbeEvidence(probe);
+		if (evidence === null) continue;
 		observations.push({
-			provider: probe.provider,
-			arm: probe.transportArm ?? 'own',
-			placement,
+			provider: evidence.provider,
+			arm: evidence.arm,
+			placement: evidence.placement,
 		});
 	}
 
@@ -390,12 +453,15 @@ export const getSeedPlacementSummary = internalQuery({
 });
 
 /**
- * Gate 5's verdict for the controller.
+ * Gate 5's verdict over the PROVIDER roll-up, with D17's corroboration rule
+ * applied: a seed collapse across eight consumer mailboxes may not move a
+ * healthy deployment's share on its own. With no seeds connected — the default —
+ * the verdict is `insufficient_data` (D10).
  *
- * `corroboration` is the CURRENT reading of the deferral and bounce gates: a
- * seed collapse across eight consumer mailboxes may not move a healthy
- * deployment's share on its own (D17). With no seeds connected — the default —
- * the verdict is `insufficient_data` and the controller HOLDS (D10).
+ * NOT THE ROUTE THE CONTROLLER TAKES, despite the name. The ramp reaches gate 5
+ * through `delivery/ramp/seedGate.ts` over the PER-CELL sweeps, and corroborates
+ * through `CORROBORATION_REQUIRED_RAMP_GATES` + `requiresCorroboration`; this
+ * query has no production caller. The duplication is tracked in issue #504.
  */
 export const getGateVerdict = internalQuery({
 	args: {

@@ -5,11 +5,17 @@
  * the same fields feed the audit row and the admin notification. Almost every
  * verdict is denominated in SENDS, and the generic sentence says so in words —
  * so the exceptions have to be branched on rather than assumed away. There are
- * exactly two: the block-message hard stop counts CLASSIFIED SMTP RESPONSES,
- * and the seed-placement gate counts SEED MAILBOXES. Printing "24 sends" under
- * a verdict that stopped a cell — or "10 sends" under a placement tripwire whose
- * whole sample is ten mailboxes — is a number the operator would act on and be
- * wrong about.
+ * exactly two: the block-message hard stop counts CLASSIFIED SMTP RESPONSES, and
+ * the seed-placement gate counts SEED PROBES. Printing "24 sends" under a verdict
+ * that stopped a cell — or "10 sends" under a placement tripwire whose whole
+ * sample is ten probes — is a number the operator would act on and be wrong
+ * about.
+ *
+ * AND A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per seed
+ * mailbox per campaign send, so the window's sample is mailboxes times sends;
+ * "80 seed mailboxes" under a deployment that has eight would overstate the
+ * coverage by the send cadence, on the one field D17 keeps precisely because it
+ * is the honesty input.
  *
  * AND THE SEED GATE MAY NOT QUOTE A RATE AT ALL (plan D17). Its unit is right
  * and its sentence is still a gauge if it prints a share against a threshold, so
@@ -37,6 +43,7 @@ import {
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
 	gateExplanation,
+	improvementCopy,
 	measurementSubhead,
 	type DeliverabilityDashboardGate,
 } from '~/utils/deliverabilityMeasurement';
@@ -87,23 +94,50 @@ describe('gateExplanation — units', () => {
 		expect(gateExplanation(holdingGate())).toContain('124 of 400 sends');
 	});
 
-	it('never calls a seed mailbox a send, on either sentence', () => {
+	it('never calls a seed probe a send, on either sentence', () => {
 		// `evaluateSeedGate` denominates BOTH `ownSample` and `minSample` in seed
-		// mailboxes, so the decided sentence and the below-floor hold are both wrong
+		// probes, so the decided sentence and the below-floor hold are both wrong
 		// under the generic noun.
 		const decided = gateExplanation(seedPlacementGate());
-		expect(decided).toContain('10 seed mailboxes');
+		expect(decided).toContain('10 seed probes');
 		expect(decided).not.toContain('sends');
 
 		const held = gateExplanation(seedPlacementHold());
-		expect(held).toContain('8 of 20 seed mailboxes');
+		expect(held).toContain('8 of 20 seed probes');
 		expect(held).not.toContain('sends');
 
 		// THE THIRD SENTENCE. The comparison sweep is thin, and its sample is seed
-		// mailboxes too — the reason names the OTHER series, not another unit.
+		// probes too — the reason names the OTHER series, not another unit.
 		const referenceHeld = gateExplanation(seedPlacementReferenceHold());
-		expect(referenceHeld).toContain('3 of 5 seed mailboxes');
+		expect(referenceHeld).toContain('3 of 5 seed probes');
 		expect(referenceHeld).not.toContain('sends');
+	});
+
+	it('never calls a seed probe a mailbox — the count runs with the send cadence', () => {
+		// THE DEFECT THIS PINS. `ownSample` is `SeedProviderRollup.sampleSize`,
+		// which `readArmCounts` sums out of PER-PLACEMENT PROBE COUNTS, and
+		// `seedShadowCopy.ts` writes one probe per connected seed mailbox per
+		// campaign send. So a deployment with 8 seed mailboxes and 10 campaigns in
+		// the window renders 80 — a sentence saying "80 seed mailboxes" claims a
+		// coverage ten times what the operator connected, on the one number D17
+		// keeps BECAUSE it is the honesty input. Every seed sentence is checked,
+		// including the fall-through, because the noun is the whole point.
+		const wide = { ...seedPlacementPass().measurement, ownSample: 80, referenceSample: 80 };
+		const sentences = [
+			gateExplanation({ ...seedPlacementPass(), measurement: wide }),
+			gateExplanation({ ...seedPlacementGate(), measurement: wide }),
+			gateExplanation({ ...seedPlacementReferenceBreach(), measurement: wide }),
+			gateExplanation(seedPlacementHold()),
+			gateExplanation(seedPlacementReferenceHold()),
+			gateExplanation({ ...seedPlacementReferenceBreach(), reason: 'trailing_baseline_breached' }),
+		];
+		for (const sentence of sentences) {
+			expect(sentence).toContain('seed probes');
+			expect(sentence).not.toContain('mailbox');
+		}
+		// The mailbox NOUN still belongs to the fact that is actually about
+		// mailboxes — the improvement invitation, which counts connected accounts.
+		expect(improvementCopy('add_seed_mailboxes')).toContain('seed mailboxes');
 	});
 });
 
@@ -113,8 +147,8 @@ describe('gateExplanation — units', () => {
  * `seedPlacementGate.ts` keeps both arms' shares inside itself and hands out a
  * STATUS; `placementAdapter.ts` takes COUNTS from a commercial panel, "never a
  * percentage". A screen that renders the same verdict as "85.00% … against a
- * limit of 90.00%" is a third answer neither module would give — and one
- * mailbox in a ten-probe sweep moves it ten points.
+ * limit of 90.00%" is a third answer neither module would give — and one probe
+ * in a ten-probe sweep moves it ten points.
  */
 describe('gateExplanation — the seed gate states a status, never a placement rate', () => {
 	const PERCENTAGE = /\d\s*%|\d+\.\d+%/;
@@ -131,19 +165,17 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		}
 	});
 
-	it('says a clean sweep reached the inbox OR A TAB, in mailboxes', () => {
+	it('says a clean sweep reached the inbox OR A TAB, in probes', () => {
 		// `isSeedPlacementReached` counts `category` — a Gmail tab — as reached, and
 		// `inbox_dominant` is documented as "the inbox or a tab". "Reached the inbox"
 		// alone reports a Promotions-filed probe as a miss the gate did not find.
 		const sentence = gateExplanation(seedPlacementPass());
-		expect(sentence).toContain(
-			'Effectively all of the 10 seed mailboxes reached the inbox or a tab'
-		);
+		expect(sentence).toContain('Effectively all of the 10 seed probes reached the inbox or a tab');
 	});
 
 	it('says an absolute breach missed, and covers every placement that counts as missing', () => {
 		const sentence = gateExplanation(seedPlacementGate());
-		expect(sentence).toContain('Some of the 10 seed mailboxes did not reach the inbox or a tab');
+		expect(sentence).toContain('Some of the 10 seed probes did not reach the inbox or a tab');
 		// Not-reached is spam, deleted OR missing — the shipped sentence named two
 		// of the three and left an auto-deleted probe unaccounted for.
 		expect(sentence).toContain('filtered to spam, deleted, or not found in any folder');
@@ -171,14 +203,14 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 			...seedPlacementReferenceBreach(),
 			reason: 'trailing_baseline_breached',
 		});
-		expect(sentence).toBe('Needs attention — this check swept 10 seed mailboxes.');
+		expect(sentence).toBe('Needs attention — this check swept 10 seed probes.');
 		expect(sentence).not.toContain('own recent sweeps');
 		expect(sentence).not.toMatch(PERCENTAGE);
 	});
 
 	it('stays true when the own sweep has outgrown the comparison one', () => {
 		// THE DEFECT THIS PINS: 16 of 20 here against 5 of 5 there breaches the
-		// tolerance, and MORE mailboxes reached the inbox on this side — so the
+		// tolerance, and MORE probes reached the inbox on this side — so the
 		// count-flavoured "fewer of ours reached than of theirs" was a false
 		// sentence, in the ordinary late-ramp shape rather than an exotic one.
 		const sentence = gateExplanation(seedPlacementReferenceBreachOutgrown());

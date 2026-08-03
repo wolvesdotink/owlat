@@ -38,6 +38,7 @@ import { loadCellInput } from '../rampControllerInputs';
 import { loadRampDeploymentPresence } from '../rampIntegrationPresence';
 import { loadRampPresets } from '../rampPresets';
 import { loadRampCapacityContext } from '../rampCapacityInputs';
+import { summarizeSeedPlacementSweeps } from '../../analytics/seedPlacement';
 import { loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import { modules } from '../../__tests__/testModules';
 
@@ -78,6 +79,7 @@ async function selectedActuator(t: Harness): Promise<'share' | 'pace'> {
 			cell: { stream: 'campaign', destinationProvider: 'gmail' },
 			pool,
 			capacity: async () => await loadRampCapacityContext(ctx, { organizationId: ORG, now }),
+			seeds: async () => await summarizeSeedPlacementSweeps(ctx.db, ORG, now),
 			presence,
 			isKillSwitchEngaged: false,
 			isSendingPermitted: true,

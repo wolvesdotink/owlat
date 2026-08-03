@@ -616,11 +616,12 @@ describe('adversarial inputs', () => {
  * THE COUNTS ENTRY POINT IS THE SAME MEASUREMENT, NOT A SECOND ONE.
  *
  * A caller that already holds per-placement counters (the ramp's gate 5 holds
- * three integers per arm) used to expand them into one object per probe purely
- * so this module could count them back down. `summarizeSeedProviderCounts` takes
- * the integers directly — and because a second entry point into a threshold is
- * exactly how two answers to one question get born, every case below asserts it
- * against the observation form rather than against a copy of the rules.
+ * one integer per placement per arm) used to expand them into one object per
+ * probe purely so this module could count them back down.
+ * `summarizeSeedProviderCounts` takes the integers directly — and because a
+ * second entry point into a threshold is exactly how two answers to one question
+ * get born, every case below asserts it against the observation form rather than
+ * against a copy of the rules.
  */
 describe('the roll-up reads counts and observations identically', () => {
 	const cases: Array<{ name: string; own: SeedPlacement[]; reference: SeedPlacement[] }> = [

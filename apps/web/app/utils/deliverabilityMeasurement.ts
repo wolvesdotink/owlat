@@ -132,36 +132,46 @@ export function gateStatusLabel(status: GateStatus): string {
  *
  * Almost every verdict is denominated in SENDS, and the server's `ownSample`
  * docblock (`gateTypes.ts`) names the two that are not: `seed_placement` counts
- * SEED MAILBOXES, and the `block_message_detected` halt counts CLASSIFIED SMTP
+ * SEED PROBES, and the `block_message_detected` halt counts CLASSIFIED SMTP
  * RESPONSES. Under D17 the placement gate is a tripwire whose numbers an
  * operator reads directly, and under D12 the same fields render into the audit
  * row and the admin notification — so the unit is decided once, here, rather
  * than assumed to be "sends" by each sentence.
+ *
+ * A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per connected
+ * seed mailbox per campaign send, and the roll-up's `sampleSize` sums those
+ * probes over the whole window — so eight seed mailboxes across ten campaigns is
+ * a sample of eighty, and "80 seed mailboxes" would overstate the coverage an
+ * operator is being asked to trust by the send cadence. The mailbox count is a
+ * different fact with its own copy (`add_seed_mailboxes`).
  */
 function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
-	return gate === 'seed_placement' ? 'seed mailboxes' : 'sends';
+	return gate === 'seed_placement' ? 'seed probes' : 'sends';
 }
 
 /**
- * THE SEED GATE'S DECIDED SENTENCE — status words and MAILBOX COUNTS, and no
+ * THE SEED GATE'S DECIDED SENTENCE — status words and PROBE COUNTS, and no
  * share of anything (plan D17).
  *
  * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and the two modules that produce the
  * reading enforce that on their own side: `seedPlacementGate.ts` keeps both
  * arms' shares inside itself and hands out a STATUS, and `placementAdapter.ts`
  * takes COUNTS, never a percentage, from a commercial panel. Rendering the same
- * verdict as "85.00% over 10 seed mailboxes, against a limit of 90.00%" undoes
- * both: it invites an operator to read one mailbox as ten percentage points, to
+ * verdict as "85.00% over 10 seed probes, against a limit of 90.00%" undoes
+ * both: it invites an operator to read one probe as ten percentage points, to
  * chase the gap between two five-probe sweeps, and to treat a number with a
  * ±10pp resolution as a measurement of their inbox placement.
  *
- * The mailbox COUNT stays, because it is the honesty input — how thin the sweep
- * was is exactly what a reader needs to weigh the status beside it.
+ * The probe COUNT stays, because it is the honesty input — how thin the sweep
+ * was is exactly what a reader needs to weigh the status beside it. It is
+ * PROBES and it says so: the same seed mailbox is probed once per send, so the
+ * count runs with the send cadence and reading it as "mailboxes" would inflate
+ * the coverage by exactly that factor.
  *
  * A COMPARATIVE VERDICT IS A COMPARISON OF TWO SHARES, and the sentence has to
  * read as one. The two sweeps are sized independently, and the own arm
  * OUTGROWING the reference one is the ordinary late-ramp shape — 16 of 20 here
- * against 5 of 5 there breaches the tolerance while more mailboxes reached the
+ * against 5 of 5 there breaches the tolerance while more probes reached the
  * inbox on this side, so "fewer of ours reached than of theirs" is not a
  * paraphrase of the verdict, it is a false statement about it. The counts are
  * quoted as SWEEP SIZES beside the comparison, never as its subject.
@@ -174,14 +184,14 @@ function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
  * account for the `deleted` placement on the breach.
  */
 function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
-	const mailboxes = formatNumber(gate.measurement.ownSample);
+	const probes = formatNumber(gate.measurement.ownSample);
 	switch (gate.reason) {
 		case 'within_threshold':
-			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox or a tab.`;
+			return `Effectively all of the ${probes} seed probes reached the inbox or a tab.`;
 		case 'reference_tolerance_breached':
-			return `This cell's seed mailboxes reached the inbox or a tab less often than the comparison transport's did — ${mailboxes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
+			return `This cell's seed probes reached the inbox or a tab less often than the comparison transport's did — ${probes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
 		case 'absolute_threshold_breached':
-			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
+			return `Some of the ${probes} seed probes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
 		default:
 			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
 			// seed gate decides exactly the three reasons above (`seedGate.ts` —
@@ -195,7 +205,7 @@ function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
 			// in for the comparative one — it drops the second clause entirely. Copy
 			// written ahead of a variant that does not exist is the speculative seam
 			// `trailingBaselineGates.ts` cites plan D20 against.
-			return `${gateStatusLabel(gate.status)} — this check swept ${mailboxes} seed mailboxes.`;
+			return `${gateStatusLabel(gate.status)} — this check swept ${probes} seed probes.`;
 	}
 }
 
@@ -212,7 +222,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} this window.`;
 			case 'reference_sample_below_floor':
 				// The unit is the GATE's, not the sentence's: the seed gate's second sweep is
-				// denominated in MAILBOXES, and it reaches this reason whenever that sweep
+				// denominated in PROBES, and it reaches this reason whenever that sweep
 				// is thin.
 				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport this window.`;
 			case 'baseline_sample_below_floor':

@@ -259,7 +259,7 @@ describeEquipped('gate 5 — seed placement minimum sample (optional gate)', () 
 		const result = evaluateSeedPlacementGate(
 			input({
 				own: arm({ sent: 10_000 }),
-				ownSeeds: seeds(20, 0, 0, STALE_AT),
+				ownSeeds: seeds(20, 0, 0, { observedAt: STALE_AT }),
 				referenceSeeds: seeds(20, 0),
 			})
 		);

@@ -23,11 +23,18 @@
  * own `isSeedPlacementReached` predicate so even the displayed number cannot
  * disagree with the verdict beside it.
  *
- * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17). The CORROBORATION RULE is the
- * shared module's (`resolveSeedTripwire`, applied by
- * `analytics.seedPlacement.getGateVerdict`); the ramp only FLAGS a seed fail
- * through `CORROBORATION_REQUIRED_RAMP_GATES` so the controller (P3-2) reaches
- * for that one rule rather than writing a second copy of it.
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17), and this module does not decide
+ * that either: a `fail` from here is named by `CORROBORATION_REQUIRED_RAMP_GATES`
+ * (gateConfig), which makes `aggregateRampGates` set `requiresCorroboration`,
+ * which is what `controller.ts` and `paceActuator.ts` turn into an
+ * `awaiting_corroboration` hold. That is the path that runs on every tick.
+ *
+ * `@owlat/shared/seedPlacementTripwire`'s `resolveSeedTripwire` states the same
+ * rule over the PROVIDER roll-up and is reachable through
+ * `analytics.seedPlacement.getGateVerdict`, which has no production caller — a
+ * parallel route to one rule, tracked in issue #504. Until it is resolved, the
+ * ramp path above is the behaviour, and this docblock names it rather than the
+ * one that reads better.
  *
  * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
  * D1's boolean is a degenerate share: with no reference-arm probes the roll-up
@@ -43,6 +50,7 @@
 import {
 	isSeedPlacementReached,
 	summarizeSeedProviderCounts,
+	SEED_PLACEMENTS,
 	type SeedArmPlacementCounts,
 	type SeedPlacement,
 	type SeedProviderRollup,
@@ -64,20 +72,14 @@ import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
  */
 const CELL_PROVIDER = 'other';
 
-/** The three placements a counted sweep can express, in one place. */
-const SWEEP_PLACEMENTS = ['inbox', 'spam', 'missing'] as const satisfies readonly SeedPlacement[];
-
-function sweepCount(
-	sweep: SeedPlacementObservation,
-	placement: (typeof SWEEP_PLACEMENTS)[number]
-): number {
+function sweepCount(sweep: SeedPlacementObservation, placement: SeedPlacement): number {
 	return safeOutcomeCount(sweep[placement]);
 }
 
 function sweepTotal(sweep: SeedPlacementObservation | null | undefined): number {
 	if (!sweep) return 0;
 	let total = 0;
-	for (const placement of SWEEP_PLACEMENTS) total += sweepCount(sweep, placement);
+	for (const placement of SEED_PLACEMENTS) total += sweepCount(sweep, placement);
 	return total;
 }
 
@@ -86,20 +88,24 @@ function sweepTotal(sweep: SeedPlacementObservation | null | undefined): number 
  * takes. Negative, fractional and non-finite counts are scrubbed by
  * `safeOutcomeCount` before they can become a sample size.
  *
- * COUNTS IN, COUNTS OUT. A ramp sweep is three integers per arm and the roll-up
- * is a status over three integers per arm; expanding them into one object per
- * probe on the way in — which is what this did before — bought nothing but the
- * allocation, and needed a clamp to bound it.
+ * COUNTS IN, COUNTS OUT. A ramp sweep is one integer per placement per arm and
+ * the roll-up is a status over one integer per placement per arm; expanding them
+ * into one object per probe on the way in — which is what this did before —
+ * bought nothing but the allocation, and needed a clamp to bound it.
+ *
+ * THE WHOLE VOCABULARY IS CARRIED ACROSS, and the loop is over `SEED_PLACEMENTS`
+ * rather than a local subset so a placement added to the shared list cannot be
+ * dropped here: a sweep whose `category` probes went missing on the way in would
+ * read as a thinner sample, and a `deleted` one dropped would read as a HIGHER
+ * reached share than the ledger holds.
  */
 function armCounts(
 	sweep: SeedPlacementObservation | null | undefined
 ): SeedArmPlacementCounts | null {
 	if (!sweep) return null;
-	return {
-		inbox: sweepCount(sweep, 'inbox'),
-		spam: sweepCount(sweep, 'spam'),
-		missing: sweepCount(sweep, 'missing'),
-	};
+	const counts: Partial<Record<SeedPlacement, number>> = {};
+	for (const placement of SEED_PLACEMENTS) counts[placement] = sweepCount(sweep, placement);
+	return counts;
 }
 
 /**
@@ -113,7 +119,7 @@ function reachedShare(sweep: SeedPlacementObservation | null | undefined): numbe
 	const total = sweepTotal(sweep);
 	if (!sweep || total <= 0) return null;
 	let reached = 0;
-	for (const placement of SWEEP_PLACEMENTS) {
+	for (const placement of SEED_PLACEMENTS) {
 		if (isSeedPlacementReached(placement)) reached += sweepCount(sweep, placement);
 	}
 	return Math.min(1, reached / total);

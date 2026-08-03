@@ -70,7 +70,10 @@ describeEquipped('degenerate volumes', () => {
 		input({
 			own: arm({ sent: -10_000, hardBounced: -5, deferred: -5, complained: -5 }),
 			reference: arm({ sent: -10_000 }),
-			ownSeeds: seeds(-10, -10, -10),
+			// Every placement negative, not the three the gate branches on by name:
+			// a negative `category` that reached the roll-up unscrubbed would be a
+			// negative REACHED count, which is a share nothing can bound.
+			ownSeeds: seeds(-10, -10, -10, { category: -10, deleted: -10 }),
 		})
 	);
 });
@@ -185,7 +188,7 @@ describeEquipped('clock skew', () => {
 		input({
 			own: arm({ sent: 10_000, lastRecordedAt: BEYOND_SKEW }),
 			reference: arm({ sent: 10_000 }),
-			ownSeeds: seeds(20, 0, 0, BEYOND_SKEW),
+			ownSeeds: seeds(20, 0, 0, { observedAt: BEYOND_SKEW }),
 			referenceSeeds: seeds(20, 0),
 		})
 	);

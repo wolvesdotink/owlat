@@ -7,9 +7,13 @@
  * dashboard can share one vocabulary without importing either implementation.
  */
 
-import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import type { SeedPlacementObservation, SmtpBlockObservation } from './gateObservations';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 import type { RampStreamConfig } from './gateConfig';
+
+// The evidence shapes live in the domain sibling; re-exported here so the gate
+// vocabulary keeps ONE import surface (see `gateObservations.ts`).
+export type { SeedPlacementObservation, SmtpBlockObservation } from './gateObservations';
 
 /**
  * A gate's verdict.
@@ -156,7 +160,9 @@ interface RampGateMeasurementBase {
 	 * two, and the two are named by their `gate`/`reason` rather than left for a
 	 * renderer to guess:
 	 *
-	 *  - gate `seed_placement` counts SEED MAILBOXES;
+	 *  - gate `seed_placement` counts SEED PROBES — one shadow copy into one seed
+	 *    mailbox for one send, so the same mailbox contributes once per send in
+	 *    the window and the count is NOT a mailbox count;
 	 *  - reason `block_message_detected` counts CLASSIFIED SMTP RESPONSES — the
 	 *    block-message hard stop measures the share of a receiver's answers that
 	 *    said "we are refusing this sender", which has nothing to do with how many
@@ -361,53 +367,6 @@ export type RampGateEvaluation =
 			readonly failedGate: RampGateId;
 	  });
 
-/**
- * What receivers said in their own 4xx/5xx text over the window, reduced to the
- * only question the ramp asks of it: how many responses were BLOCK messages?
- *
- * The classification itself is the MTA's (`classifySmtpResponse`), and the
- * category names are the shared vocabulary in
- * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
- */
-export interface SmtpBlockObservation {
-	/** Every classified response over the window — the denominator. */
-	readonly observed: number;
-	/**
-	 * HOW MANY RESPONSES LANDED IN EACH CATEGORY. ONE FIELD, because the numerator
-	 * and the names are one fact and a type that lets them disagree is a type that
-	 * will.
-	 *
-	 * An earlier shape carried a `blocked` count and a `categories` list side by
-	 * side. Nothing tied them together: a producer whose count included throttles
-	 * while the list happened to name one refusal would halt a healthy cell, and a
-	 * producer whose count was right while the list named only rate pressure would
-	 * silently never fire the hard stop at all. Both readings typechecked. Here the
-	 * gate DERIVES the numerator by summing the keys in `SMTP_BLOCK_CATEGORIES` and
-	 * DERIVES the named categories as the ones with a positive count, so the two can
-	 * only ever describe the same rows.
-	 *
-	 * RATE PRESSURE BELONGS IN HERE TOO. `rate_limited` and friends are not blocks
-	 * and never contribute to the numerator, but they are what the receiver said and
-	 * the audit row (plan D12) is better for having them.
-	 *
-	 * THE SHARED VOCABULARY, not free text. The stored row is
-	 * `v.array(v.string())`, so the narrowing happens ONCE where that row is read
-	 * (`isSmtpFailureCategory` — the WHOLE vocabulary, not the block subset, which
-	 * would drop every category above) rather than on every element on every gate
-	 * evaluation.
-	 */
-	readonly blockedByCategory: Readonly<Partial<Record<SmtpFailureCategory, number>>>;
-	readonly observedAt: number;
-}
-
-/** Seed placement, as a tripwire and never as a gauge (plan D17). */
-export interface SeedPlacementObservation {
-	readonly inbox: number;
-	readonly spam: number;
-	readonly missing: number;
-	readonly observedAt: number;
-}
-
 export interface RampGateEvaluationInput {
 	readonly config: RampStreamConfig;
 	/** Own-MTA arm outcomes for the window. */
@@ -461,7 +420,23 @@ export interface RampGateEvaluationInput {
 	 * Absent means "not observed", which holds; it never fails.
 	 */
 	readonly smtpBlocks?: SmtpBlockObservation | null;
+	/**
+	 * This cell's OWN-arm seed sweep over the placement window, counted from the
+	 * probe ledger by `analytics/seedPlacementSweeps.ts` and supplied by both
+	 * readers of this input (`delivery/rampControllerInputs.ts`,
+	 * `delivery/deliverabilityDashboard.ts`).
+	 *
+	 * Absent or `null` means this cell has no classified probes — no seed
+	 * mailboxes, a cell whose stream the shadow copy does not cover, or a sweep
+	 * that has not been polled yet. That HOLDS gate 5 and never fails it, and
+	 * because seed placement is optional the hold costs the ramp nothing (D2).
+	 */
 	readonly ownSeeds?: SeedPlacementObservation | null;
+	/**
+	 * The same window's REFERENCE-arm sweep — gate 5's second clause. `null` on a
+	 * standalone deployment, where the roll-up reports `no_reference_arm` and the
+	 * absolute clause is the whole gate (D3's substitution).
+	 */
 	readonly referenceSeeds?: SeedPlacementObservation | null;
 	/** Gate 4's result, computed elsewhere (MPP handling). Absent = not measured. */
 	readonly engagement?: RampGateResult | null;

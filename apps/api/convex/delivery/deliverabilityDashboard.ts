@@ -36,6 +36,8 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { hasSeedAccounts } from '../analytics/seedAccounts';
+import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
+import { seedSweepsForCell } from '../analytics/seedPlacementSweeps';
 import {
 	deferralTelemetryReadSince,
 	hasUsableDeferralTelemetry,
@@ -133,7 +135,11 @@ export interface DeliverabilityDashboard {
 	 * error state.
 	 */
 	readonly referenceTransportId: string | null;
-	/** Seed placement lands in a later piece; today no cell has seed coverage. */
+	/**
+	 * Whether ANY seed mailbox is connected — an org-level fact the screen uses to
+	 * explain a held gate 5. The per-cell placement VERDICT is on the cell's own
+	 * gate list; this is only the honesty denominator beside it.
+	 */
 	readonly hasSeedCoverage: boolean;
 	readonly cells: readonly DashboardCellView[];
 }
@@ -173,14 +179,18 @@ export const getDeliverabilityDashboard = authedQuery({
 		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
 		// there seed mailboxes at all), not a per-cell one, and it only lowers
 		// confidence — a deployment with none is supported, never nagged (plan D2).
-		// The per-cell PLACEMENT sweep is a separate wiring job (the roll-up is per
-		// destination provider, the gate input is per cell); until it lands, gate 5
-		// holds and that hold costs the ramp nothing, because it is optional.
 		// ONE row through the seed index, not a placement window: the screen needs
 		// the boolean, and the roll-up it used to buy it from scans the probe
 		// index, expands one observation per probe and fans out a `db.get` per
 		// account — all of it discarded.
 		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
+		// GATE 5'S EVIDENCE, from the SAME reader the controller uses and read ONCE
+		// for the whole grid rather than once per cell — the probe ledger read is
+		// org-wide and every cell takes its own slice out of the index. A deployment
+		// with no probes gets an empty index and every cell's gate 5 holds, which is
+		// what it should say: the screen must report the verdict the controller
+		// would reach, not a friendlier one (ADR-0042).
+		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
 		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
 		// THE SAME LOWER BOUND THE CONTROLLER READS FROM, through the same helper:
 		// the screen's own 30-day baseline bound is derived from tomorrow's UTC
@@ -218,13 +228,16 @@ export const getDeliverabilityDashboard = authedQuery({
 					? null
 					: summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
 			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
+			const cellSeeds = seedSweepsForCell(seedSweeps, cell);
 
 			const evaluation = evaluator.evaluate({
 				config: RAMP_STREAM_CONFIGS[cell.stream],
 				own,
 				reference,
-				ownSeeds: null,
-				referenceSeeds: null,
+				// This cell's slice of the one ledger read; absent on both arms for a
+				// cell the poller has classified nothing for, which HOLDS gate 5.
+				ownSeeds: cellSeeds.own,
+				referenceSeeds: cellSeeds.reference,
 				// THE SAME OBSERVATION THE CONTROLLER MAKES, over the same span of the
 				// same rows (`hasUsableDeferralTelemetry`). Gate 2 holds on a cell whose
 				// `deferred` counter has no writer instead of reporting a 0% pass, and a

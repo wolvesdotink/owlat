@@ -136,14 +136,17 @@ export function cellView(
 
 /**
  * THE SEED-PLACEMENT GATE — the other verdict whose sample is not denominated in
- * sends. `evaluateSeedGate` sets `ownSample` to the number of SEED MAILBOXES and
- * `minSample` to the floor in those same units, so both the decided sentence and
- * the below-floor hold have to say "seed mailboxes" rather than "sends". Under
- * D17 seeds are a tripwire an operator reads directly and under D12 the same
- * numbers render into the audit row, so the noun has to be right.
+ * sends. `evaluateSeedGate` sets `ownSample` to the number of SEED PROBES the
+ * cell's own arm classified in the window and `minSample` to the floor in those
+ * same units, so both the decided sentence and the below-floor hold have to say
+ * "seed probes" rather than "sends" — and rather than "seed mailboxes", which is
+ * a smaller number: one probe is one shadow copy into one seed mailbox for one
+ * send, so a mailbox contributes a probe per send. Under D17 seeds are a
+ * tripwire an operator reads directly and under D12 the same numbers render into
+ * the audit row, so the noun has to be right.
  *
- * The counts are deliberately tiny — 5-10 mailboxes per provider is the whole
- * sample, which is exactly why calling them sends would be so misleading.
+ * The counts are deliberately tiny — a handful of probes per provider is the
+ * whole sample, which is exactly why calling them sends would be so misleading.
  */
 export function seedPlacementGate(): DeliverabilityDashboardGate {
 	return {
@@ -263,9 +266,9 @@ export function seedPlacementHold(): DeliverabilityDashboardGate {
  * THE SEED GATE'S SECOND SWEEP, thin.
  *
  * `evaluateSeedGate` reaches `reference_sample_below_floor` when the COMPARISON
- * sweep is the thin one, and its `referenceSample` is seed mailboxes just as the
+ * sweep is the thin one, and its `referenceSample` is seed probes just as the
  * own sample is. The shape carries no `referenceMinSample`, so the sentence falls
- * back to `minSample` — which is the SEED floor, in seed mailboxes.
+ * back to `minSample` — which is the SEED floor, in seed probes.
  */
 export function seedPlacementReferenceHold(): DeliverabilityDashboardGate {
 	return {
