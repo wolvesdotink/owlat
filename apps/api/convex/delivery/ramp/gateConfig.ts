@@ -62,12 +62,17 @@ export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(
  * size, but it is SUSPECT on its own and the controller (P3-2) must corroborate
  * it against the deferral or bounce gate before acting.
  *
- * THE RULE ITSELF IS NOT HERE, and deliberately: `resolveSeedTripwire` in
- * `@owlat/shared/seedPlacement` is the one implementation of "what does an
- * uncorroborated suspicion mean", reachable through
- * `analytics.seedPlacement.getGateVerdict`. This set only NAMES the gates it
- * applies to, so the controller reaches for that rule instead of writing a
- * second copy of it.
+ * THIS SET ONLY NAMES THE GATES. What the flag MEANS is decided downstream:
+ * `aggregateRampGates` sets `requiresCorroboration` when a gate named here is
+ * alone at the winning rank, and `controller.ts` / `paceActuator.ts` answer it
+ * with an `awaiting_corroboration` hold instead of a decrease. That is the whole
+ * of the corroboration behaviour the ramp runs.
+ *
+ * `resolveSeedTripwire` in `@owlat/shared/seedPlacement` states the same rule
+ * over the provider roll-up, but through `analytics.seedPlacement.getGateVerdict`
+ * — an internal query with no production caller. Two routes to one rule is one
+ * more than D5 allows; it is tracked in issue #504 rather than cited here as
+ * though the ramp went through it.
  */
 export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>([
 	'seed_placement',

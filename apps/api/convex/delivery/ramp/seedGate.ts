@@ -23,11 +23,18 @@
  * own `isSeedPlacementReached` predicate so even the displayed number cannot
  * disagree with the verdict beside it.
  *
- * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17). The CORROBORATION RULE is the
- * shared module's (`resolveSeedTripwire`, applied by
- * `analytics.seedPlacement.getGateVerdict`); the ramp only FLAGS a seed fail
- * through `CORROBORATION_REQUIRED_RAMP_GATES` so the controller (P3-2) reaches
- * for that one rule rather than writing a second copy of it.
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17), and this module does not decide
+ * that either: a `fail` from here is named by `CORROBORATION_REQUIRED_RAMP_GATES`
+ * (gateConfig), which makes `aggregateRampGates` set `requiresCorroboration`,
+ * which is what `controller.ts` and `paceActuator.ts` turn into an
+ * `awaiting_corroboration` hold. That is the path that runs on every tick.
+ *
+ * `@owlat/shared/seedPlacementTripwire`'s `resolveSeedTripwire` states the same
+ * rule over the PROVIDER roll-up and is reachable through
+ * `analytics.seedPlacement.getGateVerdict`, which has no production caller — a
+ * parallel route to one rule, tracked in issue #504. Until it is resolved, the
+ * ramp path above is the behaviour, and this docblock names it rather than the
+ * one that reads better.
  *
  * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
  * D1's boolean is a degenerate share: with no reference-arm probes the roll-up

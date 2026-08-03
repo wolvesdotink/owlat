@@ -59,9 +59,17 @@ export type SeedPlacementSweepIndex = ReadonlyMap<DeliverabilityCellKey, SeedCel
  */
 const NO_SWEEPS: SeedCellSweeps = { own: null, reference: null };
 
+/** ONE classified probe, reduced to the four facts a sweep counts it by. */
+export interface SeedProbeEvidence {
+	readonly provider: DestinationProviderKey;
+	readonly stream: Doc<'seedPlacementProbes'>['stream'];
+	readonly arm: SeedTransportArm;
+	readonly placement: SeedPlacement;
+	readonly observedAt: number;
+}
+
 /**
- * ONE classified probe, as evidence — or `null` when the row is not evidence at
- * all.
+ * One probe row as evidence — or `null` when the row is not evidence at all.
  *
  * THE ONE PLACE THE LEDGER'S READING RULES LIVE, because both consumers apply
  * exactly these and a second copy is a second answer:
@@ -72,19 +80,12 @@ const NO_SWEEPS: SeedCellSweeps = { own: null, reference: null };
  *   - a probe with NO RECORDED ARM reads as `own`. Standalone is the default
  *     configuration and s === 1 means every probe went through our own MTA.
  *   - `observedAt` is when the observation was MADE, not when the probe was
- *     sent. A classified row always carries `classifiedAt`; the `sentAt`
- *     fallback exists for a row written before that stamp did, and it can only
- *     be OLDER — so it can only make a sweep look stale, never fresh, which is
- *     the safe direction for every freshness rule downstream.
+ *     sent. `classifiedAt` is `v.optional` in the schema, so the READ has to be
+ *     total whatever the writer guarantees — the fallback is what makes it so,
+ *     not a legacy row it is bridging. `sentAt` can only be OLDER, so it can
+ *     only make a sweep look stale, never fresh, which is the safe direction for
+ *     every freshness rule downstream.
  */
-export interface SeedProbeEvidence {
-	readonly provider: DestinationProviderKey;
-	readonly stream: Doc<'seedPlacementProbes'>['stream'];
-	readonly arm: SeedTransportArm;
-	readonly placement: SeedPlacement;
-	readonly observedAt: number;
-}
-
 export function seedProbeEvidence(probe: Doc<'seedPlacementProbes'>): SeedProbeEvidence | null {
 	const placement = probe.placement;
 	if (placement === undefined) return null;
