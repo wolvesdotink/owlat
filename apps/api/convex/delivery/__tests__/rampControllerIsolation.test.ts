@@ -16,14 +16,18 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+import { RAMP_FAILURE_MESSAGE_MAX } from '../rampControllerCron';
 import { MS_PER_DAY } from '../../lib/constants';
 
-const ORG = 'org_ramp_isolation';
+// `vi.hoisted`, not a bare const: the mock factory below is hoisted above the
+// imports, and this suite imports the cron module itself (for the message bound),
+// which pulls the mocked read half in before an ordinary binding is initialised.
+const ORG = vi.hoisted(() => 'org_ramp_isolation');
 
 // The cell whose evaluation throws. `campaign/gmail` is the FIRST cell of the
 // grid, so everything the tick would do afterwards is downstream of it.
@@ -38,6 +42,12 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	};
 });
 
+// WHAT THE FAILING CELL THROWS, settable per test: the audit row bounds the
+// message it stores, and a bound is only a bound against a message that exceeds
+// it. `vi.hoisted` because the mock factory below is hoisted above every ordinary
+// module-level binding.
+const thrown = vi.hoisted(() => ({ message: 'route state row is unreadable' }));
+
 // The real read half, with ONE cell made to throw. Partial rather than wholesale:
 // every other cell must go through the production reader, or the surviving cell
 // would only prove that a stub can be called twice.
@@ -50,11 +60,15 @@ vi.mock('../rampControllerInputs', async (importOriginal) => {
 				args.cell.stream === FAILING.stream &&
 				args.cell.destinationProvider === FAILING.destinationProvider
 			) {
-				throw new Error('route state row is unreadable');
+				throw new Error(thrown.message);
 			}
 			return await actual.loadCellInput(ctx, args as never);
 		}),
 	};
+});
+
+beforeEach(() => {
+	thrown.message = 'route state row is unreadable';
 });
 
 async function auditRows(t: Harness) {
@@ -133,5 +147,27 @@ describe('a throwing cell does not starve the cells behind it', () => {
 		// And the cell it could not decide was not written on the way past: an
 		// evaluation that threw reached no decision to apply.
 		expect((await readManagedCell(t))?.decidedAt).toBeUndefined();
+	});
+
+	// THE MESSAGE IS A THROWN VALUE, NOT ONE THIS MODULE CHOSE, so what it costs
+	// the audit table cannot be left to whatever a stack trace happened to carry: a
+	// cell that fails on every hourly tick would otherwise grow the table by that
+	// much per tick, for as long as the fault lasted.
+	it('caps the stored message however long the thrown one is', async () => {
+		const t = convexTest(schema, modules);
+		thrown.message = `head ${'x'.repeat(5_000)} tail`;
+		await seedRampCell(t, { organizationId: ORG });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const failure = (await auditRows(t)).find(
+			(row) => row.action === 'deliverability_ramp.cell_evaluation_failed'
+		);
+		const stored = failure?.details?.['error'];
+		expect(typeof stored).toBe('string');
+		expect(String(stored)).toHaveLength(RAMP_FAILURE_MESSAGE_MAX);
+		// The PREFIX is what is kept — the end a reader needs to recognise the fault,
+		// not an arbitrary window out of the middle.
+		expect(String(stored).startsWith('head ')).toBe(true);
 	});
 });

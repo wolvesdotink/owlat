@@ -61,8 +61,14 @@ import { loadRampPresets } from './rampPresets';
 /** Cells evaluated per tick. The grid is 15; three ticks cover it. */
 const RAMP_CELLS_PER_TICK = 5;
 
-/** How much of a thrown message one failed cell may put in the audit row. */
-const RAMP_FAILURE_MESSAGE_MAX = 200;
+/**
+ * How much of a thrown message one failed cell may put in the audit row.
+ *
+ * EXPORTED FOR THE FIXTURE THAT PINS IT: a bound with no test is a rule that can
+ * be deleted without anything going red, and this one changes what reaches the
+ * audit table.
+ */
+export const RAMP_FAILURE_MESSAGE_MAX = 200;
 
 /**
  * What a failed cell puts on the record. Not a rule and not a decision: the
