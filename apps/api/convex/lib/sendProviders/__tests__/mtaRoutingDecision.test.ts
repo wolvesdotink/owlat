@@ -64,6 +64,10 @@ describe('MTA routing decision client', () => {
 		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000, origin: 'local' });
 	});
 
+	// `invented_reason` is the fall-through this list exists to pin: a defer
+	// reason the adapter does not recognise is an answer we did not understand,
+	// so it comes back `local` and gate 2 does not count it. Adding a defer reason
+	// on the MTA side means adding it here and in `resolveMtaRoutingDecision`.
 	it.each([
 		{ decision: 'mta', lease: { token: 'lease-1', providerProbe: false } },
 		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },

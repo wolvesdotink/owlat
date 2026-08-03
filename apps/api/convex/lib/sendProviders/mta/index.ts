@@ -167,6 +167,13 @@ export async function resolveMtaRoutingDecision(
 						: 60_000,
 			};
 		}
+		// THE UNRECOGNISED ANSWER, deliberately beside the malformed-body and
+		// timeout cases: a body we cannot fully validate is a body we did not
+		// understand, and an answer we did not understand is not an observation
+		// about this identity. A NEW DEFER REASON ON THE MTA SIDE THEREFORE LANDS
+		// HERE AND STOPS BEING COUNTED until it is added to the list above — the
+		// two sides change together, which is the safe direction (a reason nobody
+		// vouched for cannot halt a cell) but never a silent one.
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} catch {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
