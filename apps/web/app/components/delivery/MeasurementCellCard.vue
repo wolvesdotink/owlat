@@ -7,9 +7,14 @@
  * the cell side by side, every gate's verdict with its numbers, how much the
  * measurement is worth, and the trend across the window.
  *
- * THE STATES ARE THE FEATURE (plan D2/D14):
- *   - no reference transport  -> one column, plus a plain invitation to connect
- *                                one. A supported configuration, not a nag.
+ * THE STATES ARE THE FEATURE (plan D2/D14), and the column and the invitation
+ * are keyed to different facts — the column to what this cell MEASURED, the
+ * invitation to what the deployment HAS, so a connected-but-idle relay gets the
+ * one column without being offered a relay it already pays for:
+ *   - no arm measured here   -> one column. A supported configuration, not a nag.
+ *   - no relay configured    -> plus a plain invitation to connect one. It
+ *                               arrives as a server improvement code, decided in
+ *                               `dashboardConfidence` and never re-derived here.
  *   - a relay that went quiet -> one column WITH relay bars still on the trend,
  *                                and a line saying why the two disagree.
  *   - insufficient data       -> "not enough data yet, N of 400 sends", neutral.
