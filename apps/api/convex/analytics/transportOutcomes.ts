@@ -36,10 +36,14 @@
  * applies both. There is no parallel event stream, and no existing effect
  * changed what it does.
  *
- * ONE event has no lifecycle transition to ride, and only one: `unsubscribed`
+ * TWO events have no lifecycle transition to ride, and only two. `unsubscribed`
  * arrives on a public CONTACT-keyed endpoint carrying no send id at all, so
  * `delivery/unsubscribeOutcome.ts` does the contact → send join and pushes the
  * effect through this same runner, under a per-send uniqueness gate of its own.
+ * `deferred` has the send id but no transition: a deferred message stays
+ * `queued` — that is what a deferral IS — so `delivery/deferralOutcome.ts`
+ * records it from the completion callback, under a per-send, per-DAY gate
+ * (a held send is re-enqueued many times and must be counted once).
  * It is still ONE writer; what differs is who supplies the send id.
  *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That
@@ -51,12 +55,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type DatabaseReader,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import {
 	deliverabilityCellKey,
@@ -72,6 +71,7 @@ import {
 	summarizeTransportOutcomeBuckets,
 	transportOutcomeCounters,
 	transportOutcomeWindowBounds,
+	TRANSPORT_OUTCOME_EVENTS,
 	ZERO_TRANSPORT_OUTCOME_TOTALS,
 	type TransportOutcomeArm,
 	type TransportOutcomeBucket,
@@ -189,41 +189,6 @@ export async function summarizeTransportOutcomeArms(
 	return { own, reference };
 }
 
-/**
- * Org-scoped, window-bounded cell summary. `internalQuery`, so it is NOT
- * client-callable: its consumers are the ramp controller cron and the
- * session-authed query shell a later piece adds for the dashboard. Do not wire a
- * Vue page to it — wire the page to that shell, which comes through here, so
- * both still see one derivation of one number.
- */
-export const getCellOutcomeSummary = internalQuery({
-	args: {
-		organizationId: v.string(),
-		cell: v.string(),
-		since: v.optional(v.number()),
-		until: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		// The wire type is a string; the branded key is narrowed ONCE, here at the
-		// boundary. An unparseable key addresses no bucket, so it summarizes to
-		// the empty window rather than reading with a key no writer can produce.
-		const parsedCell = parseDeliverabilityCellKey(args.cell);
-		const window = {
-			...(args.since !== undefined ? { since: args.since } : {}),
-			...(args.until !== undefined ? { until: args.until } : {}),
-		};
-		if (parsedCell === null) {
-			const empty = summarizeTransportOutcomeBuckets([], window);
-			return { own: empty, reference: empty };
-		}
-		return await summarizeTransportOutcomeArms(ctx.db, {
-			organizationId: args.organizationId,
-			cell: deliverabilityCellKey(parsedCell),
-			...window,
-		});
-	},
-});
-
 // ============ WRITER (the hot path) ============
 
 interface BucketKey {
@@ -337,7 +302,7 @@ export async function recordTransportOutcomeForSend(
 		return 'no_organization';
 	}
 
-	// ONE tenant-scoped join, shared with `getAssignmentForSend`.
+	// THE tenant-scoped join, shared with every other reader of the row.
 	const assignment = await readAssignmentForSend(ctx.db, organizationId, input.sendId);
 	// No assignment row ⇒ this send is outside the experiment (seed shadow
 	// copies, legacy sends). It must never enter a denominator.
@@ -360,30 +325,51 @@ export async function recordTransportOutcomeForSend(
 	return 'recorded';
 }
 
+/** Derived from the vocabulary, never re-spelled: one list, one wire contract. */
+const transportOutcomeEventValidator = v.union(
+	...TRANSPORT_OUTCOME_EVENTS.map((event) => v.literal(event))
+);
+
 /**
- * Applied by the Send lifecycle's effect runner. Recording an outcome must never
- * be able to fail a delivery state transition, so every failure degrades to a
- * warning and the transition proceeds untouched.
+ * The Send lifecycle's `transport_outcome` effect, SCHEDULED off the transition
+ * rather than applied inside it — the same shape, for the same reason, as
+ * `reputation_update`.
+ *
+ * The bump lands on one of `TRANSPORT_OUTCOME_SHARD_COUNT` shards of a bucket
+ * that every recipient of the same cell writes to on the same day. Applied
+ * inline, an OCC conflict on that shard retries the ENTIRE delivery transaction
+ * — the send patch, the campaign counters, the daily stats, the webhook fanout —
+ * during exactly the open waves that make the conflict likely. Scheduled, the
+ * retry is confined to this one narrow write. The outcome has no claim on the
+ * transition's atomicity: it is fail-soft by design (below), so a lost bump
+ * already degrades measurement rather than delivery either way.
+ *
+ * Recording an outcome must never be able to fail the transaction it describes,
+ * so every failure degrades to a warning.
  */
-export async function applyTransportOutcomeEffect(
-	ctx: MutationCtx,
-	effect: { readonly sendId: string; readonly event: TransportOutcomeEvent; readonly at: number }
-): Promise<void> {
-	try {
-		await recordTransportOutcomeForSend(ctx, {
-			sendId: effect.sendId,
-			event: effect.event,
-			now: effect.at,
-		});
-	} catch (error) {
-		// Never the recipient address: an outcome log line must not become a PII
-		// sink. The event name is enough to tell a systematic failure apart.
-		logWarn(
-			`[transportOutcomes] failed to record ${effect.event} outcome:`,
-			error instanceof Error ? error.name : 'UnknownError'
-		);
-	}
-}
+export const recordOutcomeForSend = internalMutation({
+	args: {
+		sendId: v.string(),
+		event: transportOutcomeEventValidator,
+		at: v.number(),
+	},
+	handler: async (ctx, args) => {
+		try {
+			await recordTransportOutcomeForSend(ctx, {
+				sendId: args.sendId,
+				event: args.event,
+				now: args.at,
+			});
+		} catch (error) {
+			// Never the recipient address: an outcome log line must not become a PII
+			// sink. The event name is enough to tell a systematic failure apart.
+			logWarn(
+				`[transportOutcomes] failed to record ${args.event} outcome:`,
+				error instanceof Error ? error.name : 'UnknownError'
+			);
+		}
+	},
+});
 
 // ============ AGING CRON ============
 

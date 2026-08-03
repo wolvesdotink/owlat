@@ -205,7 +205,10 @@ describeEquipped('clock skew', () => {
 
 describeEquipped('missing arms and missing gates', () => {
 	it('the reference arm is entirely missing: the two-armed gates hold, the one-armed gate still decides', () => {
-		const built = input({ own: arm({ sent: 10_000 }), reference: null });
+		// `deferred` counted, because the claim is about the MISSING RELAY: gate 2
+		// is one-armed, but it still needs its own numerator to have been recorded
+		// somewhere before it may read a zero as a clean window.
+		const built = input({ own: arm({ sent: 10_000, deferred: 100 }), reference: null });
 		expect(evaluateHardBounceGate(built).status).toBe('insufficient_data');
 		expect(evaluateComplaintGate(built).status).toBe('insufficient_data');
 		expect(evaluateSeedPlacementGate(built).status).toBe('insufficient_data');

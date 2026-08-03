@@ -34,17 +34,11 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type DatabaseReader,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import {
 	deliverabilityCellKey,
-	parseDeliverabilityCellKey,
 	type DeliverabilityCellKey,
 	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
@@ -69,12 +63,6 @@ export const SEND_ASSIGNMENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Rows deleted per retention tick; the sweep re-schedules itself while full. */
 export const SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE = 200;
-
-/** Page size for the cell/window read when the caller does not ask for one. */
-export const DEFAULT_CELL_PAGE_SIZE = 100;
-
-/** Hard ceiling on the cell/window read — a per-recipient table (D16). */
-export const MAX_CELL_PAGE_SIZE = 500;
 
 /**
  * Derived from the schema rather than re-declared, so the literal sets cannot
@@ -301,11 +289,12 @@ export async function recordSendAssignments(
 }
 
 /**
- * THE assignment join. Reader-typed, so the query shell below, the transport
- * outcome writer and any later consumer all resolve a send's (cell, arm,
- * calibration) through ONE tenant-scoped lookup — a second copy of this index
- * expression is a copy that will be missed when the index or the `.first()`
- * choice changes.
+ * THE assignment join. Reader-typed, so the transport outcome writer and any
+ * later consumer resolve a send's (cell, arm, calibration) through ONE
+ * tenant-scoped lookup — a second copy of this index expression is a copy that
+ * will be missed when the index or the `.first()` choice changes. A consumer
+ * that needs it over the wire wraps THIS; do not add a second query shell for
+ * it before something calls one (D20).
  *
  * Org-leading: a caller holding another tenant's send id still gets nothing.
  */
@@ -319,76 +308,6 @@ export async function readAssignmentForSend(
 		.withIndex('by_org_send', (q) => q.eq('organizationId', organizationId).eq('sendId', sendId))
 		.first();
 }
-
-/** Org-scoped lookup of the assignment recorded for one send. */
-export const getAssignmentForSend = internalQuery({
-	args: { organizationId: v.string(), sendId: v.string() },
-	handler: async (ctx, args) =>
-		await readAssignmentForSend(ctx.db, args.organizationId, args.sendId),
-});
-
-/**
- * Org-scoped, bounded cell/window read — the shape every later consumer uses.
- *
- * The window is a REQUIRED half-open `[since, until)`: every consumer of this
- * table (outcome buckets, the ramp controller's gates, the dashboard) reads a
- * bounded evaluation window, and an open-ended read of a per-recipient table
- * is the write-amplification hazard D16 exists to prevent.
- *
- * A malformed `cell` returns an empty page rather than scanning an empty index
- * partition: `cell` is a plain string in the schema, so the parse is the only
- * thing standing between a typo and a silently empty result set.
- *
- * TRUNCATION IS EXPLICIT. The index range is ASCENDING on `assignedAt`, so a
- * window holding more than `limit` rows would otherwise hand back the OLDEST
- * `limit` of them as a bare array — indistinguishable from a complete window.
- * A per-recipient table exceeds any sane page size routinely, and every named
- * consumer of this seam (the ramp controller's gates, the dashboard) computes
- * RATIOS over the window; a truncated denominator that looks complete is
- * exactly how the controller and the dashboard come to disagree about a number
- * (D5). So the page is returned as `{ rows, hasMore }`, computed by taking one
- * row more than asked for: a caller must handle `hasMore` to ignore it.
- */
-export interface CellAssignmentPage {
-	readonly rows: Array<Doc<'sendAssignments'>>;
-	/** True when the window holds more rows than this page returned. */
-	readonly hasMore: boolean;
-}
-
-export const listCellAssignments = internalQuery({
-	args: {
-		organizationId: v.string(),
-		cell: v.string(),
-		since: v.number(),
-		until: v.number(),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args): Promise<CellAssignmentPage> => {
-		if (parseDeliverabilityCellKey(args.cell) === null) return { rows: [], hasMore: false };
-		// Convex `v.number()` is a float64: `NaN`/`Infinity` are valid arguments.
-		// An unguarded NaN reaches `.take(NaN)` and makes the range bound
-		// meaningless, so every numeric argument is checked before it is used.
-		if (!Number.isFinite(args.since) || !Number.isFinite(args.until)) {
-			return { rows: [], hasMore: false };
-		}
-		const requested = args.limit;
-		const limit =
-			requested === undefined || !Number.isFinite(requested)
-				? DEFAULT_CELL_PAGE_SIZE
-				: Math.min(Math.max(Math.floor(requested), 1), MAX_CELL_PAGE_SIZE);
-		const page = await ctx.db
-			.query('sendAssignments')
-			.withIndex('by_org_cell_time', (q) =>
-				q
-					.eq('organizationId', args.organizationId)
-					.eq('cell', args.cell)
-					.gte('assignedAt', args.since)
-					.lt('assignedAt', args.until)
-			)
-			.take(limit + 1);
-		return { rows: page.slice(0, limit), hasMore: page.length > limit };
-	},
-});
 
 /**
  * Retention sweep (D16). Indexed, bounded, and self-resuming: deletes the

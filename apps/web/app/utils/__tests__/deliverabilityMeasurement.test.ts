@@ -225,6 +225,7 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 		'baseline_rate_unmeasurable',
 		'reference_not_a_denominator',
 		'baseline_not_a_denominator',
+		'own_deferral_telemetry_absent',
 		'evidence_absent',
 	];
 
@@ -239,6 +240,18 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 			}
 		});
 	}
+
+	it('says an uninstrumented deferral counter is unmeasured, not a zero rate', () => {
+		// The hold exists because "0% deferrals" and "nothing counts deferrals here"
+		// produce the identical number, and the operator has to be able to tell them
+		// apart on the screen — so the sentence must not read as a healthy window,
+		// and must not borrow the thin-sample story either.
+		const uninstrumented = gateExplanation(held('own_deferral_telemetry_absent'));
+		expect(uninstrumented).toContain('recorded');
+		expect(uninstrumented).not.toBe(gateExplanation(held('own_sample_below_floor')));
+		expect(uninstrumented).not.toBe(gateExplanation(held('evidence_absent')));
+		expect(uninstrumented).not.toMatch(/\d+%/);
+	});
 
 	it('says a clean comparison window is clean, not corrupt', () => {
 		// `*_not_a_denominator` and `*_rate_unmeasurable` are two different stories

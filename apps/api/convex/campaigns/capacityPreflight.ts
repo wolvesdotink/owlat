@@ -26,6 +26,7 @@ import {
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience, type AudienceCountCompleteness } from './audienceCandidates';
 import {
+	buildCapacitySchedule,
 	planCampaignCapacity,
 	totalPlannableCapacity,
 	usableDayCount,
@@ -194,6 +195,12 @@ async function measureCampaignCapacity(
 	// license "it fits" — an audience between them is unmeasured. Rounds UP so a
 	// fractional message is never dropped; every non-splitting strategy answers
 	// floor === peak === 1, where both statements collapse into the identity.
+	//
+	// THE SHARE SCALES THE DECISION ONLY, NEVER THE PLAN THAT IS QUOTED. Own-arm
+	// volume answers "can the warming cap strand this campaign"; it is not a
+	// schedule anyone will run, and enumerating it as one hands the operator a
+	// finish date the walker misses by roughly `1 / share` (see
+	// {@link quotedRefusalSchedule}).
 	const { floor: ownArmFloor, peak: ownArmPeak } = capVerdict.ownArmShare;
 	const ownArmVolume = (recipients: number, share: number): number => Math.ceil(recipients * share);
 
@@ -254,7 +261,6 @@ async function measureCampaignCapacity(
 	const boundsDiffer = ownArmPeak > ownArmFloor;
 	const floorVerdict = assessCountedPlan(planFor(ownArmFloor), {
 		completeness: counted.completeness,
-		ownArmBoundsDiffer: boundsDiffer,
 	});
 
 	// THE FLOOR DECIDES THE REFUSAL, THE PEAK DECIDES THE APPROVAL. A measured
@@ -272,7 +278,63 @@ async function measureCampaignCapacity(
 	) {
 		return { capacityKnown: false, fits: true, unknownReason: 'mix_composition_unknown' };
 	}
+	if (floorVerdict.capacityKnown && !floorVerdict.fits) {
+		return {
+			capacityKnown: true,
+			fits: false,
+			schedule: quotedRefusalSchedule({
+				ownArmSchedule: floorVerdict.schedule,
+				// THE WALKER'S OWN PLAN, built the way the walker builds it
+				// (`multiDaySendPlan.planTodaysSlice` → `buildCapacitySchedule` over the
+				// remaining RECIPIENTS against this same projection). Anchored at
+				// `startsAt` because that is when the walk begins.
+				walkerSchedule: buildCapacitySchedule({
+					audienceSize: counted.eligible,
+					remainingCapacityByDay,
+					now: startsAt,
+				}),
+				audienceUnderCounted: counted.completeness !== 'exact',
+			}),
+		};
+	}
 	return floorVerdict;
+}
+
+/**
+ * THE SCHEDULE THE OPERATOR IS SHOWN — denominated in RECIPIENTS, because that
+ * is what the copy calls it ("N recipients", "everyone is reached by <date>")
+ * and what the actuator paces.
+ *
+ * The refusal is DECIDED on own-arm volume: only the own MTA's traffic meets the
+ * warming cap, so `floor x audience` is the number that can prove a campaign's
+ * tail expires. It is not the number anyone sends. The walker meters the WHOLE
+ * audience through the same day budget (`campaigns/sendPlanQueries.ts`), so a
+ * schedule enumerated over own-arm MESSAGES quotes about `share` of the days the
+ * send really takes and labels message counts as recipients — under a 5% share,
+ * "about 5 days, everyone reached by Friday" for a walk that runs into the
+ * following month. Quoting the walker's plan instead makes the two agree by
+ * construction, at every share; at `share === 1` they are the same array.
+ *
+ * `audienceUnderCounted` therefore tracks ONE fact — the count stopped short, so
+ * the recipient total is a floor and the day count with it. Own-arm bounds that
+ * differ no longer widen the quoted plan: the mix decides whether the cap can
+ * strand the campaign, and nothing about how long the walker takes.
+ *
+ * THE `days === 0` FALLBACK. The projection can plateau at zero after covering
+ * the own arm's share but before covering the audience — the planner's "no
+ * schedule reaches everyone" sentinel, which callers must never render as a
+ * finish. The proven refusal stands on the own-arm plan there, quoted as the
+ * lower bound it is: its slices are `min(capacity, own-arm remaining)`, at or
+ * below the recipients each day really carries.
+ */
+export function quotedRefusalSchedule(options: {
+	ownArmSchedule: CampaignCapacitySchedule;
+	walkerSchedule: CampaignCapacitySchedule;
+	audienceUnderCounted: boolean;
+}): CampaignCapacitySchedule {
+	const { ownArmSchedule, walkerSchedule, audienceUnderCounted } = options;
+	if (walkerSchedule.days === 0) return { ...ownArmSchedule, audienceUnderCounted: true };
+	return { ...walkerSchedule, audienceUnderCounted };
 }
 
 /**
@@ -331,25 +393,21 @@ export function audienceCountCeiling(
  * even the refusal side, and its caller has to have discharged it before it can
  * reach here.
  *
- * `ownArmBoundsDiffer` marks a refusal whose schedule was enumerated over
- * `floor x audience` while the own arm may have to carry up to `peak x audience`
- * — a lower bound on the plan, exactly like an incomplete count, and it selects
- * the same "at least N days" copy (D14).
+ * THE SCHEDULE IT RETURNS IS IN OWN-ARM MESSAGES, and is the DECISION's plan —
+ * `measureCampaignCapacity` re-denominates it into the recipients the operator
+ * is quoted (see {@link quotedRefusalSchedule}) before it leaves this module.
  */
 export function assessCountedPlan(
 	plan: CampaignCapacityPlan,
 	options: {
 		completeness: Exclude<AudienceCountCompleteness, 'suppression_truncated'>;
-		ownArmBoundsDiffer?: boolean;
 	}
 ): CampaignCapacityAssessment {
 	if (plan.fits) {
 		if (options.completeness === 'exact') return { capacityKnown: true, fits: true };
 		return { capacityKnown: false, fits: true, unknownReason: 'audience_under_counted' };
 	}
-	return toAssessment(plan, {
-		audienceUnderCounted: options.completeness !== 'exact' || options.ownArmBoundsDiffer === true,
-	});
+	return toAssessment(plan, { audienceUnderCounted: options.completeness !== 'exact' });
 }
 
 /**

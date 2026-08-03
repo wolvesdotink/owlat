@@ -89,12 +89,58 @@ export function evaluateComplaintGate(input: RampGateEvaluationInput): RampGateR
 // ============================== the other gates =============================
 
 /**
+ * IS THIS CELL'S DEFERRAL COUNTER SAYING ANYTHING?
+ *
+ * A window that recorded deferrals is its own witness — the instrument
+ * demonstrably ran — so the caller's observation (`hasDeferralTelemetry`,
+ * derived by the reader from THIS cell's own arm over the telemetry span) is
+ * consulted only for the zero case, and nobody has to supply a flag to be
+ * believed about a rate that is visible in the summary.
+ *
+ * SAME SCOPE ON BOTH SIDES, deliberately: per (cell, own arm), which is the
+ * scope the rate above it has. The phase-promotion rule asks the identical
+ * question, of the identical rows, through the identical predicate
+ * (`hasUsableDeferralTelemetry`) — two notions of "instrumented" is how a gate
+ * and a promotion come to disagree about one cell.
+ */
+function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
+	return safeOutcomeCount(input.own.deferred) > 0 || input.hasDeferralTelemetry === true;
+}
+
+/**
  * Gate 2 — DEFERRAL/4xx: own arm <= 10%; >= 25% is an IMMEDIATE HALT.
  *
  * Own arm only: a 4xx is the destination throttling THIS sending identity, and
  * the relay's deferral rate says nothing about ours. The halt is a distinct
  * status because the controller treats it as a hard stop rather than as an
  * ordinary multiplicative decrease.
+ *
+ * A ZERO NUMERATOR IS NOT AUTOMATICALLY A CLEAN WINDOW, and this gate is the
+ * only one that has to say so. Every other counter it reads is written by a
+ * delivery path that cannot be switched off; `deferred` is only PARTLY
+ * instrumented — `delivery/deferralOutcome.ts` records the last-mile router's
+ * deferrals, while a remote 4xx after MTA intake acceptance reaches Convex only
+ * as a per-IP warming aggregate carrying no (cell, arm) at all. So an
+ * uninstrumented cell reports exactly the `0 / sent` a spotless one does, and
+ * reading it as a verdict is a `pass` plus `increaseEvidence` off a measurement
+ * nobody took — a gate that could only ever agree with going faster.
+ *
+ * The empty numerator is therefore checked against the instrument BEFORE the
+ * ceiling is applied, and the hold is reported as its own reason (plan D12: a
+ * hold names the thing to fix, and "not enough sends" would name the wrong one).
+ *
+ * AND THE HOLD HAS AN EXIT, which is not optional. `deferral` is not an optional
+ * gate, so this `insufficient_data` outranks every `pass` beside it and clears
+ * `greenSince` on controller rung 7 — a hold that could not end would stop a cell
+ * raising its own-MTA share AND restart its fourteen-day graduation clock every
+ * tick, for ever, which plan D2 forbids an absent signal from doing. So the
+ * reader's observation is satisfied by ONE recorded deferral over the telemetry
+ * span OR by own-arm traffic SPREAD ACROSS that span without one — see
+ * `hasUsableDeferralTelemetry`, which owns that rule for every reader, and which
+ * asks the span rather than any one day inside it precisely because a cell that
+ * does not send at weekends would otherwise re-enter the hold every week. A
+ * relay-equipped deployment whose warm-up overflow never defers is a supported
+ * configuration, not an uninstrumented one.
  */
 export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateResult {
 	const { thresholds, sampleFloors } = input.config;
@@ -119,6 +165,15 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 		return insufficient(
 			'deferral',
 			evidenceReason(evidence, 'own'),
+			{ ...shape, ownRate },
+			DIRECT_MEASUREMENT
+		);
+	}
+
+	if (!deferralTelemetryObserved(input)) {
+		return insufficient(
+			'deferral',
+			'own_deferral_telemetry_absent',
 			{ ...shape, ownRate },
 			DIRECT_MEASUREMENT
 		);

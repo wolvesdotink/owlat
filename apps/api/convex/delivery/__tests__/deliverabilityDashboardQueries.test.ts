@@ -394,10 +394,12 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		await t.run(async (ctx) => {
 			// Ample volume, nothing wrong with it: the deferral gate DECIDES, and it
 			// decides at `high`. That is the input that used to reach the wire as a
-			// high-confidence cell.
+			// high-confidence cell. The deferrals are what make it decide at all —
+			// an uncounted `deferred` column holds the gate (`deferralOutcome.ts`),
+			// and a holding gate contributes no confidence to fold.
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucket({ periodStart: day, sent: 50_000, delivered: 49_800 })
+				bucket({ periodStart: day, sent: 50_000, delivered: 49_800, deferred: 500 })
 			);
 		});
 
@@ -440,9 +442,12 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		const t = convexTest(schema, modules);
 		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
+			// Deferrals counted, so gate 2 decides: this case is about SEED
+			// COVERAGE, and a cell whose only decidable gate is holding would fold
+			// to `low` for a reason that has nothing to do with seeds.
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucket({ periodStart: day, sent: 50_000, delivered: 49_800 })
+				bucket({ periodStart: day, sent: 50_000, delivered: 49_800, deferred: 500 })
 			);
 			const mailboxId = await ctx.db.insert('mailboxes', {
 				userId: 'user-1',
@@ -510,6 +515,98 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		expect(hardBounce?.status).toBe('insufficient_data');
 		expect(hardBounce?.measurement.ownSample).toBe(12);
 		expect(hardBounce?.measurement.minSample).toBeGreaterThan(12);
+	});
+
+	/**
+	 * The screen and the controller must reach gate 2 the same way, so the screen
+	 * makes the same instrumentation observation the controller does — over the
+	 * SAME 30-day read span, which is deliberately wider than the 7-day window the
+	 * verdict is computed over. A dashboard that skipped it would render "Healthy"
+	 * beside a controller verdict of "Not enough data yet".
+	 */
+	it('renders gate 2 as unmeasured while nothing records deferrals, and decided once something does', async () => {
+		const t = convexTest(schema, modules);
+		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day, sent: 50_000, delivered: 49_800 })
+			);
+		});
+
+		const quiet = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((gate) => gate.gate === 'deferral');
+		expect(quiet?.status).toBe('insufficient_data');
+		expect(quiet?.reason).toBe('own_deferral_telemetry_absent');
+		// Ample sample, rate of zero — and precisely because both are true, the
+		// verdict may not be read off them.
+		expect(quiet?.measurement.ownRate).toBe(0);
+		expect(quiet?.measurement.ownSample).toBe(50_000);
+
+		// One deferral three weeks ago: outside the window the verdict is computed
+		// over, inside the span the instrument is observed over.
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day - 20 * 24 * 60 * 60 * 1000, shardKey: 1, sent: 10, deferred: 1 })
+			);
+		});
+
+		const instrumented = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((gate) => gate.gate === 'deferral');
+		expect(instrumented?.status).toBe('pass');
+		expect(instrumented?.measurement.ownRate).toBe(0);
+	});
+
+	/**
+	 * The hold's EXIT reaches the screen too, over the telemetry span rather than
+	 * the 7-day window — and it must land on exactly the day the CONTROLLER's exit
+	 * lands on. The two readers do not read the same rows: the controller's
+	 * own-arm read reaches back 30 days from `now` (day-30), the screen's from
+	 * tomorrow's UTC boundary (day-29). The predicate clamps both to its own span,
+	 * so the day only one of them holds decides nothing — the twin of this fixture
+	 * is `rampControllerHardStops`' boundary case, and both hold on it.
+	 */
+	it('renders a never-deferring cell as decided on the same day the controller does', async () => {
+		const t = convexTest(schema, modules);
+		const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+		const day = startOfDayUtc(Date.now());
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day - ONE_DAY_MS, sent: 50_000, delivered: 49_800 })
+			);
+			// The boundary day: inside the controller's read, outside the screen's,
+			// outside the span both judge the instrument over.
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day - 30 * ONE_DAY_MS, shardKey: 1, sent: 10, delivered: 10 })
+			);
+		});
+
+		const boundary = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((entry) => entry.gate === 'deferral');
+		expect(boundary?.status).toBe('insufficient_data');
+		expect(boundary?.reason).toBe('own_deferral_telemetry_absent');
+
+		// Traffic spread across the span — with its oldest days quiet, since the
+		// exit is a property of the span rather than of the day at its edge.
+		await t.run(async (ctx) => {
+			for (const offset of [5, 10, 15, 20]) {
+				await ctx.db.insert(
+					'transportOutcomes',
+					bucket({ periodStart: day - offset * ONE_DAY_MS, shardKey: 2, sent: 10, delivered: 10 })
+				);
+			}
+		});
+
+		const observed = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((entry) => entry.gate === 'deferral');
+		expect(observed?.status).toBe('pass');
 	});
 
 	it('reports a zero-volume cell as empty rather than as a problem', async () => {

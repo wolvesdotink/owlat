@@ -69,8 +69,8 @@ export const transportOutcomeTables = {
 		lastRecordedAt: v.number(),
 	})
 		// Org-leading, then the cell/arm/day/shard prefix the plan names. The
-		// index NAME carries `org` because the key order does; `by_org_send` /
-		// `by_org_cell_time` on `sendAssignments` set the same precedent.
+		// index NAME carries `org` because the key order does; `by_org_send` on
+		// `sendAssignments` sets the same precedent.
 		.index('by_org_cell_arm_period_shard', [
 			'organizationId',
 			'cell',

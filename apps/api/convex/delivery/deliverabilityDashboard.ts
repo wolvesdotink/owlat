@@ -37,6 +37,8 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { hasSeedAccounts } from '../analytics/seedAccounts';
 import {
+	deferralTelemetryReadSince,
+	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
@@ -180,11 +182,19 @@ export const getDeliverabilityDashboard = authedQuery({
 		// account — all of it discarded.
 		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
 		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
+		// THE SAME LOWER BOUND THE CONTROLLER READS FROM, through the same helper:
+		// the screen's own 30-day baseline bound is derived from tomorrow's UTC
+		// boundary and the controller's from `now`, and gate 2's instrument check
+		// must not be asked of a row set one of them cannot see. Cell-independent,
+		// so it is derived once rather than per cell.
+		const readWindow = {
+			since: Math.min(window.readSinceDay, deferralTelemetryReadSince(now)),
+			until: window.untilDay,
+		};
 
 		const cells: DashboardCellView[] = [];
 		for (const cell of allDeliverabilityCells()) {
 			const cellKey = deliverabilityCellKey(cell);
-			const readWindow = { since: window.readSinceDay, until: window.untilDay };
 			// Bounded: ≤30 days × shard count per arm, and the aging cron caps the
 			// table at 90 days regardless.
 			const ownBuckets = await readCellArmBuckets(ctx.db, {
@@ -215,6 +225,14 @@ export const getDeliverabilityDashboard = authedQuery({
 				reference,
 				ownSeeds: null,
 				referenceSeeds: null,
+				// THE SAME OBSERVATION THE CONTROLLER MAKES, over the same span of the
+				// same rows (`hasUsableDeferralTelemetry`). Gate 2 holds on a cell whose
+				// `deferred` counter has no writer instead of reporting a 0% pass, and a
+				// screen that skipped this would render "Healthy" beside a verdict the
+				// controller reached as "Not enough data yet". The predicate anchors its
+				// span on the CLOCK and clamps its rows to it, so the two cannot differ
+				// even where their read bounds do.
+				hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
 				engagement: engagementGateFor({ cell, own, reference, ownBuckets, window, now }),
 				previousCleanStreak: routeState?.cleanStreak ?? 0,
 				now,

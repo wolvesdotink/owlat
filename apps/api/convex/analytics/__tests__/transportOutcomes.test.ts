@@ -10,7 +10,9 @@
  *   - the exclusions: `failed` is not a transport outcome, a duplicate
  *     transition records nothing twice, a test preview records nothing, and a
  *     send with NO assignment row (a seed shadow copy, plan D18) never enters a
- *     denominator.
+ *     denominator;
+ *   - the bump leaves the transition's transaction, and the scheduled entry
+ *     point it leaves through admits the vocabulary and nothing else.
  *
  * The pure event→counter map is `transportOutcomesEvents.test.ts`; the aging
  * sweep is `transportOutcomesRetention.test.ts`.
@@ -29,7 +31,12 @@ import {
 } from '../../delivery/sendLifecycle/reducers';
 import type { Effect } from '../../delivery/sendLifecycle/effects';
 import { recordTransportOutcomeForCell, recordTransportOutcomeForSend } from '../transportOutcomes';
-import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../transportOutcomeSummary';
+import {
+	transportOutcomeCounters,
+	TRANSPORT_OUTCOME_EVENTS,
+	ZERO_TRANSPORT_OUTCOME_TOTALS,
+	type TransportOutcomeEvent,
+} from '../transportOutcomeSummary';
 import { modules } from '../../__tests__/testModules';
 import {
 	GMAIL_CAMPAIGN_CELL,
@@ -41,6 +48,7 @@ import {
 	sumCounter,
 	sumCounters,
 	uniqueBucketKeys,
+	drainOutcomeWrites,
 } from './transportOutcomesFixtures';
 
 // The singleton-org lookup goes through the BetterAuth component, which is not
@@ -152,6 +160,7 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			send: { kind: 'campaign', id: sendId },
 			transition,
 		});
+		await drainOutcomeWrites(t);
 		return await t.run(async (ctx) => await readBuckets(ctx));
 	}
 
@@ -205,10 +214,12 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			send: { kind: 'campaign', id: sendId },
 			transition: { to: 'opened', at: Date.now() },
 		});
+		await drainOutcomeWrites(t);
 		await t.mutation(internal.delivery.sendLifecycle.transition, {
 			send: { kind: 'campaign', id: sendId },
 			transition: { to: 'delivered', at: Date.now() + 1_000 },
 		});
+		await drainOutcomeWrites(t);
 		await t.run(async (ctx) => {
 			const buckets = await readBuckets(ctx);
 			expect(sumCounter(buckets, 'delivered')).toBe(1);
@@ -298,6 +309,7 @@ describe('lifecycle transition → one shard of one bucket', () => {
 				send: { kind: 'campaign', id: sendId },
 				transition: { to: 'opened', at },
 			});
+			await drainOutcomeWrites(t);
 		}
 
 		await t.run(async (ctx) => {
@@ -324,6 +336,7 @@ describe('lifecycle transition → one shard of one bucket', () => {
 				send: { kind: 'campaign', id: sendId },
 				transition: { to: 'clicked', at: Date.now(), url },
 			});
+			await drainOutcomeWrites(t);
 		}
 
 		await t.run(async (ctx) => {
@@ -360,6 +373,7 @@ describe('exclusions', () => {
 			send: { kind: 'campaign', id: sendId },
 			transition: { to: 'sent', at: Date.now(), providerMessageId: 'pm-probe' },
 		});
+		await drainOutcomeWrites(t);
 
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
@@ -407,6 +421,7 @@ describe('exclusions', () => {
 			send: { kind: 'transactional', id: sendId },
 			transition: { to: 'sent', at: Date.now(), providerMessageId: 'pm-preview' },
 		});
+		await drainOutcomeWrites(t);
 
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
@@ -434,10 +449,12 @@ describe('exclusions', () => {
 			send: { kind: 'campaign', id: sendId },
 			transition,
 		});
+		await drainOutcomeWrites(t);
 		await t.mutation(internal.delivery.sendLifecycle.transition, {
 			send: { kind: 'campaign', id: sendId },
 			transition,
 		});
+		await drainOutcomeWrites(t);
 
 		await t.run(async (ctx) => {
 			expect(sumCounter(await readBuckets(ctx), 'sent')).toBe(1);
@@ -465,6 +482,111 @@ describe('the deferral and unsubscribe counters', () => {
 	});
 });
 
+/**
+ * WHERE THE SHARD WRITE HAPPENS.
+ *
+ * The bump lands on one of eight shards of a bucket every recipient of the cell
+ * writes to that day. Applied inside the transition, an OCC conflict on that
+ * shard retries the whole delivery transaction — the send patch, the campaign
+ * counters, the daily stats, the webhook fanout — during exactly the open waves
+ * that make the conflict likely. So it leaves the transaction, like
+ * `reputation_update` does, and this pins that it still lands.
+ */
+describe('the outcome bump leaves the transition transaction', () => {
+	it('schedules the shard write rather than contending inside the transition', async () => {
+		const t = convexTest(schema, modules);
+		let sendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			sendId = (await seedAssignedSend(ctx, { status: 'queued', assignment: {} })).sendId;
+		});
+		if (!sendId) throw new Error('seed failed');
+
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId },
+			transition: { to: 'sent', at: Date.now(), providerMessageId: 'pm-1', providerType: 'mta' },
+		});
+
+		// A job of its own, carrying the whole effect: inline application would
+		// leave nothing here at all.
+		const jobs = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+				job.name.includes('recordOutcomeForSend')
+			)
+		);
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]?.args[0]).toMatchObject({ sendId, event: 'sent' });
+
+		// And it is a deferral of the write, not a loss of it.
+		await drainOutcomeWrites(t);
+		await t.run(async (ctx) => {
+			expect(sumCounters(await readBuckets(ctx))).toEqual({
+				...ZERO_TRANSPORT_OUTCOME_TOTALS,
+				sent: 1,
+			});
+		});
+	});
+});
+
+/**
+ * THE SCHEDULED ENTRY POINT'S ARGUMENT CONTRACT.
+ *
+ * `recordOutcomeForSend` is a wire boundary now that the write left the
+ * transition's transaction: the event arrives as scheduler data rather than as
+ * a typed argument, so the arg validator is the only thing still holding it to
+ * the vocabulary. Widen that to `v.string()` and a variant spelling reaches
+ * `transportOutcomeCounters`, which answers with NO counter — a bump that
+ * vanishes silently, for exactly the event that was misspelled.
+ *
+ * The handler swallows every failure of its own (a measurement must not fail
+ * the delivery it describes), so a throw out of this mutation can only come
+ * from argument validation — which is what makes the rejection case sharp.
+ */
+describe('recordOutcomeForSend takes the vocabulary, not a string', () => {
+	it.each(TRANSPORT_OUTCOME_EVENTS)('carries %s through to its own counter', async (event) => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		await t.mutation(internal.analytics.transportOutcomes.recordOutcomeForSend, {
+			sendId,
+			event,
+			at: Date.now(),
+		});
+
+		// The counters the shipped map assigns this event, read off the map rather
+		// than hand-listed: the claim is that the entry point admits every event
+		// AND that the one it admitted reached the column it belongs to.
+		const expected = { ...ZERO_TRANSPORT_OUTCOME_TOTALS };
+		for (const counter of transportOutcomeCounters(event, false)) expected[counter] = 1;
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+			expect(sumCounters(buckets)).toEqual(expected);
+		});
+	});
+
+	it('refuses an event outside the vocabulary instead of counting nothing', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		await expect(
+			t.mutation(internal.analytics.transportOutcomes.recordOutcomeForSend, {
+				sendId,
+				// Not in `TRANSPORT_OUTCOME_EVENTS`; the cast is the point — a caller
+				// on the far side of the scheduler has no type to stop it.
+				event: 'quarantined' as TransportOutcomeEvent,
+				at: Date.now(),
+			})
+			// The VALIDATOR's refusal specifically: the handler cannot throw, so a
+			// bare `toThrow()` here would also accept a failure that never got as far
+			// as rejecting the event.
+		).rejects.toThrow(/Validator error/);
+
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+		});
+	});
+});
+
 describe('the queued → terminal MTA path (two outcome effects, one transition)', () => {
 	async function runMtaTerminal(
 		transition:
@@ -481,6 +603,7 @@ describe('the queued → terminal MTA path (two outcome effects, one transition)
 			providerMessageId,
 			transition,
 		});
+		await drainOutcomeWrites(t);
 		return await t.run(async (ctx) => await readBuckets(ctx));
 	}
 

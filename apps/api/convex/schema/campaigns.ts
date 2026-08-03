@@ -279,6 +279,13 @@ export const campaignTables = {
 		// the same role `openedAt` plays for `opened`. See
 		// `delivery/unsubscribeOutcome.ts`.
 		unsubscribedAt: v.optional(v.number()),
+		// The UTC DAY this send last had a last-mile deferral counted against its
+		// cell — the rate limiter for the `deferred` transport outcome, so a send
+		// the router holds all afternoon contributes one event and not one per
+		// re-entry. A day rather than an instant because the outcome buckets are
+		// daily: still deferred tomorrow is tomorrow's evidence. Not a status; the
+		// send stays `queued` throughout. See `delivery/deferralOutcome.ts`.
+		deferralCountedDay: v.optional(v.number()),
 		// Link tracking for click attribution
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)

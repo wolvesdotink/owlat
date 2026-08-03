@@ -175,7 +175,10 @@ describeEquipped('the two implementations disagree only where the plan says they
 		// A cell whose bounce rate has TRIPLED against its own history but is level
 		// with the relay arm: the trailing implementation must see it, the concurrent
 		// one must not.
-		const own = arm({ sent: 10_000, hardBounced: 150 });
+		// Deferrals counted in both legs: the case is about WHICH SERIES gate 1
+		// compares against, so gate 2 must be decidable on either side rather than
+		// holding for want of an instrument.
+		const own = arm({ sent: 10_000, hardBounced: 150, deferred: 100 });
 		const standalone = trailingBaselineGateEvaluator.evaluate(
 			standaloneInput({ own, ownTrailingBaseline: arm({ sent: 40_000, hardBounced: 200 }) })
 		);

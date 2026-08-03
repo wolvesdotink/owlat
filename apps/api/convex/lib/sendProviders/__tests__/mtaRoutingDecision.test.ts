@@ -41,9 +41,12 @@ describe('MTA routing decision client', () => {
 		new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
 	])('fails closed on a non-2xx or malformed routing decision', async (response) => {
 		global.fetch = vi.fn().mockResolvedValue(response);
+		// LOCAL, not governed: we never got an answer, so nothing was observed about
+		// this sending identity and gate 2 must not count it (`deferralOutcome.ts`).
 		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
+			origin: 'local',
 		});
 	});
 
@@ -58,9 +61,13 @@ describe('MTA routing decision client', () => {
 		) as typeof fetch;
 		const pending = resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput);
 		await vi.advanceTimersByTimeAsync(5_001);
-		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000 });
+		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000, origin: 'local' });
 	});
 
+	// `invented_reason` is the fall-through this list exists to pin: a defer
+	// reason the adapter does not recognise is an answer we did not understand,
+	// so it comes back `local` and gate 2 does not count it. Adding a defer reason
+	// on the MTA side means adding it here and in `resolveMtaRoutingDecision`.
 	it.each([
 		{ decision: 'mta', lease: { token: 'lease-1', providerProbe: false } },
 		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },
@@ -75,6 +82,7 @@ describe('MTA routing decision client', () => {
 		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
+			origin: 'local',
 		});
 	});
 
@@ -98,11 +106,11 @@ describe('MTA routing decision client', () => {
 			],
 			[
 				{ decision: 'defer', reason: 'global_safety', retryAfterMs: -1 },
-				{ kind: 'defer', retryAfterMs: 1_000 },
+				{ kind: 'defer', retryAfterMs: 1_000, origin: 'governed' },
 			],
 			[
 				{ decision: 'defer', reason: 'global_safety', retryAfterMs: 9_000_000 },
-				{ kind: 'defer', retryAfterMs: 3_600_000 },
+				{ kind: 'defer', retryAfterMs: 3_600_000, origin: 'governed' },
 			],
 		] as const) {
 			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));

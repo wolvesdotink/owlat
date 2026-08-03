@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../gates';
 import { evaluateSeedPlacementGate } from '../seedGate';
+import { aggregateRampGates } from '../gateEvaluation';
 import { OPTIONAL_RAMP_GATES, RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import { arm, describeEquipped, input, NOW, seeds } from './gateFixtures';
 
@@ -98,6 +99,101 @@ describe('gate 2 — deferral minimum sample', () => {
 		);
 		expect(result.status).toBe('insufficient_data');
 		expect(result.reason).toBe('own_evidence_stale');
+	});
+});
+
+/**
+ * GATE 2's OTHER WAY OF KNOWING NOTHING (see `hasDeferralTelemetry`).
+ *
+ * The sample floor above answers "is this window big enough to speak about". This
+ * answers a question no sample size can: the `deferred` counter is only partly
+ * instrumented, so an empty numerator over an ample window is either a clean cell
+ * or a cell nobody records deferrals for — and the second one must not buy the
+ * `pass` that lets the controller raise a share.
+ */
+describe('gate 2 — an uninstrumented zero is not a clean window', () => {
+	const AMPLE = 10_000;
+
+	it('holds an ample, spotless window when nothing has recorded a deferral', () => {
+		const result = evaluateDeferralGate(input({ own: arm({ sent: AMPLE }) }));
+		expect(result.status).toBe('insufficient_data');
+		expect(result.reason).toBe('own_deferral_telemetry_absent');
+		// The rate IS zero and the sample IS ample — which is exactly why the
+		// verdict may not be read off them.
+		expect(result.measurement.ownRate).toBe(0);
+		expect(result.measurement.ownSample).toBe(AMPLE);
+	});
+
+	it('passes the same window once the reader says the counter has a writer', () => {
+		const result = evaluateDeferralGate(
+			input({ own: arm({ sent: AMPLE }), hasDeferralTelemetry: true })
+		);
+		expect(result.status).toBe('pass');
+		expect(result.reason).toBe('within_threshold');
+		expect(result.mayJustifyIncrease).toBe(true);
+	});
+
+	it('a window that recorded deferrals is its own witness, flag or no flag', () => {
+		for (const hasDeferralTelemetry of [undefined, false]) {
+			const result = evaluateDeferralGate(
+				input({ own: arm({ sent: AMPLE, deferred: 1 }), hasDeferralTelemetry })
+			);
+			expect(result.status).toBe('pass');
+		}
+	});
+
+	it('never suppresses a breach: an absent flag cannot turn a fail or a halt into a hold', () => {
+		const failing = evaluateDeferralGate(
+			input({
+				own: arm({
+					sent: AMPLE,
+					deferred: Math.round(AMPLE * (RAMP_GATE_THRESHOLDS.deferralMax + 0.01)),
+				}),
+			})
+		);
+		expect(failing).toMatchObject({ status: 'fail', reason: 'absolute_threshold_breached' });
+
+		const halting = evaluateDeferralGate(
+			input({
+				own: arm({ sent: AMPLE, deferred: Math.round(AMPLE * RAMP_GATE_THRESHOLDS.deferralHalt) }),
+			})
+		);
+		expect(halting).toMatchObject({ status: 'halt', reason: 'halt_threshold_breached' });
+	});
+
+	it('a thin window is reported as thin, not as uninstrumented', () => {
+		// Ordering: the sample floor is the earlier, more fundamental problem, and a
+		// hold reason exists to name the thing to fix (plan D12).
+		const result = evaluateDeferralGate(
+			input({ own: arm({ sent: RAMP_GATE_SAMPLE_FLOORS.deferral - 1 }) })
+		);
+		expect(result.reason).toBe('own_sample_below_floor');
+	});
+
+	it('holding on an absent instrument costs the aggregate its increase evidence', () => {
+		// The whole point of the hold: `insufficient_data` outranks `pass` in
+		// `aggregateRampGates`, so a cell whose deferral gate cannot measure anything
+		// stops advancing rather than advancing on a zero nobody wrote.
+		const uninstrumented = aggregateRampGates({
+			perGate: [evaluateDeferralGate(input({ own: arm({ sent: AMPLE }) }))],
+			previousCleanStreak: 2,
+			now: NOW,
+		});
+		expect(uninstrumented.verdict).toBe('insufficient_data');
+		expect(uninstrumented.increaseEvidence).toBe(false);
+		// A hold HOLDS the streak (plan D10) — it is neither clean nor dirty.
+		expect(uninstrumented.cleanStreak).toBe(2);
+
+		const instrumented = aggregateRampGates({
+			perGate: [
+				evaluateDeferralGate(input({ own: arm({ sent: AMPLE }), hasDeferralTelemetry: true })),
+			],
+			previousCleanStreak: 2,
+			now: NOW,
+		});
+		expect(instrumented.verdict).toBe('pass');
+		expect(instrumented.increaseEvidence).toBe(true);
+		expect(instrumented.cleanStreak).toBe(3);
 	});
 });
 

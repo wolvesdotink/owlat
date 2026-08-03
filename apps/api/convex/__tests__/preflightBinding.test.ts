@@ -36,12 +36,13 @@ import {
 } from './preflightFixtures';
 import type { Id } from '../_generated/dataModel';
 import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/preflight';
-import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
+import { buildCapacitySchedule, MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
 import { planTodaysSlice } from '../campaigns/multiDaySendPlan';
 import {
 	assessCampaignCapacity,
 	assessCountedPlan,
 	audienceCountCeiling,
+	quotedRefusalSchedule,
 	toAssessment,
 	type CampaignCapacityAssessment,
 } from '../campaigns/capacityPreflight';
@@ -825,12 +826,14 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 	});
 
 	/**
-	 * The refusal side of a heterogeneous mix. The schedule is enumerated over
-	 * `floor x audience` — the volume the own arm is GUARANTEED to carry — so it
-	 * is a lower bound on the days this campaign needs, and the copy has to say
-	 * "at least" rather than quote a finish date the send will miss (D14).
+	 * The refusal side of a heterogeneous mix. The DECISION is enumerated over
+	 * `floor x audience` — the volume the own arm is guaranteed to carry — but the
+	 * plan handed to the operator is the walk: all 600 recipients, because that is
+	 * what the walker paces and what the copy calls them. Composition the gate
+	 * cannot know changes whether the cap can strand this campaign; it changes
+	 * nothing about how long the send takes, so there is nothing to hedge (D14).
 	 */
-	it('marks a refusal built from the floor as a lower bound on the plan', async () => {
+	it('decides a refusal on the floor and quotes the walk it will run', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
@@ -843,8 +846,7 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 			],
 		});
 		// Floor 0.9, peak 1: even the guaranteed 540 own-arm messages overrun the
-		// 500 the horizon carries, so the refusal is sound — but the real own-arm
-		// volume can be anything up to 600, and the plan does not know which.
+		// 500 the horizon carries, so the refusal is sound.
 		await seedCampaignCellShares(t, 1, { gmail: 0.9 });
 
 		const result = await runPreflight(t, campaignId);
@@ -852,9 +854,65 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('exceeds_sending_capacity');
-		expect(result.capacityPlan?.covered).toBe(540);
-		expect(result.capacityPlan?.audienceUnderCounted).toBe(true);
-		expect(result.message).toContain('at least');
+		// 600 recipients, never the 540 messages the verdict was decided on.
+		expect(result.capacityPlan?.covered).toBe(600);
+		expect(result.capacityPlan?.slices).toEqual([0, 100, 200, 200, 100]);
+		expect(result.capacityPlan?.audienceUnderCounted).toBe(false);
+		expect(result.message).toContain('about 5 days');
+	});
+
+	/**
+	 * THE UNHEDGED HOLE, and the reason this is not a cosmetic fix: at a UNIFORM
+	 * fractional share the floor and the peak are the same number, so nothing
+	 * marks the plan as a bound — the refusal quotes a finish date outright. Built
+	 * over own-arm messages that date is one the walker cannot keep: 1,400
+	 * recipients at a half share are 700 messages, which the projection clears a
+	 * whole day before it clears 1,400 recipients.
+	 *
+	 * The assertion is against the walker's OWN plan rather than a literal, so the
+	 * two cannot be corrected apart.
+	 */
+	it('quotes the walker plan, not the own-arm plan, at a uniform fractional share', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 1_400);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'adaptive_mix',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+		await seedCampaignCellShares(t, 0.5);
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+
+		const audience = await t.run(async (ctx) => (await ctx.db.get(campaignId))?.audience);
+		if (!audience) throw new Error('campaign missing its audience');
+		const walker = await t.query(internal.campaigns.sendPlanQueries.getSendPlanCapacity, {
+			audience,
+			countAudienceSize: true,
+		});
+		expect(walker.plannedTotal).toBe(1_400);
+		const walkerPlan = buildCapacitySchedule({
+			audienceSize: 1_400,
+			remainingCapacityByDay: walker.capacityByDay,
+			now: MIDNIGHT,
+		});
+
+		// Six days over 0 / 100 / 200 / 200 / 700 / 700 — where the 700 own-arm
+		// messages the verdict was decided on finish on day five.
+		expect(walkerPlan.days).toBe(6);
+		expect(result.capacityPlan?.days).toBe(walkerPlan.days);
+		expect(result.capacityPlan?.slices).toEqual(walkerPlan.slices);
+		expect(result.capacityPlan?.covered).toBe(1_400);
+		expect(result.capacityPlan?.finishesAt).toBe(walkerPlan.finishesAt);
+		expect(result.message).toContain('about 6 days');
 	});
 });
 
@@ -1080,24 +1138,101 @@ describe('assessCountedPlan — a stopped count never licenses "it fits"', () =>
 		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
 	});
 
-	it('quotes an exact single-share refusal as the plan it actually is', () => {
+	/**
+	 * An exact count hedges NOTHING here. Own-arm bounds that differ used to add a
+	 * hedge at this seam; they no longer can, because the schedule this helper
+	 * returns is the DECISION's — enumerated in own-arm messages — and never the
+	 * one the operator reads (`quotedRefusalSchedule`).
+	 */
+	it('leaves an exactly counted refusal unhedged', () => {
 		const assessment = assessCountedPlan(refusal, { completeness: 'exact' });
 
 		expect(assessment.fits).toBe(false);
 		if (assessment.fits) return;
 		expect(assessment.schedule.audienceUnderCounted).toBe(false);
-		expect(describeCapacitySchedule(assessment.schedule)).toContain('about 5 days');
+	});
+});
+
+/**
+ * THE REFUSAL IS DECIDED IN MESSAGES AND QUOTED IN RECIPIENTS.
+ *
+ * Only own-MTA volume meets the warming cap, so `share x audience` is what can
+ * prove a campaign's tail expires — and it is not a schedule anyone runs. The
+ * walker paces the WHOLE audience through the same day budget, so a plan
+ * enumerated over own-arm messages quotes roughly `share` of the days the send
+ * takes and prints message counts under a "recipients" label.
+ */
+describe('quotedRefusalSchedule — the plan the operator reads is the walk', () => {
+	/** 300 own-arm messages of a 600-recipient audience at a half share. */
+	const ownArmSchedule = {
+		fits: false as const,
+		days: 3,
+		slices: [0, 100, 200],
+		finishesAt: MIDNIGHT + 3 * DAY_MS,
+		covered: 300,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+	/** The same audience as the walker meters it: all 600 recipients. */
+	const walkerSchedule = {
+		fits: false as const,
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: MIDNIGHT + 5 * DAY_MS,
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+
+	it('quotes the walker plan, in recipients, not the own-arm message plan', () => {
+		expect(
+			quotedRefusalSchedule({ ownArmSchedule, walkerSchedule, audienceUnderCounted: false })
+		).toEqual(walkerSchedule);
+		expect(
+			describeCapacitySchedule(
+				quotedRefusalSchedule({ ownArmSchedule, walkerSchedule, audienceUnderCounted: false })
+			)
+		).toContain('about 5 days');
 	});
 
-	it('marks an exact refusal over a heterogeneous mix as a lower bound too', () => {
-		const assessment = assessCountedPlan(refusal, {
-			completeness: 'exact',
-			ownArmBoundsDiffer: true,
+	it('carries the count hedge onto the quoted plan', () => {
+		const schedule = quotedRefusalSchedule({
+			ownArmSchedule,
+			walkerSchedule,
+			audienceUnderCounted: true,
 		});
 
-		expect(assessment.fits).toBe(false);
-		if (assessment.fits) return;
-		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+		expect(schedule.covered).toBe(600);
+		expect(schedule.audienceUnderCounted).toBe(true);
+		expect(describeCapacitySchedule(schedule)).toContain('at least 5 days');
+	});
+
+	/**
+	 * A projection that plateaus at zero can cover the own arm's share and still
+	 * reach nobody else: the walker's plan is then the `days === 0` sentinel, which
+	 * callers must never render as a finish. The proven refusal stands on the
+	 * own-arm plan — quoted as the lower bound it is, never as a finish date.
+	 */
+	it('falls back to the own-arm plan, hedged, when the walk cannot be planned', () => {
+		const unplannable = {
+			fits: false as const,
+			days: 0,
+			slices: [],
+			finishesAt: MIDNIGHT,
+			covered: 0,
+			truncated: false,
+			audienceUnderCounted: false,
+		};
+
+		const schedule = quotedRefusalSchedule({
+			ownArmSchedule,
+			walkerSchedule: unplannable,
+			audienceUnderCounted: false,
+		});
+
+		expect(schedule.days).toBe(3);
+		expect(schedule.audienceUnderCounted).toBe(true);
+		expect(describeCapacitySchedule(schedule)).toContain('at least 3 days');
 	});
 });
 

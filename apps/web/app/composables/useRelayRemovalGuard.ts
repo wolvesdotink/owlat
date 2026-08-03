@@ -42,10 +42,26 @@ export interface RelayRemovalGuard {
 }
 
 /**
- * @param resultingProvider The transport the draft would leave live. Selecting
- * the built-in MTA is the only draft that disconnects anything — the same rule
- * the endpoint applies to the resulting env, so the dialog appears exactly when
- * the server would demand the phrase.
+ * NO PROVIDER, IN EITHER VOCABULARY. `apply-transport` gates on the resulting
+ * `EMAIL_PROVIDER` VALUE, where "none" is the empty string (trimmed); the
+ * screens hold a `ProviderChoice`, whose word for it is `none` — which
+ * `buildProviderEnv` turns into an OMITTED key and `planTransportEnvChange` then
+ * deletes from the merged env, arriving at the endpoint as exactly that empty
+ * value. Both spellings therefore end at the same refusal, so both open the
+ * dialog: a caller handing over its own draft choice must not be the one that
+ * has to translate.
+ */
+const NO_PROVIDER = new Set(['', 'none']);
+
+/**
+ * @param resultingProvider The transport the draft would leave live, as either
+ * the resulting `EMAIL_PROVIDER` value or the screens' own `ProviderChoice`. A
+ * result of the built-in MTA — or of no provider at all — is a deployment
+ * sending on its own, and nothing else disconnects anything: that is
+ * `apply-transport`'s rule on the resulting env, so the dialog appears exactly
+ * when the server would demand the phrase. No shipped screen offers a
+ * provider-less transport edit today; the predicates still have to agree,
+ * because one that stops agreeing drifts silently.
  */
 export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): RelayRemovalGuard {
 	const { data: independence } = useOrganizationQuery(
@@ -97,12 +113,14 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 	const serverConsequence = ref<string | null>(null);
 
 	return {
-		removesReferenceArm: computed(
-			() =>
-				resultingProvider.value === 'mta' &&
+		removesReferenceArm: computed(() => {
+			const resulting = resultingProvider.value.trim();
+			return (
+				(resulting === 'mta' || NO_PROVIDER.has(resulting)) &&
 				referenceTransportId.value !== null &&
 				relayRemoval.value?.kind === 'unsafe'
-		),
+			);
+		}),
 		removalConsequence: localConsequence,
 		/**
 		 * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read

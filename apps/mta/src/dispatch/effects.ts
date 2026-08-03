@@ -245,8 +245,18 @@ function fireAndForget(
 
 /**
  * The per-IP warming accounting. It takes the attempt's day for the same reason
- * its per-provider twin below does — the two mirror one outcome and must agree
- * on which day it happened. Only the per-day stats key moves; see `recordSend`.
+ * its per-provider twin below does — the two mirror one outcome, so the per-day
+ * STATS both book into must be the same day, or one dimension's bounce rate is
+ * computed over a day the other never counted.
+ *
+ * The two rolling `sentToday` slots do NOT follow it: this one stays on the apply
+ * clock (`recordSend` — writing a finished day into it would zero the live day's
+ * cap consumption, so the slot is never rewound; a late effect lands in whichever
+ * day the slot is on, which is the live one once that day's first cap gate has
+ * rolled it), while the per-provider slot is monotonic and a stale-day send
+ * leaves it untouched (`warmingProviderScripts.ts`, which spends no live
+ * allowance instead). Same tradeoff, opposite side; each is argued where its
+ * write happens.
  */
 function applyPerIpWarmingRecord(
 	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,

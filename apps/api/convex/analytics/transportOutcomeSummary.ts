@@ -18,6 +18,7 @@
 
 import type { Doc } from '../_generated/dataModel';
 import { startOfDayUtc } from '../lib/clock';
+import { MS_PER_DAY } from '../lib/constants';
 
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
 export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
@@ -25,21 +26,35 @@ export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
 /**
  * The outcome vocabulary. One event bumps one general counter.
  *
- * `unsubscribed` is the only one that is NOT a Send lifecycle transition — it is
- * a recipient action on a contact-keyed public endpoint, joined back to a send
- * by `delivery/unsubscribeOutcome.ts`. It is in this vocabulary because the
- * standalone ramp's gate 3 is derived from its rate.
+ * TWO of them are NOT Send lifecycle transitions, and both are in this
+ * vocabulary because a ramp gate is derived from their rate:
+ *
+ *   - `unsubscribed` is a recipient action on a contact-keyed public endpoint,
+ *     joined back to a send by `delivery/unsubscribeOutcome.ts` (gate 3's
+ *     standalone proxy);
+ *   - `deferred` leaves the send `queued` rather than moving it anywhere, so it
+ *     is recorded by `delivery/deferralOutcome.ts` off the completion callback
+ *     (gate 2, and the phase-promotion rule's every-cell condition).
+ *
+ * A VALUE, with the type derived from it, so the vocabulary can be ENUMERATED
+ * rather than only checked. Three counters in this plan shipped with readers and
+ * no writer; the guard that now forbids that
+ * (`__tests__/transportOutcomeWiring.test.ts`) has to be able to iterate the
+ * whole vocabulary, and a hand-kept second list is a second chance to disagree.
  */
-export type TransportOutcomeEvent =
-	| 'sent'
-	| 'delivered'
-	| 'deferred'
-	| 'soft_bounced'
-	| 'hard_bounced'
-	| 'complained'
-	| 'opened'
-	| 'clicked'
-	| 'unsubscribed';
+export const TRANSPORT_OUTCOME_EVENTS = [
+	'sent',
+	'delivered',
+	'deferred',
+	'soft_bounced',
+	'hard_bounced',
+	'complained',
+	'opened',
+	'clicked',
+	'unsubscribed',
+] as const;
+
+export type TransportOutcomeEvent = (typeof TRANSPORT_OUTCOME_EVENTS)[number];
 
 /** Counter columns on the bucket — every one an integer, never a rate. */
 export type TransportOutcomeCounter =
@@ -267,6 +282,118 @@ export const ZERO_TRANSPORT_OUTCOME_TOTALS: TransportOutcomeTotals = {
  */
 export function safeOutcomeCount(value: number | undefined | null): number {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * THE SPAN THE INSTRUMENT IS JUDGED OVER, declared beside the predicate that
+ * judges it. 30 days — the history the controller and the dashboard already read
+ * for their baselines, so every reader asks the same question of the same rows
+ * and the witness costs no extra index read anywhere.
+ */
+export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * MS_PER_DAY;
+
+/**
+ * HOW MUCH OF THE SPAN THE ARM'S OWN TRAFFIC HAS TO COVER before a silent
+ * `deferred` counter counts as a reading rather than as a silence.
+ *
+ * A DISTANCE, NOT A DAY COUNT, and not the span's oldest day either. Real
+ * senders are not continuous: a cell that sends on weekdays only is quiet on
+ * both of the span's oldest days once every seven, and a test anchored on that
+ * edge would restart its fourteen-day graduation clock every weekend — the
+ * permanent block plan D2 forbids, merely made intermittent. A cell that sends
+ * one batch a week has four sending days in the span and is just as entitled to
+ * an answer. What both have and a cell that started on Tuesday does not is
+ * TRAFFIC SPREAD ACROSS THE SPAN, which is what this measures.
+ *
+ * Fourteen days because that is the ramp's own graduation dwell: the shortest
+ * period the plan is willing to call sustained evidence about a cell.
+ */
+export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * MS_PER_DAY;
+
+/**
+ * The oldest UTC day inside the span, counting TODAY as one of its days. The
+ * anchor is the clock rather than each caller's own lower bound: the controller
+ * reads back from `now`, the dashboard from tomorrow's UTC boundary, and a
+ * predicate that trusted whichever bound it was handed would let the screen call
+ * a cell decided a day before the controller does — which is the one disagreement
+ * this module exists to prevent.
+ */
+function telemetrySpanStartDay(now: number): number {
+	return startOfDayUtc(now) - DEFERRAL_TELEMETRY_SPAN_MS + MS_PER_DAY;
+}
+
+/**
+ * THE LOWER BOUND A READER MUST PASS `readCellArmBuckets` for its rows to be
+ * able to answer `hasUsableDeferralTelemetry` at all.
+ *
+ * One helper rather than three hand-derived bounds: the controller reads back
+ * from `now`, the dashboard from tomorrow's UTC boundary and the promotion rule
+ * from its own span start, and three spellings of "thirty days" is how two
+ * readers come to ask the same predicate of different rows. Take it as the
+ * MINIMUM of your own bound and this one — reading wider is free, since the
+ * predicate ignores rows outside the span anyway.
+ */
+export function deferralTelemetryReadSince(now: number): number {
+	return telemetrySpanStartDay(now);
+}
+
+/**
+ * IS AN EMPTY `deferred` COUNTER A READING, OR A SILENCE? — the ONE answer gate
+ * 2, the dashboard and the phase-promotion rule all ask for.
+ *
+ * Two facts satisfy it, and the second one is why it is not simply "did the
+ * counter ever move":
+ *
+ *   1. THE COUNTER MOVED inside the span. The instrument demonstrably ran, so
+ *      the zeros beside it are real readings.
+ *   2. THE ARM'S TRAFFIC COVERS THE SPAN — its oldest and newest sending days
+ *      are at least `DEFERRAL_TELEMETRY_MIN_OBSERVED_MS` apart — and the counter
+ *      still has not moved. A zero across a fortnight of own-arm sending has
+ *      been OBSERVED; it is not the same fact as a zero from a cell that started
+ *      sending on Tuesday.
+ *
+ * Both facts are PROPERTIES OF THE SPAN, never of one day. An earlier revision
+ * asked (2) of the span's oldest day alone, which any cell that does not send at
+ * weekends fails once a week — see `DEFERRAL_TELEMETRY_MIN_OBSERVED_MS`.
+ *
+ * Without (2) the hold has no exit, and that is a live bricking bug rather than
+ * a conservative default: a deployment whose warm-up overflow routes to a relay
+ * instead of deferring never records a deferral at all, and gate 2's
+ * `insufficient_data` outranks `pass` in the fold. Every tick would clear
+ * `greenSince` (controller rung 7), so the cell could never raise its own-MTA
+ * share and its fourteen-day graduation clock would restart hourly, for ever,
+ * with no operator remedy. Plan D2 forbids exactly that: an ABSENT signal may
+ * slow a ramp down, never block it permanently.
+ *
+ * TAKES `now`, NOT THE CALLER'S LOWER BOUND, and CLAMPS ITS OWN SPAN over the
+ * rows: a reader that happened to read a day further back must not reach a
+ * different verdict from one that did not, which is precisely how the screen and
+ * the controller would come to disagree at the boundary. Read at least back to
+ * `deferralTelemetryReadSince`; anything older is ignored here. Rows that fall
+ * short of the span simply fail (2), which is the safe direction — a reader that
+ * under-reads holds a little longer and can never shorten the span.
+ */
+export function hasUsableDeferralTelemetry(
+	rows: readonly Pick<TransportOutcomeBucketCounts, 'deferred' | 'sent' | 'periodStart'>[],
+	now: number
+): boolean {
+	if (!Number.isFinite(now)) return false;
+	const spanStartDay = telemetrySpanStartDay(now);
+	// Exclusive: a future-dated row is a clock fault, and letting one manufacture
+	// the spread in (2) would unlock the gate off a day that has not happened.
+	const spanUntil = startOfDayUtc(now) + MS_PER_DAY;
+	let oldestSendingDay: number | null = null;
+	let newestSendingDay: number | null = null;
+	for (const row of rows) {
+		const day = row.periodStart;
+		if (!Number.isFinite(day) || day < spanStartDay || day >= spanUntil) continue;
+		if (safeOutcomeCount(row.deferred) > 0) return true;
+		if (safeOutcomeCount(row.sent) <= 0) continue;
+		if (oldestSendingDay === null || day < oldestSendingDay) oldestSendingDay = day;
+		if (newestSendingDay === null || day > newestSendingDay) newestSendingDay = day;
+	}
+	if (oldestSendingDay === null || newestSendingDay === null) return false;
+	return newestSendingDay - oldestSendingDay >= DEFERRAL_TELEMETRY_MIN_OBSERVED_MS;
 }
 
 /** Zero-denominator guard — the one place a division happens. */

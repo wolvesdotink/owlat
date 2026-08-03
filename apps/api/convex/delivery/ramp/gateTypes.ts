@@ -102,6 +102,8 @@ export type RampGateHoldReason =
 	 */
 	| 'reference_not_a_denominator'
 	| 'baseline_not_a_denominator'
+	/** A zero with no writer behind it is not a zero — see `evaluateDeferralGate`. */
+	| 'own_deferral_telemetry_absent'
 	| 'evidence_absent';
 
 /**
@@ -447,6 +449,13 @@ export interface RampGateEvaluationInput {
 	 * nothing else (plan D2).
 	 */
 	readonly hasComplaintFeedback?: boolean;
+	/**
+	 * Whether this cell's `deferred` counter is saying anything — observed from
+	 * this cell's own arm over the telemetry span, never configured. Absent or
+	 * `false` over an EMPTY numerator makes gate 2 hold rather than pass. Readers
+	 * derive it through `hasUsableDeferralTelemetry`, which also bounds the hold.
+	 */
+	readonly hasDeferralTelemetry?: boolean;
 	/**
 	 * Block-message counts from the shipped SMTP classifier over the window.
 	 * Absent means "not observed", which holds; it never fails.
