@@ -138,7 +138,108 @@ describe('last-mile governance boundary', () => {
 				),
 				input
 			)
-		).toMatchObject({ kind: 'defer', isPolicyHold: true });
+		).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+	});
+
+	/**
+	 * WHOSE FACT THE DEFERRAL IS (`LastMileRoutingDeferred.origin`).
+	 *
+	 * Gate 2 halts a cell at 25%: share to the floor, cooldown, graduation pin
+	 * revoked. A decision endpoint we cannot reach defers every message in the
+	 * window on OUR side, and a fortnight of penalty for that is not a
+	 * measurement — `delivery/deferralOutcome.ts` counts only `governed`.
+	 */
+	describe('a deferral says whose fact it is', () => {
+		const governedRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+
+		it('marks an unconfigured MTA decision endpoint as this deployment’s own fault', async () => {
+			vi.stubEnv('MTA_API_URL', '');
+			expect(
+				await resolveLastMileRouting(
+					context({ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true }, 'org-1'),
+					input
+				)
+			).toMatchObject({ kind: 'defer', origin: 'local' });
+			expect(resolveMtaRoutingDecision).not.toHaveBeenCalled();
+		});
+
+		it.each(['governed', 'local'] as const)(
+			'carries the adapter’s %s verdict rather than re-deriving it',
+			async (origin) => {
+				vi.stubEnv('MTA_API_URL', 'https://mta.test');
+				vi.stubEnv('MTA_API_KEY', 'key');
+				resolveMtaRoutingDecision.mockResolvedValue({
+					kind: 'defer',
+					retryAfterMs: 30_000,
+					origin,
+				});
+				expect(
+					await resolveLastMileRouting(
+						context(
+							{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+							'org-1'
+						),
+						input
+					)
+				).toMatchObject({ kind: 'defer', retryAfterMs: 30_000, origin });
+			}
+		);
+
+		it('calls an open breaker with nowhere to overflow to governance', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'breaker_open' });
+			// The relay route resolves to nothing usable, so the own arm was refused
+			// on evidence about this identity and there is no second arm to catch it —
+			// pressure on THIS identity, which is what gate 2 exists to see.
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'governed' });
+		});
+
+		/**
+		 * THE STANDALONE TWIN'S OWN CAP IS NOT A RECEIVER'S 4xx. A deployment with
+		 * no relay has nowhere to put warm-up overflow, so every over-cap message in
+		 * the window would defer; counted, one such window past the 200-send floor
+		 * crosses gate 2's 25% halt line and takes the cell's share to the floor
+		 * with its graduation pin revoked — for a schedule WE set. The warming cap
+		 * has its own actuator.
+		 */
+		it('calls warm-up overflow with no relay this deployment’s own schedule', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+		});
+
+		it('calls an unverified relay identity our own configuration', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null, deferralCode: 'RELAY_IDENTITY_UNVERIFIED' }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+		});
 	});
 
 	// Every `kind: 'ready'` return has to carry the relay return-path verdict:

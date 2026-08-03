@@ -35,7 +35,11 @@ import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabil
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
-import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
+import {
+	deferralTelemetryReadSince,
+	hasUsableDeferralTelemetry,
+	summarizeTransportOutcomeBuckets,
+} from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
@@ -71,6 +75,20 @@ const RAMP_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 /** The engagement floor's recent window and the prior baseline it is compared to. */
 const ENGAGEMENT_RECENT_MS = 7 * DAY_MS;
 const ENGAGEMENT_BASELINE_MS = 30 * DAY_MS;
+/**
+ * THE LOWER BOUND OF THE ONE OWN-ARM READ: whichever of the windows derived from
+ * it reaches furthest back.
+ *
+ * The telemetry bound comes from `deferralTelemetryReadSince` rather than being
+ * spelled again here — the dashboard and the phase-promotion rule take it from
+ * the same helper, so three readers cannot end up asking one predicate of three
+ * different row sets. Taken as a minimum rather than asserted equal, so widening
+ * either consumer widens the read instead of silently narrowing the window that
+ * depends on it.
+ */
+function ownHistorySince(now: number): number {
+	return Math.min(now - ENGAGEMENT_BASELINE_MS, deferralTelemetryReadSince(now));
+}
 
 /**
  * The deployment's tenant, through the SAME resolver every other org-scoped
@@ -306,18 +324,19 @@ export async function loadCellInput(
 	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
 
-	// THREE OWN-ARM WINDOWS, ONE INDEX READ. The gate window (24h), the engagement
-	// recent window (7d) and the prior baseline (30d..7d) are all sub-windows of the
-	// same 30 days of own-arm shard rows, so summarizing each separately would fetch
-	// the same rows up to three times — the anti-pattern `readCellArmBuckets` is
-	// exported to avoid. The rows come back once and the ONE summarizer runs over
-	// each window, so every derived number is identical to the per-window read it
-	// replaces. The reference arm has a single window, so it stays a plain summary.
+	// THREE OWN-ARM WINDOWS AND ONE INSTRUMENT CHECK, ONE INDEX READ. The gate
+	// window (24h), the engagement recent window (7d), the prior baseline (30d..7d)
+	// and the deferral telemetry span (30d) are all derived from the same 30 days of
+	// own-arm shard rows, so summarizing each separately would fetch the same rows
+	// four times — the anti-pattern `readCellArmBuckets` is exported to avoid. The
+	// rows come back once and the ONE summarizer runs over each window, so every
+	// derived number is identical to the per-window read it replaces. The reference
+	// arm has a single window, so it stays a plain summary.
 	const ownBuckets = await readCellArmBuckets(ctx.db, {
 		organizationId,
 		cell: cellKey,
 		arm: 'own',
-		since: now - ENGAGEMENT_BASELINE_MS,
+		since: ownHistorySince(now),
 	});
 	const own = summarizeTransportOutcomeBuckets(ownBuckets, { since: now - RAMP_WINDOW_MS });
 	const ownRecent = summarizeTransportOutcomeBuckets(ownBuckets, {
@@ -381,6 +400,20 @@ export async function loadCellInput(
 		// direct `presence.<id>` read here would be a substitution living outside
 		// the table, which is the one thing this piece exists to prevent (D3).
 		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
+		// OBSERVED, NEVER CONFIGURED, exactly as integration presence is
+		// (`rampIntegrationPresence.ts` says why), and asked THROUGH THE ONE
+		// PREDICATE the dashboard and the phase-promotion rule also ask, over the
+		// same span of the same (cell, own) rows. A second spelling of "is this
+		// instrumented" is a second chance for the screen, the controller and the
+		// promotion rule to disagree about one cell.
+		//
+		// Over the telemetry span rather than the evaluation window: a quiet day is
+		// not the same fact as a cell nothing records deferrals for — and only the
+		// second one may hold gate 2, and then only until the span itself answers.
+		// The rows read here reach FURTHER back than that span (the engagement
+		// baseline needs them); the predicate clamps to its own span, so the extra
+		// day cannot make this reader answer differently from the screen.
+		hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,

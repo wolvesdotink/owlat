@@ -36,10 +36,14 @@
  * applies both. There is no parallel event stream, and no existing effect
  * changed what it does.
  *
- * ONE event has no lifecycle transition to ride, and only one: `unsubscribed`
+ * TWO events have no lifecycle transition to ride, and only two. `unsubscribed`
  * arrives on a public CONTACT-keyed endpoint carrying no send id at all, so
  * `delivery/unsubscribeOutcome.ts` does the contact → send join and pushes the
  * effect through this same runner, under a per-send uniqueness gate of its own.
+ * `deferred` has the send id but no transition: a deferred message stays
+ * `queued` — that is what a deferral IS — so `delivery/deferralOutcome.ts`
+ * records it from the completion callback, under a per-send, per-DAY gate
+ * (a held send is re-enqueued many times and must be counted once).
  * It is still ONE writer; what differs is who supplies the send id.
  *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That

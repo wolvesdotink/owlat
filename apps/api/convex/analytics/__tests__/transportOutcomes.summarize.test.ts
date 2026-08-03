@@ -22,7 +22,12 @@ import {
 	TRANSPORT_OUTCOME_SHARD_COUNT,
 	type TransportOutcomeBucket,
 } from '../transportOutcomes';
-import { summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
+import {
+	DEFERRAL_TELEMETRY_MIN_OBSERVED_MS,
+	DEFERRAL_TELEMETRY_SPAN_MS,
+	hasUsableDeferralTelemetry,
+	summarizeTransportOutcomeBuckets,
+} from '../transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import {
@@ -215,6 +220,126 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 			DAY - DAY_MS
 		);
 		expect(summarizeTransportOutcomeBuckets([]).lastRecordedAt).toBeNull();
+	});
+
+	/**
+	 * THE PREDICATE EVERY READER ACTUALLY CALLS — gate 2, the delivery dashboard
+	 * and the phase-promotion rule. Two facts satisfy it, and the second one is
+	 * what stops the hold being permanent: a deployment whose warm-up overflow
+	 * routes to a relay never records a deferral, and gate 2's `insufficient_data`
+	 * outranks every `pass` beside it.
+	 */
+	describe('hasUsableDeferralTelemetry', () => {
+		/** Rows for `days` UTC days back from `DAY`, one shard each, all spotless. */
+		function sendingOn(days: readonly number[]): TransportOutcomeBucket[] {
+			return days.map((offset, index) =>
+				asBucket(
+					bucketRow({ periodStart: DAY - offset * DAY_MS, shardKey: index % 8, sent: 5_000 })
+				)
+			);
+		}
+
+		it('separates a zero deferral rate from an unwritten deferral counter', () => {
+			// Both produce the identical `deferralRate` of 0, and gate 2 may only act
+			// on the first — so the instrument is a question the rate cannot answer.
+			const spotless = sendingOn([0]);
+			expect(summarizeTransportOutcomeBuckets(spotless).deferralRate).toBe(0);
+			expect(hasUsableDeferralTelemetry(spotless, DAY)).toBe(false);
+
+			expect(
+				hasUsableDeferralTelemetry(
+					[
+						...spotless,
+						asBucket(bucketRow({ periodStart: DAY - 20 * DAY_MS, shardKey: 1, deferred: 1 })),
+					],
+					DAY
+				)
+			).toBe(true);
+			// A poisoned counter is not a witness: `safeOutcomeCount` refuses it,
+			// exactly as the summation does.
+			expect(
+				hasUsableDeferralTelemetry(
+					[asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 10, deferred: Number.NaN }))],
+					DAY
+				)
+			).toBe(false);
+			expect(hasUsableDeferralTelemetry([], DAY)).toBe(false);
+		});
+
+		it('waits while the arm’s traffic is younger than the observation minimum', () => {
+			// Ample volume, all of it this week: nothing has been observed about the
+			// counter over a period long enough to call its silence a reading.
+			expect(hasUsableDeferralTelemetry(sendingOn([0, 1, 2, 3, 4, 5, 6]), DAY)).toBe(false);
+			const minimumDays = DEFERRAL_TELEMETRY_MIN_OBSERVED_MS / DAY_MS;
+			expect(hasUsableDeferralTelemetry(sendingOn([0, minimumDays - 1]), DAY)).toBe(false);
+			expect(hasUsableDeferralTelemetry(sendingOn([0, minimumDays]), DAY)).toBe(true);
+		});
+
+		/**
+		 * THE CASE THE DAY-ANCHORED VERSION OF THIS PREDICATE FAILED. A cell that
+		 * does not send at weekends is quiet on both of the span's oldest days once
+		 * every seven, so a test anchored on that day re-entered the hold weekly —
+		 * clearing `greenSince` and restarting the fourteen-day graduation clock
+		 * with it, which is the permanent block plan D2 forbids, made intermittent.
+		 */
+		it('reads continuous traffic as observed even with the span’s oldest days quiet', () => {
+			const everyDay = Array.from({ length: 29 }, (_, index) => index);
+			expect(hasUsableDeferralTelemetry(sendingOn(everyDay), DAY)).toBe(true);
+			// Weekdays only, with the weekend falling on the span's oldest days: the
+			// span reaches back 29 days, and this cell last sent 26 days ago.
+			const weekend = new Set([6, 7, 13, 14, 20, 21, 27, 28]);
+			const weekdays = everyDay.filter((offset) => !weekend.has(offset));
+			expect(Math.max(...weekdays)).toBe(26);
+			expect(hasUsableDeferralTelemetry(sendingOn(weekdays), DAY)).toBe(true);
+			// One batch a week — four sending days in the span, and just as entitled
+			// to an answer as a cell that sends every day.
+			expect(hasUsableDeferralTelemetry(sendingOn([0, 7, 14, 21]), DAY)).toBe(true);
+		});
+
+		it('is not moved by rows outside the span it judges', () => {
+			// The controller reads back from `now` and the dashboard from tomorrow's
+			// UTC boundary, so one of them holds a day the other does not. The
+			// predicate clamps to its own span, which is what makes the screen and the
+			// controller unable to disagree — verified from BOTH sides of the bound.
+			const beyond = DAY - DEFERRAL_TELEMETRY_SPAN_MS;
+			const oldest = beyond + DAY_MS;
+			const outside = [
+				asBucket(bucketRow({ periodStart: beyond, shardKey: 1, sent: 5_000, deferred: 500 })),
+			];
+			expect(hasUsableDeferralTelemetry([...sendingOn([0]), ...outside], DAY)).toBe(false);
+			expect(
+				hasUsableDeferralTelemetry(
+					[...sendingOn([0]), asBucket(bucketRow({ periodStart: oldest, shardKey: 2, sent: 10 }))],
+					DAY
+				)
+			).toBe(true);
+			// A row dated after today is a clock fault, and must not manufacture the
+			// spread that ends the hold.
+			expect(
+				hasUsableDeferralTelemetry(
+					[
+						...sendingOn([0]),
+						asBucket(bucketRow({ periodStart: DAY + 20 * DAY_MS, shardKey: 3, sent: 10 })),
+					],
+					DAY
+				)
+			).toBe(false);
+		});
+
+		it('needs traffic, not merely rows, and a readable clock', () => {
+			// A bucket carrying no sends says nothing about the counter's silence.
+			expect(
+				hasUsableDeferralTelemetry(
+					[
+						...sendingOn([0]),
+						asBucket(bucketRow({ periodStart: DAY - 25 * DAY_MS, shardKey: 3, sent: 0 })),
+					],
+					DAY
+				)
+			).toBe(false);
+			// An unreadable clock cannot be the thing that unlocks a ramp.
+			expect(hasUsableDeferralTelemetry(sendingOn([0, 20]), Number.NaN)).toBe(false);
+		});
 	});
 
 	it('is unaffected by the order the shards arrive in', () => {
