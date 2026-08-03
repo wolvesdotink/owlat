@@ -137,10 +137,11 @@ describe('a last-mile deferral reaches the counter through the real writer', () 
 			const send = await ctx.db.get(sendId);
 			expect(send?.status).toBe('queued');
 			expect(send?.deferralCountedDay).toBe(startOfDayUtc(Date.now()));
-			// PENDING, not the whole table: the outcome bump is scheduled out of the
-			// transition now, so a completed measurement job sits here too.
+			// NAMED, not counted: the outcome bump is scheduled out of the transition
+			// now, so it rides beside the re-entry — and any pending job would satisfy
+			// a bare count.
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
-			expect(scheduled.filter((job) => job.state.kind === 'pending')).toHaveLength(1);
+			expect(scheduled.filter((job) => job.name.includes('retrySend'))).toHaveLength(1);
 		});
 	});
 
@@ -362,10 +363,10 @@ describe('only the governed half of a deferral is gate 2 evidence', () => {
 			// UNSTAMPED, so the day stays available: if the same message is deferred
 			// by the receiver an hour later, that one still counts.
 			expect(send?.deferralCountedDay).toBeUndefined();
-			// PENDING, not the whole table: the outcome bump is scheduled out of the
-			// transition now, so a completed measurement job sits here too.
+			// NAMED, not counted: this case records no outcome, so the re-entry has to
+			// be identified by name rather than by being the only job in the table.
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
-			expect(scheduled.filter((job) => job.state.kind === 'pending')).toHaveLength(1);
+			expect(scheduled.filter((job) => job.name.includes('retrySend'))).toHaveLength(1);
 		});
 	});
 
