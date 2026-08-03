@@ -64,7 +64,7 @@ describe('calm states', () => {
 	 */
 	it('offers the way ONTO the ramp on a cell the ramp does not manage', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ isRampManaged: false }), hasReferenceArm: true },
+			props: { cell: cellControl({ isRampManaged: false }), hasRelayConfigured: true },
 		});
 		const note = wrapper.find('[data-testid="ramp-controls-unmanaged"]').text();
 		expect(note).toContain('not on the ramp yet');
@@ -86,7 +86,7 @@ describe('calm states', () => {
 	 */
 	it('offers only the rungs at or below the cell’s ceiling as a reset', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.5 }), hasReferenceArm: true },
+			props: { cell: cellControl({ phaseCeiling: 0.5 }), hasRelayConfigured: true },
 		});
 		expect(wrapper.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
 			undefined
@@ -114,7 +114,7 @@ describe('calm states', () => {
 	 */
 	it('reads a rung that is not on the ladder the way the server does', () => {
 		const below = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.1 }), hasReferenceArm: true },
+			props: { cell: cellControl({ phaseCeiling: 0.1 }), hasRelayConfigured: true },
 		});
 		// The screen that owns the move has to be able to make it.
 		expect(below.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
@@ -126,7 +126,7 @@ describe('calm states', () => {
 		below.unmount();
 
 		const above = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 1.2 }), hasReferenceArm: true },
+			props: { cell: cellControl({ phaseCeiling: 1.2 }), hasRelayConfigured: true },
 		});
 		expect(
 			above.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
@@ -145,7 +145,7 @@ describe('calm states', () => {
 	 */
 	it('says the rung is recorded, not applied, when there is no relay', () => {
 		const standalone = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasReferenceArm: false },
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: false },
 		});
 		const note = standalone.find('[data-testid="ramp-reset-note"]').text();
 		expect(note).toContain('share stays where it is');
@@ -154,7 +154,7 @@ describe('calm states', () => {
 		standalone.unmount();
 
 		const withRelay = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasReferenceArm: true },
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: true },
 		});
 		expect(withRelay.find('[data-testid="ramp-reset-note"]').text()).toContain(
 			'brings the share back'
@@ -169,7 +169,7 @@ describe('calm states', () => {
 	 */
 	it('offers no promotion on a cell already at the top rung', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 1 }), hasReferenceArm: true },
+			props: { cell: cellControl({ phaseCeiling: 1 }), hasRelayConfigured: true },
 		});
 		expect(
 			wrapper.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
@@ -364,14 +364,34 @@ describe('control refusals', () => {
 	 * pinned by direct mounts alone, dropping that binding leaves every test green
 	 * and puts "brings the share back" — a 75% cut a standalone deployment cannot
 	 * make — in front of the operator who must not read it.
+	 *
+	 * AND THE BINDING HAS TO BE THE FACT THE SERVER CUTS ON. The two-relay row is
+	 * the one that separates them: `referenceTransportId` is null there because no
+	 * SINGLE arm can be named, while `resetCellPhase` cuts the share all the same.
 	 */
-	it.each<[string | null, RegExp, RegExp]>([
-		[null, /share stays where it is/i, /brings the share back/i],
-		['ses', /brings the share back/i, /share stays where it is/i],
+	it.each<[string, Partial<RampControls>, RegExp, RegExp]>([
+		[
+			'no relay',
+			{ referenceTransportId: null, isRelayConfigured: false },
+			/share stays where it is/i,
+			/brings the share back/i,
+		],
+		[
+			'one relay',
+			{ referenceTransportId: 'ses', isRelayConfigured: true },
+			/brings the share back/i,
+			/share stays where it is/i,
+		],
+		[
+			'two relays',
+			{ referenceTransportId: null, isRelayConfigured: true },
+			/brings the share back/i,
+			/share stays where it is/i,
+		],
 	])(
-		'tells a deployment whose relay is %s what a reset does to its share',
-		async (referenceTransportId, expected, refuted) => {
-			stubPage({ applied: true }, [cellControl()], { referenceTransportId });
+		'tells a deployment with %s what a reset does to its share',
+		async (_name, view, expected, refuted) => {
+			stubPage({ applied: true }, [cellControl()], view);
 			const wrapper = mount(ControlsPage, { global: globalOptions });
 			await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
 			await wrapper.vm.$nextTick();

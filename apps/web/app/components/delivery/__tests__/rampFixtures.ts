@@ -53,6 +53,10 @@ export function controlsView(overrides: Partial<RampControls> = {}): RampControl
 	return {
 		generatedAt: NOW,
 		referenceTransportId: 'ses',
+		// TWO FACTS, NOT ONE. `referenceTransportId` names the single second arm;
+		// this says whether there is a second sender AT ALL, and it is the one the
+		// reset door cuts a share on — they come apart on a two-relay deployment.
+		isRelayConfigured: true,
 		isControllerPaused: false,
 		presets: {},
 		defaultPreset: 'balanced',

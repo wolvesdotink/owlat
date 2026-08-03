@@ -55,10 +55,9 @@ definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 /**
  * TWO PERMISSION READS, DELIBERATELY. `canManageOrganization` is false until the
- * role RESOLVES, which is the safe direction for a control — a member never sees
- * a write button flash before it is taken away. `showAdminGate` only asserts
- * once the role has resolved to a non-admin, so the explanation below is not
- * shown to an admin during first paint.
+ * role RESOLVES — the safe direction for a control, because a member never sees a
+ * write button flash before it is taken away. `showAdminGate` only asserts once the
+ * role has resolved to a non-admin, so an admin does not read it during first paint.
  */
 const { canManageOrganization, showAdminGate } = usePermissions();
 
@@ -377,15 +376,15 @@ async function changePreset(
 						operator chose for a different cell.
 					-->
 					<!--
-						AND THE SAME FACT THE PRESET PICKER ALREADY GETS. A phase rung bounds
-						the SHARE dial, so with no relay the rung is stored but dormant: the
-						server takes it and leaves the share alone. Naming it as a ceiling
-						that governs would describe a 75% cut this deployment cannot make.
+						AND THE FACT THE SERVER CUTS ON, not the one the preset picker gets: a
+						rung bounds the SHARE dial, and `referenceTransportId` is null on a
+						deployment with TWO relays, where the server does cut. Reading it here
+						promised that operator the 75% move would not happen.
 					-->
 					<DeliveryRampCellControls
 						:key="selectedCell.cellKey"
 						:cell="selectedCell"
-						:has-reference-arm="controls.referenceTransportId !== null"
+						:has-relay-configured="controls.isRelayConfigured"
 						:busy="isCellBusy"
 						@enroll="enroll"
 						@pause="pause"

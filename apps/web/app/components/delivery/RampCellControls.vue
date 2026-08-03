@@ -19,23 +19,27 @@ import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliver
 const props = defineProps<{
 	cell: RampCellControl;
 	/**
-	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14). The phase rung bounds the
-	 * SHARE dial, so on a deployment with no second sender the rung is stored but
-	 * DORMANT: the server takes it and leaves the share alone. Saying so is the
-	 * difference between a control that reads as a 75% cut and one that reads as
-	 * what it does.
+	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14) — `isRelayConfigured` off
+	 * the controls view, which is the SAME FACT `resetCellPhase` cuts a share on.
+	 * The phase rung bounds the SHARE dial, so with no second sender the rung is
+	 * stored but DORMANT: the server takes it and leaves the share alone. Saying
+	 * so is the difference between a control that reads as a 75% cut and one that
+	 * reads as what it does.
 	 *
-	 * Configuration, not measurement — the server decides on observed relay
-	 * traffic for the cell, so the two can differ for one window on a relay that
-	 * was just connected or just removed. That is why this only changes what the
-	 * note SAYS: the share itself is held or cut by the server either way.
+	 * NOT `referenceTransportId !== null`. That names the single second arm and is
+	 * null on a deployment with TWO relays — where the server cuts, and this copy
+	 * used to promise the share would stay where it is.
+	 *
+	 * The server also cuts on a relay it MEASURED carrying this cell in the last
+	 * day, which configuration alone cannot see once one is disconnected; the
+	 * standalone sentence below states that clause rather than denying it.
 	 *
 	 * REQUIRED, so the compiler holds it. Optional, an absent prop read as "there
 	 * is a relay" and restored the "brings the share back" copy — a 75% cut — in
 	 * front of the standalone deployment that cannot make it. A caller who has to
 	 * state the fact cannot forget it.
 	 */
-	hasReferenceArm: boolean;
+	hasRelayConfigured: boolean;
 	busy?: boolean;
 }>();
 
@@ -261,9 +265,9 @@ function clampPercent(value: number): number {
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
-				hasReferenceArm
+				hasRelayConfigured
 					? 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
-					: 'Resetting a phase restarts the clean streak. With no relay connected the rung is recorded and nothing else moves: there is no second sender to hand traffic to, so your share stays where it is and the rung starts applying if a relay ever carries this cell.'
+					: 'Resetting a phase restarts the clean streak. With no relay connected there is no second sender to hand traffic to, so the rung is recorded and your share stays where it is — unless this cell was still sending through a relay in the past day.'
 			}}
 			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
 			reset — going higher is a promotion, which is its own control below.
