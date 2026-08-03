@@ -35,17 +35,26 @@ export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
  *   - `deferred` leaves the send `queued` rather than moving it anywhere, so it
  *     is recorded by `delivery/deferralOutcome.ts` off the completion callback
  *     (gate 2, and the phase-promotion rule's every-cell condition).
+ *
+ * A VALUE, with the type derived from it, so the vocabulary can be ENUMERATED
+ * rather than only checked. Three counters in this plan shipped with readers and
+ * no writer; the guard that now forbids that
+ * (`__tests__/transportOutcomeWiring.test.ts`) has to be able to iterate the
+ * whole vocabulary, and a hand-kept second list is a second chance to disagree.
  */
-export type TransportOutcomeEvent =
-	| 'sent'
-	| 'delivered'
-	| 'deferred'
-	| 'soft_bounced'
-	| 'hard_bounced'
-	| 'complained'
-	| 'opened'
-	| 'clicked'
-	| 'unsubscribed';
+export const TRANSPORT_OUTCOME_EVENTS = [
+	'sent',
+	'delivered',
+	'deferred',
+	'soft_bounced',
+	'hard_bounced',
+	'complained',
+	'opened',
+	'clicked',
+	'unsubscribed',
+] as const;
+
+export type TransportOutcomeEvent = (typeof TRANSPORT_OUTCOME_EVENTS)[number];
 
 /** Counter columns on the bucket — every one an integer, never a rate. */
 export type TransportOutcomeCounter =
