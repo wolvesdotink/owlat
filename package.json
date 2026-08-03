@@ -113,13 +113,13 @@
 		"release": "bun run build && bun run changeset:publish"
 	},
 	"dependencies": {
-		"nuxt": "4.4.7",
+		"nuxt": "4.5.1",
 		"vite": "7.3.1"
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.31.0",
-		"knip": "6.23.0",
-		"oxfmt": "^0.46.0",
+		"knip": "6.29.0",
+		"oxfmt": "^0.61.0",
 		"oxlint": "^1.69.0",
 		"turbo": "^2.9.18"
 	},
@@ -131,7 +131,7 @@
 		"js-yaml": "^3.15.0",
 		"linkify-it": "^5.0.2",
 		"nodemailer": "9.0.3",
-		"nuxt": "4.4.7",
+		"nuxt": "4.5.1",
 		"nuxt-og-image": "6.7.4",
 		"postcss": "^8.5.18",
 		"protobufjs": "^7.6.5",
