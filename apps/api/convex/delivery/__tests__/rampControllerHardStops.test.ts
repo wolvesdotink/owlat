@@ -14,6 +14,7 @@
  * green. Wiring is not covered by the fixtures that inject the booleans.
  */
 
+import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
@@ -564,11 +565,19 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 });
 
 describe('the phase ladder', () => {
-	const promote = async (t: Harness, stream: 'campaign' | 'transactional' = 'campaign') =>
-		await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, {
-			stream,
-			destinationProvider: stream === 'campaign' ? ('gmail' as const) : ('yahoo' as const),
-		});
+	/** The cell `seed` enrols — the one the ladder cases below climb. */
+	const RAMPED_CELL = {
+		stream: 'campaign' as const,
+		destinationProvider: 'gmail' as const,
+	};
+	/** Enrolled by nothing: the ramp has no row for it on this deployment. */
+	const UNMANAGED_CELL = {
+		stream: 'transactional' as const,
+		destinationProvider: 'yahoo' as const,
+	};
+
+	const promote = async (t: Harness, cell: DeliverabilityCell = RAMPED_CELL) =>
+		await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, cell);
 
 	it('promotes exactly one rung per call and cannot skip one', async () => {
 		const t = convexTest(schema, modules);
@@ -630,7 +639,7 @@ describe('the phase ladder', () => {
 	it('refuses a cell that has no ramp row', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
-		expect(await promote(t, 'transactional')).toEqual({
+		expect(await promote(t, UNMANAGED_CELL)).toEqual({
 			applied: false,
 			refusal: 'cell_not_ramp_managed',
 		});
