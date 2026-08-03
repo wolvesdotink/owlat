@@ -25,7 +25,9 @@
  * per-provider roll-up, gate 5's verdict, and `getSeedPlacementSummary` for a
  * screen to read. The seed ACCOUNTS themselves — the projection and the
  * rotation nudge — are the domain sibling `analytics/seedAccounts.ts`, and the
- * two ledger sweeps are `analytics/seedProbeLedger.ts`. It does NOT own the CELL
+ * two ledger sweeps are `analytics/seedProbeLedger.ts`. The reduction of the
+ * same rows to the ramp controller's PER-CELL counted sweeps is
+ * `analytics/seedPlacementSweeps.ts`. It does NOT own the CELL
  * DASHBOARD that renders the status or the confidence line beside it — that is
  * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
  * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
@@ -57,6 +59,11 @@ import {
 } from '@owlat/shared/placementAdapter';
 import type { SeedConfidence } from '@owlat/shared/seedPlacement';
 import { loadSeedAccounts } from './seedAccounts';
+import {
+	buildSeedPlacementSweeps,
+	seedProbeEvidence,
+	type SeedPlacementSweepIndex,
+} from './seedPlacementSweeps';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -322,6 +329,48 @@ export interface SeedPlacementSummary {
 }
 
 /**
+ * THE ONE READ OF THE PROBE LEDGER, and therefore the one definition of the
+ * window and of the page bound. Both summaries below are derived from it, so
+ * "which probes count" cannot come out differently for the provider roll-up and
+ * for the controller's per-cell sweeps.
+ */
+async function readSeedProbeWindow(
+	db: DatabaseReader,
+	organizationId: string,
+	now: number
+): Promise<Doc<'seedPlacementProbes'>[]> {
+	return await db
+		.query('seedPlacementProbes')
+		.withIndex('by_org_and_sent_at', (q) =>
+			q.eq('organizationId', organizationId).gte('sentAt', now - SEED_PLACEMENT_WINDOW_MS)
+		)
+		// Newest first: under volume the tripwire must truncate the OLDEST
+		// evidence, never the freshest.
+		.order('desc')
+		.take(SEED_PROBE_SCAN_LIMIT);
+}
+
+/**
+ * THE RAMP CONTROLLER'S HALF OF THE LEDGER: gate 5's counted sweeps, per cell.
+ *
+ * Deliberately NOT `summarizeSeedPlacementWindow`. The gate needs COUNTS per
+ * `(stream, destinationProvider)` — the roll-up is a status pooled across
+ * streams — and it needs them without the seed-ACCOUNT fan-out, which is one
+ * `db.get` per connected mailbox that no gate verdict reads. Same rows, same
+ * evidence rule, narrower answer.
+ *
+ * A cell absent from the index has no classified probes: gate 5 holds, and
+ * because it is optional the hold costs the ramp nothing (plan D2).
+ */
+export async function summarizeSeedPlacementSweeps(
+	db: DatabaseReader,
+	organizationId: string,
+	now: number
+): Promise<SeedPlacementSweepIndex> {
+	return buildSeedPlacementSweeps(await readSeedProbeWindow(db, organizationId, now));
+}
+
+/**
  * Sum the probe ledger for one org into per-provider STATUSES. Reader-typed so
  * the controller and the dashboard read it through the same path and can never
  * disagree (the ADR-0042 rule applied to a second table).
@@ -332,28 +381,20 @@ export async function summarizeSeedPlacementWindow(
 	now: number
 ): Promise<SeedPlacementSummary> {
 	const windowStart = now - SEED_PLACEMENT_WINDOW_MS;
-	const probes = await db
-		.query('seedPlacementProbes')
-		.withIndex('by_org_and_sent_at', (q) =>
-			q.eq('organizationId', organizationId).gte('sentAt', windowStart)
-		)
-		// Newest first: under volume the tripwire must truncate the OLDEST
-		// evidence, never the freshest.
-		.order('desc')
-		.take(SEED_PROBE_SCAN_LIMIT);
+	const probes = await readSeedProbeWindow(db, organizationId, now);
 
 	const observations: SeedObservation[] = [];
 	for (const probe of probes) {
-		const placement = probe.placement;
-		// Unclassified probes are not yet evidence in either direction.
-		if (placement === undefined) continue;
-		// Which arm carried it is gate 5's second clause. A row with no recorded
-		// arm reads as `own`: standalone is the default configuration, and s === 1
-		// means every probe went through our own MTA.
+		// The evidence rules — unclassified rows are not evidence, an unattributed
+		// row reads as the own arm — are the sweep module's, asked rather than
+		// restated: the provider roll-up here and the per-cell sweeps the ramp
+		// gate reads must never be able to count one ledger two ways.
+		const evidence = seedProbeEvidence(probe);
+		if (evidence === null) continue;
 		observations.push({
-			provider: probe.provider,
-			arm: probe.transportArm ?? 'own',
-			placement,
+			provider: evidence.provider,
+			arm: evidence.arm,
+			placement: evidence.placement,
 		});
 	}
 

@@ -40,6 +40,7 @@ import {
 	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
 } from '../analytics/transportOutcomeSummary';
+import { seedSweepsForCell, type SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
@@ -287,6 +288,18 @@ export async function loadCellInput(
 		 */
 		capacity: () => Promise<RampCapacityContext>;
 		/**
+		 * THE TICK'S ONE READ OF THE SEED PROBE LEDGER, LAZY and memoized by the
+		 * caller for the same two reasons the capacity context is: the read is
+		 * org-wide (one bounded index scan covering every cell in the slice), and a
+		 * slice with no ramp-managed cell in it must not pay for evidence no gate
+		 * will consume.
+		 *
+		 * Gate 5 is the one gate whose evidence is not written by our own send
+		 * pipeline — it comes back from consumer mailboxes through the IMAP poller —
+		 * so a cell with nothing in this index is the NORMAL case, not a fault.
+		 */
+		seeds: () => Promise<SeedPlacementSweepIndex>;
+		/**
 		 * The deployment's integration presence, read ONCE per tick by the caller
 		 * (`rampIntegrationPresence.ts`): every entry but the reference arm is
 		 * deployment-level, and the reference arm is completed here from this
@@ -353,6 +366,13 @@ export async function loadCellInput(
 		since: now - RAMP_WINDOW_MS,
 	});
 
+	// GATE 5'S EVIDENCE, off the tick's one ledger read. Resolved AFTER the
+	// managed check above, so an unmanaged slice never triggers it. Both arms are
+	// handed over as they stand: the standalone evaluator drops the reference
+	// sweep at its own boundary (see `evaluateStandaloneSeedPlacementGate`), which
+	// is where that substitution belongs rather than in a conditional here.
+	const seedSweeps = seedSweepsForCell(await args.seeds(), cell);
+
 	// The reference arm is ABSENT, not empty, when nothing was sent through it:
 	// an empty summary would read as "the relay engaged 0% of its recipients"
 	// and fail a ratio the deployment never opted into (plan D2).
@@ -414,6 +434,8 @@ export async function loadCellInput(
 		// baseline needs them); the predicate clamps to its own span, so the extra
 		// day cannot make this reader answer differently from the screen.
 		hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
+		ownSeeds: seedSweeps.own,
+		referenceSeeds: seedSweeps.reference,
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,

@@ -47,6 +47,8 @@ import { nextPaceMultiplier } from './ramp/paceActuator';
 import { composeActuators } from './ramp/actuatorComposition';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
+import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
+import type { SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
 import {
 	loadRampDeploymentPresence,
@@ -132,6 +134,17 @@ export const runRampController = internalMutation({
 			return utilisationReading;
 		};
 
+		// GATE 5'S EVIDENCE, read ONCE per tick and LAZILY, for the same two reasons:
+		// the probe ledger read is org-wide and covers every cell in the slice, and
+		// a slice with no ramp-managed cell must not pay for it. A deployment with
+		// no seed mailboxes reads an empty index, which HOLDS gate 5 — the
+		// supported default, not a fault (plan D2).
+		let seedSweepIndex: SeedPlacementSweepIndex | null = null;
+		const seeds = async (): Promise<SeedPlacementSweepIndex> => {
+			seedSweepIndex ??= await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
+			return seedSweepIndex;
+		};
+
 		// WHICH INTEGRATIONS THIS DEPLOYMENT HAS, read ONCE per tick: every entry but
 		// the reference arm is deployment-level, so reading it per cell would repeat
 		// the same four index lookups fifteen times. The substitution table (plan D3)
@@ -146,6 +159,7 @@ export const runRampController = internalMutation({
 				cell,
 				pool,
 				capacity,
+				seeds,
 				presence,
 				isKillSwitchEngaged,
 				isSendingPermitted,

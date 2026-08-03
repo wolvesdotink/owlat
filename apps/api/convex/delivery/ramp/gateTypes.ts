@@ -7,6 +7,7 @@
  * dashboard can share one vocabulary without importing either implementation.
  */
 
+import type { SeedArmPlacementCounts } from '@owlat/shared/seedPlacement';
 import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 import type { RampStreamConfig } from './gateConfig';
@@ -400,11 +401,26 @@ export interface SmtpBlockObservation {
 	readonly observedAt: number;
 }
 
-/** Seed placement, as a tripwire and never as a gauge (plan D17). */
-export interface SeedPlacementObservation {
-	readonly inbox: number;
-	readonly spam: number;
-	readonly missing: number;
+/**
+ * One arm's seed sweep for this cell: PER-PLACEMENT PROBE COUNTS over the
+ * placement window, plus the instant the newest of them was classified. A
+ * tripwire and never a gauge (plan D17) — there is no share in here, and the
+ * gate derives none of its own from it.
+ *
+ * THE WHOLE SHARED VOCABULARY (`SeedArmPlacementCounts` over `SEED_PLACEMENTS`),
+ * not the three placements the gate happens to branch on. `category` is REACHED
+ * and `deleted` is not, so a producer that had to fold five placements into
+ * three on the way in would be writing a second answer to "did this probe reach
+ * the inbox" — the question `isSeedPlacementReached` exists to answer once
+ * (ADR-0042 applied to the seed ledger).
+ *
+ * Omitted placements are zero; the roll-up scrubs negative, fractional and
+ * non-finite counts before any of them can become a sample size.
+ *
+ * PRODUCED BY `analytics/seedPlacementSweeps.ts` from the probe ledger, for the
+ * controller (`rampControllerInputs.ts`) and the dashboard alike.
+ */
+export interface SeedPlacementObservation extends SeedArmPlacementCounts {
 	readonly observedAt: number;
 }
 
@@ -461,7 +477,23 @@ export interface RampGateEvaluationInput {
 	 * Absent means "not observed", which holds; it never fails.
 	 */
 	readonly smtpBlocks?: SmtpBlockObservation | null;
+	/**
+	 * This cell's OWN-arm seed sweep over the placement window, counted from the
+	 * probe ledger by `analytics/seedPlacementSweeps.ts` and supplied by both
+	 * readers of this input (`delivery/rampControllerInputs.ts`,
+	 * `delivery/deliverabilityDashboard.ts`).
+	 *
+	 * Absent or `null` means this cell has no classified probes — no seed
+	 * mailboxes, a cell whose stream the shadow copy does not cover, or a sweep
+	 * that has not been polled yet. That HOLDS gate 5 and never fails it, and
+	 * because seed placement is optional the hold costs the ramp nothing (D2).
+	 */
 	readonly ownSeeds?: SeedPlacementObservation | null;
+	/**
+	 * The same window's REFERENCE-arm sweep — gate 5's second clause. `null` on a
+	 * standalone deployment, where the roll-up reports `no_reference_arm` and the
+	 * absolute clause is the whole gate (D3's substitution).
+	 */
 	readonly referenceSeeds?: SeedPlacementObservation | null;
 	/** Gate 4's result, computed elsewhere (MPP handling). Absent = not measured. */
 	readonly engagement?: RampGateResult | null;

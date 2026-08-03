@@ -1,0 +1,274 @@
+/**
+ * GATE 5 HAS A PRODUCTION SUPPLIER — end to end, through the REAL loader.
+ *
+ * The gate's own suites hand it sweeps, so every one of them stayed green while
+ * `ownSeeds` and `referenceSeeds` were set by nothing outside a fixture: the
+ * controller omitted both and the dashboard hardcoded `null`, so
+ * `evaluateSeedGate` took the absent arm on every cell of every deployment and
+ * returned `insufficient_data` forever. A gate that cannot reach a verdict is
+ * not a tripwire, it is a widget — and because seed placement is optional,
+ * nothing anywhere failed to say so.
+ *
+ * So this file asserts REACHABILITY, not arithmetic: rows go into the probe
+ * ledger the way the poller writes them, and the verdict is read off the
+ * evaluation the CRON'S OWN loader builds and off the screen's query — never off
+ * a hand-built input. The absent case is pinned beside the seeded one, because
+ * "always holds" is exactly what this file exists to detect.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api } from '../../_generated/api';
+import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
+import {
+	insertSeedProbes,
+	type SeedProbeOptions,
+} from '../../analytics/__tests__/seedProbeFixtures';
+import { loadCellInput } from '../rampControllerInputs';
+import { loadRampDeploymentPresence } from '../rampIntegrationPresence';
+import { loadRampPresets } from '../rampPresets';
+import { loadRampCapacityContext } from '../rampCapacityInputs';
+import { loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
+import { summarizeSeedPlacementSweeps } from '../../analytics/seedPlacement';
+import type { DeliverabilityDashboard } from '../deliverabilityDashboard';
+import type { RampGateResult } from '../ramp/gateTypes';
+import { seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
+import { modules } from '../../__tests__/testModules';
+
+const ORG = 'org_seed_gate_wiring';
+const HOUR_MS = 60 * 60 * 1000;
+const CELL: DeliverabilityCell = { stream: 'campaign', destinationProvider: 'gmail' };
+
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		requireOrgMember: vi.fn(async () => ({
+			userId: 'user-1',
+			role: 'owner' as const,
+			activeOrganizationId: 'org_seed_gate_wiring',
+		})),
+		getUserIdFromSession: vi.fn().mockResolvedValue('user-1'),
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_seed_gate_wiring'),
+	};
+});
+
+async function seedProbes(
+	t: Harness,
+	options: Omit<SeedProbeOptions, 'organizationId'>
+): Promise<void> {
+	await insertSeedProbes(t, { organizationId: ORG, ...options });
+}
+
+/** Gate 5's verdict as the CRON's loader builds it, for the campaign/gmail cell. */
+async function controllerSeedGate(
+	t: Harness,
+	cell: DeliverabilityCell = CELL
+): Promise<RampGateResult> {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		const pool = await loadStreamlessRouteState(ctx, ORG, 'all');
+		const presence = await loadRampDeploymentPresence(ctx, { organizationId: ORG, now });
+		const presets = await loadRampPresets(ctx, ORG);
+		const loaded = await loadCellInput(ctx, {
+			organizationId: ORG,
+			cell,
+			pool,
+			capacity: async () => await loadRampCapacityContext(ctx, { organizationId: ORG, now }),
+			seeds: async () => await summarizeSeedPlacementSweeps(ctx.db, ORG, now),
+			presence,
+			isKillSwitchEngaged: false,
+			isSendingPermitted: true,
+			presets: presets.presets,
+			presetFallback: presets.fallback,
+			now,
+		});
+		if (loaded === null) throw new Error('the seeded cell is not ramp-managed');
+		const evaluation = loaded.input.evaluation;
+		if (evaluation === null) throw new Error('the loader built no gate evaluation');
+		const gate = evaluation.perGate.find((result) => result.gate === 'seed_placement');
+		if (gate === undefined) throw new Error('the evaluation carries no seed gate');
+		return gate;
+	});
+}
+
+/** The SAME verdict as the screen reports it, for the same cell. */
+async function dashboardSeedGate(
+	t: Harness,
+	cell: DeliverabilityCell = CELL
+): Promise<RampGateResult> {
+	const dashboard: DeliverabilityDashboard = await t.query(
+		api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
+		{}
+	);
+	const view = dashboard.cells.find(
+		(candidate) =>
+			candidate.cell.stream === cell.stream &&
+			candidate.cell.destinationProvider === cell.destinationProvider
+	);
+	if (view === undefined) throw new Error('the dashboard rendered no campaign/gmail cell');
+	const gate = view.gates.find((result) => result.gate === 'seed_placement');
+	if (gate === undefined) throw new Error('the dashboard cell carries no seed gate');
+	return gate;
+}
+
+async function standaloneCell(t: Harness): Promise<void> {
+	await seedRampCell(t, { organizationId: ORG });
+	// Own traffic only: a standalone deployment, so the trailing-baseline twin
+	// runs and gate 5's absolute clause is the whole gate.
+	await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+}
+
+describe('a seeded placement window reaches gate 5 through the real loader', () => {
+	it('reaches a PASS — a verdict, not the forever-hold', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('pass');
+		expect(gate.reason).toBe('within_threshold');
+		expect(gate.measurement.ownSample).toBe(20);
+	});
+
+	it('reaches a FAIL when the cell is being filed to spam', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 4, placement: 'inbox' });
+		await seedProbes(t, { count: 16, placement: 'spam' });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('fail');
+		expect(gate.reason).toBe('absolute_threshold_breached');
+		expect(gate.measurement.ownSample).toBe(20);
+	});
+
+	it('carries the WHOLE placement vocabulary across the boundary', async () => {
+		// A Gmail tab is REACHED (`isSeedPlacementReached`). A wiring that folded
+		// five placements into the three the gate branches on would drop these
+		// probes entirely and hold on an empty sample — the same silence this file
+		// exists to detect, one layer down.
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'category' });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('pass');
+		expect(gate.measurement.ownSample).toBe(20);
+	});
+
+	it('feeds the REFERENCE sweep too, so gate 5 second clause can breach', async () => {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: ORG });
+		// Both arms carrying traffic: the reference-arm evaluator runs, which is
+		// the only configuration in which `referenceSeeds` is consulted at all.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+		await seedProbes(t, { count: 18, placement: 'inbox' });
+		await seedProbes(t, { count: 2, placement: 'spam' });
+		await seedProbes(t, { count: 20, placement: 'inbox', arm: 'reference' });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('fail');
+		expect(gate.reason).toBe('reference_tolerance_breached');
+		expect(gate.measurement.referenceSample).toBe(20);
+	});
+});
+
+describe('absence stays absent — the gate holds and says why', () => {
+	it('holds with no probes at all', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('insufficient_data');
+		expect(gate.reason).toBe('evidence_absent');
+		expect(gate.measurement.ownSample).toBe(0);
+	});
+
+	it('holds on probes the poller has not classified yet', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox', unclassified: true });
+
+		expect((await controllerSeedGate(t)).status).toBe('insufficient_data');
+	});
+
+	it('holds on a sweep older than the ramp will act on', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		// Inside the 7-day placement window, outside the 48h the ramp will raise a
+		// share on: the freshness cascade is the RAMP's rule, and it still applies
+		// to evidence that arrives through this new path.
+		await seedProbes(t, { count: 20, placement: 'inbox', classifiedAgoMs: 72 * HOUR_MS });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('insufficient_data');
+		expect(gate.reason).toBe('own_evidence_stale');
+	});
+
+	it('does not lend one cell another cell probes', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		// A healthy sweep on a DIFFERENT destination provider. Pooling it into the
+		// gmail cell would be a verdict about mailboxes this cell never touched —
+		// and a sweep that only ever reached the org-wide roll-up would do exactly
+		// that. The yahoo cell is read off the screen, which renders the whole grid
+		// rather than only the cells the controller manages.
+		await seedProbes(t, { count: 20, placement: 'inbox', provider: 'yahoo' });
+
+		expect((await controllerSeedGate(t)).status).toBe('insufficient_data');
+		expect((await dashboardSeedGate(t)).status).toBe('insufficient_data');
+		expect(
+			(await dashboardSeedGate(t, { stream: 'campaign', destinationProvider: 'yahoo' })).status
+		).toBe('pass');
+	});
+
+	it('does not lend a cell the probes of another STREAM', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		// Every probe the shadow copy writes today is a CAMPAIGN probe, so the
+		// transactional and automation cells of the same provider have no seed
+		// evidence at all. That is a hold, not a borrowed verdict.
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		expect((await dashboardSeedGate(t)).status).toBe('pass');
+		expect(
+			(await dashboardSeedGate(t, { stream: 'transactional', destinationProvider: 'gmail' })).status
+		).toBe('insufficient_data');
+	});
+});
+
+describe('the screen reports the verdict the controller reached (ADR-0042)', () => {
+	it('renders the seeded PASS rather than a hardcoded hold', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		const dashboard = await dashboardSeedGate(t);
+		expect(dashboard.status).toBe('pass');
+		expect(dashboard.measurement.ownSample).toBe(20);
+	});
+
+	it('renders the seeded FAIL, and agrees with the controller on it', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 4, placement: 'inbox' });
+		await seedProbes(t, { count: 16, placement: 'spam' });
+
+		const dashboard = await dashboardSeedGate(t);
+		const controller = await controllerSeedGate(t);
+		expect(dashboard.status).toBe('fail');
+		expect(dashboard.status).toBe(controller.status);
+		expect(dashboard.reason).toBe(controller.reason);
+		expect(dashboard.measurement.ownSample).toBe(controller.measurement.ownSample);
+	});
+
+	it('still holds on a deployment with no seed mailboxes', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+
+		expect((await dashboardSeedGate(t)).status).toBe('insufficient_data');
+	});
+});
