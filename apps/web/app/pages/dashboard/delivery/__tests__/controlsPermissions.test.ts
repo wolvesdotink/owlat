@@ -8,6 +8,11 @@
  * therefore rendering five buttons whose only possible answer is `forbidden`,
  * and the operator learns their permissions from a failed write.
  *
+ * The gate takes the cell picker with it — it is the selector for those writes —
+ * so the COPY is gated as well: neither the lede nor the explanation may promise
+ * a member per-cell state this page no longer renders for them, and the member's
+ * page has to point at the cells screen, which shows it to everyone.
+ *
  * The third case is the one worth having a test for: the role has not RESOLVED
  * yet. Neither the controls nor the "admins only" sentence may appear then — an
  * admin must not watch their own controls get taken away on first paint, and a
@@ -56,6 +61,7 @@ const globalOptions = {
 		UiSpinner: true,
 		UiEmptyState: true,
 		UiCard: passthroughCard,
+		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		DeliveryRampConfirmDialog: true,
 	},
 	components: {
@@ -74,6 +80,8 @@ describe('the ramp controls are admin-only', () => {
 		expect(wrapper.find('[data-testid="ramp-preset-campaign"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="ramp-controls-admin-only"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(true);
+		// The per-cell promise belongs to the page that keeps the cell picker.
+		expect(wrapper.find('header').text()).toMatch(/what each stream is carrying/i);
 		wrapper.unmount();
 	});
 
@@ -95,7 +103,18 @@ describe('the ramp controls are admin-only', () => {
 		// exactly the five buttons the gate has just taken away.
 		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(false);
 		expect(wrapper.find('header').text()).not.toMatch(/hold a cell/i);
-		expect(wrapper.find('header').text()).toMatch(/what the ramp is doing/i);
+		expect(wrapper.find('header').text()).toMatch(/pulled back on its own/i);
+
+		// AND THE COPY MAY NOT PROMISE THE CELL PICKER EITHER. The picker is the
+		// selector for the writes, so the gate takes every per-cell share with it:
+		// a member's page may neither claim each stream's state up top nor claim
+		// that everything the controller is doing is below, and has to point at the
+		// cells screen, which shows the same shares to all members.
+		expect(wrapper.find('header').text()).not.toMatch(/each stream is carrying/i);
+		expect(explanation.text()).not.toMatch(/everything the controller is doing/i);
+		const cellsLink = wrapper.find('[data-testid="ramp-controls-cells-link"]');
+		expect(cellsLink.exists()).toBe(true);
+		expect(cellsLink.attributes('href')).toBe('/dashboard/delivery/cells');
 
 		// THE READS STAY. What the controller pulled back is all-members
 		// information, and hiding it would turn a permission into a blind spot.
@@ -114,7 +133,7 @@ describe('the ramp controls are admin-only', () => {
 		expect(wrapper.find('[data-testid="ramp-controls-admin-only"]').exists()).toBe(false);
 		// The lede's neutral sentence is true whoever is reading, so it stands
 		// while the role resolves — only the action clause waits.
-		expect(wrapper.find('header').text()).toMatch(/what the ramp is doing/i);
+		expect(wrapper.find('header').text()).toMatch(/pulled back on its own/i);
 		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(false);
 		wrapper.unmount();
 	});

@@ -22,7 +22,9 @@
  * privileged information — but every one of the five writes is an
  * `adminMutation`. Offering the controls to an editor is therefore offering a
  * button whose only possible answer is `forbidden`, so they are not rendered and
- * the screen says why instead.
+ * the screen says why instead. The cell picker is the selector for those writes,
+ * so it goes with them — which is why the copy on this screen points a member at
+ * the cells screen, where the same shares and every decision are all-members.
  */
 import { api } from '@owlat/api';
 import {
@@ -200,11 +202,15 @@ async function changePreset(
 			     they may do none of those leaves the lede as the last surface still
 			     offering the buttons the gate takes away. The neutral sentence is
 			     true for everyone, so the clause is ADDED for an admin rather than
-			     swapped — an unresolved role never watches the lede rewrite itself. -->
+			     swapped — an unresolved role never watches the lede rewrite itself.
+			     The neutral sentence therefore covers the pull-backs ONLY: every
+			     per-cell share lives in the cell picker, which is behind the same
+			     gate, so promising them to a member promises a list they cannot see. -->
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				What the ramp is doing to each stream, and what it pulled back on its own.
+				What the ramp pulled back on its own, and why.
 				<span v-if="canManageOrganization" data-testid="ramp-controls-lede-actions">
-					Hold a cell, cap it, push it, or start it over — and choose how hard each stream ramps.
+					What each stream is carrying is here too — hold a cell, cap it, push it, or start it over,
+					and choose how hard each stream ramps.
 				</span>
 				Everything here is recorded.
 			</p>
@@ -235,14 +241,27 @@ async function changePreset(
 					</p>
 				</UiCard>
 
-				<!-- Not a nag and not an error: the ramp's state is on this page either
-				     way, and what an editor is missing is the hand on it. -->
+				<!-- Not a nag and not an error: what an editor is missing is the hand on
+				     the ramp, not the sight of it. The gate takes the cell picker with
+				     it, though, so the sentence claims only what is left HERE and sends
+				     the reader to the screen that shows every cell's share and decision
+				     history to all members — the mirror of the cells screen's own link
+				     to this one. "Everything the controller is doing is shown below"
+				     would be true of the admin's page and false of the one being read. -->
 				<UiCard v-if="showAdminGate">
 					<p class="text-sm text-text-secondary" data-testid="ramp-controls-admin-only">
 						Changing the ramp — holding a cell, capping it, pushing it, or choosing a pace — is
-						limited to workspace owners and admins. Everything the controller is doing is still
-						shown below.
+						limited to workspace owners and admins. What the controller pulled back on its own is
+						still shown below.
 					</p>
+					<NuxtLink
+						to="/dashboard/delivery/cells"
+						class="mt-3 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:text-brand"
+						data-testid="ramp-controls-cells-link"
+					>
+						<Icon name="lucide:grid-3x3" class="h-4 w-4" />
+						See what each cell is carrying
+					</NuxtLink>
 				</UiCard>
 
 				<UiCard v-if="canManageOrganization">
