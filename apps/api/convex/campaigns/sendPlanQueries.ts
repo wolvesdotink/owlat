@@ -159,6 +159,7 @@ export const getCampaignSendPlan = authedQuery({
 				enqueuedToday: job.enqueuedToday,
 				planDayIndex: job.planDayIndex,
 				planTotalDays: job.planTotalDays,
+				isPlanTruncated: job.isPlanTruncated,
 				plannedTotal: job.plannedTotal,
 				isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
 			},

@@ -15,7 +15,6 @@
  * PURE (plan D15): every input is a parameter.
  */
 
-import { MAX_PLAN_DAYS } from './capacityPlan';
 import type { SendPlanState } from './multiDaySendPlan';
 
 export interface CampaignSendPlanProgress {
@@ -32,7 +31,10 @@ export interface CampaignSendPlanProgress {
 	 * out of read budget. The copy says "of at least N", never "of N" (plan D14).
 	 */
 	readonly isTotalLowerBound: boolean;
-	/** The plan is longer than `MAX_PLAN_DAYS`: the copy says "more than N days". */
+	/**
+	 * The plan the walker checkpointed leaves recipients unscheduled past its
+	 * last day: the copy says "more than N days" and quotes no finish.
+	 */
 	readonly isTruncated: boolean;
 }
 
@@ -59,6 +61,10 @@ export function campaignSendPlanProgress(input: {
 		// Only a denominator we actually have can be qualified: with no total at
 		// all the copy quotes no denominator, so there is nothing to hedge.
 		isTotalLowerBound: total > 0 && plan.isPlannedTotalLowerBound === true,
-		isTruncated: sanitizeCount(plan.planTotalDays) >= MAX_PLAN_DAYS,
+		// READ FROM THE PLAN, never inferred from its length. A plan that covers
+		// the audience on day `MAX_PLAN_DAYS` is finished on that day, and
+		// `planTotalDays >= MAX_PLAN_DAYS` would have this line promise more mail
+		// after the last recipient has gone out.
+		isTruncated: plan.isPlanTruncated === true,
 	};
 }

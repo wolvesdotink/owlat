@@ -123,7 +123,11 @@ export const enqueueCampaignEmails = internalMutation({
 				email: recipient.email,
 				contactId: recipient.contactId,
 				// Already projected onto the envelope by audience resolution, so
-				// stratified assignment costs no additional read.
+				// stratified assignment costs no additional read. Handed over RAW:
+				// every reader applies `normalizeEngagementScore` itself — the ranker
+				// here, the envelope below, the walker's day-slice ordering — so one
+				// number cannot be a top-of-cell engagement signal here and an
+				// upstream defect three lines later.
 				...(recipient.engagementScore !== undefined
 					? { engagementScore: recipient.engagementScore }
 					: {}),

@@ -35,6 +35,7 @@
 
 import { buildCapacitySchedule, MAX_PLAN_DAYS } from './capacityPlan';
 import { nextUtcDayStart, utcDayKey } from '../lib/utcDay';
+import { normalizeEngagementScore } from '../delivery/workerEnvelope';
 
 /** The plan state the walker checkpoints on its `campaignSendJobs` row. */
 export interface SendPlanState {
@@ -46,6 +47,23 @@ export interface SendPlanState {
 	readonly planDayIndex: number | undefined;
 	/** Days the plan spanned when it was last recomputed. */
 	readonly planTotalDays: number | undefined;
+	/**
+	 * That plan left recipients UNSCHEDULED at `MAX_PLAN_DAYS` — the copy says
+	 * "more than N days" rather than quoting a finish.
+	 *
+	 * Carried rather than re-derived from `planTotalDays >= MAX_PLAN_DAYS`,
+	 * because a plan that covers the audience EXACTLY on day `MAX_PLAN_DAYS` is
+	 * complete: the length alone cannot tell the two apart, and describing a
+	 * finished plan as "more than 60 days" is the D14 dishonesty this whole
+	 * module exists to avoid.
+	 *
+	 * `undefined` READS AS NOT TRUNCATED — the reading every pre-migration row
+	 * gets, and every row this build has not hopped since. A checkpoint that
+	 * really is truncated says so again the moment its next hop recomputes the
+	 * length, so the stale reading is bounded by one cap window and costs a hedge
+	 * on the copy, not a scheduling decision.
+	 */
+	readonly isPlanTruncated: boolean | undefined;
 	/**
 	 * The audience size the plan was built from — the progress line's
 	 * denominator. Travels WITH the four counters above because it is read and
@@ -99,6 +117,8 @@ export interface SendPlanSlice {
 	readonly dayIndex: number;
 	/** Days the plan currently projects, 1-based count. `0` = not plannable. */
 	readonly totalDays: number;
+	/** `totalDays` does not cover the audience — see `SendPlanState`. */
+	readonly isTruncated: boolean;
 	/**
 	 * Recipients today's slice may still carry, or `undefined` for NO BUDGET —
 	 * an absent or unusable projection, which sends exactly as the shipped walker
@@ -173,11 +193,17 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	const storedIndex = sanitizeCount(state.planDayIndex);
 	const dayIndex = state.planDayKey === undefined ? 0 : isSameDay ? storedIndex : storedIndex + 1;
 
-	// THE PLAN'S LENGTH — the ONLY question a denominator is needed for.
-	const totalDays = planLength({
+	// THE PLAN'S LENGTH — the ONLY question a denominator is needed for. Its
+	// truncation travels with it: the two are one answer from one schedule, and
+	// deriving the second from the first is what let a complete plan claim it
+	// runs past the day it finishes on.
+	const length = planLength({
 		remaining,
 		capacityByDay,
-		carriedDays: sanitizeCount(state.planTotalDays),
+		carried: {
+			totalDays: sanitizeCount(state.planTotalDays),
+			isTruncated: state.isPlanTruncated === true,
+		},
 		now,
 	});
 
@@ -208,7 +234,8 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 		return {
 			dayKey,
 			dayIndex,
-			totalDays,
+			totalDays: length.totalDays,
+			isTruncated: length.isTruncated,
 			remainingToday: undefined,
 			capacityToday,
 			isDayExhausted: false,
@@ -222,7 +249,8 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	return {
 		dayKey,
 		dayIndex,
-		totalDays,
+		totalDays: length.totalDays,
+		isTruncated: length.isTruncated,
 		remainingToday,
 		capacityToday,
 		isDayExhausted,
@@ -231,20 +259,31 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	};
 }
 
+/** How long the plan is, and whether that length covers the audience. */
+interface PlanLength {
+	readonly totalDays: number;
+	readonly isTruncated: boolean;
+}
+
 /**
  * How many days the plan spans, given what we know about how many recipients
  * are left. An unknown denominator carries the checkpoint's length forward
  * rather than inventing one; a LOWER-BOUND denominator computes a length that
  * can only be too short, so it may lengthen the plan and never shorten it.
+ *
+ * TRUNCATION COMES FROM THE SCHEDULE, never from comparing the length against
+ * `MAX_PLAN_DAYS`: `buildCapacitySchedule` knows whether recipients were left
+ * over, and a plan that covers its audience exactly on day `MAX_PLAN_DAYS` is
+ * complete.
  */
 function planLength(args: {
 	readonly remaining: RemainingRecipients;
 	readonly capacityByDay: readonly number[];
-	readonly carriedDays: number;
+	readonly carried: PlanLength;
 	readonly now: number;
-}): number {
-	const { remaining, capacityByDay, carriedDays, now } = args;
-	if (remaining.kind === 'unknown') return carriedDays;
+}): PlanLength {
+	const { remaining, capacityByDay, carried, now } = args;
+	if (remaining.kind === 'unknown') return carried;
 	const schedule = buildCapacitySchedule({
 		audienceSize: remaining.count,
 		remainingCapacityByDay: capacityByDay,
@@ -252,9 +291,21 @@ function planLength(args: {
 	});
 	// `days === 0` is the planner's "cannot be planned" sentinel — no usable
 	// projection, or one that plateaus at zero before the audience is covered.
-	// That is an UNKNOWN length, so the checkpoint's length is carried forward.
-	const computed = schedule.days > 0 ? Math.min(MAX_PLAN_DAYS, schedule.days) : carriedDays;
-	return remaining.kind === 'atLeast' ? Math.max(carriedDays, computed) : computed;
+	// That is an UNKNOWN length, so the checkpoint's reading is carried forward
+	// whole rather than split across a carried length and a fresh truncation.
+	if (schedule.days <= 0) return carried;
+	const computed: PlanLength = {
+		totalDays: Math.min(MAX_PLAN_DAYS, schedule.days),
+		isTruncated: schedule.truncated,
+	};
+	if (remaining.kind !== 'atLeast') return computed;
+	// A floor may only ever lengthen the plan, and truncation is the extreme of
+	// length: a truncation one floor already established is not withdrawn by the
+	// next floor, which is measuring an audience that can only be larger.
+	return {
+		totalDays: Math.max(carried.totalDays, computed.totalDays),
+		isTruncated: carried.isTruncated || computed.isTruncated,
+	};
 }
 
 /** A recipient the walker can order. Only the score is read. */
@@ -279,7 +330,16 @@ export function orderByEngagement<T extends EngagementOrdered>(recipients: reado
 	return [...recipients].sort((a, b) => engagementRank(b) - engagementRank(a));
 }
 
+/**
+ * THE SAME BAND RULE THE OTHER TWO READERS OF THE STORED SCORE APPLY — the
+ * dispatch envelope and the stratified assignment ranker both read it through
+ * `normalizeEngagementScore`. A stored `250` is an upstream scorer defect, not
+ * a very engaged contact; ranked on its face it would take the front of day
+ * one's slice on the same send whose envelope drops it as unknown.
+ *
+ * A refused score sorts LAST, where the unscored already are: the rule for "no
+ * usable evidence of engagement" is one rule.
+ */
 function engagementRank(recipient: EngagementOrdered): number {
-	const score = recipient.engagementScore;
-	return score !== undefined && Number.isFinite(score) ? score : -1;
+	return normalizeEngagementScore(recipient.engagementScore) ?? -1;
 }

@@ -17,6 +17,7 @@ import {
 	type RemainingRecipients,
 	type SendPlanState,
 } from '../multiDaySendPlan';
+import { MAX_PLAN_DAYS } from '../capacityPlan';
 import { utcDayKey } from '../../lib/utcDay';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -30,6 +31,7 @@ const NO_PLAN: SendPlanState = {
 	enqueuedToday: undefined,
 	planDayIndex: undefined,
 	planTotalDays: undefined,
+	isPlanTruncated: undefined,
 	plannedTotal: undefined,
 	isPlannedTotalLowerBound: undefined,
 };
@@ -299,6 +301,96 @@ describe('planTodaysSlice — a LOWER-BOUND denominator (the truncated count)', 
 		});
 		expect(slice.totalDays).toBe(4);
 	});
+
+	it('never withdraws a truncation an earlier floor established', () => {
+		const slice = planTodaysSlice({
+			// A previous hop planned past MAX_PLAN_DAYS from a floor.
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				planDayIndex: 0,
+				planTotalDays: MAX_PLAN_DAYS,
+				isPlanTruncated: true,
+			},
+			// A later floor that fits comfortably — of an audience that can only be
+			// bigger than the one already found not to fit.
+			remaining: atLeast(1_500),
+			capacityByDay: [5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(MAX_PLAN_DAYS);
+		expect(slice.isTruncated).toBe(true);
+	});
+});
+
+describe('planTodaysSlice — "more than N days" is a fact, not a length', () => {
+	/**
+	 * The failure this pins: truncation used to be re-derived downstream as
+	 * `planTotalDays >= MAX_PLAN_DAYS`, so a plan that covered its audience on
+	 * the very last enumerable day — a COMPLETE schedule — told the operator
+	 * their send runs "more than 60 days". The schedule knows which it is; the
+	 * length never can.
+	 */
+	it('a plan that covers the audience ON day MAX_PLAN_DAYS is complete', () => {
+		const slice = planTodaysSlice({
+			state: NO_PLAN,
+			// 100/day for exactly MAX_PLAN_DAYS days, and not one recipient more.
+			remaining: exact(100 * MAX_PLAN_DAYS),
+			capacityByDay: [100],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(MAX_PLAN_DAYS);
+		expect(slice.isTruncated).toBe(false);
+	});
+
+	it('one recipient more and it is truncated at the same length', () => {
+		const slice = planTodaysSlice({
+			state: NO_PLAN,
+			remaining: exact(100 * MAX_PLAN_DAYS + 1),
+			capacityByDay: [100],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(MAX_PLAN_DAYS);
+		expect(slice.isTruncated).toBe(true);
+	});
+
+	it('carries the checkpoint’s reading when the length cannot be recomputed', () => {
+		const slice = planTodaysSlice({
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				planDayIndex: 0,
+				planTotalDays: MAX_PLAN_DAYS,
+				isPlanTruncated: true,
+			},
+			// No denominator on this hop: the length is carried, so its truncation
+			// must be carried with it rather than re-derived from the number.
+			remaining: UNKNOWN,
+			capacityByDay: [5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(MAX_PLAN_DAYS);
+		expect(slice.isTruncated).toBe(true);
+	});
+
+	it('an EXACT recount that now fits withdraws the truncation', () => {
+		const slice = planTodaysSlice({
+			state: {
+				...NO_PLAN,
+				planDayKey: TODAY,
+				planDayIndex: 0,
+				planTotalDays: MAX_PLAN_DAYS,
+				isPlanTruncated: true,
+			},
+			// Capacity grew (an IP was added): the plan re-shortens, and the copy
+			// stops promising mail that is already scheduled to go out.
+			remaining: exact(1_000),
+			capacityByDay: [5_000, 5_000],
+			now: NOON,
+		});
+		expect(slice.totalDays).toBe(1);
+		expect(slice.isTruncated).toBe(false);
+	});
 });
 
 describe('remainingRecipients — how well the denominator is known', () => {
@@ -360,5 +452,22 @@ describe('orderByEngagement — the best remaining audience goes first', () => {
 			{ id: 'zero', engagementScore: 0 },
 		]);
 		expect(ordered.map((r) => r.id)).toEqual(['zero', 'nan']);
+	});
+
+	it('an OUT-OF-BAND score does not jump the day’s slice', () => {
+		// `contacts.engagementScore` is 0-100. A stored 250 is an upstream scorer
+		// defect the dispatch envelope and the stratified ranker both refuse
+		// (`normalizeEngagementScore`), and the day-one slice is the third reader
+		// of the same number: ordered on its face it would take the front of the
+		// first warming day, on the same send whose envelope drops it as unknown.
+		const ordered = orderByEngagement([
+			{ id: 'over', engagementScore: 250 },
+			{ id: 'under', engagementScore: -1 },
+			{ id: 'top', engagementScore: 100 },
+			{ id: 'unscored' },
+		]);
+		// The honest top of the band leads; both defects sit with the unscored, in
+		// the audience's own order because they are tied at "no usable score".
+		expect(ordered.map((r) => r.id)).toEqual(['top', 'over', 'under', 'unscored']);
 	});
 });

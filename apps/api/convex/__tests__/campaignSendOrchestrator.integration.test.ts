@@ -1056,6 +1056,9 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		expect(afterDayOne?.enqueuedToday).toBe(2);
 		expect(afterDayOne?.planDayIndex).toBe(0);
 		expect(afterDayOne?.planTotalDays).toBeGreaterThan(1);
+		// The plan COVERS this audience and the checkpoint says so: the progress
+		// line reads truncation from the row, never from the row's length.
+		expect(afterDayOne?.isPlanTruncated).toBe(false);
 
 		const order = await t.run(async (ctx) => {
 			const sends = await ctx.db
