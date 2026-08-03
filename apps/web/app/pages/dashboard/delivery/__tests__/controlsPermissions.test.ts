@@ -3,10 +3,10 @@
  * WHO GETS A HAND ON THE RAMP.
  *
  * Both queries behind the controls screen are all-members — what the controller
- * is doing, and what it pulled back, is not privileged information — while all
- * five writes are `adminMutation`. Rendering the controls for an editor is
- * therefore rendering five buttons whose only possible answer is `forbidden`,
- * and the operator learns their permissions from a failed write.
+ * is doing, and what it pulled back, is not privileged information — while every
+ * write is an `adminMutation`, ENROLMENT INCLUDED. Rendering the controls for an
+ * editor is therefore rendering buttons whose only possible answer is
+ * `forbidden`, and the operator learns their permissions from a failed write.
  *
  * The gate takes the cell picker with it — it is the selector for those writes —
  * so the COPY is gated as well: neither the lede nor the explanation may promise
@@ -28,11 +28,22 @@ import RampCellControls from '~/components/delivery/RampCellControls.vue';
 import RampDecreaseNotices from '~/components/delivery/RampDecreaseNotices.vue';
 import RampPresetPicker from '~/components/delivery/RampPresetPicker.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
-import { adminNotice, controlsView } from '~/components/delivery/__tests__/rampFixtures';
+import {
+	adminNotice,
+	cellControl,
+	controlsView,
+} from '~/components/delivery/__tests__/rampFixtures';
+import type { RampControls } from '~/utils/deliverabilityRamp';
+
+/** The one cell the picker offers has never been ramp-managed. */
+const unmanaged = controlsView({ cells: [cellControl({ isRampManaged: false })] });
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|denied|forbidden/i;
 
-function stubPage(permissions: { canManage: boolean; gate: boolean }): void {
+function stubPage(
+	permissions: { canManage: boolean; gate: boolean },
+	view: RampControls = controlsView()
+): void {
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
@@ -41,7 +52,7 @@ function stubPage(permissions: { canManage: boolean; gate: boolean }): void {
 		showAdminGate: ref(permissions.gate),
 	}));
 	const answers = new Map<string, unknown>([
-		[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView()],
+		[getFunctionName(api.delivery.rampControlQueries.getRampControls), view],
 		[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), [adminNotice()]],
 	]);
 	vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({
@@ -85,6 +96,33 @@ describe('the ramp controls are admin-only', () => {
 		wrapper.unmount();
 	});
 
+	/**
+	 * ENROLMENT IS A WRITE LIKE THE REST. It arrives on the same card and through
+	 * the same `adminMutation`, so it is offered and withheld on the same terms —
+	 * and it is the one control an unmanaged cell shows, which is exactly the cell
+	 * a member is most likely to be looking at.
+	 */
+	it('offers the enrol affordance to an admin, and to nobody else', async () => {
+		stubPage({ canManage: true, gate: false }, unmanaged);
+		const admin = mount(ControlsPage, { global: globalOptions });
+		await admin.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		expect(admin.find('[data-testid="ramp-control-enroll"]').exists()).toBe(true);
+		admin.unmount();
+
+		stubPage({ canManage: false, gate: true }, unmanaged);
+		const member = mount(ControlsPage, { global: globalOptions });
+		// No picker, so no selection, so no card — the affordance has no reachable
+		// route rather than a hidden button.
+		expect(member.find('[data-testid="ramp-select-campaign:gmail"]').exists()).toBe(false);
+		expect(member.find('[data-testid="ramp-control-enroll"]').exists()).toBe(false);
+		expect(member.find('[data-testid="ramp-controls-unmanaged"]').exists()).toBe(false);
+		// The gate's own sentence has to name what it is withholding.
+		expect(member.find('[data-testid="ramp-controls-admin-only"]').text()).toMatch(
+			/putting a cell on it/i
+		);
+		member.unmount();
+	});
+
 	it('renders no write control for a member who may not, and says why', () => {
 		stubPage({ canManage: false, gate: true });
 		const wrapper = mount(ControlsPage, { global: globalOptions });
@@ -100,7 +138,7 @@ describe('the ramp controls are admin-only', () => {
 
 		// THE HEADER IS A WRITE SURFACE TOO. A lede that opens "hold a cell, cap
 		// it, push it" is the page still offering, one paragraph above the gate,
-		// exactly the five buttons the gate has just taken away.
+		// exactly the buttons the gate has just taken away.
 		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(false);
 		expect(wrapper.find('header').text()).not.toMatch(/hold a cell/i);
 		expect(wrapper.find('header').text()).toMatch(/pulled back on its own/i);

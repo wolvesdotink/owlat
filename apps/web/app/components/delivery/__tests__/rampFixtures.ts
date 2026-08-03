@@ -7,12 +7,12 @@
  */
 import type { IndependenceDayPoint } from '@owlat/shared/deliverabilityIndependence';
 import type {
-	IndependenceSummary,
 	RampAdminNotice,
 	RampCellControl,
 	RampCellDecision,
 	RampControls,
 } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const NOW = Date.UTC(2026, 6, 20);
@@ -53,6 +53,10 @@ export function controlsView(overrides: Partial<RampControls> = {}): RampControl
 	return {
 		generatedAt: NOW,
 		referenceTransportId: 'ses',
+		// TWO FACTS, NOT ONE. `referenceTransportId` names the single second arm;
+		// this says whether there is a second sender AT ALL, and it is the one the
+		// reset door cuts a share on — they come apart on a two-relay deployment.
+		isRelayConfigured: true,
 		isControllerPaused: false,
 		presets: {},
 		defaultPreset: 'balanced',

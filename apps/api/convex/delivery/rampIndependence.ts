@@ -50,7 +50,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
-import { referenceRelayTransportId } from './alignmentPreflight';
+import { referenceRelayTransportId } from './relayConfiguration';
 import { loadWarmingCapacity } from './warmingCapacity';
 
 /** How much history the stacked chart shows. Bounded by the 90-day retention. */

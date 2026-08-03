@@ -214,6 +214,24 @@ export function degradedCeilingCap(degradation: RampDegradation): number {
 }
 
 /**
+ * DOES THE PHASE LADDER BIND THIS CELL AT ALL (plan D3)?
+ *
+ * Both phase bounds — the stored rung and the table's cap on it — govern the
+ * SHARE dial, so they bind exactly the cells that have a second sender to hold a
+ * share back for. A cell driving the PACE dial has none, and a rung applied to
+ * its share would pull mail toward a destination the deployment does not have.
+ *
+ * ONE PREDICATE, because the tick is not its only reader. `phaseLadderBounds`
+ * asks it on every evaluation and `resetCellPhase` asks it before cutting a
+ * share to a rung; two `actuator === 'share'` comparisons at two call sites are
+ * two chances for the operator's door and the controller's to disagree about
+ * which dial a cell is on.
+ */
+export function bindsPhaseLadder(degradation: RampDegradation): boolean {
+	return degradation.actuator === 'share';
+}
+
+/**
  * Whether the engagement signal for this cell is the trailing baseline rather
  * than a concurrent second arm. Read off the substitution list, so the evaluator
  * choice is the table's decision and not the call site's.

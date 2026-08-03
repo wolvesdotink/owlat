@@ -152,6 +152,8 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('operator_pin'),
 	v.literal('operator_force_advance'),
 	v.literal('operator_phase_reset'),
+	v.literal('operator_enrollment'),
+	v.literal('operator_phase_promotion'),
 	rampGateIdValidator
 );
 

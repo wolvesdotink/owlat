@@ -9,7 +9,8 @@
  * not have, and about a relay it could not name.
  */
 import { describe, expect, it } from 'vitest';
-import { independenceSubhead, relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import { independenceSubhead } from '~/utils/deliverabilityIndependenceCopy';
 
 const REFERENCE = 'ses';
 

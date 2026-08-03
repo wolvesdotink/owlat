@@ -1,5 +1,10 @@
 /**
- * THE RAMP SCREENS' VOCABULARY — presentation only (plan D2, D12, D14, P3-6).
+ * THE RAMP SCREENS' PER-CELL VOCABULARY — presentation only (plan D2, D12, P3-6).
+ *
+ * The deployment-level half — the independence headline, the money, the
+ * projection — lives in `deliverabilityIndependenceCopy.ts` (plan D14). The cut
+ * follows the screens: this module speaks about a cell, that one about the
+ * install.
  *
  * DELIVERABILITY FEATURES FAIL WHEN THEY FEEL LIKE MAGIC, so the job of this
  * module is to make a controller decision READ like a decision: what the cell is
@@ -17,19 +22,10 @@
 
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
-import {
-	INDEPENDENCE_PROJECTION_MIN_DAYS,
-	type IndependenceProjection,
-	type RampPreset,
-} from '@owlat/shared/deliverabilityIndependence';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
-import {
-	cellLabel,
-	measurementHeadline,
-	providerLabel,
-	streamLabel,
-} from '~/utils/deliverabilityMeasurement';
+import { cellLabel, providerLabel, streamLabel } from '~/utils/deliverabilityMeasurement';
 import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<
@@ -44,112 +40,9 @@ export type RampCellDecision = NonNullable<RampCellControl['lastDecision']>;
  * cross-package import check exists to prevent.
  */
 export type RampDecisionReason = RampCellDecision['reason'];
-export type IndependenceSummary = FunctionReturnType<
-	typeof api.delivery.rampIndependence.getIndependenceSummary
->;
 export type RampAdminNotice = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.listRampAdminNotices
 >[number];
-
-// ============ THE HEADLINE (D14) ============
-
-/**
- * WITH NO RELAY THERE IS NOTHING TO BECOME INDEPENDENT OF, so the screen is not
- * a degraded "Sending independence" — it is a different, honest feature whose
- * headline is today's capacity and what is holding it back (plan D14).
- *
- * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
- * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So this
- * is an alias, not a copy — the SUBHEAD below is genuinely different prose (that
- * screen is read-only; this one is the ramp) and stays local.
- */
-export const independenceHeadline = measurementHeadline;
-
-/**
- * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport
- * id, and "instead of ses" reads as a configuration value leaking onto the
- * screen people screenshot. `transportIdLabel` names the built-in kinds from the
- * same map the transport card and the DNS guidance use; a PLUGIN relay is named
- * from its id's leaf here and from the plugin catalog on the card, so those two
- * can still word one relay differently until this query carries the catalog
- * label.
- */
-export function independenceSubhead(referenceTransportId: string | null): string {
-	return referenceTransportId === null
-		? 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.'
-		: `How much of your mail your own server now carries instead of ${transportIdLabel(referenceTransportId)}.`;
-}
-
-/** The month-to-date own-arm volume sentence — always available, always true. */
-export function volumeSentence(summary: IndependenceSummary): string {
-	return `${formatNumber(summary.monthToDateOwnSends)} messages sent from your own server this month.`;
-}
-
-/**
- * Format a minor-unit amount in its own currency.
- *
- * The exponent comes from `Intl.NumberFormat`, which knows that JPY has none and
- * that KWD has three. An unknown or malformed code makes `Intl` throw; that must
- * never take a screen down over a settings typo, so the fallback prints the code
- * beside the raw amount and remains readable.
- */
-function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): string {
-	try {
-		const format = new Intl.NumberFormat('en-US', { style: 'currency', currency });
-		const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
-		return format.format(minorUnits / 10 ** digits);
-	} catch {
-		return `${currency} ${formatNumber(minorUnits)} (minor units)`;
-	}
-}
-
-/**
- * THE MONEY, OR AN HONEST ABSENCE. A relay price the product invented would be
- * quoted back at us as fact, so when nobody has recorded one the screen says
- * what it would take to show the figure rather than printing a confident guess.
- */
-export function spendAvoidedCopy(summary: IndependenceSummary): string {
-	if (summary.spendAvoidedMinorUnits === null || summary.spendAvoidedCurrency === null) {
-		return 'Add what your relay charges per thousand messages to see the spend this replaces.';
-	}
-	// MINOR UNITS ARE NOT ALWAYS HUNDREDTHS. JPY has no minor unit at all and
-	// KWD/BHD have three digits, so the exponent is read off the CURRENCY through
-	// `Intl` rather than assumed to be 100 — a hardcoded divisor would misstate a
-	// yen figure by two orders of magnitude on the screen people screenshot.
-	const currency = summary.spendAvoidedCurrency;
-	const minor = summary.spendAvoidedMinorUnits;
-	return `${formatCurrencyFromMinorUnits(minor, currency)} of relay spend avoided this month.`;
-}
-
-/**
- * The projected date the relay stops carrying mail — one sentence per arm of the
- * closed union, because the four non-answers mean genuinely different things and
- * a single "unknown" would tell a standalone deployment nothing at all.
- */
-export function projectionCopy(projection: IndependenceProjection): string {
-	switch (projection.kind) {
-		case 'projected':
-			return `On the current pace you stop paying a relay around ${formatShortDate(projection.at)} — about ${projection.dailyGainPp.toFixed(2)} points of share gained per day.`;
-		case 'already_independent':
-			return 'Your own server already carries this traffic. There is no relay bill left to end.';
-		case 'not_advancing':
-			return 'The share is not climbing at the moment, so there is no honest date to give. It will appear once the ramp starts advancing again.';
-		case 'beyond_horizon':
-			return 'At the current pace the finish line is more than two years out, which is too far to quote. A faster preset or more volume would bring it closer.';
-		case 'insufficient_data':
-			return `Not enough history yet — ${formatNumber(projection.usableDays)} of ${formatNumber(INDEPENDENCE_PROJECTION_MIN_DAYS)} days with traffic. Keep sending and the date will appear.`;
-	}
-}
-
-/** The standalone headline: what the deployment can send today. */
-export function capacityCopy(summary: IndependenceSummary): string {
-	const remaining = summary.capacity.remainingToday;
-	if (remaining === null) {
-		return 'No warming ceiling is being reported right now, so there is no daily number to show. Your sending is unaffected.';
-	}
-	return `${formatNumber(remaining)} more messages can go out from your own server today.`;
-}
 
 // ============ CELL STATE ============
 
@@ -165,9 +58,10 @@ export interface RampCellStatus {
  * ONE STATUS PER CELL, decided in ONE table so the word and the colour cannot
  * be chosen in two places and disagree.
  *
- * `unmanaged` and `holding` are NEUTRAL, never warnings: a cell the ramp has not
- * taken over yet and a cell waiting for evidence are both perfectly healthy
- * states of a working deployment (plan D2/D10).
+ * `unmanaged` and `holding` are NEUTRAL, never warnings: a cell nobody has put
+ * on the ramp and a cell waiting for evidence are both perfectly healthy states
+ * of a working deployment (plan D2/D10). Enrolment is an OPT-IN, so `unmanaged`
+ * is a choice not yet made rather than a step not yet finished.
  */
 export function rampCellStatus(cell: RampCellControl): RampCellStatus {
 	if (!cell.isRampManaged) {
@@ -236,6 +130,8 @@ const REASON_LABELS = {
 	operator_pin: 'Your pin on this cell',
 	operator_force_advance: 'A manual advance you made',
 	operator_phase_reset: 'A manual phase reset you made',
+	operator_enrollment: 'Putting this cell on the ramp',
+	operator_phase_promotion: 'A phase promotion you made',
 	hard_bounce: 'The hard-bounce gate',
 	deferral: 'The deferral gate',
 	complaint: 'The complaint gate',
@@ -334,10 +230,11 @@ export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemo
  * A control the server DECLINED to apply — `{applied: false, refusal}` rather
  * than a thrown error, because none of these is a fault.
  *
- * The type is read off the mutation so the four arms cannot drift from the
- * server's union, and the sentences are calm and end in something the operator
- * can actually do (plan D2): a refusal is the system explaining a rule, not the
- * UI reporting a failure.
+ * The type is read off the mutation so the arms cannot drift from the server's
+ * union — which is ONE union across every ramp write, enrolment and promotion
+ * included — and the sentences are calm and end in something the operator can
+ * actually do (plan D2): a refusal is the system explaining a rule, not the UI
+ * reporting a failure.
  */
 export type RampControlRefusal = NonNullable<
 	FunctionReturnType<typeof api.delivery.rampControls.setCellPause>['refusal']
@@ -349,11 +246,123 @@ const REFUSAL_SENTENCES = {
 	hard_stop_active:
 		'A safety hold is active on this cell — an abuse hold, an open circuit breaker, a critical blocklist listing or a cooldown from an earlier pull-back. Clear it and try again.',
 	cell_not_ramp_managed:
-		'This cell is not on the ramp yet. It starts being managed the first time the controller evaluates it.',
+		'This cell is not on the ramp yet. Put it on the ramp to let the controller decide its share.',
+	cell_already_ramp_managed:
+		'This cell is already on the ramp, so it keeps the streak and the phase it has earned. Use the phase reset to start it over.',
+	phase_increase_requires_promotion:
+		'A phase ceiling only ever rises through a promotion, which checks the evidence for the next rung. Promote the cell instead of resetting it upward.',
+	promotion_evidence_outstanding:
+		'The evidence for the next phase is not in yet. The conditions still outstanding are listed with the cell, and the promotion works as soon as any one route is complete.',
 } as const satisfies Record<RampControlRefusal, string>;
 
 export function rampRefusalSentence(refusal: RampControlRefusal): string {
 	return REFUSAL_SENTENCES[refusal];
+}
+
+// ============ PROMOTION EVIDENCE (D3) ============
+
+/**
+ * A condition the next phase rung is still waiting on.
+ *
+ * Read off the mutation for the same reason the refusals are: the server decides
+ * which routes apply to a cell and which of their conditions are unmet, and a
+ * label map that could go quiet on a condition would leave an operator reading
+ * "not yet" with nothing to act on.
+ */
+export type RampPromotionCondition = NonNullable<
+	FunctionReturnType<typeof api.delivery.rampPhasePromotion.promoteCellPhase>['outstanding']
+>[number];
+
+/** Each condition as the THING TO DO, not as the identifier it is stored under. */
+const PROMOTION_CONDITION_LABELS = {
+	google_compliance_pass: 'Google’s Compliance Status passing for this domain in the last 7 days',
+	snds_complaint_band_green: 'Microsoft SNDS reporting a green complaint band in the last 7 days',
+	dwell_multiple_served: 'longer spent at the current phase',
+	seed_probe_pass_recent: 'a recent passing seed-mailbox placement probe',
+	dnsbl_clean_streak: '14 consecutive blocklist-clean days across every sending IP',
+	deferral_under_threshold_all_cells: 'every cell’s deferral rate under its threshold',
+} as const satisfies Record<RampPromotionCondition, string>;
+
+/**
+ * NARROW, AND NO FALLBACK. The map is exhaustive over the union by construction
+ * and the union is read off the mutation, so a widened parameter would only buy
+ * an unreachable branch — one that renders a snake_case identifier, which is the
+ * "goes quiet on a condition" behaviour the map above exists to prevent. A
+ * condition added server-side has to fail the BUILD here rather than degrade at
+ * runtime. (`rampReasonLabel` keeps its fallback for the opposite reason: it
+ * reads ninety days of stored history, where a retired code genuinely arrives.)
+ */
+export function rampPromotionConditionLabel(condition: RampPromotionCondition): string {
+	return PROMOTION_CONDITION_LABELS[condition];
+}
+
+// ============ WHAT A WRITE ACTUALLY DID ============
+
+/**
+ * Which setup path enrolment resolved the cell onto (plan D14), read off the
+ * mutation like every other vocabulary here. The fork is decided SERVER-SIDE and
+ * never chosen by the operator, so the sentence below is the only place they
+ * learn which of the two ramps they got.
+ */
+export type RampEnrollmentPath = NonNullable<
+	FunctionReturnType<typeof api.delivery.rampEnrollment.enrollCell>['path']
+>;
+
+/**
+ * WHAT PUTTING THE CELL ON THE RAMP ACTUALLY DID.
+ *
+ * Without it the only visible effect of an enrolment is the controls going live
+ * — and the outcomes are genuinely different ramps: a measured sliver of the
+ * cell against the relay, or the whole cell on the own server with the warm-up
+ * pace as the dial that moves. An operator who cannot tell which one they got
+ * cannot read anything else on this screen either.
+ *
+ * AND THE SHARE ONLY MOVES MAIL WHERE THE STREAM'S ROUTE SPLITS BY IT. The
+ * server answers that (`isShareRouted`) rather than the screen guessing from the
+ * path: a cell can be on the ESP path — a relay is configured — while the
+ * stream's route is a shipped `priority_failover` that sends every message the
+ * same way it did yesterday. Saying "your relay carries the rest" there would
+ * describe traffic that never moved, and the number beside it would look broken
+ * rather than dormant.
+ */
+export function rampEnrolledSentence(
+	share: number,
+	path: RampEnrollmentPath,
+	isShareRouted: boolean
+): string {
+	if (path !== 'esp_relay') {
+		return `On the ramp at ${shareLabel(share)} of this cell. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is the dial that ramps.`;
+	}
+	return isShareRouted
+		? `On the ramp at ${shareLabel(share)} of this cell — your relay carries the rest, and the controller moves the share only on the evidence.`
+		: `On the ramp at ${shareLabel(share)} of this cell, and the controller moves it only on the evidence. No mail follows that share yet: this stream's route does not split by share, so every message keeps going where the route already sends it.`;
+}
+
+/**
+ * THE PROMOTION'S TWO NON-REFUSAL ANSWERS. "Not yet" has its own refusal
+ * sentence and its own list of conditions; these are the other two — the rung
+ * moved, or the cell was already on the top one. The second is why the button is
+ * disabled up there, and the sentence covers the case where the screen's copy of
+ * the rung is behind the row's.
+ *
+ * AND WHAT THE NEW RUNG DOES DEPENDS ON WHETHER THERE IS A SECOND SENDER
+ * (`isRelayConfigured`, the same fact the reset copy reads). The phase ladder
+ * bounds the SHARE dial, so on a standalone cell `phaseLadderBounds` drops the
+ * ceiling entirely: nothing climbs toward it, and a promoted pace-path cell
+ * already sends the whole cell from its own server. "It climbs toward the new
+ * ceiling" there names a movement that cannot happen.
+ */
+export function rampPromotionSentence(
+	applied: boolean,
+	phaseCeiling: number,
+	isRelayConfigured: boolean
+): string {
+	if (!applied) {
+		return `This cell is already on the top phase rung (${shareLabel(phaseCeiling)}), so there is nothing left to promote.`;
+	}
+	return isRelayConfigured
+		? `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump — it climbs toward the new ceiling on the ordinary checks.`
+		: `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump, and with no relay connected there is nothing holding it below the rung: the rung is recorded, and it bounds the share the day a second sender carries this cell again.`;
 }
 
 // ============ PRESETS ============

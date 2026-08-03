@@ -29,7 +29,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
-import { referenceRelayTransportId } from './alignmentPreflight';
+import { relayConfiguration } from './relayConfiguration';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import type { RampGateId } from './ramp/gateTypes';
 import {
@@ -82,6 +82,17 @@ export interface RampCellControlView {
 export interface RampControlsView {
 	readonly generatedAt: number;
 	readonly referenceTransportId: string | null;
+	/**
+	 * WHETHER ANY RELAY IS CONFIGURED — the fact `resetCellPhase` cuts a share on,
+	 * carried here so the copy beside the rung buttons cannot promise a different
+	 * move from the one the server makes.
+	 *
+	 * DELIBERATELY NOT `referenceTransportId !== null`. That names the SINGLE
+	 * second arm and is null on a deployment with two relays connected, where the
+	 * reset really does cut — a screen reading it as "standalone" would tell that
+	 * operator their share stays where it is while 75% of the cell moves.
+	 */
+	readonly isRelayConfigured: boolean;
 	/** The global kill switch (`instanceSettings.isRampControllerPaused`). */
 	readonly isControllerPaused: boolean;
 	readonly presets: Readonly<Partial<Record<DeliverabilityStream, RampPreset>>>;
@@ -167,7 +178,12 @@ export const getRampControls = authedQuery({
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const now = Date.now();
 		const settings = await ctx.db.query('instanceSettings').first();
-		const referenceTransportId = await referenceRelayTransportId(ctx);
+		// TWO READINGS OF ONE LIST, from one read of it. "Which single arm is the
+		// reference one" and the reset door's own fact "is there a second sender at
+		// all" have different answers on a two-relay deployment, and the screen shows
+		// both — so the pair is derived where the rule lives rather than scanning
+		// `providerRoutes` twice for two views of the same configuration.
+		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
 		const presetRows = await ctx.db
 			.query('rampStreamPresets')
 			.withIndex('by_org_stream', (q) => q.eq('organizationId', organizationId))
@@ -202,6 +218,7 @@ export const getRampControls = authedQuery({
 		return {
 			generatedAt: now,
 			referenceTransportId,
+			isRelayConfigured,
 			isControllerPaused: settings?.isRampControllerPaused === true,
 			presets,
 			defaultPreset: defaultRampPreset(referenceTransportId !== null),

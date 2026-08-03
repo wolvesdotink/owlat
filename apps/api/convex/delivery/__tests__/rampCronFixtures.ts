@@ -55,6 +55,13 @@ export interface SeedRampCellOptions {
 	/** The share stored on the managed cell's row, degenerate values included. */
 	readonly ownShare?: number;
 	/**
+	 * Seed the pool and provider slices WITHOUT the managed per-stream row — the
+	 * pre-enrolment state of every cell in every deployment (plan D1). The
+	 * enrolment suite needs it, and hand-rolling it would be a fourth copy of the
+	 * row triple this fixture exists to keep singular.
+	 */
+	readonly omitManagedCell?: boolean;
+	/**
 	 * How long ago the POOL row was last written. The shipped router stops acting
 	 * on a route state it has not heard from within
 	 * `DELIVERABILITY_SIGNAL_MAX_AGE_MS`, and the controller must agree with it.
@@ -80,6 +87,12 @@ export interface SeedRampCellOptions {
 	readonly cooldownMs?: number;
 	/** The graduation pin already on the row — the cell has PINNED at full share. */
 	readonly graduatedAt?: number;
+	/**
+	 * The GRADUATION CLOCK: when the cell last became continuously green. Fourteen
+	 * days of it is what awards the pin, so a seeded value is how a suite says
+	 * "this cell is most of the way to graduating".
+	 */
+	readonly greenSince?: number;
 	/** The SECOND actuator's stored dial, degenerate values included. */
 	readonly paceMultiplier?: number;
 	readonly paceCleanStreak?: number;
@@ -135,28 +148,31 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 			signals: [...(options.providerSignals ?? [])],
 		});
 		// The MANAGED cell: the controller's own per-stream row.
-		await ctx.db.insert('deliverabilityRouteStates', {
-			...base,
-			destinationProvider: 'gmail' as const,
-			stream: 'campaign' as const,
-			isFallbackActive: options.isFallbackActive ?? false,
-			ownShare: options.ownShare ?? RAMP_FIXTURE_SHARE,
-			...(options.omitPhaseCeiling === true ? {} : { phaseCeiling: options.phaseCeiling ?? 1 }),
-			cleanStreak: options.cleanStreak ?? 3,
-			mixVersion: options.mixVersion ?? 2,
-			...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
-			...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
-			...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
-			...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
-			...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
-			...(options.paceCleanStreak === undefined
-				? {}
-				: { paceCleanStreak: options.paceCleanStreak }),
-			...(options.paceLastEvaluatedUtcDay === undefined
-				? {}
-				: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
-			...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
-		});
+		if (options.omitManagedCell !== true) {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				...base,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: options.isFallbackActive ?? false,
+				ownShare: options.ownShare ?? RAMP_FIXTURE_SHARE,
+				...(options.omitPhaseCeiling === true ? {} : { phaseCeiling: options.phaseCeiling ?? 1 }),
+				cleanStreak: options.cleanStreak ?? 3,
+				mixVersion: options.mixVersion ?? 2,
+				...(options.frozenUntil === undefined ? {} : { frozenUntil: options.frozenUntil }),
+				...(options.freezeReason === undefined ? {} : { freezeReason: options.freezeReason }),
+				...(options.cooldownMs === undefined ? {} : { cooldownMs: options.cooldownMs }),
+				...(options.graduatedAt === undefined ? {} : { graduatedAt: options.graduatedAt }),
+				...(options.greenSince === undefined ? {} : { greenSince: options.greenSince }),
+				...(options.paceMultiplier === undefined ? {} : { paceMultiplier: options.paceMultiplier }),
+				...(options.paceCleanStreak === undefined
+					? {}
+					: { paceCleanStreak: options.paceCleanStreak }),
+				...(options.paceLastEvaluatedUtcDay === undefined
+					? {}
+					: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
+				...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
+			});
+		}
 		if (options.warming !== undefined) {
 			await ctx.db.insert('warmingState', {
 				phase: 'ramp',
@@ -179,6 +195,38 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 				syncedAt: now - (options.warmingAgeMs ?? 0),
 			});
 		}
+	});
+}
+
+/**
+ * A CONFIGURED RELAY — the second sender, as the operator's doors read it.
+ *
+ * `configuredRelayKinds` answers off `providerRoutes` (plus the single-transport
+ * `EMAIL_PROVIDER` env), and BOTH doors ask it: enrolment to choose the opening
+ * share, the phase reset to decide whether a rung cuts one. A suite that means
+ * to exercise a deployment with a relay has to say so with a row, and the two
+ * suites that need it must not seed two different shapes of one.
+ *
+ * The default strategy is the SHIPPED one, deliberately. `adaptive_mix` is the
+ * only strategy the router splits by the cell's share under, and nothing in
+ * production selects it — so a relay connected on `priority_failover` is what a
+ * real deployment looks like at the moment of enrolment.
+ */
+export async function connectRelay(
+	t: Harness,
+	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover'
+): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'campaign' as const,
+			strategy,
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
 	});
 }
 

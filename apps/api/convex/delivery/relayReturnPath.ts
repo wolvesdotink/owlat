@@ -21,7 +21,7 @@ import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { referenceRelayTransportId } from './alignmentPreflight';
+import { referenceRelayTransportId } from './relayConfiguration';
 import {
 	isCustomReturnPathSupported,
 	resolveReturnPathCapability,

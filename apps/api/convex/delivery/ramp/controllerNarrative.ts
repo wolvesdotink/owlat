@@ -255,6 +255,10 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 			return `Advanced ${where} by hand (${move}): an operator forced the share past the evidence. The gates did not authorise this move; the next evaluation measures the result and will retreat if it is bad.`;
 		case 'operator_phase_reset':
 			return `Reset ${where} to a phase rung by hand (${move}): an operator changed the phase ceiling. The clean streak restarts from zero and the ramp re-earns its way up.`;
+		case 'operator_enrollment':
+			return `Put ${where} on the ramp (${move}): an operator opted this cell in, and the controller now decides its share on the gates. Every step from here is measured.`;
+		case 'operator_phase_promotion':
+			return `Promoted ${where} a phase rung at ${percent(decision.share)}: an operator raised the ceiling and the promotion evidence allowed it. The share still has to earn its way up to the new rung.`;
 		case 'hard_bounce':
 		case 'deferral':
 		case 'complaint':
@@ -411,6 +415,11 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'operator_pin':
 		case 'operator_force_advance':
 		case 'operator_phase_reset':
+		// Enrolment and promotion are SHARE-side too: both write the share row's
+		// opening state and its ceiling, and neither is ever handed to the pace
+		// ladder — the enrolling deployment's pace dial is left to the first tick.
+		case 'operator_enrollment':
+		case 'operator_phase_promotion':
 			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}.`;
 	}
 }

@@ -23,16 +23,15 @@
  */
 import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { relayRemovalConsequenceCopy, shareLabel } from '~/utils/deliverabilityRamp';
 import {
 	capacityCopy,
 	independenceHeadline,
 	independenceSubhead,
 	projectionCopy,
-	relayRemovalConsequenceCopy,
 	spendAvoidedCopy,
 	volumeSentence,
-	shareLabel,
-} from '~/utils/deliverabilityRamp';
+} from '~/utils/deliverabilityIndependenceCopy';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });

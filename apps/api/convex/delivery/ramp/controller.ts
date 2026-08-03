@@ -51,6 +51,7 @@ import { aimdDecrease, aimdIncrease } from './aimd';
 import {
 	capacityCeiling,
 	isEvaluationWindowElapsed,
+	phaseLadderBounds,
 	resolveCeilingBound,
 } from './controllerBounds';
 import {
@@ -157,7 +158,11 @@ interface DecideArgs {
  */
 function decide(args: DecideArgs): RampDecisionDraft {
 	const { fromShare, phaseCeiling, storedStreak, isClockUsable, input } = args;
-	const { mix, signals, evaluation, capacity, config, now, phaseCeilingCap } = input;
+	const { mix, signals, evaluation, capacity, config, now } = input;
+	// WHICH PHASE BOUNDS APPLY AT ALL is the fold's answer and not a rung: on a
+	// cell with no second sender both fall away, and the STORED rung still travels
+	// out on the decision untouched. See `phaseLadderBounds` for why.
+	const phase = phaseLadderBounds(input, phaseCeiling);
 	const held = {
 		share: fromShare,
 		verdict: 'not_evaluated' as const,
@@ -172,7 +177,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		// impossible moment, for ever.
 		greenSince: readStoredInstant(mix.greenSince, now) ?? undefined,
 		graduatedAt: readStoredInstant(mix.graduatedAt, now) ?? undefined,
-		ceiling: phaseCeiling,
+		ceiling: phase.phaseCeiling,
 	};
 
 	// 0. THE GLOBAL KILL SWITCH, before everything including the hard stops. A
@@ -414,12 +419,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     phase rung, or the substitution table's cap (P3-8). The arithmetic and
 	//     the remedy each one implies live in `controllerBounds`; this rung only
 	//     applies the answer, so the ladder stays a ladder.
-	const bound = resolveCeilingBound({
-		capacityBound,
-		phaseCeiling,
-		phaseCeilingCap,
-		ceilingCapSource: input.ceilingCapSource,
-	});
+	const bound = resolveCeilingBound({ capacityBound, ...phase });
 	const { ceiling, cappedBy } = bound;
 
 	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS

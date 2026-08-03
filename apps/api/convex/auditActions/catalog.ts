@@ -186,6 +186,12 @@ export const AUDIT_ACTION_LITERALS = [
 	action('deliverability_ramp.force_advanced'),
 	action('deliverability_ramp.phase_reset'),
 	action('deliverability_ramp.preset_changed'),
+	// The two acts that put a cell on the ramp and move it UP it. `cell_enrolled`
+	// is the opt-in — before it the cell has no stored share and the shipped
+	// boolean governs it — and `phase_promoted` is the ONLY way a phase ceiling
+	// ever rises, which is why it is worth being able to find on its own.
+	action('deliverability_ramp.cell_enrolled'),
+	action('deliverability_ramp.phase_promoted'),
 	// Postbox outbound state transitions (per recipient). Fired by the
 	// Postbox outbound lifecycle module on every transition. See ADR-0012.
 	action('postbox_outbound_transition'),

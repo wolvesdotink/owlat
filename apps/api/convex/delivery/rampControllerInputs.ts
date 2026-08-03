@@ -44,6 +44,7 @@ import { seedSweepsForCell, type SeedPlacementSweepIndex } from '../analytics/se
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
+	bindsPhaseLadder,
 	degradedCeilingCap,
 	degradedStreamConfig,
 	resolveRampDegradation,
@@ -224,7 +225,12 @@ export async function readRampIncreaseBlock(
 	args: {
 		organizationId: string;
 		cell: DeliverabilityCell;
-		perStream: Doc<'deliverabilityRouteStates'>;
+		/**
+		 * `null` when the cell has NO per-stream row yet — the enrolment case. The
+		 * deployment-level hard stops still apply (that is the whole point of asking
+		 * here), and a row that does not exist carries no stored cooldown to serve.
+		 */
+		perStream: Doc<'deliverabilityRouteStates'> | null;
 		now: number;
 	}
 ): Promise<RampIncreaseBlock | null> {
@@ -247,9 +253,8 @@ export async function readRampIncreaseBlock(
 	if (signals.isPoolBlocklisted) return 'hard_stop_active';
 	// A cooldown the controller stamped is evidence-bearing state, not a
 	// preference: raising through it would discard the retreat that set it.
-	if (args.perStream.frozenUntil !== undefined && args.now < args.perStream.frozenUntil) {
-		return 'hard_stop_active';
-	}
+	const frozenUntil = args.perStream?.frozenUntil;
+	if (frozenUntil !== undefined && args.now < frozenUntil) return 'hard_stop_active';
 	return null;
 }
 
@@ -462,6 +467,16 @@ export async function loadCellInput(
 			// The cap's CAUSE travels with the cap, so the audit row and the operator
 			// sentence can name the integration whose return would lift it (plan D12).
 			ceilingCapSource: degradation.ceilingCappedBy,
+			// DOES A PHASE CEILING APPLY TO THIS CELL AT ALL — the fold's answer,
+			// read off the SAME resolution that chose the evaluator, the K_CLEAN and
+			// the cap above. Both phase bounds govern the SHARE dial, so they bind
+			// exactly the cells that have one; a cell driving the pace dial carries
+			// its stored rung untouched and starts obeying it again the tick a second
+			// sender is observed. Encoding "no ceiling" as the ladder's TOP RUNG
+			// instead would hand that cell a ceiling nobody promoted it to, and the
+			// AIMD ladder could then climb through every rung without the promotion
+			// gate ever being consulted (plan D3).
+			isPhaseLadderBinding: bindsPhaseLadder(degradation),
 			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
 			// the constants this tick used, so a decision can be explained without
 			// re-deriving what the deployment looked like at the time.

@@ -22,7 +22,7 @@ import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndepend
 import TransportEditor from '../TransportEditor.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
 import { independenceSummary } from './rampFixtures';
-import type { IndependenceSummary } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 import { wizardStubs } from './wizardHarness';
 
 const summary: Ref<IndependenceSummary | undefined> = ref(independenceSummary());

@@ -19,7 +19,7 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { modules } from '../../__tests__/testModules';
-import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
+import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
 
 const ORG = 'org_ramp_controls';
 const OTHER_ORG = 'org_ramp_controls_other';
@@ -190,14 +190,21 @@ describe('reset to a phase', () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG });
 		await expect(
-			t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
+			t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
 		).rejects.toThrow();
 	});
 
 	it('brings the share back under the new ceiling and restarts the streak', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, cleanStreak: 3 });
-		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+		// THE CUT IS THE ESP PATH'S, so the cell needs a SECOND SENDER to hold the
+		// share back for. These rows are the MEASURED half of that union — the tick's
+		// own reading that a relay arm is carrying this cell — which is the half a
+		// suite that seeds no `providerRoutes` row can state for itself. With neither
+		// half the reset holds the share; both arms are pinned in
+		// `rampPhaseMoves.test.ts`.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBe(0.25);
 		expect(row?.ownShare).toBe(0.25);
@@ -209,7 +216,7 @@ describe('reset to a phase', () => {
 /**
  * A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS.
  *
- * `promoteRampPhase` already refuses under the global kill switch; the operator
+ * A phase promotion already refuses under the global kill switch; the operator
  * mutations that write a share directly must refuse under the same conditions,
  * or every hard stop becomes optional in exactly the situation it exists for.
  * Downward moves stay allowed throughout — a retreat is never blocked.
@@ -271,7 +278,14 @@ describe('hard stops bound the operator, not only the controller', () => {
 		expect(result.refusal).toBe('hard_stop_active');
 	});
 
-	it('refuses raising a PHASE ceiling while the kill switch is engaged', async () => {
+	/**
+	 * A CEILING NEVER RISES FROM HERE, hard stop or no hard stop. The upward move
+	 * is `rampPhasePromotion.promoteCellPhase` and its evidence routes; a reset
+	 * that could also raise one would leave that gate guarding one of two doors.
+	 * The rung-level coverage lives in `rampPhaseMoves.test.ts` — this arm is here
+	 * so the CONTROLS' own refusal vocabulary stays pinned beside the others.
+	 */
+	it('refuses raising a PHASE ceiling, and not because of a hard stop', async () => {
 		const t = harness();
 		await seedRampCell(t, {
 			organizationId: ORG,
@@ -279,58 +293,14 @@ describe('hard stops bound the operator, not only the controller', () => {
 			phaseCeiling: 0.25,
 			isPaused: true,
 		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 1,
 		});
 		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('controller_paused');
+		expect(result.refusal).toBe('phase_increase_requires_promotion');
 		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
-	});
-
-	/**
-	 * THE ABSENT CEILING IS THE INTERESTING ONE. `phaseCeiling` is optional, so a
-	 * row that predates the controller carries none — and a guard that falls back
-	 * to the ARGUMENT would compare a value against itself and wave every raise
-	 * through. The ladder's first rung is the reading `promoteRampPhase` takes,
-	 * and this asserts the operator path agrees with it.
-	 */
-	it('refuses raising the ceiling of a row with NO stored ceiling under the kill switch', async () => {
-		const t = harness();
-		await seedRampCell(t, {
-			organizationId: ORG,
-			ownShare: 0.2,
-			omitPhaseCeiling: true,
-			isPaused: true,
-		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
-			...CELL,
-			phaseCeiling: 1,
-		});
-		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('controller_paused');
-		const row = await readManagedCell(t);
-		expect(row?.phaseCeiling).toBeUndefined();
-		expect(row?.ownShare).toBe(0.2);
 		expect(await decisions(t)).toHaveLength(0);
-	});
-
-	it('refuses raising the ceiling of a ceiling-less row inside a live cooldown', async () => {
-		const t = harness();
-		await seedRampCell(t, {
-			organizationId: ORG,
-			ownShare: 0.2,
-			omitPhaseCeiling: true,
-			frozenUntil: Date.now() + 60 * 60 * 1000,
-			freezeReason: 'gate_breach',
-		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
-			...CELL,
-			phaseCeiling: 1,
-		});
-		expect(result.applied).toBe(false);
-		expect(result.refusal).toBe('hard_stop_active');
-		expect((await readManagedCell(t))?.phaseCeiling).toBeUndefined();
 	});
 
 	it('still lets a ceiling-less row be put on the FIRST rung under the kill switch', async () => {
@@ -341,7 +311,7 @@ describe('hard stops bound the operator, not only the controller', () => {
 			omitPhaseCeiling: true,
 			isPaused: true,
 		});
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -352,7 +322,7 @@ describe('hard stops bound the operator, not only the controller', () => {
 	it('still lets a phase be reset DOWNWARD while the kill switch is engaged', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, phaseCeiling: 1, isPaused: true });
-		const result = await t.mutation(api.delivery.rampControls.resetCellPhase, {
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
 			phaseCeiling: 0.25,
 		});
@@ -390,7 +360,12 @@ describe('a hand-moved cell does not keep its graduation pin', () => {
 			phaseCeiling: 1,
 			graduatedAt: Date.now() - 1_000,
 		});
-		await t.mutation(api.delivery.rampControls.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
+		// The pin follows the SHARE, and only a reset with a second sender to hold
+		// that share back for cuts it. Here that is the MEASURED half of the union:
+		// reference-arm rows inside the evaluation window. A cell with neither half
+		// keeps share and pin.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
 		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
 	});
 

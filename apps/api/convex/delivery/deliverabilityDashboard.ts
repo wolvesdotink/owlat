@@ -45,7 +45,7 @@ import {
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
 } from '../analytics/transportOutcomeSummary';
-import { referenceRelayTransportId } from './alignmentPreflight';
+import { referenceRelayTransportId } from './relayConfiguration';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import { evaluateEngagementGate } from './ramp/engagementGate';

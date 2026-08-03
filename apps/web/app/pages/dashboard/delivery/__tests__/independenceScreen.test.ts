@@ -32,7 +32,7 @@ import {
 	independenceSummary,
 	risingSeries,
 } from '~/components/delivery/__tests__/rampFixtures';
-import type { IndependenceSummary } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
 describe('independence arithmetic', () => {
 	it('sums the window rather than averaging per-day shares', () => {

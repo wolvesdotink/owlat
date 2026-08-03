@@ -39,9 +39,8 @@ import {
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
-import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
+import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { recordAuditLog } from '../lib/auditLog';
-import { nextPhaseCeiling, RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { nextShare } from './ramp/controller';
 import { nextPaceMultiplier } from './ramp/paceActuator';
 import { composeActuators } from './ramp/actuatorComposition';
@@ -50,14 +49,8 @@ import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs
 import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
 import type { SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
-import {
-	loadRampDeploymentPresence,
-	loadReferenceArmPresence,
-	withReferenceArm,
-} from './rampIntegrationPresence';
-import { loadRampPromotionEvidence } from './rampPromotionEvidence';
-import { resolveRampDegradation } from './ramp/degradation';
-import { evaluatePhasePromotion } from './ramp/phasePromotion';
+import { loadRampDeploymentPresence } from './rampIntegrationPresence';
+import { applyRampPhasePromotion } from './rampPhasePromotion';
 import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
 import {
 	deliverabilityStreamValidator,
@@ -340,20 +333,18 @@ export const runRampController = internalMutation({
 });
 
 /**
- * Promote a cell one rung up the phase ladder (0.25 -> 0.5 -> 0.8 -> 1.0). A
- * deliberate act, never something the hourly AIMD loop does on its own: the
- * ladder exists precisely so that the biggest steps stay human-authorised.
+ * Promote a cell one rung up the phase ladder (0.25 -> 0.5 -> 0.8 -> 1.0), as a
+ * MACHINE act — a scheduler or another server-side flow, with no operator to
+ * attribute it to. The operator's own door is
+ * `rampPhasePromotion.promoteCellPhase`, which writes the D12 audit pair; this
+ * one deliberately does not, because there is nobody to name.
  *
- * A promotion IS a new mix generation, so it is also the one place that
- * advances `mixVersion` (plan D7): the cohort is deliberately re-randomised
- * when the phase changes, and never on an ordinary AIMD step.
- *
- * THE GLOBAL KILL SWITCH PINS THIS TOO. The switch's contract is that no cell
- * moves while it is engaged, and a promotion moves two things that matter most
- * during an incident: it raises the phase ceiling, and it re-shuffles which arm
- * EVERY recipient of the cell lands in. "Everything held still" has to mean
- * everything, so a paused controller refuses the promotion rather than applying
- * it quietly while the AIMD loop is frozen.
+ * THE RULE ITSELF IS NOT HERE. It lives in `applyRampPhasePromotion`, shared
+ * with the operator path: the evidence routes, the one-rung ladder step, the
+ * unmanaged-row refusal and the hard stops (the global kill switch included) are
+ * one implementation, so the two entries cannot come to disagree about what a
+ * promotion costs. This shell only flattens the outcome into the boolean-shaped
+ * answer a server-side caller wants.
  */
 export const promoteRampPhase = internalMutation({
 	args: {
@@ -365,69 +356,29 @@ export const promoteRampPhase = internalMutation({
 			stream: args.stream,
 			destinationProvider: args.destinationProvider,
 		};
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (settings?.isRampControllerPaused === true) return { ok: false as const };
+		// No organization yet means nothing to promote — a supported configuration,
+		// not an error (plan D2).
 		const organizationId = await resolveRampOrganizationId(ctx);
 		if (organizationId === null) return { ok: false as const };
-		const { perStream } = await loadRouteStateCell(ctx, organizationId, cell);
-		if (!perStream) return { ok: false as const };
-		// One rung, through the ladder helper: an arbitrary caller-supplied ceiling
-		// would let a promotion skip 0.5 and 0.8 straight to 1.0.
-		const current = perStream.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING;
-		const phaseCeiling = nextPhaseCeiling(current);
-		// Already at the top rung: nothing to promote, and re-randomising the
-		// cohort for a no-op would cost the comparison its continuity for nothing.
-		if (phaseCeiling === current) return { ok: true as const, phaseCeiling };
-
-		const now = Date.now();
-		// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED (plan D3), and the rule is a
-		// table of ROUTES rather than a branch: either an external reading for this
-		// cell within the last 7 days, or the four corroborating self-hosted
-		// conditions. Below that line no route is consulted and the promotion is the
-		// ordinary ladder step it has always been — so a deployment with no external
-		// account is slowed, never stopped (plan D2).
-		const presence = withReferenceArm(
-			await loadRampDeploymentPresence(ctx, { organizationId, now }),
-			await loadReferenceArmPresence(ctx, { organizationId, cell, now })
-		);
-		const degradation = resolveRampDegradation({
-			presence,
-			provider: cell.destinationProvider,
+		const promotion = await applyRampPhasePromotion(ctx, {
+			organizationId,
+			cell,
+			now: Date.now(),
 		});
-		const promotion = evaluatePhasePromotion({
-			targetCeiling: phaseCeiling,
-			provider: cell.destinationProvider,
-			evidence: await loadRampPromotionEvidence(ctx, {
-				organizationId,
-				cell,
-				perStream,
-				degradation,
-				now,
-			}),
-			now,
-		});
-		if (!promotion.allowed) {
-			// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
-			// rung. The outstanding conditions travel back by name so the screen can
-			// say what would unlock it (plan D12/D14).
-			return {
-				ok: false as const,
-				phaseCeiling: current,
-				outstanding: promotion.routes.flatMap((route) =>
-					route.outstanding.map((entry) => entry.condition)
-				),
-			};
+		switch (promotion.status) {
+			case 'promoted':
+			case 'at_top':
+				return { ok: true as const, phaseCeiling: promotion.phaseCeiling };
+			case 'outstanding':
+				// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
+				// rung, and the outstanding conditions travel back by name (plan D12/D14).
+				return {
+					ok: false as const,
+					phaseCeiling: promotion.phaseCeiling,
+					outstanding: promotion.outstanding,
+				};
+			case 'refused':
+				return { ok: false as const };
 		}
-		await ctx.db.patch(perStream._id, {
-			phaseCeiling,
-			// THE DWELL CLOCK STARTS HERE and nowhere else: the rung is what it
-			// measures, and only this mutation moves a rung.
-			phaseCeilingSince: now,
-			mixVersion: (perStream.mixVersion ?? 0) + 1,
-			// The ramp's own clock, never the router's freshness clock — see
-			// `applyDecision`.
-			decidedAt: now,
-		});
-		return { ok: true as const, phaseCeiling };
 	},
 });

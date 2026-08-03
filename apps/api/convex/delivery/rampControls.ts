@@ -1,5 +1,5 @@
 /**
- * THE CONTROLS — pause, pin, force-advance, reset-to-phase, presets (P3-6).
+ * THE CONTROLS — pause, pin, force-advance, presets (P3-6).
  *
  * DELIVERABILITY FEATURES FAIL WHEN THEY FEEL LIKE MAGIC. A controller that
  * moves a share on its own is only trustworthy if a human can stop it, hold it,
@@ -21,17 +21,28 @@
  *   - force-advance from a single click. The consequence-naming phrase is
  *     checked HERE, server-side, so a client that skipped its dialog is refused
  *     by the same rule the dialog renders.
- *   - raise a share past a hard stop. Force-advance and reset-to-phase can write
- *     a share directly, so they ask `readRampIncreaseBlock` — the controller's
- *     own readers — before any INCREASE, and are refused calmly while the global
- *     kill switch is engaged, while sending is abuse-suspended, while a breaker
- *     or critical blocklist listing stands, or inside a live cooldown. Moving a
- *     cell DOWN is never blocked by any of them.
+ *   - raise a share past a hard stop. Force-advance writes a share directly, so
+ *     it asks `readRampIncreaseBlock` — the controller's own readers — before any
+ *     INCREASE, and is refused calmly while the global kill switch is engaged,
+ *     while sending is abuse-suspended, while a breaker or critical blocklist
+ *     listing stands, or inside a live cooldown. Moving a cell DOWN is never
+ *     blocked by any of them.
+ *   - move a PHASE CEILING from here at all. The rung has its own two doors and
+ *     they are separate modules: `rampPhaseReset.resetCellPhase` takes it down,
+ *     `rampPhasePromotion.promoteCellPhase` runs the plan's evidence routes to
+ *     take it up. A ceiling that could also rise on a control with no evidence
+ *     behind it would leave the gate guarding one of two doors.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
  * which is the opposite of what the operator asked for, and a behaviour change
- * D1 does not sanction.
+ * D1 does not sanction. Opting in is its own deliberate act, and it has its own
+ * mutation: `rampEnrollment.enrollCell`.
+ *
+ * THE REFUSAL UNION, THE RESULT SHAPE AND THE TARGET RESOLUTION ARE SHARED, and
+ * they live here because this is where the first control needed them. The two
+ * phase doors and enrolment import them rather than restate them — a second
+ * resolution is a second chance to read a cell without the session's tenant.
  */
 
 import { v } from 'convex/values';
@@ -54,7 +65,6 @@ import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOr
 import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
-import { RAMP_INITIAL_PHASE_CEILING, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
@@ -68,16 +78,32 @@ const cellArgs = {
 	destinationProvider: destinationProviderValidator,
 } as const;
 
-/** Why a control could not be applied — always calm, never an exception. */
+/**
+ * Why a control could not be applied — always calm, never an exception.
+ *
+ * ONE VOCABULARY FOR EVERY RAMP WRITE, enrolment and promotion included: the
+ * screens render these through a single sentence map, and a second refusal union
+ * would be a second map, free to go quiet on an arm nobody remembered to add.
+ */
 export type RampControlRefusal =
 	| 'cell_not_ramp_managed'
+	// Enrolment only: the cell ALREADY has a stored share. Re-enrolling would
+	// discard the streak, the ceiling and the clocks a live ramp is standing on.
+	| 'cell_already_ramp_managed'
 	// The global kill switch is engaged: "everything held still" means everything.
 	| 'controller_paused'
 	// Abuse suspension, an open breaker, a critical blocklist listing or a live
 	// cooldown. Named as one arm on purpose — the UI's remedy is the same
 	// ("clear the condition, then try again") and enumerating which hard stop
 	// fired would tell a caller more about the deployment than a refusal should.
-	| 'hard_stop_active';
+	| 'hard_stop_active'
+	// A ceiling only ever rises through the evidence gate, so
+	// `rampPhaseReset.resetCellPhase` declines the upward move and names the
+	// mutation that owns it.
+	| 'phase_increase_requires_promotion'
+	// The evidence gate consulted its routes and none was satisfied. The
+	// outstanding conditions travel back BY NAME alongside this (plan D12/D14).
+	| 'promotion_evidence_outstanding';
 
 export interface RampControlResult {
 	readonly applied: boolean;
@@ -85,7 +111,7 @@ export interface RampControlResult {
 	readonly share?: number;
 }
 
-interface ResolvedCell {
+export interface ResolvedCell {
 	readonly organizationId: string;
 	readonly userId: string;
 	readonly cell: DeliverabilityCell;
@@ -102,7 +128,7 @@ interface ResolvedCell {
  * tenant's row — the index read below is org-leading and there is no argument
  * that could widen it.
  */
-async function resolveControlTarget(
+export async function resolveControlTarget(
 	ctx: MutationCtx,
 	args: {
 		stream: DeliverabilityCell['stream'];
@@ -128,7 +154,7 @@ async function resolveControlTarget(
 	};
 }
 
-function refused(refusal: RampControlRefusal): RampControlResult {
+export function refusedControl(refusal: RampControlRefusal): RampControlResult {
 	return { applied: false, refusal };
 }
 
@@ -146,7 +172,7 @@ export const setCellPause = adminMutation({
 	args: { ...cellArgs, isPaused: v.boolean() },
 	handler: async (ctx, args): Promise<RampControlResult> => {
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const wasPaused = target.row.operatorPausedAt !== undefined;
 		if (wasPaused === args.isPaused) return { applied: false, share: target.share };
@@ -188,7 +214,7 @@ export const pinCellShare = adminMutation({
 	args: { ...cellArgs, share: v.union(v.number(), v.null()) },
 	handler: async (ctx, args): Promise<RampControlResult> => {
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		if (args.share !== null && !Number.isFinite(args.share)) {
 			throwInvalidInput('A pinned share must be a number between 0 and 1.');
 		}
@@ -246,12 +272,12 @@ export const forceAdvanceCellShare = adminMutation({
 			throwInvalidInput('A forced share must be a number between 0 and 1.');
 		}
 		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
+		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const share = clampOwnShare(args.share);
 		// A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS. Raising the
 		// share is refused while the ramp is globally paused or while a hard stop is
-		// live; lowering it never is. Same shape as `promoteRampPhase`, and through
+		// live; lowering it never is. Same shape as a phase promotion, and through
 		// the controller's own readers rather than a second copy of the rules.
 		if (share > target.share) {
 			const block = await readRampIncreaseBlock(ctx, {
@@ -260,7 +286,7 @@ export const forceAdvanceCellShare = adminMutation({
 				perStream: target.row,
 				now,
 			});
-			if (block !== null) return refused(block);
+			if (block !== null) return refusedControl(block);
 		}
 		await ctx.db.patch(target.row._id, {
 			ownShare: share,
@@ -291,76 +317,6 @@ export const forceAdvanceCellShare = adminMutation({
 			message: `An operator forced ${deliverabilityCellKey(target.cell)} to ${Math.round(share * 100)}% without waiting for the gates. The clean streak restarts at zero; the next evaluation measures the result and will retreat if it is bad.`,
 			detail: {
 				forcedShare: share,
-				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
-					? { pinChange: 'revoked' }
-					: {}),
-			},
-			at: now,
-		});
-		return { applied: true, share };
-	},
-});
-
-// ============ RESET TO A PHASE ============
-
-/**
- * Put a cell back on a phase rung (0.25 / 0.5 / 0.8 / 1.0).
- *
- * THE RUNG IS VALIDATED AGAINST THE LADDER, not merely clamped: an arbitrary
- * ceiling would invent a rung the promotion path can never reach and leave the
- * cell somewhere the phase ladder has no name for. Resetting DOWN also brings
- * the share back under the new ceiling immediately — leaving a cell above a
- * ceiling it was just given would be a ceiling in name only.
- */
-export const resetCellPhase = adminMutation({
-	args: { ...cellArgs, phaseCeiling: v.number() },
-	handler: async (ctx, args): Promise<RampControlResult> => {
-		if (!(RAMP_PHASE_CEILINGS as readonly number[]).includes(args.phaseCeiling)) {
-			throwInvalidInput(
-				`A phase ceiling must be one of the ladder's rungs: ${RAMP_PHASE_CEILINGS.join(', ')}.`
-			);
-		}
-		const target = await resolveControlTarget(ctx, args);
-		if (typeof target === 'string') return refused(target);
-		const now = Date.now();
-		const share = Math.min(target.share, args.phaseCeiling);
-		// A reset never raises the share (`Math.min` above), so it can only be an
-		// increase by way of the CEILING it hands the controller for the next tick.
-		// That is still an advance past the evidence, so it meets the same guard.
-		// A row with no stored ceiling is sitting on the ladder's first rung — the
-		// same reading `promoteRampPhase` takes — so the guard stays live there.
-		if (args.phaseCeiling > (target.row.phaseCeiling ?? RAMP_INITIAL_PHASE_CEILING)) {
-			const block = await readRampIncreaseBlock(ctx, {
-				organizationId: target.organizationId,
-				cell: target.cell,
-				perStream: target.row,
-				now,
-			});
-			if (block !== null) return refused(block);
-		}
-		await ctx.db.patch(target.row._id, {
-			phaseCeiling: args.phaseCeiling,
-			ownShare: share,
-			isFallbackActive: isFallbackActiveForShare(share),
-			mixVersion: (target.row.mixVersion ?? 0) + 1,
-			cleanStreak: 0,
-			greenSince: undefined,
-			// See `forceAdvanceCellShare`: a cell put back on a lower rung has not
-			// graduated, and the pin must not outlive the share that earned it.
-			...(share < OWN_SHARE_CEILING ? { graduatedAt: undefined } : {}),
-			decidedAt: now,
-		});
-		await recordOperatorRampAction(ctx, {
-			organizationId: target.organizationId,
-			userId: target.userId,
-			cell: target.cell,
-			action: 'deliverability_ramp.phase_reset',
-			reason: 'operator_phase_reset',
-			fromShare: target.share,
-			toShare: share,
-			message: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`,
-			detail: {
-				phaseCeiling: args.phaseCeiling,
 				...(share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
 					? { pinChange: 'revoked' }
 					: {}),

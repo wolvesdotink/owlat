@@ -349,6 +349,59 @@ describe('nextShare — ceilings and confidence', () => {
 		expect(decision.reason).toBe('healthy');
 	});
 
+	/**
+	 * THE LADDER BOUNDS THE SHARE DIAL, so it bounds only a cell that has one
+	 * (plan D3). A cell the fold resolves to the PACE actuator has no second
+	 * sender: honouring a rung on it would pull mail back toward a destination
+	 * the deployment does not have, which is why "no ceiling applies" is a
+	 * property of the TICK and never a rung stamped on the row.
+	 */
+	it('does not bound a cell the phase ladder does not bind', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, phaseCeiling: 0.25, cleanStreak: 3 }),
+				isPhaseLadderBinding: false,
+			})
+		);
+		expect(decision.share).toBe(1);
+		expect(decision.direction).toBe('hold');
+		// THE STORED RUNG SURVIVES THE TICK. `applyDecision` writes this back, so a
+		// cell that later acquires a second sender stands exactly where it was
+		// promoted to — and has to earn every rung above it through the gate.
+		expect(decision.phaseCeiling).toBe(0.25);
+	});
+
+	/**
+	 * The substitution table's cap is a bound ON THE PHASE LADDER, so the same
+	 * answer unbinds it. Without this an absent SNDS feed would pull a standalone
+	 * Microsoft cell a rung down from full share — toward a relay that is not there.
+	 */
+	it('does not apply the table’s ceiling cap to a cell the ladder does not bind', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, phaseCeiling: 0.25, cleanStreak: 3 }),
+				isPhaseLadderBinding: false,
+				phaseCeilingCap: 0.5,
+				ceilingCapSource: 'microsoft_snds',
+			})
+		);
+		expect(decision.share).toBe(1);
+		expect(decision.reason).not.toBe('degradation_ceiling');
+	});
+
+	/** The same row once a second sender exists: the rung binds, and it pulls back. */
+	it('binds the same cell the moment the ladder applies to it', () => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 1, phaseCeiling: 0.25, cleanStreak: 3 }),
+				isPhaseLadderBinding: true,
+			})
+		);
+		expect(decision.share).toBe(0.25);
+		expect(decision.reason).toBe('phase_ceiling');
+		expect(decision.direction).toBe('decrease');
+	});
+
 	it('holds when the capacity projection is unusable rather than treating it as no limit', () => {
 		const decision = nextShare(
 			controllerInput({

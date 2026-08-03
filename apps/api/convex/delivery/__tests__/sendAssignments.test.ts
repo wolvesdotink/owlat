@@ -843,11 +843,14 @@ describe('sendAssignments — campaign write path', () => {
 		expect(classifier).not.toMatch(/\.collect\(\)/);
 		expect(classifier).toMatch(/withIndex\('by_org_domain'/);
 
-		// The seam spans three modules: `cellRoute.ts` (the resolver),
-		// `routeInputs.ts` (the inputs it shares with the per-message resolver)
-		// and `lib/deliverabilityRouteState.ts` (the route-state lookup both
+		// The seam spans four modules: `cellRoute.ts` (the resolver),
+		// `routeInputs.ts` (the inputs it shares with the per-message resolver),
+		// `lib/deliverabilityRouteState.ts` (the route-state lookup both
 		// resolvers go through, so the stream widening cannot fork into
-		// per-caller rules).
+		// per-caller rules) and `routeMixContext.ts` — of which the seam transits
+		// the PURE share-split predicate only, which is why that predicate is one
+		// of the `seamFunctions` below and `mixContextFor` (which reads
+		// assignments and the classifier) is not.
 		const cellRouteSource = await fs.readFile(
 			new URL('../../lib/sendProviders/cellRoute.ts', import.meta.url),
 			'utf8'
@@ -855,9 +858,11 @@ describe('sendAssignments — campaign write path', () => {
 		const seamModuleSource = [
 			cellRouteSource,
 			...(await Promise.all(
-				['../../lib/sendProviders/routeInputs.ts', '../../lib/deliverabilityRouteState.ts'].map(
-					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
-				)
+				[
+					'../../lib/sendProviders/routeInputs.ts',
+					'../../lib/deliverabilityRouteState.ts',
+					'../../lib/sendProviders/routeMixContext.ts',
+				].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 			)),
 		].join('\n');
 		// The per-message resolver must never become reachable from here. This is
@@ -881,6 +886,7 @@ describe('sendAssignments — campaign write path', () => {
 			'freshFallbackReasons',
 			'isGlobalBreakerOpenState',
 			'relayDomainVerifiedFor',
+			'isShareSplitRoute',
 		];
 		for (const fn of seamFunctions) {
 			const body = topLevelFunctionBody(seamModuleSource, fn);

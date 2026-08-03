@@ -6,8 +6,15 @@
  * config, the health map and the fallback sequence, while everything the
  * controller-owned `adaptive_mix` strategy needs to answer "which arm is THIS
  * recipient in" lives in one cohesive place next to it. `route.ts` is the only
- * consumer; nothing here reads `providerHealth`, so the enqueue-side cell seam
- * (`cellRoute.ts`) is unaffected either way.
+ * consumer of the CONTEXT; nothing here reads `providerHealth`, so the
+ * enqueue-side cell seam (`cellRoute.ts`) can name the predicate below without
+ * pulling that hotspot into the enqueue transaction.
+ *
+ * The other two exports are the PRECONDITION for all of it — whether a route
+ * splits by share at all, asked of a row in hand or of a stream — which every
+ * seam that acts on a split asks, so that the ramp's enrolment door, the
+ * enqueue-side recording and the dispatch-time router cannot disagree about
+ * whether a split is happening.
  */
 
 import type { Doc } from '../../_generated/dataModel';
@@ -23,6 +30,39 @@ import type { MixContext } from './strategies';
 import { readAssignmentForSend } from '../../delivery/sendAssignments';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import type { MessageType } from './routeInputs';
+
+/**
+ * WHETHER A ROUTE SPLITS TRAFFIC BY THE CELL'S SHARE AT ALL.
+ *
+ * `adaptive_mix` is the only strategy that reads a mix context, so it is the
+ * only one under which a stored `ownShare` moves a single message: on `single`,
+ * `priority_failover` and `workload_split` the share is a number the controller
+ * keeps and the router never consults. Stated ONCE, here, because every seam
+ * that acts on a split asks it: `mixContextFor` below, the `wantsMix` guard in
+ * `route.ts`, the enqueue-side cell seam in `cellRoute.ts`, and the ramp's
+ * enrolment door — which must not tell an operator a relay is carrying 98% of a
+ * cell whose route cannot express a split. A second splitting strategy is then
+ * one edit here, not four that have to be found.
+ */
+export function isShareSplitRoute(routeConfig: Doc<'providerRoutes'> | null): boolean {
+	return routeConfig?.strategy === 'adaptive_mix';
+}
+
+/**
+ * The same question asked about a STREAM rather than about a row already in
+ * hand: one route row per message type, on the shipped index.
+ */
+export async function isStreamShareSplitRouted(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType
+): Promise<boolean> {
+	return isShareSplitRoute(
+		await ctx.db
+			.query('providerRoutes')
+			.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
+			.first()
+	);
+}
 
 /**
  * The identity fields the mix concern keys off. `SendRouteAddressContext`
@@ -151,7 +191,7 @@ export async function mixContextFor(
 	addressContext: MixAddressIdentity | undefined,
 	resolved: ResolvedAddressCell | null
 ): Promise<MixContext | undefined> {
-	if (routeConfig?.strategy !== 'adaptive_mix') return undefined;
+	if (!isShareSplitRoute(routeConfig)) return undefined;
 	if (resolved === null) return undefined;
 	const sendId = addressContext?.sendId;
 	// Both reads at once, and the cell is awaited on EVERY path through this

@@ -20,7 +20,7 @@ import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { DAY_MS, NOW, independenceSummary } from './rampFixtures';
-import type { IndependenceSummary } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
 describe('relay removal safety', () => {
 	it('is safe only when every cell has graduated', () => {

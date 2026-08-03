@@ -83,21 +83,20 @@ export type RampControlReason =
 	/** s = 1.0 held 14 days with every gate green: the cell PINS. */
 	| 'graduated'
 	/**
-	 * AN OPERATOR HELD THE CELL (P3-6). The controller evaluated and would have
-	 * advanced; the operator's pause suppressed the increase. A pause NEVER
-	 * suppresses a retreat, so this reason can only ever appear on a hold.
+	 * THE OPERATOR'S OWN REASONS (P3-6, D3), in the order below — each written by a
+	 * CONTROL MUTATION and never by a rung, which the controller has no way to
+	 * reach on its own. A pause suppresses an increase and NEVER a retreat, so
+	 * `operator_pause` appears only on a hold; `operator_pin` is a pinned share
+	 * bounding one; `operator_force_advance` moved the share past the evidence and
+	 * `operator_phase_reset` took a rung DOWN, both by hand; `operator_enrollment`
+	 * is the opt-in, and `operator_phase_promotion` the one upward move a ceiling has.
 	 */
 	| 'operator_pause'
-	/** An operator's pinned share is what bounded the decision. */
 	| 'operator_pin'
-	/**
-	 * An operator advanced the share by hand, past the evidence (P3-6). Written by
-	 * the control mutation, never by a rung — the controller has no way to reach
-	 * this decision on its own, which is the point.
-	 */
 	| 'operator_force_advance'
-	/** An operator reset the cell to a phase rung by hand. */
-	| 'operator_phase_reset';
+	| 'operator_phase_reset'
+	| 'operator_enrollment'
+	| 'operator_phase_promotion';
 
 export type RampDecisionReason = RampControlReason | RampGateId;
 
@@ -311,6 +310,11 @@ export interface RampControllerInput {
 	 * cap with an integration that did not cause it (plan D12).
 	 */
 	readonly ceilingCapSource: RampIntegrationId | undefined;
+	/**
+	 * DOES A PHASE CEILING APPLY TO THIS CELL AT ALL (plan D3)? A property of the
+	 * TICK and never of the row — see `phaseLadderBounds` in `controllerBounds.ts`.
+	 */
+	readonly isPhaseLadderBinding: boolean;
 	/**
 	 * EVERY absent integration governing this cell, in table order — carried for
 	 * the AUDIT ROW, not for the decision. The controller reads none of it; the

@@ -20,8 +20,14 @@ import { readActiveFreeze, type StoredFreeze } from './ramp/controllerReaders';
 import type { RampDecision, RampFreezeOrigin } from './ramp/controllerTypes';
 import type { PaceDecision } from './ramp/paceTypes';
 
-/** Route-state rows are refreshed on every tick; the TTL matches the snapshot's. */
-const ROUTE_STATE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Route-state rows are refreshed on every tick; the TTL matches the snapshot's.
+ *
+ * Exported because ENROLMENT writes the first lease a cell's row ever gets, and
+ * a second constant there would let a newly-enrolled row expire on a different
+ * clock from the one every later tick renews it on.
+ */
+export const ROUTE_STATE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * KEEP THE CELL'S RAMP STATE ALIVE.
@@ -102,8 +108,12 @@ function resolveFreezeFields(
  * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
  * D7), so it names a mix GENERATION, not a step: bumping it on an ordinary
  * +5pp promotion would re-shuffle every recipient's arm mid-comparison, ~20
- * times during a single ramp. It advances only on a deliberate generation
- * change (a phase promotion), where re-randomising is the point.
+ * times during a single ramp. It advances only where re-randomising IS the
+ * point — the four deliberate writes that open or re-open a comparison:
+ * enrolment (`rampEnrollment`), a phase promotion (`rampPhasePromotion`), a
+ * force-advance (`rampControls`) and a phase reset that actually cuts the share
+ * (`rampPhaseReset` — a reset with no second sender to hold the share back for
+ * moves no share and so starts no generation).
  */
 export async function applyDecision(
 	ctx: MutationCtx,
@@ -145,9 +155,10 @@ function shareFields(
 		phaseCeiling: decision.phaseCeiling,
 		// THE DWELL ANCHOR, BACKFILLED ONCE AND NEVER MOVED HERE.
 		//
-		// Only `promoteRampPhase` sets this on a rung change, so a row that reached
-		// its rung any other way (seeded, hand-patched, or written before the column
-		// existed) would carry none — and dwell is one of the four conditions on the
+		// Only the writes that SET a rung stamp this (enrolment, a promotion, a
+		// downward phase reset), so a row that reached its rung any other way
+		// (seeded, hand-patched, or written before the column existed) would carry
+		// none — and dwell is one of the four conditions on the
 		// standalone promotion route, the ONLY route a yahoo/apple/other cell has.
 		// Left absent, that cell could never be promoted again by anyone. Adopting
 		// the row's creation instant (never `now`, which would restart the dwell on

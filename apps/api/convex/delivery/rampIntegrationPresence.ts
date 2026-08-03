@@ -27,6 +27,7 @@ import {
 import { MS_PER_DAY } from '../lib/constants';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import { RAMP_AIMD } from './ramp/controllerConfig';
+import { resolveRampDegradation, type RampDegradation } from './ramp/degradation';
 import type { RampIntegrationPresence } from './ramp/degradationMatrix';
 import type { RampReadCtx } from './rampReadCtx';
 
@@ -146,4 +147,26 @@ export async function loadReferenceArmPresence(
 		since: args.now - RAMP_REFERENCE_ARM_WINDOW_MS,
 	});
 	return summary.sent > 0;
+}
+
+/**
+ * THIS CELL'S SUBSTITUTION RESOLUTION, assembled for the callers that do not
+ * already hold the tick's presence map.
+ *
+ * `loadCellInput` builds its own because it has the window's outcome summaries
+ * in hand and must not read them a second time. The OPERATOR's doors — a
+ * promotion, a phase reset — hold neither, and each of them assembling the
+ * presence map itself is how two doors come to answer differently about which
+ * actuator a cell is on. Assembling reads nothing that decides anything: the
+ * fold is still the table's, and this is still only its read half.
+ */
+export async function loadCellDegradation(
+	ctx: RampReadCtx,
+	args: { readonly organizationId: string; readonly cell: DeliverabilityCell; readonly now: number }
+): Promise<RampDegradation> {
+	const presence = withReferenceArm(
+		await loadRampDeploymentPresence(ctx, { organizationId: args.organizationId, now: args.now }),
+		await loadReferenceArmPresence(ctx, args)
+	);
+	return resolveRampDegradation({ presence, provider: args.cell.destinationProvider });
 }
