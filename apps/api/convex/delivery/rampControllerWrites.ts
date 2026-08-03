@@ -112,8 +112,8 @@ function resolveFreezeFields(
  * point — the four deliberate writes that open or re-open a comparison:
  * enrolment (`rampEnrollment`), a phase promotion (`rampPhasePromotion`), a
  * force-advance (`rampControls`) and a phase reset that actually cuts the share
- * (`rampPhaseReset` — a reset on a cell the ladder does not bind moves no share
- * and so starts no generation).
+ * (`rampPhaseReset` — a reset with no second sender to hold the share back for
+ * moves no share and so starts no generation).
  */
 export async function applyDecision(
 	ctx: MutationCtx,

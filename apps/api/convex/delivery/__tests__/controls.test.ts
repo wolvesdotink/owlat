@@ -197,9 +197,12 @@ describe('reset to a phase', () => {
 	it('brings the share back under the new ceiling and restarts the streak', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, cleanStreak: 3 });
-		// THE CUT IS THE ESP PATH'S, so the cell needs the relay arm that makes the
-		// ladder bind it. Without one there is nowhere for the cut mail to go, and
-		// the reset holds the share instead — pinned in `rampPhaseMoves.test.ts`.
+		// THE CUT IS THE ESP PATH'S, so the cell needs a SECOND SENDER to hold the
+		// share back for. These rows are the MEASURED half of that union — the tick's
+		// own reading that a relay arm is carrying this cell — which is the half a
+		// suite that seeds no `providerRoutes` row can state for itself. With neither
+		// half the reset holds the share; both arms are pinned in
+		// `rampPhaseMoves.test.ts`.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
 		const row = await readManagedCell(t);
@@ -357,8 +360,10 @@ describe('a hand-moved cell does not keep its graduation pin', () => {
 			phaseCeiling: 1,
 			graduatedAt: Date.now() - 1_000,
 		});
-		// The pin follows the SHARE, and only a cell the ladder binds has its share
-		// cut by a reset; a standalone cell keeps both.
+		// The pin follows the SHARE, and only a reset with a second sender to hold
+		// that share back for cuts it. Here that is the MEASURED half of the union:
+		// reference-arm rows inside the evaluation window. A cell with neither half
+		// keeps share and pin.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
 		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
