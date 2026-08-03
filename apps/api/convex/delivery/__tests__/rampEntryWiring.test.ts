@@ -34,7 +34,11 @@
  * backend joins the walk the day it ships), the declaration pattern accepts the
  * wrapped `const x =\n\tinternalMutation(` shape the formatter produces, the
  * discovered entry set is asserted EXACTLY rather than against a floor, and any
- * ramp export wrapped in a call this file cannot classify fails outright.
+ * ramp export wrapped in a call this file cannot classify fails outright. The
+ * anchor of all of it is `export const`, so the two shapes that put a Convex
+ * function on a module's surface WITHOUT one — `export { name };` and `export
+ * default` — are refused at the module surface: Convex registers both, and an
+ * entry declared either way is a door neither discovery nor its backstop sees.
  *
  * WHY A TEST AND NOT A LINT SCRIPT: `scripts/check-convex-plugin-orphans.ts` is
  * the module-level cousin of this walk and covers `convex/plugins/` only. It
@@ -57,8 +61,10 @@
  * dozen docblocks), and a TYPE position (`FunctionReturnType<typeof
  * api.delivery.rampEnrollment.enrollCell>` in `deliverabilityRamp.ts` names an
  * entry to borrow its return type and wires up nothing). Comments are stripped
- * and `typeof` references are refused — on the generated path AND on the import
- * path, which is the same borrow one syntax over — or the guard decays into a
+ * in every syntax the walk crosses — both JavaScript ones on the backend, plus
+ * the `<!-- -->` of the `.vue` templates that are most of the web half — and
+ * `typeof` references are refused on the generated path AND on the import path,
+ * which is the same borrow one syntax over. Otherwise the guard decays into a
  * grep for the function's own name, which every orphan passes.
  */
 
@@ -97,9 +103,18 @@ function productionModules(dir: string, extensions: readonly string[]): string[]
  * `//` is cut wherever it appears rather than only at a line start: the cost of
  * over-stripping is a caller this walk fails to see, which fails loudly here,
  * while under-stripping credits an orphan with a mention and fails nowhere.
+ *
+ * `<!-- -->` for the same reason one file type over: the web half of the walk is
+ * almost entirely `.vue`, where an HTML comment is how a template is commented
+ * out, so a superseded `api.delivery.…` line left in a template would credit the
+ * entry it names with a production caller. Cut FIRST, so a full HTML comment is
+ * gone before `//` can eat its terminator (`<!-- see https://x -->`).
  */
 function stripComments(source: string): string {
-	return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+	return source
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/\/\/.*$/gm, '');
 }
 
 function sourceMap(files: readonly string[], root: string): Map<string, string> {
@@ -200,6 +215,24 @@ const ENTRY_DECLARATION = new RegExp(
 
 /** `export const x = someCall(` — the shape an entry declaration takes at all. */
 const EXPORTED_CALL = /export const ([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$.]*)\s*\(/g;
+
+/**
+ * `export { x };` and `export default …` — the two shapes that put a value on a
+ * module's surface WITHOUT an `export const` for discovery (or its
+ * unclassified-wrapper backstop, which is anchored the same way) to read.
+ * Convex registers a function exported either way, so an entry declared like
+ * that is a live door neither half of the walk can see.
+ *
+ * Refused at the module surface rather than parsed: `export { … }` is live house
+ * idiom under `convex/` and re-exporting a Convex function is not, so the cheap
+ * rule keeps discovery's single anchor honest. Widening discovery to read the
+ * shapes is the alternative — do that, and this pin comes off with it.
+ */
+function indirectExports(module: string, source: string): string[] {
+	return [...source.matchAll(/^export\s*(\{|default\b)/gm)].map(
+		(match) => `${module}#export ${match[1] === 'default' ? 'default' : '{ … }'}`
+	);
+}
 
 interface RampEntry {
 	readonly module: string;
@@ -365,6 +398,16 @@ describe('the wiring guard is looking at production', () => {
 		).toEqual([]);
 	});
 
+	it('refuses the export shapes discovery cannot anchor on', () => {
+		const indirect = RAMP_MODULES.flatMap((module) =>
+			indirectExports(module, CONVEX_SOURCES.get(module) ?? '')
+		);
+		expect(
+			indirect,
+			'a ramp module puts a value on its surface with `export { … }` or `export default` — an entry declared that way is registered by Convex and invisible to this walk, so declare it as `export const <name> = <builder>(` instead'
+		).toEqual([]);
+	});
+
 	it('found the ramp entry points, not the helpers around them', () => {
 		// Exact, not a floor: a floor keeps passing while discovery quietly stops
 		// seeing an entry, which is the failure this whole file exists to prevent.
@@ -425,6 +468,36 @@ describe('discovery reads the declaration shapes this repo writes', () => {
 	it('finds nothing in an export wrapped in something that is not a builder', () => {
 		expect(
 			entriesIn('delivery/rampControls.ts', 'export const RAMP_LIMITS = Object.freeze({});')
+		).toEqual([]);
+	});
+
+	it('reports the entry exported through a clause, which it cannot read', () => {
+		const source = [
+			'const orphanBraced = internalMutation({ args: {}, handler: async () => null });',
+			'export { orphanBraced };',
+		].join('\n');
+		// Convex registers this as `internal.delivery.rampControls.orphanBraced`.
+		// Discovery misses it and so does the unclassified-wrapper backstop — both
+		// anchor on `export const` — so the module surface is what fails.
+		expect(entriesIn('delivery/rampControls.ts', source)).toEqual([]);
+		expect(indirectExports('delivery/rampControls.ts', source)).toEqual([
+			'delivery/rampControls.ts#export { … }',
+		]);
+	});
+
+	it('reports the entry exported as the default, which it cannot read either', () => {
+		const source = 'export default internalMutation({ args: {}, handler: async () => null });';
+		expect(entriesIn('delivery/rampControls.ts', source)).toEqual([]);
+		expect(indirectExports('delivery/rampControls.ts', source)).toEqual([
+			'delivery/rampControls.ts#export default',
+		]);
+	});
+
+	it('leaves the declaration shape the ramp modules actually write alone', () => {
+		// The refusal above is a rule about the module SURFACE, not about the word
+		// `export`: the shape every ramp entry ships in still passes it.
+		expect(
+			indirectExports('delivery/rampControls.ts', 'export const setCellPause = adminMutation({});')
 		).toEqual([]);
 	});
 });
@@ -488,7 +561,13 @@ describe('the walk fails a ramp entry nothing can start', () => {
 		[
 			[
 				'app/pages/dashboard/delivery/controls.vue',
-				'useBackendOperation(api.delivery.rampDoor.openRampDoor);',
+				// An HTML comment naming the orphan, in the file that holds the real
+				// operator door: this is how a `.vue` template retires a control, and
+				// the web half of the walk is almost all `.vue`.
+				[
+					'<!-- superseded: api.delivery.rampOrphan.promoteOrphan -->',
+					'useBackendOperation(api.delivery.rampDoor.openRampDoor);',
+				].join('\n'),
 			],
 			[
 				'app/utils/deliverabilityRamp.ts',
@@ -520,7 +599,7 @@ describe('the walk fails a ramp entry nothing can start', () => {
 		]);
 	});
 
-	it('fails the orphan that only prose, a type import and a typeof mention', () => {
+	it('fails the orphan that only prose, an HTML comment, a type import and a typeof mention', () => {
 		expect(callersOf(ORPHAN, convex, web)).toEqual([]);
 	});
 
