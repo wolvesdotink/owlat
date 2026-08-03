@@ -3,6 +3,15 @@
  * 48h — the shape of the shipped MTA circuit breaker, so an operator has one
  * back-off model to hold in their head rather than two.
  *
+ * AND EVERY STATE HERE IS ONE THE CONTROLLER CAN ACTUALLY BE IN. A ladder freeze
+ * lasts exactly its own rung and the `frozen` rung refuses to evaluate a cell
+ * while it runs, so a fixture whose freeze is STILL RUNNING while a gate breaches
+ * describes a tick that cannot happen — and the suite that pinned the doubling
+ * rule from such a fixture reported a ladder the production controller could
+ * never climb. The repeat window is measured from the freeze's EXPIRY for exactly
+ * that reason, and the walk below is the property that failed before it was:
+ * breaching at the earliest instant each freeze allows must reach the 48h cap.
+ *
  * And the property the ladder exists for: while a cell is frozen it does not
  * move, however good its gates look.
  */
@@ -10,6 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextShare } from '../controller';
 import { nextCooldownMs, RAMP_AIMD } from '../controllerConfig';
+import { nextPaceMultiplier } from '../paceActuator';
 import {
 	breachedEvaluation,
 	cleanEvaluation,
@@ -18,34 +28,64 @@ import {
 	HOUR,
 	mixState,
 	NOW,
+	paceInput,
+	paceState,
 } from './controllerFixtures';
+
+/**
+ * A cell whose LAST LADDER FREEZE of `rung` ended `sinceExpiry` ago — the only
+ * shape a breaching cell can have, since it must have outlived its own freeze to
+ * be evaluated at all.
+ */
+function afterFreeze(rung: number, sinceExpiry: number) {
+	return mixState({ cooldownMs: rung, freezeStartedAt: NOW - rung - sinceExpiry });
+}
 
 describe('nextCooldownMs', () => {
 	it('starts at 6h for a cell that has never been frozen', () => {
 		expect(nextCooldownMs(mixState(), NOW)).toBe(6 * HOUR);
 	});
 
-	it('doubles on a repeat inside the 24h window', () => {
-		const after = (previous: number) =>
-			nextCooldownMs(mixState({ cooldownMs: previous, freezeStartedAt: NOW - 12 * HOUR }), NOW);
-		expect(after(6 * HOUR)).toBe(12 * HOUR);
-		expect(after(12 * HOUR)).toBe(24 * HOUR);
-		expect(after(24 * HOUR)).toBe(48 * HOUR);
+	it('doubles on a repeat inside 24h of the previous freeze ENDING', () => {
+		expect(nextCooldownMs(afterFreeze(6 * HOUR, 12 * HOUR), NOW)).toBe(12 * HOUR);
+		expect(nextCooldownMs(afterFreeze(12 * HOUR, 12 * HOUR), NOW)).toBe(24 * HOUR);
+		expect(nextCooldownMs(afterFreeze(24 * HOUR, 12 * HOUR), NOW)).toBe(48 * HOUR);
+	});
+
+	// THE ANCHOR, ALONE. A cell released an hour ago is a repeat however long the
+	// freeze it just served was — measured from the START, a 24h rung would have
+	// been forgiven by the clock the cell spent frozen and could never double.
+	it('counts the frozen hours as served, not as clean running time', () => {
+		expect(nextCooldownMs(afterFreeze(24 * HOUR, HOUR), NOW)).toBe(48 * HOUR);
+		expect(
+			nextCooldownMs(mixState({ cooldownMs: 24 * HOUR, freezeStartedAt: NOW - 25 * HOUR }), NOW)
+		).toBe(48 * HOUR);
 	});
 
 	it('caps at 48h however many repeats accumulate', () => {
-		expect(
-			nextCooldownMs(mixState({ cooldownMs: 48 * HOUR, freezeStartedAt: NOW - HOUR }), NOW)
-		).toBe(48 * HOUR);
-		expect(
-			nextCooldownMs(mixState({ cooldownMs: 96 * HOUR, freezeStartedAt: NOW - HOUR }), NOW)
-		).toBe(RAMP_AIMD.cooldownMaxMs);
+		expect(nextCooldownMs(afterFreeze(48 * HOUR, HOUR), NOW)).toBe(48 * HOUR);
 	});
 
-	it('restarts at the base once the 24h repeat window has passed', () => {
+	// A rung no rung of this controller can stamp is read AS the cap, on BOTH
+	// sides of the rule: it cannot double past 48h, and it cannot date an expiry
+	// further out than a real freeze could have run to. Without the second half a
+	// fabricated 96h rung would make a cell that has been clean for two days look
+	// like one released moments ago.
+	it('reads a stored rung above the cap as the cap, on both sides of the rule', () => {
+		// Started 60h ago: read as the cap, the freeze ended 12h ago — a repeat.
 		expect(
-			nextCooldownMs(mixState({ cooldownMs: 24 * HOUR, freezeStartedAt: NOW - 24 * HOUR - 1 }), NOW)
+			nextCooldownMs(mixState({ cooldownMs: 96 * HOUR, freezeStartedAt: NOW - 60 * HOUR }), NOW)
+		).toBe(RAMP_AIMD.cooldownMaxMs);
+		// Started 96h ago: a real 48h freeze would have ended 48h ago, so the cell
+		// has run clean for two days and the ladder starts again.
+		expect(
+			nextCooldownMs(mixState({ cooldownMs: 96 * HOUR, freezeStartedAt: NOW - 96 * HOUR }), NOW)
 		).toBe(6 * HOUR);
+	});
+
+	it('restarts at the base once 24h of clean running has passed', () => {
+		expect(nextCooldownMs(afterFreeze(24 * HOUR, 24 * HOUR), NOW)).toBe(6 * HOUR);
+		expect(nextCooldownMs(afterFreeze(6 * HOUR, DAY + 1), NOW)).toBe(6 * HOUR);
 	});
 
 	it('restarts at the base rather than propagating an unreadable ladder position', () => {
@@ -60,6 +100,85 @@ describe('nextCooldownMs', () => {
 		expect(
 			nextCooldownMs(mixState({ cooldownMs: 24 * HOUR, freezeStartedAt: NOW + DAY }), NOW)
 		).toBe(6 * HOUR);
+	});
+});
+
+/**
+ * THE LADDER IS REACHABLE — the regression this anchor exists for.
+ *
+ * Each breach lands at the earliest instant its predecessor's freeze allows (the
+ * tick the freeze expires), which is the fastest a real cell can possibly
+ * re-breach. Every rung of the published ladder must be reachable that way, or
+ * the 48h cap is a constant nothing can produce.
+ */
+describe('the published ladder is reachable from real ticks', () => {
+	function breachAt(at: number, previous: { cooldownMs?: number; freezeStartedAt?: number }) {
+		return nextShare(
+			controllerInput({
+				now: at,
+				mix: mixState({ share: 0.4, ...previous }),
+				evaluation: breachedEvaluation('complaint', { now: at }),
+			})
+		);
+	}
+
+	it('climbs 6h, 12h, 24h, 48h on breaches at the earliest permitted instant', () => {
+		const rungs: number[] = [];
+		let at = NOW;
+		let previous: { cooldownMs?: number; freezeStartedAt?: number } = {};
+		for (let step = 0; step < 4; step += 1) {
+			const decision = breachAt(at, previous);
+			const ladderMs = decision.freeze?.ladderMs;
+			expect(ladderMs).toBeDefined();
+			rungs.push(ladderMs ?? 0);
+			// The next breach can only happen once THIS freeze has expired, and the
+			// row carries the rung and the anchor the shell just stamped.
+			previous = { cooldownMs: ladderMs, freezeStartedAt: at };
+			at = decision.freeze?.until ?? at;
+		}
+		expect(rungs).toEqual([6 * HOUR, 12 * HOUR, 24 * HOUR, RAMP_AIMD.cooldownMaxMs]);
+	});
+
+	it('starts again at the base for a cell that ran a clean day after its release', () => {
+		const first = breachAt(NOW, {});
+		const releasedAt = first.freeze?.until ?? NOW;
+		const second = breachAt(releasedAt + DAY, {
+			cooldownMs: first.freeze?.ladderMs,
+			freezeStartedAt: NOW,
+		});
+		expect(second.freeze?.ladderMs).toBe(RAMP_AIMD.cooldownBaseMs);
+	});
+});
+
+/**
+ * THE SAME LADDER ON THE SECOND DIAL. Both actuators climb one ladder through one
+ * helper (plan D3), so the pace dial's rungs are the share dial's rungs — if this
+ * suite and the walk above ever disagree, one actuator has grown its own penalty.
+ */
+describe('the pace actuator climbs the same ladder', () => {
+	function paceBreachAt(at: number, previous: { cooldownMs?: number; freezeStartedAt?: number }) {
+		return nextPaceMultiplier(
+			paceInput({
+				now: at,
+				pace: paceState(previous),
+				evaluation: breachedEvaluation('complaint', { now: at }),
+			})
+		);
+	}
+
+	it('reaches the 48h cap on breaches at the earliest permitted instant', () => {
+		const rungs: number[] = [];
+		let at = NOW;
+		let previous: { cooldownMs?: number; freezeStartedAt?: number } = {};
+		for (let step = 0; step < 4; step += 1) {
+			const decision = paceBreachAt(at, previous);
+			const ladderMs = decision.freeze?.ladderMs;
+			expect(ladderMs).toBeDefined();
+			rungs.push(ladderMs ?? 0);
+			previous = { cooldownMs: ladderMs, freezeStartedAt: at };
+			at = decision.freeze?.until ?? at;
+		}
+		expect(rungs).toEqual([6 * HOUR, 12 * HOUR, 24 * HOUR, RAMP_AIMD.cooldownMaxMs]);
 	});
 });
 
@@ -92,8 +211,9 @@ describe('freezes through the decision function', () => {
 
 	// AN INFRASTRUCTURE FREEZE IS NOT A LADDER RUNG. A breaker freeze in between
 	// two gate breaches must not re-arm the "repeat within 24h" window: the
-	// second breach is 31h after the first and starts again at the base, even
-	// though the cell was frozen for infrastructure reasons an hour ago.
+	// second breach is 31h after the first — 25h after that 6h cooldown ended —
+	// and starts again at the base, even though the cell was frozen for
+	// infrastructure reasons an hour ago.
 	it('does not let a hard-stop freeze inflate the next gate cooldown', () => {
 		const breach = nextShare(
 			controllerInput({

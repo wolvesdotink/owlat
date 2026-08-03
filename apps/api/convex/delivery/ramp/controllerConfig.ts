@@ -31,7 +31,12 @@ import { readStoredInstant } from './controllerReaders';
  * can drift apart. `RampMixState` and `PaceState` both satisfy it structurally.
  */
 export interface RampCooldownState {
-	/** The instant the current freeze STARTED — the repeat-window test's input. */
+	/**
+	 * The instant the previous LADDER freeze started. With `cooldownMs` it is what
+	 * dates that freeze's EXPIRY, which is where the repeat window runs from — see
+	 * `nextCooldownMs`. Only a ladder freeze stamps it (`resolveFreezeFields`), so
+	 * a breaker or blocklist stop cannot re-arm the window.
+	 */
 	readonly freezeStartedAt: number | undefined;
 	/** The cooldown length that produced the current freeze (the ladder position). */
 	readonly cooldownMs: number | undefined;
@@ -55,10 +60,19 @@ export interface RampAimdConfig {
 	/** Cooldown ceiling. Doubling stops here. */
 	readonly cooldownMaxMs: number;
 	/**
-	 * A breach within this long of the PREVIOUS freeze's start is a REPEAT and
-	 * doubles the cooldown; a breach after it starts again from the base. The
-	 * shape mirrors the shipped MTA circuit breaker so an operator only has one
-	 * back-off model to hold in their head.
+	 * HOW LONG A CELL MUST RUN CLEAN, AFTER ITS LAST COOLDOWN ENDED, to be
+	 * forgiven. A breach inside this long of the previous freeze's EXPIRY is a
+	 * REPEAT and doubles the cooldown; a breach after it starts again from the
+	 * base. The shape mirrors the shipped MTA circuit breaker so an operator only
+	 * has one back-off model to hold in their head.
+	 *
+	 * MEASURED FROM THE EXPIRY, NOT THE START, and the whole ladder depends on it:
+	 * a freeze lasts exactly its rung and the `frozen` rung forbids re-evaluation
+	 * while it runs, so the earliest breach after a 24h cooldown is 24h after its
+	 * START — never a repeat under a start-anchored window. Anchored there, the
+	 * production ladder cycled 6h/12h/24h/base for ever and `cooldownMaxMs` was
+	 * unreachable: the penalty stopped growing exactly where the plan says it
+	 * should double.
 	 */
 	readonly cooldownRepeatWindowMs: number;
 	/** Freeze after the MTA circuit breaker opens for the cell. */
@@ -121,22 +135,42 @@ export const RAMP_MAX_FREEZE_MS: number = Math.max(
 );
 
 /**
- * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within
- * 24h of the previous freeze's start, capped at 48h.
+ * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within 24h
+ * of the previous freeze's EXPIRY, capped at 48h.
+ *
+ * THE ANCHOR IS THE EXPIRY, AND THAT IS THE WHOLE RULE. A ladder freeze lasts
+ * exactly its own rung and the `frozen` rung refuses to evaluate a cell while it
+ * runs, so the earliest breach that can follow a 24h cooldown is 24h after that
+ * cooldown STARTED. Measured from the start, the 24h window was therefore
+ * unreachable from the 24h rung: the ladder cycled 6h, 12h, 24h, base for ever
+ * and no cell could be handed the 48h cap the plan tops it out at. Measured from
+ * the expiry it asks the question the constant is named for — has this cell run
+ * clean for a day since we last let it go?
+ *
+ * The expiry is derived (`freezeStartedAt + cooldownMs`) rather than stored: the
+ * two columns already move together as one fact (`resolveFreezeFields`), and a
+ * third column carrying what they imply would be a third thing to keep in step.
+ * `frozenUntil` is deliberately NOT that expiry — a hard stop can extend it
+ * (`extendFreezeUntil`), and an infrastructure incident must not lengthen the
+ * gate ladder's window any more than it may re-arm it.
  *
  * A missing, corrupt or non-positive stored ladder position restarts at the
  * base rather than propagating garbage — the ladder is a penalty, and a penalty
- * derived from an unreadable number is not a penalty anyone can defend.
+ * derived from an unreadable number is not a penalty anyone can defend. A rung
+ * ABOVE the cap is read as the cap for the same reason, in both places it is
+ * used: no rung this controller stamps can exceed it, so believing a larger one
+ * would push the forgiveness window out by hours nobody imposed.
  */
-export function nextCooldownMs(mix: RampCooldownState, now: number): number {
+export function nextCooldownMs(state: RampCooldownState, now: number): number {
 	const { cooldownBaseMs, cooldownMaxMs, cooldownRepeatWindowMs } = RAMP_AIMD;
-	const startedAt = readStoredInstant(mix.freezeStartedAt, now);
-	const isRepeat = startedAt !== null && now - startedAt < cooldownRepeatWindowMs;
-	const previous = mix.cooldownMs;
-	if (!isRepeat || previous === undefined || !Number.isFinite(previous) || previous <= 0) {
-		return cooldownBaseMs;
-	}
-	return Math.min(cooldownMaxMs, previous * 2);
+	const previous = state.cooldownMs;
+	if (previous === undefined || !Number.isFinite(previous) || previous <= 0) return cooldownBaseMs;
+	const startedAt = readStoredInstant(state.freezeStartedAt, now);
+	if (startedAt === null) return cooldownBaseMs;
+	const rung = Math.min(previous, cooldownMaxMs);
+	const endedAt = startedAt + rung;
+	if (now - endedAt >= cooldownRepeatWindowMs) return cooldownBaseMs;
+	return Math.min(cooldownMaxMs, rung * 2);
 }
 
 /**
