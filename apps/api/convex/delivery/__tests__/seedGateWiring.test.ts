@@ -363,10 +363,11 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
  * third row set: the chart's own. A quiet relay's history is what EXPLAINS the
  * absent arm, so the two must not be answered by one boolean.
  *
- * WHAT AGREEMENT DOES NOT MEAN HERE. The rule is shared; the SPAN the own arm is
+ * WHAT AGREEMENT DOES NOT MEAN HERE. The rule is shared; the SPAN EITHER ARM is
  * summarized over is not (7 days here, 1 there), so the two readers can still
- * reach different verdicts on one cell. That is #510, and the last case in this
- * describe pins it rather than leaving the gap to be discovered.
+ * reach different verdicts on one cell. That is #510 — it names both arms, and
+ * the last case in this describe pins the own one rather than leaving the gap to
+ * be discovered.
  */
 describe('the screen picks the evaluator the controller picked (ADR-0042)', () => {
 	/**
