@@ -158,6 +158,24 @@ describe('the sweep carries the NEWEST observation in it', () => {
 		// anchoring on a stale one would keep a dead sweep alive.
 		expect(own?.observedAt).toBeGreaterThanOrEqual(before - 3 * HOUR_MS);
 	});
+
+	it('carries a window-old sweep on the strength of one recent probe', async () => {
+		// THE RULE AT ITS SHARPEST, pinned because the controller now acts on it.
+		// The counts span the whole 7-day placement window while the stamp is the
+		// newest row, so nineteen six-day-old probes and one from an hour ago are
+		// ONE fresh sweep of twenty — 95 % of the evidence older than the ramp
+		// would act on alone. The verdict that comes out of it is pinned end to end
+		// in `delivery/__tests__/seedGateWiring.test.ts`.
+		const t = convexTest(schema, modules);
+		const before = Date.now();
+		await probes(t, { count: 19, placement: 'spam', classifiedAgoMs: 6 * 24 * HOUR_MS });
+		await probes(t, { count: 1, placement: 'inbox' });
+
+		const own = (await cellSweeps(t)).own;
+		expect(own?.spam).toBe(19);
+		expect(own?.inbox).toBe(1);
+		expect(own?.observedAt).toBeGreaterThanOrEqual(before - 2 * HOUR_MS);
+	});
 });
 
 describe('one ledger, one reading', () => {

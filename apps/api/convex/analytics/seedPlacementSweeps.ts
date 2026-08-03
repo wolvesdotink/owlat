@@ -136,9 +136,16 @@ function finish(accumulator: SweepAccumulator): SeedPlacementObservation | null 
 /**
  * Reduce a window of probe rows to one counted sweep per (cell, arm).
  *
- * The sweep's `observedAt` is the NEWEST classification in it, so a cell that
- * stopped being probed goes stale by the ramp's ordinary freshness rule instead
- * of carrying an old verdict forward on the strength of one recent row.
+ * THE COUNTS SPAN THE WHOLE WINDOW; THE STAMP IS THE NEWEST ROW. A sweep counts
+ * every classified probe the caller's window read handed over — up to
+ * `SEED_PLACEMENT_WINDOW_MS` of them — and its `observedAt` is the most recent
+ * classification among them, so ONE fresh probe keeps a week-old sweep this side
+ * of the ramp's staleness cascade and the gate decides on all of it. That is the
+ * declared window deciding, not an accident of the reduction: anchoring the
+ * stamp on the OLDEST row would make a cell probed every hour read as stale,
+ * which is the one thing a freshness rule must not do. What ages out here is a
+ * cell that STOPPED being probed — nothing renews the stamp, the whole sweep
+ * goes stale, and gate 5 holds.
  */
 export function buildSeedPlacementSweeps(
 	probes: readonly Doc<'seedPlacementProbes'>[]

@@ -163,6 +163,24 @@ describe('a seeded placement window reaches gate 5 through the real loader', () 
 		expect(gate.measurement.ownSample).toBe(20);
 	});
 
+	it('decides on a sweep one probe keeps fresh — the window, not a snapshot', async () => {
+		// The counterpart of the stale hold below. A sweep counts the whole 7-day
+		// placement window and is judged current by its NEWEST classification, so
+		// one probe from an hour ago carries nineteen six-day-old ones past the 48h
+		// staleness cascade and the gate decides a FAIL on all twenty. Pinned
+		// because gate 5 could not reach any verdict before this wiring: this is the
+		// first time the freshness rule decides something the controller acts on.
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 19, placement: 'spam', classifiedAgoMs: 6 * 24 * HOUR_MS });
+		await seedProbes(t, { count: 1, placement: 'inbox' });
+
+		const gate = await controllerSeedGate(t);
+		expect(gate.status).toBe('fail');
+		expect(gate.reason).toBe('absolute_threshold_breached');
+		expect(gate.measurement.ownSample).toBe(20);
+	});
+
 	it('carries the WHOLE placement vocabulary across the boundary', async () => {
 		// A Gmail tab is REACHED (`isSeedPlacementReached`). A wiring that folded
 		// five placements into the three the gate branches on would drop these
