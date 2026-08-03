@@ -313,6 +313,11 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
 			// The MTA revalidated its own lease at enqueue and withdrew it
 			// (`mtaSendProvider.categorizeError`) — its governance, not our fault.
+			// OVER-BROAD, KNOWINGLY: the same 409 carries `ROUTING_DECISION_EXPIRED`,
+			// which the MTA also answers when its Redis lost the lease record rather
+			// than when the lease aged out, and that is our fault. Separating them
+			// needs a distinction the MTA does not make on the wire, so this path
+			// still spends gate 2's budget — `delivery/deferralOutcome.ts` says so.
 			deferralOrigin: 'governed',
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),

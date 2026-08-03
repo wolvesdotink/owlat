@@ -20,6 +20,18 @@
  * the identity, which is why the adapter classifies per defer reason
  * (`lib/sendProviders/mta/index.ts`, `MTA_DEFER_REASON_ORIGIN`).
  *
+ * ONLY THE FIRST OF THOSE TWO SOURCES ENFORCES THAT RULE TODAY. The
+ * `ROUTING_DEFERRED` branch in `governedDispatch.ts` hardcodes
+ * `deferralOrigin: 'governed'` for every transport defer, and the adapter routes
+ * any 409 carrying a `ROUTING_DECISION_` code into it — including
+ * `ROUTING_DECISION_EXPIRED`, which the MTA also answers when `readRoutingLease`
+ * comes back empty because its Redis lost the key rather than because the lease
+ * aged out. A store failure on our own side can therefore still spend gate 2's
+ * budget through that path. Classifying it needs the MTA to tell an expired
+ * lease apart from an unreadable one on the wire, which is parked for the
+ * aggregate; until it lands, read the rule above as holding for
+ * `resolveLastMileRouting`'s own answer and as an intention for the other.
+ *
  * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
  * deliberate policy hold, the idempotency reconciliation wait, an unconfigured or
  * unreachable MTA decision endpoint, a warm-up cap we set ourselves, and the MTA
