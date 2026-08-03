@@ -13,10 +13,7 @@ import { bumpSendDailyStat } from '../../lib/sendDailyStats';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
 import { isMarketingOnlyBlockReason, scheduleSuppressionMirror } from '../suppressionMirror';
-import {
-	applyTransportOutcomeEffect,
-	type TransportOutcomeEvent,
-} from '../../analytics/transportOutcomes';
+import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 
 // ─── Effects (a discriminated list returned by reducers) ────────────────────
@@ -307,9 +304,15 @@ export async function applyEffects(
 				break;
 			}
 			case 'transport_outcome': {
-				// Fail-soft inside the helper: a measurement write must never be
-				// able to roll back the delivery state transition it describes.
-				await applyTransportOutcomeEffect(ctx, {
+				// SCHEDULED, like `reputation_update` above and for the same reason:
+				// the bump lands on one shard of a bucket every recipient of the cell
+				// writes to that day, and applying it inline makes an OCC conflict
+				// there retry this whole transaction — the send patch, the campaign
+				// counters, the fanout — during exactly the open waves that make the
+				// conflict likely. The measurement is fail-soft either way (the
+				// scheduled mutation swallows its own failures), so it has no claim
+				// on the transition's atomicity.
+				await ctx.scheduler.runAfter(0, internal.analytics.transportOutcomes.recordOutcomeForSend, {
 					sendId: effect.sendId,
 					event: effect.event,
 					at: effect.at,

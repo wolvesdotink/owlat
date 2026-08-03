@@ -76,6 +76,7 @@ import {
 	summarizeTransportOutcomeBuckets,
 	transportOutcomeCounters,
 	transportOutcomeWindowBounds,
+	TRANSPORT_OUTCOME_EVENTS,
 	ZERO_TRANSPORT_OUTCOME_TOTALS,
 	type TransportOutcomeArm,
 	type TransportOutcomeBucket,
@@ -364,30 +365,51 @@ export async function recordTransportOutcomeForSend(
 	return 'recorded';
 }
 
+/** Derived from the vocabulary, never re-spelled: one list, one wire contract. */
+const transportOutcomeEventValidator = v.union(
+	...TRANSPORT_OUTCOME_EVENTS.map((event) => v.literal(event))
+);
+
 /**
- * Applied by the Send lifecycle's effect runner. Recording an outcome must never
- * be able to fail a delivery state transition, so every failure degrades to a
- * warning and the transition proceeds untouched.
+ * The Send lifecycle's `transport_outcome` effect, SCHEDULED off the transition
+ * rather than applied inside it — the same shape, for the same reason, as
+ * `reputation_update`.
+ *
+ * The bump lands on one of `TRANSPORT_OUTCOME_SHARD_COUNT` shards of a bucket
+ * that every recipient of the same cell writes to on the same day. Applied
+ * inline, an OCC conflict on that shard retries the ENTIRE delivery transaction
+ * — the send patch, the campaign counters, the daily stats, the webhook fanout —
+ * during exactly the open waves that make the conflict likely. Scheduled, the
+ * retry is confined to this one narrow write. The outcome has no claim on the
+ * transition's atomicity: it is fail-soft by design (below), so a lost bump
+ * already degrades measurement rather than delivery either way.
+ *
+ * Recording an outcome must never be able to fail the transaction it describes,
+ * so every failure degrades to a warning.
  */
-export async function applyTransportOutcomeEffect(
-	ctx: MutationCtx,
-	effect: { readonly sendId: string; readonly event: TransportOutcomeEvent; readonly at: number }
-): Promise<void> {
-	try {
-		await recordTransportOutcomeForSend(ctx, {
-			sendId: effect.sendId,
-			event: effect.event,
-			now: effect.at,
-		});
-	} catch (error) {
-		// Never the recipient address: an outcome log line must not become a PII
-		// sink. The event name is enough to tell a systematic failure apart.
-		logWarn(
-			`[transportOutcomes] failed to record ${effect.event} outcome:`,
-			error instanceof Error ? error.name : 'UnknownError'
-		);
-	}
-}
+export const recordOutcomeForSend = internalMutation({
+	args: {
+		sendId: v.string(),
+		event: transportOutcomeEventValidator,
+		at: v.number(),
+	},
+	handler: async (ctx, args) => {
+		try {
+			await recordTransportOutcomeForSend(ctx, {
+				sendId: args.sendId,
+				event: args.event,
+				now: args.at,
+			});
+		} catch (error) {
+			// Never the recipient address: an outcome log line must not become a PII
+			// sink. The event name is enough to tell a systematic failure apart.
+			logWarn(
+				`[transportOutcomes] failed to record ${args.event} outcome:`,
+				error instanceof Error ? error.name : 'UnknownError'
+			);
+		}
+	},
+});
 
 // ============ AGING CRON ============
 

@@ -23,6 +23,7 @@ import {
 	readBuckets,
 	seedAssignedSend,
 	sumCounter,
+	drainOutcomeWrites,
 } from './transportOutcomesFixtures';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
@@ -53,6 +54,7 @@ describe('calibration counters', () => {
 			send: { kind: 'campaign', id: sendId },
 			transition: { to: 'sent', at: Date.now(), providerMessageId: 'pm-cal', providerType: 'mta' },
 		});
+		await drainOutcomeWrites(t);
 
 		await t.run(async (ctx) => {
 			const buckets = await readBuckets(ctx);

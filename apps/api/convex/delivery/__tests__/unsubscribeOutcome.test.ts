@@ -38,8 +38,10 @@ import {
 	seedAssignedSend,
 	sumCounters,
 	uniqueBucketKeys,
+	drainOutcomeWrites,
 } from '../../analytics/__tests__/transportOutcomesFixtures';
 import { ATTRIBUTION_LOOKBACK_SENDS } from '../marketingSendAttribution';
+import type { RecordUnsubscribeOutcomeResult } from '../unsubscribeOutcome';
 import { evaluateStandaloneComplaintGate } from '../ramp/trailingBaselineGates';
 import { input, NOW } from '../ramp/__tests__/gateFixtures';
 
@@ -66,6 +68,23 @@ async function joinTopic(
 	const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 	await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
 	return topicId;
+}
+
+/**
+ * The attribution recorder, run to completion — the mutation AND the shard bump
+ * it schedules out of itself (see `drainOutcomeWrites`). Every case that reads
+ * counters back goes through here, so no case can assert on a half-run write.
+ */
+async function recordUnsubscribe(
+	t: ReturnType<typeof convexTest>,
+	args: { contactId: Id<'contacts'>; at?: number }
+): Promise<RecordUnsubscribeOutcomeResult> {
+	const result = await t.mutation(
+		internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome,
+		args
+	);
+	await drainOutcomeWrites(t);
+	return result;
 }
 
 /** Every scheduled run of the attribution recorder, however it was reached. */
@@ -216,7 +235,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		});
 		if (!contactId) throw new Error('seed failed');
 
-		await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+		await recordUnsubscribe(t, {
 			contactId,
 		});
 		await t.run(async (ctx) => {
@@ -244,7 +263,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		if (!contactId) throw new Error('seed failed');
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('attributed');
@@ -282,7 +301,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 			});
 		});
 
-		await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+		await recordUnsubscribe(t, {
 			contactId,
 		});
 		await t.run(async (ctx) => {
@@ -320,7 +339,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		});
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('attributed');
@@ -355,7 +374,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		});
 		if (!contactId) throw new Error('seed failed');
 
-		await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+		await recordUnsubscribe(t, {
 			contactId,
 		});
 		await t.run(async (ctx) => {
@@ -407,7 +426,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		const [queued, failed] = [queuedSendId, failedSendId];
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('attributed');
@@ -444,7 +463,7 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		if (!contactId) throw new Error('seed failed');
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('no_marketing_send');
@@ -563,12 +582,12 @@ describe('one unsubscribe per send, however often the link is exercised', () => 
 		if (!contactId) throw new Error('seed failed');
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('attributed');
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('already_attributed');
@@ -844,7 +863,7 @@ describe('what may never enter the arm denominators', () => {
 		if (!contactId) throw new Error('seed failed');
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('no_marketing_send');
@@ -872,7 +891,7 @@ describe('what may never enter the arm denominators', () => {
 		if (!contactId) throw new Error('seed failed');
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('no_marketing_send');
@@ -894,7 +913,7 @@ describe('what may never enter the arm denominators', () => {
 		const attributedSendId = sendId;
 
 		expect(
-			await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+			await recordUnsubscribe(t, {
 				contactId,
 			})
 		).toBe('attributed');
@@ -954,7 +973,7 @@ describe('standalone gate 3 can reach a verdict once the counter has a writer', 
 			contactId = seeded.contactId;
 		});
 		if (!contactId) throw new Error('seed failed');
-		await t.mutation(internal.delivery.unsubscribeOutcome.recordUnsubscribeOutcome, {
+		await recordUnsubscribe(t, {
 			contactId,
 			at,
 		});

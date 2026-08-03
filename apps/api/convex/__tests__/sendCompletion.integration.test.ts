@@ -178,8 +178,12 @@ describe('completeSend — campaign Sends', () => {
 		const scheduled = await t.run(
 			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
 		);
-		expect(scheduled).toHaveLength(1);
-		expect(scheduled[0]?.args[0]).toMatchObject({
+		// NAMED, not counted: the deferral's measurement bump is scheduled out of
+		// the transition it describes, so it rides beside the re-entry this case is
+		// about.
+		const reentry = scheduled.filter((job) => job.name.includes('retrySend'));
+		expect(reentry).toHaveLength(1);
+		expect(reentry[0]?.args[0]).toMatchObject({
 			retryState: { attempt: 1, idempotencyKey: `send_${sendId}` },
 		});
 	});
