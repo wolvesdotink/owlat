@@ -125,10 +125,12 @@ export const completeSend = internalMutation({
 		// recorder, and fail-soft: it never rolls back the retry.
 		//
 		// ONLY THE GOVERNED HALF. A `local` deferral is this deployment holding its
-		// own message — a policy pause, an idempotency wait, an MTA decision
-		// endpoint we could not reach — and gate 2 halts a cell at 25%. Counting our
-		// own outage would take the share to the floor and revoke the graduation pin
-		// over a fault the receiver never saw.
+		// own message — a policy pause, an idempotency wait, an MTA decision endpoint
+		// we could not reach, an MTA answer reporting any Redis failure while taking
+		// the lease — and gate 2 halts a cell at 25%. Reaching the MTA is not what
+		// makes a deferral governed; the answer being about the sending identity is.
+		// Counting our own outage would take the share to the floor and revoke the
+		// graduation pin over a fault the receiver never saw.
 		if (returnValue?.deferred && returnValue.deferralOrigin === 'governed') {
 			await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 		}

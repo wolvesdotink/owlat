@@ -411,15 +411,14 @@ describe('only the governed half of a deferral is gate 2 evidence', () => {
 		});
 	});
 
-	it('records nothing when the MTA fails to persist a lease it already granted', async () => {
+	it('records nothing when the MTA reports its own lease store failing', async () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
 
-		// `lease_persistence` is a Redis WRITE FAILURE on our own MTA — the lease was
-		// granted and then could not be stored. An hour of that is our storage layer
-		// down, not a receiver refusing this identity, and gate 2 halts a cell at
-		// 25%. The origin comes from the adapter so this pins the classification and
-		// the counting together.
+		// `lease_persistence` is ANY REDIS FAILURE WHILE OUR OWN MTA TAKES THE LEASE.
+		// An hour of that is our storage layer down, not a receiver refusing this
+		// identity, and gate 2 halts a cell at 25%. The origin comes from the adapter
+		// so this pins the classification and the counting together.
 		await completeDeferred(t, sendId, { origin: await originFromMta('lease_persistence') });
 
 		await t.run(async (ctx) => {
