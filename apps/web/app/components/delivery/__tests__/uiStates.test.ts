@@ -385,9 +385,10 @@ describe('control refusals', () => {
 	 * knowable from this sentence and nowhere else.
 	 */
 	it('puts an unmanaged cell on the ramp and says which ramp it got', async () => {
-		const { run } = stubPage({ enrolled: true, share: 0.02, path: 'esp_relay' }, [
-			cellControl({ isRampManaged: false }),
-		]);
+		const { run } = stubPage(
+			{ enrolled: true, share: 0.02, path: 'esp_relay', isShareRouted: true },
+			[cellControl({ isRampManaged: false })]
+		);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
 		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
 		await wrapper.vm.$nextTick();
@@ -403,9 +404,35 @@ describe('control refusals', () => {
 		wrapper.unmount();
 	});
 
+	/**
+	 * AND A SHARE NOTHING ROUTES ON YET IS SAID PLAINLY. The router splits by the
+	 * cell's share only under the controller-owned `adaptive_mix` strategy, so a
+	 * cell enrolled on a shipped `priority_failover` stream gets a live number and
+	 * no traffic move at all. "Your relay carries the rest" there describes mail
+	 * that never went anywhere — and the 2% beside it then reads as broken rather
+	 * than as dormant.
+	 */
+	it('does not promise a split the stream’s route cannot make', async () => {
+		stubPage({ enrolled: true, share: 0.02, path: 'esp_relay', isShareRouted: false }, [
+			cellControl({ isRampManaged: false }),
+		]);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
+		expect(outcome.text()).toContain('2%');
+		expect(outcome.text()).toMatch(/does not split by share/i);
+		expect(outcome.text()).not.toMatch(/relay carries the rest/i);
+		expect(outcome.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
 	/** The own-server enrolment is a different ramp, and says so. */
 	it('names the standalone ramp when there is no relay to move away from', async () => {
-		stubPage({ enrolled: true, share: 1, path: 'own_server' }, [
+		stubPage({ enrolled: true, share: 1, path: 'own_server', isShareRouted: false }, [
 			cellControl({ isRampManaged: false }),
 		]);
 		const wrapper = mount(ControlsPage, { global: globalOptions });

@@ -43,7 +43,21 @@
  * RE-ENROLMENT IS REFUSED, never merged. A cell that already carries a share has
  * a clean streak, a rung, a dwell anchor and possibly a graduation pin standing
  * on it; overwriting them with opening values would silently discard evidence
- * the cell earned, and "start it over" is what `resetCellPhase` is for.
+ * the cell earned, and "start it over" is what `rampPhaseReset.resetCellPhase`
+ * is for.
+ *
+ * AND THE SHARE IS ONLY A SPLIT WHERE THE STREAM'S ROUTE CAN EXPRESS ONE. The
+ * router builds a per-recipient mix context under the controller-owned
+ * `adaptive_mix` strategy and under no other (`isShareSplitRoute`), so on a
+ * `single` / `priority_failover` / `workload_split` route the opening 2% is a
+ * number the controller drives while every message keeps routing exactly as the
+ * route says. Enrolment is still the right act — the streak, the rungs and the
+ * measurement all start here, and the split begins the moment the stream's route
+ * selects the strategy — but it SAYS which of the two it got, in the audit row
+ * and on the screen. Enrolment does not patch the route itself: the strategy is
+ * a stream-wide choice that also governs cells nobody enrolled, and a door that
+ * silently rewrote it would change how unenrolled traffic fails over as a side
+ * effect of putting one cell on the ramp.
  */
 
 import {
@@ -58,9 +72,11 @@ import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
+import { isStreamShareSplitRouted } from '../lib/sendProviders/routeMixContext';
 import { configuredRelayKinds } from './alignmentPreflight';
 import { RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
+import type { RampActuator } from './ramp/degradation';
 import { resolveSetupPath, type RampSetupPathId } from './ramp/setupFork';
 import { readRampIncreaseBlock } from './rampControllerInputs';
 import { recordOperatorRampAction } from './rampControlAudit';
@@ -78,6 +94,13 @@ export interface RampEnrollmentResult {
 	readonly share?: number;
 	/** Which setup path the deployment enrolled on (plan D14). Absent on a refusal. */
 	readonly path?: RampSetupPathId;
+	/**
+	 * Whether the stream's route splits traffic by that share TODAY. False means
+	 * the number is recorded and driven while every message still routes as the
+	 * stream's route says — the one fact the enrolment sentence would otherwise
+	 * be read as promising. Absent on a refusal.
+	 */
+	readonly isShareRouted?: boolean;
 }
 
 /**
@@ -144,6 +167,13 @@ export const enrollCell = adminMutation({
 			if (block !== null) return { enrolled: false, refusal: block };
 		}
 
+		// WHAT THE SHARE ACTUALLY DOES TODAY, asked of the router's own rule rather
+		// than assumed from the fork. The fork answers "is there a relay to ramp
+		// against"; this answers "will a message obey the number", and on a shipped
+		// `priority_failover` stream those differ. The audit row is the permanent
+		// record of what an operator was told, so it must not claim a split the
+		// route cannot make.
+		const isShareRouted = await isStreamShareSplitRouted(ctx, args.stream);
 		await writeEnrolledCell(ctx, { organizationId, cell, perStream, share, phaseCeiling, now });
 		await recordOperatorRampAction(ctx, {
 			organizationId,
@@ -153,16 +183,52 @@ export const enrollCell = adminMutation({
 			reason: 'operator_enrollment',
 			fromShare,
 			toShare: share,
-			message:
-				setup.actuator === 'share'
-					? `An operator put ${deliverabilityCellKey(cell)} on the ramp at ${Math.round(share * 100)}%; the relay carries the rest. The controller decides every step from here on the gates.`
-					: `An operator put ${deliverabilityCellKey(cell)} on the ramp. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is what ramps.`,
-			detail: { path: setup.id, actuator: setup.actuator, phaseCeiling },
+			message: enrollmentMessage({
+				cell,
+				actuator: setup.actuator,
+				share,
+				isShareRouted,
+			}),
+			detail: {
+				path: setup.id,
+				actuator: setup.actuator,
+				phaseCeiling,
+				// The number was recorded but nothing routes on it — the one fact this
+				// row would otherwise be read as claiming (same shape as the phase
+				// reset's `shareHeld`).
+				...(isShareRouted ? {} : { shareNotRouted: true }),
+			},
 			at: now,
 		});
-		return { enrolled: true, share, path: setup.id };
+		return { enrolled: true, share, path: setup.id, isShareRouted };
 	},
 });
+
+/**
+ * THE AUDIT SENTENCE, AND IT NAMES ONLY WHAT HAPPENED.
+ *
+ * Three outcomes, not two. The pace path never claimed a split. The share path
+ * claims one only where the stream's route can make it; where it cannot, the
+ * sentence says the number is live and the traffic is not, and names the change
+ * that would connect them — an operator who is told "the relay carries the rest"
+ * while every message still goes out the same door has been told the system is
+ * doing something it is not.
+ */
+function enrollmentMessage(args: {
+	readonly cell: DeliverabilityCell;
+	readonly actuator: RampActuator;
+	readonly share: number;
+	readonly isShareRouted: boolean;
+}): string {
+	const key = deliverabilityCellKey(args.cell);
+	const percent = Math.round(args.share * 100);
+	if (args.actuator !== 'share') {
+		return `An operator put ${key} on the ramp. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is what ramps.`;
+	}
+	return args.isShareRouted
+		? `An operator put ${key} on the ramp at ${percent}%; the relay carries the rest. The controller decides every step from here on the gates.`
+		: `An operator put ${key} on the ramp at ${percent}%. The controller measures and moves that number from here on the gates, but nothing is routed on it yet: this stream's route does not split by share, so every message still goes where the route already sends it.`;
+}
 
 /**
  * The cell's opening state, as one insert or one patch.

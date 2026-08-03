@@ -68,12 +68,22 @@ function harness(): Harness {
 	return convexTest(schema, modules);
 }
 
-/** A configured relay: the ESP path's precondition, read from `providerRoutes`. */
-async function connectRelay(t: Harness): Promise<void> {
+/**
+ * A configured relay: the ESP path's precondition, read from `providerRoutes`.
+ *
+ * The default strategy is the SHIPPED one, deliberately. `adaptive_mix` is the
+ * only strategy the router splits by the cell's share under, and nothing in
+ * production selects it — so a relay connected on `priority_failover` is what a
+ * real deployment looks like at the moment of enrolment.
+ */
+async function connectRelay(
+	t: Harness,
+	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover'
+): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('providerRoutes', {
 			messageType: 'campaign' as const,
-			strategy: 'priority_failover' as const,
+			strategy,
 			providers: [
 				{ providerType: 'mta', isEnabled: true },
 				{ providerType: 'ses', isEnabled: true },
@@ -267,6 +277,79 @@ describe('the audit pair (plan D12)', () => {
 		expect(recorded[0]?.direction).toBe('decrease');
 		expect(recorded[0]?.message).toContain('operator');
 		expect(recorded[0]?.snapshot).toContain('esp_relay');
+	});
+});
+
+/**
+ * THE SHARE IS ONLY A SPLIT WHERE THE ROUTE CAN MAKE ONE.
+ *
+ * The router builds a per-recipient mix context under `adaptive_mix` and under
+ * no other strategy, so on a shipped `priority_failover` stream the opening 2%
+ * is a number the controller drives while every message keeps routing exactly
+ * where it did yesterday. Enrolment still happens — the streak, the rung and the
+ * measurement all start here — but the audit row is the permanent record of what
+ * an operator was told, and it must not claim a 98/2 split no message obeys.
+ */
+describe('what the opening share actually does today', () => {
+	it('does not claim the relay carries the rest on a route that cannot split', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		await connectRelay(t);
+
+		const result = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(result).toMatchObject({ enrolled: true, path: 'esp_relay', isShareRouted: false });
+
+		const recorded = await decisions(t);
+		expect(recorded[0]?.message).toContain('does not split by share');
+		expect(recorded[0]?.message).not.toContain('the relay carries the rest');
+		// The one fact the row would otherwise be read as claiming — same shape as
+		// the phase reset's `shareHeld`.
+		expect(recorded[0]?.snapshot).toContain('shareNotRouted');
+	});
+
+	it('claims it once the stream’s route splits by the share', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		await connectRelay(t, 'adaptive_mix');
+
+		const result = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(result).toMatchObject({ enrolled: true, path: 'esp_relay', isShareRouted: true });
+
+		const recorded = await decisions(t);
+		expect(recorded[0]?.message).toContain('the relay carries the rest');
+		expect(recorded[0]?.snapshot).not.toContain('shareNotRouted');
+	});
+
+	/**
+	 * THE ANSWER IS PER STREAM, not per deployment. A campaign route on
+	 * `adaptive_mix` says nothing about how the automation stream routes, and a
+	 * screen that read the first row it found would tell half the cells the wrong
+	 * thing.
+	 */
+	it('answers for the enrolled cell’s own stream', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		await connectRelay(t, 'adaptive_mix');
+
+		const automation = await t.mutation(api.delivery.rampEnrollment.enrollCell, {
+			stream: 'automation' as const,
+			destinationProvider: 'gmail' as const,
+		});
+		expect(automation.isShareRouted).toBe(false);
+	});
+
+	/**
+	 * THE OWN-SERVER PATH NEVER CLAIMED A SPLIT, so the strategy cannot change
+	 * what it says: with no relay there is no second sender for any route to send
+	 * traffic to, and the dial that ramps is the warming pace.
+	 */
+	it('says the same thing on the own-server path either way', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+
+		const result = await t.mutation(api.delivery.rampEnrollment.enrollCell, CELL);
+		expect(result).toMatchObject({ enrolled: true, path: 'own_server' });
+		expect((await decisions(t))[0]?.message).toContain('warm-up pace');
 	});
 });
 

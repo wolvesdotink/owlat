@@ -338,15 +338,30 @@ export type RampEnrollmentPath = NonNullable<
  * WHAT PUTTING THE CELL ON THE RAMP ACTUALLY DID.
  *
  * Without it the only visible effect of an enrolment is the controls going live
- * — and the two outcomes are genuinely different ramps: a measured sliver of the
+ * — and the outcomes are genuinely different ramps: a measured sliver of the
  * cell against the relay, or the whole cell on the own server with the warm-up
  * pace as the dial that moves. An operator who cannot tell which one they got
  * cannot read anything else on this screen either.
+ *
+ * AND THE SHARE ONLY MOVES MAIL WHERE THE STREAM'S ROUTE SPLITS BY IT. The
+ * server answers that (`isShareRouted`) rather than the screen guessing from the
+ * path: a cell can be on the ESP path — a relay is configured — while the
+ * stream's route is a shipped `priority_failover` that sends every message the
+ * same way it did yesterday. Saying "your relay carries the rest" there would
+ * describe traffic that never moved, and the number beside it would look broken
+ * rather than dormant.
  */
-export function rampEnrolledSentence(share: number, path: RampEnrollmentPath): string {
-	return path === 'esp_relay'
+export function rampEnrolledSentence(
+	share: number,
+	path: RampEnrollmentPath,
+	isShareRouted: boolean
+): string {
+	if (path !== 'esp_relay') {
+		return `On the ramp at ${shareLabel(share)} of this cell. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is the dial that ramps.`;
+	}
+	return isShareRouted
 		? `On the ramp at ${shareLabel(share)} of this cell — your relay carries the rest, and the controller moves the share only on the evidence.`
-		: `On the ramp at ${shareLabel(share)} of this cell. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is the dial that ramps.`;
+		: `On the ramp at ${shareLabel(share)} of this cell, and the controller moves it only on the evidence. No mail follows that share yet: this stream's route does not split by share, so every message keeps going where the route already sends it.`;
 }
 
 /**

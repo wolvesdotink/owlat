@@ -174,10 +174,16 @@ async function enroll(): Promise<void> {
 	beginWrite();
 	const result = await enrollCell(cellArgs(cell));
 	noteResult(result);
-	// WHICH RAMP THE CELL GOT. The fork is resolved server-side, so the answer
-	// travels back on the result and nowhere else — see `rampEnrolledSentence`.
-	if (result?.enrolled === true && result.share !== undefined && result.path !== undefined) {
-		outcome.value = rampEnrolledSentence(result.share, result.path);
+	// WHICH RAMP THE CELL GOT, AND WHETHER ANY MAIL FOLLOWS THE SHARE YET. Both
+	// are resolved server-side, so the answer travels back on the result and
+	// nowhere else — see `rampEnrolledSentence`.
+	if (
+		result?.enrolled === true &&
+		result.share !== undefined &&
+		result.path !== undefined &&
+		result.isShareRouted !== undefined
+	) {
+		outcome.value = rampEnrolledSentence(result.share, result.path, result.isShareRouted);
 	}
 	await refetch();
 }
