@@ -213,8 +213,13 @@ export async function resolveLastMileRouting(
 		requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
 	});
 	if (decision.kind === 'defer') {
-		// CARRIED, never re-derived: only the adapter knows whether the MTA answered
-		// `defer` or whether we failed to ask it (`MtaRoutingDecision`).
+		// CARRIED, never re-derived, because three cases arrive here looking
+		// identical and only the adapter can tell them apart: the MTA answered
+		// `defer` about THIS IDENTITY (`governed`), it answered `defer` about our
+		// own infrastructure — a Redis failure while taking the lease, see
+		// `MTA_DEFER_REASON_ORIGIN` (`local`) — or it was never reached at all, so
+		// nobody judged anything (`local`). This layer sees one `retryAfterMs` for
+		// all three, so re-deriving the origin here could only guess.
 		return { kind: 'defer', retryAfterMs: decision.retryAfterMs, origin: decision.origin };
 	}
 	if (decision.kind === 'mta') {
