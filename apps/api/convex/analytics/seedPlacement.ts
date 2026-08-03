@@ -93,6 +93,22 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * optional gate a hold that costs the ramp nothing (D2/D10). The failure mode of
  * raising it is a slower read; the failure mode of a tripwire deciding off
  * stale rows is a verdict about a week that is over.
+ *
+ * WHO PAYS IT, so the cost profile can be read off this constant rather than
+ * rediscovered. TWO readers reach the page through `summarizeSeedPlacementSweeps`
+ * and they pay differently:
+ *
+ *   - the ramp controller cron, LAZILY and once per tick — a thunk memoized by
+ *     `rampControllerCron.ts` and resolved by `rampControllerInputs.ts` only when
+ *     a cell in the slice actually consumes gate 5, so a slice with no
+ *     ramp-managed cell in it (the normal state during rollout, plan D1) pays
+ *     nothing;
+ *   - `delivery/deliverabilityDashboard.ts`, EAGERLY, ONCE PER SCREEN LOAD. The
+ *     read is unconditional there: it happens whether or not any cell has
+ *     probes, because the screen must report the verdict the controller would
+ *     reach (ADR-0042) and cannot know which cells have evidence before reading.
+ *     Raising this number therefore lands on an interactive query, not only on a
+ *     cron.
  */
 const SEED_PROBE_SCAN_LIMIT = 500;
 
