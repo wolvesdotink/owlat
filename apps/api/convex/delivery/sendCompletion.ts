@@ -62,10 +62,12 @@ interface SendWorkerSuccess {
 	deferred?: boolean;
 	// Which side the deferral came from (`LastMileRoutingDeferred.origin`). Only
 	// `governed` reaches gate 2's numerator; `local` — a policy hold, an
-	// idempotency wait, an unreachable decision endpoint — is our own machinery
-	// and is not evidence about this sending identity. Optional because a worker
-	// running older code answers without it, and an unlabelled deferral is not
-	// counted rather than guessed at.
+	// idempotency wait, an unreachable decision endpoint, an MTA answer reporting
+	// any Redis failure while taking the lease — is our own machinery wherever it
+	// runs, and is not evidence about this sending identity. An answer from the
+	// MTA is not automatically governed; only an answer about the sending identity
+	// is. Optional because a worker running older code answers without it, and an
+	// unlabelled deferral is not counted rather than guessed at.
 	deferralOrigin?: 'governed' | 'local';
 	retryAfterMs?: number;
 	envelopeInput?: WorkerEnvelopeInput;
