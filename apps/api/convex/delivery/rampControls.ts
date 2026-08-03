@@ -11,10 +11,15 @@
  * WHAT AN OPERATOR CANNOT DO, by construction rather than by convention:
  *
  *   - hold a RETREAT. Pause and pin bound INCREASES only (`applyRampCellControl`
- *     checks the retreat first and once). A gate breach, an open breaker, a
- *     critical blocklist listing or a capacity ceiling all still take the share
- *     down through a pause. A safety response an operator can switch off is not
- *     a safety response.
+ *     and `applyPaceCellControl` each check the retreat first and once). A gate
+ *     breach, an open breaker, a critical blocklist listing or a capacity ceiling
+ *     all still take the share — and the warm-up pace — down through a pause. A
+ *     safety response an operator can switch off is not a safety response.
+ *   - hold the PACE dial with a PIN. A pause reaches both dials; a pin is
+ *     expressed in share and there is no honest conversion into a multiplier on a
+ *     daily cap, so on a cell with no second sender the pin bounds nothing that
+ *     is ramping. The row it writes says exactly that rather than promising a cap
+ *     it cannot apply — see `pinMessage`.
  *   - reach a hard stop, the multiplicative decrease, the share floor or the
  *     cooldown ladder through a preset. `RampPresetTuning` has no field that
  *     could express any of them.
@@ -72,6 +77,8 @@ import {
 } from './deliverabilityValidators';
 import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
+import { loadCellDegradation } from './rampIntegrationPresence';
+import { hasSecondSender } from './relayConfiguration';
 
 const cellArgs = {
 	stream: deliverabilityStreamValidator,
@@ -158,6 +165,30 @@ export function refusedControl(refusal: RampControlRefusal): RampControlResult {
 	return { applied: false, refusal };
 }
 
+/**
+ * IS THERE A SECOND SENDER TO HOLD THIS CELL'S SHARE BACK FOR?
+ *
+ * The union both phase doors cut on, asked here for the same reason they ask it:
+ * what the audit row TELLS an operator depends on which dial the cell actually
+ * drives, and a control that described the wrong one would be read back for ever.
+ * One helper over one loaded degradation — reading it twice inside one mutation
+ * would let two halves of one sentence answer off two different ticks.
+ */
+async function readSecondSender(
+	ctx: MutationCtx,
+	target: ResolvedCell,
+	now: number
+): Promise<boolean> {
+	return await hasSecondSender(
+		ctx,
+		await loadCellDegradation(ctx, {
+			organizationId: target.organizationId,
+			cell: target.cell,
+			now,
+		})
+	);
+}
+
 // ============ PAUSE ============
 
 /**
@@ -176,6 +207,14 @@ export const setCellPause = adminMutation({
 		const now = Date.now();
 		const wasPaused = target.row.operatorPausedAt !== undefined;
 		if (wasPaused === args.isPaused) return { applied: false, share: target.share };
+		// WHICH DIAL THIS PAUSE ACTUALLY HOLDS, off the union both phase doors cut on
+		// (`hasSecondSender`) rather than a third predicate of this module's own. A
+		// cell with no second sender is driven by the PACE actuator: the pause reaches
+		// it (`applyPaceCellControl`), but the share it is standing at is not what
+		// stops moving, and a row telling an operator the share is held would be this
+		// timeline arguing with the enrolment row two decisions earlier. Read AFTER the
+		// idempotent early return, so pausing an already-paused cell pays for nothing.
+		const bindsShare = await readSecondSender(ctx, target, now);
 		await ctx.db.patch(target.row._id, {
 			...(args.isPaused ? { operatorPausedAt: now } : { operatorPausedAt: undefined }),
 			decidedAt: now,
@@ -190,15 +229,54 @@ export const setCellPause = adminMutation({
 			reason: 'operator_pause',
 			fromShare: target.share,
 			toShare: target.share,
-			message: args.isPaused
-				? `An operator paused ${deliverabilityCellKey(target.cell)} at ${Math.round(target.share * 100)}%. The gates keep measuring and a retreat would still be applied — only the increase is held.`
-				: `An operator resumed ${deliverabilityCellKey(target.cell)}. The ramp may advance again when the gates allow it.`,
+			message: pauseMessage({
+				cell: target.cell,
+				share: target.share,
+				isPaused: args.isPaused,
+				bindsShare,
+			}),
 			detail: { isPaused: args.isPaused },
 			at: now,
 		});
 		return { applied: true, share: target.share };
 	},
 });
+
+/**
+ * THE AUDIT SENTENCE, AND IT NAMES THE DIAL THE PAUSE ACTUALLY HOLDS.
+ *
+ * Two outcomes, worded off the same `hasSecondSender` union the two phase doors
+ * word theirs on (`rampPhasePromotion.promotionMessage`, `rampPhaseReset`) — one
+ * question about one deployment, answered once, so the cell's timeline cannot end
+ * up carrying two accounts of it.
+ *
+ * Where there is a second sender the share is what the controller advances, and
+ * "only the increase is held" is the whole story. Where there is not, the cell is
+ * on the PACE dial: the pause reaches it (`applyPaceCellControl`), but the share
+ * is not what stops climbing, and a sentence naming a share percentage would send
+ * an operator looking for a number that was never going to move.
+ *
+ * THE ONE-DIRECTIONAL RULE IS SAID ON BOTH ARMS on purpose. It is the property an
+ * operator is trusting when they leave a pause in place overnight, and a
+ * deployment that read it on one arm only would have to guess about the other.
+ */
+function pauseMessage(args: {
+	readonly cell: DeliverabilityCell;
+	readonly share: number;
+	readonly isPaused: boolean;
+	readonly bindsShare: boolean;
+}): string {
+	const key = deliverabilityCellKey(args.cell);
+	const percent = `${Math.round(args.share * 100)}%`;
+	if (args.bindsShare) {
+		return args.isPaused
+			? `An operator paused ${key} at ${percent}. The gates keep measuring and a retreat would still be applied — only the increase is held.`
+			: `An operator resumed ${key}. The ramp may advance again when the gates allow it.`;
+	}
+	return args.isPaused
+		? `An operator paused ${key}. No relay is carrying this cell, so its share is not the dial that moves: the warm-up pace is what is held. The gates keep measuring and a retreat would still be applied — only the increase is held.`
+		: `An operator resumed ${key}. The warm-up pace may advance again when the gates allow it.`;
+}
 
 // ============ PIN ============
 
@@ -220,6 +298,12 @@ export const pinCellShare = adminMutation({
 		}
 		const now = Date.now();
 		const pinned = args.share === null ? null : clampOwnShare(args.share);
+		// THE SAME QUESTION THE PAUSE ASKS, and the pin needs it more: a pin is
+		// expressed in SHARE, so on a cell with no second sender it bounds a dial that
+		// is not the one ramping. The control is still recorded — it binds again the
+		// tick a second sender appears, the rule both phase doors state — but the
+		// sentence must not promise a climb it will not stop.
+		const bindsShare = await readSecondSender(ctx, target, now);
 		await ctx.db.patch(target.row._id, {
 			...(pinned === null ? { operatorPinnedShare: undefined } : { operatorPinnedShare: pinned }),
 			decidedAt: now,
@@ -233,16 +317,41 @@ export const pinCellShare = adminMutation({
 			reason: 'operator_pin',
 			fromShare: target.share,
 			toShare: target.share,
-			message:
-				pinned === null
-					? `An operator unpinned ${deliverabilityCellKey(target.cell)}. The ramp may climb again when the gates allow it.`
-					: `An operator pinned ${deliverabilityCellKey(target.cell)} at ${Math.round(pinned * 100)}%. The ramp will not climb past that share until it is unpinned.`,
+			message: pinMessage({ cell: target.cell, pinned, bindsShare }),
 			detail: { pinnedShare: pinned },
 			at: now,
 		});
 		return { applied: true, share: target.share };
 	},
 });
+
+/**
+ * THE PIN'S SENTENCE, on the same union and for a sharper reason.
+ *
+ * A pin is expressed in SHARE. Where a second sender carries the cell that is the
+ * dial the controller advances and the cap does what it says. Where there is none
+ * the cell rides the PACE dial — a multiplier on a daily cap, in units no share
+ * can be converted into — so the pin bounds nothing that is currently ramping,
+ * and the row says so and names the control that would hold the cell instead. The
+ * pin is still stored and still meaningful: it binds again the tick a second
+ * sender appears, which is the rule both phase doors state from their own side.
+ */
+function pinMessage(args: {
+	readonly cell: DeliverabilityCell;
+	readonly pinned: number | null;
+	readonly bindsShare: boolean;
+}): string {
+	const key = deliverabilityCellKey(args.cell);
+	if (args.pinned === null) {
+		return args.bindsShare
+			? `An operator unpinned ${key}. The ramp may climb again when the gates allow it.`
+			: `An operator unpinned ${key}. No relay is carrying this cell, so the pin was bounding nothing the controller is ramping.`;
+	}
+	const percent = `${Math.round(args.pinned * 100)}%`;
+	return args.bindsShare
+		? `An operator pinned ${key} at ${percent}. The ramp will not climb past that share until it is unpinned.`
+		: `An operator pinned ${key} at ${percent}. No relay is carrying this cell, so its share is not the dial that moves and the pin bounds nothing the controller is ramping: the warm-up pace keeps climbing, and pausing the cell is what holds it. The pin applies again once a second sender appears.`;
+}
 
 // ============ FORCE-ADVANCE ============
 

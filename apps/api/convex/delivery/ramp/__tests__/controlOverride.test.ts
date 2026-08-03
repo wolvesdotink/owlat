@@ -12,7 +12,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { applyRampCellControl, type RampCellControl } from '../controlOverride';
+import {
+	applyPaceCellControl,
+	applyRampCellControl,
+	type RampCellControl,
+} from '../controlOverride';
+import { paceDecisionChangedState, type PaceDecision } from '../paceTypes';
 import { defaultRampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { rampConfigForStream } from '../presetConfig';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
@@ -232,5 +237,143 @@ describe('presets', () => {
 			const tuned = rampConfigForStream('campaign', { campaign: preset }, 'balanced');
 			expect(Number.isInteger(tuned.cleanWindowsRequired)).toBe(true);
 		}
+	});
+});
+
+/**
+ * THE SAME HAND ON THE SECOND DIAL (plan D3, P3-6).
+ *
+ * `setCellPause` succeeds on every managed cell, and until this existed the
+ * override only reached the SHARE — so on a pace-actuated cell (a deployment with
+ * no reference transport, the configuration the standalone twin exists for) the
+ * warming multiplier went on taking its daily step while the control reported
+ * that the increase was held. The rule is the share's, unchanged: suppress
+ * INCREASES, never a retreat, and never rewrite measurement state.
+ */
+describe('the operator override on the pace dial', () => {
+	function pace(overrides: Partial<PaceDecision> = {}): PaceDecision {
+		return {
+			multiplier: 1.2,
+			fromMultiplier: 1.1,
+			reason: 'healthy',
+			direction: 'increase',
+			verdict: 'pass',
+			failedGate: undefined,
+			freeze: undefined,
+			cleanStreak: 3,
+			countedUtcDay: '2026-07-20',
+			...overrides,
+		};
+	}
+
+	const PAUSED: RampCellControl = { pausedAt: NOW, pinnedShare: undefined };
+
+	it('holds an increase at the current multiplier and names the operator', () => {
+		const result = applyPaceCellControl(pace(), PAUSED);
+		expect(result.multiplier).toBe(1.1);
+		expect(result.direction).toBe('hold');
+		expect(result.reason).toBe('operator_pause');
+	});
+
+	// THE SAFETY ARGUMENT, on the dial that cannot be taken back: a warming cap
+	// that grew too fast is not undone by lowering it again, so a retreat here
+	// matters more than on the share and is even less overridable.
+	it('never holds a retreat, freeze and ladder rung intact', () => {
+		const retreat = pace({
+			multiplier: 0.55,
+			fromMultiplier: 1.1,
+			direction: 'decrease',
+			reason: 'complaint',
+			verdict: 'fail',
+			failedGate: 'complaint',
+			freeze: { until: NOW + 6 * 3_600_000, origin: 'gate_breach', ladderMs: 6 * 3_600_000 },
+		});
+		const result = applyPaceCellControl(retreat, PAUSED);
+		expect(result).toBe(retreat);
+		expect(result.freeze?.ladderMs).toBe(6 * 3_600_000);
+	});
+
+	it('leaves an ordinary hold reporting the constraint that is really binding', () => {
+		for (const reason of ['frozen', 'low_utilisation', 'building_confidence'] as const) {
+			const held = pace({ multiplier: 1.1, direction: 'hold', reason });
+			expect(applyPaceCellControl(held, PAUSED)).toBe(held);
+		}
+	});
+
+	// The suppressed step's window WAS measured; the operator's hand did not make
+	// it unmeasured. Leaving the counted day alone is also what keeps the other
+	// twenty-three ticks of the day reporting `day_already_advanced` instead of
+	// relabelling every one of them `operator_pause`.
+	it('never rewrites the streak, the freeze or the counted day', () => {
+		const result = applyPaceCellControl(pace({ cleanStreak: 9 }), PAUSED);
+		expect(result.cleanStreak).toBe(9);
+		expect(result.countedUtcDay).toBe('2026-07-20');
+	});
+
+	// A PIN IS A SHARE. There is no honest conversion into a multiplier on a daily
+	// cap, so it governs nothing here — and the mutation's audit row says so
+	// rather than promising a cap it cannot apply.
+	it('ignores a pin, whatever it says', () => {
+		const untouched = pace();
+		expect(applyPaceCellControl(untouched, { pausedAt: undefined, pinnedShare: 0.2 })).toBe(
+			untouched
+		);
+	});
+
+	it('is a no-op on a running cell', () => {
+		const untouched = pace();
+		expect(applyPaceCellControl(untouched, RUNNING)).toBe(untouched);
+	});
+});
+
+/**
+ * DID THE PACE DIAL CHANGE ANYTHING DURABLE? The predicate the cron audits off,
+ * pinned here rather than spelled inline in the shell where it would be a rule
+ * with no fixture behind it.
+ */
+describe('paceDecisionChangedState', () => {
+	function held(overrides: Partial<PaceDecision> = {}): PaceDecision {
+		return {
+			multiplier: 1.1,
+			fromMultiplier: 1.1,
+			reason: 'holding',
+			direction: 'hold',
+			verdict: 'pass',
+			failedGate: undefined,
+			freeze: undefined,
+			cleanStreak: 3,
+			countedUtcDay: undefined,
+			...overrides,
+		};
+	}
+
+	it('is true when the dial moved', () => {
+		expect(paceDecisionChangedState(held({ multiplier: 1.2, direction: 'increase' }))).toBe(true);
+		expect(paceDecisionChangedState(held({ multiplier: 0.55, direction: 'decrease' }))).toBe(true);
+	});
+
+	// A BREACH ON A CELL ALREADY AT M_MIN moves no multiplier and still advances
+	// the ladder, re-dates the freeze and resets the streak. An operator cannot
+	// explain an automatic change no log records.
+	it('is true for a gate breach that advanced the ladder without moving the dial', () => {
+		expect(
+			paceDecisionChangedState(
+				held({
+					reason: 'complaint',
+					freeze: { until: NOW + 6 * 3_600_000, origin: 'gate_breach', ladderMs: 6 * 3_600_000 },
+				})
+			)
+		).toBe(true);
+	});
+
+	// A hard stop that is merely STILL TRUE an hour later re-stamps a freeze and
+	// claims no rung: nothing happened, and it stays out of the log.
+	it('is false for a hold, and for a re-stamped hard stop that claims no rung', () => {
+		expect(paceDecisionChangedState(held())).toBe(false);
+		expect(
+			paceDecisionChangedState(
+				held({ reason: 'dnsbl', freeze: { until: NOW + 24 * 3_600_000, origin: 'dnsbl' } })
+			)
+		).toBe(false);
 	});
 });

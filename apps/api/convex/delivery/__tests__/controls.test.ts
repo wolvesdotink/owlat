@@ -19,7 +19,13 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { modules } from '../../__tests__/testModules';
-import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
+import {
+	connectRelay,
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 
 const ORG = 'org_ramp_controls';
 const OTHER_ORG = 'org_ramp_controls_other';
@@ -503,6 +509,83 @@ describe('an unmanaged cell', () => {
 			async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
 		);
 		expect(rows.some((row) => row.destinationProvider === 'yahoo')).toBe(false);
+	});
+});
+
+/**
+ * WHAT THE ROW TELLS THE OPERATOR, AND WHICH DIAL IT NAMES (plan D3, D12).
+ *
+ * A `mixDecisions` message is read back for as long as the timeline keeps it, so
+ * it has to be true about the deployment it was written on. Both controls are
+ * expressed in SHARE, and on a cell no relay is carrying the share is not the
+ * dial that ramps — the warm-up pace is. The two sentences are cut on the same
+ * `hasSecondSender` union the phase doors word theirs on, so one deployment
+ * cannot end up with two accounts of itself in one timeline.
+ */
+describe('the control sentences name the dial that actually moves', () => {
+	async function messageOf(t: Harness): Promise<string> {
+		const rows = await decisions(t);
+		return rows[0]?.message ?? '';
+	}
+
+	it('promises a held SHARE increase where a relay is carrying the cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await connectRelay(t);
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const message = await messageOf(t);
+		expect(message).toContain('40%');
+		expect(message).toContain('only the increase is held');
+		expect(message).not.toContain('warm-up pace');
+	});
+
+	it('names the warm-up pace where nothing is carrying the share', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const message = await messageOf(t);
+		expect(message).toContain('warm-up pace');
+		// AND IT STILL SAYS THE ONE THING AN OPERATOR IS TRUSTING when they leave a
+		// pause in place: a retreat is never held, on either dial.
+		expect(message).toContain('retreat would still be applied');
+	});
+
+	it('does not promise a cap the pin cannot apply on a standalone cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		const message = await messageOf(t);
+		expect(message).toContain('bounds nothing the controller is ramping');
+		expect(message).not.toContain('will not climb past');
+	});
+
+	it('promises exactly that cap where a relay is carrying the cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
+		await connectRelay(t);
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		expect(await messageOf(t)).toContain('will not climb past that share');
+	});
+
+	// A REFERENCE ARM IS THE OTHER HALF OF THE UNION: a relay disconnected today
+	// can still be carrying this cell inside the evaluation window, and the tick
+	// binds the ladder on that reading. The door must not speak over it.
+	it('counts a measured reference arm as a second sender', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		expect(await messageOf(t)).toContain('only the increase is held');
 	});
 });
 

@@ -165,6 +165,28 @@ export interface PaceDecision {
 	readonly countedUtcDay: string | undefined;
 }
 
+/**
+ * DID THIS DECISION CHANGE ANYTHING DURABLE ON THE PACE DIAL?
+ *
+ * The share's predicate (`rampDecisionChangedState`), asked of the second dial
+ * and living beside `PaceDecision` for the same reason that one lives beside
+ * `RampDecision`: it is a reading of the decision, and the cron shell may hold no
+ * outcome-changing conditional of its own — a rule spelled inline there is a rule
+ * with no fixture behind it.
+ *
+ * TWO WAYS TO CHANGE STATE, and the second is why this is not `direction !==
+ * 'hold'`. A gate breach on a cell already sitting on M_MIN moves no multiplier
+ * (`max(floor, floor x 0.5)` is the floor) yet advances the cooldown ladder and
+ * re-dates the freeze — a real automatic change an operator cannot explain if no
+ * audit row records it. A hard stop that is merely STILL TRUE an hour later
+ * re-stamps a freeze and claims no rung, and stays as quiet here as it does on
+ * the share side.
+ */
+export function paceDecisionChangedState(decision: PaceDecision): boolean {
+	if (decision.direction !== 'hold') return true;
+	return decision.freeze?.ladderMs !== undefined;
+}
+
 /** What a rung returns, before the shell turns it into a decision. */
 export interface PaceDecisionDraft {
 	readonly multiplier: number;

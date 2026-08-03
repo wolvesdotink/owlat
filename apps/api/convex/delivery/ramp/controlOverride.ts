@@ -24,10 +24,16 @@
  * clean streak, the green clock and the graduation pin are the controller's
  * durable measurement state, and an operator overriding the share must not be
  * able to make a cell look like it has earned something it has not.
+ *
+ * BOTH DIALS ARE GOVERNED — see `applyPaceCellControl` at the end of the file.
+ * A pause reaches the pace ladder under the same one-directional rule, because
+ * "hold this cell" cannot mean "hold the dial that happens to be the share" on a
+ * deployment whose only dial is the warm-up pace.
  */
 
 import { clampOwnShare } from '@owlat/shared/deliverabilityRouting';
 import { rampDecisionDirection, type RampDecision } from './controllerTypes';
+import type { PaceDecision } from './paceTypes';
 
 /**
  * What an operator has set on one cell. Both members absent is the ordinary
@@ -109,5 +115,55 @@ export function applyRampCellControl(
 		ceiling,
 		reason: 'operator_pin',
 		direction: rampDecisionDirection(decision.fromShare, share),
+	};
+}
+
+/**
+ * THE SAME HAND, ON THE SECOND DIAL (plan D3, P3-6).
+ *
+ * WHY IT EXISTS. `setCellPause` succeeds on any managed cell, but the share
+ * override above only ever reaches the SHARE. On a pace-actuated cell — a
+ * deployment with no reference transport, which is the configuration the
+ * standalone twin exists for — the share is not the dial that moves, so a paused
+ * cell went on taking its daily +STEP on the warming cap while the control that
+ * was supposed to hold it reported success. A control that silently governs
+ * nothing is worse than one that refuses.
+ *
+ * THE ONE-DIRECTIONAL RULE IS THE SHARE'S, unchanged and for the same reason: a
+ * pause suppresses INCREASES only. Every retreat — a gate breach, an open
+ * breaker, a blocklist listing, an abuse suspension — still takes the multiplier
+ * down through a pause, checked first and once so no rule below can be read as
+ * qualifying it.
+ *
+ * THE PIN DOES NOT TRAVEL HERE, and its absence is deliberate rather than
+ * pending: `pinnedShare` is a SHARE, and the pace dial is a MULTIPLIER on a daily
+ * cap. There is no honest conversion between the two units, and inventing one
+ * would let "cap this cell at 40% of its traffic" quietly become a number about
+ * volume. An operator who needs a pace-actuated cell held has the pause, and
+ * `rampControls` says so on the row it writes.
+ *
+ * FREEZES, STREAKS AND THE COUNTED DAY ARE NEVER REWRITTEN, exactly as on the
+ * share side. In particular the day the suppressed evaluation counted STAYS
+ * counted: it is measurement state, the operator's hand did not make the window
+ * unmeasured, and leaving it counted is also what keeps the remaining
+ * twenty-three ticks of the day reporting the constraint that is really binding
+ * (`day_already_advanced`) instead of relabelling every one of them
+ * `operator_pause`.
+ */
+export function applyPaceCellControl(
+	decision: PaceDecision,
+	control: RampCellControl
+): PaceDecision {
+	// A RETREAT IS NEVER OVERRIDDEN.
+	if (decision.multiplier < decision.fromMultiplier) return decision;
+	if (control.pausedAt === undefined) return decision;
+	// Nothing to suppress — the controller's own reason is the true one, and the
+	// same no-op guard the share's pause arm carries.
+	if (decision.multiplier === decision.fromMultiplier) return decision;
+	return {
+		...decision,
+		multiplier: decision.fromMultiplier,
+		reason: 'operator_pause',
+		direction: 'hold',
 	};
 }
