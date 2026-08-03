@@ -55,9 +55,9 @@ import { refusedControl, resolveControlTarget, type RampControlResult } from './
  * claim true. Earned-ness is not what spares it; the share is.
  *
  * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
- * ceiling re-shuffles which arm every recipient of the cell lands in and opens
- * the share to the next rung, which is exactly the move plan D3's evidence gate
- * exists to guard. Letting this mutation do it too — on nothing but the hard-stop
+ * ceiling opens the share to the next rung and, where a second sender splits the
+ * cell, re-shuffles which arm every recipient lands in — which is exactly the
+ * move plan D3's evidence gate exists to guard. Letting this mutation do it too — on nothing but the hard-stop
  * check, with no promotion evidence and no typed confirmation — would make the
  * gate optional, and an optional gate is not a gate. The upward move lives in
  * `rampPhasePromotion.promoteCellPhase` and nowhere else.

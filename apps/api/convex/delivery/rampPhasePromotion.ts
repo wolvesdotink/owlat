@@ -2,10 +2,13 @@
  * THE ONLY WAY A PHASE CEILING RISES (plan D3, D12).
  *
  * A promotion moves the two things that matter most: it raises the rung the AIMD
- * ladder may climb to, and it re-randomises which arm EVERY recipient of the cell
- * lands in (plan D7's mix generation). So it is a deliberate act, never something
- * the hourly loop does on its own, and it is the ONE upward door — `resetCellPhase`
- * is downward-only precisely so that this gate cannot be walked around.
+ * ladder may climb to, and — on the ESP path — it re-randomises which arm every
+ * recipient of the cell lands in (plan D7's mix generation). The generation
+ * advances on the PACE path too and re-shuffles nobody there, because that cell
+ * has one arm; `rampPhaseReset` carries the rule for why only that one door holds
+ * it back. So a promotion is a deliberate act, never something the hourly loop
+ * does on its own, and it is the ONE upward door — `resetCellPhase` is
+ * downward-only precisely so that this gate cannot be walked around.
  *
  * ONE WRITE PATH, TWO ENTRIES. `applyRampPhasePromotion` is the whole rule; the
  * operator's `promoteCellPhase` and the machine-facing
