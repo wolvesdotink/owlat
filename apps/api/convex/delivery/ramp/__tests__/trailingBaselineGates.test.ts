@@ -468,6 +468,30 @@ describe('gate 5 — self-hosted seed placement, absolute floor only', () => {
 		expect(result.reason).toBe('absolute_threshold_breached');
 	});
 
+	// `category` is REACHED and `deleted` is not (`isSeedPlacementReached`), and
+	// the gate reads both from the sweep rather than folding them into a spelling
+	// it recognises: a gate that dropped `category` would read the first sweep as
+	// a 10% collapse, and one that dropped `deleted` would read the second as a
+	// clean 100%.
+	it('a Gmail tab is reached — a tabbed sweep clears the absolute floor', () => {
+		const result = evaluateStandaloneSeedPlacementGate(
+			input({ own: arm({ sent: 10_000 }), ownSeeds: seeds(0, 2, 0, { category: 18 }) })
+		);
+		expect(result.status).toBe('pass');
+		expect(result.measurement.ownSample).toBe(20);
+		expect(result.measurement.ownRate).toBeCloseTo(0.9, 10);
+	});
+
+	it('an auto-deleted probe is counted and is NOT reached', () => {
+		const result = evaluateStandaloneSeedPlacementGate(
+			input({ own: arm({ sent: 10_000 }), ownSeeds: seeds(17, 0, 0, { deleted: 3 }) })
+		);
+		expect(result.status).toBe('fail');
+		expect(result.reason).toBe('absolute_threshold_breached');
+		expect(result.measurement.ownSample).toBe(20);
+		expect(result.measurement.ownRate).toBeCloseTo(0.85, 10);
+	});
+
 	it('no seed mailboxes at all HOLDS and never fails (plan D2)', () => {
 		const result = evaluateStandaloneSeedPlacementGate(input({ own: arm({ sent: 10_000 }) }));
 		expect(result.status).toBe('insufficient_data');

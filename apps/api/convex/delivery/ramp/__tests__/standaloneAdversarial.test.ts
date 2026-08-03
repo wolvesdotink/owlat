@@ -149,7 +149,7 @@ describe('standalone — degenerate volumes', () => {
 			bare({
 				own: arm({ sent: -10_000, hardBounced: -5, deferred: -5, complained: -5 }),
 				ownTrailingBaseline: arm({ sent: -40_000, hardBounced: -5, unsubscribed: -5 }),
-				ownSeeds: seeds(-10, -10, -10),
+				ownSeeds: seeds(-10, -10, -10, { category: -10, deleted: -10 }),
 			})
 		);
 	});

@@ -274,6 +274,35 @@ describeEquipped('gate 5 — seed placement (inbox >= 90% AND >= reference - 5pp
 		expect(result.measurement.referenceRate).toBe(1);
 	});
 
+	it('a tabbed own arm is not below a boxed reference — `category` is reached', () => {
+		const result = evaluateSeedPlacementGate(
+			input({
+				own: armWith('hardBounced', 10_000, 0),
+				ownSeeds: seeds(2, 0, 0, { category: 18 }),
+				referenceSeeds: seeds(20, 0),
+			})
+		);
+		expect(result.status).toBe('pass');
+		expect(result.measurement.ownRate).toBe(1);
+		expect(result.measurement.referenceRate).toBe(1);
+	});
+
+	// The reference arm's `deleted` probes are the discriminator: counted, the
+	// reference reaches 70% and the own arm is 20pp ABOVE it; dropped, the
+	// reference reads a clean 100% and the same own arm fails the 5pp tolerance.
+	it('reads `deleted` on the REFERENCE arm too — it lowers the bar, it is not absent', () => {
+		const result = evaluateSeedPlacementGate(
+			input({
+				own: armWith('hardBounced', 10_000, 0),
+				ownSeeds: seeds(18, 2),
+				referenceSeeds: seeds(14, 0, 0, { deleted: 6 }),
+			})
+		);
+		expect(result.status).toBe('pass');
+		expect(result.measurement.ownRate).toBeCloseTo(0.9, 10);
+		expect(result.measurement.referenceRate).toBeCloseTo(0.7, 10);
+	});
+
 	it('counts missing seeds in the denominator — missing is the loudest outcome (D17)', () => {
 		const result = evaluateSeedPlacementGate(
 			input({
