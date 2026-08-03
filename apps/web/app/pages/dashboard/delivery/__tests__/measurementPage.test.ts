@@ -150,6 +150,34 @@ describe('measurement page — states', () => {
 		wrapper.unmount();
 	});
 
+	it('frames a two-relay deployment by its cells, not by the relay it cannot name', () => {
+		// TWO RELAY KINDS: there is no single arm to NAME, so the configuration
+		// reads `null` while every cell was measured against a relay. Framed by the
+		// id, this page told the operator they send entirely from their own server
+		// directly above a card carrying a relay column.
+		data.value = dashboard({ referenceTransportId: null, cells: [cellView()] });
+		const wrapper = mountPage();
+		expect(wrapper.find('h1').text()).toBe('Sending independence');
+		expect(wrapper.find('[data-testid="measurement-standalone-note"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="measurement-reference-value"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('frames a named relay that carried nothing as standalone, like its cells do', () => {
+		// The same divergence pointing the other way: a relay is configured, no
+		// cell was measured against it, and the gates below graded every cell
+		// standalone. The page has to say what the cards say.
+		data.value = dashboard({
+			referenceTransportId: 'ses',
+			cells: [cellView({ reference: null })],
+		});
+		const wrapper = mountPage();
+		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
+		expect(wrapper.find('[data-testid="measurement-standalone-note"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="measurement-reference-value"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
 	it('leads with the cells that have traffic and still renders the quiet ones', () => {
 		data.value = dashboard({
 			cells: [

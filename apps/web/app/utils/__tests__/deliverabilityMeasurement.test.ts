@@ -56,18 +56,40 @@ import {
  * the sentence it lands in.
  */
 describe('measurementSubhead', () => {
+	const measured = (referenceTransportId: string | null): string =>
+		measurementSubhead({ hasReferenceArm: true, referenceTransportId });
+
 	it('names the relay the way the transport card does', () => {
-		expect(measurementSubhead('ses')).toContain('compares with Amazon SES');
-		expect(measurementSubhead('plugin.mail-pack.postmark')).toContain('compares with Postmark');
-		expect(measurementSubhead('ses')).not.toContain(' ses ');
+		expect(measured('ses')).toContain('compares with Amazon SES');
+		expect(measured('plugin.mail-pack.postmark')).toContain('compares with Postmark');
+		expect(measured('ses')).not.toContain(' ses ');
 	});
 
 	it('falls back to the raw id rather than dropping an unknown transport', () => {
-		expect(measurementSubhead('postmark')).toContain('compares with postmark');
+		expect(measured('postmark')).toContain('compares with postmark');
 	});
 
 	it('leaves the standalone sentence alone — there is no relay to compare with', () => {
-		expect(measurementSubhead(null)).toContain('What your own server is sending');
+		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: null })).toContain(
+			'What your own server is sending'
+		);
+	});
+
+	it('still says a comparison happened when no single relay can be named', () => {
+		// TWO RELAY KINDS: the configuration has no single arm to name and every
+		// cell is still measured against one. Keyed to the id alone this screen
+		// claimed the deployment sends entirely from its own server.
+		const subhead = measurementSubhead({ hasReferenceArm: true, referenceTransportId: null });
+		expect(subhead).toContain('compares with the relays carrying the same traffic');
+		expect(subhead).not.toContain('What your own server is sending');
+	});
+
+	it('drops to the standalone sentence for a named relay that carried nothing', () => {
+		// The divergence the other way: a relay is configured, no cell was measured
+		// against it, and the gates below graded every cell standalone.
+		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: 'ses' })).toContain(
+			'What your own server is sending'
+		);
 	});
 });
 

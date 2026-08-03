@@ -36,11 +36,21 @@ export type IndependenceSummary = FunctionReturnType<
  *
  * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
  * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So this
- * is an alias, not a copy — the SUBHEAD below is genuinely different prose (that
- * screen is read-only; this one is the ramp) and stays local.
+ * standalone feature is CALLED, which is the one thing D14 cares about. So the
+ * two words come from there, not from a copy — the SUBHEAD below is genuinely
+ * different prose (that screen is read-only; this one is the ramp) and stays
+ * local.
+ *
+ * THIS SCREEN'S QUESTION IS THE CONFIGURED RELAY, and that is not a slip. It
+ * projects the date a relay you PAY FOR stops carrying mail and prices the
+ * saving, so with nothing configured there is nothing to become independent OF,
+ * whatever a window of outcome rows still remembers. The measurement screen asks
+ * the other question — was this cell measured against anything — and passes the
+ * other input.
  */
-export const independenceHeadline = measurementHeadline;
+export function independenceHeadline(referenceTransportId: string | null): string {
+	return measurementHeadline(referenceTransportId !== null);
+}
 
 /**
  * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport

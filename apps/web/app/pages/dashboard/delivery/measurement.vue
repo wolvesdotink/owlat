@@ -8,10 +8,18 @@
  * and the trend across the window. There are no controls on this page and no
  * writes behind it; P3-6 adds the control surface.
  *
- * D14: with a reference transport the feature is "Sending independence"; with
- * none it is "Warm-up autopilot" — a different, honest feature, not a degraded
- * one. Either way, a fresh install with zero third-party credentials renders
- * this screen cleanly (plan D2).
+ * D14: with a reference arm the feature is "Sending independence"; with none it
+ * is "Warm-up autopilot" — a different, honest feature, not a degraded one.
+ * Either way, a fresh install with zero third-party credentials renders this
+ * screen cleanly (plan D2).
+ *
+ * THE FRAMING IS KEYED TO THE CELLS, NOT TO THE RELAY LIST. Whether a cell has a
+ * second arm is a MEASUREMENT the server already made — `cell.reference`, the
+ * same fact the cards render and the gates were graded on. Keyed to
+ * `referenceTransportId` instead, a deployment relaying through two kinds (which
+ * has no single relay to NAME) was told "you are sending entirely from your own
+ * server" directly above a card with a relay column in it. That id is kept for
+ * the one thing it answers: what to CALL the second arm.
  */
 import { api } from '@owlat/api';
 import {
@@ -35,11 +43,25 @@ const {
 	error,
 } = useOrganizationQuery(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard);
 
+/** CONFIGURATION, and used for exactly one thing: naming the second arm. */
 const referenceTransportId = computed<string | null>(
 	() => dashboard.value?.referenceTransportId ?? null
 );
-const headline = computed(() => measurementHeadline(referenceTransportId.value));
-const subhead = computed(() => measurementSubhead(referenceTransportId.value));
+/**
+ * MEASUREMENT: did anything below actually get compared against a second arm?
+ * One cell is enough — the page frames the screen, and a screen with a relay
+ * column anywhere on it is not a standalone deployment.
+ */
+const hasReferenceArm = computed(() =>
+	(dashboard.value?.cells ?? []).some((cell) => cell.reference !== null)
+);
+const headline = computed(() => measurementHeadline(hasReferenceArm.value));
+const subhead = computed(() =>
+	measurementSubhead({
+		hasReferenceArm: hasReferenceArm.value,
+		referenceTransportId: referenceTransportId.value,
+	})
+);
 
 /**
  * Cells with traffic first, quiet cells after — a quiet cell is still shown
@@ -99,8 +121,11 @@ const windowLabel = computed(() => {
 			</template>
 
 			<div class="space-y-5">
-				<!-- Standalone is a supported configuration, stated plainly and once. -->
-				<UiCard v-if="referenceTransportId === null">
+				<!--
+					Standalone is a supported configuration, stated plainly and once —
+					and stated only where the cards below agree with it.
+				-->
+				<UiCard v-if="!hasReferenceArm">
 					<p class="text-sm text-text-secondary" data-testid="measurement-standalone-note">
 						You are sending entirely from your own server. Everything below is measured against your
 						own history. Connecting a relay you already pay for would let the same traffic be

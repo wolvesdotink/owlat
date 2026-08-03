@@ -29,12 +29,18 @@ export type DeliverabilityArmSummary = DeliverabilityDashboardCell['own'];
 export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence'];
 
 /**
- * The headline, D14 literally: without a reference transport the feature is
+ * The headline, D14 literally: with nothing to compare against, the feature is
  * "Warm-up autopilot" (how much can I send today, and what is holding it back),
  * not a degraded "Sending independence".
+ *
+ * IT TAKES THE MEASUREMENT, NOT THE CONFIGURATION. Whether a comparison EXISTS
+ * is what the cells below say — a two-relay deployment has no single relay to
+ * name and every cell still measured against one — so a headline keyed to the
+ * relay list tells such a deployment the opposite of what its own cards say.
+ * Naming the relay is a separate question, answered by `referenceTransportId`.
  */
-export function measurementHeadline(referenceTransportId: string | null): string {
-	return referenceTransportId === null ? 'Warm-up autopilot' : 'Sending independence';
+export function measurementHeadline(hasReferenceArm: boolean): string {
+	return hasReferenceArm ? 'Sending independence' : 'Warm-up autopilot';
 }
 
 /**
@@ -43,11 +49,25 @@ export function measurementHeadline(referenceTransportId: string | null): string
  * `plugin.<pack>.<id>`), which is a configuration value rather than a name —
  * `transportIdLabel` turns it back into words, with the scope and the one
  * remaining plugin-catalog gap stated there.
+ *
+ * THE TWO INPUTS ARE INDEPENDENT, and all four combinations are real. A
+ * measured arm with no id to name is a deployment relaying through more than one
+ * kind; an id with no measured arm is a relay that carried nothing this window,
+ * and that reads as standalone because that is what the gates below graded it
+ * as.
  */
-export function measurementSubhead(referenceTransportId: string | null): string {
-	return referenceTransportId === null
-		? 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.'
-		: `How your own server compares with ${transportIdLabel(referenceTransportId)} on the same traffic. Read-only — nothing here changes your sending.`;
+export function measurementSubhead(input: {
+	readonly hasReferenceArm: boolean;
+	readonly referenceTransportId: string | null;
+}): string {
+	if (!input.hasReferenceArm) {
+		return 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.';
+	}
+	const against =
+		input.referenceTransportId === null
+			? 'the relays carrying the same traffic'
+			: transportIdLabel(input.referenceTransportId);
+	return `How your own server compares with ${against} on the same traffic. Read-only — nothing here changes your sending.`;
 }
 
 const STREAM_LABELS = {
