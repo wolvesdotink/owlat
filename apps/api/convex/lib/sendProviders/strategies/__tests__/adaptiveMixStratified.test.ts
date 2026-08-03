@@ -223,13 +223,24 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 		// envelope. A stored 250 (or -1, or NaN) is an upstream scorer defect the
 		// envelope drops as unknown — and ranked here it would sit at the top of
 		// its cell and take the stratified own-arm cut on the SAME send.
+		//
+		// Assigned exactly as `delivery/sendAssignments.ts` assigns: the ranker's
+		// answer IS the identity's `engagementRank`, so what this case pins is the
+		// arm the shipped writer would record.
+		//
+		// The stratified cut is `rank >= 1 - s`, so at 0.4 it sits well below the
+		// percentile interval a top-of-band score occupies in this cohort: the
+		// control does not turn on where tie dispersal lands inside that interval.
+		const ownShare = 0.4;
 		const clean = Array.from({ length: MIN_STRATIFICATION_COHORT + 1 }, (_, index) => ({
 			sendId: `snd-c-${index}`,
+			contactId: `ct-c-${index}`,
 			email: `c${index}@gmail.com`,
 			engagementScore: index,
 		}));
 		const corrupt = [250, -1, Number.NaN].map((score, index) => ({
 			sendId: `snd-x-${index}`,
+			contactId: `ct-x-${index}`,
 			email: `x${index}@gmail.com`,
 			engagementScore: score,
 		}));
@@ -238,18 +249,49 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 			recipients.map((recipient) => [recipient.email, 'gmail' as const])
 		);
 		const rankFor = buildEngagementRanker(recipients, providers);
+		const assignAsWriterWould = (
+			recipient: { contactId: string; sendId: string },
+			rank: number | undefined
+		) =>
+			decideMixAssignment({
+				cell: { ownShare, mixVersion: 3 },
+				recipient: {
+					contactId: recipient.contactId,
+					campaignId: 'cmp-corrupt',
+					...(rank !== undefined ? { engagementRank: rank } : {}),
+					fallbackKey: recipient.sendId,
+				},
+			});
 
-		for (const recipient of corrupt) {
+		// POSITIVE CONTROL, so the assertions below have a way to fail: the SAME
+		// identities with the score corrected to the top of the band DO take the
+		// stratified own-arm cut. Only the stored number differs between the two
+		// halves of this case — not the identity, not the cohort, not the share.
+		const corrected = corrupt.map((recipient) => ({ ...recipient, engagementScore: 100 }));
+		const correctedRankFor = buildEngagementRanker([...clean, ...corrected], providers);
+		const pairs = corrupt.map((recipient, index) => ({
+			corruptAssignment: assignAsWriterWould(recipient, rankFor(recipient)),
+			correctedAssignment: assignAsWriterWould(
+				corrected[index]!,
+				correctedRankFor(corrected[index]!)
+			),
+		}));
+		// An identity in the randomized calibration slice is assigned by the slice
+		// whatever its rank, so the control is the ones outside it.
+		const controls = pairs.filter((pair) => pair.correctedAssignment.basis === 'stratified');
+		expect(controls.length).toBeGreaterThan(0);
+		expect(controls.every((pair) => pair.correctedAssignment.arm === 'own')).toBe(true);
+		// The refused score, at the same identity: no rank to cut on, so the
+		// unbiased hash bucket decides — which realises the cell's share exactly.
+		expect(controls.every((pair) => pair.corruptAssignment.basis === 'random')).toBe(true);
+
+		for (const [index, recipient] of corrupt.entries()) {
 			// The two consumers agree, which is the whole point.
 			expect(normalizeEngagementScore(recipient.engagementScore)).toBeUndefined();
 			// No rank at all: the decision function reads that as unknown and falls
 			// back to the unbiased hash bucket, never to the own arm.
 			expect(rankFor(recipient)).toBeUndefined();
-			const assignment = decideMixAssignment({
-				cell: { ownShare: 0.1, mixVersion: 3 },
-				recipient: { contactId: recipient.sendId, campaignId: 'cmp-corrupt' },
-			});
-			expect(assignment.basis).not.toBe('stratified');
+			expect(pairs[index]!.corruptAssignment.basis).not.toBe('stratified');
 		}
 
 		// And they are out of the COHORT as well, so they cannot displace the
