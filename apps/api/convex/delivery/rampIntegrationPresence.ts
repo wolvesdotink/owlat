@@ -26,6 +26,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { MS_PER_DAY } from '../lib/constants';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
+import type { TransportOutcomeSummary } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { resolveRampDegradation, type RampDegradation } from './ramp/degradation';
 import type { RampIntegrationPresence } from './ramp/degradationMatrix';
@@ -129,12 +130,31 @@ export function withReferenceArm(
 }
 
 /**
+ * THE REFERENCE-ARM PREDICATE ITSELF, over a summary the caller already holds.
+ *
+ * A reference arm is ABSENT, not empty, when nothing was sent through it. This
+ * is a MEASUREMENT — did the second arm carry this cell in this window — and
+ * never the configuration question `referenceRelayTransportId` answers, which
+ * names the single relay kind a deployment has set up. The two disagree on a
+ * two-relay deployment (no single arm to name, but every cell is measured
+ * against one) and on a relay disabled part-way through a window (nothing to
+ * name any more, but the rows are still there), and a reader that chose the
+ * gate evaluator by the configuration reported the other evaluator's verdict.
+ *
+ * Both readers of the presence map apply this rule to their own window's
+ * summary, so "has a relay" is one rule asked of two row sets rather than two
+ * rules. `loadCellInput` states it inline over the summary it already holds and
+ * is pinned against this one by the agreement suite in
+ * `delivery/__tests__/seedGateWiring.test.ts`; it does not import from here only
+ * because that file sits exactly on the 500-LOC ratchet cap.
+ */
+export function hasReferenceArmOutcomes(reference: TransportOutcomeSummary): boolean {
+	return reference.sent > 0;
+}
+
+/**
  * Whether this cell has a live reference arm, for callers that do not already
  * hold the window's outcome summaries.
- *
- * A reference arm is ABSENT, not empty, when nothing was sent through it — the
- * same rule `loadCellInput` applies to the summary it already has, expressed
- * once so the two callers cannot disagree about what "has a relay" means.
  */
 export async function loadReferenceArmPresence(
 	ctx: RampReadCtx,
@@ -146,7 +166,7 @@ export async function loadReferenceArmPresence(
 		arm: 'reference',
 		since: args.now - RAMP_REFERENCE_ARM_WINDOW_MS,
 	});
-	return summary.sent > 0;
+	return hasReferenceArmOutcomes(summary);
 }
 
 /**

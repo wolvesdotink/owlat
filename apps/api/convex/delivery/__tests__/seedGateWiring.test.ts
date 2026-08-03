@@ -32,8 +32,15 @@ import { loadRampCapacityContext } from '../rampCapacityInputs';
 import { loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import { summarizeSeedPlacementSweeps } from '../../analytics/seedPlacement';
 import type { DeliverabilityDashboard } from '../deliverabilityDashboard';
-import type { RampGateResult } from '../ramp/gateTypes';
-import { seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
+import type { DashboardCellView } from '../deliverabilityDashboardView';
+import type { RampGateEvaluation, RampGateResult } from '../ramp/gateTypes';
+import {
+	connectRelay,
+	connectTwoRelays,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 import { modules } from '../../__tests__/testModules';
 
 const ORG = 'org_seed_gate_wiring';
@@ -61,11 +68,11 @@ async function seedProbes(
 	await insertSeedProbes(t, { organizationId: ORG, ...options });
 }
 
-/** Gate 5's verdict as the CRON's loader builds it, for the campaign/gmail cell. */
-async function controllerSeedGate(
+/** The WHOLE evaluation as the CRON's loader builds it, for one cell. */
+async function controllerEvaluation(
 	t: Harness,
 	cell: DeliverabilityCell = CELL
-): Promise<RampGateResult> {
+): Promise<RampGateEvaluation> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
 		const pool = await loadStreamlessRouteState(ctx, ORG, 'all');
@@ -87,17 +94,23 @@ async function controllerSeedGate(
 		if (loaded === null) throw new Error('the seeded cell is not ramp-managed');
 		const evaluation = loaded.input.evaluation;
 		if (evaluation === null) throw new Error('the loader built no gate evaluation');
-		const gate = evaluation.perGate.find((result) => result.gate === 'seed_placement');
-		if (gate === undefined) throw new Error('the evaluation carries no seed gate');
-		return gate;
+		return evaluation;
 	});
 }
 
-/** The SAME verdict as the screen reports it, for the same cell. */
-async function dashboardSeedGate(
+/** Gate 5's verdict as the CRON's loader builds it, for the campaign/gmail cell. */
+async function controllerSeedGate(
 	t: Harness,
 	cell: DeliverabilityCell = CELL
 ): Promise<RampGateResult> {
+	return seedGateOf((await controllerEvaluation(t, cell)).perGate, 'the controller evaluation');
+}
+
+/** The SAME cell as the screen renders it. */
+async function dashboardCellView(
+	t: Harness,
+	cell: DeliverabilityCell = CELL
+): Promise<DashboardCellView> {
 	const dashboard: DeliverabilityDashboard = await t.query(
 		api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
 		{}
@@ -107,9 +120,21 @@ async function dashboardSeedGate(
 			candidate.cell.stream === cell.stream &&
 			candidate.cell.destinationProvider === cell.destinationProvider
 	);
-	if (view === undefined) throw new Error('the dashboard rendered no campaign/gmail cell');
-	const gate = view.gates.find((result) => result.gate === 'seed_placement');
-	if (gate === undefined) throw new Error('the dashboard cell carries no seed gate');
+	if (view === undefined) throw new Error('the dashboard rendered no such cell');
+	return view;
+}
+
+/** The SAME verdict as the screen reports it, for the same cell. */
+async function dashboardSeedGate(
+	t: Harness,
+	cell: DeliverabilityCell = CELL
+): Promise<RampGateResult> {
+	return seedGateOf((await dashboardCellView(t, cell)).gates, 'the dashboard cell');
+}
+
+function seedGateOf(gates: readonly RampGateResult[], source: string): RampGateResult {
+	const gate = gates.find((result) => result.gate === 'seed_placement');
+	if (gate === undefined) throw new Error(`${source} carries no seed gate`);
 	return gate;
 }
 
@@ -307,5 +332,164 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
 		await standaloneCell(t);
 
 		expect((await dashboardSeedGate(t)).status).toBe('insufficient_data');
+	});
+});
+
+/**
+ * AGREEMENT WHERE IT IS NOT TRUE BY CONSTRUCTION.
+ *
+ * The describe above only ever seeds a STANDALONE cell, where both readers run
+ * the trailing-baseline twin whatever predicate they choose it by — so it
+ * asserts agreement in the one configuration that cannot disagree. These are the
+ * configurations where the two predicates genuinely part company:
+ *
+ *   - TWO RELAYS — no single arm to NAME, so the configuration reading says
+ *     "standalone" while every cell is measured against a relay.
+ *   - A RELAY REMOVED MID-WINDOW — nothing left to name, and the window's rows
+ *     still carry the arm the controller judges the cell on.
+ *   - A RELAY CONFIGURED BUT SILENT — a single arm to name, and no measurement
+ *     to compare against, which is the same divergence pointing the other way.
+ *
+ * Every case is pinned on the FULL verdict, not only on gate 5: the defect this
+ * repairs was a screen telling an operator a cell passes while the ramp held it
+ * on `awaiting_corroboration` off the same rows.
+ */
+describe('the screen picks the evaluator the controller picked (ADR-0042)', () => {
+	/** Own 90% inbox against a spotless reference arm: gate 5's SECOND clause. */
+	async function twoArmedBreach(t: Harness): Promise<void> {
+		await seedRampCell(t, { organizationId: ORG });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+		await seedProbes(t, { count: 18, placement: 'inbox' });
+		await seedProbes(t, { count: 2, placement: 'spam' });
+		await seedProbes(t, { count: 20, placement: 'inbox', arm: 'reference' });
+	}
+
+	it('agrees on a two-relay deployment, which has no arm to name', async () => {
+		const t = convexTest(schema, modules);
+		await connectTwoRelays(t);
+		await twoArmedBreach(t);
+
+		const controller = await controllerEvaluation(t);
+		const view = await dashboardCellView(t);
+		// The reference-arm evaluator's verdict, on BOTH sides. The screen used to
+		// choose its evaluator from "is there exactly one relay kind configured",
+		// come out standalone here, and report pass/within_threshold beside a ramp
+		// holding the cell.
+		expect(seedGateOf(controller.perGate, 'controller')).toMatchObject({
+			status: 'fail',
+			reason: 'reference_tolerance_breached',
+		});
+		expect(seedGateOf(view.gates, 'dashboard')).toMatchObject({
+			status: 'fail',
+			reason: 'reference_tolerance_breached',
+		});
+		expect(view.verdict).toBe(controller.verdict);
+		expect(view.failedGate).toBe(controller.failedGate ?? null);
+		// The measured arm reaches the screen as an arm, not as a null: the
+		// evaluator choice and the column beside it are one fact.
+		expect(view.reference?.sent).toBe(800);
+	});
+
+	it('agrees when the relay was switched off inside the window', async () => {
+		const t = convexTest(schema, modules);
+		// No route row at all — the operator disabled the relay — while the window
+		// still holds the traffic it carried. Configuration says standalone;
+		// measurement says the cell has a second arm, and the ramp acts on that.
+		await twoArmedBreach(t);
+
+		const controller = await controllerEvaluation(t);
+		const view = await dashboardCellView(t);
+		expect(seedGateOf(controller.perGate, 'controller').reason).toBe(
+			'reference_tolerance_breached'
+		);
+		expect(seedGateOf(view.gates, 'dashboard').reason).toBe('reference_tolerance_breached');
+		expect(view.verdict).toBe(controller.verdict);
+	});
+
+	it('agrees when a configured relay carried nothing — the arm is absent, not empty', async () => {
+		const t = convexTest(schema, modules);
+		// The divergence in the other direction: one relay kind IS configured, so
+		// the screen used to hand the two-armed evaluator a reference arm of zeros
+		// while the controller nulled it out and ran the standalone twin.
+		await connectRelay(t);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 18, placement: 'inbox' });
+		await seedProbes(t, { count: 2, placement: 'spam' });
+
+		const controller = await controllerEvaluation(t);
+		const view = await dashboardCellView(t);
+		expect(seedGateOf(view.gates, 'dashboard')).toMatchObject(
+			seedGateOf(controller.perGate, 'controller')
+		);
+		expect(view.verdict).toBe(controller.verdict);
+		expect(view.reference).toBeNull();
+		// A cell nothing was measured against is not high-confidence direct
+		// measurement, however the relay list reads.
+		expect(view.confidence.level).not.toBe('high');
+		expect(view.confidence.improvements).toContain('connect_reference_transport');
+	});
+
+	it('grades on the constants the TABLE tightened, not the shipped ones', async () => {
+		const t = convexTest(schema, modules);
+		// No feedback loop anywhere in this deployment, so the fold halves the
+		// complaint ceiling to 0.05%. Both arms complain at 0.075%: inside the
+		// shipped 0.1% and outside the tightened line, and identical on both arms
+		// so the tolerance clause decides nothing. The screen used to grade this
+		// cell against the shipped ceiling and call it a pass while the cron
+		// failed it.
+		await seedRampCell(t, { organizationId: ORG });
+		for (const arm of ['own', 'reference'] as const) {
+			await seedArmOutcomes(t, {
+				organizationId: ORG,
+				arm,
+				sent: 4000,
+				counters: { delivered: 4000, complained: 3 },
+			});
+		}
+
+		const controller = await controllerEvaluation(t);
+		const view = await dashboardCellView(t);
+		const complaintOf = (gates: readonly RampGateResult[]): RampGateResult => {
+			const gate = gates.find((result) => result.gate === 'complaint');
+			if (gate === undefined) throw new Error('no complaint gate');
+			return gate;
+		};
+		expect(complaintOf(controller.perGate).status).toBe('fail');
+		expect(complaintOf(view.gates)).toMatchObject(complaintOf(controller.perGate));
+		expect(view.verdict).toBe(controller.verdict);
+	});
+
+	it('gives the screen the standalone evaluator SUBSTITUTION inputs too (#503)', async () => {
+		const t = convexTest(schema, modules);
+		// A standalone cell whose hard-bounce rate is inside the absolute ceiling
+		// but 3x its own trailing baseline: the trailing twin's RELATIVE clause,
+		// which needs `ownTrailingBaseline`. A screen that omitted it graded the
+		// window on the absolute clause alone and called the cell healthy.
+		await seedRampCell(t, { organizationId: ORG });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 2000,
+			dayOffset: 10,
+			counters: { delivered: 1998, hardBounced: 2 },
+		});
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 2000,
+			counters: { delivered: 1980, hardBounced: 20 },
+		});
+
+		const controller = await controllerEvaluation(t);
+		const view = await dashboardCellView(t);
+		const gateOf = (gates: readonly RampGateResult[]): RampGateResult => {
+			const gate = gates.find((result) => result.gate === 'hard_bounce');
+			if (gate === undefined) throw new Error('no hard-bounce gate');
+			return gate;
+		};
+		expect(gateOf(controller.perGate).status).toBe('fail');
+		expect(gateOf(view.gates)).toMatchObject(gateOf(controller.perGate));
+		expect(view.verdict).toBe(controller.verdict);
 	});
 });

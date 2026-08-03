@@ -13,14 +13,27 @@
  * The screen and the ramp controller therefore cannot disagree: they run the
  * same arithmetic over the same rows.
  *
- * D2. A deployment with no reference transport is a SUPPORTED CONFIGURATION,
- * not an incomplete setup. `reference` is `null` for every cell, the
- * TRAILING-BASELINE evaluator runs instead of the two-armed one — the standalone
- * implementation is the honest answer for a standalone deployment, not a
- * fallback — and `dashboardConfidence` caps the level at what the missing
- * measurement inputs allow, so the screen says "measurement confidence: low" and
- * names what would improve it (plan D14) rather than grading a column of holds
- * `high`. Nothing throws, nothing renders as an error, nothing is blocked.
+ * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
+ * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
+ * instead of the two-armed one — the standalone implementation is the honest
+ * answer for a standalone cell, not a fallback — and `dashboardConfidence` caps
+ * the level at what the missing measurement inputs allow, so the screen says
+ * "measurement confidence: low" and names what would improve it (plan D14)
+ * rather than grading a column of holds `high`. Nothing throws, nothing renders
+ * as an error, nothing is blocked.
+ *
+ * AND WHICH CELLS THOSE ARE IS A MEASUREMENT, NOT A CONFIGURATION. The screen
+ * used to pick its evaluator from `referenceRelayTransportId` — "does this
+ * deployment have exactly one relay kind configured" — while the controller
+ * picked its own from whether the cell's reference arm actually SENT in the
+ * window. The two disagree on a two-relay deployment and on a relay disabled
+ * mid-window, and there they graded one cell with two different evaluators and
+ * reported opposite verdicts on it. So this module resolves the cell's
+ * degradation the way `loadCellInput` does — the same presence read, the same
+ * `resolveRampDegradation` fold — and the choices that fall out of it (which
+ * evaluator runs, which constants it runs on, which complaint line applies) are
+ * the fold's answers here as they are there. `referenceTransportId` stays
+ * configuration, because NAMING the second arm is the only question it answers.
  */
 
 import {
@@ -48,6 +61,17 @@ import {
 import { referenceRelayTransportId } from './relayConfiguration';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
+import {
+	degradedStreamConfig,
+	resolveRampDegradation,
+	usesTrailingBaseline,
+	usesUnsubscribeProxy,
+} from './ramp/degradation';
+import {
+	hasReferenceArmOutcomes,
+	loadRampDeploymentPresence,
+	withReferenceArm,
+} from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import type { RampGateResult } from './ramp/gateTypes';
 import {
@@ -97,19 +121,32 @@ async function readRouteStatesByProvider(
 }
 
 /**
- * Gate 4 (engagement) for one cell, over the same rows every other view uses.
- * `ownPriorBaseline` is the trailing window the slow-poison floor contracts for,
- * and `dashboardWindow` guarantees it ENDS where the evaluation window begins —
- * a baseline that overlapped the recent window would be dragged down by the very
- * decay it exists to detect. A young cell simply has no baseline, and the floor
- * holds rather than failing.
+ * THE CELL'S TRAILING SECOND SERIES — the 30-day window that ENDS where the
+ * evaluation window begins, which `dashboardWindow` makes true by construction.
+ * A series that overlapped the recent window would be dragged down by the very
+ * decay it exists to detect.
+ *
+ * ONE SUMMARY, TWO CONSUMERS, exactly as in the controller: gate 4's slow-poison
+ * floor contracts for it, and the trailing-baseline evaluator's relative clauses
+ * (gate 1's 1.5x rule, gate 3's unsubscribe proxy) compare against it. A young
+ * cell simply has no baseline, and both hold rather than failing.
  */
+function trailingBaselineFor(
+	ownBuckets: readonly TransportOutcomeBucket[],
+	window: DashboardWindow
+): TransportOutcomeSummary {
+	return summarizeTransportOutcomeBuckets(ownBuckets, {
+		since: window.baselineSinceDay,
+		until: window.baselineUntilDay,
+	});
+}
+
+/** Gate 4 (engagement) for one cell, over the same rows every other view uses. */
 function engagementGateFor(input: {
 	readonly cell: DeliverabilityCell;
 	readonly own: TransportOutcomeSummary;
 	readonly reference: TransportOutcomeSummary | null;
-	readonly ownBuckets: readonly TransportOutcomeBucket[];
-	readonly window: DashboardWindow;
+	readonly ownPriorBaseline: TransportOutcomeSummary;
 	readonly now: number;
 }): RampGateResult {
 	return evaluateEngagementGate({
@@ -117,10 +154,7 @@ function engagementGateFor(input: {
 		own: input.own,
 		reference: input.reference,
 		ownRecent: input.own,
-		ownPriorBaseline: summarizeTransportOutcomeBuckets(input.ownBuckets, {
-			since: input.window.baselineSinceDay,
-			until: input.window.baselineUntilDay,
-		}),
+		ownPriorBaseline: input.ownPriorBaseline,
 		now: input.now,
 	});
 }
@@ -167,15 +201,16 @@ export const getDeliverabilityDashboard = authedQuery({
 		// stale window look fresh.
 		const now = Date.now();
 		const window = dashboardWindow(now);
+		// CONFIGURATION, and used for exactly one thing: NAMING the second arm in
+		// the screen's copy. It is deliberately not the evaluator predicate — see
+		// the module note.
 		const referenceTransportId = await referenceRelayTransportId(ctx);
-		const hasReferenceArm = referenceTransportId !== null;
 		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
-		// THE EVALUATOR IS CHOSEN BY THE DEPLOYMENT, not by the window or the cell.
-		// Running the two-armed evaluator against `reference === null` grades a
-		// column of holds as high-confidence direct measurement; the
-		// trailing-baseline implementation is what a standalone cell is actually
-		// measured by, so it is what the screen reports (plan D3, D14).
-		const evaluator = hasReferenceArm ? referenceArmGateEvaluator : trailingBaselineGateEvaluator;
+		// THE DEPLOYMENT HALF OF THE SUBSTITUTION MAP, read ONCE for the whole grid
+		// through the reader the controller's tick uses. Every entry but the
+		// reference arm is deployment-level; the reference arm is completed per cell
+		// below, from that cell's own rows.
+		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
 		// there seed mailboxes at all), not a per-cell one, and it only lowers
 		// confidence — a deployment with none is supported, never nagged (plan D2).
@@ -213,27 +248,59 @@ export const getDeliverabilityDashboard = authedQuery({
 				arm: 'own',
 				...readWindow,
 			});
-			const referenceBuckets = hasReferenceArm
-				? await readCellArmBuckets(ctx.db, {
-						organizationId,
-						cell: cellKey,
-						arm: 'reference',
-						...readWindow,
-					})
-				: null;
+			// READ UNCONDITIONALLY, because whether this cell HAS a second arm is a
+			// question about these very rows: skipping the read when no single relay
+			// kind is configured is what made a two-relay deployment look standalone
+			// to the screen and two-armed to the controller. An arm nothing sends
+			// through costs one empty index read per cell and answers honestly.
+			const referenceBuckets = await readCellArmBuckets(ctx.db, {
+				organizationId,
+				cell: cellKey,
+				arm: 'reference',
+				...readWindow,
+			});
 
 			const own = summarizeTransportOutcomeBuckets(ownBuckets, evaluationWindow);
-			const reference =
-				referenceBuckets === null
-					? null
-					: summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
+			const ownTrailingBaseline = trailingBaselineFor(ownBuckets, window);
+			// THE ONE PREDICATE (`hasReferenceArmOutcomes`), over this screen's rows:
+			// the arm is ABSENT, not empty, when nothing was sent through it.
+			const windowReference = summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
+			const reference = hasReferenceArmOutcomes(windowReference) ? windowReference : null;
 			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
 			const cellSeeds = seedSweepsForCell(seedSweeps, cell);
+			// THE SUBSTITUTION FOLD DECIDES, exactly as it does in `loadCellInput`:
+			// which evaluator runs and which complaint line applies are read off ONE
+			// resolution of this cell's presence map, never off an `if` here.
+			const degradation = resolveRampDegradation({
+				presence: withReferenceArm(deploymentPresence, reference !== null),
+				provider: cell.destinationProvider,
+			});
+			const evaluator = usesTrailingBaseline(degradation)
+				? trailingBaselineGateEvaluator
+				: referenceArmGateEvaluator;
 
 			const evaluation = evaluator.evaluate({
-				config: RAMP_STREAM_CONFIGS[cell.stream],
+				// THE TABLE'S CONSTANTS, not the shipped ones. The tightening the fold
+				// applies is not advisory — a deployment with no feedback loop is
+				// judged against a complaint ceiling half as wide, and the controller
+				// acts on that number. A screen showing the equipped ceiling passes
+				// cells the cron is failing (`complaintMax` 0.1% against 0.05%).
+				//
+				// The operator's PRESET is deliberately not read here: it tunes
+				// `increaseStep` and `cleanWindowsRequired`, and neither reaches a gate
+				// verdict — they size the controller's MOVE, which this screen reports
+				// from the route state rather than re-deriving.
+				config: degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation),
 				own,
 				reference,
+				// The trailing twin's second series, DISJOINT from the evaluation
+				// window by construction. The reference-arm evaluator has a concurrent
+				// arm and ignores it.
+				ownTrailingBaseline,
+				// THROUGH THE FOLD, never off the presence map — `usesUnsubscribeProxy`
+				// is the table's answer to "is there a real feedback loop on this
+				// cell?", and the controller asks the same resolution.
+				hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 				// This cell's slice of the one ledger read; absent on both arms for a
 				// cell the poller has classified nothing for, which HOLDS gate 5.
 				ownSeeds: cellSeeds.own,
@@ -246,7 +313,13 @@ export const getDeliverabilityDashboard = authedQuery({
 				// span on the CLOCK and clamps its rows to it, so the two cannot differ
 				// even where their read bounds do.
 				hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
-				engagement: engagementGateFor({ cell, own, reference, ownBuckets, window, now }),
+				engagement: engagementGateFor({
+					cell,
+					own,
+					reference,
+					ownPriorBaseline: ownTrailingBaseline,
+					now,
+				}),
 				previousCleanStreak: routeState?.cleanStreak ?? 0,
 				now,
 			});
@@ -261,10 +334,20 @@ export const getDeliverabilityDashboard = authedQuery({
 					reference,
 					evaluation,
 					hasSeedCoverage,
-					hasReferenceArm,
+					// THE MEASURED ARM, not the configured one. `dashboardConfidence`
+					// caps the level at `high` only where a concurrent arm actually
+					// produced the comparison the level claims, and it offers
+					// `connect_reference_transport` exactly where none did — both are
+					// statements about this cell's window, and pinning them to the
+					// deployment's relay list graded a cell by a relay that never
+					// carried it.
+					hasReferenceArm: reference !== null,
 					trend: buildDashboardTrend({
 						ownBuckets,
-						referenceBuckets,
+						// The SAME predicate again: a cell with no second arm has no
+						// second series to plot, rather than a flat line of zeros that
+						// reads as a relay sending nothing.
+						referenceBuckets: reference === null ? null : referenceBuckets,
 						sinceDay: window.sinceDay,
 						untilDay: window.untilDay,
 					}),
