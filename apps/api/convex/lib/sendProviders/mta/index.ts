@@ -72,13 +72,17 @@ export type MtaRoutingDecision =
  *
  * `governed` is the MTA declining this SENDING IDENTITY — an open global safety
  * circuit, a probe budget, no warmed IP to send from. `lease_persistence` is
- * none of those: the MTA granted the lease and then failed to WRITE it
- * (`apps/mta/src/routes/routingDecision.ts`), so it is our own storage layer
- * failing and no receiver ever refused the mail. Gate 2 halts a cell at 25% of
- * `governed` deferrals; a Redis outage on our own MTA must not be able to spend
- * that budget.
+ * none of those: it is ANY REDIS FAILURE WHILE TAKING THE LEASE — reserving a
+ * half-open probe, writing the lease record, whatever the one catch in
+ * `apps/mta/src/routes/routingDecision.ts` covers — so it is our own storage
+ * layer failing and no receiver ever refused the mail. Gate 2 halts a cell at
+ * 25% of `governed` deferrals; a Redis outage on our own MTA must not be able to
+ * spend that budget.
+ *
+ * Exported so the adapter's own suite can assert its case list covers every key
+ * — the drift this table exists to stop is a reason added here and nowhere else.
  */
-const MTA_DEFER_REASON_ORIGIN = {
+export const MTA_DEFER_REASON_ORIGIN = {
 	global_safety: 'governed',
 	global_probe: 'governed',
 	no_owned_ip: 'governed',
@@ -203,10 +207,10 @@ export async function resolveMtaRoutingDecision(
 		// timeout cases: a body we cannot fully validate is a body we did not
 		// understand, and an answer we did not understand is not an observation
 		// about this identity. A NEW DEFER REASON ON THE MTA SIDE THEREFORE LANDS
-		// HERE AND STOPS BEING COUNTED until it is added to `MTA_DEFER_REASON_ORIGIN`
-		// with an origin beside it — the
-		// two sides change together, which is the safe direction (a reason nobody
-		// vouched for cannot halt a cell) but never a silent one.
+		// HERE AND STOPS BEING COUNTED until it is added to
+		// `MTA_DEFER_REASON_ORIGIN` with an origin beside it — the two sides change
+		// together, which is the safe direction (a reason nobody vouched for cannot
+		// halt a cell) but never a silent one.
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} catch {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
