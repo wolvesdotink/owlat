@@ -516,76 +516,104 @@ describe('an unmanaged cell', () => {
  * WHAT THE ROW TELLS THE OPERATOR, AND WHICH DIAL IT NAMES (plan D3, D12).
  *
  * A `mixDecisions` message is read back for as long as the timeline keeps it, so
- * it has to be true about the deployment it was written on. Both controls are
- * expressed in SHARE, and on a cell no relay is carrying the share is not the
- * dial that ramps — the warm-up pace is. The two sentences are cut on the same
- * `hasSecondSender` union the phase doors word theirs on, so one deployment
- * cannot end up with two accounts of itself in one timeline.
+ * it has to be true about the cell it was written on. Both controls are expressed
+ * in SHARE and both sentences are cut on the TICK'S OWN actuator reading — the
+ * one that decides which dial the controller climbs — rather than on "is a relay
+ * configured", which answers a different question and answers it differently.
  */
-describe('the control sentences name the dial that actually moves', () => {
+describe('the control sentences name the dial the controller ramps', () => {
 	async function messageOf(t: Harness): Promise<string> {
 		const rows = await decisions(t);
 		return rows[0]?.message ?? '';
 	}
 
-	it('promises a held SHARE increase where a relay is carrying the cell', async () => {
-		const t = harness();
-		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
-		await connectRelay(t);
-
-		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
-
-		const message = await messageOf(t);
-		expect(message).toContain('40%');
-		expect(message).toContain('only the increase is held');
-		expect(message).not.toContain('warm-up pace');
-	});
-
-	it('names the warm-up pace where nothing is carrying the share', async () => {
-		const t = harness();
-		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
-
-		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
-
-		const message = await messageOf(t);
-		expect(message).toContain('warm-up pace');
-		// AND IT STILL SAYS THE ONE THING AN OPERATOR IS TRUSTING when they leave a
-		// pause in place: a retreat is never held, on either dial.
-		expect(message).toContain('retreat would still be applied');
-	});
-
-	it('does not promise a cap the pin cannot apply on a standalone cell', async () => {
-		const t = harness();
-		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
-
-		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
-
-		const message = await messageOf(t);
-		expect(message).toContain('bounds nothing the controller is ramping');
-		expect(message).not.toContain('will not climb past');
-	});
-
-	it('promises exactly that cap where a relay is carrying the cell', async () => {
-		const t = harness();
-		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
-		await connectRelay(t);
-
-		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
-
-		expect(await messageOf(t)).toContain('will not climb past that share');
-	});
-
-	// A REFERENCE ARM IS THE OTHER HALF OF THE UNION: a relay disconnected today
-	// can still be carrying this cell inside the evaluation window, and the tick
-	// binds the ladder on that reading. The door must not speak over it.
-	it('counts a measured reference arm as a second sender', async () => {
+	it('names the SHARE where a reference transport is carrying the cell', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
 
 		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
 
-		expect(await messageOf(t)).toContain('only the increase is held');
+		const message = await messageOf(t);
+		expect(message).toContain('40%');
+		expect(message).toContain('The share is the dial the controller is ramping here');
+		// AND THE PACE IS NAMED TOO, because the pause holds that dial as well: an
+		// arm on the row and a sentence that mentioned one dial would read as a
+		// promise that the other one is untouched.
+		expect(message).toContain('warm-up pace is held with it');
+		expect(message).toContain('only the increase is held');
+	});
+
+	it('names the warm-up pace where no reference transport is carrying it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const message = await messageOf(t);
+		expect(message).toContain('the warm-up pace is the dial the controller is ramping here');
+		expect(message).toContain('the share is held with it');
+		// AND IT STILL SAYS THE ONE THING AN OPERATOR IS TRUSTING when they leave a
+		// pause in place: a retreat is never held, on either dial.
+		expect(message).toContain('retreat would still be applied');
+	});
+
+	// A CONFIGURED RELAY IS NOT THE SAME FACT as a relay carrying this cell, and
+	// the tick cuts on the second one: with no outcomes on the reference arm it
+	// ramps this cell by pace, whatever `providerRoutes` holds. A sentence worded
+	// off the configuration would promise the share as the climbing dial on a cell
+	// the very next tick climbs by pace.
+	it('follows the tick, not the route table, when a relay carries nothing yet', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await connectRelay(t);
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		expect(await messageOf(t)).toContain(
+			'the warm-up pace is the dial the controller is ramping here'
+		);
+	});
+
+	it('promises exactly the cap where a reference transport carries the cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		expect(await messageOf(t)).toContain('will not climb past that share');
+	});
+
+	// THE STATE THE COPY EXISTS FOR, and it is an ordinary one: a managed cell with
+	// no reference transport, sitting BELOW its ceiling, held by both controls. The
+	// share is not standing still because the pin says so — the tick decides and
+	// writes a share for this cell like any other — so the pin sentence claims only
+	// what a pin can do, and points at the control that holds the dial that climbs.
+	it('says what each control binds on a paced cell below its ceiling', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 1 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const rows = await decisions(t);
+		const pin = rows.find((row) => row.reason === 'operator_pin')?.message ?? '';
+		expect(pin).toContain('The share will not climb past it');
+		expect(pin).toContain('no pin can bound it — pausing the cell is what holds it');
+		const pause = rows.find((row) => row.reason === 'operator_pause')?.message ?? '';
+		expect(pause).toContain('the share is held with it');
+	});
+
+	// UNPINNING SAYS THE SAME THING FROM THE OTHER SIDE: the cap is gone from the
+	// share, and it was never on the dial this cell climbs.
+	it('does not promise a climb the unpin did not release', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, operatorPinnedShare: 0.4 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: null });
+
+		expect(await messageOf(t)).toContain('was never bounded by the pin');
 	});
 });
 
