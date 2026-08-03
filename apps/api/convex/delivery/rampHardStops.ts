@@ -139,7 +139,10 @@ export async function readRampIncreaseBlock(
 	// means to the tick, or an operator could raise a share the controller is
 	// about to pull back. Both non-`none` readings block — an UNREADABLE expiry is
 	// a row nobody can explain, and a value we cannot read is not permission to
-	// climb.
+	// climb. That is also the one value an inline comparison gets WRONG rather
+	// than merely differently: a non-finite expiry compares false against the
+	// clock, so `now < frozenUntil` would call a corrupt row unfrozen and open
+	// this door.
 	const freeze = readActiveFreeze(args.perStream ?? {}, args.now, RAMP_MAX_FREEZE_MS);
 	if (freeze.kind !== 'none') return 'hard_stop_active';
 	return null;

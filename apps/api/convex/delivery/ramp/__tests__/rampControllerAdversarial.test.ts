@@ -649,11 +649,22 @@ describe('clock skew', () => {
 		expect(decision.freeze?.origin).toBe('dnsbl');
 	});
 
-	it('a non-finite stored freeze does not pin the cell forever', () => {
+	// A NON-FINITE EXPIRY IS THE SAME CORRUPT WRITE AS A CENTURY-OUT ONE, and it
+	// reads that way: every comparison against `NaN` is false, so a reader that
+	// called it "no freeze" would hand a row nobody can explain the clean row's
+	// branch — a step up. It holds for the tick that reads it and no longer: the
+	// decision imposes no freeze of its own, and the write path carries an
+	// unreadable expiry forward nowhere.
+	it('a non-finite stored freeze holds this tick and pins the cell no longer', () => {
 		const decision = nextShare(
-			controllerInput({ mix: mixState({ share: 0.3, frozenUntil: Number.NaN }) })
+			controllerInput({
+				mix: mixState({ share: 0.3, frozenUntil: Number.NaN }),
+				evaluation: cleanEvaluation(99),
+			})
 		);
-		expect(decision.reason).toBe('healthy');
+		expect(decision.reason).toBe('freeze_unreadable');
+		expect(decision.share).toBe(0.3);
+		expect(decision.freeze).toBeUndefined();
 	});
 });
 

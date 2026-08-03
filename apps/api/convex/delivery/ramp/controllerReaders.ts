@@ -129,12 +129,13 @@ export function isEvidenceUsable(
 /**
  * WHAT THE ROW'S FREEZE PAIR MEANS, in three states rather than a boolean.
  *
- *   - `none`       — nothing frozen, or a freeze that has expired.
+ *   - `none`       — NOTHING STORED, or a freeze that has expired.
  *   - `active`     — a freeze this controller could have stamped, with the rung
  *                    that stamped it when the row records one.
- *   - `unreadable` — a stored expiry no rung of this controller can produce
- *                    (further out than `maxFreezeMs`). A corrupt write or a
- *                    skewed clock, not a decision.
+ *   - `unreadable` — a stored expiry no rung of this controller can produce:
+ *                    further out than `maxFreezeMs`, or not a number at all
+ *                    (`NaN`, `±Infinity`). A corrupt write or a skewed clock,
+ *                    not a decision.
  *
  * THE THIRD STATE IS THE POINT. Collapsing `unreadable` into `active` lets a
  * fabricated expiry a century out suppress the circuit breaker's retreat for
@@ -187,6 +188,17 @@ export interface StoredFreeze {
  * `maxFreezeMs` is the longest freeze any rung can legitimately stamp, so an
  * expiry beyond it did not come from a decision and is reported `unreadable`
  * rather than believed.
+ *
+ * A NON-FINITE EXPIRY IS UNREADABLE, NOT ABSENT, and the distinction is the
+ * whole reason this reader exists. `NaN` and `±Infinity` are all storable in a
+ * float64 column, and every comparison against them is false — so a reader that
+ * folded them into `none` would answer "nothing is frozen here" about a row
+ * nobody can explain, and each caller would then take the branch it takes for a
+ * clean row: the tick would step the share up, and `readRampIncreaseBlock` would
+ * let a hand on the control do the same. A value we cannot read is not
+ * permission to climb; it is the same rule `isStoredShareReadable` applies one
+ * rung above, and it costs the cell one tick, because the write path drops an
+ * unreadable expiry rather than carrying it forward.
  */
 export function readActiveFreeze(
 	stored: StoredFreeze,
@@ -194,7 +206,8 @@ export function readActiveFreeze(
 	maxFreezeMs: number
 ): RampFreezeReading {
 	const until = stored.frozenUntil;
-	if (until === undefined || !Number.isFinite(until)) return { kind: 'none' };
+	if (until === undefined) return { kind: 'none' };
+	if (!Number.isFinite(until)) return { kind: 'unreadable' };
 	if (until > now + maxFreezeMs) return { kind: 'unreadable' };
 	if (now >= until) return { kind: 'none' };
 	return { kind: 'active', until, origin: stored.freezeReason };

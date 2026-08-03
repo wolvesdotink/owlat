@@ -598,6 +598,12 @@ describe('the control sentences name the dial that actually moves', () => {
  * that motivates it: a stored expiry no rung of this controller could have
  * stamped is a row nobody can explain, and a value we cannot read is not
  * permission to climb.
+ *
+ * ON EVERY FINITE EXPIRY the reader and a `now < frozenUntil` comparison agree by
+ * construction — an expiry beyond the longest cooldown is still ahead of the
+ * clock. The NON-FINITE one is where they part: `NaN` compares false against
+ * everything, so the comparison would call a corrupt row unfrozen and let a hand
+ * on the control climb through it. That case has its own fixture below.
  */
 describe('a hand on the control reads the freeze through the rungs', () => {
 	async function forceUp(t: Harness) {
@@ -615,6 +621,20 @@ describe('a hand on the control reads the freeze through the rungs', () => {
 			ownShare: 0.2,
 			frozenUntil: Date.now() + 10_000 * 24 * 60 * 60 * 1000,
 		});
+
+		const result = await forceUp(t);
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+	});
+
+	// THE ONE VALUE THE TWO READINGS DISAGREE ABOUT. A `now < frozenUntil`
+	// comparison reads `NaN` as "not frozen" and would let this force-advance
+	// through; the rungs' reader calls it unreadable, and the operator's door is
+	// refused for the same reason the next tick would refuse to step the cell up.
+	it('refuses an increase under a NON-FINITE expiry, which no comparison can read', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, frozenUntil: Number.NaN });
 
 		const result = await forceUp(t);
 		expect(result.applied).toBe(false);
