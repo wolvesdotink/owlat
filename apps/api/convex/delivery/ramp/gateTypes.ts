@@ -160,7 +160,9 @@ interface RampGateMeasurementBase {
 	 * two, and the two are named by their `gate`/`reason` rather than left for a
 	 * renderer to guess:
 	 *
-	 *  - gate `seed_placement` counts SEED MAILBOXES;
+	 *  - gate `seed_placement` counts SEED PROBES — one shadow copy into one seed
+	 *    mailbox for one send, so the same mailbox contributes once per send in
+	 *    the window and the count is NOT a mailbox count;
 	 *  - reason `block_message_detected` counts CLASSIFIED SMTP RESPONSES — the
 	 *    block-message hard stop measures the share of a receiver's answers that
 	 *    said "we are refusing this sender", which has nothing to do with how many

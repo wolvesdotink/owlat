@@ -146,9 +146,19 @@ export type SeedReferenceStatus =
 
 /**
  * The per-provider roll-up. Deliberately carries NO rate, percentage, or
- * per-placement count: `sampleSize` is the number of MAILBOXES observed (the
- * honesty input for `insufficient_data`), not a placement measurement. The UI
- * and the controller both read `status` (and `reference`).
+ * per-placement count: `sampleSize` is the number of OBSERVATIONS (the honesty
+ * input for `insufficient_data`), not a placement measurement. The UI and the
+ * controller both read `status` (and `reference`).
+ *
+ * AN OBSERVATION IS NOT A MAILBOX, and the distinction is load-bearing wherever
+ * the number is rendered. On the shipped source an observation is one PROBE:
+ * `seedShadowCopy.ts` writes one shadow copy per connected seed mailbox per
+ * send, so eight seed mailboxes across ten campaign sends in the window is a
+ * sample of eighty. Both entry points count that way — `readArm` counts
+ * observations and `readArmCounts` sums per-placement probe counts — and a
+ * commercial panel reports per mailbox per report, which `placementAdapter.ts`
+ * expands into the same observations. The unit is always what was OBSERVED,
+ * never what is connected.
  *
  * `status`, `sampleSize` and `anyMissing` all describe the OWN arm. Pooling the
  * two arms would let reference-arm probes landing fine dilute an own-arm
