@@ -8,10 +8,11 @@
  * THE ONE RULE THIS MODULE EXISTS TO ENFORCE: a rate is never computed here.
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
  * ONE derivation seam (ADR-0042 / plan D5) — so the controller's gates and this
- * screen cannot disagree about a number. This module groups buckets into days,
- * hands each day's rows to that summarizer, and labels the result. If you find
- * yourself typing `/` next to a counter in this file, you are writing the bug
- * D5 exists to prevent.
+ * screen cannot disagree about how a number is DERIVED from a set of rows. Which
+ * rows each hands it is a separate question, and there they do differ (#510).
+ * This module groups buckets into days, hands each day's rows to that
+ * summarizer, and labels the result. If you find yourself typing `/` next to a
+ * counter in this file, you are writing the bug D5 exists to prevent.
  *
  * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
  * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest
@@ -56,7 +57,14 @@ export const DASHBOARD_MAX_TREND_DAYS = 30;
 
 // ============ WINDOW ============
 
-/** The evaluation window — the ramp's own weekly cadence, and NOT negotiable. */
+/**
+ * The span this screen reports over, and NOT caller-negotiable.
+ *
+ * Deliberately NOT the controller's cadence, which is one day
+ * (`RAMP_AIMD.evaluationWindowMs`): the two readers grade the own arm over
+ * different spans and can therefore reach different verdicts on one cell, which
+ * is #510 and not something this constant closes.
+ */
 export const DASHBOARD_WINDOW_DAYS = 7;
 
 /**

@@ -11,15 +11,28 @@
  * needs (the evaluation window, the trailing baseline, the daily trend), and
  * every number derived from those rows by the ONE summarizer (ADR-0042 / D5).
  *
- * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY. They run the same
- * arithmetic over the same rows, but NOT over the same span: this screen's
+ * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY. One RULE over two
+ * SPANS. The rule is shared and cannot differ: which evaluator grades the cell,
+ * which constants it grades on and which complaint line applies are read off one
+ * `resolveRampDegradation` fold on both sides. The spans are not: this screen's
  * evaluation window is SEVEN days (`DASHBOARD_WINDOW_DAYS`, floored to UTC days)
  * and the controller's is ONE (`RAMP_AIMD.evaluationWindowMs`, the cadence its
- * cron ticks at). A rate here is therefore a rate over a wider span than the
- * cron acted on, and expecting the two to match digit for digit would be
- * expecting a week to equal a day. What they must never differ on is everything
- * ABOVE the arithmetic: which evaluator graded the cell, which constants it
- * graded on, which gate decided, and which way it went.
+ * cron ticks at), and the trailing baseline is `30d..7d` on both sides but
+ * floored to UTC days here and anchored on the tick's clock there.
+ *
+ * WHICH LEAVES THE VERDICT AND THE DECIDING GATE ABLE TO DIFFER, and this
+ * module does not promise otherwise. A hard-bounce spike four days old is inside
+ * this screen's window and outside the controller's, so the screen renders a red
+ * gate-1 fail on a cell the ramp is holding for want of data. The screen is the
+ * WIDER reader and therefore the more pessimistic one on a stale spike — and the
+ * more forgiving one on a fresh spike that six clean days dilute. Tracked as
+ * #510: closing it is a decision about which span this screen REPORTS, not a
+ * wiring fix.
+ *
+ * AND "THE SAME CONSTANTS" IS NOT "THE SAME INPUTS". `ownTrailingBaseline` is an
+ * input, built here over `BASELINE_WIDTH_DAYS` of UTC days and there over
+ * `30d..7d` of the tick's clock — the same rule, again over spans that differ by
+ * up to a day at each edge.
  *
  * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
  * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
@@ -213,10 +226,11 @@ export interface DeliverabilityDashboard {
 // the caller's own organization — no credentials, no recipient identities, and
 // no cross-tenant reach (org id comes from the session, not from args).
 export const getDeliverabilityDashboard = authedQuery({
-	// No arguments AT ALL, on purpose. The evaluation window is pinned to the
-	// ramp's 7-day cadence by `dashboardWindow` so that the gate verdicts on this
-	// screen are the verdicts the controller would reach; a caller-chosen window
-	// would silently change what the gates mean.
+	// No arguments AT ALL, on purpose. `dashboardWindow` fixes the evaluation
+	// window at `DASHBOARD_WINDOW_DAYS`, which is NOT the controller's cadence —
+	// that is one day, and the two readers can reach different verdicts because of
+	// it (see the module note and #510). A caller-chosen window on top of that
+	// would silently change what every gate verdict on this screen means.
 	args: {},
 	handler: async (ctx): Promise<DeliverabilityDashboard> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
