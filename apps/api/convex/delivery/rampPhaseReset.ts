@@ -22,6 +22,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { adminMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
+import { configuredRelayKinds } from './alignmentPreflight';
 import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
 import { bindsPhaseLadder } from './ramp/degradation';
 import { loadCellDegradation } from './rampIntegrationPresence';
@@ -39,9 +40,9 @@ import { refusedControl, resolveControlTarget, type RampControlResult } from './
  * ceiling would invent a rung the promotion path can never reach and leave the
  * cell somewhere the phase ladder has no name for. Resetting DOWN also brings
  * the share back under the new ceiling immediately — leaving a cell above a
- * ceiling it was just given would be a ceiling in name only — but only on a cell
- * the ladder BINDS, which is the fold's answer and not this mutation's (see
- * `bindsPhaseLadder`). A standalone cell keeps its share and takes the rung.
+ * ceiling it was just given would be a ceiling in name only — but only where
+ * there is a SECOND SENDER to hold that share back for. A standalone deployment
+ * keeps its share and takes the rung.
  *
  * A RESET RESTARTS THE EVIDENCE CLOCKS ON BOTH PATHS — the clean streak, the
  * rung's dwell anchor and the green (graduation) clock. All three measure the
@@ -87,27 +88,42 @@ export const resetCellPhase = adminMutation({
 		const currentCeiling = normalizePhaseCeiling(target.row.phaseCeiling);
 		if (args.phaseCeiling > currentCeiling)
 			return refusedControl('phase_increase_requires_promotion');
-		// THE SHARE IS CUT ONLY WHERE THE LADDER ACTUALLY BINDS IT (plan D3), and
-		// the fold answers that here exactly as it answers it on every tick. On a
-		// standalone cell there is no second sender: cutting an enrolled cell from
-		// 1.0 to the 25% rung would move three quarters of its mail toward a relay
-		// that does not exist, flip `isFallbackActive`, revoke a graduation pin and
-		// re-randomise a cohort with one arm in it — the move `phaseLadderBounds`
-		// was added to prevent, arrived at from the operator's door instead.
+		// THE SHARE IS CUT ONLY WHERE THERE IS A SECOND SENDER TO HOLD IT BACK FOR
+		// (plan D3). Cutting a standalone cell from 1.0 to the 25% rung would move
+		// three quarters of its mail toward a relay that does not exist, flip
+		// `isFallbackActive`, revoke a graduation pin and re-randomise a cohort with
+		// one arm in it — the move `phaseLadderBounds` was added to prevent, arrived
+		// at from the operator's door instead.
 		//
-		// THE RUNG STILL GOES DOWN, and so do the evidence clocks. The rung is
-		// stored state the promotion gate makes the cell re-earn, and restarting
-		// the measurement is the reason this control exists; both are meaningful on
-		// a cell whose share nothing is bounding today, and the rung binds again
-		// the tick a second sender is observed.
-		const bindsLadder = bindsPhaseLadder(
-			await loadCellDegradation(ctx, {
-				organizationId: target.organizationId,
-				cell: target.cell,
-				now,
-			})
-		);
-		const share = bindsLadder ? Math.min(target.share, args.phaseCeiling) : target.share;
+		// AND "IS THERE ONE" IS A CONFIGURATION QUESTION AT THIS DOOR, asked of the
+		// same reader the enrolment door asks (`configuredRelayKinds`). Asking the
+		// tick's MEASUREMENT alone denied the relay for exactly the cell this
+		// control exists for: a graduated cell sits at full share and pinned, so it
+		// sends nothing through the relay by construction, so it has no reference
+		// arm — and "start it over" could never start it over. A configured relay is
+		// one the cut can move mail to, and the cut is what creates the traffic the
+		// tick then measures (the enrolment fork's own convergence, D14 x D3).
+		//
+		// THE MEASURED ARM IS THE OTHER HALF OF THE UNION, not a leftover: a relay
+		// disconnected in the last day can still be carrying this cell inside the
+		// evaluation window, and the tick binds the ladder on that reading. The
+		// operator's door must not hold a share the controller is already bounding.
+		//
+		// THE RUNG STILL GOES DOWN either way, and so do the evidence clocks. The
+		// rung is stored state the promotion gate makes the cell re-earn, and
+		// restarting the measurement is the reason this control exists; both are
+		// meaningful on a cell whose share nothing is bounding today, and the rung
+		// binds again the tick a second sender appears.
+		const hasSecondSender =
+			(await configuredRelayKinds(ctx)).length > 0 ||
+			bindsPhaseLadder(
+				await loadCellDegradation(ctx, {
+					organizationId: target.organizationId,
+					cell: target.cell,
+					now,
+				})
+			);
+		const share = hasSecondSender ? Math.min(target.share, args.phaseCeiling) : target.share;
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
 			// THE DWELL CLOCK RESTARTS HERE. It measures time served AT A RUNG, and a
@@ -126,7 +142,7 @@ export const resetCellPhase = adminMutation({
 			// WHAT FOLLOWS THE SHARE MOVES ONLY WHERE THE SHARE MOVED: the boolean
 			// view, the mix generation and the graduation pin all describe a traffic
 			// split this reset did not touch on a standalone cell.
-			...(bindsLadder
+			...(hasSecondSender
 				? {
 						ownShare: share,
 						isFallbackActive: isFallbackActiveForShare(share),
@@ -147,15 +163,15 @@ export const resetCellPhase = adminMutation({
 			reason: 'operator_phase_reset',
 			fromShare: target.share,
 			toShare: share,
-			message: bindsLadder
+			message: hasSecondSender
 				? `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`
-				: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero. There is no second sender to hold a share back for, so the share stays at ${Math.round(share * 100)}% and the rung applies again if a relay ever carries this cell.`,
+				: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero. No relay is connected and none has carried this cell, so there is no second sender to hold a share back for: the share stays at ${Math.round(share * 100)}% and the rung applies again once one is.`,
 			detail: {
 				phaseCeiling: args.phaseCeiling,
 				// The rung was recorded but nothing was cut — the one fact this row
 				// would otherwise be read as claiming.
-				...(bindsLadder ? {} : { shareHeld: true }),
-				...(bindsLadder && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
+				...(hasSecondSender ? {} : { shareHeld: true }),
+				...(hasSecondSender && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
 					? { pinChange: 'revoked' }
 					: {}),
 			},

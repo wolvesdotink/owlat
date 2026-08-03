@@ -23,11 +23,18 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
-import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
+import { configuredRelayKinds } from '../alignmentPreflight';
+import {
+	connectRelay,
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 
 const ORG = 'org_ramp_phase_moves';
 const HOUR_MS = 60 * 60 * 1000;
@@ -54,8 +61,16 @@ const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
 function harness(): Harness {
 	session.organizationId = ORG;
 	session.isAdmin = true;
+	// The relay, where a test wants one, is expressed through `providerRoutes`:
+	// the single-transport env is the OWN MTA here, so no ambient `EMAIL_PROVIDER`
+	// can hand a "standalone" fixture a second sender it never asked for.
+	vi.stubEnv('EMAIL_PROVIDER', 'mta');
 	return convexTest(schema, modules);
 }
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 async function auditActions(t: Harness): Promise<string[]> {
 	const rows = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
@@ -64,6 +79,16 @@ async function auditActions(t: Harness): Promise<string[]> {
 
 async function decisions(t: Harness) {
 	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+}
+
+/**
+ * THE CONFIGURATION HALF of "is there a second sender", read through the reader
+ * the reset door itself uses. A standalone premise that is never stated is a
+ * premise a stray `providerRoutes` row or an ambient `EMAIL_PROVIDER` can
+ * silently take away, leaving a suite named "standalone" asserting nothing.
+ */
+async function relayKinds(t: Harness): Promise<string[]> {
+	return await t.run(async (ctx) => await configuredRelayKinds(ctx));
 }
 
 describe('reset-to-phase is downward-only', () => {
@@ -136,14 +161,15 @@ describe('reset-to-phase is downward-only', () => {
 /**
  * A RUNG BOUNDS THE SHARE DIAL, SO IT BOUNDS ONLY A CELL THAT HAS ONE (plan D3).
  *
- * The controller re-reads that every tick (`phaseLadderBounds` drops both phase
- * bounds on a pace-actuated cell), and the operator's door has to read it the
- * same way: on a standalone deployment an enrolled cell sits at full share, and
- * the one enabled rung button would otherwise cut three quarters of its mail
- * toward a relay that does not exist — flipping the derived boolean, revoking a
- * graduation pin and spending a mix generation on a cohort with one arm in it.
+ * STANDALONE MEANS NO SECOND SENDER AT ALL, and both halves of that are stated
+ * here: no `providerRoutes` relay and no `EMAIL_PROVIDER` naming one (asserted
+ * through the door's own reader), and no reference-arm traffic. An enrolled cell
+ * then sits at full share, and the one enabled rung button would otherwise cut
+ * three quarters of its mail toward a relay that does not exist — flipping the
+ * derived boolean, revoking a graduation pin and spending a mix generation on a
+ * cohort with one arm in it.
  */
-describe('a reset where the phase ladder does not bind', () => {
+describe('a reset where there is no second sender', () => {
 	it('takes the lower rung without touching a standalone cell’s share', async () => {
 		const t = harness();
 		const graduatedAt = Date.now() - 1_000;
@@ -155,6 +181,9 @@ describe('a reset where the phase ladder does not bind', () => {
 			mixVersion: 2,
 			graduatedAt,
 		});
+		// THE PREMISE, STATED. Without it this asserts nothing about standalone-ness:
+		// a suite with a relay row would take the same branch for a different reason.
+		expect(await relayKinds(t)).toEqual([]);
 
 		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
 			...CELL,
@@ -220,7 +249,7 @@ describe('a reset where the phase ladder does not bind', () => {
 		expect(row?.graduatedAt).toBe(graduatedAt);
 	});
 
-	it('cuts the same cell to the rung once a relay arm carries it', async () => {
+	it('cuts the same cell to the rung once a relay arm carries it, with none configured', async () => {
 		const t = harness();
 		await seedRampCell(t, {
 			organizationId: ORG,
@@ -230,8 +259,11 @@ describe('a reset where the phase ladder does not bind', () => {
 			greenSince: Date.now() - 13 * 24 * HOUR_MS,
 			graduatedAt: Date.now() - 1_000,
 		});
-		// The fold reads MEASUREMENT, not configuration: reference-arm outcome rows
-		// for this cell inside the evaluation window are what "has a relay" means.
+		// THE MEASURED HALF OF THE UNION, on its own: a relay disconnected inside the
+		// evaluation window leaves no configuration behind but is still carrying this
+		// cell, and the tick binds the ladder on that reading. The door must not hold
+		// a share the controller is already bounding.
+		expect(await relayKinds(t)).toEqual([]);
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
 
 		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
@@ -248,6 +280,55 @@ describe('a reset where the phase ladder does not bind', () => {
 		// The clocks restart on this path for the same reason they do on the other.
 		expect(row?.greenSince).toBeUndefined();
 		expect((await decisions(t))[0]?.direction).toBe('decrease');
+	});
+});
+
+/**
+ * A CONFIGURED RELAY IS A SECOND SENDER EVEN WITH NOTHING FLOWING THROUGH IT
+ * (plan D14 x D3) — and this is the cell the control exists for.
+ *
+ * A GRADUATED cell sits at full share with the relay on standby, so by
+ * construction it produces no reference-arm outcomes at all. A door that asked
+ * only "has this cell sent through a relay in the last day?" therefore answered
+ * "there is no second sender" for every fully-ramped cell in every ESP
+ * deployment: the share stayed at 100%, the graduation pin survived, and
+ * `rampEnrollment`'s "start it over" pointed at a control that could not.
+ */
+describe('a reset on a deployment with a relay configured', () => {
+	it('cuts a graduated cell to the rung though nothing has flowed through the relay', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			mixVersion: 2,
+			graduatedAt: Date.now() - 1_000,
+		});
+		await connectRelay(t);
+		// The premise both ways round: a relay IS configured, and this cell has no
+		// reference-arm rows — the steady state of a fully-ramped cell, not a window.
+		expect(await relayKinds(t)).toEqual(['ses']);
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		expect(result).toEqual({ applied: true, share: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.isFallbackActive).toBe(true);
+		// The share moved, so what follows it moves: a new cohort generation, and a
+		// pin that may not outlive the share that earned it.
+		expect(row?.mixVersion).toBe(3);
+		expect(row?.graduatedAt).toBeUndefined();
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]?.direction).toBe('decrease');
+		// AND THE SENTENCE MAY NOT DENY THE RELAY. The audit row is the permanent
+		// record of what the operator was told about a deployment that has one.
+		expect(recorded[0]?.message).not.toMatch(/no second sender|no relay is connected/i);
 	});
 });
 

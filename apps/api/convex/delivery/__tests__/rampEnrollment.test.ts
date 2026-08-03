@@ -34,7 +34,13 @@ import {
 	loadReferenceArmPresence,
 	withReferenceArm,
 } from '../rampIntegrationPresence';
-import { readManagedCell, seedArmOutcomes, seedRampCell, type Harness } from './rampCronFixtures';
+import {
+	connectRelay,
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
 
 const ORG = 'org_ramp_enrollment';
 const OTHER_ORG = 'org_ramp_enrollment_other';
@@ -66,32 +72,6 @@ function harness(): Harness {
 	session.organizationId = ORG;
 	session.isAdmin = true;
 	return convexTest(schema, modules);
-}
-
-/**
- * A configured relay: the ESP path's precondition, read from `providerRoutes`.
- *
- * The default strategy is the SHIPPED one, deliberately. `adaptive_mix` is the
- * only strategy the router splits by the cell's share under, and nothing in
- * production selects it — so a relay connected on `priority_failover` is what a
- * real deployment looks like at the moment of enrolment.
- */
-async function connectRelay(
-	t: Harness,
-	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover'
-): Promise<void> {
-	await t.run(async (ctx) => {
-		await ctx.db.insert('providerRoutes', {
-			messageType: 'campaign' as const,
-			strategy,
-			providers: [
-				{ providerType: 'mta', isEnabled: true },
-				{ providerType: 'ses', isEnabled: true },
-			],
-			createdAt: Date.now(),
-			updatedAt: Date.now(),
-		});
-	});
 }
 
 /**

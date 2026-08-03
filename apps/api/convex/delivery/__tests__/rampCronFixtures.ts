@@ -199,6 +199,38 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 }
 
 /**
+ * A CONFIGURED RELAY — the second sender, as the operator's doors read it.
+ *
+ * `configuredRelayKinds` answers off `providerRoutes` (plus the single-transport
+ * `EMAIL_PROVIDER` env), and BOTH doors ask it: enrolment to choose the opening
+ * share, the phase reset to decide whether a rung cuts one. A suite that means
+ * to exercise a deployment with a relay has to say so with a row, and the two
+ * suites that need it must not seed two different shapes of one.
+ *
+ * The default strategy is the SHIPPED one, deliberately. `adaptive_mix` is the
+ * only strategy the router splits by the cell's share under, and nothing in
+ * production selects it — so a relay connected on `priority_failover` is what a
+ * real deployment looks like at the moment of enrolment.
+ */
+export async function connectRelay(
+	t: Harness,
+	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover'
+): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'campaign' as const,
+			strategy,
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
+}
+
+/**
  * THE MANAGED CELL'S OUTCOME ROWS for one arm, in today's UTC bucket.
  *
  * WHY EVERY CRON SUITE NEEDS THIS NOW. The substitution table (P3-8) chooses the
