@@ -71,8 +71,10 @@ export interface SeedProbeEvidence {
 /**
  * One probe row as evidence — or `null` when the row is not evidence at all.
  *
- * THE ONE PLACE THE LEDGER'S READING RULES LIVE, because both consumers apply
- * exactly these and a second copy is a second answer:
+ * THE ONE PLACE THE READING RULES FOR A COUNTED SWEEP LIVE. Both summarizers —
+ * the per-provider roll-up in `analytics/seedPlacement.ts` and the per-cell
+ * sweeps below — apply exactly these, and a second copy is a second answer to
+ * "how did the probes land":
  *
  *   - an UNCLASSIFIED probe (no `placement`) is not evidence in either
  *     direction. It has been mailed, or is waiting to be, and the poller has not
@@ -85,6 +87,17 @@ export interface SeedProbeEvidence {
  *     not a legacy row it is bridging. `sentAt` can only be OLDER, so it can
  *     only make a sweep look stale, never fresh, which is the safe direction for
  *     every freshness rule downstream.
+ *
+ * NOT THE ONLY READER OF THE TABLE, and deliberately not its rule. `delivery/
+ * rampPromotionEvidence.ts`'s `latestSeedProbePassAt` walks the same rows with
+ * its own inline test because it asks a different question — WHEN did a probe
+ * last land clean, an instant used as promotion evidence, rather than how a
+ * counted sweep landed. It therefore requires a real `classifiedAt` and takes no
+ * `sentAt` fallback: an unclassified-but-sent probe is not a moment anything was
+ * observed, whereas here it only makes a window look older than it is. Nothing
+ * diverges today, and the two must not be collapsed on the assumption that they
+ * agree — they answer different questions and would answer them differently if
+ * the writer ever stopped setting `classifiedAt` alongside `placement`.
  */
 export function seedProbeEvidence(probe: Doc<'seedPlacementProbes'>): SeedProbeEvidence | null {
 	const placement = probe.placement;

@@ -8,7 +8,7 @@
  * copy into each of them (`delivery/seedShadowCopy.ts`); the shipped IMAP
  * client walks the mailbox, finds the `X-Owlat-Seed-Probe` header and reports
  * which FOLDER the probe landed in. This module is the Convex half: it owns
- * the probe ledger and the roll-up that feeds the controller.
+ * the probe ledger and the per-provider roll-up read out of it.
  *
  * Every decision lives in the pure core (`@owlat/shared/seedPlacement`): this
  * file loads, calls, and writes (D15).
@@ -22,12 +22,18 @@
  * controller HOLDS, and nothing errors, warns, or nags.
  *
  * WHAT THIS MODULE OWNS, AND WHAT IT HANDS ON. It owns the probe ledger, the
- * per-provider roll-up, gate 5's verdict, and `getSeedPlacementSummary` for a
- * screen to read. The seed ACCOUNTS themselves — the projection and the
- * rotation nudge — are the domain sibling `analytics/seedAccounts.ts`, and the
- * two ledger sweeps are `analytics/seedProbeLedger.ts`. The reduction of the
- * same rows to the ramp controller's PER-CELL counted sweeps is
- * `analytics/seedPlacementSweeps.ts`. It does NOT own the CELL
+ * per-provider roll-up, the windowed READ that feeds the ramp controller's
+ * per-cell sweeps, and `getSeedPlacementSummary` for a screen to read.
+ *
+ * GATE 5'S VERDICT IS NOT HERE. `delivery/ramp/seedGate.ts` decides it, over the
+ * per-cell sweeps `analytics/seedPlacementSweeps.ts` reduces from these same
+ * rows; that is the path the controller runs on every tick. `getGateVerdict`
+ * below states the same rule over the PROVIDER roll-up instead and has no
+ * production caller — a parallel route to one rule, tracked in issue #504.
+ *
+ * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
+ * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
+ * `analytics/seedProbeLedger.ts`. It does NOT own the CELL
  * DASHBOARD that renders the status or the confidence line beside it — that is
  * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
  * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
