@@ -232,6 +232,12 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 				// comparison cannot be built on — most often a clean window with nothing
 				// in the numerator at all.
 				return 'The window this check compares against is too clean to compare with — there is no relative verdict to give yet.';
+			case 'own_deferral_telemetry_absent':
+				// NOT "no deferrals" — that is the reading this hold exists to refuse.
+				// The window is ample and clean; what is missing is anything recording
+				// deferrals for this cell, and a zero from an instrument nobody switched
+				// on must not be rendered as a healthy one.
+				return 'No deferrals have been recorded for this cell, so there is nothing to measure yet — a rate of zero here would not mean receivers accepted everything.';
 			case 'evidence_absent':
 				return 'Nothing has been measured for this cell yet.';
 			default: {

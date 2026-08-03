@@ -397,6 +397,34 @@ describe('the promotion-evidence reader', () => {
 		expect((await evidence(t)).worstCellDeferralRate).toBeCloseTo(0.5, 10);
 	});
 
+	it('reads a grid nothing records deferrals for as UNMEASURED, not as a clean 0%', async () => {
+		const t = convexTest(schema, modules);
+		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		// Ample traffic through two cells, and not one deferral counted anywhere:
+		// the shape of every deployment before the counter had a writer. Folding it
+		// to `0` satisfied "deferral rate under threshold in EVERY cell" on the most
+		// expensive rung of the ladder, off a measurement nobody took.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 5000,
+			destinationProvider: 'yahoo',
+		});
+		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
+
+		// One recorded deferral anywhere in the grid proves the counter has a
+		// writer here, and the spotless cells beside it become real readings.
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 100,
+			destinationProvider: 'apple',
+			counters: { delivered: 99, deferred: 1 },
+		});
+		expect((await evidence(t)).worstCellDeferralRate).toBeCloseTo(0.01, 10);
+	});
+
 	it('reads a classified seed probe for THIS cell’s provider only', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * MS_PER_DAY);

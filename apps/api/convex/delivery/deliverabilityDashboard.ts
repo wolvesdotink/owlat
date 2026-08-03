@@ -37,6 +37,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { hasSeedAccounts } from '../analytics/seedAccounts';
 import {
+	hasRecordedDeferrals,
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
@@ -215,6 +216,12 @@ export const getDeliverabilityDashboard = authedQuery({
 				reference,
 				ownSeeds: null,
 				referenceSeeds: null,
+				// THE SAME OBSERVATION THE CONTROLLER MAKES, over the same span of the
+				// same rows (`hasRecordedDeferrals`). Gate 2 holds on a cell whose
+				// `deferred` counter has no writer instead of reporting a 0% pass, and a
+				// screen that skipped this would render "Healthy" beside a verdict the
+				// controller reached as "Not enough data yet".
+				hasDeferralTelemetry: hasRecordedDeferrals(ownBuckets),
 				engagement: engagementGateFor({ cell, own, reference, ownBuckets, window, now }),
 				previousCleanStreak: routeState?.cleanStreak ?? 0,
 				now,

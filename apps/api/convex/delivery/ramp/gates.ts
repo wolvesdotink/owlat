@@ -89,12 +89,41 @@ export function evaluateComplaintGate(input: RampGateEvaluationInput): RampGateR
 // ============================== the other gates =============================
 
 /**
+ * IS THE DEFERRAL COUNTER BEING WRITTEN FOR THIS CELL AT ALL?
+ *
+ * A window that recorded deferrals is its own witness — the instrument
+ * demonstrably ran — so the caller's observation (`hasDeferralTelemetry`,
+ * derived by the reader from the cell's own recent history) is consulted only
+ * for the zero case, and nobody has to supply a flag to be believed about a rate
+ * that is visible in the summary.
+ */
+function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
+	return safeOutcomeCount(input.own.deferred) > 0 || input.hasDeferralTelemetry === true;
+}
+
+/**
  * Gate 2 — DEFERRAL/4xx: own arm <= 10%; >= 25% is an IMMEDIATE HALT.
  *
  * Own arm only: a 4xx is the destination throttling THIS sending identity, and
  * the relay's deferral rate says nothing about ours. The halt is a distinct
  * status because the controller treats it as a hard stop rather than as an
  * ordinary multiplicative decrease.
+ *
+ * A ZERO NUMERATOR IS NOT AUTOMATICALLY A CLEAN WINDOW, and this gate is the
+ * only one that has to say so. Every other counter it reads is written by a
+ * delivery path that cannot be switched off; `deferred` is only PARTLY
+ * instrumented — `delivery/deferralOutcome.ts` records the last-mile router's
+ * deferrals, while a remote 4xx after MTA intake acceptance reaches Convex only
+ * as a per-IP warming aggregate carrying no (cell, arm) at all. So an
+ * uninstrumented cell reports exactly the `0 / sent` a spotless one does, and
+ * reading it as a verdict is a `pass` plus `increaseEvidence` off a measurement
+ * nobody took — a gate that could only ever agree with going faster.
+ *
+ * The empty numerator is therefore checked against the instrument BEFORE the
+ * ceiling is applied, and the hold is reported as its own reason (plan D12: a
+ * hold names the thing to fix, and "not enough sends" would name the wrong one).
+ * It costs a healthy cell nothing that matters — a hold neither raises nor lowers
+ * a share (plan D10) — and ONE recorded deferral makes the cell decidable again.
  */
 export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateResult {
 	const { thresholds, sampleFloors } = input.config;
@@ -119,6 +148,15 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 		return insufficient(
 			'deferral',
 			evidenceReason(evidence, 'own'),
+			{ ...shape, ownRate },
+			DIRECT_MEASUREMENT
+		);
+	}
+
+	if (!deferralTelemetryObserved(input)) {
+		return insufficient(
+			'deferral',
+			'own_deferral_telemetry_absent',
 			{ ...shape, ownRate },
 			DIRECT_MEASUREMENT
 		);

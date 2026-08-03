@@ -22,7 +22,7 @@ import {
 	TRANSPORT_OUTCOME_SHARD_COUNT,
 	type TransportOutcomeBucket,
 } from '../transportOutcomes';
-import { summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
+import { hasRecordedDeferrals, summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import {
@@ -215,6 +215,29 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 			DAY - DAY_MS
 		);
 		expect(summarizeTransportOutcomeBuckets([]).lastRecordedAt).toBeNull();
+	});
+
+	it('separates a zero deferral rate from an unwritten deferral counter', () => {
+		// The two produce the identical `deferralRate` of 0, and gate 2 may only act
+		// on the first — so the instrument is a separate question from the rate, and
+		// it is answered over the WHOLE span handed in rather than a window inside it.
+		const spotless = [asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 10_000 }))];
+		expect(summarizeTransportOutcomeBuckets(spotless).deferralRate).toBe(0);
+		expect(hasRecordedDeferrals(spotless)).toBe(false);
+
+		const instrumented = [
+			...spotless,
+			asBucket(bucketRow({ periodStart: DAY - 20 * DAY_MS, shardKey: 1, sent: 5, deferred: 1 })),
+		];
+		expect(hasRecordedDeferrals(instrumented)).toBe(true);
+		// A poisoned counter is not a witness: `safeOutcomeCount` refuses it, exactly
+		// as the summation does.
+		expect(
+			hasRecordedDeferrals([
+				asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 10, deferred: Number.NaN })),
+			])
+		).toBe(false);
+		expect(hasRecordedDeferrals([])).toBe(false);
 	});
 
 	it('is unaffected by the order the shards arrive in', () => {

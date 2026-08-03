@@ -24,6 +24,7 @@ import type { Doc } from '../_generated/dataModel';
 import { MS_PER_DAY } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
+import { hasRecordedDeferrals } from '../analytics/transportOutcomeSummary';
 import { complaintBandSeverity } from './sndsFeed';
 import type { RampReadCtx } from './rampReadCtx';
 import { RAMP_AIMD } from './ramp/controllerConfig';
@@ -240,7 +241,21 @@ async function dnsblDays(
 	return [...byDay.entries()].map(([dayStart, clean]) => ({ dayStart, clean }));
 }
 
-/** The worst own-arm deferral rate across EVERY cell in the grid. */
+/**
+ * The worst own-arm deferral rate across EVERY cell in the grid, or `null` when
+ * NOTHING IN THE GRID RECORDS DEFERRALS.
+ *
+ * The null is the point. `deferred` is only partly instrumented (see
+ * `delivery/deferralOutcome.ts`), and a deployment whose counter has no writer
+ * folds to a worst rate of `0` — under every ceiling, `met`, and the plan's
+ * "deferral rate under threshold in EVERY cell" condition satisfied by a
+ * measurement nobody took, on the rung that costs the most to get wrong. So the
+ * fold carries its own witness: one recorded deferral ANYWHERE in the grid proves
+ * the counter has a writer here, and the zeros beside it are then real readings.
+ * With no witness at all the evidence is unobserved, which the pure rule reports
+ * as `unknown` rather than as a pass — the same contract every other reader in
+ * this module keeps.
+ */
 async function worstCellDeferralRate(
 	ctx: RampReadCtx,
 	args: { organizationId: string; now: number }
@@ -259,6 +274,11 @@ async function worstCellDeferralRate(
 			})
 		)
 	);
+
+	// The witness, through the ONE predicate the controller and the dashboard also
+	// ask — a fourth spelling of "has anything written this counter" is a fourth
+	// chance for the promotion rule to disagree with the gate about the same rows.
+	if (!hasRecordedDeferrals(summaries)) return null;
 
 	let worst: number | null = null;
 	for (const summary of summaries) {

@@ -25,10 +25,15 @@ export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
 /**
  * The outcome vocabulary. One event bumps one general counter.
  *
- * `unsubscribed` is the only one that is NOT a Send lifecycle transition — it is
- * a recipient action on a contact-keyed public endpoint, joined back to a send
- * by `delivery/unsubscribeOutcome.ts`. It is in this vocabulary because the
- * standalone ramp's gate 3 is derived from its rate.
+ * TWO of them are NOT Send lifecycle transitions, and both are in this
+ * vocabulary because a ramp gate is derived from their rate:
+ *
+ *   - `unsubscribed` is a recipient action on a contact-keyed public endpoint,
+ *     joined back to a send by `delivery/unsubscribeOutcome.ts` (gate 3's
+ *     standalone proxy);
+ *   - `deferred` leaves the send `queued` rather than moving it anywhere, so it
+ *     is recorded by `delivery/deferralOutcome.ts` off the completion callback
+ *     (gate 2, and the phase-promotion rule's every-cell condition).
  */
 export type TransportOutcomeEvent =
 	| 'sent'
@@ -267,6 +272,35 @@ export const ZERO_TRANSPORT_OUTCOME_TOTALS: TransportOutcomeTotals = {
  */
 export function safeOutcomeCount(value: number | undefined | null): number {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * HAS ANYTHING WRITTEN THE `deferred` COUNTER OVER THESE ROWS?
+ *
+ * Gate 2's zero has two readings — a clean window, or a cell nobody records
+ * deferrals for — and `deferred / sent` is `0` in both (see
+ * `RampGateEvaluationInput.hasDeferralTelemetry`). This is the observation that
+ * separates them, and it lives here because the ramp controller and the delivery
+ * dashboard both evaluate the same gates over the same rows: two spellings of
+ * "is this cell instrumented" is how the screen and the controller come to
+ * disagree about a verdict, which is the defect this whole module exists to
+ * prevent.
+ *
+ * DELIBERATELY UNWINDOWED — it answers a question about the INSTRUMENT, not
+ * about a window, so callers hand it the whole span they read (30 days for both
+ * of today's) rather than the evaluation window inside it. A quiet day is not the
+ * same fact as a deployment that never records deferrals, and only the second one
+ * may hold a gate.
+ *
+ * TAKES ANYTHING CARRYING THE COUNTER — raw shard rows and already-summed
+ * summaries alike — because the third reader is the phase-promotion rule, which
+ * asks the same question of fifteen cells' summaries (`rampPromotionEvidence.ts`)
+ * and must not answer it with a fourth hand-written `> 0`.
+ */
+export function hasRecordedDeferrals(
+	rows: readonly Pick<TransportOutcomeTotals, 'deferred'>[]
+): boolean {
+	return rows.some((row) => safeOutcomeCount(row.deferred) > 0);
 }
 
 /** Zero-denominator guard — the one place a division happens. */

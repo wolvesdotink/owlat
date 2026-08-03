@@ -35,7 +35,10 @@ import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabil
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
-import { summarizeTransportOutcomeBuckets } from '../analytics/transportOutcomeSummary';
+import {
+	hasRecordedDeferrals,
+	summarizeTransportOutcomeBuckets,
+} from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
@@ -381,6 +384,14 @@ export async function loadCellInput(
 		// direct `presence.<id>` read here would be a substitution living outside
 		// the table, which is the one thing this piece exists to prevent (D3).
 		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
+		// OBSERVED, NEVER CONFIGURED, exactly as integration presence is
+		// (`rampIntegrationPresence.ts` says why): the `deferred` counter is
+		// instrumented when something has written it, and the 30 days of own-arm
+		// rows already in memory are that observation. Over the whole read span
+		// rather than the evaluation window, because a quiet day is not the same
+		// fact as a cell nothing records deferrals for — and only the second one may
+		// hold gate 2.
+		hasDeferralTelemetry: hasRecordedDeferrals(ownBuckets),
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,

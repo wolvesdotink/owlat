@@ -458,6 +458,53 @@ describe('the cron runs the evaluator the substitution table selects', () => {
 	});
 });
 
+/**
+ * WHETHER THE `deferred` COUNTER HAS A WRITER IS AN OBSERVATION OFF DISK, and
+ * the cron is the only place it is made. The pure suites inject the flag; this
+ * proves the reader supplies it from the rows the emitter actually writes — and
+ * that it looks over the whole 30-day read span rather than the 24h evaluation
+ * window, so a quiet day is not mistaken for an absent instrument.
+ */
+describe('the cron observes gate 2’s instrument rather than assuming it', () => {
+	async function deferralGate(t: Harness) {
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+		const row = (await decisions(t))[0];
+		const snapshot = JSON.parse(row?.snapshot ?? '{}') as {
+			evaluation?: { perGate?: { gate: string; status: string; reason: string }[] } | null;
+		};
+		return snapshot.evaluation?.perGate?.find((gate) => gate.gate === 'deferral');
+	}
+
+	it('holds gate 2 on ample traffic that nothing has ever recorded a deferral for', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+
+		expect(await deferralGate(t)).toMatchObject({
+			status: 'insufficient_data',
+			reason: 'own_deferral_telemetry_absent',
+		});
+	});
+
+	it('decides gate 2 on a deferral recorded weeks before the window it judges', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		// Three weeks back: outside the 24h window the rate is computed over, inside
+		// the history the instrument is observed over. The verdict is still about
+		// today's traffic — a clean pass on today's zero deferrals.
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 10,
+			dayOffset: 21,
+			counters: { delivered: 9, deferred: 1 },
+		});
+
+		expect(await deferralGate(t)).toMatchObject({ status: 'pass', reason: 'within_threshold' });
+	});
+});
+
 describe('the phase ladder', () => {
 	it('promotes exactly one rung per call and cannot skip one', async () => {
 		const t = convexTest(schema, modules);
