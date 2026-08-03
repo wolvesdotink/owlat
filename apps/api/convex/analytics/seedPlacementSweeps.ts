@@ -59,8 +59,15 @@ export type SeedPlacementSweepIndex = ReadonlyMap<DeliverabilityCellKey, SeedCel
  */
 const NO_SWEEPS: SeedCellSweeps = { own: null, reference: null };
 
-/** ONE classified probe, reduced to the four facts a sweep counts it by. */
-export interface SeedProbeEvidence {
+/**
+ * ONE classified probe, reduced to the four facts a sweep counts it by.
+ *
+ * MODULE-LOCAL: it names `seedProbeEvidence`'s return, and both callers — the
+ * per-cell sweeps below and the provider roll-up in `analytics/seedPlacement.ts`
+ * — read fields off the value rather than the name. Exporting a shape nobody
+ * imports is the declared-and-unread seam this wave is closing.
+ */
+interface SeedProbeEvidence {
 	readonly provider: DestinationProviderKey;
 	readonly stream: Doc<'seedPlacementProbes'>['stream'];
 	readonly arm: SeedTransportArm;
