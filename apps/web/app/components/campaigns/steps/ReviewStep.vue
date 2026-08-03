@@ -62,7 +62,8 @@ const isTestEmailModalOpen = ref(false);
  * D14), so the refusal is claimed here and rendered as a calm panel rather than
  * left to the generic red `invalid_state` toast.
  */
-const { capacitySchedule, claimCapacityRefusal } = useCapacityRefusal();
+const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } =
+	useCapacityRefusal();
 
 // Mutations
 const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
@@ -157,7 +158,7 @@ const handleSendCampaign = async () => {
 
 	if (!validate()) return;
 
-	capacitySchedule.value = null;
+	dismissCapacitySchedule();
 	setLoading(true);
 	try {
 		let toastMessage: string;

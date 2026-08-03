@@ -26,20 +26,35 @@ export const PROVIDER_DAILY_STATS_TTL_SECONDS = 48 * 60 * 60;
  * The body shared by both send-recording forms.
  *
  * KEYS[1] provider state hash, KEYS[2] provider daily stats hash, KEYS[3]
- * bulk-pool daily counter. ARGV[1] today, ARGV[2] codec version, ARGV[3] state
- * TTL seconds, ARGV[4] stats TTL seconds, ARGV[5] '1' when this send belongs to
- * the bulk pool, ARGV[6] bulk counter TTL seconds.
+ * bulk-pool daily counter. ARGV[1] the ATTEMPT's UTC day, ARGV[2] codec version,
+ * ARGV[3] state TTL seconds, ARGV[4] stats TTL seconds, ARGV[5] '1' when this
+ * send belongs to the bulk pool, ARGV[6] bulk counter TTL seconds.
+ *
+ * The two dimensions this writes are NOT symmetric under a stale day. The stats
+ * hash and the bulk counter are per-day KEYS, so a late effect simply credits
+ * its own day. `sentToday`/`sentTodayReset` is ONE rolling slot on the state
+ * hash, so it is monotonic here: only a strictly newer day may roll it, and only
+ * the day it currently holds may increment it.
  */
 const RECORD_PROVIDER_WARMING_SEND_BODY_LUA = `
 local stateKey = KEYS[1]
 local statsKey = KEYS[2]
 local bulkKey = KEYS[3]
 local today = ARGV[1]
-if redis.call('HGET', stateKey, 'sentTodayReset') ~= today then
+local storedDay = redis.call('HGET', stateKey, 'sentTodayReset')
+-- YYYY-MM-DD compares lexicographically. Rewinding the stamp would zero the
+-- LIVE day's counter and hand the IP its whole per-provider allowance again —
+-- and a journal entry lives four days, so a crash replay would do exactly that.
+if not storedDay or today > storedDay then
   redis.call('HSET', stateKey, 'sentToday', '0', 'sentTodayReset', today)
+  storedDay = today
 end
 redis.call('HSET', stateKey, 'codecVersion', ARGV[2])
-redis.call('HINCRBY', stateKey, 'sentToday', 1)
+-- A stale-day send is still credited to its own day's stats hash below; only the
+-- live day's rolling counter is off-limits to it.
+if today == storedDay then
+  redis.call('HINCRBY', stateKey, 'sentToday', 1)
+end
 redis.call('EXPIRE', stateKey, ARGV[3])
 redis.call('HINCRBY', statsKey, 'sent', 1)
 redis.call('EXPIRE', statsKey, ARGV[4])

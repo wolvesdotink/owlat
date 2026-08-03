@@ -9,6 +9,13 @@
  * else. Postmaster is an additive signal — its absence lowers measurement
  * confidence and is never an error, a warning or a setup nag.
  *
+ * A THIRD STATE, AND IT IS NOT EITHER OF THOSE TWO. A faulted read knows
+ * NOTHING about the account, so it may not render as "Not connected" — that is
+ * a claim about the deployment, and it points an operator at a connection flow
+ * for an account that may already be connected and reporting. `error` is a
+ * prop for the same reason `status` is: the page owns the query, the card owns
+ * every state it can be in.
+ *
  * Prop-driven so every state is unit-tested directly; the Delivery page owns
  * the (member-safe) query.
  */
@@ -24,6 +31,8 @@ type PostmasterDomainStatus = PostmasterStatus['domains'][number];
 const props = defineProps<{
 	status: PostmasterStatus | null | undefined;
 	isLoading: boolean;
+	/** The query composable's `error` (null when healthy). */
+	error?: Error | null;
 }>();
 
 const POSTMASTER_DOCS =
@@ -79,8 +88,21 @@ const failingDomains = computed(() =>
 			<div
 				v-if="isLoading"
 				data-testid="postmaster-loading"
-				class="h-24 animate-pulse rounded-lg bg-surface-subtle"
+				class="h-24 animate-pulse rounded-lg bg-bg-surface"
 			/>
+
+			<!-- A read that faulted knows nothing — least of all that nobody connected. -->
+			<div
+				v-else-if="error"
+				data-testid="postmaster-unavailable"
+				class="rounded-lg border border-border-subtle p-4"
+			>
+				<p class="text-sm text-text-primary">Couldn’t load Gmail compliance</p>
+				<p class="mt-1 text-sm text-text-secondary">
+					Google’s view of your sending could not be read just now, so this card is showing nothing
+					rather than guessing. Your mail is unaffected — this card only reads.
+				</p>
+			</div>
 
 			<!-- Not connected is a supported configuration, not an incomplete setup. -->
 			<div

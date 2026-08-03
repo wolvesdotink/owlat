@@ -62,6 +62,12 @@ beforeEach(() => {
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
+	// The controls screen renders its write cards only for a member who may manage
+	// the organization; these suites are about the admin's view of it.
+	vi.stubGlobal('usePermissions', () => ({
+		canManageOrganization: ref(true),
+		showAdminGate: ref(false),
+	}));
 });
 
 const passthroughCard = { template: '<div><slot /></div>' };

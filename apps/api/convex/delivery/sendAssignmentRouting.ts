@@ -30,6 +30,7 @@ import {
 } from '../lib/sendProviders/cellRoute';
 import { rankTieBreakUnit, type MixRecipientIdentity } from '../lib/sendProviders/strategies';
 import { engagementPercentileRange } from '../analytics/engagementPercentile';
+import { normalizeEngagementScore } from './workerEnvelope';
 import { logWarn } from '../lib/runtimeLog';
 // Type-only, so the pair of modules has no runtime import cycle.
 import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssignments';
@@ -138,6 +139,15 @@ export async function destinationProvidersForEmails(
  *
  * A recipient with no score gets NO rank, which the decision function reads as
  * "unknown" and falls back to the random bucket — never to the own arm.
+ *
+ * AND SO DOES A SCORE THE ENVELOPE WOULD REFUSE. Scores are read through
+ * `normalizeEngagementScore`, the same band rule the dispatch envelope applies
+ * (`delivery/workerEnvelope.ts`) and the same one the walker orders each day's
+ * slice by (`campaigns/multiDaySendPlan.ts#orderByEngagement`), so no reader of
+ * one producer's number disagrees with the others about it. A stored `250` is an
+ * upstream scorer defect, not a very engaged recipient: unfiltered it would sit
+ * at the top of its cell's cohort and take the stratified own-arm cut on the
+ * same send whose envelope drops it as unknown.
  */
 export function buildEngagementRanker(
 	recipients: readonly SendAssignmentRecipient[],
@@ -145,8 +155,8 @@ export function buildEngagementRanker(
 ): (recipient: SendAssignmentRecipient) => number | undefined {
 	const cohorts = new Map<DestinationProviderKey, number[]>();
 	for (const recipient of recipients) {
-		const score = recipient.engagementScore;
-		if (score === undefined || !Number.isFinite(score)) continue;
+		const score = normalizeEngagementScore(recipient.engagementScore);
+		if (score === undefined) continue;
 		// An address whose domain did not parse has no cell, so it has no cohort
 		// to belong to — the caller skips it for the same reason.
 		const provider = providers.get(recipient.email);
@@ -167,8 +177,10 @@ export function buildEngagementRanker(
 	if (rankable.size === 0) return () => undefined;
 
 	return (recipient) => {
-		const score = recipient.engagementScore;
-		if (score === undefined || !Number.isFinite(score)) return undefined;
+		// The SAME rule the cohort was built with: a score kept out of the cohort
+		// must not be ranked against it either.
+		const score = normalizeEngagementScore(recipient.engagementScore);
+		if (score === undefined) return undefined;
 		const provider = providers.get(recipient.email);
 		if (provider === undefined) return undefined;
 		const cohort = rankable.get(provider);

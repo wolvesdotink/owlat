@@ -51,6 +51,18 @@ export interface SeededSend {
 
 export interface SeedSendOptions {
 	readonly status?: Doc<'emailSends'>['status'];
+	/**
+	 * Reuse an existing contact instead of minting one — for a case that seeds a
+	 * contact SEVERAL sends and cares which one a join picks.
+	 */
+	readonly contactId?: Id<'contacts'>;
+	/**
+	 * The dispatch stamp. Set it where a case seeds one contact several sends
+	 * whose DISPATCH order differs from their creation order — the real shape of a
+	 * pre-created blast audience, and the only way to hold an attribution join to
+	 * ordering by dispatch rather than by row age.
+	 */
+	readonly sentAt?: number;
 	/** Omit to seed a send with NO assignment row (the seed-probe seam). */
 	readonly assignment?: {
 		readonly organizationId?: string;
@@ -71,9 +83,15 @@ export async function seedAssignedSend(
 	options: SeedSendOptions = {}
 ): Promise<SeededSend> {
 	const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-	const contact = createTestContact();
-	const contactId = await ctx.db.insert('contacts', contact);
+	const existing = options.contactId ? await ctx.db.get(options.contactId) : null;
+	const contact = existing ?? createTestContact();
+	const contactId = existing?._id ?? (await ctx.db.insert('contacts', contact));
+	// `contactEmail` is the send's SNAPSHOT of the contact it is joined to, so it
+	// may not be invented here: a reused contact carrying no email is a broken
+	// seed, not a send to some made-up address a later assertion could be written
+	// against. The factory always sets one.
 	const email = contact.email;
+	if (email === undefined) throw new Error('seedAssignedSend: reused contact has no email');
 	const sendId = await ctx.db.insert(
 		'emailSends',
 		createTestEmailSend({
@@ -82,6 +100,7 @@ export async function seedAssignedSend(
 			contactEmail: email,
 			status: options.status ?? 'queued',
 			providerType: 'mta',
+			...(options.sentAt !== undefined ? { sentAt: options.sentAt } : {}),
 			...(options.providerMessageId !== undefined
 				? { providerMessageId: options.providerMessageId }
 				: {}),

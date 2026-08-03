@@ -15,6 +15,7 @@ import {
 	type DelistingMetrics,
 } from '@owlat/shared/ipAuditDelisting';
 import { installerProviderNote } from '@owlat/shared/ipAuditProviders';
+import { ipAddressFamily } from '@owlat/shared/ipAddress';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
@@ -129,6 +130,9 @@ export function createIpAuditRoutes(redis: Redis, config: MtaConfig) {
 
 	app.get('/:ip', async (c) => {
 		const ip = c.req.param('ip');
+		// The parameter is interpolated into a Redis key: only a canonical address
+		// may reach the keyspace, exactly as everywhere else in the audit stack.
+		if (!ipAddressFamily(ip)) return c.json({ error: 'Invalid IP address' }, 400);
 		const record = await getIpAuditRecord(redis, ip);
 		if (!record) return c.json({ error: 'No audit recorded for this address yet' }, 404);
 		return c.json(decorate(record, config, metricsFromQuery(c.req.query())));

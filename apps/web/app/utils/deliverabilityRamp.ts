@@ -1,5 +1,10 @@
 /**
- * THE RAMP SCREENS' VOCABULARY — presentation only (plan D2, D12, D14, P3-6).
+ * THE RAMP SCREENS' PER-CELL VOCABULARY — presentation only (plan D2, D12, P3-6).
+ *
+ * The deployment-level half — the independence headline, the money, the
+ * projection — lives in `deliverabilityIndependenceCopy.ts` (plan D14). The cut
+ * follows the screens: this module speaks about a cell, that one about the
+ * install.
  *
  * DELIVERABILITY FEATURES FAIL WHEN THEY FEEL LIKE MAGIC, so the job of this
  * module is to make a controller decision READ like a decision: what the cell is
@@ -17,18 +22,11 @@
 
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
-import {
-	INDEPENDENCE_PROJECTION_MIN_DAYS,
-	type IndependenceProjection,
-	type RampPreset,
-} from '@owlat/shared/deliverabilityIndependence';
+import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
+import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
-import {
-	cellLabel,
-	measurementHeadline,
-	providerLabel,
-	streamLabel,
-} from '~/utils/deliverabilityMeasurement';
+import { cellLabel, providerLabel, streamLabel } from '~/utils/deliverabilityMeasurement';
+import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.getRampControls
@@ -42,103 +40,9 @@ export type RampCellDecision = NonNullable<RampCellControl['lastDecision']>;
  * cross-package import check exists to prevent.
  */
 export type RampDecisionReason = RampCellDecision['reason'];
-export type IndependenceSummary = FunctionReturnType<
-	typeof api.delivery.rampIndependence.getIndependenceSummary
->;
 export type RampAdminNotice = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.listRampAdminNotices
 >[number];
-
-// ============ THE HEADLINE (D14) ============
-
-/**
- * WITH NO RELAY THERE IS NOTHING TO BECOME INDEPENDENT OF, so the screen is not
- * a degraded "Sending independence" — it is a different, honest feature whose
- * headline is today's capacity and what is holding it back (plan D14).
- *
- * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
- * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So this
- * is an alias, not a copy — the SUBHEAD below is genuinely different prose (that
- * screen is read-only; this one is the ramp) and stays local.
- */
-export const independenceHeadline = measurementHeadline;
-
-export function independenceSubhead(referenceTransportId: string | null): string {
-	return referenceTransportId === null
-		? 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.'
-		: `How much of your mail your own server now carries instead of ${referenceTransportId}.`;
-}
-
-/** The month-to-date own-arm volume sentence — always available, always true. */
-export function volumeSentence(summary: IndependenceSummary): string {
-	return `${formatNumber(summary.monthToDateOwnSends)} messages sent from your own server this month.`;
-}
-
-/**
- * Format a minor-unit amount in its own currency.
- *
- * The exponent comes from `Intl.NumberFormat`, which knows that JPY has none and
- * that KWD has three. An unknown or malformed code makes `Intl` throw; that must
- * never take a screen down over a settings typo, so the fallback prints the code
- * beside the raw amount and remains readable.
- */
-function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): string {
-	try {
-		const format = new Intl.NumberFormat('en-US', { style: 'currency', currency });
-		const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
-		return format.format(minorUnits / 10 ** digits);
-	} catch {
-		return `${currency} ${formatNumber(minorUnits)} (minor units)`;
-	}
-}
-
-/**
- * THE MONEY, OR AN HONEST ABSENCE. A relay price the product invented would be
- * quoted back at us as fact, so when nobody has recorded one the screen says
- * what it would take to show the figure rather than printing a confident guess.
- */
-export function spendAvoidedCopy(summary: IndependenceSummary): string {
-	if (summary.spendAvoidedMinorUnits === null || summary.spendAvoidedCurrency === null) {
-		return 'Add what your relay charges per thousand messages to see the spend this replaces.';
-	}
-	// MINOR UNITS ARE NOT ALWAYS HUNDREDTHS. JPY has no minor unit at all and
-	// KWD/BHD have three digits, so the exponent is read off the CURRENCY through
-	// `Intl` rather than assumed to be 100 — a hardcoded divisor would misstate a
-	// yen figure by two orders of magnitude on the screen people screenshot.
-	const currency = summary.spendAvoidedCurrency;
-	const minor = summary.spendAvoidedMinorUnits;
-	return `${formatCurrencyFromMinorUnits(minor, currency)} of relay spend avoided this month.`;
-}
-
-/**
- * The projected date the relay stops carrying mail — one sentence per arm of the
- * closed union, because the four non-answers mean genuinely different things and
- * a single "unknown" would tell a standalone deployment nothing at all.
- */
-export function projectionCopy(projection: IndependenceProjection): string {
-	switch (projection.kind) {
-		case 'projected':
-			return `On the current pace you stop paying a relay around ${formatShortDate(projection.at)} — about ${projection.dailyGainPp.toFixed(2)} points of share gained per day.`;
-		case 'already_independent':
-			return 'Your own server already carries this traffic. There is no relay bill left to end.';
-		case 'not_advancing':
-			return 'The share is not climbing at the moment, so there is no honest date to give. It will appear once the ramp starts advancing again.';
-		case 'beyond_horizon':
-			return 'At the current pace the finish line is more than two years out, which is too far to quote. A faster preset or more volume would bring it closer.';
-		case 'insufficient_data':
-			return `Not enough history yet — ${formatNumber(projection.usableDays)} of ${formatNumber(INDEPENDENCE_PROJECTION_MIN_DAYS)} days with traffic. Keep sending and the date will appear.`;
-	}
-}
-
-/** The standalone headline: what the deployment can send today. */
-export function capacityCopy(summary: IndependenceSummary): string {
-	const remaining = summary.capacity.remainingToday;
-	if (remaining === null) {
-		return 'No warming ceiling is being reported right now, so there is no daily number to show. Your sending is unaffected.';
-	}
-	return `${formatNumber(remaining)} more messages can go out from your own server today.`;
-}
 
 // ============ CELL STATE ============
 
@@ -248,6 +152,76 @@ export function rampReasonLabel(reason: RampDecisionReason | string): string {
 
 export function shareLabel(share: number): string {
 	return formatPercentage(share, 0);
+}
+
+// ============ DISCONNECTING THE RELAY ============
+
+/** The consequence of pulling the relay, in words. Facts in, sentences out. */
+export interface RelayRemovalConsequence {
+	/** What disconnecting does right now, in this deployment's own numbers. */
+	readonly consequence: string;
+	/** The date waiting would make it free, or null when nothing projects one. */
+	readonly safeDate: string | null;
+}
+
+export interface RelayRemovalFacts {
+	/**
+	 * The cells still leaning on the relay. THE EMPTY LIST AND `null` ARE
+	 * DIFFERENT FACTS and the caller may not collapse them: `[]` is a read that
+	 * answered and found every cell graduated, `null` is a read that did not
+	 * answer at all. Passing an empty list for the second one puts a "cannot be
+	 * treated as safe" sentence on a deployment that has nothing left to lose.
+	 */
+	readonly dependentCells: readonly string[] | null;
+	/** The second arm's transport id, or null when it could not be read. */
+	readonly referenceTransportId: string | null;
+	readonly projectedSafeAt: number | null;
+}
+
+/**
+ * THE RELAY-REMOVAL CONSEQUENCE — ONE SENTENCE, THREE SURFACES.
+ *
+ * The Independence screen, the transport editor and `POST
+ * /api/delivery/apply-transport` all have to name the same consequence for the
+ * same click: the screen that ASKS, the dialog that confirms, and the endpoint
+ * that REFUSES. Three hand-written copies is three chances for them to quote
+ * different stakes, and the operator meets at least two of them in one attempt.
+ * The FACTS are the server's (`relayRemoval` off `getIndependenceSummary`); only
+ * the words are here.
+ *
+ * A COUNT WE DO NOT HAVE IS NOT ZERO, AND ZERO IS NOT A COUNT WE DO NOT HAVE.
+ * Three states, three sentences: `null` is a read that never answered (the
+ * browser's faulted, or the server's did and it refused fail-closed) and may not
+ * print "0 cells have not graduated yet"; an EMPTY list is a read that answered
+ * and found every cell graduated, and may not print "could not be established"
+ * over a deployment the same screen has just called safe.
+ */
+export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
+	const relay =
+		facts.referenceTransportId === null
+			? 'the relay'
+			: transportIdLabel(facts.referenceTransportId);
+	const lostFallback = `the reputation ${relay} has built for your domain stops being available to fall back on`;
+	// The tail every arm that MOVES traffic shares; the safe arm ends differently
+	// because nothing moves and only the fallback is given up.
+	const moved = ` onto your own server immediately — not gradually — and ${lostFallback}.`;
+	const cells = facts.dependentCells;
+	const count = cells?.length ?? 0;
+	const consequence =
+		cells === null
+			? `Which cells are still leaning on ${relay} could not be established, so this cannot be treated as safe. Disconnecting it moves whatever they still send${moved}`
+			: count === 0
+				? `Every cell has graduated, so nothing is still leaning on ${relay}. Disconnecting it now would not move any traffic onto your own server — only ${lostFallback}.`
+				: count === 1
+					? `1 cell has not graduated yet and still sends part of its mail through ${relay}. Disconnecting it moves all of that traffic${moved}`
+					: `${formatNumber(count)} cells have not graduated yet and still send part of their mail through ${relay}. Disconnecting it moves all of that traffic${moved}`;
+	return {
+		consequence,
+		safeDate:
+			facts.projectedSafeAt === null
+				? null
+				: `On the current pace, waiting until about ${formatShortDate(facts.projectedSafeAt)} would avoid that entirely.`,
+	};
 }
 
 // ============ REFUSALS ============
@@ -419,3 +393,16 @@ export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
  * exhaustive originals are the ones worth keeping.
  */
 export { cellLabel as rampCellLabel, providerLabel, streamLabel };
+
+/**
+ * THE SAME CELL, NAMED THE SAME WAY, from a stored KEY rather than a pair.
+ *
+ * The retreat notices carry `campaign:gmail` because that is what the decision
+ * row stores, while every other surface names that cell "Campaign → Gmail". An
+ * unparseable key — a stream retired since the row was written — reads as
+ * itself, because a ninety-day history has to stay readable.
+ */
+export function rampCellKeyLabel(cellKey: string): string {
+	const cell = parseDeliverabilityCellKey(cellKey);
+	return cell === null ? cellKey : cellLabel(cell);
+}

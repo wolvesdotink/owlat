@@ -32,7 +32,7 @@ import {
 	independenceSummary,
 	risingSeries,
 } from '~/components/delivery/__tests__/rampFixtures';
-import type { IndependenceSummary } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
 describe('independence arithmetic', () => {
 	it('sums the window rather than averaging per-day shares', () => {
@@ -232,10 +232,12 @@ describe('independence screen', () => {
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
 		// The browser tab follows the h1 — the D14 rename applied all the way.
 		expect(headTitle()).toContain('Warm-up autopilot');
-		expect(wrapper.find('[data-testid="independence-headline"]').text()).toBe('4000');
-		expect(wrapper.find('[data-testid="independence-headline-note"]').text()).toContain(
-			'can go out from your own server today'
-		);
+		// The headline is formatted the way the sentence under it is — one figure,
+		// not "4000" sitting over "4,000 more messages".
+		expect(wrapper.find('[data-testid="independence-headline"]').text()).toBe('4,000');
+		const note = wrapper.find('[data-testid="independence-headline-note"]').text();
+		expect(note).toContain('4,000');
+		expect(note).toContain('can go out from your own server today');
 		// Nothing to become independent OF — and no relay-removal section at all.
 		expect(wrapper.find('[data-testid="relay-removal-open"]').exists()).toBe(false);
 		expect(wrapper.text()).not.toMatch(/setup incomplete|warning|error/i);

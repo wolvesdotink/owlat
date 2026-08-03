@@ -66,11 +66,30 @@ export const getSendPlanCapacity = internalQuery({
 		const now = Date.now();
 		// THE PACED PROJECTION, from the ONE place that derives it
 		// (`delivery/pacedWarmingCapacity.ts`). The binding pre-flight and the
-		// operator-facing send estimate read the SAME function, so the day count the
-		// gate blessed, the day count the screen quotes and the day budget this
-		// walker meters can never disagree — the disagreement this repo already paid
-		// for once (`analytics/reputationQueries.ts`: "one projection, one
-		// population, one answer").
+		// operator-facing send estimate read the SAME function, so none of the three
+		// can quote a day count off a schedule, an IP population or a pace dial the
+		// others do not have — the disagreement this repo already paid for once
+		// (`analytics/reputationQueries.ts`).
+		//
+		// THE PROJECTION IS SHARED; THE POPULATION METERED AGAINST IT IS NOT.
+		// The pre-flight scales the audience by the own arm's share of the campaign
+		// stream (`lib/sendProviders/warmingCapGate.ts`), because only own-MTA volume
+		// meets the warming cap; this day budget and the send estimate meter the
+		// WHOLE audience. Under `adaptive_mix` the two answers therefore separate: on
+		// a stream ramped to a 5% own-arm share, 600 recipients are 30 messages to
+		// the gate ("fits today") and 600 here ("about 5 days").
+		//
+		// THIS ONE IS AUTHORITATIVE, because this is the ACTUATOR — the walker really
+		// does pace all 600 through the day budget, and the estimate quotes what the
+		// walker will do. The gate answers a strictly narrower question (can the own
+		// MTA's cap strand this campaign) and its scaling only ever ALLOWS more, so
+		// the gap costs an over-long plan, never an expired tail. Closing it means
+		// metering own-arm volume HERE: the budget becomes `capacityToday / peak`
+		// recipients and the length is planned over `peak x remaining` — the PEAK,
+		// the only bound that cannot let a day's slice exceed the cap whatever the
+		// audience's per-cell composition turns out to be. That is a change to the
+		// send path's pacing rather than to the gate's measurement, and it is not
+		// made here; `preflightBinding.test.ts` pins both answers as they stand.
 		//
 		// NO PROJECTION IS NOT A ZERO PROJECTION. An empty array is the planner's
 		// "unknown capacity" reading and imposes no budget at all.
@@ -140,6 +159,7 @@ export const getCampaignSendPlan = authedQuery({
 				enqueuedToday: job.enqueuedToday,
 				planDayIndex: job.planDayIndex,
 				planTotalDays: job.planTotalDays,
+				isPlanTruncated: job.isPlanTruncated,
 				plannedTotal: job.plannedTotal,
 				isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
 			},

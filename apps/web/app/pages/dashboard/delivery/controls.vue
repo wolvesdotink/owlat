@@ -20,6 +20,16 @@
  * TWO MOVES THIS PAGE OWNS THAT THE CONTROLS ARE NOT: putting a cell ON the ramp
  * (nothing else ever writes a cell's first share) and PROMOTING a phase, which is
  * the one door a ceiling rises through. A reset can only take a rung down.
+ *
+ * READING IS EVERYONE'S, WRITING IS THE ADMINS'. Both queries behind this screen
+ * are all-members — what the ramp is doing and what it pulled back is not
+ * privileged information — but every one of the writes is an `adminMutation`,
+ * enrolment and promotion included. Offering the controls to an editor is
+ * therefore offering a button whose only possible answer is `forbidden`, so they
+ * are not rendered and the screen says why instead. The cell picker is the
+ * selector for those writes, so it goes with them — which is why the copy on this
+ * screen points a member at the cells screen, where the same shares and every
+ * decision are all-members.
  */
 import { api } from '@owlat/api';
 import {
@@ -43,15 +53,33 @@ useHead({ title: 'Delivery controls — Owlat' });
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
+/**
+ * TWO PERMISSION READS, DELIBERATELY. `canManageOrganization` is false until the
+ * role RESOLVES, which is the safe direction for a control — a member never sees
+ * a write button flash before it is taken away. `showAdminGate` only asserts
+ * once the role has resolved to a non-admin, so the explanation below is not
+ * shown to an admin during first paint.
+ */
+const { canManageOrganization, showAdminGate } = usePermissions();
+
 const {
 	data: controls,
 	isLoading,
 	error,
 	refetch,
 } = useOrganizationQuery(api.delivery.rampControlQueries.getRampControls);
-const { data: notices } = useOrganizationQuery(
-	api.delivery.rampControlQueries.listRampAdminNotices
-);
+/**
+ * THE SECOND READ NEEDS ITS OWN BOUNDARY, because its empty state is
+ * affirmatively GOOD NEWS. "Nothing has been pulled back" under a faulted query
+ * tells an operator the controller has not retreated when nobody knows whether
+ * it has — the one place on this screen where a lost read reads as reassurance.
+ */
+const {
+	data: notices,
+	isLoading: noticesLoading,
+	error: noticesError,
+	refetch: refetchNotices,
+} = useOrganizationQuery(api.delivery.rampControlQueries.listRampAdminNotices);
 
 const noticesHeadingId = useId();
 
@@ -209,7 +237,7 @@ async function pause(isPaused: boolean): Promise<void> {
 	if (cell === null) return;
 	beginWrite();
 	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
-	await refetch();
+	refetch();
 }
 
 async function pin(share: number | null): Promise<void> {
@@ -217,7 +245,7 @@ async function pin(share: number | null): Promise<void> {
 	if (cell === null) return;
 	beginWrite();
 	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
-	await refetch();
+	refetch();
 }
 
 async function reset(phaseCeiling: number): Promise<void> {
@@ -225,7 +253,7 @@ async function reset(phaseCeiling: number): Promise<void> {
 	if (cell === null) return;
 	beginWrite();
 	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
-	await refetch();
+	refetch();
 }
 
 /** Force-advance NEVER writes from the button — it only opens the dialog. */
@@ -240,7 +268,7 @@ async function confirmForceAdvance(confirmation: string): Promise<void> {
 	if (cell === null || share === null) return;
 	beginWrite();
 	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
-	await refetch();
+	refetch();
 }
 
 async function changePreset(
@@ -249,7 +277,7 @@ async function changePreset(
 ): Promise<void> {
 	beginWrite();
 	await setStreamPreset({ stream, preset });
-	await refetch();
+	refetch();
 }
 </script>
 
@@ -257,9 +285,22 @@ async function changePreset(
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
 			<h1 class="text-2xl font-semibold text-text-primary">Delivery controls</h1>
+			<!-- The action clause is the header's half of the admin gate: promising
+			     "hold a cell, cap it, push it" to a member who is about to read that
+			     they may do none of those leaves the lede as the last surface still
+			     offering the buttons the gate takes away. The neutral sentence is
+			     true for everyone, so the clause is ADDED for an admin rather than
+			     swapped — an unresolved role never watches the lede rewrite itself.
+			     The neutral sentence therefore covers the pull-backs ONLY: every
+			     per-cell share lives in the cell picker, which is behind the same
+			     gate, so promising them to a member promises a list they cannot see. -->
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				Hold a cell, cap it, push it, or start it over — and choose how hard each stream ramps.
-				Everything here is recorded, including what the controller decided on its own.
+				What the ramp pulled back on its own, and why.
+				<span v-if="canManageOrganization" data-testid="ramp-controls-lede-actions">
+					What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it,
+					push it, or start it over, and choose how hard each stream ramps.
+				</span>
+				Everything here is recorded.
 			</p>
 		</header>
 
@@ -288,7 +329,30 @@ async function changePreset(
 					</p>
 				</UiCard>
 
-				<UiCard>
+				<!-- Not a nag and not an error: what an editor is missing is the hand on
+				     the ramp, not the sight of it. The gate takes the cell picker with
+				     it, though, so the sentence claims only what is left HERE and sends
+				     the reader to the screen that shows every cell's share and decision
+				     history to all members — the mirror of the cells screen's own link
+				     to this one. "Everything the controller is doing is shown below"
+				     would be true of the admin's page and false of the one being read. -->
+				<UiCard v-if="showAdminGate">
+					<p class="text-sm text-text-secondary" data-testid="ramp-controls-admin-only">
+						Changing the ramp — putting a cell on it, holding one, capping it, pushing it, or
+						choosing a pace — is limited to workspace owners and admins. What the controller
+						pulled back on its own is still shown below.
+					</p>
+					<NuxtLink
+						to="/dashboard/delivery/cells"
+						class="mt-3 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:text-brand"
+						data-testid="ramp-controls-cells-link"
+					>
+						<Icon name="lucide:grid-3x3" class="h-4 w-4" />
+						See what each cell is carrying
+					</NuxtLink>
+				</UiCard>
+
+				<UiCard v-if="canManageOrganization">
 					<h2 class="text-base font-semibold text-text-primary">Pick a cell</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
 						<button
@@ -305,7 +369,7 @@ async function changePreset(
 					</div>
 				</UiCard>
 
-				<UiCard v-if="selectedCell">
+				<UiCard v-if="canManageOrganization && selectedCell">
 					<!--
 						KEYED BY CELL. Without it Vue reuses the instance across a change of
 						selection and the pin/force number inputs keep the previous cell's
@@ -367,7 +431,7 @@ async function changePreset(
 					</ul>
 				</UiCard>
 
-				<UiCard>
+				<UiCard v-if="canManageOrganization">
 					<h2 class="text-base font-semibold text-text-primary">How hard to ramp</h2>
 					<div class="mt-3 space-y-5">
 						<DeliveryRampPresetPicker
@@ -387,11 +451,27 @@ async function changePreset(
 					<h2 :id="noticesHeadingId" class="text-base font-semibold text-text-primary">
 						Automatic pull-backs
 					</h2>
-					<DeliveryRampDecreaseNotices
-						class="mt-3"
-						:notices="notices ?? []"
-						:labelled-by="noticesHeadingId"
-					/>
+					<UiQueryBoundary
+						:loading="noticesLoading"
+						:error="noticesError"
+						error-title="Couldn’t load the automatic pull-backs"
+						error-message="This list could not be read. It is not shown empty: an empty list here means the controller has pulled nothing back, and that is not something to claim while the read is failing."
+						@retry="refetchNotices"
+					>
+						<template #loading>
+							<div
+								class="mt-3 h-16 animate-pulse rounded-lg bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading automatic pull-backs"
+							/>
+						</template>
+						<DeliveryRampDecreaseNotices
+							class="mt-3"
+							:notices="notices ?? []"
+							:labelled-by="noticesHeadingId"
+						/>
+					</UiQueryBoundary>
 				</UiCard>
 			</div>
 		</UiQueryBoundary>

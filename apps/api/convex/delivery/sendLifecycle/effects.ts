@@ -122,8 +122,10 @@ export type Effect =
  * The ONE constructor for the per-cell outcome effect. Every site that records
  * a transport outcome (the dispatcher's queued→terminal accounting and the
  * transition map, plus `reduceDeliveryObservation`/`reduceOpened`/
- * `reduceClicked` under their shipped uniqueness gates) goes through this, so
- * the effect's shape is declared once next to the union it belongs to.
+ * `reduceClicked` under their shipped uniqueness gates, and the one emitter
+ * outside this module — `delivery/unsubscribeOutcome.ts`, which has a contact
+ * rather than a transition to start from) goes through this, so the effect's
+ * shape is declared once next to the union it belongs to.
  */
 export const transportOutcomeEffect = (
 	ref: SendRef,

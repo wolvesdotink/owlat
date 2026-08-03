@@ -22,6 +22,14 @@
 
 import { vi } from 'vitest';
 
+/**
+ * The tenant a suite that also mocks `getSingletonOrganizationId` resolves to.
+ * Lives here, beside the factory, so a fixture seeding org-scoped rows and the
+ * mock answering for the org cannot drift apart — and so a suite can name it
+ * without importing anything heavier than this module.
+ */
+export const MOCK_SINGLETON_ORG = 'org_preflight';
+
 export async function sessionOrganizationMock(): Promise<Record<string, unknown>> {
 	const actual = await vi.importActual<Record<string, unknown>>('../lib/sessionOrganization');
 	return {

@@ -5,10 +5,12 @@ import {
 	finalizeSmtpOutcome,
 	markSmtpOutcomeUncertain,
 	markSmtpEffectsApplied,
+	readSmtpOutcome,
 	reserveSmtpOutcome,
 	SMTP_OUTCOME_JOURNAL_TTL_MS,
 	smtpOutcomeJournalKeys,
 } from '../smtpOutcomeJournal.js';
+import { utcDateKey } from '../../intelligence/warmingKeys.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { CtxWithProviderPressure } from '../../dispatch/types.js';
 
@@ -42,6 +44,7 @@ function attempt(messageId: string): CtxWithProviderPressure {
 		ip: '192.0.2.1',
 		eligibilityGeneration: 1,
 		providerVolumePressure: 0,
+		utcDate: '2026-03-01',
 	};
 }
 
@@ -101,6 +104,102 @@ describe('SMTP outcome journal', () => {
 		if (replay.kind !== 'existing' || replay.entry.state !== 'in_flight') return;
 		// Absent, not invalid: the entry replays and reads as "no recorded pressure".
 		expect(replay.entry.attempt.providerVolumePressure).toBe(0);
+	});
+
+	it('dates a legacy reservation’s warming day from the reservation, not the replaying clock', async () => {
+		const legacy = attempt('message-legacy') as Record<string, unknown>;
+		delete legacy['utcDate'];
+		const reservedAt = Date.UTC(2026, 2, 14, 6, 0, 0);
+		const fresh = await reserveSmtpOutcome(redis, 'job-legacy', 'message-legacy', legacy as never, {
+			now: reservedAt,
+			capacity: 10,
+		});
+		expect(fresh.kind).toBe('fresh');
+
+		const replay = await reserveSmtpOutcome(
+			redis,
+			'job-legacy',
+			'message-legacy',
+			legacy as never,
+			{ now: reservedAt + 3 * 24 * 60 * 60 * 1000, capacity: 10 }
+		);
+		expect(replay.kind).toBe('existing');
+		if (replay.kind !== 'existing' || replay.entry.state !== 'in_flight') return;
+		// The journal's own reading, never the wall clock the replay happens on —
+		// the warming records this attempt books have to be stable across replays.
+		expect(replay.entry.attempt.utcDate).toBe(utcDateKey(reservedAt));
+	});
+
+	it('dates a legacy completed entry from its completion reading', async () => {
+		const legacy = attempt('message-legacy') as Record<string, unknown>;
+		delete legacy['utcDate'];
+		// The attempt straddles midnight, so the two readings name different days
+		// and the completed path cannot pass by borrowing the reservation's.
+		const reservedAt = Date.UTC(2026, 2, 14, 23, 59, 0);
+		const completedAt = reservedAt + 120_000;
+		const fresh = await reserveSmtpOutcome(redis, 'job-legacy', 'message-legacy', legacy as never, {
+			now: reservedAt,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: completedAt }
+		);
+
+		const replay = await reserveSmtpOutcome(
+			redis,
+			'job-legacy',
+			'message-legacy',
+			legacy as never,
+			{ now: completedAt + 60_000, capacity: 10 }
+		);
+		expect(replay.kind).toBe('existing');
+		if (replay.kind !== 'existing' || replay.entry.state !== 'completed') return;
+		expect(replay.entry.attempt.utcDate).toBe(utcDateKey(completedAt));
+		expect(utcDateKey(completedAt)).not.toBe(utcDateKey(reservedAt));
+	});
+
+	it('rejects a non-finite journal reading with its own error rather than a RangeError', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: 100,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		// JSON has no Infinity literal, but an overflowing exponent parses to one —
+		// and `new Date(Infinity).toISOString()` throws past this module's guards.
+		await redis.set(
+			smtpOutcomeJournalKeys.journalKey('job-1'),
+			fresh.raw.replace('"reservedAt":100', '"reservedAt":1e999')
+		);
+		await expect(readSmtpOutcome(redis, 'job-1', 'message-1')).rejects.toThrow(
+			'SMTP outcome journal contains an invalid reservation'
+		);
+
+		await redis.set(smtpOutcomeJournalKeys.journalKey('job-1'), fresh.raw);
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		await redis.set(
+			smtpOutcomeJournalKeys.journalKey('job-1'),
+			completed.raw.replace('"completedAt":142', '"completedAt":1e999')
+		);
+		await expect(readSmtpOutcome(redis, 'job-1', 'message-1')).rejects.toThrow(
+			'SMTP outcome journal contains an invalid completed result'
+		);
 	});
 
 	it('terminalizes to a retained tombstone while releasing journal capacity', async () => {

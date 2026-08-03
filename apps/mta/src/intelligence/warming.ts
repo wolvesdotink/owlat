@@ -175,17 +175,24 @@ export async function checkCap(
 }
 
 /**
- * Record a successful send for warming tracking
+ * Record a successful send for warming tracking.
+ *
+ * `utcDate` is the ATTEMPT's day, defaulting to the caller's clock. It keys the
+ * DAILY STATS hash only — the input to `evaluateDay`'s bounce and deferral
+ * rates, which must count an attempt in the day that admitted it however long
+ * after the fact the effect lands. The `sentToday` counter on the state hash is
+ * one rolling slot rolled by the cap gate, so it stays on the apply clock:
+ * writing a finished day into it would zero the live day's cap consumption.
  */
 export async function recordSend(
 	redis: Redis,
 	ip: string,
 	reservation?: WarmingReservation,
-	idempotencyIdentity?: DurableEffectIdentity
+	idempotencyIdentity?: DurableEffectIdentity,
+	utcDate: string = utcDateKey()
 ): Promise<void> {
 	const hashKey = warmingStateKey(ip);
-	const today = utcDateKey();
-	const statsKey = warmingDailyStatsKey(ip, today);
+	const statsKey = warmingDailyStatsKey(ip, utcDate);
 	if (reservation) {
 		const recorded = Number(
 			await redis.eval(
@@ -211,7 +218,7 @@ export async function recordSend(
 		return;
 	}
 	if (idempotencyIdentity) {
-		await recordUnreservedWarmingSendOnce(redis, ip, today, idempotencyIdentity);
+		await recordUnreservedWarmingSendOnce(redis, ip, utcDate, idempotencyIdentity);
 		return;
 	}
 
@@ -221,35 +228,37 @@ export async function recordSend(
 }
 
 /**
- * Record a bounce during warming
+ * Record a bounce during warming. `utcDate` is the attempt's day — see
+ * `recordSend`; only the daily stats hash is keyed by it.
  */
 export async function recordBounce(
 	redis: Redis,
 	ip: string,
-	idempotencyIdentity?: DurableEffectIdentity
+	idempotencyIdentity?: DurableEffectIdentity,
+	utcDate: string = utcDateKey()
 ): Promise<void> {
-	const today = utcDateKey();
 	if (idempotencyIdentity) {
-		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'bounced', idempotencyIdentity);
+		await recordDailyWarmingOutcomeOnce(redis, ip, utcDate, 'bounced', idempotencyIdentity);
 		return;
 	}
-	await redis.hincrby(warmingDailyStatsKey(ip, today), 'bounced', 1);
+	await redis.hincrby(warmingDailyStatsKey(ip, utcDate), 'bounced', 1);
 }
 
 /**
- * Record a deferral during warming
+ * Record a deferral during warming. `utcDate` is the attempt's day — see
+ * `recordSend`; only the daily stats hash is keyed by it.
  */
 export async function recordDeferral(
 	redis: Redis,
 	ip: string,
-	idempotencyIdentity?: DurableEffectIdentity
+	idempotencyIdentity?: DurableEffectIdentity,
+	utcDate: string = utcDateKey()
 ): Promise<void> {
-	const today = utcDateKey();
 	if (idempotencyIdentity) {
-		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'deferred', idempotencyIdentity);
+		await recordDailyWarmingOutcomeOnce(redis, ip, utcDate, 'deferred', idempotencyIdentity);
 		return;
 	}
-	await redis.hincrby(warmingDailyStatsKey(ip, today), 'deferred', 1);
+	await redis.hincrby(warmingDailyStatsKey(ip, utcDate), 'deferred', 1);
 }
 
 /**

@@ -68,7 +68,7 @@ const campaignSendJobs = defineTable({
 	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
 	// with no relay to overflow to sends a large campaign over several days: the
 	// walker enqueues only today's capacity slice and resumes in the next cap
-	// window. All four are OPTIONAL and absent on every pre-migration row — a walk
+	// window. Every field is OPTIONAL and absent on a pre-migration row — a walk
 	// with no plan state is an ordinary same-day send, which is what every shipped
 	// row is.
 	//
@@ -82,6 +82,16 @@ const campaignSendJobs = defineTable({
 	enqueuedToday: v.optional(v.number()),
 	planDayIndex: v.optional(v.number()),
 	planTotalDays: v.optional(v.number()),
+	// Whether that length COVERS the audience, recomputed with it on every hop.
+	// Stored rather than derived from `planTotalDays >= MAX_PLAN_DAYS`, because a
+	// plan that covers everyone exactly on the last enumerable day is COMPLETE
+	// and the length alone cannot tell it from one that ran out of days.
+	//
+	// ABSENT READS AS "NOT TRUNCATED": a checkpoint written before this field
+	// existed describes itself as complete until its next hop recomputes the
+	// length and writes the flag with it — at most one cap window of a hedge the
+	// copy does not yet make, and no walk enqueues on a stale reading of it.
+	isPlanTruncated: v.optional(v.boolean()),
 	// The audience size the plan was built from, for the progress line's
 	// denominator ("5 000 of 20 000") — and whether that number is the audience
 	// size or only a FLOOR under it, because the bounded count stopped early.
@@ -262,6 +272,13 @@ export const campaignTables = {
 		// Bounce classification; required-via-runtime-guard when status='bounced'.
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 		complainedAt: v.optional(v.number()),
+		// When this send absorbed the recipient's unsubscribe. NOT a status — the
+		// send itself succeeded — and NOT the contact's unsubscribe record either
+		// (that is `contacts.unsubscribedAt` + the membership rows). It exists as
+		// the per-send uniqueness gate for the `unsubscribed` transport outcome,
+		// the same role `openedAt` plays for `opened`. See
+		// `delivery/unsubscribeOutcome.ts`.
+		unsubscribedAt: v.optional(v.number()),
 		// Link tracking for click attribution
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)

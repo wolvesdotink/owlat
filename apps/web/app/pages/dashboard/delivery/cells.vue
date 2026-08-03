@@ -27,9 +27,18 @@ const {
 	isLoading,
 	error,
 } = useOrganizationQuery(api.delivery.rampControlQueries.getRampControls);
-const { data: dashboard } = useOrganizationQuery(
-	api.delivery.deliverabilityDashboard.getDeliverabilityDashboard
-);
+/**
+ * The evidence read, WITH its own states. "No measurements have been recorded
+ * for this cell yet. Nothing is wrong" is a verdict about the traffic, and a
+ * faulted or in-flight read has no standing to give it — it is the calmest
+ * possible sentence and it would be a lie exactly when something IS wrong.
+ */
+const {
+	data: dashboard,
+	isLoading: evidenceLoading,
+	error: evidenceError,
+	refetch: refetchEvidence,
+} = useOrganizationQuery(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard);
 
 const gridHeadingId = useId();
 const evidenceHeadingId = useId();
@@ -55,7 +64,12 @@ const decisionArgs = computed(() => {
 		: { stream: cell.cell.stream, destinationProvider: cell.cell.destinationProvider };
 });
 
-const { data: decisions } = useOrganizationQuery(
+const {
+	data: decisions,
+	isLoading: decisionsLoading,
+	error: decisionsError,
+	refetch: refetchDecisions,
+} = useOrganizationQuery(
 	api.delivery.rampControlQueries.listCellDecisions,
 	// `undefined` means "not ready, do not subscribe" — the composable's own
 	// contract. No cell is open, so there is nothing to ask for.
@@ -107,28 +121,60 @@ function select(cellKey: string): void {
 					<h2 :id="evidenceHeadingId" class="text-base font-semibold text-text-primary">
 						{{ rampCellLabel(selectedCell.cell) }} — the evidence
 					</h2>
-					<DeliveryMeasurementGateList
-						v-if="selectedEvidence"
-						class="mt-3"
-						:gates="selectedEvidence.gates"
-						:failed-gate="selectedEvidence.failedGate"
-						:requires-corroboration="selectedEvidence.requiresCorroboration"
-					/>
-					<p v-else class="mt-3 text-sm text-text-secondary" data-testid="ramp-evidence-absent">
-						No measurements have been recorded for this cell yet. Nothing is wrong — the checks fill
-						in as mail goes out.
-					</p>
+					<UiQueryBoundary
+						:loading="evidenceLoading"
+						:error="evidenceError"
+						error-title="Couldn’t load this cell’s evidence"
+						error-message="The gate readings could not be read. This is not a cell with nothing measured — the numbers simply did not load."
+						@retry="refetchEvidence"
+					>
+						<template #loading>
+							<div
+								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading the evidence for this cell"
+							/>
+						</template>
+						<DeliveryMeasurementGateList
+							v-if="selectedEvidence"
+							class="mt-3"
+							:gates="selectedEvidence.gates"
+							:failed-gate="selectedEvidence.failedGate"
+							:requires-corroboration="selectedEvidence.requiresCorroboration"
+						/>
+						<p v-else class="mt-3 text-sm text-text-secondary" data-testid="ramp-evidence-absent">
+							No measurements have been recorded for this cell yet. Nothing is wrong — the checks
+							fill in as mail goes out.
+						</p>
+					</UiQueryBoundary>
 				</UiCard>
 
 				<UiCard v-if="selectedCell">
 					<h2 :id="historyHeadingId" class="text-base font-semibold text-text-primary">
 						Decision history
 					</h2>
-					<DeliveryRampDecisionTimeline
-						class="mt-3"
-						:decisions="decisions ?? []"
-						:labelled-by="historyHeadingId"
-					/>
+					<UiQueryBoundary
+						:loading="decisionsLoading"
+						:error="decisionsError"
+						error-title="Couldn’t load this cell’s decision history"
+						error-message="The controller’s record for this cell could not be read. An empty timeline would say it has never looked at this cell, which is not what a failed read means."
+						@retry="refetchDecisions"
+					>
+						<template #loading>
+							<div
+								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading the decision history for this cell"
+							/>
+						</template>
+						<DeliveryRampDecisionTimeline
+							class="mt-3"
+							:decisions="decisions ?? []"
+							:labelled-by="historyHeadingId"
+						/>
+					</UiQueryBoundary>
 					<!-- This screen explains; the next one acts. An operator who has just
 						 read why a cell is held is exactly the person about to change it. -->
 					<NuxtLink

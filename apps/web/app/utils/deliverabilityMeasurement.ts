@@ -18,6 +18,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { transportIdLabel } from '~/utils/transportState';
 
 export type DeliverabilityDashboard = FunctionReturnType<
 	typeof api.delivery.deliverabilityDashboard.getDeliverabilityDashboard
@@ -36,10 +37,17 @@ export function measurementHeadline(referenceTransportId: string | null): string
 	return referenceTransportId === null ? 'Warm-up autopilot' : 'Sending independence';
 }
 
+/**
+ * THE SECOND ARM IS NAMED THE WAY THE OPERATOR CHOSE IT. The reference
+ * transport reaches this screen as its stored id (`ses`, `smtp`,
+ * `plugin.<pack>.<id>`), which is a configuration value rather than a name —
+ * `transportIdLabel` turns it back into words, with the scope and the one
+ * remaining plugin-catalog gap stated there.
+ */
 export function measurementSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
 		? 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.'
-		: `How your own server compares with ${referenceTransportId} on the same traffic. Read-only — nothing here changes your sending.`;
+		: `How your own server compares with ${transportIdLabel(referenceTransportId)} on the same traffic. Read-only — nothing here changes your sending.`;
 }
 
 const STREAM_LABELS = {
@@ -134,6 +142,63 @@ function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
 	return gate === 'seed_placement' ? 'seed mailboxes' : 'sends';
 }
 
+/**
+ * THE SEED GATE'S DECIDED SENTENCE — status words and MAILBOX COUNTS, and no
+ * share of anything (plan D17).
+ *
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and the two modules that produce the
+ * reading enforce that on their own side: `seedPlacementGate.ts` keeps both
+ * arms' shares inside itself and hands out a STATUS, and `placementAdapter.ts`
+ * takes COUNTS, never a percentage, from a commercial panel. Rendering the same
+ * verdict as "85.00% over 10 seed mailboxes, against a limit of 90.00%" undoes
+ * both: it invites an operator to read one mailbox as ten percentage points, to
+ * chase the gap between two five-probe sweeps, and to treat a number with a
+ * ±10pp resolution as a measurement of their inbox placement.
+ *
+ * The mailbox COUNT stays, because it is the honesty input — how thin the sweep
+ * was is exactly what a reader needs to weigh the status beside it.
+ *
+ * A COMPARATIVE VERDICT IS A COMPARISON OF TWO SHARES, and the sentence has to
+ * read as one. The two sweeps are sized independently, and the own arm
+ * OUTGROWING the reference one is the ordinary late-ramp shape — 16 of 20 here
+ * against 5 of 5 there breaches the tolerance while more mailboxes reached the
+ * inbox on this side, so "fewer of ours reached than of theirs" is not a
+ * paraphrase of the verdict, it is a false statement about it. The counts are
+ * quoted as SWEEP SIZES beside the comparison, never as its subject.
+ *
+ * "REACHED" IS THE SHARED MODULE'S WORD, and it means the inbox OR a tab:
+ * `isSeedPlacementReached` counts `inbox` and `category`, and
+ * `SeedPlacementStatus.inbox_dominant` is documented as "effectively everything
+ * reached the inbox or a tab". A sentence that says "the inbox" alone calls a
+ * Gmail Promotions probe a miss on the clean verdict and, symmetrically, has to
+ * account for the `deleted` placement on the breach.
+ */
+function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
+	const mailboxes = formatNumber(gate.measurement.ownSample);
+	switch (gate.reason) {
+		case 'within_threshold':
+			return `Effectively all of the ${mailboxes} seed mailboxes reached the inbox or a tab.`;
+		case 'reference_tolerance_breached':
+			return `This cell's seed mailboxes reached the inbox or a tab less often than the comparison transport's did — ${mailboxes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
+		case 'absolute_threshold_breached':
+			return `Some of the ${mailboxes} seed mailboxes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
+		default:
+			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
+			// seed gate decides exactly the three reasons above (`seedGate.ts` —
+			// everything else it returns is a hold, which never reaches here), and a
+			// reason added later gets the status word and the sweep size until it
+			// earns its own sentence. That sentence can be thin; it cannot be wrong.
+			//
+			// So there is no `trailing_baseline_breached` arm. That reason is the
+			// engagement and ceiling gates' word for a cell falling behind its OWN
+			// past, and the standalone seed evaluator does not swap a baseline clause
+			// in for the comparative one — it drops the second clause entirely. Copy
+			// written ahead of a variant that does not exist is the speculative seam
+			// `trailingBaselineGates.ts` cites plan D20 against.
+			return `${gateStatusLabel(gate.status)} — this check swept ${mailboxes} seed mailboxes.`;
+	}
+}
+
 export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const { measurement } = gate;
 	const unit = sampleUnit(gate.gate);
@@ -180,6 +245,9 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			}
 		}
 	}
+	// THE VERDICT THAT MAY NOT QUOTE A RATE AT ALL — decided BEFORE any rate is
+	// formatted, so the D17 sentence cannot pick one up by accident.
+	if (gate.gate === 'seed_placement') return seedPlacementExplanation(gate);
 	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
 	const threshold = formatPercentage(measurement.thresholdRate, 2);
 	const reference =
@@ -187,8 +255,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// THE VERDICT WHOSE SENTENCE IS NOT A RATE-AGAINST-A-LIMIT AT ALL. The
 	// block-message hard stop counts CLASSIFIED SMTP RESPONSES (see `ownSample` in
 	// the server's `gateTypes.ts`), and it reads as a share OF those responses
-	// rather than as a rate over a sample — so it gets its own whole sentence, not
-	// just its own unit noun (`sampleUnit` above covers the seed gate that way).
+	// rather than as a rate over a sample — so it gets its own whole sentence.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
 		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
 	}

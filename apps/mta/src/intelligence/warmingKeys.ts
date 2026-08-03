@@ -19,6 +19,21 @@ export function utcDateKey(nowMs: number = Date.now()): string {
 	return new Date(nowMs).toISOString().split('T')[0]!;
 }
 
+/**
+ * Whether a value is a day this module's keys — and the per-provider Lua —
+ * can use.
+ *
+ * The shape is load-bearing, not cosmetic: `RECORD_PROVIDER_WARMING_SEND_BODY_LUA`
+ * compares the day LEXICOGRAPHICALLY against the stored `sentTodayReset`, so a
+ * value sorting above every real day pins the rolling counter forward and the
+ * per-provider counter never increments again, while one sorting below it takes
+ * neither the roll nor the increment branch. Anything reconstituted from
+ * persisted JSON is checked against this before it reaches a key or an ARGV.
+ */
+export function isUtcDateKey(value: unknown): value is string {
+	return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 export function warmingReservationsKey(ip: string, utcDate: string): string {
 	return `${WARMING_PREFIX}{warming:${ip}}:reservations:${utcDate}`;
 }

@@ -144,11 +144,12 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
  * Total projected capacity inside the retention horizon — everything the
  * deployment could send before a message queued at `now` expires.
  *
- * This is the threshold `planCampaignCapacity` compares the audience against,
- * exported so a caller holding only a LOWER BOUND on the audience can ask the
- * one question a lower bound can answer soundly: "is even the floor already
- * more than the horizon can carry?" A floor above it is a sound refusal (the
- * real audience can only be larger); a floor below it decides nothing.
+ * This is the threshold `planCampaignCapacity` compares the audience against —
+ * the whole content of "does this campaign fit" — and it is exported so that
+ * threshold is table-testable on its own. A caller holding only a LOWER BOUND on
+ * the audience asks it through the planner and reads the answer the same way: a
+ * floor the horizon cannot carry is a sound refusal (the real audience can only
+ * be larger), a floor it can carry decides nothing.
  */
 export function capacityWithinHorizon(
 	input: Omit<CampaignCapacityPlanInput, 'audienceSize'>
@@ -280,9 +281,9 @@ export function planCampaignCapacity(input: CampaignCapacityPlanInput): Campaign
 	if (usableDayCount(input.now, input.maxMessageAgeMs) === 0) return { fits: true };
 
 	// Does it finish inside the horizon? Only the days the message survives count.
-	// ONE definition of that sum (`capacityWithinHorizon`), because the gate's
-	// read-budget branch compares a lower bound against the very same number and
-	// the two must never disagree (campaigns/capacityPreflight.ts).
+	// ONE definition of that sum (`capacityWithinHorizon`), so the threshold this
+	// verdict turns on and the threshold the gate's lower-bound reasoning is stated
+	// against can never drift apart (campaigns/capacityPreflight.ts).
 	const withinHorizon = capacityWithinHorizon({
 		remainingCapacityByDay: input.remainingCapacityByDay,
 		maxMessageAgeMs: input.maxMessageAgeMs,

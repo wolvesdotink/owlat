@@ -95,6 +95,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 					...ctx,
 					job: { ...ctx.job, routingLease },
 					providerVolumePressure: volumePressure,
+					utcDate,
 				},
 			};
 		}
@@ -161,7 +162,11 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 		}
 
 		// Carried on the context so the pure outcome reducer can lengthen this
-		// attempt's retry backoff without a Redis dependency of its own.
-		return { kind: 'continue', ctx: { ...ctx, providerVolumePressure: gateInputs.volumePressure } };
+		// attempt's retry backoff without a Redis dependency of its own, and so
+		// every warming record books into the day these gates just measured.
+		return {
+			kind: 'continue',
+			ctx: { ...ctx, providerVolumePressure: gateInputs.volumePressure, utcDate },
+		};
 	},
 };

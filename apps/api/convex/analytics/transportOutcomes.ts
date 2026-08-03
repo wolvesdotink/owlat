@@ -36,6 +36,12 @@
  * applies both. There is no parallel event stream, and no existing effect
  * changed what it does.
  *
+ * ONE event has no lifecycle transition to ride, and only one: `unsubscribed`
+ * arrives on a public CONTACT-keyed endpoint carrying no send id at all, so
+ * `delivery/unsubscribeOutcome.ts` does the contact → send join and pushes the
+ * effect through this same runner, under a per-send uniqueness gate of its own.
+ * It is still ONE writer; what differs is who supplies the send id.
+ *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That
  * is the seam seed shadow copies rely on (plan D18 — a seed probe is a shadow
  * copy through the identical composer and transport, NOT audience membership, so

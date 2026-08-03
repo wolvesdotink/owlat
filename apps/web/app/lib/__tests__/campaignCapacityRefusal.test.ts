@@ -82,8 +82,20 @@ describe('capacityRefusalPlan', () => {
 		['slices that are not an array', { ...VALID_PLAN, slices: 5 }],
 		['slices carrying a non-number', { ...VALID_PLAN, slices: [1, '2'] }],
 		['slices carrying NaN', { ...VALID_PLAN, slices: [1, Number.NaN] }],
+		// THE DOCBLOCK'S PROMISE, ENFORCED. `capacitySliceDayStart` dates every row
+		// backwards from `finishesAt` through `days`, so a slice list of a different
+		// length labels each row with a date the backend never scheduled it for.
+		['fewer slices than days', { ...VALID_PLAN, slices: [0, 100, 200] }],
+		['more slices than days', { ...VALID_PLAN, slices: [0, 100, 200, 200, 100, 50] }],
+		['an empty slice list', { ...VALID_PLAN, slices: [] }],
 	])('falls back to null for %s', (_label, plan) => {
 		expect(capacityRefusalPlan(refusal(plan))).toBeNull();
+	});
+
+	it('accepts a plan whose slices cover exactly its days', () => {
+		const plan = capacityRefusalPlan(refusal({ ...VALID_PLAN, days: 2, slices: [400, 200] }));
+		expect(plan?.days).toBe(2);
+		expect(plan?.slices).toEqual([400, 200]);
 	});
 });
 

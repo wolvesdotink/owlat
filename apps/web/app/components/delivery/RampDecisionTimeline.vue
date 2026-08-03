@@ -31,9 +31,12 @@ defineProps<{
 			this fills in on its own.
 		</p>
 		<ol v-else class="space-y-3" data-testid="ramp-decision-timeline">
+			<!-- KEYED BY POSITION AS WELL AS INSTANT. Two evaluations of one cell can
+			     share a millisecond — the controller writes a row every time it looks
+			     — and duplicate keys make Vue reuse the wrong row. -->
 			<li
-				v-for="decision in decisions"
-				:key="decision.at"
+				v-for="(decision, index) in decisions"
+				:key="`${decision.at}:${index}`"
 				class="border-l-2 border-border-subtle pl-3"
 				:data-direction="decision.direction"
 			>

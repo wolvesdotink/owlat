@@ -9,16 +9,21 @@
 import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { EmailJobResult } from '../types.js';
-import type { CtxWithProviderPressure } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effectCheckpoint.js';
+import {
+	isAttemptSnapshot,
+	normalizeAttemptSnapshot,
+	normalizeReductionEffects,
+	type SmtpAttemptSnapshot,
+} from './smtpOutcomeSnapshot.js';
 
 const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
 export const SMTP_OUTCOME_JOURNAL_TTL_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 24 * 60 * 60 * 1000;
 
-export type SmtpAttemptSnapshot = Omit<CtxWithProviderPressure, 'job'>;
+export type { SmtpAttemptSnapshot };
 
 interface InFlightSmtpOutcome {
 	state: 'in_flight';
@@ -149,12 +154,16 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 				entry['phase'] !== 'uncertain') ||
 			(entry['phase'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
 			(entry['reservationToken'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
-			typeof entry['reservedAt'] !== 'number' ||
+			// Finite, not merely numeric: the day fallback below dates the entry from
+			// this reading, and `new Date(Infinity)` throws past this module's own
+			// controlled error. JSON has no Infinity literal but an overflowing
+			// exponent parses to one.
+			!Number.isFinite(entry['reservedAt']) ||
 			!isAttemptSnapshot(entry['attempt'])
 		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
-		normalizeAttemptSnapshot(entry['attempt']);
+		normalizeAttemptSnapshot(entry['attempt'], entry['reservedAt'] as number);
 		return entry as unknown as InFlightSmtpOutcome;
 	}
 	if (entry['state'] === 'effects_applied') {
@@ -167,84 +176,20 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		!entry['result'] ||
 		typeof entry['result'] !== 'object' ||
 		typeof entry['durationMs'] !== 'number' ||
-		typeof entry['completedAt'] !== 'number' ||
+		// Finite for the same reason as `reservedAt` above.
+		!Number.isFinite(entry['completedAt']) ||
 		!isAttemptSnapshot(entry['attempt']) ||
 		!entry['outcome'] ||
 		!entry['reduction']
 	) {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
-	normalizeAttemptSnapshot(entry['attempt']);
+	normalizeAttemptSnapshot(entry['attempt'], entry['completedAt'] as number);
+	// The stored effects are applied verbatim, so they are normalized here too —
+	// against the day the snapshot above just settled on, which is what the cap
+	// gates measured and what the entry's per-IP twin already books into.
+	normalizeReductionEffects(entry['reduction'], (entry['attempt'] as { utcDate: string }).utcDate);
 	return entry as unknown as CompletedSmtpOutcome;
-}
-
-/** Fill in fields added after an entry was written, so a replay never sees a hole. */
-function normalizeAttemptSnapshot(value: unknown): void {
-	if (!value || typeof value !== 'object') return;
-	const attempt = value as Record<string, unknown>;
-	if (typeof attempt['providerVolumePressure'] !== 'number') {
-		attempt['providerVolumePressure'] = 0;
-	}
-}
-
-function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
-	if (!value || typeof value !== 'object') return false;
-	const attempt = value as Record<string, unknown>;
-	if (
-		typeof attempt['domain'] !== 'string' ||
-		(attempt['fromDomain'] !== undefined && typeof attempt['fromDomain'] !== 'string') ||
-		(attempt['pool'] !== 'transactional' && attempt['pool'] !== 'campaign') ||
-		(attempt['dedicatedIp'] !== undefined && typeof attempt['dedicatedIp'] !== 'string') ||
-		typeof attempt['ip'] !== 'string' ||
-		typeof attempt['eligibilityGeneration'] !== 'number' ||
-		!Number.isSafeInteger(attempt['eligibilityGeneration'])
-	) {
-		return false;
-	}
-	// Entries persisted before the per-provider pressure dimension carry no
-	// counter. Tolerated rather than rejected — a legacy in-flight entry must
-	// still replay — and normalized to zero by `normalizeAttemptSnapshot`.
-	if (
-		attempt['providerVolumePressure'] !== undefined &&
-		typeof attempt['providerVolumePressure'] !== 'number'
-	) {
-		return false;
-	}
-	const destination = attempt['destination'];
-	if (!destination || typeof destination !== 'object') return false;
-	const route = destination as Record<string, unknown>;
-	return (
-		typeof route['recipientDomain'] === 'string' &&
-		['gmail', 'microsoft', 'yahoo', 'apple', 'other'].includes(String(route['providerKey'])) &&
-		typeof route['throttleKey'] === 'string' &&
-		typeof route['daneDiscoveryAuthenticated'] === 'boolean' &&
-		isMxSnapshot(route['mx']) &&
-		(route['daneDestinations'] === undefined || Array.isArray(route['daneDestinations']))
-	);
-}
-
-function isMxSnapshot(value: unknown): boolean {
-	if (!value || typeof value !== 'object') return false;
-	const mx = value as Record<string, unknown>;
-	if (mx['status'] === 'null-mx') return true;
-	if (mx['status'] === 'domain-not-found' || mx['status'] === 'temporary-failure') {
-		return typeof mx['reason'] === 'string';
-	}
-	return (
-		mx['status'] === 'deliverable' &&
-		(mx['source'] === 'mx' || mx['source'] === 'implicit') &&
-		Array.isArray(mx['hosts']) &&
-		mx['hosts'].length > 0 &&
-		mx['hosts'].length <= 50 &&
-		mx['hosts'].every(
-			(host) =>
-				!!host &&
-				typeof host === 'object' &&
-				typeof (host as Record<string, unknown>)['exchange'] === 'string' &&
-				typeof (host as Record<string, unknown>)['priority'] === 'number' &&
-				Number.isSafeInteger((host as Record<string, unknown>)['priority'])
-		)
-	);
 }
 
 export async function readSmtpOutcome(
@@ -291,6 +236,7 @@ export async function reserveSmtpOutcome(
 			ip: attempt.ip,
 			eligibilityGeneration: attempt.eligibilityGeneration,
 			providerVolumePressure: attempt.providerVolumePressure,
+			utcDate: attempt.utcDate,
 		},
 	};
 	const raw = JSON.stringify(entry);

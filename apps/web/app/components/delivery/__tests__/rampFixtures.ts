@@ -7,12 +7,12 @@
  */
 import type { IndependenceDayPoint } from '@owlat/shared/deliverabilityIndependence';
 import type {
-	IndependenceSummary,
 	RampAdminNotice,
 	RampCellControl,
 	RampCellDecision,
 	RampControls,
 } from '~/utils/deliverabilityRamp';
+import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const NOW = Date.UTC(2026, 6, 20);
