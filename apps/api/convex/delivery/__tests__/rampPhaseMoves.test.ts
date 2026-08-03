@@ -440,6 +440,7 @@ describe('promotion is the upward door', () => {
 				snapshotGeneratedAt: now,
 				expiresAt: now + 60_000,
 				updatedAt: now,
+				mixVersion: 4,
 			});
 		});
 
@@ -448,6 +449,9 @@ describe('promotion is the upward door', () => {
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBeUndefined();
 		expect(row?.phaseCeilingSince).toBeUndefined();
+		// A refusal spends no mix generation: re-randomising the cohort for a move
+		// that did not happen would cost the comparison its continuity for nothing.
+		expect(row?.mixVersion).toBe(4);
 	});
 
 	it('refuses a cell this tenant does not have', async () => {
