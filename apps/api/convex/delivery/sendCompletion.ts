@@ -62,10 +62,12 @@ interface SendWorkerSuccess {
 	deferred?: boolean;
 	// Which side the deferral came from (`LastMileRoutingDeferred.origin`). Only
 	// `governed` reaches gate 2's numerator; `local` — a policy hold, an
-	// idempotency wait, an unreachable decision endpoint — is our own machinery
-	// and is not evidence about this sending identity. Optional because a worker
-	// running older code answers without it, and an unlabelled deferral is not
-	// counted rather than guessed at.
+	// idempotency wait, an unreachable decision endpoint, an MTA answer reporting
+	// any Redis failure while taking the lease — is our own machinery wherever it
+	// runs, and is not evidence about this sending identity. An answer from the
+	// MTA is not automatically governed; only an answer about the sending identity
+	// is. Optional because a worker running older code answers without it, and an
+	// unlabelled deferral is not counted rather than guessed at.
 	deferralOrigin?: 'governed' | 'local';
 	retryAfterMs?: number;
 	envelopeInput?: WorkerEnvelopeInput;
@@ -125,10 +127,12 @@ export const completeSend = internalMutation({
 		// recorder, and fail-soft: it never rolls back the retry.
 		//
 		// ONLY THE GOVERNED HALF. A `local` deferral is this deployment holding its
-		// own message — a policy pause, an idempotency wait, an MTA decision
-		// endpoint we could not reach — and gate 2 halts a cell at 25%. Counting our
-		// own outage would take the share to the floor and revoke the graduation pin
-		// over a fault the receiver never saw.
+		// own message — a policy pause, an idempotency wait, an MTA decision endpoint
+		// we could not reach, an MTA answer reporting any Redis failure while taking
+		// the lease — and gate 2 halts a cell at 25%. Reaching the MTA is not what
+		// makes a deferral governed; the answer being about the sending identity is.
+		// Counting our own outage would take the share to the floor and revoke the
+		// graduation pin over a fault the receiver never saw.
 		if (returnValue?.deferred && returnValue.deferralOrigin === 'governed') {
 			await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 		}

@@ -73,10 +73,12 @@ export interface LastMileRoutingDeferred {
 	 *
 	 * `local` — this deployment's own machinery: a deliberate policy hold, the
 	 * idempotency reconciliation wait, an unconfigured or unreachable decision
-	 * endpoint, and a warm-up cap we set ourselves. Counting these would let a
-	 * forty-minute outage on our own side push a cell past the 25% halt line —
-	 * share to the floor, cooldown, and the graduation pin revoked — for a fault
-	 * no receiver ever saw.
+	 * endpoint, a warm-up cap we set ourselves, and the MTA reporting any Redis
+	 * failure while taking the lease. Our own infrastructure is `local` wherever it
+	 * runs, and an ANSWER from the MTA is not automatically `governed` — only an
+	 * answer about the identity is. Counting these would let a forty-minute outage
+	 * on our own side push a cell past the 25% halt line — share to the floor,
+	 * cooldown, and the graduation pin revoked — for a fault no receiver ever saw.
 	 */
 	origin: 'governed' | 'local';
 }
@@ -211,8 +213,13 @@ export async function resolveLastMileRouting(
 		requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
 	});
 	if (decision.kind === 'defer') {
-		// CARRIED, never re-derived: only the adapter knows whether the MTA answered
-		// `defer` or whether we failed to ask it (`MtaRoutingDecision`).
+		// CARRIED, never re-derived, because three cases arrive here looking
+		// identical and only the adapter can tell them apart: the MTA answered
+		// `defer` about THIS IDENTITY (`governed`), it answered `defer` about our
+		// own infrastructure — a Redis failure while taking the lease, see
+		// `MTA_DEFER_REASON_ORIGIN` (`local`) — or it was never reached at all, so
+		// nobody judged anything (`local`). This layer sees one `retryAfterMs` for
+		// all three, so re-deriving the origin here could only guess.
 		return { kind: 'defer', retryAfterMs: decision.retryAfterMs, origin: decision.origin };
 	}
 	if (decision.kind === 'mta') {

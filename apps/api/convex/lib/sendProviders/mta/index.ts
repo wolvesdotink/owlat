@@ -49,16 +49,53 @@ export type MtaRoutingDecision =
 			kind: 'defer';
 			retryAfterMs: number;
 			/**
-			 * WHO DECIDED TO DEFER — the MTA's routing governance, or our inability to
-			 * ask it. Both shapes are `defer` to the caller (the message waits either
-			 * way), but only the first is a statement about whether this sending
-			 * identity may send: an unconfigured, unreachable, slow or malformed
-			 * decision endpoint is a fault on OUR side that the receiver never saw.
+			 * WHO DECIDED TO DEFER — the MTA's routing governance, or a fault on our
+			 * own side. Both shapes are `defer` to the caller (the message waits
+			 * either way), but only `governed` is a statement about whether this
+			 * sending identity may send. An unconfigured, unreachable, slow or
+			 * malformed decision endpoint is `local`, and so is an ANSWER that
+			 * reports our own infrastructure failing rather than the identity's
+			 * standing (`MTA_DEFER_REASON_ORIGIN`) — the receiver saw neither.
 			 * `delivery/deferralOutcome.ts` counts the first and skips the second, so
-			 * a decision-endpoint outage cannot halt a cell for a fortnight.
+			 * an outage on our side cannot halt a cell for a fortnight.
 			 */
 			origin: 'governed' | 'local';
 	  };
+
+/**
+ * EVERY defer reason the MTA may answer, each paired with WHOSE FAULT IT IS.
+ *
+ * One table, two jobs, so the accept-list and the classification cannot drift
+ * apart: a reason absent here is an answer we did not understand and falls
+ * through to the unrecognised-body return, and a reason added here cannot be
+ * added without naming an origin.
+ *
+ * `governed` is the MTA declining this SENDING IDENTITY — an open global safety
+ * circuit, a probe budget, no warmed IP to send from. `lease_persistence` is
+ * none of those: it is ANY REDIS FAILURE WHILE TAKING THE LEASE — reserving a
+ * half-open probe, writing the lease record, whatever the one catch in
+ * `apps/mta/src/routes/routingDecision.ts` covers — so it is our own storage
+ * layer failing and no receiver ever refused the mail. Gate 2 halts a cell at
+ * 25% of `governed` deferrals; a Redis outage on our own MTA must not be able to
+ * spend that budget.
+ *
+ * Exported so the adapter's own suite can assert its case list covers every key
+ * — the drift this table exists to stop is a reason added here and nowhere else.
+ */
+export const MTA_DEFER_REASON_ORIGIN = {
+	global_safety: 'governed',
+	global_probe: 'governed',
+	no_owned_ip: 'governed',
+	lease_persistence: 'local',
+} as const satisfies Record<string, 'governed' | 'local'>;
+
+type MtaDeferReason = keyof typeof MTA_DEFER_REASON_ORIGIN;
+
+function deferReasonOrigin(reason: unknown): 'governed' | 'local' | undefined {
+	if (typeof reason !== 'string') return undefined;
+	if (!Object.prototype.hasOwnProperty.call(MTA_DEFER_REASON_ORIGIN, reason)) return undefined;
+	return MTA_DEFER_REASON_ORIGIN[reason as MtaDeferReason];
+}
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -145,22 +182,21 @@ export async function resolveMtaRoutingDecision(
 		) {
 			return { kind: 'relay', reason: 'relay_allowed' };
 		}
+		const deferOrigin = deferReasonOrigin(result['reason']);
 		if (
 			result['decision'] === 'defer' &&
 			Object.keys(result).length === 3 &&
 			Object.keys(result).every((key) => ['decision', 'reason', 'retryAfterMs'].includes(key)) &&
-			(result['reason'] === 'global_safety' ||
-				result['reason'] === 'global_probe' ||
-				result['reason'] === 'no_owned_ip' ||
-				result['reason'] === 'lease_persistence')
+			deferOrigin !== undefined
 		) {
 			const retryAfterMs = result['retryAfterMs'];
-			// THE ONE ANSWER THE MTA ITSELF GAVE — an open global safety circuit, a
-			// probe budget, no warmed IP to send from. That is governance over this
-			// sending identity, so it is the one defer shape gate 2 may count.
+			// AN ANSWER THE MTA ITSELF GAVE, which is not the same as an answer ABOUT
+			// THIS IDENTITY: the reason decides that, and only its `governed` half is
+			// the defer shape gate 2 may count. Honour the delay either way — the
+			// message waits the same amount of time whoever is at fault.
 			return {
 				kind: 'defer',
-				origin: 'governed',
+				origin: deferOrigin,
 				retryAfterMs:
 					typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
 						? Math.min(Math.max(retryAfterMs, 1_000), 60 * 60 * 1000)
@@ -171,9 +207,10 @@ export async function resolveMtaRoutingDecision(
 		// timeout cases: a body we cannot fully validate is a body we did not
 		// understand, and an answer we did not understand is not an observation
 		// about this identity. A NEW DEFER REASON ON THE MTA SIDE THEREFORE LANDS
-		// HERE AND STOPS BEING COUNTED until it is added to the list above — the
-		// two sides change together, which is the safe direction (a reason nobody
-		// vouched for cannot halt a cell) but never a silent one.
+		// HERE AND STOPS BEING COUNTED until it is added to
+		// `MTA_DEFER_REASON_ORIGIN` with an origin beside it — the two sides change
+		// together, which is the safe direction (a reason nobody vouched for cannot
+		// halt a cell) but never a silent one.
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} catch {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };

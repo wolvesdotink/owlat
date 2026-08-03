@@ -12,19 +12,35 @@
  * THIS IS THE FIRST WRITER, AND IT IS DELIBERATELY NOT THE ONLY ONE THERE COULD
  * BE. What it records is the GOVERNED half of the LAST-MILE ROUTER's deferrals —
  * `resolveLastMileRouting` answering `defer` with `origin: 'governed'` (the MTA
- * declining this identity: an open safety circuit, no warmed IP, an open breaker
+ * declining THIS IDENTITY: an open safety circuit, no warmed IP, an open breaker
  * with no relay to catch the overflow), or a transport answering
  * `ROUTING_DEFERRED` — which is the point where a message this deployment tried
  * to hand over provably did not go out for a reason about the sending identity.
+ * An answer FROM the MTA is not enough on its own; it has to be an answer ABOUT
+ * the identity, which is why the adapter classifies per defer reason
+ * (`lib/sendProviders/mta/index.ts`, `MTA_DEFER_REASON_ORIGIN`).
+ *
+ * ONLY THE FIRST OF THOSE TWO SOURCES ENFORCES THAT RULE TODAY. The
+ * `ROUTING_DEFERRED` branch in `governedDispatch.ts` hardcodes
+ * `deferralOrigin: 'governed'` for every transport defer, and the adapter routes
+ * any 409 carrying a `ROUTING_DECISION_` code into it — including
+ * `ROUTING_DECISION_EXPIRED`, which the MTA also answers when `readRoutingLease`
+ * comes back empty because its Redis lost the key rather than because the lease
+ * aged out. A store failure on our own side can therefore still spend gate 2's
+ * budget through that path. Classifying it needs the MTA to tell an expired
+ * lease apart from an unreadable one on the wire, which is parked for the
+ * aggregate; until it lands, read the rule above as holding for
+ * `resolveLastMileRouting`'s own answer and as an intention for the other.
  *
  * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
  * deliberate policy hold, the idempotency reconciliation wait, an unconfigured or
- * unreachable MTA decision endpoint, a warm-up cap we set ourselves — those are
- * this deployment holding its own message. Gate 2 halts a cell at 25%, so
- * counting a forty-minute outage on our own side would drop the share to the
- * floor, open a cooldown and revoke a graduation pin over a fault no receiver
- * ever saw. `completeSend` does the filtering, because the origin travels on the
- * worker's answer and dies there.
+ * unreachable MTA decision endpoint, a warm-up cap we set ourselves, and the MTA
+ * reporting any Redis failure while taking the lease — those are this deployment
+ * holding its own message, wherever the machinery that held it runs. Gate 2 halts
+ * a cell at 25%, so counting a forty-minute outage on our own side would drop the
+ * share to the floor, open a cooldown and revoke a graduation pin over a fault no
+ * receiver ever saw. `completeSend` does the filtering, because the origin travels
+ * on the worker's answer and dies there.
  *
  * A remote 4xx AFTER the MTA has accepted the message for delivery never comes
  * back through this path at all: the MTA retries it internally and reports it to
