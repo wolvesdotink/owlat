@@ -60,6 +60,23 @@ export interface LastMileRoutingDeferred {
 	 * to prevent. Held sends are bounded by the four-day delivery deadline.
 	 */
 	isPolicyHold?: boolean;
+	/**
+	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator (plan D5, D10), and the
+	 * reason this field is REQUIRED rather than defaulted: a new defer site that
+	 * forgot to answer would quietly pick a side.
+	 *
+	 * `governed` — the MTA's routing governance declined to carry this message:
+	 * an open safety circuit on the sending identity, no warmed IP, a warm-up cap
+	 * with nowhere to overflow to. That is a statement about whether THIS identity
+	 * can get mail out, which is what gate 2 measures and what may halt a cell.
+	 *
+	 * `local` — this deployment's own machinery: a deliberate policy hold, the
+	 * idempotency reconciliation wait, an unconfigured or unreachable decision
+	 * endpoint. Counting these would let a forty-minute outage on our own side
+	 * push a cell past the 25% halt line — share to the floor, cooldown, and the
+	 * graduation pin revoked — for a fault no receiver ever saw.
+	 */
+	origin: 'governed' | 'local';
 }
 
 /** Poll at the deliverability signal's own freshness horizon while held. */
@@ -81,7 +98,9 @@ function withReconciliationSafety(
 ): LastMileRoutingResult {
 	if (!mtaReconciliation) return result;
 	if (result.kind === 'ready' && result.providerKind !== 'mta') {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		// OUR OWN IDEMPOTENCY WAIT, not the receiver's answer: nothing about this
+		// identity's standing has been observed, so it is not gate 2's evidence.
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 	return result;
 }
@@ -104,7 +123,14 @@ export async function resolveLastMileRouting(
 	// as to why mail paused.
 	if (plan.deferralCode) {
 		console.warn(`[lastMileRouting] holding delivery: ${plan.deferralCode}`);
-		return { kind: 'defer', retryAfterMs: POLICY_HOLD_RETRY_MS, isPolicyHold: true };
+		return {
+			kind: 'defer',
+			retryAfterMs: POLICY_HOLD_RETRY_MS,
+			isPolicyHold: true,
+			// The deployment pausing itself. It already does not consume a routing
+			// attempt for that reason; for the same reason it is not a 4xx.
+			origin: 'local',
+		};
 	}
 	let route = plan.route;
 	let providerKind = selectSendProviderKind(route?.providerType ?? input.providerType);
@@ -152,7 +178,8 @@ export async function resolveLastMileRouting(
 		!transportEnvOptional(mtaTransport, 'MTA_API_URL') ||
 		!transportEnvOptional(mtaTransport, 'MTA_API_KEY')
 	) {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		// Unconfigured on our side — a fault, not a verdict about this identity.
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 	const baseProviderKind = selectSendProviderKind(
 		plan.baseRoute?.providerType ?? input.providerType
@@ -161,7 +188,7 @@ export async function resolveLastMileRouting(
 		throw new Error('Owned-MTA routing has no configured base transport.');
 	}
 	if (input.mtaReconciliation && baseProviderKind !== 'mta') {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 
 	const decision = await resolveMtaRoutingDecision(mtaTransport, {
@@ -182,7 +209,9 @@ export async function resolveLastMileRouting(
 		requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
 	});
 	if (decision.kind === 'defer') {
-		return { kind: 'defer', retryAfterMs: decision.retryAfterMs };
+		// CARRIED, never re-derived: only the adapter knows whether the MTA answered
+		// `defer` or whether we failed to ask it (`MtaRoutingDecision`).
+		return { kind: 'defer', retryAfterMs: decision.retryAfterMs, origin: decision.origin };
 	}
 	if (decision.kind === 'mta') {
 		if (baseProviderKind !== 'mta') {
@@ -210,7 +239,7 @@ export async function resolveLastMileRouting(
 		};
 	}
 	if (input.mtaReconciliation) {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 	if (baseProviderKind === 'mta' && route?.providerType !== 'ses') {
 		const relay = await ctx.runQuery(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {
@@ -229,7 +258,17 @@ export async function resolveLastMileRouting(
 			console.warn(
 				`[lastMileRouting] holding delivery: ${relay.deferralCode ?? 'relay_unavailable'}`
 			);
-			return { kind: 'defer', retryAfterMs: POLICY_HOLD_RETRY_MS, isPolicyHold: true };
+			return {
+				kind: 'defer',
+				retryAfterMs: POLICY_HOLD_RETRY_MS,
+				isPolicyHold: true,
+				// TWO HOLDS AT ONE RETURN SITE. `relay_unavailable` means the MTA
+				// declined the own arm (warm-up overflow, breaker) and there is no
+				// relay to catch it — governance about this identity, and exactly the
+				// pressure gate 2 is meant to see. A `deferralCode` from the relay
+				// route is our own configuration instead.
+				origin: relay.deferralCode ? 'local' : 'governed',
+			};
 		}
 	}
 	// The warm-up-overflow / breaker-open relay fallback resolved above carries

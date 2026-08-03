@@ -161,6 +161,7 @@ describe('completeSend — campaign Sends', () => {
 				returnValue: {
 					success: false,
 					deferred: true,
+					deferralOrigin: 'governed',
 					retryAfterMs: 60_000,
 					envelopeInput: { kind: 'campaign' },
 					retryState: {

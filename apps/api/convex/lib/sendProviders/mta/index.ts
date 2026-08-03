@@ -45,7 +45,20 @@ export type MtaRoutingDecision =
 				| 'provider_hysteresis'
 				| 'warmup_overflow';
 	  }
-	| { kind: 'defer'; retryAfterMs: number };
+	| {
+			kind: 'defer';
+			retryAfterMs: number;
+			/**
+			 * WHO DECIDED TO DEFER — the MTA's routing governance, or our inability to
+			 * ask it. Both shapes are `defer` to the caller (the message waits either
+			 * way), but only the first is a statement about whether this sending
+			 * identity may send: an unconfigured, unreachable, slow or malformed
+			 * decision endpoint is a fault on OUR side that the receiver never saw.
+			 * `delivery/deferralOutcome.ts` counts the first and skips the second, so
+			 * a decision-endpoint outage cannot halt a cell for a fortnight.
+			 */
+			origin: 'governed' | 'local';
+	  };
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -76,7 +89,7 @@ export async function resolveMtaRoutingDecision(
 ): Promise<MtaRoutingDecision> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
-	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000 };
+	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), MTA_DECISION_TIMEOUT_MS);
 	try {
@@ -86,10 +99,10 @@ export async function resolveMtaRoutingDecision(
 			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
 			signal: controller.signal,
 		});
-		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000 };
+		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 		const value = (await response.json()) as unknown;
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-			return { kind: 'defer', retryAfterMs: 60_000 };
+			return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 		}
 		const result = value as Record<string, unknown>;
 		if (result['decision'] === 'mta') {
@@ -142,17 +155,21 @@ export async function resolveMtaRoutingDecision(
 				result['reason'] === 'lease_persistence')
 		) {
 			const retryAfterMs = result['retryAfterMs'];
+			// THE ONE ANSWER THE MTA ITSELF GAVE — an open global safety circuit, a
+			// probe budget, no warmed IP to send from. That is governance over this
+			// sending identity, so it is the one defer shape gate 2 may count.
 			return {
 				kind: 'defer',
+				origin: 'governed',
 				retryAfterMs:
 					typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
 						? Math.min(Math.max(retryAfterMs, 1_000), 60 * 60 * 1000)
 						: 60_000,
 			};
 		}
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} catch {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} finally {
 		clearTimeout(timeout);
 	}

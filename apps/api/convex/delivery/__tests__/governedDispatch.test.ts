@@ -231,6 +231,9 @@ describe('dispatchGovernedEmail', () => {
 			success: false,
 			deferred: true,
 			retryAfterMs: 5_000,
+			// The MTA withdrew its own lease at enqueue: governance about this
+			// identity, so gate 2 may count it.
+			deferralOrigin: 'governed',
 			retryState: {
 				attempt: 3,
 				startedAt,
@@ -301,6 +304,7 @@ describe('dispatchGovernedEmail', () => {
 			kind: 'defer',
 			retryAfterMs: 600_000,
 			isPolicyHold: true,
+			origin: 'local',
 		});
 
 		const result = await dispatchGovernedEmail(ctx, {
@@ -312,19 +316,31 @@ describe('dispatchGovernedEmail', () => {
 			success: false,
 			deferred: true,
 			retryAfterMs: 600_000,
+			// The origin travels to the completion callback, which is the only place
+			// gate 2's numerator can be written from — a hold this deployment chose
+			// is not the destination throttling it.
+			deferralOrigin: 'local',
 			retryState: { attempt: 4 },
 		});
 	});
 
 	it('still spends an attempt on ordinary routing churn', async () => {
-		resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'defer',
+			retryAfterMs: 30_000,
+			origin: 'governed',
+		});
 
 		const result = await dispatchGovernedEmail(ctx, {
 			...baseRequest,
 			retryState: { attempt: 4, startedAt: Date.now(), idempotencyKey: 'send_send-row-1' },
 		});
 
-		expect(result).toMatchObject({ deferred: true, retryState: { attempt: 5 } });
+		expect(result).toMatchObject({
+			deferred: true,
+			deferralOrigin: 'governed',
+			retryState: { attempt: 5 },
+		});
 	});
 
 	it('gives a routing re-entry successor a work attempt of its own', async () => {

@@ -60,6 +60,13 @@ interface SendWorkerSuccess {
 	// instead of the generic WORKPOOL_FAILED one.
 	suppressed?: boolean;
 	deferred?: boolean;
+	// Which side the deferral came from (`LastMileRoutingDeferred.origin`). Only
+	// `governed` reaches gate 2's numerator; `local` — a policy hold, an
+	// idempotency wait, an unreachable decision endpoint — is our own machinery
+	// and is not evidence about this sending identity. Optional because a worker
+	// running older code answers without it, and an unlabelled deferral is not
+	// counted rather than guessed at.
+	deferralOrigin?: 'governed' | 'local';
 	retryAfterMs?: number;
 	envelopeInput?: WorkerEnvelopeInput;
 	retryState?: WorkerRetryState;
@@ -116,7 +123,13 @@ export const completeSend = internalMutation({
 		// the send — reaches gate 2's numerator exactly like the ones that are
 		// re-enqueued. Rate-limited to one event per send per UTC day inside the
 		// recorder, and fail-soft: it never rolls back the retry.
-		if (returnValue?.deferred) {
+		//
+		// ONLY THE GOVERNED HALF. A `local` deferral is this deployment holding its
+		// own message — a policy pause, an idempotency wait, an MTA decision
+		// endpoint we could not reach — and gate 2 halts a cell at 25%. Counting our
+		// own outage would take the share to the floor and revoke the graduation pin
+		// over a fault the receiver never saw.
+		if (returnValue?.deferred && returnValue.deferralOrigin === 'governed') {
 			await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 		}
 

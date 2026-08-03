@@ -138,7 +138,84 @@ describe('last-mile governance boundary', () => {
 				),
 				input
 			)
-		).toMatchObject({ kind: 'defer', isPolicyHold: true });
+		).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+	});
+
+	/**
+	 * WHOSE FACT THE DEFERRAL IS (`LastMileRoutingDeferred.origin`).
+	 *
+	 * Gate 2 halts a cell at 25%: share to the floor, cooldown, graduation pin
+	 * revoked. A decision endpoint we cannot reach defers every message in the
+	 * window on OUR side, and a fortnight of penalty for that is not a
+	 * measurement — `delivery/deferralOutcome.ts` counts only `governed`.
+	 */
+	describe('a deferral says whose fact it is', () => {
+		const governedRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+
+		it('marks an unconfigured MTA decision endpoint as this deployment’s own fault', async () => {
+			vi.stubEnv('MTA_API_URL', '');
+			expect(
+				await resolveLastMileRouting(
+					context({ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true }, 'org-1'),
+					input
+				)
+			).toMatchObject({ kind: 'defer', origin: 'local' });
+			expect(resolveMtaRoutingDecision).not.toHaveBeenCalled();
+		});
+
+		it.each(['governed', 'local'] as const)(
+			'carries the adapter’s %s verdict rather than re-deriving it',
+			async (origin) => {
+				vi.stubEnv('MTA_API_URL', 'https://mta.test');
+				vi.stubEnv('MTA_API_KEY', 'key');
+				resolveMtaRoutingDecision.mockResolvedValue({
+					kind: 'defer',
+					retryAfterMs: 30_000,
+					origin,
+				});
+				expect(
+					await resolveLastMileRouting(
+						context(
+							{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+							'org-1'
+						),
+						input
+					)
+				).toMatchObject({ kind: 'defer', retryAfterMs: 30_000, origin });
+			}
+		);
+
+		it('calls the MTA declining with nowhere to overflow to governance', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			// The relay route resolves to nothing usable, so the own arm was refused
+			// and there is no second arm to catch it — pressure on THIS identity.
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'governed' });
+		});
+
+		it('calls an unverified relay identity our own configuration', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null, deferralCode: 'RELAY_IDENTITY_UNVERIFIED' }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+		});
 	});
 
 	// Every `kind: 'ready'` return has to carry the relay return-path verdict:

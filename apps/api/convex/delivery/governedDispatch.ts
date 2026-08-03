@@ -83,6 +83,13 @@ export type GovernedDispatchResult<TEnvelope> =
 			retryAfterMs: number;
 			envelopeInput: TEnvelope;
 			retryState: WorkerRetryState;
+			/**
+			 * Carried to the completion callback because that is where gate 2's
+			 * numerator is written and the routing result is long gone by then. See
+			 * `LastMileRoutingDeferred.origin`: only `governed` is evidence about this
+			 * sending identity, and only `governed` is counted.
+			 */
+			deferralOrigin: 'governed' | 'local';
 	  }
 	| {
 			success: false;
@@ -211,6 +218,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			success: false,
 			deferred: true,
 			retryAfterMs: routing.retryAfterMs,
+			deferralOrigin: routing.origin,
 			envelopeInput: request.envelopeInput,
 			// The attempt cap bounds routing churn. A deliberate safety hold is
 			// not churn: consuming attempts would terminalize the send minutes
@@ -303,6 +311,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			success: false,
 			deferred: true,
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
+			// The MTA revalidated its own lease at enqueue and withdrew it
+			// (`mtaSendProvider.categorizeError`) — its governance, not our fault.
+			deferralOrigin: 'governed',
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),
 		};

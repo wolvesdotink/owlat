@@ -64,13 +64,17 @@ const testWorkId = 'test-work-id' as WorkId;
  * omitting it is the exhausted case, where the same observation ends in a
  * terminal `failed` instead.
  */
-function deferredResult(sendId: Id<'emailSends'>, options: { readonly retryable?: boolean } = {}) {
+function deferredResult(
+	sendId: Id<'emailSends'>,
+	options: { readonly retryable?: boolean; readonly origin?: 'governed' | 'local' } = {}
+) {
 	const retry = options.retryable ?? true;
 	return {
 		kind: 'success' as const,
 		returnValue: {
 			success: false,
 			deferred: true,
+			deferralOrigin: options.origin ?? ('governed' as const),
 			retryAfterMs: 60_000,
 			...(retry
 				? {
@@ -85,7 +89,7 @@ function deferredResult(sendId: Id<'emailSends'>, options: { readonly retryable?
 async function completeDeferred(
 	t: ReturnType<typeof convexTest>,
 	sendId: Id<'emailSends'>,
-	options: { readonly retryable?: boolean } = {}
+	options: { readonly retryable?: boolean; readonly origin?: 'governed' | 'local' } = {}
 ): Promise<void> {
 	await t.mutation(internal.delivery.sendCompletion.completeSend, {
 		workId: testWorkId,
@@ -198,13 +202,13 @@ describe('one deferral per send per UTC day', () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
 
-		expect(await recordAt(t, sendId, NOW)).toBe('counted');
+		expect(await recordAt(t, sendId, NOW)).toBe('observed');
 		// The same message, deferred again an hour later and again at the end of the
 		// UTC day: the numerator is denominated on `sent`, and a send that could
 		// contribute a dozen events would push it past its own denominator.
-		expect(await recordAt(t, sendId, NOW + 60 * 60 * 1000)).toBe('already_counted_today');
+		expect(await recordAt(t, sendId, NOW + 60 * 60 * 1000)).toBe('already_observed_today');
 		expect(await recordAt(t, sendId, startOfDayUtc(NOW) + DAY_MS - 1)).toBe(
-			'already_counted_today'
+			'already_observed_today'
 		);
 
 		await t.run(async (ctx) => {
@@ -216,8 +220,8 @@ describe('one deferral per send per UTC day', () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
 
-		expect(await recordAt(t, sendId, NOW)).toBe('counted');
-		expect(await recordAt(t, sendId, NOW + DAY_MS)).toBe('counted');
+		expect(await recordAt(t, sendId, NOW)).toBe('observed');
+		expect(await recordAt(t, sendId, NOW + DAY_MS)).toBe('observed');
 
 		await t.run(async (ctx) => {
 			const buckets = await readBuckets(ctx);
@@ -236,7 +240,7 @@ describe('one deferral per send per UTC day', () => {
 			(await seedAssignedSend(ctx, { assignment: {} })).sendId,
 		]);
 
-		for (const sendId of sends) expect(await recordAt(t, sendId, NOW)).toBe('counted');
+		for (const sendId of sends) expect(await recordAt(t, sendId, NOW)).toBe('observed');
 
 		await t.run(async (ctx) => {
 			expect(sumCounters(await readBuckets(ctx)).deferred).toBe(2);
@@ -251,7 +255,7 @@ describe('what is excluded records nothing, and says so', () => {
 		// experiment.
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx));
 
-		expect(await recordAt(t, sendId, NOW)).toBe('counted');
+		expect(await recordAt(t, sendId, NOW)).toBe('observed');
 
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
@@ -275,7 +279,7 @@ describe('what is excluded records nothing, and says so', () => {
 				})
 		);
 
-		expect(result).toBe('counted');
+		expect(result).toBe('observed');
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
 			expect((await ctx.db.get(previewId))?.deferralCountedDay).toBe(startOfDayUtc(NOW));
@@ -292,6 +296,92 @@ describe('what is excluded records nothing, and says so', () => {
 		expect(await recordAt(t, sendId, NOW)).toBe('send_missing');
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
+		});
+	});
+
+	it('a send that terminalized during the race is not counted against its own sent row', async () => {
+		const t = convexTest(schema, modules);
+		// A concurrent MTA acceptance moved the send to `sent` between the worker
+		// answering `defer` and this callback running. That send is already in the
+		// `sent` denominator gate 2 divides by; adding it to the numerator too would
+		// let one message be both.
+		const { sendId } = await t.run(
+			async (ctx) => await seedAssignedSend(ctx, { assignment: {}, status: 'sent' })
+		);
+
+		expect(await recordAt(t, sendId, NOW)).toBe('send_not_queued');
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+			// Not stamped either: the day was never this send's to take.
+			expect((await ctx.db.get(sendId))?.deferralCountedDay).toBeUndefined();
+		});
+	});
+});
+
+/**
+ * WHOSE FAULT THE DEFERRAL WAS (`LastMileRoutingDeferred.origin`).
+ *
+ * Gate 2 halts a cell at 25% — share to the floor, cooldown, graduation pin
+ * revoked. An MTA decision endpoint that is unreachable for forty minutes defers
+ * every message in the window on OUR side, which is a fault no receiver saw, and
+ * a fortnight of penalty for it is not a measurement.
+ */
+describe('only the governed half of a deferral is gate 2 evidence', () => {
+	it('counts the deferral the MTA governance decided', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		await completeDeferred(t, sendId, { origin: 'governed' });
+
+		await t.run(async (ctx) => {
+			expect(sumCounters(await readBuckets(ctx)).deferred).toBe(1);
+		});
+	});
+
+	it('records nothing for the deployment holding its own message', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		// A policy hold, or an unreachable decision endpoint: same `deferred: true`
+		// to the retry machinery, and the send is still re-enqueued below.
+		await completeDeferred(t, sendId, { origin: 'local' });
+
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+			const send = await ctx.db.get(sendId);
+			expect(send?.status).toBe('queued');
+			// UNSTAMPED, so the day stays available: if the same message is deferred
+			// by the receiver an hour later, that one still counts.
+			expect(send?.deferralCountedDay).toBeUndefined();
+			expect(await ctx.db.system.query('_scheduled_functions').collect()).toHaveLength(1);
+		});
+	});
+
+	it('records nothing for a deferral that names no origin at all', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		// An in-flight worker running the previous build answers without the field.
+		// An unlabelled deferral is not counted rather than guessed at — the halt is
+		// the expensive direction to be wrong in.
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: false,
+					deferred: true,
+					retryAfterMs: 60_000,
+					envelopeInput: { kind: 'campaign' },
+					retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: `send_${sendId}` },
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+			expect((await ctx.db.get(sendId))?.status).toBe('queued');
 		});
 	});
 });

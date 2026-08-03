@@ -10,12 +10,23 @@
  * fail is worse than no gate: it looks like evidence.
  *
  * THIS IS THE FIRST WRITER, AND IT IS DELIBERATELY NOT THE ONLY ONE THERE COULD
- * BE. What it records is the LAST-MILE ROUTER's deferral — `resolveLastMileRouting`
- * answering `defer` (a warming-cap hold, a safety-circuit pause, no usable
- * route), or a transport answering `ROUTING_DEFERRED` — which is the point where
- * a message this deployment tried to hand over provably did not go out. A remote
- * 4xx AFTER the MTA has accepted the message for delivery never comes back
- * through this path at all: the MTA retries it internally and reports it to
+ * BE. What it records is the GOVERNED half of the LAST-MILE ROUTER's deferrals —
+ * `resolveLastMileRouting` answering `defer` with `origin: 'governed'` (the MTA
+ * declining this identity: an open safety circuit, no warmed IP, a warm-up cap
+ * with nowhere to overflow to), or a transport answering `ROUTING_DEFERRED` —
+ * which is the point where a message this deployment tried to hand over provably
+ * did not go out for a reason about the sending identity.
+ *
+ * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
+ * deliberate policy hold, the idempotency reconciliation wait, an unconfigured or
+ * unreachable MTA decision endpoint — those are this deployment holding its own
+ * message. Gate 2 halts a cell at 25%, so counting a forty-minute outage on our
+ * own side would drop the share to the floor, open a cooldown and revoke a
+ * graduation pin over a fault no receiver ever saw. `completeSend` does the
+ * filtering, because the origin travels on the worker's answer and dies there.
+ *
+ * A remote 4xx AFTER the MTA has accepted the message for delivery never comes
+ * back through this path at all: the MTA retries it internally and reports it to
  * Convex only as a per-IP warming aggregate, which carries no (cell, arm). That
  * half is still uninstrumented, and `evaluateDeferralGate` is written to say so
  * rather than to read this counter's zero as a clean window — see
@@ -46,11 +57,16 @@ import { withoutTestSendEffects, type SendRef } from './sendLifecycle/types';
 /**
  * Where a deferral observation ended up — returned, never thrown.
  *
- * `counted` names the day the send took, which is not the claim that a counter
- * moved: a send outside the experiment has no assignment row and the effect
- * runner records nothing for it.
+ * `observed` is the word on purpose: it names the day the send took, and makes
+ * no claim that a counter moved. A send outside the experiment has no assignment
+ * row and the effect runner records nothing for it, which is still an
+ * observation this send and day have been processed.
  */
-export type RecordDeferralOutcomeResult = 'counted' | 'already_counted_today' | 'send_missing';
+export type RecordDeferralOutcomeResult =
+	| 'observed'
+	| 'already_observed_today'
+	| 'send_missing'
+	| 'send_not_queued';
 
 /**
  * Record ONE observed last-mile deferral against the send's (cell, arm) counter.
@@ -65,17 +81,25 @@ export async function recordDeferralOutcome(
 	args: { readonly send: SendRef; readonly at: number }
 ): Promise<RecordDeferralOutcomeResult> {
 	const send = await ctx.db.get(args.send.id);
-	// The Send may have terminalized between the worker's answer and this
-	// callback. Nothing to attribute to, and nothing to stamp.
+	// The row is gone — deleted, or a purge ran between the worker's answer and
+	// this callback. Nothing to attribute to, and nothing to stamp.
 	if (!send) return 'send_missing';
+	// A DEFERRAL IS A THING THAT HAPPENS TO A QUEUED SEND. Between the worker
+	// answering and this callback running, a concurrent MTA acceptance may have
+	// moved the send to `sent` and a stale route callback may have failed it — and
+	// a send counted in the `sent` denominator must not also be counted in the
+	// numerator divided by it. `completeSend` guards its own reconciliation branch
+	// against the same race, in the same words.
+	if (send.status !== 'queued') return 'send_not_queued';
 
-	// A NON-FINITE INSTANT IS NOT A DAY. `v.number()` is a float64 all the way
-	// down, and a `NaN` here would bucket the write nowhere and defeat the gate
-	// (`NaN !== NaN`, so every retry would count again). The shipped normalizer,
-	// not a second rule.
+	// A NON-FINITE INSTANT IS NOT A DAY. The instant comes from `completeSend`'s
+	// own `Date.now()` in-process, so this is a belt rather than a boundary check
+	// — but a `NaN` reaching `startOfDayUtc` would bucket the write nowhere and
+	// defeat the per-day gate (`NaN !== NaN`, so every retry would count again),
+	// and every other outcome writer normalizes through the same helper.
 	const at = resolveNow(args.at);
 	const day = startOfDayUtc(at);
-	if (send.deferralCountedDay === day) return 'already_counted_today';
+	if (send.deferralCountedDay === day) return 'already_observed_today';
 
 	// Stamp BEFORE recording, exactly as the unsubscribe emitter does: the stamp
 	// is the gate, and the next attempt of this send must find it set whatever
@@ -97,5 +121,5 @@ export async function recordDeferralOutcome(
 		effects: [transportOutcomeEffect(args.send, 'deferred', at)],
 	});
 	await applyEffects(ctx, effects);
-	return 'counted';
+	return 'observed';
 }
