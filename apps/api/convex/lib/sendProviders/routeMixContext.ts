@@ -7,11 +7,14 @@
  * controller-owned `adaptive_mix` strategy needs to answer "which arm is THIS
  * recipient in" lives in one cohesive place next to it. `route.ts` is the only
  * consumer of the CONTEXT; nothing here reads `providerHealth`, so the
- * enqueue-side cell seam (`cellRoute.ts`) is unaffected either way.
+ * enqueue-side cell seam (`cellRoute.ts`) can name the predicate below without
+ * pulling that hotspot into the enqueue transaction.
  *
- * The one other export is the PRECONDITION for all of it — whether a route
- * splits by share at all — which the ramp's enrolment door asks so that what it
- * tells an operator matches what the router will do.
+ * The other two exports are the PRECONDITION for all of it — whether a route
+ * splits by share at all, asked of a row in hand or of a stream — which every
+ * seam that acts on a split asks, so that the ramp's enrolment door, the
+ * enqueue-side recording and the dispatch-time router cannot disagree about
+ * whether a split is happening.
  */
 
 import type { Doc } from '../../_generated/dataModel';
@@ -34,10 +37,12 @@ import type { MessageType } from './routeInputs';
  * `adaptive_mix` is the only strategy that reads a mix context, so it is the
  * only one under which a stored `ownShare` moves a single message: on `single`,
  * `priority_failover` and `workload_split` the share is a number the controller
- * keeps and the router never consults. Stated ONCE, here, because two callers
- * now depend on it — `mixContextFor` below, and the ramp's enrolment door, which
- * must not tell an operator a relay is carrying 98% of a cell whose route cannot
- * express a split.
+ * keeps and the router never consults. Stated ONCE, here, because every seam
+ * that acts on a split asks it: `mixContextFor` below, the `wantsMix` guard in
+ * `route.ts`, the enqueue-side cell seam in `cellRoute.ts`, and the ramp's
+ * enrolment door — which must not tell an operator a relay is carrying 98% of a
+ * cell whose route cannot express a split. A second splitting strategy is then
+ * one edit here, not four that have to be found.
  */
 export function isShareSplitRoute(routeConfig: Doc<'providerRoutes'> | null): boolean {
 	return routeConfig?.strategy === 'adaptive_mix';

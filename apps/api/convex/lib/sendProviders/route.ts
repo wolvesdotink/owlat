@@ -23,6 +23,7 @@ import {
 } from './routing';
 import type { MixContext } from './strategies';
 import {
+	isShareSplitRoute,
 	mixContextFor,
 	resolveAddressCell,
 	type PrecomputedRouteInputs,
@@ -139,7 +140,7 @@ async function resolveSendRouteWithInputs(
 	const wantsDeliverability = !addressContext?.baseOnly && Boolean(addressContext?.to);
 	const wantsMix =
 		precomputed === undefined &&
-		routeConfig?.strategy === 'adaptive_mix' &&
+		isShareSplitRoute(routeConfig) &&
 		(addressContext?.sendId !== undefined || addressContext?.to !== undefined);
 	const resolvedCell =
 		wantsDeliverability || wantsMix

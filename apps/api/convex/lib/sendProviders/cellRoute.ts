@@ -62,6 +62,11 @@ import {
 	relayDomainVerifiedFor,
 	type MessageType,
 } from './routeInputs';
+// The "does this route split by the cell's share" rule only. `routeMixContext`
+// owns the per-MESSAGE mix concern and reads no `providerHealth`, so naming it
+// here does not pull the health hotspot into the enqueue transaction — see the
+// module note above.
+import { isShareSplitRoute } from './routeMixContext';
 
 /** Batch-wide inputs for {@link prepareCellMixResolver}. */
 export interface CellRouteContext {
@@ -142,7 +147,7 @@ export async function prepareCellMixResolver(
 		context.now
 	);
 	const isDeterministic = isDeterministicRouteStrategy(routeConfig?.strategy);
-	const isAdaptiveMix = routeConfig?.strategy === 'adaptive_mix';
+	const isShareSplit = isShareSplitRoute(routeConfig);
 	// One read of the cell's two route-state rows per DISTINCT destination
 	// provider, however many recipients the batch resolves.
 	const cellRows = new Map<DestinationProviderKey, RouteStateCellRows>();
@@ -162,7 +167,7 @@ export async function prepareCellMixResolver(
 			});
 			cellRows.set(destinationProvider, providerCell);
 		}
-		const mixContext: MixContext | undefined = isAdaptiveMix
+		const mixContext: MixContext | undefined = isShareSplit
 			? {
 					kind: 'decide',
 					input: {

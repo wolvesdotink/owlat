@@ -351,6 +351,35 @@ describe('what the opening share actually does today', () => {
 		expect(result).toMatchObject({ enrolled: true, path: 'own_server' });
 		expect((await decisions(t))[0]?.message).toContain('warm-up pace');
 	});
+
+	/**
+	 * AND ALL THREE SEAMS ASK THE SAME QUESTION. What this door TELLS an operator,
+	 * what the enqueue seam RECORDS and what the dispatch-time router DOES are
+	 * three modules that must agree about whether a split is happening. Today
+	 * `adaptive_mix` is the union's only splitting member, so a hand-rolled copy
+	 * of the comparison is invisible — until a second splitting strategy lands,
+	 * at which point the seam that was not updated records `own` for traffic the
+	 * router is splitting and this door tells the operator the opposite. So the
+	 * comparison lives in `isShareSplitRoute` and nowhere else.
+	 */
+	it('asks ONE predicate — no seam hand-rolls the strategy comparison', async () => {
+		const fs = await import('node:fs/promises');
+		const read = async (rel: string) => await fs.readFile(new URL(rel, import.meta.url), 'utf8');
+		const rule = /===\s*'adaptive_mix'/g;
+
+		const owner = await read('../../lib/sendProviders/routeMixContext.ts');
+		expect(owner.match(rule)).toHaveLength(1);
+
+		for (const rel of [
+			'../rampEnrollment.ts',
+			'../../lib/sendProviders/route.ts',
+			'../../lib/sendProviders/cellRoute.ts',
+		]) {
+			const source = await read(rel);
+			expect(source.match(rule), `${rel} must not restate the rule`).toBeNull();
+			expect(source, `${rel} must ask the predicate`).toMatch(/ShareSplitRoute|ShareSplitRouted/);
+		}
+	});
 });
 
 describe('a cell that is already managed', () => {
