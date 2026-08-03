@@ -121,17 +121,32 @@ function sourceWithoutComments(file: string): string {
 const MODULES = productionModules(convexRoot);
 const named = (file: string): string => relative(convexRoot, file);
 
+/** The interface's own body, comments already stripped. */
+function interfaceBody(): string {
+	const source = sourceWithoutComments(GATE_TYPES);
+	return /export interface RampGateEvaluationInput \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
+}
+
 /**
  * The declared fields, read off the interface rather than hand-listed. Optional
  * and required members alike: an optional field a gate READS is still a field
  * that has to arrive from somewhere.
+ *
+ * Only members carrying `readonly`, which is how every one of them is spelled
+ * today — and a member spelled any other way would leave this list SILENTLY,
+ * taking its supplier assertion with it. That is the defect this file exists to
+ * catch, reappearing inside the guard, so `memberLines` counts the body a second
+ * way and the two counts are asserted equal below.
  */
-function declaredFields(): string[] {
-	const source = sourceWithoutComments(GATE_TYPES);
-	const body = /export interface RampGateEvaluationInput \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
+function fieldsIn(body: string): string[] {
 	return [...body.matchAll(/^\treadonly ([A-Za-z_$][\w$]*)\??:/gm)]
 		.map((match) => match[1] ?? '')
 		.filter((field) => field.length > 0);
+}
+
+/** EVERY member line of the body, `readonly` or not — the second count. */
+function memberLines(body: string): number {
+	return [...body.matchAll(/^\t(?:readonly )?[A-Za-z_$][\w$]*\??:/gm)].length;
 }
 
 /**
@@ -290,7 +305,8 @@ for (const file of MODULES) {
 	if (fields.size > 0) SUPPLIERS.set(named(file), fields);
 }
 
-const FIELDS = declaredFields();
+const BODY = interfaceBody();
+const FIELDS = fieldsIn(BODY);
 
 function suppliersFor(field: string): string[] {
 	return [...SUPPLIERS].filter(([, fields]) => fields.has(field)).map(([file]) => file);
@@ -309,6 +325,22 @@ describe('the gate-input guard is looking at production', () => {
 		expect(FIELDS).toContain('ownSeeds');
 		expect(FIELDS).toContain('referenceSeeds');
 		expect(FIELDS.length).toBeGreaterThanOrEqual(10);
+		// EVERY member is a field this suite asserts on. A count floor cannot see
+		// ONE member going missing, which is the size the defect actually comes in,
+		// so the body is counted a second way and the two must agree.
+		expect(FIELDS.length).toBe(memberLines(BODY));
+	});
+
+	it('would notice a member that dropped `readonly`', () => {
+		// The failure mode the equality above is there for, driven directly: the
+		// field list misses `b`, the member count does not, and the suite goes red
+		// instead of quietly asserting nothing about it.
+		const body = '\treadonly a: number;\n\tb?: string;\n\treadonly c: X | null;';
+		expect(fieldsIn(body)).toEqual(['a', 'c']);
+		expect(memberLines(body)).toBe(3);
+		// And a nested member is not a member of THIS interface — it belongs to the
+		// type in value position, and counting it would fail the equality forever.
+		expect(memberLines('\treadonly cfg: {\n\t\treadonly inner: number;\n\t};')).toBe(1);
 	});
 
 	it('found the callers that actually build one', () => {
