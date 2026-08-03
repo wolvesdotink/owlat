@@ -299,6 +299,7 @@ import type * as delivery_rampControlAudit from "../delivery/rampControlAudit.js
 import type * as delivery_rampControlQueries from "../delivery/rampControlQueries.js";
 import type * as delivery_rampControls from "../delivery/rampControls.js";
 import type * as delivery_rampEnrollment from "../delivery/rampEnrollment.js";
+import type * as delivery_rampHardStops from "../delivery/rampHardStops.js";
 import type * as delivery_rampPhasePromotion from "../delivery/rampPhasePromotion.js";
 import type * as delivery_rampPhaseReset from "../delivery/rampPhaseReset.js";
 import type * as delivery_rampIndependence from "../delivery/rampIndependence.js";
@@ -1209,6 +1210,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/rampControlQueries": typeof delivery_rampControlQueries;
   "delivery/rampControls": typeof delivery_rampControls;
   "delivery/rampEnrollment": typeof delivery_rampEnrollment;
+  "delivery/rampHardStops": typeof delivery_rampHardStops;
   "delivery/rampPhasePromotion": typeof delivery_rampPhasePromotion;
   "delivery/rampPhaseReset": typeof delivery_rampPhaseReset;
   "delivery/rampIndependence": typeof delivery_rampIndependence;

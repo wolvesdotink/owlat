@@ -505,3 +505,72 @@ describe('an unmanaged cell', () => {
 		expect(rows.some((row) => row.destinationProvider === 'yahoo')).toBe(false);
 	});
 });
+
+/**
+ * THE INCREASE BLOCK READS A FREEZE THE WAY THE CONTROLLER DOES.
+ *
+ * `readRampIncreaseBlock` asks the rungs' own reader rather than comparing
+ * `frozenUntil` to the clock, so "is this cell frozen" means at the operator's
+ * door exactly what it means on the next tick. The UNREADABLE case is the one
+ * that motivates it: a stored expiry no rung of this controller could have
+ * stamped is a row nobody can explain, and a value we cannot read is not
+ * permission to climb.
+ */
+describe('a hand on the control reads the freeze through the rungs', () => {
+	async function forceUp(t: Harness) {
+		return await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+	}
+
+	it('refuses an increase under an expiry no rung could have stamped', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			frozenUntil: Date.now() + 10_000 * 24 * 60 * 60 * 1000,
+		});
+
+		const result = await forceUp(t);
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+	});
+
+	// THE COUNTER-CASE, or the rule above would be indistinguishable from "any
+	// stored instant blocks": an EXPIRED cooldown is not a hold, and a cell whose
+	// freeze has run out may be moved.
+	it('permits the same increase once the freeze has expired', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			frozenUntil: Date.now() - 1,
+			freezeReason: 'gate_breach',
+		});
+
+		expect((await forceUp(t)).applied).toBe(true);
+		expect((await readManagedCell(t))?.ownShare).toBe(0.9);
+	});
+
+	// DOWNWARD IS NEVER BLOCKED, whatever the row says: a safety response an
+	// operator cannot reach downward is not a safety response either.
+	it('always lets a cell be taken DOWN through an unreadable freeze', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.8,
+			frozenUntil: Date.now() + 10_000 * 24 * 60 * 60 * 1000,
+		});
+
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.1,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.ownShare).toBe(0.1);
+	});
+});

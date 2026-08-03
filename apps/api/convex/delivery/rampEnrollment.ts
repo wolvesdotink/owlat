@@ -78,7 +78,7 @@ import { RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import type { RampActuator } from './ramp/degradation';
 import { resolveSetupPath, type RampSetupPathId } from './ramp/setupFork';
-import { readRampIncreaseBlock } from './rampControllerInputs';
+import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
 import type { RampControlRefusal } from './rampControls';
 import {

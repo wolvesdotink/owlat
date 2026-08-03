@@ -41,7 +41,7 @@ import { evaluatePhasePromotion, type PromotionConditionId } from './ramp/phaseP
 import { loadRampPromotionEvidence } from './rampPromotionEvidence';
 import { loadCellDegradation } from './rampIntegrationPresence';
 import { hasSecondSender } from './relayConfiguration';
-import { readRampIncreaseBlock } from './rampControllerInputs';
+import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
 import type { RampControlRefusal } from './rampControls';
 import {

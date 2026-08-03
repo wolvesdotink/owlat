@@ -70,7 +70,7 @@ import {
 	destinationProviderValidator,
 	rampPresetValidator,
 } from './deliverabilityValidators';
-import { readRampIncreaseBlock } from './rampControllerInputs';
+import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
 
 const cellArgs = {
