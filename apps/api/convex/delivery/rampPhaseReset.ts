@@ -22,7 +22,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { adminMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
-import { configuredRelayKinds } from './alignmentPreflight';
+import { configuredRelayKinds } from './relayConfiguration';
 import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
 import { bindsPhaseLadder } from './ramp/degradation';
 import { loadCellDegradation } from './rampIntegrationPresence';

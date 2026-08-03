@@ -73,7 +73,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { isStreamShareSplitRouted } from '../lib/sendProviders/routeMixContext';
-import { configuredRelayKinds } from './alignmentPreflight';
+import { configuredRelayKinds } from './relayConfiguration';
 import { RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import type { RampActuator } from './ramp/degradation';

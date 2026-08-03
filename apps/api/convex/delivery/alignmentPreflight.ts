@@ -34,18 +34,14 @@ import {
 } from '@owlat/shared/deliverabilityAlignment';
 import type { ReferenceArmPresence } from '@owlat/shared/deliverabilityAlignmentGate';
 import { parseSpfMechanisms } from '@owlat/shared/spf';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { parsePoolIps } from '../domains/spf';
 import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
+import { configuredRelayKinds } from './relayConfiguration';
 
 /** SES's SPF include, used when the relay identity carries no generated record. */
 const SES_DEFAULT_SPF_MECHANISM = 'include:amazonses.com';
@@ -88,94 +84,6 @@ function ownSpfMechanisms(): string[] {
 		return [];
 	}
 	return poolIps.map((ip) => `${ip.includes(':') ? 'ip6' : 'ip4'}:${ip}`);
-}
-
-/** Upper bound on the (per-messageType) route rows we inspect for a relay. */
-const PROVIDER_ROUTE_SCAN_LIMIT = 16;
-
-/** Read-only ctx: the ramp controller's hourly tick is a mutation and reads this. */
-type RelayReadCtx = QueryCtx | MutationCtx;
-
-/**
- * Every configured non-MTA transport kind, from the SHIPPED surfaces: each
- * enabled `providerRoutes` entry plus the single-transport `EMAIL_PROVIDER` env.
- * The shipped transport set is wider than SES (`mta`/`ses`/`resend`/`smtp` plus
- * `plugin.*`), so answering this from the SES identity table alone would report
- * "single arm" for a Resend/SMTP/plugin relay and let two genuinely unaligned
- * arms ramp.
- *
- * Exported because the return-path read needs the SAME answer: which transport
- * is the second arm is one question, and two implementations of it would drift
- * into telling the operator two different stories about one configuration.
- */
-export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]> {
-	// One row per messageType — tiny by construction, and bounded anyway.
-	const routes = await ctx.db.query('providerRoutes').take(PROVIDER_ROUTE_SCAN_LIMIT);
-	const kinds = new Set<string>();
-	for (const route of routes) {
-		for (const provider of route.providers) {
-			if (provider.isEnabled && provider.providerType !== 'mta') kinds.add(provider.providerType);
-		}
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER')?.trim();
-	if (envProvider !== undefined && envProvider !== '' && envProvider !== 'mta') {
-		kinds.add(envProvider);
-	}
-	return [...kinds].sort();
-}
-
-/**
- * The REFERENCE transport id — the second arm — or null when there is not
- * exactly one.
- *
- * Deliberately not "the active transport": on a standalone deployment the
- * active transport is the own MTA, and answering the reference question with it
- * would describe our own infrastructure under copy that says "this provider".
- * Zero relays is the standalone configuration (null, and the caller says so
- * plainly); more than one means there is no single second arm to describe, which
- * is exactly the answer {@link referenceFor} gives that configuration.
- *
- * A kind maps onto its DEFAULT transport id, which is the kind itself
- * (`defaultSendTransportId`); an id this deployment cannot resolve is resolved
- * by every caller to a degraded posture rather than an error (D2).
- */
-export async function referenceRelayTransportId(ctx: RelayReadCtx): Promise<string | null> {
-	return referenceTransportIdOf(await configuredRelayKinds(ctx));
-}
-
-/** The "exactly one kind" rule itself, over a list already read. */
-function referenceTransportIdOf(kinds: readonly string[]): string | null {
-	return kinds.length === 1 ? (kinds[0] ?? null) : null;
-}
-
-/** Both readings of the relay list — see {@link relayConfiguration}. */
-export interface RelayConfiguration {
-	/** The single second arm, or null when there is not exactly one. */
-	readonly referenceTransportId: string | null;
-	/** Is there a second sender AT ALL — the question the ramp's doors ask. */
-	readonly isRelayConfigured: boolean;
-}
-
-/**
- * BOTH READINGS OF THE RELAY LIST, FROM ONE SCAN.
- *
- * "Which single arm is the reference one" and "is there a second sender at all"
- * are different questions — they disagree on a two-relay deployment, where the
- * reset door cuts and there is still no arm to name — so a screen that shows the
- * ramp's position needs both. Reading the list once is not only the cheaper
- * shape: two derivations over two scans could straddle a route change and report
- * a reference arm on a configuration that no longer has one.
- *
- * The "exactly one" rule stays in {@link referenceTransportIdOf} rather than
- * being restated at the call site — a second copy of it is how the two answers
- * would start disagreeing about one list.
- */
-export async function relayConfiguration(ctx: RelayReadCtx): Promise<RelayConfiguration> {
-	const kinds = await configuredRelayKinds(ctx);
-	return {
-		referenceTransportId: referenceTransportIdOf(kinds),
-		isRelayConfigured: kinds.length > 0,
-	};
 }
 
 /** Relay SPF mechanisms from the identity's generated record, else SES's default. */

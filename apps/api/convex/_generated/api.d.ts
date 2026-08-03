@@ -330,6 +330,7 @@ import type * as delivery_ramp_setupFork from "../delivery/ramp/setupFork.js";
 import type * as delivery_rampIntegrationPresence from "../delivery/rampIntegrationPresence.js";
 import type * as delivery_rampPromotionEvidence from "../delivery/rampPromotionEvidence.js";
 import type * as delivery_rampReadCtx from "../delivery/rampReadCtx.js";
+import type * as delivery_relayConfiguration from "../delivery/relayConfiguration.js";
 import type * as delivery_relayReturnPath from "../delivery/relayReturnPath.js";
 import type * as delivery_relayReturnPathProbe from "../delivery/relayReturnPathProbe.js";
 import type * as delivery_readinessValidators from "../delivery/readinessValidators.js";
@@ -1185,6 +1186,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/paceCeiling": typeof delivery_ramp_paceCeiling;
   "delivery/ramp/paceConfig": typeof delivery_ramp_paceConfig;
   "delivery/ramp/paceTypes": typeof delivery_ramp_paceTypes;
+  "delivery/relayConfiguration": typeof delivery_relayConfiguration;
   "delivery/relayReturnPath": typeof delivery_relayReturnPath;
   "delivery/relayReturnPathProbe": typeof delivery_relayReturnPathProbe;
   "delivery/postmasterCards": typeof delivery_postmasterCards;

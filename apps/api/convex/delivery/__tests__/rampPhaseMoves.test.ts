@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
-import { configuredRelayKinds } from '../alignmentPreflight';
+import { configuredRelayKinds } from '../relayConfiguration';
 import {
 	connectRelay,
 	readManagedCell,
