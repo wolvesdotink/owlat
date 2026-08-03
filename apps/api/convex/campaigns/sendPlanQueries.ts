@@ -83,7 +83,11 @@ export const getSendPlanCapacity = internalQuery({
 		// does pace all 600 through the day budget, and the estimate quotes what the
 		// walker will do. The gate answers a strictly narrower question (can the own
 		// MTA's cap strand this campaign) and its scaling only ever ALLOWS more, so
-		// the gap costs an over-long plan, never an expired tail. Closing it means
+		// the gap costs an over-long plan, never an expired tail. The gap is in the
+		// VERDICT alone: a gate REFUSAL hands back the plan built the way this one is,
+		// over the WHOLE audience (`campaigns/capacityPreflight.ts` —
+		// `quotedRefusalSchedule`), so no screen ever quotes an own-arm message count
+		// as a recipient schedule. Closing the verdict gap too means
 		// metering own-arm volume HERE: the budget becomes `capacityToday / peak`
 		// recipients and the length is planned over `peak x remaining` — the PEAK,
 		// the only bound that cannot let a day's slice exceed the cap whatever the

@@ -26,11 +26,13 @@
  * was written for.
  *
  * AND WHAT IT ANSWERS ABOUT A CAMPAIGN IT DOES NOT ACTUATE. The share carried
- * back here scales the PRE-FLIGHT's measurement only. The multi-day send walker
- * and the wizard's day estimate meter the whole audience against the same paced
- * projection, so under `adaptive_mix` they quote a longer plan than this gate
- * measured; `campaigns/sendPlanQueries.ts` states which answer is authoritative
- * and what closes the gap.
+ * back here scales the PRE-FLIGHT's VERDICT only — never the schedule the
+ * operator is shown, which is the walker's own plan over the whole audience
+ * (`campaigns/capacityPreflight.ts`). The multi-day send walker and the wizard's
+ * day estimate meter that whole audience against the same paced projection, so
+ * under `adaptive_mix` a campaign this gate measures as fitting still shows a
+ * multi-day plan there; `campaigns/sendPlanQueries.ts` states which answer is
+ * authoritative and what closes the gap.
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
