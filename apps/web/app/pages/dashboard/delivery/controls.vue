@@ -150,10 +150,6 @@ const refusal = ref<RampControlRefusal | null>(null);
  */
 const outcome = ref<string | null>(null);
 
-function noteResult(result: { readonly refusal?: RampControlRefusal } | undefined): void {
-	refusal.value = result?.refusal ?? null;
-}
-
 /**
  * WHAT THE NEXT RUNG IS STILL WAITING ON, kept beside the refusal that named it.
  * "Not yet" with no list is the shape of an unactionable refusal (plan D12/D14).
@@ -195,15 +191,32 @@ function cellArgs(cell: RampCellControl) {
 	return { stream: cell.cell.stream, destinationProvider: cell.cell.destinationProvider };
 }
 
-async function enroll(): Promise<void> {
+/**
+ * THE SHAPE EVERY PER-CELL WRITE SHARES: the selected cell or nothing, the slate
+ * cleared BEFORE the attempt, the refusal kept, the read refreshed. Held once
+ * rather than copied six times — a control that keeps its own copy and drops the
+ * clear leaves the previous write's sentence beside this one's result.
+ *
+ * The result comes back for the two writes whose answer is not visible on the
+ * card afterwards; the other four have nothing to add to it.
+ */
+async function writeSelectedCell<T extends { readonly refusal?: RampControlRefusal }>(
+	write: (cell: RampCellControl) => Promise<T | undefined>
+): Promise<T | undefined> {
 	const cell = selectedCell.value;
-	if (cell === null) return;
+	if (cell === null) return undefined;
 	beginWrite();
-	const result = await enrollCell(cellArgs(cell));
-	noteResult(result);
+	const result = await write(cell);
+	refusal.value = result?.refusal ?? null;
+	refetch();
+	return result;
+}
+
+async function enroll(): Promise<void> {
 	// WHICH RAMP THE CELL GOT, AND WHETHER ANY MAIL FOLLOWS THE SHARE YET. Both
 	// are resolved server-side, so the answer travels back on the result and
 	// nowhere else — see `rampEnrolledSentence`.
+	const result = await writeSelectedCell((cell) => enrollCell(cellArgs(cell)));
 	if (
 		result?.enrolled === true &&
 		result.share !== undefined &&
@@ -212,57 +225,31 @@ async function enroll(): Promise<void> {
 	) {
 		outcome.value = rampEnrolledSentence(result.share, result.path, result.isShareRouted);
 	}
-	refetch();
 }
 
 async function promote(): Promise<void> {
-	const cell = selectedCell.value;
-	if (cell === null) return;
-	beginWrite();
-	const result = await promotePhase(cellArgs(cell));
-	noteResult(result);
+	const result = await writeSelectedCell((cell) => promotePhase(cellArgs(cell)));
 	outstanding.value = result?.outstanding ?? [];
 	// THE TOP RUNG IS AN ANSWER, NOT A REFUSAL — `{applied: false}` with no
 	// `refusal` and the rung the cell is already on. Rendered rather than
 	// swallowed: a click that produces nothing at all reads as a broken button.
-	//
-	// AND WHAT THE NEW RUNG BOUNDS IS THE PAGE'S FACT TO SUPPLY, the same one the
-	// controls read for their reset and promote notes: a standalone cell has no
-	// share held below the rung, so the sentence must not promise a climb toward
-	// it. Absent view means absent relay — a promotion cannot have been clicked
-	// without the view, and the cautious sentence is the one that claims less.
+	// Absent view means absent relay: the cautious sentence claims less.
 	if (result?.refusal === undefined && result?.phaseCeiling !== undefined) {
-		outcome.value = rampPromotionSentence(
-			result.applied,
-			result.phaseCeiling,
-			controls.value?.isRelayConfigured === true
-		);
+		const hasRelay = controls.value?.isRelayConfigured === true;
+		outcome.value = rampPromotionSentence(result.applied, result.phaseCeiling, hasRelay);
 	}
-	refetch();
 }
 
 async function pause(isPaused: boolean): Promise<void> {
-	const cell = selectedCell.value;
-	if (cell === null) return;
-	beginWrite();
-	noteResult(await setCellPause({ ...cellArgs(cell), isPaused }));
-	refetch();
+	await writeSelectedCell((cell) => setCellPause({ ...cellArgs(cell), isPaused }));
 }
 
 async function pin(share: number | null): Promise<void> {
-	const cell = selectedCell.value;
-	if (cell === null) return;
-	beginWrite();
-	noteResult(await pinCellShare({ ...cellArgs(cell), share }));
-	refetch();
+	await writeSelectedCell((cell) => pinCellShare({ ...cellArgs(cell), share }));
 }
 
 async function reset(phaseCeiling: number): Promise<void> {
-	const cell = selectedCell.value;
-	if (cell === null) return;
-	beginWrite();
-	noteResult(await resetPhase({ ...cellArgs(cell), phaseCeiling }));
-	refetch();
+	await writeSelectedCell((cell) => resetPhase({ ...cellArgs(cell), phaseCeiling }));
 }
 
 /** Force-advance NEVER writes from the button — it only opens the dialog. */
@@ -271,13 +258,12 @@ function requestForceAdvance(share: number): void {
 }
 
 async function confirmForceAdvance(confirmation: string): Promise<void> {
-	const cell = selectedCell.value;
 	const share = pendingForceShare.value;
+	// The dialog closes on either answer: a share that never arrived is not a
+	// dialog left open over a write that will not happen.
 	pendingForceShare.value = null;
-	if (cell === null || share === null) return;
-	beginWrite();
-	noteResult(await forceAdvance({ ...cellArgs(cell), share, confirmation }));
-	refetch();
+	if (share === null) return;
+	await writeSelectedCell((cell) => forceAdvance({ ...cellArgs(cell), share, confirmation }));
 }
 
 async function changePreset(

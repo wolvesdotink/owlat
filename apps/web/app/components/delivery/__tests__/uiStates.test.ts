@@ -16,9 +16,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
+import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampCellsGrid from '../RampCellsGrid.vue';
 import RampCellControls from '../RampCellControls.vue';
+import RampConfirmDialog from '../RampConfirmDialog.vue';
 import RampDecreaseNotices from '../RampDecreaseNotices.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
 import RampPresetPicker from '../RampPresetPicker.vue';
@@ -575,6 +577,57 @@ describe('control refusals', () => {
 		expect(outcome.text()).toMatch(expected);
 		expect(outcome.text()).not.toMatch(refuted);
 		expect(outcome.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
+	 * ONE WRITE SHAPE BEHIND ALL SIX CONTROLS: the slate is cleared BEFORE the
+	 * attempt, and the write carries the cell the picker selected. Force-advance
+	 * is the control that reaches that shape through a DIALOG rather than straight
+	 * from its button, so it is the one that would grow its own copy — and a copy
+	 * that drops the clear leaves the promotion's sentence sitting over a share
+	 * the operator has since forced somewhere else.
+	 */
+	it('clears the previous answer and carries the cell through the force-advance dialog', async () => {
+		const { run } = stubPage({ applied: true, phaseCeiling: 0.5 }, [
+			cellControl({ phaseCeiling: 0.25 }),
+		]);
+		const wrapper = mount(ControlsPage, {
+			global: {
+				stubs: {
+					UiIconBox: true,
+					Icon: true,
+					UiSpinner: true,
+					UiEmptyState: true,
+					UiCard: passthroughCard,
+				},
+				components: { ...globalOptions.components, DeliveryRampConfirmDialog: RampConfirmDialog },
+			},
+		});
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		expect(wrapper.find('[data-testid="ramp-control-outcome"]').exists()).toBe(true);
+
+		await wrapper.find('[data-testid="ramp-control-force-input"]').setValue(60);
+		await wrapper.find('[data-testid="ramp-control-force-advance"]').trigger('click');
+		await wrapper.find('[data-testid="ramp-confirm-input"]').setValue(FORCE_ADVANCE_CONFIRMATION);
+		await wrapper.find('[data-testid="ramp-confirm-submit"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		expect(run).toHaveBeenLastCalledWith({
+			stream: 'campaign',
+			destinationProvider: 'gmail',
+			share: 0.6,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		// The promotion's sentence went with the write that replaced it, and the
+		// dialog does not stay open over a share that has already moved.
+		expect(wrapper.find('[data-testid="ramp-control-outcome"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="ramp-confirm-dialog"]').exists()).toBe(false);
+		expect(wrapper.html()).not.toMatch(ALARM);
 		wrapper.unmount();
 	});
 
