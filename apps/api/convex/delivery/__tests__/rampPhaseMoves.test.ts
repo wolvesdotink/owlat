@@ -330,6 +330,36 @@ describe('a reset on a deployment with a relay configured', () => {
 		// record of what the operator was told about a deployment that has one.
 		expect(recorded[0]?.message).not.toMatch(/no second sender|no relay is connected/i);
 	});
+
+	/**
+	 * THE SCREEN MAY NOT PROMISE A DIFFERENT MOVE FROM THE ONE THE DOOR MAKES.
+	 *
+	 * `getRampControls` carries two readings of ONE relay list, and the two-relay
+	 * deployment is where they come apart: there is no single arm to name, and
+	 * there IS a second sender. Deriving the screen's boolean from
+	 * `referenceTransportId !== null` would grey out the rung buttons on a
+	 * deployment whose reset cuts — so the query's two fields are pinned against
+	 * the mutation that answers the same question.
+	 */
+	it('shows a second sender with no single reference arm, and the reset cuts', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1 });
+		await connectRelay(t);
+		// One relay from each surface the reader reads: the route row and the
+		// single-transport env.
+		vi.stubEnv('EMAIL_PROVIDER', 'resend');
+		expect(await relayKinds(t)).toEqual(['resend', 'ses']);
+
+		const view = await t.query(api.delivery.rampControlQueries.getRampControls, {});
+		expect(view.referenceTransportId).toBeNull();
+		expect(view.isRelayConfigured).toBe(true);
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result).toEqual({ applied: true, share: 0.25 });
+	});
 });
 
 describe('promotion is the upward door', () => {

@@ -29,7 +29,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
-import { configuredRelayKinds, referenceRelayTransportId } from './alignmentPreflight';
+import { relayConfiguration } from './alignmentPreflight';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import type { RampGateId } from './ramp/gateTypes';
 import {
@@ -178,11 +178,12 @@ export const getRampControls = authedQuery({
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const now = Date.now();
 		const settings = await ctx.db.query('instanceSettings').first();
-		const referenceTransportId = await referenceRelayTransportId(ctx);
-		// The reset door's own fact, from the reader that door uses. Two questions,
-		// two readers: "which single arm is the reference one" and "is there a
-		// second sender at all" have different answers on a two-relay deployment.
-		const isRelayConfigured = (await configuredRelayKinds(ctx)).length > 0;
+		// TWO READINGS OF ONE LIST, from one read of it. "Which single arm is the
+		// reference one" and the reset door's own fact "is there a second sender at
+		// all" have different answers on a two-relay deployment, and the screen shows
+		// both — so the pair is derived where the rule lives rather than scanning
+		// `providerRoutes` twice for two views of the same configuration.
+		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
 		const presetRows = await ctx.db
 			.query('rampStreamPresets')
 			.withIndex('by_org_stream', (q) => q.eq('organizationId', organizationId))

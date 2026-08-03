@@ -140,8 +140,42 @@ export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]>
  * by every caller to a degraded posture rather than an error (D2).
  */
 export async function referenceRelayTransportId(ctx: RelayReadCtx): Promise<string | null> {
-	const kinds = await configuredRelayKinds(ctx);
+	return referenceTransportIdOf(await configuredRelayKinds(ctx));
+}
+
+/** The "exactly one kind" rule itself, over a list already read. */
+function referenceTransportIdOf(kinds: readonly string[]): string | null {
 	return kinds.length === 1 ? (kinds[0] ?? null) : null;
+}
+
+/** Both readings of the relay list — see {@link relayConfiguration}. */
+export interface RelayConfiguration {
+	/** The single second arm, or null when there is not exactly one. */
+	readonly referenceTransportId: string | null;
+	/** Is there a second sender AT ALL — the question the ramp's doors ask. */
+	readonly isRelayConfigured: boolean;
+}
+
+/**
+ * BOTH READINGS OF THE RELAY LIST, FROM ONE SCAN.
+ *
+ * "Which single arm is the reference one" and "is there a second sender at all"
+ * are different questions — they disagree on a two-relay deployment, where the
+ * reset door cuts and there is still no arm to name — so a screen that shows the
+ * ramp's position needs both. Reading the list once is not only the cheaper
+ * shape: two derivations over two scans could straddle a route change and report
+ * a reference arm on a configuration that no longer has one.
+ *
+ * The "exactly one" rule stays in {@link referenceTransportIdOf} rather than
+ * being restated at the call site — a second copy of it is how the two answers
+ * would start disagreeing about one list.
+ */
+export async function relayConfiguration(ctx: RelayReadCtx): Promise<RelayConfiguration> {
+	const kinds = await configuredRelayKinds(ctx);
+	return {
+		referenceTransportId: referenceTransportIdOf(kinds),
+		isRelayConfigured: kinds.length > 0,
+	};
 }
 
 /** Relay SPF mechanisms from the identity's generated record, else SES's default. */
