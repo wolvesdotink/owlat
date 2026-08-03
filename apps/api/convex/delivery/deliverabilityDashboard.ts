@@ -10,8 +10,16 @@
  * SHAPE. One index read per (cell, arm) over the widest window any sub-view
  * needs (the evaluation window, the trailing baseline, the daily trend), and
  * every number derived from those rows by the ONE summarizer (ADR-0042 / D5).
- * The screen and the ramp controller therefore cannot disagree: they run the
- * same arithmetic over the same rows.
+ *
+ * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY. They run the same
+ * arithmetic over the same rows, but NOT over the same span: this screen's
+ * evaluation window is SEVEN days (`DASHBOARD_WINDOW_DAYS`, floored to UTC days)
+ * and the controller's is ONE (`RAMP_AIMD.evaluationWindowMs`, the cadence its
+ * cron ticks at). A rate here is therefore a rate over a wider span than the
+ * cron acted on, and expecting the two to match digit for digit would be
+ * expecting a week to equal a day. What they must never differ on is everything
+ * ABOVE the arithmetic: which evaluator graded the cell, which constants it
+ * graded on, which gate decided, and which way it went.
  *
  * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
  * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
@@ -25,15 +33,31 @@
  * AND WHICH CELLS THOSE ARE IS A MEASUREMENT, NOT A CONFIGURATION. The screen
  * used to pick its evaluator from `referenceRelayTransportId` — "does this
  * deployment have exactly one relay kind configured" — while the controller
- * picked its own from whether the cell's reference arm actually SENT in the
- * window. The two disagree on a two-relay deployment and on a relay disabled
- * mid-window, and there they graded one cell with two different evaluators and
- * reported opposite verdicts on it. So this module resolves the cell's
- * degradation the way `loadCellInput` does — the same presence read, the same
+ * picked its own from whether the cell's reference arm actually SENT. The two
+ * disagree on a two-relay deployment and on a relay disabled mid-window, and
+ * there they graded one cell with two different evaluators and reported opposite
+ * verdicts on it. So this module resolves the cell's degradation the way
+ * `loadCellInput` does — the same `hasReferenceArmOutcomes` predicate, the same
  * `resolveRampDegradation` fold — and the choices that fall out of it (which
  * evaluator runs, which constants it runs on, which complaint line applies) are
  * the fold's answers here as they are there. `referenceTransportId` stays
  * configuration, because NAMING the second arm is the only question it answers.
+ *
+ * ONE RULE IS NOT ENOUGH — IT HAS TO BE ASKED OVER THE SAME SPAN. The predicate
+ * is asked here over `RAMP_REFERENCE_ARM_WINDOW_MS`, the controller's span, and
+ * NOT over this screen's seven-day window. Asked over seven days it would answer
+ * "this cell has a relay" for six days after the relay went quiet, while the
+ * cron had already moved the cell onto the trailing-baseline twin — the same
+ * divergence one window over rather than closed. So the reference arm is
+ * summarized TWICE out of the one index read: once over the controller's span,
+ * which decides the evaluator, and once over the evaluation window, which is the
+ * column the screen renders beside the own arm.
+ *
+ * WHICH IS WHY `reference` IS NULL ON A CELL WHOSE RELAY WENT QUIET four days
+ * ago even though the window can still see the traffic: the arm is what the
+ * evaluator was given, and it was given none. The days the relay did carry are
+ * not lost — the TREND keeps plotting them, because a chart's predicate belongs
+ * to the chart's own rows (see the `buildDashboardTrend` call below).
  */
 
 import {
@@ -71,6 +95,7 @@ import {
 	hasReferenceArmOutcomes,
 	loadRampDeploymentPresence,
 	withReferenceArm,
+	RAMP_REFERENCE_ARM_WINDOW_MS,
 } from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import type { RampGateResult } from './ramp/gateTypes';
@@ -227,6 +252,10 @@ export const getDeliverabilityDashboard = authedQuery({
 		// would reach, not a friendlier one (ADR-0042).
 		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
 		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
+		// THE CONTROLLER'S SPAN, anchored on the same clock it anchors on, so the
+		// evaluator predicate below covers the days the cron's covers and no others.
+		// Cell-independent, so it is derived once rather than per cell.
+		const referenceArmWindow = { since: now - RAMP_REFERENCE_ARM_WINDOW_MS };
 		// THE SAME LOWER BOUND THE CONTROLLER READS FROM, through the same helper:
 		// the screen's own 30-day baseline bound is derived from tomorrow's UTC
 		// boundary and the controller's from `now`, and gate 2's instrument check
@@ -262,17 +291,27 @@ export const getDeliverabilityDashboard = authedQuery({
 
 			const own = summarizeTransportOutcomeBuckets(ownBuckets, evaluationWindow);
 			const ownTrailingBaseline = trailingBaselineFor(ownBuckets, window);
-			// THE ONE PREDICATE (`hasReferenceArmOutcomes`), over this screen's rows:
-			// the arm is ABSENT, not empty, when nothing was sent through it.
+			// THE ONE PREDICATE (`hasReferenceArmOutcomes`) OVER THE CONTROLLER'S SPAN
+			// — the arm is ABSENT, not empty, when nothing was sent through it, and
+			// "when" has to mean the same days on both sides. Asked over this screen's
+			// seven days instead, a relay switched off yesterday would keep the
+			// two-armed evaluator on screen for six more days while the cron had
+			// already moved the cell onto the trailing twin. Second summary, same
+			// index read.
+			const hasReferenceArm = hasReferenceArmOutcomes(
+				summarizeTransportOutcomeBuckets(referenceBuckets, referenceArmWindow)
+			);
+			// THE COLUMN, over the window this screen reports: the arm the evaluator
+			// was given, summarized across the same seven days as `own` beside it.
 			const windowReference = summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
-			const reference = hasReferenceArmOutcomes(windowReference) ? windowReference : null;
+			const reference = hasReferenceArm ? windowReference : null;
 			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
 			const cellSeeds = seedSweepsForCell(seedSweeps, cell);
 			// THE SUBSTITUTION FOLD DECIDES, exactly as it does in `loadCellInput`:
 			// which evaluator runs and which complaint line applies are read off ONE
 			// resolution of this cell's presence map, never off an `if` here.
 			const degradation = resolveRampDegradation({
-				presence: withReferenceArm(deploymentPresence, reference !== null),
+				presence: withReferenceArm(deploymentPresence, hasReferenceArm),
 				provider: cell.destinationProvider,
 			});
 			const evaluator = usesTrailingBaseline(degradation)
@@ -341,13 +380,17 @@ export const getDeliverabilityDashboard = authedQuery({
 					// statements about this cell's window, and pinning them to the
 					// deployment's relay list graded a cell by a relay that never
 					// carried it.
-					hasReferenceArm: reference !== null,
+					hasReferenceArm,
 					trend: buildDashboardTrend({
 						ownBuckets,
-						// The SAME predicate again: a cell with no second arm has no
-						// second series to plot, rather than a flat line of zeros that
-						// reads as a relay sending nothing.
-						referenceBuckets: reference === null ? null : referenceBuckets,
+						// THE SAME PREDICATE, OVER THE CHART'S OWN ROWS. A chart is a
+						// question about the days it plots, so the series exists when the
+						// relay carried something inside the plotted window — not when it
+						// carried something in the last 24 hours. Scoping this to the
+						// evaluator's span would erase the very days that explain why the
+						// arm is gone; scoping it to nothing at all would draw a flat line
+						// of zeros that reads as a relay sending nothing.
+						referenceBuckets: hasReferenceArmOutcomes(windowReference) ? referenceBuckets : null,
 						sinceDay: window.sinceDay,
 						untilDay: window.untilDay,
 					}),

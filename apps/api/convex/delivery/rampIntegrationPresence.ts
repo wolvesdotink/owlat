@@ -57,6 +57,12 @@ export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * MS_PER_DAY;
  * cell have a relay?" must be one fact, and two readers answering it over
  * different spans is how the promotion path and the controller come to disagree
  * about which actuator a cell is on.
+ *
+ * EVERY READER ANCHORS ON THIS CONSTANT, including the ones whose own window is
+ * wider. The delivery dashboard summarizes seven days, and it still asks the
+ * presence question over THIS span — a screen that asked it over its own would
+ * keep the two-armed evaluator for six days after the relay went quiet while the
+ * cron had already switched, which is the same divergence one window over.
  */
 export const RAMP_REFERENCE_ARM_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 
@@ -141,12 +147,14 @@ export function withReferenceArm(
  * name any more, but the rows are still there), and a reader that chose the
  * gate evaluator by the configuration reported the other evaluator's verdict.
  *
- * Both readers of the presence map apply this rule to their own window's
- * summary, so "has a relay" is one rule asked of two row sets rather than two
- * rules. `loadCellInput` states it inline over the summary it already holds and
- * is pinned against this one by the agreement suite in
- * `delivery/__tests__/seedGateWiring.test.ts`; it does not import from here only
- * because that file sits exactly on the 500-LOC ratchet cap.
+ * THE SPAN IS PART OF THE RULE. Every caller applies it over
+ * `RAMP_REFERENCE_ARM_WINDOW_MS` and none over a window of its own, however wide
+ * the rest of that caller's reporting is: one rule over two spans still lets two
+ * readers put one cell on two evaluators, only later. `loadCellInput` states the
+ * rule inline over the summary it already holds and is pinned against this one
+ * by the agreement suite in `delivery/__tests__/seedGateWiring.test.ts`; it does
+ * not import from here only because that file sits exactly on the 500-LOC
+ * ratchet cap.
  */
 export function hasReferenceArmOutcomes(reference: TransportOutcomeSummary): boolean {
 	return reference.sent > 0;

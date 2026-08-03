@@ -106,15 +106,17 @@ async function controllerSeedGate(
 	return seedGateOf((await controllerEvaluation(t, cell)).perGate, 'the controller evaluation');
 }
 
+/** The whole screen, as the query answers it. */
+async function dashboardOf(t: Harness): Promise<DeliverabilityDashboard> {
+	return await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {});
+}
+
 /** The SAME cell as the screen renders it. */
 async function dashboardCellView(
 	t: Harness,
 	cell: DeliverabilityCell = CELL
 ): Promise<DashboardCellView> {
-	const dashboard: DeliverabilityDashboard = await t.query(
-		api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
-		{}
-	);
+	const dashboard = await dashboardOf(t);
 	const view = dashboard.cells.find(
 		(candidate) =>
 			candidate.cell.stream === cell.stream &&
@@ -345,8 +347,11 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
  *
  *   - TWO RELAYS — no single arm to NAME, so the configuration reading says
  *     "standalone" while every cell is measured against a relay.
- *   - A RELAY REMOVED MID-WINDOW — nothing left to name, and the window's rows
- *     still carry the arm the controller judges the cell on.
+ *   - A RELAY THAT WENT QUIET, at every distance from now the two spans can
+ *     disagree over. The predicate is one rule, but the screen summarizes SEVEN
+ *     days where the controller summarizes ONE, so a rule asked over each
+ *     reader's own window still parts company — just later. That is why the case
+ *     is a matrix over the relay's last sending day rather than one fixture.
  *   - A RELAY CONFIGURED BUT SILENT — a single arm to name, and no measurement
  *     to compare against, which is the same divergence pointing the other way.
  *
@@ -355,11 +360,22 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
  * on `awaiting_corroboration` off the same rows.
  */
 describe('the screen picks the evaluator the controller picked (ADR-0042)', () => {
-	/** Own 90% inbox against a spotless reference arm: gate 5's SECOND clause. */
-	async function twoArmedBreach(t: Harness): Promise<void> {
+	/**
+	 * Own 90% inbox against a spotless reference arm: gate 5's SECOND clause.
+	 *
+	 * `relayLastSentDaysAgo` moves ONLY the relay's outcome row. The own arm, the
+	 * probes and the route state stay where they are, so the single variable
+	 * across the matrix below is how long ago the relay last carried the cell.
+	 */
+	async function twoArmedBreach(t: Harness, relayLastSentDaysAgo = 0): Promise<void> {
 		await seedRampCell(t, { organizationId: ORG });
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 800 });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'reference',
+			sent: 800,
+			dayOffset: relayLastSentDaysAgo,
+		});
 		await seedProbes(t, { count: 18, placement: 'inbox' });
 		await seedProbes(t, { count: 2, placement: 'spam' });
 		await seedProbes(t, { count: 20, placement: 'inbox', arm: 'reference' });
@@ -369,6 +385,12 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		const t = convexTest(schema, modules);
 		await connectTwoRelays(t);
 		await twoArmedBreach(t);
+
+		// THE PREMISE OF THIS CASE, asserted rather than assumed: two relay kinds
+		// leave `referenceRelayTransportId` with no single arm to name. Without
+		// this, a change to `configuredRelayKinds` would quietly turn the flagship
+		// case into an ordinary single-relay one that passes for the wrong reason.
+		expect((await dashboardOf(t)).referenceTransportId).toBeNull();
 
 		const controller = await controllerEvaluation(t);
 		const view = await dashboardCellView(t);
@@ -385,26 +407,85 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 			reason: 'reference_tolerance_breached',
 		});
 		expect(view.verdict).toBe(controller.verdict);
-		expect(view.failedGate).toBe(controller.failedGate ?? null);
+		// The GATE BY NAME on both sides. `controller.failedGate ?? null` would be
+		// satisfied by an undefined against a null — the exact class of mismatch
+		// this assertion exists to catch.
+		expect(controller.failedGate).toBe('seed_placement');
+		expect(view.failedGate).toBe('seed_placement');
 		// The measured arm reaches the screen as an arm, not as a null: the
 		// evaluator choice and the column beside it are one fact.
 		expect(view.reference?.sent).toBe(800);
 	});
 
-	it('agrees when the relay was switched off inside the window', async () => {
-		const t = convexTest(schema, modules);
-		// No route row at all — the operator disabled the relay — while the window
-		// still holds the traffic it carried. Configuration says standalone;
-		// measurement says the cell has a second arm, and the ramp acts on that.
-		await twoArmedBreach(t);
+	/**
+	 * The relay's last sending day, swept from today out past the far edge of the
+	 * screen's window. Day 0 and day 1 are inside the controller's span (its 24h
+	 * `since` floors to a UTC day start, so yesterday's bucket still counts); days
+	 * 2..6 are outside it and INSIDE the screen's seven days — the band where a
+	 * predicate asked over each reader's own window still put one cell on two
+	 * evaluators; day 7 is outside both.
+	 */
+	const RELAY_LAST_SENT_OFFSETS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+	const CONTROLLER_ARM_SPAN_DAYS = 1;
 
-		const controller = await controllerEvaluation(t);
+	describe.each(RELAY_LAST_SENT_OFFSETS)(
+		'the relay last sent %i day(s) ago',
+		(relayLastSentDaysAgo) => {
+			it('reaches the same verdict on the screen as in the controller', async () => {
+				const t = convexTest(schema, modules);
+				// No route row at all — the operator disabled the relay — while the
+				// rows it carried are still in the tables both readers read.
+				await twoArmedBreach(t, relayLastSentDaysAgo);
+
+				const controller = await controllerEvaluation(t);
+				const view = await dashboardCellView(t);
+				expect(view.verdict).toBe(controller.verdict);
+				expect(view.failedGate ?? null).toBe(controller.failedGate ?? null);
+				expect(seedGateOf(view.gates, 'dashboard')).toMatchObject(
+					seedGateOf(controller.perGate, 'controller')
+				);
+			});
+
+			it('shows the arm exactly while the controller is judging one', async () => {
+				const t = convexTest(schema, modules);
+				await twoArmedBreach(t, relayLastSentDaysAgo);
+
+				const view = await dashboardCellView(t);
+				// Which evaluator ran is legible from gate 5's reason: only the
+				// two-armed one can breach the reference tolerance.
+				const stillMeasured = relayLastSentDaysAgo <= CONTROLLER_ARM_SPAN_DAYS;
+				expect(view.reference === null).toBe(!stillMeasured);
+				expect(seedGateOf(view.gates, 'dashboard').reason).toBe(
+					stillMeasured ? 'reference_tolerance_breached' : 'within_threshold'
+				);
+			});
+		}
+	);
+
+	it('keeps plotting the days the relay did carry after the arm has gone quiet', async () => {
+		const t = convexTest(schema, modules);
+		// Three days ago: outside the span the evaluator asks about, inside the
+		// seven days the chart plots. The trend's predicate belongs to the trend's
+		// own rows, so dropping the series here would erase the very history that
+		// explains why the arm is gone.
+		await twoArmedBreach(t, 3);
+
 		const view = await dashboardCellView(t);
-		expect(seedGateOf(controller.perGate, 'controller').reason).toBe(
-			'reference_tolerance_breached'
-		);
-		expect(seedGateOf(view.gates, 'dashboard').reason).toBe('reference_tolerance_breached');
-		expect(view.verdict).toBe(controller.verdict);
+		expect(view.reference).toBeNull();
+		expect(view.trend.every((point) => point.reference !== null)).toBe(true);
+		expect(view.trend.filter((point) => (point.reference?.sent ?? 0) > 0)).toHaveLength(1);
+	});
+
+	it('plots no relay series at all for a cell no relay ever carried', async () => {
+		const t = convexTest(schema, modules);
+		// The other side of the same predicate: a flat line of zeros beside the own
+		// series reads as a relay sending nothing, which is not what happened.
+		await connectRelay(t);
+		await standaloneCell(t);
+
+		const view = await dashboardCellView(t);
+		expect(view.trend.length).toBeGreaterThan(0);
+		expect(view.trend.every((point) => point.reference === null)).toBe(true);
 	});
 
 	it('agrees when a configured relay carried nothing — the arm is absent, not empty', async () => {
