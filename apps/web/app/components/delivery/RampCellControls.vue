@@ -76,9 +76,15 @@ watch(
 	{ immediate: true }
 );
 
-const PHASE_RUNGS = [0.25, 0.5, 0.8, 1] as const;
-/** The ladder's top rung: there is nothing above it to be promoted to. */
-const TOP_RUNG = PHASE_RUNGS.at(-1) ?? 1;
+/**
+ * The ladder's top rung: there is nothing above it to be promoted to. Named
+ * BEFORE the ladder and spent as its last entry, so the two are the same value
+ * by construction rather than by a lookup with an unreachable fallback — the
+ * `??` in `rungFor` below is reachable (an empty filter) and must stay the only
+ * fallback here that reads like one.
+ */
+const TOP_RUNG = 1;
+const PHASE_RUNGS = [0.25, 0.5, 0.8, TOP_RUNG] as const;
 
 const isDisabled = computed(() => props.busy === true || !props.cell.isRampManaged);
 
