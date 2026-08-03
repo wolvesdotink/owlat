@@ -365,7 +365,9 @@ describe('what the opening share actually does today', () => {
 	it('asks ONE predicate — no seam hand-rolls the strategy comparison', async () => {
 		const fs = await import('node:fs/promises');
 		const read = async (rel: string) => await fs.readFile(new URL(rel, import.meta.url), 'utf8');
-		const rule = /===\s*'adaptive_mix'/g;
+		// Both idiomatic hand-rolls: a positive comparison and the `!==` early-return
+		// guard `mixContextFor` used to state the rule in before this door existed.
+		const rule = /[=!]==\s*'adaptive_mix'/g;
 
 		const owner = await read('../../lib/sendProviders/routeMixContext.ts');
 		expect(owner.match(rule)).toHaveLength(1);
@@ -377,7 +379,7 @@ describe('what the opening share actually does today', () => {
 		]) {
 			const source = await read(rel);
 			expect(source.match(rule), `${rel} must not restate the rule`).toBeNull();
-			expect(source, `${rel} must ask the predicate`).toMatch(/ShareSplitRoute|ShareSplitRouted/);
+			expect(source, `${rel} must ask the predicate`).toMatch(/ShareSplitRoute/);
 		}
 	});
 });
