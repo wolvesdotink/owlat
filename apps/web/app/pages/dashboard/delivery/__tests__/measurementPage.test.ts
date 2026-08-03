@@ -29,6 +29,7 @@ function dashboard(overrides: Partial<DeliverabilityDashboard> = {}): Deliverabi
 		windowStart: WINDOW_START,
 		windowEnd: WINDOW_END,
 		referenceTransportId: 'ses',
+		isRelayConfigured: true,
 		hasSeedCoverage: false,
 		cells: [cellView()],
 		...overrides,
@@ -129,15 +130,17 @@ describe('measurement page — states', () => {
 		wrapper.unmount();
 	});
 
-	it('switches to the standalone feature and states it plainly (D14)', () => {
+	it('switches to the standalone feature and offers a relay where there is none (D14)', () => {
 		data.value = dashboard({
 			referenceTransportId: null,
+			isRelayConfigured: false,
 			cells: [cellView({ reference: null })],
 		});
 		const wrapper = mountPage();
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
 		const note = wrapper.find('[data-testid="measurement-standalone-note"]');
 		expect(note.exists()).toBe(true);
+		expect(note.text()).toContain('Connecting a relay you already pay for');
 		expect(note.text()).toContain('optional');
 		// An invitation, never a warning or a "setup incomplete" nag (plan D2).
 		expect(note.text()).not.toMatch(/error|incomplete|required|must/i);
@@ -163,18 +166,56 @@ describe('measurement page — states', () => {
 		wrapper.unmount();
 	});
 
-	it('frames a named relay that carried nothing as standalone, like its cells do', () => {
+	it('frames a named relay that carried nothing as standalone, without offering it again', () => {
 		// The same divergence pointing the other way: a relay is configured, no
 		// cell was measured against it, and the gates below graded every cell
-		// standalone. The page has to say what the cards say.
+		// standalone. The FRAMING has to say what the cards say — and the OFFER
+		// must not, because this deployment already pays for the relay it would
+		// be asked to connect.
 		data.value = dashboard({
 			referenceTransportId: 'ses',
+			isRelayConfigured: true,
 			cells: [cellView({ reference: null })],
 		});
 		const wrapper = mountPage();
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
-		expect(wrapper.find('[data-testid="measurement-standalone-note"]').exists()).toBe(true);
+		const note = wrapper.find('[data-testid="measurement-standalone-note"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).not.toContain('Connecting a relay');
+		expect(note.text()).toContain('Amazon SES carried none of this traffic recently');
 		expect(wrapper.find('[data-testid="measurement-reference-value"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE BANNER AND THE CARD CANNOT CONTRADICT EACH OTHER.
+	 *
+	 * One deployment, one screen: a relay that carried this cell earlier in the
+	 * window and nothing recently. Keyed to the measurement, the banner offered
+	 * "connect a relay you already pay for" three lines above the card's own line
+	 * saying that relay carried the cell earlier in this window.
+	 */
+	it('never offers a relay above a card explaining that relay went quiet', () => {
+		const day = Date.UTC(2026, 6, 15);
+		data.value = dashboard({
+			referenceTransportId: 'ses',
+			isRelayConfigured: true,
+			cells: [
+				cellView({
+					reference: null,
+					trend: [
+						{ day, own: armSummary({ sent: 100 }), reference: armSummary({ sent: 40 }) },
+						{ day: day + 86_400_000, own: armSummary({ sent: 120 }), reference: null },
+					],
+				}),
+			],
+		});
+		const wrapper = mountPage();
+		// Both really render — the premise of the contradiction, not an assumption.
+		expect(wrapper.find('[data-testid="measurement-standalone-note"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="measurement-quiet-relay"]').exists()).toBe(true);
+		expect(wrapper.text()).not.toContain('Connecting a relay you already pay for');
+		expect(wrapper.text()).not.toContain('You are sending entirely from your own server');
 		wrapper.unmount();
 	});
 

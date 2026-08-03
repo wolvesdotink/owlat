@@ -111,6 +111,7 @@ const dashboardView = {
 	windowStart: 0,
 	windowEnd: 1,
 	referenceTransportId: 'ses',
+	isRelayConfigured: true,
 	hasSeedCoverage: false,
 	cells: [cellView()],
 };

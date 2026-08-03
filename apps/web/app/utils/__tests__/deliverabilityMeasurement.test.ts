@@ -45,6 +45,7 @@ import {
 	gateExplanation,
 	improvementCopy,
 	measurementSubhead,
+	standaloneNote,
 	type DeliverabilityDashboardGate,
 } from '~/utils/deliverabilityMeasurement';
 
@@ -90,6 +91,49 @@ describe('measurementSubhead', () => {
 		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: 'ses' })).toContain(
 			'What your own server is sending'
 		);
+	});
+});
+
+/**
+ * THE NOTE IS SHOWN ON THE MEASUREMENT AND WORDED ON THE CONFIGURATION.
+ *
+ * The note itself only renders where no cell measured a second arm; what it SAYS
+ * is a question about the relay list, because "connect a relay you already pay
+ * for" is advice a deployment with a relay cannot act on.
+ */
+describe('standaloneNote', () => {
+	it('offers a relay only where there is none to have gone quiet', () => {
+		const note = standaloneNote({ isRelayConfigured: false, referenceTransportId: null });
+		expect(note).toContain('Connecting a relay you already pay for');
+		expect(note).toContain('optional');
+		// An invitation, never a warning or a "setup incomplete" nag (plan D2).
+		expect(note).not.toMatch(/error|incomplete|required|must/i);
+	});
+
+	it('explains a named relay that went quiet instead of offering to connect it', () => {
+		// THE CONTRADICTION THIS PINS: keyed to the measurement, this sentence
+		// offered SES to a deployment already relaying through SES, directly above
+		// a card saying that SES carried the cell earlier in this window.
+		const note = standaloneNote({ isRelayConfigured: true, referenceTransportId: 'ses' });
+		expect(note).not.toContain('Connecting a relay');
+		expect(note).toContain('Amazon SES carried none of this traffic recently');
+		expect(note).toContain('The days it did carry are still plotted');
+		expect(note).not.toMatch(/error|incomplete|required|must/i);
+	});
+
+	it('speaks of relays in the plural when there is no single one to name', () => {
+		// The two-relay deployment: a relay exists, so the offer is still wrong,
+		// and `referenceTransportId` is null for the OTHER reason.
+		const note = standaloneNote({ isRelayConfigured: true, referenceTransportId: null });
+		expect(note).not.toContain('Connecting a relay');
+		expect(note).toContain('the relays you have connected carried none of this traffic');
+		expect(note).toContain('The days they did carry');
+	});
+
+	it('names a plugin relay the way the transport card does', () => {
+		expect(
+			standaloneNote({ isRelayConfigured: true, referenceTransportId: 'plugin.mail-pack.postmark' })
+		).toContain('Postmark carried none');
 	});
 });
 

@@ -70,6 +70,38 @@ export function measurementSubhead(input: {
 	return `How your own server compares with ${against} on the same traffic. Read-only — nothing here changes your sending.`;
 }
 
+/**
+ * THE STANDALONE NOTE — shown only where no cell below measured a second arm.
+ *
+ * TWO KEYS IN ONE PARAGRAPH, and the split is the point. The FRAMING is a
+ * measurement: whatever the deployment owns, everything below was graded against
+ * our own history, so it follows the cells like the headline does. The
+ * connect-a-relay OFFER is a configuration: it is advice about the deployment,
+ * and nobody with a relay connected can act on it.
+ *
+ * Keyed together, a deployment whose relay had merely gone quiet was offered a
+ * relay it already pays for three lines above the card's own line explaining
+ * that its relay carried the cell earlier in this window — one screen saying the
+ * relay does not exist and that it went quiet. `dashboardConfidence` splits the
+ * per-cell cap from the per-cell offer on exactly this line; this is the same
+ * split for the page prose that makes the same offer.
+ */
+export function standaloneNote(input: {
+	readonly isRelayConfigured: boolean;
+	readonly referenceTransportId: string | null;
+}): string {
+	if (!input.isRelayConfigured) {
+		return 'You are sending entirely from your own server. Everything below is measured against your own history. Connecting a relay you already pay for would let the same traffic be compared side by side and raise measurement confidence — it is optional, and nothing here is waiting on it.';
+	}
+	// A configured relay with no measured arm. `null` here is the OTHER null:
+	// more than one relay kind, so there is no single one to name.
+	const relay =
+		input.referenceTransportId === null
+			? { subject: 'the relays you have connected', pronoun: 'they' }
+			: { subject: transportIdLabel(input.referenceTransportId), pronoun: 'it' };
+	return `Everything below is measured against your own history — ${relay.subject} carried none of this traffic recently, so the checks had nothing to compare against. The days ${relay.pronoun} did carry are still plotted on the cards below.`;
+}
+
 const STREAM_LABELS = {
 	campaign: 'Campaign',
 	automation: 'Automation',
