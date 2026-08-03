@@ -21,6 +21,10 @@
  * Both routes are kept honest by a third assertion: the effect tag may be
  * spelled only by the union that declares it, so a new emitter cannot hand-build
  * the object and slip past the constructor this guard watches.
+ *
+ * And a call site is not a caller, so the walk goes ONE HOP FURTHER: every module
+ * that emits must itself be named by another production module. A `deferred`
+ * literal sitting in a function nothing calls is the same silence, one level up.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -139,6 +143,105 @@ function writersFor(event: string): string[] {
 	];
 }
 
+// ─── One hop further: the emitter itself must be REACHED ────────────────────
+
+/**
+ * A CALL SITE IS NOT A CALLER. Everything above answers "does production spell
+ * this event anywhere", which is one level short of the failure it was written
+ * for: delete the `recordDeferralOutcome` call out of `completeSend` and the
+ * literal inside `deferralOutcome.ts` still satisfies `writersFor('deferred')`,
+ * so the counter goes back to readers-with-no-writer with the guard green. Same
+ * for `unsubscribed` and its scheduled entry point.
+ *
+ * So every emitting module must additionally be NAMED by some other production
+ * module — imported, or addressed through the generated `internal`/`api` object,
+ * which is how a scheduled emitter is called. That is one hop, deliberately: a
+ * call-graph analyser would be a second implementation of the module system to
+ * maintain, and a wired-then-unwired emitter is the shape that actually shipped.
+ */
+
+/** Convex-relative keys, so the walk is lexical and can be run over a fixture. */
+const RELATIVE_SOURCES: ReadonlyMap<string, string> = new Map(
+	[...SOURCES].map(([file, source]) => [named(file), source])
+);
+
+/** Modules that CONSTRUCT the effect — the emitters this guard follows. */
+const EMITTERS = [...RELATIVE_SOURCES]
+	.filter(
+		([file, source]) =>
+			file !== named(EFFECT_DECLARATION) && source.includes('transportOutcomeEffect(')
+	)
+	.map(([file]) => file)
+	.sort();
+
+/**
+ * `import { a, b } from './x';` — clause and specifier. `import type` is skipped
+ * whole: a module that needs only an emitter's RESULT TYPE has not wired it up,
+ * and crediting that import is how a reachability check decays back into the
+ * syntax check above.
+ */
+const IMPORT_DECLARATION = /^import\s+(?!type\b)([\s\S]*?)\s*from\s*'([^']+)';/gm;
+
+/**
+ * Names bound by a brace clause, inline `type` specifiers dropped. Both sides of
+ * an `as` are kept — the imported name and the local one — because the caller
+ * side wants one and the export side the other, and a miss here would fail the
+ * suite for a rename rather than for a broken wire.
+ */
+function boundNames(clause: string): string[] {
+	return clause
+		.replace(/[{}]/g, ' ')
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0 && !/^type\s/.test(entry))
+		.flatMap((entry) => entry.split(/\s+as\s+/).map((part) => part.trim()))
+		.filter((entry) => entry.length > 0);
+}
+
+/** What a module exports as a VALUE. `export type` is not one of them. */
+function valueExports(source: string): Set<string> {
+	const names = new Set<string>();
+	const declared = /export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/g;
+	for (const match of source.matchAll(declared)) {
+		if (match[1] !== undefined) names.add(match[1]);
+	}
+	// `export { a, b }` and its re-export form. `export type { … }` cannot match:
+	// the brace has to follow `export` directly.
+	for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+		for (const name of boundNames(match[1] ?? '')) names.add(name);
+	}
+	return names;
+}
+
+function resolveRelative(from: string, specifier: string): string | null {
+	if (!specifier.startsWith('.')) return null;
+	return `${join(dirname(from), specifier)}.ts`;
+}
+
+/**
+ * Production modules that name one of `emitter`'s value exports — by importing
+ * it, or by addressing `internal.<module path>.<export>`.
+ */
+function productionReferrers(sources: ReadonlyMap<string, string>, emitter: string): string[] {
+	const exported = valueExports(sources.get(emitter) ?? '');
+	const dotted = emitter.replace(/\.ts$/, '').split('/').join('\\.');
+	const generatedCall = new RegExp(`\\b(?:internal|api)\\.${dotted}\\.([A-Za-z_$][\\w$]*)`, 'g');
+	const referrers: string[] = [];
+	for (const [file, source] of sources) {
+		if (file === emitter) continue;
+		const mentioned: string[] = [];
+		for (const match of source.matchAll(IMPORT_DECLARATION)) {
+			if (resolveRelative(file, match[2] ?? '') !== emitter) continue;
+			mentioned.push(...boundNames(match[1] ?? ''));
+		}
+		for (const match of source.matchAll(generatedCall)) {
+			if (match[1] !== undefined) mentioned.push(match[1]);
+		}
+		if (mentioned.some((name) => exported.has(name))) referrers.push(file);
+	}
+	return referrers.sort();
+}
+
 describe('the wiring guard is looking at production', () => {
 	it('walked the backend and skipped its tests', () => {
 		expect(MODULES.length).toBeGreaterThan(100);
@@ -200,6 +303,86 @@ describe('the emission seam cannot be bypassed', () => {
 
 	it('the tag check is not vacuous — the declaring module does spell it', () => {
 		expect(SOURCES.get(EFFECT_DECLARATION) ?? '').toMatch(/kind:\s*'transport_outcome'/);
+	});
+});
+
+describe('every emitting module is reached from production', () => {
+	it('found the emitters, and the declaring module is not one of them', () => {
+		// The two the syntactic check cannot speak for: both emit outside the
+		// lifecycle's own reducers, so both are exactly one deleted call away from
+		// being a literal nothing runs.
+		expect(EMITTERS).toContain('delivery/deferralOutcome.ts');
+		expect(EMITTERS).toContain('delivery/unsubscribeOutcome.ts');
+		expect(EMITTERS).not.toContain(named(EFFECT_DECLARATION));
+	});
+
+	for (const emitter of EMITTERS) {
+		it(`${emitter} is named by another production module`, () => {
+			expect(productionReferrers(RELATIVE_SOURCES, emitter)).not.toEqual([]);
+		});
+	}
+});
+
+/**
+ * THE GUARD'S OWN PIN. A reachability check that cannot fail is the defect it
+ * exists to catch, so the walk is run over a fixture whose emitters are wired
+ * three different ways — imported, scheduled, and orphaned.
+ */
+describe('the reachability walk fails an emitter nothing calls', () => {
+	const EMIT = "\tawait applyEffects(ctx, [transportOutcomeEffect(ref, 'deferred', at)]);";
+	const IMPORTED = 'delivery/importedOutcome.ts';
+	const SCHEDULED = 'delivery/scheduledOutcome.ts';
+	const ORPHANED = 'delivery/orphanedOutcome.ts';
+
+	const FIXTURE: ReadonlyMap<string, string> = new Map([
+		[IMPORTED, `export async function recordImported() {\n${EMIT}\n}`],
+		[SCHEDULED, `export const recordScheduled = internalMutation({});\n${EMIT}`],
+		[
+			ORPHANED,
+			`export type OrphanedResult = 'observed';\nexport async function recordOrphaned() {\n${EMIT}\n}`,
+		],
+		[
+			'delivery/sendCompletion.ts',
+			[
+				"import { recordImported } from './importedOutcome';",
+				// The type-only import of the ORPHAN is the trap: it names the module
+				// without wiring anything, and crediting it would pass the orphan.
+				"import type { OrphanedResult } from './orphanedOutcome';",
+				'await recordImported();',
+			].join('\n'),
+		],
+		[
+			'topics/subscription.ts',
+			'await ctx.scheduler.runAfter(0, internal.delivery.scheduledOutcome.recordScheduled, {});',
+		],
+	]);
+
+	it('credits the emitter its caller imports', () => {
+		expect(productionReferrers(FIXTURE, IMPORTED)).toEqual(['delivery/sendCompletion.ts']);
+	});
+
+	it('credits the emitter a scheduler names through the generated api', () => {
+		expect(productionReferrers(FIXTURE, SCHEDULED)).toEqual(['topics/subscription.ts']);
+	});
+
+	it('fails the emitter that only a type import mentions', () => {
+		// The whole point, stated twice: the orphan satisfies the SYNTACTIC check
+		// this suite already had — it names `deferred` at a call site — and fails
+		// the reachability one, because nothing in production runs that call.
+		const emitted = [...(FIXTURE.get(ORPHANED) ?? '').matchAll(LITERAL_EMISSION)].map(
+			(match) => match[1]
+		);
+		expect(emitted).toEqual(['deferred']);
+		expect(productionReferrers(FIXTURE, ORPHANED)).toEqual([]);
+	});
+
+	it('passes the same orphan once something calls it', () => {
+		const rewired = new Map(FIXTURE);
+		rewired.set(
+			'delivery/sendCompletion.ts',
+			`import { recordOrphaned } from './orphanedOutcome';\nawait recordOrphaned();`
+		);
+		expect(productionReferrers(rewired, ORPHANED)).toEqual(['delivery/sendCompletion.ts']);
 	});
 });
 
