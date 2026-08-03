@@ -108,8 +108,12 @@ function resolveFreezeFields(
  * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
  * D7), so it names a mix GENERATION, not a step: bumping it on an ordinary
  * +5pp promotion would re-shuffle every recipient's arm mid-comparison, ~20
- * times during a single ramp. It advances only on a deliberate generation
- * change (a phase promotion), where re-randomising is the point.
+ * times during a single ramp. It advances only where re-randomising IS the
+ * point — the four deliberate writes that open or re-open a comparison:
+ * enrolment (`rampEnrollment`), a phase promotion (`rampPhasePromotion`), a
+ * force-advance (`rampControls`) and a phase reset that actually cuts the share
+ * (`rampPhaseReset` — a reset on a cell the ladder does not bind moves no share
+ * and so starts no generation).
  */
 export async function applyDecision(
 	ctx: MutationCtx,
