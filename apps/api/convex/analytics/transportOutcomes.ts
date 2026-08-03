@@ -55,12 +55,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type DatabaseReader,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import {
 	deliverabilityCellKey,
@@ -194,41 +189,6 @@ export async function summarizeTransportOutcomeArms(
 	return { own, reference };
 }
 
-/**
- * Org-scoped, window-bounded cell summary. `internalQuery`, so it is NOT
- * client-callable: its consumers are the ramp controller cron and the
- * session-authed query shell a later piece adds for the dashboard. Do not wire a
- * Vue page to it — wire the page to that shell, which comes through here, so
- * both still see one derivation of one number.
- */
-export const getCellOutcomeSummary = internalQuery({
-	args: {
-		organizationId: v.string(),
-		cell: v.string(),
-		since: v.optional(v.number()),
-		until: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		// The wire type is a string; the branded key is narrowed ONCE, here at the
-		// boundary. An unparseable key addresses no bucket, so it summarizes to
-		// the empty window rather than reading with a key no writer can produce.
-		const parsedCell = parseDeliverabilityCellKey(args.cell);
-		const window = {
-			...(args.since !== undefined ? { since: args.since } : {}),
-			...(args.until !== undefined ? { until: args.until } : {}),
-		};
-		if (parsedCell === null) {
-			const empty = summarizeTransportOutcomeBuckets([], window);
-			return { own: empty, reference: empty };
-		}
-		return await summarizeTransportOutcomeArms(ctx.db, {
-			organizationId: args.organizationId,
-			cell: deliverabilityCellKey(parsedCell),
-			...window,
-		});
-	},
-});
-
 // ============ WRITER (the hot path) ============
 
 interface BucketKey {
@@ -342,7 +302,7 @@ export async function recordTransportOutcomeForSend(
 		return 'no_organization';
 	}
 
-	// ONE tenant-scoped join, shared with `getAssignmentForSend`.
+	// THE tenant-scoped join, shared with every other reader of the row.
 	const assignment = await readAssignmentForSend(ctx.db, organizationId, input.sendId);
 	// No assignment row ⇒ this send is outside the experiment (seed shadow
 	// copies, legacy sends). It must never enter a denominator.

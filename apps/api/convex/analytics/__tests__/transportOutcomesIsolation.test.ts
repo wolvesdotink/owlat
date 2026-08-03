@@ -11,10 +11,10 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
 import {
 	recordTransportOutcomeForCell,
 	recordTransportOutcomeForSend,
+	summarizeTransportOutcomeArms,
 	summarizeTransportOutcomes,
 } from '../transportOutcomes';
 import { startOfDayUtc } from '../../lib/clock';
@@ -75,7 +75,7 @@ describe('tenant isolation', () => {
 		});
 	});
 
-	it('the query shell is org-scoped too', async () => {
+	it('the arm pair is org-scoped too', async () => {
 		const t = convexTest(schema, modules);
 		const day = startOfDayUtc(Date.now());
 		await t.run(async (ctx) => {
@@ -85,10 +85,13 @@ describe('tenant isolation', () => {
 			);
 		});
 
-		const summary = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
-			organizationId: OUTCOME_ORG,
-			cell: GMAIL_CAMPAIGN_CELL,
-		});
+		const summary = await t.run(
+			async (ctx) =>
+				await summarizeTransportOutcomeArms(ctx.db, {
+					organizationId: OUTCOME_ORG,
+					cell: GMAIL_CAMPAIGN_CELL,
+				})
+		);
 		expect(summary.own.sent).toBe(0);
 		expect(summary.reference.sent).toBe(0);
 	});

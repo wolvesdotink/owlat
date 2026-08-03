@@ -4,8 +4,12 @@
  * `sendAssignments` is keyed by a cell (`campaign:gmail`) that is IDENTICAL
  * across tenants, so an index that is not org-leading would let one tenant
  * enumerate another's per-recipient send record. The plan's table sketch omits
- * `organizationId`; adding it (and making every index org-leading) is a
- * deliberate deviation, and this file is its guard.
+ * `organizationId`; adding it (and making every caller-reachable index
+ * org-leading) is a deliberate deviation, and this file is its guard.
+ *
+ * The join is asserted through `readAssignmentForSend` rather than through a
+ * query shell: it IS the read every caller goes through, and a shell wrapping it
+ * with no consumer is the speculative seam D20 forbids.
  */
 
 import { convexTest } from 'convex-test';
@@ -13,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { createTestSendAssignment } from '../../__tests__/factories';
+import { readAssignmentForSend } from '../sendAssignments';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
 
@@ -32,43 +37,12 @@ vi.mock('../../lib/sessionOrganization', async () => {
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
 const CELL = 'campaign:gmail';
-// A window wide enough to contain every fixture timestamp below. The read is
-// a REQUIRED half-open [since, until) pair, so every caller states one.
-const WINDOW = { since: 0, until: 2_000_000_000_000 };
 
 function assignment(organizationId: string, sendId: string, assignedAt: number) {
 	return createTestSendAssignment({ organizationId, sendId, cell: CELL, assignedAt });
 }
 
 describe('sendAssignments tenant isolation', () => {
-	it('never returns another org rows from the cell/time index', async () => {
-		const t = convexTest(schema, modules);
-		const now = 1_800_000_000_000;
-		await t.run(async (ctx) => {
-			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a1', now));
-			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a2', now + 1));
-			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b1', now));
-			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b2', now + 1));
-		});
-
-		const aPage = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_A,
-			cell: CELL,
-			...WINDOW,
-		});
-		expect(aPage.rows).toHaveLength(2);
-		expect(aPage.hasMore).toBe(false);
-		expect(aPage.rows.every((row) => row.organizationId === ORG_A)).toBe(true);
-		expect(aPage.rows.map((row) => row.sendId).sort()).toEqual(['send_a1', 'send_a2']);
-
-		const bPage = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_B,
-			cell: CELL,
-			...WINDOW,
-		});
-		expect(bPage.rows.map((row) => row.sendId).sort()).toEqual(['send_b1', 'send_b2']);
-	});
-
 	it('cannot read another org assignment by send id', async () => {
 		const t = convexTest(schema, modules);
 		const now = 1_800_000_000_000;
@@ -76,39 +50,12 @@ describe('sendAssignments tenant isolation', () => {
 			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b1', now));
 		});
 
-		// Org A holding org B's send id gets nothing.
-		expect(
-			await t.query(internal.delivery.sendAssignments.getAssignmentForSend, {
-				organizationId: ORG_A,
-				sendId: 'send_b1',
-			})
-		).toBeNull();
-		// The owner does resolve it — the guard is scoping, not blanket denial.
-		expect(
-			await t.query(internal.delivery.sendAssignments.getAssignmentForSend, {
-				organizationId: ORG_B,
-				sendId: 'send_b1',
-			})
-		).not.toBeNull();
-	});
-
-	it('keeps the window filter inside the org partition', async () => {
-		const t = convexTest(schema, modules);
-		const now = 1_800_000_000_000;
 		await t.run(async (ctx) => {
-			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a_old', now - 10_000));
-			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a_new', now));
-			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b_new', now));
+			// Org A holding org B's send id gets nothing.
+			expect(await readAssignmentForSend(ctx.db, ORG_A, 'send_b1')).toBeNull();
+			// The owner does resolve it — the guard is scoping, not blanket denial.
+			expect(await readAssignmentForSend(ctx.db, ORG_B, 'send_b1')).not.toBeNull();
 		});
-
-		const page = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_A,
-			cell: CELL,
-			since: now - 1_000,
-			until: now + 1_000,
-		});
-		expect(page.rows.map((row) => row.sendId)).toEqual(['send_a_new']);
-		expect(page.hasMore).toBe(false);
 	});
 
 	it('declares every caller-reachable index org-leading', async () => {
@@ -132,11 +79,10 @@ describe('sendAssignments tenant isolation', () => {
 					.filter((field) => field.length > 0),
 			})
 		);
-		expect(declared.map((index) => index.name).sort()).toEqual([
-			'by_assigned_at',
-			'by_org_cell_time',
-			'by_org_send',
-		]);
+		// TWO, and the list is exhaustive on purpose: an index added here without
+		// a reader is write amplification on a per-recipient table (D16/D20), and
+		// a `by_org_cell_time` shipped and stayed unread for exactly that reason.
+		expect(declared.map((index) => index.name).sort()).toEqual(['by_assigned_at', 'by_org_send']);
 		// The ONE index that is not org-leading is exempt only because of where
 		// it is used, and the module exports `cleanupExpiredAssignments`, so the
 		// exemption is asserted rather than asserted-in-a-comment: `by_assigned_at`
@@ -161,111 +107,6 @@ describe('sendAssignments tenant isolation', () => {
 			}
 			expect(index.fields[0]).toBe('organizationId');
 		}
-	});
-
-	it('returns nothing for a malformed cell key instead of scanning', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a1', 1_800_000_000_000));
-		});
-
-		for (const cell of ['campaign', 'campaign:', 'campaign:gmail:extra', 'newsletter:gmail', '']) {
-			expect(
-				await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-					organizationId: ORG_A,
-					cell,
-					...WINDOW,
-				})
-			).toEqual({ rows: [], hasMore: false });
-		}
-	});
-
-	it('never unbounds the read on hostile numeric arguments', async () => {
-		// Convex `v.number()` is a float64: NaN and Infinity are valid wire
-		// values. An unguarded NaN reaches `.take(NaN)` and makes the range
-		// bound meaningless, which on a per-recipient table (D16) is the exact
-		// hazard the bounded read exists to prevent.
-		const t = convexTest(schema, modules);
-		const now = 1_800_000_000_000;
-		await t.run(async (ctx) => {
-			for (let index = 0; index < 5; index += 1) {
-				await ctx.db.insert('sendAssignments', assignment(ORG_A, `send_${index}`, now + index));
-			}
-		});
-		const read = async (overrides: { since?: number; until?: number; limit?: number }) =>
-			await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-				organizationId: ORG_A,
-				cell: CELL,
-				...WINDOW,
-				...overrides,
-			});
-
-		// A non-finite window bound cannot be honoured — return nothing.
-		expect(await read({ since: Number.NaN })).toEqual({ rows: [], hasMore: false });
-		expect(await read({ until: Number.NaN })).toEqual({ rows: [], hasMore: false });
-		// A non-finite / out-of-range limit falls back to the bounded default.
-		expect((await read({ limit: Number.NaN })).rows).toHaveLength(5);
-		expect((await read({ limit: Number.POSITIVE_INFINITY })).rows).toHaveLength(5);
-		expect((await read({ limit: 0 })).rows).toHaveLength(1);
-		expect((await read({ limit: -10 })).rows).toHaveLength(1);
-		expect((await read({ limit: 2.7 })).rows).toHaveLength(2);
-		// …and a clamped limit still says so: 5 rows do not fit in 1.
-		expect((await read({ limit: 0 })).hasMore).toBe(true);
-	});
-
-	it('reports truncation instead of silently returning the oldest page', async () => {
-		// The index range is ASCENDING on `assignedAt`, so a window holding more
-		// rows than the limit would hand back the OLDEST `limit` of them. A
-		// consumer computing a rate over the window (the ramp controller's gates,
-		// the dashboard) would inherit a truncated denominator that looks
-		// complete — the "controller and dashboard disagree about a number"
-		// hazard. `hasMore` makes the truncation impossible to miss.
-		const t = convexTest(schema, modules);
-		const now = 1_800_000_000_000;
-		await t.run(async (ctx) => {
-			for (let index = 0; index < 12; index += 1) {
-				await ctx.db.insert('sendAssignments', assignment(ORG_A, `send_${index}`, now + index));
-			}
-			// Another tenant's rows in the SAME cell/window must not count toward
-			// this org's truncation signal either.
-			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b', now));
-		});
-
-		const truncated = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_A,
-			cell: CELL,
-			...WINDOW,
-			limit: 5,
-		});
-		expect(truncated.rows).toHaveLength(5);
-		expect(truncated.hasMore).toBe(true);
-		expect(truncated.rows.map((row) => row.sendId)).toEqual([
-			'send_0',
-			'send_1',
-			'send_2',
-			'send_3',
-			'send_4',
-		]);
-
-		// Exactly-full is NOT truncated: the extra probe row is what tells them
-		// apart, so pin the boundary.
-		const exact = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_A,
-			cell: CELL,
-			...WINDOW,
-			limit: 12,
-		});
-		expect(exact.rows).toHaveLength(12);
-		expect(exact.hasMore).toBe(false);
-
-		const orgB = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_B,
-			cell: CELL,
-			...WINDOW,
-			limit: 5,
-		});
-		expect(orgB.rows).toHaveLength(1);
-		expect(orgB.hasMore).toBe(false);
 	});
 
 	it('is wiped by the organization-deletion walker (GDPR scoping)', async () => {
@@ -313,14 +154,12 @@ describe('sendAssignments tenant isolation', () => {
 			}),
 		]);
 
-		const aPage = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
-			organizationId: ORG_A,
-			cell: CELL,
-			...WINDOW,
-			limit: 500,
+		await t.run(async (ctx) => {
+			const a = await readAssignmentForSend(ctx.db, ORG_A, 'send_a1');
+			expect(a?.organizationId).toBe(ORG_A);
+			// The same cell, the same instant, the other tenant's send: still nothing.
+			expect(await readAssignmentForSend(ctx.db, ORG_A, 'send_b1')).toBeNull();
+			expect((await readAssignmentForSend(ctx.db, ORG_B, 'send_b1'))?.organizationId).toBe(ORG_B);
 		});
-		expect(aPage.rows).toHaveLength(1);
-		expect(aPage.hasMore).toBe(false);
-		expect(aPage.rows[0]?.organizationId).toBe(ORG_A);
 	});
 });
