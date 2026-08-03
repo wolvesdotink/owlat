@@ -42,6 +42,10 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 		// the real `requireOrgMember` would throw `unauthenticated` on a harness with
 		// no session and the operator path could never be reached.
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// Same reason, one floor up: `promoteCellPhase` is an `adminMutation`, so the
+		// admin context is resolved before its handler. The floor itself is covered
+		// in `rampPhaseMoves.test.ts`.
+		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -274,12 +278,12 @@ describe('the kill switch, through the cron', () => {
 			if (cell) await ctx.db.patch(cell._id, { phaseCeiling: 0.25 });
 		});
 
-		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, {
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, {
 			stream: 'campaign' as const,
 			destinationProvider: 'gmail' as const,
 		});
 
-		expect(result).toEqual({ ok: false });
+		expect(result).toEqual({ applied: false, refusal: 'controller_paused' });
 		const row = await managedRow(t);
 		expect(row?.phaseCeiling).toBe(0.25);
 		expect(row?.mixVersion).toBe(3);

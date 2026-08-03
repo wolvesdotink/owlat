@@ -31,11 +31,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	allDeliverabilityCells,
-	deliverabilityCellKey,
-	type DeliverabilityCell,
-} from '@owlat/shared/deliverabilityRouting';
+import { allDeliverabilityCells, deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
@@ -50,12 +46,7 @@ import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
 import type { SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
 import { loadRampDeploymentPresence } from './rampIntegrationPresence';
-import { applyRampPhasePromotion } from './rampPhasePromotion';
 import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
-import {
-	deliverabilityStreamValidator,
-	destinationProviderValidator,
-} from './deliverabilityValidators';
 import { rampDecisionChangedState } from './ramp/controllerTypes';
 import { applyDecision, refreshRouteStateLease } from './rampControllerWrites';
 import type { PaceUtilisationReading } from './ramp/paceTypes';
@@ -329,56 +320,5 @@ export const runRampController = internalMutation({
 			});
 		}
 		return { evaluated, done: nextCursor >= cells.length };
-	},
-});
-
-/**
- * Promote a cell one rung up the phase ladder (0.25 -> 0.5 -> 0.8 -> 1.0), as a
- * MACHINE act — a scheduler or another server-side flow, with no operator to
- * attribute it to. The operator's own door is
- * `rampPhasePromotion.promoteCellPhase`, which writes the D12 audit pair; this
- * one deliberately does not, because there is nobody to name.
- *
- * THE RULE ITSELF IS NOT HERE. It lives in `applyRampPhasePromotion`, shared
- * with the operator path: the evidence routes, the one-rung ladder step, the
- * unmanaged-row refusal and the hard stops (the global kill switch included) are
- * one implementation, so the two entries cannot come to disagree about what a
- * promotion costs. This shell only flattens the outcome into the boolean-shaped
- * answer a server-side caller wants.
- */
-export const promoteRampPhase = internalMutation({
-	args: {
-		stream: deliverabilityStreamValidator,
-		destinationProvider: destinationProviderValidator,
-	},
-	handler: async (ctx, args) => {
-		const cell: DeliverabilityCell = {
-			stream: args.stream,
-			destinationProvider: args.destinationProvider,
-		};
-		// No organization yet means nothing to promote — a supported configuration,
-		// not an error (plan D2).
-		const organizationId = await resolveRampOrganizationId(ctx);
-		if (organizationId === null) return { ok: false as const };
-		const promotion = await applyRampPhasePromotion(ctx, {
-			organizationId,
-			cell,
-			now: Date.now(),
-		});
-		switch (promotion.status) {
-			case 'promoted':
-			case 'at_top':
-				return { ok: true as const, phaseCeiling: promotion.phaseCeiling };
-			case 'outstanding':
-				// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
-				// rung, and the outstanding conditions travel back by name (plan D12/D14).
-				return {
-					ok: false as const,
-					phaseCeiling: promotion.phaseCeiling,
-					outstanding: promotion.outstanding,
-				};
-			case 'refused':
-				return { ok: false as const };
-		}
 	},
 });
