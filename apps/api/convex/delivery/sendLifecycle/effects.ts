@@ -337,6 +337,14 @@ export async function applyEffects(
 				await scheduleFanout(ctx, effect.spec);
 				break;
 			}
+			default: {
+				// Exhaustive over `Effect`. Without this arm, DELETING a case still
+				// compiles and the effect is silently never applied — the reader-with-
+				// no-writer shape one level down, and only the integration cases would
+				// notice.
+				const exhaustive: never = effect;
+				return exhaustive;
+			}
 		}
 	}
 }
