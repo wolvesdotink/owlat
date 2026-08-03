@@ -2,11 +2,11 @@
 /**
  * CONTROLS — the human's hand on the ramp (plan D9, D12, D14, P3-6).
  *
- * Pause, pin, force-advance, reset to a phase, and the per-stream pace. Every
- * one of them goes through an org-scoped, admin-gated mutation and lands in the
- * audit trail; the retreats the controller made on its own are listed here too,
- * naming the check that broke and what to do about it (plan D12), because a
- * controller that silently retreats will be experienced as a bug.
+ * Enrol a cell, pause it, pin it, force-advance it, reset or promote its phase,
+ * and set the per-stream pace. Every one of them goes through an org-scoped,
+ * admin-gated mutation and lands in the audit trail; the retreats the controller
+ * made on its own are listed here too, naming the check that broke and what to
+ * do about it (plan D12), because a silent retreat will be reported as a bug.
  *
  * ONE WRITE CALL SITE PER CONTROL. The control components emit intent and this
  * page owns the mutations, so refusal handling is written once rather than five
@@ -113,9 +113,9 @@ const { run: setStreamPreset, isLoading: isChangingPreset } = useBackendOperatio
 );
 
 /**
- * ONE MUTATION IN FLIGHT AT A TIME. The four cell controls share one card and
- * one row, so leaving them all live while any of them is writing invites a
- * double submit against a row that is about to change under it.
+ * ONE MUTATION IN FLIGHT AT A TIME. The cell controls share one card and one
+ * row, so leaving them all live while any of them is writing invites a double
+ * submit against a row that is about to change under it.
  */
 const isCellBusy = computed(
 	() =>
@@ -213,7 +213,7 @@ async function enroll(): Promise<void> {
 	) {
 		outcome.value = rampEnrolledSentence(result.share, result.path, result.isShareRouted);
 	}
-	await refetch();
+	refetch();
 }
 
 async function promote(): Promise<void> {
@@ -229,7 +229,7 @@ async function promote(): Promise<void> {
 	if (result?.refusal === undefined && result?.phaseCeiling !== undefined) {
 		outcome.value = rampPromotionSentence(result.applied, result.phaseCeiling);
 	}
-	await refetch();
+	refetch();
 }
 
 async function pause(isPaused: boolean): Promise<void> {
