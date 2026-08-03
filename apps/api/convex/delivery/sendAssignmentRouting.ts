@@ -142,11 +142,12 @@ export async function destinationProvidersForEmails(
  *
  * AND SO DOES A SCORE THE ENVELOPE WOULD REFUSE. Scores are read through
  * `normalizeEngagementScore`, the same band rule the dispatch envelope applies
- * (`delivery/workerEnvelope.ts`), so the two consumers of one producer's number
- * cannot disagree about it. A stored `250` is an upstream scorer defect, not a
- * very engaged recipient: unfiltered it would sit at the top of its cell's
- * cohort and take the stratified own-arm cut on the same send whose envelope
- * drops it as unknown.
+ * (`delivery/workerEnvelope.ts`) and the same one the walker orders each day's
+ * slice by (`campaigns/multiDaySendPlan.ts#orderByEngagement`), so no reader of
+ * one producer's number disagrees with the others about it. A stored `250` is an
+ * upstream scorer defect, not a very engaged recipient: unfiltered it would sit
+ * at the top of its cell's cohort and take the stratified own-arm cut on the
+ * same send whose envelope drops it as unknown.
  */
 export function buildEngagementRanker(
 	recipients: readonly SendAssignmentRecipient[],

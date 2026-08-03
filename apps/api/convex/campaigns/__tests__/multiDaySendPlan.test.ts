@@ -453,4 +453,21 @@ describe('orderByEngagement — the best remaining audience goes first', () => {
 		]);
 		expect(ordered.map((r) => r.id)).toEqual(['zero', 'nan']);
 	});
+
+	it('an OUT-OF-BAND score does not jump the day’s slice', () => {
+		// `contacts.engagementScore` is 0-100. A stored 250 is an upstream scorer
+		// defect the dispatch envelope and the stratified ranker both refuse
+		// (`normalizeEngagementScore`), and the day-one slice is the third reader
+		// of the same number: ordered on its face it would take the front of the
+		// first warming day, on the same send whose envelope drops it as unknown.
+		const ordered = orderByEngagement([
+			{ id: 'over', engagementScore: 250 },
+			{ id: 'under', engagementScore: -1 },
+			{ id: 'top', engagementScore: 100 },
+			{ id: 'unscored' },
+		]);
+		// The honest top of the band leads; both defects sit with the unscored, in
+		// the audience's own order because they are tied at "no usable score".
+		expect(ordered.map((r) => r.id)).toEqual(['top', 'over', 'under', 'unscored']);
+	});
 });

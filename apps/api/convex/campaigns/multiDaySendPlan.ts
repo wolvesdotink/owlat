@@ -35,6 +35,7 @@
 
 import { buildCapacitySchedule, MAX_PLAN_DAYS } from './capacityPlan';
 import { nextUtcDayStart, utcDayKey } from '../lib/utcDay';
+import { normalizeEngagementScore } from '../delivery/workerEnvelope';
 
 /** The plan state the walker checkpoints on its `campaignSendJobs` row. */
 export interface SendPlanState {
@@ -329,7 +330,16 @@ export function orderByEngagement<T extends EngagementOrdered>(recipients: reado
 	return [...recipients].sort((a, b) => engagementRank(b) - engagementRank(a));
 }
 
+/**
+ * THE SAME BAND RULE THE OTHER TWO READERS OF THE STORED SCORE APPLY — the
+ * dispatch envelope and the stratified assignment ranker both read it through
+ * `normalizeEngagementScore`. A stored `250` is an upstream scorer defect, not
+ * a very engaged contact; ranked on its face it would take the front of day
+ * one's slice on the same send whose envelope drops it as unknown.
+ *
+ * A refused score sorts LAST, where the unscored already are: the rule for "no
+ * usable evidence of engagement" is one rule.
+ */
 function engagementRank(recipient: EngagementOrdered): number {
-	const score = recipient.engagementScore;
-	return score !== undefined && Number.isFinite(score) ? score : -1;
+	return normalizeEngagementScore(recipient.engagementScore) ?? -1;
 }
