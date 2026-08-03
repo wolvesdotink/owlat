@@ -239,10 +239,12 @@ function enrollmentMessage(args: {
  * cell enrolled without an anchor would depend on a backfill to ever be
  * promotable.
  *
- * `mixVersion` advances because enrolment IS a mix generation (plan D7): the
- * cell's recipients are being assigned to two arms for the first time, and a
- * cell re-enrolled after a spell off the ramp must not reuse the previous
- * generation's assignment.
+ * `mixVersion` advances because enrolment IS a mix generation (plan D7): on the
+ * ESP path the cell's recipients are being assigned to two arms for the first
+ * time, and a cell re-enrolled after a spell off the ramp must not reuse the
+ * previous generation's assignment. It advances on the PACE path too, where
+ * there is only one arm to assign anyone to — `rampPhaseReset` carries the rule
+ * for why one door, and only that one, holds the generation back.
  *
  * OPENING STATE MEANS OPENING STATE. A share-less per-stream row can only have
  * been written by something that is not the ramp, so anything ramp-shaped

@@ -142,6 +142,16 @@ export const resetCellPhase = adminMutation({
 			// WHAT FOLLOWS THE SHARE MOVES ONLY WHERE THE SHARE MOVED: the boolean
 			// view, the mix generation and the graduation pin all describe a traffic
 			// split this reset did not touch on a standalone cell.
+			//
+			// AND THIS IS THE ONLY DOOR THAT HOLDS THE GENERATION BACK — because of
+			// the SHARE, not the arm count. Enrolment, promotion and force-advance
+			// always write the move they were called for, so they bump `mixVersion`
+			// unconditionally, on a one-arm cell too; that is inert, because the salt
+			// only decides anything where the route splits by share (`adaptive_mix`)
+			// and is otherwise copied onto the assignment row as a label that moves
+			// nobody. Here the share can stay exactly where it was, and a generation
+			// spent on a split that did not move would be the one field on this patch
+			// claiming a change nobody made.
 			...(hasSecondSender
 				? {
 						ownShare: share,
