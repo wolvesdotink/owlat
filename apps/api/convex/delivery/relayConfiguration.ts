@@ -1,10 +1,12 @@
 /**
  * THE RELAY LIST — the ONE reading of "which transports are the second arm".
  *
- * Six readers ask something of the configured non-MTA transports: the alignment
- * pre-flight builds the reference arm from it, the ramp's enrolment fork and its
- * reset door ask whether a second sender exists AT ALL, and the dashboard, the
- * independence read and the return-path read ask WHICH one it is. All of them
+ * Seven readers ask something of the configured non-MTA transports: the
+ * alignment pre-flight builds the reference arm from it, the ramp's enrolment
+ * fork and its reset door ask whether a second sender exists AT ALL, the
+ * dashboard, the independence read and the return-path read ask WHICH one it
+ * is, and the controls view (`rampControlQueries.getRampControls`) asks BOTH —
+ * the reader {@link relayConfiguration} was shaped around. All of them
  * answer from this one scan and this one rule — two implementations of "which
  * transport is the second arm" would drift into telling the operator two
  * different stories about one configuration.
