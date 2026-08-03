@@ -87,9 +87,7 @@ export interface RelayConfiguration {
  * "Which single arm is the reference one" and "is there a second sender at all"
  * are different questions — they disagree on a two-relay deployment, where the
  * reset door cuts and there is still no arm to name — so a screen that shows the
- * ramp's position needs both. Reading the list once is not only the cheaper
- * shape: two derivations over two scans could straddle a route change and report
- * a reference arm on a configuration that no longer has one.
+ * ramp's position needs both, and takes both off one reading.
  *
  * The "exactly one" rule stays in {@link referenceTransportIdOf} rather than
  * being restated at the call site — a second copy of it is how the two answers
