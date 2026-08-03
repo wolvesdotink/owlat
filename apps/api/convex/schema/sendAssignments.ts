@@ -21,7 +21,7 @@ export const sendAssignmentTables = {
 	//
 	// `organizationId` is not in the plan's sketch and is deliberately added:
 	// a cell-keyed table readable across tenants is a security defect, so the
-	// cell/time index is org-leading and no query can cross tenants.
+	// send lookup is org-leading and no query can cross tenants.
 	//
 	// Retention is 90 days, swept by the `cleanup send assignments` cron
 	// through `by_assigned_at`.
@@ -51,7 +51,11 @@ export const sendAssignmentTables = {
 		engagementRank: v.optional(v.number()),
 		assignedAt: v.number(),
 	})
+		// TWO indexes, and no more: every read of this table is either the
+		// per-send join (`readAssignmentForSend`) or the retention sweep. A
+		// cell/time index shipped here with no reader at all, and an unread index
+		// on a per-recipient table is write amplification D16 exists to bound —
+		// add one back with the consumer, not before it.
 		.index('by_org_send', ['organizationId', 'sendId'])
-		.index('by_org_cell_time', ['organizationId', 'cell', 'assignedAt'])
 		.index('by_assigned_at', ['assignedAt']),
 };

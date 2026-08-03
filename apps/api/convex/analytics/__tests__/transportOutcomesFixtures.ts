@@ -8,6 +8,7 @@
  * instead of re-declaring the same scaffolding five times.
  */
 
+import { vi } from 'vitest';
 import type { DatabaseReader, DatabaseWriter } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import {
@@ -157,6 +158,34 @@ export async function seedAssignedTestPreview(
 		assignedAt: Date.now(),
 	});
 	return sendId;
+}
+
+/**
+ * LET THE OUTCOME WRITER RUN before reading buckets.
+ *
+ * The `transport_outcome` effect is SCHEDULED out of the transaction that
+ * produces it (`sendLifecycle/effects.ts`) — the bump contends on one shard of a
+ * bucket the whole cell writes to, and an OCC conflict there must not retry a
+ * delivery transition. So a case that drives a real mutation and then asserts on
+ * counters has to let the scheduler run first; one helper rather than the same
+ * three lines at thirty call sites, so the reason survives.
+ *
+ * DRAINS ONLY THE ZERO-DELAY JOBS. `convex-test` arms every `runAfter` on a real
+ * timer of its own delay, so a workpool retry stays pending and a case can still
+ * assert that it is armed — which `finishAllScheduledFunctions(runAllTimers)`
+ * would destroy by firing it.
+ */
+export async function drainOutcomeWrites(t: {
+	finishInProgressScheduledFunctions: () => Promise<void>;
+}): Promise<void> {
+	if (vi.isFakeTimers()) {
+		vi.advanceTimersByTime(0);
+	} else {
+		// Registered after the effect's own zero-delay timer, so the timer phase
+		// reaches that one first and there is something in flight to wait for.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+	await t.finishInProgressScheduledFunctions();
 }
 
 /** Every shard row of one (org, cell, arm) — the writer's whole footprint. */

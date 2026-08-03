@@ -15,9 +15,9 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
 import {
 	recordTransportOutcomeForCell,
+	summarizeTransportOutcomeArms,
 	summarizeTransportOutcomes,
 	TRANSPORT_OUTCOME_SHARD_COUNT,
 	type TransportOutcomeBucket,
@@ -382,7 +382,7 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 		});
 	});
 
-	it('gives a query ctx and a mutation ctx the identical numbers', async () => {
+	it('gives the arm pair and a single-arm read the identical numbers', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
@@ -405,25 +405,24 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 			);
 		});
 
-		const fromQuery = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
-			organizationId: OUTCOME_ORG,
-			cell: GMAIL_CAMPAIGN_CELL,
-		});
-		const fromMutationCtx = await t.run(
-			async (ctx) =>
-				await summarizeTransportOutcomes(ctx.db, {
-					organizationId: OUTCOME_ORG,
-					cell: GMAIL_CAMPAIGN_CELL,
-					arm: 'own',
-				})
-		);
+		const { arms, single } = await t.run(async (ctx) => ({
+			arms: await summarizeTransportOutcomeArms(ctx.db, {
+				organizationId: OUTCOME_ORG,
+				cell: GMAIL_CAMPAIGN_CELL,
+			}),
+			single: await summarizeTransportOutcomes(ctx.db, {
+				organizationId: OUTCOME_ORG,
+				cell: GMAIL_CAMPAIGN_CELL,
+				arm: 'own',
+			}),
+		}));
 
-		expect(fromQuery.own).toEqual(fromMutationCtx);
-		expect(fromQuery.own.sent).toBe(500);
-		expect(fromQuery.own.deliveryRate).toBeCloseTo(0.84, 10);
+		expect(arms.own).toEqual(single);
+		expect(arms.own.sent).toBe(500);
+		expect(arms.own.deliveryRate).toBeCloseTo(0.84, 10);
 		// The other arm of the same cell is a separate, independent window.
-		expect(fromQuery.reference.sent).toBe(0);
-		expect(fromQuery.reference.deliveryRate).toBe(0);
+		expect(arms.reference.sent).toBe(0);
+		expect(arms.reference.deliveryRate).toBe(0);
 	});
 
 	it('never mixes arms or cells', async () => {
@@ -444,17 +443,18 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 			);
 		});
 
-		const gmail = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
-			organizationId: OUTCOME_ORG,
-			cell: GMAIL_CAMPAIGN_CELL,
-		});
+		const { gmail, microsoft } = await t.run(async (ctx) => ({
+			gmail: await summarizeTransportOutcomeArms(ctx.db, {
+				organizationId: OUTCOME_ORG,
+				cell: GMAIL_CAMPAIGN_CELL,
+			}),
+			microsoft: await summarizeTransportOutcomeArms(ctx.db, {
+				organizationId: OUTCOME_ORG,
+				cell: MICROSOFT_CAMPAIGN_CELL,
+			}),
+		}));
 		expect(gmail.own.sent).toBe(10);
 		expect(gmail.reference.sent).toBe(20);
-
-		const microsoft = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
-			organizationId: OUTCOME_ORG,
-			cell: MICROSOFT_CAMPAIGN_CELL,
-		});
 		expect(microsoft.own.sent).toBe(40);
 	});
 
@@ -472,12 +472,15 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 			);
 		});
 
-		const recent = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
-			organizationId: OUTCOME_ORG,
-			cell: GMAIL_CAMPAIGN_CELL,
-			since: day - DAY_MS,
-			until: day + DAY_MS,
-		});
+		const recent = await t.run(
+			async (ctx) =>
+				await summarizeTransportOutcomeArms(ctx.db, {
+					organizationId: OUTCOME_ORG,
+					cell: GMAIL_CAMPAIGN_CELL,
+					since: day - DAY_MS,
+					until: day + DAY_MS,
+				})
+		);
 		expect(recent.own.sent).toBe(7);
 	});
 });
