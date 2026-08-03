@@ -10,7 +10,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import { independenceSubhead, relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
-import { measurementSubhead } from '~/utils/deliverabilityMeasurement';
 
 const REFERENCE = 'ses';
 
@@ -118,25 +117,30 @@ describe('relayRemovalConsequenceCopy', () => {
 /**
  * THE RELAY HAS A NAME, AND THE PROSE USES IT.
  *
- * `referenceTransportId` is the stored transport KIND — `ses`, `smtp` — which is
- * what the operator typed into `EMAIL_PROVIDER`, not what the product calls that
- * transport anywhere else. Printing it verbatim put "instead of ses" on the
- * screen people screenshot while the transport card, three clicks away, called
- * the same thing "Amazon SES".
+ * `referenceTransportId` is the stored transport id — `ses`, `smtp`,
+ * `plugin.<pack>.<id>` — which is what the operator configured, not what the
+ * product calls that transport anywhere else. Printing it verbatim put "instead
+ * of ses" on the screen people screenshot while the transport card, three clicks
+ * away, called the same thing "Amazon SES". The naming itself is pinned in
+ * `transportState.test.ts`; these are the sentences it lands in.
  */
 describe('naming the reference transport', () => {
 	it('names the relay the way the transport card does', () => {
 		expect(independenceSubhead('ses')).toContain('instead of Amazon SES');
 		expect(independenceSubhead('smtp')).toContain('instead of SMTP relay');
-		expect(measurementSubhead('ses')).toContain('compares with Amazon SES');
 		expect(independenceSubhead('ses')).not.toContain(' ses');
 	});
 
-	it('falls back to the raw kind rather than dropping an unknown transport', () => {
-		// The reference arm is whatever `EMAIL_PROVIDER` was set to, so a kind this
+	it('never prints a namespaced plugin id in a sentence', () => {
+		const subhead = independenceSubhead('plugin.mail-pack.postmark');
+		expect(subhead).toContain('instead of Postmark');
+		expect(subhead).not.toContain('plugin.');
+	});
+
+	it('falls back to the raw id rather than dropping an unknown transport', () => {
+		// The reference arm is whatever `EMAIL_PROVIDER` was set to, so an id this
 		// build does not know must still read as itself.
 		expect(independenceSubhead('postmark')).toContain('instead of postmark');
-		expect(measurementSubhead('postmark')).toContain('compares with postmark');
 		expect(
 			relayRemovalConsequenceCopy({
 				dependentCells: ['campaign:gmail'],
@@ -146,8 +150,17 @@ describe('naming the reference transport', () => {
 		).toContain('through postmark');
 	});
 
-	it('leaves the standalone sentences alone — there is no relay to name', () => {
+	it('names the relay in the removal consequence too', () => {
+		expect(
+			relayRemovalConsequenceCopy({
+				dependentCells: ['campaign:gmail'],
+				referenceTransportId: 'plugin.mail-pack.postmark',
+				projectedSafeAt: null,
+			}).consequence
+		).toContain('through Postmark');
+	});
+
+	it('leaves the standalone sentence alone — there is no relay to name', () => {
 		expect(independenceSubhead(null)).toContain('There is no relay to move away from');
-		expect(measurementSubhead(null)).toContain('What your own server is sending');
 	});
 });

@@ -39,9 +39,10 @@ export function measurementHeadline(referenceTransportId: string | null): string
 
 /**
  * THE SECOND ARM IS NAMED THE WAY THE OPERATOR CHOSE IT. The reference
- * transport reaches this screen as its stored KIND (`ses`, `smtp`), which is a
- * configuration value rather than a name — `transportLabel` turns it back into
- * the words the transport card and the DNS guidance already use.
+ * transport reaches this screen as its stored id (`ses`, `smtp`,
+ * `plugin.<pack>.<id>`), which is a configuration value rather than a name —
+ * `transportLabel` turns it back into words, with the scope and the one
+ * remaining plugin-catalog gap stated there.
  */
 export function measurementSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null

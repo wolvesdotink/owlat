@@ -37,8 +37,32 @@ import {
 } from '~/components/delivery/__tests__/measurementFixtures';
 import {
 	gateExplanation,
+	measurementSubhead,
 	type DeliverabilityDashboardGate,
 } from '~/utils/deliverabilityMeasurement';
+
+/**
+ * THE SECOND ARM IS NAMED, NOT KEYED. `referenceTransportId` arrives as the
+ * stored transport id, so the shipped subhead read "compares with ses" on the
+ * screen an operator screenshots while the transport card called the same relay
+ * "Amazon SES". The naming itself is pinned in `transportState.test.ts`; this is
+ * the sentence it lands in.
+ */
+describe('measurementSubhead', () => {
+	it('names the relay the way the transport card does', () => {
+		expect(measurementSubhead('ses')).toContain('compares with Amazon SES');
+		expect(measurementSubhead('plugin.mail-pack.postmark')).toContain('compares with Postmark');
+		expect(measurementSubhead('ses')).not.toContain(' ses ');
+	});
+
+	it('falls back to the raw id rather than dropping an unknown transport', () => {
+		expect(measurementSubhead('postmark')).toContain('compares with postmark');
+	});
+
+	it('leaves the standalone sentence alone — there is no relay to compare with', () => {
+		expect(measurementSubhead(null)).toContain('What your own server is sending');
+	});
+});
 
 describe('gateExplanation — units', () => {
 	it('denominates an ordinary verdict in sends', () => {

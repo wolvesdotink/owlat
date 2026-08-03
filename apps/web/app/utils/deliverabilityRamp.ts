@@ -68,10 +68,12 @@ export const independenceHeadline = measurementHeadline;
 
 /**
  * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport
- * KIND, and "instead of ses" reads as a configuration value leaking onto the
- * screen people screenshot. `transportLabel` is the same map the transport card
- * and the DNS guidance already name each kind with, so the three surfaces
- * cannot call one relay two things.
+ * id, and "instead of ses" reads as a configuration value leaking onto the
+ * screen people screenshot. `transportLabel` names the built-in kinds from the
+ * same map the transport card and the DNS guidance use; a PLUGIN relay is named
+ * from its id's leaf here and from the plugin catalog on the card, so those two
+ * can still word one relay differently until this query carries the catalog
+ * label.
  */
 export function independenceSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
