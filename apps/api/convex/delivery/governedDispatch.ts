@@ -317,7 +317,8 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			// which the MTA also answers when its Redis lost the lease record rather
 			// than when the lease aged out, and that is our fault. Separating them
 			// needs a distinction the MTA does not make on the wire, so this path
-			// still spends gate 2's budget — `delivery/deferralOutcome.ts` says so.
+			// still spends gate 2's budget — issue #505 carries the wire change,
+			// and `delivery/deferralOutcome.ts` says the same.
 			deferralOrigin: 'governed',
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),

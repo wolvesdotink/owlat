@@ -28,8 +28,8 @@
  * comes back empty because its Redis lost the key rather than because the lease
  * aged out. A store failure on our own side can therefore still spend gate 2's
  * budget through that path. Classifying it needs the MTA to tell an expired
- * lease apart from an unreadable one on the wire, which is parked for the
- * aggregate; until it lands, read the rule above as holding for
+ * lease apart from an unreadable one on the wire, which is parked in issue #505;
+ * until that lands, read the rule above as holding for
  * `resolveLastMileRouting`'s own answer and as an intention for the other.
  *
  * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
