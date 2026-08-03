@@ -54,7 +54,10 @@
  * `resolveRampDegradation` fold — and the choices that fall out of it (which
  * evaluator runs, which constants it runs on, which complaint line applies) are
  * the fold's answers here as they are there. `referenceTransportId` stays
- * configuration, because NAMING the second arm is the only question it answers.
+ * configuration, because NAMING the second arm is the only question it answers,
+ * and `isRelayConfigured` travels beside it for the one other configuration
+ * question the screen asks: whether "connect a relay you already pay for" is
+ * advice this deployment can act on. Neither of them frames the screen.
  *
  * ONE RULE IS NOT ENOUGH — IT HAS TO BE ASKED OVER THE SAME SPAN. The predicate
  * is asked here over `RAMP_REFERENCE_ARM_WINDOW_MS`, the controller's span, and
@@ -202,11 +205,31 @@ export interface DeliverabilityDashboard {
 	readonly windowStart: number;
 	readonly windowEnd: number;
 	/**
-	 * The second arm's transport id, or `null` for a standalone deployment. The
-	 * screen switches headline and copy on this (plan D14) — it is never an
-	 * error state.
+	 * WHAT TO CALL THE SECOND ARM, and nothing else. It is the id of the single
+	 * configured relay kind, and `null` for TWO configurations that have nothing
+	 * else in common: a standalone deployment with no relay at all, and a
+	 * deployment relaying through more than one kind, which has a second arm and
+	 * no single one to name.
+	 *
+	 * THE SCREEN'S FRAMING DOES NOT COME FROM THIS FIELD. Headline, subhead and
+	 * the standalone note are keyed to whether the CELLS below measured a second
+	 * arm; this only fills in its name once they have. Read as the framing, it
+	 * told a two-relay deployment it sends entirely from its own server directly
+	 * above cards carrying a relay column.
 	 */
 	readonly referenceTransportId: string | null;
+	/**
+	 * Does this deployment own a relay AT ALL — the other reading of the same
+	 * list, true wherever any relay kind is configured.
+	 *
+	 * IT ANSWERS ONE QUESTION: whether to offer "connect a relay you already pay
+	 * for". That offer is advice about the CONFIGURATION and nobody with a relay
+	 * connected can act on it, so a screen that keyed it to the measurement made
+	 * the offer to a deployment whose own cards were explaining that its relay
+	 * went quiet. `dashboardConfidence` splits the per-cell offer from the
+	 * per-cell cap on exactly this line.
+	 */
+	readonly isRelayConfigured: boolean;
 	/**
 	 * Whether ANY seed mailbox is connected — an org-level fact the screen uses to
 	 * explain a held gate 5. The per-cell placement VERDICT is on the cell's own
@@ -423,6 +446,7 @@ export const getDeliverabilityDashboard = authedQuery({
 			windowStart: window.sinceDay,
 			windowEnd: window.untilDay,
 			referenceTransportId,
+			isRelayConfigured,
 			hasSeedCoverage,
 			cells,
 		};

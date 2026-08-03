@@ -399,7 +399,13 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		// leave `referenceRelayTransportId` with no single arm to name. Without
 		// this, a change to `configuredRelayKinds` would quietly turn the flagship
 		// case into an ordinary single-relay one that passes for the wrong reason.
-		expect((await dashboardOf(t)).referenceTransportId).toBeNull();
+		const dashboard = await dashboardOf(t);
+		expect(dashboard.referenceTransportId).toBeNull();
+		// AND THE OTHER READING OF THE SAME LIST SAYS THE OPPOSITE, which is what
+		// keeps the screen from offering a relay to a deployment relaying through
+		// two: the id is null because there is no single arm to NAME, not because
+		// there is no relay.
+		expect(dashboard.isRelayConfigured).toBe(true);
 
 		const controller = await controllerEvaluation(t);
 		const view = await dashboardCellView(t);
@@ -521,6 +527,9 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		// cell's window; the offer is the deployment's configuration, and
 		// `connectRelay` above is exactly the configuration that can't act on it.
 		expect(view.confidence.improvements).not.toContain('connect_reference_transport');
+		// The same split reaches the PAGE prose, which makes the same offer above
+		// these cards: it is keyed to this field, not to the absent arm.
+		expect((await dashboardOf(t)).isRelayConfigured).toBe(true);
 	});
 
 	it('grades on the constants the TABLE tightened, not the shipped ones', async () => {
