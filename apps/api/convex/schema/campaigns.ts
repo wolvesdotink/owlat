@@ -272,6 +272,13 @@ export const campaignTables = {
 		// Bounce classification; required-via-runtime-guard when status='bounced'.
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 		complainedAt: v.optional(v.number()),
+		// When this send absorbed the recipient's unsubscribe. NOT a status — the
+		// send itself succeeded — and NOT the contact's unsubscribe record either
+		// (that is `contacts.unsubscribedAt` + the membership rows). It exists as
+		// the per-send uniqueness gate for the `unsubscribed` transport outcome,
+		// the same role `openedAt` plays for `opened`. See
+		// `delivery/unsubscribeOutcome.ts`.
+		unsubscribedAt: v.optional(v.number()),
 		// Link tracking for click attribution
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)
