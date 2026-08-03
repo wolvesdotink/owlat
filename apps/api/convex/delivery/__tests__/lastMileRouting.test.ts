@@ -185,12 +185,13 @@ describe('last-mile governance boundary', () => {
 			}
 		);
 
-		it('calls the MTA declining with nowhere to overflow to governance', async () => {
+		it('calls an open breaker with nowhere to overflow to governance', async () => {
 			vi.stubEnv('MTA_API_URL', 'https://mta.test');
 			vi.stubEnv('MTA_API_KEY', 'key');
-			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'breaker_open' });
 			// The relay route resolves to nothing usable, so the own arm was refused
-			// and there is no second arm to catch it — pressure on THIS identity.
+			// on evidence about this identity and there is no second arm to catch it —
+			// pressure on THIS identity, which is what gate 2 exists to see.
 			expect(
 				await resolveLastMileRouting(
 					context(
@@ -200,6 +201,29 @@ describe('last-mile governance boundary', () => {
 					input
 				)
 			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'governed' });
+		});
+
+		/**
+		 * THE STANDALONE TWIN'S OWN CAP IS NOT A RECEIVER'S 4xx. A deployment with
+		 * no relay has nowhere to put warm-up overflow, so every over-cap message in
+		 * the window would defer; counted, one such window past the 200-send floor
+		 * crosses gate 2's 25% halt line and takes the cell's share to the floor
+		 * with its graduation pin revoked — for a schedule WE set. The warming cap
+		 * has its own actuator.
+		 */
+		it('calls warm-up overflow with no relay this deployment’s own schedule', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true },
+						{ route: null }
+					),
+					input
+				)
+			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
 		});
 
 		it('calls an unverified relay identity our own configuration', async () => {

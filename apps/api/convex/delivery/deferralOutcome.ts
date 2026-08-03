@@ -12,18 +12,19 @@
  * THIS IS THE FIRST WRITER, AND IT IS DELIBERATELY NOT THE ONLY ONE THERE COULD
  * BE. What it records is the GOVERNED half of the LAST-MILE ROUTER's deferrals —
  * `resolveLastMileRouting` answering `defer` with `origin: 'governed'` (the MTA
- * declining this identity: an open safety circuit, no warmed IP, a warm-up cap
- * with nowhere to overflow to), or a transport answering `ROUTING_DEFERRED` —
- * which is the point where a message this deployment tried to hand over provably
- * did not go out for a reason about the sending identity.
+ * declining this identity: an open safety circuit, no warmed IP, an open breaker
+ * with no relay to catch the overflow), or a transport answering
+ * `ROUTING_DEFERRED` — which is the point where a message this deployment tried
+ * to hand over provably did not go out for a reason about the sending identity.
  *
  * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
  * deliberate policy hold, the idempotency reconciliation wait, an unconfigured or
- * unreachable MTA decision endpoint — those are this deployment holding its own
- * message. Gate 2 halts a cell at 25%, so counting a forty-minute outage on our
- * own side would drop the share to the floor, open a cooldown and revoke a
- * graduation pin over a fault no receiver ever saw. `completeSend` does the
- * filtering, because the origin travels on the worker's answer and dies there.
+ * unreachable MTA decision endpoint, a warm-up cap we set ourselves — those are
+ * this deployment holding its own message. Gate 2 halts a cell at 25%, so
+ * counting a forty-minute outage on our own side would drop the share to the
+ * floor, open a cooldown and revoke a graduation pin over a fault no receiver
+ * ever saw. `completeSend` does the filtering, because the origin travels on the
+ * worker's answer and dies there.
  *
  * A remote 4xx AFTER the MTA has accepted the message for delivery never comes
  * back through this path at all: the MTA retries it internally and reports it to

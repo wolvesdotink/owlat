@@ -65,16 +65,18 @@ export interface LastMileRoutingDeferred {
 	 * reason this field is REQUIRED rather than defaulted: a new defer site that
 	 * forgot to answer would quietly pick a side.
 	 *
-	 * `governed` — the MTA's routing governance declined to carry this message:
-	 * an open safety circuit on the sending identity, no warmed IP, a warm-up cap
-	 * with nowhere to overflow to. That is a statement about whether THIS identity
-	 * can get mail out, which is what gate 2 measures and what may halt a cell.
+	 * `governed` — the MTA's routing governance declined to carry this message on
+	 * what it knows about the SENDING IDENTITY: an open safety circuit, no warmed
+	 * IP, an open breaker with no relay to catch the overflow. That is a statement
+	 * about whether this identity can get mail out, which is what gate 2 measures
+	 * and what may halt a cell.
 	 *
 	 * `local` — this deployment's own machinery: a deliberate policy hold, the
 	 * idempotency reconciliation wait, an unconfigured or unreachable decision
-	 * endpoint. Counting these would let a forty-minute outage on our own side
-	 * push a cell past the 25% halt line — share to the floor, cooldown, and the
-	 * graduation pin revoked — for a fault no receiver ever saw.
+	 * endpoint, and a warm-up cap we set ourselves. Counting these would let a
+	 * forty-minute outage on our own side push a cell past the 25% halt line —
+	 * share to the floor, cooldown, and the graduation pin revoked — for a fault
+	 * no receiver ever saw.
 	 */
 	origin: 'governed' | 'local';
 }
@@ -242,12 +244,13 @@ export async function resolveLastMileRouting(
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 	if (baseProviderKind === 'mta' && route?.providerType !== 'ses') {
+		const relayReason = decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open';
 		const relay = await ctx.runQuery(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {
 			messageType: input.messageType,
 			to: input.to,
 			from: input.from,
 			...(input.sendId !== undefined ? { sendId: input.sendId } : {}),
-			forceRelayReason: decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open',
+			forceRelayReason: relayReason,
 		});
 		route = relay.route;
 		providerKind = selectSendProviderKind(route?.providerType);
@@ -262,12 +265,22 @@ export async function resolveLastMileRouting(
 				kind: 'defer',
 				retryAfterMs: POLICY_HOLD_RETRY_MS,
 				isPolicyHold: true,
-				// TWO HOLDS AT ONE RETURN SITE. `relay_unavailable` means the MTA
-				// declined the own arm (warm-up overflow, breaker) and there is no
-				// relay to catch it — governance about this identity, and exactly the
-				// pressure gate 2 is meant to see. A `deferralCode` from the relay
-				// route is our own configuration instead.
-				origin: relay.deferralCode ? 'local' : 'governed',
+				// THREE HOLDS AT ONE RETURN SITE, and only one of them is evidence.
+				//
+				// `breaker_open` with no relay to catch it is the MTA refusing to carry
+				// this identity on evidence it gathered about the identity — exactly
+				// the pressure gate 2 exists to see.
+				//
+				// `warmup_overflow` is NOT. The cap is a schedule WE set and its
+				// designed relief valve is the relay; a deployment running without one
+				// (the standalone twin is a first-class configuration here) would
+				// otherwise push every over-cap message into gate 2's numerator, cross
+				// the 25% halt line on its own ramp plan, and take the share to the
+				// floor with the graduation pin revoked — for a 4xx no receiver ever
+				// sent. The warming cap has its own actuator; it is not this one.
+				//
+				// A `deferralCode` from the relay route is our own configuration too.
+				origin: relay.deferralCode || relayReason === 'warmup_overflow' ? 'local' : 'governed',
 			};
 		}
 	}
