@@ -26,7 +26,7 @@ import {
 	type DeliverabilityDashboardCell,
 } from '~/utils/deliverabilityMeasurement';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
-import { transportLabel } from '~/utils/transportState';
+import { transportIdLabel } from '~/utils/transportState';
 
 const props = defineProps<{
 	cell: DeliverabilityDashboardCell;
@@ -41,7 +41,7 @@ const rows = computed(() => armMetricRows(props.cell.own, props.cell.reference))
 // The column heads the RELAY's numbers, so it carries the relay's name rather
 // than its stored kind — the same words the transport card uses for it.
 const referenceColumnLabel = computed(() =>
-	props.referenceTransportId === null ? 'Comparison' : transportLabel(props.referenceTransportId)
+	props.referenceTransportId === null ? 'Comparison' : transportIdLabel(props.referenceTransportId)
 );
 
 /**

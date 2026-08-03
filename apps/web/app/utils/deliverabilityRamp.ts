@@ -30,7 +30,7 @@ import {
 	providerLabel,
 	streamLabel,
 } from '~/utils/deliverabilityMeasurement';
-import { transportLabel } from '~/utils/transportState';
+import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.getRampControls
@@ -69,7 +69,7 @@ export const independenceHeadline = measurementHeadline;
 /**
  * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport
  * id, and "instead of ses" reads as a configuration value leaking onto the
- * screen people screenshot. `transportLabel` names the built-in kinds from the
+ * screen people screenshot. `transportIdLabel` names the built-in kinds from the
  * same map the transport card and the DNS guidance use; a PLUGIN relay is named
  * from its id's leaf here and from the plugin catalog on the card, so those two
  * can still word one relay differently until this query carries the catalog
@@ -78,7 +78,7 @@ export const independenceHeadline = measurementHeadline;
 export function independenceSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
 		? 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.'
-		: `How much of your mail your own server now carries instead of ${transportLabel(referenceTransportId)}.`;
+		: `How much of your mail your own server now carries instead of ${transportIdLabel(referenceTransportId)}.`;
 }
 
 /** The month-to-date own-arm volume sentence — always available, always true. */
@@ -302,7 +302,9 @@ export interface RelayRemovalFacts {
  */
 export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
 	const relay =
-		facts.referenceTransportId === null ? 'the relay' : transportLabel(facts.referenceTransportId);
+		facts.referenceTransportId === null
+			? 'the relay'
+			: transportIdLabel(facts.referenceTransportId);
 	const lostFallback = `the reputation ${relay} has built for your domain stops being available to fall back on`;
 	// The tail every arm that MOVES traffic shares; the safe arm ends differently
 	// because nothing moves and only the fallback is given up.

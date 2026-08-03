@@ -61,8 +61,12 @@ export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
  * can be whatever `EMAIL_PROVIDER` was set to, so an id this build does not know
  * must still read as itself; printing nothing, or "Unknown", would leave the
  * sentence naming a relay the operator cannot identify.
+ *
+ * NOT `providerRouting.transportLabel`, which resolves the SAME id against a
+ * catalog it was handed. Both are auto-imported, so they may not share a name:
+ * whichever lost would be silently substituted for the other in every template.
  */
-export function transportLabel(kind: string): string {
+export function transportIdLabel(kind: string): string {
 	if (isDeliveryProviderKind(kind)) return TRANSPORT_LABEL[kind];
 	const plugin = parsePluginNamespacedKind(kind);
 	return plugin === undefined ? kind : capitalize(plugin.localId);
