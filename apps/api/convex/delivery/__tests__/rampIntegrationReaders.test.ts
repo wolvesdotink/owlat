@@ -385,8 +385,15 @@ describe('the promotion-evidence reader', () => {
 	it('walks EVERY cell for the worst deferral rate, not just this one', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
-		// This cell is spotless; a different cell entirely is deferring hard.
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 1000 });
+		// This cell is all but spotless; a different cell entirely is deferring
+		// hard. Both carry a recorded deferral, so both are readable and the fold
+		// is judged on the rates rather than on the instrument.
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 1000,
+			counters: { delivered: 999, deferred: 1 },
+		});
 		await seedArmOutcomes(t, {
 			organizationId: ORG,
 			arm: 'own',
@@ -397,7 +404,7 @@ describe('the promotion-evidence reader', () => {
 		expect((await evidence(t)).worstCellDeferralRate).toBeCloseTo(0.5, 10);
 	});
 
-	it('reads a grid nothing records deferrals for as UNMEASURED, not as a clean 0%', async () => {
+	it('reads a cell nothing records deferrals for as UNMEASURED, not as a clean 0%', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
 		// Ample traffic through two cells, and not one deferral counted anywhere:
@@ -413,8 +420,10 @@ describe('the promotion-evidence reader', () => {
 		});
 		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
 
-		// One recorded deferral anywhere in the grid proves the counter has a
-		// writer here, and the spotless cells beside it become real readings.
+		// PER CELL, exactly as gate 2 asks it (`hasUsableDeferralTelemetry`). A
+		// third cell's deferral vouches for that cell and no other: the promotion
+		// rule and the gate must not hold two notions of "instrumented", or a screen
+		// and a controller end up disagreeing about one cell.
 		await seedArmOutcomes(t, {
 			organizationId: ORG,
 			arm: 'own',
@@ -422,7 +431,61 @@ describe('the promotion-evidence reader', () => {
 			destinationProvider: 'apple',
 			counters: { delivered: 99, deferred: 1 },
 		});
+		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
+
+		for (const destinationProvider of ['gmail', 'yahoo'] as const) {
+			await seedArmOutcomes(t, {
+				organizationId: ORG,
+				arm: 'own',
+				sent: 0,
+				destinationProvider,
+				counters: { delivered: 0, deferred: 1 },
+			});
+		}
 		expect((await evidence(t)).worstCellDeferralRate).toBeCloseTo(0.01, 10);
+	});
+
+	/**
+	 * THE INSTRUMENT AND THE RATE ARE JUDGED OVER DIFFERENT SPANS, and this is the
+	 * case that proves it. The rate is the 24h window gate 2 decides on; the
+	 * instrument is the 30-day span. Asking both over 24h made a fully instrumented,
+	 * spotless grid unpromotable on any day nothing happened to get deferred — the
+	 * mirror of `rampControllerHardStops`' own "weeks before the window it judges".
+	 */
+	it('decides gate 2 on a deferral recorded weeks before the window it judges', async () => {
+		const t = convexTest(schema, modules);
+		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			sent: 10,
+			dayOffset: 21,
+			counters: { delivered: 9, deferred: 1 },
+		});
+
+		// A spotless day, and it reads as spotless rather than as unmeasured: the
+		// counter demonstrably has a writer here, three weeks ago or not.
+		expect((await evidence(t)).worstCellDeferralRate).toBe(0);
+	});
+
+	/**
+	 * AND THE HOLD HAS AN EXIT. A deployment whose warm-up overflow routes to a
+	 * relay never defers at all: with no exit, `null` here would be permanent and
+	 * the standalone promotion route could never be satisfied, which is exactly
+	 * what plan D2 forbids an absent signal from doing.
+	 */
+	it('reads a long observed zero as a reading once the arm has sent across the whole span', async () => {
+		const t = convexTest(schema, modules);
+		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
+
+		// The same cell, sending on the oldest day the 30-day read can see. Thirty
+		// days of traffic and not one deferral is a silence this deployment has
+		// observed, not one it failed to instrument.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 10, dayOffset: 30 });
+		expect((await evidence(t)).worstCellDeferralRate).toBe(0);
 	});
 
 	it('reads a classified seed probe for THIS cell’s provider only', async () => {

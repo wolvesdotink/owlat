@@ -560,6 +560,35 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		expect(instrumented?.measurement.ownRate).toBe(0);
 	});
 
+	/**
+	 * The hold's EXIT reaches the screen too, and over the read span rather than
+	 * the window: the observation is handed the same lower bound the rows were
+	 * read with, so a narrower argument here would show the operator a decided
+	 * gate the controller is still holding.
+	 */
+	it('renders a never-deferring cell as decided once it has sent across the whole read span', async () => {
+		const t = convexTest(schema, modules);
+		const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+		const day = startOfDayUtc(Date.now());
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day - ONE_DAY_MS, sent: 50_000, delivered: 49_800 })
+			);
+			// The oldest day the dashboard's 30-day read can see (its window ends at
+			// tomorrow's UTC boundary), carrying traffic and still no deferral.
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day - 29 * ONE_DAY_MS, shardKey: 1, sent: 10, delivered: 10 })
+			);
+		});
+
+		const gate = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((entry) => entry.gate === 'deferral');
+		expect(gate?.status).toBe('pass');
+	});
+
 	it('reports a zero-volume cell as empty rather than as a problem', async () => {
 		const t = convexTest(schema, modules);
 		const dashboard = await t.query(

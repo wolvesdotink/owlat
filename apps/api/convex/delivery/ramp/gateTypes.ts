@@ -450,9 +450,10 @@ export interface RampGateEvaluationInput {
 	 */
 	readonly hasComplaintFeedback?: boolean;
 	/**
-	 * Whether this cell's `deferred` counter has a writer — observed from its own
-	 * recent history, never configured. Absent or `false` over an EMPTY numerator
-	 * makes gate 2 hold rather than pass; `evaluateDeferralGate` decides.
+	 * Whether this cell's `deferred` counter is saying anything — observed from
+	 * this cell's own arm over the telemetry span, never configured. Absent or
+	 * `false` over an EMPTY numerator makes gate 2 hold rather than pass. Readers
+	 * derive it through `hasUsableDeferralTelemetry`, which also bounds the hold.
 	 */
 	readonly hasDeferralTelemetry?: boolean;
 	/**

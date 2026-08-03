@@ -36,7 +36,8 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import {
-	hasRecordedDeferrals,
+	DEFERRAL_TELEMETRY_SPAN_MS,
+	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
 } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
@@ -74,6 +75,14 @@ const RAMP_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 /** The engagement floor's recent window and the prior baseline it is compared to. */
 const ENGAGEMENT_RECENT_MS = 7 * DAY_MS;
 const ENGAGEMENT_BASELINE_MS = 30 * DAY_MS;
+/**
+ * The span the ONE own-arm read has to cover: the widest window derived from it.
+ * Taken as a maximum rather than asserted equal, so widening either consumer
+ * widens the read instead of silently narrowing the window that depends on it —
+ * `hasUsableDeferralTelemetry` anchors its own span on the clock, and rows that
+ * stop short of it hold the gate rather than answering it.
+ */
+const OWN_HISTORY_SPAN_MS = Math.max(ENGAGEMENT_BASELINE_MS, DEFERRAL_TELEMETRY_SPAN_MS);
 
 /**
  * The deployment's tenant, through the SAME resolver every other org-scoped
@@ -309,18 +318,20 @@ export async function loadCellInput(
 	if (!isManagedRouteState(perStream)) return null;
 	const mix = readMixState(perStream);
 
-	// THREE OWN-ARM WINDOWS, ONE INDEX READ. The gate window (24h), the engagement
-	// recent window (7d) and the prior baseline (30d..7d) are all sub-windows of the
-	// same 30 days of own-arm shard rows, so summarizing each separately would fetch
-	// the same rows up to three times — the anti-pattern `readCellArmBuckets` is
-	// exported to avoid. The rows come back once and the ONE summarizer runs over
-	// each window, so every derived number is identical to the per-window read it
-	// replaces. The reference arm has a single window, so it stays a plain summary.
+	// THREE OWN-ARM WINDOWS AND ONE INSTRUMENT CHECK, ONE INDEX READ. The gate
+	// window (24h), the engagement recent window (7d), the prior baseline (30d..7d)
+	// and the deferral telemetry span (30d) are all derived from the same 30 days of
+	// own-arm shard rows, so summarizing each separately would fetch the same rows
+	// four times — the anti-pattern `readCellArmBuckets` is exported to avoid. The
+	// rows come back once and the ONE summarizer runs over each window, so every
+	// derived number is identical to the per-window read it replaces. The reference
+	// arm has a single window, so it stays a plain summary.
+	const ownHistorySince = now - OWN_HISTORY_SPAN_MS;
 	const ownBuckets = await readCellArmBuckets(ctx.db, {
 		organizationId,
 		cell: cellKey,
 		arm: 'own',
-		since: now - ENGAGEMENT_BASELINE_MS,
+		since: ownHistorySince,
 	});
 	const own = summarizeTransportOutcomeBuckets(ownBuckets, { since: now - RAMP_WINDOW_MS });
 	const ownRecent = summarizeTransportOutcomeBuckets(ownBuckets, {
@@ -385,13 +396,16 @@ export async function loadCellInput(
 		// the table, which is the one thing this piece exists to prevent (D3).
 		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 		// OBSERVED, NEVER CONFIGURED, exactly as integration presence is
-		// (`rampIntegrationPresence.ts` says why): the `deferred` counter is
-		// instrumented when something has written it, and the 30 days of own-arm
-		// rows already in memory are that observation. Over the whole read span
-		// rather than the evaluation window, because a quiet day is not the same
-		// fact as a cell nothing records deferrals for — and only the second one may
-		// hold gate 2.
-		hasDeferralTelemetry: hasRecordedDeferrals(ownBuckets),
+		// (`rampIntegrationPresence.ts` says why), and asked THROUGH THE ONE
+		// PREDICATE the dashboard and the phase-promotion rule also ask, over the
+		// same span of the same (cell, own) rows. A second spelling of "is this
+		// instrumented" is a second chance for the screen, the controller and the
+		// promotion rule to disagree about one cell.
+		//
+		// Over the whole read span rather than the evaluation window: a quiet day is
+		// not the same fact as a cell nothing records deferrals for — and only the
+		// second one may hold gate 2, and then only until the span itself answers.
+		hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
 		engagement,
 		previousCleanStreak: perStream.cleanStreak ?? 0,
 		now,

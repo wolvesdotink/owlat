@@ -22,7 +22,12 @@ import {
 	TRANSPORT_OUTCOME_SHARD_COUNT,
 	type TransportOutcomeBucket,
 } from '../transportOutcomes';
-import { hasRecordedDeferrals, summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
+import {
+	DEFERRAL_TELEMETRY_SPAN_MS,
+	hasRecordedDeferrals,
+	hasUsableDeferralTelemetry,
+	summarizeTransportOutcomeBuckets,
+} from '../transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import {
@@ -238,6 +243,63 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 			])
 		).toBe(false);
 		expect(hasRecordedDeferrals([])).toBe(false);
+	});
+
+	/**
+	 * THE PREDICATE EVERY READER ACTUALLY CALLS — gate 2, the delivery dashboard
+	 * and the phase-promotion rule. Two facts satisfy it, and the second one is
+	 * what stops the hold being permanent: a deployment whose warm-up overflow
+	 * routes to a relay never records a deferral, and gate 2's `insufficient_data`
+	 * outranks every `pass` beside it.
+	 */
+	it('lets a long observed zero out of the hold, and a young one wait', () => {
+		// The span counts TODAY as one of its days, and is anchored on the clock
+		// rather than on the caller's read bound so the dashboard (which reads back
+		// from tomorrow's UTC boundary) and the controller (which reads back from
+		// now) cannot answer differently on the same rows.
+		const oldestDay = DAY - DEFERRAL_TELEMETRY_SPAN_MS + DAY_MS;
+		const youngest = [asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 10_000 }))];
+		// Ample traffic, but only today's: nothing has been observed about the
+		// counter over the span it is judged on.
+		expect(hasUsableDeferralTelemetry(youngest, DAY)).toBe(false);
+		// One day short of the span is still short.
+		expect(
+			hasUsableDeferralTelemetry(
+				[
+					...youngest,
+					asBucket(bucketRow({ periodStart: oldestDay + DAY_MS, shardKey: 4, sent: 10 })),
+				],
+				DAY
+			)
+		).toBe(false);
+
+		const acrossTheSpan = [
+			...youngest,
+			asBucket(bucketRow({ periodStart: oldestDay, shardKey: 1, sent: 10 })),
+		];
+		expect(hasUsableDeferralTelemetry(acrossTheSpan, DAY)).toBe(true);
+
+		// A recorded deferral is the other way in, at any age inside the span.
+		expect(
+			hasUsableDeferralTelemetry(
+				[
+					...youngest,
+					asBucket(bucketRow({ periodStart: DAY - 21 * DAY_MS, shardKey: 2, deferred: 1 })),
+				],
+				DAY
+			)
+		).toBe(true);
+
+		// AN EMPTY OLDEST DAY IS NOT TRAFFIC. A bucket at the span's start that
+		// recorded no sends says nothing about the counter's silence beside it.
+		expect(
+			hasUsableDeferralTelemetry(
+				[...youngest, asBucket(bucketRow({ periodStart: oldestDay, shardKey: 3, sent: 0 }))],
+				DAY
+			)
+		).toBe(false);
+		// An unreadable clock cannot be the thing that unlocks a ramp.
+		expect(hasUsableDeferralTelemetry(acrossTheSpan, Number.NaN)).toBe(false);
 	});
 
 	it('is unaffected by the order the shards arrive in', () => {

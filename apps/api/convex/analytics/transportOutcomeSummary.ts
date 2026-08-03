@@ -18,6 +18,7 @@
 
 import type { Doc } from '../_generated/dataModel';
 import { startOfDayUtc } from '../lib/clock';
+import { MS_PER_DAY } from '../lib/constants';
 
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
 export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
@@ -279,28 +280,87 @@ export function safeOutcomeCount(value: number | undefined | null): number {
  *
  * Gate 2's zero has two readings — a clean window, or a cell nobody records
  * deferrals for — and `deferred / sent` is `0` in both (see
- * `RampGateEvaluationInput.hasDeferralTelemetry`). This is the observation that
- * separates them, and it lives here because the ramp controller and the delivery
- * dashboard both evaluate the same gates over the same rows: two spellings of
- * "is this cell instrumented" is how the screen and the controller come to
- * disagree about a verdict, which is the defect this whole module exists to
- * prevent.
+ * `RampGateEvaluationInput.hasDeferralTelemetry`). This is half of the
+ * observation that separates them; `hasUsableDeferralTelemetry` below is the
+ * whole of it, and is what every reader actually calls.
  *
  * DELIBERATELY UNWINDOWED — it answers a question about the INSTRUMENT, not
- * about a window, so callers hand it the whole span they read (30 days for both
- * of today's) rather than the evaluation window inside it. A quiet day is not the
- * same fact as a deployment that never records deferrals, and only the second one
- * may hold a gate.
+ * about a window, so callers hand it the whole span they read
+ * (`DEFERRAL_TELEMETRY_SPAN_MS`) rather than the evaluation window inside it. A
+ * quiet day is not the same fact as a deployment that never records deferrals,
+ * and only the second one may hold a gate.
  *
  * TAKES ANYTHING CARRYING THE COUNTER — raw shard rows and already-summed
- * summaries alike — because the third reader is the phase-promotion rule, which
- * asks the same question of fifteen cells' summaries (`rampPromotionEvidence.ts`)
- * and must not answer it with a fourth hand-written `> 0`.
+ * summaries alike — so a caller that has only summaries to hand can still ask
+ * the witness half without a hand-written `> 0` of its own.
  */
 export function hasRecordedDeferrals(
 	rows: readonly Pick<TransportOutcomeTotals, 'deferred'>[]
 ): boolean {
 	return rows.some((row) => safeOutcomeCount(row.deferred) > 0);
+}
+
+/**
+ * THE SPAN THE INSTRUMENT IS JUDGED OVER, declared beside the predicate that
+ * judges it. 30 days — the history the controller and the dashboard already read
+ * for their baselines, so every reader asks the same question of the same rows
+ * and the witness costs no extra index read anywhere.
+ */
+export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * MS_PER_DAY;
+
+/**
+ * The oldest UTC day inside the span, counting TODAY as one of its days. The
+ * anchor is the clock rather than each caller's own lower bound: the controller
+ * reads back from `now`, the dashboard from tomorrow's UTC boundary, and a
+ * predicate that trusted whichever bound it was handed would let the screen call
+ * a cell decided a day before the controller does — which is the one disagreement
+ * this module exists to prevent.
+ */
+function telemetrySpanStartDay(now: number): number {
+	return startOfDayUtc(now) - DEFERRAL_TELEMETRY_SPAN_MS + MS_PER_DAY;
+}
+
+/**
+ * IS AN EMPTY `deferred` COUNTER A READING, OR A SILENCE? — the ONE answer gate
+ * 2, the dashboard and the phase-promotion rule all ask for.
+ *
+ * Two facts satisfy it, and the second one is why it is not just
+ * `hasRecordedDeferrals`:
+ *
+ *   1. THE COUNTER MOVED over the span. The instrument demonstrably ran, so the
+ *      zeros beside it are real readings.
+ *   2. THE ARM HAS BEEN SENDING FOR THE WHOLE SPAN and the counter still has not
+ *      moved. A zero across thirty days of continuous own-arm traffic has been
+ *      OBSERVED; it is not the same fact as a zero from a cell that started
+ *      sending on Tuesday.
+ *
+ * Without (2) the hold has no exit, and that is a live bricking bug rather than
+ * a conservative default: a deployment whose warm-up overflow routes to a relay
+ * instead of deferring never records a deferral at all, and gate 2's
+ * `insufficient_data` outranks `pass` in the fold. Every tick would clear
+ * `greenSince` (controller rung 7), so the cell could never raise its own-MTA
+ * share and its fourteen-day graduation clock would restart hourly, for ever,
+ * with no operator remedy. Plan D2 forbids exactly that: an ABSENT signal may
+ * slow a ramp down, never block it permanently.
+ *
+ * TAKES `now`, NOT THE CALLER'S LOWER BOUND (see `telemetrySpanStartDay`). Rows
+ * that do not reach back to the span's oldest day simply fail (2), which is the
+ * safe direction: a reader that under-reads holds a little longer, and no reader
+ * can shorten the span it is judged against.
+ */
+export function hasUsableDeferralTelemetry(
+	rows: readonly Pick<TransportOutcomeBucketCounts, 'deferred' | 'sent' | 'periodStart'>[],
+	now: number
+): boolean {
+	if (hasRecordedDeferrals(rows)) return true;
+	if (!Number.isFinite(now)) return false;
+	const spanStartDay = telemetrySpanStartDay(now);
+	return rows.some(
+		(row) =>
+			Number.isFinite(row.periodStart) &&
+			row.periodStart <= spanStartDay &&
+			safeOutcomeCount(row.sent) > 0
+	);
 }
 
 /** Zero-denominator guard — the one place a division happens. */

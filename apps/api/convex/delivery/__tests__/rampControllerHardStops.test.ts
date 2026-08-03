@@ -503,6 +503,34 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 
 		expect(await deferralGate(t)).toMatchObject({ status: 'pass', reason: 'within_threshold' });
 	});
+
+	/**
+	 * AND THE HOLD HAS AN EXIT. `deferral` is not an optional gate, so its
+	 * `insufficient_data` outranks every `pass` beside it and clears `greenSince`
+	 * on controller rung 7. A relay-equipped deployment whose warm-up overflow
+	 * routes to the relay instead of deferring would therefore never raise its
+	 * own-MTA share and would restart its fourteen-day graduation clock every
+	 * tick — an ABSENT signal blocking a ramp for ever, which plan D2 forbids.
+	 */
+	it('lets a healthy cell that has never deferred advance once the span itself answers', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		// Sending on the oldest day the 30-day read can see, and not one deferral
+		// anywhere between: a silence this deployment has observed rather than one
+		// it failed to instrument.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000, dayOffset: 30 });
+
+		expect(await deferralGate(t)).toMatchObject({
+			status: 'pass',
+			reason: 'within_threshold',
+			mayJustifyIncrease: true,
+		});
+		// `mayJustifyIncrease` on a `pass` is the field the aggregator reads to let a
+		// share go up at all; the hold forces it out of the fold entirely. What that
+		// does to the aggregate verdict and the clean streak is pinned in
+		// `ramp/__tests__/gates.insufficient.test.ts`, where the aggregator lives.
+	});
 });
 
 describe('the phase ladder', () => {

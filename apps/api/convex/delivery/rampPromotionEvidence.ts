@@ -23,8 +23,12 @@ import { isSeedPlacementReached } from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
 import { MS_PER_DAY } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
-import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
-import { hasRecordedDeferrals } from '../analytics/transportOutcomeSummary';
+import { readCellArmBuckets } from '../analytics/transportOutcomes';
+import {
+	DEFERRAL_TELEMETRY_SPAN_MS,
+	hasUsableDeferralTelemetry,
+	summarizeTransportOutcomeBuckets,
+} from '../analytics/transportOutcomeSummary';
 import { complaintBandSeverity } from './sndsFeed';
 import type { RampReadCtx } from './rampReadCtx';
 import { RAMP_AIMD } from './ramp/controllerConfig';
@@ -243,46 +247,54 @@ async function dnsblDays(
 
 /**
  * The worst own-arm deferral rate across EVERY cell in the grid, or `null` when
- * NOTHING IN THE GRID RECORDS DEFERRALS.
+ * a cell that is sending cannot say whether its zero is a reading.
  *
  * The null is the point. `deferred` is only partly instrumented (see
- * `delivery/deferralOutcome.ts`), and a deployment whose counter has no writer
- * folds to a worst rate of `0` — under every ceiling, `met`, and the plan's
- * "deferral rate under threshold in EVERY cell" condition satisfied by a
- * measurement nobody took, on the rung that costs the most to get wrong. So the
- * fold carries its own witness: one recorded deferral ANYWHERE in the grid proves
- * the counter has a writer here, and the zeros beside it are then real readings.
- * With no witness at all the evidence is unobserved, which the pure rule reports
- * as `unknown` rather than as a pass — the same contract every other reader in
- * this module keeps.
+ * `delivery/deferralOutcome.ts`), and a cell whose counter has no writer folds
+ * to a rate of `0` — under every ceiling, `met`, and the plan's "deferral rate
+ * under threshold in EVERY cell" condition satisfied by a measurement nobody
+ * took, on the rung that costs the most to get wrong.
+ *
+ * TWO SPANS, ONE READ, and that is the whole shape of this function. The RATE is
+ * the 24h evaluation window the controller judges gate 2 over — anything wider
+ * would answer a different question than the gate does. The INSTRUMENT is judged
+ * over `DEFERRAL_TELEMETRY_SPAN_MS`, through the same `hasUsableDeferralTelemetry`
+ * the gate and the dashboard ask, because a quiet Tuesday is not the same fact as
+ * a cell nothing records deferrals for. Asking the instrument over the 24h window
+ * made a spotless, fully instrumented grid unpromotable on any day nothing
+ * happened to get deferred.
+ *
+ * A CELL WITH NO SENDS IN THE WINDOW IS SKIPPED, not held: it contributes no rate
+ * to a worst-of, and demanding an instrument reading from a cell that sent
+ * nothing would make the grid's quietest corner veto every promotion.
  */
 async function worstCellDeferralRate(
 	ctx: RampReadCtx,
 	args: { organizationId: string; now: number }
 ): Promise<number | null> {
-	// FIFTEEN INDEPENDENT SHARDED SUMMARIES, issued together. Each one is itself
+	// FIFTEEN INDEPENDENT SHARDED READS, issued together. Each one is itself
 	// several shard reads, so serializing them made one promotion serialize
-	// several hundred round-trips. The reads stay bounded and the fold below —
-	// and therefore the verdict — is unchanged.
-	const summaries = await Promise.all(
+	// several hundred round-trips. The reads stay bounded — one cell/arm's ≤30
+	// cron-pruned days — and both spans are derived from the rows they return.
+	const spanStart = args.now - DEFERRAL_TELEMETRY_SPAN_MS;
+	const perCell = await Promise.all(
 		allDeliverabilityCells().map((cell) =>
-			summarizeTransportOutcomes(ctx.db, {
+			readCellArmBuckets(ctx.db, {
 				organizationId: args.organizationId,
 				cell: deliverabilityCellKey(cell),
 				arm: 'own',
-				since: args.now - RAMP_AIMD.evaluationWindowMs,
+				since: spanStart,
 			})
 		)
 	);
 
-	// The witness, through the ONE predicate the controller and the dashboard also
-	// ask — a fourth spelling of "has anything written this counter" is a fourth
-	// chance for the promotion rule to disagree with the gate about the same rows.
-	if (!hasRecordedDeferrals(summaries)) return null;
-
 	let worst: number | null = null;
-	for (const summary of summaries) {
+	for (const buckets of perCell) {
+		const summary = summarizeTransportOutcomeBuckets(buckets, {
+			since: args.now - RAMP_AIMD.evaluationWindowMs,
+		});
 		if (summary.sent <= 0) continue;
+		if (!hasUsableDeferralTelemetry(buckets, args.now)) return null;
 		const rate = summary.deferralRate;
 		if (!Number.isFinite(rate)) continue;
 		worst = worst === null ? rate : Math.max(worst, rate);
