@@ -245,6 +245,28 @@ describe('warming records book into the attempt day, not the apply day', () => {
 		);
 	});
 
+	it('charges the live day nothing when the replay beats the day’s first cap gate', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// Same replay as above, one gate earlier: the successor worker drains the
+		// journal before any attempt of the new day has been measured.
+		await replayWarmingEffects(reduction);
+
+		const perIp = warmingStateKey(IP);
+		// The slot is still on the finished day, so the increment landed there.
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(GATED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('1');
+
+		// Rolling is the cap gate's job, and it zeroes rather than carries: the
+		// stale increment costs the live day nothing, which is why the docblocks
+		// say the slot is never rewound and not that a late effect always spends
+		// live allowance.
+		expect((await warmingCapPhase.run(deps, ctxWithIp())).kind).toBe('continue');
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('0');
+		// The attempt is still counted where the ramp reads it.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+	});
+
 	it('gives a journalled effect written before the day existed the attempt’s day', async () => {
 		const attempt = await gateAttempt();
 		// What the previous build persisted for an attempt it did not get to apply:
