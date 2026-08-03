@@ -113,6 +113,10 @@ export interface SeedRampCellOptions {
 	readonly warmingAgeMs?: number;
 	/** The composition interlock's anchor: when a pace increase was withheld. */
 	readonly paceDeferredAt?: number;
+	/** The operator's per-cell hold (P3-6), as `setCellPause` writes it. */
+	readonly operatorPausedAt?: number;
+	/** The operator's per-cell cap (P3-6), as `pinCellShare` writes it. */
+	readonly operatorPinnedShare?: number;
 }
 
 /** Seeds instance settings plus the pool / provider / managed row triple. */
@@ -171,6 +175,12 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 					? {}
 					: { paceLastEvaluatedUtcDay: options.paceLastEvaluatedUtcDay }),
 				...(options.paceDeferredAt === undefined ? {} : { paceDeferredAt: options.paceDeferredAt }),
+				...(options.operatorPausedAt === undefined
+					? {}
+					: { operatorPausedAt: options.operatorPausedAt }),
+				...(options.operatorPinnedShare === undefined
+					? {}
+					: { operatorPinnedShare: options.operatorPinnedShare }),
 			});
 		}
 		if (options.warming !== undefined) {
@@ -275,6 +285,55 @@ export async function seedArmOutcomes(
 			lastRecordedAt: Math.min(now, periodStart + MS_PER_DAY - 1),
 		});
 	});
+}
+
+/**
+ * A CELL WHOSE GATES ACTUALLY PASS — the only fixture from which the cron can be
+ * observed taking an INCREASE.
+ *
+ * Every gate but the optional seed one has to be DECIDED for the aggregate to
+ * read `pass`, and each is decided against a denominator: gate 1 and gate 3 are
+ * ratios against the reference arm, gate 2 needs the deferral instrument to have
+ * been observed at all, and gate 4 compares the CALIBRATION slice's engagement
+ * between the arms. A fixture that sends clean traffic and records nothing else
+ * holds on every one of them — which is correct, and is why "the cron never
+ * increases anything" was true of every suite before this existed.
+ *
+ * So: both arms, over enough days to cover the 24h evaluation window and the
+ * 7d/30d engagement windows, with the OWN arm exactly half the reference arm's
+ * rates. Healthy by construction and green on every measured gate.
+ */
+export async function seedGreenWindows(
+	t: Harness,
+	args: { readonly organizationId: string; readonly sent?: number }
+): Promise<void> {
+	const sent = args.sent ?? 5_000;
+	const counters = (factor: number) => ({
+		delivered: sent - Math.round(sent * 0.01 * factor),
+		hardBounced: Math.round(sent * 0.005 * factor),
+		softBounced: Math.round(sent * 0.002 * factor),
+		deferred: Math.round(sent * 0.01 * factor),
+		complained: Math.round(sent * 0.0001 * factor),
+		unsubscribed: Math.round(sent * 0.002 * factor),
+		opened: Math.round(sent * 0.4),
+		clicked: Math.round(sent * 0.05),
+		// Gate 4 is measured on the RANDOM CALIBRATION SLICE only: the stratified
+		// remainder gets worse as the share climbs, so it is not comparable.
+		calibrationSent: Math.round(sent * 0.2),
+		calibrationOpened: Math.round(sent * 0.08),
+		calibrationClicked: Math.round(sent * 0.01),
+	});
+	for (const dayOffset of [0, 1, 2, 5, 10, 15, 20, 25]) {
+		for (const arm of ['own', 'reference'] as const) {
+			await seedArmOutcomes(t, {
+				organizationId: args.organizationId,
+				arm,
+				sent,
+				dayOffset,
+				counters: counters(arm === 'own' ? 0.5 : 1),
+			});
+		}
+	}
 }
 
 /**

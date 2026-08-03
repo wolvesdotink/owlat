@@ -172,6 +172,12 @@ export const AUDIT_ACTION_LITERALS = [
 	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
 	// which records EVERY evaluation. See the deliverability plan, decision D12.
 	action('deliverability_ramp.decision_applied'),
+	// Deliverability ramp — ONE CELL THREW and the tick carried on with the rest.
+	// Its own literal rather than a detail on `decision_applied`: an evaluation
+	// that failed reached no decision, may have left the cell half-applied, and is
+	// the one event here that says the controller is not measuring a cell it
+	// believes it is measuring.
+	action('deliverability_ramp.cell_evaluation_failed'),
 	// Deliverability ramp — an OPERATOR moved the ramp by hand (P3-6). Separate
 	// literals from `decision_applied` on purpose: an audit trail that presented a
 	// person's pin as the controller's judgement would be actively misleading six
