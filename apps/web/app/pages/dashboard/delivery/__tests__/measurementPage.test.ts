@@ -172,10 +172,20 @@ describe('measurement page — states', () => {
 		// standalone. The FRAMING has to say what the cards say — and the OFFER
 		// must not, because this deployment already pays for the relay it would
 		// be asked to connect.
+		//
+		// The relay carried a day inside the plotted window, which is what makes
+		// the closing promise about the cards true here — the card's own quiet
+		// relay line renders beside it on the same premise.
+		const day = Date.UTC(2026, 6, 14);
 		data.value = dashboard({
 			referenceTransportId: 'ses',
 			isRelayConfigured: true,
-			cells: [cellView({ reference: null })],
+			cells: [
+				cellView({
+					reference: null,
+					trend: [{ day, own: armSummary({ sent: 100 }), reference: armSummary({ sent: 40 }) }],
+				}),
+			],
 		});
 		const wrapper = mountPage();
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
@@ -183,7 +193,40 @@ describe('measurement page — states', () => {
 		expect(note.exists()).toBe(true);
 		expect(note.text()).not.toContain('Connecting a relay');
 		expect(note.text()).toContain('Amazon SES carried none of this traffic recently');
+		expect(note.text()).toContain('The days it did carry are still plotted');
+		expect(wrapper.find('[data-testid="measurement-quiet-relay"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="measurement-reference-value"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE BANNER MAY NOT POINT AT BARS THAT DO NOT EXIST.
+	 *
+	 * A configured relay that carried nothing anywhere in the plotted window: a
+	 * graduated deployment at full own share, a relay connected today, a relay
+	 * enabled only for streams outside this screen. The explanation still holds;
+	 * the promise about the cards below does not, and no card makes it either.
+	 */
+	it('drops the plotted-days promise where no card plots a relay day', () => {
+		data.value = dashboard({
+			referenceTransportId: 'ses',
+			isRelayConfigured: true,
+			cells: [
+				cellView({
+					reference: null,
+					trend: [{ day: Date.UTC(2026, 6, 15), own: armSummary({ sent: 120 }), reference: null }],
+				}),
+			],
+		});
+		const wrapper = mountPage();
+		const note = wrapper.find('[data-testid="measurement-standalone-note"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).toContain('Amazon SES carried none of this traffic recently');
+		expect(note.text()).not.toContain('still plotted');
+		// The trend renders — the days are there, none of them a relay day — so the
+		// missing promise is about the relay's bars, not about an empty chart.
+		expect(wrapper.find('[data-testid="measurement-trend"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="measurement-quiet-relay"]').exists()).toBe(false);
 		wrapper.unmount();
 	});
 

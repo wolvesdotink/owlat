@@ -76,6 +76,20 @@ const subhead = computed(() =>
 	})
 );
 /**
+ * MEASUREMENT, over the days the cards PLOT rather than the span the gates were
+ * graded on. The note's closing sentence promises bars on the cards below, and
+ * the same relay can be quiet for the controller's ~24h span while its bars
+ * remain in a seven-day trend — or be absent from both, which is the ordinary
+ * shape of a graduated deployment, a relay connected today, and a relay enabled
+ * only for streams outside this screen. Same predicate the card guards its own
+ * line with, asked across every cell.
+ */
+const hasPlottedRelayHistory = computed(() =>
+	(dashboard.value?.cells ?? []).some((cell) =>
+		cell.trend.some((point) => point.reference !== null)
+	)
+);
+/**
  * The note is shown on the MEASUREMENT and worded on the CONFIGURATION: a relay
  * that merely went quiet gets the explanation the cards give, never an offer to
  * connect the relay it already has.
@@ -84,6 +98,7 @@ const standaloneCopy = computed(() =>
 	standaloneNote({
 		isRelayConfigured: isRelayConfigured.value,
 		referenceTransportId: referenceTransportId.value,
+		hasPlottedRelayHistory: hasPlottedRelayHistory.value,
 	})
 );
 

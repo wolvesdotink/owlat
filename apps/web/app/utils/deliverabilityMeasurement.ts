@@ -85,10 +85,22 @@ export function measurementSubhead(input: {
  * relay does not exist and that it went quiet. `dashboardConfidence` splits the
  * per-cell cap from the per-cell offer on exactly this line; this is the same
  * split for the page prose that makes the same offer.
+ *
+ * A THIRD FACT, because the closing sentence is a PROMISE ABOUT THE CARDS: "the
+ * days it did carry are still plotted" only holds where some card's trend
+ * actually carries a relay day. The arm is graded over the controller's ~24h
+ * span and the trend plots seven days, so those two diverge often — but they
+ * also agree at zero: a graduated deployment at full own share, a relay
+ * connected today, a relay enabled for a messageType outside these streams. In
+ * all three this note renders with nothing plotted anywhere, and the sentence
+ * would point at bars that do not exist. `hasPlottedRelayHistory` is the same
+ * predicate the card guards its own line with (`point.reference !== null`),
+ * asked across every cell rather than one.
  */
 export function standaloneNote(input: {
 	readonly isRelayConfigured: boolean;
 	readonly referenceTransportId: string | null;
+	readonly hasPlottedRelayHistory: boolean;
 }): string {
 	if (!input.isRelayConfigured) {
 		return 'You are sending entirely from your own server. Everything below is measured against your own history. Connecting a relay you already pay for would let the same traffic be compared side by side and raise measurement confidence — it is optional, and nothing here is waiting on it.';
@@ -99,7 +111,10 @@ export function standaloneNote(input: {
 		input.referenceTransportId === null
 			? { subject: 'the relays you have connected', pronoun: 'they' }
 			: { subject: transportIdLabel(input.referenceTransportId), pronoun: 'it' };
-	return `Everything below is measured against your own history — ${relay.subject} carried none of this traffic recently, so the checks had nothing to compare against. The days ${relay.pronoun} did carry are still plotted on the cards below.`;
+	const plotted = input.hasPlottedRelayHistory
+		? ` The days ${relay.pronoun} did carry are still plotted on the cards below.`
+		: '';
+	return `Everything below is measured against your own history — ${relay.subject} carried none of this traffic recently, so the checks had nothing to compare against.${plotted}`;
 }
 
 const STREAM_LABELS = {
