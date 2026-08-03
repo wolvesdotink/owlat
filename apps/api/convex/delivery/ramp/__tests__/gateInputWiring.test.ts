@@ -37,7 +37,7 @@ const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
  * none. Asserted EXACTLY, not as a floor: closing a gap without deleting its
  * line here fails this suite, so the list can only ever shrink.
  *
- * `smtpBlocks` — the SMTP response classifier runs in the MTA
+ * `smtpBlocks` (issue #501) — the SMTP response classifier runs in the MTA
  * (`apps/mta/src/.../classifySmtpResponse`) and nothing carries its per-category
  * counts into Convex, so no reader can build the observation gate 1b's block
  * clause consumes. Wiring it is a transport-telemetry surface of its own, not a

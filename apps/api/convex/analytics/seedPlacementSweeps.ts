@@ -20,6 +20,12 @@
  *
  * PURE: `now` never enters, no database handle, no clock. The caller reads the
  * window (`analytics/seedPlacement.ts`) and hands the rows over.
+ *
+ * WHAT IT CANNOT ANSWER YET. Every probe the shadow copy writes is a CAMPAIGN
+ * probe, so the transactional and automation cells of a provider have no
+ * evidence here and gate 5 holds on them — honestly, and without borrowing the
+ * campaign cell's sweep. The scheduled transactional probe that would close it
+ * is tracked in issue #500.
  */
 
 import {
@@ -28,8 +34,11 @@ import {
 	type DeliverabilityCellKey,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
-import { SEED_PLACEMENTS, type SeedPlacement } from '@owlat/shared/seedPlacement';
-import type { SeedTransportArm } from '@owlat/shared/seedPlacement';
+import {
+	SEED_PLACEMENTS,
+	type SeedPlacement,
+	type SeedTransportArm,
+} from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
 import type { SeedPlacementObservation } from '../delivery/ramp/gateTypes';
 
