@@ -140,6 +140,37 @@ describe('campaignSendPlanProgress', () => {
 			const progress = campaignSendPlanProgress({ plan: overflowing, enqueuedCount: 0 });
 			expect(progress.isTruncated).toBe(true);
 		});
+
+		it('reads a PRE-MIGRATION row as complete until its next hop rewrites it', () => {
+			// The flag is absent on every row written before it existed, including
+			// rows that really are truncated. Absence reads as NOT truncated: the
+			// copy quotes the length it has and makes no hedge, rather than making a
+			// false one. The next hop recomputes the length and writes the flag with
+			// it, so the stale reading is bounded by one cap window.
+			const remaining = 100 * MAX_PLAN_DAYS + 1;
+			const preMigration = plan({
+				planDayIndex: 2,
+				planTotalDays: MAX_PLAN_DAYS,
+				plannedTotal: remaining,
+			});
+			expect(preMigration.isPlanTruncated).toBeUndefined();
+			expect(campaignSendPlanProgress({ plan: preMigration, enqueuedCount: 0 }).isTruncated).toBe(
+				false
+			);
+
+			const nextHop = planTodaysSlice({
+				state: preMigration,
+				remaining: { kind: 'exact', count: remaining },
+				capacityByDay: [100],
+				now: Date.UTC(2026, 0, 1, 12),
+			});
+			expect(
+				campaignSendPlanProgress({
+					plan: plan({ ...preMigration, isPlanTruncated: nextHop.isTruncated }),
+					enqueuedCount: 0,
+				}).isTruncated
+			).toBe(true);
+		});
 	});
 
 	it('says the quiet part about the denominator too (plan D14)', () => {

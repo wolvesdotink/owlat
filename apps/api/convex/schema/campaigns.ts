@@ -86,6 +86,11 @@ const campaignSendJobs = defineTable({
 	// Stored rather than derived from `planTotalDays >= MAX_PLAN_DAYS`, because a
 	// plan that covers everyone exactly on the last enumerable day is COMPLETE
 	// and the length alone cannot tell it from one that ran out of days.
+	//
+	// ABSENT READS AS "NOT TRUNCATED": a checkpoint written before this field
+	// existed describes itself as complete until its next hop recomputes the
+	// length and writes the flag with it — at most one cap window of a hedge the
+	// copy does not yet make, and no walk enqueues on a stale reading of it.
 	isPlanTruncated: v.optional(v.boolean()),
 	// The audience size the plan was built from, for the progress line's
 	// denominator ("5 000 of 20 000") — and whether that number is the audience

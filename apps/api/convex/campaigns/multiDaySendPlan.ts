@@ -55,6 +55,12 @@ export interface SendPlanState {
 	 * complete: the length alone cannot tell the two apart, and describing a
 	 * finished plan as "more than 60 days" is the D14 dishonesty this whole
 	 * module exists to avoid.
+	 *
+	 * `undefined` READS AS NOT TRUNCATED — the reading every pre-migration row
+	 * gets, and every row this build has not hopped since. A checkpoint that
+	 * really is truncated says so again the moment its next hop recomputes the
+	 * length, so the stale reading is bounded by one cap window and costs a hedge
+	 * on the copy, not a scheduling decision.
 	 */
 	readonly isPlanTruncated: boolean | undefined;
 	/**
