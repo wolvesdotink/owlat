@@ -22,9 +22,8 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { adminMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
-import { configuredRelayKinds } from './relayConfiguration';
+import { hasSecondSender } from './relayConfiguration';
 import { normalizePhaseCeiling, RAMP_PHASE_CEILINGS } from './ramp/controllerConfig';
-import { bindsPhaseLadder } from './ramp/degradation';
 import { loadCellDegradation } from './rampIntegrationPresence';
 import {
 	deliverabilityStreamValidator,
@@ -96,7 +95,7 @@ export const resetCellPhase = adminMutation({
 		// at from the operator's door instead.
 		//
 		// AND "IS THERE ONE" IS A CONFIGURATION QUESTION AT THIS DOOR, asked of the
-		// same reader the enrolment door asks (`configuredRelayKinds`). Asking the
+		// same reader the enrolment door asks (`hasSecondSender`). Asking the
 		// tick's MEASUREMENT alone denied the relay for exactly the cell this
 		// control exists for: a graduated cell sits at full share and pinned, so it
 		// sends nothing through the relay by construction, so it has no reference
@@ -114,16 +113,15 @@ export const resetCellPhase = adminMutation({
 		// restarting the measurement is the reason this control exists; both are
 		// meaningful on a cell whose share nothing is bounding today, and the rung
 		// binds again the tick a second sender appears.
-		const hasSecondSender =
-			(await configuredRelayKinds(ctx)).length > 0 ||
-			bindsPhaseLadder(
-				await loadCellDegradation(ctx, {
-					organizationId: target.organizationId,
-					cell: target.cell,
-					now,
-				})
-			);
-		const share = hasSecondSender ? Math.min(target.share, args.phaseCeiling) : target.share;
+		const secondSender = await hasSecondSender(
+			ctx,
+			await loadCellDegradation(ctx, {
+				organizationId: target.organizationId,
+				cell: target.cell,
+				now,
+			})
+		);
+		const share = secondSender ? Math.min(target.share, args.phaseCeiling) : target.share;
 		await ctx.db.patch(target.row._id, {
 			phaseCeiling: args.phaseCeiling,
 			// THE DWELL CLOCK RESTARTS HERE. It measures time served AT A RUNG, and a
@@ -152,7 +150,7 @@ export const resetCellPhase = adminMutation({
 			// nobody. Here the share can stay exactly where it was, and a generation
 			// spent on a split that did not move would be the one field on this patch
 			// claiming a change nobody made.
-			...(hasSecondSender
+			...(secondSender
 				? {
 						ownShare: share,
 						isFallbackActive: isFallbackActiveForShare(share),
@@ -173,15 +171,15 @@ export const resetCellPhase = adminMutation({
 			reason: 'operator_phase_reset',
 			fromShare: target.share,
 			toShare: share,
-			message: hasSecondSender
+			message: secondSender
 				? `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero and the ramp re-earns its way up.`
 				: `An operator reset ${deliverabilityCellKey(target.cell)} to the ${Math.round(args.phaseCeiling * 100)}% phase. The clean streak restarts at zero. No relay is connected and none has carried this cell, so there is no second sender to hold a share back for: the share stays at ${Math.round(share * 100)}% and the rung applies again once one is.`,
 			detail: {
 				phaseCeiling: args.phaseCeiling,
 				// The rung was recorded but nothing was cut — the one fact this row
 				// would otherwise be read as claiming.
-				...(hasSecondSender ? {} : { shareHeld: true }),
-				...(hasSecondSender && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
+				...(secondSender ? {} : { shareHeld: true }),
+				...(secondSender && share < OWN_SHARE_CEILING && target.row.graduatedAt !== undefined
 					? { pinChange: 'revoked' }
 					: {}),
 			},

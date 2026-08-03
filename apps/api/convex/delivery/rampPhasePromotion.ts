@@ -36,6 +36,7 @@ import { nextPhaseCeiling, normalizePhaseCeiling } from './ramp/controllerConfig
 import { evaluatePhasePromotion, type PromotionConditionId } from './ramp/phasePromotion';
 import { loadRampPromotionEvidence } from './rampPromotionEvidence';
 import { loadCellDegradation } from './rampIntegrationPresence';
+import { hasSecondSender } from './relayConfiguration';
 import { readRampIncreaseBlock } from './rampControllerInputs';
 import { recordOperatorRampAction } from './rampControlAudit';
 import type { RampControlRefusal } from './rampControls';
@@ -56,6 +57,14 @@ export type RampPhasePromotion =
 			readonly fromCeiling: number;
 			readonly phaseCeiling: number;
 			readonly share: number;
+			/**
+			 * Whether the rung just written bounds anything — `hasSecondSender`, the
+			 * same union the reset door cuts on. Carried out rather than re-derived
+			 * because the caller that words the audit sentence would otherwise ask
+			 * the question a second time and could answer it differently a tick
+			 * later, leaving one timeline with two accounts of one deployment.
+			 */
+			readonly bindsLadder: boolean;
 	  }
 	| { readonly status: 'at_top'; readonly phaseCeiling: number; readonly share: number }
 	| {
@@ -155,7 +164,13 @@ export async function applyRampPhasePromotion(
 		// `applyDecision`.
 		decidedAt: now,
 	});
-	return { status: 'promoted', fromCeiling: current, phaseCeiling, share };
+	return {
+		status: 'promoted',
+		fromCeiling: current,
+		phaseCeiling,
+		share,
+		bindsLadder: await hasSecondSender(ctx, degradation),
+	};
 }
 
 export interface RampPromotionResult {
@@ -218,13 +233,53 @@ export const promoteCellPhase = adminMutation({
 			// has to earn every step up to it on the ordinary gates.
 			fromShare: promotion.share,
 			toShare: promotion.share,
-			message: `An operator promoted ${deliverabilityCellKey(cell)} to the ${Math.round(promotion.phaseCeiling * 100)}% phase; the promotion evidence allowed it. The share stays at ${Math.round(promotion.share * 100)}% and climbs toward the new ceiling on the ordinary gates.`,
+			message: promotionMessage({
+				cell,
+				phaseCeiling: promotion.phaseCeiling,
+				share: promotion.share,
+				bindsLadder: promotion.bindsLadder,
+			}),
 			detail: {
 				phaseCeiling: promotion.phaseCeiling,
 				fromPhaseCeiling: promotion.fromCeiling,
+				// The rung was recorded but it bounds nothing — the one fact this row
+				// would otherwise be read as claiming (the same shape as the phase
+				// reset's `shareHeld` and the enrolment's `shareNotRouted`).
+				...(promotion.bindsLadder ? {} : { ceilingNotBinding: true }),
 			},
 			at: now,
 		});
 		return { applied: true, phaseCeiling: promotion.phaseCeiling };
 	},
 });
+
+/**
+ * THE AUDIT SENTENCE, AND IT NAMES ONLY WHAT THE RUNG DOES.
+ *
+ * Two outcomes, because a rung is not the same fact on both actuators. Where the
+ * phase ladder binds, the ceiling is the bound the share climbs to on the
+ * ordinary gates, and the sentence says so. Where it does not — a cell on the
+ * PACE dial, which `phaseLadderBounds` drops both phase bounds for — nothing
+ * climbs toward the rung at all: the cell is already at full share, so promising
+ * a climb toward a ceiling it stands ABOVE describes a move the controller will
+ * never make, on the very row `RampDecisionTimeline` renders back forever. The
+ * enrolment row two decisions earlier already told this operator there is no
+ * relay; a promotion row contradicting it is the timeline arguing with itself.
+ *
+ * The rung is still worth recording and still worth earning — it binds again the
+ * tick a second sender appears, which is the same rule `resetCellPhase` states
+ * from the downward side.
+ */
+function promotionMessage(args: {
+	readonly cell: DeliverabilityCell;
+	readonly phaseCeiling: number;
+	readonly share: number;
+	readonly bindsLadder: boolean;
+}): string {
+	const key = deliverabilityCellKey(args.cell);
+	const rung = `${Math.round(args.phaseCeiling * 100)}%`;
+	const percent = `${Math.round(args.share * 100)}%`;
+	return args.bindsLadder
+		? `An operator promoted ${key} to the ${rung} phase; the promotion evidence allowed it. The share stays at ${percent} and climbs toward the new ceiling on the ordinary gates.`
+		: `An operator promoted ${key} to the ${rung} phase; the promotion evidence allowed it. No relay is carrying this cell, so the phase ladder does not bound its share: the share stays at ${percent}, the warm-up pace is what ramps, and the rung applies again once a second sender appears.`;
+}

@@ -19,6 +19,8 @@
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
+import { bindsPhaseLadder } from './ramp/degradation';
+import type { RampDegradation } from './ramp/degradation';
 
 /** Upper bound on the (per-messageType) route rows we inspect for a relay. */
 const PROVIDER_ROUTE_SCAN_LIMIT = 16;
@@ -101,4 +103,34 @@ export async function relayConfiguration(ctx: RelayReadCtx): Promise<RelayConfig
 		referenceTransportId: referenceTransportIdOf(kinds),
 		isRelayConfigured: kinds.length > 0,
 	};
+}
+
+/**
+ * IS THERE A SECOND SENDER TO HOLD A SHARE BACK FOR — the question both phase
+ * doors ask before they say anything about what a rung does.
+ *
+ * A UNION, and each half is there for a case the other gets wrong. The
+ * CONFIGURATION half answers for the cell the doors exist for: a graduated cell
+ * sits at full share and pinned, so it sends nothing through the relay by
+ * construction and the tick measures no reference arm — asking the measurement
+ * alone would deny a relay the operator is looking at. The MEASURED half is not
+ * a leftover: a relay disconnected in the last day can still be carrying this
+ * cell inside the evaluation window, and the tick binds the ladder on that
+ * reading, so a door that ignored it would speak over a bound the controller is
+ * already applying.
+ *
+ * ONE HELPER because the answer decides what an operator is TOLD, permanently —
+ * `resetCellPhase` words its sentence on it and `rampPhasePromotion` words its
+ * own on it, and two copies of this union are two chances for one timeline to
+ * carry two accounts of the same deployment.
+ *
+ * The degradation is a PARAMETER: both callers have already loaded it for their
+ * own rule, and loading it twice would let the two halves of one decision read
+ * two different ticks.
+ */
+export async function hasSecondSender(
+	ctx: RelayReadCtx,
+	degradation: RampDegradation
+): Promise<boolean> {
+	return (await configuredRelayKinds(ctx)).length > 0 || bindsPhaseLadder(degradation);
 }

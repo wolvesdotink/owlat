@@ -463,6 +463,61 @@ describe('promotion is the upward door', () => {
 });
 
 /**
+ * THE PROMOTION SENTENCE IS THE PERMANENT RECORD, and it may not describe a move
+ * the controller will never make. `RampDecisionTimeline` renders the
+ * `mixDecisions` row back long after the screen's own outcome line is gone, so a
+ * standalone cell told its share "climbs toward the new ceiling" is told that
+ * forever — on a cell that sits ABOVE the rung and whose phase bounds
+ * `phaseLadderBounds` drops entirely. The enrolment row two decisions earlier
+ * already said there is no relay; both halves are pinned here so the timeline
+ * cannot come to argue with itself.
+ */
+describe('what a promotion says about the rung it just wrote', () => {
+	it('does not promise a climb on a cell the ladder does not bound', async () => {
+		const t = harness();
+		// The pace path's own opening state: full share, first rung.
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 0.25 });
+		// THE PREMISE, STATED. Without it this asserts nothing about standalone-ness.
+		expect(await relayKinds(t)).toEqual([]);
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: true, phaseCeiling: 0.5 });
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		const message = recorded[0]?.message ?? '';
+		// The defect, named: the cell stands at 100% and the new rung is 50%.
+		expect(message).not.toMatch(/climbs toward/);
+		expect(message).toContain('the phase ladder does not bound its share');
+		expect(message).toContain('the warm-up pace is what ramps');
+		// The rung is still recorded and still binds the tick a second sender
+		// appears — the same rule the reset door states from the downward side.
+		expect(message).toContain('once a second sender appears');
+		// Same shape as the reset's `shareHeld` and the enrolment's
+		// `shareNotRouted` — the flag rides the snapshot, not a column.
+		expect(recorded[0]?.snapshot).toContain('ceilingNotBinding');
+	});
+
+	it('keeps the climb sentence where a relay is configured to hold the share back', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
+		await connectRelay(t);
+		expect(await relayKinds(t)).toEqual(['ses']);
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: true, phaseCeiling: 0.5 });
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		const message = recorded[0]?.message ?? '';
+		expect(message).toContain('The share stays at 20% and climbs toward the new ceiling');
+		expect(message).not.toMatch(/does not bound its share/);
+		// The rung binds here, so the row makes no claim that it does not.
+		expect(recorded[0]?.snapshot).not.toContain('ceilingNotBinding');
+	});
+});
+
+/**
  * A STORED RUNG IS AN UNCONSTRAINED NUMBER in the schema, so both paths read it
  * through the ladder's own `normalizePhaseCeiling` rather than raw. Comparing a
  * normalised next rung against a RAW current one is how a degenerate row talks a
