@@ -344,11 +344,25 @@ export function rampEnrolledSentence(
  * moved, or the cell was already on the top one. The second is why the button is
  * disabled up there, and the sentence covers the case where the screen's copy of
  * the rung is behind the row's.
+ *
+ * AND WHAT THE NEW RUNG DOES DEPENDS ON WHETHER THERE IS A SECOND SENDER
+ * (`isRelayConfigured`, the same fact the reset copy reads). The phase ladder
+ * bounds the SHARE dial, so on a standalone cell `phaseLadderBounds` drops the
+ * ceiling entirely: nothing climbs toward it, and a promoted pace-path cell
+ * already sends the whole cell from its own server. "It climbs toward the new
+ * ceiling" there names a movement that cannot happen.
  */
-export function rampPromotionSentence(applied: boolean, phaseCeiling: number): string {
-	return applied
+export function rampPromotionSentence(
+	applied: boolean,
+	phaseCeiling: number,
+	isRelayConfigured: boolean
+): string {
+	if (!applied) {
+		return `This cell is already on the top phase rung (${shareLabel(phaseCeiling)}), so there is nothing left to promote.`;
+	}
+	return isRelayConfigured
 		? `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump — it climbs toward the new ceiling on the ordinary checks.`
-		: `This cell is already on the top phase rung (${shareLabel(phaseCeiling)}), so there is nothing left to promote.`;
+		: `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump, and with no relay connected there is nothing holding it below the rung: the rung is recorded, and it bounds the share the day a second sender carries this cell again.`;
 }
 
 // ============ PRESETS ============

@@ -34,6 +34,11 @@ const props = defineProps<{
 	 * day, which configuration alone cannot see once one is disconnected; the
 	 * standalone sentence below states that clause rather than denying it.
 	 *
+	 * BOTH NOTES READ IT. A promotion's other half is plan D7's mix generation,
+	 * and "which arm every recipient lands in" is the same second-sender fact: a
+	 * standalone cell has ONE arm, so the generation is spent and re-shuffles
+	 * nobody. Promising the shuffle there describes a split that does not exist.
+	 *
 	 * REQUIRED, so the compiler holds it. Optional, an absent prop read as "there
 	 * is a relay" and restored the "brings the share back" copy — a 75% cut — in
 	 * front of the standalone deployment that cannot make it. A caller who has to
@@ -126,6 +131,24 @@ function isRungOffered(rung: number): boolean {
  * would fire a mutation, produce no sentence and no change, and read as broken.
  */
 const isPromotable = computed(() => currentRung.value < TOP_RUNG);
+
+/**
+ * WHAT A PROMOTION DOES, ON THE PATH THIS DEPLOYMENT IS ON. The rung rises on
+ * both paths; the arm re-shuffle is the ESP path's half, and a standalone cell
+ * reaches this note from its first minute — a pace-path enrolment opens at full
+ * share on the 25% rung, so the button is live there before anything else has
+ * happened. Built here rather than as a nested ternary in the template: two
+ * facts crossed is four sentences, and the template is where that stops being
+ * readable.
+ */
+const promoteNote = computed(() => {
+	if (!isPromotable.value)
+		return 'This cell is already on the top phase rung, so there is nothing left to promote.';
+	const effect = props.hasRelayConfigured
+		? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in.'
+		: 'Promoting raises the ceiling one rung. With no relay connected there is no second arm to shuffle recipients between, so the rung is recorded and binds the day a second sender carries this cell again.';
+	return `${effect} It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.`;
+});
 
 function clampPercent(value: number): number {
 	if (!Number.isFinite(value)) return 0;
@@ -292,11 +315,7 @@ function clampPercent(value: number): number {
 			</button>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-promote-note">
-			{{
-				isPromotable
-					? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in. It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.'
-					: 'This cell is already on the top phase rung, so there is nothing left to promote.'
-			}}
+			{{ promoteNote }}
 		</p>
 	</section>
 </template>

@@ -163,6 +163,34 @@ describe('calm states', () => {
 	});
 
 	/**
+	 * THE ARM SHUFFLE IS AN ESP-PATH CLAIM (plan D7, D14). A pace-path cell has one
+	 * arm — no `adaptive_mix` route builds a mix at all — so a promotion re-shuffles
+	 * nobody there, and the state is reachable from the first minute: a standalone
+	 * enrolment opens at full share on the 25% rung, with the button live.
+	 */
+	it('does not promise an arm shuffle on a promotion with no relay', () => {
+		const standalone = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: false },
+		});
+		const note = standalone.find('[data-testid="ramp-promote-note"]').text();
+		expect(note).toContain('raises the ceiling one rung');
+		expect(note).not.toMatch(/which arm/i);
+		expect(note).toMatch(/no second arm/i);
+		// The evidence half of the promise holds on both paths.
+		expect(note).toMatch(/still outstanding/i);
+		expect(standalone.html()).not.toMatch(ALARM);
+		standalone.unmount();
+
+		const withRelay = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: true },
+		});
+		expect(withRelay.find('[data-testid="ramp-promote-note"]').text()).toMatch(
+			/re-shuffles which arm every recipient/i
+		);
+		withRelay.unmount();
+	});
+
+	/**
 	 * A BUTTON THAT CANNOT WORK IS A DEAD END. `promoteCellPhase` answers a cell
 	 * already on the top rung with `{applied: false}` and NO refusal, so a live
 	 * button there fires a mutation and nothing appears at all.
@@ -514,6 +542,38 @@ describe('control refusals', () => {
 		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
 		expect(outcome.text()).toContain('nothing left to promote');
+		expect(outcome.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
+	 * AND WHAT THE NEW RUNG DOES IS THE PAGE'S FACT TO SUPPLY. The ladder bounds
+	 * the SHARE dial, so on a standalone cell the ceiling is dropped by
+	 * `phaseLadderBounds` and nothing climbs toward it — the promoted cell already
+	 * sends the whole cell from its own server. Only this page knows which path the
+	 * deployment is on, so a sentence that forgets to ask promises a climb that
+	 * cannot happen.
+	 */
+	it.each<[string, Partial<RampControls>, RegExp, RegExp]>([
+		[
+			'no relay',
+			{ referenceTransportId: null, isRelayConfigured: false },
+			/nothing holding it below the rung/i,
+			/climbs/i,
+		],
+		['a relay', { isRelayConfigured: true }, /climbs toward the new ceiling/i, /no relay/i],
+	])('says what a promotion does to the share with %s', async (_name, view, expected, refuted) => {
+		stubPage({ applied: true, phaseCeiling: 0.5 }, [cellControl({ phaseCeiling: 0.25 })], view);
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+		await wrapper.vm.$nextTick();
+		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await wrapper.vm.$nextTick();
+		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
+		expect(outcome.text()).toContain('50% phase');
+		expect(outcome.text()).toMatch(expected);
+		expect(outcome.text()).not.toMatch(refuted);
 		expect(outcome.html()).not.toMatch(ALARM);
 		wrapper.unmount();
 	});

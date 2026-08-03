@@ -225,8 +225,18 @@ async function promote(): Promise<void> {
 	// THE TOP RUNG IS AN ANSWER, NOT A REFUSAL — `{applied: false}` with no
 	// `refusal` and the rung the cell is already on. Rendered rather than
 	// swallowed: a click that produces nothing at all reads as a broken button.
+	//
+	// AND WHAT THE NEW RUNG BOUNDS IS THE PAGE'S FACT TO SUPPLY, the same one the
+	// controls read for their reset and promote notes: a standalone cell has no
+	// share held below the rung, so the sentence must not promise a climb toward
+	// it. Absent view means absent relay — a promotion cannot have been clicked
+	// without the view, and the cautious sentence is the one that claims less.
 	if (result?.refusal === undefined && result?.phaseCeiling !== undefined) {
-		outcome.value = rampPromotionSentence(result.applied, result.phaseCeiling);
+		outcome.value = rampPromotionSentence(
+			result.applied,
+			result.phaseCeiling,
+			controls.value?.isRelayConfigured === true
+		);
 	}
 	refetch();
 }
