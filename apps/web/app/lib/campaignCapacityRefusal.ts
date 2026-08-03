@@ -146,3 +146,20 @@ export function capacityFinishDayAt(plan: CampaignCapacitySchedulePlan): number 
 export function isCapacityDayToday(dayStartMs: number, now: number): boolean {
 	return Math.floor(dayStartMs / CAPACITY_DAY_MS) === Math.floor(now / CAPACITY_DAY_MS);
 }
+
+/**
+ * The finish sentence, or `null` when the plan carries no finish worth quoting.
+ * Same rule as the headline, and stated here rather than in the template so the
+ * two cannot drift: a truncated enumeration has no finish at all, and an
+ * under-counted audience has one it can only be later than.
+ *
+ * The pairing is the whole point — "Sending over at least 5 days" beside a bare
+ * "Everyone is reached by Friday" reads as a promise for Friday, which is
+ * exactly the date the plan just said it does not have (D14).
+ */
+export function capacityFinishSentence(plan: CampaignCapacitySchedulePlan): string | null {
+	if (plan.truncated) return null;
+	const day = formatCapacityDay(capacityFinishDayAt(plan));
+	if (plan.audienceUnderCounted) return `Everyone is reached by ${day} at the earliest.`;
+	return `Everyone is reached by ${day}.`;
+}
