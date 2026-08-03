@@ -42,10 +42,13 @@ export interface RelayRemovalGuard {
 }
 
 /**
- * @param resultingProvider The transport the draft would leave live. Selecting
- * the built-in MTA is the only draft that disconnects anything — the same rule
- * the endpoint applies to the resulting env, so the dialog appears exactly when
- * the server would demand the phrase.
+ * @param resultingProvider The transport the draft would leave live. A result of
+ * the built-in MTA — or of no provider at all — is a deployment sending on its
+ * own, and nothing else disconnects anything: this is `apply-transport`'s rule on
+ * the resulting env, spelled the same way (empty included, trimmed the same), so
+ * the dialog appears exactly when the server would demand the phrase. No shipped
+ * screen offers the empty choice today; the predicates still match literally,
+ * because one that stops matching drifts silently.
  */
 export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): RelayRemovalGuard {
 	const { data: independence } = useOrganizationQuery(
@@ -97,12 +100,14 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 	const serverConsequence = ref<string | null>(null);
 
 	return {
-		removesReferenceArm: computed(
-			() =>
-				resultingProvider.value === 'mta' &&
+		removesReferenceArm: computed(() => {
+			const resulting = resultingProvider.value.trim();
+			return (
+				(resulting === 'mta' || resulting === '') &&
 				referenceTransportId.value !== null &&
 				relayRemoval.value?.kind === 'unsafe'
-		),
+			);
+		}),
 		removalConsequence: localConsequence,
 		/**
 		 * LOCAL COPY WHEN IT HAS FIGURES, THE REFUSAL'S OTHERWISE. The local read
