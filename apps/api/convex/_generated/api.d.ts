@@ -310,10 +310,10 @@ import type * as delivery_ramp_engagementConfig from "../delivery/ramp/engagemen
 import type * as delivery_ramp_engagementGate from "../delivery/ramp/engagementGate.js";
 import type * as delivery_ramp_gateConfig from "../delivery/ramp/gateConfig.js";
 import type * as delivery_ramp_gateEvaluation from "../delivery/ramp/gateEvaluation.js";
-import type * as delivery_ramp_gateObservations from "../delivery/ramp/gateObservations.js";
 import type * as delivery_ramp_gateEvidence from "../delivery/ramp/gateEvidence.js";
 import type * as delivery_ramp_gateGrades from "../delivery/ramp/gateGrades.js";
 import type * as delivery_ramp_gateMeasurement from "../delivery/ramp/gateMeasurement.js";
+import type * as delivery_ramp_gateObservations from "../delivery/ramp/gateObservations.js";
 import type * as delivery_ramp_gateTypes from "../delivery/ramp/gateTypes.js";
 import type * as delivery_ramp_gates from "../delivery/ramp/gates.js";
 import type * as delivery_ramp_presetConfig from "../delivery/ramp/presetConfig.js";
@@ -1215,10 +1215,10 @@ declare const fullApi: ApiFromModules<{
   "delivery/ramp/engagementGate": typeof delivery_ramp_engagementGate;
   "delivery/ramp/gateConfig": typeof delivery_ramp_gateConfig;
   "delivery/ramp/gateEvaluation": typeof delivery_ramp_gateEvaluation;
-  "delivery/ramp/gateObservations": typeof delivery_ramp_gateObservations;
   "delivery/ramp/gateEvidence": typeof delivery_ramp_gateEvidence;
   "delivery/ramp/gateGrades": typeof delivery_ramp_gateGrades;
   "delivery/ramp/gateMeasurement": typeof delivery_ramp_gateMeasurement;
+  "delivery/ramp/gateObservations": typeof delivery_ramp_gateObservations;
   "delivery/ramp/gateTypes": typeof delivery_ramp_gateTypes;
   "delivery/ramp/gates": typeof delivery_ramp_gates;
   "delivery/ramp/presetConfig": typeof delivery_ramp_presetConfig;
