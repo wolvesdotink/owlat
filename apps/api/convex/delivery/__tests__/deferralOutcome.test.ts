@@ -42,6 +42,8 @@ import {
 	drainOutcomeWrites,
 } from '../../analytics/__tests__/transportOutcomesFixtures';
 import { recordDeferralOutcome } from '../deferralOutcome';
+import { resolveMtaRoutingDecision } from '../../lib/sendProviders/mta';
+import { resolveSendTransport } from '../../lib/sendProviders/transports';
 import { evaluateDeferralGate } from '../ramp/gates';
 import { RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../ramp/gateConfig';
 import { input, NOW } from '../ramp/__tests__/gateFixtures';
@@ -98,6 +100,47 @@ async function completeDeferred(
 		context: { sendRef: { kind: 'campaign', id: sendId } },
 	});
 	await drainOutcomeWrites(t);
+}
+
+/**
+ * The origin the SHIPPED ADAPTER derives for one MTA defer reason.
+ *
+ * The cases below feed this straight into the completion callback instead of
+ * typing `'local'` in themselves: the classification is the thing that
+ * regressed, so a test that asserts it and then hand-feeds the answer to the
+ * counter would pass on either side of the bug.
+ */
+async function originFromMta(reason: string): Promise<'governed' | 'local'> {
+	vi.stubEnv('MTA_API_URL', 'https://mta.test');
+	vi.stubEnv('MTA_API_KEY', 'test-key');
+	const fetchSpy = vi
+		.spyOn(global, 'fetch')
+		.mockResolvedValue(
+			new Response(JSON.stringify({ decision: 'defer', reason, retryAfterMs: 60_000 }), {
+				status: 200,
+			})
+		);
+	try {
+		const decision = await resolveMtaRoutingDecision(resolveSendTransport('mta'), {
+			messageId: 'send-1',
+			workAttemptId: 'work-1',
+			routingReentryToken: 'reentry-1',
+			startedAt: NOW,
+			deliveryDomain: 'production',
+			messageType: 'campaign',
+			organizationId: OUTCOME_ORG,
+			recipient: 'person@gmail.com',
+			from: 'sender@example.org',
+			candidateProvider: 'mta',
+			ipPool: 'campaign',
+			allowWarmupOverflow: false,
+		});
+		if (decision.kind !== 'defer') throw new Error(`expected a deferral, got ${decision.kind}`);
+		return decision.origin;
+	} finally {
+		fetchSpy.mockRestore();
+		vi.unstubAllEnvs();
+	}
 }
 
 /** The recorder, called directly so a case can name the INSTANT it observes. */
@@ -367,6 +410,39 @@ describe('only the governed half of a deferral is gate 2 evidence', () => {
 			// be identified by name rather than by being the only job in the table.
 			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
 			expect(scheduled.filter((job) => job.name.includes('retrySend'))).toHaveLength(1);
+		});
+	});
+
+	it('records nothing when the MTA fails to persist a lease it already granted', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		// `lease_persistence` is a Redis WRITE FAILURE on our own MTA — the lease was
+		// granted and then could not be stored. An hour of that is our storage layer
+		// down, not a receiver refusing this identity, and gate 2 halts a cell at
+		// 25%. The origin comes from the adapter so this pins the classification and
+		// the counting together.
+		await completeDeferred(t, sendId, { origin: await originFromMta('lease_persistence') });
+
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+			const send = await ctx.db.get(sendId);
+			expect(send?.status).toBe('queued');
+			expect(send?.deferralCountedDay).toBeUndefined();
+		});
+	});
+
+	it('still counts the safety-circuit deferral that arrives by the same route', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
+
+		// The companion to the case above: same adapter, same callback, a reason
+		// that IS about the sending identity. Without it, an adapter that answered
+		// `local` to everything would satisfy the exclusion and silence the gate.
+		await completeDeferred(t, sendId, { origin: await originFromMta('global_safety') });
+
+		await t.run(async (ctx) => {
+			expect(sumCounters(await readBuckets(ctx)).deferred).toBe(1);
 		});
 	});
 

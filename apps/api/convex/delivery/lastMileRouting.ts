@@ -73,7 +73,9 @@ export interface LastMileRoutingDeferred {
 	 *
 	 * `local` — this deployment's own machinery: a deliberate policy hold, the
 	 * idempotency reconciliation wait, an unconfigured or unreachable decision
-	 * endpoint, and a warm-up cap we set ourselves. Counting these would let a
+	 * endpoint, a warm-up cap we set ourselves, and the MTA reporting that its own
+	 * lease store failed to persist a lease it had already granted. Our own
+	 * infrastructure is `local` wherever it runs. Counting these would let a
 	 * forty-minute outage on our own side push a cell past the 25% halt line —
 	 * share to the floor, cooldown, and the graduation pin revoked — for a fault
 	 * no receiver ever saw.

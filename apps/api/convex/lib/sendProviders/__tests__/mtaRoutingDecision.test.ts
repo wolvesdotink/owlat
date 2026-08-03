@@ -86,6 +86,34 @@ describe('MTA routing decision client', () => {
 		});
 	});
 
+	// EVERY DEFER REASON, NAMED, WITH ITS ORIGIN. The list drifted once already —
+	// `lease_persistence` rode along with the three governance reasons and made an
+	// MTA Redis write failure count against gate 2's 25% halt line — and it
+	// drifted because nobody had to write the pairs down. A new reason added to
+	// `MTA_DEFER_REASON_ORIGIN` without a case here leaves this suite passing on a
+	// reason it has never seen; that is what the fall-through case below covers.
+	it.each([
+		{ reason: 'global_safety', origin: 'governed' },
+		{ reason: 'global_probe', origin: 'governed' },
+		{ reason: 'no_owned_ip', origin: 'governed' },
+		// OUR OWN STORAGE, not the receiver: the MTA granted the lease and then
+		// failed to write it (`apps/mta/src/routes/routingDecision.ts`).
+		{ reason: 'lease_persistence', origin: 'local' },
+	])('classifies the $reason deferral as $origin', async ({ reason, origin }) => {
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ decision: 'defer', reason, retryAfterMs: 30_000 }), {
+				status: 200,
+			})
+		);
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
+			kind: 'defer',
+			// The MTA's delay is honoured whoever is at fault — only the counting
+			// differs.
+			retryAfterMs: 30_000,
+			origin,
+		});
+	});
+
 	it('accepts exact decisions and bounds finite defer delays', async () => {
 		for (const [body, expected] of [
 			[
