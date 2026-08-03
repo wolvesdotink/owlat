@@ -13,7 +13,7 @@
  */
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { defineComponent, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
@@ -295,6 +295,55 @@ describe('standalone preset trade-off', () => {
 		expect(wrapper.emitted('change')).toEqual([['aggressive']]);
 		// The prop never changed — the mutation was refused, or it failed.
 		expect(aggressive.element.checked).toBe(false);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	/**
+	 * A pace whose write is IN FLIGHT is not yet a pace nobody is on. The parent
+	 * marks itself busy inside the change handler (`useBackendOperation.run`), so
+	 * the picker is mounted under one here rather than driven by `setProps` a tick
+	 * late — the ordering is the whole point of the test.
+	 */
+	function mountUnderParent(): { wrapper: ReturnType<typeof mount>; busy: Ref<boolean> } {
+		const busy = ref(false);
+		const Parent = defineComponent({
+			components: { RampPresetPicker },
+			setup: () => ({ busy, onChange: () => void (busy.value = true) }),
+			template: `<RampPresetPicker stream="campaign" :preset="null" default-preset="balanced"
+				:has-reference-arm="true" :busy="busy" @change="onChange" />`,
+		});
+		return { wrapper: mount(Parent), busy };
+	}
+
+	it('keeps the clicked pace visible while the write is in flight', async () => {
+		// Snapping the radio back the instant it is clicked greys out the option
+		// the operator just chose, and the click reads as one that never landed.
+		const { wrapper, busy } = mountUnderParent();
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+
+		expect(busy.value).toBe(true);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('corrects the radio once a refused write settles', async () => {
+		const { wrapper, busy } = mountUnderParent();
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+
+		// The write answered and `preset` never moved: refused, or it failed.
+		busy.value = false;
+		await nextTick();
+
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(false);
 		expect(
 			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
 		).toBe(true);

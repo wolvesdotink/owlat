@@ -57,14 +57,12 @@ function radioValue(preset: RampPreset | null): string {
 const group = ref<HTMLFieldSetElement | null>(null);
 
 /**
- * THE STORED PRESET IS THE ONLY TRUTH ON SCREEN.
+ * THE STORED PRESET IS THE ONLY TRUTH ON SCREEN — once the write has answered.
  *
  * A click moves the radio in the DOM before anything is saved, and `:checked`
  * cannot move it back: the bound value never changed, so Vue has nothing to
  * patch. A `setStreamPreset` that is refused or fails therefore left the group
- * showing a pace nobody is on — the one reading an operator will act on. So the
- * inputs are put back in agreement with the prop on every click, and the
- * selection moves only when a new `preset` arrives from the server.
+ * showing a pace nobody is on — the one reading an operator will act on.
  */
 function syncFromProp(): void {
 	const root = group.value;
@@ -75,9 +73,30 @@ function syncFromProp(): void {
 	}
 }
 
+/**
+ * THE CORRECTION WAITS FOR THE ANSWER. Putting the inputs back on the CLICK
+ * also undoes the accepted click: the radio snaps back and greys out while the
+ * write is in flight, which reads as a click that did not register. So the
+ * clicked option stays visible until `busy` settles, and the sync then either
+ * confirms it — Convex has already delivered the new `preset` by the time the
+ * mutation resolves — or puts it back on the pace the server kept.
+ */
+watch(
+	() => props.busy === true,
+	(busy, wasBusy) => {
+		if (wasBusy && !busy) syncFromProp();
+	}
+);
+
+/**
+ * A click no write ever picked up needs the same correction, so the fallback
+ * runs once the parent has had its turn and `busy` never rose.
+ */
 function choose(preset: RampPreset | null): void {
 	emit('change', preset);
-	syncFromProp();
+	void nextTick(() => {
+		if (props.busy !== true) syncFromProp();
+	});
 }
 </script>
 
