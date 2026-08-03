@@ -12,6 +12,7 @@ import type { OperationError } from '@owlat/shared/operationError';
 
 import {
 	capacityFinishDayAt,
+	capacityFinishSentence,
 	capacityRefusalPlan,
 	capacityScheduleHeadline,
 	capacitySliceDayStart,
@@ -169,5 +170,26 @@ describe('capacity plan dates', () => {
 		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 5))).toBe(true);
 		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 4, 23, 59))).toBe(false);
 		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 6))).toBe(false);
+	});
+
+	/**
+	 * The finish sentence has to make the SAME claim as the headline. A headline
+	 * that says "at least 5 days" beside a flat "Everyone is reached by Friday"
+	 * hands the operator back the exact date the plan just said it does not have.
+	 */
+	describe('capacityFinishSentence', () => {
+		it('names the finish day when the plan knows one', () => {
+			expect(capacityFinishSentence(PLAN)).toBe('Everyone is reached by Friday, January 9.');
+		});
+
+		it('qualifies the finish day when the audience is only a lower bound', () => {
+			expect(capacityFinishSentence({ ...PLAN, audienceUnderCounted: true })).toBe(
+				'Everyone is reached by Friday, January 9 at the earliest.'
+			);
+		});
+
+		it('makes no finish claim at all for a truncated enumeration', () => {
+			expect(capacityFinishSentence({ ...PLAN, truncated: true })).toBeNull();
+		});
 	});
 });

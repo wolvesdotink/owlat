@@ -15,7 +15,7 @@
  * quoted as a finish date, and an under-counted audience is quoted as a floor.
  */
 import {
-	capacityFinishDayAt,
+	capacityFinishSentence,
 	capacityScheduleHeadline,
 	capacitySliceDayStart,
 	formatCapacityDay,
@@ -38,17 +38,24 @@ defineEmits<{ dismiss: [] }>();
 
 const headline = computed(() => capacityScheduleHeadline(props.plan));
 
-/** A finish date is only honest when the enumeration actually reached the end. */
-const finishesOn = computed(() => {
-	if (props.plan.truncated) return null;
-	return formatCapacityDay(capacityFinishDayAt(props.plan));
-});
+/**
+ * A finish date is only honest when the enumeration reached the end, and only
+ * unqualified when the audience behind it was counted exactly — both decided in
+ * `capacityFinishSentence` beside the headline they have to agree with.
+ */
+const finishesOn = computed(() => capacityFinishSentence(props.plan));
 
 /**
  * The first few days of the plan, so "over N days" is concrete rather than
  * abstract. Each row carries its OWN date, derived from the plan: the slices are
  * anchored on the send START, not on `now`, so a campaign scheduled three days
  * out must not label its first slice "Today".
+ *
+ * A slice is RECIPIENTS, which is what the row says it is. The backend decides
+ * the refusal on own-MTA message volume but re-denominates the schedule into the
+ * walker's recipient plan before it leaves the gate
+ * (`campaigns/capacityPreflight.ts`) — under a split route the two differ by the
+ * own arm's share.
  */
 const previewSlices = computed(() => {
 	const now = props.now ?? Date.now();
@@ -74,7 +81,7 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 			<p class="text-sm text-text-secondary mt-1">
 				Your sending capacity is still warming up, so this audience is paced across several days
 				rather than sent in one go.
-				<span v-if="finishesOn">Everyone is reached by {{ finishesOn }}.</span>
+				<span v-if="finishesOn">{{ finishesOn }}</span>
 			</p>
 
 			<ul class="mt-3 space-y-1" data-testid="capacity-schedule-slices">

@@ -116,6 +116,18 @@ describe('CapacitySchedulePanel', () => {
 		expect(flat(wrapper.text())).toContain('the schedule above is a floor');
 	});
 
+	/**
+	 * And the finish sentence says the same thing the headline does. "Sending over
+	 * at least 5 days" beside a flat "Everyone is reached by Friday, January 9"
+	 * gives the operator back the date the headline just withheld — one sentence
+	 * hedged, the next one promising.
+	 */
+	it('qualifies the finish date when the plan is a floor', () => {
+		const text = flat(mountPanel({ audienceUnderCounted: true }).text());
+		expect(text).toContain('Everyone is reached by Friday, January 9 at the earliest.');
+		expect(text).not.toContain('Everyone is reached by Friday, January 9.');
+	});
+
 	it('offers a dismiss affordance only when the caller can act on it', () => {
 		expect(mountPanel().find('button').exists()).toBe(false);
 		const wrapper = mountPanel({}, true);
