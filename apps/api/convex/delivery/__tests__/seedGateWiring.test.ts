@@ -358,6 +358,10 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
  * Every case is pinned on the FULL verdict, not only on gate 5: the defect this
  * repairs was a screen telling an operator a cell passes while the ramp held it
  * on `awaiting_corroboration` off the same rows.
+ *
+ * THE TREND IS PINNED HERE TOO, because it is the same predicate asked of a
+ * third row set: the chart's own. A quiet relay's history is what EXPLAINS the
+ * absent arm, so the two must not be answered by one boolean.
  */
 describe('the screen picks the evaluator the controller picked (ADR-0042)', () => {
 	/**
