@@ -32,6 +32,16 @@
  * them exports helpers the cron imports. The dead seam is one EXPORT inside a
  * live module, so the unit has to be the function.
  *
+ * SCOPE. The walk covers `delivery/ramp*.ts`, the shell layer, and needs no
+ * clause for the decision core beside it: `ramp/__tests__/gates.purity.test.ts`
+ * refuses a Convex function wrapper in every module of `delivery/ramp/`, so no
+ * entry point can be declared there to go unreached. The defect class is not
+ * ramp-shaped, though — "a Convex entry point nothing on the instance can start"
+ * is a `convex/`-wide property, and the two guards between them still leave a
+ * nested `delivery/rampSomething/entry.ts` uncovered. Widening this walk to the
+ * whole backend is tracked in issue #509, deliberately not done in the last wave
+ * before the ship PR.
+ *
  * TWO MENTIONS DO NOT COUNT, and both are shapes this repo actually contains:
  * a PROSE mention (`rampPhasePromotion.promoteCellPhase` is discussed in half a
  * dozen docblocks), and a TYPE position (`FunctionReturnType<typeof
@@ -89,9 +99,15 @@ function productionModules(dir: string, extensions: readonly string[]): string[]
 	return found.sort();
 }
 
-/** Prose is not a call site — this file's subject matter is discussed at length. */
+/**
+ * Prose is not a call site — this file's subject matter is discussed at length,
+ * on whole comment lines AND after code (`await other(); // superseded by …`).
+ * `//` is cut wherever it appears rather than only at a line start: the cost of
+ * over-stripping is a caller this walk fails to see, which fails loudly here,
+ * while under-stripping credits an orphan with a mention and fails nowhere.
+ */
 function stripComments(source: string): string {
-	return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+	return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
 function sourceMap(files: readonly string[], root: string): Map<string, string> {
@@ -158,11 +174,13 @@ function resolveRelative(from: string, specifier: string): string | null {
 /**
  * `internal.delivery.rampControllerCron.runRampController` and its `api.` twin,
  * with a `typeof` in front refused: that is the type-borrowing shape, and the
- * entry it names may have no caller at all.
+ * entry it names may have no caller at all. The lookbehind spans ANY run of
+ * whitespace, so a `typeof` the formatter left at the end of a wrapped line —
+ * or double-spaced — is refused the same as the one-space form.
  */
 function generatedReference(module: string, name: string): RegExp {
 	const dotted = module.replace(/\.ts$/, '').split('/').join('\\.');
-	return new RegExp(`(?<!typeof\\s)\\b(?:internal|api)\\.${dotted}\\.${name}\\b`);
+	return new RegExp(`(?<!typeof\\s+)\\b(?:internal|api)\\.${dotted}\\.${name}\\b`);
 }
 
 /**
@@ -200,9 +218,14 @@ describe('the wiring guard is looking at production', () => {
 	it('walked both sides and skipped their tests', () => {
 		expect(CONVEX_SOURCES.size).toBeGreaterThan(100);
 		expect(WEB_SOURCES.size).toBeGreaterThan(50);
-		expect([...CONVEX_SOURCES.keys(), ...WEB_SOURCES.keys()]).not.toContain(
-			expect.stringContaining('__tests__')
-		);
+		// Filtered, not `not.toContain(expect.stringContaining(…))`: `toContain`
+		// compares by identity, so the negated asymmetric matcher passes on any
+		// input and the excluded-tests premise would go unpinned.
+		expect(
+			[...CONVEX_SOURCES.keys(), ...WEB_SOURCES.keys()].filter(
+				(file) => file.includes('__tests__') || file.endsWith('.test.ts')
+			)
+		).toEqual([]);
 		// The two registration files the cron route depends on: drop either from the
 		// walk and every cron-only entry below would fail for the wrong reason.
 		expect([...CONVEX_SOURCES.keys()]).toContain('crons.ts');
@@ -238,7 +261,10 @@ describe('the wiring guard is looking at production', () => {
 describe('every ramp entry point is reachable', () => {
 	for (const entry of RAMP_ENTRIES) {
 		it(`${entry.module}#${entry.name} is registered, called or exported to the client`, () => {
-			expect(callersOf(entry, CONVEX_SOURCES, WEB_SOURCES)).not.toEqual([]);
+			expect(
+				callersOf(entry, CONVEX_SOURCES, WEB_SOURCES),
+				`${entry.module}#${entry.name} has no cron registration, no production caller and no client call — register it, call it, or delete it`
+			).not.toEqual([]);
 		});
 	}
 
@@ -284,7 +310,10 @@ describe('the walk fails a ramp entry nothing can start', () => {
 			[
 				'delivery/cronRegistration.ts',
 				[
-					"crons.hourly('sweep ramp', {}, internal.delivery.rampSweep.sweepRamp, {});",
+					// A TRAILING comment naming the orphan, on a line whose CODE
+					// registers a different entry: strip `//` at line starts only and
+					// this credits the orphan while the real registration still counts.
+					"crons.hourly('sweep ramp', {}, internal.delivery.rampSweep.sweepRamp, {}); // supersedes internal.delivery.rampOrphan.promoteOrphan",
 					// PROSE naming the orphan — the shape half a dozen ramp docblocks
 					// have, and the one a bare grep would pass.
 					'// See also internal.delivery.rampOrphan.promoteOrphan, which nothing runs.',
@@ -312,7 +341,15 @@ describe('the walk fails a ramp entry nothing can start', () => {
 			[
 				'app/utils/deliverabilityRamp.ts',
 				// The TYPE position: borrows the orphan's return type, calls nothing.
-				'type Outstanding = FunctionReturnType<typeof api.delivery.rampOrphan.promoteOrphan>;',
+				// WRAPPED, with the `typeof` left on the previous line — the shape a
+				// long entry path takes once the formatter breaks it, and the one a
+				// single-whitespace lookbehind would credit as a real caller.
+				[
+					'type Outstanding = FunctionReturnType<',
+					'\ttypeof',
+					'\t\tapi.delivery.rampOrphan.promoteOrphan',
+					'>;',
+				].join('\n'),
 			],
 		].map(([file, source]) => [file as string, stripComments(source as string)])
 	);
