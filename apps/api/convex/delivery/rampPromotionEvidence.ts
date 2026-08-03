@@ -285,7 +285,7 @@ async function worstCellDeferralRate(
 	// (`DEFERRAL_TELEMETRY_SPAN_MS`) × `TRANSPORT_OUTCOME_SHARD_COUNT` = 8 shards
 	// ≈ 3,600 documents in ONE mutation, against ~120 when this read was a 24h
 	// summary. That is comfortably inside Convex's per-transaction read limit and
-	// `promoteRampPhase` runs for one cell at a time, so it is headroom rather
+	// `promoteCellPhase` runs for one cell at a time, so it is headroom rather
 	// than a defect — but widening either span, or the shard count, multiplies
 	// against the other two, and the next change should be made with the figure
 	// in view rather than rediscovering it.

@@ -10,10 +10,14 @@
  * does on its own, and it is the ONE upward door — `resetCellPhase` is
  * downward-only precisely so that this gate cannot be walked around.
  *
- * ONE WRITE PATH, TWO ENTRIES. `applyRampPhasePromotion` is the whole rule; the
- * operator's `promoteCellPhase` and the machine-facing
- * `rampControllerCron.promoteRampPhase` both go through it. Two copies of a gate
- * are two gates, and the second one is always the one that drifts.
+ * ONE WRITE PATH, ONE ENTRY. `applyRampPhasePromotion` is the whole rule and
+ * `promoteCellPhase` is the only door onto it. A machine-facing internalMutation
+ * shell over the same rule shipped alongside it and was removed under D20: no
+ * cron registered it and no module called it, so it was a second entry to a gate
+ * with nothing behind it — and the second entry is always the one that drifts.
+ * `__tests__/rampEntryWiring.test.ts` is what keeps a replacement from arriving
+ * unwired. Should a genuine server-side flow ever need to promote, the rule is
+ * already the shared one; give it an entry AND the caller in the same change.
  *
  * THE HARD STOPS BOUND A PROMOTION TOO, through `readRampIncreaseBlock` — the
  * controller's own readers, not a second copy of the rules. The global kill
@@ -77,14 +81,14 @@ export type RampPhasePromotion =
 
 /**
  * Promote one cell one rung, or say why not. Writes the row; writes no audit —
- * the caller owns that, because the machine entry and the operator entry do not
- * attribute a promotion to the same actor.
+ * the caller owns that, because only the caller knows whom to attribute the move
+ * to, and a rule that audited on its own behalf would have to invent an actor.
  *
- * The organization is a PARAMETER rather than a session read: the cron resolves
- * its tenant through `resolveRampOrganizationId` (a throw means "no organization
- * yet", a supported configuration) while the operator path takes it from the
- * session. One rule, two resolvers, no way for either to name someone else's row
- * — the index read behind `loadRouteStateCell` is org-leading.
+ * The organization is a PARAMETER rather than a session read, so the rule never
+ * depends on there being a session: `promoteCellPhase` takes it from one, and a
+ * server-side caller would resolve it the way the cron does. No resolver can
+ * name someone else's row — the index read behind `loadRouteStateCell` is
+ * org-leading.
  */
 export async function applyRampPhasePromotion(
 	ctx: MutationCtx,

@@ -17,7 +17,7 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../deliverabilityRouting';
 import { cleanEvaluation } from '../ramp/__tests__/controllerFixtures';
@@ -35,6 +35,12 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_hard_stops'),
+		// The phase ladder's only door is an `adminMutation`, which resolves the
+		// admin context BEFORE the handler runs. The harness has no session, so the
+		// floor is satisfied as an owner here; the floor ITSELF is covered where it
+		// belongs, in `rampPhaseMoves.test.ts`.
+		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
 
@@ -558,14 +564,15 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 });
 
 describe('the phase ladder', () => {
+	const promote = async (t: Harness, stream: 'campaign' | 'transactional' = 'campaign') =>
+		await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, {
+			stream,
+			destinationProvider: stream === 'campaign' ? ('gmail' as const) : ('yahoo' as const),
+		});
+
 	it('promotes exactly one rung per call and cannot skip one', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
-		const promote = async () =>
-			await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, {
-				stream: 'campaign' as const,
-				destinationProvider: 'gmail' as const,
-			});
 
 		await t.run(async (ctx) => {
 			const rows = await ctx.db.query('deliverabilityRouteStates').collect();
@@ -574,16 +581,19 @@ describe('the phase ladder', () => {
 		});
 
 		// The lower rungs are the ordinary ladder — no evidence is consulted.
-		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.5 });
+		expect(await promote(t)).toEqual({ applied: true, phaseCeiling: 0.5 });
 
 		// CROSSING 0.5 IS EVIDENCE-GATED (P3-8). With no external reading and no
 		// corroborating self-hosted evidence the cell keeps its rung and the
 		// outstanding conditions come back BY NAME — a refusal, never an error.
-		const refused = await promote();
-		expect(refused).toMatchObject({ ok: false, phaseCeiling: 0.5 });
-		const outstanding = (refused as { outstanding?: readonly string[] }).outstanding ?? [];
-		expect(outstanding).toContain('google_compliance_pass');
-		expect(outstanding).toContain('dnsbl_clean_streak');
+		const refused = await promote(t);
+		expect(refused).toMatchObject({
+			applied: false,
+			refusal: 'promotion_evidence_outstanding',
+			phaseCeiling: 0.5,
+		});
+		expect(refused.outstanding ?? []).toContain('google_compliance_pass');
+		expect(refused.outstanding ?? []).toContain('dnsbl_clean_streak');
 		expect((await cellRow(t))?.phaseCeiling).toBe(0.5);
 
 		// A Google Compliance Status pass within the last 7 days is one whole route
@@ -606,23 +616,23 @@ describe('the phase ladder', () => {
 			});
 		});
 
-		expect(await promote()).toEqual({ ok: true, phaseCeiling: 0.8 });
-		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
-		// The top rung is the top rung: further promotions are no-ops.
-		expect(await promote()).toEqual({ ok: true, phaseCeiling: 1 });
+		expect(await promote(t)).toEqual({ applied: true, phaseCeiling: 0.8 });
+		expect(await promote(t)).toEqual({ applied: true, phaseCeiling: 1 });
+		// The top rung is the top rung: a further promotion applies nothing, and it
+		// is not a refusal either — the operator asked for a rung the cell has.
+		expect(await promote(t)).toEqual({ applied: false, phaseCeiling: 1 });
 
 		// A promotion IS a new mix generation, so the salt advances once per real
 		// rung — and not at all for the refusal or for the no-op at the top.
 		expect((await cellRow(t))?.mixVersion).toBe(5);
 	});
 
-	it('is a no-op for a cell that has no ramp row', async () => {
+	it('refuses a cell that has no ramp row', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
-		const result = await t.mutation(internal.delivery.rampControllerCron.promoteRampPhase, {
-			stream: 'transactional' as const,
-			destinationProvider: 'yahoo' as const,
+		expect(await promote(t, 'transactional')).toEqual({
+			applied: false,
+			refusal: 'cell_not_ramp_managed',
 		});
-		expect(result).toEqual({ ok: false });
 	});
 });
