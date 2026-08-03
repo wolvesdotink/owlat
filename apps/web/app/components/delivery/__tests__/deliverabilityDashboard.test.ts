@@ -55,8 +55,28 @@ describe('measurement cell card — healthy cell', () => {
 	});
 
 	it('names the reference transport as the comparison column', () => {
+		// The transport's NAME, not its stored kind: the column heads the relay's
+		// numbers, and `resend` is what `EMAIL_PROVIDER` says rather than what the
+		// transport card calls that transport everywhere else.
 		const wrapper = mountCard(cellView(), 'resend');
-		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('resend');
+		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('Resend');
+		wrapper.unmount();
+	});
+
+	it('falls back to the raw kind for a transport this build does not know', () => {
+		const wrapper = mountCard(cellView(), 'postmark');
+		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).toContain('postmark');
+		wrapper.unmount();
+	});
+
+	it('heads a plugin relay with its leaf, never the namespaced id', () => {
+		// The plugin catalog's display label does not reach this query, so the leaf
+		// is the closest name this column can give — and the namespace is
+		// configuration, which reads as noise above a column of rates.
+		const wrapper = mountCard(cellView(), 'plugin.mail-pack.postmark');
+		const table = wrapper.find('[data-testid="measurement-arm-table"]').text();
+		expect(table).toContain('Postmark');
+		expect(table).not.toContain('plugin.mail-pack');
 		wrapper.unmount();
 	});
 });

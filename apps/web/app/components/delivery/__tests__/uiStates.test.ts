@@ -13,7 +13,7 @@
  */
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { defineComponent, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
@@ -28,7 +28,7 @@ import { rampRefusalSentence, type RampControlRefusal } from '~/utils/deliverabi
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
-import { cellControl, controlsView, NOW } from './rampFixtures';
+import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 
@@ -137,6 +137,32 @@ describe('calm states', () => {
 });
 
 /**
+ * THE TWO HISTORY SURFACES SPEAK THE SCREENS' VOCABULARY.
+ *
+ * A retreat notice is read by someone deciding whether to act, so it may not be
+ * the only place on the surface that names a cell by its stored key.
+ */
+describe('the retreat history', () => {
+	it('names the cell the way every other surface does', () => {
+		const wrapper = mount(RampDecreaseNotices, {
+			props: { notices: [adminNotice({ cellKey: 'campaign:gmail' })], labelledBy: 'n' },
+		});
+		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('Campaign → Gmail');
+		wrapper.unmount();
+	});
+
+	it('falls back to the stored key when it cannot be parsed', () => {
+		// Ninety days of history outlives an axis: a row written before a stream was
+		// retired must stay readable rather than render as nothing.
+		const wrapper = mount(RampDecreaseNotices, {
+			props: { notices: [adminNotice({ cellKey: 'newsletter:gmail' })], labelledBy: 'n' },
+		});
+		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('newsletter:gmail');
+		wrapper.unmount();
+	});
+});
+
+/**
  * A REFUSAL IS AN EXPLANATION, NOT A FAILURE.
  *
  * The control mutations answer `{applied: false, refusal}` rather than throwing,
@@ -168,6 +194,11 @@ describe('control refusals', () => {
 		vi.stubGlobal('useHead', vi.fn());
 		vi.stubGlobal('definePageMeta', vi.fn());
 		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
+		// The controls are admin-only; a refusal is what an ADMIN meets.
+		vi.stubGlobal('usePermissions', () => ({
+			canManageOrganization: ref(true),
+			showAdminGate: ref(false),
+		}));
 		const answers = new Map<string, unknown>([
 			[getFunctionName(api.delivery.rampControlQueries.getRampControls), controlsView()],
 			[getFunctionName(api.delivery.rampControlQueries.listRampAdminNotices), []],
@@ -238,6 +269,106 @@ describe('standalone preset trade-off', () => {
 			false
 		);
 		expect(wrapper.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE RADIO IS A CLAIM ABOUT WHAT IS SAVED, and the browser moves it before
+	 * anything is. A `setStreamPreset` that never landed used to leave the group
+	 * sitting on the unsaved option — the operator reads the pace they picked, the
+	 * controller runs the pace they had, and nothing on screen says so.
+	 */
+	it('puts the radio back on the stored pace when the write does not land', async () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: {
+				stream: 'campaign',
+				preset: null,
+				defaultPreset: 'balanced',
+				hasReferenceArm: true,
+			},
+		});
+		const aggressive = wrapper.find<HTMLInputElement>(
+			'[data-testid="ramp-preset-option-aggressive"]'
+		);
+		await aggressive.setValue();
+
+		expect(wrapper.emitted('change')).toEqual([['aggressive']]);
+		// The prop never changed — the mutation was refused, or it failed.
+		expect(aggressive.element.checked).toBe(false);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	/**
+	 * A pace whose write is IN FLIGHT is not yet a pace nobody is on. The parent
+	 * marks itself busy inside the change handler (`useBackendOperation.run`), so
+	 * the picker is mounted under one here rather than driven by `setProps` a tick
+	 * late — the ordering is the whole point of the test.
+	 */
+	function mountUnderParent(): { wrapper: ReturnType<typeof mount>; busy: Ref<boolean> } {
+		const busy = ref(false);
+		const Parent = defineComponent({
+			components: { RampPresetPicker },
+			setup: () => ({ busy, onChange: () => void (busy.value = true) }),
+			template: `<RampPresetPicker stream="campaign" :preset="null" default-preset="balanced"
+				:has-reference-arm="true" :busy="busy" @change="onChange" />`,
+		});
+		return { wrapper: mount(Parent), busy };
+	}
+
+	it('keeps the clicked pace visible while the write is in flight', async () => {
+		// Snapping the radio back the instant it is clicked greys out the option
+		// the operator just chose, and the click reads as one that never landed.
+		const { wrapper, busy } = mountUnderParent();
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+
+		expect(busy.value).toBe(true);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('corrects the radio once a refused write settles', async () => {
+		const { wrapper, busy } = mountUnderParent();
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+
+		// The write answered and `preset` never moved: refused, or it failed.
+		busy.value = false;
+		await nextTick();
+
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(false);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('moves once the stored pace has actually changed', async () => {
+		const wrapper = mount(RampPresetPicker, {
+			props: {
+				stream: 'campaign',
+				preset: null,
+				defaultPreset: 'balanced',
+				hasReferenceArm: true,
+			},
+		});
+		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
+		await wrapper.setProps({ preset: 'aggressive' });
+
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-option-aggressive"]').element
+				.checked
+		).toBe(true);
+		expect(
+			wrapper.find<HTMLInputElement>('[data-testid="ramp-preset-default"]').element.checked
+		).toBe(false);
 		wrapper.unmount();
 	});
 

@@ -26,6 +26,7 @@ import {
 	type DeliverabilityDashboardCell,
 } from '~/utils/deliverabilityMeasurement';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
+import { transportIdLabel } from '~/utils/transportState';
 
 const props = defineProps<{
 	cell: DeliverabilityDashboardCell;
@@ -37,7 +38,14 @@ const headingId = computed(() => `measurement-cell-${props.cell.cellKey.replace(
 const isStandalone = computed(() => props.cell.reference === null);
 const isEmpty = computed(() => isZeroVolume(props.cell));
 const rows = computed(() => armMetricRows(props.cell.own, props.cell.reference));
-const referenceColumnLabel = computed(() => props.referenceTransportId ?? 'Comparison');
+// The column heads the RELAY's numbers, so it carries the relay's name rather
+// than its stored id. `transportIdLabel` names a built-in kind the way the
+// transport card does; a plugin relay it names from its id's LEAF, because the
+// catalog's display label is not carried by the dashboard query — the transport
+// card, which does read the catalog, may word that one relay differently.
+const referenceColumnLabel = computed(() =>
+	props.referenceTransportId === null ? 'Comparison' : transportIdLabel(props.referenceTransportId)
+);
 
 /**
  * The trend, as COUNTS per day. Rendered as text plus a proportional bar, so it

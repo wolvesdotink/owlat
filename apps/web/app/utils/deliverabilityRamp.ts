@@ -22,6 +22,7 @@ import {
 	type IndependenceProjection,
 	type RampPreset,
 } from '@owlat/shared/deliverabilityIndependence';
+import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
 import {
 	cellLabel,
@@ -29,6 +30,7 @@ import {
 	providerLabel,
 	streamLabel,
 } from '~/utils/deliverabilityMeasurement';
+import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<
 	typeof api.delivery.rampControlQueries.getRampControls
@@ -64,10 +66,19 @@ export type RampAdminNotice = FunctionReturnType<
  */
 export const independenceHeadline = measurementHeadline;
 
+/**
+ * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport
+ * id, and "instead of ses" reads as a configuration value leaking onto the
+ * screen people screenshot. `transportIdLabel` names the built-in kinds from the
+ * same map the transport card and the DNS guidance use; a PLUGIN relay is named
+ * from its id's leaf here and from the plugin catalog on the card, so those two
+ * can still word one relay differently until this query carries the catalog
+ * label.
+ */
 export function independenceSubhead(referenceTransportId: string | null): string {
 	return referenceTransportId === null
 		? 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.'
-		: `How much of your mail your own server now carries instead of ${referenceTransportId}.`;
+		: `How much of your mail your own server now carries instead of ${transportIdLabel(referenceTransportId)}.`;
 }
 
 /** The month-to-date own-arm volume sentence — always available, always true. */
@@ -290,7 +301,10 @@ export interface RelayRemovalFacts {
  * over a deployment the same screen has just called safe.
  */
 export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
-	const relay = facts.referenceTransportId ?? 'the relay';
+	const relay =
+		facts.referenceTransportId === null
+			? 'the relay'
+			: transportIdLabel(facts.referenceTransportId);
 	const lostFallback = `the reputation ${relay} has built for your domain stops being available to fall back on`;
 	// The tail every arm that MOVES traffic shares; the safe arm ends differently
 	// because nothing moves and only the fallback is given up.
@@ -384,3 +398,16 @@ export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
  * exhaustive originals are the ones worth keeping.
  */
 export { cellLabel as rampCellLabel, providerLabel, streamLabel };
+
+/**
+ * THE SAME CELL, NAMED THE SAME WAY, from a stored KEY rather than a pair.
+ *
+ * The retreat notices carry `campaign:gmail` because that is what the decision
+ * row stores, while every other surface names that cell "Campaign → Gmail". An
+ * unparseable key — a stream retired since the row was written — reads as
+ * itself, because a ninety-day history has to stay readable.
+ */
+export function rampCellKeyLabel(cellKey: string): string {
+	const cell = parseDeliverabilityCellKey(cellKey);
+	return cell === null ? cellKey : cellLabel(cell);
+}

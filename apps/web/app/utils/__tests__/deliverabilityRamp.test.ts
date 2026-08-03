@@ -9,7 +9,7 @@
  * not have, and about a relay it could not name.
  */
 import { describe, expect, it } from 'vitest';
-import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import { independenceSubhead, relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 
 const REFERENCE = 'ses';
 
@@ -22,7 +22,7 @@ describe('relayRemovalConsequenceCopy', () => {
 		});
 
 		expect(consequence).toContain('1 cell has not graduated yet');
-		expect(consequence).toContain('still sends part of its mail through ses');
+		expect(consequence).toContain('still sends part of its mail through Amazon SES');
 		// The defect this pins: "1 cells have not graduated yet", shipped on two
 		// screens while the server's own refusal got it right.
 		expect(consequence).not.toContain('1 cells');
@@ -36,7 +36,7 @@ describe('relayRemovalConsequenceCopy', () => {
 		});
 
 		expect(consequence).toContain('2 cells have not graduated yet');
-		expect(consequence).toContain('still send part of their mail through ses');
+		expect(consequence).toContain('still send part of their mail through Amazon SES');
 	});
 
 	it('names the consequence itself, not the risk in general', () => {
@@ -111,5 +111,56 @@ describe('relayRemovalConsequenceCopy', () => {
 				projectedSafeAt: null,
 			}).safeDate
 		).toBeNull();
+	});
+});
+
+/**
+ * THE RELAY HAS A NAME, AND THE PROSE USES IT.
+ *
+ * `referenceTransportId` is the stored transport id — `ses`, `smtp`,
+ * `plugin.<pack>.<id>` — which is what the operator configured, not what the
+ * product calls that transport anywhere else. Printing it verbatim put "instead
+ * of ses" on the screen people screenshot while the transport card, three clicks
+ * away, called the same thing "Amazon SES". The naming itself is pinned in
+ * `transportState.test.ts`; these are the sentences it lands in.
+ */
+describe('naming the reference transport', () => {
+	it('names the relay the way the transport card does', () => {
+		expect(independenceSubhead('ses')).toContain('instead of Amazon SES');
+		expect(independenceSubhead('smtp')).toContain('instead of SMTP relay');
+		expect(independenceSubhead('ses')).not.toContain(' ses');
+	});
+
+	it('never prints a namespaced plugin id in a sentence', () => {
+		const subhead = independenceSubhead('plugin.mail-pack.postmark');
+		expect(subhead).toContain('instead of Postmark');
+		expect(subhead).not.toContain('plugin.');
+	});
+
+	it('falls back to the raw id rather than dropping an unknown transport', () => {
+		// The reference arm is whatever `EMAIL_PROVIDER` was set to, so an id this
+		// build does not know must still read as itself.
+		expect(independenceSubhead('postmark')).toContain('instead of postmark');
+		expect(
+			relayRemovalConsequenceCopy({
+				dependentCells: ['campaign:gmail'],
+				referenceTransportId: 'postmark',
+				projectedSafeAt: null,
+			}).consequence
+		).toContain('through postmark');
+	});
+
+	it('names the relay in the removal consequence too', () => {
+		expect(
+			relayRemovalConsequenceCopy({
+				dependentCells: ['campaign:gmail'],
+				referenceTransportId: 'plugin.mail-pack.postmark',
+				projectedSafeAt: null,
+			}).consequence
+		).toContain('through Postmark');
+	});
+
+	it('leaves the standalone sentence alone — there is no relay to name', () => {
+		expect(independenceSubhead(null)).toContain('There is no relay to move away from');
 	});
 });

@@ -12,7 +12,12 @@
  * AN EMPTY LIST IS GOOD NEWS AND SAYS SO. It is not an empty state to apologise
  * for and it is not styled as one.
  */
-import { rampReasonLabel, shareLabel, type RampAdminNotice } from '~/utils/deliverabilityRamp';
+import {
+	rampCellKeyLabel,
+	rampReasonLabel,
+	shareLabel,
+	type RampAdminNotice,
+} from '~/utils/deliverabilityRamp';
 import { formatShortDate } from '~/utils/formatters';
 
 defineProps<{
@@ -42,7 +47,9 @@ defineProps<{
 					<time :datetime="new Date(notice.at).toISOString()">
 						{{ formatShortDate(notice.at) }}
 					</time>
-					· {{ notice.cellKey }} ·
+					·
+					<span data-testid="ramp-notice-cell">{{ rampCellKeyLabel(notice.cellKey) }}</span>
+					·
 					<span data-testid="ramp-notice-gate">
 						{{ notice.failedGate === null ? 'Hard stop' : rampReasonLabel(notice.failedGate) }}
 					</span>

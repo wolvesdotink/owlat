@@ -23,7 +23,7 @@ export interface CampaignCapacitySchedulePlan {
 	 * means "capacity unknown" and never reaches a refusal.
 	 */
 	days: number;
-	/** Per-day recipient slice sizes; `slices.length === days`. */
+	/** Per-day recipient slice sizes. `slices.length === days`, checked on read. */
 	slices: number[];
 	/** End of the last sliced day (ms since epoch). */
 	finishesAt: number;
@@ -63,6 +63,12 @@ export function capacityRefusalPlan(error: OperationError): CampaignCapacitySche
 		if (!isFiniteNumber(slice)) return null;
 		numericSlices.push(slice);
 	}
+	// ONE SLICE PER DAY, or this is not a plan we can render. Every row's date is
+	// derived BACKWARDS from `finishesAt` through `days`
+	// (`capacitySliceDayStart`), so a slice list of a different length silently
+	// labels each row with the wrong date — a confident, wrong schedule rather
+	// than the toast a payload we do not recognise is supposed to fall back to.
+	if (numericSlices.length !== days) return null;
 
 	return {
 		days,

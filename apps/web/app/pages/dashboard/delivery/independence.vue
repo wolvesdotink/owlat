@@ -33,7 +33,7 @@ import {
 	volumeSentence,
 	shareLabel,
 } from '~/utils/deliverabilityRamp';
-import { formatShortDate } from '~/utils/formatters';
+import { formatNumber, formatShortDate } from '~/utils/formatters';
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
@@ -63,7 +63,12 @@ const headlineValue = computed(() => {
 	const data = summary.value;
 	if (data === undefined) return '—';
 	if (isStandalone.value) {
-		return data.capacity.remainingToday === null ? '—' : String(data.capacity.remainingToday);
+		// The same formatting as the sentence under it (`capacityCopy`): a headline
+		// reading "4000" above a note reading "4,000 more messages" looks like two
+		// different figures on the screen people screenshot.
+		return data.capacity.remainingToday === null
+			? '—'
+			: formatNumber(data.capacity.remainingToday);
 	}
 	return data.ownShare === null ? '—' : shareLabel(data.ownShare);
 });
