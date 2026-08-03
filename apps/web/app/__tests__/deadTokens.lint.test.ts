@@ -10,7 +10,8 @@
  * with word boundaries and a regression there would silently ban half the
  * codebase or none of it. And the SCOPE is a rule too: the shared components in
  * packages/ui paint the same screens from the same token block, so a passing run
- * has to say which roots it actually read.
+ * has to say which roots it actually read — and a root that is not there has to
+ * fail rather than be named as covered.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -30,6 +31,7 @@ const scriptPath = join(
 interface LintResult {
 	readonly status: number;
 	readonly output: string;
+	readonly errorOutput: string;
 }
 
 /** Run the guard over `roots` (none = the shipped defaults). */
@@ -37,13 +39,18 @@ function runLint(...roots: string[]): LintResult {
 	try {
 		return {
 			status: 0,
-			output: execFileSync('bash', [scriptPath, ...roots], { encoding: 'utf8' }),
+			output: execFileSync('bash', [scriptPath, ...roots], {
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
+			}),
+			errorOutput: '',
 		};
 	} catch (err) {
-		const failure = err as { status?: number; stdout?: string };
+		const failure = err as { status?: number; stdout?: string; stderr?: string };
 		return {
 			status: typeof failure.status === 'number' ? failure.status : 1,
 			output: failure.stdout ?? '',
+			errorOutput: failure.stderr ?? '',
 		};
 	}
 }
@@ -125,5 +132,25 @@ describe('check-dead-tokens.sh — scope', () => {
 		expect(result.status).toBe(0);
 		expect(result.output).toContain('packages/ui/components');
 		expect(result.output).toContain('app');
+	});
+
+	it('fails a root that does not exist instead of reporting it as clean', () => {
+		// What makes the assertion above mean anything: the roots line is printed
+		// from the array, so without this a moved or renamed directory would keep
+		// being named as covered while nothing under it was ever read.
+		const missing = join(workDir, 'not-a-directory');
+		const result = runLint(missing);
+		expect(result.status).toBe(1);
+		// Named as absent, not as "nothing to scan here": the two have opposite
+		// fixes, and only one of them is the guard's own configuration drifting.
+		expect(result.errorOutput).toContain(`scan root does not exist: ${missing}`);
+	});
+
+	it('fails when one of several roots is missing, even if the others are clean', () => {
+		const clean = join(workDir, 'scope-clean');
+		mkdirSync(clean, { recursive: true });
+		writeFileSync(join(clean, 'Card.vue'), '<template><p class="bg-bg-surface" /></template>\n');
+		expect(runLint(clean).status).toBe(0);
+		expect(runLint(clean, join(workDir, 'scope-gone')).status).toBe(1);
 	});
 });

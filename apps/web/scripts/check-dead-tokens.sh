@@ -36,13 +36,24 @@ else
 	roots=("$@")
 fi
 
+# A MISSING ROOT IS A FAILURE, NOT AN EMPTY SCAN. Rename or move a root and the
+# guard would otherwise keep printing it as covered while reading nothing there —
+# `find` reports that on stderr and the process substitution below swallows its
+# exit status, so the check has to be its own statement.
+for root in "${roots[@]}"; do
+	if [ ! -d "$root" ]; then
+		echo "✗ scan root does not exist: $root (roots: ${roots[*]})" >&2
+		exit 1
+	fi
+done
+
 # TESTS ARE NOT MARKUP. A class name in a spec is never compiled into anything
 # Tailwind renders, so it can neither emit CSS nor fail to — and the assertions
 # that pin these very rules quote every banned name by construction.
 mapfile -t files < <(
 	find "${roots[@]}" -type f \( -name '*.vue' -o -name '*.ts' \) \
-		-not -path '*/node_modules/*' -not -path '*/__tests__/*' -not -name '*.test.ts' \
-		2>/dev/null | sort
+		-not -path '*/node_modules/*' -not -path '*/__tests__/*' -not -name '*.test.ts' |
+		sort
 )
 if [ "${#files[@]}" -eq 0 ]; then
 	echo "✗ no .vue/.ts files under: ${roots[*]}" >&2
