@@ -170,6 +170,49 @@ describe('measurement cell card — standalone (no reference arm)', () => {
 		expect(invitation.classes().join(' ')).not.toContain('warning');
 		wrapper.unmount();
 	});
+
+	/**
+	 * THE STATE THAT READS AS A BUG. The reference COLUMN answers "was this cell
+	 * measured against a relay in the controller's span", the reference BARS
+	 * answer "did the relay carry it on the days plotted" — so a relay that went
+	 * quiet three days ago keeps its bars and loses its column. Both are right;
+	 * unexplained, it is a support ticket about a column that vanished.
+	 */
+	it('explains a relay whose bars are still on the trend but whose column is gone', () => {
+		const day = Date.UTC(2026, 6, 15);
+		const wrapper = mountCard(
+			cellView({
+				reference: null,
+				trend: [
+					{ day, own: armSummary({ sent: 100 }), reference: armSummary({ sent: 40 }) },
+					{ day: day + 86_400_000, own: armSummary({ sent: 120 }), reference: null },
+				],
+			}),
+			'ses'
+		);
+
+		expect(wrapper.findAll('[data-testid="measurement-reference-value"]')).toHaveLength(0);
+		const note = wrapper.find('[data-testid="measurement-quiet-relay"]');
+		expect(note.text()).toContain('still plotted');
+		// A statement about the measurement, never a fault: nothing on this card
+		// asks the operator to fix a relay that is working exactly as configured.
+		expect(note.text()).not.toMatch(/error|failed|broken|action needed/i);
+		wrapper.unmount();
+	});
+
+	it('says nothing about a quiet relay on a cell that never had one', () => {
+		const day = Date.UTC(2026, 6, 15);
+		const wrapper = mountCard(
+			cellView({
+				reference: null,
+				trend: [{ day, own: armSummary({ sent: 100 }), reference: null }],
+			}),
+			null
+		);
+
+		expect(wrapper.find('[data-testid="measurement-quiet-relay"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
 });
 
 describe('measurement cell card — a failing gate', () => {

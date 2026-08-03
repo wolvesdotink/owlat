@@ -10,6 +10,8 @@
  * THE STATES ARE THE FEATURE (plan D2/D14):
  *   - no reference transport  -> one column, plus a plain invitation to connect
  *                                one. A supported configuration, not a nag.
+ *   - a relay that went quiet -> one column WITH relay bars still on the trend,
+ *                                and a line saying why the two disagree.
  *   - insufficient data       -> "not enough data yet, N of 400 sends", neutral.
  *   - zero volume             -> an empty, calm cell. Nothing is wrong.
  *
@@ -67,6 +69,21 @@ const trendPoints = computed(() => {
 		widthPercent: peak > 0 ? Math.round((point.own.sent / peak) * 100) : 0,
 	}));
 });
+
+/**
+ * THE ONE STATE THAT LOOKS LIKE A BUG AND IS NOT: relay bars on the chart with
+ * no relay column beside them.
+ *
+ * The arm is what the gates were GIVEN, and they are given a reference arm only
+ * where the relay carried this cell in the controller's own span (~24h). The
+ * trend answers over the days it plots, so a relay that went quiet three days
+ * ago keeps its bars and loses its column — correct on both counts, and
+ * unexplained until now. This says it in one line rather than leaving the
+ * operator to file a ticket about a column that vanished.
+ */
+const hasQuietRelayHistory = computed(
+	() => isStandalone.value && props.cell.trend.some((point) => point.reference !== null)
+);
 </script>
 
 <template>
@@ -152,6 +169,15 @@ const trendPoints = computed(() => {
 
 				<div v-if="trendPoints.length > 0">
 					<h4 class="text-sm font-semibold text-text-primary">Trend</h4>
+					<p
+						v-if="hasQuietRelayHistory"
+						data-testid="measurement-quiet-relay"
+						class="mt-1 text-sm text-text-secondary"
+					>
+						Your relay carried this cell earlier in this window but not recently, so the checks had
+						nothing to compare against and the comparison column is gone. The days it did carry are
+						still plotted below.
+					</p>
 					<ul class="mt-2 space-y-1" data-testid="measurement-trend">
 						<li v-for="point in trendPoints" :key="point.day" class="flex items-center gap-3">
 							<span class="w-20 shrink-0 text-xs text-text-secondary">{{ point.label }}</span>
