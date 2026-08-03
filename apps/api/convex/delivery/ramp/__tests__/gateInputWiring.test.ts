@@ -19,9 +19,23 @@
  *      `.evaluate(...)`, so a field that only a test ever sets has no supplier
  *      here, which is exactly the state this guard exists to name.
  *
- * A gap is allowed to EXIST — some evidence genuinely has no reader yet — but
- * only by being written down below, which makes it a tracked absence instead of
- * a silent one.
+ * NAMING A FIELD IS NOT SUPPLYING IT. The defect that shipped was spelled
+ * `ownSeeds: null` — the key was right there in the literal — so a scan that
+ * credited key PRESENCE would have called the defect wired and stayed green
+ * through the whole of it. A key whose value is a bare `null`/`undefined`
+ * literal is therefore read as no supplier at all: that spelling says "this
+ * caller has decided the field is absent", which is the same fact as omitting
+ * it and must fail the same way.
+ *
+ * AND ONE READER IS NOT BOTH. ADR-0042 requires the controller and the screen to
+ * build the SAME input off the same rows, so each field is asserted against BOTH
+ * named callers rather than against a non-empty set — a field only one of them
+ * sets is the controller/screen divergence this wave exists to repair, and it
+ * would otherwise hide behind the other one's supply.
+ *
+ * A gap is allowed to EXIST — some evidence genuinely has no reader yet, and
+ * some has only one — but only by being written down below, which makes it a
+ * tracked absence instead of a silent one.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -46,6 +60,38 @@ const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
  * not measure".
  */
 const KNOWN_UNSUPPLIED: readonly string[] = ['smtpBlocks'];
+
+/**
+ * THE TWO PRODUCTION READERS, named rather than counted. The controller's read
+ * half decides for the cron; the dashboard renders what a human is told. ADR-0042
+ * / plan D5 is that they build one input off one set of rows, so both have to
+ * supply every field — a gate the screen answers from thinner evidence than the
+ * controller is a screen that reports a friendlier verdict than the one being
+ * acted on.
+ */
+const REQUIRED_SUPPLIERS: readonly string[] = [
+	'delivery/rampControllerInputs.ts',
+	'delivery/deliverabilityDashboard.ts',
+];
+
+/**
+ * THE FIELDS ONLY ONE READER SUPPLIES TODAY, each mapped to the reader that
+ * does. Asserted EXACTLY for the same reason `KNOWN_UNSUPPLIED` is: supplying
+ * one of these from the second reader without deleting its line here fails this
+ * suite, so the list can only shrink.
+ *
+ * Both entries (issue #503) are the TRAILING-BASELINE evaluator's substitution
+ * inputs. The dashboard picks that evaluator for a deployment with no reference
+ * arm — correctly — but builds its input without the cell's 30-day second series
+ * and without the complaint-feedback resolution, so gate 1's relative clause and
+ * gate 3's proxy choice come out of a different input there than in the cron.
+ * Closing it means giving the screen the integration-presence read the
+ * controller makes, which is a table read it does not do today.
+ */
+const KNOWN_ONE_SIDED: Readonly<Record<string, string>> = {
+	ownTrailingBaseline: 'delivery/rampControllerInputs.ts',
+	hasComplaintFeedback: 'delivery/rampControllerInputs.ts',
+};
 
 /**
  * PRODUCTION ONLY — `__tests__` is the fabricated caller this guard exists to
@@ -89,16 +135,28 @@ function declaredFields(): string[] {
 }
 
 /**
- * The keys of one object literal, at its TOP level only: a nested `now:` inside
- * some other argument says nothing about the gate input, and would credit a
- * supplier that does not exist.
+ * The entries of one object literal — key to the SOURCE TEXT of its value — at
+ * its TOP level only: a nested `now:` inside some other argument says nothing
+ * about the gate input, and would credit a supplier that does not exist.
+ *
+ * The value text is carried rather than discarded because the shipped defect was
+ * a key with a value: `ownSeeds: null` names the field and supplies nothing, and
+ * only the value tells the two apart. A shorthand `now` maps to its own name —
+ * it IS a reference to a binding, so it is always a supply.
  */
-function topLevelKeys(literal: string): Set<string> {
-	const keys = new Set<string>();
+function topLevelEntries(literal: string): Map<string, string> {
+	const entries = new Map<string, string>();
 	let depth = 0;
 	let index = 0;
 	let quote: string | null = null;
 	let atKeyPosition = false;
+	let pending: { key: string; start: number } | null = null;
+	/** Close the value that started after the last consumed `:`, at `end`. */
+	const closeValue = (end: number): void => {
+		if (pending === null) return;
+		entries.set(pending.key, literal.slice(pending.start, end).trim());
+		pending = null;
+	};
 	while (index < literal.length) {
 		const char = literal[index] ?? '';
 		if (quote !== null) {
@@ -119,13 +177,19 @@ function topLevelKeys(literal: string): Set<string> {
 			continue;
 		}
 		if (char === '}' || char === ']' || char === ')') {
+			// The literal's own closing brace ends the last value; a nested one is
+			// part of a value still being read.
+			if (depth === 1) closeValue(index);
 			depth -= 1;
 			atKeyPosition = false;
 			index += 1;
 			continue;
 		}
 		if (char === ',') {
-			atKeyPosition = depth === 1;
+			if (depth === 1) {
+				closeValue(index);
+				atKeyPosition = true;
+			}
 			index += 1;
 			continue;
 		}
@@ -140,16 +204,47 @@ function topLevelKeys(literal: string): Set<string> {
 			const match = /^([A-Za-z_$][\w$]*)\s*([:,}])/.exec(literal.slice(index));
 			const key = match?.[1];
 			if (key !== undefined) {
-				keys.add(key);
-				// Only the colon is consumed with the key: a `,` or `}` is a token the
-				// loop above still has to see to track depth and the next key position.
-				index += match?.[2] === ':' ? (match[0]?.length ?? 0) : key.length;
+				if (match?.[2] === ':') {
+					// Only the colon is consumed with the key: the value runs from here to
+					// the next top-level `,` or `}`, both of which the loop still has to
+					// see to track depth.
+					index += match[0]?.length ?? 0;
+					pending = { key, start: index };
+				} else {
+					entries.set(key, key);
+					index += key.length;
+				}
 				atKeyPosition = false;
 				continue;
 			}
 			atKeyPosition = false;
 		}
 		index += 1;
+	}
+	closeValue(literal.length);
+	return entries;
+}
+
+/**
+ * A value that SUPPLIES NOTHING. A caller writing the absence in by hand has
+ * decided the field is absent for every cell of every deployment — the same fact
+ * as omitting the key, reached by a spelling that names it — so it is credited
+ * the same way: not at all.
+ *
+ * Only the BARE literal. `seedSweeps.own` may well be `null` at run time; that is
+ * a read of real evidence that came back empty, which is the thing the gate is
+ * supposed to see.
+ */
+function isHardcodedAbsence(value: string): boolean {
+	return value === 'null' || value === 'undefined';
+}
+
+/** The keys of one literal that a production caller actually supplies a value for. */
+function suppliedKeys(literal: string): Set<string> {
+	const keys = new Set<string>();
+	for (const [key, value] of topLevelEntries(literal)) {
+		if (isHardcodedAbsence(value)) continue;
+		keys.add(key);
 	}
 	return keys;
 }
@@ -190,7 +285,7 @@ const SUPPLIERS = new Map<string, Set<string>>();
 for (const file of MODULES) {
 	const fields = new Set<string>();
 	for (const literal of evaluationLiterals(sourceWithoutComments(file))) {
-		for (const key of topLevelKeys(literal)) fields.add(key);
+		for (const key of suppliedKeys(literal)) fields.add(key);
 	}
 	if (fields.size > 0) SUPPLIERS.set(named(file), fields);
 }
@@ -233,16 +328,53 @@ describe('the gate-input guard is looking at production', () => {
 	it('reads only the TOP level of a literal, both spellings of a key', () => {
 		// A nested key is not credited — `capacity` here supplies `capacity`, not
 		// `projectedDemand` — and the shorthand `now` counts exactly like `own: a`.
-		const keys = topLevelKeys('{ own: a, capacity: { projectedDemand: 1 }, now }');
+		const keys = suppliedKeys('{ own: a, capacity: { projectedDemand: 1 }, now }');
 		expect([...keys].sort()).toEqual(['capacity', 'now', 'own']);
+	});
+
+	it('reads each key back with the SOURCE TEXT of its value', () => {
+		// The value is what tells a supply from a hand-written absence, so it has to
+		// survive a nested literal, a trailing comma and a call in value position.
+		const entries = topLevelEntries('{ own: a, seeds: sweeps.own, cfg: { k: 1 }, now: f(x), }');
+		expect([...entries]).toEqual([
+			['own', 'a'],
+			['seeds', 'sweeps.own'],
+			['cfg', '{ k: 1 }'],
+			['now', 'f(x)'],
+		]);
+	});
+
+	it('refuses a hardcoded absence as a supplier — the shipped defect, spelled out', () => {
+		// THE EXACT LITERAL THAT SHIPPED. `deliverabilityDashboard.ts` named both
+		// seed fields and passed `null` for each, so a key-presence scan would have
+		// called gate 5 wired for the entire time it could not reach a verdict.
+		const keys = suppliedKeys('{ own, ownSeeds: null, referenceSeeds: undefined }');
+		expect([...keys].sort()).toEqual(['own']);
+		// A READ that happens to be null-valued at run time is still a supply: only
+		// the bare literal is the caller deciding on the deployment's behalf.
+		expect([...suppliedKeys('{ ownSeeds: sweeps.own ?? null }')]).toEqual(['ownSeeds']);
+	});
+
+	it('keeps the tracked lists disjoint and about fields that exist', () => {
+		// A gap listed twice, or listed for a field that no longer exists, is dead
+		// documentation that would silently excuse a future field of the same name.
+		const oneSided = Object.keys(KNOWN_ONE_SIDED);
+		expect(oneSided.filter((field) => KNOWN_UNSUPPLIED.includes(field))).toEqual([]);
+		expect(oneSided.filter((field) => !FIELDS.includes(field))).toEqual([]);
+		expect(Object.values(KNOWN_ONE_SIDED).filter((s) => !REQUIRED_SUPPLIERS.includes(s))).toEqual(
+			[]
+		);
 	});
 });
 
 describe('every declared gate input has a production supplier', () => {
 	for (const field of FIELDS) {
+		const oneSided = KNOWN_ONE_SIDED[field];
 		const expectation = KNOWN_UNSUPPLIED.includes(field)
 			? `${field} is a TRACKED gap — no production module sets it`
-			: `${field} is set by a production caller`;
+			: oneSided !== undefined
+				? `${field} is a TRACKED one-sided input — only ${oneSided} sets it`
+				: `${field} is set by BOTH production callers`;
 		it(expectation, () => {
 			const suppliers = suppliersFor(field);
 			if (KNOWN_UNSUPPLIED.includes(field)) {
@@ -251,7 +383,15 @@ describe('every declared gate input has a production supplier', () => {
 				expect(suppliers).toEqual([]);
 				return;
 			}
-			expect(suppliers).not.toEqual([]);
+			if (oneSided !== undefined) {
+				// Exact for the same reason, in the other direction: the second reader
+				// starting to supply this field fails here until the line is deleted.
+				expect(suppliers).toEqual([oneSided]);
+				return;
+			}
+			// BOTH, by name. A non-empty check would let the controller keep supplying
+			// a field the screen dropped, which is the divergence, not the fix.
+			for (const supplier of REQUIRED_SUPPLIERS) expect(suppliers).toContain(supplier);
 		});
 	}
 
