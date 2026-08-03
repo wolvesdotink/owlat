@@ -475,16 +475,24 @@ describe('the promotion-evidence reader', () => {
 	 * the standalone promotion route could never be satisfied, which is exactly
 	 * what plan D2 forbids an absent signal from doing.
 	 */
-	it('reads a long observed zero as a reading once the arm has sent across the whole span', async () => {
+	it('reads a long observed zero as a reading once the arm’s traffic spans the observation minimum', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
 		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
 
-		// The same cell, sending on the oldest day the 30-day read can see. Thirty
-		// days of traffic and not one deferral is a silence this deployment has
-		// observed, not one it failed to instrument.
+		// A row on the day the CONTROLLER's read reaches and the screen's does not
+		// buys nothing: the predicate clamps to its own span, so the grid cannot be
+		// promotable off a day the dashboard would never show.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 10, dayOffset: 30 });
+		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
+
+		// The same cell, sending three weeks of the span with no deferral anywhere
+		// in it — a silence this deployment has observed, not one it failed to
+		// instrument. The span's oldest days stay quiet throughout.
+		for (const dayOffset of [5, 10, 15, 20]) {
+			await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 10, dayOffset });
+		}
 		expect((await evidence(t)).worstCellDeferralRate).toBe(0);
 	});
 

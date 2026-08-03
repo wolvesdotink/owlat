@@ -512,14 +512,17 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 	 * own-MTA share and would restart its fourteen-day graduation clock every
 	 * tick — an ABSENT signal blocking a ramp for ever, which plan D2 forbids.
 	 */
-	it('lets a healthy cell that has never deferred advance once the span itself answers', async () => {
+	it('lets a healthy cell that has never deferred advance once its traffic spans the observation minimum', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
-		// Sending on the oldest day the 30-day read can see, and not one deferral
-		// anywhere between: a silence this deployment has observed rather than one
-		// it failed to instrument.
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000, dayOffset: 30 });
+		// Traffic spread across three weeks and not one deferral anywhere in it: a
+		// silence this deployment has observed rather than one it failed to
+		// instrument. NOTHING ON THE SPAN'S OLDEST DAYS — the exit is a property of
+		// the span, not of the day at its edge, or a cell that does not send at
+		// weekends would re-enter the hold every week.
+		for (const dayOffset of [0, 5, 10, 15, 20]) {
+			await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000, dayOffset });
+		}
 
 		expect(await deferralGate(t)).toMatchObject({
 			status: 'pass',
@@ -530,6 +533,27 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 		// share go up at all; the hold forces it out of the fold entirely. What that
 		// does to the aggregate verdict and the clean streak is pinned in
 		// `ramp/__tests__/gates.insufficient.test.ts`, where the aggregator lives.
+	});
+
+	/**
+	 * THE BOUNDARY DAY THE CONTROLLER READS AND THE SCREEN DOES NOT.
+	 *
+	 * The controller's own-arm read reaches back 30 days from `now` (day-30); the
+	 * dashboard's reaches back from tomorrow's UTC boundary (day-29). The
+	 * predicate clamps both to ITS span, so the extra row cannot buy the
+	 * controller a verdict the screen would not reach — the twin of this fixture
+	 * is `deliverabilityDashboardQueries`' own boundary case, and both must hold.
+	 */
+	it('does not let the extra day its read reaches decide a cell the screen cannot see', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000, dayOffset: 30 });
+
+		expect(await deferralGate(t)).toMatchObject({
+			status: 'insufficient_data',
+			reason: 'own_deferral_telemetry_absent',
+		});
 	});
 });
 

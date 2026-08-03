@@ -25,7 +25,7 @@ import { MS_PER_DAY } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import {
-	DEFERRAL_TELEMETRY_SPAN_MS,
+	deferralTelemetryReadSince,
 	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
 } from '../analytics/transportOutcomeSummary';
@@ -258,15 +258,18 @@ async function dnsblDays(
  * TWO SPANS, ONE READ, and that is the whole shape of this function. The RATE is
  * the 24h evaluation window the controller judges gate 2 over — anything wider
  * would answer a different question than the gate does. The INSTRUMENT is judged
- * over `DEFERRAL_TELEMETRY_SPAN_MS`, through the same `hasUsableDeferralTelemetry`
- * the gate and the dashboard ask, because a quiet Tuesday is not the same fact as
- * a cell nothing records deferrals for. Asking the instrument over the 24h window
- * made a spotless, fully instrumented grid unpromotable on any day nothing
- * happened to get deferred.
+ * over the telemetry span, through the same `hasUsableDeferralTelemetry` the gate
+ * and the dashboard ask, because a quiet Tuesday is not the same fact as a cell
+ * nothing records deferrals for. Asking the instrument over the 24h window made a
+ * spotless, fully instrumented grid unpromotable on any day nothing happened to
+ * get deferred.
  *
  * A CELL WITH NO SENDS IN THE WINDOW IS SKIPPED, not held: it contributes no rate
  * to a worst-of, and demanding an instrument reading from a cell that sent
- * nothing would make the grid's quietest corner veto every promotion.
+ * nothing would make the grid's quietest corner veto every promotion. What DOES
+ * null the grid is a cell sending today whose traffic has not yet spread across
+ * the telemetry span — a young cell, never a quiet day, since the predicate reads
+ * the span rather than its oldest day.
  */
 async function worstCellDeferralRate(
 	ctx: RampReadCtx,
@@ -276,7 +279,7 @@ async function worstCellDeferralRate(
 	// several shard reads, so serializing them made one promotion serialize
 	// several hundred round-trips. The reads stay bounded — one cell/arm's ≤30
 	// cron-pruned days — and both spans are derived from the rows they return.
-	const spanStart = args.now - DEFERRAL_TELEMETRY_SPAN_MS;
+	const spanStart = deferralTelemetryReadSince(args.now);
 	const perCell = await Promise.all(
 		allDeliverabilityCells().map((cell) =>
 			readCellArmBuckets(ctx.db, {

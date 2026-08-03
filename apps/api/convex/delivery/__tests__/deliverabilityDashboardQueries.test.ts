@@ -561,12 +561,15 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	});
 
 	/**
-	 * The hold's EXIT reaches the screen too, and over the read span rather than
-	 * the window: the observation is handed the same lower bound the rows were
-	 * read with, so a narrower argument here would show the operator a decided
-	 * gate the controller is still holding.
+	 * The hold's EXIT reaches the screen too, over the telemetry span rather than
+	 * the 7-day window — and it must land on exactly the day the CONTROLLER's exit
+	 * lands on. The two readers do not read the same rows: the controller's
+	 * own-arm read reaches back 30 days from `now` (day-30), the screen's from
+	 * tomorrow's UTC boundary (day-29). The predicate clamps both to its own span,
+	 * so the day only one of them holds decides nothing — the twin of this fixture
+	 * is `rampControllerHardStops`' boundary case, and both hold on it.
 	 */
-	it('renders a never-deferring cell as decided once it has sent across the whole read span', async () => {
+	it('renders a never-deferring cell as decided on the same day the controller does', async () => {
 		const t = convexTest(schema, modules);
 		const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 		const day = startOfDayUtc(Date.now());
@@ -575,18 +578,35 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 				'transportOutcomes',
 				bucket({ periodStart: day - ONE_DAY_MS, sent: 50_000, delivered: 49_800 })
 			);
-			// The oldest day the dashboard's 30-day read can see (its window ends at
-			// tomorrow's UTC boundary), carrying traffic and still no deferral.
+			// The boundary day: inside the controller's read, outside the screen's,
+			// outside the span both judge the instrument over.
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucket({ periodStart: day - 29 * ONE_DAY_MS, shardKey: 1, sent: 10, delivered: 10 })
+				bucket({ periodStart: day - 30 * ONE_DAY_MS, shardKey: 1, sent: 10, delivered: 10 })
 			);
 		});
 
-		const gate = gmailCell(
+		const boundary = gmailCell(
 			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
 		).gates.find((entry) => entry.gate === 'deferral');
-		expect(gate?.status).toBe('pass');
+		expect(boundary?.status).toBe('insufficient_data');
+		expect(boundary?.reason).toBe('own_deferral_telemetry_absent');
+
+		// Traffic spread across the span — with its oldest days quiet, since the
+		// exit is a property of the span rather than of the day at its edge.
+		await t.run(async (ctx) => {
+			for (const offset of [5, 10, 15, 20]) {
+				await ctx.db.insert(
+					'transportOutcomes',
+					bucket({ periodStart: day - offset * ONE_DAY_MS, shardKey: 2, sent: 10, delivered: 10 })
+				);
+			}
+		});
+
+		const observed = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		).gates.find((entry) => entry.gate === 'deferral');
+		expect(observed?.status).toBe('pass');
 	});
 
 	it('reports a zero-volume cell as empty rather than as a problem', async () => {

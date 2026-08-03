@@ -276,37 +276,30 @@ export function safeOutcomeCount(value: number | undefined | null): number {
 }
 
 /**
- * HAS ANYTHING WRITTEN THE `deferred` COUNTER OVER THESE ROWS?
- *
- * Gate 2's zero has two readings — a clean window, or a cell nobody records
- * deferrals for — and `deferred / sent` is `0` in both (see
- * `RampGateEvaluationInput.hasDeferralTelemetry`). This is half of the
- * observation that separates them; `hasUsableDeferralTelemetry` below is the
- * whole of it, and is what every reader actually calls.
- *
- * DELIBERATELY UNWINDOWED — it answers a question about the INSTRUMENT, not
- * about a window, so callers hand it the whole span they read
- * (`DEFERRAL_TELEMETRY_SPAN_MS`) rather than the evaluation window inside it. A
- * quiet day is not the same fact as a deployment that never records deferrals,
- * and only the second one may hold a gate.
- *
- * TAKES ANYTHING CARRYING THE COUNTER — raw shard rows and already-summed
- * summaries alike — so a caller that has only summaries to hand can still ask
- * the witness half without a hand-written `> 0` of its own.
- */
-export function hasRecordedDeferrals(
-	rows: readonly Pick<TransportOutcomeTotals, 'deferred'>[]
-): boolean {
-	return rows.some((row) => safeOutcomeCount(row.deferred) > 0);
-}
-
-/**
  * THE SPAN THE INSTRUMENT IS JUDGED OVER, declared beside the predicate that
  * judges it. 30 days — the history the controller and the dashboard already read
  * for their baselines, so every reader asks the same question of the same rows
  * and the witness costs no extra index read anywhere.
  */
 export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * MS_PER_DAY;
+
+/**
+ * HOW MUCH OF THE SPAN THE ARM'S OWN TRAFFIC HAS TO COVER before a silent
+ * `deferred` counter counts as a reading rather than as a silence.
+ *
+ * A DISTANCE, NOT A DAY COUNT, and not the span's oldest day either. Real
+ * senders are not continuous: a cell that sends on weekdays only is quiet on
+ * both of the span's oldest days once every seven, and a test anchored on that
+ * edge would restart its fourteen-day graduation clock every weekend — the
+ * permanent block plan D2 forbids, merely made intermittent. A cell that sends
+ * one batch a week has four sending days in the span and is just as entitled to
+ * an answer. What both have and a cell that started on Tuesday does not is
+ * TRAFFIC SPREAD ACROSS THE SPAN, which is what this measures.
+ *
+ * Fourteen days because that is the ramp's own graduation dwell: the shortest
+ * period the plan is willing to call sustained evidence about a cell.
+ */
+export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * MS_PER_DAY;
 
 /**
  * The oldest UTC day inside the span, counting TODAY as one of its days. The
@@ -321,18 +314,38 @@ function telemetrySpanStartDay(now: number): number {
 }
 
 /**
+ * THE LOWER BOUND A READER MUST PASS `readCellArmBuckets` for its rows to be
+ * able to answer `hasUsableDeferralTelemetry` at all.
+ *
+ * One helper rather than three hand-derived bounds: the controller reads back
+ * from `now`, the dashboard from tomorrow's UTC boundary and the promotion rule
+ * from its own span start, and three spellings of "thirty days" is how two
+ * readers come to ask the same predicate of different rows. Take it as the
+ * MINIMUM of your own bound and this one — reading wider is free, since the
+ * predicate ignores rows outside the span anyway.
+ */
+export function deferralTelemetryReadSince(now: number): number {
+	return telemetrySpanStartDay(now);
+}
+
+/**
  * IS AN EMPTY `deferred` COUNTER A READING, OR A SILENCE? — the ONE answer gate
  * 2, the dashboard and the phase-promotion rule all ask for.
  *
- * Two facts satisfy it, and the second one is why it is not just
- * `hasRecordedDeferrals`:
+ * Two facts satisfy it, and the second one is why it is not simply "did the
+ * counter ever move":
  *
- *   1. THE COUNTER MOVED over the span. The instrument demonstrably ran, so the
- *      zeros beside it are real readings.
- *   2. THE ARM HAS BEEN SENDING FOR THE WHOLE SPAN and the counter still has not
- *      moved. A zero across thirty days of continuous own-arm traffic has been
- *      OBSERVED; it is not the same fact as a zero from a cell that started
+ *   1. THE COUNTER MOVED inside the span. The instrument demonstrably ran, so
+ *      the zeros beside it are real readings.
+ *   2. THE ARM'S TRAFFIC COVERS THE SPAN — its oldest and newest sending days
+ *      are at least `DEFERRAL_TELEMETRY_MIN_OBSERVED_MS` apart — and the counter
+ *      still has not moved. A zero across a fortnight of own-arm sending has
+ *      been OBSERVED; it is not the same fact as a zero from a cell that started
  *      sending on Tuesday.
+ *
+ * Both facts are PROPERTIES OF THE SPAN, never of one day. An earlier revision
+ * asked (2) of the span's oldest day alone, which any cell that does not send at
+ * weekends fails once a week — see `DEFERRAL_TELEMETRY_MIN_OBSERVED_MS`.
  *
  * Without (2) the hold has no exit, and that is a live bricking bug rather than
  * a conservative default: a deployment whose warm-up overflow routes to a relay
@@ -343,24 +356,35 @@ function telemetrySpanStartDay(now: number): number {
  * with no operator remedy. Plan D2 forbids exactly that: an ABSENT signal may
  * slow a ramp down, never block it permanently.
  *
- * TAKES `now`, NOT THE CALLER'S LOWER BOUND (see `telemetrySpanStartDay`). Rows
- * that do not reach back to the span's oldest day simply fail (2), which is the
- * safe direction: a reader that under-reads holds a little longer, and no reader
- * can shorten the span it is judged against.
+ * TAKES `now`, NOT THE CALLER'S LOWER BOUND, and CLAMPS ITS OWN SPAN over the
+ * rows: a reader that happened to read a day further back must not reach a
+ * different verdict from one that did not, which is precisely how the screen and
+ * the controller would come to disagree at the boundary. Read at least back to
+ * `deferralTelemetryReadSince`; anything older is ignored here. Rows that fall
+ * short of the span simply fail (2), which is the safe direction — a reader that
+ * under-reads holds a little longer and can never shorten the span.
  */
 export function hasUsableDeferralTelemetry(
 	rows: readonly Pick<TransportOutcomeBucketCounts, 'deferred' | 'sent' | 'periodStart'>[],
 	now: number
 ): boolean {
-	if (hasRecordedDeferrals(rows)) return true;
 	if (!Number.isFinite(now)) return false;
 	const spanStartDay = telemetrySpanStartDay(now);
-	return rows.some(
-		(row) =>
-			Number.isFinite(row.periodStart) &&
-			row.periodStart <= spanStartDay &&
-			safeOutcomeCount(row.sent) > 0
-	);
+	// Exclusive: a future-dated row is a clock fault, and letting one manufacture
+	// the spread in (2) would unlock the gate off a day that has not happened.
+	const spanUntil = startOfDayUtc(now) + MS_PER_DAY;
+	let oldestSendingDay: number | null = null;
+	let newestSendingDay: number | null = null;
+	for (const row of rows) {
+		const day = row.periodStart;
+		if (!Number.isFinite(day) || day < spanStartDay || day >= spanUntil) continue;
+		if (safeOutcomeCount(row.deferred) > 0) return true;
+		if (safeOutcomeCount(row.sent) <= 0) continue;
+		if (oldestSendingDay === null || day < oldestSendingDay) oldestSendingDay = day;
+		if (newestSendingDay === null || day > newestSendingDay) newestSendingDay = day;
+	}
+	if (oldestSendingDay === null || newestSendingDay === null) return false;
+	return newestSendingDay - oldestSendingDay >= DEFERRAL_TELEMETRY_MIN_OBSERVED_MS;
 }
 
 /** Zero-denominator guard — the one place a division happens. */

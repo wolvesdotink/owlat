@@ -135,8 +135,10 @@ function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
  * raising its own-MTA share AND restart its fourteen-day graduation clock every
  * tick, for ever, which plan D2 forbids an absent signal from doing. So the
  * reader's observation is satisfied by ONE recorded deferral over the telemetry
- * span OR by the arm having sent across that whole span without one — see
- * `hasUsableDeferralTelemetry`, which owns that rule for every reader. A
+ * span OR by own-arm traffic SPREAD ACROSS that span without one — see
+ * `hasUsableDeferralTelemetry`, which owns that rule for every reader, and which
+ * asks the span rather than any one day inside it precisely because a cell that
+ * does not send at weekends would otherwise re-enter the hold every week. A
  * relay-equipped deployment whose warm-up overflow never defers is a supported
  * configuration, not an uninstrumented one.
  */
