@@ -277,8 +277,18 @@ async function worstCellDeferralRate(
 ): Promise<number | null> {
 	// FIFTEEN INDEPENDENT SHARDED READS, issued together. Each one is itself
 	// several shard reads, so serializing them made one promotion serialize
-	// several hundred round-trips. The reads stay bounded — one cell/arm's ≤30
-	// cron-pruned days — and both spans are derived from the rows they return.
+	// several hundred round-trips. Both spans are derived from the rows they
+	// return, so the read has to cover the wider one.
+	//
+	// THE NUMBER, because "bounded" stopped being the useful word here: 15 cells
+	// (3 streams × 5 destination providers) × up to 30 day-buckets
+	// (`DEFERRAL_TELEMETRY_SPAN_MS`) × `TRANSPORT_OUTCOME_SHARD_COUNT` = 8 shards
+	// ≈ 3,600 documents in ONE mutation, against ~120 when this read was a 24h
+	// summary. That is comfortably inside Convex's per-transaction read limit and
+	// `promoteRampPhase` runs for one cell at a time, so it is headroom rather
+	// than a defect — but widening either span, or the shard count, multiplies
+	// against the other two, and the next change should be made with the figure
+	// in view rather than rediscovering it.
 	const spanStart = deferralTelemetryReadSince(args.now);
 	const perCell = await Promise.all(
 		allDeliverabilityCells().map((cell) =>

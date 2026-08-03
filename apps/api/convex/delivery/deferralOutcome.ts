@@ -45,9 +45,10 @@
  * tomorrow's evidence and counts again.
  *
  * FAIL-SOFT, like every other outcome write: a send with no `sendAssignments`
- * row records nothing (the seed-probe seam, plan D18), and the effect runner
- * degrades a failed measurement write to a warning rather than rolling back the
- * retry it describes.
+ * row records nothing (the seed-probe seam, plan D18), and the counter bump
+ * itself is scheduled off this mutation by the effect runner into
+ * `analytics.transportOutcomes.recordOutcomeForSend`, which degrades its own
+ * failure to a warning rather than rolling back the retry it describes.
  */
 
 import type { MutationCtx } from '../_generated/server';
@@ -72,10 +73,16 @@ export type RecordDeferralOutcomeResult =
 /**
  * Record ONE observed last-mile deferral against the send's (cell, arm) counter.
  *
- * Called INLINE from `completeSend` rather than scheduled: it is already inside
- * the mutation that decides what to do with the deferral, the per-day gate keeps
- * it to one shard write per send per day even in a retry storm, and a measurement
- * that arrived a scheduler hop later could be attributed to the wrong UTC day.
+ * Called INLINE from `completeSend`: the observation belongs in the mutation that
+ * owns the deferral decision, because that mutation also owns the per-day stamp
+ * this function writes — read, decided and stamped in one transaction, so a retry
+ * storm cannot race two callbacks into taking the same day twice.
+ *
+ * The counter bump it emits is a separate question, and the effect runner answers
+ * it the other way: `transport_outcome` is scheduled, so the shard write lands
+ * outside this transaction. Day attribution survives that hop because `at` rides
+ * on the effect and `recordTransportOutcomeForSend` buckets on the instant it is
+ * given rather than on its own clock.
  */
 export async function recordDeferralOutcome(
 	ctx: MutationCtx,
@@ -110,8 +117,9 @@ export async function recordDeferralOutcome(
 	await ctx.db.patch(args.send.id, { deferralCountedDay: day });
 	// Through the lifecycle's own effect runner, so the outcome is written by the
 	// ONE writer every other event goes through: it resolves the cell, the arm
-	// and the calibration flag from the send's assignment row, and it degrades to
-	// a warning rather than failing the mutation around it.
+	// and the calibration flag from the send's assignment row, and — scheduled off
+	// this transaction like every other `transport_outcome` — it swallows its own
+	// failure rather than failing the mutation around it.
 	//
 	// THROUGH THE SHIPPED PREVIEW EXCLUSION, not a second copy of it. A `test`
 	// send keeps the durable lifecycle — routing re-entry needs it, so it reaches

@@ -338,12 +338,26 @@ export async function applyEffects(
 				break;
 			}
 			default: {
-				// Exhaustive over `Effect`. Without this arm, DELETING a case still
-				// compiles and the effect is silently never applied — the reader-with-
-				// no-writer shape one level down, and only the integration cases would
-				// notice.
+				// Exhaustive over `Effect` AT COMPILE TIME. Without this binding,
+				// DELETING a case still compiles and the effect is silently never
+				// applied — the reader-with-no-writer shape one level down, and only the
+				// integration cases would notice.
 				const exhaustive: never = effect;
-				return exhaustive;
+				// AT RUNTIME THE LOOP MUST NOT STOP. Nothing in the type system covers an
+				// effect that reaches this runner from another build — a job scheduled by
+				// the previous deploy, a shape read back out of a payload — and returning
+				// here would drop every REMAINING effect in the list: the blocklist
+				// insert, the campaign counters, the webhook fanout, none of which have
+				// anything to do with the tag we could not read. One unapplied effect is
+				// the smaller loss, and it is the one this arm takes.
+				//
+				// THE TAG ONLY. An effect this build cannot name may still be carrying a
+				// recipient address, and a warning is not a PII sink.
+				logWarn(
+					'[sendLifecycle] skipped effect with unknown kind:',
+					String((exhaustive as { kind?: unknown }).kind)
+				);
+				break;
 			}
 		}
 	}
