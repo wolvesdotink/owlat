@@ -132,6 +132,25 @@ describe('a seeded placement window reaches gate 5 through the real loader', () 
 		expect(gate.measurement.ownSample).toBe(20);
 	});
 
+	it('denominates the sample in PROBES, not in connected mailboxes', async () => {
+		// THE UNIT THE COPY RENDERS. `ownSample` is `SeedProviderRollup.sampleSize`,
+		// summed out of per-placement PROBE counts, and the shadow copy writes one
+		// probe per seed mailbox per send — so one mailbox swept over twenty sends
+		// is a sample of twenty, not of one. The renderer's noun is pinned in
+		// `apps/web/.../deliverabilityMeasurement.test.ts`; this is the fact it
+		// renders, asserted where the number is produced.
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		const mailboxes = await t.run(
+			async (ctx) => await ctx.db.query('externalMailAccounts').collect()
+		);
+		expect(mailboxes).toHaveLength(1);
+		const gate = await controllerSeedGate(t);
+		expect(gate.measurement.ownSample).toBe(20);
+	});
+
 	it('reaches a FAIL when the cell is being filed to spam', async () => {
 		const t = convexTest(schema, modules);
 		await standaloneCell(t);
