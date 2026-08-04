@@ -45,7 +45,7 @@ const SPAM_RATE_LABEL = {
 			<div
 				v-if="isLoading"
 				data-testid="compliance-loading"
-				class="h-24 animate-pulse rounded-lg bg-surface-subtle"
+				class="h-24 animate-pulse rounded-lg bg-bg-surface"
 			/>
 			<div v-else-if="telemetry" class="grid gap-4 lg:grid-cols-3">
 				<section

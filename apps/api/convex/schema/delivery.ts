@@ -1,13 +1,9 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { returnPathTables } from './returnPath';
 import { contentScanFlagValidator } from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
-import {
-	deliverabilitySignalSeverityValidator,
-	deliverabilitySignalSourceValidator,
-	deliverabilitySignalProviderValidator,
-	destinationProviderValidator,
-} from '../delivery/deliverabilityValidators';
+import { deliverabilityRoutingTables } from './deliverabilityRouting';
 import {
 	deliverabilityAlertRecipientStatusValidator,
 	deliverabilityAlertRecipientUnavailableReasonValidator,
@@ -21,15 +17,17 @@ import {
  * Spread into `defineSchema()` from schema.ts via `...deliveryTables`.
  */
 export const deliveryTables = {
-	// Blocked Emails - email addresses that should not receive emails
-	// Used to protect sender reputation by excluding bounced, complained, or manually blocked addresses
+	...returnPathTables,
+
+	// Blocked Emails — addresses that must not be sent to, so a bounce, a
+	// complaint, a manual block or a sunset decision cannot cost us reputation.
 	blockedEmails: defineTable({
 		email: v.string(), // The blocked email address (normalized to lowercase)
-		// Reason why this email was blocked
 		reason: v.union(
 			v.literal('bounced'), // Hard bounce - email address doesn't exist
 			v.literal('complained'), // Recipient marked email as spam
-			v.literal('manual') // Manually added to blocklist
+			v.literal('manual'), // Manually added to blocklist
+			v.literal('unengaged') // Sunset policy — see contacts/sunsetPolicy.ts
 		),
 		// Bounce type classification (hard = permanent, soft = temporary)
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
@@ -150,21 +148,7 @@ export const deliveryTables = {
 		.index('by_domain', ['primaryDomain'])
 		.index('by_scheduled_at', ['scheduledAt']),
 
-	// Google Postmaster Tools v2's daily SPAM_RATE for a verified authentication
-	// domain. One idempotent row per domain/day; the signed MTA collector is the
-	// only writer. Raw OAuth credentials/tokens never enter Convex. The retention
-	// sweep keeps at most 90 days.
-	googlePostmasterStats: defineTable({
-		domainId: v.id('domains'),
-		domain: v.string(),
-		periodStart: v.number(),
-		userReportedSpamRatio: v.number(),
-		fetchedAt: v.number(),
-		ingestedAt: v.number(),
-	})
-		.index('by_domain_period', ['domain', 'periodStart'])
-		.index('by_domain_id', ['domainId'])
-		.index('by_period', ['periodStart']),
+	// Google Postmaster Tools tables live in `schema/postmaster.ts`.
 
 	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
 	// handler records one sample after the unsubscribe mutation has completed;
@@ -207,8 +191,7 @@ export const deliveryTables = {
 		expiresAt: v.number(), // 24h for clean, 1h for flagged
 	}).index('by_url_hash', ['urlHash']),
 
-	// Provider Routes - email provider routing configuration
-	// Determines which email provider (mta, ses, resend, smtp) to use per message type
+	// Provider Routes - which email provider (mta, ses, resend, smtp) per message type
 	providerRoutes: defineTable({
 		messageType: v.union(
 			v.literal('campaign'),
@@ -218,7 +201,8 @@ export const deliveryTables = {
 		strategy: v.union(
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
-			v.literal('workload_split') // Split traffic by weight across providers
+			v.literal('workload_split'), // Split traffic by weight across providers
+			v.literal('adaptive_mix') // Deterministic per-recipient split by the cell's share (D7)
 		),
 		// Ordered list of providers for this route
 		providers: v.array(
@@ -244,40 +228,7 @@ export const deliveryTables = {
 		updatedAt: v.number(),
 	}).index('by_message_type', ['messageType']),
 
-	// Durable provider-slice fallback state materialized from the authenticated
-	// MTA snapshot. One row per tenant + destination provider (plus `all`).
-	deliverabilityRouteStates: defineTable({
-		organizationId: v.string(),
-		destinationProvider: deliverabilitySignalProviderValidator,
-		isFallbackActive: v.boolean(),
-		signals: v.array(
-			v.object({
-				source: deliverabilitySignalSourceValidator,
-				severity: deliverabilitySignalSeverityValidator,
-				observedAt: v.number(),
-			})
-		),
-		fallbackActiveSince: v.optional(v.number()),
-		healthySince: v.optional(v.number()),
-		snapshotGeneratedAt: v.number(),
-		expiresAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index('by_org_provider', ['organizationId', 'destinationProvider'])
-		.index('by_expires_at', ['expiresAt']),
-
-	// Recipient-domain provider classifications learned from successful MTA
-	// deliveries. This lets pre-send routing reuse the MTA's authoritative MX
-	// resolution for custom Workspace / Microsoft 365 domains.
-	destinationProviderDomains: defineTable({
-		organizationId: v.string(),
-		domain: v.string(),
-		destinationProvider: destinationProviderValidator,
-		observedAt: v.number(),
-		expiresAt: v.number(),
-	})
-		.index('by_org_domain', ['organizationId', 'domain'])
-		.index('by_expires_at', ['expiresAt']),
+	...deliverabilityRoutingTables,
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({

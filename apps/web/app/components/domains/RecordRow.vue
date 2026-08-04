@@ -83,6 +83,18 @@ const registrableZone = computed(
 // The current return-path host to seed the editor: the explicit per-domain host
 // if set, otherwise the one derived from the MAIL FROM record.
 const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHost.value);
+
+// Registration has SETTLED: the domain is no longer mid-registration and is not
+// sitting on a registration failure. The registering placeholder and the
+// failure notice REPLACE the setup sections rather than sitting alongside them,
+// so this gates everything that only makes sense once the domain exists —
+// the DNS guidance, the propagation note, and the Yahoo CFL enrollment flow
+// (which is a feedback-loop wizard, not DNS guidance).
+const registrationSettled = computed(
+	() =>
+		props.domain.status !== 'registering' &&
+		!(props.domain.status === 'failed' && props.domain.lastRegistrationError)
+);
 </script>
 
 <template>
@@ -422,16 +434,29 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHos
 						</div>
 					</template>
 
+					<!-- Per-STREAM sending subdomains (G-14): the proposed layout, the
+					     reputation-inheritance advice and every record for it in one pass. -->
+					<DomainsStreamSubdomainPlanPanel
+						v-if="registrationSettled"
+						:domain-id="domain._id"
+						:can-manage="canManageDomains"
+					/>
+
+					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
+					     belongs here. Never enrolling is supported (D2); the panel owns its
+					     own divider so nothing renders when it has nothing to show. -->
+					<DomainsYahooCflPanel
+						v-if="registrationSettled"
+						:domain-id="domain._id"
+						:can-manage="canManageDomains"
+					/>
+
 					<!-- Receiving (inbound MX) — renders whenever the deployment exposes a
 					     mail host, whether or not inbound is enabled yet; the section
 					     itself shows a "not turned on yet" state when off so setup
 					     is not a chicken-and-egg. -->
 					<div
-						v-if="
-							showReceivingDns &&
-							domain.status !== 'registering' &&
-							!(domain.status === 'failed' && domain.lastRegistrationError)
-						"
+						v-if="showReceivingDns && registrationSettled"
 						class="mt-4 pt-4 border-t border-border-subtle"
 					>
 						<DomainsReceivingDnsSection
@@ -443,28 +468,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHos
 					</div>
 
 					<!-- Help Text -->
-					<div
-						v-if="
-							domain.status !== 'registering' &&
-							!(domain.status === 'failed' && domain.lastRegistrationError)
-						"
-						class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
-					>
-						<p class="text-sm text-text-secondary">
-							<strong class="text-text-primary">Note:</strong> DNS changes can take up to 48 hours
-							to propagate. After adding these records, click "Verify Domain" to check the
-							configuration.
-							<a
-								href="https://docs.owlat.app/developer/self-hosting-dns-email"
-								target="_blank"
-								rel="noopener noreferrer"
-								class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
-							>
-								Learn more
-								<Icon name="lucide:external-link" class="w-3 h-3" />
-							</a>
-						</p>
-					</div>
+					<DomainsDnsPropagationNote v-if="registrationSettled" />
 				</div>
 			</div>
 		</Transition>

@@ -6,6 +6,7 @@ import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
+import { normalizeVerpKey } from '@owlat/shared/verp';
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
@@ -146,6 +147,12 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	};
 	/** Optional Abusix Guardian Mail DNS namespace key (warning-only checks). */
 	abusixDnsblApiKey?: string;
+	/**
+	 * Optional subscriber-specific Invaluement ivmSIP query zone, used by the
+	 * pre-flight IP audit only. Absent means the feed is skipped, which is inert:
+	 * it never blocks a send and never surfaces as a setup warning.
+	 */
+	invaluementDnsblZone?: string;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
 	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
@@ -248,6 +255,13 @@ export function loadConfig(): MtaConfig {
 	) {
 		throw new Error('ABUSIX_DNSBL_API_KEY must be a 32-character DNS-label key');
 	}
+	const invaluementDnsblZone = process.env['INVALUEMENT_DNSBL_ZONE']?.trim().toLowerCase();
+	if (
+		invaluementDnsblZone &&
+		!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/.test(invaluementDnsblZone)
+	) {
+		throw new Error('INVALUEMENT_DNSBL_ZONE must be a DNS hostname');
+	}
 	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
 	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
 		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
@@ -259,7 +273,17 @@ export function loadConfig(): MtaConfig {
 	// if it is absent or too weak rather than sealing under a guessable key.
 	const mtaSecret = requiredEnv('MTA_SECRET');
 	assertMtaSecretStrength(mtaSecret);
-	const bounceVerpKey = requiredEnv('BOUNCE_VERP_KEY');
+	// Validate the key the SIGNERS will actually use: `normalizeVerpKey` trims it
+	// on both sides of the wire, so a whitespace-padded value must not be able to
+	// clear the 32-byte floor here and then be rejected — or, worse, silently
+	// disagree with Convex's copy — at signing time.
+	// A whitespace-only value CLEARS `requiredEnv` (it is present) and then
+	// normalises away entirely. Say that, rather than reporting it as a
+	// too-short key and sending the operator to count bytes in an empty string.
+	const bounceVerpKey = normalizeVerpKey(requiredEnv('BOUNCE_VERP_KEY'));
+	if (!bounceVerpKey) {
+		throw new Error('BOUNCE_VERP_KEY must not be blank or whitespace-only');
+	}
 	if (isKnownPlaceholderSecret(bounceVerpKey)) {
 		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
 	}
@@ -401,6 +425,7 @@ export function loadConfig(): MtaConfig {
 				}
 			: undefined,
 		abusixDnsblApiKey,
+		invaluementDnsblZone,
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		outboundTlsMode,

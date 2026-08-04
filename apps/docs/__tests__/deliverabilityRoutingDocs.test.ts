@@ -37,4 +37,22 @@ describe('deliverability routing documentation', () => {
 		expect(infrastructure).toMatch(/raw SMTP submission.*does not participate/i);
 		expect(infrastructure).toMatch(/changed or expired decision.*same idempotency key/i);
 	});
+
+	it('does not describe the standalone operator’s gate 2 as a block-message hard stop', () => {
+		// This is the reference page for the subsystem, and the bullet is phrased as
+		// a description of the gate ROWS a standalone operator reads. Those rows come
+		// from `ramp/trailingBaselineGates.ts`, where gate 2 is the deferral rate
+		// alone: the block clause beside it has a reader and no producer (issue
+		// #501), so a page naming it as part of what the operator reads promises a
+		// halt no deployment can reach — the same defect as the module comment that
+		// claimed it, in the place an operator is more likely to read.
+		expect(infrastructure).toMatch(
+			/deferral is promoted to the primary fast signal — the deferral \*\*rate\*\*/
+		);
+		expect(infrastructure).toMatch(
+			/implemented \(`evaluateSmtpBlockMessages`\) and \*\*dormant\*\*/
+		);
+		expect(infrastructure).toContain('issue #501');
+		expect(infrastructure).not.toMatch(/block-message detection as a hard stop/i);
+	});
 });

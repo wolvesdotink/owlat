@@ -32,6 +32,35 @@ function mountPanel(
 	});
 }
 
+describe('DNSRecordPanel — a row with no value yet', () => {
+	it('says the value is not available instead of rendering a copyable one', () => {
+		// A DKIM row whose key does not exist yet has NO value. Rendering an empty
+		// `p=` would be worse than nothing: RFC 6376 §3.6.1 defines it as a
+		// revocation, so an operator copying it would revoke the selector their
+		// mail is about to be signed with.
+		const w = mountPanel(undefined, {
+			type: 'TXT',
+			host: 'sel-a._domainkey.news.example.com',
+			hostIsFqdn: true,
+			value: null,
+		});
+		expect(w.find('[data-testid="dns-value-pending"]').exists()).toBe(true);
+		expect(w.find('[data-testid="dns-value"]').exists()).toBe(false);
+		expect(w.text()).not.toContain('p=');
+	});
+
+	it('renders the value normally once there is one', () => {
+		const w = mountPanel(undefined, {
+			type: 'TXT',
+			host: 'sel-a._domainkey.news.example.com',
+			hostIsFqdn: true,
+			value: 'v=DKIM1; k=rsa; p=AAAA',
+		});
+		expect(w.find('[data-testid="dns-value-pending"]').exists()).toBe(false);
+		expect(w.find('[data-testid="dns-value"]').text()).toBe('v=DKIM1; k=rsa; p=AAAA');
+	});
+});
+
 describe('DNSRecordPanel diagnostics', () => {
 	it('shows no diagnostic when the record is verified', () => {
 		const w = mountPanel({ verified: true, foundValue: baseRecord.value });

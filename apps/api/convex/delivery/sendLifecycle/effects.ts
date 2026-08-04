@@ -12,7 +12,8 @@ import type { ContactActivityType } from '../../contactActivities/catalog';
 import { bumpSendDailyStat } from '../../lib/sendDailyStats';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
-import { scheduleSuppressionMirror } from '../suppressionMirror';
+import { isMarketingOnlyBlockReason, scheduleSuppressionMirror } from '../suppressionMirror';
+import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 
 // ─── Effects (a discriminated list returned by reducers) ────────────────────
@@ -91,6 +92,16 @@ export type Effect =
 			domain?: string;
 	  }
 	| {
+			// Per-cell, per-arm DELIVERABILITY counter (plan D5). Reuses this
+			// existing effect list rather than a parallel event stream: the cell
+			// and arm are learned by joining the send to its `sendAssignments`
+			// row, and a send without one records nothing.
+			kind: 'transport_outcome';
+			sendId: string;
+			event: TransportOutcomeEvent;
+			at: number;
+	  }
+	| {
 			kind: 'attachment_cleanup';
 			storageIds: ReadonlyArray<string>;
 	  }
@@ -103,6 +114,22 @@ export type Effect =
 			kind: 'customer_webhook';
 			spec: FanoutSpec;
 	  };
+
+/**
+ * The ONE constructor for the per-cell outcome effect. Every site that records
+ * a transport outcome (the dispatcher's queued→terminal accounting and the
+ * transition map, plus `reduceDeliveryObservation`/`reduceOpened`/
+ * `reduceClicked` under their shipped uniqueness gates, and the two emitters
+ * outside this module — `delivery/unsubscribeOutcome.ts`, which has a contact
+ * rather than a transition to start from, and `delivery/deferralOutcome.ts`,
+ * whose observation moves the send nowhere at all) goes through this, so the
+ * effect's shape is declared once next to the union it belongs to.
+ */
+export const transportOutcomeEffect = (
+	ref: SendRef,
+	event: TransportOutcomeEvent,
+	at: number
+): Effect => ({ kind: 'transport_outcome', sendId: ref.id, event, at });
 
 // ─── Runner — applies the patch, dispatches effects, schedules fanout ───────
 
@@ -119,20 +146,45 @@ export async function applyEffects(
 					.withIndex('by_email', (q) => q.eq('email', normalized))
 					.first();
 				if (existing) {
-					// A threshold-created soft suppression can later receive decisive
-					// hard-bounce evidence. Preserve the single blocklist row while
-					// upgrading both its classification and provenance; the hard mirror
-					// refresh below also changes the MTA backstop from expiring to permanent.
-					if (
-						existing.reason !== 'bounced' ||
-						existing.bounceType !== 'soft' ||
-						effect.reason !== 'bounced' ||
-						effect.bounceType !== 'hard'
-					) {
-						break;
-					}
+					// THE BLOCKLIST KEEPS ONE ROW PER ADDRESS, so an existing row has to
+					// be able to ABSORB stronger later evidence instead of swallowing it.
+					// Two upgrades exist, weakest evidence class first:
+					//
+					//  - A MARKETING-ONLY row (the sunset engine's `unengaged` hygiene
+					//    decision) says nothing at all about the mailbox — which is why
+					//    transactional mail still goes out to it. If that transactional
+					//    mail then hard-bounces or draws a complaint, THAT is evidence
+					//    about the mailbox and must replace the reason outright.
+					//    Otherwise the address stays permanently sendable on the
+					//    transactional scope, keeps bouncing, and the MTA backstop never
+					//    hears about it.
+					//  - A threshold-created SOFT bounce upgrades to HARD: the mirror
+					//    refresh below also changes the MTA backstop from expiring to
+					//    permanent.
+					//
+					// `effect.reason` is only ever 'bounced' | 'complained', i.e. always
+					// mailbox-level evidence, so the marketing-only row always yields.
+					const upgradesMarketingOnly = isMarketingOnlyBlockReason(existing.reason);
+					const upgradesSoftToHard =
+						existing.reason === 'bounced' &&
+						existing.bounceType === 'soft' &&
+						effect.reason === 'bounced' &&
+						effect.bounceType === 'hard';
+					if (!upgradesMarketingOnly && !upgradesSoftToHard) break;
+					const bounceType = upgradesSoftToHard ? 'hard' : effect.bounceType;
 					await ctx.db.patch(existing._id, {
-						bounceType: 'hard',
+						reason: effect.reason,
+						bounceType,
+						// THE NOTE MUST NOT OUTLIVE THE REASON IT EXPLAINED. A
+						// marketing-only row carries the sunset engine's note ("no
+						// engagement for N days"); once mailbox evidence has replaced the
+						// reason, that sentence describes a decision this row no longer
+						// records — and the suppression screen both renders it and
+						// free-text searches it, so a `bounced` row would explain itself
+						// as a hygiene pause. Patching to `undefined` is how Convex clears
+						// an optional field. The soft→hard upgrade keeps its note: that
+						// one is bounce provenance and still true.
+						...(upgradesMarketingOnly ? { notes: undefined } : {}),
 						sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
 						sourceEmailSendId: effect.source.kind === 'campaign' ? effect.source.id : undefined,
 						sourceTransactionalSendId:
@@ -140,8 +192,8 @@ export async function applyEffects(
 					});
 					await scheduleSuppressionMirror(ctx, {
 						email: normalized,
-						reason: 'bounced',
-						bounceType: 'hard',
+						reason: effect.reason,
+						...(bounceType ? { bounceType } : {}),
 					});
 					break;
 				}
@@ -251,6 +303,22 @@ export async function applyEffects(
 				});
 				break;
 			}
+			case 'transport_outcome': {
+				// SCHEDULED, like `reputation_update` above and for the same reason:
+				// the bump lands on one shard of a bucket every recipient of the cell
+				// writes to that day, and applying it inline makes an OCC conflict
+				// there retry this whole transaction — the send patch, the campaign
+				// counters, the fanout — during exactly the open waves that make the
+				// conflict likely. The measurement is fail-soft either way (the
+				// scheduled mutation swallows its own failures), so it has no claim
+				// on the transition's atomicity.
+				await ctx.scheduler.runAfter(0, internal.analytics.transportOutcomes.recordOutcomeForSend, {
+					sendId: effect.sendId,
+					event: effect.event,
+					at: effect.at,
+				});
+				break;
+			}
 			case 'attachment_cleanup': {
 				for (const storageId of effect.storageIds) {
 					try {
@@ -267,6 +335,28 @@ export async function applyEffects(
 			}
 			case 'customer_webhook': {
 				await scheduleFanout(ctx, effect.spec);
+				break;
+			}
+			default: {
+				// Exhaustive over `Effect` AT COMPILE TIME. Without this binding,
+				// DELETING a case still compiles and the effect is silently never
+				// applied — the reader-with-no-writer shape one level down, and only the
+				// integration cases would notice.
+				const exhaustive: never = effect;
+				// AT RUNTIME THE LOOP MUST NOT STOP. Nothing in the type system covers an
+				// effect that reaches this runner from another build — a job scheduled by
+				// the previous deploy, a shape read back out of a payload — and returning
+				// here would drop every REMAINING effect in the list: the blocklist
+				// insert, the campaign counters, the webhook fanout, none of which have
+				// anything to do with the tag we could not read. One unapplied effect is
+				// the smaller loss, and it is the one this arm takes.
+				//
+				// THE TAG ONLY. An effect this build cannot name may still be carrying a
+				// recipient address, and a warning is not a PII sink.
+				logWarn(
+					'[sendLifecycle] skipped effect with unknown kind:',
+					String((exhaustive as { kind?: unknown }).kind)
+				);
 				break;
 			}
 		}

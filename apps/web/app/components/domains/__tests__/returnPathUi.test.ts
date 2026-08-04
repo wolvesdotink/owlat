@@ -138,6 +138,33 @@ describe('ReturnPathEditor — edit affordance', () => {
 		expect(w.find('[data-testid="returnpath-save"]').exists()).toBe(false);
 	});
 
+	// D2 (additive-only third-party rule): RFC 9477 feedback is a CONSEQUENCE of
+	// an optional field, never a prerequisite. The note therefore has to be
+	// informational tertiary text that always renders — not a warning, not an
+	// error, and not gated on the MTA sync-error marker.
+	it('always renders the RFC 9477 note as informational tertiary text', () => {
+		const note = mountEditor().get('[data-testid="returnpath-cfbl-note"]');
+		expect(note.text()).toContain('RFC 9477');
+		expect(note.text()).toContain('CFBL-Address');
+		expect(note.text().toLowerCase()).toContain('optional');
+		const classes = note.classes();
+		expect(classes).toContain('text-text-tertiary');
+		expect(classes.some((c) => /error|warn|danger/.test(c))).toBe(false);
+		expect(note.attributes('role')).toBeUndefined();
+	});
+
+	it('renders the RFC 9477 note independently of host and sync state', () => {
+		// No host configured yet, and no sync error: still there.
+		expect(
+			mountEditor({ currentHost: null }).find('[data-testid="returnpath-cfbl-note"]').exists()
+		).toBe(true);
+		// A sync error is a separate, adjacent marker — it neither hides nor
+		// escalates the note.
+		const failed = mountEditor({ syncError: 'mta unreachable' });
+		expect(failed.find('[data-testid="returnpath-sync-error"]').exists()).toBe(true);
+		expect(failed.find('[data-testid="returnpath-cfbl-note"]').exists()).toBe(true);
+	});
+
 	it('hides the Edit button for members who cannot manage domains', () => {
 		const w = mountEditor({ canManage: false });
 		expect(w.find('[data-testid="returnpath-edit"]').exists()).toBe(false);

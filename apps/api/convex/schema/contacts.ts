@@ -63,6 +63,58 @@ export const contactTables = {
 		// it reaches `SOFT_BOUNCE_SUPPRESSION_THRESHOLD`, and resets it to 0 on
 		// the next `delivered`. Absent (undefined) means 0.
 		softBounceCount: v.optional(v.number()),
+		// ─── Contact engagement score (deliverability plan P0-2) ───────────────
+		// Cached 0-100 recency-weighted engagement score, produced by
+		// `analytics/engagementScore.ts` and consumed by the MTA's priority bands
+		// (80/50/20) and by the share controller's stratified assignment. ADDITIVE
+		// and optional: legacy rows carry none of these fields and every reader
+		// treats "absent" as "unmeasured", never as zero.
+		engagementScore: v.optional(v.number()),
+		// The timestamp `engagementScoreState` is as-of. Also the freshness stamp
+		// the hourly backfill ranges over — the two are ALWAYS patched together,
+		// because the cached accumulator is only meaningful relative to this
+		// instant (see `decayState`).
+		engagementScoreUpdatedAt: v.optional(v.number()),
+		// Decayed accumulator behind the score. Cached so the hot path can fold a
+		// new open/click in O(1) instead of re-reading the activity timeline
+		// (ADR-0042's write-amplification lesson).
+		engagementScoreState: v.optional(
+			v.object({
+				raw: v.number(),
+				softBounceRaw: v.number(),
+				isSuppressed: v.boolean(),
+				// `occurredAt` of the newest suppressing activity. Scopes the sticky
+				// suppression to the recompute lookback window, which is what makes a
+				// bounce recorded in error reversible (`clearEngagementSuppression`)
+				// instead of pinning the contact to 0 forever.
+				suppressedAt: v.optional(v.number()),
+				// Identity (`kind:occurredAt`) of the newest activity folded into
+				// the accumulator, so an immediately-redelivered provider webhook
+				// is collapsed on the hot path exactly as the full recompute
+				// collapses it. Absent until the first fold.
+				lastFoldedKey: v.optional(v.string()),
+			})
+		),
+		// ─── Sunset policy (deliverability plan P4-4) ──────────────────────────
+		// Where this contact sits on the sunset track, owned by
+		// `contacts/sunsetEngine.ts`. ADDITIVE and optional: absent means
+		// `engaged`, so legacy rows read as "on the normal track" and no
+		// backfill is required.
+		sunsetStage: v.optional(
+			v.union(v.literal('engaged'), v.literal('reengagement'), v.literal('suppressed'))
+		),
+		// When `sunsetStage` last changed. Paired with the audit-log entry the
+		// transition wrote, so "when did the engine do this" is answerable off
+		// the contact row alone.
+		sunsetStageAt: v.optional(v.number()),
+		// Freshness stamp the daily sweep ranges over. Stamping it moves the row
+		// out of the stale range — the range IS the cursor (same shape as the
+		// engagement-score backfill), so a settled contact is not rescanned.
+		sunsetEvaluatedAt: v.optional(v.number()),
+		// Explicit operator override: while set, the sunset engine never moves
+		// this contact. Also set by the restore path, so a restored contact is
+		// not immediately re-suppressed by the next sweep.
+		sunsetExemptAt: v.optional(v.number()),
 		// Contact-level double opt-in status. Non-optional per ADR-0009 —
 		// the Contact resolution (module) writes 'not_required' at create
 		// time so undefined never appears in new rows. The DOI lifecycle
@@ -105,6 +157,26 @@ export const contactTables = {
 		// leads so `deletedAt === undefined` rides the index range and createdAt
 		// orders within it — the page is never thinned by a post-filter.
 		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
+		// Staleness index for the hourly engagement-score backfill. Ascending
+		// order puts never-scored rows first (a missing field sorts before every
+		// number in a Convex index), then the stalest, so the cron walks a bounded
+		// prefix of a range instead of collecting the table. Recomputing a contact
+		// stamps `engagementScoreUpdatedAt = now`, which moves it out of the stale
+		// range — the range IS the cursor, and it cannot go stale.
+		.index('by_engagement_score_updated_at', ['engagementScoreUpdatedAt'])
+		// Cursor index for the daily sunset sweep (P4-4), the same shape as the
+		// engagement-score staleness index above: ascending order puts
+		// never-evaluated rows first (a missing field sorts before every number),
+		// then the stalest. Evaluating a contact stamps `sunsetEvaluatedAt = now`,
+		// which moves it out of the range — so the sweep resumes from where it
+		// stopped without carrying a cursor row of its own.
+		.index('by_sunset_evaluated_at', ['sunsetEvaluatedAt'])
+		// The re-engagement TRACK, addressable. Moving a contact onto the track is
+		// pointless if nobody can enumerate who is on it, and scanning `contacts`
+		// for a stage is exactly the full-table walk this piece is not allowed to
+		// do — so the stage gets its own index and `contacts.sunset.listSunsetStage`
+		// pages over it.
+		.index('by_sunset_stage', ['sunsetStage'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
 		// body sealing does not apply to it — it is intentionally plaintext for search.
@@ -170,8 +242,81 @@ export const contactTables = {
 		occurredAt: v.number(),
 	})
 		.index('by_contact', ['contactId'])
-		.index('by_contact_and_type', ['contactId', 'activityType'])
-		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt']),
+		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt'])
+		// REPLACES the old `by_contact_and_type` (P4-4), which was a strict prefix
+		// of this key and had no caller left once the sunset engine needed the
+		// ordering. That index ordered WITHIN its key by `_creationTime`, i.e. by
+		// INSERTION, so a backfilled/imported batch of historical opens sorted
+		// after a genuinely newer one and any bounded probe of it could report a
+		// stale "newest engagement". Adding `occurredAt` to the key makes "the
+		// newest open this contact ever had" an exact single-row read
+		// (`.order('desc').first()`) instead of a heuristic — which matters
+		// because that instant is what auto-suppression is computed from.
+		//
+		// SUPERSET, NOT SIBLING: an equality lookup on (contactId, activityType)
+		// rides this index unchanged, so nothing was lost by dropping the shorter
+		// one — and `contactActivities` is the highest-write table in the product,
+		// where a redundant index is a permanent tax on every send.
+		.index('by_contact_type_and_occurred_at', ['contactId', 'activityType', 'occurredAt']),
+
+	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the
+	// re-engagement/auto-suppression windows owned by `contacts/sunsetPolicy.ts`.
+	//
+	// The engine's suppressions land on the SHIPPED `blockedEmails` list with
+	// `reason: 'unengaged'` (schema/delivery.ts). That literal is distinct from
+	// 'manual' on purpose: it is the ONLY reason the engine's one-action restore
+	// path is allowed to remove — a hard bounce or a spam complaint is evidence
+	// the engine did not produce and must not erase — and an operator reading
+	// the blocklist has to be able to tell "never engaged" from "bounced" and
+	// from "a human blocked this".
+	//
+	// The table holds OVERRIDES ONLY. An empty table is the supported, shipped
+	// configuration: `SUNSET_POLICY_DEFAULTS` (enabled, 180/270) applies, so the
+	// protection is on out of the box rather than waiting for someone to opt in.
+	// `topicId: undefined` is the single deployment-wide row; a row WITH a
+	// topicId layers on top of it for that topic's members. Every tunable is
+	// optional so an override can change one field and inherit the rest.
+	sunsetPolicies: defineTable({
+		topicId: v.optional(v.id('topics')),
+		isEnabled: v.optional(v.boolean()),
+		reengageAfterDays: v.optional(v.number()),
+		suppressAfterDays: v.optional(v.number()),
+		// THE OPERATOR'S RE-ARM STAMP, on the deployment-wide row only.
+		//
+		// The sweep refuses to run when `Date.now()` is not corroborated by the
+		// heartbeat it stamped on an earlier tick (`lastSweepAt` below) — and the
+		// sweep is the only writer of that heartbeat, so a deployment that sat
+		// paused for longer than the tolerance can never refresh it on its own:
+		// the guard would latch
+		// on forever. This field is the way out. An operator who has checked the
+		// clock records that fact, and the sweep treats this instant as a second
+		// corroboration source, so the next tick runs and starts writing fresh
+		// stamps again. Absent on every deployment that never stalled.
+		clockVerifiedAt: v.optional(v.number()),
+		// THE SWEEP'S OWN HEARTBEAT, on the deployment-wide row only.
+		//
+		// `Date.now()` cannot check itself, so the sweep judges it against an
+		// instant an EARLIER tick recorded. This is that instant: the head of every
+		// tick that passed the clock check stamps it, so it is one write an hour on
+		// one row. It deliberately does NOT live on the contacts it evaluated —
+		// deriving it from the newest `contacts.by_sunset_evaluated_at` row instead
+		// would drag the hot contacts index into the read set of the operator query
+		// that reports the stall, and the sweep re-stamps up to a full tick's worth
+		// of contacts every hour, so an open dashboard would re-run that query
+		// roughly a thousand times an hour to render a banner a healthy deployment
+		// never shows.
+		lastSweepAt: v.optional(v.number()),
+		// PRESENCE MEANS "the sweep is currently refusing to run". Set by the first
+		// tick that aborts on an uncorroborated clock, cleared by the first tick
+		// that passes — so the stall is a STORED FACT the operator query reads back
+		// directly, rather than a `Date.now()` comparison recomputed inside a
+		// reactive query (which, having no time input, would never re-evaluate on
+		// an already-open page). Writes only on the transition, so a permanently
+		// stalled deployment is not a permanent write source.
+		clockStalledAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_topic', ['topicId']),
 
 	// Segments - saved contact filter configurations for reuse in campaigns
 	segments: defineTable({

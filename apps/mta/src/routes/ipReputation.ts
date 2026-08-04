@@ -17,7 +17,11 @@ import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
-import { configuredDnsblZones, getDnsblStatus } from '../intelligence/dnsbl.js';
+import {
+	configuredDnsblZones,
+	getDnsblStatus,
+	hasUnmeasuredDnsblZone,
+} from '../intelligence/dnsbl.js';
 import {
 	DESTINATION_PROVIDER_KEYS,
 	type DeliverabilitySignal,
@@ -31,6 +35,7 @@ async function routingSignals(
 	redis: Redis,
 	organizationId: string | undefined,
 	poolStatuses: Awaited<ReturnType<typeof getPoolStatus>>,
+	dnsblUnmeasuredByIp: ReadonlyMap<string, boolean>,
 	now: number
 ): Promise<DeliverabilitySignal[]> {
 	const signals: DeliverabilitySignal[] = [];
@@ -52,6 +57,37 @@ async function routingSignals(
 				observedAt: now,
 			});
 		}
+	}
+
+	// A partly blocklisted pool still has addresses to send from, so shipped
+	// routing deliberately keeps sending — but "one of our addresses is listed"
+	// must not be silently collapsed into "clean". It travels as an advisory
+	// signal the ramp controller reads for its blocklist hard stop.
+	const dnsblBlockedCount = poolStatuses.filter((pool) =>
+		(pool.blockReasons ?? []).includes('dnsbl')
+	).length;
+	if (dnsblBlockedCount > 0 && dnsblBlockedCount < poolStatuses.length) {
+		signals.push({
+			provider: 'all',
+			source: 'dnsbl_partial',
+			severity: 'critical',
+			observedAt: now,
+		});
+	}
+
+	// An unfinished lookup (timeout, SERVFAIL, REFUSED, resolver policy, rate
+	// limit) or an address never swept yet is reported as unknown, never as
+	// clean: absence of a listing we could not look up is not evidence of health.
+	// This reads the per-zone `unknownOn` record, NOT the priority-collapsed
+	// `overallStatus` — otherwise a warning-severity listing on one zone would
+	// mask an uncompleted lookup on another and the three-state would collapse.
+	if (poolStatuses.some((pool) => dnsblUnmeasuredByIp.get(pool.ip) ?? true)) {
+		signals.push({
+			provider: 'all',
+			source: 'dnsbl_unknown',
+			severity: 'warning',
+			observedAt: now,
+		});
 	}
 
 	const today = new Date(now).toISOString().split('T')[0]!;
@@ -182,6 +218,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			sourceAddress,
 			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 			dnsblListings: listedDnsblIds(config, dnsbl),
+			dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 			dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 		});
 	});
@@ -225,16 +262,21 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					sourceAddress,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 					dnsblListings: listedDnsblIds(config, dnsbl),
+					dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 					dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 				};
 			})
 		);
 
 		const organizationId = c.req.query('organizationId');
+		const dnsblUnmeasuredByIp = new Map(
+			summaries.map((summary) => [summary.ip, summary.dnsblUnmeasured])
+		);
 		const signals = await routingSignals(
 			redis,
 			organizationId && organizationId.length <= 128 ? organizationId : undefined,
 			poolStatuses,
+			dnsblUnmeasuredByIp,
 			now
 		);
 		return c.json({ date: today, ips: summaries, routing: { generatedAt: now, signals } });

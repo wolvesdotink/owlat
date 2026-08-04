@@ -8,11 +8,16 @@ import {
 } from '@owlat/plugin-kit';
 import type { EmailSendAttempt, EmailSendParams } from './types';
 import { EmailErrorCode } from './types';
+import type { SendTransportRecord } from './transports';
 
 export interface HostedSendProviderModule {
 	readonly kind: PluginSendTransportKind;
 	readonly retryDelays: readonly number[];
-	sendEmail(params: EmailSendParams, extras?: unknown): Promise<EmailSendAttempt>;
+	sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: unknown
+	): Promise<EmailSendAttempt>;
 }
 
 const failureCodeMap = {
@@ -37,7 +42,18 @@ export function createHostedSendProvider(
 	return Object.freeze({
 		kind,
 		retryDelays: Object.freeze([...retryDelays]),
-		async sendEmail(params: EmailSendParams, extras?: unknown): Promise<EmailSendAttempt> {
+		// A hosted transport's configuration is resolved by the plugin host from
+		// the plugin's own declared DEPLOYMENT-WIDE environment, so the record is
+		// accepted for signature parity and deliberately not read here. That is
+		// sound only because a plugin kind cannot have named instances:
+		// `resolveSendTransport` rejects `plugin.<id>.<local>#x` with
+		// `instances_unsupported`, so `transport` here is always the default
+		// instance and can never name credentials this module would then ignore.
+		async sendEmail(
+			_transport: SendTransportRecord,
+			params: EmailSendParams,
+			extras?: unknown
+		): Promise<EmailSendAttempt> {
 			try {
 				const parsedExtras = module.parseExtras(extras);
 				const result = await module.send(toPluginParams(params), parsedExtras);

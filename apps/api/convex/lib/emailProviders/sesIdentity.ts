@@ -23,11 +23,29 @@ import {
  * `getRequired` with a clear message if any of the three vars is unset.
  */
 export function resolveSesClient(): SESClient {
-	return new SESClient({
+	return buildSesClient({
 		region: getRequired('AWS_SES_REGION'),
+		accessKeyId: getRequired('AWS_SES_ACCESS_KEY_ID'),
+		secretAccessKey: getRequired('AWS_SES_SECRET_ACCESS_KEY'),
+	});
+}
+
+/**
+ * Build an `SESClient` from an ALREADY-RESOLVED credential triple. The send
+ * adapter uses this so a named `ses` transport instance can supply its own
+ * credentials instead of the deployment-wide ones; identity management, which
+ * is deployment-scoped, keeps going through `resolveSesClient` above.
+ */
+export function buildSesClient(config: {
+	region: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+}): SESClient {
+	return new SESClient({
+		region: config.region,
 		credentials: {
-			accessKeyId: getRequired('AWS_SES_ACCESS_KEY_ID'),
-			secretAccessKey: getRequired('AWS_SES_SECRET_ACCESS_KEY'),
+			accessKeyId: config.accessKeyId,
+			secretAccessKey: config.secretAccessKey,
 		},
 	});
 }
@@ -67,9 +85,7 @@ export class SESIdentityManager {
 		}
 
 		// Enable DKIM signing - returns 3 DKIM tokens
-		const dkimResult = await this.client.send(
-			new VerifyDomainDkimCommand({ Domain: domain })
-		);
+		const dkimResult = await this.client.send(new VerifyDomainDkimCommand({ Domain: domain }));
 
 		if (!dkimResult.DkimTokens || dkimResult.DkimTokens.length === 0) {
 			throw new Error('SES did not return DKIM tokens');
@@ -111,8 +127,7 @@ export class SESIdentityManager {
 			),
 		]);
 
-		const verificationAttrs =
-			verificationResult.VerificationAttributes?.[domain];
+		const verificationAttrs = verificationResult.VerificationAttributes?.[domain];
 		const dkimAttrs = dkimResult.DkimAttributes?.[domain];
 
 		return {
@@ -126,9 +141,7 @@ export class SESIdentityManager {
 	 * Delete a domain identity from SES.
 	 */
 	async deleteIdentity(domain: string): Promise<void> {
-		await this.client.send(
-			new DeleteIdentityCommand({ Identity: domain })
-		);
+		await this.client.send(new DeleteIdentityCommand({ Identity: domain }));
 	}
 
 	/**

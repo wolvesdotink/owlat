@@ -95,6 +95,30 @@ describe('AddDomainForm — error messages bound to their inputs', () => {
 	});
 });
 
+describe('AddDomainForm — the per-stream layout is proposed in the wizard (G-14)', () => {
+	it('offers news. alongside mail. so the split is a first-class choice', () => {
+		const w = mountForm();
+		const labels = w.findAll('button').map((b) => b.text());
+		expect(labels).toContain('mail');
+		expect(labels).toContain('news');
+	});
+
+	it('says the reputation-inheritance rule HERE, not in the docs', () => {
+		const note = mountForm().find('[data-testid="stream-subdomain-note"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).toMatch(/does not inherit/i);
+		expect(note.text()).toMatch(/own SPF/i);
+		expect(note.text()).toMatch(/own DKIM/i);
+		expect(note.text()).toMatch(/warm-?up/i);
+		expect(note.text()).toMatch(/transactional/i);
+	});
+
+	it('is a sending-only note — the tracking context has no streams to split', () => {
+		const w = mount(AddDomainForm, { global: { stubs }, props: { context: 'tracking' as const } });
+		expect(w.find('[data-testid="stream-subdomain-note"]').exists()).toBe(false);
+	});
+});
+
 describe('AddDomainForm — subdomain suggestions + apex', () => {
 	it('lets a suggestion set the subdomain', async () => {
 		const w = mountForm();

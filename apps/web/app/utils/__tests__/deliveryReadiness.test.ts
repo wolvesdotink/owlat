@@ -7,6 +7,7 @@ import {
 	type ReadinessGateKey,
 	type ReadinessInput,
 } from '../deliveryReadiness';
+import { summarizeDualArmAlignment, type ReadinessDualArmRow } from '../dualArmAlignment';
 
 /** A fully-ready instance; override one fact at a time to exercise each gate. */
 function input(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
@@ -377,5 +378,146 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 		expect(
 			readinessInputFromSources({ canSend: true }, [row()], null).mtaStsEnforceWithoutRecord
 		).toBe(false);
+	});
+});
+
+/**
+ * The dual-transport alignment gate (P3-5).
+ *
+ * D2 is the invariant under test: a deployment with no reference transport must
+ * see NO gate at all — not a pending one, not an informational one. And when the
+ * gate does appear, it must never change the send-path verdict: what it holds is
+ * the ramp, not sending.
+ */
+function verifiedRow(): ReadinessDomainRow {
+	return { status: 'verified', missing: [] };
+}
+
+function dualArmRow(overrides: Partial<ReadinessDualArmRow> = {}): ReadinessDualArmRow {
+	return {
+		domain: 'acme.com',
+		verdict: 'aligned',
+		checks: [
+			{ id: 'from_domain', status: 'pass', detail: 'Both arms send from acme.com.', remedy: '' },
+			{ id: 'spf', status: 'pass', detail: 'One SPF record authorizes both arms.', remedy: '' },
+			{ id: 'dkim', status: 'pass', detail: 'distinct selectors', remedy: '' },
+			{ id: 'dmarc', status: 'pass', detail: 'aligned', remedy: '' },
+		],
+		isMeasurementDegraded: false,
+		measurementDegradedReason: null,
+		...overrides,
+	};
+}
+
+const BLOCKED_ROW = dualArmRow({
+	verdict: 'blocked',
+	checks: [
+		{ id: 'from_domain', status: 'pass', detail: 'Both arms send from acme.com.', remedy: '' },
+		{
+			id: 'spf',
+			status: 'fail',
+			detail: 'The merged SPF record needs 11 DNS lookups; RFC 7208 allows 10.',
+			remedy: 'Flatten include:j.example to ip4/ip6 mechanisms.',
+		},
+		{ id: 'dkim', status: 'pass', detail: 'distinct selectors', remedy: '' },
+		{ id: 'dmarc', status: 'pass', detail: 'aligned', remedy: '' },
+	],
+});
+
+describe('summarizeDualArmAlignment', () => {
+	// "Nothing to say" is the ABSENCE of a summary, encoded once. There is no
+	// `not_applicable` state for a caller to forget to filter out.
+	it('says nothing at all with no rows, null rows, or only single_arm rows (D2)', () => {
+		for (const rows of [null, undefined, [], [dualArmRow({ verdict: 'single_arm' })]]) {
+			expect(summarizeDualArmAlignment(rows)).toBeUndefined();
+		}
+	});
+
+	it('ranks blocked above unknown above aligned', () => {
+		expect(
+			summarizeDualArmAlignment([dualArmRow({ verdict: 'unknown' }), BLOCKED_ROW])?.state
+		).toBe('blocked');
+		expect(
+			summarizeDualArmAlignment([dualArmRow(), dualArmRow({ verdict: 'unknown' })])?.state
+		).toBe('unknown');
+		expect(summarizeDualArmAlignment([dualArmRow()])?.state).toBe('aligned');
+	});
+
+	it('carries the first failing remedy and the degraded reason', () => {
+		const summary = summarizeDualArmAlignment([
+			{ ...BLOCKED_ROW, isMeasurementDegraded: true, measurementDegradedReason: 'coarser bounces' },
+		]);
+		expect(summary?.remedy).toContain('Flatten include:j.example');
+		expect(summary?.degradedReason).toBe('coarser bounces');
+		expect(summary?.domains).toEqual(['acme.com']);
+	});
+});
+
+describe('the dual-transport alignment gate', () => {
+	it('is absent entirely for a deployment with no reference transport (D2)', () => {
+		const standalone = deriveDeliveryReadiness(
+			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [
+				dualArmRow({ verdict: 'single_arm' }),
+			])
+		);
+		expect(standalone.gates.some((g) => g.key === 'dual-arm-alignment')).toBe(false);
+		expect(standalone.level).toBe('ready');
+		expect(standalone.summary).toContain('Everything checks out');
+	});
+
+	it('renders a ready gate when both arms align, without changing the verdict', () => {
+		const readiness = deriveDeliveryReadiness(
+			input({
+				dualArmAlignment: {
+					state: 'aligned',
+					domains: ['acme.com'],
+					remedy: null,
+					degradedReason: null,
+				},
+			})
+		);
+		const dualArm = gate(readiness, 'dual-arm-alignment');
+		expect(dualArm.status).toBe('ready');
+		expect(dualArm.detail).toContain('look identical to mailboxes');
+		expect(readiness.level).toBe('ready');
+	});
+
+	it('renders an attention gate carrying the remedy, but never blocks sending', () => {
+		const readiness = deriveDeliveryReadiness(
+			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [BLOCKED_ROW])
+		);
+		const dualArm = gate(readiness, 'dual-arm-alignment');
+		expect(dualArm.status).toBe('attention');
+		expect(dualArm.detail).toContain('Flatten include:j.example');
+		expect(dualArm.actionLabel).toBe('Review records');
+		// The ramp is held; the instance is still ready to send.
+		expect(readiness.canSend).toBe(true);
+		expect(readiness.level).toBe('ready');
+	});
+
+	it('renders unresolved DNS as pending with nothing for the operator to do', () => {
+		const readiness = deriveDeliveryReadiness(
+			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [
+				dualArmRow({ verdict: 'unknown' }),
+			])
+		);
+		const dualArm = gate(readiness, 'dual-arm-alignment');
+		expect(dualArm.status).toBe('pending');
+		expect(dualArm.actionHref).toBeNull();
+		expect(dualArm.detail).toContain('nothing for you to do');
+	});
+
+	it('appends the degraded-measurement line to an otherwise aligned gate', () => {
+		const readiness = deriveDeliveryReadiness(
+			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [
+				dualArmRow({
+					isMeasurementDegraded: true,
+					measurementDegradedReason: 'Measurement confidence is lowered; the ramp is not blocked.',
+				}),
+			])
+		);
+		expect(gate(readiness, 'dual-arm-alignment').detail).toContain(
+			'Measurement confidence is lowered'
+		);
 	});
 });

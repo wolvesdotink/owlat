@@ -36,10 +36,37 @@ describe('external reputation provider guidance', () => {
 		expect(feedbackDoc).not.toMatch(/service.account/i);
 	});
 
-	it('keeps Microsoft automation limitations explicit instead of promising a scraper', () => {
+	it('documents the SNDS import against the Automated Data Access contract', () => {
+		// The page previously promised NO importer, because Microsoft's July 2026
+		// portal change left no stable URL to point at. The operator now supplies
+		// the Automated Data Access URL themselves, so the importer is documented
+		// — including the one thing it must never do (invent a rate from a band).
 		expect(feedbackDoc).toMatch(/Automated Data Access/);
-		expect(feedbackDoc).toMatch(/does not scrape|does not.*importer/i);
+		expect(feedbackDoc).toContain('SNDS_DATA_FEED_URLS');
+		expect(feedbackDoc).toMatch(/bearer capability/i);
+		expect(feedbackDoc).toMatch(/band/i);
+		expect(feedbackDoc).toMatch(/never turned into|not a rate/i);
 		expect(feedbackDoc).toMatch(/Junk Mail Reporting Program/);
+	});
+
+	it('states that Microsoft enrollment is optional, not an incomplete setup', () => {
+		expect(feedbackDoc).toMatch(/supported configuration/i);
+		expect(feedbackDoc).toMatch(/no request,\s+no row,\s+no error/i);
+		// The substitution the page names has to be the one the table applies
+		// (`ramp/degradationMatrix.ts`, the `microsoft_snds` entry). It said "SMTP
+		// reply classification" until issue #501 established that no deployment
+		// carries those categories into Convex — a page promising a signal the ramp
+		// does not read is the same defect as a gate clause with no producer.
+		expect(feedbackDoc).toMatch(/outcomes of\s+its own sends/i);
+		expect(feedbackDoc).not.toMatch(/SMTP reply\s+classification/i);
+	});
+
+	it('states that unattributed evidence can only slow the Microsoft ramp', () => {
+		// The asymmetry is the whole point of the attribution flag, so the page
+		// states both halves: an unattributed clean window HOLDS, and a breach in
+		// the same window still fails.
+		expect(feedbackDoc).toMatch(/\*holds\*\s+rather than passing/i);
+		expect(feedbackDoc).toMatch(/slowing the ramp and can never speed it up/i);
 	});
 });
 

@@ -17,10 +17,8 @@
 import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
-import { summarize, startOfDayUtc, type ReputationSummary } from './sendingReputation';
-
-// Re-exported so existing importers (and tests) keep resolving it from here.
-export { startOfDayUtc };
+import { summarize, type ReputationSummary } from './sendingReputation';
+import { startOfDayUtc } from '../lib/clock';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much snapshot history to keep. ~90 days of daily points. */

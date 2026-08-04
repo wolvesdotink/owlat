@@ -20,6 +20,7 @@ import { createSuppressionRoutes } from './routes/suppression.js';
 import { createDkimRoutes } from './routes/dkim.js';
 import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
+import { createIpAuditRoutes } from './routes/ipAudit.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
 import { createMailboxRoutes } from './routes/mailboxes.js';
 import { createDeliveryLogRoutes } from './routes/deliveryLogs.js';
@@ -103,6 +104,9 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 
 	// Pool routing rules (master-key protected internally)
 	app.route('/pool-rules', createPoolRulesRoutes(redis, config));
+
+	// Pre-flight sending-IP audit and delisting assistant (master-key protected)
+	app.route('/ip-audit', createIpAuditRoutes(redis, config));
 
 	// Inbound email routing (master-key protected internally)
 	app.route('/inbound/routes', createInboundRoutes(redis, config));

@@ -5,7 +5,6 @@ import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 interface DNSRecord {
 	type: string;
 	host: string;
-	value: string;
 	/**
 	 * True when `host` is an absolute FQDN (the return-path record's env hostname)
 	 * rather than a name relative to `domain`. Supplied by `normalizeDnsRecord`;
@@ -19,6 +18,14 @@ interface DNSRecord {
 	 * by `normalizeDnsRecord`).
 	 */
 	priority?: number;
+	/**
+	 * `null` when there is NO value to publish yet — a DKIM row whose key is
+	 * minted at registration, or one the ESP supplies. The panel then says so
+	 * instead of offering something copyable: an empty DKIM `p=` is not "blank",
+	 * RFC 6376 §3.6.1 defines it as a REVOCATION, so publishing it would revoke
+	 * the very selector the mail is about to be signed with.
+	 */
+	value: string | null;
 }
 
 interface VerificationResult {
@@ -41,9 +48,36 @@ interface Props {
 	 * instead (RFC 7208 §3.2 allows only one `v=spf1` record per host).
 	 */
 	coexistence?: SpfCoexistenceSuggestion;
+	/**
+	 * What to say when there is no value to copy yet.
+	 *
+	 * The default is right for a key WE mint (adding the name produces it), and
+	 * wrong for a key someone else holds — a relay's selector never resolves by
+	 * creating the name, so telling the operator to "come back and copy the key"
+	 * is an instruction that cannot work. The caller that knows why the row is
+	 * pending is the one that gets to say so.
+	 */
+	pendingExplanation?: string;
+	/**
+	 * True when this record's NAME is not knowable yet.
+	 *
+	 * A DKIM row whose selector has not been minted — or is held by a relay and
+	 * never will be by us — has no name to paste: the only string available is
+	 * the bare `_domainkey.<subdomain>` PARENT, and a TXT record published there
+	 * is at a name no verifier ever queries. Offering it as the primary paste
+	 * target is worse than offering nothing, so the panel shows the parent as
+	 * context and says what the real name will look like instead of handing over
+	 * a copy button for a name that cannot work.
+	 */
+	hostNotYetKnown?: boolean;
 }
 
 const props = defineProps<Props>();
+
+const DEFAULT_PENDING_EXPLANATION =
+	'Value supplied once this subdomain is added — create the name first, then come back and copy the key.';
+
+const pendingCopy = computed<string>(() => props.pendingExplanation ?? DEFAULT_PENDING_EXPLANATION);
 
 const { copy, isCopied } = useCopyToClipboard();
 
@@ -149,13 +183,15 @@ const handleCopyFqdn = () => {
  * shown + copied value is the full `<priority> <exchange>` (e.g. `10 mail.host`)
  * — what's enforced is what's shown. Every other record shows its value verbatim.
  */
-const valueDisplay = computed(() => {
+const valueDisplay = computed<string | null>(() => {
 	const { type, value, priority } = props.record;
+	if (value === null) return null;
 	return type === 'MX' && priority !== undefined ? `${priority} ${value}` : value;
 });
 
 const handleCopyValue = () => {
-	copy(valueDisplay.value, `${props.label}-value`);
+	const value = valueDisplay.value;
+	if (value !== null) copy(value, `${props.label}-value`);
 };
 
 const handleCopyFound = () => {
@@ -214,7 +250,20 @@ const diagnostic = computed(() => {
 			     copy for providers that want the FQDN. -->
 			<div>
 				<p class="text-xs text-text-tertiary mb-1">Host / Name</p>
-				<div class="flex items-center gap-2">
+				<!-- The name is not knowable yet: the only string we hold is the
+				     `_domainkey` PARENT, and nothing queries a record published
+				     there. Say what the real name will look like; offer no copy
+				     button for a name that cannot work. -->
+				<p
+					v-if="hostNotYetKnown"
+					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
+					data-testid="dns-host-pending"
+				>
+					Name not known yet — it is
+					<span class="font-mono">&lt;selector&gt;.{{ hostDisplay.primary }}</span
+					>, and the selector comes with the value below.
+				</p>
+				<div v-else class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
 						data-testid="dns-host-primary"
@@ -232,7 +281,11 @@ const diagnostic = computed(() => {
 				</div>
 
 				<!-- Secondary: fully-qualified name + its own copy affordance. -->
-				<div v-if="hostDisplay.fqdn" class="mt-2" data-testid="dns-host-fqdn-row">
+				<div
+					v-if="hostDisplay.fqdn && !hostNotYetKnown"
+					class="mt-2"
+					data-testid="dns-host-fqdn-row"
+				>
 					<p class="text-xs text-text-tertiary mb-1">Full name</p>
 					<div class="flex items-center gap-2">
 						<code
@@ -259,7 +312,7 @@ const diagnostic = computed(() => {
 				     shared return-path domain), so there is no zone-relative form to
 				     paste here — show the absolute name and say where it belongs. -->
 				<p
-					v-if="hostDisplay.outOfZone"
+					v-if="hostDisplay.outOfZone && !hostNotYetKnown"
 					class="text-xs text-text-tertiary mt-1"
 					data-testid="dns-out-of-zone"
 				>
@@ -273,7 +326,16 @@ const diagnostic = computed(() => {
 			<!-- Value -->
 			<div>
 				<p class="text-xs text-text-tertiary mb-1">Value</p>
-				<div class="flex items-center gap-2">
+				<!-- No value yet: say so. Never render an empty DKIM p= as something
+				     copyable — that is a published revocation, not a placeholder. -->
+				<p
+					v-if="valueDisplay === null"
+					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
+					data-testid="dns-value-pending"
+				>
+					{{ pendingCopy }}
+				</p>
+				<div v-else class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
 						data-testid="dns-value"

@@ -30,6 +30,7 @@ import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { transactionalEmailPool } from '../delivery/workpool';
+import { recordSendAssignments } from '../delivery/sendAssignments';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
@@ -124,7 +125,14 @@ export const dispatch = internalMutation({
 		//    `by_email` point read (the HTTP shell already lowercases + trims,
 		//    so the re-normalization is a defensive no-op). This path's POLICY
 		//    is to RETURN a typed rejection rather than throw.
-		if (await isSuppressed(ctx, args.email)) {
+		//
+		//    SCOPE `'transactional'`: a bounce or a complaint still blocks, but a
+		//    MARKETING-hygiene suppression does not. A customer who ignores the
+		//    newsletter has not asked to stop receiving their receipts, their
+		//    password resets or the double-opt-in confirmation they just
+		//    requested — and blocking the confirmation would make consent
+		//    itself unreachable.
+		if (await isSuppressed(ctx, args.email, { scope: 'transactional' })) {
 			return { ok: false, reason: 'recipient_blocked' };
 		}
 
@@ -304,6 +312,33 @@ export const dispatch = internalMutation({
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
 			{}
 		);
+
+		// Experiment record (plan D7): the Template API is the primary producer
+		// of the `transactional` stream, so its cell axis would otherwise be
+		// populated only by agent 1:1 replies. Written inside THIS transaction,
+		// before the workpool enqueue.
+		//
+		// It deliberately does NOT reuse `resolvedRoute` from step 8. That one
+		// comes from the authoritative per-message resolver, which is
+		// health-influenced and draws with `Math.random()` under
+		// `workload_split` — a draw the worker repeats independently at
+		// dispatch. Recording it would file a coin flip, under a second
+		// resolution semantics, into the same `transactional:*` cells the other
+		// producers fill from the health-free cell seam. The writer re-resolves
+		// through that one seam instead, which is also where the
+		// non-deterministic-strategy gate lives.
+		await recordSendAssignments(ctx, {
+			organizationId,
+			stream: 'transactional',
+			sendKind: 'transactional',
+			routing: { messageType: 'transactional', from },
+			// No campaign salt: a transactional send is its own single-recipient
+			// experiment. The contact id is the stable per-recipient identity and
+			// the SEND id is the salt, so the arm is re-drawn per message rather
+			// than pinning the contact to one arm forever (plan D7).
+			recipients: [{ sendId, email: args.email, contactId: resolved.contactId }],
+		});
+
 		await transactionalEmailPool.enqueueAction(
 			ctx,
 			internal.delivery.worker.sendSingleEmail,

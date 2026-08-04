@@ -54,6 +54,29 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.imported'),
 	// Irreversible merge: the source contact is hard-deleted into the target.
 	action('contact.merged'),
+	// Sunset policy (deliverability plan P4-4). Every automatic transition the
+	// sunset engine makes is audited, including the ones that only move a
+	// contact onto the re-engagement track — a controller that changes a
+	// recipient's fate silently is experienced as a bug.
+	action('contact.sunset_reengagement'),
+	action('contact.sunset_suppressed'),
+	action('contact.sunset_resumed'),
+	// Operator-driven, one action, and itself audited: the restore path out of
+	// an automatic sunset suppression.
+	action('contact.sunset_restored'),
+	// Operator override toggled on/off for one contact.
+	action('contact.sunset_exemption_changed'),
+	// Per-topic (or deployment-wide) window/enabled tuning.
+	action('contact.sunset_policy_updated'),
+	// One aggregated row per sweep tick that suppressed (or refused to suppress)
+	// anything. A per-contact row answers "why this address"; only this one can
+	// answer "did the engine just act on a hundred people at once, and why".
+	action('contact.sunset_sweep_summary'),
+	// An operator vouching for the deployment's clock, which re-arms a sweep
+	// that stalled because its own freshness stamps had aged past the tolerance.
+	// The machine cannot tell "the clock jumped" from "nobody ran this for two
+	// months", so a person says which it was — on the record.
+	action('contact.sunset_clock_confirmed'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
 	// Topic
@@ -123,6 +146,16 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
 	action('sending_domain.deleted'),
+	// Deliverability seed mailbox — the placement probe's operator-visible
+	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only (D2).
+	action('seed_mailbox.rotation_reminder'),
+	action('seed_mailbox.rotation_acknowledged'),
+	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
+	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
+	// submitted/enrolled dates and downgrades the yahoo cell's complaint
+	// measurement to the unsubscribe-rate proxy, a weaker signal on a
+	// relative rule rather than Yahoo's own absolute complaint feed.
+	action('sending_domain.yahoo_cfl_changed'),
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),
@@ -133,6 +166,46 @@ export const AUDIT_ACTION_LITERALS = [
 	// Abuse-status changes (any source — admin override, MTA circuit breaker,
 	// reputation auto-enforcement). See ADR-0011.
 	action('abuse_status_changed'),
+	// Deliverability ramp — the AIMD controller applied a decision that CHANGED a
+	// cell's durable ramp state: the own-MTA share moved, or a gate breach imposed
+	// a fresh freeze and cooldown rung on a cell already sitting on the share
+	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
+	// which records EVERY evaluation. See the deliverability plan, decision D12.
+	action('deliverability_ramp.decision_applied'),
+	// Deliverability ramp — ONE CELL THREW and the tick carried on with the rest.
+	// Its own literal rather than a detail on `decision_applied`: an evaluation
+	// that failed reached no decision, may have left the cell half-applied, and is
+	// the one event here that says the controller is not measuring a cell it
+	// believes it is measuring.
+	//
+	// IT IS THE ONE ROW HERE THAT STORES A THROWN MESSAGE, where the plugin rows
+	// below ban raw errors outright, and the difference is whose text it is: a
+	// plugin error is third-party output that could carry a storage key, a prompt
+	// or a secret, while this throw comes from the controller reading its OWN rows
+	// in our own process. It is bounded on the way in (`RAMP_FAILURE_MESSAGE_MAX`)
+	// so a cell that fails on every hourly tick cannot grow the table by whatever a
+	// stack trace happened to carry.
+	action('deliverability_ramp.cell_evaluation_failed'),
+	// Deliverability ramp — an OPERATOR moved the ramp by hand (P3-6). Separate
+	// literals from `decision_applied` on purpose: an audit trail that presented a
+	// person's pin as the controller's judgement would be actively misleading six
+	// weeks later, when the only question anyone has is why a cell stopped moving.
+	// `force_advanced` in particular is the one action here that can lose
+	// reputation, and it is reachable only behind a typed, consequence-naming
+	// confirmation.
+	action('deliverability_ramp.cell_paused'),
+	action('deliverability_ramp.cell_resumed'),
+	action('deliverability_ramp.cell_pinned'),
+	action('deliverability_ramp.cell_unpinned'),
+	action('deliverability_ramp.force_advanced'),
+	action('deliverability_ramp.phase_reset'),
+	action('deliverability_ramp.preset_changed'),
+	// The two acts that put a cell on the ramp and move it UP it. `cell_enrolled`
+	// is the opt-in — before it the cell has no stored share and the shipped
+	// boolean governs it — and `phase_promoted` is the ONLY way a phase ceiling
+	// ever rises, which is why it is worth being able to find on its own.
+	action('deliverability_ramp.cell_enrolled'),
+	action('deliverability_ramp.phase_promoted'),
 	// Postbox outbound state transitions (per recipient). Fired by the
 	// Postbox outbound lifecycle module on every transition. See ADR-0012.
 	action('postbox_outbound_transition'),
@@ -243,10 +316,12 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'api_key',
 	'webhook',
 	'sending_domain',
+	'seed_mailbox',
 	'blocklist',
 	'segment',
 	'platform_admin',
 	'instance_settings',
+	'deliverability_ramp',
 	'inbound_message',
 	'agent_config',
 	'autonomy_rule',

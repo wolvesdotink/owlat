@@ -32,6 +32,15 @@ export type EnvKey =
 	| 'ALLOWED_ORIGINS'
 	// Email defaults
 	| 'EMAIL_PROVIDER'
+	// Additional NAMED transport instances, beyond the one default instance each
+	// transport kind gets for free. Comma-separated `<kind>#<instanceKey>` entries
+	// (e.g. `smtp#backup,resend#trial`). Each named instance reads its own config
+	// from the same variables as its kind, suffixed with `__<INSTANCEKEY>` —
+	// `smtp#backup` reads `SMTP_RELAY_HOST__BACKUP`, `SMTP_RELAY_USERNAME__BACKUP`,
+	// and so on. Instance keys are lowercase `[a-z0-9][a-z0-9_-]{0,31}`; malformed
+	// entries are ignored rather than crashing dispatch. Unset ⇒ exactly one
+	// transport per kind, which is the shipped single-transport deployment.
+	| 'SEND_TRANSPORT_INSTANCES'
 	| 'DEFAULT_FROM_DOMAIN'
 	| 'DEFAULT_FROM_EMAIL'
 	| 'DEFAULT_FROM_NAME'
@@ -57,6 +66,21 @@ export type EnvKey =
 	// the pool IPs, so the bounce envelope passes SPF at receivers that check
 	// MAIL FROM. Unset ⇒ no return-path SPF record is generated.
 	| 'MTA_RETURN_PATH_DOMAIN'
+	// The MTA's VERP signing key (BOUNCE_VERP_KEY on the MTA side). Convex needs
+	// the SAME key to stamp a verifiable VERP envelope sender on RELAY sends, so
+	// a bounce a third-party relay generates still reaches our bounce server and
+	// attributes to the right send. Unset ⇒ relay sends keep the composer's
+	// envelope sender and that arm's bounce data is graded degraded — never an
+	// error, never a blocked send.
+	| 'MTA_BOUNCE_VERP_KEY'
+	// SPF mechanism terms (e.g. `include:amazonses.com`) that authorise a
+	// third-party RELAY to send with a `bounce+…@<return-path host>` envelope
+	// sender. Emitted into the generated return-path SPF record, and required —
+	// published and verified — before a relay send may carry our VERP address:
+	// the record otherwise authorises the MTA pool only, so stamping it on a
+	// relay send would fail SPF on the very arm being measured. Unset ⇒ no relay
+	// stamp, degraded measurement, nothing blocked.
+	| 'MTA_RETURN_PATH_RELAY_SPF'
 	// The DKIM signing domain (`d=` tag) the ACTIVE transport stamps on outbound
 	// mail, when it isn't the per-message From-domain. The built-in MTA signs
 	// per-From-domain, so it leaves this unset (and aligns by construction); a
@@ -73,6 +97,19 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
+	// BIMI (P4-7) — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
+	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
+	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and
+	// what a VMC is, and generates no record. Never a blocked send, never a
+	// blocked promotion, never an unresolvable warning (D2).
+	// HTTPS URL of the SVG Tiny PS brand logo (the `l=` tag).
+	| 'MTA_BIMI_LOGO_URL'
+	// HTTPS URL of the Verified Mark Certificate PEM (the `a=` tag). Gmail and
+	// Apple Mail need one; other receivers show the logo without it.
+	| 'MTA_BIMI_VMC_URL'
+	// BIMI selector label (`<selector>._bimi.<domain>`). Unset ⇒ the spec's
+	// `default`. A value that is not a DNS label falls back to `default`.
+	| 'MTA_BIMI_SELECTOR'
 	// Optional SMTP TLS Reporting (`rua`) reporting URI emitted in the generated
 	// `_smtp._tls` TXT record (RFC 8460 §3), e.g.
 	// `mailto:tls-reports@owlat.example` or `https://example.com/tlsrpt`.
@@ -144,6 +181,14 @@ export type EnvKey =
 	// (user-triggered) AI is paused once remaining headroom drops within it.
 	// Default 0.2.
 	| 'AI_SPEND_ADVISORY_RESERVE_FRACTION'
+	// Microsoft SNDS "Automated Data Access" feed URLs (comma- or
+	// whitespace-separated, `https` only), one per registered IP range. Each URL
+	// is a BEARER CAPABILITY to the deployment's SNDS data — it is read only by
+	// the SNDS poller, never logged and never returned to a client. Unset ⇒ the
+	// poller returns immediately having written nothing: SNDS enrollment is
+	// additive-only, so its absence lowers measurement confidence for the
+	// Microsoft cell and slows that cell's ramp, and does nothing else.
+	| 'SNDS_DATA_FEED_URLS'
 	// Analytics & links
 	| 'POSTHOG_API_KEY'
 	| 'POSTHOG_HOST'
@@ -202,12 +247,24 @@ export function getWithDefault(key: EnvKey, fallback: string): string {
 }
 
 /**
+ * The truthy set, applied to an already-read value.
+ *
+ * Exported so the per-transport-instance reader in
+ * `lib/sendProviders/transportEnv.ts` — which resolves its own variable name at
+ * runtime and so cannot go through `getBoolean`'s typed `EnvKey` — parses with
+ * the SAME set instead of restating it. One definition, no drift.
+ */
+export function parseBooleanEnv(value: string | undefined): boolean {
+	const normalized = value?.toLowerCase();
+	return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+/**
  * Boolean parse of an environment variable. Treats 'true', '1', 'yes', 'on'
  * (case-insensitive) as true; anything else (including unset) as false.
  */
 export function getBoolean(key: EnvKey): boolean {
-	const value = process.env[key]?.toLowerCase();
-	return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+	return parseBooleanEnv(process.env[key]);
 }
 
 /**
@@ -227,6 +284,43 @@ export function isEnvPresent(key: string): boolean {
 }
 
 /**
+ * The one untyped-key read. Both escape hatches below delegate here so
+ * "unset or empty means absent" has a single definition.
+ */
+function readNonEmptyEnv(key: string): string | undefined {
+	const value = process.env[key];
+	return value === undefined || value === '' ? undefined : value;
+}
+
+/**
+ * `<BASE>__<INSTANCEKEY>` — the only key shape a named send-transport instance
+ * may read. Fencing the shape keeps this untyped escape hatch from being used
+ * (by a future caller, or by a crafted instance key) to read unrelated
+ * deployment configuration.
+ */
+const SEND_TRANSPORT_ENV_KEY_PATTERN = /^[A-Z0-9_]+__[A-Z0-9_]+$/;
+
+/**
+ * Read one send-transport configuration variable by its INSTANCE-RESOLVED name.
+ *
+ * Accepts an arbitrary key (not the typed `EnvKey` union) because a named
+ * transport instance reads its kind's variables under an `__<INSTANCEKEY>`
+ * suffix (`SMTP_RELAY_HOST__BACKUP`) — a name derived at runtime from
+ * `SEND_TRANSPORT_INSTANCES`, so it cannot be enumerated in the union. Reading
+ * through this module keeps the no-raw-`process.env` lint satisfied. Returns
+ * `undefined` when unset, empty, or not of the suffixed instance shape, so the
+ * transport resolver fails closed; the value is only ever handed to the adapter
+ * that owns it, never logged and never returned to a client.
+ *
+ * The UNSUFFIXED default instance keeps reading through the typed accessors
+ * above — this is only the extra-instance path.
+ */
+export function getSendTransportEnv(key: string): string | undefined {
+	if (!SEND_TRANSPORT_ENV_KEY_PATTERN.test(key)) return undefined;
+	return readNonEmptyEnv(key);
+}
+
+/**
  * Read a plugin-declared signing secret by the `secretEnvVar` name from a
  * plugin's inbound signature-verification contract. Accepts an arbitrary key
  * (not the typed `EnvKey` union) because plugin secret variable names are
@@ -236,6 +330,5 @@ export function isEnvPresent(key: string): boolean {
  * ever fed into a constant-time HMAC comparison, never logged.
  */
 export function getPluginSecret(key: string): string | undefined {
-	const value = process.env[key];
-	return value === undefined || value === '' ? undefined : value;
+	return readNonEmptyEnv(key);
 }

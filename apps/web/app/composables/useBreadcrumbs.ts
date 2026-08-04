@@ -116,6 +116,26 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/delivery',
 		page: 'Setup',
 	},
+	'/dashboard/delivery/measurement': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Measurement',
+	},
+	'/dashboard/delivery/independence': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Independence',
+	},
+	'/dashboard/delivery/cells': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Cells',
+	},
+	'/dashboard/delivery/controls': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Controls',
+	},
 	'/dashboard/delivery/config': {
 		section: 'Delivery',
 		sectionHref: '/dashboard/delivery',

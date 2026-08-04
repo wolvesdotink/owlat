@@ -7,7 +7,6 @@
  */
 
 import { Resend } from 'resend';
-import { getRequired } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
@@ -17,17 +16,22 @@ import {
 	type ResendExtras,
 	type SendProviderModule,
 } from '../types';
+import { transportEnvRequired } from '../transportEnv';
+import type { SendTransportRecord } from '../transports';
 import { RETRY_DELAYS_MS } from '../../constants';
 const RESEND_TIMEOUT_MS = 30_000;
 
-let cachedClient: Resend | null = null;
+// One client per CONFIGURED TRANSPORT, not one per deployment: two `resend`
+// transports carry different API keys, so caching by kind would leak the first
+// instance's credential into the second one's sends.
+const cachedClients = new Map<string, Resend>();
 
-// Exported so other Resend callers (e.g. confirmationEmail) reuse the same
-// cached, env-validated client instead of re-deriving it.
-export function getResendClient(): Resend {
-	if (cachedClient) return cachedClient;
-	cachedClient = new Resend(getRequired('RESEND_API_KEY'));
-	return cachedClient;
+function getResendClient(transport: SendTransportRecord): Resend {
+	const cached = cachedClients.get(transport.id);
+	if (cached) return cached;
+	const client = new Resend(transportEnvRequired(transport, 'RESEND_API_KEY'));
+	cachedClients.set(transport.id, client);
+	return client;
 }
 
 export const resendSendProvider: SendProviderModule<'resend'> = {
@@ -35,12 +39,13 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 	retryDelays: RETRY_DELAYS_MS,
 
 	async sendEmail(
+		transport: SendTransportRecord,
 		params: EmailSendParams,
-		extras?: ResendExtras,
+		extras?: ResendExtras
 	): Promise<EmailSendAttempt> {
 		let client: Resend;
 		try {
-			client = getResendClient();
+			client = getResendClient(transport);
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return {
@@ -69,10 +74,10 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 					},
 					// Stable idempotency key → Resend `Idempotency-Key` header, so a
 					// surviving retry of the same Send de-dupes at Resend.
-					extras?.idempotencyKey ? { idempotencyKey: extras.idempotencyKey } : undefined,
+					extras?.idempotencyKey ? { idempotencyKey: extras.idempotencyKey } : undefined
 				),
 				RESEND_TIMEOUT_MS,
-				'Resend API call timed out',
+				'Resend API call timed out'
 			);
 
 			if (result.error) {
@@ -109,7 +114,11 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 
 		const lower = message.toLowerCase();
 
-		if (lower.includes('rate_limit') || lower.includes('rate limit') || lower.includes('too many')) {
+		if (
+			lower.includes('rate_limit') ||
+			lower.includes('rate limit') ||
+			lower.includes('too many')
+		) {
 			return EmailErrorCode.RATE_LIMIT;
 		}
 		if (
@@ -161,5 +170,5 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 
 // Exported for tests that need to bypass the lazy-init cache between cases.
 export function _resetResendClientCacheForTests(): void {
-	cachedClient = null;
+	cachedClients.clear();
 }

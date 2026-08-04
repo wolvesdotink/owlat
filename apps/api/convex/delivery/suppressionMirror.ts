@@ -24,14 +24,69 @@
  * `scheduleSuppressionMirror` without crossing the runtime boundary.
  */
 
-import { v } from 'convex/values';
+import { v, type Validator } from 'convex/values';
 import { internalAction, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from '../mail/mtaClient';
 
 // blockedEmails.reason — the Convex-side suppression vocabulary.
-export type BlockReason = 'bounced' | 'complained' | 'manual';
+export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
+
+/**
+ * The reasons that are a MARKETING-HYGIENE decision about bulk mail, not
+ * evidence that the mailbox must never be written to again.
+ *
+ * `unengaged` (the sunset engine's auto-suppression) is the only one: it says
+ * "this person has ignored nine months of campaigns", which is a reason to stop
+ * sending campaigns and NOT a reason to stop sending the receipt, the password
+ * reset or the double-opt-in confirmation the same person just asked for. A
+ * hard bounce or a spam complaint is the opposite — those are evidence about
+ * the mailbox itself and gate every scope.
+ *
+ * Two consequences, both enforced in one place each:
+ *   - `lib/suppression.ts`'s `isSuppressed` ignores these reasons on the
+ *     transactional scope;
+ *   - they are never mirrored to the MTA's last-hop backstop (below), because
+ *     that list sits UNDER Convex and would block the transactional mail the
+ *     Convex-side gate just decided to allow.
+ */
+export const MARKETING_ONLY_BLOCK_REASONS = ['unengaged'] as const;
+
+export type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[number];
+
+/** The reasons that DO reach the MTA backstop — everything not marketing-only. */
+export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>;
+
+/**
+ * The mirrored reasons as VALUES, so the `mirror` action's validator is derived
+ * from the same exclusion the type expresses instead of hand-listing it. The
+ * `satisfies` is what makes the derivation load-bearing: adding a second
+ * marketing-only reason narrows `MirroredBlockReason` and fails this line rather
+ * than leaving a validator that still accepts the excluded reason.
+ */
+export const MIRRORED_BLOCK_REASONS = [
+	'bounced',
+	'complained',
+	'manual',
+] as const satisfies readonly MirroredBlockReason[];
+
+/**
+ * Convex validator over the mirrored reasons. Spreading into `v.union` loses
+ * literal narrowing, so it is cast back once here (cf.
+ * `contactActivities/catalog.ts`'s `contactActivityTypeValidator`).
+ */
+export const mirroredBlockReasonValidator = v.union(
+	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason))
+) as unknown as Validator<MirroredBlockReason>;
+
+const MARKETING_ONLY_SET: ReadonlySet<string> = new Set(MARKETING_ONLY_BLOCK_REASONS);
+
+export function isMarketingOnlyBlockReason(
+	reason: BlockReason
+): reason is MarketingOnlyBlockReason {
+	return MARKETING_ONLY_SET.has(reason);
+}
 
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
@@ -47,8 +102,8 @@ export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
  * bounce / complaint must map to its permanent counterpart.
  */
 export function toMtaSuppressionReason(
-	reason: BlockReason,
-	bounceType?: 'hard' | 'soft',
+	reason: MirroredBlockReason,
+	bounceType?: 'hard' | 'soft'
 ): MtaSuppressionReason {
 	if (reason === 'complained') return 'complaint';
 	if (reason === 'bounced') {
@@ -67,10 +122,14 @@ export function toMtaSuppressionReason(
  * `runAfter(0, …)` so it runs in its own transaction-free action after the
  * originating mutation commits — Convex mutations can't `fetch`, and a failed
  * push must not roll back the insert.
+ *
+ * `reason` is the MIRRORED subset on purpose: the marketing-only reasons are
+ * excluded by the TYPE, so a future suppression source physically cannot push a
+ * bulk-hygiene decision onto a list that gates transactional mail too.
  */
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
-	args: { email: string; reason: BlockReason; bounceType?: 'hard' | 'soft' },
+	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' }
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,
@@ -90,11 +149,7 @@ export async function scheduleSuppressionMirror(
 export const mirror = internalAction({
 	args: {
 		email: v.string(),
-		reason: v.union(
-			v.literal('bounced'),
-			v.literal('complained'),
-			v.literal('manual'),
-		),
+		reason: mirroredBlockReasonValidator,
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
 	handler: async (_ctx, args) => {
@@ -122,9 +177,7 @@ export const mirror = internalAction({
 				}),
 			});
 			if (!res.ok) {
-				logError(
-					`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`,
-				);
+				logError(`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`);
 				return;
 			}
 			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);

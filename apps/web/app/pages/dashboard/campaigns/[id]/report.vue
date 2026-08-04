@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
+import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
 
@@ -52,6 +53,16 @@ const {
 const { data: stats, isLoading: statsLoading } = useConvexQuery(
 	api.delivery.sends.getStatsByCampaign,
 	() => ({ campaignId: campaignId.value })
+);
+
+// The multi-day send plan's day-of-N state. `null` for a campaign with no walk
+// in flight, which renders nothing at all — absence of a plan is not a state
+// anyone has to explain (plan D2/D14).
+const { data: sendPlan } = useConvexQuery(
+	api.campaigns.sendPlanQueries.getCampaignSendPlan,
+	() => ({
+		campaignId: campaignId.value,
+	})
 );
 
 // Fetch opens timeline
@@ -279,6 +290,11 @@ const loadPrevClicked = () => {
 								<span class="text-text-tertiary">·</span>
 								<span class="tabular-nums">{{ sentCount.toLocaleString() }} recipients</span>
 							</p>
+							<!--
+								THE MULTI-DAY SEND PLAN, present from the moment the send starts
+								(plan D14, P3-7). Renders nothing for an ordinary same-day send.
+							-->
+							<CampaignSendPlanLine :progress="sendPlan" class="mt-1" />
 						</div>
 						<div class="flex items-center gap-3">
 							<button

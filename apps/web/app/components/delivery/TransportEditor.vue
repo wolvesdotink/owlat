@@ -4,15 +4,16 @@ import {
 	seedOutboundTlsMode,
 	type OutboundTlsMode,
 } from '~/composables/setupOutboundTls';
+import type { EmailStepDraft, ProviderChoice } from '~/composables/useSetupWizard';
+import { transportStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
+import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
-	SMTP_RELAY_PRESETS,
-	buildProviderEnv,
-	emailStepIsValid,
-	validateEmailStep,
-	type EmailStepDraft,
-	type ProviderChoice,
-	type SmtpPreset,
-} from '~/composables/useSetupWizard';
+	RELAY_PROVIDER_OPTIONS,
+	applyTransportEnv,
+	useRelayCredentialDraft,
+	type RelayProviderOption,
+} from '~/composables/useRelayCredentialDraft';
+import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -21,6 +22,25 @@ import {
  * ever hand-editing `.env`. Existing secrets are NEVER shown — the credential
  * fields start blank, and applying re-enters them; the backend never returns a
  * value. Editing is an explicit action revealed behind "Change provider".
+ *
+ * ONE OF THESE CHANGES IS NOT LIKE THE OTHERS. Rotating a credential or moving
+ * between two relays keeps a second arm; switching to the built-in MTA
+ * DISCONNECTS the relay, and any cell the ramp has not graduated is still
+ * sending part of its mail through it. That traffic does not move gently — it
+ * all moves at once, which is the failure the ramp exists to avoid. So this
+ * button opens the same consequence dialog the Independence screen opens, with
+ * the same phrase, and the endpoint re-checks the phrase server-side: the dialog
+ * is what an operator sees, not what makes the change safe.
+ *
+ * THE SERVER'S REFUSAL OPENS THE SAME DIALOG. This screen's removal read can be
+ * unresolved (Apply pressed early) or faulted, and both leave it unable to tell
+ * that a removal is unsafe — so the endpoint refuses fail-closed, and that
+ * refusal is a request for the phrase rather than an error. It is routed to the
+ * dialog on the `needsRelayRemovalConfirmation` flag, never printed: a rule an
+ * operator is given no way to meet is a dead end, not a safeguard. Its SENTENCE
+ * travels with it — the endpoint's read is a different read from this screen's,
+ * and on that path it is the only one that knows how many cells are still
+ * leaning on the relay and what date waiting would make it free.
  */
 
 const props = defineProps<{
@@ -46,11 +66,24 @@ function knownKind(kind: string | null): ProviderChoice {
 	return kind === 'mta' || kind === 'resend' || kind === 'ses' || kind === 'smtp' ? kind : 'mta';
 }
 
-const provider = ref<ProviderChoice>(knownKind(props.currentProvider));
-const resendKey = ref('');
-const sesRegion = ref('us-east-1');
-const sesAccess = ref('');
-const sesSecret = ref('');
+// The SAME relay-credential draft the connection wizard's step 1 uses — one
+// provider list, one preset table, one live handshake, one env patch.
+const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
+const {
+	provider,
+	resendKey,
+	sesRegion,
+	sesAccess,
+	sesSecret,
+	smtpPreset,
+	smtpHost,
+	smtpPort,
+	smtpSecure,
+	smtpUsername,
+	smtpPassword,
+	smtpPresetOptions,
+} = relay;
+
 const fromEmail = ref('');
 const fromName = ref('');
 // Outbound TLS posture for the built-in MTA (direct-MX). Seeded from the active
@@ -66,52 +99,17 @@ const outboundTlsModeHint = computed(
 	() => OUTBOUND_TLS_MODE_OPTIONS.find((o) => o.value === outboundTlsMode.value)?.hint ?? ''
 );
 
-const smtpPreset = ref<SmtpPreset>('mailgun');
-const smtpHost = ref(SMTP_RELAY_PRESETS['mailgun'].host);
-const smtpPort = ref(SMTP_RELAY_PRESETS['mailgun'].port);
-const smtpSecure = ref(SMTP_RELAY_PRESETS['mailgun'].secure);
-const smtpUsername = ref('');
-const smtpPassword = ref('');
+/** The MTA is not a relay, so it is the editor's own entry above the shared ones. */
+const MTA_OPTION: { value: ProviderChoice; label: string; hint: string; icon: string } = {
+	value: 'mta',
+	label: 'Run your own MTA',
+	hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
+	icon: 'lucide:server',
+};
 
-const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-// Choosing a named preset prefills host/port/TLS; Custom leaves them editable.
-watch(smtpPreset, (preset) => {
-	if (preset === 'custom') return;
-	const cfg = SMTP_RELAY_PRESETS[preset];
-	smtpHost.value = cfg.host;
-	smtpPort.value = cfg.port;
-	smtpSecure.value = cfg.secure;
-});
-
-const providerOptions: { value: ProviderChoice; label: string; hint: string; icon: string }[] = [
-	{
-		value: 'mta',
-		label: 'Run your own MTA',
-		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
-		icon: 'lucide:server',
-	},
-	{
-		value: 'ses',
-		label: 'Amazon SES',
-		hint: 'Managed deliverability, cheap at scale. Needs an AWS account.',
-		icon: 'lucide:cloud',
-	},
-	{
-		value: 'smtp',
-		label: 'SMTP relay',
-		hint: 'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
-		icon: 'lucide:route',
-	},
-	{
-		value: 'resend',
-		label: 'Resend',
-		hint: 'Managed API with a generous free tier.',
-		icon: 'lucide:zap',
-	},
+const providerOptions: readonly (RelayProviderOption | typeof MTA_OPTION)[] = [
+	MTA_OPTION,
+	...RELAY_PROVIDER_OPTIONS,
 ];
 
 const draft = computed<EmailStepDraft>(() => ({
@@ -119,16 +117,7 @@ const draft = computed<EmailStepDraft>(() => ({
 	// The editor only ever sets a real transport, so the "none" branch of the
 	// shared validator is unreachable here.
 	requiresProvider: true,
-	resendKey: resendKey.value,
-	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
-	smtp: {
-		preset: smtpPreset.value,
-		host: smtpHost.value,
-		port: smtpPort.value,
-		secure: smtpSecure.value,
-		username: smtpUsername.value,
-		password: smtpPassword.value,
-	},
+	...relay.credentialFields.value,
 	outboundTlsMode: outboundTlsMode.value,
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
@@ -137,10 +126,19 @@ const draft = computed<EmailStepDraft>(() => ({
 const submitted = ref(false);
 const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
-const isValid = computed(() => emailStepIsValid(draft.value));
+
+/**
+ * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S — decided in
+ * `setupWizardValidation`, beside the rules themselves, rather than by listing here the
+ * one key to ignore. `transportStepIsValid` names the errors a transport-only
+ * screen OWNS and is exhaustive over `EmailStepErrors`, so the next field that
+ * step gains must be classified there instead of silently gating this Apply
+ * button on a field this screen does not render.
+ */
+const isValid = computed(() => transportStepIsValid(draft.value));
 
 // Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
-const canTest = computed(() => provider.value === 'resend' || provider.value === 'smtp');
+const canTest = relay.canValidateLive;
 
 // ── Test ─────────────────────────────────────────────────────────────────────
 const testing = ref(false);
@@ -152,24 +150,7 @@ async function handleTest() {
 	if (!isValid.value) return;
 	testing.value = true;
 	try {
-		const trimmedPort = smtpPort.value.trim();
-		const bodyBase =
-			provider.value === 'resend'
-				? { provider: 'resend' as const, apiKey: resendKey.value }
-				: {
-						provider: 'smtp' as const,
-						smtp: {
-							host: smtpHost.value.trim(),
-							port: trimmedPort ? Number.parseInt(trimmedPort, 10) : 587,
-							secure: smtpSecure.value,
-							username: smtpUsername.value,
-							password: smtpPassword.value,
-						},
-					};
-		testResult.value = await $fetch<{ ok: boolean; message: string }>(
-			'/api/delivery/validate-transport',
-			{ method: 'POST', body: bodyBase }
-		);
+		testResult.value = await relay.validateLive();
 	} catch (e) {
 		testResult.value = {
 			ok: false,
@@ -180,28 +161,67 @@ async function handleTest() {
 	}
 }
 
+// ── Disconnecting the relay ──────────────────────────────────────────────────
+/**
+ * The removal-safety read + the consequence sentence, in the shared guard: the
+ * Independence screen asks the same question of the same query, so the screen
+ * that WARNS and the screen that CHANGES cannot disagree about which cells are
+ * still leaning on the relay.
+ */
+const { removesReferenceArm, removalConsequence, dialogConsequence, noteServerRefusal } =
+	useRelayRemovalGuard(provider);
+
+const isRemovalDialogOpen = ref(false);
+
 // ── Apply ────────────────────────────────────────────────────────────────────
 const applying = ref(false);
 const applyError = ref('');
 const restartNotice = ref('');
 
-async function handleApply() {
+function handleApply(): Promise<void> | void {
 	submitted.value = true;
 	applyError.value = '';
 	restartNotice.value = '';
 	if (!isValid.value) return;
+	// NOTHING IS SENT YET. The button opens the dialog; only the typed phrase
+	// applies the change.
+	if (removesReferenceArm.value) {
+		isRemovalDialogOpen.value = true;
+		return;
+	}
+	return apply();
+}
+
+function confirmRelayRemoval(confirmation: string): Promise<void> {
+	isRemovalDialogOpen.value = false;
+	return apply(confirmation);
+}
+
+async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	applying.value = true;
+	noteServerRefusal(null);
 	try {
-		// Identical env patch to the wizard's — pass an empty base so only the
-		// transport keys are sent; the backend allowlists and clears the rest.
-		const providerEnv = buildProviderEnv({}, draft.value);
-		const res = await $fetch<{
-			ok: boolean;
-			message: string;
-			applied: boolean;
-			requiresRestart: boolean;
-		}>('/api/delivery/apply-transport', { method: 'POST', body: { providerEnv } });
+		// The wizard's env patch, literally: one helper, one endpoint.
+		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
 		if (!res.ok) {
+			// A FAIL-CLOSED REFUSAL IS NOT AN ERROR MESSAGE. The endpoint demands the
+			// phrase whenever it cannot establish that the removal is safe — which
+			// includes every apply made before this screen's own removal read
+			// resolved, and every apply made after it faulted. Rendering that under
+			// "Couldn't apply" left the operator reading "type REMOVE THE RELAY" on a
+			// screen with nowhere to type it, so the refusal opens the dialog instead.
+			if (res.needsRelayRemovalConfirmation === true) {
+				// Its consequence is the SHARED sentence, built from the read this
+				// browser could not make — so it is carried into the dialog rather than
+				// discarded with the response. THE CONSEQUENCE FIELD, NOT THE MESSAGE:
+				// the message closes with "type REMOVE THE RELAY to disconnect it
+				// anyway", which this dialog then states again in the label of its own
+				// input, directly below. The message is only the fallback for a refusal
+				// that carries no separate consequence.
+				noteServerRefusal(res.relayRemovalConsequence ?? res.message);
+				isRemovalDialogOpen.value = true;
+				return;
+			}
 			applyError.value = res.message;
 			return;
 		}
@@ -212,9 +232,7 @@ async function handleApply() {
 			isEditing.value = false;
 		}
 		// Clear the entered secrets from memory once applied.
-		resendKey.value = '';
-		sesSecret.value = '';
-		smtpPassword.value = '';
+		relay.clearEnteredSecrets();
 		emit('applied');
 	} catch (e) {
 		applyError.value = (e as Error).message || 'Could not apply the transport. Try again.';
@@ -225,10 +243,12 @@ async function handleApply() {
 
 function cancel() {
 	isEditing.value = false;
+	isRemovalDialogOpen.value = false;
 	submitted.value = false;
 	testResult.value = null;
 	applyError.value = '';
 	restartNotice.value = '';
+	noteServerRefusal(null);
 }
 </script>
 
@@ -426,6 +446,24 @@ function cancel() {
 				</UiButton>
 				<UiButton variant="ghost" :disabled="applying || testing" @click="cancel">Cancel</UiButton>
 			</div>
+
+			<!-- The one transport change that can lose reputation names what it costs. -->
+			<DeliveryRampConfirmDialog
+				:open="isRemovalDialogOpen"
+				title="Disconnect the relay?"
+				:phrase="RELAY_REMOVAL_CONFIRMATION"
+				confirm-label="Disconnect and switch to my own MTA"
+				:busy="applying"
+				@cancel="isRemovalDialogOpen = false"
+				@confirm="confirmRelayRemoval"
+			>
+				<template #consequence>
+					<p data-testid="transport-removal-consequence">{{ dialogConsequence }}</p>
+					<p v-if="removalConsequence.safeDate !== null" data-testid="transport-removal-dialog-date">
+						{{ removalConsequence.safeDate }}
+					</p>
+				</template>
+			</DeliveryRampConfirmDialog>
 		</div>
 
 		<div v-else class="px-6 py-5">
@@ -434,6 +472,12 @@ function cancel() {
 				<span class="font-medium text-text-primary">{{ currentProvider ?? 'not set' }}</span
 				>. Choose a different provider or rotate its credentials — the change is tested and applied
 				in place.
+			</p>
+			<!-- One endpoint, two doors: name the relationship so neither affordance
+			     looks like it does something the other does not. -->
+			<p class="text-sm text-text-secondary mt-2">
+				“Connect an email provider” below is the guided version of this: the same change, walked
+				step by step with a live send test and DNS alignment checks.
 			</p>
 		</div>
 	</UiCard>
