@@ -33,6 +33,7 @@ import { getOptional } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
+	type DispatchExtrasInput,
 	type EmailSendAttempt,
 	type EmailSendParams,
 	type SendProviderModule,
@@ -308,6 +309,21 @@ export async function sendViaRelay(
 export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	kind: 'smtp',
 	retryDelays: RETRY_DELAYS_MS,
+
+	/**
+	 * Relay arm (plan G-08): stamp OUR VERP envelope sender at the return-path
+	 * host the routing pass authorised — the SAME host the direct-MX arm stamps
+	 * for this From domain — so relayed bounces reach our own bounce server and
+	 * both arms present the same envelope-sender domain. Resolved by the routing
+	 * pass, not by a second query on the send path. No authorised host simply
+	 * keeps the composer's envelope sender: the send is unchanged and its cell is
+	 * graded degraded-measurement, never blocked (plan D2).
+	 */
+	buildDispatchExtras(input: DispatchExtrasInput): SmtpExtras {
+		return input.relayReturnPathHost === undefined
+			? {}
+			: { returnPathHost: input.relayReturnPathHost };
+	},
 
 	async sendEmail(
 		transport: SendTransportRecord,

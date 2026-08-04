@@ -11,13 +11,9 @@ import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
+	buildDispatchExtrasFor,
 	type EmailSendParams,
-	type ExtrasFor,
-	type MtaExtras,
-	type MtaIpPool,
-	type ResendExtras,
 	type SendProviderKind,
-	type SmtpExtras,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
 import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
@@ -239,48 +235,28 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
 	const engagementScore = normalizeEngagementScore(request.engagementScore);
-	const extras: ExtrasFor<SendProviderKind> =
-		providerKind === 'mta'
-			? ({
-					messageId: idempotencyKey,
-					workAttemptId,
-					routingReentryToken: snapshot.token,
-					routingReentry: {
-						envelopeInput: request.envelopeInput,
-						// Must equal the snapshot's retryState above — the callback
-						// digest covers it.
-						retryState: reentryRetryState(retryState),
-					},
-					organizationId,
-					messageType: request.messageType,
-					deliveryDomain: request.deliveryDomain,
-					routingLease,
-					allowWarmupOverflow: Boolean(
-						request.messageType === 'campaign' && route?.warmupOverflowEnabled
-					),
-					...((route?.ipPool ?? request.ipPool)
-						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
-						: {}),
-					// Omitted, never zeroed, when the recipient has no score: the
-					// MTA reads absence as "unknown" and applies its DEFAULT band,
-					// whereas 0 would order the message behind every cold contact.
-					...(engagementScore !== undefined ? { engagementScore } : {}),
-				} satisfies MtaExtras)
-			: providerKind === 'resend'
-				? ({ idempotencyKey } satisfies ResendExtras)
-				: providerKind === 'smtp'
-					? // Relay arm (plan G-08): stamp OUR VERP envelope sender at the
-						// return-path host the routing pass authorised — the SAME host the
-						// direct-MX arm stamps for this From domain — so relayed bounces
-						// reach our own bounce server and both arms present the same
-						// envelope-sender domain. Resolved by the routing pass, not by a
-						// second query on the send path. No authorised host simply keeps
-						// the composer's envelope sender: the send is unchanged and its
-						// cell is graded degraded-measurement, never blocked (plan D2).
-						relayReturnPathHost === undefined
-						? ({} satisfies SmtpExtras)
-						: ({ returnPathHost: relayReturnPathHost } satisfies SmtpExtras)
-					: {};
+	// The facts, not the shape: this boundary states what it knows about the send
+	// and the provider module turns that into its own typed extras. No branch on
+	// which provider — a new kind adds an adapter, never a case here.
+	const extras = buildDispatchExtrasFor(providerKind, {
+		idempotencyKey,
+		workAttemptId,
+		organizationId,
+		messageType: request.messageType,
+		deliveryDomain: request.deliveryDomain,
+		routingReentryToken: snapshot.token,
+		routingReentry: {
+			envelopeInput: request.envelopeInput,
+			// Must equal the snapshot's retryState above — the callback digest
+			// covers it.
+			retryState: reentryRetryState(retryState),
+		},
+		routingLease,
+		ipPool: route?.ipPool ?? request.ipPool,
+		warmupOverflowEnabled: route?.warmupOverflowEnabled,
+		engagementScore,
+		relayReturnPathHost,
+	});
 	const dispatched = await sendProviderDispatch(
 		ctx,
 		// The SAME instance the routing pass graded for return-path capability.
