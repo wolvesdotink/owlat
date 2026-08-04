@@ -23,6 +23,7 @@ import {
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import { handleResendWebhook } from './resendWebhook';
+import { handleMandrillWebhook, handleMandrillPing } from './mandrillWebhook';
 import { handleMtaWebhook } from './mtaWebhook';
 import { handleSesWebhook } from './sesWebhook';
 import { handleMailWebhook } from './mail/webhook';
@@ -252,6 +253,22 @@ http.route({
 	path: '/webhooks/resend',
 	method: 'POST',
 	handler: handleResendWebhook,
+});
+
+// POST /webhooks/mandrill - Mailchimp Transactional feedback batch
+// (send, deferral, hard/soft bounce, spam, unsub, reject — never open/click)
+http.route({
+	path: '/webhooks/mandrill',
+	method: 'POST',
+	handler: handleMandrillWebhook,
+});
+
+// GET /webhooks/mandrill - Mandrill's unsigned URL-validation probe. Convex
+// routes HEAD (which is what Mandrill actually sends) to the GET handler.
+http.route({
+	path: '/webhooks/mandrill',
+	method: 'GET',
+	handler: handleMandrillPing,
 });
 
 // POST /webhooks/mta - Handle custom MTA webhook events (bounce, complaint, IP events)

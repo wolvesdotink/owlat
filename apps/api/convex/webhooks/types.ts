@@ -80,6 +80,43 @@ export type InboundEvent =
 			errorCode: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
+			/**
+			 * The address the terminal failure names, when the provider reports one.
+			 *
+			 * Set by the Mandrill adapter for a `reject` event (plan D9/D10): a
+			 * reject is Mandrill's own blacklist refusing the address, and P2.2's
+			 * suppression sync needs the address to mirror that hit into
+			 * `blockedEmails`. Untrusted telemetry, exactly like the `recipient` on
+			 * `email.delivered` — any handler that suppresses on it must decide
+			 * that on the provider identity, never on the wire value alone.
+			 */
+			recipient?: string;
+	  }
+	| {
+			// Transient RELAY-side deferral (Mandrill `deferral`, plan D10). The
+			// receiver 4xx'd AFTER the relay accepted the message for delivery, so
+			// the Send's own status is not in question — the relay keeps retrying —
+			// and the only thing this event moves is the (cell, arm) `deferred`
+			// transport-outcome counter that ramp gate 2 divides.
+			kind: 'email.deferred';
+			providerMessageId: string;
+			at: number;
+			providerType?: string;
+			/** Provider free text (Mandrill `msg.diag`), for operator logs only. */
+			reason?: string;
+	  }
+	| {
+			// The recipient left through the RELAY's own unsubscribe surface
+			// (Mandrill `unsub`, plan D10). It carries an ADDRESS and not a Send:
+			// the dispatcher joins it to a Contact and replays the ordinary public
+			// one-click unsubscribe, so relay-side and first-party departures reach
+			// the same membership delete, the same campaign counter and the same
+			// `unsubscribed` transport outcome.
+			kind: 'email.unsubscribed';
+			recipient: string;
+			at: number;
+			providerMessageId?: string;
+			providerType?: string;
 	  }
 	| {
 			kind: 'email.bounced';

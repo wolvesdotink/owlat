@@ -200,6 +200,27 @@ const DISPATCH: DispatchTable = {
 		)) as TransitionOutcome;
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
 	},
+	'email.deferred': async (ctx, e) => {
+		// A relay holding a message it already accepted moves NO send state — the
+		// relay is still retrying and owns the terminal edge. The only thing this
+		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
+		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
+		// accepts a send that is already `sent`.
+		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
+			providerMessageId: e.providerMessageId,
+			at: e.at,
+		});
+	},
+	'email.unsubscribed': async (ctx, e) => {
+		// The relay's unsubscribe surface carries an address, not a send, so the
+		// contact join happens inside the mutation — which then replays the exact
+		// public one-click path (membership delete, opt-out stamp, campaign
+		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
+		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
+			email: e.recipient,
+		});
+	},
 	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
