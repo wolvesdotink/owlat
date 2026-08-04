@@ -426,7 +426,7 @@
     },
     "packages/mail-auth": {
       "name": "@owlat/mail-auth",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -442,7 +442,7 @@
     },
     "packages/mail-canon": {
       "name": "@owlat/mail-canon",
-      "version": "0.1.0",
+      "version": "0.3.3",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -453,7 +453,7 @@
     },
     "packages/mail-message": {
       "name": "@owlat/mail-message",
-      "version": "1.0.0",
+      "version": "0.3.3",
       "dependencies": {
         "@owlat/mail-canon": "workspace:*",
       },
@@ -563,7 +563,7 @@
     },
     "packages/smtp-client": {
       "name": "@owlat/smtp-client",
-      "version": "0.3.0",
+      "version": "0.3.3",
       "devDependencies": {
         "@types/node": "catalog:",
         "@types/smtp-server": "^3.5.10",
@@ -575,7 +575,7 @@
     },
     "packages/smtp-listener": {
       "name": "@owlat/smtp-listener",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "devDependencies": {
         "@types/node": "catalog:",
         "@types/smtp-server": "^3.5.10",
