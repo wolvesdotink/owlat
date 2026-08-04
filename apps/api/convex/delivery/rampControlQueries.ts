@@ -92,7 +92,9 @@ export interface RampCellControlView {
 	 * an operator a pin bounds the climbing dial while the dial actually climbing
 	 * is the warm-up pace, which no pin can bound — and the audit row would say
 	 * the opposite back to them later. Whether a relay is configured is a second,
-	 * separate fact and stays on `isRelayConfigured` for the doors that cut on it.
+	 * separate fact and stays on `isRelayConfigured` — which no door cuts on ALONE:
+	 * the reset and promotion doors cut on the UNION of the two, so the screen
+	 * crosses them rather than either field standing in for the other.
 	 */
 	readonly isShareRamped: boolean;
 	/** The controller's own last word on this cell — the binding constraint. */

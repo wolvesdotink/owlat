@@ -162,7 +162,7 @@ const promoteNote = computed(() => {
 		return 'This cell is already on the top phase rung, so there is nothing left to promote.';
 	const effect = hasSecondSender.value
 		? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in.'
-		: 'Promoting raises the ceiling one rung. With no relay connected there is no second arm to shuffle recipients between, so the rung is recorded and binds the day a second sender carries this cell again.';
+		: 'Promoting raises the ceiling one rung. Nothing is carrying this cell but your own server, so there is no second arm to shuffle recipients between: the rung is recorded and binds the day a second sender carries this cell again.';
 	return `${effect} It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.`;
 });
 
