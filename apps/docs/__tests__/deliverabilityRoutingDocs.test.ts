@@ -49,7 +49,9 @@ describe('deliverability routing documentation', () => {
 		expect(infrastructure).toMatch(
 			/deferral is promoted to the primary fast signal — the deferral \*\*rate\*\*/
 		);
-		expect(infrastructure).toMatch(/implemented \(`evaluateSmtpBlockMessages`\) and \*\*dormant\*\*/);
+		expect(infrastructure).toMatch(
+			/implemented \(`evaluateSmtpBlockMessages`\) and \*\*dormant\*\*/
+		);
 		expect(infrastructure).toContain('issue #501');
 		expect(infrastructure).not.toMatch(/block-message detection as a hard stop/i);
 	});
