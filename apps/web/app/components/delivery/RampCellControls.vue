@@ -9,6 +9,14 @@
  * only one behind a typed confirmation. Those are the sentences an operator
  * needs at the moment they decide, so they are the sentences on the buttons.
  *
+ * AND EVERY ONE OF THEM SAYS WHICH DIAL IT ACTS ON. Both controls are expressed
+ * in SHARE, but the share is only the dial the controller CLIMBS where a relay is
+ * carrying the cell; everywhere else it is the warm-up pace, which a pause holds
+ * and a pin cannot bound at all. The pre-click promise and the audit row the
+ * server writes afterwards are read by the same operator about the same click, so
+ * a sentence here that named the wrong dial would be contradicted by that row six
+ * weeks later. See `rampControlMessages.ts` for the server's half.
+ *
  * THE COMPONENT DOES NOT WRITE. It emits intent; the page owns the mutations,
  * so every write goes through one org-scoped authed call site and the refusal
  * handling is not duplicated per control.
@@ -34,10 +42,20 @@ const props = defineProps<{
 	 * day, which configuration alone cannot see once one is disconnected; the
 	 * standalone sentence below states that clause rather than denying it.
 	 *
-	 * BOTH NOTES READ IT. A promotion's other half is plan D7's mix generation,
-	 * and "which arm every recipient lands in" is the same second-sender fact: a
-	 * standalone cell has ONE arm, so the generation is spent and re-shuffles
-	 * nobody. Promising the shuffle there describes a split that does not exist.
+	 * ALL FOUR NOTES READ IT, and each states the hedge in its own terms:
+	 *
+	 *   - the RESET note, because the phase rung bounds the share (above);
+	 *   - the PROMOTE note, because a promotion's other half is plan D7's mix
+	 *     generation and "which arm every recipient lands in" is the same
+	 *     second-sender fact — a standalone cell has ONE arm, so the generation is
+	 *     spent and re-shuffles nobody;
+	 *   - the PAUSE and PIN notes, because the tick climbs the SHARE only where a
+	 *     relay is carrying the cell and the WARM-UP PACE everywhere else. A pause
+	 *     reaches both dials; a pin is a share and there is no honest conversion
+	 *     into a multiplier on a daily cap, so on a paced cell it bounds the dial
+	 *     that is standing still. Those two notes therefore condition on a relay
+	 *     CARRYING this cell rather than on one being connected — the same clause
+	 *     the reset note carries, and the fact the server's own sentence is cut on.
 	 *
 	 * REQUIRED, so the compiler holds it. Optional, an absent prop read as "there
 	 * is a relay" and restored the "brings the share back" copy — a 75% cut — in
@@ -200,9 +218,14 @@ function clampPercent(value: number): number {
 				{{ cell.isPaused ? 'Resume this cell' : 'Pause this cell' }}
 			</button>
 		</div>
-		<p class="text-xs text-text-secondary">
-			Pausing holds the share where it is. The checks keep running and an automatic retreat still
-			happens — a pause never blocks a safety response.
+		<p class="text-xs text-text-secondary" data-testid="ramp-pause-note">
+			{{
+				hasRelayConfigured
+					? 'Pausing holds both dials where they are — the share and the warm-up pace. While a relay is carrying this cell the share is the dial that climbs, so that is the number a pause freezes.'
+					: 'Pausing holds both dials where they are — the share and the warm-up pace. With no relay carrying this cell the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it. If this cell was still sending through a relay in the past day, the share is the one moving and the pause holds that too.'
+			}}
+			The checks keep running and an automatic retreat still happens — a pause never blocks a safety
+			response.
 		</p>
 
 		<div class="flex flex-wrap items-end gap-2">
@@ -238,8 +261,14 @@ function clampPercent(value: number): number {
 				Remove pin
 			</button>
 		</div>
-		<p class="text-xs text-text-secondary">
-			A pin is a ceiling, not a floor: the ramp climbs to it on the usual evidence and stops there.
+		<p class="text-xs text-text-secondary" data-testid="ramp-pin-note">
+			A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is
+			already higher down to the number you type.
+			{{
+				hasRelayConfigured
+					? 'While a relay is carrying this cell the share is the dial that climbs, so the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.'
+					: 'With no relay carrying this cell the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.'
+			}}
 		</p>
 
 		<div class="flex flex-wrap items-end gap-2">
