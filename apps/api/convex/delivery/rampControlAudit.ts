@@ -23,9 +23,12 @@ import type { MutationCtx } from '../_generated/server';
 import { recordAuditLog, type AuditAction, type AuditDetails } from '../lib/auditLog';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import { rampDecisionDirection } from './ramp/controllerTypes';
-
-/** Operator decisions age out with the controller's own, on the same horizon. */
-const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+/**
+ * Operator decisions age out with the controller's own, ON THE SAME HORIZON —
+ * taken from the module that owns the sweep rather than declared again here,
+ * which is what "the same" has to mean for a number two writers stamp.
+ */
+import { MIX_DECISION_RETENTION_MS } from './rampMixDecisions';
 
 export interface OperatorRampAction {
 	readonly organizationId: string;
