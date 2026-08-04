@@ -11,6 +11,12 @@
  * sample is ten probes — is a number the operator would act on and be wrong
  * about.
  *
+ * THE BLOCK-MESSAGE BRANCH IS DORMANT SERVER-SIDE (issue #501) — the gate clause
+ * that would produce that halt has no supplier, so no deployment renders this
+ * sentence yet. It is pinned anyway, because the unit is the part that would be
+ * got wrong when the halt does arrive, and a branch nobody covers is a branch
+ * that comes back as "24 sends".
+ *
  * AND A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per seed
  * mailbox per campaign send, so the window's sample is mailboxes times sends;
  * "80 seed mailboxes" under a deployment that has eight would overstate the

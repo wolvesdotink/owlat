@@ -418,6 +418,12 @@ export interface RampGateEvaluationInput {
 	/**
 	 * Block-message counts from the shipped SMTP classifier over the window.
 	 * Absent means "not observed", which holds; it never fails.
+	 *
+	 * ABSENT IS THE ONLY STATE THERE IS TODAY (issue #501): the classifier runs in
+	 * the MTA and nothing carries its per-category counts into Convex per (cell,
+	 * arm), so no production reader supplies this field. See
+	 * `gateObservations.ts` for what the shape is waiting on — said here as well
+	 * because this is the declaration an author reaches for when wiring a gate.
 	 */
 	readonly smtpBlocks?: SmtpBlockObservation | null;
 	/**

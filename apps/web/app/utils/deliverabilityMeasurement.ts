@@ -272,6 +272,10 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// block-message hard stop counts CLASSIFIED SMTP RESPONSES (see `ownSample` in
 	// the server's `gateTypes.ts`), and it reads as a share OF those responses
 	// rather than as a rate over a sample — so it gets its own whole sentence.
+	//
+	// NO DEPLOYMENT REACHES THIS BRANCH TODAY (issue #501): the gate clause behind
+	// it has no producer, so the halt never arrives here. Kept and pinned rather
+	// than deleted, so the unit does not have to be rediscovered when it does.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
 		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
 	}
