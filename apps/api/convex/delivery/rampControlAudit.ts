@@ -23,11 +23,6 @@ import type { MutationCtx } from '../_generated/server';
 import { recordAuditLog, type AuditAction, type AuditDetails } from '../lib/auditLog';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import { rampDecisionDirection } from './ramp/controllerTypes';
-/**
- * Operator decisions age out with the controller's own, ON THE SAME HORIZON —
- * taken from the module that owns the sweep rather than declared again here,
- * which is what "the same" has to mean for a number two writers stamp.
- */
 import { MIX_DECISION_RETENTION_MS } from './rampMixDecisions';
 
 export interface OperatorRampAction {
@@ -78,6 +73,9 @@ export async function recordOperatorRampAction(
 			at: action.at,
 			detail: action.detail,
 		}),
+		// AGES OUT WITH THE CONTROLLER'S OWN ROWS, on the horizon the module that
+		// owns the sweep declares — not a second copy of the number here, which is
+		// what "the same horizon" has to mean for a field two writers stamp.
 		expiresAt: action.at + MIX_DECISION_RETENTION_MS,
 	});
 	await recordAuditLog(ctx, {
