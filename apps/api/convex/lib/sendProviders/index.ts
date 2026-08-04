@@ -17,6 +17,7 @@ import { mtaSendProvider } from './mta';
 import { sesSendProvider } from './ses';
 import { resendSendProvider } from './resend';
 import { smtpSendProvider } from './smtp';
+import { mandrillSendProvider } from './mandrill';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
 import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
 import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
@@ -39,6 +40,7 @@ export type {
 	SesExtras,
 	ResendExtras,
 	SmtpExtras,
+	MandrillExtras,
 	EmailSendAttempt,
 	EmailSendParams,
 	EmailAttachment,
@@ -68,6 +70,7 @@ export const SEND_PROVIDERS = {
 	ses: sesSendProvider,
 	resend: resendSendProvider,
 	smtp: smtpSendProvider,
+	mandrill: mandrillSendProvider,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the adapter shape for

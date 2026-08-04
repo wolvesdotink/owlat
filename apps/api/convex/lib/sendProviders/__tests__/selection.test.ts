@@ -24,6 +24,15 @@ describe('selectSendProviderKind', () => {
 		expect(selectSendProviderKind(undefined)).toBe('mta');
 	});
 
+	it('recognises mandrill from both selection paths (P1.1)', () => {
+		// The day-0 arrival shape from the activation matrix: `EMAIL_PROVIDER=mandrill`
+		// with no route rows, everything relaying through the account they came with.
+		vi.stubEnv('EMAIL_PROVIDER', 'mandrill');
+		expect(selectSendProviderKind(undefined)).toBe('mandrill');
+		// …and once routes exist, the producer's explicit choice is authoritative.
+		expect(selectSendProviderKind('mandrill')).toBe('mandrill');
+	});
+
 	it('fails closed when both provider selections are absent or invalid', () => {
 		vi.stubEnv('EMAIL_PROVIDER', 'retired');
 		expect(selectSendProviderKind(undefined)).toBeNull();

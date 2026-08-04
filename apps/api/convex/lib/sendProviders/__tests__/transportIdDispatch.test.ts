@@ -34,6 +34,7 @@ import { sendProviderDispatch } from '../dispatch';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSesClientCacheForTests } from '../ses';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
+import { _resetMandrillConfigCacheForTests } from '../mandrill';
 import {
 	_resetSendTransportCacheForTests,
 	defaultSendTransportId,
@@ -74,6 +75,7 @@ beforeEach(() => {
 	_resetResendClientCacheForTests();
 	_resetSesClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 	resendKeys.length = 0;
 	resendSendMock.mockReset();
 	resendSendMock.mockResolvedValue({ data: { id: 'resend-1' }, error: null });
@@ -88,6 +90,7 @@ beforeEach(() => {
 	vi.stubEnv('SMTP_RELAY_HOST', 'smtp.primary.test');
 	vi.stubEnv('SMTP_RELAY_USERNAME', 'primary-user');
 	vi.stubEnv('SMTP_RELAY_PASSWORD', 'primary-pass');
+	vi.stubEnv('MANDRILL_API_KEY', 'mandrill-key');
 });
 
 afterEach(() => {
@@ -98,11 +101,12 @@ afterEach(() => {
 	_resetResendClientCacheForTests();
 	_resetSesClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 });
 
 describe('transport-id dispatch — the default instance of every shipped kind', () => {
 	it('resolves the record for each kind with the unsuffixed variables', () => {
-		for (const kind of ['mta', 'ses', 'resend', 'smtp'] as const) {
+		for (const kind of ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const) {
 			const transport = resolveSendTransport(defaultSendTransportId(kind));
 			expect(transport.kind).toBe(kind);
 			expect(transport.id).toBe(kind);
@@ -171,5 +175,29 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 		};
 		expect(input.connect.host).toBe('smtp.primary.test');
 		expect(input.auth.credentials).toEqual({ username: 'primary-user', password: 'primary-pass' });
+	});
+
+	it('dispatches the mandrill id through the Mandrill adapter with the Mandrill key', async () => {
+		const fetchSpy = vi.fn().mockImplementation(
+			async () =>
+				new Response(JSON.stringify([{ email: 'to@example.com', status: 'sent', _id: 'md-1' }]), {
+					status: 200,
+				})
+		);
+		global.fetch = fetchSpy as unknown as typeof fetch;
+		const { ctx } = fakeCtx();
+
+		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('mandrill'), params);
+
+		expect(dispatched.result).toEqual({ success: true, id: 'md-1' });
+		expect(dispatched.providerType).toBe('mandrill');
+		expect(dispatched.transportId).toBe('mandrill');
+		expect(String(fetchSpy.mock.calls[0]![0])).toBe(
+			'https://mandrillapp.com/api/1.0/messages/send-raw'
+		);
+		const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string) as {
+			key: string;
+		};
+		expect(body.key).toBe('mandrill-key');
 	});
 });

@@ -15,6 +15,7 @@ describe('Send provider registry', () => {
 		expect(providerFor('ses').kind).toBe('ses');
 		expect(providerFor('resend').kind).toBe('resend');
 		expect(providerFor('smtp').kind).toBe('smtp');
+		expect(providerFor('mandrill').kind).toBe('mandrill');
 	});
 
 	it('providerFor throws on unknown kinds', () => {
@@ -23,11 +24,11 @@ describe('Send provider registry', () => {
 
 	it('SEND_PROVIDERS keys match the SendProviderKind union exactly', () => {
 		const keys = Object.keys(SEND_PROVIDERS).sort();
-		expect(keys).toEqual(['mta', 'resend', 'ses', 'smtp']);
+		expect(keys).toEqual(['mandrill', 'mta', 'resend', 'ses', 'smtp']);
 	});
 
 	it('pins built-in ordering, credentials, and retry behavior before plugin entries', () => {
-		expect(SEND_PROVIDER_CATALOG.slice(0, 4)).toEqual([
+		expect(SEND_PROVIDER_CATALOG.slice(0, 5)).toEqual([
 			{
 				kind: 'mta',
 				label: 'Owlat MTA',
@@ -64,7 +65,29 @@ describe('Send provider registry', () => {
 				hasProviderFeedback: false,
 				domainVerification: 'none',
 			},
+			{
+				kind: 'mandrill',
+				label: 'Mailchimp Transactional (Mandrill)',
+				retryDelays: [1_000, 5_000, 30_000],
+				// The API key ONLY. The webhook key, subaccount and IP pool are
+				// optional refinements, and listing them here would make the presence
+				// gate report an unwebhooked deployment as unconfigured.
+				requiredEnvVars: ['MANDRILL_API_KEY'],
+				supportsCustomReturnPath: 'probe',
+				hasProviderFeedback: true,
+				// P3.1 flips this to 'api' when `domains/providers/mandrill` registers.
+				domainVerification: 'none',
+			},
 		]);
+	});
+
+	it('declares no domain-identity provider yet — the P3.1 ordering constraint', () => {
+		// Declaring `domainVerification: 'api'` before the domain provider exists is
+		// a COMPILE error (the `ApiVerifiedSendProviderKind` completeness guard in
+		// `domains/providers`). Pinned at runtime too so the flip is a deliberate
+		// two-sided edit rather than something a later piece does by halves.
+		const mandrill = SEND_PROVIDER_CATALOG.find((entry) => entry.kind === 'mandrill');
+		expect(mandrill?.domainVerification).toBe('none');
 	});
 });
 
@@ -74,6 +97,7 @@ describe('isSendProviderKind', () => {
 		expect(isSendProviderKind('ses')).toBe(true);
 		expect(isSendProviderKind('resend')).toBe(true);
 		expect(isSendProviderKind('smtp')).toBe(true);
+		expect(isSendProviderKind('mandrill')).toBe(true);
 	});
 
 	it('returns false for unknown / nullish kinds', () => {
@@ -107,15 +131,18 @@ describe('EmailErrorCode + isRetryableErrorCode', () => {
 });
 
 describe('Adapter contracts (post-Phase-2)', () => {
-	it.each(['mta', 'ses', 'resend', 'smtp'] as const)(
+	it.each(['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const)(
 		'%s declares a non-empty retryDelays',
 		(kind) => {
 			expect(providerFor(kind).retryDelays.length).toBeGreaterThan(0);
 		}
 	);
 
-	it.each(['mta', 'ses', 'resend', 'smtp'] as const)('%s categorizeError is callable', (kind) => {
-		// Returns a code without throwing; defaults to UNKNOWN for empty input.
-		expect(providerFor(kind).categorizeError('')).toBe(EmailErrorCode.UNKNOWN);
-	});
+	it.each(['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const)(
+		'%s categorizeError is callable',
+		(kind) => {
+			// Returns a code without throwing; defaults to UNKNOWN for empty input.
+			expect(providerFor(kind).categorizeError('')).toBe(EmailErrorCode.UNKNOWN);
+		}
+	);
 });

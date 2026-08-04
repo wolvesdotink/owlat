@@ -3,6 +3,7 @@ import { sendProviderDispatch } from '../dispatch';
 import { mtaSendProvider } from '../mta';
 import { sesSendProvider } from '../ses';
 import { resendSendProvider } from '../resend';
+import { mandrillSendProvider } from '../mandrill';
 import {
 	EmailErrorCode,
 	type EmailSendAttempt,
@@ -261,6 +262,51 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 			expect(out.attempts).toBe(4);
 		} finally {
 			setRetryDelays(resendSendProvider, original);
+		}
+	});
+
+	it('Mandrill exhausts at 4 attempts (1 + retryDelays.length of 3)', async () => {
+		const original = mandrillSendProvider.retryDelays;
+		setRetryDelays(mandrillSendProvider, [0, 0, 0]);
+		try {
+			const { ctx } = buildFakeCtx();
+			const sendSpy = vi.spyOn(mandrillSendProvider, 'sendEmail').mockResolvedValue({
+				success: false,
+				errorMessage: 'GeneralError: hourly quota exceeded',
+				errorCode: EmailErrorCode.RATE_LIMIT,
+			});
+
+			const out = await sendProviderDispatch(ctx as never, 'mandrill', sampleParams);
+
+			expect(sendSpy).toHaveBeenCalledTimes(4);
+			expect(out.attempts).toBe(4);
+			expect(out.providerType).toBe('mandrill');
+		} finally {
+			setRetryDelays(mandrillSendProvider, original);
+		}
+	});
+
+	it('Mandrill STOPS at one attempt on an ambiguous timeout (D4)', async () => {
+		// The counterweight to the row above: a retryable code exhausts the whole
+		// schedule, but `AMBIGUOUS_TIMEOUT` must never spend even one retry — the
+		// message may already be in the recipient's inbox.
+		const original = mandrillSendProvider.retryDelays;
+		setRetryDelays(mandrillSendProvider, [0, 0, 0]);
+		try {
+			const { ctx } = buildFakeCtx();
+			const sendSpy = vi.spyOn(mandrillSendProvider, 'sendEmail').mockResolvedValue({
+				success: false,
+				errorMessage: 'Mandrill send timed out',
+				errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
+				acceptanceUnknown: true,
+			});
+
+			const out = await sendProviderDispatch(ctx as never, 'mandrill', sampleParams);
+
+			expect(sendSpy).toHaveBeenCalledTimes(1);
+			expect(out.attempts).toBe(1);
+		} finally {
+			setRetryDelays(mandrillSendProvider, original);
 		}
 	});
 

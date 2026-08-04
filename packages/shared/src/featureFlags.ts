@@ -732,7 +732,7 @@ export function needsDeliveryProvider(
  * browser-safe and dependency-free; it mirrors the backend `SendProviderKind`
  * (`apps/api/convex/lib/sendProviders/types.ts`).
  */
-export const DELIVERY_PROVIDER_KINDS = ['mta', 'resend', 'ses', 'smtp'] as const;
+export const DELIVERY_PROVIDER_KINDS = ['mta', 'resend', 'ses', 'smtp', 'mandrill'] as const;
 export type DeliveryProviderKind = (typeof DELIVERY_PROVIDER_KINDS)[number];
 
 /** True iff `value` names a known delivery provider (no implicit MTA default). */
@@ -767,6 +767,11 @@ export function getSendPathRequiredEnv(provider: string | undefined): string[] {
 			// with. Port/TLS have safe defaults (587 / STARTTLS), so they are not
 			// required to send.
 			return ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'];
+		case 'mandrill':
+			// The API key alone enables the kind. The webhook key, subaccount and
+			// IP pool are all optional refinements — a deployment can send through
+			// Mailchimp Transactional with nothing but this one variable.
+			return ['MANDRILL_API_KEY'];
 		default:
 			return [];
 	}

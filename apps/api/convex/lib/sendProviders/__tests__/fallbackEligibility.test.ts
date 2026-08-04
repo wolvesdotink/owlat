@@ -55,6 +55,11 @@ describe('isFallbackRelayEligible', () => {
 		expect(isFallbackRelayEligible('ses', allConfigured)).toBe(true);
 		expect(isFallbackRelayEligible('resend', allConfigured)).toBe(true);
 		expect(isFallbackRelayEligible('smtp', allConfigured)).toBe(true);
+		// P1.1 registered `mandrill`, and it became fallback-eligible without a line
+		// of routing code changing — which is the whole claim of D6. It is also the
+		// activation matrix's recommended migration shape: `deliverabilityFallback:
+		// { relayProviderType: 'mandrill' }`.
+		expect(isFallbackRelayEligible('mandrill', allConfigured)).toBe(true);
 	});
 
 	it('rejects the owned MTA even when it is configured', () => {
@@ -65,8 +70,8 @@ describe('isFallbackRelayEligible', () => {
 	});
 
 	it('rejects kinds the catalog does not know, and nullish input', () => {
-		expect(isFallbackRelayEligible('mandrill', allConfigured)).toBe(false);
 		expect(isFallbackRelayEligible('postmark', allConfigured)).toBe(false);
+		expect(isFallbackRelayEligible('sendgrid', allConfigured)).toBe(false);
 		expect(isFallbackRelayEligible('', allConfigured)).toBe(false);
 		expect(isFallbackRelayEligible(undefined, allConfigured)).toBe(false);
 		expect(isFallbackRelayEligible(null, allConfigured)).toBe(false);

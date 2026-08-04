@@ -21,7 +21,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDispatchExtrasFor, providerFor } from '../index';
 import { SEND_PROVIDER_CATALOG } from '../catalog';
-import type { DispatchExtrasInput, MtaIpPool, SendProviderKind, SmtpExtras } from '../types';
+import type {
+	DispatchExtrasInput,
+	MandrillExtras,
+	MtaIpPool,
+	SendProviderKind,
+	SmtpExtras,
+} from '../types';
 
 const ENVELOPE_INPUT = {
 	kind: 'campaign',
@@ -107,7 +113,16 @@ function expectMatchesLegacy(kind: SendProviderKind, input: DispatchExtrasInput)
 	return built;
 }
 
-const CORE_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+/**
+ * The kinds that EXISTED before the seam moved, and therefore have a legacy
+ * ternary branch to be differentiated against. `mandrill` (plan P1.2) never had
+ * one: it was born after the seam closed, so replaying it here would only prove
+ * it differs from a `{}` that was never its behaviour. Its extras are specified
+ * outright in `describe('mandrill extras')` below instead.
+ */
+const LEGACY_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+
+const CORE_KINDS = [...LEGACY_KINDS, 'mandrill'] as const;
 
 /**
  * Representative routing situations, each one a shape the routing pass really
@@ -145,7 +160,7 @@ const SITUATIONS: ReadonlyArray<{ name: string; input: DispatchExtrasInput }> = 
 ];
 
 describe('buildDispatchExtras — differential against the pre-refactor ternary', () => {
-	for (const kind of CORE_KINDS) {
+	for (const kind of LEGACY_KINDS) {
 		for (const situation of SITUATIONS) {
 			it(`${kind}: ${situation.name}`, () => {
 				expectMatchesLegacy(kind, situation.input);
@@ -247,6 +262,56 @@ describe('smtp extras', () => {
 		// and an explicit key would still be no host, but the two differ on the
 		// wire the moment anything serializes this.
 		expect(keysOf(extras)).toEqual([]);
+	});
+});
+
+describe('mandrill extras', () => {
+	it('carries the route pool and the PROVEN return-path domain, nothing else', () => {
+		expect(buildDispatchExtrasFor('mandrill', facts())).toEqual({
+			ipPool: 'campaign',
+			returnPathDomain: 'bounces.example.com',
+		} satisfies MandrillExtras);
+	});
+
+	it('passes an arbitrary pool name through — Mandrill pools are account-defined', () => {
+		// Unlike `MtaExtras.ipPool` there is no canonical name list: whatever the
+		// account created is a valid pool, so the seam must not filter it.
+		expect(buildDispatchExtrasFor('mandrill', facts({ ipPool: 'Warmup Pool 2' }))).toMatchObject({
+			ipPool: 'Warmup Pool 2',
+		});
+	});
+
+	it('omits an absent or empty pool rather than sending one', () => {
+		expect(keysOf(buildDispatchExtrasFor('mandrill', facts({ ipPool: undefined })))).not.toContain(
+			'ipPool'
+		);
+		expect(keysOf(buildDispatchExtrasFor('mandrill', facts({ ipPool: '' })))).not.toContain(
+			'ipPool'
+		);
+	});
+
+	it('omits the return-path domain until the probe proves the transport honours one (D5)', () => {
+		// The catalog declares `supportsCustomReturnPath: 'probe'`, so an unproven
+		// transport must NOT be handed a `return_path_domain`: Mandrill would
+		// silently ignore or reject a domain that is not SPF'd to it, and the cell
+		// would be graded on bounce data that never came back to us.
+		const unproven = buildDispatchExtrasFor(
+			'mandrill',
+			facts({ relayReturnPathHost: undefined, ipPool: undefined })
+		);
+		expect(unproven).toEqual({});
+		expect(keysOf(unproven)).toEqual([]);
+	});
+
+	it('never carries the subaccount — extras are routing facts, not deployment config', () => {
+		// MANDRILL_SUBACCOUNT is read INSIDE `sendEmail`; `buildDispatchExtras` is
+		// env-free by contract, and a subaccount arriving through this seam would be
+		// the first crack in that rule.
+		for (const situation of SITUATIONS) {
+			expect(keysOf(buildDispatchExtrasFor('mandrill', situation.input))).not.toContain(
+				'subaccount'
+			);
+		}
 	});
 });
 

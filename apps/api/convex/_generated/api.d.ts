@@ -577,6 +577,8 @@ import type * as lib_sendProviders_dispatch from "../lib/sendProviders/dispatch.
 import type * as lib_sendProviders_fallbackEligibility from "../lib/sendProviders/fallbackEligibility.js";
 import type * as lib_sendProviders_health from "../lib/sendProviders/health.js";
 import type * as lib_sendProviders_index from "../lib/sendProviders/index.js";
+import type * as lib_sendProviders_mandrill_errors from "../lib/sendProviders/mandrill/errors.js";
+import type * as lib_sendProviders_mandrill_index from "../lib/sendProviders/mandrill/index.js";
 import type * as lib_sendProviders_mta_index from "../lib/sendProviders/mta/index.js";
 import type * as lib_sendProviders_pluginProvider from "../lib/sendProviders/pluginProvider.js";
 import type * as lib_sendProviders_relayDomainVerification from "../lib/sendProviders/relayDomainVerification.js";
@@ -1489,6 +1491,8 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/fallbackEligibility": typeof lib_sendProviders_fallbackEligibility;
   "lib/sendProviders/health": typeof lib_sendProviders_health;
   "lib/sendProviders/index": typeof lib_sendProviders_index;
+  "lib/sendProviders/mandrill/errors": typeof lib_sendProviders_mandrill_errors;
+  "lib/sendProviders/mandrill/index": typeof lib_sendProviders_mandrill_index;
   "lib/sendProviders/mta/index": typeof lib_sendProviders_mta_index;
   "lib/sendProviders/pluginProvider": typeof lib_sendProviders_pluginProvider;
   "lib/sendProviders/relayDomainVerification": typeof lib_sendProviders_relayDomainVerification;

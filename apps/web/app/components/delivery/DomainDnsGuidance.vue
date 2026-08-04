@@ -54,6 +54,13 @@ const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
 			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
 		],
 	},
+	mandrill: {
+		lead: 'Mailchimp Transactional signs your mail once your domain is verified there.',
+		points: [
+			'In Mailchimp Transactional, open Settings → Domains → Sending Domains, add this domain, and publish the SPF and DKIM records it shows.',
+			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
+		],
+	},
 };
 
 const guidance = computed<{ label: string; lead: string; points: string[] } | null>(() => {

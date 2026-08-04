@@ -133,6 +133,33 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// A bring-your-own relay has no identity API at all.
 		domainVerification: 'none',
 	},
+	{
+		kind: 'mandrill',
+		label: 'Mailchimp Transactional (Mandrill)',
+		// Mirrors Resend's schedule: another HTTP-API ESP whose retryable
+		// failures are the same two shapes (an hourly-quota RATE_LIMIT and a
+		// 5xx SERVER_ERROR), so the same backoff applies.
+		retryDelays: [1_000, 5_000, 30_000],
+		// The API key ALONE. `MANDRILL_WEBHOOK_KEY`, `MANDRILL_SUBACCOUNT` and
+		// `MANDRILL_IP_POOL` are deliberately absent: this list is the presence
+		// gate that decides whether the kind is configured (and therefore
+		// fallback-eligible), and a deployment that has not created a webhook or
+		// bought a dedicated IP still sends perfectly well.
+		requiredEnvVars: ['MANDRILL_API_KEY'],
+		// Mandrill accepts a per-message `return_path_domain`, but only for a
+		// domain SPF'd to Mandrill in the account — and whether VERP-style
+		// envelope senders survive is deployment-specific. Only an observed
+		// delivered bounce settles it (D5).
+		supportsCustomReturnPath: 'probe',
+		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject (D10).
+		hasProviderFeedback: true,
+		// Mandrill HAS a domain-identity API (`senders/domains`), but nothing in
+		// this repo reads it yet: P3.1 registers `domains/providers/mandrill` and
+		// flips this to 'api'. Declaring 'api' before that provider exists is a
+		// compile error (the `ApiVerifiedSendProviderKind` completeness guard), and
+		// would in any case credit the seam with a proof it never fetched.
+		domainVerification: 'none' /* flipped to 'api' by P3.1 */,
+	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 
 /**

@@ -1,8 +1,8 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Four adapters today:
- * `mta`, `ses`, `resend`, `smtp`. The **Send dispatch (helper)** in
+ * Per ADR-0020 — the per-provider Send-side surface. Five adapters today:
+ * `mta`, `ses`, `resend`, `smtp`, `mandrill`. The **Send dispatch (helper)** in
  * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
  * per-provider modules own single-attempt sends and per-provider error
  * categorization.
@@ -154,6 +154,38 @@ export interface SmtpExtras {
 	returnPathHost?: string;
 }
 
+/**
+ * Mailchimp Transactional (Mandrill) per-send knobs (plan D3/D5).
+ *
+ * Only the two facts the ROUTE decides. The subaccount is deliberately NOT here:
+ * it is instance-level configuration (`MANDRILL_SUBACCOUNT`), read inside the
+ * adapter, and `buildDispatchExtras` is env-free by contract — extras carry
+ * routing facts, never credentials or deployment config.
+ */
+export interface MandrillExtras {
+	/**
+	 * The dedicated-IP pool name to send this message from, as the resolved
+	 * route named it. Free-form, because Mandrill pool names are whatever the
+	 * account created ("Main Pool", "Transactional", …) rather than a fixed set
+	 * like {@link MtaIpPool}. Absent ⇒ the adapter falls back to the
+	 * deployment's `MANDRILL_IP_POOL`, and failing that omits the field so
+	 * Mandrill picks the account default.
+	 */
+	ipPool?: string;
+	/**
+	 * The domain to hand Mandrill as `return_path_domain`, so bounces it
+	 * generates come back to OUR bounce server and this arm produces bounce data
+	 * comparable with the direct-MX arm.
+	 *
+	 * Present ONLY when the routing pass proved the transport honours a custom
+	 * return path — the catalog declares `supportsCustomReturnPath: 'probe'`, so
+	 * this is the probe verdict, not an assumption (D5). Absent ⇒ leave
+	 * Mandrill's own bounce domain in place and treat the cell's bounce data as
+	 * degraded; never an error, never a blocker.
+	 */
+	returnPathDomain?: string;
+}
+
 // ─── Per-send extras, built by the module (the governed-dispatch seam) ─────
 
 /**
@@ -234,7 +266,9 @@ export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 			? ResendExtras
 			: K extends 'smtp'
 				? SmtpExtras
-				: unknown;
+				: K extends 'mandrill'
+					? MandrillExtras
+					: unknown;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 
