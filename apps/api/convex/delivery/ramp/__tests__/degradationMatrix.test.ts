@@ -194,13 +194,23 @@ describe('the substitution table names only signals that run', () => {
 		expect(degradedCeilingCap(degradation)).toBe(0.8);
 	});
 
-	it('says the same thing on the SNDS gate as in the table', () => {
+	it('says the same thing on the SNDS gate as in the table — in the same words', () => {
 		// Two entries describing one cell: the P3-8 table and the gate input's own
-		// substitution shape. They are read by different screens and must not be
-		// able to name different signals.
-		expect(SNDS_ABSENT_SUBSTITUTION.source).toBe('own_bounce_deferral_complaint');
-		expect(RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds')?.substitutes).toContain(
-			SNDS_ABSENT_SUBSTITUTION.source
+		// substitution shape. They are read by different screens, so the guard has
+		// to compare the COPY. Comparing only the source name passes by construction
+		// — the gate's single name is trivially one of the table's list — while the
+		// rendered sentences drift, which is exactly what had happened: the table
+		// named seed placement beside the cell's own rates and the gate's note
+		// stopped at the rates.
+		const entry = RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds');
+		expect(entry?.substitutes).toContain(SNDS_ABSENT_SUBSTITUTION.source);
+		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.startsWith(entry?.confidenceNote ?? '#')).toBe(
+			true
+		);
+		// The one clause the gate row adds, because the table keeps it in a separate
+		// `improvement` field the gate row has nowhere to render.
+		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.slice(entry?.confidenceNote.length ?? 0)).toBe(
+			' Connecting SNDS would measure this IP’s complaint band directly.'
 		);
 		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote).not.toMatch(/SMTP reply/i);
 	});

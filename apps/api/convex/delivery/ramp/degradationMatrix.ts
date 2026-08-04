@@ -207,6 +207,18 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		// and no producer. Naming it here put a signal no deployment runs on the
 		// cell's confidence note and in every audit row for that cell. The name
 		// comes back when the telemetry surface does.
+		//
+		// `seed_placement` IS CONDITIONAL, exactly as it is on the Gmail entry
+		// above, and the table cannot express the condition because the fold unions
+		// substitutes rather than retracting them. Two things narrow it: every probe
+		// the shadow copy writes is a CAMPAIGN probe (`analytics/
+		// seedPlacementSweeps.ts`, issue #500), so the transactional and automation
+		// Microsoft cells have no placement evidence and gate 5 holds on them; and a
+		// deployment with no seed mailboxes at all has none anywhere. Neither is a
+		// signal claimed for a cell that never runs it, because the `seed_mailboxes`
+		// entry below is present in exactly those deployments and says so in its own
+		// note ("nothing is currently observing where this mail lands") — the
+		// operator reads BOTH notes, and the narrower one is the one that answers.
 		substitutes: ['own_bounce_deferral_complaint', 'seed_placement'],
 		dwellMultiplier: 2,
 		ceilingPhaseDelta: -1,
@@ -284,6 +296,20 @@ export const RAMP_DEGRADATION_BY_INTEGRATION: ReadonlyMap<
 	RampIntegrationId,
 	RampSubstitutionEntry
 > = new Map(RAMP_DEGRADATION_MATRIX.map((entry) => [entry.integration, entry]));
+
+/**
+ * The same lookup, TOTAL — for callers that need an entry's copy at module load
+ * rather than a branch. The map is built from the table over the same closed id
+ * union, so a miss is a table that lost a row, not a runtime condition; handing
+ * the caller an `undefined` to handle would make it write a fallback sentence,
+ * and a fallback sentence for a cell this table already describes is the second
+ * copy the whole module exists to prevent.
+ */
+export function rampSubstitutionEntry(integration: RampIntegrationId): RampSubstitutionEntry {
+	const entry = RAMP_DEGRADATION_BY_INTEGRATION.get(integration);
+	if (!entry) throw new Error(`No degradation matrix entry for ${integration}`);
+	return entry;
+}
 
 /** Whether an entry governs a given destination-provider cell. */
 export function entryAppliesToProvider(

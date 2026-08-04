@@ -32,7 +32,17 @@ import {
 	type SndsComplaintBand,
 	type SndsFilterResult,
 } from '../sndsFeed';
+import { rampSubstitutionEntry } from './degradationMatrix';
 import type { RampGateId, RampGateStatus } from './gateTypes';
+
+/**
+ * The Microsoft cell's row in the P3-8 table — READ, never restated. The gate's
+ * note and the table's note are rendered for the same cell on the same screen,
+ * and two literals for one cell is precisely how they come to name different
+ * signals: they already had, with the table naming seed placement beside the
+ * cell's own rates while this file's copy stopped at the rates.
+ */
+const MICROSOFT_SNDS_ABSENT = rampSubstitutionEntry('microsoft_snds');
 
 /**
  * The substitution the Microsoft cell applies when SNDS data is unavailable.
@@ -50,9 +60,13 @@ import type { RampGateId, RampGateStatus } from './gateTypes';
  */
 export const SNDS_ABSENT_SUBSTITUTION = {
 	/**
-	 * What replaces the SNDS band while it is missing — the SAME name the P3-8
-	 * table uses for the Microsoft cell (`RAMP_SUBSTITUTE_SOURCES`), so the two
-	 * entries cannot describe the cell differently.
+	 * What replaces the SNDS BAND specifically — the complaint evidence this gate
+	 * is about, and one of the names the P3-8 table lists for the cell as a whole
+	 * (`RAMP_SUBSTITUTE_SOURCES`). Deliberately the narrower field: the table's
+	 * `substitutes` covers every gate on the Microsoft cell, including the
+	 * placement evidence gate 5 reads, while this row is the complaint gate's
+	 * alone. The two are kept from diverging by the note above, which is the
+	 * table's own copy, and by the guard in `__tests__/degradationMatrix.test.ts`.
 	 */
 	source: 'own_bounce_deferral_complaint',
 	/** Dwell longer before advancing, because the evidence is weaker. */
@@ -66,9 +80,14 @@ export const SNDS_ABSENT_SUBSTITUTION = {
 	 * had to compose this itself would be a second definition of the same fact,
 	 * free to drift — the same reason `yahooComplaintSubstitution` returns its
 	 * note on every branch.
+	 *
+	 * THE TABLE'S SENTENCE VERBATIM, plus the offer. The gate row and the
+	 * degradation card are two renderings of one cell's state, so the signals they
+	 * name are the table's either way; what this file adds is the single clause
+	 * the table keeps in its own `improvement` field, because the gate row has
+	 * nowhere else to put it.
 	 */
-	confidenceNote:
-		'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell is judged on our own bounce, deferral and complaint rates instead. Connecting SNDS would measure this IP’s complaint band directly.',
+	confidenceNote: `${MICROSOFT_SNDS_ABSENT.confidenceNote} Connecting SNDS would measure this IP’s complaint band directly.`,
 	/**
 	 * Always `false`. Encoded as a field rather than left implicit so the D2
 	 * invariant is asserted by a test rather than assumed by a reader.
