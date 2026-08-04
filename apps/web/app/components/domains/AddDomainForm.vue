@@ -33,7 +33,10 @@ import {
 const props = withDefaults(defineProps<AddDomainFormProps>(), {
 	loading: false,
 	context: 'sending',
-	suggestions: () => ['mail', 'post', 'send'],
+	// `mail` and `news` FIRST, because the layout we recommend is one name per
+	// stream (see the note in the template): transactional on `mail.`, campaigns
+	// and lifecycle on `news.`.
+	suggestions: () => ['mail', 'news', 'post', 'send'],
 	defaultSubdomain: 'mail',
 	subdomainLabel: 'Subdomain for sending',
 	subdomainHint: '— recommended, keeps your apex reputation separate',
@@ -221,6 +224,30 @@ const {
 					</template>
 				</template>
 			</p>
+
+			<!-- Per-STREAM subdomains (G-14). Domain reputation is evaluated per name
+			     and does NOT inherit from the root, so one name per kind of mail is
+			     what keeps a bad campaign away from password resets. Said here, in
+			     the wizard, rather than in the docs — and stated as the recommended
+			     layout rather than an expert option. Sending-only. -->
+			<div
+				v-if="context === 'sending'"
+				class="rounded-lg border border-border-subtle bg-bg-surface p-3"
+				data-testid="stream-subdomain-note"
+			>
+				<p class="flex items-start gap-2 text-xs text-text-secondary">
+					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+					<span>
+						We recommend one name per kind of mail:
+						<strong class="text-text-primary">mail.</strong> for transactional (receipts, password
+						resets) and <strong class="text-text-primary">news.</strong> for campaigns and lifecycle
+						mail. A subdomain does not inherit your root domain's reputation, so each one needs its
+						own SPF record, its own DKIM key and its own warm-up — which is exactly what keeps a bad
+						campaign away from your password resets. Add them one at a time here; once a domain is
+						added, Owlat generates every record for the whole layout in one pass.
+					</span>
+				</p>
+			</div>
 
 			<!-- Apex trade-off: sending from the registrable apex is first-class, but
 			     it shares reputation and needs any existing SPF merged. We only name

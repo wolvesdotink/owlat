@@ -1,0 +1,259 @@
+/**
+ * GATE 5 — SEED PLACEMENT: the CONTROLLER'S VIEW of the shared roll-up.
+ *
+ * THE DIVISION OF LABOUR, stated once and enforced by what this module does not
+ * contain:
+ *
+ *   - `@owlat/shared/seedPlacement` owns the MEASUREMENT. The reached-share
+ *     threshold, the reference tolerance, the collapse line, the minimum sample
+ *     and the confidence a seed reading carries all live there, beside the
+ *     roll-up that applies them; `analytics/seedPlacement.ts` is the Convex
+ *     surface that feeds it real probes.
+ *   - THIS MODULE owns the TRANSLATION. It restates a `SeedProviderRollup`
+ *     STATUS in the controller's `RampGateResult` vocabulary — the freshness and
+ *     clock-skew cascade every other ramp gate obeys, the ramp's reason codes,
+ *     and the grade the aggregator folds into measurement confidence.
+ *
+ * IT DECIDES NOTHING OF ITS OWN. No threshold is declared here and no rate is
+ * compared against one here: the pass/fail comes out of the roll-up's status.
+ * A second home for the 90 % line would be a second answer to "did the seeds
+ * reach the inbox", and D5's rule is that the controller and the dashboard must
+ * never be able to disagree about a number. The rates in the MEASUREMENT shape
+ * are RENDERED, never consulted, and they are counted with the shared module's
+ * own `isSeedPlacementReached` predicate so even the displayed number cannot
+ * disagree with the verdict beside it.
+ *
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17), and this module does not decide
+ * that either: a `fail` from here is named by `CORROBORATION_REQUIRED_RAMP_GATES`
+ * (gateConfig), which makes `aggregateRampGates` set `requiresCorroboration`,
+ * which is what `controller.ts` and `paceActuator.ts` turn into an
+ * `awaiting_corroboration` hold. That is the path that runs on every tick.
+ *
+ * `@owlat/shared/seedPlacementTripwire`'s `resolveSeedTripwire` states the same
+ * rule over the PROVIDER roll-up and is reachable through
+ * `analytics.seedPlacement.getGateVerdict`, which has no production caller — a
+ * parallel route to one rule, tracked in issue #504. Until it is resolved, the
+ * ramp path above is the behaviour, and this docblock names it rather than the
+ * one that reads better.
+ *
+ * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
+ * D1's boolean is a degenerate share: with no reference-arm probes the roll-up
+ * reports `no_reference_arm` and the absolute clause is the whole gate (D3's
+ * substitution). The standalone entry point below is the same function with the
+ * reference sweep dropped at the boundary, so the degraded path cannot diverge
+ * from the equipped one — there is nothing for it to diverge from.
+ *
+ * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
+ * environment.
+ */
+
+import {
+	isSeedPlacementReached,
+	summarizeSeedProviderCounts,
+	SEED_PLACEMENTS,
+	type SeedArmPlacementCounts,
+	type SeedPlacement,
+	type SeedProviderRollup,
+} from '@owlat/shared/seedPlacement';
+import type { RampGateThresholds } from './gateConfig';
+import { evidenceFreshness, evidenceReason, insufficient, type ArmEvidence } from './gateEvidence';
+import { SEED_TRIPWIRE } from './gateGrades';
+import type {
+	RampGateEvaluationInput,
+	RampGateResult,
+	SeedPlacementObservation,
+} from './gateTypes';
+import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
+
+/**
+ * The roll-up is keyed by destination provider; a ramp evaluation is ALREADY
+ * scoped to one cell, so that axis is degenerate here and the key is a label
+ * rather than a fact. Nothing this module returns carries it.
+ */
+const CELL_PROVIDER = 'other';
+
+function sweepCount(sweep: SeedPlacementObservation, placement: SeedPlacement): number {
+	return safeOutcomeCount(sweep[placement]);
+}
+
+function sweepTotal(sweep: SeedPlacementObservation | null | undefined): number {
+	if (!sweep) return 0;
+	let total = 0;
+	for (const placement of SEED_PLACEMENTS) total += sweepCount(sweep, placement);
+	return total;
+}
+
+/**
+ * One arm's counted sweep, in the shape the shared roll-up's COUNTS entry point
+ * takes. Negative, fractional and non-finite counts are scrubbed by
+ * `safeOutcomeCount` before they can become a sample size.
+ *
+ * COUNTS IN, COUNTS OUT. A ramp sweep is one integer per placement per arm and
+ * the roll-up is a status over one integer per placement per arm; expanding them
+ * into one object per probe on the way in — which is what this did before —
+ * bought nothing but the allocation, and needed a clamp to bound it.
+ *
+ * THE WHOLE VOCABULARY IS CARRIED ACROSS, and the loop is over `SEED_PLACEMENTS`
+ * rather than a local subset so a placement added to the shared list cannot be
+ * dropped here: a sweep whose `category` probes went missing on the way in would
+ * read as a thinner sample, and a `deleted` one dropped would read as a HIGHER
+ * reached share than the ledger holds.
+ */
+function armCounts(
+	sweep: SeedPlacementObservation | null | undefined
+): SeedArmPlacementCounts | null {
+	if (!sweep) return null;
+	const counts: Partial<Record<SeedPlacement, number>> = {};
+	for (const placement of SEED_PLACEMENTS) counts[placement] = sweepCount(sweep, placement);
+	return counts;
+}
+
+/**
+ * The RENDERED reached share for one arm, or `null` when the arm has no probes.
+ *
+ * Display only — no branch in this module compares it to anything. It is
+ * counted with the shared module's own `isSeedPlacementReached` so the number
+ * beside the verdict is the number the verdict was reached from.
+ */
+function reachedShare(sweep: SeedPlacementObservation | null | undefined): number | null {
+	const total = sweepTotal(sweep);
+	if (!sweep || total <= 0) return null;
+	let reached = 0;
+	for (const placement of SEED_PLACEMENTS) {
+		if (isSeedPlacementReached(placement)) reached += sweepCount(sweep, placement);
+	}
+	return Math.min(1, reached / total);
+}
+
+/**
+ * Freshness is the RAMP's rule, not the roll-up's: every gate holds rather than
+ * passing on a stale or future-dated window (plan D9/D10), and the roll-up has
+ * no clock. Sample size stays the roll-up's — a sweep it graded
+ * `insufficient_data` is thin by the one definition there is.
+ */
+function sweepFreshness(
+	sweep: SeedPlacementObservation | null | undefined,
+	now: number,
+	thresholds: RampGateThresholds
+): ArmEvidence {
+	if (!sweep) return 'absent';
+	if (sweepTotal(sweep) <= 0) return 'thin';
+	return evidenceFreshness(sweep.observedAt, now, thresholds, thresholds.maxEvidenceAgeMs);
+}
+
+/**
+ * Gate 5 — SEED PLACEMENT (OPTIONAL): the shared roll-up's status, restated.
+ *
+ * Absent seed data returns `insufficient_data`, NEVER `fail` (plan D2) — and
+ * because the gate is listed in `OPTIONAL_RAMP_GATES`, that `insufficient_data`
+ * does not hold the ramp either: it only lowers measurement confidence. A
+ * deployment with zero seed mailboxes is a supported configuration, not an
+ * incomplete setup.
+ */
+export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampGateResult {
+	return evaluateSeedGate(input, true);
+}
+
+/**
+ * Gate 5, STANDALONE: the same gate with no second sweep.
+ *
+ * A deployment with no reference transport has no reference-arm probes, so the
+ * roll-up's comparison clause reports `no_reference_arm` and the absolute clause
+ * is the whole gate. The reference sweep is dropped HERE rather than trusted to
+ * be absent, for the same reason the standalone evaluator ignores
+ * `input.reference`: a caller that wires a relay into the standalone path gets
+ * standalone behaviour, not a silent hybrid nobody designed. And it is DROPPED
+ * rather than merely unread — a reference sweep left in the roll-up would move
+ * the comparison clause off `no_reference_arm` and quietly reinstate the second
+ * half of a gate this configuration does not have.
+ */
+export function evaluateStandaloneSeedPlacementGate(
+	input: RampGateEvaluationInput
+): RampGateResult {
+	return evaluateSeedGate(input, false);
+}
+
+function evaluateSeedGate(
+	input: RampGateEvaluationInput,
+	expectsReference: boolean
+): RampGateResult {
+	const { thresholds, sampleFloors } = input.config;
+	const own = input.ownSeeds ?? null;
+	const referenceSweep = expectsReference ? (input.referenceSeeds ?? null) : null;
+	const rollup: SeedProviderRollup = summarizeSeedProviderCounts(CELL_PROVIDER, {
+		own: armCounts(own),
+		reference: armCounts(referenceSweep),
+	});
+
+	const ownRate = reachedShare(own);
+	const shape = {
+		referenceRate: reachedShare(referenceSweep),
+		thresholdRate: thresholds.seedInboxMin as number,
+		toleranceValuePp: expectsReference ? (thresholds.seedInboxTolerance as number) : null,
+		ownSample: rollup.sampleSize,
+		referenceSample: expectsReference ? rollup.referenceSampleSize : null,
+		minSample: sampleFloors.seedPlacement,
+	} as const;
+
+	const ownEvidence = sweepFreshness(own, input.now, thresholds);
+	if (ownEvidence !== 'fresh' || rollup.status === 'insufficient_data' || ownRate === null) {
+		return insufficient(
+			'seed_placement',
+			// A fresh sweep the roll-up still graded `insufficient_data` is a sweep
+			// with too few probes — the one definition of thin there is.
+			evidenceReason(ownEvidence === 'fresh' ? 'thin' : ownEvidence, 'own'),
+			{ ...shape, ownRate },
+			SEED_TRIPWIRE
+		);
+	}
+
+	// THE ABSOLUTE CLAUSE FIRST, and before the second sweep is consulted at all —
+	// the shipped precedence, so a cell whose own seeds are in the spam folder is
+	// told THAT rather than told we could not find a relay to compare it with.
+	// `mixed` and `collapse_suspected` are both BELOW the shared reached
+	// threshold; the controller's response to either is identical, and which of
+	// the two it was is the analytics roll-up's story to tell, not the gate's.
+	if (rollup.status !== 'inbox_dominant') {
+		return {
+			gate: 'seed_placement',
+			status: 'fail',
+			reason: 'absolute_threshold_breached',
+			measurement: { ...shape, ownRate },
+			...SEED_TRIPWIRE,
+		};
+	}
+
+	const pass = (): RampGateResult => ({
+		gate: 'seed_placement',
+		status: 'pass',
+		reason: 'within_threshold',
+		measurement: { ...shape, ownRate },
+		...SEED_TRIPWIRE,
+	});
+
+	// An absolute-only gate has nothing left to consult: the sweep is fresh, large
+	// enough and above the inbox floor, which is the whole check.
+	if (!expectsReference) return pass();
+
+	const referenceEvidence = sweepFreshness(referenceSweep, input.now, thresholds);
+	// A reference sweep that is absent, stale, or too thin to compare against
+	// leaves the second clause UNMEASURED. It never fails it.
+	if (referenceEvidence !== 'fresh' || rollup.reference === 'insufficient_reference_sample') {
+		return insufficient(
+			'seed_placement',
+			evidenceReason(referenceEvidence === 'fresh' ? 'thin' : referenceEvidence, 'reference'),
+			{ ...shape, ownRate },
+			SEED_TRIPWIRE
+		);
+	}
+
+	return rollup.reference === 'below_reference'
+		? {
+				gate: 'seed_placement',
+				status: 'fail',
+				reason: 'reference_tolerance_breached',
+				measurement: { ...shape, ownRate },
+				...SEED_TRIPWIRE,
+			}
+		: pass();
+}

@@ -123,11 +123,13 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
 	'deliverySnapshots',
+	'seedPlacementProbes',
 	'gmailDeliveryReceipts',
 	'gmailVolumeBuckets',
 	'gmailDomainVolumeRollups',
 	'gmailDomainVolumeRollupJobs',
 	'googlePostmasterStats',
+	'googlePostmasterCompliance',
 	'unsubscribeLatencyBuckets',
 
 	// Webhook / form children before parents
@@ -170,6 +172,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'contactIdentities',
 	'contactRelationships',
 
+	// Per-topic sunset-policy overrides (P4-4) — configuration rows with no
+	// parent among the contact tables.
+	'sunsetPolicies',
+
 	// Independent definitions (no parent/child among themselves)
 	'contactProperties',
 	'topics',
@@ -191,6 +197,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'providerHealth',
 	'providerRoutes',
 	'deliverabilityRouteStates',
+	'deliverabilityAlignmentStates',
 	'deliverabilityAlertRecipients',
 	'deliverabilityAlertRecipientReceipts',
 	'deliverabilityRegressionAlerts',
@@ -198,6 +205,11 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'deliverabilityEvidence',
 	'deliverabilityLoopbackAttempts',
 	'destinationProviderDomains',
+	'sendAssignments',
+	'transportOutcomes',
+	'mixDecisions',
+	'rampStreamPresets',
+	'yahooCflEnrollments',
 	'domains',
 	'sendingDomainMtaIdentities',
 	'sendingDomainSesIdentities',
@@ -289,11 +301,13 @@ export const ORGANIZATION_DELETION_STEPS = {
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
+	seedPlacementProbes: makeSweepStep('seedPlacementProbes'),
 	gmailDeliveryReceipts: makeSweepStep('gmailDeliveryReceipts'),
 	gmailVolumeBuckets: makeSweepStep('gmailVolumeBuckets'),
 	gmailDomainVolumeRollups: makeSweepStep('gmailDomainVolumeRollups'),
 	gmailDomainVolumeRollupJobs: makeSweepStep('gmailDomainVolumeRollupJobs'),
 	googlePostmasterStats: makeSweepStep('googlePostmasterStats'),
+	googlePostmasterCompliance: makeSweepStep('googlePostmasterCompliance'),
 	unsubscribeLatencyBuckets: makeSweepStep('unsubscribeLatencyBuckets'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
 	mtaCampaignAlertReceipts: makeSweepStep('mtaCampaignAlertReceipts'),
@@ -323,6 +337,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	providerHealth: makeSweepStep('providerHealth'),
 	providerRoutes: makeSweepStep('providerRoutes'),
 	deliverabilityRouteStates: makeSweepStep('deliverabilityRouteStates'),
+	deliverabilityAlignmentStates: makeSweepStep('deliverabilityAlignmentStates'),
 	deliverabilityAlertRecipients: makeSweepStep('deliverabilityAlertRecipients'),
 	deliverabilityAlertRecipientReceipts: makeSweepStep('deliverabilityAlertRecipientReceipts'),
 	deliverabilityRegressionAlerts: makeSweepStep('deliverabilityRegressionAlerts'),
@@ -330,6 +345,11 @@ export const ORGANIZATION_DELETION_STEPS = {
 	deliverabilityEvidence: makeSweepStep('deliverabilityEvidence'),
 	deliverabilityLoopbackAttempts: makeSweepStep('deliverabilityLoopbackAttempts'),
 	destinationProviderDomains: makeSweepStep('destinationProviderDomains'),
+	sendAssignments: makeSweepStep('sendAssignments'),
+	transportOutcomes: makeSweepStep('transportOutcomes'),
+	mixDecisions: makeSweepStep('mixDecisions'),
+	rampStreamPresets: makeSweepStep('rampStreamPresets'),
+	yahooCflEnrollments: makeSweepStep('yahooCflEnrollments'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
@@ -382,6 +402,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	contactActivities: makeSweepStep('contactActivities'),
 	contactIdentities: makeSweepStep('contactIdentities'),
 	contactRelationships: makeSweepStep('contactRelationships'),
+	sunsetPolicies: makeSweepStep('sunsetPolicies'),
 	knowledgeRelations: makeSweepStep('knowledgeRelations'),
 	knowledgeBackfillJobs: makeSweepStep('knowledgeBackfillJobs'),
 	knowledgeEdgeBackfillJobs: makeSweepStep('knowledgeEdgeBackfillJobs'),

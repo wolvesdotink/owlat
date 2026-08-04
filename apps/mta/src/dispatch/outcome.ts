@@ -16,6 +16,10 @@ import type { DispatchEffect } from './effects.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
 import { primarySendingDomain } from '../intelligence/gmailBulkSender.js';
+import {
+	isVolumePressureCategory,
+	pressureAdjustedDelayMs,
+} from '../intelligence/warmingProviderPolicy.js';
 import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
 
 export { classifyResult } from './outcomeClassification.js';
@@ -93,6 +97,9 @@ function reduceDelivered(
 				ip,
 				result: 'send',
 				reservation: job.routingLease?.warmingReservation,
+				providerKey,
+				pool: ctx.pool,
+				utcDate: ctx.utcDate,
 			},
 			{
 				kind: 'metrics_record',
@@ -153,7 +160,7 @@ function reduceHardBounce(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce' },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -207,6 +214,14 @@ function reduceDeferred(
 	}
 	const { job, ip, domain, durationMs } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
+	// Deferral-aware retry: while this destination provider is signalling volume
+	// pressure on this IP, the classifier's suggested backoff is lengthened and
+	// the verdict is fed to the per-provider warming cap gate.
+	const volumePressure = isVolumePressureCategory(outcome.classification.category);
+	const deferDelayMs = pressureAdjustedDelayMs(
+		outcome.classification.suggestedDelayMs,
+		ctx.providerVolumePressure
+	);
 	return {
 		effects: [
 			{ kind: 'domain_throttle_defer', ip, throttleKey, providerKey },
@@ -216,7 +231,17 @@ function reduceDeferred(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'warming_record', ip, result: 'deferral' },
+			{ kind: 'warming_record', ip, result: 'deferral', providerKey, utcDate: ctx.utcDate },
+			...(volumePressure
+				? [
+						{
+							kind: 'warming_provider_pressure',
+							ip,
+							providerKey,
+							utcDate: ctx.utcDate,
+						} as const satisfies DispatchEffect,
+					]
+				: []),
 			{
 				kind: 'metrics_record',
 				domain,
@@ -239,7 +264,7 @@ function reduceDeferred(
 			},
 		],
 		defer: {
-			delayMs: outcome.classification.suggestedDelayMs,
+			delayMs: deferDelayMs,
 			reason: `SMTP deferral (${outcome.classification.category}): ${outcome.error}`,
 		},
 	};
@@ -276,7 +301,7 @@ function reduceNonRetryableDeferral(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce' },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -352,7 +377,7 @@ function reduceSoftBounce(
 				providerKey,
 				...probeReceipt(job),
 			},
-			{ kind: 'warming_record', ip, result: 'bounce' },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{ kind: 'domain_failure_record', domain },
 			{
 				kind: 'metrics_record',

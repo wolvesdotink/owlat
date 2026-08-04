@@ -11,6 +11,8 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
+import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
+import { MAX_PLAN_DAYS, buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -121,7 +123,39 @@ export const getCampaignSendEstimate = authedQuery({
 		}
 
 		const { totalDailyCap, totalSentToday } = warmingState;
-		const remainingToday = Math.max(0, totalDailyCap - totalSentToday);
+
+		// Project forward off the SAME published warming schedule — and the SAME IP
+		// population — the binding pre-flight gate uses (campaigns/capacityPlan.ts,
+		// delivery/warmingCapacity.ts). The previous ad-hoc "cap grows ~1.5x/day"
+		// heuristic could disagree with the gate about the day count, and taking
+		// today's remainder from `totalDailyCap - totalSentToday` disagreed about the
+		// IP population: that roll-up counts every campaign-pool IP regardless of
+		// `active`, so a deactivated high-cap IP made this readout claim "fits
+		// today" about a campaign the gate refused as a multi-day schedule. One
+		// projection, one IP population, one answer — and the pace actuator's dial is
+		// part of that one answer, so this readout goes through
+		// `loadPacedWarmingCapacity` exactly as the gate and the walker do.
+		//
+		// ONE ANSWER ABOUT THE IPs — NOT ABOUT THE AUDIENCE. This readout meters the
+		// WHOLE `recipientCount` against that projection, exactly as the multi-day
+		// walker meters the whole audience, while the binding gate scales by the own
+		// arm's share of the campaign stream. So on an `adaptive_mix` deployment the
+		// gate can answer "fits" where this quotes five days — deliberately, because
+		// the walker really will take five days. `campaigns/sendPlanQueries.ts` holds
+		// the rest of that note, including what would close the gap.
+		//
+		// The singleton this handler already read is handed straight over rather
+		// than letting the projection read it again: one document charged instead
+		// of two, and — the reason that matters — the two halves of this answer
+		// cannot end up describing different rows.
+		const now = Date.now();
+		const projection = await loadPacedWarmingCapacity(ctx, { now, warmingState });
+
+		// `null` is "capacity unknown" — the gate is equally undecided there, so the
+		// stale roll-up is only ever a DISPLAY fallback and can no longer contradict
+		// a refusal.
+		const remainingToday =
+			projection?.remainingToday ?? Math.max(0, totalDailyCap - totalSentToday);
 
 		// Check if all IPs are graduated
 		const isFullyWarmed = warmingState.phase === 'graduated';
@@ -148,27 +182,46 @@ export const getCampaignSendEstimate = authedQuery({
 			};
 		}
 
-		// Project forward: assume daily cap roughly doubles each day (conservative estimate)
-		let remaining = recipientCount - remainingToday;
-		let days = 1;
-		let projectedDailyCap = totalDailyCap;
-
-		while (remaining > 0 && days < 30) {
-			days++;
-			// Conservative: cap increases ~1.5x per day during warmup
-			projectedDailyCap = Math.min(projectedDailyCap * 1.5, 200000);
-			remaining -= projectedDailyCap;
+		if (projection === null) {
+			return {
+				totalDailyCap,
+				remainingToday,
+				estimatedDays: 1,
+				isFullyWarmed: false,
+				message: 'Warming data not available yet. Your emails will be paced automatically.',
+			};
 		}
 
-		const message =
-			days >= 30
-				? 'Campaign will take approximately 30+ days based on current warmup progress.'
-				: `Based on your IP warmup progress, this campaign will take approximately ${days} day${days === 1 ? '' : 's'} to complete.`;
+		// We want the SCHEDULE, not the fits/does-not-fit verdict — this is the
+		// advisory readout, not the binding gate — so call the schedule builder
+		// directly rather than the horizon-gated planner.
+		const plan = buildCapacitySchedule({
+			audienceSize: recipientCount,
+			remainingCapacityByDay: projection.byDay,
+			now,
+		});
+
+		// `days === 0` is the builder's "cannot be planned" sentinel (no positive
+		// projected capacity). The branch above already established the campaign
+		// does not fit inside day zero, so a real schedule always spans ≥ 2 days.
+		if (plan.days === 0) {
+			return {
+				totalDailyCap,
+				remainingToday,
+				estimatedDays: 1,
+				isFullyWarmed: false,
+				message: 'Your emails will be paced automatically against your current warm-up capacity.',
+			};
+		}
+
+		const message = plan.truncated
+			? `Campaign will take approximately ${MAX_PLAN_DAYS}+ days based on current warmup progress.`
+			: `Based on your IP warmup progress, this campaign will take approximately ${plan.days} day${plan.days === 1 ? '' : 's'} to complete.`;
 
 		return {
 			totalDailyCap,
 			remainingToday,
-			estimatedDays: days,
+			estimatedDays: plan.days,
 			isFullyWarmed: false,
 			message,
 		};

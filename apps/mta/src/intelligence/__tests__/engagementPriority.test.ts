@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ENGAGEMENT_BAND_CUTS } from '@owlat/shared/engagementBands';
 import {
 	PRIORITY_BANDS,
 	mapToPriority,
@@ -26,6 +27,20 @@ describe('mapToPriority', () => {
 
 	it('returns DEFAULT (3) for undefined', () => {
 		expect(mapToPriority(undefined)).toBe(PRIORITY_BANDS.DEFAULT);
+	});
+
+	it('cuts at the SHARED band definition, not a hand-copied literal', () => {
+		// The producer (`apps/api/convex/analytics/engagementScore.ts`) calibrates
+		// its 0-100 curve against exactly these numbers. Both sides import
+		// `@owlat/shared/engagementBands`, so moving a cut moves both — and this
+		// case fails if someone re-inlines a literal here.
+		expect(ENGAGEMENT_BAND_CUTS).toEqual({ high: 80, medium: 50, low: 20 });
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.high)).toBe(PRIORITY_BANDS.HIGH);
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.high - 1)).toBe(PRIORITY_BANDS.MEDIUM);
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.medium)).toBe(PRIORITY_BANDS.MEDIUM);
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.medium - 1)).toBe(PRIORITY_BANDS.LOW);
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.low)).toBe(PRIORITY_BANDS.LOW);
+		expect(mapToPriority(ENGAGEMENT_BAND_CUTS.low - 1)).toBe(PRIORITY_BANDS.COLD);
 	});
 });
 

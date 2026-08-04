@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailErrorCode } from '../types';
-import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
+import { MTA_DEFER_REASON_ORIGIN, mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import { resolveSendTransport } from '../transports';
+
+const MTA_TRANSPORT = resolveSendTransport('mta');
 
 const decisionInput = {
 	messageId: 'send-1',
@@ -38,9 +41,12 @@ describe('MTA routing decision client', () => {
 		new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
 	])('fails closed on a non-2xx or malformed routing decision', async (response) => {
 		global.fetch = vi.fn().mockResolvedValue(response);
-		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
+		// LOCAL, not governed: we never got an answer, so nothing was observed about
+		// this sending identity and gate 2 must not count it (`deferralOutcome.ts`).
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
+			origin: 'local',
 		});
 	});
 
@@ -53,11 +59,17 @@ describe('MTA routing decision client', () => {
 					init.signal.addEventListener('abort', () => reject(new Error('aborted')));
 				})
 		) as typeof fetch;
-		const pending = resolveMtaRoutingDecision(decisionInput);
+		const pending = resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput);
 		await vi.advanceTimersByTimeAsync(5_001);
-		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000 });
+		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000, origin: 'local' });
 	});
 
+	// `invented_reason` is the fall-through this list exists to pin: a defer
+	// reason the adapter does not recognise is an answer we did not understand,
+	// so it comes back `local` and gate 2 does not count it. That covers the
+	// direction where the MTA gains a reason the table has not; the classification
+	// cases further down cover the opposite direction, a reason in the table with
+	// no case naming its origin.
 	it.each([
 		{ decision: 'mta', lease: { token: 'lease-1', providerProbe: false } },
 		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },
@@ -69,11 +81,53 @@ describe('MTA routing decision client', () => {
 		{ decision: 'defer', reason: 'global_safety' },
 	])('rejects an inexact decision response: %j', async (body) => {
 		global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
-		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
+			origin: 'local',
 		});
 	});
+
+	// EVERY DEFER REASON, NAMED, WITH ITS ORIGIN. The list drifted once already —
+	// `lease_persistence` rode along with the three governance reasons and made a
+	// Redis failure on our own MTA count against gate 2's 25% halt line — and it
+	// drifted because nobody had to write the pairs down. This list is the second
+	// witness: hand-written here, compared against the shipped table below, so a
+	// reason added to `MTA_DEFER_REASON_ORIGIN` with nobody vouching for its origin
+	// fails the suite rather than riding along.
+	const DEFER_REASON_CASES = [
+		{ reason: 'global_safety', origin: 'governed' },
+		{ reason: 'global_probe', origin: 'governed' },
+		{ reason: 'no_owned_ip', origin: 'governed' },
+		// OUR OWN STORAGE, not the receiver: any Redis failure while the MTA takes
+		// the lease — reserving a half-open probe or writing the lease record — lands
+		// on one catch (`apps/mta/src/routes/routingDecision.ts`).
+		{ reason: 'lease_persistence', origin: 'local' },
+	] as const;
+
+	it('leaves no shipped defer reason unclassified by this suite', () => {
+		expect(Object.fromEntries(DEFER_REASON_CASES.map((c) => [c.reason, c.origin]))).toEqual(
+			MTA_DEFER_REASON_ORIGIN
+		);
+	});
+
+	it.each(DEFER_REASON_CASES)(
+		'classifies the $reason deferral as $origin',
+		async ({ reason, origin }) => {
+			global.fetch = vi.fn().mockResolvedValue(
+				new Response(JSON.stringify({ decision: 'defer', reason, retryAfterMs: 30_000 }), {
+					status: 200,
+				})
+			);
+			expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
+				kind: 'defer',
+				// The MTA's delay is honoured whoever is at fault — only the counting
+				// differs.
+				retryAfterMs: 30_000,
+				origin,
+			});
+		}
+	);
 
 	it('accepts exact decisions and bounds finite defer delays', async () => {
 		for (const [body, expected] of [
@@ -95,15 +149,15 @@ describe('MTA routing decision client', () => {
 			],
 			[
 				{ decision: 'defer', reason: 'global_safety', retryAfterMs: -1 },
-				{ kind: 'defer', retryAfterMs: 1_000 },
+				{ kind: 'defer', retryAfterMs: 1_000, origin: 'governed' },
 			],
 			[
 				{ decision: 'defer', reason: 'global_safety', retryAfterMs: 9_000_000 },
-				{ kind: 'defer', retryAfterMs: 3_600_000 },
+				{ kind: 'defer', retryAfterMs: 3_600_000, origin: 'governed' },
 			],
 		] as const) {
 			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
-			expect(await resolveMtaRoutingDecision(decisionInput)).toEqual(expected);
+			expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual(expected);
 		}
 	});
 

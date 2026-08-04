@@ -4,10 +4,13 @@ import {
 	PROVIDER_ENV_KEYS,
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
-	emailStepIsValid,
-	validateEmailStep,
 	type EmailStepDraft,
 } from '../useSetupWizard';
+import {
+	emailStepIsValid,
+	transportStepIsValid,
+	validateEmailStep,
+} from '../setupWizardValidation';
 
 /**
  * The in-app transport editor (`components/delivery/TransportEditor.vue`) reuses
@@ -129,6 +132,54 @@ describe('transport editor — validation gating', () => {
 			},
 		});
 		expect(emailStepIsValid(d)).toBe(true);
+	});
+});
+
+/**
+ * WHICH RULES THIS SCREEN CAN MEET.
+ *
+ * The editor renders the provider picker, the credential fields and the From
+ * identity. `validateEmailStep` also demands the sending IPs and the EHLO
+ * hostname whenever the built-in MTA is chosen, because the SETUP wizard
+ * collects them on that same step — this screen renders neither and could not
+ * write them (they are not `PROVIDER_ENV_KEYS`), so gating Apply on them made
+ * "Run your own MTA" a button that did nothing, silently.
+ */
+describe('transport editor — the subset of the email step it owns', () => {
+	/** The MTA identity is the wizard's rule; the editor applies without it. */
+	it('applies the built-in MTA with no identity fields collected', () => {
+		const d = draft({ provider: 'mta' });
+		expect(validateEmailStep(d).mtaIdentity).toBeTruthy();
+		expect(emailStepIsValid(d)).toBe(false);
+		expect(transportStepIsValid(d)).toBe(true);
+	});
+
+	// Every rule the screen CAN meet still gates it — the predicate is a subset,
+	// not a bypass.
+	it('still blocks on each error this screen renders a field for', () => {
+		expect(transportStepIsValid(draft({ provider: 'resend', resendKey: '' }))).toBe(false);
+		expect(
+			transportStepIsValid(
+				draft({
+					provider: 'ses',
+					ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
+				})
+			)
+		).toBe(false);
+		expect(transportStepIsValid(draft({ provider: 'smtp' }))).toBe(false);
+		expect(transportStepIsValid(draft({ provider: 'none', requiresProvider: true }))).toBe(false);
+		expect(transportStepIsValid(draft({ provider: 'mta', fromEmail: 'not-an-address' }))).toBe(
+			false
+		);
+	});
+
+	// The bug the previous shape reproduced on the next field added to the step:
+	// an MTA draft with a BAD From address is not valid just because the identity
+	// error is present too.
+	it('does not let an ignored error carry an owned one through with it', () => {
+		const d = draft({ provider: 'mta', fromEmail: 'nope' });
+		expect(validateEmailStep(d).mtaIdentity).toBeTruthy();
+		expect(transportStepIsValid(d)).toBe(false);
 	});
 });
 

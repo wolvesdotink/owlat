@@ -99,6 +99,12 @@ export type CampaignComposeInput = {
 	// Tracking
 	trackingBaseUrl?: string;
 	viewInBrowserUrl?: string;
+	// Deliverability seed probe id. Present ONLY on a shadow copy addressed to
+	// an operator-owned seed mailbox; the composer stamps it as
+	// `X-Owlat-Seed-Probe` so the IMAP poller can find the message again. The
+	// value is opaque (no recipient/campaign PII), and a shadow copy carries no
+	// `emailSendId`/`contactId`, so it can never reach a real recipient.
+	seedProbeId?: string;
 };
 
 export type TransactionalComposeInput = {
@@ -159,7 +165,4 @@ export type ComposeInput =
 	| ArchiveSnapshotComposeInput
 	| AutomationComposeInput;
 
-export type ComposeInputForKind<K extends SendCompositionKind> = Extract<
-	ComposeInput,
-	{ kind: K }
->;
+export type ComposeInputForKind<K extends SendCompositionKind> = Extract<ComposeInput, { kind: K }>;

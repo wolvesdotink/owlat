@@ -167,15 +167,52 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects(
 			[
-				{ kind: 'warming_record', ip: '10.0.0.1', result: 'send' },
-				{ kind: 'warming_record', ip: '10.0.0.2', result: 'bounce' },
-				{ kind: 'warming_record', ip: '10.0.0.3', result: 'deferral' },
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.1',
+					result: 'send',
+					providerKey: 'gmail',
+					pool: 'campaign',
+					utcDate: '2026-03-01',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.2',
+					result: 'bounce',
+					providerKey: 'gmail',
+					utcDate: '2026-03-01',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.3',
+					result: 'deferral',
+					providerKey: 'gmail',
+					utcDate: '2026-03-01',
+				},
 			],
 			deps
 		);
-		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1', undefined);
-		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
-		expect(warming.recordDeferral).toHaveBeenCalledWith(expect.anything(), '10.0.0.3');
+		// The attempt's day reaches the per-IP store too, not only its per-provider
+		// twin: both mirror one outcome and may not disagree about the day.
+		expect(warming.recordSend).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.1',
+			undefined,
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordBounce).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.2',
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordDeferral).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.3',
+			undefined,
+			'2026-03-01'
+		);
 	});
 
 	it('metrics_record → metrics.record with the full arg list', async () => {
@@ -286,7 +323,13 @@ describe('applyEffects — ordering', () => {
 
 		const effects: DispatchEffect[] = [
 			{ kind: 'domain_throttle_reject', ip: '10.0.0.1', domain: 'g.com' },
-			{ kind: 'warming_record', ip: '10.0.0.1', result: 'bounce' },
+			{
+				kind: 'warming_record',
+				ip: '10.0.0.1',
+				result: 'bounce',
+				providerKey: 'gmail',
+				utcDate: '2026-03-01',
+			},
 			{ kind: 'suppress_recipient', address: 'a@b.c', reason: 'hard_bounce' },
 		];
 

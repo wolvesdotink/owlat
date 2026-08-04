@@ -3,12 +3,11 @@ import {
 	SETUP_WIZARD_STEPS,
 	SMTP_RELAY_PRESETS,
 	buildProviderEnv,
-	emailStepIsValid,
-	validateEmailStep,
 	type EmailStepDraft,
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
 import { getActiveProfiles } from '@owlat/shared/featureFlags';
 
 definePageMeta({ layout: false });

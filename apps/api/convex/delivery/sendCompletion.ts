@@ -4,6 +4,7 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, MAX_GOVERNED_ROUTING_ATTEMPTS } from '
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
+import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import type { WorkerEnvelopeInput, WorkerRetryState } from './workerEnvelope';
 
@@ -18,6 +19,13 @@ import type { WorkerEnvelopeInput, WorkerRetryState } from './workerEnvelope';
 // All Send-state-driven side effects (campaign stats, contact activities,
 // customer webhooks, attachment cleanup) live on the lifecycle's effect list
 // — never imperatively here.
+//
+// ONE OBSERVATION HAS NO TRANSITION TO CARRY IT. A last-mile deferral leaves
+// the Send `queued` — that is what makes it a deferral — so the `deferred`
+// transport outcome cannot ride a lifecycle transition the way `sent` and the
+// bounces do. `delivery/deferralOutcome.ts` records it from the branch below,
+// still through the lifecycle's own effect runner. See that module for why the
+// counter needs a writer at all.
 //
 // Provider health recording moved upstream to the **Send dispatch (helper)**
 // per ADR-0020 — every send producer routes through that helper, so health
@@ -52,6 +60,15 @@ interface SendWorkerSuccess {
 	// instead of the generic WORKPOOL_FAILED one.
 	suppressed?: boolean;
 	deferred?: boolean;
+	// Which side the deferral came from (`LastMileRoutingDeferred.origin`). Only
+	// `governed` reaches gate 2's numerator; `local` — a policy hold, an
+	// idempotency wait, an unreachable decision endpoint, an MTA answer reporting
+	// any Redis failure while taking the lease — is our own machinery wherever it
+	// runs, and is not evidence about this sending identity. An answer from the
+	// MTA is not automatically governed; only an answer about the sending identity
+	// is. Optional because a worker running older code answers without it, and an
+	// unlabelled deferral is not counted rather than guessed at.
+	deferralOrigin?: 'governed' | 'local';
 	retryAfterMs?: number;
 	envelopeInput?: WorkerEnvelopeInput;
 	retryState?: WorkerRetryState;
@@ -100,6 +117,24 @@ export const completeSend = internalMutation({
 				},
 			});
 			return;
+		}
+
+		// THE DEFERRAL IS THE OBSERVATION, not the retry decision that follows it.
+		// Recorded before the branch below, so a deferral that has run out of
+		// attempts or outlived the delivery deadline — the one that terminalizes
+		// the send — reaches gate 2's numerator exactly like the ones that are
+		// re-enqueued. Rate-limited to one event per send per UTC day inside the
+		// recorder, and fail-soft: it never rolls back the retry.
+		//
+		// ONLY THE GOVERNED HALF. A `local` deferral is this deployment holding its
+		// own message — a policy pause, an idempotency wait, an MTA decision endpoint
+		// we could not reach, an MTA answer reporting any Redis failure while taking
+		// the lease — and gate 2 halts a cell at 25%. Reaching the MTA is not what
+		// makes a deferral governed; the answer being about the sending identity is.
+		// Counting our own outage would take the share to the floor and revoke the
+		// graduation pin over a fault the receiver never saw.
+		if (returnValue?.deferred && returnValue.deferralOrigin === 'governed') {
+			await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 		}
 
 		if (

@@ -1,0 +1,728 @@
+/**
+ * THE OPERATOR CONTROLS, END TO END (plan D12, P3-6).
+ *
+ * Each control writes through an org-scoped, admin-gated mutation; each lands in
+ * BOTH the audit log and the decision timeline; and none of them can reach
+ * another tenant's row. The cross-tenant test is the one that matters most:
+ * every mutation here takes a CELL from its arguments and its ORGANIZATION from
+ * the session, so the only way to touch another tenant would be an index read
+ * that was not org-leading.
+ *
+ * The named-test contract also covers the two things an operator must NOT be
+ * able to do: force-advance without typing the consequence phrase, and reach a
+ * phase rung the ladder has no name for.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api } from '../../_generated/api';
+import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { modules } from '../../__tests__/testModules';
+import {
+	connectRelay,
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
+
+const ORG = 'org_ramp_controls';
+const OTHER_ORG = 'org_ramp_controls_other';
+
+// `vi.hoisted`, not a bare const: `vi.mock` is hoisted above the imports, so a
+// factory closing over an ordinary module-level binding would read it before it
+// is initialised. The tenant has to be mutable — the cross-tenant test moves the
+// SESSION while leaving the cell arguments alone.
+const session = vi.hoisted(() => ({ organizationId: 'org_ramp_controls', isAdmin: true }));
+
+// The mutations resolve their tenant through the shared singleton-org helper,
+// which talks to the auth component; the harness has no component, so the suite
+// mocks it exactly as the ramp cron suites do. `getMutationContext` and the
+// admin floor are mocked for the same reason — the role gate itself is covered
+// where it belongs, in the authedFunctions suites.
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		// THE ADMIN FLOOR IS REAL HERE, not merely stubbed away. `adminMutation`
+		// calls this before the handler, so flipping `session.isAdmin` exercises the
+		// gate the card's "org-scoped AUTHED mutation" claim rests on.
+		requireAdminContext: vi.fn(async () => {
+			if (!session.isAdmin) throw new Error('Admin access required');
+			return { userId: 'user_admin', role: 'owner' };
+		}),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+	};
+});
+
+const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
+
+function harness(): Harness {
+	session.organizationId = ORG;
+	session.isAdmin = true;
+	return convexTest(schema, modules);
+}
+
+async function auditActions(t: Harness): Promise<string[]> {
+	const rows = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
+	return rows.map((row) => row.action);
+}
+
+async function decisions(t: Harness) {
+	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+}
+
+describe('pause', () => {
+	it('holds the cell, records a decision and an audit entry', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(true);
+
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeGreaterThan(0);
+		// A pause does NOT move the share: it only stops it climbing.
+		expect(row?.ownShare).toBe(0.4);
+
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_paused');
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]?.reason).toBe('operator_pause');
+		expect(recorded[0]?.message).toContain('operator');
+	});
+
+	it('is idempotent — pausing a paused cell writes nothing new', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(await decisions(t)).toHaveLength(1);
+	});
+
+	it('clears on resume', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: false });
+		expect((await readManagedCell(t))?.operatorPausedAt).toBeUndefined();
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_resumed');
+	});
+});
+
+describe('pin', () => {
+	it('stores a clamped ceiling and audits it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.5 });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 1.7 });
+		const row = await readManagedCell(t);
+		expect(row?.operatorPinnedShare).toBe(1);
+		// The pin never MOVES the share; it only bounds a future climb.
+		expect(row?.ownShare).toBe(0.5);
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_pinned');
+	});
+
+	it('removes the pin when asked for null', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.3 });
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: null });
+		expect((await readManagedCell(t))?.operatorPinnedShare).toBeUndefined();
+		expect(await auditActions(t)).toContain('deliverability_ramp.cell_unpinned');
+	});
+
+	it('refuses a share that is not a number', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await expect(
+			t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: Number.NaN })
+		).rejects.toThrow();
+	});
+});
+
+describe('force-advance', () => {
+	it('refuses without the consequence-naming confirmation', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
+		await expect(
+			t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+				...CELL,
+				share: 0.9,
+				confirmation: 'yes',
+			})
+		).rejects.toThrow();
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('moves the share with the confirmation, and never carries the streak across', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, cleanStreak: 3, mixVersion: 2 });
+		await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.9);
+		// The derived view stays consistent with the share (plan D1): at 0.9 the
+		// relay still carries a tenth of the cell, so the fallback IS active.
+		expect(row?.isFallbackActive).toBe(true);
+		// Nothing about a manual move is earned.
+		expect(row?.cleanStreak).toBe(0);
+		expect(row?.greenSince).toBeUndefined();
+		// A manual move is a new mix generation (plan D7).
+		expect(row?.mixVersion).toBe(3);
+		expect(await auditActions(t)).toContain('deliverability_ramp.force_advanced');
+		const recorded = await decisions(t);
+		expect(recorded[0]?.reason).toBe('operator_force_advance');
+		expect(recorded[0]?.direction).toBe('increase');
+	});
+});
+
+describe('reset to a phase', () => {
+	it('accepts only a rung on the ladder', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		await expect(
+			t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.42 })
+		).rejects.toThrow();
+	});
+
+	it('brings the share back under the new ceiling and restarts the streak', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, cleanStreak: 3 });
+		// THE CUT IS THE ESP PATH'S, so the cell needs a SECOND SENDER to hold the
+		// share back for. These rows are the MEASURED half of that union — the tick's
+		// own reading that a relay arm is carrying this cell — which is the half a
+		// suite that seeds no `providerRoutes` row can state for itself. With neither
+		// half the reset holds the share; both arms are pinned in
+		// `rampPhaseMoves.test.ts`.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.cleanStreak).toBe(0);
+		expect(await auditActions(t)).toContain('deliverability_ramp.phase_reset');
+	});
+});
+
+/**
+ * A HAND ON THE CONTROL IS STILL A HAND INSIDE THE HARD STOPS.
+ *
+ * A phase promotion already refuses under the global kill switch; the operator
+ * mutations that write a share directly must refuse under the same conditions,
+ * or every hard stop becomes optional in exactly the situation it exists for.
+ * Downward moves stay allowed throughout — a retreat is never blocked.
+ */
+describe('hard stops bound the operator, not only the controller', () => {
+	it('refuses a force-advance UP while the global kill switch is engaged', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, isPaused: true });
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('controller_paused');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('still lets an operator move a cell DOWN while the kill switch is engaged', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, isPaused: true });
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.1,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.ownShare).toBe(0.1);
+	});
+
+	it('refuses a force-advance UP while sending is abuse-suspended', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, abuseStatus: 'suspended' });
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+	});
+
+	it('refuses a force-advance UP inside a live cooldown', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			frozenUntil: Date.now() + 60 * 60 * 1000,
+			freezeReason: 'gate_breach',
+		});
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+	});
+
+	/**
+	 * A CEILING NEVER RISES FROM HERE, hard stop or no hard stop. The upward move
+	 * is `rampPhasePromotion.promoteCellPhase` and its evidence routes; a reset
+	 * that could also raise one would leave that gate guarding one of two doors.
+	 * The rung-level coverage lives in `rampPhaseMoves.test.ts` — this arm is here
+	 * so the CONTROLS' own refusal vocabulary stays pinned beside the others.
+	 */
+	it('refuses raising a PHASE ceiling, and not because of a hard stop', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			isPaused: true,
+		});
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 1,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('phase_increase_requires_promotion');
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('still lets a ceiling-less row be put on the FIRST rung under the kill switch', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			omitPhaseCeiling: true,
+			isPaused: true,
+		});
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+
+	it('still lets a phase be reset DOWNWARD while the kill switch is engaged', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, phaseCeiling: 1, isPaused: true });
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+});
+
+describe('a hand-moved cell does not keep its graduation pin', () => {
+	it('revokes it on a force-advance below full share', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			graduatedAt: Date.now() - 1_000,
+		});
+		await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.25,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		// Otherwise the Cells grid still reads "Graduated" and the relay-removal
+		// projection still counts the cell as no longer leaning on the relay,
+		// while three quarters of its mail is back on it.
+		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
+		const recorded = await decisions(t);
+		expect(recorded[0]?.snapshot).toContain('revoked');
+	});
+
+	it('revokes it on a phase reset below full share', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			graduatedAt: Date.now() - 1_000,
+		});
+		// The pin follows the SHARE, and only a reset with a second sender to hold
+		// that share back for cuts it. Here that is the MEASURED half of the union:
+		// reference-arm rows inside the evaluation window. A cell with neither half
+		// keeps share and pin.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.5 });
+		expect((await readManagedCell(t))?.graduatedAt).toBeUndefined();
+	});
+
+	it('keeps it when the move lands at full share', async () => {
+		const graduatedAt = Date.now() - 1_000;
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, graduatedAt });
+		await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 1,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect((await readManagedCell(t))?.graduatedAt).toBe(graduatedAt);
+	});
+});
+
+describe('presets', () => {
+	it('stores, updates and clears a per-stream choice, auditing each time', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'aggressive',
+		});
+		let rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.preset).toBe('aggressive');
+
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'conservative',
+		});
+		rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.preset).toBe('conservative');
+
+		// Clearing returns the stream to the DEPLOYMENT DEFAULT rather than to a
+		// stored 'balanced', so a later relay changes the pace automatically.
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: null,
+		});
+		rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(0);
+		expect(
+			(await auditActions(t)).filter((action) => action === 'deliverability_ramp.preset_changed')
+		).toHaveLength(3);
+	});
+});
+
+describe('cross-tenant', () => {
+	it('never touches another organization’s cell, and refuses calmly', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+
+		// The caller's session now resolves to a DIFFERENT organization. The cell
+		// arguments are unchanged: only the tenant moved.
+		session.organizationId = OTHER_ORG;
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			...CELL,
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('cell_not_ramp_managed');
+
+		session.organizationId = ORG;
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeUndefined();
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	it('files a preset against the caller’s own organization only', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		session.organizationId = OTHER_ORG;
+		await t.mutation(api.delivery.rampControls.setStreamPreset, {
+			stream: 'campaign',
+			preset: 'aggressive',
+		});
+		const rows = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.organizationId).toBe(OTHER_ORG);
+	});
+});
+
+describe('the admin floor', () => {
+	it('refuses a non-admin caller and writes nothing', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		session.isAdmin = false;
+		try {
+			await expect(
+				t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true })
+			).rejects.toThrow();
+			await expect(
+				t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+					...CELL,
+					share: 0.9,
+					confirmation: FORCE_ADVANCE_CONFIRMATION,
+				})
+			).rejects.toThrow();
+			await expect(
+				t.mutation(api.delivery.rampControls.setStreamPreset, {
+					stream: 'campaign',
+					preset: 'aggressive',
+				})
+			).rejects.toThrow();
+		} finally {
+			session.isAdmin = true;
+		}
+		const row = await readManagedCell(t);
+		expect(row?.operatorPausedAt).toBeUndefined();
+		expect(row?.ownShare).toBe(0.4);
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+		const presets = await t.run(async (ctx) => await ctx.db.query('rampStreamPresets').collect());
+		expect(presets).toHaveLength(0);
+	});
+});
+
+describe('an unmanaged cell', () => {
+	it('is refused without being created', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG });
+		const result = await t.mutation(api.delivery.rampControls.setCellPause, {
+			stream: 'transactional',
+			destinationProvider: 'yahoo',
+			isPaused: true,
+		});
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('cell_not_ramp_managed');
+		const rows = await t.run(
+			async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
+		);
+		expect(rows.some((row) => row.destinationProvider === 'yahoo')).toBe(false);
+	});
+});
+
+/**
+ * WHAT THE ROW TELLS THE OPERATOR, AND WHICH DIAL IT NAMES (plan D3, D12).
+ *
+ * A `mixDecisions` message is read back for as long as the timeline keeps it, so
+ * it has to be true about the cell it was written on. Both controls are expressed
+ * in SHARE and both sentences are cut on the TICK'S OWN actuator reading — the
+ * one that decides which dial the controller climbs — rather than on "is a relay
+ * configured", which answers a different question and answers it differently.
+ */
+describe('the control sentences name the dial the controller ramps', () => {
+	async function messageOf(t: Harness): Promise<string> {
+		const rows = await decisions(t);
+		return rows[0]?.message ?? '';
+	}
+
+	it('names the SHARE where a reference transport is carrying the cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const message = await messageOf(t);
+		expect(message).toContain('40%');
+		expect(message).toContain('The share is the dial the controller is ramping here');
+		// AND THE PACE IS NAMED TOO, because the pause holds that dial as well: an
+		// arm on the row and a sentence that mentioned one dial would read as a
+		// promise that the other one is untouched.
+		expect(message).toContain('warm-up pace is held with it');
+		expect(message).toContain('only the increase is held');
+	});
+
+	it('names the warm-up pace where no reference transport is carrying it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const message = await messageOf(t);
+		expect(message).toContain('the warm-up pace is the dial the controller is ramping here');
+		expect(message).toContain('the share is held with it');
+		// AND IT STILL SAYS THE ONE THING AN OPERATOR IS TRUSTING when they leave a
+		// pause in place: a retreat is never held, on either dial.
+		expect(message).toContain('retreat would still be applied');
+	});
+
+	// A CONFIGURED RELAY IS NOT THE SAME FACT as a relay carrying this cell, and
+	// the tick cuts on the second one: with no outcomes on the reference arm it
+	// ramps this cell by pace, whatever `providerRoutes` holds. A sentence worded
+	// off the configuration would promise the share as the climbing dial on a cell
+	// the very next tick climbs by pace.
+	it('follows the tick, not the route table, when a relay carries nothing yet', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await connectRelay(t);
+
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		expect(await messageOf(t)).toContain(
+			'the warm-up pace is the dial the controller is ramping here'
+		);
+	});
+
+	it('promises exactly the cap where a reference transport carries the cell', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2 });
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		expect(await messageOf(t)).toContain('will not climb past it until it is unpinned');
+	});
+
+	// THE PIN AN OPERATOR ACTUALLY TYPES FIRST, on the path this plan added. A
+	// pace-path enrolment opens the cell at OWN_SHARE_CEILING, so the ordinary
+	// standalone cell being pinned is at 100% with a pin somewhere under it — and
+	// `applyRampCellControl` holds a pinned cell at its `fromShare` and never below
+	// it, so nothing brings that share down to the number that was typed. A sentence
+	// promising the share will not climb past the pin would be describing a bound
+	// the cell was already outside when the operator set it.
+	it('does not promise a bound the cell is already above', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		const message = await messageOf(t);
+		expect(message).toContain('at 40%, below the 100% it is running at');
+		expect(message).toContain('never brings a cell down');
+		expect(message).not.toMatch(/will not climb past/);
+		// And the pace half is still said, because it is still the dial that climbs.
+		expect(message).toContain('no pin can bound it — pausing the cell is what holds it');
+	});
+
+	// THE STATE THE COPY EXISTS FOR, and it is an ordinary one: a managed cell with
+	// no reference transport, sitting BELOW its ceiling, held by both controls. The
+	// share is not standing still because the pin says so — the tick decides and
+	// writes a share for this cell like any other — so the pin sentence claims only
+	// what a pin can do, and points at the control that holds the dial that climbs.
+	it('says what each control binds on a paced cell below its ceiling', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 1 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+		await t.mutation(api.delivery.rampControls.setCellPause, { ...CELL, isPaused: true });
+
+		const rows = await decisions(t);
+		const pin = rows.find((row) => row.reason === 'operator_pin')?.message ?? '';
+		expect(pin).toContain('The share will not climb past it');
+		expect(pin).toContain('no pin can bound it — pausing the cell is what holds it');
+		const pause = rows.find((row) => row.reason === 'operator_pause')?.message ?? '';
+		expect(pause).toContain('the share is held with it');
+	});
+
+	// UNPINNING SAYS THE SAME THING FROM THE OTHER SIDE: the cap is gone from the
+	// share, and it was never on the dial this cell climbs.
+	it('does not promise a climb the unpin did not release', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, operatorPinnedShare: 0.4 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: null });
+
+		expect(await messageOf(t)).toContain('was never bounded by the pin');
+	});
+});
+
+/**
+ * THE INCREASE BLOCK READS A FREEZE THE WAY THE CONTROLLER DOES.
+ *
+ * `readRampIncreaseBlock` asks the rungs' own reader rather than comparing
+ * `frozenUntil` to the clock, so "is this cell frozen" means at the operator's
+ * door exactly what it means on the next tick. The UNREADABLE case is the one
+ * that motivates it: a stored expiry no rung of this controller could have
+ * stamped is a row nobody can explain, and a value we cannot read is not
+ * permission to climb.
+ *
+ * ON EVERY FINITE EXPIRY the reader and a `now < frozenUntil` comparison agree by
+ * construction — an expiry beyond the longest cooldown is still ahead of the
+ * clock. The NON-FINITE one is where they part: `NaN` compares false against
+ * everything, so the comparison would call a corrupt row unfrozen and let a hand
+ * on the control climb through it. That case has its own fixture below.
+ */
+describe('a hand on the control reads the freeze through the rungs', () => {
+	async function forceUp(t: Harness) {
+		return await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.9,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+	}
+
+	it('refuses an increase under an expiry no rung could have stamped', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			frozenUntil: Date.now() + 10_000 * 24 * 60 * 60 * 1000,
+		});
+
+		const result = await forceUp(t);
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+	});
+
+	// THE ONE VALUE THE TWO READINGS DISAGREE ABOUT. A `now < frozenUntil`
+	// comparison reads `NaN` as "not frozen" and would let this force-advance
+	// through; the rungs' reader calls it unreadable, and the operator's door is
+	// refused for the same reason the next tick would refuse to step the cell up.
+	it('refuses an increase under a NON-FINITE expiry, which no comparison can read', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, frozenUntil: Number.NaN });
+
+		const result = await forceUp(t);
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('hard_stop_active');
+		expect((await readManagedCell(t))?.ownShare).toBe(0.2);
+	});
+
+	// THE COUNTER-CASE, or the rule above would be indistinguishable from "any
+	// stored instant blocks": an EXPIRED cooldown is not a hold, and a cell whose
+	// freeze has run out may be moved.
+	it('permits the same increase once the freeze has expired', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			frozenUntil: Date.now() - 1,
+			freezeReason: 'gate_breach',
+		});
+
+		expect((await forceUp(t)).applied).toBe(true);
+		expect((await readManagedCell(t))?.ownShare).toBe(0.9);
+	});
+
+	// DOWNWARD IS NEVER BLOCKED, whatever the row says: a safety response an
+	// operator cannot reach downward is not a safety response either.
+	it('always lets a cell be taken DOWN through an unreadable freeze', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.8,
+			frozenUntil: Date.now() + 10_000 * 24 * 60 * 60 * 1000,
+		});
+
+		const result = await t.mutation(api.delivery.rampControls.forceAdvanceCellShare, {
+			...CELL,
+			share: 0.1,
+			confirmation: FORCE_ADVANCE_CONFIRMATION,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.ownShare).toBe(0.1);
+	});
+});

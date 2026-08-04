@@ -9,6 +9,7 @@ import {
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
 	type EmailSendParams,
 	type ExtrasFor,
@@ -16,9 +17,10 @@ import {
 	type MtaIpPool,
 	type ResendExtras,
 	type SendProviderKind,
+	type SmtpExtras,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
-import type { WorkerEnvelopeInput } from './workerEnvelope';
+import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
 import type { Id } from '../_generated/dataModel';
 
 export interface WorkerRetryState {
@@ -29,9 +31,20 @@ export interface WorkerRetryState {
 	acceptanceReconciliation?: boolean;
 }
 
-type SendRef =
+/**
+ * The durable reference this dispatch is bound to.
+ *
+ * `campaign` / `transactional` are countable Sends with a full lifecycle.
+ * `seedProbe` is a deliverability shadow copy (D18): durable (its probe-ledger
+ * row), org-scoped and unique, but deliberately NOT a Send — no `emailSends`
+ * row, no completion handler, no stat shard, no reputation event. It is
+ * accepted here so the probe travels the IDENTICAL transport as the mail it
+ * measures instead of a parallel one.
+ */
+type DispatchRef =
 	| { kind: 'campaign'; id: Id<'emailSends'> }
-	| { kind: 'transactional'; id: Id<'transactionalSends'> };
+	| { kind: 'transactional'; id: Id<'transactionalSends'> }
+	| { kind: 'seedProbe'; id: Id<'seedPlacementProbes'> };
 
 interface GovernedDispatchRequest<TEnvelope> {
 	envelopeInput: TEnvelope;
@@ -43,7 +56,14 @@ interface GovernedDispatchRequest<TEnvelope> {
 	providerType?: string;
 	ipPool?: string;
 	organizationId?: string;
-	sendRef?: SendRef;
+	/**
+	 * Recipient engagement score (0-100) carried on the send envelope. Stamped
+	 * onto `MtaExtras` for the MTA's enqueue-time priority bands. `undefined`
+	 * (unscored contact, or no contact at all) is OMITTED from the extras — it
+	 * is not `0`, which would claim the recipient is cold.
+	 */
+	engagementScore?: number;
+	sendRef?: DispatchRef;
 	retryState?: WorkerRetryState;
 	message: Omit<EmailSendParams, 'to' | 'from' | 'replyTo'>;
 }
@@ -63,6 +83,13 @@ export type GovernedDispatchResult<TEnvelope> =
 			retryAfterMs: number;
 			envelopeInput: TEnvelope;
 			retryState: WorkerRetryState;
+			/**
+			 * Carried to the completion callback because that is where gate 2's
+			 * numerator is written and the routing result is long gone by then. See
+			 * `LastMileRoutingDeferred.origin`: only `governed` is evidence about this
+			 * sending identity, and only `governed` is counted.
+			 */
+			deferralOrigin: 'governed' | 'local';
 	  }
 	| {
 			success: false;
@@ -131,7 +158,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 ): Promise<GovernedDispatchResult<TEnvelope>> {
 	const idempotencyKey =
 		request.retryState?.idempotencyKey ??
-		(request.sendRef ? `send_${request.sendRef.id}` : `legacy_${crypto.randomUUID()}`);
+		(request.sendRef
+			? `${request.sendRef.kind === 'seedProbe' ? 'probe' : 'send'}_${request.sendRef.id}`
+			: `legacy_${crypto.randomUUID()}`);
 	const retryState = currentRetryState(request.retryState, idempotencyKey);
 	if (retryState.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
 		throw new Error('Governed delivery retry limit exhausted.');
@@ -168,6 +197,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		startedAt: retryState.startedAt,
 		deliveryDomain: request.deliveryDomain,
 		mtaReconciliation: retryState.acceptanceReconciliation === true,
+		// The recorded experiment row is keyed by this id: dispatching on the
+		// arm it names is what keeps the measured denominators honest.
+		sendId: request.sendRef.id,
 	});
 	if (routing.kind === 'defer') {
 		if (retryState.acceptanceReconciliation) {
@@ -186,6 +218,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			success: false,
 			deferred: true,
 			retryAfterMs: routing.retryAfterMs,
+			deferralOrigin: routing.origin,
 			envelopeInput: request.envelopeInput,
 			// The attempt cap bounds routing churn. A deliberate safety hold is
 			// not churn: consuming attempts would terminalize the send minutes
@@ -195,14 +228,17 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		};
 	}
 
-	const { providerKind, route, routingLease } = routing;
-	if (providerKind === 'mta') {
+	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
+	// A seed probe has no Send row to bind a provider identity to — binding is
+	// the Send lifecycle's job, and a probe deliberately has no lifecycle (D18).
+	if (providerKind === 'mta' && request.sendRef.kind !== 'seedProbe') {
 		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
 			send: request.sendRef,
 			providerMessageId: idempotencyKey,
 		});
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
+	const engagementScore = normalizeEngagementScore(request.engagementScore);
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'
 			? ({
@@ -225,13 +261,30 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					...((route?.ipPool ?? request.ipPool)
 						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
 						: {}),
+					// Omitted, never zeroed, when the recipient has no score: the
+					// MTA reads absence as "unknown" and applies its DEFAULT band,
+					// whereas 0 would order the message behind every cold contact.
+					...(engagementScore !== undefined ? { engagementScore } : {}),
 				} satisfies MtaExtras)
 			: providerKind === 'resend'
 				? ({ idempotencyKey } satisfies ResendExtras)
-				: {};
+				: providerKind === 'smtp'
+					? // Relay arm (plan G-08): stamp OUR VERP envelope sender at the
+						// return-path host the routing pass authorised — the SAME host the
+						// direct-MX arm stamps for this From domain — so relayed bounces
+						// reach our own bounce server and both arms present the same
+						// envelope-sender domain. Resolved by the routing pass, not by a
+						// second query on the send path. No authorised host simply keeps
+						// the composer's envelope sender: the send is unchanged and its
+						// cell is graded degraded-measurement, never blocked (plan D2).
+						relayReturnPathHost === undefined
+						? ({} satisfies SmtpExtras)
+						: ({ returnPathHost: relayReturnPathHost } satisfies SmtpExtras)
+					: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,
-		providerKind,
+		// The SAME instance the routing pass graded for return-path capability.
+		defaultSendTransportId(providerKind),
 		{
 			to: request.to,
 			from: request.from,
@@ -258,6 +311,15 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			success: false,
 			deferred: true,
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
+			// The MTA revalidated its own lease at enqueue and withdrew it
+			// (`mtaSendProvider.categorizeError`) — its governance, not our fault.
+			// OVER-BROAD, KNOWINGLY: the same 409 carries `ROUTING_DECISION_EXPIRED`,
+			// which the MTA also answers when its Redis lost the lease record rather
+			// than when the lease aged out, and that is our fault. Separating them
+			// needs a distinction the MTA does not make on the wire, so this path
+			// still spends gate 2's budget — issue #505 carries the wire change,
+			// and `delivery/deferralOutcome.ts` says the same.
+			deferralOrigin: 'governed',
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),
 		};

@@ -1,12 +1,24 @@
 import type { DatabaseReader } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type {
-	ConditionTypeModule,
-	ContactPropertyCondition,
-	PropertyOperator,
-} from '../types';
+import type { ConditionTypeModule, ContactPropertyCondition, PropertyOperator } from '../types';
 
 const BUILT_IN_FIELDS = new Set(['email', 'firstName', 'lastName', 'source']);
+
+/**
+ * The distinct CUSTOM property keys a condition set reads (built-in fields live
+ * on the contact row and read nothing). ONE definition, because
+ * `lookupReadsPerContact` is the multiplier the audience-scan document budget is
+ * charged with: if it ever drifted from what `preloadLookupForContacts` actually
+ * reads, the "bounded" scan would silently overrun the Convex per-execution read
+ * limit.
+ */
+function distinctCustomFields(conditions: readonly ContactPropertyCondition[]): Set<string> {
+	const customFields = new Set<string>();
+	for (const c of conditions) {
+		if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
+	}
+	return customFields;
+}
 
 export interface ContactPropertyLookup {
 	propertyIds: Map<string, Id<'contactProperties'>>;
@@ -35,13 +47,9 @@ function applyOperator(
 ): boolean {
 	switch (operator) {
 		case 'equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase();
 		case 'not_equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase();
 		case 'contains':
 			return String(fieldValue ?? '')
 				.toLowerCase()
@@ -85,7 +93,10 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		if (typeof r['field'] !== 'string') {
 			throw new Error('contact_property: field must be a string');
 		}
-		if (typeof r['operator'] !== 'string' || !VALID_OPERATORS.has(r['operator'] as PropertyOperator)) {
+		if (
+			typeof r['operator'] !== 'string' ||
+			!VALID_OPERATORS.has(r['operator'] as PropertyOperator)
+		) {
 			throw new Error(`contact_property: unknown operator "${r['operator'] as string}"`);
 		}
 		return {
@@ -101,10 +112,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			values: new Map(),
 		};
 
-		const customFields = new Set<string>();
-		for (const c of conditions) {
-			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
-		}
+		const customFields = distinctCustomFields(conditions);
 
 		// Resolve custom property IDs by key.
 		for (const key of customFields) {
@@ -134,10 +142,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			values: new Map(),
 		};
 
-		const customFields = new Set<string>();
-		for (const c of conditions) {
-			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
-		}
+		const customFields = distinctCustomFields(conditions);
 
 		// Resolve custom property IDs by key (bounded by the distinct keys named in
 		// the conditions, not by the population).
@@ -158,7 +163,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 				const row = await ctx.db
 					.query('contactPropertyValues')
 					.withIndex('by_contact_and_property', (q) =>
-						q.eq('contactId', contact._id).eq('propertyId', propertyId),
+						q.eq('contactId', contact._id).eq('propertyId', propertyId)
 					)
 					.unique();
 				if (row) lookup.values.set(`${contact._id}:${propertyId}`, row.value);
@@ -166,6 +171,16 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		}
 
 		return lookup;
+	},
+	lookupReadsPerContact(conditions) {
+		// One `by_contact_and_property` point read per (contact × distinct CUSTOM
+		// property). Built-in fields live on the contact row and read nothing.
+		return distinctCustomFields(conditions).size;
+	},
+	lookupReadsPerBatch(conditions) {
+		// One `contactProperties.by_key` read per distinct custom property, done
+		// once per preload call — the same set `preloadLookupForContacts` resolves.
+		return distinctCustomFields(conditions).size;
 	},
 	evaluate(condition, contact, lookup) {
 		let fieldValue: unknown;

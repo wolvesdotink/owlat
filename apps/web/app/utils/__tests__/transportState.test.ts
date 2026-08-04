@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	deriveTransportDisplay,
+	transportIdLabel,
 	type TransportHealthInput,
 	type TransportSummaryInput,
 } from '../transportState';
@@ -22,6 +23,41 @@ function health(status: TransportHealthInput['status']): TransportHealthInput {
 		lastCheckedAt: 1_700_000_000_000,
 	};
 }
+
+/**
+ * THE PROSE VOCABULARY, PINNED WHERE IT LIVES.
+ *
+ * `transportIdLabel` is what every sentence that has to NAME the second arm calls
+ * it — the independence and measurement subheads, the relay-removal
+ * consequence, the measurement comparison column. Those surfaces assert their
+ * own sentences; this block pins the naming itself, including the two
+ * fall-backs, so a change to it fails here rather than in four prose tests.
+ */
+describe('transportIdLabel', () => {
+	it('names each built-in kind exactly as the transport card does', () => {
+		expect(transportIdLabel('mta')).toBe('Owlat mail server');
+		expect(transportIdLabel('ses')).toBe('Amazon SES');
+		expect(transportIdLabel('resend')).toBe('Resend');
+		expect(transportIdLabel('smtp')).toBe('SMTP relay');
+	});
+
+	it('names a plugin relay by the leaf of its id, not the namespaced id', () => {
+		// The ramp and dashboard queries carry the id, not the plugin catalog's
+		// display label, so "instead of plugin.mail-pack.postmark" was the shipped
+		// sentence. The leaf is the pack's own word for the transport.
+		expect(transportIdLabel('plugin.mail-pack.postmark')).toBe('Postmark');
+		expect(transportIdLabel('plugin.relay-pack.mailgun-eu')).toBe('Mailgun-eu');
+	});
+
+	it('falls back to the raw value for anything else', () => {
+		// `EMAIL_PROVIDER` can name a transport this build does not know, and a
+		// malformed plugin id is not a name to guess at either — both must still
+		// read as themselves rather than as "Unknown".
+		expect(transportIdLabel('sendgrid')).toBe('sendgrid');
+		expect(transportIdLabel('plugin.mail-pack')).toBe('plugin.mail-pack');
+		expect(transportIdLabel('plugin.mail-pack.a.b')).toBe('plugin.mail-pack.a.b');
+	});
+});
 
 describe('deriveTransportDisplay — labels', () => {
 	it('names each known transport in human words', () => {

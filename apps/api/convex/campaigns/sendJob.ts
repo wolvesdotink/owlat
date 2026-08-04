@@ -34,7 +34,7 @@ import { audienceValidator } from './audience';
 const variantModeValidator = v.union(
 	v.literal('plain'),
 	v.literal('ab_test'),
-	v.literal('ab_winner'),
+	v.literal('ab_winner')
 );
 
 /**
@@ -71,6 +71,19 @@ export const createSendJob = internalMutation({
 			audience: args.audience,
 			enqueuedCount: 0,
 			totalCandidates: 0,
+			// A RESET WIPES THE MULTI-DAY PLAN TOO. The row is reused for the second
+			// A/B phase and for a re-fired send, and a plan carried over from the
+			// previous walk would charge the new one for a day it never sent on — and,
+			// worse, could report it as "day 3 of 4" before it had enqueued anybody.
+			planDayKey: undefined,
+			enqueuedToday: undefined,
+			planDayIndex: undefined,
+			planTotalDays: undefined,
+			isPlanTruncated: undefined,
+			plannedTotal: undefined,
+			isPlannedTotalLowerBound: undefined,
+			isPlannedTotalCountAttempted: undefined,
+			resumeAt: undefined,
 			updatedAt: now,
 		};
 		const existing = await ctx.db
@@ -119,8 +132,12 @@ export const advanceSendJob = internalMutation({
 	},
 	handler: async (
 		ctx,
-		args,
-	): Promise<{ phase: 'resolving' | 'done'; enqueuedCount: number; totalCandidates: number } | null> => {
+		args
+	): Promise<{
+		phase: 'resolving' | 'done';
+		enqueuedCount: number;
+		totalCandidates: number;
+	} | null> => {
 		const job = await ctx.db
 			.query('campaignSendJobs')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
@@ -140,6 +157,110 @@ export const advanceSendJob = internalMutation({
 		});
 
 		return { phase, enqueuedCount, totalCandidates };
+	},
+});
+
+/**
+ * Checkpoint the MULTI-DAY SEND PLAN's day state (deliverability plan P3-7).
+ *
+ * Separate from `advanceSendJob` on purpose: the cursor advance is the walk's
+ * CORRECTNESS checkpoint — a crash between the enqueue and that patch re-runs
+ * the same page, and `createBatch`'s idempotency makes the re-run free — while
+ * this is the day BUDGET, which the exhausted-day path has to write on a hop
+ * that advanced no cursor at all. Folding the two together would mean either
+ * writing a cursor that did not move or leaving the day's counter behind.
+ *
+ * Unlike `touchSendJob` it does NOT skip a `done` walk: the LAST hop of a plan
+ * is the one that finishes it, and refusing to record its day would leave the
+ * operator-facing progress line permanently one page short of the truth. The
+ * `updatedAt` bump it carries is safe on a finished walk: the stuck-walk
+ * watchdog matches on `phase === 'resolving'`, so a `done` row is not something
+ * a fresh timestamp can drag back into the re-drive queue.
+ *
+ * IT ALSO OWNS THE `updatedAt` TOUCH for the hop that calls it, which is why the
+ * exhausted-day path does not call `touchSendJob` as well: two mutations
+ * patching the same field on the same row, two lines apart, is one write too
+ * many on a path that already runs a query, a mutation and a scheduler call.
+ *
+ * AND IT OWNS THE PARK. `resumeAt` is what makes a deliberately parked walk —
+ * one waiting up to ~24h for the next cap window — invisible to the stuck-walk
+ * watchdog, which would otherwise re-drive it every five minutes and schedule a
+ * duplicate resume hop each time. The returned `isResumeAlreadyScheduled` makes
+ * the scheduling idempotent as well, so at most one hop is ever pending even if
+ * the row is re-driven by something else.
+ */
+const sendPlanStateValidator = v.object({
+	planDayKey: v.string(),
+	enqueuedToday: v.number(),
+	planDayIndex: v.number(),
+	planTotalDays: v.number(),
+	// Required alongside the length, not optional: both come from the same
+	// recomputed schedule, and a checkpoint carrying one without the other is a
+	// plan whose honesty depends on which hop last wrote it.
+	isPlanTruncated: v.boolean(),
+	plannedTotal: v.optional(v.number()),
+	isPlannedTotalLowerBound: v.optional(v.boolean()),
+	isPlannedTotalCountAttempted: v.optional(v.boolean()),
+});
+
+export const recordSendPlanDay = internalMutation({
+	args: {
+		campaignId: v.id('campaigns'),
+		plan: sendPlanStateValidator,
+		/**
+		 * Set when the walk is PARKED until this instant; omitted on a hop that
+		 * made progress, which clears any previous park.
+		 */
+		resumeAt: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<{ isResumeAlreadyScheduled: boolean }> => {
+		const job = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
+			.first();
+		if (!job) return { isResumeAlreadyScheduled: false };
+		const { plan } = args;
+		// The row was ALREADY parked for exactly this window, so a hop for it is
+		// already pending and a second one would double every counter it writes.
+		const isResumeAlreadyScheduled = args.resumeAt !== undefined && job.resumeAt === args.resumeAt;
+		// A PARKED ROW LEAVES THE WATCHDOG'S STALE RANGE INSTEAD OF FILLING IT.
+		// `redriveStuckSendJobs` pages `by_phase_updatedAt` and only then skips
+		// parked rows, so a park stamped at park time sits inside `updatedAt <
+		// cutoff` for the whole ~24h it waits — and enough concurrent parked walks
+		// fill the page entirely, starving a genuinely stranded walk of its
+		// re-drive. Stamping the RESUME INSTANT keeps the row out of the range
+		// until its window opens, which is exactly when it becomes re-drivable
+		// again. A resume instant that is not in the future cannot do that job, so
+		// it falls back to the clock rather than back-dating the row.
+		const now = Date.now();
+		const parkedUntil = args.resumeAt;
+		const updatedAt =
+			parkedUntil !== undefined && Number.isFinite(parkedUntil) && parkedUntil > now
+				? parkedUntil
+				: now;
+		await ctx.db.patch(job._id, {
+			planDayKey: plan.planDayKey,
+			enqueuedToday: plan.enqueuedToday,
+			planDayIndex: plan.planDayIndex,
+			planTotalDays: plan.planTotalDays,
+			isPlanTruncated: plan.isPlanTruncated,
+			// Only ever SET, never cleared: the denominator is counted once per walk
+			// and a later hop that skipped the count must not erase it. The
+			// lower-bound flag travels with it so the two can never describe
+			// different counts.
+			...(plan.plannedTotal === undefined
+				? {}
+				: {
+						plannedTotal: plan.plannedTotal,
+						isPlannedTotalLowerBound: plan.isPlannedTotalLowerBound === true,
+					}),
+			// Also SET-ONLY: a walk that already attempted the count must never be
+			// told to attempt it again by a later hop that simply skipped it.
+			...(plan.isPlannedTotalCountAttempted === true ? { isPlannedTotalCountAttempted: true } : {}),
+			resumeAt: args.resumeAt,
+			updatedAt,
+		});
+		return { isResumeAlreadyScheduled };
 	},
 });
 
@@ -185,25 +306,44 @@ const STUCK_SEND_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes without progre
  * a `done`/cancelled walk, and `createBatch` is idempotent (a re-run of the same
  * page inserts zero duplicate rows), so a resume can neither drop nor duplicate
  * recipients. Called by the `reconcile stuck campaign sends` cron.
+ *
+ * A DELIBERATELY PARKED WALK IS NOT A STUCK ONE. The multi-day send plan parks a
+ * walk whose day budget is spent until the next cap window — up to ~24h, far
+ * past this threshold — with its own resume hop already scheduled. Re-driving it
+ * would not just be pointless: each re-drive would park it again and schedule
+ * ANOTHER hop at the same instant, so a day of parking would accumulate a
+ * scheduler storm of duplicate hops that all fire together at the UTC boundary
+ * and apply the same page's counters over and over.
+ *
+ * TWO THINGS KEEP A PARKED ROW OUT OF THE WAY, and the order matters. The park
+ * stamps `updatedAt` AT THE RESUME INSTANT (`recordSendPlanDay`), so the row
+ * leaves the `updatedAt < cutoff` range entirely rather than sitting in it for a
+ * day — which is what stops a crowd of parked walks filling this page and
+ * starving a genuinely stranded one of its re-drive. The `resumeAt` test below
+ * is the belt to that braces: it also covers rows parked before that rule
+ * existed. Both are cleared by the first hop that makes progress, so a park that
+ * never wakes up is still re-driven once its instant has passed.
  */
 export const redriveStuckSendJobs = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ redriven: number }> => {
-		const cutoff = Date.now() - STUCK_SEND_JOB_THRESHOLD_MS;
+		const now = Date.now();
+		const cutoff = now - STUCK_SEND_JOB_THRESHOLD_MS;
 
 		const stuck = await ctx.db
 			.query('campaignSendJobs')
-			.withIndex('by_phase_updatedAt', (q) =>
-				q.eq('phase', 'resolving').lt('updatedAt', cutoff),
-			)
+			.withIndex('by_phase_updatedAt', (q) => q.eq('phase', 'resolving').lt('updatedAt', cutoff))
 			.take(50);
 
+		let redriven = 0;
 		for (const job of stuck) {
+			if (job.resumeAt !== undefined && job.resumeAt > now) continue;
+			redriven += 1;
 			await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, {
 				campaignId: job.campaignId,
 			});
 		}
 
-		return { redriven: stuck.length };
+		return { redriven };
 	},
 });

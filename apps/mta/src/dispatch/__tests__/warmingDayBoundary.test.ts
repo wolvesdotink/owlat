@@ -1,0 +1,360 @@
+/**
+ * The warming day an attempt books into is the day its cap gates measured.
+ *
+ * Effects are journalled beside the irreversible SMTP result and applied
+ * afterwards — possibly minutes later, possibly by a different worker after a
+ * crash. Re-reading the clock at apply time therefore books a midnight-
+ * straddling attempt, and every replay of it, into a day that never admitted
+ * it, which skews the completed-previous-day evaluation window the per-provider
+ * ramp reads.
+ */
+
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import Redis from 'ioredis-mock';
+import type RealRedis from 'ioredis';
+
+vi.mock('../../monitoring/logger.js', () => ({
+	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+import { applyEffects, type DispatchEffect } from '../effects.js';
+import { reduce, type DispatchOutcome, type OutcomeReduction } from '../outcome.js';
+import { warmingCapPhase } from '../phases/warmingCap.js';
+import type { AttemptCtx, CtxWithIp, PhaseDeps } from '../types.js';
+import { initializeWarming } from '../../intelligence/warming.js';
+import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
+import {
+	warmingBulkDailyKey,
+	warmingDailyStatsKey,
+	warmingProviderDailyStatsKey,
+	warmingProviderStateKey,
+	warmingStateKey,
+} from '../../intelligence/warmingKeys.js';
+import { recordProviderWarmingSend } from '../../intelligence/warmingProviderStore.js';
+import {
+	finalizeSmtpOutcome,
+	readSmtpOutcome,
+	reserveSmtpOutcome,
+} from '../../queue/smtpOutcomeJournal.js';
+import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
+import type { EmailJob } from '../../types.js';
+
+const IP = '10.0.0.21';
+const GATED_AT = '2026-03-01T23:59:30.000Z';
+const APPLIED_AT = '2026-03-02T00:00:30.000Z';
+const GATED_DAY = '2026-03-01';
+const APPLIED_DAY = '2026-03-02';
+
+function job(): EmailJob {
+	return {
+		messageId: 'msg-midnight-1',
+		to: 'user@gmail.com',
+		from: 'sender@owlat.com',
+		subject: 'Test',
+		html: '<p>Hello</p>',
+		ipPool: 'campaign',
+		organizationId: 'org-1',
+		dkimDomain: 'owlat.com',
+	};
+}
+
+function ctxWithIp(): CtxWithIp {
+	return {
+		job: job(),
+		domain: 'gmail.com',
+		destination: {
+			recipientDomain: 'gmail.com',
+			providerKey: 'gmail',
+			throttleKey: 'gmail.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'gmail-smtp-in.l.google.com', priority: 5 }],
+			},
+			daneDiscoveryAuthenticated: false,
+		},
+		fromDomain: 'owlat.com',
+		pool: 'campaign',
+		dedicatedIp: undefined,
+		ip: IP,
+		eligibilityGeneration: 1,
+	};
+}
+
+const deliveredOutcome: DispatchOutcome = {
+	kind: 'delivered',
+	smtpCode: 250,
+	smtpResponse: 'Queued',
+	remoteMessageId: '<remote@gmail>',
+	enhancedCode: '2.0.0',
+};
+
+const pressureDeferral: DispatchOutcome = {
+	kind: 'deferred',
+	smtpCode: 421,
+	error:
+		'421-4.7.28 Gmail has detected an unusual rate of unsolicited mail originating from your IP address.',
+	enhancedCode: '4.7.28',
+	classification: classifySmtpResponse(
+		421,
+		'421-4.7.28 Gmail has detected an unusual rate of unsolicited mail originating from your IP address.',
+		'4.7.28',
+		'gmail'
+	),
+};
+
+describe('warming records book into the attempt day, not the apply day', () => {
+	let redis: RealRedis;
+	let deps: PhaseDeps;
+
+	beforeEach(async () => {
+		redis = new Redis() as unknown as RealRedis;
+		// ioredis-mock shares one keyspace across instances.
+		await redis.flushall();
+		deps = { redis, config: createTestConfig() };
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(GATED_AT));
+		await initializeWarming(redis, IP);
+	});
+
+	afterEach(() => vi.useRealTimers());
+
+	/** Gate an attempt at 23:59:30, as a worker would. */
+	async function gateAttempt(): Promise<AttemptCtx> {
+		const gated = await warmingCapPhase.run(deps, ctxWithIp());
+		expect(gated.kind).toBe('continue');
+		if (gated.kind !== 'continue') throw new Error('warming cap withheld the attempt');
+		expect(gated.ctx.utcDate).toBe(GATED_DAY);
+		return { ...gated.ctx, durationMs: 12 };
+	}
+
+	/** Gate an attempt and reduce its outcome, as a worker would. */
+	async function gateAndReduce(outcome: DispatchOutcome): Promise<OutcomeReduction> {
+		return reduce(outcome, await gateAttempt());
+	}
+
+	/**
+	 * Apply the warming effects the way a crashed worker's successor does: from
+	 * the JSON the journal round-tripped, after the UTC day has rolled over.
+	 */
+	async function replayWarmingEffects(reduction: OutcomeReduction): Promise<void> {
+		const journalled = JSON.parse(JSON.stringify(reduction)) as OutcomeReduction;
+		vi.setSystemTime(new Date(APPLIED_AT));
+		const warmingEffects = journalled.effects.filter(
+			(effect: DispatchEffect) =>
+				effect.kind === 'warming_record' || effect.kind === 'warming_provider_pressure'
+		);
+		expect(warmingEffects.length).toBeGreaterThan(0);
+		await applyEffects(warmingEffects, deps);
+	}
+
+	it('counts a delivered send against the day that admitted it', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+
+		await replayWarmingEffects(reduction);
+
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', APPLIED_DAY))).toBe(0);
+		// The bulk pacing denominator is keyed by day too: pacing the new day
+		// against yesterday's sends would throttle the first campaign of the day.
+		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+		expect(await redis.get(warmingBulkDailyKey(IP, APPLIED_DAY))).toBeNull();
+		// The per-IP twin of the same effect books the same day — `evaluateDay`
+		// reads this hash for the bounce and deferral rates that advance the
+		// per-IP schedule, and the two mirrors may not disagree about the day.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+		expect(await redis.exists(warmingDailyStatsKey(IP, APPLIED_DAY))).toBe(0);
+	});
+
+	it('counts a pressure deferral and its volume-pressure verdict against the same day', async () => {
+		const reduction = await gateAndReduce(pressureDeferral);
+
+		await replayWarmingEffects(reduction);
+
+		const stats = warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY);
+		expect(await redis.hget(stats, 'deferred')).toBe('1');
+		expect(await redis.hget(stats, 'pressure')).toBe('1');
+		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', APPLIED_DAY))).toBe(0);
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'deferred')).toBe('1');
+		expect(await redis.exists(warmingDailyStatsKey(IP, APPLIED_DAY))).toBe(0);
+	});
+
+	it('never rewinds the live day’s rolling counter to book a late effect', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// The new day opens and takes traffic before the crashed worker's successor
+		// gets round to the journalled effect from the finished one.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		for (let index = 0; index < 3; index += 1) {
+			await recordProviderWarmingSend(
+				redis,
+				{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+				'campaign'
+			);
+		}
+
+		await replayWarmingEffects(reduction);
+
+		// `sentToday`/`sentTodayReset` is ONE rolling slot, not a per-day key: a
+		// stale stamp would zero it and hand the IP its whole per-provider
+		// allowance for the live day a second time.
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('3');
+		// The late send is not lost: its own day's stats hash — what the ramp
+		// evaluates — still counts it.
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+	});
+
+	it('spends the live day’s per-IP allowance on a late replay, not the per-provider one', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// The new day opens and both dimensions roll onto it: the per-IP slot when
+		// the cap gate measures the first attempt of the day, the per-provider slot
+		// when the first send lands.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		expect((await warmingCapPhase.run(deps, ctxWithIp())).kind).toBe('continue');
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+			'campaign'
+		);
+
+		await replayWarmingEffects(reduction);
+
+		// The two rolling slots take OPPOSITE sides of the same stale replay, and
+		// the docblocks on `applyPerIpWarmingRecord`/`recordSend` argue why. Per-IP:
+		// yesterday's send consumes today's cap, because the alternative — writing a
+		// finished day into the slot — hands the IP its whole daily allowance again.
+		const perIp = warmingStateKey(IP);
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('1');
+		// Per-provider: monotonic, so the live day's count is exactly the live day's
+		// own sends and the stale one is not charged to it.
+		const perProvider = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(perProvider, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perProvider, 'sentToday')).toBe('1');
+		// What they DO agree on: the per-day stats both book into is the day that
+		// admitted the attempt, so neither ramp evaluates a day the other never saw.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+	});
+
+	it('charges the live day nothing when the replay beats the day’s first cap gate', async () => {
+		const reduction = await gateAndReduce(deliveredOutcome);
+		// Same replay as above, one gate earlier: the successor worker drains the
+		// journal before any attempt of the new day has been measured.
+		await replayWarmingEffects(reduction);
+
+		const perIp = warmingStateKey(IP);
+		// The slot is still on the finished day, so the increment landed there.
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(GATED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('1');
+
+		// Rolling is the cap gate's job, and it zeroes rather than carries: the
+		// stale increment costs the live day nothing, which is why the docblocks
+		// say the slot is never rewound and not that a late effect always spends
+		// live allowance.
+		expect((await warmingCapPhase.run(deps, ctxWithIp())).kind).toBe('continue');
+		expect(await redis.hget(perIp, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(perIp, 'sentToday')).toBe('0');
+		// The attempt is still counted where the ramp reads it.
+		expect(await redis.hget(warmingDailyStatsKey(IP, GATED_DAY), 'sent')).toBe('1');
+	});
+
+	it('gives a journalled effect written before the day existed the attempt’s day', async () => {
+		const attempt = await gateAttempt();
+		// What the previous build persisted for an attempt it did not get to apply:
+		// neither the snapshot nor the effects beside it carry a day at all.
+		const { job: _job, ...snapshot } = attempt;
+		const legacySnapshot = { ...snapshot, utcDate: undefined };
+		const legacyReduction = JSON.parse(
+			JSON.stringify(reduce(deliveredOutcome, attempt))
+		) as OutcomeReduction;
+		for (const effect of legacyReduction.effects) {
+			delete (effect as Record<string, unknown>)['utcDate'];
+		}
+		const reserved = await reserveSmtpOutcome(
+			redis,
+			'job-legacy',
+			attempt.job.messageId,
+			legacySnapshot as never,
+			{ now: Date.parse(GATED_AT), capacity: 10 }
+		);
+		if (reserved.kind !== 'fresh') throw new Error('expected a fresh reservation');
+		await finalizeSmtpOutcome(
+			redis,
+			reserved.entry,
+			reserved.raw,
+			{ success: true, smtpCode: 250 },
+			12,
+			deliveredOutcome,
+			legacyReduction,
+			{ now: Date.parse(GATED_AT) + 1_000 }
+		);
+
+		// The deploy happens, the day rolls over, and a successor worker applies
+		// the entry the interrupted one left behind.
+		vi.setSystemTime(new Date(APPLIED_AT));
+		const replayed = await readSmtpOutcome(redis, 'job-legacy', attempt.job.messageId);
+		if (replayed?.entry.state !== 'completed') throw new Error('expected a completed entry');
+		expect(replayed.entry.attempt.utcDate).toBe(GATED_DAY);
+		await applyEffects(
+			replayed.entry.reduction.effects.filter(
+				(effect: DispatchEffect) =>
+					effect.kind === 'warming_record' || effect.kind === 'warming_provider_pressure'
+			),
+			deps
+		);
+
+		expect(await redis.hget(warmingProviderDailyStatsKey(IP, 'gmail', GATED_DAY), 'sent')).toBe(
+			'1'
+		);
+		expect(await redis.get(warmingBulkDailyKey(IP, GATED_DAY))).toBe('1');
+		// The keys an absent day used to name, and the rolling counter it used to
+		// leave untouched: ioredis renders it as '', which sorts below every stored
+		// day, so the monotonic script took neither the roll nor the increment.
+		expect(await redis.exists(warmingProviderDailyStatsKey(IP, 'gmail', 'undefined'))).toBe(0);
+		expect(await redis.exists(warmingBulkDailyKey(IP, 'undefined'))).toBe(0);
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(GATED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('1');
+	});
+
+	it('rejects a stored warming day that is not a real day', async () => {
+		const attempt = await gateAttempt();
+		const { job: _job, ...snapshot } = attempt;
+		// A day above every real one pins `sentTodayReset` forward and stops this
+		// IP/provider counter for good, so the shape is checked, not assumed.
+		const forged = { ...snapshot, utcDate: '9999-99-99T00:00:00Z' };
+		await expect(
+			reserveSmtpOutcome(redis, 'job-forged', attempt.job.messageId, forged as never, {
+				now: Date.parse(GATED_AT),
+				capacity: 10,
+			})
+		).rejects.toThrow('invalid attempt snapshot');
+	});
+
+	it('rolls the counter forward for the first send of a newer day', async () => {
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: GATED_DAY },
+			'campaign'
+		);
+
+		await recordProviderWarmingSend(
+			redis,
+			{ ip: IP, provider: 'gmail', utcDate: APPLIED_DAY },
+			'campaign'
+		);
+
+		const state = warmingProviderStateKey(IP, 'gmail');
+		expect(await redis.hget(state, 'sentTodayReset')).toBe(APPLIED_DAY);
+		expect(await redis.hget(state, 'sentToday')).toBe('1');
+	});
+});

@@ -12,6 +12,7 @@
 
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
+import type { SendTransportId, SendTransportRecord } from './transports';
 
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
@@ -130,10 +131,27 @@ export interface ResendExtras {
 }
 
 /**
- * A generic SMTP relay has no per-send provider knobs — the connection
- * (host/port/TLS/auth) is instance-level config, not per-message.
+ * The connection (host/port/TLS/auth) is instance-level config, not
+ * per-message, so a relay has almost no per-send knobs. The exception is the
+ * envelope sender: where the relay honours a custom RFC5321.MailFrom we stamp
+ * OUR VERP address so relayed bounces come back to our own bounce server and
+ * both transport arms produce comparable bounce data (plan G-08).
  */
-export type SmtpExtras = Record<string, never>;
+export interface SmtpExtras {
+	/**
+	 * The return-path host to stamp as the VERP envelope sender on this send.
+	 *
+	 * Present ONLY when the routing seam has resolved all three conditions at
+	 * once: this transport's `supportsCustomReturnPath` capability is
+	 * `supported`, the From domain has a return-path host (its own override, or
+	 * the deployment-global one — the SAME host the direct-MX arm stamps, so the
+	 * two arms present the same envelope-sender domain, D11), and that host's
+	 * published SPF authorises this transport. Absent ⇒ leave the envelope
+	 * sender exactly as the composer built it (the shipped behaviour) and treat
+	 * the cell's bounce data as degraded — never an error, never a blocker (D2).
+	 */
+	returnPathHost?: string;
+}
 
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 	? MtaExtras
@@ -196,11 +214,22 @@ export type EmailSendAttempt =
 
 // ─── Dispatch helper result ────────────────────────────────────────────────
 
+/**
+ * The extras union the dispatch boundary accepts. Dispatch is keyed by a
+ * transport id (a string), so it cannot narrow extras to the kind's own shape
+ * the way the old kind-keyed generic did — call sites pin their extras with
+ * `satisfies MtaExtras` / `satisfies ResendExtras` instead, which is checked at
+ * the site that actually builds the object.
+ */
+export type SendProviderExtras = ExtrasFor<SendProviderKind>;
+
 export interface DispatchResult {
 	/** Final attempt outcome. */
 	result: EmailSendAttempt;
-	/** Which provider was used (for downstream observability). */
+	/** Which provider kind was used (for downstream observability). */
 	providerType: SendProviderKind;
+	/** Which configured instance of that kind was used. */
+	transportId: SendTransportId;
 	/** Total elapsed across all attempts. */
 	latencyMs: number;
 	/** Number of attempts including retries. */
@@ -227,8 +256,17 @@ export interface SendProviderModule<K extends SendProviderKind> {
 	 * provider's message id, or failure with the raw error message and
 	 * the module's typed `EmailErrorCode`. The dispatch helper decides
 	 * retry based on the code.
+	 *
+	 * `transport` names WHICH configured instance of this kind to send through;
+	 * the adapter resolves its own credentials from it (see `../transportEnv.ts`).
+	 * The record itself carries no secrets, so it is safe to pass around — the
+	 * secrets stay inside the adapter.
 	 */
-	sendEmail(params: EmailSendParams, extras?: ExtrasFor<K>): Promise<EmailSendAttempt>;
+	sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: ExtrasFor<K>
+	): Promise<EmailSendAttempt>;
 
 	/**
 	 * Per-provider error-response parsing. The dispatch helper passes the raw

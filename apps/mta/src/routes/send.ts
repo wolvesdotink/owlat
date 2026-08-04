@@ -29,6 +29,8 @@ import {
 	parseIntakeReceipt,
 } from './sendReceipt.js';
 
+import { readEngagementScore } from './sendEngagementScore.js';
+
 export { createSendReceiptHandler } from './sendReceipt.js';
 
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
@@ -54,7 +56,8 @@ interface SendRequest {
 	organizationId: string;
 	messageType?: 'campaign' | 'transactional' | 'automation';
 	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	engagementScore?: number;
+	/** Unvalidated JSON — read it through `readEngagementScore`, never raw. */
+	engagementScore?: unknown;
 	dkimDomain: string;
 	/**
 	 * Postbox-only: the allowed-from set for the originating mailbox.
@@ -413,6 +416,7 @@ export function createSendHandler(
 		}
 
 		// Build job
+		const engagementScore = readEngagementScore(body.messageId, body.engagementScore);
 		const job: EmailJob = {
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
@@ -429,7 +433,7 @@ export function createSendHandler(
 			ipPool: body.ipPool,
 			organizationId: body.organizationId,
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
-			engagementScore: body.engagementScore,
+			engagementScore,
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: mode === 'governed' ? body.routingReentry!.retryState.startedAt : Date.now(),
 			...(routingLease ? { routingLease } : {}),
@@ -444,7 +448,7 @@ export function createSendHandler(
 		// Calculate group key and priority
 		const domain = extractDomain(body.to);
 		const groupId = buildGroupKey(body.ipPool, domain);
-		const priority = mapToPriority(body.engagementScore);
+		const priority = mapToPriority(engagementScore);
 
 		try {
 			// GroupMQ identity is attempt-scoped. `job.data.messageId` remains the

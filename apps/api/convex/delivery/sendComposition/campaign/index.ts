@@ -17,14 +17,12 @@
  *    get the full footer + List-Unsubscribe header.
  */
 
+import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import { buildFeedbackId } from '../feedbackId';
 import { personalize } from '../personalization';
 import { getTrackingPixelUrl } from '../trackingUrl';
 import type { TransformConfig } from '../transform';
-import type {
-	CampaignComposeInput,
-	ComposerOutput,
-} from '../types';
+import type { CampaignComposeInput, ComposerOutput } from '../types';
 
 export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, { escape: 'header' });
@@ -69,29 +67,39 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 		}
 	}
 
+	// Deliverability seed probe: the ONLY header that distinguishes a shadow
+	// copy from the real send it mirrors. Opaque id, no recipient or campaign
+	// PII, and only ever set by the seed shadow-copy builder — a real
+	// recipient's envelope never carries `seedProbeId`.
+	if (input.seedProbeId) {
+		headers[SEED_PROBE_HEADER] = input.seedProbeId;
+	}
+
 	const transformConfig: TransformConfig = {};
 
 	if (input.viewInBrowserUrl) {
 		transformConfig.viewInBrowserUrl = input.viewInBrowserUrl;
 	}
 
-	if (
-		input.audienceType !== 'segment' &&
-		input.unsubscribeUrl &&
-		input.preferenceUrl
-	) {
+	if (input.audienceType !== 'segment' && input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
 	}
 
-	if (input.emailSendId && input.trackingBaseUrl) {
-		transformConfig.trackingPixelUrl = getTrackingPixelUrl(
-			input.trackingBaseUrl,
-			input.emailSendId,
-		);
+	// A seed shadow copy has no `emailSendId` (that is what keeps it out of
+	// every denominator, D18) but must still carry the tracking pixel and the
+	// wrapped redirect links a subscriber's copy carries — those are exactly the
+	// features spam filters weigh, so a probe without them measures a different
+	// message. It therefore tracks under its OPAQUE PROBE ID, which the shipped
+	// `/t/o` and `/t/c` handlers reject BY NAME via `isSeedProbeId` — note that
+	// the generic `isValidConvexId` shape check does NOT reject it — so a probe
+	// open or click can never enter a campaign's open/click rate.
+	const trackingId = input.emailSendId ?? input.seedProbeId;
+	if (trackingId && input.trackingBaseUrl) {
+		transformConfig.trackingPixelUrl = getTrackingPixelUrl(input.trackingBaseUrl, trackingId);
 		transformConfig.trackedLinkBase = {
 			siteUrl: input.trackingBaseUrl,
-			emailSendId: input.emailSendId,
+			emailSendId: trackingId,
 		};
 	}
 

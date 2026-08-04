@@ -101,7 +101,7 @@ async function discard() {
 			<!-- Progressive streamed output / final result -->
 			<div
 				v-if="revise.isStreaming.value || revise.hasResult.value"
-				class="ai-revise__output rounded-md border border-border bg-surface-subtle p-2 text-sm whitespace-pre-wrap"
+				class="ai-revise__output rounded-md border border-border bg-bg-surface p-2 text-sm whitespace-pre-wrap"
 			>
 				{{ revise.displayText.value }}<span v-if="revise.isStreaming.value" class="ai-revise__caret">▍</span>
 			</div>

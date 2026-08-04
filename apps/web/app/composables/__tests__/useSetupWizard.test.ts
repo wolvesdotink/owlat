@@ -1,11 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	SETUP_STEPS,
-	isSetupEmailValid,
-	validateAdmin,
-	adminIsValid,
-	validateEmailStep,
-	emailStepIsValid,
 	buildProviderEnv,
 	buildSetupSummary,
 	buildApplyBody,
@@ -16,6 +11,13 @@ import {
 	type EmailStepDraft,
 	type SmtpRelayDraft,
 } from '../useSetupWizard';
+import {
+	adminIsValid,
+	emailStepIsValid,
+	isSetupEmailValid,
+	validateAdmin,
+	validateEmailStep,
+} from '../setupWizardValidation';
 import {
 	SETUP_DRAFT_STORAGE_KEY,
 	readSetupDraft,
