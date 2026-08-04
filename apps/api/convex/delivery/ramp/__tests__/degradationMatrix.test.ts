@@ -151,6 +151,31 @@ const CASES: readonly MatrixCase[] = [
 ];
 
 /**
+ * THE SIGNALS WITH NO PRODUCER, each with the reason it has none — the shape
+ * `gateInputWiring.test.ts` keeps its `KNOWN_UNSUPPLIED` gaps in, applied to the
+ * substitution vocabulary. A NAMED LIST rather than one hard-coded string
+ * search, so the next unsupplied signal is covered by adding a line here instead
+ * of by somebody remembering to write a second assertion.
+ *
+ * `smtp_classification` (issue #501) — the per-ISP block-message classifier runs
+ * in the MTA and nothing carries its per-category counts into Convex per (cell,
+ * arm), so `RampGateEvaluationInput.smtpBlocks` is never set and gate 2 is the
+ * deferral RATE alone. The gate clause is still implemented and still pinned
+ * (`smtpBlockMessage.test.ts`); what may not come back before the telemetry does
+ * is the CLAIM, in a name or in prose, that a cell is measured by it.
+ *
+ * `prose` is the second half of each entry because the table is rendered, not
+ * just read: a confidence note can promise the signal to an operator without the
+ * source name appearing anywhere.
+ */
+const SOURCES_WITHOUT_A_PRODUCER: readonly { source: string; prose: RegExp }[] = [
+	{
+		source: 'smtp_classification',
+		prose: /SMTP reply|SMTP classification|block message/i,
+	},
+];
+
+/**
  * EVERY NAMED SIGNAL IS A SIGNAL SOMETHING RUNS ON (issue #501).
  *
  * The table is what the dashboard renders and what the audit row records, so a
@@ -171,14 +196,20 @@ describe('the substitution table names only signals that run', () => {
 	});
 
 	it('does not offer the operator a signal the ramp cannot read', () => {
-		// The gate clause is still implemented and still pinned
-		// (`smtpBlockMessage.test.ts`); what is gone is the CLAIM that a deployment
-		// is running on it. Spelled as a string search over the whole table so a
-		// future entry cannot reintroduce the promise in prose either.
+		// The tracked list against what the table actually offers — the vocabulary,
+		// the entries and the rendered copy, because a cell can be promised a signal
+		// by a name in `substitutes` OR by a sentence that never names it.
 		const table = [...RAMP_DEGRADATION_BY_INTEGRATION.values()];
-		expect(table.flatMap((entry) => entry.substitutes)).not.toContain('smtp_classification');
-		for (const entry of table) {
-			expect(entry.confidenceNote).not.toMatch(/SMTP reply|SMTP classification/i);
+		const vocabulary: readonly string[] = RAMP_SUBSTITUTE_SOURCES;
+		const offered: readonly string[] = table.flatMap((entry) => entry.substitutes);
+		// The control. An empty `offered` would pass every exclusion below without
+		// reading a single entry, which is the way this guard would rot.
+		expect(offered.length).toBeGreaterThan(0);
+		expect(SOURCES_WITHOUT_A_PRODUCER.length).toBeGreaterThan(0);
+		for (const { source, prose } of SOURCES_WITHOUT_A_PRODUCER) {
+			expect(vocabulary).not.toContain(source);
+			expect(offered).not.toContain(source);
+			for (const entry of table) expect(entry.confidenceNote).not.toMatch(prose);
 		}
 	});
 
@@ -196,12 +227,14 @@ describe('the substitution table names only signals that run', () => {
 
 	it('says the same thing on the SNDS gate as in the table — in the same words', () => {
 		// Two entries describing one cell: the P3-8 table and the gate input's own
-		// substitution shape. They are read by different screens, so the guard has
-		// to compare the COPY. Comparing only the source name passes by construction
-		// — the gate's single name is trivially one of the table's list — while the
-		// rendered sentences drift, which is exactly what had happened: the table
-		// named seed placement beside the cell's own rates and the gate's note
-		// stopped at the rates.
+		// substitution shape, rendered on different screens. WHAT THESE GUARD IS THE
+		// DERIVATION, not a live drift — `sndsGate.ts` now builds its note as a
+		// template over the table's, so while that holds the comparison below cannot
+		// fail. Re-literalising the sentence is the regression that already happened
+		// once (the table named seed placement beside the cell's own rates; this
+		// file's copy stopped at the rates), and it fails here the moment someone
+		// types the sentence out again. The source-name check alone never could: the
+		// gate's single name is trivially one of the table's list.
 		const entry = RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds');
 		expect(entry?.substitutes).toContain(SNDS_ABSENT_SUBSTITUTION.source);
 		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.startsWith(entry?.confidenceNote ?? '#')).toBe(
