@@ -23,7 +23,8 @@ import type { MutationCtx } from '../../_generated/server';
 import { createTestInstanceSettings } from '../../__tests__/factories';
 import { nextShare } from '../ramp/controller';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
-import { recordMixDecision } from '../rampMixDecisions';
+import { MIX_DECISION_RETENTION_MS, recordMixDecision } from '../rampMixDecisions';
+import { recordOperatorRampAction } from '../rampControlAudit';
 import { describeRampDecision, rampDecisionAdminNotice } from '../ramp/controllerNarrative';
 import { rampDecisionChangedState } from '../ramp/controllerTypes';
 import type { Infer } from 'convex/values';
@@ -882,5 +883,37 @@ describe('mixDecisions — retention', () => {
 		const remaining = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 		expect(remaining).toHaveLength(1);
 		expect(remaining[0]?.expiresAt).toBeGreaterThan(Date.now());
+	});
+
+	it('sweeps an operator row on the same horizon as the controller’s', async () => {
+		// TWO WRITERS, ONE TABLE, ONE HORIZON. The controller's decisions and the
+		// operator's actions land in `mixDecisions` from different modules, and each
+		// used to stamp `expiresAt` from its own copy of the retention constant. A
+		// drift between them would leave one kind of row outliving the sweep — or
+		// reaped while an operator was still reading the timeline that explains why
+		// a cell moved.
+		const t = convexTest(schema, modules);
+		const aged = Date.now() - MIX_DECISION_RETENTION_MS - 1;
+		await t.run(async (ctx) => {
+			await recordOperatorRampAction(ctx as unknown as MutationCtx, {
+				organizationId: ORG,
+				userId: 'user_operator',
+				cell: GMAIL_CAMPAIGN,
+				action: 'deliverability_ramp.phase_promoted',
+				reason: 'operator_phase_promotion',
+				fromShare: 0.1,
+				toShare: 0.1,
+				message: 'An operator promoted campaign mail to gmail to its next phase.',
+				detail: { phaseCeiling: 0.5 },
+				at: aged,
+			});
+		});
+		const stamped = await t.run(
+			async (ctx) => (await ctx.db.query('mixDecisions').collect())[0]?.expiresAt
+		);
+		expect(stamped).toBe(aged + MIX_DECISION_RETENTION_MS);
+
+		await t.mutation(internal.delivery.rampMixDecisions.cleanupExpiredDecisions, {});
+		expect(await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect())).toEqual([]);
 	});
 });

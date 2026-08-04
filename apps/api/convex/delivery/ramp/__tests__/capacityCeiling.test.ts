@@ -150,4 +150,25 @@ describe('which bound binds, through the ladder', () => {
 		expect(decision.share).toBeLessThanOrEqual(0.26);
 		expect(decision.share).toBeGreaterThan(0.2);
 	});
+
+	it('a bound a hair above the share is a HOLD that names the bound, not a healthy increase', () => {
+		// 251 sends of headroom against a projected 2007 gives 0.100049…, which is
+		// above 0.1 and rounds back onto it at the stored four-decimal precision.
+		// The increase rung compares against the ROUNDED share, so an unrounded
+		// bound would clear the comparison, report `healthy` — an increase — and
+		// then store the number the cell already had: a decision the audit row and
+		// the operator's sentence both describe as a move that never happened. The
+		// graduation rung defends its pin target the same way.
+		const { capacityBound, decision } = decide({
+			share: 0.1,
+			phaseCeiling: 1,
+			warmingCapRemaining: 251,
+			projectedVolume: 2007,
+		});
+		expect(capacityBound ?? 0).toBeGreaterThan(0.1);
+		expect(capacityBound ?? 0).toBeLessThan(0.1001);
+		expect(decision.share).toBe(0.1);
+		expect(decision.direction).toBe('hold');
+		expect(decision.reason).toBe('capacity_ceiling');
+	});
 });

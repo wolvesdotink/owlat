@@ -52,7 +52,13 @@ describe('external reputation provider guidance', () => {
 	it('states that Microsoft enrollment is optional, not an incomplete setup', () => {
 		expect(feedbackDoc).toMatch(/supported configuration/i);
 		expect(feedbackDoc).toMatch(/no request,\s+no row,\s+no error/i);
-		expect(feedbackDoc).toMatch(/SMTP reply\s+classification/i);
+		// The substitution the page names has to be the one the table applies
+		// (`ramp/degradationMatrix.ts`, the `microsoft_snds` entry). It said "SMTP
+		// reply classification" until issue #501 established that no deployment
+		// carries those categories into Convex — a page promising a signal the ramp
+		// does not read is the same defect as a gate clause with no producer.
+		expect(feedbackDoc).toMatch(/outcomes of\s+its own sends/i);
+		expect(feedbackDoc).not.toMatch(/SMTP reply\s+classification/i);
 	});
 
 	it('states that unattributed evidence can only slow the Microsoft ramp', () => {

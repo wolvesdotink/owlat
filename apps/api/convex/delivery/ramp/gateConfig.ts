@@ -281,12 +281,19 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
  * THIS TABLE IS THE EQUIPPED HALF ONLY — read `cleanWindowsRequired` as "with a
  * reference arm". The plan's standalone substitution (K_CLEAN 3 -> 5, step
  * halved, because the evidence behind each clean window is weaker without a
- * reference arm) is APPLIED IN EXACTLY ONE PLACE: it IS the `conservative`
- * preset, which `defaultRampPreset(false)` selects for a standalone deployment
- * (`ramp/presetConfig.ts` + `@owlat/shared/deliverabilityIndependence`). There is
- * deliberately no second standalone constant table and no pending substitution
- * to land later — two places applying the same halving would compound it to
- * x0.25 and K_CLEAN 7, numbers that appear nowhere in the plan.
+ * reference arm) is APPLIED IN EXACTLY ONE PLACE: the SUBSTITUTION TABLE's
+ * `reference_transport` entry (`ramp/degradationMatrix.ts`:
+ * `cleanWindowsRequired: 5`, `stepMultiplier: 0.5`), folded onto this table by
+ * `ramp/degradation.ts`.
+ *
+ * NOT THE `conservative` PRESET, which an earlier revision of this paragraph
+ * named. Defaulting a standalone deployment to that preset made the SAME fact
+ * halve the SAME step twice — a quarter step instead of a half — so the fallback
+ * is now the identity preset and a preset is only ever the OPERATOR'S choice
+ * (`delivery/rampPresets.ts` and `ramp/presetConfig.ts` carry the full note; the
+ * composition is pinned by `__tests__/presetDegradationComposition.test.ts`).
+ * There is deliberately no second standalone constant table and no pending
+ * substitution to land later.
  */
 export interface RampStreamConfig {
 	readonly stream: DeliverabilityStream;

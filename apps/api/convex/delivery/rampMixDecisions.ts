@@ -40,8 +40,16 @@ import {
 	rampDecisionAdminNotice,
 } from './ramp/controllerNarrative';
 
-/** Decisions age out with the experiment record they explain (plan D16). */
-const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+/**
+ * Decisions age out with the experiment record they explain (plan D16).
+ *
+ * EXPORTED, because this table has a second writer: an operator action writes a
+ * `mixDecisions` row too (`rampControlAudit.ts`), and the horizon is a property
+ * of the TABLE — the cleanup mutation below sweeps both kinds. Two declarations
+ * of one number are two numbers, and the one that drifted would leave rows the
+ * sweep here never reaches or reaps rows an operator was still reading.
+ */
+export const MIX_DECISION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 200;
 
 /**

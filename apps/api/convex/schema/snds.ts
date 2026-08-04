@@ -11,9 +11,9 @@ import type { SndsComplaintBand, SndsFilterResult } from '../delivery/sndsFeed';
  * does not carry one (see `delivery/sndsFeed.ts`).
  *
  * SNDS is ADDITIVE-ONLY (D2). An operator who never enrolled simply has no
- * rows here: the Microsoft cell then falls back to SMTP reply classification
- * with a doubled dwell time and a one-phase-lower ceiling. That is a supported
- * configuration, never an error state, and it never blocks a send.
+ * rows here: the Microsoft cell then falls back to the outcomes of its own
+ * sends, with a doubled dwell time and a one-phase-lower ceiling. That is a
+ * supported configuration, never an error state, and it never blocks a send.
  */
 
 export const sndsComplaintBandValidator = v.union(

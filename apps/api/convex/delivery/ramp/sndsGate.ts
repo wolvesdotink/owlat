@@ -14,9 +14,15 @@
  *
  * 2. ABSENCE IS A SUPPORTED CONFIGURATION (D2). An operator who never enrolled
  *    in SNDS gets `available: false` plus the documented SUBSTITUTION — the
- *    Microsoft cell falls back to SMTP reply classification (Microsoft is
- *    unusually explicit in its 5xx text), dwells twice as long and caps one
- *    phase lower. That is slower, never blocked: no error, no warning, no nag.
+ *    Microsoft cell falls back to the outcomes of its own sends, dwells twice as
+ *    long and caps one phase lower. That is slower, never blocked: no error, no
+ *    warning, no nag.
+ *
+ *    IT USED TO SAY "SMTP reply classification" HERE, and in the note the UI
+ *    renders. Microsoft is unusually explicit in its 5xx text and the MTA does
+ *    classify it, but nothing carries those per-category counts into Convex per
+ *    (cell, arm), so the ramp reads none of it (issue #501). The substitution
+ *    below names what the cell actually runs on.
  */
 
 import {
@@ -26,7 +32,17 @@ import {
 	type SndsComplaintBand,
 	type SndsFilterResult,
 } from '../sndsFeed';
+import { rampSubstitutionEntry } from './degradationMatrix';
 import type { RampGateId, RampGateStatus } from './gateTypes';
+
+/**
+ * The Microsoft cell's row in the P3-8 table — READ, never restated. The gate's
+ * note and the table's note are rendered for the same cell on the same screen,
+ * and two literals for one cell is precisely how they come to name different
+ * signals: they already had, with the table naming seed placement beside the
+ * cell's own rates while this file's copy stopped at the rates.
+ */
+const MICROSOFT_SNDS_ABSENT = rampSubstitutionEntry('microsoft_snds');
 
 /**
  * The substitution the Microsoft cell applies when SNDS data is unavailable.
@@ -43,8 +59,16 @@ import type { RampGateId, RampGateStatus } from './gateTypes';
  * are how the Microsoft substitution pays for its weaker evidence.
  */
 export const SNDS_ABSENT_SUBSTITUTION = {
-	/** What replaces the SNDS band while it is missing. */
-	source: 'smtp_classification',
+	/**
+	 * What replaces the SNDS BAND specifically — the complaint evidence this gate
+	 * is about, and one of the names the P3-8 table lists for the cell as a whole
+	 * (`RAMP_SUBSTITUTE_SOURCES`). Deliberately the narrower field: the table's
+	 * `substitutes` covers every gate on the Microsoft cell, including the
+	 * placement evidence gate 5 reads, while this row is the complaint gate's
+	 * alone. The two are kept from diverging by the note above, which is the
+	 * table's own copy, and by the guard in `__tests__/degradationMatrix.test.ts`.
+	 */
+	source: 'own_bounce_deferral_complaint',
 	/** Dwell longer before advancing, because the evidence is weaker. */
 	dwellMultiplier: 2,
 	/** Cap the cell one phase below what the evidence would otherwise allow. */
@@ -56,9 +80,14 @@ export const SNDS_ABSENT_SUBSTITUTION = {
 	 * had to compose this itself would be a second definition of the same fact,
 	 * free to drift — the same reason `yahooComplaintSubstitution` returns its
 	 * note on every branch.
+	 *
+	 * THE TABLE'S SENTENCE VERBATIM, plus the offer. The gate row and the
+	 * degradation card are two renderings of one cell's state, so the signals they
+	 * name are the table's either way; what this file adds is the single clause
+	 * the table keeps in its own `improvement` field, because the gate row has
+	 * nowhere else to put it.
 	 */
-	confidenceNote:
-		'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell reads Microsoft’s SMTP reply text instead. Connecting SNDS would measure this IP’s complaint band directly.',
+	confidenceNote: `${MICROSOFT_SNDS_ABSENT.confidenceNote} Connecting SNDS would measure this IP’s complaint band directly.`,
 	/**
 	 * Always `false`. Encoded as a field rather than left implicit so the D2
 	 * invariant is asserted by a test rather than assumed by a reader.
@@ -289,7 +318,7 @@ export function evaluateSndsGate(
 			verdict: 'insufficient_data',
 			reason:
 				input.reason === 'not_enrolled'
-					? 'Microsoft SNDS is not connected — the Microsoft cell is using SMTP reply classification instead.'
+					? 'Microsoft SNDS is not connected — the Microsoft cell is judged on the outcomes of its own sends instead.'
 					: 'Microsoft SNDS is connected but has reported nothing for this window yet.',
 			substitution: input.substitution,
 		};

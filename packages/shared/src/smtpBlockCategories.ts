@@ -3,14 +3,22 @@
  * produces them (apps/mta/src/intelligence/smtpClassifier.ts) and the ramp gate
  * that consumes them (apps/api/convex/delivery/ramp/trailingBaselineGates.ts).
  *
- * WHY THIS LIVES IN `shared`. Standalone mode (plan D2/D14) leans hardest on
- * what receivers tell us in their own 4xx/5xx text: with no reference arm and no
- * third-party placement API, the SMTP conversation IS the primary fast signal.
- * That makes the producer and the consumer of these category names two halves of
- * one contract across two deployables, and a contract with two independent
- * spellings is a contract that drifts silently — the MTA would keep classifying
- * `content_rejected` while the gate quietly stopped recognising it, and the hard
- * stop would simply never fire again.
+ * WHY THIS LIVES IN `shared`. Standalone mode (plan D2/D14) is meant to lean
+ * hardest on what receivers tell us in their own 4xx/5xx text: with no reference
+ * arm and no third-party placement API, the SMTP conversation is the fastest
+ * signal available to it. That makes the producer and the consumer of these
+ * category names two halves of one contract across two deployables, and a
+ * contract with two independent spellings is a contract that drifts silently —
+ * the MTA would keep classifying `content_rejected` while the gate quietly
+ * stopped recognising it, and the hard stop would simply never fire again.
+ *
+ * THE CONTRACT IS AGREED; THE WIRE BETWEEN ITS TWO HALVES IS NOT (issue #501).
+ * The MTA classifies, and the ramp's block clause consumes — but no row carries
+ * the per-category counts from one deployable to the other per (cell, arm), so
+ * the clause is dormant in every shipped deployment and the ramp's fast signal
+ * is the deferral RATE alone. Both suites still pin themselves to the samples
+ * below, which is what keeps the halves from drifting apart while the transport
+ * telemetry that joins them is built.
  *
  * PURE DATA. No regexes, no classification, no I/O: the pattern matching stays in
  * the MTA where the SMTP session is. This module only names the categories, says

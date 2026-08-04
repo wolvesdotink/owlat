@@ -1,12 +1,25 @@
 /**
  * GATE 2's HARD STOP: per-ISP BLOCK-MESSAGE DETECTION.
  *
- * Standalone mode leans hardest on what receivers say in their own 4xx/5xx text,
- * because with no reference arm and no third-party placement API it is the
- * primary fast signal there is. This suite pins the half of that contract the
- * ramp owns: given the categories the shipped classifier assigns to REAL response
- * shapes, does the gate halt on the ones that mean "we are refusing this sender"
- * and stay quiet on the ones that mean "slow down"?
+ * Standalone mode is MEANT to lean hardest on what receivers say in their own
+ * 4xx/5xx text, because with no reference arm and no third-party placement API it
+ * is the fastest signal available to it. This suite pins the half of that
+ * contract the ramp owns: given the categories the shipped classifier assigns to
+ * REAL response shapes, does the gate halt on the ones that mean "we are refusing
+ * this sender" and stay quiet on the ones that mean "slow down"?
+ *
+ * THE CLAUSE IS DORMANT IN EVERY SHIPPED DEPLOYMENT (issue #501). The
+ * classification happens in the MTA and no row carries its per-category counts
+ * into Convex per (cell, arm), so `input.smtpBlocks` is always absent and today's
+ * gate 2 is the deferral RATE alone. This suite still runs — against the SHARED
+ * samples rather than against a live counter — because what it guards is the
+ * agreement between the two halves of the vocabulary, not the liveness of the
+ * wire between them: the categories can drift apart while the clause sleeps just
+ * as easily as while it runs, and the drift would only be discovered by the halt
+ * silently never firing again. So the arithmetic, the sample floor, the freshness
+ * rule and the block-versus-pressure split stay verified until the telemetry
+ * surface arrives, and the wiring guard (`gateInputWiring.test.ts`) is what
+ * records that it has not.
  *
  * THE FIXTURES ARE SHARED WITH THE CLASSIFIER (`SMTP_BLOCK_MESSAGE_SAMPLES` in
  * `@owlat/shared/smtpBlockCategories`). The MTA's own suite runs the same strings

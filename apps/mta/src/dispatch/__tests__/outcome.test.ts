@@ -342,6 +342,35 @@ describe('reduce(deferred) — non-retryable classification', () => {
 		}
 	});
 
+	it('reports the category to Convex in PROSE only — no typed field (issue #501)', () => {
+		// The other end of this reads it: the standalone ramp's gate-2 block clause
+		// (`apps/api/convex/delivery/ramp/trailingBaselineGates.ts`) is dormant
+		// because neither 4xx path delivers a per-category count to Convex. The
+		// retryable path emits no `notify_convex` at all — pinned by the canonical
+		// 5-effect list above — and this one names its category inside `message`
+		// and nowhere else, so a consumer wanting the category would have to
+		// re-parse the sentence with a SECOND classifier.
+		//
+		// Closing #501 means adding the typed field, which fails here: that is the
+		// point. Deleting this assertion is the deliberate act of wiring the signal,
+		// at which moment the two Convex modules that call the clause dormant are
+		// the ones to correct.
+		const outcome = deferredNonRetryable();
+		const category = outcome.kind === 'deferred' ? outcome.classification.category : '';
+		expect(category).toBe('content_rejected');
+		const notify = reduce(outcome, makeCtx()).effects.find((e) => e.kind === 'notify_convex');
+		expect(notify?.kind).toBe('notify_convex');
+		if (notify?.kind !== 'notify_convex') return;
+		expect(notify.event.message).toContain(category);
+		// Every OTHER value on the event, not a hand-list of key names: a category
+		// arriving as `category`, `smtpCategory` or any spelling nobody predicted
+		// fails the same way.
+		const typedCarriers = Object.entries(notify.event)
+			.filter(([key, value]) => key !== 'message' && value === category)
+			.map(([key]) => key);
+		expect(typedCarriers).toEqual([]);
+	});
+
 	it('still re-defers a retryable greylist deferral (regression guard)', () => {
 		const error = 'Greylisted, try again in 90 seconds';
 		const outcome: DispatchOutcome = {
