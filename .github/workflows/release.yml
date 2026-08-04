@@ -91,11 +91,15 @@ jobs:
         # concurrency (10) oversubscribes it badly enough that CPU-bound tests
         # ran 17-40x slower than idle and tripped their vitest deadlines (the
         # v0.4.0 gate died three times on three different tests this way). Cap
-        # task concurrency at the core count so per-test wall time stays within
-        # the margins the suites were sized for.
+        # task concurrency so per-test wall time stays within the margins the
+        # suites were sized for. 4 was not enough — each vitest task spawns its
+        # own worker pool, so two CPU-bound suites side by side still starved
+        # apps/api's heaviest tests past their deadlines (41s observed on a 10s
+        # budget). 2 trades a few minutes of wall clock for a deterministic
+        # gate.
         run: bun run ci:verify
         env:
-          TURBO_CONCURRENCY: "4"
+          TURBO_CONCURRENCY: "2"
 
   # Create ONE draft Release up front; both cores attach their assets to it.
   create-release:
