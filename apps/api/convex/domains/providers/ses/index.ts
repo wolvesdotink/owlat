@@ -18,6 +18,7 @@ import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
+import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type { ProviderCheckResult, SendingDomainProviderModule, SesIdentity } from '../types';
 
@@ -119,6 +120,11 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 			};
 		}
 	},
+
+	// The relay-verification read seam (D6). SES is the one shipped kind that
+	// declares `domainVerification: 'api'`, so it is the one kind that can
+	// answer this; see `./relayVerification.ts` for the proof it requires.
+	relayDomainVerified: sesRelayDomainVerified,
 
 	async writeIdentity(ctx, domainId, identity) {
 		const existing = await ctx.db

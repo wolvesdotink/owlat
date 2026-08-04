@@ -103,6 +103,14 @@ export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 /** pluginStorageEntries.valueJson canonical JSON shape. */
 export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
 
+/**
+ * sendingDomainRelayIdentities.providerDetails JSON shape (D7) — the
+ * provider-specific extras blob on a generic relay identity. Every registered
+ * relay provider writes its own shape into it, so bumping this is a contract
+ * change for all of them at once; branch on the stored version on read.
+ */
+export const CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION = 1;
+
 /** deliverabilityEvidence.observedValues structured JSON observation contract. */
 export const CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION =
 	DELIVERABILITY_OBSERVATION_SCHEMA_VERSION;

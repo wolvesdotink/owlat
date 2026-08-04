@@ -915,11 +915,19 @@ describe('sendAssignments — campaign write path', () => {
 		expect(configuredPredicate, 'providerKindConfigured must be env-only').not.toMatch(
 			/\bctx\b|\bdb\b|await/
 		);
-		const relayVerification = await fs.readFile(
-			new URL('../../lib/sendProviders/relayDomainVerification.ts', import.meta.url),
-			'utf8'
+		// Both halves of the relay-verification seam: the dispatcher, and the
+		// registered per-provider proof it dispatches to (D6/D7 moved the reads
+		// behind `domains/providers/<kind>`, and a guard that only reads the
+		// dispatcher would have stopped guarding anything the moment they moved).
+		const relayVerificationSources = await Promise.all(
+			[
+				'../../lib/sendProviders/relayDomainVerification.ts',
+				'../../domains/providers/ses/relayVerification.ts',
+			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 		);
-		expect(relayVerification).not.toMatch(/\.collect\(\)/);
+		for (const source of relayVerificationSources) {
+			expect(source).not.toMatch(/\.collect\(\)/);
+		}
 
 		// READ-SET GUARD. The `.collect()` / `providerHealth` assertions above
 		// only rule out the two failures we already know about; they say nothing
@@ -941,13 +949,14 @@ describe('sendAssignments — campaign write path', () => {
 		//
 		// Adding a table to the enqueue read set now fails here until someone
 		// states why its write rate is not proportional to sends.
-		const readSetSources = await Promise.all(
-			[
-				'../sendAssignments.ts',
-				'../../lib/sendProviders/destinationProvider.ts',
-				'../../lib/sendProviders/relayDomainVerification.ts',
-			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
-		);
+		const readSetSources = [
+			...(await Promise.all(
+				['../sendAssignments.ts', '../../lib/sendProviders/destinationProvider.ts'].map(
+					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
+				)
+			)),
+			...relayVerificationSources,
+		];
 		const seamSource = [
 			...seamFunctions.map((fn) => topLevelFunctionBody(seamModuleSource, fn)),
 			// The readiness predicate the seam calls, included so its read set is

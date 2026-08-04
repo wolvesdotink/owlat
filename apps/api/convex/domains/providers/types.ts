@@ -19,10 +19,8 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import type { MutationCtx } from '../../_generated/server';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
-
-export type SendingDomainProviderKind = 'mta' | 'ses';
 
 // ─── Per-provider identity shapes ──────────────────────────────────────────
 
@@ -37,13 +35,30 @@ export type SesIdentity = {
 	verificationToken: string;
 };
 
-export type ProviderIdentity = MtaIdentity | SesIdentity;
+/**
+ * The REGISTRY of sending-domain provider kinds, keyed by kind (D7). One line
+ * per provider, mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`:
+ * the kind union, the per-kind identity payload and the module registry's
+ * completeness guard all derive from this single map, so adding a provider is
+ * one entry here plus one entry in `SENDING_DOMAIN_PROVIDERS`.
+ *
+ * It replaced a hand-written `'mta' | 'ses'` union beside a
+ * `K extends 'mta' ? … : K extends 'ses' ? … : never` conditional ladder —
+ * two declarations of the same fact, which the third provider would have had
+ * to extend in both places (and `never` on a miss, so forgetting one produced
+ * an uninhabited identity type rather than an error).
+ */
+export interface SendingDomainIdentityRegistry {
+	mta: MtaIdentity;
+	ses: SesIdentity;
+}
 
-export type ProviderIdentityFor<K extends SendingDomainProviderKind> = K extends 'mta'
-	? MtaIdentity
-	: K extends 'ses'
-		? SesIdentity
-		: never;
+export type SendingDomainProviderKind = keyof SendingDomainIdentityRegistry;
+
+export type ProviderIdentityFor<K extends SendingDomainProviderKind> =
+	SendingDomainIdentityRegistry[K];
+
+export type ProviderIdentity = SendingDomainIdentityRegistry[SendingDomainProviderKind];
 
 // ─── Per-provider check result ─────────────────────────────────────────────
 
@@ -99,6 +114,30 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * action before `recordVerification`.
 	 */
 	runProviderCheck?(domain: string): Promise<ProviderCheckResult>;
+
+	// ── Relay-domain verification (runs inside queries/mutations) ─────────
+
+	/**
+	 * Does this provider hold a fresh, complete proof that `domainName` may be
+	 * RELAYED through it right now? The read half of the deliverability
+	 * fallback (D6), called by `lib/sendProviders/relayDomainVerification.ts`
+	 * once the configured relay kind has been resolved to its provider.
+	 *
+	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
+	 * implementation keeps the seam's honest "unverifiable" posture, which is
+	 * exactly what a relay with no identity API (`domainVerification: 'none'`)
+	 * can truthfully say. Every kind declaring `domainVerification: 'api'`
+	 * should implement it — the catalog is what promises the proof exists.
+	 *
+	 * Runs on the ENQUEUE path, so implementations do indexed point reads only:
+	 * no `.collect()`, no `ctx.db.get`, no `ctx.runQuery` (see the read-set
+	 * guard in `delivery/__tests__/sendAssignments.test.ts`).
+	 */
+	relayDomainVerified?(
+		ctx: QueryCtx | MutationCtx,
+		domainName: string,
+		now: number
+	): Promise<boolean>;
 
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 

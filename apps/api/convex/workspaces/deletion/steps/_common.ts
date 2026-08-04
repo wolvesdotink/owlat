@@ -87,6 +87,7 @@ export type OrganizationDeletionTable =
 	| 'knowledgeEntryContacts'
 	| 'sendingDomainMtaIdentities'
 	| 'sendingDomainSesIdentities'
+	| 'sendingDomainRelayIdentities'
 	| 'trackingDomains'
 	| 'sendingReputation'
 	| 'providerHealth'
@@ -261,6 +262,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('knowledgeEntryContacts'),
 	v.literal('sendingDomainMtaIdentities'),
 	v.literal('sendingDomainSesIdentities'),
+	v.literal('sendingDomainRelayIdentities'),
 	v.literal('trackingDomains'),
 	v.literal('sendingReputation'),
 	v.literal('providerHealth'),

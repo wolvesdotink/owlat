@@ -401,6 +401,7 @@ import type * as domains_providers_mta_index from "../domains/providers/mta/inde
 import type * as domains_providers_registerAction from "../domains/providers/registerAction.js";
 import type * as domains_providers_ses_index from "../domains/providers/ses/index.js";
 import type * as domains_providers_ses_mailFrom from "../domains/providers/ses/mailFrom.js";
+import type * as domains_providers_ses_relayVerification from "../domains/providers/ses/relayVerification.js";
 import type * as domains_providers_types from "../domains/providers/types.js";
 import type * as domains_queries from "../domains/queries.js";
 import type * as domains_returnPath from "../domains/returnPath.js";
@@ -573,6 +574,7 @@ import type * as lib_sendProviders_catalog from "../lib/sendProviders/catalog.js
 import type * as lib_sendProviders_cellRoute from "../lib/sendProviders/cellRoute.js";
 import type * as lib_sendProviders_destinationProvider from "../lib/sendProviders/destinationProvider.js";
 import type * as lib_sendProviders_dispatch from "../lib/sendProviders/dispatch.js";
+import type * as lib_sendProviders_fallbackEligibility from "../lib/sendProviders/fallbackEligibility.js";
 import type * as lib_sendProviders_health from "../lib/sendProviders/health.js";
 import type * as lib_sendProviders_index from "../lib/sendProviders/index.js";
 import type * as lib_sendProviders_mta_index from "../lib/sendProviders/mta/index.js";
@@ -807,6 +809,7 @@ import type * as schema_mail from "../schema/mail.js";
 import type * as schema_messaging from "../schema/messaging.js";
 import type * as schema_plugins from "../schema/plugins.js";
 import type * as schema_postmaster from "../schema/postmaster.js";
+import type * as schema_relayIdentities from "../schema/relayIdentities.js";
 import type * as schema_returnPath from "../schema/returnPath.js";
 import type * as schema_seedPlacement from "../schema/seedPlacement.js";
 import type * as schema_sendAssignments from "../schema/sendAssignments.js";
@@ -1310,6 +1313,7 @@ declare const fullApi: ApiFromModules<{
   "domains/providers/registerAction": typeof domains_providers_registerAction;
   "domains/providers/ses/index": typeof domains_providers_ses_index;
   "domains/providers/ses/mailFrom": typeof domains_providers_ses_mailFrom;
+  "domains/providers/ses/relayVerification": typeof domains_providers_ses_relayVerification;
   "domains/providers/types": typeof domains_providers_types;
   "domains/queries": typeof domains_queries;
   "domains/returnPath": typeof domains_returnPath;
@@ -1482,6 +1486,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/cellRoute": typeof lib_sendProviders_cellRoute;
   "lib/sendProviders/destinationProvider": typeof lib_sendProviders_destinationProvider;
   "lib/sendProviders/dispatch": typeof lib_sendProviders_dispatch;
+  "lib/sendProviders/fallbackEligibility": typeof lib_sendProviders_fallbackEligibility;
   "lib/sendProviders/health": typeof lib_sendProviders_health;
   "lib/sendProviders/index": typeof lib_sendProviders_index;
   "lib/sendProviders/mta/index": typeof lib_sendProviders_mta_index;
@@ -1716,6 +1721,7 @@ declare const fullApi: ApiFromModules<{
   "schema/messaging": typeof schema_messaging;
   "schema/plugins": typeof schema_plugins;
   "schema/postmaster": typeof schema_postmaster;
+  "schema/relayIdentities": typeof schema_relayIdentities;
   "schema/returnPath": typeof schema_returnPath;
   "schema/seedPlacement": typeof schema_seedPlacement;
   "schema/sendAssignments": typeof schema_sendAssignments;

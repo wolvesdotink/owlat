@@ -82,6 +82,10 @@ export const TENANT_TABLES = [
 	'sendingDomainMtaIdentities',
 	'yahooCflEnrollments',
 	'sendingDomainSesIdentities',
+	// The generic per-provider relay identity (D7) that succeeds the two
+	// frozen siblings above. Org-scoped sending-domain state — a wipe must not
+	// leave the org's relay verification records behind.
+	'sendingDomainRelayIdentities',
 	'trackingDomains',
 	'sendingReputation',
 	'gmailDeliveryReceipts',

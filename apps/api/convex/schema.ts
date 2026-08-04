@@ -6,6 +6,7 @@ import { formTables } from './schema/forms';
 import { automationTables } from './schema/automations';
 import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
+import { relayIdentitiesTables } from './schema/relayIdentities';
 import { contactTables } from './schema/contacts';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
@@ -41,6 +42,7 @@ export default defineSchema({
 	...automationTables,
 	...campaignTables,
 	...domainTables,
+	...relayIdentitiesTables,
 	...contactTables,
 	...authTables,
 	...instanceTables,

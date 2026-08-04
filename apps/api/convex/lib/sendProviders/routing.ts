@@ -10,6 +10,7 @@
  */
 
 import { getOptional } from '../env';
+import { isFallbackRelayEligible } from './fallbackEligibility';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
@@ -136,7 +137,11 @@ export function resolveRoute(
 			? 'warmup_overflow'
 			: undefined);
 	if (!reason || !fallbackConfig?.isEnabled) return resolved;
-	if (fallbackConfig.relayProviderType !== 'ses') {
+	// D6: a CAPABILITY question, not an identity check. Judged against this
+	// resolution's own readiness predicate — the same one `enabledEntries` was
+	// filtered by — so the gate and the relay lookup below can never disagree
+	// about whether a transport is configured.
+	if (!isFallbackRelayEligible(fallbackConfig.relayProviderType, isReady)) {
 		throw new DeliverabilityRouteError('unavailable');
 	}
 	const relay = enabledEntries.find(

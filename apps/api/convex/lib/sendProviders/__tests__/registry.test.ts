@@ -35,6 +35,7 @@ describe('Send provider registry', () => {
 				requiredEnvVars: ['MTA_API_URL', 'MTA_API_KEY'],
 				supportsCustomReturnPath: 'yes',
 				hasProviderFeedback: true,
+				domainVerification: 'none',
 			},
 			{
 				kind: 'ses',
@@ -43,6 +44,7 @@ describe('Send provider registry', () => {
 				requiredEnvVars: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
+				domainVerification: 'api',
 			},
 			{
 				kind: 'resend',
@@ -51,6 +53,7 @@ describe('Send provider registry', () => {
 				requiredEnvVars: ['RESEND_API_KEY'],
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
+				domainVerification: 'none',
 			},
 			{
 				kind: 'smtp',
@@ -59,6 +62,7 @@ describe('Send provider registry', () => {
 				requiredEnvVars: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
 				supportsCustomReturnPath: 'probe',
 				hasProviderFeedback: false,
+				domainVerification: 'none',
 			},
 		]);
 	});
