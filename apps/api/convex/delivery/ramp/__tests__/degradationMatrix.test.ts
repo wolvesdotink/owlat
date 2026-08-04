@@ -199,9 +199,9 @@ describe('the substitution table names only signals that run', () => {
 		// substitution shape. They are read by different screens and must not be
 		// able to name different signals.
 		expect(SNDS_ABSENT_SUBSTITUTION.source).toBe('own_bounce_deferral_complaint');
-		expect(
-			RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds')?.substitutes
-		).toContain(SNDS_ABSENT_SUBSTITUTION.source);
+		expect(RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds')?.substitutes).toContain(
+			SNDS_ABSENT_SUBSTITUTION.source
+		);
 		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote).not.toMatch(/SMTP reply/i);
 	});
 });

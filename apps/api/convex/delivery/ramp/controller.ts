@@ -453,10 +453,9 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		// failure or a hard stop to take a cell to zero; a warming cap with no
 		// headroom left projects a ceiling of 0, and honouring that literally would
 		// switch a healthy graduated cell off entirely.
-		// Rounded to the stored precision before it is COMPARED to `fromShare`,
-		// which is already rounded: a ceiling one float ulp above the current share
-		// is not a restore anyone asked for, and comparing raw against rounded would
-		// route it through the increase rungs to land back on the same number.
+		// ROUNDED BEFORE EVERY COMPARISON AGAINST `fromShare`, here and at rung 11,
+		// because `fromShare` is already rounded: comparing raw against rounded
+		// reports a move that lands back on the number the cell already had.
 		const pinTarget = roundShare(
 			Math.max(RAMP_AIMD.shareFloor, Math.min(OWN_SHARE_CEILING, ceiling))
 		);
@@ -483,7 +482,8 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     ONCE PER EVALUATION WINDOW. A ceiling pull-back below is deliberately
 	//     NOT window-gated: retreats stay instant, advances stay expensive.
 	const step: number = ppToFraction(config.increaseStep);
-	const bounded = aimdIncrease(fromShare, { ceiling, step });
+	// Rounded first, by the rule stated at the pin target above.
+	const bounded = roundShare(aimdIncrease(fromShare, { ceiling, step }));
 	if (bounded > fromShare) {
 		if (!isWindowCounted) return { ...pinnedGreen, reason: 'window_open', ceiling };
 		return { ...pinnedGreen, share: bounded, reason: 'healthy', ceiling };
