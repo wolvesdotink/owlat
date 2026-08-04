@@ -287,12 +287,21 @@ export function evaluateStandaloneDeferralGate(input: RampGateEvaluationInput): 
  * nothing wrong with it.
  *
  * DORMANT IN EVERY SHIPPED DEPLOYMENT, and said here rather than left to be
- * discovered (issue #501). The classification is the MTA's, and no row carries
- * its per-category counts into Convex per (cell, arm): the MTA notifies Convex
- * about a remote 4xx only by retrying it internally and reporting a per-IP
- * warming aggregate that names no cell, so `loadCellInput` has nothing to read
- * and passes no observation. The first branch below is therefore the one every
- * tick takes.
+ * discovered (issue #501). The classification is the MTA's, and NEITHER of its
+ * two 4xx paths carries per-category counts into Convex per (cell, arm): a
+ * RETRYABLE 4xx emits no `notify_convex` event at all — it is retried
+ * internally and surfaces only as a per-IP warming aggregate that names no cell
+ * — and a NON-RETRYABLE one (`policy_rejected` / `content_rejected`, reduced in
+ * `apps/mta/src/dispatch/outcome.ts`) arrives as a `bounced` event whose
+ * category survives only inside a prose `message` string. So `loadCellInput`
+ * has nothing to read and passes no observation, and the first branch below is
+ * the one every tick takes.
+ *
+ * THE WEBHOOK IS WHERE THIS CLOSES, and the second path is named above because
+ * it is the one to extend: the category has to travel as a TYPED field and land
+ * in a per-(cell, arm, day) counter. Re-parsing the sentence would be a second
+ * classifier disagreeing with the MTA's, which is what the shared vocabulary
+ * exists to prevent.
  *
  * KEPT, NOT DELETED, and that is a judgement rather than an oversight: the
  * arithmetic, the sample floor, the freshness rule and the block-versus-pressure
