@@ -21,6 +21,14 @@ import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
  * The classification itself is the MTA's (`classifySmtpResponse`), and the
  * category names are the shared vocabulary in
  * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
+ *
+ * NOTHING IN PRODUCTION CONSTRUCTS ONE YET (issue #501). The counts exist only
+ * inside the MTA's dispatch reducer, which reports a remote 4xx to Convex as a
+ * per-IP warming aggregate carrying no (cell, arm) — so there is no row a reader
+ * could turn into this shape. Unlike its neighbour below, which
+ * `analytics/seedPlacementSweeps.ts` produces from the probe ledger, this
+ * interface is a contract waiting for its producer, and the gate that reads it
+ * says so at its own definition rather than leaving a halt looking live.
  */
 export interface SmtpBlockObservation {
 	/** Every classified response over the window — the denominator. */

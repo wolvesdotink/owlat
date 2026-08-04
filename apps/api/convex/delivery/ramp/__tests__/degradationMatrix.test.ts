@@ -19,9 +19,11 @@ import {
 	RAMP_DEGRADATION_BY_INTEGRATION,
 	RAMP_FULLY_EQUIPPED,
 	RAMP_INTEGRATION_IDS,
+	RAMP_SUBSTITUTE_SOURCES,
 	type RampIntegrationId,
 	type RampSubstituteSource,
 } from '../degradationMatrix';
+import { SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
@@ -82,12 +84,17 @@ const CASES: readonly MatrixCase[] = [
 		actuator: 'share',
 	},
 	{
-		// MICROSOFT SNDS absent -> SMTP reply classification; DWELL x2 AND the
-		// microsoft cell ceiling capped ONE PHASE LOWER.
+		// MICROSOFT SNDS absent -> our own bounce/deferral/complaint rates for the
+		// microsoft cell plus seeds at Outlook; DWELL x2 AND the microsoft cell
+		// ceiling capped ONE PHASE LOWER.
+		//
+		// NOT `smtp_classification` (issue #501): the classifier runs in the MTA and
+		// nothing carries its per-category counts into Convex, so a cell claiming to
+		// run on it was claiming a signal no deployment supplies.
 		integration: 'microsoft_snds',
 		provider: 'microsoft',
 		outOfScopeProvider: 'gmail',
-		substitutes: ['smtp_classification'],
+		substitutes: ['own_bounce_deferral_complaint', 'seed_placement'],
 		cleanWindowsRequired: undefined,
 		stepMultiplier: 1,
 		dwellMultiplier: 2,
@@ -142,6 +149,62 @@ const CASES: readonly MatrixCase[] = [
 		actuator: 'share',
 	},
 ];
+
+/**
+ * EVERY NAMED SIGNAL IS A SIGNAL SOMETHING RUNS ON (issue #501).
+ *
+ * The table is what the dashboard renders and what the audit row records, so a
+ * source in the vocabulary that no entry claims is a name waiting to be pasted
+ * onto a cell — and a source an entry claims that nothing supplies is worse: it
+ * tells an operator their cell is measured by something that never executes.
+ * `smtp_classification` was exactly that for the Microsoft cell. It comes back
+ * when the MTA -> Convex transport telemetry does, and this suite is what makes
+ * "when" a build failure rather than a memory.
+ */
+describe('the substitution table names only signals that run', () => {
+	it('leaves no source in the vocabulary unclaimed by an entry', () => {
+		const claimed = new Set<RampSubstituteSource>();
+		for (const entry of RAMP_DEGRADATION_BY_INTEGRATION.values()) {
+			for (const source of entry.substitutes) claimed.add(source);
+		}
+		expect([...RAMP_SUBSTITUTE_SOURCES].filter((source) => !claimed.has(source))).toEqual([]);
+	});
+
+	it('does not offer the operator a signal the ramp cannot read', () => {
+		// The gate clause is still implemented and still pinned
+		// (`smtpBlockMessage.test.ts`); what is gone is the CLAIM that a deployment
+		// is running on it. Spelled as a string search over the whole table so a
+		// future entry cannot reintroduce the promise in prose either.
+		const table = [...RAMP_DEGRADATION_BY_INTEGRATION.values()];
+		expect(table.flatMap((entry) => entry.substitutes)).not.toContain('smtp_classification');
+		for (const entry of table) {
+			expect(entry.confidenceNote).not.toMatch(/SMTP reply|SMTP classification/i);
+		}
+	});
+
+	it('leaves the Microsoft cell reading what it actually reads', () => {
+		const degradation = resolveRampDegradation({
+			presence: absent('microsoft_snds'),
+			provider: 'microsoft',
+		});
+		expect(degradation.substitutes).toEqual(['own_bounce_deferral_complaint', 'seed_placement']);
+		// The cost of the absence is UNCHANGED — this piece corrected a claim, not a
+		// constant, and a quieter ramp would be a different change hiding in a doc fix.
+		expect(degradation.dwellMultiplier).toBe(2);
+		expect(degradedCeilingCap(degradation)).toBe(0.8);
+	});
+
+	it('says the same thing on the SNDS gate as in the table', () => {
+		// Two entries describing one cell: the P3-8 table and the gate input's own
+		// substitution shape. They are read by different screens and must not be
+		// able to name different signals.
+		expect(SNDS_ABSENT_SUBSTITUTION.source).toBe('own_bounce_deferral_complaint');
+		expect(
+			RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds')?.substitutes
+		).toContain(SNDS_ABSENT_SUBSTITUTION.source);
+		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote).not.toMatch(/SMTP reply/i);
+	});
+});
 
 describe('the degradation matrix substitutes exactly what the plan says', () => {
 	it('covers every integration exactly once', () => {

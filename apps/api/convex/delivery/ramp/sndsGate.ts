@@ -14,9 +14,15 @@
  *
  * 2. ABSENCE IS A SUPPORTED CONFIGURATION (D2). An operator who never enrolled
  *    in SNDS gets `available: false` plus the documented SUBSTITUTION — the
- *    Microsoft cell falls back to SMTP reply classification (Microsoft is
- *    unusually explicit in its 5xx text), dwells twice as long and caps one
- *    phase lower. That is slower, never blocked: no error, no warning, no nag.
+ *    Microsoft cell falls back to the outcomes of its own sends, dwells twice as
+ *    long and caps one phase lower. That is slower, never blocked: no error, no
+ *    warning, no nag.
+ *
+ *    IT USED TO SAY "SMTP reply classification" HERE, and in the note the UI
+ *    renders. Microsoft is unusually explicit in its 5xx text and the MTA does
+ *    classify it, but nothing carries those per-category counts into Convex per
+ *    (cell, arm), so the ramp reads none of it (issue #501). The substitution
+ *    below names what the cell actually runs on.
  */
 
 import {
@@ -43,8 +49,12 @@ import type { RampGateId, RampGateStatus } from './gateTypes';
  * are how the Microsoft substitution pays for its weaker evidence.
  */
 export const SNDS_ABSENT_SUBSTITUTION = {
-	/** What replaces the SNDS band while it is missing. */
-	source: 'smtp_classification',
+	/**
+	 * What replaces the SNDS band while it is missing — the SAME name the P3-8
+	 * table uses for the Microsoft cell (`RAMP_SUBSTITUTE_SOURCES`), so the two
+	 * entries cannot describe the cell differently.
+	 */
+	source: 'own_bounce_deferral_complaint',
 	/** Dwell longer before advancing, because the evidence is weaker. */
 	dwellMultiplier: 2,
 	/** Cap the cell one phase below what the evidence would otherwise allow. */
@@ -58,7 +68,7 @@ export const SNDS_ABSENT_SUBSTITUTION = {
 	 * note on every branch.
 	 */
 	confidenceNote:
-		'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell reads Microsoft’s SMTP reply text instead. Connecting SNDS would measure this IP’s complaint band directly.',
+		'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell is judged on our own bounce, deferral and complaint rates instead. Connecting SNDS would measure this IP’s complaint band directly.',
 	/**
 	 * Always `false`. Encoded as a field rather than left implicit so the D2
 	 * invariant is asserted by a test rather than assumed by a reader.
@@ -289,7 +299,7 @@ export function evaluateSndsGate(
 			verdict: 'insufficient_data',
 			reason:
 				input.reason === 'not_enrolled'
-					? 'Microsoft SNDS is not connected — the Microsoft cell is using SMTP reply classification instead.'
+					? 'Microsoft SNDS is not connected — the Microsoft cell is judged on the outcomes of its own sends instead.'
 					: 'Microsoft SNDS is connected but has reported nothing for this window yet.',
 			substitution: input.substitution,
 		};

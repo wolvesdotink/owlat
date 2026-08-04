@@ -70,9 +70,12 @@ describe('SNDS absent — the gate', () => {
 		expect(input.available).toBe(false);
 		if (input.available) return;
 		expect(input.reason).toBe('not_enrolled');
-		// SMTP reply classification, dwell x2, ceiling one phase lower.
+		// The cell's own outcome counters, dwell x2, ceiling one phase lower. NOT
+		// SMTP reply classification: the classifier runs in the MTA and nothing
+		// carries its per-category counts into Convex (issue #501), so a
+		// substitution naming it named a signal the ramp never reads.
 		expect(input.substitution).toEqual({
-			source: 'smtp_classification',
+			source: 'own_bounce_deferral_complaint',
 			dwellMultiplier: 2,
 			ceilingPhaseDelta: -1,
 			confidence: 'low',
@@ -98,7 +101,7 @@ describe('SNDS absent — the gate', () => {
 		expect(verdict.substitution).toEqual(SNDS_ABSENT_SUBSTITUTION);
 		// The reason is an explanation, never a nag: no error, no failure, no
 		// "setup incomplete", no instruction that the operator MUST do anything.
-		expect(verdict.reason).toMatch(/SMTP reply classification/);
+		expect(verdict.reason).toMatch(/outcomes of its own sends/);
 		expect(verdict.reason).not.toMatch(/error|failed|invalid|incomplete|required|must/i);
 		// Absence never promotes — and, just as importantly, never demotes.
 		expect(sndsPromotionPass(input)).toBe(false);

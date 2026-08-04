@@ -61,7 +61,16 @@ export type RampIntegrationPresence = Readonly<Record<RampIntegrationId, boolean
 /**
  * The signal a substitution runs on. Named rather than described, because the
  * dashboard renders these and the audit row records them: "the microsoft cell is
- * running on SMTP reply classification" is a fact the table produced.
+ * running on its own outcome counters" is a fact the table produced.
+ *
+ * A SOURCE HAS TO BE SOMETHING A DEPLOYMENT ACTUALLY RUNS ON. `smtp_classification`
+ * was in this list and named by the Microsoft entry below; the classifier that
+ * produces those categories runs in the MTA and nothing carries its per-category
+ * counts into Convex, so the gate clause it would feed has a reader and no
+ * producer (issue #501). A source nobody supplies is a sentence the operator is
+ * told and a row the audit trail keeps about a signal that never ran, which is
+ * the defect this wave exists to repair — so the name lands here again with its
+ * supplier, not before it.
  */
 export const RAMP_SUBSTITUTE_SOURCES = [
 	/** The warming-pace multiplier stands in for the share actuator (D3). */
@@ -69,7 +78,6 @@ export const RAMP_SUBSTITUTE_SOURCES = [
 	'trailing_baseline_engagement',
 	'seed_placement',
 	'own_bounce_deferral_complaint',
-	'smtp_classification',
 	'cfbl_address_reports',
 	'unsubscribe_rate_proxy',
 	'self_hosted_seeds',
@@ -187,14 +195,24 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		integration: 'microsoft_snds',
 		label: 'Microsoft SNDS',
 		scope: ['microsoft'],
-		// Microsoft is unusually explicit in its 5xx text, so the reply itself is a
-		// usable stand-in for the complaint band.
-		substitutes: ['smtp_classification'],
+		// THE SAME SUBSTITUTION THE GMAIL CELL MAKES, and for the same reason: with
+		// no external reputation feed the cell is judged on the outcomes of its own
+		// sends.
+		//
+		// NOT `smtp_classification`, which this entry claimed until issue #501 was
+		// read to the end. Microsoft IS unusually explicit in its 5xx text and the
+		// MTA does classify it — but that classification never leaves the MTA: no
+		// row carries per-category counts per (cell, arm) into Convex, so the gate
+		// clause that would consume them (`evaluateSmtpBlockMessages`) has a reader
+		// and no producer. Naming it here put a signal no deployment runs on the
+		// cell's confidence note and in every audit row for that cell. The name
+		// comes back when the telemetry surface does.
+		substitutes: ['own_bounce_deferral_complaint', 'seed_placement'],
 		dwellMultiplier: 2,
 		ceilingPhaseDelta: -1,
 		confidence: 'low',
 		confidenceNote:
-			'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell reads Microsoft’s SMTP reply text instead.',
+			'Measurement confidence: low — Microsoft SNDS is not connected, so the Microsoft cell is judged on our own bounce, deferral and complaint rates plus seed placement at Microsoft.',
 		improvement:
 			'Connect Microsoft SNDS to measure this IP’s complaint band directly — it lifts the Microsoft cell’s phase ceiling by one rung and halves its dwell time.',
 		offersImprovement: true,

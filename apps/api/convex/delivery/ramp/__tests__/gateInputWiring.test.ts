@@ -58,6 +58,18 @@ const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
  * line in a controller; tracked separately rather than faked with a zeroed
  * observation, which would read as "we measured no blocks" instead of "we did
  * not measure".
+ *
+ * RE-EXAMINED AGAINST THIS WAVE'S NEW WRITERS, and it still cannot be closed
+ * from this side. The `deferred` counter (`delivery/deferralOutcome.ts`) records
+ * the LAST-MILE ROUTER's own `origin: 'governed'` defers — our decision, with no
+ * receiver response behind it to classify. The MTA's classification lives in
+ * `dispatch/outcome.ts`, where a retryable 4xx emits NO `notify_convex` event at
+ * all and a non-retryable one arrives as a `bounced` event whose category
+ * survives only inside a prose `message` string — and re-parsing that string
+ * here would be a SECOND classifier disagreeing with the MTA's, which is the one
+ * thing `@owlat/shared/smtpBlockCategories` exists to prevent. Closing it needs
+ * the category to travel as a typed field on the webhook and a per-(cell, arm,
+ * day) counter to receive it.
  */
 const KNOWN_UNSUPPLIED: readonly string[] = ['smtpBlocks'];
 

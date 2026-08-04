@@ -14,12 +14,15 @@
  *   1 HARD BOUNCE  absolute <=2% AND <=1.5x the cell's own 30-day trailing rate.
  *                  Confidence HIGH — bounce processing is entirely self-hosted
  *                  (VERP + DSN parsing) and never depended on a third party.
- *   2 DEFERRAL/4xx UNCHANGED, and PROMOTED TO PRIMARY. Plus per-ISP BLOCK-MESSAGE
- *                  detection from the shipped SMTP classifier as a HARD STOP.
- *                  Confidence HIGH. Receivers tell us a great deal in their 4xx
- *                  and 5xx text — rate pressure, blocklist hits, content
- *                  rejections, policy blocks — and this is the configuration that
- *                  leans on it hardest.
+ *   2 DEFERRAL/4xx UNCHANGED, and PROMOTED TO PRIMARY. Confidence HIGH.
+ *                  The plan also specifies per-ISP BLOCK-MESSAGE detection from
+ *                  the shipped SMTP classifier as a HARD STOP beside it. That
+ *                  clause is IMPLEMENTED AND DORMANT — see
+ *                  `evaluateSmtpBlockMessages` — because no deployment can
+ *                  supply the observation it reads (issue #501). Until one can,
+ *                  the DEFERRAL RATE is the whole of gate 2, and the module that
+ *                  claimed otherwise was describing a halt no deployment could
+ *                  reach.
  *   3 COMPLAINT    CFBL reports where a feedback loop exists; OTHERWISE the
  *                  one-click UNSUBSCRIBE rate at or above 3x the cell's trailing
  *                  baseline, treated as a complaint-equivalent breach.
@@ -250,7 +253,10 @@ function blockRate(observation: SmtpBlockObservation): number | null {
  *
  * Unchanged in its arithmetic — the 4xx ceiling and the halt line are the shipped
  * ones, because they never depended on a third party in the first place — and
- * extended with what the responses SAY rather than only how many there were.
+ * extended with what the responses SAY rather than only how many there were,
+ * FOR A DEPLOYMENT THAT CAN SAY IT. None can yet: `input.smtpBlocks` has no
+ * production supplier (issue #501), so today this function is the deferral rate
+ * and nothing else.
  *
  * A BLOCK IS NOT A DEFERRAL RATE. Throttling and blocking both arrive as 4xx and
  * both land in the deferral counter, but they mean opposite things about what to
@@ -279,6 +285,24 @@ export function evaluateStandaloneDeferralGate(input: RampGateEvaluationInput): 
  * about DEFERRALS — the rate check behind it is perfectly capable of deciding,
  * and turning a quiet block detector into a hold would freeze every cell that has
  * nothing wrong with it.
+ *
+ * DORMANT IN EVERY SHIPPED DEPLOYMENT, and said here rather than left to be
+ * discovered (issue #501). The classification is the MTA's, and no row carries
+ * its per-category counts into Convex per (cell, arm): the MTA notifies Convex
+ * about a remote 4xx only by retrying it internally and reporting a per-IP
+ * warming aggregate that names no cell, so `loadCellInput` has nothing to read
+ * and passes no observation. The first branch below is therefore the one every
+ * tick takes.
+ *
+ * KEPT, NOT DELETED, and that is a judgement rather than an oversight: the
+ * arithmetic, the sample floor, the freshness rule and the block-versus-pressure
+ * split are pinned by `__tests__/smtpBlockMessage.test.ts` against the SHARED
+ * fixture the MTA's own suite classifies, so the contract stays alive and
+ * verified while the transport surface that would feed it is built. What is NOT
+ * kept is any claim that it is running: the substitution table no longer names
+ * SMTP classification as a signal a cell runs on, and the wiring guard
+ * (`__tests__/gateInputWiring.test.ts`) asserts the absence exactly, so wiring it
+ * fails a suite until the tracked line is deleted.
  */
 export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampGateResult | null {
 	const observation = input.smtpBlocks;

@@ -61,12 +61,15 @@ describe('removing a connected integration degrades within one window', () => {
 		expect(after.substitutes).toContain('seed_placement');
 	});
 
-	it('falls back to SMTP classification the moment SNDS goes', () => {
+	it('falls back to the cell’s own outcomes the moment SNDS goes', () => {
 		const after = resolveRampDegradation({
 			presence: absent('microsoft_snds'),
 			provider: 'microsoft',
 		});
-		expect(after.substitutes).toEqual(['smtp_classification']);
+		// NOT SMTP reply classification, which this entry claimed until issue #501:
+		// the classifier runs in the MTA and its per-category counts never reach
+		// Convex, so the cell would have been told it was measured by nothing.
+		expect(after.substitutes).toEqual(['own_bounce_deferral_complaint', 'seed_placement']);
 		expect(degradedCeilingCap(after)).toBeLessThan(OWN_SHARE_CEILING);
 	});
 
