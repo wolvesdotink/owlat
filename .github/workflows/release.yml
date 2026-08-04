@@ -86,7 +86,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Verify (lint + typecheck + test)
+        # Unlike test.yml (one package per job), this job runs the WHOLE
+        # monorepo's suites on a single 4-core runner. Turbo's default
+        # concurrency (10) oversubscribes it badly enough that CPU-bound tests
+        # ran 17-40x slower than idle and tripped their vitest deadlines (the
+        # v0.4.0 gate died three times on three different tests this way). Cap
+        # task concurrency at the core count so per-test wall time stays within
+        # the margins the suites were sized for.
         run: bun run ci:verify
+        env:
+          TURBO_CONCURRENCY: "4"
 
   # Create ONE draft Release up front; both cores attach their assets to it.
   create-release:
