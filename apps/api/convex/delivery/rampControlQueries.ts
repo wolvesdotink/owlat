@@ -30,6 +30,12 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
 import { relayConfiguration } from './relayConfiguration';
+import { bindsPhaseLadder, resolveRampDegradation } from './ramp/degradation';
+import {
+	loadRampDeploymentPresence,
+	loadReferenceArmPresence,
+	withReferenceArm,
+} from './rampIntegrationPresence';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import type { RampGateId } from './ramp/gateTypes';
 import {
@@ -75,6 +81,22 @@ export interface RampCellControlView {
 	readonly frozenUntil: number | null;
 	readonly isPaused: boolean;
 	readonly pinnedShare: number | null;
+	/**
+	 * WHICH DIAL THIS CELL'S RAMP IS, as the TICK reads it — `bindsPhaseLadder`
+	 * over the cell's own degradation, the same answer `readsShareDial` gives the
+	 * mutation that writes the audit row.
+	 *
+	 * PER CELL AND NOT `isRelayConfigured`, because they disagree exactly where it
+	 * matters: a relay that is configured but carried nothing this window leaves
+	 * the controller ramping by PACE, so copy cut on the configuration would tell
+	 * an operator a pin bounds the climbing dial while the dial actually climbing
+	 * is the warm-up pace, which no pin can bound — and the audit row would say
+	 * the opposite back to them later. Whether a relay is configured is a second,
+	 * separate fact and stays on `isRelayConfigured` — which no door cuts on ALONE:
+	 * the reset and promotion doors cut on the UNION of the two, so the screen
+	 * crosses them rather than either field standing in for the other.
+	 */
+	readonly isShareRamped: boolean;
 	/** The controller's own last word on this cell — the binding constraint. */
 	readonly lastDecision: RampCellDecisionView | null;
 }
@@ -83,9 +105,15 @@ export interface RampControlsView {
 	readonly generatedAt: number;
 	readonly referenceTransportId: string | null;
 	/**
-	 * WHETHER ANY RELAY IS CONFIGURED — the fact `resetCellPhase` cuts a share on,
-	 * carried here so the copy beside the rung buttons cannot promise a different
-	 * move from the one the server makes.
+	 * WHETHER ANY RELAY IS CONFIGURED — HALF of the fact `resetCellPhase` cuts a
+	 * share on, carried here so the copy beside the rung buttons cannot promise a
+	 * different move from the one the server makes.
+	 *
+	 * HALF, NOT THE WHOLE. The door cuts on `hasSecondSender` — configured OR
+	 * MEASURED — so this field answers the reset copy only together with the
+	 * cell's own `isShareRamped`. Reading it alone is what let the screen say a
+	 * share is held on a cell whose reference arm the tick still measures; the
+	 * component crosses the two rather than either side guessing.
 	 *
 	 * DELIBERATELY NOT `referenceTransportId !== null`. That names the SINGLE
 	 * second arm and is null on a deployment with two relays connected, where the
@@ -192,6 +220,12 @@ export const getRampControls = authedQuery({
 		for (const row of presetRows) presets[row.stream] = row.preset;
 
 		const byCell = await loadRouteStatesByCell(ctx, organizationId);
+		// ONE DEPLOYMENT READING FOR THE WHOLE GRID. The presence map is a property
+		// of the deployment, not of a cell, so folding it once and crossing it with
+		// each cell's own reference arm is the controller's own sequence — and
+		// asking it fifteen times would let two rows of one screen answer off two
+		// different readings.
+		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 
 		const cellKeys = allDeliverabilityCells().map(deliverabilityCellKey);
 		const decisionsByCell = await latestDecisionsByCell(ctx, organizationId, cellKeys);
@@ -211,6 +245,15 @@ export const getRampControls = authedQuery({
 				frozenUntil: row?.frozenUntil ?? null,
 				isPaused: row?.operatorPausedAt !== undefined,
 				pinnedShare: row?.operatorPinnedShare ?? null,
+				isShareRamped: bindsPhaseLadder(
+					resolveRampDegradation({
+						presence: withReferenceArm(
+							deploymentPresence,
+							await loadReferenceArmPresence(ctx, { organizationId, cell, now })
+						),
+						provider: cell.destinationProvider,
+					})
+				),
 				lastDecision: decisionView(decisionsByCell.get(cellKey) ?? null),
 			});
 		}
