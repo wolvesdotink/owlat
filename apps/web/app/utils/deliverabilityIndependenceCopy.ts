@@ -41,12 +41,23 @@ export type IndependenceSummary = FunctionReturnType<
  * different prose (that screen is read-only; this one is the ramp) and stays
  * local.
  *
- * THIS SCREEN'S QUESTION IS THE CONFIGURED RELAY, and that is not a slip. It
- * projects the date a relay you PAY FOR stops carrying mail and prices the
- * saving, so with nothing configured there is nothing to become independent OF,
- * whatever a window of outcome rows still remembers. The measurement screen asks
- * the other question — was this cell measured against anything — and passes the
- * other input.
+ * THIS SCREEN'S QUESTION IS THE RELAY YOU PAY FOR, not the arm that carried
+ * traffic: it projects the date that relay stops carrying mail and prices the
+ * saving, so a window of outcome rows alone is not what it should answer from.
+ * The measurement screen asks the other question — was this cell measured
+ * against anything — and passes the other input.
+ *
+ * BUT THE INPUT IT IS GIVEN DOES NOT ASK THAT QUESTION. `referenceTransportId`
+ * is `configuredRelayKinds().length === 1` failing, so a deployment relaying
+ * through MORE THAN ONE kind reads `null` here and is framed as standalone,
+ * exactly as a deployment with no relay at all is. `isRelayConfigured` is the
+ * reading this paragraph describes. Do not read the keying as deliberate: it is
+ * the same substitution of a configuration answer for an existence question that
+ * survived on the measurement dashboard until #502 made gate 5 decide, and it is
+ * worse here, because `relayRemoval: 'safe'` is a GUARD — the apply-transport
+ * endpoint demands no confirmation phrase on it. Tracked as #513, with the
+ * two-relay reproduction; closing it is a decision about which reading
+ * `rampIndependence.ts` should take, not a rename.
  */
 export function independenceHeadline(referenceTransportId: string | null): string {
 	return measurementHeadline(referenceTransportId !== null);

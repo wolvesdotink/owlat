@@ -434,6 +434,45 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 	});
 
 	/**
+	 * THE THIRD SCREEN STILL MAKES THE SUBSTITUTION THIS SUITE REMOVED, and this
+	 * case exists to make that fact fail loudly the day someone closes it (#513).
+	 *
+	 * `rampIndependence.getIndependenceSummary` keys on `referenceTransportId`,
+	 * which two relay kinds leave null — so the SAME deployment the case above
+	 * grades against a measured arm is framed here as having no relay at all. The
+	 * share is not a rounding artefact: `readIndependenceSeries` does not read the
+	 * reference arm when `hasReferenceArm` is false, so the relay's sends are
+	 * structurally absent from the denominator.
+	 *
+	 * AND `relayRemoval: 'safe'` IS A GUARD, NOT A SENTENCE.
+	 * `apps/web/server/api/delivery/apply-transport.post.ts` demands no
+	 * confirmation phrase on it, deliberately, because a deployment with no
+	 * reference arm has nothing to confirm. On this deployment it does — so
+	 * disconnecting a relay mid-ramp skips the whole RELAY_REMOVAL_CONFIRMATION
+	 * path on cells still leaning on it.
+	 *
+	 * This asserts the CURRENT, WRONG answers on purpose. The fix belongs to
+	 * `rampIndependence.ts` and to the separate decision of which reading it
+	 * should take; when it lands, this case fails and its expectations invert.
+	 */
+	it('is still framed as already independent by the independence screen (#513)', async () => {
+		const t = convexTest(schema, modules);
+		await connectTwoRelays(t);
+		await twoArmedBreach(t);
+
+		const dashboard = await dashboardOf(t);
+		expect(dashboard.isRelayConfigured).toBe(true);
+
+		const independence = await t.query(api.delivery.rampIndependence.getIndependenceSummary, {});
+		// One query apart, on one deployment: the screen above measured every cell
+		// against a relay; this one reports there is none to become independent of.
+		expect(independence.referenceTransportId).toBeNull();
+		expect(independence.projection.kind).toBe('already_independent');
+		// The guard, and the reason this is tracked rather than merely noted.
+		expect(independence.relayRemoval.kind).toBe('safe');
+	});
+
+	/**
 	 * The relay's last sending day, swept from today out past the far edge of the
 	 * screen's window. Day 0 and day 1 are inside the controller's span (its 24h
 	 * `since` floors to a UTC day start, so yesterday's bucket still counts); days
