@@ -582,7 +582,28 @@ describe('the control sentences name the dial the controller ramps', () => {
 
 		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
 
-		expect(await messageOf(t)).toContain('will not climb past that share');
+		expect(await messageOf(t)).toContain('will not climb past it until it is unpinned');
+	});
+
+	// THE PIN AN OPERATOR ACTUALLY TYPES FIRST, on the path this plan added. A
+	// pace-path enrolment opens the cell at OWN_SHARE_CEILING, so the ordinary
+	// standalone cell being pinned is at 100% with a pin somewhere under it — and
+	// `applyRampCellControl` holds a pinned cell at its `fromShare` and never below
+	// it, so nothing brings that share down to the number that was typed. A sentence
+	// promising the share will not climb past the pin would be describing a bound
+	// the cell was already outside when the operator set it.
+	it('does not promise a bound the cell is already above', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1 });
+
+		await t.mutation(api.delivery.rampControls.pinCellShare, { ...CELL, share: 0.4 });
+
+		const message = await messageOf(t);
+		expect(message).toContain('at 40%, below the 100% it is running at');
+		expect(message).toContain('never brings a cell down');
+		expect(message).not.toMatch(/will not climb past/);
+		// And the pace half is still said, because it is still the dial that climbs.
+		expect(message).toContain('no pin can bound it — pausing the cell is what holds it');
 	});
 
 	// THE STATE THE COPY EXISTS FOR, and it is an ordinary one: a managed cell with

@@ -262,7 +262,7 @@ export const pinCellShare = adminMutation({
 			reason: 'operator_pin',
 			fromShare: target.share,
 			toShare: target.share,
-			message: pinMessage({ cell: target.cell, pinned, rampsShare }),
+			message: pinMessage({ cell: target.cell, pinned, share: target.share, rampsShare }),
 			detail: { pinnedShare: pinned },
 			at: now,
 		});

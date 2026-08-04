@@ -108,10 +108,20 @@ export function pauseMessage(args: {
  * other one rather than letting an operator walk away believing the cell is
  * capped. The pin binds the climbing dial again the tick a reference transport is
  * measured, which is the rule both phase doors state from their own side.
+ *
+ * AND A PIN ONLY EVER SUPPRESSES AN INCREASE. `applyRampCellControl` holds a
+ * pinned cell at its `fromShare` and never below it, so a cell standing ABOVE the
+ * pin is held where it is rather than brought down to the number the operator
+ * typed. That state is not exotic: a pace-path enrolment opens at
+ * `OWN_SHARE_CEILING`, so the most common cell an operator pins is at 100% with a
+ * pin somewhere under it — and "the share will not climb past it" would promise a
+ * bound the cell is already outside. The two cases are their own sentence each,
+ * cut on the share the cell is actually running at.
  */
 export function pinMessage(args: {
 	readonly cell: DeliverabilityCell;
 	readonly pinned: number | null;
+	readonly share: number;
 	readonly rampsShare: boolean;
 }): string {
 	const key = deliverabilityCellKey(args.cell);
@@ -121,7 +131,12 @@ export function pinMessage(args: {
 			: `An operator unpinned ${key}. The share may climb again when the gates allow it; the warm-up pace, the dial the controller is ramping here, was never bounded by the pin.`;
 	}
 	const percent = `${Math.round(args.pinned * 100)}%`;
+	const current = `${Math.round(args.share * 100)}%`;
+	const cap =
+		args.share > args.pinned
+			? `An operator pinned ${key} at ${percent}, below the ${current} it is running at. A pin suppresses an increase and never brings a cell down, so the share holds at ${current} until the gates take it lower.`
+			: `An operator pinned ${key} at ${percent}. The share will not climb past it until it is unpinned.`;
 	return args.rampsShare
-		? `An operator pinned ${key} at ${percent}. The ramp will not climb past that share until it is unpinned.`
-		: `An operator pinned ${key} at ${percent}. The share will not climb past it, but no reference transport is carrying this cell: the warm-up pace is the dial the controller is ramping here, and no pin can bound it — pausing the cell is what holds it.`;
+		? cap
+		: `${cap} No reference transport is carrying this cell: the warm-up pace is the dial the controller is ramping here, and no pin can bound it — pausing the cell is what holds it.`;
 }
