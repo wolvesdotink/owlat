@@ -9,6 +9,7 @@ import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
+import { isFallbackRelayEligible } from './lib/sendProviders/fallbackEligibility';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
@@ -259,8 +260,25 @@ export const setRoute = authedMutation({
 		}
 		const fallback = args.deliverabilityFallback;
 		if (fallback?.isEnabled) {
-			if (fallback.relayProviderType !== 'ses') {
-				throwInvalidInput('Deliverability fallback currently supports only Amazon SES');
+			// THE SAME QUESTION ROUTING ASKS (D6). `resolveRoute` gates the relay on
+			// `isFallbackRelayEligible`; this gate used to be
+			// `relayProviderType !== 'ses'`, a list of one. Two different rules for
+			// one decision is how a route becomes unsaveable through the mutation
+			// while resolution would have carried it perfectly well — and, in the
+			// other direction, how a route persisted before a kind was retired keeps
+			// naming a relay routing refuses. One predicate, both sides.
+			//
+			// Readiness is resolved BEFORE the predicate rather than inside it: the
+			// authoritative source here is `isSendProviderReady` (env plus mutable
+			// plugin grants), which is async, and the predicate takes a synchronous
+			// source. It is asked about exactly one kind — the one being validated —
+			// so the pre-resolution is a single lookup, not a map of the catalog.
+			const relayKind = isSendProviderKind(fallback.relayProviderType)
+				? fallback.relayProviderType
+				: null;
+			const isRelayReady = relayKind !== null && (await isSendProviderReady(ctx, relayKind));
+			if (!isFallbackRelayEligible(fallback.relayProviderType, () => isRelayReady)) {
+				throwInvalidInput('Deliverability fallback relay must be a configured non-MTA transport');
 			}
 			if (
 				!args.providers.some(

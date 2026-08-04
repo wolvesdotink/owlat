@@ -253,6 +253,64 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 		const result = await arms(t);
 		expect(result?.reference.kind).toBe('unknown');
 	});
+
+	/**
+	 * THE MIGRATION'S ARM READ (P1.3, plan D8) — pinned as it stands, not as it
+	 * will stand. A SOLE Mandrill relay is a describable configuration to
+	 * `relayConfiguration` (exactly one second arm; see
+	 * `relayConfiguration.test.ts`) but not yet to the ALIGNMENT read, which can
+	 * only build a reference arm from a verified signing identity and today has
+	 * one source for that: the SES identity table. The plan's P3.1 registers
+	 * Mandrill's domain provider and its identity row; until then the honest
+	 * answer is `unknown`, which HOLDS the gate rather than opening it — the
+	 * conservative direction, and the reason this is worth pinning rather than
+	 * leaving to be rediscovered as a regression later.
+	 */
+	it('holds on a sole Mandrill relay it has no verified signing identity for', async () => {
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'acme.com' });
+		await seedRelayRoute(t, 'mandrill');
+
+		const result = await arms(t);
+		expect(result?.reference.kind).toBe('unknown');
+		if (result?.reference.kind === 'unknown') {
+			// The SINGLE-relay wording: this deployment has one second arm, it just
+			// cannot be described for this domain yet.
+			expect(result.reference.detail).toContain('A relay is configured (mandrill)');
+			expect(result.reference.detail).not.toContain('More than one relay');
+		}
+	});
+
+	it('names the multi-relay case distinctly — D8’s "keep Mandrill the only relay"', async () => {
+		// The configuration the plan warns migrating operators away from: two
+		// reference relays, so there is no single second arm for the measurement to
+		// be against, and alignment confidence degrades.
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'acme.com', sesIdentity: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'adaptive_mix',
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'ses', isEnabled: true },
+					{ providerType: 'mandrill', isEnabled: true },
+				],
+				createdAt: NOW,
+				updatedAt: NOW,
+			});
+		});
+
+		const result = await arms(t);
+		expect(result?.reference.kind).toBe('unknown');
+		if (result?.reference.kind === 'unknown') {
+			expect(result.reference.detail).toContain('More than one relay is enabled');
+			expect(result.reference.detail).toContain('mandrill');
+			expect(result.reference.detail).toContain('ses');
+		}
+	});
 });
 
 describe('the wizard read and the sweep build the SAME arms', () => {
