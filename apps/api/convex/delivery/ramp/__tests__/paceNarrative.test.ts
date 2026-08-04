@@ -68,11 +68,14 @@ const REASONS: Record<PaceDecisionReason, readonly string[]> = {
 	share_unreadable: [],
 	healthy: [],
 	graduated: [],
-	// SHARE-ONLY RUNGS the pace dial cannot reach (P3-6's operator controls
-	// rewrite a share decision, and the pace ladder is never handed one).
-	// Listed so the Record stays exhaustive: the compile error these four
-	// caused is the guarantee this fixture exists to provide.
-	operator_pause: [],
+	// THE ONE OPERATOR CONTROL THAT REACHES THIS DIAL: a pause holds the warm-up
+	// pace on a cell whose share is not what ramps, so its sentence has to name
+	// the human and the half of the rule that still applies.
+	operator_pause: ['paused by an operator', 'retreat would still be applied'],
+	// SHARE-ONLY RUNGS the pace dial cannot reach (a pin, a forced advance and a
+	// phase reset are all expressed in share, and the pace ladder is never handed
+	// one). Listed so the Record stays exhaustive: the compile error these caused
+	// is the guarantee this fixture exists to provide.
 	operator_pin: [],
 	operator_force_advance: [],
 	operator_phase_reset: [],

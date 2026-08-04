@@ -380,6 +380,13 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 			return `Held the warm-up pace for ${where} at its maximum: what limits the daily cap from here is the published warming schedule, which the controller may never exceed for the current day.`;
 		case 'healthy':
 			return `Increased the warm-up pace for ${where} (${move}): every gate is green, the clean streak is long enough and the current cap is genuinely being used.`;
+		// THE OPERATOR'S PAUSE REACHES THIS DIAL (P3-6 x D3). It is the one control
+		// that does: a pause says "hold this cell", and on a deployment with no
+		// reference transport the warm-up pace is the only thing there is to hold.
+		// The sentence says what it held and what it did NOT hold, because the
+		// second half is what an operator is trusting when they leave it in place.
+		case 'operator_pause':
+			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: this cell is paused by an operator. The gates are still measured and a retreat would still be applied — only the increase is held.`;
 		case 'hard_bounce':
 		case 'deferral':
 		case 'complaint':
@@ -405,13 +412,12 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'degradation_ceiling':
 		case 'window_open':
 		case 'graduated':
-		// THE OPERATOR'S CONTROLS ARE SHARE-ONLY (P3-6). A pause, a pin, a forced
-		// advance and a phase reset all rewrite a SHARE decision; the pace ladder
-		// is never handed one, so these rungs cannot reach this dial. They join
-		// the share-only group for the same reason the ceilings do — and the
-		// compile-time exhaustiveness over `PaceDecisionReason` is what forced
-		// the question the moment the two vocabularies met.
-		case 'operator_pause':
+		// THE REST OF THE OPERATOR'S CONTROLS ARE SHARE-ONLY (P3-6). A pin, a forced
+		// advance and a phase reset all rewrite a SHARE decision and are expressed
+		// in share; the pace ladder is never handed one, so these rungs cannot
+		// reach this dial. The PAUSE is the exception and has its own sentence
+		// above — "hold this cell" cannot mean "hold the share" on a deployment
+		// whose only dial is the warm-up pace.
 		case 'operator_pin':
 		case 'operator_force_advance':
 		case 'operator_phase_reset':

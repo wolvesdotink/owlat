@@ -11,10 +11,17 @@
  * WHAT AN OPERATOR CANNOT DO, by construction rather than by convention:
  *
  *   - hold a RETREAT. Pause and pin bound INCREASES only (`applyRampCellControl`
- *     checks the retreat first and once). A gate breach, an open breaker, a
- *     critical blocklist listing or a capacity ceiling all still take the share
- *     down through a pause. A safety response an operator can switch off is not
- *     a safety response.
+ *     and `applyPaceCellControl` each check the retreat first and once). A gate
+ *     breach, an open breaker, a critical blocklist listing or a capacity ceiling
+ *     all still take the share — and the warm-up pace — down through a pause. A
+ *     safety response an operator can switch off is not a safety response.
+ *   - hold the PACE dial with a PIN. A pause reaches both dials; a pin is
+ *     expressed in share and there is no honest conversion into a multiplier on a
+ *     daily cap. The cap itself always binds — the tick decides and writes a
+ *     share for every managed cell, whichever dial it ramps — but on a cell the
+ *     controller ramps by PACE it bounds the dial that is not climbing, and the
+ *     row it writes says so and names the control that holds the other one (see
+ *     `pinMessage`).
  *   - reach a hard stop, the multiplicative decrease, the share floor or the
  *     cooldown ladder through a preset. `RampPresetTuning` has no field that
  *     could express any of them.
@@ -43,6 +50,10 @@
  * they live here because this is where the first control needed them. The two
  * phase doors and enrolment import them rather than restate them — a second
  * resolution is a second chance to read a cell without the session's tenant.
+ *
+ * WHAT AN OPERATOR IS TOLD is the sibling module's job (`rampControlMessages`),
+ * as writing the row pair is `rampControlAudit`'s: this file is the rules. The
+ * seam is also what the conventions' ~500 LOC line split this file along.
  */
 
 import { v } from 'convex/values';
@@ -70,8 +81,9 @@ import {
 	destinationProviderValidator,
 	rampPresetValidator,
 } from './deliverabilityValidators';
-import { readRampIncreaseBlock } from './rampControllerInputs';
+import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
+import { pauseMessage, pinMessage, readsShareDial } from './rampControlMessages';
 
 const cellArgs = {
 	stream: deliverabilityStreamValidator,
@@ -176,6 +188,13 @@ export const setCellPause = adminMutation({
 		const now = Date.now();
 		const wasPaused = target.row.operatorPausedAt !== undefined;
 		if (wasPaused === args.isPaused) return { applied: false, share: target.share };
+		// WHICH DIAL THE CONTROLLER IS RAMPING HERE, off the tick's own resolution
+		// rather than a predicate of this module's own. The pause reaches BOTH dials
+		// either way (`applyRampCellControl`, `applyPaceCellControl`); what the row has
+		// to name is the one that was climbing, because that is the one the operator
+		// came to stop. Read AFTER the idempotent early return, so pausing an
+		// already-paused cell pays for nothing.
+		const rampsShare = await readsShareDial(ctx, target, now);
 		await ctx.db.patch(target.row._id, {
 			...(args.isPaused ? { operatorPausedAt: now } : { operatorPausedAt: undefined }),
 			decidedAt: now,
@@ -190,9 +209,12 @@ export const setCellPause = adminMutation({
 			reason: 'operator_pause',
 			fromShare: target.share,
 			toShare: target.share,
-			message: args.isPaused
-				? `An operator paused ${deliverabilityCellKey(target.cell)} at ${Math.round(target.share * 100)}%. The gates keep measuring and a retreat would still be applied — only the increase is held.`
-				: `An operator resumed ${deliverabilityCellKey(target.cell)}. The ramp may advance again when the gates allow it.`,
+			message: pauseMessage({
+				cell: target.cell,
+				share: target.share,
+				isPaused: args.isPaused,
+				rampsShare,
+			}),
 			detail: { isPaused: args.isPaused },
 			at: now,
 		});
@@ -220,6 +242,13 @@ export const pinCellShare = adminMutation({
 		}
 		const now = Date.now();
 		const pinned = args.share === null ? null : clampOwnShare(args.share);
+		// THE SAME QUESTION THE PAUSE ASKS, and the pin needs it more: the cap is
+		// expressed in SHARE and always binds the share, so on a cell the controller
+		// ramps by PACE it bounds the dial that is not climbing. The control is still
+		// recorded and still meaningful — it binds the climbing dial again the tick a
+		// reference transport is measured — but the sentence must not let an operator
+		// walk away believing the cell is capped.
+		const rampsShare = await readsShareDial(ctx, target, now);
 		await ctx.db.patch(target.row._id, {
 			...(pinned === null ? { operatorPinnedShare: undefined } : { operatorPinnedShare: pinned }),
 			decidedAt: now,
@@ -233,10 +262,7 @@ export const pinCellShare = adminMutation({
 			reason: 'operator_pin',
 			fromShare: target.share,
 			toShare: target.share,
-			message:
-				pinned === null
-					? `An operator unpinned ${deliverabilityCellKey(target.cell)}. The ramp may climb again when the gates allow it.`
-					: `An operator pinned ${deliverabilityCellKey(target.cell)} at ${Math.round(pinned * 100)}%. The ramp will not climb past that share until it is unpinned.`,
+			message: pinMessage({ cell: target.cell, pinned, share: target.share, rampsShare }),
 			detail: { pinnedShare: pinned },
 			at: now,
 		});

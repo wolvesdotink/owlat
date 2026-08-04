@@ -244,6 +244,23 @@ describe('hard stops reach the controller through real route-state rows', () => 
 		expect(second[second.length - 1]?.reason).not.toBe('freeze_unreadable');
 	});
 
+	// THE OTHER CORRUPT EXPIRY, and the one every comparison lies about: `NaN` is
+	// neither greater nor smaller than the clock, so a `frozenUntil > now` reading
+	// calls it "not frozen" and the cell takes the clean row's branch. It is the
+	// same unreadable value as the century-out one and is held the same way — for
+	// exactly one tick, on the same evidence, under the same reason.
+	it('holds a NON-FINITE freeze expiry rather than reading it as no freeze', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, { frozenUntil: Number.NaN, freezeReason: 'gate_breach', cleanStreak: 0 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const held = await cellRow(t);
+		expect(held?.ownShare).toBe(CELL_SHARE);
+		expect(held?.frozenUntil).toBeUndefined();
+		expect((await decisions(t))[0]?.reason).toBe('freeze_unreadable');
+	});
+
 	it('a breaker freeze leaves the gate-cooldown ladder and its anchor alone', async () => {
 		const t = convexTest(schema, modules);
 		const at = Date.now();

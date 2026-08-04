@@ -165,6 +165,71 @@ describe('calm states', () => {
 	});
 
 	/**
+	 * THE PROMISE ON THE BUTTON AND THE ROW IN THE TIMELINE ARE ONE CLAIM (plan D3,
+	 * D14). The server's `pauseMessage` and `pinMessage` name the dial the tick is
+	 * actually climbing — the warm-up pace wherever no relay is carrying the cell —
+	 * so pre-click copy that named the share would be denied by the operator's own
+	 * audit row six weeks later. A pause holds BOTH dials; a pin is a share and
+	 * cannot bound a multiplier on a daily cap at all.
+	 */
+	it('names the dial each control acts on, on both paths', () => {
+		const standalone = mount(RampCellControls, {
+			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: false },
+		});
+		const pause = standalone.find('[data-testid="ramp-pause-note"]').text();
+		expect(pause).toContain('the warm-up pace is, and a pause is the only control that holds it');
+		// The pause reaches the share too — a note that named one dial would read as
+		// a promise that the other one keeps moving.
+		expect(pause).toContain('holds both dials');
+		const pin = standalone.find('[data-testid="ramp-pin-note"]').text();
+		expect(pin).toContain('no pin can bound it');
+		expect(pin).toContain('pausing the cell is what holds it');
+		// AND NOT THE SENTENCE THE SERVER'S ROW DENIES: on a paced cell the ramp does
+		// not climb to the pin and stop there.
+		expect(pin).not.toMatch(/climbs to the pin/i);
+		expect(standalone.html()).not.toMatch(ALARM);
+		standalone.unmount();
+
+		const withRelay = mount(RampCellControls, {
+			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: true },
+		});
+		expect(withRelay.find('[data-testid="ramp-pause-note"]').text()).toContain(
+			'the share is the dial that climbs'
+		);
+		expect(withRelay.find('[data-testid="ramp-pin-note"]').text()).toContain(
+			'climbs to the pin on the usual evidence and stops there'
+		);
+		withRelay.unmount();
+	});
+
+	/**
+	 * CONFIGURATION IS NOT MEASUREMENT, and the copy says so rather than hiding it.
+	 * `hasRelayConfigured` answers off the route table; the tick cuts on a relay it
+	 * MEASURED carrying this cell in the past day, so a disconnected relay that was
+	 * still sending yesterday leaves the share as the climbing dial under a prop
+	 * that reads false. The standalone arm states that clause — the same hedge the
+	 * reset note carries — instead of promising a dial it cannot see.
+	 */
+	it('hedges the standalone arm on what carried the cell, not on what is connected', () => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: false },
+		});
+		expect(wrapper.find('[data-testid="ramp-pause-note"]').text()).toMatch(
+			/still sending through a relay in the past day/i
+		);
+		expect(wrapper.find('[data-testid="ramp-pin-note"]').text()).toMatch(
+			/bounds the climb again the day a relay carries this cell/i
+		);
+		// A pin never pulls a cell that is already higher down to the typed number —
+		// the state a standalone enrolment opens in, at full share.
+		expect(wrapper.find('[data-testid="ramp-pin-note"]').text()).toMatch(
+			/never pulls a cell that is already higher down/i
+		);
+		expect(wrapper.html()).not.toMatch(ALARM);
+		wrapper.unmount();
+	});
+
+	/**
 	 * THE ARM SHUFFLE IS AN ESP-PATH CLAIM (plan D7, D14). A pace-path cell has one
 	 * arm — no `adaptive_mix` route builds a mix at all — so a promotion re-shuffles
 	 * nobody there, and the state is reachable from the first minute: a standalone

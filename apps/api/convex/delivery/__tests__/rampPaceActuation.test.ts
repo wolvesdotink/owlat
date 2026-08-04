@@ -16,13 +16,15 @@
  * the pace dial — the only dial such a deployment owns — is held back for a
  * whole evaluation window every time the share steps.
  *
- * WHAT IS DELIBERATELY NOT HERE: a pace INCREASE through the cron. The increase
- * ladder itself is exhaustively fixture-pinned in
- * `ramp/__tests__/paceActuator.test.ts`.
+ * THE INCREASE IS HERE TOO, and only because the operator's hand needs it: a
+ * control that suppresses an increase cannot be pinned end to end without a tick
+ * that would otherwise take one. The ladder ITSELF stays exhaustively pinned in
+ * `ramp/__tests__/paceActuator.test.ts`; what these fixtures add is that the
+ * suppression happens on the real row, through the real shell.
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
@@ -30,6 +32,7 @@ import { PACE_AIMD } from '../ramp/paceConfig';
 import {
 	readManagedCell,
 	seedArmOutcomes,
+	seedGreenWindows,
 	seedRampCell,
 	type Harness,
 	type SeedRampCellOptions,
@@ -361,5 +364,205 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		expect(JSON.parse(audited?.snapshot ?? '{}')).toMatchObject({
 			pace: { utilisation: { kind: 'unknown' } },
 		});
+	});
+});
+
+/**
+ * THE OPERATOR'S HAND ON THE SECOND DIAL (plan D3, P3-6).
+ *
+ * `setCellPause` succeeds on any managed cell and its row promises that "only the
+ * increase is held". Until the override reached this dial that sentence was false
+ * for exactly the deployment the standalone twin exists for: the share was held,
+ * the warming multiplier went on stepping, and nothing in the timeline said so.
+ *
+ * The cell here sits AT ITS PHASE RUNG while the gates pass, so the pace dial is
+ * the only one with a step to take — the tick the control has to govern, and the
+ * tick no pure fixture can prove is wired. The composed path, where the share has
+ * room to climb as well and the interlock has something to interlock, gets its
+ * own fixtures at the end of this file.
+ */
+describe('the operator pause reaches the pace dial (P3-6)', () => {
+	async function seedGreenPacedCell(
+		t: Harness,
+		options: Omit<SeedRampCellOptions, 'organizationId'>
+	) {
+		await seed(t, {
+			ownShare: 0.25,
+			// At its rung already, so the SHARE holds however green the gates are and
+			// the pace dial is the only dial with a step to take.
+			phaseCeiling: 0.25,
+			cleanStreak: 9,
+			paceMultiplier: 1,
+			paceCleanStreak: 9,
+			warming: { dailyCap: 1_000, sentToday: 950 },
+			...options,
+		});
+		await seedGreenWindows(t, { organizationId: ORG });
+	}
+
+	// THE CONTROL FOR EVERY FIXTURE BELOW: without an operator's hand this exact
+	// deployment takes the step. Without it, a pause that "held" a dial nothing was
+	// moving would look identical to a pause that works.
+	it('takes the step on this deployment when nobody has paused it', async () => {
+		const t = convexTest(schema, modules);
+		await seedGreenPacedCell(t, {});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceMultiplier).toBeGreaterThan(1);
+		const audited = await decision(t);
+		expect(audited?.paceDirection).toBe('increase');
+		expect(audited?.paceReason).toBe('healthy');
+	});
+
+	it('holds the multiplier and names the operator on the audit row', async () => {
+		const t = convexTest(schema, modules);
+		await seedGreenPacedCell(t, { operatorPausedAt: Date.now() - 60 * 60 * 1000 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceMultiplier).toBe(1);
+		const audited = await decision(t);
+		expect(audited?.paceDirection).toBe('hold');
+		expect(audited?.paceReason).toBe('operator_pause');
+	});
+
+	// THE MEASUREMENT STATE IS NOT REWRITTEN. The window was evaluated on real
+	// evidence and the operator's hand did not make it unmeasured, so the day stays
+	// counted — which is also what keeps the day's remaining ticks reporting the
+	// constraint that is really binding instead of relabelling all of them.
+	it('leaves the counted day and the clean streak exactly as measured', async () => {
+		const t = convexTest(schema, modules);
+		await seedGreenPacedCell(t, { operatorPausedAt: Date.now() - 60 * 60 * 1000 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceLastEvaluatedUtcDay).toBeDefined();
+		expect(row?.paceCleanStreak).toBeGreaterThan(0);
+	});
+
+	// A PIN IS EXPRESSED IN SHARE and there is no honest conversion into a
+	// multiplier on a daily cap, so it governs nothing here. The mutation's audit
+	// row says exactly that rather than promising a cap it cannot apply.
+	it('is not what a PIN does — a pin leaves this dial alone', async () => {
+		const t = convexTest(schema, modules);
+		await seedGreenPacedCell(t, { operatorPinnedShare: 0.1 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		expect((await readManagedCell(t))?.paceMultiplier).toBeGreaterThan(1);
+	});
+
+	// THE SAFETY ARGUMENT, on the dial that cannot be taken back: a warming cap
+	// that grew too fast is not undone by lowering it again.
+	it('never holds a RETREAT — a blocklist takes the paused dial to the floor', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now();
+		await seedGreenPacedCell(t, {
+			operatorPausedAt: at - 60 * 60 * 1000,
+			poolSignals: [{ source: 'dnsbl_listed', severity: 'critical', observedAt: at }],
+		});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.paceMultiplier).toBe(PACE_AIMD.multiplierFloor);
+		const audited = await decision(t);
+		expect(audited?.paceDirection).toBe('decrease');
+		expect(audited?.paceReason).toBe('dnsbl');
+	});
+});
+
+/**
+ * THE SAME HAND, ON A FULLY EQUIPPED CELL (plan D3, P3-6).
+ *
+ * `applyPaceCellControl` is applied to EVERY cell and not only the pace-actuated
+ * ones, so a pause on a deployment with a live reference arm holds the warming
+ * multiplier as well as the share. That is the COMPOSED path, and the interaction
+ * is why it needs its own fixture: a SUPPRESSED increase is not an increase to
+ * defer, so the interlock does not fire and `paceDeferredAt` is not stamped. Were
+ * it stamped, lifting the pause would leave this dial held for the rest of the
+ * share's evaluation window on the strength of a step that never happened.
+ */
+describe('the operator pause reaches both dials on the composed path (P3-6)', () => {
+	// THE CLOCK IS FIXED TO THE MIDDLE OF A UTC DAY, and only the clock — convex-test
+	// drives real promises. The capacity projection refuses to compute a ceiling
+	// with too little of the day left (`day_almost_over`), and a share that holds on
+	// that refusal is a share the interlock never sees: the fixture would pass or
+	// fail depending on the hour the suite happened to run.
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(Date.UTC(2026, 6, 27, 8, 0, 0));
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedClimbingEquippedCell(
+		t: Harness,
+		options: Omit<SeedRampCellOptions, 'organizationId'>
+	) {
+		await seed(t, {
+			ownShare: 0.25,
+			// ROOM TO CLIMB ON BOTH DIALS, unlike the fixture above: the share is below
+			// its rung, so an unpaused tick takes a share step and the interlock has
+			// something to interlock.
+			phaseCeiling: 1,
+			cleanStreak: 9,
+			paceMultiplier: 1,
+			paceCleanStreak: 9,
+			// THE CAP IS GENUINELY BEING USED (95%), which the pace increase requires,
+			// and 2,000 sends of it are still left today — enough headroom for the share
+			// ceiling too. Utilisation is a RATIO and the capacity ceiling is an ABSOLUTE
+			// number, so a tight cap would have starved the share step and a loose one the
+			// pace step; both dials have somewhere to go only in between.
+			warming: { dailyCap: 80_000, sentToday: 76_000 },
+			...options,
+		});
+		await seedGreenWindows(t, { organizationId: ORG });
+	}
+
+	it('drives this cell by SHARE — the composed path, not the standalone one', async () => {
+		const t = convexTest(schema, modules);
+		await seedClimbingEquippedCell(t, {});
+
+		expect(await selectedActuator(t)).toBe('share');
+	});
+
+	// THE CONTROL FOR THE FIXTURE BELOW: unpaused, this deployment moves the share
+	// and the interlock withholds the pace step for the window, stamping the anchor
+	// that keeps it withheld across the hourly ticks in between.
+	it('defers the pace step behind a share that moved when nobody paused it', async () => {
+		const t = convexTest(schema, modules);
+		await seedClimbingEquippedCell(t, {});
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBeGreaterThan(0.25);
+		expect(row?.paceMultiplier).toBe(1);
+		expect(row?.paceDeferredAt).toBeGreaterThan(0);
+		expect((await decision(t))?.paceReason).toBe('share_moved_first');
+	});
+
+	it('holds both dials, names the operator, and defers nothing', async () => {
+		const t = convexTest(schema, modules);
+		await seedClimbingEquippedCell(t, { operatorPausedAt: Date.now() - 60 * 60 * 1000 });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.paceMultiplier).toBe(1);
+		// A SUPPRESSED INCREASE IS NOT AN INCREASE TO DEFER. The interlock never
+		// fired, so the anchor is absent and this dial is free the moment the pause
+		// is lifted rather than a further window later.
+		expect(row?.paceDeferredAt).toBeUndefined();
+		const audited = await decision(t);
+		expect(audited?.paceDirection).toBe('hold');
+		expect(audited?.paceReason).toBe('operator_pause');
 	});
 });

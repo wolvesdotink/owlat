@@ -13,6 +13,10 @@
  * is this cell managed by the ramp at all — and that is a property of the stored
  * row, not of the decision.
  *
+ * THE HARD-STOP READINGS ARE A SIBLING (`rampHardStops.ts`), not a copy: this
+ * module reads them for the tick, and the operator's doors read the SAME
+ * functions before they raise anything by hand.
+ *
  * WHY NOT IN `delivery/ramp/`: that directory is the PURE core, and
  * `ramp/__tests__/gates.purity.test.ts` enumerates it and forbids a clock, a
  * database handle or a Convex function wrapper in any file it finds. This module
@@ -26,14 +30,12 @@
 
 import {
 	deliverabilityCellKey,
-	hasCriticalBlocklistSignal,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { loadRouteStateCell, loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
+import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { isSendingAllowed } from '../workspaces/abuseGate';
 import { readCellArmBuckets, summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import {
 	deferralTelemetryReadSince,
@@ -42,6 +44,7 @@ import {
 } from '../analytics/transportOutcomeSummary';
 import { seedSweepsForCell, type SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { RAMP_AIMD } from './ramp/controllerConfig';
+import { readHardStopSignals } from './rampHardStops';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
 	bindsPhaseLadder,
@@ -56,13 +59,8 @@ import { withReferenceArm, type RampDeploymentPresence } from './rampIntegration
 import { rampConfigForStream, type RampPresetsByStream } from './ramp/presetConfig';
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
-import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
-import type {
-	RampControllerInput,
-	RampHardStopSignals,
-	RampMixState,
-} from './ramp/controllerTypes';
+import type { RampControllerInput, RampMixState } from './ramp/controllerTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -107,55 +105,6 @@ export async function resolveRampOrganizationId(ctx: MutationCtx): Promise<strin
 }
 
 /**
- * Infrastructure verdicts, read off whichever route-state rows exist.
- *
- * WHICH ROWS MATTER IS NOT THE SAME PER SIGNAL. `breaker_open` is emitted per
- * destination provider, and `applySnapshot` files it onto the STREAMLESS row for
- * that provider — the cell's `streamless` row, not its per-stream one, which is
- * the ramp's own state and carries no MTA signals. Pool-level blocklist
- * and quarantine signals are emitted by the MTA against the WHOLE pool with
- * `provider: 'all'`, and `applySnapshot` files them onto the `'all'` row only —
- * so a controller that read the cell's rows alone would never see one, and the
- * plan's critical-blocklist hard stop would be dead code. Every caller passes
- * the pool row as well.
- *
- * The blocklist test itself is the SHIPPED predicate, not a local copy: one
- * definition of "critically blocklisted" for routing and for the ramp.
- *
- * AND ONE DEFINITION OF "STILL TRUE". The shipped router only acts on a row it
- * has heard from within `DELIVERABILITY_SIGNAL_MAX_AGE_MS` (`routeInputs.ts`),
- * so a snapshot that stopped arriving stops steering traffic. The controller
- * applies the SAME filter: a row the router has already stopped acting on must
- * not still be driving the ramp's breaker and blocklist hard stops. Without it
- * the two layers could disagree about whether a signal counts — and because the
- * breaker rung halves without a floor, a signal that goes stale rather than
- * being cleared would walk the cell toward zero over successive freezes.
- *
- * That filter is only honest because the controller does NOT stamp `updatedAt`
- * (see `applyDecision`): on every row in this scan — the cell's per-stream row
- * included — `updatedAt` means "when a snapshot last wrote this row", exactly
- * what the router means by it. The per-stream row carries no MTA signals today,
- * so in practice `streamless` and `pool` are what answer here; it stays in the
- * list so that a per-stream snapshot writer would be honoured automatically,
- * under the same expiry rule as the router rather than a second one.
- */
-function readHardStopSignals(
-	rows: readonly (Doc<'deliverabilityRouteStates'> | null)[],
-	args: { readonly isSendingPermitted: boolean; readonly now: number }
-): RampHardStopSignals {
-	let isCircuitBreakerOpen = false;
-	let isPoolBlocklisted = false;
-	for (const row of rows) {
-		if (row === null) continue;
-		if (args.now - row.updatedAt > DELIVERABILITY_SIGNAL_MAX_AGE_MS) continue;
-		const { signals } = row;
-		if (signals.some((signal) => signal.source === 'breaker_open')) isCircuitBreakerOpen = true;
-		if (hasCriticalBlocklistSignal(signals)) isPoolBlocklisted = true;
-	}
-	return { isSendingAllowed: args.isSendingPermitted, isCircuitBreakerOpen, isPoolBlocklisted };
-}
-
-/**
  * A cell the ramp MANAGES: a per-stream route-state row that carries a stored
  * share. A row without one is governed entirely by the shipped boolean plus
  * hysteresis, and the controller leaves it alone (plan D1).
@@ -196,66 +145,6 @@ function readMixState(row: ManagedRouteState): RampMixState {
 		graduatedAt: row.graduatedAt,
 		lastCountedAt: row.lastCountedAt,
 	};
-}
-
-/**
- * IS AN OPERATOR ALLOWED TO RAISE THIS CELL RIGHT NOW?
- *
- * The controls (P3-6) can write a share directly, which means they can reach
- * past the decision function that normally enforces the plan's hard stops. That
- * would make every hard stop optional in exactly the situation it exists for:
- * while the ramp is globally paused for an incident, while the organization is
- * abuse-suspended, while a critical blocklist freeze is running or while the
- * cell is inside a cooldown, an operator could raise the share and the router
- * would read the raised value until the next hourly tick pulled it back.
- *
- * So the mutations ask HERE, through the SAME readers the controller uses —
- * `readHardStopSignals`, the same staleness filter, the same abuse predicate,
- * the same stored freeze — rather than through a second copy of the rules that
- * could drift away from them.
- *
- * ONE-DIRECTIONAL, exactly like the operator's pause and pin. This bounds
- * INCREASES only; a retreat is always permitted, because a safety response an
- * operator cannot reach downward is not a safety response either.
- */
-export type RampIncreaseBlock = 'controller_paused' | 'hard_stop_active';
-
-export async function readRampIncreaseBlock(
-	ctx: MutationCtx,
-	args: {
-		organizationId: string;
-		cell: DeliverabilityCell;
-		/**
-		 * `null` when the cell has NO per-stream row yet — the enrolment case. The
-		 * deployment-level hard stops still apply (that is the whole point of asking
-		 * here), and a row that does not exist carries no stored cooldown to serve.
-		 */
-		perStream: Doc<'deliverabilityRouteStates'> | null;
-		now: number;
-	}
-): Promise<RampIncreaseBlock | null> {
-	const settings = await ctx.db.query('instanceSettings').first();
-	// The global kill switch first, and it refuses on its own terms: "everything
-	// held still" has to mean everything, including a hand on the control.
-	if (settings?.isRampControllerPaused === true) return 'controller_paused';
-	const pool = await loadStreamlessRouteState(ctx, args.organizationId, 'all');
-	const streamless = await loadStreamlessRouteState(
-		ctx,
-		args.organizationId,
-		args.cell.destinationProvider
-	);
-	const signals = readHardStopSignals([args.perStream, streamless, pool], {
-		isSendingPermitted: isSendingAllowed(settings?.abuseStatus),
-		now: args.now,
-	});
-	if (!signals.isSendingAllowed) return 'hard_stop_active';
-	if (signals.isCircuitBreakerOpen) return 'hard_stop_active';
-	if (signals.isPoolBlocklisted) return 'hard_stop_active';
-	// A cooldown the controller stamped is evidence-bearing state, not a
-	// preference: raising through it would discard the retreat that set it.
-	const frozenUntil = args.perStream?.frozenUntil;
-	if (frozenUntil !== undefined && args.now < frozenUntil) return 'hard_stop_active';
-	return null;
 }
 
 /**
