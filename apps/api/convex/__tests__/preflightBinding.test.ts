@@ -1491,24 +1491,31 @@ describe('pre-flight capacity gate — segment audiences', () => {
 	 * distinguishes "the lower bound decided nothing" from "the scan threw and
 	 * the fail-open catch swallowed it", which `ok === true` alone cannot.
 	 */
-	it('allows the send when the audience scan exhausts its read budget', async () => {
-		const t = convexTest(schema, modules);
-		await seedWarmingState(t);
-		const campaignId = await seedSegmentCampaign(t, {
-			matching: 600,
-			otherContacts: 1_600,
-			lookupConditions: 3,
-		});
+	// Seeding 2 200 contacts with per-contact lookups is seconds of work idle
+	// but has hit 41s on the release gate's shared runner (which runs the whole
+	// monorepo, unlike the sharded test.yml) — give it an explicit deadline.
+	it(
+		'allows the send when the audience scan exhausts its read budget',
+		{ timeout: 120_000 },
+		async () => {
+			const t = convexTest(schema, modules);
+			await seedWarmingState(t);
+			const campaignId = await seedSegmentCampaign(t, {
+				matching: 600,
+				otherContacts: 1_600,
+				lookupConditions: 3,
+			});
 
-		const result = await runPreflight(t, campaignId);
-		expect(result.ok).toBe(true);
+			const result = await runPreflight(t, campaignId);
+			expect(result.ok).toBe(true);
 
-		expect(await assessCampaign(t, campaignId)).toEqual({
-			capacityKnown: false,
-			fits: true,
-			unknownReason: 'audience_under_counted',
-		});
-	});
+			expect(await assessCampaign(t, campaignId)).toEqual({
+				capacityKnown: false,
+				fits: true,
+				unknownReason: 'audience_under_counted',
+			});
+		}
+	);
 });
 
 describe('pre-flight capacity gate — hostile start anchors', () => {
@@ -1630,26 +1637,32 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 	 * `otherContacts` noise floor exhausts the budget before the 40 matches are
 	 * reached.
 	 */
-	it('allows a small audience hidden behind a read-budget-exhausting noise floor', async () => {
-		const t = convexTest(schema, modules);
-		await seedWarmingState(t);
-		const campaignId = await seedSegmentCampaign(t, {
-			matching: 40,
-			otherContacts: 1_600,
-			lookupConditions: 3,
-		});
+	// Same 1 600-contact noise floor as the read-budget test above: seconds
+	// idle, 23s observed on the loaded release runner — explicit deadline.
+	it(
+		'allows a small audience hidden behind a read-budget-exhausting noise floor',
+		{ timeout: 120_000 },
+		async () => {
+			const t = convexTest(schema, modules);
+			await seedWarmingState(t);
+			const campaignId = await seedSegmentCampaign(t, {
+				matching: 40,
+				otherContacts: 1_600,
+				lookupConditions: 3,
+			});
 
-		const result = await runPreflight(t, campaignId);
-		expect(result.ok).toBe(true);
+			const result = await runPreflight(t, campaignId);
+			expect(result.ok).toBe(true);
 
-		// Allowed because the lower bound decided nothing — NOT because the scan
-		// threw and the fail-open catch swallowed it.
-		expect(await assessCampaign(t, campaignId)).toEqual({
-			capacityKnown: false,
-			fits: true,
-			unknownReason: 'audience_under_counted',
-		});
-	});
+			// Allowed because the lower bound decided nothing — NOT because the scan
+			// threw and the fail-open catch swallowed it.
+			expect(await assessCampaign(t, campaignId)).toEqual({
+				capacityKnown: false,
+				fits: true,
+				unknownReason: 'audience_under_counted',
+			});
+		}
+	);
 });
 
 describe('pre-flight capacity gate — the projection horizon', () => {
