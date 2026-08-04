@@ -70,6 +70,17 @@ const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
  * thing `@owlat/shared/smtpBlockCategories` exists to prevent. Closing it needs
  * the category to travel as a typed field on the webhook and a per-(cell, arm,
  * day) counter to receive it.
+ *
+ * THE CATEGORY DOES PERSIST IN ONE PLACE, and it is the first thing the next
+ * implementer will find, so it is named here with the reason it is not the
+ * answer: the MTA's daily Redis stream `mta:delivery-log:<day>`
+ * (`apps/mta/src/monitoring/deliveryLogger.ts` writes `category`, `annotation`,
+ * `provider` and `orgId`), readable over the master-key `/delivery-logs` route.
+ * It is a LOG, not a counter — no stream and no arm, so no cell; approximate
+ * MAXLEN trimming; a 72-hour default TTL against a 7-day evaluation window; and
+ * reading it from Convex would put an operator-facing debug surface on the ramp's
+ * critical path. It is where to VERIFY the categories in a live deployment, not
+ * where to read them from.
  */
 const KNOWN_UNSUPPLIED: readonly string[] = ['smtpBlocks'];
 
