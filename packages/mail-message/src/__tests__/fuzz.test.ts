@@ -63,7 +63,10 @@ function randomSoup(rng: () => number): string {
 }
 
 describe('parseMessage fuzz — 10k mutations never throw and stay bounded', () => {
-	it('parses 10k mutated inputs without throwing', () => {
+	// 10k parses finish in ~300ms warm but have hit 12s+ on a contended CI
+	// runner (the release gate runs the whole monorepo in parallel), so the
+	// default 5s vitest timeout is not enough headroom.
+	it('parses 10k mutated inputs without throwing', { timeout: 60_000 }, () => {
 		const rng = makeRng(0x1234abcd);
 		const seeds = RAW_FIXTURES.map((f) => f.raw);
 		let parsed = 0;
