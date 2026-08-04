@@ -79,6 +79,24 @@ async function decisionRows(t: Harness) {
 	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 }
 
+/** The message the failed cell put on the record, asserted to be one at all. */
+async function storedFailureMessage(t: Harness): Promise<string> {
+	const failure = (await auditRows(t)).find(
+		(row) => row.action === 'deliverability_ramp.cell_evaluation_failed'
+	);
+	const stored = failure?.details?.['error'];
+	expect(typeof stored).toBe('string');
+	return String(stored);
+}
+
+/**
+ * A surrogate code unit with no partner — half of an astral character, and a
+ * string no UTF-8 encoder can represent. Both halves are matched: a truncation
+ * that dropped the LOW half would fail the same assertion as one that kept a
+ * dangling high half.
+ */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 /** A second managed cell, later in the grid than the one that throws. */
 async function seedSurvivor(t: Harness): Promise<void> {
 	const now = Date.now();
@@ -160,14 +178,47 @@ describe('a throwing cell does not starve the cells behind it', () => {
 
 		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
 
-		const failure = (await auditRows(t)).find(
-			(row) => row.action === 'deliverability_ramp.cell_evaluation_failed'
-		);
-		const stored = failure?.details?.['error'];
-		expect(typeof stored).toBe('string');
-		expect(String(stored)).toHaveLength(RAMP_FAILURE_MESSAGE_MAX);
+		const stored = await storedFailureMessage(t);
+		expect(stored).toHaveLength(RAMP_FAILURE_MESSAGE_MAX);
 		// The PREFIX is what is kept — the end a reader needs to recognise the fault,
 		// not an arbitrary window out of the middle.
-		expect(String(stored).startsWith('head ')).toBe(true);
+		expect(stored.startsWith('head ')).toBe(true);
+	});
+
+	// THE ONE WRITE THAT MUST NOT THROW. There is no catch behind this catch: an
+	// audit write that failed would abort the slice and the continuation with it,
+	// which is the exact starvation the isolation exists to prevent, reached
+	// through its own handler. A cut counted in UTF-16 units can hand the write a
+	// LONE SURROGATE — a string no UTF-8 encoder can represent — so the bound is
+	// counted in code points instead.
+	it('cuts the message on a code point, not on a UTF-16 code unit', async () => {
+		const t = convexTest(schema, modules);
+		// The astral character STRADDLES the bound: its first unit is the last one
+		// inside, its second falls outside.
+		thrown.message = `${'x'.repeat(RAMP_FAILURE_MESSAGE_MAX - 1)}🚀 tail`;
+		await seedRampCell(t, { organizationId: ORG });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const stored = await storedFailureMessage(t);
+		expect(stored).not.toMatch(LONE_SURROGATE);
+		// The straddling pair is dropped whole rather than half-kept, which lands one
+		// unit under the bound — the bound is a ceiling, not a length.
+		expect(stored).toHaveLength(RAMP_FAILURE_MESSAGE_MAX - 1);
+	});
+
+	// THE COUNTER-CASE, or the rule above would be indistinguishable from "always
+	// drop the last character": a pair that FITS inside the bound is kept whole.
+	it('keeps an astral character that fits inside the bound', async () => {
+		const t = convexTest(schema, modules);
+		thrown.message = `${'x'.repeat(RAMP_FAILURE_MESSAGE_MAX - 2)}🚀 tail`;
+		await seedRampCell(t, { organizationId: ORG });
+
+		await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+
+		const stored = await storedFailureMessage(t);
+		expect(stored).not.toMatch(LONE_SURROGATE);
+		expect(stored).toHaveLength(RAMP_FAILURE_MESSAGE_MAX);
+		expect(stored.endsWith('🚀')).toBe(true);
 	});
 });

@@ -75,10 +75,23 @@ export const RAMP_FAILURE_MESSAGE_MAX = 200;
  * message of an `Error`, or the value itself when something else was thrown,
  * bounded so a cell that fails on every tick cannot grow the audit table by
  * whatever a stack trace happened to carry.
+ *
+ * THE CUT LANDS ON A CODE POINT, not on a UTF-16 code unit. `slice` counts units,
+ * so a message whose last unit inside the bound is the first half of an emoji or
+ * a CJK extension character would store a LONE SURROGATE — a string no UTF-8
+ * encoder can represent, and one a backend is free to reject. This is the path
+ * whose job is to survive a bad row, and the audit write below is the last thing
+ * standing between a bad row and a silently dead controller, so it must not be
+ * the thing that throws.
  */
 function readFailureMessage(error: unknown): string {
 	const text = error instanceof Error ? error.message : String(error);
-	return text.slice(0, RAMP_FAILURE_MESSAGE_MAX);
+	if (text.length <= RAMP_FAILURE_MESSAGE_MAX) return text;
+	const cut = text.slice(0, RAMP_FAILURE_MESSAGE_MAX);
+	// A trailing HIGH surrogate is half a pair whose other half fell outside the
+	// bound; a trailing LOW surrogate is a whole pair that fitted, and stays.
+	const last = cut.charCodeAt(cut.length - 1);
+	return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
 }
 
 /**
@@ -373,6 +386,13 @@ export const runRampController = internalMutation({
 				// `mixDecisions` one: no decision was reached, and inventing a row in the
 				// evidence timeline would put a share the controller never decided in front
 				// of whoever replays the cell later.
+				//
+				// AND THIS WRITE CANNOT BE ALLOWED TO THROW. There is no catch behind this
+				// catch: an audit write that failed here would abort the slice and the
+				// continuation with it — the exact starvation the isolation exists to
+				// prevent, reached through the handler for it. So the row carries nothing
+				// but values this module chose: the cell key, and a message bounded and cut
+				// on a code-point boundary by `readFailureMessage`.
 				console.error(`[RampController] ${deliverabilityCellKey(cell)} failed:`, error);
 				await recordAuditLog(ctx, {
 					userId: 'system',
