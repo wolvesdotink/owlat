@@ -103,9 +103,15 @@ export interface RampControlsView {
 	readonly generatedAt: number;
 	readonly referenceTransportId: string | null;
 	/**
-	 * WHETHER ANY RELAY IS CONFIGURED — the fact `resetCellPhase` cuts a share on,
-	 * carried here so the copy beside the rung buttons cannot promise a different
-	 * move from the one the server makes.
+	 * WHETHER ANY RELAY IS CONFIGURED — HALF of the fact `resetCellPhase` cuts a
+	 * share on, carried here so the copy beside the rung buttons cannot promise a
+	 * different move from the one the server makes.
+	 *
+	 * HALF, NOT THE WHOLE. The door cuts on `hasSecondSender` — configured OR
+	 * MEASURED — so this field answers the reset copy only together with the
+	 * cell's own `isShareRamped`. Reading it alone is what let the screen say a
+	 * share is held on a cell whose reference arm the tick still measures; the
+	 * component crosses the two rather than either side guessing.
 	 *
 	 * DELIBERATELY NOT `referenceTransportId !== null`. That names the SINGLE
 	 * second arm and is null on a deployment with two relays connected, where the

@@ -226,9 +226,10 @@ describe('calm states', () => {
 	 * day...") was that gap being apologised for in prose; `cell.isShareRamped` closes
 	 * it, so the sentence can be flat.
 	 *
-	 * The RESET note keeps its own hedge, and rightly: `resetCellPhase` cuts a
-	 * share on `hasSecondSender` — CONFIGURED OR MEASURED — so that control really
-	 * does turn on a fact the dial copy does not.
+	 * THE RESET NOTE ASKS A DIFFERENT QUESTION, not a laxer one: `resetCellPhase`
+	 * cuts a share on `hasSecondSender` — CONFIGURED OR MEASURED — so it turns on a
+	 * union the dial copy does not, and the card crosses both facts rather than
+	 * letting either side stand in for the other.
 	 */
 	it('asks the tick, not the route table, when a relay carries nothing yet', () => {
 		const wrapper = mount(RampCellControls, {
@@ -248,8 +249,9 @@ describe('calm states', () => {
 		expect(pin).toContain('no pin can bound it');
 		expect(pause).not.toMatch(/the share is the dial that climbs/i);
 		expect(pin).not.toMatch(/climbs to the pin/i);
-		// The reset note still answers the configuration question, because its door
-		// does — the two live side by side on one card and must not be conflated.
+		// The reset note is unmoved by the dial, because its door asks the union and
+		// a relay IS configured here — the two questions live side by side on one
+		// card and must not be conflated.
 		expect(wrapper.find('[data-testid="ramp-reset-note"]').text()).toContain(
 			'brings the share back'
 		);
@@ -290,6 +292,20 @@ describe('calm states', () => {
 		expect(standalone.html()).not.toMatch(ALARM);
 		standalone.unmount();
 
+		// THE DIRECTION CONFIGURATION ALONE GETS WRONG, and the one this note missed
+		// on the first pass: nothing configured, but the tick still measures an arm
+		// carrying the cell — so `promotionMessage` claims the shuffle and this copy
+		// has to as well.
+		const carriedNotConfigured = mount(RampCellControls, {
+			props: {
+				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: true }),
+				hasRelayConfigured: false,
+			},
+		});
+		const carriedNote = carriedNotConfigured.find('[data-testid="ramp-promote-note"]').text();
+		expect(carriedNote).toMatch(/which arm/i);
+		expect(carriedNote).not.toMatch(/no second arm/i);
+		carriedNotConfigured.unmount();
 		const withRelay = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: true },
 		});

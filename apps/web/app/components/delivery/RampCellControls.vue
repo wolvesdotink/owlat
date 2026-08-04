@@ -317,7 +317,7 @@ function clampPercent(value: number): number {
 			{{
 				hasSecondSender
 					? 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
-					: 'Resetting a phase restarts the clean streak. With no relay connected there is no second sender to hand traffic to, so the rung is recorded and your share stays where it is — unless this cell was still sending through a relay in the past day.'
+					: 'Resetting a phase restarts the clean streak. Nothing is carrying this cell but your own server, so there is no second sender to hand traffic to: the rung is recorded and your share stays where it is, and it binds again the day a second sender appears.'
 			}}
 			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
 			reset — going higher is a promotion, which is its own control below.
