@@ -364,7 +364,7 @@ describe('a reset on a deployment with a relay configured', () => {
 	/**
 	 * AND THE THIRD READING IS THE DIAL, WHICH IS NEITHER OF THE OTHER TWO.
 	 *
-	 * `rampsShare` is `bindsPhaseLadder` over the cell's degradation — the same
+	 * `isShareRamped` is `bindsPhaseLadder` over the cell's degradation — the same
 	 * answer `readsShareDial` hands the mutation that writes the audit row — so the
 	 * pre-click copy on the pause and pin controls and the sentence in the timeline
 	 * are one fact. The screen's other two fields are configuration; this one is
@@ -383,12 +383,12 @@ describe('a reset on a deployment with a relay configured', () => {
 		// The controller ramps this cell by pace, so the screen may not offer a
 		// share the pin cannot bound. `controls.test.ts` pins the server's sentence
 		// for this same cell ('follows the tick, not the route table').
-		expect(quiet.cells.find((c) => c.cellKey === 'campaign:gmail')?.rampsShare).toBe(false);
+		expect(quiet.cells.find((c) => c.cellKey === 'campaign:gmail')?.isShareRamped).toBe(false);
 
 		// Give the reference arm traffic and the same query answers the other way.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
 		const carried = await t.query(api.delivery.rampControlQueries.getRampControls, {});
-		expect(carried.cells.find((c) => c.cellKey === 'campaign:gmail')?.rampsShare).toBe(true);
+		expect(carried.cells.find((c) => c.cellKey === 'campaign:gmail')?.isShareRamped).toBe(true);
 	});
 });
 

@@ -27,52 +27,29 @@ import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliver
 const props = defineProps<{
 	cell: RampCellControl;
 	/**
-	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14) — `isRelayConfigured` off
-	 * the controls view, which is the SAME FACT `resetCellPhase` cuts a share on.
-	 * The phase rung bounds the SHARE dial, so with no second sender the rung is
-	 * stored but DORMANT: the server takes it and leaves the share alone. Saying
-	 * so is the difference between a control that reads as a 75% cut and one that
-	 * reads as what it does.
+	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14) — `isRelayConfigured` off the
+	 * controls view. NOT `referenceTransportId !== null`, which names the SINGLE
+	 * second arm and is null on a two-relay deployment.
 	 *
-	 * NOT `referenceTransportId !== null`. That names the single second arm and is
-	 * null on a deployment with TWO relays — where the server cuts, and this copy
-	 * used to promise the share would stay where it is.
+	 * ON ITS OWN IT ANSWERS NO NOTE ON THIS CARD, and that is the correction this
+	 * component needed. Every sentence here turns on one of two questions, and
+	 * neither is "is a relay configured":
 	 *
-	 * The server also cuts on a relay it MEASURED carrying this cell in the last
-	 * day, which configuration alone cannot see once one is disconnected; the
-	 * standalone sentence below states that clause rather than denying it.
-	 *
-	 * ALL FOUR NOTES READ IT, and each states the hedge in its own terms:
-	 *
-	 *   - the RESET note, because the phase rung bounds the share (above);
-	 *   - the PROMOTE note, because a promotion's other half is plan D7's mix
-	 *     generation and "which arm every recipient lands in" is the same
-	 *     second-sender fact — a standalone cell has ONE arm, so the generation is
-	 *     spent and re-shuffles nobody;
-	 *   - the PAUSE and PIN notes, because the tick climbs the SHARE only where a
-	 *     relay is carrying the cell and the WARM-UP PACE everywhere else. A pause
-	 *     reaches both dials; a pin is a share and there is no honest conversion
-	 *     into a multiplier on a daily cap, so on a paced cell it bounds the dial
-	 *     that is standing still. Those two notes therefore condition on a relay
-	 *     CARRYING this cell rather than on one being connected — the same clause
-	 *     the reset note carries, and the fact the server's own sentence is cut on.
+	 *   - WHICH DIAL IS CLIMBING — the pause and pin notes. That is per cell and
+	 *     MEASURED (`cell.isShareRamped`, the tick's own `bindsPhaseLadder`
+	 *     reading). A relay configured but carrying nothing this window leaves the
+	 *     controller on the pace dial, so copy cut on configuration promised a
+	 *     share the server's own audit row then denied.
+	 *   - IS THERE A SECOND SENDER TO HOLD A SHARE BACK FOR — the reset and promote
+	 *     notes. That is `hasSecondSender` below: CONFIGURED OR MEASURED, the exact
+	 *     union `resetCellPhase` cuts a share on and `promotionMessage` words its
+	 *     row off. Configuration alone gets the other direction wrong — a relay
+	 *     disconnected today but still carrying this cell inside the window makes
+	 *     the server cut a share this copy would say it holds.
 	 *
 	 * REQUIRED, so the compiler holds it. Optional, an absent prop read as "there
-	 * is a relay" and restored the "brings the share back" copy — a 75% cut — in
-	 * front of the standalone deployment that cannot make it. A caller who has to
-	 * state the fact cannot forget it.
-	 */
-	/**
-	 * WHETHER ANY RELAY IS CONFIGURED — the route table's answer, and the right one
-	 * for the two controls whose DOORS cut on it: `resetCellPhase` holds a share
-	 * back only where `hasSecondSender` (configured OR measured) is true, and a
-	 * promotion re-shuffles arms only where the route splits by share.
-	 *
-	 * NOT THE DIAL QUESTION. Which dial the controller is climbing is per cell and
-	 * is measured, so the pause and pin notes read `cell.rampsShare` instead —
-	 * a relay configured but carrying nothing this window leaves the tick on the
-	 * pace dial, and copy cut on this prop promised the operator a share the
-	 * server's own audit row then denied.
+	 * is a relay" and restored a 75% cut in front of a deployment that cannot make
+	 * it. A caller who has to state the fact cannot forget it.
 	 */
 	hasRelayConfigured: boolean;
 	busy?: boolean;
@@ -171,10 +148,19 @@ const isPromotable = computed(() => currentRung.value < TOP_RUNG);
  * facts crossed is four sentences, and the template is where that stops being
  * readable.
  */
+/**
+ * THE SECOND-SENDER UNION, held once. `resetCellPhase` cuts a share on
+ * `configuredRelayKinds().length > 0 || bindsPhaseLadder(...)` and
+ * `promotionMessage` words its row off the same union, so the two notes that
+ * describe those doors ask for it here rather than each rebuilding it — the card
+ * carries both halves, so the predicate is one expression and not a judgement.
+ */
+const hasSecondSender = computed(() => props.hasRelayConfigured || props.cell.isShareRamped);
+
 const promoteNote = computed(() => {
 	if (!isPromotable.value)
 		return 'This cell is already on the top phase rung, so there is nothing left to promote.';
-	const effect = props.hasRelayConfigured
+	const effect = hasSecondSender.value
 		? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in.'
 		: 'Promoting raises the ceiling one rung. With no relay connected there is no second arm to shuffle recipients between, so the rung is recorded and binds the day a second sender carries this cell again.';
 	return `${effect} It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.`;
@@ -232,7 +218,7 @@ function clampPercent(value: number): number {
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pause-note">
 			{{
-				cell.rampsShare
+				cell.isShareRamped
 					? 'Pausing holds both dials where they are — the share and the warm-up pace. A relay is carrying this cell, so the share is the dial that climbs and that is the number a pause freezes.'
 					: 'Pausing holds both dials where they are — the share and the warm-up pace. Nothing is carrying this cell but your own server, so the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it.'
 			}}
@@ -277,7 +263,7 @@ function clampPercent(value: number): number {
 			A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is
 			already higher down to the number you type.
 			{{
-				cell.rampsShare
+				cell.isShareRamped
 					? 'A relay is carrying this cell, so the share is the dial that climbs and the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.'
 					: 'Nothing is carrying this cell but your own server, so the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.'
 			}}
@@ -329,7 +315,7 @@ function clampPercent(value: number): number {
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
-				hasRelayConfigured
+				hasSecondSender
 					? 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
 					: 'Resetting a phase restarts the clean streak. With no relay connected there is no second sender to hand traffic to, so the rung is recorded and your share stays where it is — unless this cell was still sending through a relay in the past day.'
 			}}

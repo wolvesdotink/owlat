@@ -140,14 +140,22 @@ describe('calm states', () => {
 	});
 
 	/**
-	 * A DORMANT RUNG SAID PLAINLY (plan D3, D14). With no relay the phase ladder
-	 * bounds nothing — the server records the rung and holds the share — so copy
-	 * calling it the cell's governing ceiling describes a 75% cut this deployment
-	 * cannot make and would not want.
+	 * A DORMANT RUNG SAID PLAINLY (plan D3, D14). With no second sender the phase
+	 * ladder bounds nothing — the server records the rung and holds the share — so
+	 * copy calling it the cell's governing ceiling describes a 75% cut this
+	 * deployment cannot make and would not want.
+	 *
+	 * NO SECOND SENDER MEANS NEITHER HALF OF THE UNION. `resetCellPhase` cuts on
+	 * CONFIGURED OR MEASURED, so a fixture that only unset the configuration would
+	 * sit in the divergent state — nothing configured, the tick still ramping the
+	 * share — where the server cuts and this note says it holds.
 	 */
-	it('says the rung is recorded, not applied, when there is no relay', () => {
+	it('says the rung is recorded, not applied, when there is no second sender', () => {
 		const standalone = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: false },
+			props: {
+				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: false }),
+				hasRelayConfigured: false,
+			},
 		});
 		const note = standalone.find('[data-testid="ramp-reset-note"]').text();
 		expect(note).toContain('share stays where it is');
@@ -168,7 +176,7 @@ describe('calm states', () => {
 	 * THE PROMISE ON THE BUTTON AND THE ROW IN THE TIMELINE ARE ONE CLAIM (plan D3,
 	 * D14), SO THEY READ ONE FACT. The server's `pauseMessage` and `pinMessage` cut
 	 * on `readsShareDial` — `bindsPhaseLadder` over the cell's degradation — and
-	 * `cell.rampsShare` is that same answer carried onto the screen. Cutting this
+	 * `cell.isShareRamped` is that same answer carried onto the screen. Cutting this
 	 * copy on the ROUTE TABLE instead is what made the pre-click sentence and the
 	 * operator's own audit row disagree six weeks apart. A pause holds BOTH dials;
 	 * a pin is a share and cannot bound a multiplier on a daily cap at all.
@@ -176,7 +184,7 @@ describe('calm states', () => {
 	it('names the dial each control acts on, on both paths', () => {
 		const standalone = mount(RampCellControls, {
 			props: {
-				cell: cellControl({ ownShare: 1, rampsShare: false }),
+				cell: cellControl({ ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: false,
 			},
 		});
@@ -195,7 +203,7 @@ describe('calm states', () => {
 		standalone.unmount();
 
 		const withRelay = mount(RampCellControls, {
-			props: { cell: cellControl({ ownShare: 1, rampsShare: true }), hasRelayConfigured: true },
+			props: { cell: cellControl({ ownShare: 1, isShareRamped: true }), hasRelayConfigured: true },
 		});
 		expect(withRelay.find('[data-testid="ramp-pause-note"]').text()).toContain(
 			'the share is the dial that climbs'
@@ -215,7 +223,7 @@ describe('calm states', () => {
 	 * actually climbing was the warm-up pace no pin can bound — and the server's
 	 * audit row said the opposite back to them later. The hedge the standalone arm
 	 * used to carry ("if this cell was still sending through a relay in the past
-	 * day...") was that gap being apologised for in prose; `cell.rampsShare` closes
+	 * day...") was that gap being apologised for in prose; `cell.isShareRamped` closes
 	 * it, so the sentence can be flat.
 	 *
 	 * The RESET note keeps its own hedge, and rightly: `resetCellPhase` cuts a
@@ -227,7 +235,7 @@ describe('calm states', () => {
 			props: {
 				// The divergent state, stated: a relay IS configured, and the tick is
 				// still ramping this cell by pace.
-				cell: cellControl({ ownShare: 1, rampsShare: false }),
+				cell: cellControl({ ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: true,
 			},
 		});
@@ -263,9 +271,15 @@ describe('calm states', () => {
 	 * nobody there, and the state is reachable from the first minute: a standalone
 	 * enrolment opens at full share on the 25% rung, with the button live.
 	 */
-	it('does not promise an arm shuffle on a promotion with no relay', () => {
+	it('does not promise an arm shuffle on a promotion with no second sender', () => {
 		const standalone = mount(RampCellControls, {
-			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: false },
+			props: {
+				// NEITHER HALF OF THE UNION: `promotionMessage` words its row off
+				// `hasSecondSender`, so unsetting only the configuration would leave the
+				// tick still ramping the share and the server still claiming the shuffle.
+				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: false }),
+				hasRelayConfigured: false,
+			},
 		});
 		const note = standalone.find('[data-testid="ramp-promote-note"]').text();
 		expect(note).toContain('raises the ceiling one rung');
@@ -492,29 +506,44 @@ describe('control refusals', () => {
 	 * the one that separates them: `referenceTransportId` is null there because no
 	 * SINGLE arm can be named, while `resetCellPhase` cuts the share all the same.
 	 */
-	it.each<[string, Partial<RampControls>, RegExp, RegExp]>([
+	it.each<[string, Partial<RampControls>, boolean, RegExp, RegExp]>([
 		[
 			'no relay',
 			{ referenceTransportId: null, isRelayConfigured: false },
+			// The cell's half of the union too: a "no relay" row whose tick still
+			// ramps the share is the DIVERGENT state, where the server cuts and this
+			// copy would say it holds.
+			false,
 			/share stays where it is/i,
 			/brings the share back/i,
 		],
 		[
 			'one relay',
 			{ referenceTransportId: 'ses', isRelayConfigured: true },
+			true,
 			/brings the share back/i,
 			/share stays where it is/i,
 		],
 		[
 			'two relays',
 			{ referenceTransportId: null, isRelayConfigured: true },
+			true,
+			/brings the share back/i,
+			/share stays where it is/i,
+		],
+		[
+			'no relay configured but one still carrying the cell',
+			{ referenceTransportId: null, isRelayConfigured: false },
+			// The other direction of the same union, and the one configuration alone
+			// gets wrong: `resetCellPhase` cuts here because the tick measured an arm.
+			true,
 			/brings the share back/i,
 			/share stays where it is/i,
 		],
 	])(
 		'tells a deployment with %s what a reset does to its share',
-		async (_name, view, expected, refuted) => {
-			stubPage({ applied: true }, [cellControl()], view);
+		async (_name, view, isShareRamped, expected, refuted) => {
+			stubPage({ applied: true }, [cellControl({ isShareRamped })], view);
 			const wrapper = mount(ControlsPage, { global: globalOptions });
 			await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
 			await wrapper.vm.$nextTick();

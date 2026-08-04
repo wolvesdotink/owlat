@@ -48,7 +48,7 @@ export function cellControl(overrides: Partial<RampCellControl> = {}): RampCellC
 		// default fixture is a share-ramped cell; a standalone case sets it false
 		// and does NOT reach that by unsetting `isRelayConfigured`, which is a
 		// different question.
-		rampsShare: true,
+		isShareRamped: true,
 		lastDecision: decision(),
 		...overrides,
 	};

@@ -30,8 +30,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
 import { relayConfiguration } from './relayConfiguration';
-import { bindsPhaseLadder } from './ramp/degradation';
-import { resolveRampDegradation } from './ramp/degradation';
+import { bindsPhaseLadder, resolveRampDegradation } from './ramp/degradation';
 import {
 	loadRampDeploymentPresence,
 	loadReferenceArmPresence,
@@ -95,7 +94,7 @@ export interface RampCellControlView {
 	 * the opposite back to them later. Whether a relay is configured is a second,
 	 * separate fact and stays on `isRelayConfigured` for the doors that cut on it.
 	 */
-	readonly rampsShare: boolean;
+	readonly isShareRamped: boolean;
 	/** The controller's own last word on this cell — the binding constraint. */
 	readonly lastDecision: RampCellDecisionView | null;
 }
@@ -238,7 +237,7 @@ export const getRampControls = authedQuery({
 				frozenUntil: row?.frozenUntil ?? null,
 				isPaused: row?.operatorPausedAt !== undefined,
 				pinnedShare: row?.operatorPinnedShare ?? null,
-				rampsShare: bindsPhaseLadder(
+				isShareRamped: bindsPhaseLadder(
 					resolveRampDegradation({
 						presence: withReferenceArm(
 							deploymentPresence,
