@@ -44,6 +44,11 @@ export function cellControl(overrides: Partial<RampCellControl> = {}): RampCellC
 		frozenUntil: null,
 		isPaused: false,
 		pinnedShare: null,
+		// THE TICK'S OWN ANSWER, not the route table's. Default true because the
+		// default fixture is a share-ramped cell; a standalone case sets it false
+		// and does NOT reach that by unsetting `isRelayConfigured`, which is a
+		// different question.
+		rampsShare: true,
 		lastDecision: decision(),
 		...overrides,
 	};

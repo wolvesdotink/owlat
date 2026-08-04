@@ -166,15 +166,19 @@ describe('calm states', () => {
 
 	/**
 	 * THE PROMISE ON THE BUTTON AND THE ROW IN THE TIMELINE ARE ONE CLAIM (plan D3,
-	 * D14). The server's `pauseMessage` and `pinMessage` name the dial the tick is
-	 * actually climbing — the warm-up pace wherever no relay is carrying the cell —
-	 * so pre-click copy that named the share would be denied by the operator's own
-	 * audit row six weeks later. A pause holds BOTH dials; a pin is a share and
-	 * cannot bound a multiplier on a daily cap at all.
+	 * D14), SO THEY READ ONE FACT. The server's `pauseMessage` and `pinMessage` cut
+	 * on `readsShareDial` — `bindsPhaseLadder` over the cell's degradation — and
+	 * `cell.rampsShare` is that same answer carried onto the screen. Cutting this
+	 * copy on the ROUTE TABLE instead is what made the pre-click sentence and the
+	 * operator's own audit row disagree six weeks apart. A pause holds BOTH dials;
+	 * a pin is a share and cannot bound a multiplier on a daily cap at all.
 	 */
 	it('names the dial each control acts on, on both paths', () => {
 		const standalone = mount(RampCellControls, {
-			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: false },
+			props: {
+				cell: cellControl({ ownShare: 1, rampsShare: false }),
+				hasRelayConfigured: false,
+			},
 		});
 		const pause = standalone.find('[data-testid="ramp-pause-note"]').text();
 		expect(pause).toContain('the warm-up pace is, and a pause is the only control that holds it');
@@ -191,7 +195,7 @@ describe('calm states', () => {
 		standalone.unmount();
 
 		const withRelay = mount(RampCellControls, {
-			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: true },
+			props: { cell: cellControl({ ownShare: 1, rampsShare: true }), hasRelayConfigured: true },
 		});
 		expect(withRelay.find('[data-testid="ramp-pause-note"]').text()).toContain(
 			'the share is the dial that climbs'
@@ -203,19 +207,43 @@ describe('calm states', () => {
 	});
 
 	/**
-	 * CONFIGURATION IS NOT MEASUREMENT, and the copy says so rather than hiding it.
-	 * `hasRelayConfigured` answers off the route table; the tick cuts on a relay it
-	 * MEASURED carrying this cell in the past day, so a disconnected relay that was
-	 * still sending yesterday leaves the share as the climbing dial under a prop
-	 * that reads false. The standalone arm states that clause — the same hedge the
-	 * reset note carries — instead of promising a dial it cannot see.
+	 * CONFIGURATION IS NOT MEASUREMENT, AND THE DIAL COPY ASKS THE MEASUREMENT.
+	 *
+	 * This is the case that used to be wrong. A relay CONFIGURED but carrying
+	 * nothing this window leaves the controller ramping by pace, so copy cut on the
+	 * route table told the operator a pin bounds the climbing dial while the dial
+	 * actually climbing was the warm-up pace no pin can bound — and the server's
+	 * audit row said the opposite back to them later. The hedge the standalone arm
+	 * used to carry ("if this cell was still sending through a relay in the past
+	 * day...") was that gap being apologised for in prose; `cell.rampsShare` closes
+	 * it, so the sentence can be flat.
+	 *
+	 * The RESET note keeps its own hedge, and rightly: `resetCellPhase` cuts a
+	 * share on `hasSecondSender` — CONFIGURED OR MEASURED — so that control really
+	 * does turn on a fact the dial copy does not.
 	 */
-	it('hedges the standalone arm on what carried the cell, not on what is connected', () => {
+	it('asks the tick, not the route table, when a relay carries nothing yet', () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ ownShare: 1 }), hasRelayConfigured: false },
+			props: {
+				// The divergent state, stated: a relay IS configured, and the tick is
+				// still ramping this cell by pace.
+				cell: cellControl({ ownShare: 1, rampsShare: false }),
+				hasRelayConfigured: true,
+			},
 		});
-		expect(wrapper.find('[data-testid="ramp-pause-note"]').text()).toMatch(
-			/still sending through a relay in the past day/i
+		const pause = wrapper.find('[data-testid="ramp-pause-note"]').text();
+		const pin = wrapper.find('[data-testid="ramp-pin-note"]').text();
+		// The server's sentence for this exact cell is 'the warm-up pace is the dial
+		// the controller is ramping here' (controls.test.ts, 'follows the tick, not
+		// the route table'). The screen may not promise the other one.
+		expect(pause).toContain('the warm-up pace is, and a pause is the only control that holds it');
+		expect(pin).toContain('no pin can bound it');
+		expect(pause).not.toMatch(/the share is the dial that climbs/i);
+		expect(pin).not.toMatch(/climbs to the pin/i);
+		// The reset note still answers the configuration question, because its door
+		// does — the two live side by side on one card and must not be conflated.
+		expect(wrapper.find('[data-testid="ramp-reset-note"]').text()).toContain(
+			'brings the share back'
 		);
 		expect(wrapper.find('[data-testid="ramp-pin-note"]').text()).toMatch(
 			/bounds the climb again the day a relay carries this cell/i

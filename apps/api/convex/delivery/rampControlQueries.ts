@@ -30,6 +30,13 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
 import { relayConfiguration } from './relayConfiguration';
+import { bindsPhaseLadder } from './ramp/degradation';
+import { resolveRampDegradation } from './ramp/degradation';
+import {
+	loadRampDeploymentPresence,
+	loadReferenceArmPresence,
+	withReferenceArm,
+} from './rampIntegrationPresence';
 import type { RampDecisionReason } from './ramp/controllerTypes';
 import type { RampGateId } from './ramp/gateTypes';
 import {
@@ -75,6 +82,20 @@ export interface RampCellControlView {
 	readonly frozenUntil: number | null;
 	readonly isPaused: boolean;
 	readonly pinnedShare: number | null;
+	/**
+	 * WHICH DIAL THIS CELL'S RAMP IS, as the TICK reads it — `bindsPhaseLadder`
+	 * over the cell's own degradation, the same answer `readsShareDial` gives the
+	 * mutation that writes the audit row.
+	 *
+	 * PER CELL AND NOT `isRelayConfigured`, because they disagree exactly where it
+	 * matters: a relay that is configured but carried nothing this window leaves
+	 * the controller ramping by PACE, so copy cut on the configuration would tell
+	 * an operator a pin bounds the climbing dial while the dial actually climbing
+	 * is the warm-up pace, which no pin can bound — and the audit row would say
+	 * the opposite back to them later. Whether a relay is configured is a second,
+	 * separate fact and stays on `isRelayConfigured` for the doors that cut on it.
+	 */
+	readonly rampsShare: boolean;
 	/** The controller's own last word on this cell — the binding constraint. */
 	readonly lastDecision: RampCellDecisionView | null;
 }
@@ -192,6 +213,12 @@ export const getRampControls = authedQuery({
 		for (const row of presetRows) presets[row.stream] = row.preset;
 
 		const byCell = await loadRouteStatesByCell(ctx, organizationId);
+		// ONE DEPLOYMENT READING FOR THE WHOLE GRID. The presence map is a property
+		// of the deployment, not of a cell, so folding it once and crossing it with
+		// each cell's own reference arm is the controller's own sequence — and
+		// asking it fifteen times would let two rows of one screen answer off two
+		// different readings.
+		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 
 		const cellKeys = allDeliverabilityCells().map(deliverabilityCellKey);
 		const decisionsByCell = await latestDecisionsByCell(ctx, organizationId, cellKeys);
@@ -211,6 +238,15 @@ export const getRampControls = authedQuery({
 				frozenUntil: row?.frozenUntil ?? null,
 				isPaused: row?.operatorPausedAt !== undefined,
 				pinnedShare: row?.operatorPinnedShare ?? null,
+				rampsShare: bindsPhaseLadder(
+					resolveRampDegradation({
+						presence: withReferenceArm(
+							deploymentPresence,
+							await loadReferenceArmPresence(ctx, { organizationId, cell, now })
+						),
+						provider: cell.destinationProvider,
+					})
+				),
 				lastDecision: decisionView(decisionsByCell.get(cellKey) ?? null),
 			});
 		}

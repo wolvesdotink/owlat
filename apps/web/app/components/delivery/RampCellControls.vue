@@ -62,6 +62,18 @@ const props = defineProps<{
 	 * front of the standalone deployment that cannot make it. A caller who has to
 	 * state the fact cannot forget it.
 	 */
+	/**
+	 * WHETHER ANY RELAY IS CONFIGURED — the route table's answer, and the right one
+	 * for the two controls whose DOORS cut on it: `resetCellPhase` holds a share
+	 * back only where `hasSecondSender` (configured OR measured) is true, and a
+	 * promotion re-shuffles arms only where the route splits by share.
+	 *
+	 * NOT THE DIAL QUESTION. Which dial the controller is climbing is per cell and
+	 * is measured, so the pause and pin notes read `cell.rampsShare` instead —
+	 * a relay configured but carrying nothing this window leaves the tick on the
+	 * pace dial, and copy cut on this prop promised the operator a share the
+	 * server's own audit row then denied.
+	 */
 	hasRelayConfigured: boolean;
 	busy?: boolean;
 }>();
@@ -220,9 +232,9 @@ function clampPercent(value: number): number {
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pause-note">
 			{{
-				hasRelayConfigured
-					? 'Pausing holds both dials where they are — the share and the warm-up pace. While a relay is carrying this cell the share is the dial that climbs, so that is the number a pause freezes.'
-					: 'Pausing holds both dials where they are — the share and the warm-up pace. With no relay carrying this cell the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it. If this cell was still sending through a relay in the past day, the share is the one moving and the pause holds that too.'
+				cell.rampsShare
+					? 'Pausing holds both dials where they are — the share and the warm-up pace. A relay is carrying this cell, so the share is the dial that climbs and that is the number a pause freezes.'
+					: 'Pausing holds both dials where they are — the share and the warm-up pace. Nothing is carrying this cell but your own server, so the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it.'
 			}}
 			The checks keep running and an automatic retreat still happens — a pause never blocks a safety
 			response.
@@ -265,9 +277,9 @@ function clampPercent(value: number): number {
 			A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is
 			already higher down to the number you type.
 			{{
-				hasRelayConfigured
-					? 'While a relay is carrying this cell the share is the dial that climbs, so the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.'
-					: 'With no relay carrying this cell the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.'
+				cell.rampsShare
+					? 'A relay is carrying this cell, so the share is the dial that climbs and the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.'
+					: 'Nothing is carrying this cell but your own server, so the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.'
 			}}
 		</p>
 
