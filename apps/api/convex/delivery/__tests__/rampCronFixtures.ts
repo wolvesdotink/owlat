@@ -241,6 +241,31 @@ export async function connectRelay(
 }
 
 /**
+ * TWO RELAY KINDS — campaign through SES, transactional through Resend.
+ *
+ * The configuration `referenceRelayTransportId` cannot name: there is a second
+ * sender, and there is no SINGLE one to put in the screen's copy, so the
+ * configuration reading says "none" while every cell is still measured against a
+ * relay. A perfectly ordinary deployment, and the one the screen and the
+ * controller used to grade with two different evaluators.
+ */
+export async function connectTwoRelays(t: Harness): Promise<void> {
+	await connectRelay(t);
+	await t.run(async (ctx) => {
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'transactional' as const,
+			strategy: 'priority_failover' as const,
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'resend', isEnabled: true },
+			],
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
+}
+
+/**
  * THE MANAGED CELL'S OUTCOME ROWS for one arm, in today's UTC bucket.
  *
  * WHY EVERY CRON SUITE NEEDS THIS NOW. The substitution table (P3-8) chooses the

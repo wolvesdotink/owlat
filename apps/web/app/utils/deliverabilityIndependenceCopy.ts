@@ -36,11 +36,32 @@ export type IndependenceSummary = FunctionReturnType<
  *
  * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
  * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So this
- * is an alias, not a copy — the SUBHEAD below is genuinely different prose (that
- * screen is read-only; this one is the ramp) and stays local.
+ * standalone feature is CALLED, which is the one thing D14 cares about. So the
+ * two words come from there, not from a copy — the SUBHEAD below is genuinely
+ * different prose (that screen is read-only; this one is the ramp) and stays
+ * local.
+ *
+ * THIS SCREEN'S QUESTION IS THE RELAY YOU PAY FOR, not the arm that carried
+ * traffic: it projects the date that relay stops carrying mail and prices the
+ * saving, so a window of outcome rows alone is not what it should answer from.
+ * The measurement screen asks the other question — was this cell measured
+ * against anything — and passes the other input.
+ *
+ * BUT THE INPUT IT IS GIVEN DOES NOT ASK THAT QUESTION. `referenceTransportId`
+ * is `configuredRelayKinds().length === 1` failing, so a deployment relaying
+ * through MORE THAN ONE kind reads `null` here and is framed as standalone,
+ * exactly as a deployment with no relay at all is. `isRelayConfigured` is the
+ * reading this paragraph describes. Do not read the keying as deliberate: it is
+ * the same substitution of a configuration answer for an existence question that
+ * survived on the measurement dashboard until #502 made gate 5 decide, and it is
+ * worse here, because `relayRemoval: 'safe'` is a GUARD — the apply-transport
+ * endpoint demands no confirmation phrase on it. Tracked as #513, with the
+ * two-relay reproduction; closing it is a decision about which reading
+ * `rampIndependence.ts` should take, not a rename.
  */
-export const independenceHeadline = measurementHeadline;
+export function independenceHeadline(referenceTransportId: string | null): string {
+	return measurementHeadline(referenceTransportId !== null);
+}
 
 /**
  * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport

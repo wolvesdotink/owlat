@@ -74,7 +74,10 @@ const BELOW_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
 interface ConfidenceCase {
 	readonly name: string;
 	readonly ownSent: number;
+	/** MEASUREMENT: did a relay carry this cell in the controller's span. */
 	readonly hasReferenceArm: boolean;
+	/** CONFIGURATION: does the deployment own a relay at all. */
+	readonly hasRelayConfigured: boolean;
 	readonly hasSeedCoverage: boolean;
 	readonly evaluated: RampGateConfidence;
 	readonly level: DashboardConfidenceLevel;
@@ -86,6 +89,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'nothing sent, standalone, no seeds — none, and both invitations',
 		ownSent: 0,
 		hasReferenceArm: false,
+		hasRelayConfigured: false,
 		// An evaluation nothing contributed to grades `low`; a window with no
 		// traffic in it is still reported as `none`, because a confidence beside no
 		// measurement at all is a number nobody should read.
@@ -98,6 +102,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'nothing sent with both a reference arm and seeds — still none, nothing to offer',
 		ownSent: 0,
 		hasReferenceArm: true,
+		hasRelayConfigured: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'none',
@@ -109,6 +114,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		// gate 3 on the unsubscribe proxy, so the weakest contributor is `medium`.
 		ownSent: 100_000,
 		hasReferenceArm: false,
+		hasRelayConfigured: false,
 		evaluated: 'medium',
 		hasSeedCoverage: true,
 		level: 'medium',
@@ -118,6 +124,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'a standalone cell graded LOW is not upgraded on its way to the screen',
 		ownSent: 100_000,
 		hasReferenceArm: false,
+		hasRelayConfigured: false,
 		evaluated: 'low',
 		hasSeedCoverage: true,
 		level: 'low',
@@ -131,6 +138,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		// says so.
 		ownSent: 100_000,
 		hasReferenceArm: false,
+		hasRelayConfigured: false,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'medium',
@@ -140,6 +148,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'a thin window keeps the evaluator’s level and gains only the volume advice',
 		ownSent: BELOW_BOUNCE_FLOOR,
 		hasReferenceArm: true,
+		hasRelayConfigured: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'high',
@@ -149,6 +158,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'two arms, everything measured on our own wire — high, nothing to improve',
 		ownSent: ABOVE_BOUNCE_FLOOR,
 		hasReferenceArm: true,
+		hasRelayConfigured: true,
 		evaluated: 'high',
 		hasSeedCoverage: true,
 		level: 'high',
@@ -158,9 +168,36 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		name: 'high measurement with no seeds — still high, seeds are an invitation not a gate (D2)',
 		ownSent: ABOVE_BOUNCE_FLOOR,
 		hasReferenceArm: true,
+		hasRelayConfigured: true,
 		evaluated: 'high',
 		hasSeedCoverage: false,
 		level: 'high',
+		improvements: ['add_seed_mailboxes'],
+	},
+	{
+		// THE CAP AND THE OFFER ARE DIFFERENT QUESTIONS. A relay IS connected; it
+		// carried nothing in this cell's window. The cap belongs to the window —
+		// nothing was compared, so `high` is not available — and the offer belongs
+		// to the deployment, which cannot connect a relay it already has. Keyed to
+		// the measurement, this sentence flickers on and off day to day on a
+		// low-volume cell of a fully relayed deployment.
+		name: 'a CONNECTED relay that carried nothing caps the level without asking for another',
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: false,
+		hasRelayConfigured: true,
+		evaluated: 'high',
+		hasSeedCoverage: true,
+		level: 'medium',
+		improvements: [],
+	},
+	{
+		name: 'a connected but idle relay beside no seeds still offers only the seeds',
+		ownSent: ABOVE_BOUNCE_FLOOR,
+		hasReferenceArm: false,
+		hasRelayConfigured: true,
+		evaluated: 'high',
+		hasSeedCoverage: false,
+		level: 'low',
 		improvements: ['add_seed_mailboxes'],
 	},
 ];
@@ -171,6 +208,7 @@ describe('dashboardConfidence', () => {
 			const result = dashboardConfidence({
 				ownSent: testCase.ownSent,
 				hasReferenceArm: testCase.hasReferenceArm,
+				hasRelayConfigured: testCase.hasRelayConfigured,
 				hasSeedCoverage: testCase.hasSeedCoverage,
 				evaluated: testCase.evaluated,
 			});
@@ -198,6 +236,7 @@ describe('dashboardConfidence', () => {
 			const result = dashboardConfidence({
 				ownSent: ABOVE_BOUNCE_FLOOR,
 				hasReferenceArm: true,
+				hasRelayConfigured: true,
 				hasSeedCoverage: true,
 				evaluated,
 			});
@@ -208,13 +247,40 @@ describe('dashboardConfidence', () => {
 	it('never renders HIGH for a cell with no reference arm, whatever the gates graded', () => {
 		for (const evaluated of ['low', 'medium', 'high'] as const) {
 			for (const hasSeedCoverage of [true, false]) {
+				// A CONNECTED relay does not lift the cap: the cap is about what was
+				// measured in this cell's window, and an idle relay measured nothing.
+				for (const hasRelayConfigured of [true, false]) {
+					const result = dashboardConfidence({
+						ownSent: ABOVE_BOUNCE_FLOOR,
+						hasReferenceArm: false,
+						hasRelayConfigured,
+						hasSeedCoverage,
+						evaluated,
+					});
+					expect(result.level).not.toBe('high');
+				}
+			}
+		}
+	});
+
+	it('offers the relay only where there is none to offer, whatever this cell measured', () => {
+		// THE OFFER IS THE DEPLOYMENT'S QUESTION AND THE CAP IS THE CELL'S. Held
+		// apart across the whole cross-product so neither can quietly be re-keyed
+		// to the other: the sentence is "connect a relay you already pay for", and
+		// a deployment that already did cannot act on it.
+		for (const hasReferenceArm of [true, false]) {
+			for (const hasRelayConfigured of [true, false]) {
 				const result = dashboardConfidence({
 					ownSent: ABOVE_BOUNCE_FLOOR,
-					hasReferenceArm: false,
-					hasSeedCoverage,
-					evaluated,
+					hasReferenceArm,
+					hasRelayConfigured,
+					hasSeedCoverage: true,
+					evaluated: 'high',
 				});
-				expect(result.level).not.toBe('high');
+				expect(result.improvements.includes('connect_reference_transport')).toBe(
+					!hasRelayConfigured
+				);
+				expect(result.level).toBe(hasReferenceArm ? 'high' : 'medium');
 			}
 		}
 	});
@@ -223,6 +289,7 @@ describe('dashboardConfidence', () => {
 		const result = dashboardConfidence({
 			ownSent: ABOVE_BOUNCE_FLOOR,
 			hasReferenceArm: false,
+			hasRelayConfigured: false,
 			hasSeedCoverage: false,
 			evaluated: 'high',
 		});
@@ -237,6 +304,7 @@ describe('dashboardConfidence', () => {
 		const result = dashboardConfidence({
 			ownSent: BELOW_BOUNCE_FLOOR,
 			hasReferenceArm: true,
+			hasRelayConfigured: true,
 			hasSeedCoverage: true,
 			evaluated: 'high',
 		});
@@ -405,6 +473,7 @@ describe('buildDashboardCellView', () => {
 			evaluation,
 			hasSeedCoverage: false,
 			hasReferenceArm: false,
+			hasRelayConfigured: false,
 			trend: [],
 		});
 		expect(view.own).toBe(own);
@@ -425,6 +494,7 @@ describe('buildDashboardCellView', () => {
 			evaluation,
 			hasSeedCoverage: false,
 			hasReferenceArm: false,
+			hasRelayConfigured: false,
 			trend: [],
 		});
 		expect(view.cleanStreakIncludingThisWindow).toBe(evaluation.cleanStreak);
@@ -453,6 +523,7 @@ describe('buildDashboardCellView', () => {
 				evaluation: { ...evaluation, measuredConfidence: graded },
 				hasSeedCoverage: true,
 				hasReferenceArm: false,
+				hasRelayConfigured: false,
 				trend: [],
 			});
 			expect(view.confidence.level).toBe(graded);

@@ -163,6 +163,7 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 		expect(cell.own.sent).toBe(1000);
 		expect(cell.own.hardBounceRate).toBeCloseTo(0.01, 10);
 		expect(dashboard.referenceTransportId).toBe('ses');
+		expect(dashboard.isRelayConfigured).toBe(true);
 	});
 
 	it('emits one trend point per day of the window, each derived by the summarizer', async () => {
@@ -364,6 +365,10 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 			{}
 		);
 		expect(dashboard.referenceTransportId).toBeNull();
+		// THE NULL THAT MEANS "NO RELAY AT ALL". The screen's offer to connect one
+		// is keyed to this field and not to the id beside it, which is also null on
+		// a deployment relaying through two kinds.
+		expect(dashboard.isRelayConfigured).toBe(false);
 		expect(dashboard.cells).toHaveLength(15);
 		for (const cell of dashboard.cells) {
 			expect(cell.reference).toBeNull();

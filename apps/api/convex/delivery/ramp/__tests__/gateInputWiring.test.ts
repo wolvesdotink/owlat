@@ -103,18 +103,14 @@ const REQUIRED_SUPPLIERS: readonly string[] = [
  * one of these from the second reader without deleting its line here fails this
  * suite, so the list can only shrink.
  *
- * Both entries (issue #503) are the TRAILING-BASELINE evaluator's substitution
- * inputs. The dashboard picks that evaluator for a deployment with no reference
- * arm — correctly — but builds its input without the cell's 30-day second series
- * and without the complaint-feedback resolution, so gate 1's relative clause and
- * gate 3's proxy choice come out of a different input there than in the cron.
- * Closing it means giving the screen the integration-presence read the
- * controller makes, which is a table read it does not do today.
+ * EMPTY, and the empty state is the point: `ownTrailingBaseline` and
+ * `hasComplaintFeedback` (issue #503) were the trailing-baseline evaluator's
+ * substitution inputs, supplied by the cron and not by the screen. The dashboard
+ * now makes the same integration-presence read and folds it through the same
+ * `resolveRampDegradation`, so both arrive from both readers and both lines are
+ * gone. A new one-sided field has to be written down here to land.
  */
-const KNOWN_ONE_SIDED: Readonly<Record<string, string>> = {
-	ownTrailingBaseline: 'delivery/rampControllerInputs.ts',
-	hasComplaintFeedback: 'delivery/rampControllerInputs.ts',
-};
+const KNOWN_ONE_SIDED: Readonly<Record<string, string>> = {};
 
 /**
  * PRODUCTION ONLY — `__tests__` is the fabricated caller this guard exists to

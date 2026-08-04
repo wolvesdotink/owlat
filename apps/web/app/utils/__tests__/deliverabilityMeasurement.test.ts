@@ -51,6 +51,7 @@ import {
 	gateExplanation,
 	improvementCopy,
 	measurementSubhead,
+	standaloneNote,
 	type DeliverabilityDashboardGate,
 } from '~/utils/deliverabilityMeasurement';
 
@@ -62,18 +63,126 @@ import {
  * the sentence it lands in.
  */
 describe('measurementSubhead', () => {
+	const measured = (referenceTransportId: string | null): string =>
+		measurementSubhead({ hasReferenceArm: true, referenceTransportId });
+
 	it('names the relay the way the transport card does', () => {
-		expect(measurementSubhead('ses')).toContain('compares with Amazon SES');
-		expect(measurementSubhead('plugin.mail-pack.postmark')).toContain('compares with Postmark');
-		expect(measurementSubhead('ses')).not.toContain(' ses ');
+		expect(measured('ses')).toContain('compares with Amazon SES');
+		expect(measured('plugin.mail-pack.postmark')).toContain('compares with Postmark');
+		expect(measured('ses')).not.toContain(' ses ');
 	});
 
 	it('falls back to the raw id rather than dropping an unknown transport', () => {
-		expect(measurementSubhead('postmark')).toContain('compares with postmark');
+		expect(measured('postmark')).toContain('compares with postmark');
 	});
 
 	it('leaves the standalone sentence alone — there is no relay to compare with', () => {
-		expect(measurementSubhead(null)).toContain('What your own server is sending');
+		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: null })).toContain(
+			'What your own server is sending'
+		);
+	});
+
+	it('still says a comparison happened when no single relay can be named', () => {
+		// TWO RELAY KINDS: the configuration has no single arm to name and every
+		// cell is still measured against one. Keyed to the id alone this screen
+		// claimed the deployment sends entirely from its own server.
+		const subhead = measurementSubhead({ hasReferenceArm: true, referenceTransportId: null });
+		expect(subhead).toContain('compares with the relays carrying the same traffic');
+		expect(subhead).not.toContain('What your own server is sending');
+	});
+
+	it('drops to the standalone sentence for a named relay that carried nothing', () => {
+		// The divergence the other way: a relay is configured, no cell was measured
+		// against it, and the gates below graded every cell standalone.
+		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: 'ses' })).toContain(
+			'What your own server is sending'
+		);
+	});
+});
+
+/**
+ * THE NOTE IS SHOWN ON THE MEASUREMENT AND WORDED ON THE CONFIGURATION.
+ *
+ * The note itself only renders where no cell measured a second arm; what it SAYS
+ * is a question about the relay list, because "connect a relay you already pay
+ * for" is advice a deployment with a relay cannot act on. Its closing sentence
+ * is a third fact again — a promise about bars on the cards below, which only
+ * some of these deployments have.
+ */
+describe('standaloneNote', () => {
+	it('offers a relay only where there is none to have gone quiet', () => {
+		const note = standaloneNote({
+			isRelayConfigured: false,
+			referenceTransportId: null,
+			hasPlottedRelayHistory: false,
+		});
+		expect(note).toContain('Connecting a relay you already pay for');
+		expect(note).toContain('optional');
+		// An invitation, never a warning or a "setup incomplete" nag (plan D2).
+		expect(note).not.toMatch(/error|incomplete|required|must/i);
+	});
+
+	it('explains a named relay that went quiet instead of offering to connect it', () => {
+		// THE CONTRADICTION THIS PINS: keyed to the measurement, this sentence
+		// offered SES to a deployment already relaying through SES, directly above
+		// a card saying that SES carried the cell earlier in this window.
+		const note = standaloneNote({
+			isRelayConfigured: true,
+			referenceTransportId: 'ses',
+			hasPlottedRelayHistory: true,
+		});
+		expect(note).not.toContain('Connecting a relay');
+		expect(note).toContain('Amazon SES carried none of this traffic recently');
+		expect(note).toContain('The days it did carry are still plotted');
+		expect(note).not.toMatch(/error|incomplete|required|must/i);
+	});
+
+	it('promises no plotted days where no card plots one', () => {
+		// A graduated deployment (every cell at full own share), a relay connected
+		// today, a relay enabled for a messageType outside these streams: the relay
+		// is configured and carried nothing anywhere in the seven days the cards
+		// plot, so the explanation stands and the promise about the bars does not.
+		const note = standaloneNote({
+			isRelayConfigured: true,
+			referenceTransportId: 'ses',
+			hasPlottedRelayHistory: false,
+		});
+		expect(note).toContain('Amazon SES carried none of this traffic recently');
+		expect(note).not.toContain('still plotted');
+		expect(note).not.toContain('Connecting a relay');
+	});
+
+	it('speaks of relays in the plural when there is no single one to name', () => {
+		// The two-relay deployment: a relay exists, so the offer is still wrong,
+		// and `referenceTransportId` is null for the OTHER reason.
+		const note = standaloneNote({
+			isRelayConfigured: true,
+			referenceTransportId: null,
+			hasPlottedRelayHistory: true,
+		});
+		expect(note).not.toContain('Connecting a relay');
+		expect(note).toContain('the relays you have connected carried none of this traffic');
+		expect(note).toContain('The days they did carry');
+	});
+
+	it('drops the plural promise on the same premise', () => {
+		const note = standaloneNote({
+			isRelayConfigured: true,
+			referenceTransportId: null,
+			hasPlottedRelayHistory: false,
+		});
+		expect(note).toContain('the relays you have connected carried none of this traffic');
+		expect(note).not.toContain('still plotted');
+	});
+
+	it('names a plugin relay the way the transport card does', () => {
+		expect(
+			standaloneNote({
+				isRelayConfigured: true,
+				referenceTransportId: 'plugin.mail-pack.postmark',
+				hasPlottedRelayHistory: true,
+			})
+		).toContain('Postmark carried none');
 	});
 });
 
