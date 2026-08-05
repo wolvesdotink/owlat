@@ -18,6 +18,7 @@ import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
+import { sesReferenceArm } from './referenceArm';
 import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type { ProviderCheckResult, SendingDomainProviderModule, SesIdentity } from '../types';
@@ -125,6 +126,11 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 	// declares `domainVerification: 'api'`, so it is the one kind that can
 	// answer this; see `./relayVerification.ts` for the proof it requires.
 	relayDomainVerified: sesRelayDomainVerified,
+
+	// The alignment pre-flight's second arm (see `./referenceArm.ts`) — the same
+	// arm this deployment has always compared against, now answered through the
+	// registry instead of an `=== 'ses'` branch in the pre-flight.
+	describeReferenceArm: sesReferenceArm,
 
 	async writeIdentity(ctx, domainId, identity) {
 		const existing = await ctx.db

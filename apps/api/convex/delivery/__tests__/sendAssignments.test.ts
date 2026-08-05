@@ -923,6 +923,7 @@ describe('sendAssignments — campaign write path', () => {
 			[
 				'../../lib/sendProviders/relayDomainVerification.ts',
 				'../../domains/providers/ses/relayVerification.ts',
+				'../../domains/providers/mandrill/relayVerification.ts',
 			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 		);
 		for (const source of relayVerificationSources) {
@@ -943,6 +944,12 @@ describe('sendAssignments — campaign write path', () => {
 		//                                   deliverabilityRouting.ts
 		//                                   DOMAIN_CLASSIFICATION_REFRESH_MS)
 		//   domains / sendingDomainSesIdentities — verification-written
+		//   sendingDomainRelayIdentities  — the generic relay-identity table (D7).
+		//                                   Written by the domain-identity sweep at
+		//                                   most once per domain per hour (the
+		//                                   shortest cadence in
+		//                                   providers/mandrill/identity.ts) and by a
+		//                                   domain's registration — never by a send
 		//   sendAssignments               — the transaction's own table (the
 		//                                   matches come from this module's read
 		//                                   query and its retention sweep)
@@ -976,6 +983,7 @@ describe('sendAssignments — campaign write path', () => {
 			'domains',
 			'providerRoutes',
 			'sendAssignments',
+			'sendingDomainRelayIdentities',
 			'sendingDomainSesIdentities',
 		]);
 		// `.query('table')` is not the only way into the read set, and the two

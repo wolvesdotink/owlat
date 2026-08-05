@@ -50,7 +50,7 @@
  * See docs/adr/0018-sending-domain-lifecycle-modules.md.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -67,6 +67,7 @@ import {
 	resolveSpfQualifier,
 } from './spf';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
+import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
 import {
 	isSendingDomainProviderKind,
@@ -166,8 +167,26 @@ const providerIdentityValidator = v.union(
 		kind: v.literal('ses'),
 		dkimTokens: v.array(v.string()),
 		verificationToken: v.string(),
-	})
+	}),
+	// Mandrill (P3.1). State rather than key material: one shared selector, so
+	// the DNS is derived from the domain name and only Mandrill's own view of
+	// it is worth carrying across the action → mutation boundary. Imported
+	// rather than restated — the relay sweep's store mutation validates the same
+	// payload, and one of the two would eventually be the stale copy.
+	mandrillIdentityValidator
 );
+
+/**
+ * Compile-time completeness: every REGISTERED sending-domain provider kind must
+ * have an arm above, or its `registering → pending` transition would be
+ * rejected by argument validation at run time — on the provider callback, after
+ * the identity was already created at the provider. Adding a provider without
+ * its identity arm now fails the build instead.
+ */
+export type _IdentityKindsCovered =
+	Exclude<SendingDomainProviderKind, Infer<typeof providerIdentityValidator>['kind']> extends never
+		? true
+		: never;
 
 const transitionInputValidator = v.union(
 	v.object({ to: v.literal('registering'), at: v.number() }),
@@ -286,7 +305,12 @@ type Effect =
 			domain: string;
 	  }
 	| {
-			kind: 'provision_ses_relay_if_enabled';
+			// A domain just verified — provision any COEXISTING relay identity the
+			// deployment's fallback configuration calls for (an SES or Mandrill
+			// identity on a domain whose primary provider is our own MTA). Named
+			// for the capability rather than for one provider since P3.1 added the
+			// second one.
+			kind: 'provision_relay_identity_if_enabled';
 			domainId: Id<'domains'>;
 			providerType: SendingDomainProviderKind | null;
 	  };
@@ -444,7 +468,7 @@ function buildEffects(
 	if (input.to === 'verified') {
 		effects.push({ kind: 'claim_reserved_mailboxes', domain: domain.domain });
 		effects.push({
-			kind: 'provision_ses_relay_if_enabled',
+			kind: 'provision_relay_identity_if_enabled',
 			domainId: domain._id,
 			providerType: providerKind,
 		});
@@ -540,20 +564,28 @@ async function applyEffects(
 				);
 				break;
 			}
-			case 'provision_ses_relay_if_enabled': {
+			case 'provision_relay_identity_if_enabled': {
 				if (effect.providerType !== 'mta') break;
 				// Bounded by the fixed message-type enum (campaign, transactional,
 				// automation); take one spare row so a malformed duplicate still cannot
 				// turn the verified-domain transition into an unbounded scan.
 				const routes = await ctx.db.query('providerRoutes').take(4);
-				if (
-					routes.some(
-						(route) =>
-							route.deliverabilityFallback?.isEnabled &&
-							route.deliverabilityFallback.relayProviderType === 'ses'
-					)
-				) {
+				const relayKinds = new Set(
+					routes
+						.filter((route) => route.deliverabilityFallback?.isEnabled)
+						.map((route) => route.deliverabilityFallback?.relayProviderType)
+				);
+				// One line per relay kind that provisions an identity on OUR domain
+				// while another provider stays primary. Both are scheduled, not
+				// inline: a provider outage must never roll back the domain's
+				// → verified transition (same reasoning as `register_with_provider`).
+				if (relayKinds.has('ses')) {
 					await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
+						domainId: effect.domainId,
+					});
+				}
+				if (relayKinds.has('mandrill')) {
+					await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
 						domainId: effect.domainId,
 					});
 				}

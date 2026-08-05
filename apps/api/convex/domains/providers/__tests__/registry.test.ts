@@ -26,7 +26,7 @@ import {
 
 describe('SENDING_DOMAIN_PROVIDERS', () => {
 	it('registers exactly the shipped kinds, each declaring its own kind', () => {
-		expect(Object.keys(SENDING_DOMAIN_PROVIDERS).sort()).toEqual(['mta', 'ses']);
+		expect(Object.keys(SENDING_DOMAIN_PROVIDERS).sort()).toEqual(['mandrill', 'mta', 'ses']);
 		for (const [key, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
 			expect(provider.kind).toBe(key);
 		}
@@ -35,10 +35,11 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 	it('providerFor returns the adapter for a registered kind', () => {
 		expect(providerFor('mta')).toBe(SENDING_DOMAIN_PROVIDERS.mta);
 		expect(providerFor('ses')).toBe(SENDING_DOMAIN_PROVIDERS.ses);
+		expect(providerFor('mandrill')).toBe(SENDING_DOMAIN_PROVIDERS.mandrill);
 	});
 
 	it('providerFor throws on an unregistered kind', () => {
-		expect(() => providerFor('mandrill' as SendingDomainProviderKind)).toThrow(
+		expect(() => providerFor('postmark' as SendingDomainProviderKind)).toThrow(
 			/Unknown sending domain provider/
 		);
 	});
@@ -47,8 +48,8 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		for (const kind of Object.keys(SENDING_DOMAIN_PROVIDERS)) {
 			expect(isSendingDomainProviderKind(kind)).toBe(true);
 		}
-		expect(isSendingDomainProviderKind('mandrill')).toBe(false);
 		expect(isSendingDomainProviderKind('resend')).toBe(false);
+		expect(isSendingDomainProviderKind('postmark')).toBe(false);
 		expect(isSendingDomainProviderKind('')).toBe(false);
 		expect(isSendingDomainProviderKind(undefined)).toBe(false);
 		expect(isSendingDomainProviderKind(null)).toBe(false);
@@ -71,7 +72,7 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 			(entry) => domainVerificationFor(entry.kind) === 'api'
 		).map((entry) => entry.kind);
 
-		expect(apiVerified).toEqual(['ses']);
+		expect(apiVerified).toEqual(['ses', 'mandrill']);
 		for (const kind of apiVerified) {
 			expect(isSendingDomainProviderKind(kind)).toBe(true);
 		}
@@ -82,8 +83,8 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 		// compiling until the kind is added here AND registered above — which is
 		// the point: the type is derived from the catalog literal, so it cannot
 		// drift from it silently.
-		const apiVerifiedKinds: ApiVerifiedSendProviderKind[] = ['ses'];
-		expect(apiVerifiedKinds).toEqual(['ses']);
+		const apiVerifiedKinds: ApiVerifiedSendProviderKind[] = ['ses', 'mandrill'];
+		expect(apiVerifiedKinds).toEqual(['ses', 'mandrill']);
 	});
 
 	it('only api-verified kinds implement the relay-verification read seam', () => {
@@ -94,6 +95,17 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 		for (const [kind, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
 			const declaresApi = domainVerificationFor(kind as SendProviderKind) === 'api';
 			expect(typeof provider.relayDomainVerified === 'function').toBe(declaresApi);
+		}
+	});
+
+	it('every kind that can prove a domain also describes its own reference arm', () => {
+		// P3.1's second half: the alignment pre-flight asks the registry for the
+		// second arm instead of testing `=== 'ses'`. A relay that can prove a
+		// domain but cannot describe it would resolve `unknown` and hold the ramp
+		// at s=0 forever — silently, since nothing else in the system notices.
+		for (const provider of Object.values(SENDING_DOMAIN_PROVIDERS)) {
+			if (provider.relayDomainVerified === undefined) continue;
+			expect(typeof provider.describeReferenceArm).toBe('function');
 		}
 	});
 });

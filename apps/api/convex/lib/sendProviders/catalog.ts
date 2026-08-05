@@ -153,12 +153,13 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		supportsCustomReturnPath: 'probe',
 		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject (D10).
 		hasProviderFeedback: true,
-		// Mandrill HAS a domain-identity API (`senders/domains`), but nothing in
-		// this repo reads it yet: P3.1 registers `domains/providers/mandrill` and
-		// flips this to 'api'. Declaring 'api' before that provider exists is a
-		// compile error (the `ApiVerifiedSendProviderKind` completeness guard), and
-		// would in any case credit the seam with a proof it never fetched.
-		domainVerification: 'none' /* flipped to 'api' by P3.1 */,
+		// Mandrill's sender-domain API (`senders/add-domain` / `check-domain`) is
+		// read by `domains/providers/mandrill` (P3.1), which registers the kind in
+		// `SENDING_DOMAIN_PROVIDERS` and answers the relay-verification seam from
+		// `sendingDomainRelayIdentities`. Declaring 'api' without that provider is
+		// a compile error (the `ApiVerifiedSendProviderKind` completeness guard),
+		// so this line and that registration can only move together.
+		domainVerification: 'api',
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 

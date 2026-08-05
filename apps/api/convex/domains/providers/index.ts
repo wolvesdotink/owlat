@@ -16,6 +16,7 @@
  * Per ADR-0018, extended by plan D6/D7.
  */
 
+import { mandrillProvider } from './mandrill';
 import { mtaProvider } from './mta';
 import { sesProvider } from './ses';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
@@ -29,6 +30,8 @@ export type {
 	ProviderIdentityFor,
 	MtaIdentity,
 	SesIdentity,
+	MandrillIdentity,
+	RelayIdentityStatus,
 	ProviderCheckResult,
 } from './types';
 
@@ -40,6 +43,7 @@ export type {
 export const SENDING_DOMAIN_PROVIDERS = {
 	mta: mtaProvider,
 	ses: sesProvider,
+	mandrill: mandrillProvider,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the adapter shape for

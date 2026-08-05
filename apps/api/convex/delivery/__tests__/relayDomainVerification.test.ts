@@ -9,11 +9,15 @@
  *   - the honest "unverifiable" answer for kinds with no identity API
  *     (`smtp`, `resend`) and for the owned MTA, which is never a relay;
  *   - the same answer for a kind this deployment has never heard of.
+ *
+ * P3.1 added the second kind that CAN answer — Mandrill, from the generic
+ * identity table — so the last block covers it as its own proof rather than as
+ * the "unknown kind" placeholder it used to be.
  */
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
-import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { MANDRILL_RELAY_PROOF_MAX_AGE_MS, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import schema from '../../schema';
 import { relayDomainVerified } from '../../lib/sendProviders/relayDomainVerification';
 import type { DatabaseWriter } from '../../_generated/server';
@@ -186,9 +190,86 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
 		const t = harness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
-			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'postmark', NOW)).toBe(false);
 			expect(await relayDomainVerified(ctx, DOMAIN, '', NOW)).toBe(false);
+		});
+	});
+});
+
+/**
+ * MANDRILL (P3.1) — the second kind to answer this seam, and the proof that
+ * "verifiable" now means "a registered provider says so" rather than "is SES".
+ *
+ * Its proof is a row in the GENERIC `sendingDomainRelayIdentities` table (D7)
+ * rather than a per-provider sibling, and it is Mandrill's own verdict rather
+ * than our DNS crawl — so the cases that can go wrong are different ones: a
+ * status that is not `verified`, record verdicts that contradict it, and an
+ * observation that has aged out.
+ */
+describe('relayDomainVerified — Mandrill', () => {
+	async function seedMandrillIdentity(
+		ctx: { db: DatabaseWriter },
+		overrides: Partial<{
+			status: 'unverified' | 'pending_dns' | 'verified' | 'failed';
+			spf: { isValid: boolean };
+			dkim: { isValid: boolean };
+			lastCheckedAt: number;
+		}> = {}
+	): Promise<void> {
+		await ctx.db.insert('sendingDomainRelayIdentities', {
+			organizationId: 'org-a',
+			domain: DOMAIN,
+			providerKind: 'mandrill',
+			status: 'verified' as const,
+			spf: { isValid: true },
+			dkim: { isValid: true },
+			lastCheckedAt: NOW,
+			nextCheckDueAt: NOW + 24 * 60 * 60 * 1000,
+			createdAt: NOW,
+			updatedAt: NOW,
+			...overrides,
+		});
+	}
+
+	it('accepts a fresh, verified identity', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			await seedMandrillIdentity(ctx);
+			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(true);
+			expect(await relayDomainVerified(ctx, DOMAIN.toUpperCase(), 'mandrill', NOW)).toBe(true);
+		});
+	});
+
+	it('refuses an observation older than the max age', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			await seedMandrillIdentity(ctx);
+			expect(
+				await relayDomainVerified(
+					ctx,
+					DOMAIN,
+					'mandrill',
+					NOW + MANDRILL_RELAY_PROOF_MAX_AGE_MS + 1
+				)
+			).toBe(false);
+		});
+	});
+
+	it('refuses an identity that is not verified', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			await seedMandrillIdentity(ctx, { status: 'pending_dns' });
+			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
+		});
+	});
+
+	it('refuses a domain with no Mandrill identity, however verified it is at SES', async () => {
+		// One relay's proof is not another's — the same rule the SES-only cases
+		// above assert from the other side.
+		const t = harness();
+		await t.run(async (ctx) => {
+			await seedSesRelay(ctx);
+			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
 		});
 	});
 });

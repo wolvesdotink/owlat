@@ -24,6 +24,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 
@@ -102,6 +103,32 @@ async function seedDomain(
 				updatedAt: NOW,
 			});
 		}
+	});
+}
+
+/**
+ * A verified Mandrill identity for `domain`, in the GENERIC relay-identity
+ * table (D7) — the row P3.1's provider writes and its reference arm reads.
+ */
+async function seedMandrillIdentity(
+	t: TestConvex<typeof schema>,
+	domain: string,
+	overrides: Partial<{ status: 'pending_dns' | 'verified'; lastCheckedAt: number }> = {}
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const lastCheckedAt = overrides.lastCheckedAt ?? Date.now();
+		await ctx.db.insert('sendingDomainRelayIdentities', {
+			organizationId: 'org-a',
+			domain,
+			providerKind: 'mandrill',
+			status: overrides.status ?? ('verified' as const),
+			spf: { isValid: true },
+			dkim: { isValid: true },
+			lastCheckedAt,
+			nextCheckDueAt: lastCheckedAt + 24 * 60 * 60 * 1000,
+			createdAt: NOW,
+			updatedAt: NOW,
+		});
 	});
 }
 
@@ -255,18 +282,19 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 	});
 
 	/**
-	 * THE MIGRATION'S ARM READ (P1.3, plan D8) — pinned as it stands, not as it
-	 * will stand. A SOLE Mandrill relay is a describable configuration to
+	 * THE MIGRATION'S ARM READ (plan D8), now that P3.1 has landed. A SOLE
+	 * Mandrill relay was already a describable configuration to
 	 * `relayConfiguration` (exactly one second arm; see
-	 * `relayConfiguration.test.ts`) but not yet to the ALIGNMENT read, which can
-	 * only build a reference arm from a verified signing identity and today has
-	 * one source for that: the SES identity table. The plan's P3.1 registers
-	 * Mandrill's domain provider and its identity row; until then the honest
-	 * answer is `unknown`, which HOLDS the gate rather than opening it — the
-	 * conservative direction, and the reason this is worth pinning rather than
-	 * leaving to be rediscovered as a regression later.
+	 * `relayConfiguration.test.ts`) but was NOT describable to the alignment
+	 * read, which could only build an arm from the SES identity table — so the
+	 * one deployment shape the migration exists to serve reported `unknown`
+	 * forever and could never leave s=0.
+	 *
+	 * P3.1 put the question to the sending-domain provider registry, so the
+	 * answer is now the honest one in BOTH directions: an arm once Mandrill has
+	 * verified the domain, and the same conservative `unknown` HOLD until then.
 	 */
-	it('holds on a sole Mandrill relay it has no verified signing identity for', async () => {
+	it('holds on a sole Mandrill relay it has no verified identity for', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { domain: 'acme.com' });
@@ -280,6 +308,44 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 			expect(result.reference.detail).toContain('A relay is configured (mandrill)');
 			expect(result.reference.detail).not.toContain('More than one relay');
 		}
+	});
+
+	it('describes a sole Mandrill relay once the domain is verified at Mandrill', async () => {
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'acme.com' });
+		await seedRelayRoute(t, 'mandrill');
+		await seedMandrillIdentity(t, 'acme.com');
+
+		const result = await arms(t);
+		expect(result?.reference.kind).toBe('arm');
+		if (result?.reference.kind === 'arm') {
+			expect(result.reference.arm.label).toBe('Mandrill relay');
+			// The alignment contract (D11): same From domain, same DKIM `d=`, a
+			// DIFFERENT selector — otherwise the two arms are not comparable.
+			expect(result.reference.arm.fromDomain).toBe(result.ownArm.fromDomain);
+			expect(result.reference.arm.dkimDomain).toBe(result.ownArm.dkimDomain);
+			expect(result.reference.arm.dkimSelectors).toEqual(['mandrill']);
+			expect(result.reference.arm.spfMechanisms).toEqual(['include:spf.mandrillapp.com']);
+			// Mandrill mints its own bounce local part, so it cannot carry our VERP
+			// return path (D5) — bounce attribution on that arm is coarser.
+			expect(result.reference.arm.supportsCustomReturnPath).toBe(false);
+		}
+	});
+
+	it('still holds when the Mandrill identity has aged out', async () => {
+		// Freshness is the relay PROOF's rule, and the arm reuses it rather than
+		// restating it: a stale identity is one the router would refuse to relay
+		// through, so the ramp must not be measured against it either.
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { domain: 'acme.com' });
+		await seedRelayRoute(t, 'mandrill');
+		await seedMandrillIdentity(t, 'acme.com', {
+			lastCheckedAt: Date.now() - MANDRILL_RELAY_PROOF_MAX_AGE_MS - 1,
+		});
+
+		expect((await arms(t))?.reference.kind).toBe('unknown');
 	});
 
 	it('names the multi-relay case distinctly — D8’s "keep Mandrill the only relay"', async () => {

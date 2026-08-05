@@ -18,7 +18,8 @@
  *   lifecycle reducer.
  */
 
-import type { Id } from '../../_generated/dataModel';
+import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
 
@@ -36,6 +37,49 @@ export type SesIdentity = {
 };
 
 /**
+ * A Mandrill sending-domain identity, as `senders/add-domain` /
+ * `senders/check-domain` last described it (P3.1).
+ *
+ * It carries STATE rather than secrets or per-domain tokens, which is the whole
+ * difference from SES: Mandrill signs every account's mail with one shared,
+ * account-independent `mandrill` selector, so there is no per-domain key
+ * material to remember — the DNS records are a pure function of the domain name
+ * (`./mandrill/records.ts`). What only Mandrill can tell us is whether it can
+ * SEE those records and whether the domain's ownership has been verified, and
+ * that is exactly what this payload is.
+ */
+export type MandrillIdentity = {
+	kind: 'mandrill';
+	/** The (shared) selector Mandrill signs with — `mandrill`. */
+	dkimSelector: string;
+	/** Provider-side lifecycle, derived from the fields below. */
+	status: RelayIdentityStatus;
+	/** Mandrill's own verdict on the published SPF record. */
+	spf: { isValid: boolean; error?: string };
+	/** Mandrill's own verdict on the published DKIM record. */
+	dkim: { isValid: boolean; error?: string };
+	/** Mandrill's aggregate "this domain may be used to sign mail". */
+	isValidSigning: boolean;
+	/** Mandrill's ownership-verification timestamp, absent until it clears. */
+	verifiedAt?: number;
+	/**
+	 * The TXT token that verifies domain OWNERSHIP without the verification
+	 * mail, when this account's API returns one. Absent means the operator has
+	 * to complete Mandrill's mailbox verification instead — surfaced as an
+	 * instruction, never guessed at.
+	 */
+	verifyTxtKey?: string;
+	/** When the provider state above was read. */
+	checkedAt: number;
+};
+
+/**
+ * The `sendingDomainRelayIdentities.status` lifecycle, spelled once here so the
+ * identity payloads and the row stay one declaration.
+ */
+export type RelayIdentityStatus = 'unverified' | 'pending_dns' | 'verified' | 'failed';
+
+/**
  * The REGISTRY of sending-domain provider kinds, keyed by kind (D7). One line
  * per provider, mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`:
  * the kind union, the per-kind identity payload and the module registry's
@@ -51,6 +95,7 @@ export type SesIdentity = {
 export interface SendingDomainIdentityRegistry {
 	mta: MtaIdentity;
 	ses: SesIdentity;
+	mandrill: MandrillIdentity;
 }
 
 export type SendingDomainProviderKind = keyof SendingDomainIdentityRegistry;
@@ -138,6 +183,32 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 		domainName: string,
 		now: number
 	): Promise<boolean>;
+
+	/**
+	 * This provider's REFERENCE ARM for one sending domain — the second arm the
+	 * dual-transport alignment pre-flight compares the own MTA against
+	 * (`delivery/alignmentPreflight.ts`).
+	 *
+	 * Null means "configured, but we cannot describe this domain's signing
+	 * identity at this relay", which the pre-flight turns into `unknown` — a
+	 * HOLD on the ramp, never an opened gate. That is the honest answer for a
+	 * relay whose identity has not been registered (or, for a provider that can
+	 * tell, not yet verified), and it is why this returns null rather than a
+	 * half-filled arm: an arm with a guessed selector would be checked against
+	 * live DNS and reported as a real misalignment on the operator's screen.
+	 *
+	 * OPTIONAL because most kinds are never a reference arm — our own MTA is the
+	 * first arm by construction. A kind with no implementation keeps today's
+	 * conservative `unknown`.
+	 *
+	 * Runs inside a QUERY (the sweep and the wizard read), not on the enqueue
+	 * path, so an indexed read plus a `ctx.db.get` is fine here.
+	 */
+	describeReferenceArm?(
+		ctx: QueryCtx | MutationCtx,
+		domain: Doc<'domains'>,
+		now: number
+	): Promise<ReferenceAlignmentArm | null>;
 
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 

@@ -29,22 +29,18 @@ import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
 	normalizeDomain,
 	type AlignmentArm,
-	type ReferenceAlignmentArm,
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
 import type { ReferenceArmPresence } from '@owlat/shared/deliverabilityAlignmentGate';
-import { parseSpfMechanisms } from '@owlat/shared/spf';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { isSendingDomainProviderKind, providerFor } from '../domains/providers';
 import { parsePoolIps } from '../domains/spf';
 import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
 import { configuredRelayKinds } from './relayConfiguration';
-
-/** SES's SPF include, used when the relay identity carries no generated record. */
-const SES_DEFAULT_SPF_MECHANISM = 'include:amazonses.com';
 
 /**
  * Own bound for the readiness READ — a UI page size, deliberately not the cron's
@@ -86,12 +82,6 @@ function ownSpfMechanisms(): string[] {
 	return poolIps.map((ip) => `${ip.includes(':') ? 'ip6' : 'ip4'}:${ip}`);
 }
 
-/** Relay SPF mechanisms from the identity's generated record, else SES's default. */
-function relaySpfMechanisms(record: string | undefined): string[] {
-	const mechanisms = parseSpfMechanisms(record ?? '');
-	return mechanisms.length > 0 ? mechanisms : [SES_DEFAULT_SPF_MECHANISM];
-}
-
 /**
  * A configured relay we cannot describe. TWO different situations reach this
  * state and they need TWO different remedies: a relay whose signing identity we
@@ -111,25 +101,35 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
  * The second arm. `none` is the standalone deployment (D2). `unknown` is a relay
  * we cannot describe — one we have no verified signing identity for, or more
  * than one at once — and it HOLDS rather than opening the gate.
+ *
+ * REGISTRY-DRIVEN since P3.1. This used to read
+ * `relayKinds[0] === 'ses' && sesIdentity !== null`, which quietly made "a
+ * describable second arm" mean "is SES": a deployment migrating from Mandrill —
+ * the exact configuration the ramp exists to serve (D8) — reported `unknown`
+ * forever and could never leave s=0, however verified its relay was. The
+ * question is now put to the sending-domain provider for the relay's kind
+ * (`describeReferenceArm`), so a provider ships its own arm the same way it
+ * ships its own relay proof, and this file holds only the two rules that are
+ * NOT per-provider:
+ *
+ *  - exactly ONE relay, or there is no single second arm to compare against
+ *    (unchanged — the multi-relay case still reports `unknown` with its own
+ *    remedy, which is what D8's "keep the relay singular" warning reads);
+ *  - a kind with no registered provider, or a provider that cannot describe
+ *    this domain, is `unknown` — never `none`.
  */
-function referenceFor(
+async function referenceFor(
+	ctx: QueryCtx,
 	domain: Doc<'domains'>,
-	sesIdentity: Doc<'sendingDomainSesIdentities'> | null,
-	relayKinds: readonly string[]
-): ReferenceArmInput {
+	relayKinds: readonly string[],
+	now: number
+): Promise<ReferenceArmInput> {
 	if (relayKinds.length === 0) return { kind: 'none' };
-	if (relayKinds.length === 1 && relayKinds[0] === 'ses' && sesIdentity !== null) {
-		const arm: ReferenceAlignmentArm = {
-			label: 'SES relay',
-			fromDomain: domain.domain,
-			dkimDomain: domain.domain,
-			dkimSelectors: sesIdentity.dkimTokens,
-			spfMechanisms: relaySpfMechanisms(sesIdentity.dnsRecords?.spf?.value),
-			// A verified custom MAIL FROM is what lets the relay carry our own return
-			// path; without it bounce attribution on that arm is coarser (P2-3).
-			supportsCustomReturnPath: (sesIdentity.dnsRecords?.mailFrom?.length ?? 0) > 0,
-		};
-		return { kind: 'arm', arm };
+	const kind = relayKinds.length === 1 ? relayKinds[0] : undefined;
+	if (kind !== undefined && isSendingDomainProviderKind(kind)) {
+		const provider = providerFor(kind);
+		const arm = await provider.describeReferenceArm?.(ctx, domain, now);
+		if (arm) return { kind: 'arm', arm };
 	}
 	return { kind: 'unknown', detail: undescribableRelayDetail(domain.domain, relayKinds) };
 }
@@ -166,9 +166,10 @@ function referencePresence(reference: ReferenceArmInput): ReferenceArmPresence {
 async function buildTarget(
 	ctx: QueryCtx,
 	domain: Doc<'domains'>,
-	relayKinds: readonly string[]
+	relayKinds: readonly string[],
+	now: number
 ): Promise<AlignmentTarget | null> {
-	const arms = await buildArms(ctx, domain, relayKinds);
+	const arms = await buildArms(ctx, domain, relayKinds, now);
 	if (arms === null) return null;
 	const { ownArm, reference } = arms;
 	if (reference.kind === 'none') return null;
@@ -187,17 +188,14 @@ async function buildTarget(
 async function buildArms(
 	ctx: QueryCtx,
 	domain: Doc<'domains'>,
-	relayKinds: readonly string[]
+	relayKinds: readonly string[],
+	now: number
 ): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> {
 	const mtaIdentity = await ctx.db
 		.query('sendingDomainMtaIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.unique();
 	if (mtaIdentity === null) return null;
-	const sesIdentity = await ctx.db
-		.query('sendingDomainSesIdentities')
-		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-		.unique();
 	return {
 		ownArm: {
 			label: 'own MTA',
@@ -206,7 +204,9 @@ async function buildArms(
 			dkimSelectors: [mtaIdentity.dkimSelector],
 			spfMechanisms: ownSpfMechanisms(),
 		},
-		reference: referenceFor(domain, sesIdentity, relayKinds),
+		// The relay's identity read now lives with the relay's provider, so this
+		// no longer loads one provider's table on behalf of all of them.
+		reference: await referenceFor(ctx, domain, relayKinds, now),
 	};
 }
 
@@ -254,7 +254,7 @@ export const listDueAlignmentTargets = internalQuery({
 		for (const domain of page.page) {
 			const state = await loadAlignmentState(ctx, organizationId, domain.domain);
 			if (state && state.nextCheckDueAt > args.now) continue;
-			const target = await buildTarget(ctx, domain, relayKinds);
+			const target = await buildTarget(ctx, domain, relayKinds, args.now);
 			if (target !== null) targets.push(target);
 		}
 		return { targets, continueCursor: page.continueCursor, isDone: page.isDone };
@@ -325,16 +325,10 @@ export const getAlignmentGateState = internalQuery({
 			.query('domains')
 			.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
 			.unique();
-		const sesIdentity = domain
-			? await ctx.db
-					.query('sendingDomainSesIdentities')
-					.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-					.unique()
-			: null;
 		const relayKinds = await configuredRelayKinds(ctx);
 		const reference: ReferenceArmInput =
 			domain !== null
-				? referenceFor(domain, sesIdentity, relayKinds)
+				? await referenceFor(ctx, domain, relayKinds, Date.now())
 				: relayKinds.length === 0
 					? { kind: 'none' }
 					: { kind: 'unknown', detail: undescribableRelayDetail(fromDomain, relayKinds) };
@@ -380,6 +374,7 @@ export const getAlignmentArms = authedQuery({
 		args
 	): Promise<{ domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
 		const relayKinds = await configuredRelayKinds(ctx);
+		const now = Date.now();
 		if (args.domain !== undefined) {
 			const fromDomain = normalizeDomain(args.domain);
 			const domain = await ctx.db
@@ -387,7 +382,7 @@ export const getAlignmentArms = authedQuery({
 				.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
 				.unique();
 			if (domain === null) return null;
-			const arms = await buildArms(ctx, domain, relayKinds);
+			const arms = await buildArms(ctx, domain, relayKinds, now);
 			return arms === null ? null : { domain: domain.domain, ...arms };
 		}
 		// Bounded by the same page size as the readiness read: a deployment with
@@ -398,7 +393,7 @@ export const getAlignmentArms = authedQuery({
 			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.take(ALIGNMENT_READINESS_LIMIT);
 		for (const domain of verified) {
-			const arms = await buildArms(ctx, domain, relayKinds);
+			const arms = await buildArms(ctx, domain, relayKinds, now);
 			if (arms !== null) return { domain: domain.domain, ...arms };
 		}
 		return null;

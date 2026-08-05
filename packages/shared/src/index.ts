@@ -43,7 +43,7 @@ export {
 	zoneRelativeHost,
 } from './dnsZone';
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
-export { SES_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
+export { SES_RELAY_PROOF_MAX_AGE_MS, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
 	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
 	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,

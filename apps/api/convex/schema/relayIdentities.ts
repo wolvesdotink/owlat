@@ -74,6 +74,22 @@ export const relayIdentitiesTables = {
 		// Operator/dashboard reads: "which of this org's domains are verified at
 		// this relay?"
 		.index('by_org_provider_status', ['organizationId', 'providerKind', 'status'])
+		// THE ENQUEUE-PATH PROOF READ (D6): "may this From domain be handed to
+		// this relay right now?", asked by `domains/providers/<kind>/`'s
+		// `relayDomainVerified` inside a send transaction.
+		//
+		// Not org-leading, for the same reason `by_next_check_due` below is not:
+		// it is not a caller-reachable read. The enqueue transaction has no
+		// session to resolve an org from, and resolving the deployment singleton
+		// (`getSingletonOrganizationId`) costs a `ctx.runQuery` — which the
+		// enqueue read-set guard in `delivery/__tests__/sendAssignments.test.ts`
+		// bans outright, because it hides an arbitrary read set behind a function
+		// reference on the hottest path we have. Owlat is single-organization per
+		// deployment (`assertSingletonOrgInvariant`), so "cross-tenant" has no
+		// referent here; the read answers a BOOLEAN about a published DNS fact
+		// and returns no row content to any caller. Same shape as the SES proof,
+		// which reads `domains` by its equally org-free `by_domain` index.
+		.index('by_domain_provider', ['domain', 'providerKind'])
 		// The re-check scheduler. Deliberately NOT org-leading: it is a
 		// deployment-wide due-work sweep, exactly like `sendAssignments`'
 		// `by_assigned_at` retention index, and it exposes no tenant data to a

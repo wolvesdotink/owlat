@@ -75,19 +75,20 @@ describe('Send provider registry', () => {
 				requiredEnvVars: ['MANDRILL_API_KEY'],
 				supportsCustomReturnPath: 'probe',
 				hasProviderFeedback: true,
-				// P3.1 flips this to 'api' when `domains/providers/mandrill` registers.
-				domainVerification: 'none',
+				// P3.1 flipped this once `domains/providers/mandrill` registered.
+				domainVerification: 'api',
 			},
 		]);
 	});
 
-	it('declares no domain-identity provider yet — the P3.1 ordering constraint', () => {
-		// Declaring `domainVerification: 'api'` before the domain provider exists is
-		// a COMPILE error (the `ApiVerifiedSendProviderKind` completeness guard in
-		// `domains/providers`). Pinned at runtime too so the flip is a deliberate
-		// two-sided edit rather than something a later piece does by halves.
+	it('declares an API-verified domain identity — the P3.1 two-sided flip', () => {
+		// Declaring `domainVerification: 'api'` without the domain provider is a
+		// COMPILE error (the `ApiVerifiedSendProviderKind` completeness guard in
+		// `domains/providers`), so this line and `SENDING_DOMAIN_PROVIDERS.mandrill`
+		// can only move together. Pinned at runtime too, from the other side:
+		// `domains/providers/__tests__/registry.test.ts` asserts the registration.
 		const mandrill = SEND_PROVIDER_CATALOG.find((entry) => entry.kind === 'mandrill');
-		expect(mandrill?.domainVerification).toBe('none');
+		expect(mandrill?.domainVerification).toBe('api');
 	});
 });
 
