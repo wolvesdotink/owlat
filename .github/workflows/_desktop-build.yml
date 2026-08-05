@@ -189,6 +189,15 @@ jobs:
             warn "Windows artifacts will be UNSIGNED (WINDOWS_CERTIFICATE secret not configured). SmartScreen will warn on first run. See apps/desktop/README.md → Release (CI)."
           fi
 
+      # tauri's beforeBuildCommand runs `bun run generate:desktop` (a plain
+      # `nuxt generate`) OUTSIDE the turbo task graph, so the workspace
+      # libraries the web bundle imports as built dist/ entries (e.g.
+      # @owlat/plugin-kit — see the check-build-graph lint) are never compiled
+      # on this runner and nuxt fails to resolve their package exports. Build
+      # the web app's workspace dependency closure first.
+      - name: Build workspace libraries for the web bundle
+        run: bunx turbo build --filter='@owlat/web^...'
+
       - name: Build, sign & upload desktop app
         uses: tauri-apps/tauri-action@v1
         env:
