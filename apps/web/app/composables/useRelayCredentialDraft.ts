@@ -58,6 +58,36 @@ export const RELAY_PROVIDER_OPTIONS: readonly RelayProviderOption[] = [
 		hint: 'Managed API with a generous free tier.',
 		icon: 'lucide:zap',
 	},
+	{
+		value: 'mandrill',
+		label: 'Mailchimp Transactional (Mandrill)',
+		hint: 'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
+		icon: 'lucide:shuffle',
+	},
+];
+
+/**
+ * The in-app transport editor's picker: the relays above, plus the built-in MTA.
+ *
+ * The MTA is not a relay — it is the thing a relay is an alternative TO — so it
+ * cannot live in `RELAY_PROVIDER_OPTIONS` (which types the connect-a-relay
+ * surfaces). It sits here rather than in the editor component so the two lists
+ * are declared in one file and a new relay kind reaches both by being added
+ * once.
+ */
+export const TRANSPORT_EDITOR_PROVIDER_OPTIONS: readonly {
+	readonly value: ProviderChoice;
+	readonly label: string;
+	readonly hint: string;
+	readonly icon: string;
+}[] = [
+	{
+		value: 'mta',
+		label: 'Run your own MTA',
+		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
+		icon: 'lucide:server',
+	},
+	...RELAY_PROVIDER_OPTIONS,
 ];
 
 /** The apply endpoint's contract, shared so both callers read the same fields. */
@@ -88,11 +118,15 @@ export interface ValidateTransportResponse {
 }
 
 /** The credential fields of an {@link EmailStepDraft} — everything but identity. */
-export type RelayCredentialFields = Pick<EmailStepDraft, 'resendKey' | 'ses' | 'smtp'>;
+export type RelayCredentialFields = Pick<
+	EmailStepDraft,
+	'resendKey' | 'mandrillKey' | 'ses' | 'smtp'
+>;
 
 export interface RelayCredentialDraft {
 	readonly provider: Ref<ProviderChoice>;
 	readonly resendKey: Ref<string>;
+	readonly mandrillKey: Ref<string>;
 	readonly sesRegion: Ref<string>;
 	readonly sesAccess: Ref<string>;
 	readonly sesSecret: Ref<string>;
@@ -119,6 +153,7 @@ export function useRelayCredentialDraft(
 ): RelayCredentialDraft {
 	const provider = ref<ProviderChoice>(initialProvider);
 	const resendKey = ref('');
+	const mandrillKey = ref('');
 	const sesRegion = ref('us-east-1');
 	const sesAccess = ref('');
 	const sesSecret = ref('');
@@ -145,6 +180,7 @@ export function useRelayCredentialDraft(
 
 	const credentialFields = computed<RelayCredentialFields>(() => ({
 		resendKey: resendKey.value,
+		mandrillKey: mandrillKey.value,
 		ses: {
 			region: sesRegion.value,
 			accessKeyId: sesAccess.value,
@@ -160,12 +196,22 @@ export function useRelayCredentialDraft(
 		},
 	}));
 
-	const enteredSecrets = computed(() => [resendKey.value, sesSecret.value, smtpPassword.value]);
+	const enteredSecrets = computed(() => [
+		resendKey.value,
+		mandrillKey.value,
+		sesSecret.value,
+		smtpPassword.value,
+	]);
 
+	// Mandrill sits with SES here, not with Resend: there is no pre-apply
+	// handshake endpoint for it, and offering a check that always passes would be
+	// worse than offering none. The transport wizard's live TEST SEND is the real
+	// proof for both.
 	const canValidateLive = computed(() => provider.value === 'resend' || provider.value === 'smtp');
 
 	function clearEnteredSecrets(): void {
 		resendKey.value = '';
+		mandrillKey.value = '';
 		sesSecret.value = '';
 		smtpPassword.value = '';
 	}
@@ -195,6 +241,7 @@ export function useRelayCredentialDraft(
 	return {
 		provider,
 		resendKey,
+		mandrillKey,
 		sesRegion,
 		sesAccess,
 		sesSecret,

@@ -31,6 +31,7 @@ vi.mock('@owlat/smtp-client', () => ({
 import { sendProviderDispatch } from '../dispatch';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
+import { _resetMandrillConfigCacheForTests } from '../mandrill';
 import {
 	_resetSendTransportCacheForTests,
 	listSendTransports,
@@ -43,6 +44,10 @@ const SECRETS = [
 	'resend-super-secret',
 	'relay-super-secret',
 	'backup-super-secret',
+	// Mandrill's key is the sharpest case in this file: it travels in the REQUEST
+	// BODY (Mandrill convention), so it sits one `JSON.stringify` away from any
+	// error path that echoes what was sent.
+	'mandrill-super-secret',
 ];
 
 function expectNoSecret(text: string): void {
@@ -71,6 +76,7 @@ beforeEach(() => {
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 	resendSendMock.mockReset();
 	resendSendMock.mockResolvedValue({ data: { id: 'resend-1' }, error: null });
 	smtpSendMock.mockReset();
@@ -86,6 +92,7 @@ beforeEach(() => {
 	vi.stubEnv('SMTP_RELAY_HOST__BACKUP', 'smtp.backup.test');
 	vi.stubEnv('SMTP_RELAY_USERNAME__BACKUP', 'backup-user');
 	vi.stubEnv('SMTP_RELAY_PASSWORD__BACKUP', 'backup-super-secret');
+	vi.stubEnv('MANDRILL_API_KEY', 'mandrill-super-secret');
 });
 
 afterEach(() => {
@@ -95,6 +102,7 @@ afterEach(() => {
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 });
 
 describe('transport records carry names, never values', () => {
@@ -143,6 +151,23 @@ describe('dispatch results and errors carry no sealed config', () => {
 		expectNoSecret(JSON.stringify(dispatched));
 	});
 
+	it('keeps the Mandrill key out of a failed dispatch even when the upstream echoes the request', async () => {
+		// Mandrill takes its credential in the JSON BODY, so an upstream that echoes
+		// what it received hands the key straight back on the error path. The
+		// adapter must classify from that body without ever copying it — or the key
+		// lands in `emailSends.errorMessage` and every log sink downstream.
+		global.fetch = vi.fn().mockImplementation(
+			async (_url: string, init: RequestInit) =>
+				// The worst realistic case: the error body IS the request body.
+				new Response(init.body as string, { status: 400 })
+		) as unknown as typeof fetch;
+
+		const dispatched = await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+
+		expect(dispatched.result.success).toBe(false);
+		expectNoSecret(JSON.stringify(dispatched));
+	});
+
 	it('names the variable, never the value, when a named instance is misconfigured', () => {
 		vi.stubEnv('SMTP_RELAY_PASSWORD__BACKUP', '');
 		_resetSendTransportCacheForTests();
@@ -163,17 +188,25 @@ describe('dispatch results and errors carry no sealed config', () => {
 				written.push(args.map((arg) => String(arg)).join(' '));
 			});
 		}
-		global.fetch = vi.fn().mockImplementation(
-			async () =>
-				new Response(JSON.stringify({ success: true, id: 'x' }), {
-					status: 200,
-				})
-		) as unknown as typeof fetch;
+		// Two HTTP transports share `fetch` here and their success bodies differ, so
+		// answer each in its own dialect — otherwise the Mandrill dispatch reads the
+		// MTA's body as a malformed response and burns the whole retry schedule.
+		global.fetch = vi
+			.fn()
+			.mockImplementation(async (url: string) =>
+				String(url).includes('mandrillapp.com')
+					? new Response(
+							JSON.stringify([{ email: 'to@example.com', status: 'sent', _id: 'mandrill-1' }]),
+							{ status: 200 }
+						)
+					: new Response(JSON.stringify({ success: true, id: 'x' }), { status: 200 })
+			) as unknown as typeof fetch;
 
 		await sendProviderDispatch(fakeCtx(), 'mta', params);
 		await sendProviderDispatch(fakeCtx(), 'resend', params);
 		await sendProviderDispatch(fakeCtx(), 'smtp', params);
 		await sendProviderDispatch(fakeCtx(), namedSendTransportId('smtp', 'backup'), params);
+		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
 
 		expectNoSecret(written.join('\n'));
 	});

@@ -27,6 +27,7 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
+import { syncMandrillReject } from './mandrillRejectSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import {
 	type InboundEvent,
@@ -142,6 +143,14 @@ const DISPATCH: DispatchTable = {
 			});
 			return;
 		}
+		// SUPPRESSION FIRST, bookkeeping second (the `dispatchComplaint`
+		// principle): a Mandrill `reject` is that provider's blacklist refusing an
+		// address, and mirroring it into ours is what stops the own arm mailing a
+		// population the reference arm no longer touches. See
+		// `./mandrillRejectSuppression` for which reject reasons are recipient
+		// truths and which are about our own account. A no-op for every other
+		// provider and every other failure.
+		await syncMandrillReject(ctx, e);
 		await ctx.runMutation(
 			e.providerType === 'mta'
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
@@ -199,6 +208,27 @@ const DISPATCH: DispatchTable = {
 			}
 		)) as TransitionOutcome;
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
+	},
+	'email.deferred': async (ctx, e) => {
+		// A relay holding a message it already accepted moves NO send state — the
+		// relay is still retrying and owns the terminal edge. The only thing this
+		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
+		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
+		// accepts a send that is already `sent`.
+		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
+			providerMessageId: e.providerMessageId,
+			at: e.at,
+		});
+	},
+	'email.unsubscribed': async (ctx, e) => {
+		// The relay's unsubscribe surface carries an address, not a send, so the
+		// contact join happens inside the mutation — which then replays the exact
+		// public one-click path (membership delete, opt-out stamp, campaign
+		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
+		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
+			email: e.recipient,
+		});
 	},
 	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {

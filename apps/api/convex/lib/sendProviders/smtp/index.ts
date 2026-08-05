@@ -33,8 +33,11 @@ import { getOptional } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
+	type DispatchExtrasInput,
 	type EmailSendAttempt,
 	type EmailSendParams,
+	type ReturnPathProbeEnvelope,
+	type ReturnPathProbeWireOutcome,
 	type SendProviderModule,
 	type SmtpExtras,
 } from '../types';
@@ -309,6 +312,21 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	kind: 'smtp',
 	retryDelays: RETRY_DELAYS_MS,
 
+	/**
+	 * Relay arm (plan G-08): stamp OUR VERP envelope sender at the return-path
+	 * host the routing pass authorised — the SAME host the direct-MX arm stamps
+	 * for this From domain — so relayed bounces reach our own bounce server and
+	 * both arms present the same envelope-sender domain. Resolved by the routing
+	 * pass, not by a second query on the send path. No authorised host simply
+	 * keeps the composer's envelope sender: the send is unchanged and its cell is
+	 * graded degraded-measurement, never blocked (plan D2).
+	 */
+	buildDispatchExtras(input: DispatchExtrasInput): SmtpExtras {
+		return input.relayReturnPathHost === undefined
+			? {}
+			: { returnPathHost: input.relayReturnPathHost };
+	},
+
 	async sendEmail(
 		transport: SendTransportRecord,
 		params: EmailSendParams,
@@ -319,6 +337,29 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 				returnPathHost: extras?.returnPathHost,
 			})
 		).attempt;
+	},
+
+	/**
+	 * The return-path probe's wire (plan D5). A relay speaks SMTP submission, so
+	 * the whole RFC5321.MailFrom is ours to choose — which is the one thing a
+	 * probe requires, because the signed VERP token lives in the LOCAL PART and
+	 * the DSN can only be attributed if that exact address survives.
+	 *
+	 * Byte-identical to what the probe did before this method existed: the same
+	 * `sendViaRelay` call with the same two options. It is a named method rather
+	 * than a direct import at the probe so the wire is chosen BY KIND — a probe
+	 * for a `mandrill` transport can no longer resolve `SMTP_RELAY_*` and file
+	 * the resulting verdict under `mandrill`.
+	 */
+	async sendReturnPathProbe(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		envelope: ReturnPathProbeEnvelope
+	): Promise<ReturnPathProbeWireOutcome> {
+		return await sendViaRelay(transport, params, {
+			returnPathHost: envelope.returnPathHost,
+			verpMessageId: envelope.verpMessageId,
+		});
 	},
 
 	categorizeError(message: string, smtpReplyCode?: number): EmailErrorCode {

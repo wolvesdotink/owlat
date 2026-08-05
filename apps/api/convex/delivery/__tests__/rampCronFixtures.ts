@@ -221,10 +221,17 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
  * only strategy the router splits by the cell's share under, and nothing in
  * production selects it — so a relay connected on `priority_failover` is what a
  * real deployment looks like at the moment of enrolment.
+ *
+ * The relay KIND defaults to SES for the same reason: it is what every suite
+ * written before a second relay kind existed meant. Arm attribution is
+ * kind-agnostic by construction (`armForTransport` asks only whether the
+ * transport is the own MTA), and the Mandrill migration fixtures name
+ * `'mandrill'` here to say which relay the reference arm is.
  */
 export async function connectRelay(
 	t: Harness,
-	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover'
+	strategy: 'priority_failover' | 'adaptive_mix' = 'priority_failover',
+	relayKind = 'ses'
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('providerRoutes', {
@@ -232,7 +239,7 @@ export async function connectRelay(
 			strategy,
 			providers: [
 				{ providerType: 'mta', isEnabled: true },
-				{ providerType: 'ses', isEnabled: true },
+				{ providerType: relayKind, isEnabled: true },
 			],
 			createdAt: Date.now(),
 			updatedAt: Date.now(),

@@ -915,11 +915,20 @@ describe('sendAssignments — campaign write path', () => {
 		expect(configuredPredicate, 'providerKindConfigured must be env-only').not.toMatch(
 			/\bctx\b|\bdb\b|await/
 		);
-		const relayVerification = await fs.readFile(
-			new URL('../../lib/sendProviders/relayDomainVerification.ts', import.meta.url),
-			'utf8'
+		// Both halves of the relay-verification seam: the dispatcher, and the
+		// registered per-provider proof it dispatches to (D6/D7 moved the reads
+		// behind `domains/providers/<kind>`, and a guard that only reads the
+		// dispatcher would have stopped guarding anything the moment they moved).
+		const relayVerificationSources = await Promise.all(
+			[
+				'../../lib/sendProviders/relayDomainVerification.ts',
+				'../../domains/providers/ses/relayVerification.ts',
+				'../../domains/providers/mandrill/relayVerification.ts',
+			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 		);
-		expect(relayVerification).not.toMatch(/\.collect\(\)/);
+		for (const source of relayVerificationSources) {
+			expect(source).not.toMatch(/\.collect\(\)/);
+		}
 
 		// READ-SET GUARD. The `.collect()` / `providerHealth` assertions above
 		// only rule out the two failures we already know about; they say nothing
@@ -935,19 +944,26 @@ describe('sendAssignments — campaign write path', () => {
 		//                                   deliverabilityRouting.ts
 		//                                   DOMAIN_CLASSIFICATION_REFRESH_MS)
 		//   domains / sendingDomainSesIdentities — verification-written
+		//   sendingDomainRelayIdentities  — the generic relay-identity table (D7).
+		//                                   Written by the domain-identity sweep at
+		//                                   most once per domain per hour (the
+		//                                   shortest cadence in
+		//                                   providers/mandrill/identity.ts) and by a
+		//                                   domain's registration — never by a send
 		//   sendAssignments               — the transaction's own table (the
 		//                                   matches come from this module's read
 		//                                   query and its retention sweep)
 		//
 		// Adding a table to the enqueue read set now fails here until someone
 		// states why its write rate is not proportional to sends.
-		const readSetSources = await Promise.all(
-			[
-				'../sendAssignments.ts',
-				'../../lib/sendProviders/destinationProvider.ts',
-				'../../lib/sendProviders/relayDomainVerification.ts',
-			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
-		);
+		const readSetSources = [
+			...(await Promise.all(
+				['../sendAssignments.ts', '../../lib/sendProviders/destinationProvider.ts'].map(
+					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
+				)
+			)),
+			...relayVerificationSources,
+		];
 		const seamSource = [
 			...seamFunctions.map((fn) => topLevelFunctionBody(seamModuleSource, fn)),
 			// The readiness predicate the seam calls, included so its read set is
@@ -967,6 +983,7 @@ describe('sendAssignments — campaign write path', () => {
 			'domains',
 			'providerRoutes',
 			'sendAssignments',
+			'sendingDomainRelayIdentities',
 			'sendingDomainSesIdentities',
 		]);
 		// `.query('table')` is not the only way into the read set, and the two

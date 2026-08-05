@@ -17,9 +17,11 @@ import {
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
+	type DispatchExtrasInput,
 	type EmailSendAttempt,
 	type EmailSendParams,
 	type MtaExtras,
+	type MtaIpPool,
 	type SendProviderModule,
 } from '../types';
 import { transportEnvOptional } from '../transportEnv';
@@ -222,6 +224,38 @@ export async function resolveMtaRoutingDecision(
 export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
 	retryDelays: MTA_RETRY_DELAYS,
+
+	/**
+	 * The governed last mile's per-send extras.
+	 *
+	 * The owned MTA is the only transport that takes the full governance packet:
+	 * the work identity it deduplicates on, the re-entry material its callback
+	 * echoes back, and the authenticated lease it revalidates immediately before
+	 * enqueue. Everything here is carried, never re-derived — the re-entry
+	 * `retryState` in particular must stay byte-identical to the issued snapshot
+	 * or the callback digest stops matching.
+	 */
+	buildDispatchExtras(input: DispatchExtrasInput): MtaExtras {
+		return {
+			messageId: input.idempotencyKey,
+			workAttemptId: input.workAttemptId,
+			routingReentryToken: input.routingReentryToken,
+			routingReentry: input.routingReentry,
+			organizationId: input.organizationId,
+			messageType: input.messageType,
+			deliveryDomain: input.deliveryDomain,
+			routingLease: input.routingLease,
+			// Only a campaign may spend warm-up overflow: transactional mail is not
+			// what a warming schedule is pacing, so the route's permission alone
+			// never grants it.
+			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
+			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
+			// Omitted, never zeroed, when the recipient has no score: the MTA reads
+			// absence as "unknown" and applies its DEFAULT band, whereas 0 would
+			// order the message behind every cold contact.
+			...(input.engagementScore !== undefined ? { engagementScore: input.engagementScore } : {}),
+		};
+	},
 
 	async sendEmail(
 		transport: SendTransportRecord,

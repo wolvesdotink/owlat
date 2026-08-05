@@ -24,6 +24,41 @@ export function missingSecretResult(varName: string): {
 	};
 }
 
+/**
+ * Decode an `application/x-www-form-urlencoded` body into a plain param map.
+ *
+ * Repeated keys collapse to the last occurrence, which is what both providers
+ * signing this shape (Twilio, Mandrill) do — neither sends a repeated key.
+ */
+export function parseFormParams(rawBody: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [k, v] of new URLSearchParams(rawBody).entries()) {
+		out[k] = v;
+	}
+	return out;
+}
+
+/**
+ * The canonical signing string shared by Twilio and Mandrill: the exact request
+ * URL, followed by every DECODED form param in alphabetical key order, key
+ * immediately followed by value with no separator.
+ *
+ * One function rather than a copy per adapter — the two schemes are the same
+ * construction under a different secret and a different header, and a
+ * near-identical copy is precisely what this module exists to stop (see the
+ * `constantTimeEqual` note above).
+ *
+ * https://www.twilio.com/docs/usage/security#validating-requests
+ * https://mailchimp.com/developer/transactional/guides/track-respond-activity-webhooks/#authenticating-webhook-requests
+ */
+export function urlAndSortedParamsSigningBase(url: string, params: Record<string, string>): string {
+	let base = url;
+	for (const key of Object.keys(params).sort()) {
+		base += key + params[key];
+	}
+	return base;
+}
+
 export function constantTimeEqual(a: string, b: string): boolean {
 	// XOR lengths first — guarantees result ≠ 0 when lengths differ.
 	let mismatch = a.length ^ b.length;

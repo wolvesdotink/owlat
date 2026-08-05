@@ -1,8 +1,8 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Four adapters today:
- * `mta`, `ses`, `resend`, `smtp`. The **Send dispatch (helper)** in
+ * Per ADR-0020 — the per-provider Send-side surface. Five adapters today:
+ * `mta`, `ses`, `resend`, `smtp`, `mandrill`. The **Send dispatch (helper)** in
  * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
  * per-provider modules own single-attempt sends and per-provider error
  * categorization.
@@ -10,6 +10,7 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
+import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
 import type { SendTransportId, SendTransportRecord } from './transports';
@@ -153,6 +154,110 @@ export interface SmtpExtras {
 	returnPathHost?: string;
 }
 
+/**
+ * Mailchimp Transactional (Mandrill) per-send knobs (plan D3/D5).
+ *
+ * Only the two facts the ROUTE decides. The subaccount is deliberately NOT here:
+ * it is instance-level configuration (`MANDRILL_SUBACCOUNT`), read inside the
+ * adapter, and `buildDispatchExtras` is env-free by contract — extras carry
+ * routing facts, never credentials or deployment config.
+ */
+export interface MandrillExtras {
+	/**
+	 * The dedicated-IP pool name to send this message from, as the resolved
+	 * route named it. Free-form, because Mandrill pool names are whatever the
+	 * account created ("Main Pool", "Transactional", …) rather than a fixed set
+	 * like {@link MtaIpPool}. Absent ⇒ the adapter falls back to the
+	 * deployment's `MANDRILL_IP_POOL`, and failing that omits the field so
+	 * Mandrill picks the account default.
+	 */
+	ipPool?: string;
+	/**
+	 * The domain to hand Mandrill as `return_path_domain`, so bounces it
+	 * generates come back to OUR bounce server and this arm produces bounce data
+	 * comparable with the direct-MX arm.
+	 *
+	 * Present ONLY when the routing pass proved the transport honours a custom
+	 * return path — the catalog declares `supportsCustomReturnPath: 'probe'`, so
+	 * this is the probe verdict, not an assumption (D5). Absent ⇒ leave
+	 * Mandrill's own bounce domain in place and treat the cell's bounce data as
+	 * degraded; never an error, never a blocker.
+	 */
+	returnPathDomain?: string;
+}
+
+// ─── Per-send extras, built by the module (the governed-dispatch seam) ─────
+
+/**
+ * The retry identity a routing re-entry successor inherits, exactly as the
+ * governed boundary minted it. Structural — the re-entry callback digest is
+ * computed over THESE THREE FIELDS, so a module that forwards it must forward
+ * it unchanged rather than rebuilding it.
+ */
+export interface DispatchReentryRetryState {
+	attempt: number;
+	startedAt: number;
+	idempotencyKey: string;
+}
+
+/**
+ * Everything the governed dispatch boundary knows about one send, handed to the
+ * provider module so the MODULE decides which of it becomes its own extras.
+ *
+ * Deliberately provider-agnostic and flat: each field is a fact about the
+ * message or the resolved route that any transport could reasonably want (or
+ * ignore) — never a pre-shaped provider payload. That is the whole point of the
+ * seam: before it, `delivery/governedDispatch.ts` carried a `providerKind ===
+ * 'mta' ? … : 'resend' ? …` chain, so every new provider kind had to edit the
+ * governed send path to be allowed any per-send knob at all.
+ *
+ * The boundary resolves each fact ONCE — the routing pass already paid for it —
+ * and never re-reads it per module, so `buildDispatchExtras` stays pure and
+ * synchronous and the hot send path grows no round trip per message.
+ */
+export interface DispatchExtrasInput {
+	/**
+	 * The stable per-Send idempotency key, derived from the durable Send row.
+	 * Also the id the MTA correlates work by (`MtaExtras.messageId`) and the
+	 * `Idempotency-Key` a provider with server-side dedup is given.
+	 */
+	readonly idempotencyKey: string;
+	/** Unique identity for this bounded queue attempt. */
+	readonly workAttemptId: string;
+	readonly organizationId: string;
+	readonly messageType: GovernedMessageType;
+	readonly deliveryDomain: DeliveryDomain;
+	/** Opaque Convex-issued server-side re-entry snapshot handle. */
+	readonly routingReentryToken: string;
+	/** Callback material whose canonical digest is authenticated by the token. */
+	readonly routingReentry: {
+		envelopeInput: unknown;
+		retryState: DispatchReentryRetryState;
+	};
+	/** The authenticated last-mile routing lease, when the route took one. */
+	readonly routingLease?: string | undefined;
+	/**
+	 * The IP pool the resolved route names, else the one the producer requested.
+	 * A free-form string here: which pool names a transport accepts (and whether
+	 * it has pools at all) is the transport's own business.
+	 */
+	readonly ipPool?: string | undefined;
+	/** Whether the resolved route permits sending over the warm-up cap. */
+	readonly warmupOverflowEnabled?: boolean | undefined;
+	/**
+	 * Normalized recipient engagement score (0–100), or `undefined` for an
+	 * unscored recipient. Absence is meaningful — see `MtaExtras.engagementScore`.
+	 */
+	readonly engagementScore?: number | undefined;
+	/**
+	 * The return-path host a relay send may stamp as its VERP envelope sender,
+	 * resolved by the routing pass (plan G-08). `undefined` unless the transport
+	 * is PROVEN to honour a custom return path AND the From domain's return-path
+	 * host authorises it — see `SmtpExtras.returnPathHost`.
+	 */
+	readonly relayReturnPathHost?: string | undefined;
+}
+
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 	? MtaExtras
 	: K extends 'ses'
@@ -161,7 +266,9 @@ export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 			? ResendExtras
 			: K extends 'smtp'
 				? SmtpExtras
-				: unknown;
+				: K extends 'mandrill'
+					? MandrillExtras
+					: unknown;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 
@@ -236,9 +343,66 @@ export interface DispatchResult {
 	attempts: number;
 }
 
+// ─── Return-path probe wire (the capability half of plan D5) ───────────────
+
+/**
+ * What the return-path probe needs a transport to put on the wire.
+ *
+ * NOT a return-path *host* the way `SmtpExtras.returnPathHost` is: the probe's
+ * whole evidence mechanism is that the DSN comes back to a SIGNED VERP ADDRESS
+ * whose LOCAL PART encodes the probe id. Only a transport that lets us choose
+ * the entire RFC5321.MailFrom can carry that, which is why this is a separate,
+ * optional method rather than a flag on the ordinary send.
+ */
+export interface ReturnPathProbeEnvelope {
+	/** The bounce host the probe's VERP envelope sender is minted at. */
+	readonly returnPathHost: string;
+	/**
+	 * The id the VERP token encodes — the PROBE's id, not a Send's. Deliberately
+	 * not reachable from `ExtrasFor<K>`: as a public per-send knob it would let a
+	 * caller decouple the VERP token from the id stored as `providerMessageId`
+	 * and silently break bounce attribution for real mail.
+	 */
+	readonly verpMessageId: string;
+}
+
+export interface ReturnPathProbeWireOutcome {
+	readonly attempt: EmailSendAttempt;
+	/**
+	 * The RFC5321.MailFrom actually put on the wire. Returned rather than
+	 * recomputed by the caller: the VERP window rolls at UTC midnight, so a
+	 * caller that rebuilt the address a moment later could record an address that
+	 * differs from the one sent and misread it as a relay rewrite.
+	 */
+	readonly envelopeSender: string;
+	readonly isVerp: boolean;
+}
+
+/**
+ * The optional probe wire, shared by core and hosted (plugin) adapters.
+ *
+ * ABSENT MEANS "THIS TRANSPORT CANNOT CARRY A PROBE", and that is the
+ * fail-closed default on purpose. A probe verdict is written against ONE
+ * transport id, so evidence gathered on a different transport's wire would be
+ * filed as if it were this one's — which is exactly how a relay that never
+ * honours our envelope sender could inherit a `supported` verdict from the
+ * deployment's SMTP relay and start stamping `return_path_domain` on real mail.
+ * A kind that cannot express {@link ReturnPathProbeEnvelope} therefore declines
+ * here and is settled `unsupported` / `no_envelope_control` without a send.
+ */
+export interface ReturnPathProbeCapableModule {
+	sendReturnPathProbe?(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		envelope: ReturnPathProbeEnvelope
+	): Promise<ReturnPathProbeWireOutcome>;
+}
+
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
-export interface SendProviderModule<K extends SendProviderKind> {
+export interface SendProviderModule<
+	K extends SendProviderKind,
+> extends ReturnPathProbeCapableModule {
 	readonly kind: K;
 
 	/**
@@ -267,6 +431,20 @@ export interface SendProviderModule<K extends SendProviderKind> {
 		params: EmailSendParams,
 		extras?: ExtrasFor<K>
 	): Promise<EmailSendAttempt>;
+
+	/**
+	 * Turn the governed dispatch facts into THIS provider's typed extras.
+	 *
+	 * Optional, and a returned `undefined` means the same thing as omitting the
+	 * method: this send carries no extras. The governed boundary then passes the
+	 * empty extras it has always passed, so a provider that wants no per-send
+	 * knobs costs the send path nothing.
+	 *
+	 * Pure and synchronous by contract — no ctx, no env, no I/O. Every fact a
+	 * provider may need is already on `input`, resolved once by the routing pass;
+	 * a module that needs a NEW fact adds a field there rather than a query here.
+	 */
+	buildDispatchExtras?(input: DispatchExtrasInput): ExtrasFor<K> | undefined;
 
 	/**
 	 * Per-provider error-response parsing. The dispatch helper passes the raw

@@ -17,20 +17,30 @@ import { mtaSendProvider } from './mta';
 import { sesSendProvider } from './ses';
 import { resendSendProvider } from './resend';
 import { smtpSendProvider } from './smtp';
+import { mandrillSendProvider } from './mandrill';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
 import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
 import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
-import type { CoreSendProviderKind, SendProviderKind, SendProviderModule } from './types';
+import type {
+	CoreSendProviderKind,
+	DispatchExtrasInput,
+	SendProviderExtras,
+	SendProviderKind,
+	SendProviderModule,
+} from './types';
 
 export type {
 	SendProviderKind,
 	SendProviderModule,
+	DispatchExtrasInput,
+	DispatchReentryRetryState,
 	ExtrasFor,
 	MtaExtras,
 	MtaIpPool,
 	SesExtras,
 	ResendExtras,
 	SmtpExtras,
+	MandrillExtras,
 	EmailSendAttempt,
 	EmailSendParams,
 	EmailAttachment,
@@ -60,6 +70,7 @@ export const SEND_PROVIDERS = {
 	ses: sesSendProvider,
 	resend: resendSendProvider,
 	smtp: smtpSendProvider,
+	mandrill: mandrillSendProvider,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
@@ -117,4 +128,25 @@ export function providerFor(
 		isCoreSendProviderKind(kind) ? SEND_PROVIDERS[kind] : hostedProviders.get(kind);
 	if (!mod) throw new TypeError('Unknown send provider');
 	return mod;
+}
+
+/**
+ * Ask a kind's module for its per-send extras.
+ *
+ * The ONE place a dispatch context becomes a provider's typed extras: the
+ * governed boundary supplies the facts, the module decides what to make of
+ * them. Nothing here branches on WHICH provider — that was the seam leak this
+ * replaced, a `providerKind === 'mta' ? … : 'resend' ? …` chain inside
+ * `delivery/governedDispatch.ts` that every new kind had to edit.
+ *
+ * A module with no builder — and every hosted (plugin) transport, which parses
+ * its own extras from a data-only value the host hands it and takes nothing
+ * from this boundary — yields the empty extras the governed path always sent.
+ */
+export function buildDispatchExtrasFor(
+	kind: SendProviderKind,
+	input: DispatchExtrasInput
+): SendProviderExtras {
+	if (!isCoreSendProviderKind(kind)) return {};
+	return providerFor(kind).buildDispatchExtras?.(input) ?? {};
 }

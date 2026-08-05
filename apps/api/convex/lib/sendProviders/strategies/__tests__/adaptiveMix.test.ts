@@ -12,8 +12,13 @@ import { convexTest } from 'convex-test';
 import schema from '../../../../schema';
 import { modules } from '../../../../__tests__/testModules';
 import { sendProviderCatalogEntry } from '../../catalog';
-import { recordSendAssignments } from '../../../../delivery/sendAssignments';
-import { adaptiveMixStrategy, decideMixAssignment, MIX_BUCKET_SPACE } from '../adaptive_mix';
+import { armForTransport, recordSendAssignments } from '../../../../delivery/sendAssignments';
+import {
+	adaptiveMixStrategy,
+	decideMixAssignment,
+	MIX_BUCKET_SPACE,
+	OWN_ARM_TRANSPORT_KIND,
+} from '../adaptive_mix';
 import {
 	assignAll,
 	assignRanked,
@@ -303,6 +308,154 @@ describe('adaptive_mix — multi-cell split matrix (skewed cells)', () => {
 				Math.max(subset.length, 1);
 			const referenceRows = cellRows.filter((row) => row.arm === 'reference');
 			expect(meanScore(ownRows)).toBeGreaterThan(meanScore(referenceRows));
+		}
+	});
+});
+
+/**
+ * MANDRILL AS THE REFERENCE ARM (P1.3, plan D8).
+ *
+ * The migration this plan exists for is `adaptive_mix` over `[mta, mandrill]`:
+ * the cell starts at `ownShare = 0` (everything still leaving through the
+ * account the team arrived with) and the controller walks it to 1. Nothing in
+ * the strategy or in the assignment writer knows the word "mandrill" — the arm
+ * is decided by ONE constant, {@link OWN_ARM_TRANSPORT_KIND}, and everything
+ * that is not it is the reference arm. So this asserts the two facts that
+ * constant is load-bearing for, against a Mandrill route:
+ *
+ *   - the own arm stays the owned MTA — a plan that quietly made the newest
+ *     transport "own" would invert every ramp gate's reading of which side is
+ *     being measured, and no arithmetic in the controller would notice;
+ *   - a recipient assigned to the reference arm both DISPATCHES on Mandrill and
+ *     is RECORDED as `arm: 'reference'`, through the real writer.
+ */
+describe('adaptive_mix — Mandrill is the reference arm', () => {
+	const ORG = 'org-mandrill-arm';
+	const ENTRIES = [
+		{ providerType: 'mta' as const, isEnabled: true },
+		{ providerType: 'mandrill' as const, isEnabled: true },
+	];
+
+	beforeEach(() => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		for (const kind of ['mta', 'mandrill'] as const) {
+			for (const name of sendProviderCatalogEntry(kind).requiredEnvVars) {
+				vi.stubEnv(
+					name,
+					name === 'MTA_API_URL' ? 'https://mta.test' : `test-${name.toLowerCase()}`
+				);
+			}
+		}
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('keeps the OWN arm the owned MTA and grades Mandrill as reference', () => {
+		expect(OWN_ARM_TRANSPORT_KIND).toBe('mta');
+		expect(armForTransport('mandrill')).toBe('reference');
+		expect(armForTransport('mta')).toBe('own');
+	});
+
+	it('sends the reference share to Mandrill and the own share to the MTA', () => {
+		let mandrill = 0;
+		for (const contactId of AUDIENCE.slice(0, 4000)) {
+			const decision = decideMixAssignment({
+				cell: { ownShare: 0.3, mixVersion: 5 },
+				recipient: { contactId, campaignId: 'cmp-migrate' },
+			});
+			const route = adaptiveMixStrategy.select(ENTRIES, undefined, undefined, {
+				kind: 'decide',
+				input: {
+					cell: { ownShare: 0.3, mixVersion: 5 },
+					recipient: { contactId, campaignId: 'cmp-migrate' },
+				},
+			});
+			// The transport the strategy picks is a pure function of the arm the
+			// decision named — asserted per recipient, not just in aggregate, so a
+			// transport chosen independently of the decision could not pass.
+			expect(route?.providerType).toBe(decision.arm === 'own' ? 'mta' : 'mandrill');
+			if (route?.providerType === 'mandrill') mandrill += 1;
+		}
+		expect(Math.abs(mandrill / 4000 - 0.7)).toBeLessThan(0.025);
+	});
+
+	it('is deterministic per recipient with Mandrill in the mix', () => {
+		// The same property `adaptiveMixDeterminism` pins on the decision, asserted
+		// on the TRANSPORT: a recipient that moved between the two arms across the
+		// pages of one campaign would land in both denominators.
+		for (const contactId of AUDIENCE.slice(0, 300)) {
+			const first = adaptiveMixStrategy.select(ENTRIES, undefined, undefined, {
+				kind: 'decide',
+				input: {
+					cell: { ownShare: 0.45, mixVersion: 2 },
+					recipient: { contactId, campaignId: 'cmp-migrate' },
+				},
+			});
+			for (let repeat = 0; repeat < 3; repeat += 1) {
+				expect(
+					adaptiveMixStrategy.select(ENTRIES, undefined, undefined, {
+						kind: 'decide',
+						input: {
+							cell: { ownShare: 0.45, mixVersion: 2 },
+							recipient: { contactId, campaignId: 'cmp-migrate' },
+						},
+					})
+				).toEqual(first);
+			}
+		}
+	});
+
+	it('records `transport: mandrill` as `arm: reference` through the real writer', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'adaptive_mix',
+				providers: ENTRIES.map((entry) => ({ ...entry })),
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail',
+				stream: 'campaign',
+				isFallbackActive: false,
+				ownShare: 0.5,
+				mixVersion: 9,
+				signals: [],
+				snapshotGeneratedAt: now,
+				expiresAt: now + 600_000,
+				updatedAt: now,
+			});
+		});
+
+		const recipients = syntheticContactIds(400, 'md').map((contactId, index) => ({
+			sendId: `send-md-${index}`,
+			email: `user${index}@gmail.com`,
+			contactId,
+		}));
+		await t.run(async (ctx) => {
+			await recordSendAssignments(ctx, {
+				organizationId: ORG,
+				stream: 'campaign',
+				sendKind: 'campaign',
+				campaignId: 'cmp-migrate',
+				routing: { messageType: 'campaign', from: 'news@example.com' },
+				recipients,
+			});
+		});
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('sendAssignments').collect());
+		expect(rows).toHaveLength(recipients.length);
+		const transports = new Set(rows.map((row) => row.transport));
+		// Both arms are populated, or the per-row assertion below is vacuous.
+		expect([...transports].sort()).toEqual(['mandrill', 'mta']);
+		for (const row of rows) {
+			expect(row.arm).toBe(row.transport === 'mandrill' ? 'reference' : 'own');
+			expect(row.cell).toBe('campaign:gmail');
 		}
 	});
 });

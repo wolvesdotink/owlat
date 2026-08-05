@@ -14,7 +14,7 @@
  * Per ADR-0018.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -27,7 +27,17 @@ import type { SendingDomainProviderKind } from './types';
 
 const LIFECYCLE_USER_PROVIDER_REGISTER = 'system:provider_register';
 
-const providerKind = v.union(v.literal('mta'), v.literal('ses'));
+/**
+ * One literal per REGISTERED sending-domain provider. The guard below fails the
+ * build when a newly registered kind is missing here — without it, the omission
+ * surfaces as an argument-validation error when the lifecycle schedules this
+ * action, i.e. as a domain stuck in `registering` on the one deployment that
+ * configured the new provider.
+ */
+const providerKind = v.union(v.literal('mta'), v.literal('ses'), v.literal('mandrill'));
+
+export type _ProviderKindsSchedulable =
+	Exclude<SendingDomainProviderKind, Infer<typeof providerKind>> extends never ? true : never;
 
 export const run = internalAction({
 	args: {

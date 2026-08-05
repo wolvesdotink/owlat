@@ -74,8 +74,24 @@ interface SendWorkerSuccess {
 	retryState?: WorkerRetryState;
 	acceptedForDelivery?: true;
 	acceptanceUnknown?: true;
+	/**
+	 * The ambiguity cannot be re-asked (plan D4): this transport has no
+	 * idempotency surface, so the attempt is never replayed. Park the Send and
+	 * let its provider feedback — or the delivery deadline — settle it. See the
+	 * `awaitingProviderFeedback` arm of `GovernedDispatchResult`.
+	 */
+	awaitingProviderFeedback?: true;
 	workAttemptId?: string;
 	startedAt?: number;
+}
+
+/**
+ * How long a Send may sit `queued` with its acceptance unresolved, measured
+ * from the FIRST attempt — the same cumulative deadline every other governed
+ * outcome is bounded by, so an ambiguous send cannot outlive a deferred one.
+ */
+function acceptanceDeadlineAt(startedAt: number): number {
+	return startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
 }
 
 export const completeSend = internalMutation({
@@ -86,6 +102,59 @@ export const completeSend = internalMutation({
 
 		const returnValue =
 			result.kind === 'success' ? (result.returnValue as SendWorkerSuccess | undefined) : undefined;
+
+		// AN AMBIGUITY WITH NO SECOND QUESTION TO ASK (plan D4). Checked BEFORE the
+		// MTA reconciliation below because the two are opposites: that one replays
+		// the attempt (safe — its idempotency key is the MTA message id), this one
+		// must never be replayed, because the lost response may sit on top of an
+		// accepted and delivered message.
+		//
+		// So the Send is PARKED, not retried and not terminalized. It stays
+		// `queued` — "we do not know yet", which is the truth and, unlike `failed`,
+		// is a state a later transition can still leave. At the cumulative delivery
+		// deadline it becomes `failed` with a code that names the actual condition
+		// rather than `WORKPOOL_FAILED`, which reads as "the send failed".
+		//
+		// WHAT IS AND IS NOT REACHABLE IN THAT WINDOW, said plainly. Provider
+		// feedback joins on the id the provider returned, and the lost response is
+		// precisely why this row never learned one — Mandrill's `send-raw` carries
+		// no caller-supplied correlator that its webhook echoes back (`metadata` is
+		// a `messages/send` parameter, not a `send-raw` one), so today nothing
+		// re-attaches a Mandrill `_id` to a parked row and the park exists to keep
+		// the row HONEST and OPEN, not because a specific event is expected. A
+		// future reconciler (a `messages/info`/`search` lookup, or a correlator
+		// Mandrill agrees to echo) has a `queued` row to bind to; it would have had
+		// nothing to bind to had this terminalized on the spot.
+		//
+		// The campaign it belongs to stays `sending` until this settles, exactly as
+		// it does for any other queued send awaiting a terminal webhook — the
+		// deadline is the bound (`campaigns/lifecycle.ts:tryCompleteCampaign`).
+		if (returnValue?.acceptanceUnknown && returnValue.awaitingProviderFeedback) {
+			const send = await ctx.db.get(sendRef.id);
+			if (!send || send.status !== 'queued') return;
+			// The worker's answer is an unvalidated return value, and this number
+			// becomes a scheduled time: a NaN would throw at `runAt` and a
+			// clock-skewed future one would park the row past the deadline it is
+			// supposed to be bounded by. Normalized to "no later than now", so the
+			// worst case is exactly one deadline's wait.
+			const reported = returnValue.retryState?.startedAt ?? returnValue.startedAt;
+			const startedAt =
+				typeof reported === 'number' && Number.isFinite(reported) ? Math.min(reported, now) : now;
+			const deadlineAt = acceptanceDeadlineAt(startedAt);
+			if (now < deadlineAt) {
+				await ctx.scheduler.runAt(
+					deadlineAt,
+					internal.delivery.sendCompletion.expireUnconfirmedAcceptance,
+					{ sendRef, startedAt }
+				);
+				return;
+			}
+			await ctx.runMutation(internal.delivery.sendCompletion.expireUnconfirmedAcceptance, {
+				sendRef,
+				startedAt,
+			});
+			return;
+		}
 
 		if (
 			returnValue?.acceptanceUnknown &&
@@ -212,6 +281,46 @@ export const completeSend = internalMutation({
 		// Provider health recording is intentionally NOT here — the
 		// **Send dispatch (helper)** in `lib/sendProviders/dispatch.ts`
 		// records every attempt uniformly upstream of this module.
+	},
+});
+
+/**
+ * Close a parked ambiguous-acceptance Send at the delivery deadline (plan D4).
+ *
+ * The ONLY thing that terminalizes a park, and it is a one-way door with two
+ * guards. A Send that is no longer `queued` has already been settled by
+ * something with better evidence — a provider webhook, a purge, an operator —
+ * and is left alone. A run that fires EARLY (a rescheduled callback, a clock
+ * that moved) is not the deadline it was armed for and does nothing: the park
+ * outlives a stray wake-up rather than terminalizing a message whose acceptance
+ * question is still open.
+ *
+ * The error code is deliberately its own: `WORKPOOL_FAILED` would report a
+ * definite send failure for a message the provider may well have delivered, and
+ * that is the claim this whole posture exists to stop making.
+ */
+export const expireUnconfirmedAcceptance = internalMutation({
+	args: { sendRef: sendRefValidator, startedAt: v.number() },
+	handler: async (ctx, args) => {
+		const send = await ctx.db.get(args.sendRef.id);
+		if (!send || send.status !== 'queued') return;
+		const now = Date.now();
+		// A degenerate instant is not a deadline. `completeSend` normalizes the one
+		// it schedules with, so this can only be a hand-made call; leaving the park
+		// in place is the conservative answer, and the next legitimate arming of
+		// this mutation still closes the row.
+		if (!Number.isFinite(args.startedAt)) return;
+		if (now < acceptanceDeadlineAt(args.startedAt)) return;
+		await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+			send: args.sendRef,
+			transition: {
+				to: 'failed',
+				at: now,
+				errorMessage:
+					'Provider acceptance could not be confirmed before the delivery deadline; the message may or may not have been delivered',
+				errorCode: 'PROVIDER_ACCEPTANCE_UNCONFIRMED',
+			},
+		});
 	},
 });
 

@@ -50,6 +50,19 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// The same job for the generic relay-identity table (P3.1), and HOURLY rather
+	// than daily because the per-domain cadence lives on the row: a domain whose
+	// records are not live yet re-checks every hour (that is the screen an
+	// operator is watching), a verified one every 24h, a rejected credential
+	// every 6h. A daily cron could not honour the shortest of those. A tick with
+	// nothing due is one index range read and no writes.
+	crons.interval(
+		'refresh Mandrill sending-domain identities',
+		{ hours: 1 },
+		internal.domains.mandrillRelayMutations.scheduleDueChecks,
+		{}
+	);
+
 	// Clean up sending-reputation buckets older than 60 days every hour (both
 	// scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
 	crons.interval(

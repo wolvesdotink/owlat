@@ -150,6 +150,13 @@ const routeConfigs: Record<string, RouteConfig> = {
 		subsectionHref: '/dashboard/delivery/setup',
 		page: 'Sending Domains',
 	},
+	'/dashboard/delivery/migrate': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		subsection: 'Setup',
+		subsectionHref: '/dashboard/delivery/setup',
+		page: 'Migrate from Mailchimp',
+	},
 	'/dashboard/delivery/provider-routing': {
 		section: 'Delivery',
 		sectionHref: '/dashboard/delivery',

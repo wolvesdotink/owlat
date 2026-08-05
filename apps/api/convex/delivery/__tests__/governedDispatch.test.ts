@@ -483,4 +483,78 @@ describe('dispatchGovernedEmail', () => {
 			expect((ctx as unknown as { runQuery?: unknown }).runQuery).toBeUndefined();
 		});
 	});
+
+	/**
+	 * AN AMBIGUOUS TIMEOUT ON A RELAY (plan D4).
+	 *
+	 * The MTA reconciles by REPLAYING the attempt — its idempotency key is the MTA
+	 * message id, so a repeat costs nothing. Mandrill's `send-raw` has no
+	 * idempotency surface at all, so the same replay would double-deliver. Before
+	 * this branch existed the ambiguity fell through to `throw`, `completeSend`
+	 * terminalized the row `failed`/`WORKPOOL_FAILED`, and `failed` is terminal —
+	 * the row claimed a definite non-delivery for a message that may have been
+	 * delivered and closed itself to every later transition.
+	 */
+	describe('ambiguous acceptance on a non-MTA transport', () => {
+		function ambiguousRouting(providerKind: 'smtp' | 'mandrill') {
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind,
+				route: null,
+				organizationId: 'org-1',
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: {
+					success: false,
+					errorCode: 'AMBIGUOUS_TIMEOUT',
+					errorMessage: 'Mandrill send timed out',
+					acceptanceUnknown: true,
+				},
+				providerType: providerKind,
+				latencyMs: 30_000,
+				attempts: 1,
+			});
+		}
+
+		it('parks a feedback-capable relay send instead of terminalizing it', async () => {
+			ambiguousRouting('mandrill');
+			const startedAt = Date.now() - 5_000;
+
+			const result = await dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				retryState: { attempt: 1, startedAt, idempotencyKey: 'send_send-row-1' },
+			});
+
+			expect(result).toEqual({
+				success: false,
+				acceptanceUnknown: true,
+				awaitingProviderFeedback: true,
+				providerType: 'mandrill',
+				startedAt,
+				retryState: { attempt: 1, startedAt, idempotencyKey: 'send_send-row-1' },
+			});
+		});
+
+		it('carries NOTHING a caller could re-dispatch from', async () => {
+			// D4: the lost response may sit on top of an accepted and delivered
+			// message. The absence of an envelope and of a provider message id is the
+			// structural guarantee — not a comment asking the callback to behave.
+			ambiguousRouting('mandrill');
+			const result = await dispatchGovernedEmail(ctx, baseRequest);
+			expect('envelopeInput' in result).toBe(false);
+			expect('providerMessageId' in result).toBe(false);
+			expect('retryAfterMs' in result).toBe(false);
+			expect(sendProviderDispatch).toHaveBeenCalledOnce();
+		});
+
+		it('does not park a transport with no feedback channel to wait for', async () => {
+			// A bring-your-own SMTP relay reports nothing out of band
+			// (`hasProviderFeedback: false`), so parking it would only delay the same
+			// answer by the delivery deadline. Unchanged: it throws.
+			ambiguousRouting('smtp');
+			await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
+				'Mandrill send timed out'
+			);
+		});
+	});
 });

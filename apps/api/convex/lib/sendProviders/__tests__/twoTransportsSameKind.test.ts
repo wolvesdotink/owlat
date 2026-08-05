@@ -33,6 +33,7 @@ vi.mock('@owlat/smtp-client', () => ({
 import { sendProviderDispatch } from '../dispatch';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
+import { _resetMandrillConfigCacheForTests } from '../mandrill';
 import {
 	_resetSendTransportCacheForTests,
 	listSendTransports,
@@ -60,13 +61,14 @@ beforeEach(() => {
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 	resendKeys.length = 0;
 	resendSendMock.mockReset();
 	resendSendMock.mockResolvedValue({ data: { id: 'resend-1' }, error: null });
 	smtpSendMock.mockReset();
 	smtpSendMock.mockResolvedValue(undefined);
 
-	vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'mta#secondary, smtp#backup ,resend#trial');
+	vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'mta#secondary, smtp#backup ,resend#trial,mandrill#eu');
 
 	vi.stubEnv('MTA_API_URL', 'https://mta-primary.test');
 	vi.stubEnv('MTA_API_KEY', 'mta-primary-key');
@@ -84,6 +86,11 @@ beforeEach(() => {
 
 	vi.stubEnv('RESEND_API_KEY', 'resend-primary-key');
 	vi.stubEnv('RESEND_API_KEY__TRIAL', 'resend-trial-key');
+
+	vi.stubEnv('MANDRILL_API_KEY', 'mandrill-primary-key');
+	vi.stubEnv('MANDRILL_SUBACCOUNT', 'primary-sub');
+	vi.stubEnv('MANDRILL_API_KEY__EU', 'mandrill-eu-key');
+	vi.stubEnv('MANDRILL_SUBACCOUNT__EU', 'eu-sub');
 });
 
 afterEach(() => {
@@ -92,6 +99,7 @@ afterEach(() => {
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	_resetSmtpConfigCacheForTests();
+	_resetMandrillConfigCacheForTests();
 });
 
 describe('two transports of the same kind', () => {
@@ -103,6 +111,8 @@ describe('two transports of the same kind', () => {
 		expect(ids).toContain('smtp#backup');
 		expect(ids).toContain('resend');
 		expect(ids).toContain('resend#trial');
+		expect(ids).toContain('mandrill');
+		expect(ids).toContain('mandrill#eu');
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
@@ -181,5 +191,38 @@ describe('two transports of the same kind', () => {
 		await sendProviderDispatch(fakeCtx(), 'resend', params);
 
 		expect(resendKeys).toEqual(['resend-primary-key', 'resend-trial-key']);
+	});
+
+	it('keeps two mandrill instances on their own keys AND their own subaccounts', async () => {
+		// The migration shape this enables: a shared Mandrill account whose EU
+		// subaccount carries its own reputation, sent through a second transport id
+		// the ramp can name per cell. A per-KIND config cache would send the third
+		// message with the EU credential and post it to the wrong subaccount's
+		// reputation — invisible until the ramp reads a cell it never populated.
+		const fetchSpy = vi.fn().mockImplementation(
+			async () =>
+				new Response(JSON.stringify([{ email: 'to@example.com', status: 'sent', _id: 'md' }]), {
+					status: 200,
+				})
+		);
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		await sendProviderDispatch(fakeCtx(), namedSendTransportId('mandrill', 'eu'), params);
+		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+
+		const bodies = fetchSpy.mock.calls.map(
+			(call) =>
+				JSON.parse((call[1] as RequestInit).body as string) as {
+					key: string;
+					subaccount?: string;
+				}
+		);
+		expect(bodies.map((body) => body.key)).toEqual([
+			'mandrill-primary-key',
+			'mandrill-eu-key',
+			'mandrill-primary-key',
+		]);
+		expect(bodies.map((body) => body.subaccount)).toEqual(['primary-sub', 'eu-sub', 'primary-sub']);
 	});
 });

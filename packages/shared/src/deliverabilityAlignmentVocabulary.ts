@@ -87,6 +87,24 @@ export type ReferenceArmInput =
 	| { kind: 'unknown'; detail: string }
 	| { kind: 'arm'; arm: ReferenceAlignmentArm };
 
+/**
+ * The opening of the `unknown` detail written when MORE THAN ONE relay is
+ * enabled — plan D8's "keep the reference relay singular" rule.
+ *
+ * The two `unknown` branches want opposite remedies: one relay we cannot
+ * describe means "verify it", several relays means "there is no single second
+ * arm, pick one". The detail sentence is the only thing that distinguishes
+ * them by the time it reaches a screen, so the prefix is a shared constant
+ * rather than a string the backend writes and the UI re-spells — a copy edit on
+ * one side would otherwise silently retire the warning on the other.
+ */
+export const MULTI_RELAY_DETAIL_PREFIX = 'More than one relay is enabled';
+
+/** True when an `unknown` reference detail is D8's multi-relay case. */
+export function isMultiRelayDetail(detail: string): boolean {
+	return detail.startsWith(MULTI_RELAY_DETAIL_PREFIX);
+}
+
 export interface AlignmentDnsFacts {
 	/** TXT at the From domain (the SPF record lives here). */
 	fromDomainTxt: DnsTxtObservation;

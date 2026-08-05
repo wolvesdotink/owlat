@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
 import {
 	buildTransportOptions,
+	fallbackRelayIssue,
 	isTransportAvailable,
 	routeProvidersForWrite,
 	seedRouteProviders,
@@ -155,9 +156,6 @@ function moveProvider(index: number, direction: -1 | 1) {
 const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrategy.value));
 
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
-const enabledRelays = computed(() =>
-	editProviders.value.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
-);
 
 async function handleSave() {
 	if (!hasActiveOrganization.value) return;
@@ -167,14 +165,14 @@ async function handleSave() {
 		showNotification('Enable at least one provider before saving', 'error');
 		return;
 	}
-	if (
-		editFallbackEnabled.value &&
-		(editFallbackRelay.value !== 'ses' ||
-			!enabled.some((provider) => provider.providerType === 'mta') ||
-			!enabledRelays.value.some((provider) => provider.providerType === editFallbackRelay.value))
-	) {
-		showNotification('Enable the owned MTA and the selected relay before saving', 'error');
-		return;
+	// The backend's own rule and the backend's own sentence (D6), so the screen
+	// refuses exactly what `setRoute` would refuse and says the same thing.
+	if (editFallbackEnabled.value) {
+		const issue = fallbackRelayIssue(editProviders.value, editFallbackRelay.value);
+		if (issue !== null) {
+			showNotification(issue, 'error');
+			return;
+		}
 	}
 
 	isSaving.value = true;
@@ -281,7 +279,11 @@ async function handleReset() {
 				</div>
 			</div>
 
+			<DeliveryReferenceRelayNotice />
+
 			<DeliveryRelayDomainStatus />
+
+			<DeliveryMandrillDomainStatus />
 
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">

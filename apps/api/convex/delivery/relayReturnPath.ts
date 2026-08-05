@@ -19,7 +19,12 @@ import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
 import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+	type QueryCtx,
+} from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { referenceRelayTransportId } from './relayConfiguration';
 import {
@@ -34,6 +39,7 @@ import {
 	nextProbeAttempts,
 	nextProbeState,
 	settledVerdictOf,
+	type ReturnPathProbeEvent,
 	type ReturnPathProbeState,
 	type ReturnPathProbeStatus,
 } from '../lib/sendProviders/returnPathProbe';
@@ -151,6 +157,78 @@ export const isReturnPathProbeDue = internalQuery({
  * The verdict the transport currently stands on is CARRIED onto the reopened
  * row, so a re-probe never revokes the capability it is re-checking.
  */
+type OpenProbeResult =
+	| { ok: false; reason: 'unresolvable_transport' }
+	| { ok: true; status: ReturnPathProbeStatus };
+
+/**
+ * Open a fresh probe round for one transport and immediately apply the event
+ * that decides it — a relay's MAIL FROM verdict, or the adapter declining the
+ * probe wire outright. Shared so both entry points agree on the attempt count,
+ * the carried verdict and the one-row-per-transport rule.
+ */
+async function openProbeRound(
+	ctx: MutationCtx,
+	args: {
+		transportId: string;
+		probeId: string;
+		sentEnvelopeSender: string;
+		at: number;
+		event: ReturnPathProbeEvent;
+	}
+): Promise<OpenProbeResult> {
+	// Reject an id the transport registry cannot parse at the BOUNDARY rather
+	// than persisting whatever string arrived — a row keyed by an id nothing
+	// resolves is unreadable by every consumer and invisible to the operator.
+	if (!tryResolveSendTransport(args.transportId)) {
+		return { ok: false as const, reason: 'unresolvable_transport' as const };
+	}
+	const existing = await ctx.db
+		.query('sendTransportReturnPathProbes')
+		.withIndex('by_transport', (q) => q.eq('transportId', args.transportId))
+		.first();
+	const previous = existing ? toProbeState(existing) : null;
+	const attempts = nextProbeAttempts(previous);
+	// What the transport currently stands on. Carried onto the reopened row so
+	// resolution keeps honouring it until THIS probe settles.
+	const carried = settledVerdictOf(previous);
+	const opened: ReturnPathProbeState = {
+		status: 'awaiting_delivery',
+		reason: 'awaiting_delivery',
+		sentEnvelopeSender: args.sentEnvelopeSender,
+		startedAt: args.at,
+		attempts,
+		...(carried === undefined ? {} : { lastSettled: carried }),
+	};
+	const state = nextProbeState(opened, args.event);
+	// Only an OPEN row needs the carry: once the row itself is settled, its own
+	// status is the verdict and a leftover copy could only ever go stale.
+	const carryForward = state.status === 'awaiting_delivery' ? carried : undefined;
+	const values = {
+		transportId: args.transportId,
+		probeId: args.probeId,
+		status: state.status,
+		reason: state.reason,
+		sentEnvelopeSender: state.sentEnvelopeSender,
+		startedAt: state.startedAt,
+		attempts,
+		...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
+		// Set ONCE, explicitly: `undefined` is how a settled row CLEARS a stale
+		// carry on patch, and Convex strips it on insert.
+		lastSettled: carryForward,
+		updatedAt: args.at,
+	};
+	// One row per transport: a new probe REPLACES the previous verdict rather
+	// than accumulating history, so the table stays bounded by the number of
+	// configured transports.
+	if (existing) {
+		await ctx.db.patch(existing._id, values);
+	} else {
+		await ctx.db.insert('sendTransportReturnPathProbes', values);
+	}
+	return { ok: true as const, status: state.status };
+}
+
 export const recordProbeSubmission = internalMutation({
 	args: {
 		transportId: v.string(),
@@ -159,67 +237,41 @@ export const recordProbeSubmission = internalMutation({
 		accepted: v.boolean(),
 		at: v.number(),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<
-		{ ok: false; reason: 'unresolvable_transport' } | { ok: true; status: ReturnPathProbeStatus }
-	> => {
-		// Reject an id the transport registry cannot parse at the BOUNDARY rather
-		// than persisting whatever string arrived — a row keyed by an id nothing
-		// resolves is unreadable by every consumer and invisible to the operator.
-		if (!tryResolveSendTransport(args.transportId)) {
-			return { ok: false as const, reason: 'unresolvable_transport' as const };
-		}
-		const existing = await ctx.db
-			.query('sendTransportReturnPathProbes')
-			.withIndex('by_transport', (q) => q.eq('transportId', args.transportId))
-			.first();
-		const previous = existing ? toProbeState(existing) : null;
-		const attempts = nextProbeAttempts(previous);
-		// What the transport currently stands on. Carried onto the reopened row so
-		// resolution keeps honouring it until THIS probe settles.
-		const carried = settledVerdictOf(previous);
-		const opened: ReturnPathProbeState = {
-			status: 'awaiting_delivery',
-			reason: 'awaiting_delivery',
-			sentEnvelopeSender: args.sentEnvelopeSender,
-			startedAt: args.at,
-			attempts,
-			...(carried === undefined ? {} : { lastSettled: carried }),
-		};
-		const state = nextProbeState(opened, {
-			kind: 'submitted',
-			accepted: args.accepted,
-			at: args.at,
-		});
-		// Only an OPEN row needs the carry: once the row itself is settled, its own
-		// status is the verdict and a leftover copy could only ever go stale.
-		const carryForward = state.status === 'awaiting_delivery' ? carried : undefined;
-		const values = {
-			transportId: args.transportId,
-			probeId: args.probeId,
-			status: state.status,
-			reason: state.reason,
-			sentEnvelopeSender: state.sentEnvelopeSender,
-			startedAt: state.startedAt,
-			attempts,
-			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
-			// Set ONCE, explicitly: `undefined` is how a settled row CLEARS a stale
-			// carry on patch, and Convex strips it on insert.
-			lastSettled: carryForward,
-			updatedAt: args.at,
-		};
-		// One row per transport: a new probe REPLACES the previous verdict rather
-		// than accumulating history, so the table stays bounded by the number of
-		// configured transports.
-		if (existing) {
-			await ctx.db.patch(existing._id, values);
-		} else {
-			await ctx.db.insert('sendTransportReturnPathProbes', values);
-		}
-		return { ok: true as const, status: state.status };
-	},
+	handler: async (ctx, args): Promise<OpenProbeResult> =>
+		await openProbeRound(ctx, {
+			...args,
+			event: { kind: 'submitted', accepted: args.accepted, at: args.at },
+		}),
+});
+
+/**
+ * Settle a transport whose OWN adapter cannot put a chosen envelope sender on
+ * the wire (plan D5) — Mandrill today, and any future kind that declares
+ * `supportsCustomReturnPath: 'probe'` without implementing `sendReturnPathProbe`.
+ *
+ * NOTHING WAS SENT, and that is the point. The signed VERP token lives in the
+ * envelope sender's local part, so a transport that only lets us name a bounce
+ * DOMAIN can never return an attributable DSN: the probe would age out
+ * `no_bounce_observed` — a verdict phrased as if we had asked the relay and it
+ * had stayed silent — after manufacturing a real hard bounce on the operator's
+ * ESP account to learn it. The answer is knowable here, locally and exactly, so
+ * it is written here, with a reason that says which question was actually
+ * answered.
+ *
+ * `sentEnvelopeSender` is empty for the same reason: no address reached a wire,
+ * and recording the one we WOULD have used would read as evidence of a send.
+ * The verdict is `unsupported`, which the send path already treats as "do not
+ * stamp" and the gates already treat as degraded-but-not-blocked (D2) — for a
+ * kind with provider feedback that is a widened bounce tolerance, not a fault.
+ */
+export const recordProbeWithoutEnvelopeControl = internalMutation({
+	args: { transportId: v.string(), probeId: v.string(), at: v.number() },
+	handler: async (ctx, args): Promise<OpenProbeResult> =>
+		await openProbeRound(ctx, {
+			...args,
+			sentEnvelopeSender: '',
+			event: { kind: 'no_envelope_control', at: args.at },
+		}),
 });
 
 /**

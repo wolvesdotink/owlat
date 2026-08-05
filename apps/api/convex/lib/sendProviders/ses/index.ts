@@ -186,6 +186,20 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 	kind: 'ses',
 	retryDelays: RETRY_DELAYS_MS,
 
+	/**
+	 * SES takes NO per-send extras, stated rather than left to a missing method.
+	 *
+	 * Its two candidate knobs are both decided elsewhere: the envelope sender
+	 * comes from the verified identity's configured custom MAIL FROM domain, not
+	 * from a per-send address (hence the catalog's `supportsCustomReturnPath:
+	 * 'no'`), and SES has no idempotency surface at all — no dedup header, no
+	 * dedup on Configuration-Set tags — which is exactly why `sendEmail` treats a
+	 * post-dispatch timeout as terminal instead of retryable.
+	 */
+	buildDispatchExtras(): SesExtras {
+		return {};
+	},
+
 	async sendEmail(
 		transport: SendTransportRecord,
 		params: EmailSendParams,

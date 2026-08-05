@@ -67,10 +67,17 @@
  * failure to a warning rather than rolling back the retry it describes.
  */
 
-import type { MutationCtx } from '../_generated/server';
+import { v } from 'convex/values';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { resolveNow, startOfDayUtc } from '../lib/clock';
 import { applyEffects, transportOutcomeEffect } from './sendLifecycle/effects';
-import { withoutTestSendEffects, type SendRef } from './sendLifecycle/types';
+import { resolveProviderMessageId } from './sendLifecycle/lookups';
+import {
+	withoutTestSendEffects,
+	type EmailSendDoc,
+	type SendRef,
+	type TransactionalSendDoc,
+} from './sendLifecycle/types';
 
 /**
  * Where a deferral observation ended up — returned, never thrown.
@@ -116,12 +123,29 @@ export async function recordDeferralOutcome(
 	// against the same race, in the same words.
 	if (send.status !== 'queued') return 'send_not_queued';
 
+	return await stampAndRecordDeferralDay(ctx, send, args.send, args.at);
+}
+
+/**
+ * The per-day stamp and the counter bump — the half both deferral sources share.
+ *
+ * Extracted rather than copied because the two sources differ ONLY in which
+ * send states are legitimate (see `recordRelayDeferral` below); the day gate,
+ * the preview exclusion and the effect runner they go through must stay one
+ * piece of code, or the two counters they feed stop meaning the same thing.
+ */
+async function stampAndRecordDeferralDay(
+	ctx: MutationCtx,
+	send: EmailSendDoc | TransactionalSendDoc,
+	ref: SendRef,
+	rawAt: number
+): Promise<'observed' | 'already_observed_today'> {
 	// A NON-FINITE INSTANT IS NOT A DAY. The instant comes from `completeSend`'s
 	// own `Date.now()` in-process, so this is a belt rather than a boundary check
 	// — but a `NaN` reaching `startOfDayUtc` would bucket the write nowhere and
 	// defeat the per-day gate (`NaN !== NaN`, so every retry would count again),
 	// and every other outcome writer normalizes through the same helper.
-	const at = resolveNow(args.at);
+	const at = resolveNow(rawAt);
 	const day = startOfDayUtc(at);
 	if (send.deferralCountedDay === day) return 'already_observed_today';
 
@@ -130,7 +154,7 @@ export async function recordDeferralOutcome(
 	// the recorder then decides — including "no assignment row" and the test
 	// preview below, which record nothing but are still processed observations
 	// for this send and day.
-	await ctx.db.patch(args.send.id, { deferralCountedDay: day });
+	await ctx.db.patch(ref.id, { deferralCountedDay: day });
 	// Through the lifecycle's own effect runner, so the outcome is written by the
 	// ONE writer every other event goes through: it resolves the cell, the arm
 	// and the calibration flag from the send's assignment row, and — scheduled off
@@ -142,9 +166,54 @@ export async function recordDeferralOutcome(
 	// this callback and it carries a `sendAssignments` row — and must never become
 	// telemetry. The reducers erase its effects with this function; so does the
 	// one emitter that has no reducer to erase them for it.
-	const { effects } = withoutTestSendEffects(send, args.send, {
-		effects: [transportOutcomeEffect(args.send, 'deferred', at)],
+	const { effects } = withoutTestSendEffects(send, ref, {
+		effects: [transportOutcomeEffect(ref, 'deferred', at)],
 	});
 	await applyEffects(ctx, effects);
 	return 'observed';
 }
+
+/** Where a RELAY-reported deferral ended up — returned, never thrown. */
+export type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
+
+/**
+ * THE SECOND WRITER the module docstring said there could be: a deferral a
+ * RELAY reports back over its webhook (Mandrill `deferral`, plan D10).
+ *
+ * The docstring above names this half explicitly and says it is uninstrumented:
+ * "A remote 4xx AFTER the MTA has accepted the message for delivery never comes
+ * back through this path at all." For the reference arm it does come back — the
+ * relay is the one holding the message and it tells us so — and D10 puts it in
+ * `transportOutcomes.deferred` for that arm, which is what this mutation does.
+ *
+ * WHY THE `queued` GUARD IS ABSENT, and this is the whole difference between the
+ * two writers. The governed writer refuses a non-`queued` send because a send
+ * that has reached the `sent` DENOMINATOR must not also enter the NUMERATOR
+ * divided by it: for our own MTA, `sent` means a receiver accepted the message,
+ * so a deferral afterwards is a contradiction. A relay's `sent` means the RELAY's
+ * API accepted it, and every deferral it will ever report necessarily happens
+ * after that instant. Keeping the guard here would leave the reference arm's
+ * gate-2 numerator with readers and no writer — the exact fault the governed
+ * writer was added to fix.
+ *
+ * WHAT THAT LEAVES OPEN, said plainly rather than buried: the two arms now write
+ * this counter from different points on the delivery path — ours before remote
+ * acceptance, the relay's after it — so gate 2 compares two arms on rulers that
+ * are not yet proven identical. P2.3 (ramp-signal verification) owns that
+ * question; `hasDeferralTelemetry` on `RampGateEvaluationInput` is where a
+ * decision to distrust the comparison would land.
+ *
+ * FAIL-SOFT like its sibling: an unknown provider message id (a send purged, or
+ * an event for a message this deployment never sent) records nothing and says so
+ * — a webhook must never 5xx on an id it cannot resolve.
+ */
+export const recordRelayDeferral = internalMutation({
+	args: { providerMessageId: v.string(), at: v.number() },
+	handler: async (ctx, args): Promise<RecordRelayDeferralResult> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return 'send_not_found';
+		const send = await ctx.db.get(ref.id);
+		if (!send) return 'send_missing';
+		return await stampAndRecordDeferralDay(ctx, send, ref, args.at);
+	},
+});

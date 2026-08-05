@@ -6,11 +6,19 @@ import {
 	type PluginSendTransportModule,
 	type PluginSendTransportParams,
 } from '@owlat/plugin-kit';
-import type { EmailSendAttempt, EmailSendParams } from './types';
+import type { EmailSendAttempt, EmailSendParams, ReturnPathProbeCapableModule } from './types';
 import { EmailErrorCode } from './types';
 import type { SendTransportRecord } from './transports';
 
-export interface HostedSendProviderModule {
+/**
+ * The hosted (plugin) send surface. It extends {@link ReturnPathProbeCapableModule}
+ * only so callers can ask ONE question of any adapter; `createHostedSendProvider`
+ * never populates `sendReturnPathProbe`, because the plugin transport contract
+ * has no envelope-sender knob at all. A plugin kind that declared
+ * `supportsCustomReturnPath: 'probe'` is therefore settled without a send rather
+ * than probed on somebody else's wire.
+ */
+export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
 	readonly kind: PluginSendTransportKind;
 	readonly retryDelays: readonly number[];
 	sendEmail(
