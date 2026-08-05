@@ -1,7 +1,7 @@
 /**
  * Integration import provider adapter (module) — registry + dispatch.
  *
- * Adding a third integration provider (HubSpot, Klaviyo, Brevo) is a
+ * Adding another integration provider (HubSpot, Klaviyo, Brevo) is a
  * one-folder change:
  *   1. Create `convex/integrationImports/providers/<kind>/index.ts` with the
  *      adapter satisfying `IntegrationImportProviderModule<K>`.
@@ -18,9 +18,11 @@
 
 import { mailchimpProvider } from './mailchimp';
 import { stripeProvider } from './stripe';
-import type {
-	IntegrationImportProviderModule,
-	IntegrationProviderKind,
+import { mandrillProvider } from './mandrill';
+import {
+	INTEGRATION_PROVIDER_KINDS,
+	type IntegrationImportProviderModule,
+	type IntegrationProviderKind,
 } from '../_common';
 
 // Registry — keyed by `integrationImports.provider`. The walker calls
@@ -29,6 +31,7 @@ import type {
 export const INTEGRATION_IMPORT_PROVIDERS = {
 	mailchimp: mailchimpProvider,
 	stripe: stripeProvider,
+	mandrill: mandrillProvider,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
@@ -45,7 +48,7 @@ void _typecheck;
  * landed without a registry entry).
  */
 export function providerFor<K extends IntegrationProviderKind>(
-	kind: K,
+	kind: K
 ): IntegrationImportProviderModule<K> {
 	const mod = INTEGRATION_IMPORT_PROVIDERS[kind];
 	if (!mod) {
@@ -58,7 +61,12 @@ export function providerFor<K extends IntegrationProviderKind>(
  * Type guard: is the given string a recognized integration provider kind?
  */
 export function isIntegrationProviderKind(
-	kind: string | undefined | null,
+	kind: string | undefined | null
 ): kind is IntegrationProviderKind {
-	return kind === 'mailchimp' || kind === 'stripe';
+	// Read off the same list the registry's completeness guard uses, so adding a
+	// provider cannot leave this guard behind (it did drift once: the literal
+	// chain this replaced had to be edited by hand for every new kind).
+	return (
+		typeof kind === 'string' && (INTEGRATION_PROVIDER_KINDS as readonly string[]).includes(kind)
+	);
 }

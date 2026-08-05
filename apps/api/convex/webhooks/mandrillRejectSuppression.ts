@@ -92,6 +92,28 @@ const REJECT_DISPOSITIONS: Readonly<Record<string, MandrillRejectDisposition>> =
 };
 
 /**
+ * Stable error code for a reject reason, e.g. `MANDRILL_REJECT_HARD_BOUNCE`.
+ *
+ * Normalized (uppercase, non-alphanumerics to `_`, length-capped) because the
+ * reason is provider free text on a field the Send row persists.
+ *
+ * Lives here, next to the table it keys, rather than in the webhook adapter that
+ * used to own it: the reject reason reaches Owlat through TWO doors — a `reject`
+ * event while the reference arm is live, and the one-off `rejects/list`
+ * carry-over at migration time (P4.1) — and the two have to produce the same
+ * code for the same reason or the same address reads as two different pieces of
+ * evidence depending on which door it came through.
+ */
+export function mandrillRejectCode(reason: string | undefined): string {
+	const normalized = (reason ?? '')
+		.toUpperCase()
+		.replace(/[^A-Z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '')
+		.slice(0, 40);
+	return normalized ? `${MANDRILL_REJECT_CODE_PREFIX}_${normalized}` : MANDRILL_REJECT_CODE_PREFIX;
+}
+
+/**
  * What Owlat does about one reject, from its error code alone.
  *
  * Pure, so the whole policy table is testable without a ctx — and so the

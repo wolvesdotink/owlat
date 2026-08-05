@@ -45,6 +45,7 @@ export type CoreFeatureFlagKey =
 	| 'forms'
 	| 'imports.mailchimp'
 	| 'imports.stripe'
+	| 'imports.mandrill'
 	// Security / scanning
 	| 'scan.content'
 	| 'scan.files'
@@ -340,6 +341,14 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		category: 'integrations',
 		label: 'Stripe customer sync',
 		description: 'Sync Stripe customers into Owlat contacts with revenue properties.',
+		default: false,
+	},
+	'imports.mandrill': {
+		key: 'imports.mandrill',
+		category: 'integrations',
+		label: 'Mandrill suppression import',
+		description:
+			"Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating.",
 		default: false,
 	},
 

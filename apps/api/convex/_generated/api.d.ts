@@ -490,7 +490,9 @@ import type * as integrationImports__common from "../integrationImports/_common.
 import type * as integrationImports_providers_catalog from "../integrationImports/providers/catalog.js";
 import type * as integrationImports_providers_index from "../integrationImports/providers/index.js";
 import type * as integrationImports_providers_mailchimp_index from "../integrationImports/providers/mailchimp/index.js";
+import type * as integrationImports_providers_mandrill_index from "../integrationImports/providers/mandrill/index.js";
 import type * as integrationImports_providers_stripe_index from "../integrationImports/providers/stripe/index.js";
+import type * as integrationImports_suppressions from "../integrationImports/suppressions.js";
 import type * as integrationImports_walker from "../integrationImports/walker.js";
 import type * as knowledge_edgeBackfill from "../knowledge/edgeBackfill.js";
 import type * as knowledge_edgeInference from "../knowledge/edgeInference.js";
@@ -1418,7 +1420,9 @@ declare const fullApi: ApiFromModules<{
   "integrationImports/providers/catalog": typeof integrationImports_providers_catalog;
   "integrationImports/providers/index": typeof integrationImports_providers_index;
   "integrationImports/providers/mailchimp/index": typeof integrationImports_providers_mailchimp_index;
+  "integrationImports/providers/mandrill/index": typeof integrationImports_providers_mandrill_index;
   "integrationImports/providers/stripe/index": typeof integrationImports_providers_stripe_index;
+  "integrationImports/suppressions": typeof integrationImports_suppressions;
   "integrationImports/walker": typeof integrationImports_walker;
   "knowledge/edgeBackfill": typeof knowledge_edgeBackfill;
   "knowledge/edgeInference": typeof knowledge_edgeInference;

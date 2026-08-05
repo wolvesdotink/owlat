@@ -53,6 +53,7 @@ import {
 	urlAndSortedParamsSigningBase,
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
+import { mandrillRejectCode } from '../mandrillRejectSuppression';
 import type { InboundBatchAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -258,7 +259,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				errorMessage: `Mandrill rejected the message${
 					item.msg?.reject_reason ? ` (${item.msg.reject_reason})` : ''
 				}`,
-				errorCode: rejectErrorCode(item.msg?.reject_reason),
+				errorCode: mandrillRejectCode(item.msg?.reject_reason),
 				providerType: MANDRILL_PROVIDER_TYPE,
 				...(recipient ? { recipient } : {}),
 			};
@@ -268,21 +269,6 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 		default:
 			return null;
 	}
-}
-
-/**
- * Stable error code for a reject, e.g. `MANDRILL_REJECT_HARD_BOUNCE`.
- *
- * Normalized (uppercase, non-alphanumerics to `_`, length-capped) because the
- * reason is provider free text on a field the Send row persists.
- */
-function rejectErrorCode(reason: string | undefined): string {
-	const normalized = (reason ?? '')
-		.toUpperCase()
-		.replace(/[^A-Z0-9]+/g, '_')
-		.replace(/^_+|_+$/g, '')
-		.slice(0, 40);
-	return normalized ? `MANDRILL_REJECT_${normalized}` : 'MANDRILL_REJECT';
 }
 
 /**

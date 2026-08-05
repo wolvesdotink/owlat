@@ -167,6 +167,13 @@ export const AUDIT_ACTION_LITERALS = [
 	// address suppressed here was never mailed by us at all, so nothing else in
 	// the trail explains why it stopped being mailable.
 	action('blocklist.provider_suppressed'),
+	// One aggregated row per suppression carry-over IMPORT that changed
+	// something (Mandrill plan D9, P4.1). The per-address rows above answer "why
+	// is this address suppressed"; only this one answers "did an import just
+	// stop us mailing four thousand people at once, and from which provider's
+	// list". A re-run that changes nothing writes none of these, exactly like
+	// `contact.sunset_sweep_summary`.
+	action('blocklist.provider_import_summary'),
 	// Segment
 	action('segment.created'),
 	action('segment.updated'),

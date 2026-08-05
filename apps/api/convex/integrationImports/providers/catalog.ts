@@ -28,6 +28,11 @@ export interface ImportProviderCatalogEntry {
 const CORE_LABELS: Record<(typeof INTEGRATION_PROVIDER_KINDS)[number], string> = {
 	mailchimp: 'Mailchimp',
 	stripe: 'Stripe',
+	// The Transactional side of the same company, and a different system with a
+	// different key: this one imports the account's rejection blacklist, not
+	// contacts. Labelled for what it carries, since "Mandrill" next to
+	// "Mailchimp" in a contacts importer would read as a duplicate.
+	mandrill: 'Mandrill suppression list',
 };
 
 const CORE_IMPORT_PROVIDER_CATALOG: readonly ImportProviderCatalogEntry[] =

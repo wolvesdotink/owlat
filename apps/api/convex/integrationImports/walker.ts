@@ -31,7 +31,17 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/errors';
 import { providerFor } from './providers';
-import { RetryableProviderError, type FetchPageResult } from './_common';
+import {
+	addSuppressionCounts,
+	RetryableProviderError,
+	ZERO_SUPPRESSION_COUNTS,
+	suppressionCountsValidator,
+	type FetchPageResult,
+	type IntegrationProviderKind,
+	type SuppressionImportCounts,
+} from './_common';
+import { recordImportSummary } from './suppressions';
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 const MAX_RETRIES = 2;
 
@@ -47,12 +57,33 @@ export const integrationProviderConfigValidator = v.union(
 		provider: v.literal('mailchimp'),
 		apiKey: v.string(),
 		listId: v.string(),
+		// Opt-in suppression carry-over (plan D9). Absent = the pre-P4.1
+		// behavior: non-subscribed members are skipped and nothing is suppressed.
+		importSuppressions: v.optional(v.boolean()),
 	}),
 	v.object({
 		provider: v.literal('stripe'),
 		apiKey: v.string(),
+	}),
+	// No credential field: the Mandrill rejects import reads `MANDRILL_API_KEY`
+	// from the deployment environment (plan D2 — send-provider credentials are
+	// env-only, and a key pasted here would be a second credential model for an
+	// account that already has one). See `providers/mandrill/index.ts`.
+	v.object({
+		provider: v.literal('mandrill'),
 	})
 );
+
+/**
+ * Per-provider Settings toggle. The flag must actually gate the import, not
+ * just exist — a table rather than a ternary chain so a new provider is one
+ * line and cannot silently inherit another provider's flag.
+ */
+const PROVIDER_FEATURE_FLAGS = {
+	mailchimp: 'imports.mailchimp',
+	stripe: 'imports.stripe',
+	mandrill: 'imports.mandrill',
+} as const satisfies Record<IntegrationProviderKind, FeatureFlagKey>;
 
 // ─── Public mutations ───────────────────────────────────────────────────────
 
@@ -75,10 +106,7 @@ export const startIntegrationImport = authedMutation({
 
 		// Per-provider feature flags — the Settings toggles must actually gate
 		// the import, not just exist.
-		await assertFeatureEnabled(
-			ctx,
-			args.config.provider === 'mailchimp' ? 'imports.mailchimp' : 'imports.stripe'
-		);
+		await assertFeatureEnabled(ctx, PROVIDER_FEATURE_FLAGS[args.config.provider]);
 
 		// Adapter-validated config — keeps per-provider knowledge of which
 		// fields are required out of this writer. Errors surface
@@ -229,11 +257,15 @@ export const processIntegrationPage = internalAction({
 		let batchFailed = 0;
 		const batchErrors: string[] = [];
 
-		if (result.rows.length > 0) {
+		// `contactSource` is what makes a suppression-only provider expressible:
+		// an adapter that declares none (Mandrill's rejection blacklist) never
+		// reaches the Contact import module at all.
+		if (result.rows.length > 0 && adapter.contactSource) {
+			const contactSource = adapter.contactSource;
 			try {
 				const batchResults = await ctx.runMutation(internal.contacts.import.importBatch, {
 					rows: result.rows,
-					source: args.config.provider,
+					source: contactSource,
 					handleDuplicates: importRecord.handleDuplicates,
 					...(importRecord.topicId
 						? {
@@ -260,6 +292,33 @@ export const processIntegrationPage = internalAction({
 			}
 		}
 
+		// Suppression carry-over (plan D9). A separate hop from `importBatch`
+		// because it is a different kind of write to a different table with a
+		// different idempotency story — and because a contacts import that
+		// carries no suppressions must be able to fail without one, and the
+		// reverse. Errors are recorded, never thrown: an address we could not
+		// suppress is a fact the operator needs on the run, not a reason to
+		// abandon the rest of the list.
+		let pageSuppressions: SuppressionImportCounts | null = null;
+		const carried = result.suppressions ?? [];
+		const adapterSkipped = result.suppressionsSkipped ?? 0;
+		if (carried.length > 0 || adapterSkipped > 0) {
+			try {
+				pageSuppressions = await ctx.runMutation(
+					internal.integrationImports.suppressions.applySuppressionBatch,
+					{
+						provider: args.config.provider,
+						entries: carried,
+						skipped: adapterSkipped,
+					}
+				);
+			} catch (error) {
+				batchErrors.push(
+					`Suppression batch at cursor "${args.cursor}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+				);
+			}
+		}
+
 		await ctx.runMutation(internal.integrationImports.walker.updateImportProgress, {
 			importId: args.importId,
 			imported: batchImported,
@@ -268,6 +327,7 @@ export const processIntegrationPage = internalAction({
 			failed: batchFailed,
 			errors: batchErrors,
 			...(result.totalEstimate !== undefined ? { totalEstimate: result.totalEstimate } : {}),
+			...(pageSuppressions ? { suppressionCounts: pageSuppressions } : {}),
 			newCursor: result.nextCursor ?? args.cursor,
 		});
 
@@ -300,6 +360,7 @@ export const updateImportProgress = internalMutation({
 		failed: v.number(),
 		errors: v.array(v.string()),
 		totalEstimate: v.optional(v.number()),
+		suppressionCounts: v.optional(suppressionCountsValidator),
 		newCursor: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -320,6 +381,14 @@ export const updateImportProgress = internalMutation({
 			errors: mergedErrors,
 			cursor: args.newCursor,
 			...(args.totalEstimate !== undefined ? { totalEstimate: args.totalEstimate } : {}),
+			...(args.suppressionCounts
+				? {
+						suppressionCounts: addSuppressionCounts(
+							record.suppressionCounts ?? ZERO_SUPPRESSION_COUNTS,
+							args.suppressionCounts
+						),
+					}
+				: {}),
 		});
 	},
 });
@@ -352,6 +421,12 @@ export const completeImport = internalMutation({
 			errors,
 			completedAt: Date.now(),
 		});
+
+		// ONE aggregated audit row per run that actually carried something over —
+		// including a run that failed halfway, because the addresses it did
+		// suppress are suppressed either way. Gated on having changed something,
+		// so an idempotent re-run adds nothing to the trail.
+		await recordImportSummary(ctx, { ...record, status: args.status, errors });
 	},
 });
 
