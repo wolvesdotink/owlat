@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildTransportOptions,
+	eligibleFallbackRelays,
+	fallbackRelayIssue,
 	isTransportAvailable,
 	routeProvidersForWrite,
 	seedRouteProviders,
@@ -67,5 +69,48 @@ describe('provider routing catalog presentation', () => {
 			{ providerType: 'plugin.mail-pack.postmark', weight: 20, isEnabled: false },
 			{ providerType: 'mta', weight: 50, isEnabled: true },
 		]);
+	});
+});
+
+describe('deliverability-fallback relay eligibility (plan D6)', () => {
+	const providers = [
+		{ providerType: 'mta', isEnabled: true },
+		{ providerType: 'ses', isEnabled: false },
+		{ providerType: 'mandrill', isEnabled: true },
+	];
+
+	it('offers every enabled non-MTA transport and never the owned MTA', () => {
+		expect(eligibleFallbackRelays(providers).map((p) => p.providerType)).toEqual(['mandrill']);
+	});
+
+	it('accepts a Mandrill migration route the shipped SES-only guard refused', () => {
+		expect(fallbackRelayIssue(providers, 'mandrill')).toBeNull();
+	});
+
+	it('refuses the owned MTA with the backend’s own sentence', () => {
+		expect(fallbackRelayIssue(providers, 'mta')).toBe(
+			'Deliverability fallback relay must be a configured non-MTA transport'
+		);
+		expect(fallbackRelayIssue(providers, '')).toBe(
+			'Deliverability fallback relay must be a configured non-MTA transport'
+		);
+	});
+
+	it('refuses a relay that is not enabled in this route', () => {
+		expect(fallbackRelayIssue(providers, 'ses')).toBe(
+			'Deliverability fallback relay must be enabled in this route'
+		);
+	});
+
+	it('refuses a route with no owned MTA to fall back FROM', () => {
+		expect(
+			fallbackRelayIssue(
+				[
+					{ providerType: 'mta', isEnabled: false },
+					{ providerType: 'mandrill', isEnabled: true },
+				],
+				'mandrill'
+			)
+		).toBe('Deliverability fallback requires an enabled owned-MTA route');
 	});
 });

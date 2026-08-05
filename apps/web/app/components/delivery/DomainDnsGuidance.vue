@@ -54,11 +54,18 @@ const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
 			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
 		],
 	},
+	// Three items, not two — and the third is the one that surprises people. A
+	// domain with flawless SPF and DKIM but no completed ownership check is one
+	// Mandrill still rejects (`unsigned`). The EXACT records are derived from the
+	// domain name and rendered right below this card by the Mandrill status
+	// panel, which is why this entry points at them instead of restating a DKIM
+	// key that would immediately be a second copy.
 	mandrill: {
-		lead: 'Mailchimp Transactional signs your mail once your domain is verified there.',
+		lead: 'Mailchimp Transactional signs with one shared key, so your records are the same every time.',
 		points: [
-			'In Mailchimp Transactional, open Settings → Domains → Sending Domains, add this domain, and publish the SPF and DKIM records it shows.',
-			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
+			'Publish the two records shown under “Mailchimp Transactional sending domains” below: the SPF include that authorizes Mandrill’s IPs, and the DKIM TXT at mandrill._domainkey. They are derived from your domain name, so they are exactly what Owlat registered.',
+			'Then complete Mandrill’s own domain verification — the TXT token shown beside the records, or the confirmation flow in Settings → Domains → Sending Domains. Until that clears, Mandrill rejects mail from this domain no matter how good the DNS is.',
+			'Keep a DMARC record on the domain so receivers can check that SPF or DKIM aligns; your existing policy stays authoritative.',
 		],
 	},
 };

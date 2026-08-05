@@ -196,10 +196,13 @@ export async function openWizard(wrapper: WizardWrapper): Promise<void> {
 	await flushPromises();
 }
 
-/** Select one of the three relay kinds on the credentials step. */
+/** The relay kinds the credentials step offers. */
+export type WizardRelayKind = 'resend' | 'ses' | 'smtp' | 'mandrill';
+
+/** Select one of the relay kinds on the credentials step. */
 export async function chooseProvider(
 	wrapper: WizardWrapper,
-	value: 'resend' | 'ses' | 'smtp'
+	value: WizardRelayKind
 ): Promise<void> {
 	const radio = wrapper.find(`input[type="radio"][value="${value}"]`);
 	if (!radio.exists()) throw new Error(`No provider radio for "${value}" is rendered`);
@@ -213,12 +216,16 @@ export async function chooseProvider(
  */
 export async function fillCredentials(
 	wrapper: WizardWrapper,
-	value: 'resend' | 'ses' | 'smtp',
+	value: WizardRelayKind,
 	secret = 'super-secret-value'
 ): Promise<void> {
 	await chooseProvider(wrapper, value);
 	if (value === 'resend') {
 		await wrapper.find('#field-resend-api-key').setValue(secret);
+		return;
+	}
+	if (value === 'mandrill') {
+		await wrapper.find('#field-mailchimp-transactional-api-key').setValue(secret);
 		return;
 	}
 	if (value === 'ses') {

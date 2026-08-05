@@ -17,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import WizardFindingRow from '../WizardFindingRow.vue';
+import { RELAY_PROVIDER_OPTIONS } from '~/composables/useRelayCredentialDraft';
 import {
 	buttonByText,
 	chooseProvider,
@@ -103,8 +104,10 @@ describe('transport wizard — accessibility', () => {
 				expect(id).toBeTruthy();
 				expect(wrapper.find(`label[for="${id}"]`).exists()).toBe(true);
 			}
-			// The provider radios are wrapped in their own labels.
-			expect(wrapper.findAll('input[type="radio"]').length).toBe(3);
+			// The provider radios are wrapped in their own labels. Counted from the
+			// shipped option list rather than a literal, so adding a relay kind does
+			// not turn an accessibility assertion into a number to bump.
+			expect(wrapper.findAll('input[type="radio"]').length).toBe(RELAY_PROVIDER_OPTIONS.length);
 			for (const radio of wrapper.findAll('input[type="radio"]')) {
 				expect(radio.element.closest('label')).not.toBeNull();
 			}

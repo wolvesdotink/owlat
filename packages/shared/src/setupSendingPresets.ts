@@ -48,6 +48,13 @@ export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> 
 export const PROVIDER_ENV_KEYS = [
 	'EMAIL_PROVIDER',
 	'RESEND_API_KEY',
+	// Mandrill's SENDING credential only. `MANDRILL_WEBHOOK_KEY`,
+	// `MANDRILL_SUBACCOUNT` and `MANDRILL_IP_POOL` are deliberately NOT here:
+	// this list is cleared-then-set on every transport apply, and the webhook key
+	// is issued by Mandrill after the operator creates the webhook — later than,
+	// and independently of, connecting the transport. Listing it would let an
+	// unrelated key rotation silently unset a working feedback loop.
+	'MANDRILL_API_KEY',
 	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',

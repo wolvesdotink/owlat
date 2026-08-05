@@ -91,6 +91,11 @@ function select(cellKey: string): void {
 			</p>
 		</header>
 
+		<!-- Plan D8: with two reference relays there is no single second arm, so
+		     every share below holds. The reason belongs on the screen where the
+		     frozen share is watched, not only where relays are configured. -->
+		<DeliveryReferenceRelayNotice class="mb-6" />
+
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"

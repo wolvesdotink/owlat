@@ -3,6 +3,10 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import {
+	indexSuppressionProvenance,
+	suppressionProvenanceLine,
+} from '~/utils/suppressionProvenance';
 
 useHead({ title: 'Suppressions — Owlat' });
 
@@ -28,6 +32,15 @@ const {
 
 // Get counts by reason
 const { data: countsData } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
+
+// WHO PUT THIS HERE. A `manual` row can be a colleague's decision or a provider
+// blacklist hit mirrored in with nobody behind it (plan D9); the audit entry is
+// what tells them apart. Admin-gated, so it simply stays empty for a member and
+// the column falls back to saying nothing.
+const { data: provenanceData } = useOrganizationQuery(api.blockedEmails.listProviderProvenance);
+const provenanceById = computed(() => indexSuppressionProvenance(provenanceData.value));
+const provenanceFor = (blockedEmailId: string): string | null =>
+	suppressionProvenanceLine(provenanceById.value.get(blockedEmailId));
 
 const isLoading = computed(() => organizationLoading.value || blockedEmailsLoading.value);
 
@@ -379,6 +392,13 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 										class="text-sm text-text-secondary truncate max-w-[200px] block"
 									>
 										{{ blockedEmail.notes }}
+									</span>
+									<span
+										v-else-if="provenanceFor(blockedEmail._id)"
+										class="text-sm text-text-secondary block"
+										data-testid="suppression-provenance"
+									>
+										{{ provenanceFor(blockedEmail._id) }}
 									</span>
 									<span v-else class="text-sm text-text-tertiary">—</span>
 								</td>

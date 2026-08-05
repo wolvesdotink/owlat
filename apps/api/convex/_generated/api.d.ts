@@ -396,6 +396,7 @@ import type * as domains_encryptionKeysReadiness from "../domains/encryptionKeys
 import type * as domains_lifecycle from "../domains/lifecycle.js";
 import type * as domains_mandrillRelay from "../domains/mandrillRelay.js";
 import type * as domains_mandrillRelayMutations from "../domains/mandrillRelayMutations.js";
+import type * as domains_mandrillRelayQueries from "../domains/mandrillRelayQueries.js";
 import type * as domains_mtaSts from "../domains/mtaSts.js";
 import type * as domains_mtaStsVerify from "../domains/mtaStsVerify.js";
 import type * as domains_providers_index from "../domains/providers/index.js";
@@ -1323,6 +1324,7 @@ declare const fullApi: ApiFromModules<{
   "domains/lifecycle": typeof domains_lifecycle;
   "domains/mandrillRelay": typeof domains_mandrillRelay;
   "domains/mandrillRelayMutations": typeof domains_mandrillRelayMutations;
+  "domains/mandrillRelayQueries": typeof domains_mandrillRelayQueries;
   "domains/mtaSts": typeof domains_mtaSts;
   "domains/mtaStsVerify": typeof domains_mtaStsVerify;
   "domains/providers/index": typeof domains_providers_index;

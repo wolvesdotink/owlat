@@ -27,6 +27,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
+	MULTI_RELAY_DETAIL_PREFIX,
 	normalizeDomain,
 	type AlignmentArm,
 	type ReferenceArmInput,
@@ -92,7 +93,10 @@ function ownSpfMechanisms(): string[] {
  */
 function undescribableRelayDetail(domain: string, relayKinds: readonly string[]): string {
 	if (relayKinds.length > 1) {
-		return `More than one relay is enabled (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
+		// The prefix is shared (`MULTI_RELAY_DETAIL_PREFIX`) because the operator
+		// screens classify the two `unknown` branches from this sentence — D8's
+		// "keep the reference relay singular" warning is the multi-relay one.
+		return `${MULTI_RELAY_DETAIL_PREFIX} (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
 	}
 	return `A relay is configured (${relayKinds.join(', ')}) but ${domain} has no verified signing identity for it, so the two arms cannot be compared.`;
 }

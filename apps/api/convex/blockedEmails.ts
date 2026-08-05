@@ -77,6 +77,61 @@ export const listByTeam = authedQuery({
 	},
 });
 
+/**
+ * WHO PUT THIS HERE — provenance for the provider-driven suppressions on the
+ * blocklist screen.
+ *
+ * A `manual`-reason row used to mean "a human typed this address in". Since the
+ * Mandrill reject sync (plan D9) it can also mean "the provider's own blacklist
+ * rejected it and we mirrored that", with no operator behind it at all. Those
+ * two are indistinguishable on the row itself, and deliberately so: the
+ * suppression schema gained no provenance column (plan §5) because provenance
+ * is an EVENT, not a property of the address — re-blocking an address that was
+ * already blocked writes nothing, so a column would record only whichever cause
+ * happened to arrive first.
+ *
+ * The event lives where events live: the `blocklist.provider_suppressed` audit
+ * entry, keyed by the blocklist row's own id (`resourceId`). This read joins the
+ * two so the screen can answer the question without a schema change and without
+ * an N+1 lookup per row.
+ *
+ * Admin-gated: audit data is not a member-level read (the same reason
+ * `auditLogs.list` is gated), and the evidence string is a third party's raw
+ * reason code. Not org-keyed, exactly like the `blockedEmails` rows it explains:
+ * both are deployment-wide under the singleton-org invariant, and the writer
+ * (`addFromEvent`, a system actor with no session) has no organization to
+ * attribute the entry to.
+ */
+export const listProviderProvenance = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		await requireOrgPermission(ctx, 'organization:manage');
+		const entries = await ctx.db
+			.query('auditLogs')
+			.withIndex('by_action', (q) => q.eq('action', 'blocklist.provider_suppressed'))
+			.order('desc')
+			.take(BLOCKLIST_VIEW_LIMIT);
+
+		return entries.flatMap((entry) => {
+			const details = entry.details;
+			if (!entry.resourceId || !details) return [];
+			const provider = details['provider'];
+			const source = details['source'];
+			if (typeof provider !== 'string' || typeof source !== 'string') return [];
+			const evidence = details['evidence'];
+			return [
+				{
+					blockedEmailId: entry.resourceId,
+					provider,
+					source,
+					evidence: typeof evidence === 'string' ? evidence : null,
+					recordedAt: entry.createdAt,
+				},
+			];
+		});
+	},
+});
+
 // Get a single blocked email by ID
 export const get = authedQuery({
 	args: { blockedEmailId: v.id('blockedEmails') },

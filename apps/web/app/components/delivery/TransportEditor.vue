@@ -9,9 +9,9 @@ import { transportStepIsValid, validateEmailStep } from '~/composables/setupWiza
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
 	RELAY_PROVIDER_OPTIONS,
+	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
 	applyTransportEnv,
 	useRelayCredentialDraft,
-	type RelayProviderOption,
 } from '~/composables/useRelayCredentialDraft';
 import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
 
@@ -62,8 +62,13 @@ const { showToast } = useToast();
 const isEditing = ref(false);
 
 // ── Draft (seeded from the active kind; credentials always blank) ────────────
+// Derived from the shared relay list rather than re-spelling the union: a kind
+// added there is seedable here without an edit, and an unknown/retired kind
+// still falls back to the MTA rather than to a transport this build cannot
+// render fields for.
 function knownKind(kind: string | null): ProviderChoice {
-	return kind === 'mta' || kind === 'resend' || kind === 'ses' || kind === 'smtp' ? kind : 'mta';
+	if (kind === 'mta') return 'mta';
+	return RELAY_PROVIDER_OPTIONS.find((option) => option.value === kind)?.value ?? 'mta';
 }
 
 // The SAME relay-credential draft the connection wizard's step 1 uses — one
@@ -72,6 +77,7 @@ const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
 const {
 	provider,
 	resendKey,
+	mandrillKey,
 	sesRegion,
 	sesAccess,
 	sesSecret,
@@ -99,18 +105,7 @@ const outboundTlsModeHint = computed(
 	() => OUTBOUND_TLS_MODE_OPTIONS.find((o) => o.value === outboundTlsMode.value)?.hint ?? ''
 );
 
-/** The MTA is not a relay, so it is the editor's own entry above the shared ones. */
-const MTA_OPTION: { value: ProviderChoice; label: string; hint: string; icon: string } = {
-	value: 'mta',
-	label: 'Run your own MTA',
-	hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
-	icon: 'lucide:server',
-};
-
-const providerOptions: readonly (RelayProviderOption | typeof MTA_OPTION)[] = [
-	MTA_OPTION,
-	...RELAY_PROVIDER_OPTIONS,
-];
+const providerOptions = TRANSPORT_EDITOR_PROVIDER_OPTIONS;
 
 const draft = computed<EmailStepDraft>(() => ({
 	provider: provider.value,
@@ -320,6 +315,22 @@ function cancel() {
 				/>
 			</div>
 
+			<div v-if="provider === 'mandrill'" class="space-y-3">
+				<UiInput
+					v-model="mandrillKey"
+					type="password"
+					label="Mailchimp Transactional API key"
+					placeholder="md-..."
+					autocomplete="off"
+					:error="showErrors ? errors.mandrillKey : undefined"
+				/>
+				<p class="text-xs text-text-tertiary">
+					Mailchimp Transactional &rarr; Settings &rarr; API keys. Feedback needs a second variable,
+					<code class="text-text-primary">MANDRILL_WEBHOOK_KEY</code> — the webhook card below has
+					the URL and the events to enable.
+				</p>
+			</div>
+
 			<div v-if="provider === 'ses'" class="space-y-4">
 				<UiInput v-model="sesRegion" label="Region" placeholder="us-east-1" />
 				<UiInput v-model="sesAccess" label="Access key ID" autocomplete="off" />
@@ -406,8 +417,8 @@ function cancel() {
 
 			<p v-if="!canTest" class="text-xs text-text-tertiary flex items-center gap-1.5">
 				<Icon name="lucide:info" class="w-3.5 h-3.5" />
-				SES and your own MTA can't be tested before applying — apply, then use "Send a test email"
-				below to confirm delivery.
+				SES, Mailchimp Transactional and your own MTA can't be tested before applying — apply, then
+				use "Send a test email" below to confirm delivery.
 			</p>
 
 			<!-- Apply error / restart handoff -->
