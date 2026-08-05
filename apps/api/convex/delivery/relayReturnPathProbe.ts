@@ -38,10 +38,10 @@ import {
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { getOptional } from '../lib/env';
+import { providerFor } from '../lib/sendProviders';
 import { providerKindConfigured } from '../lib/sendProviders/capability';
 import { isProbeDecidedReturnPathKind } from '../lib/sendProviders/catalog';
-import { sendViaRelay } from '../lib/sendProviders/smtp';
-import { EmailErrorCode } from '../lib/sendProviders/types';
+import { EmailErrorCode, type ReturnPathProbeCapableModule } from '../lib/sendProviders/types';
 import {
 	listSendTransports,
 	tryResolveSendTransport,
@@ -75,6 +75,30 @@ function isConfiguredTransport(transport: SendTransportRecord): boolean {
 }
 
 /**
+ * THE PROBE RIDES THE PROBED TRANSPORT'S OWN WIRE (plan D5) — the invariant this
+ * lookup exists to enforce.
+ *
+ * A verdict is written against ONE `transportId`, so the send that produced it
+ * must have gone out through THAT transport's adapter with THAT transport's
+ * credentials. Reaching for a fixed module instead (this action called the smtp
+ * one directly until `mandrill` became the second probe-decided kind) would
+ * resolve `SMTP_RELAY_HOST/USERNAME/PASSWORD` off a Mandrill record and file the
+ * answer under `transportId: 'mandrill'` — evidence from a different transport,
+ * and a false `supported` there is exactly what makes the send path stamp a
+ * custom return path on real Mandrill mail.
+ *
+ * `undefined` ⇒ this kind's adapter cannot express the probe's envelope at all
+ * (see `MandrillExtras`/`mandrill/index.ts`). Fail closed: settle it without a
+ * send rather than borrowing a wire that would answer about something else.
+ */
+function returnPathProbeWireFor(
+	kind: SendTransportRecord['kind']
+): ReturnPathProbeCapableModule['sendReturnPathProbe'] {
+	const provider = providerFor(kind);
+	return provider.sendReturnPathProbe?.bind(provider);
+}
+
+/**
  * Failure codes that mean the probe never got a MAIL FROM verdict out of the
  * relay — a missing/invalid credential, a DNS or TLS failure, a timeout, an
  * upstream 4xx. Recording these as `rejected_by_relay` would render the
@@ -99,7 +123,14 @@ export type ReturnPathProbeSkipReason =
 	| 'not_probeable'
 	| 'not_configured'
 	| 'transport_error'
-	| 'not_due';
+	| 'not_due'
+	/**
+	 * The transport's adapter declined the probe wire, so the verdict was settled
+	 * WITHOUT a send (`unsupported` / `no_envelope_control`). `ran: false` on
+	 * purpose: nothing reached a wire, so it costs the operator no bounce and must
+	 * not spend the sweep's per-tick probe budget.
+	 */
+	| 'no_envelope_control';
 
 export type ReturnPathProbeRunResult =
 	| { readonly ran: false; readonly reason: ReturnPathProbeSkipReason }
@@ -116,6 +147,30 @@ export const runReturnPathProbe = internalAction({
 		if (!transport) return { ran: false, reason: 'unresolvable_transport' };
 		if (!isProbeableTransport(transport)) return { ran: false, reason: 'not_probeable' };
 		if (!isConfiguredTransport(transport)) return { ran: false, reason: 'not_configured' };
+
+		/** One schedule question, asked from both branches below. */
+		const isDue = async (at: number): Promise<boolean> =>
+			args.force === true ||
+			(await ctx.runQuery(internal.delivery.relayReturnPath.isReturnPathProbeDue, {
+				transportId: args.transportId,
+				at,
+			}));
+
+		const sendProbe = returnPathProbeWireFor(transport.kind);
+		if (!sendProbe) {
+			// The adapter cannot put a chosen RFC5321.MailFrom on the wire, so this
+			// question has a local answer and no send can improve on it. Settled on
+			// the SCHEDULE anyway (not on every sweep) so the row's `attempts` and
+			// `settledAt` keep meaning what they mean for every other transport.
+			const at = Date.now();
+			if (!(await isDue(at))) return { ran: false, reason: 'not_due' };
+			await ctx.runMutation(internal.delivery.relayReturnPath.recordProbeWithoutEnvelopeControl, {
+				transportId: args.transportId,
+				probeId: randomUUID(),
+				at,
+			});
+			return { ran: false, reason: 'no_envelope_control' };
+		}
 
 		const returnPathDomain = normalizeReturnPathDomain(getOptional('MTA_RETURN_PATH_DOMAIN'));
 		const verpKey = normalizeVerpKey(getOptional('MTA_BOUNCE_VERP_KEY'));
@@ -137,13 +192,7 @@ export const runReturnPathProbe = internalAction({
 		}
 
 		const at = Date.now();
-		if (args.force !== true) {
-			const due = await ctx.runQuery(internal.delivery.relayReturnPath.isReturnPathProbeDue, {
-				transportId: args.transportId,
-				at,
-			});
-			if (!due) return { ran: false, reason: 'not_due' };
-		}
+		if (!(await isDue(at))) return { ran: false, reason: 'not_due' };
 
 		const probeId = randomUUID();
 		const probeMessageId = returnPathProbeMessageId(probeId);
@@ -161,12 +210,13 @@ export const runReturnPathProbe = internalAction({
 		// which is a genuine verdict and is recorded as unsupported.
 		let sentEnvelopeSender = probeFrom;
 		try {
-			// The adapter builds the VERP envelope sender with the SAME shipped
-			// scheme a real send uses — there is exactly one VERP builder — and
-			// hands back the address it actually put on the wire. Recomputing it
-			// here would risk straddling the UTC VERP window boundary and recording
-			// an address that differs from the one sent.
-			const outcome = await sendViaRelay(
+			// THIS TRANSPORT'S OWN adapter (see `returnPathProbeWireFor`). It builds
+			// the VERP envelope sender with the SAME shipped scheme a real send uses
+			// — there is exactly one VERP builder — and hands back the address it
+			// actually put on the wire. Recomputing it here would risk straddling the
+			// UTC VERP window boundary and recording an address that differs from the
+			// one sent.
+			const outcome = await sendProbe(
 				transport,
 				{
 					to: probeRecipient,

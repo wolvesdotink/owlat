@@ -363,7 +363,17 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			// so a lost response may sit on top of an accepted (and delivered)
 			// message. `AMBIGUOUS_TIMEOUT` is not retryable, and `acceptanceUnknown`
 			// tells the governed boundary the outcome is genuinely undecided rather
-			// than a definite failure — the `send` webhook event resolves it later.
+			// than a definite failure.
+			//
+			// WHAT UNDECIDED COSTS, stated here because this is where it is created:
+			// the response we lost is the one that carried the `_id`, and `_id` is
+			// the only key a Mandrill webhook can be joined on (`send-raw` accepts no
+			// caller correlator that its events echo back). So the `send` event
+			// CANNOT resolve this particular ambiguity. `delivery/governedDispatch.ts`
+			// therefore parks the Send `queued` — undecided, and still open to any
+			// later evidence — and `delivery/sendCompletion.ts` ages it out at the
+			// delivery deadline as `PROVIDER_ACCEPTANCE_UNCONFIRMED` rather than
+			// claiming a delivery failure it cannot know about.
 			if (isAmbiguousMandrillTimeout(errorName, errorMessage)) {
 				return {
 					success: false,
@@ -385,6 +395,35 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 		}
 	},
 
+	/**
+	 * `sendReturnPathProbe` IS DELIBERATELY ABSENT (plan D5).
+	 *
+	 * The probe proves one thing and proves it one way: it puts a SIGNED VERP
+	 * ADDRESS on the wire as the RFC5321.MailFrom and waits for the DSN, because
+	 * the probe id lives in that address's LOCAL PART and our bounce server
+	 * attributes a DSN only when the MAC over it verifies. `send-raw` offers
+	 * `return_path_domain` — a DOMAIN. Mandrill mints the local part itself (its
+	 * own `bounce-md_*` tracking mailbox, which is how it produces the bounce
+	 * webhooks this kind is credited with), so our token cannot survive and no
+	 * DSN we could attribute can ever come back.
+	 *
+	 * Declining is therefore the honest answer, and it is cheaper than the
+	 * alternatives in both directions. Sending the probe anyway would manufacture
+	 * a real hard bounce on the operator's Mandrill account — the number that
+	 * gets an ESP account suspended — every backoff cycle, to age out
+	 * `no_bounce_observed` and blame Mandrill for our own inability to express
+	 * the envelope. Borrowing the SMTP adapter's wire (what the probe did before
+	 * the wire became per-kind) would resolve `SMTP_RELAY_*` and file a verdict
+	 * about a different transport under `transportId: 'mandrill'` — and a false
+	 * `supported` there is what makes the send path stamp `return_path_domain` on
+	 * real Mandrill mail.
+	 *
+	 * The probe settles this kind `unsupported` / `no_envelope_control` without a
+	 * send. `MandrillExtras.returnPathDomain` stays wired for the day a Mandrill
+	 * account is proven to hand the bounce stream back, but nothing can enable it
+	 * on a guess: the routing pass only supplies `relayReturnPathHost` for a
+	 * transport whose own probe reached `supported`.
+	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
 		return categorizeMandrillError(message, httpStatus);
 	},

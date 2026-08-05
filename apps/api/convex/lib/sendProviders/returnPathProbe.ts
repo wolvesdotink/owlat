@@ -23,9 +23,11 @@
  *
  *   awaiting_delivery  the relay accepted our MAIL FROM; nothing proven yet
  *   supported          a bounce for the probe reached OUR bounce server
- *   unsupported        the relay refused our MAIL FROM, or the probe aged out
+ *   unsupported        the relay refused our MAIL FROM, the probe aged out
  *                      without a bounce ever arriving (which is how a rewritten
- *                      envelope sender presents — the DSN goes elsewhere)
+ *                      envelope sender presents — the DSN goes elsewhere), or
+ *                      the transport's own adapter cannot put a chosen envelope
+ *                      sender on the wire at all
  */
 export const RETURN_PATH_PROBE_STATUSES = [
 	'awaiting_delivery',
@@ -40,6 +42,18 @@ export const RETURN_PATH_PROBE_REASONS = [
 	'observed_match',
 	'rejected_by_relay',
 	'no_bounce_observed',
+	/**
+	 * The transport's OWN adapter has no way to put a caller-chosen
+	 * RFC5321.MailFrom on the wire (Mandrill's `return_path_domain` names a
+	 * domain; the local part — where the signed probe token lives — is the
+	 * provider's). Settled without a send: the answer is about OUR reach into
+	 * that transport's envelope, is knowable locally, and spending a deliberate
+	 * hard bounce on the operator's ESP account to re-learn it every backoff
+	 * cycle would buy nothing. Distinct from `rejected_by_relay` (the relay
+	 * ruled on our MAIL FROM and refused it) and from `no_bounce_observed` (we
+	 * sent and heard nothing) precisely because neither of those happened.
+	 */
+	'no_envelope_control',
 ] as const;
 export type ReturnPathProbeReason = (typeof RETURN_PATH_PROBE_REASONS)[number];
 
@@ -120,7 +134,13 @@ export type ReturnPathProbeEvent =
 	 */
 	| { readonly kind: 'observed'; readonly at: number }
 	/** The probe aged out with nothing observed. */
-	| { readonly kind: 'expired'; readonly at: number };
+	| { readonly kind: 'expired'; readonly at: number }
+	/**
+	 * The transport's adapter declined the probe wire — it cannot express a
+	 * chosen envelope sender, so nothing was sent and nothing ever will be for
+	 * this kind. A local, deterministic verdict, not an observation.
+	 */
+	| { readonly kind: 'no_envelope_control'; readonly at: number };
 
 /** How long a probe waits for its bounce before it is called unsupported. */
 export const RETURN_PATH_PROBE_TIMEOUT_MS = 6 * 60 * 60 * 1000; // 6h
@@ -241,6 +261,13 @@ export function nextProbeState(
 				...state,
 				status: 'unsupported',
 				reason: 'no_bounce_observed',
+				settledAt: event.at,
+			};
+		case 'no_envelope_control':
+			return {
+				...state,
+				status: 'unsupported',
+				reason: 'no_envelope_control',
 				settledAt: event.at,
 			};
 		default: {

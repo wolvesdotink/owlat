@@ -671,6 +671,35 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 		expect(mapped).toMatchObject({ bounceMessage: 'smtp;452 over quota', bounceType: 'soft' });
 	});
 
+	/**
+	 * `msg._id` IS THE ONLY JOIN KEY, and that is a constraint the D4 park depends
+	 * on rather than an oversight (`delivery/sendCompletion.ts`).
+	 *
+	 * An ambiguous API timeout is exactly the case where the row never learned an
+	 * `_id`, so nothing here can reattach it: Mandrill's `send-raw` takes no
+	 * caller-supplied correlator that its webhooks echo back (`metadata` is a
+	 * `messages/send` parameter — sending it on `send-raw` would be a guess whose
+	 * failure mode is silence), and the rest of `msg` describes the recipient, not
+	 * the send. Guessing from `email` would join whichever queued send to that
+	 * address happened to be found. So an item with no `_id` is ACKNOWLEDGED and
+	 * dropped, and the parked row waits out its deadline instead.
+	 */
+	it('joins on msg._id ALONE — never on the recipient, never on a guess', () => {
+		const richButUnjoinable = {
+			ts: 1,
+			msg: { email: 'subscriber@example.com', state: 'sent', sender: 'news@example.com' },
+		};
+		for (const name of ['send', 'deferral', 'hard_bounce', 'soft_bounce', 'spam', 'reject']) {
+			expect(mapMandrillEvent({ ...richButUnjoinable, event: name })).toBeNull();
+		}
+		// `unsub` is the documented exception: it is keyed by ADDRESS by design,
+		// because it reports who left rather than which message did something.
+		expect(mapMandrillEvent({ ...richButUnjoinable, event: 'unsub' })).toMatchObject({
+			kind: 'email.unsubscribed',
+			recipient: 'subscriber@example.com',
+		});
+	});
+
 	it('normalizes a reject reason into a stable error code', () => {
 		expect(
 			mapMandrillEvent({

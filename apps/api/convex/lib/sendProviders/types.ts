@@ -343,9 +343,66 @@ export interface DispatchResult {
 	attempts: number;
 }
 
+// ─── Return-path probe wire (the capability half of plan D5) ───────────────
+
+/**
+ * What the return-path probe needs a transport to put on the wire.
+ *
+ * NOT a return-path *host* the way `SmtpExtras.returnPathHost` is: the probe's
+ * whole evidence mechanism is that the DSN comes back to a SIGNED VERP ADDRESS
+ * whose LOCAL PART encodes the probe id. Only a transport that lets us choose
+ * the entire RFC5321.MailFrom can carry that, which is why this is a separate,
+ * optional method rather than a flag on the ordinary send.
+ */
+export interface ReturnPathProbeEnvelope {
+	/** The bounce host the probe's VERP envelope sender is minted at. */
+	readonly returnPathHost: string;
+	/**
+	 * The id the VERP token encodes — the PROBE's id, not a Send's. Deliberately
+	 * not reachable from `ExtrasFor<K>`: as a public per-send knob it would let a
+	 * caller decouple the VERP token from the id stored as `providerMessageId`
+	 * and silently break bounce attribution for real mail.
+	 */
+	readonly verpMessageId: string;
+}
+
+export interface ReturnPathProbeWireOutcome {
+	readonly attempt: EmailSendAttempt;
+	/**
+	 * The RFC5321.MailFrom actually put on the wire. Returned rather than
+	 * recomputed by the caller: the VERP window rolls at UTC midnight, so a
+	 * caller that rebuilt the address a moment later could record an address that
+	 * differs from the one sent and misread it as a relay rewrite.
+	 */
+	readonly envelopeSender: string;
+	readonly isVerp: boolean;
+}
+
+/**
+ * The optional probe wire, shared by core and hosted (plugin) adapters.
+ *
+ * ABSENT MEANS "THIS TRANSPORT CANNOT CARRY A PROBE", and that is the
+ * fail-closed default on purpose. A probe verdict is written against ONE
+ * transport id, so evidence gathered on a different transport's wire would be
+ * filed as if it were this one's — which is exactly how a relay that never
+ * honours our envelope sender could inherit a `supported` verdict from the
+ * deployment's SMTP relay and start stamping `return_path_domain` on real mail.
+ * A kind that cannot express {@link ReturnPathProbeEnvelope} therefore declines
+ * here and is settled `unsupported` / `no_envelope_control` without a send.
+ */
+export interface ReturnPathProbeCapableModule {
+	sendReturnPathProbe?(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		envelope: ReturnPathProbeEnvelope
+	): Promise<ReturnPathProbeWireOutcome>;
+}
+
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
-export interface SendProviderModule<K extends SendProviderKind> {
+export interface SendProviderModule<
+	K extends SendProviderKind,
+> extends ReturnPathProbeCapableModule {
 	readonly kind: K;
 
 	/**

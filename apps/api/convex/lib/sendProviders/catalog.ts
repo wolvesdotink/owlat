@@ -222,6 +222,21 @@ export function domainVerificationFor(kind: SendProviderKind): DomainVerificatio
 }
 
 /**
+ * Does this kind report delivery outcomes back to us out of band (webhook /
+ * SNS)? Read it instead of the raw field so an absent declaration can never be
+ * mistaken for a feedback channel that does not exist (fail closed).
+ *
+ * Two consumers, and they must agree: the measurement grading widens a bounce
+ * tolerance for an arm whose bounces arrive over provider feedback rather than
+ * our own VERP stream, and the governed dispatch boundary keeps an
+ * ambiguous-acceptance send NON-TERMINAL only for a kind whose feedback could
+ * still speak to it. A kind with no feedback at all has nothing to wait for.
+ */
+export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
+	return sendProviderCatalogEntry(kind).hasProviderFeedback === true;
+}
+
+/**
  * Is this kind's envelope-sender control decided by a PROBE rather than by the
  * catalog? `yes` and `no` are settled declarations, so probing them would prove
  * nothing and — since every probe deliberately manufactures a bounce on the
