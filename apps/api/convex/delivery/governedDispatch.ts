@@ -8,16 +8,13 @@ import {
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import { hasProviderFeedbackFor } from '../lib/sendProviders/catalog';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
+	buildDispatchExtrasFor,
 	type EmailSendParams,
-	type ExtrasFor,
-	type MtaExtras,
-	type MtaIpPool,
-	type ResendExtras,
 	type SendProviderKind,
-	type SmtpExtras,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
 import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
@@ -100,6 +97,34 @@ export type GovernedDispatchResult<TEnvelope> =
 			envelopeInput: TEnvelope;
 			retryState: WorkerRetryState;
 			retryAfterMs?: number;
+	  }
+	/**
+	 * ACCEPTANCE IS OPEN AND CANNOT BE RE-ASKED (plan D4).
+	 *
+	 * The MTA arm above reconciles by REPLAYING the attempt: its idempotency key
+	 * IS the MTA message id, so a repeat dispatch either finds the existing work
+	 * or creates it, and no recipient can be mailed twice. A relay that has no
+	 * idempotency surface — Mandrill's `send-raw` has none — offers no such
+	 * question. The lost response may sit on top of an ACCEPTED and DELIVERED
+	 * message, so this arm carries no envelope and no message id: there is
+	 * deliberately nothing here a caller could re-dispatch from.
+	 *
+	 * What it asks the completion callback for is a PARK, not a retry: keep the
+	 * Send `queued` — the state that says "we do not know yet", which is the
+	 * truth — until the delivery deadline, then terminalize with a code that says
+	 * so. `queued` is also the only state a later transition can still leave;
+	 * `failed` is terminal in `LEGAL_EDGES`, so the shipped behaviour (falling
+	 * through to `throw` → `WORKPOOL_FAILED`) closed the row against every piece
+	 * of evidence that could still arrive AND claimed a definite non-delivery for
+	 * a message that may well have been delivered.
+	 */
+	| {
+			success: false;
+			acceptanceUnknown: true;
+			awaitingProviderFeedback: true;
+			providerType: SendProviderKind;
+			startedAt: number;
+			retryState: WorkerRetryState;
 	  };
 
 function currentRetryState(
@@ -239,48 +264,28 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
 	const engagementScore = normalizeEngagementScore(request.engagementScore);
-	const extras: ExtrasFor<SendProviderKind> =
-		providerKind === 'mta'
-			? ({
-					messageId: idempotencyKey,
-					workAttemptId,
-					routingReentryToken: snapshot.token,
-					routingReentry: {
-						envelopeInput: request.envelopeInput,
-						// Must equal the snapshot's retryState above — the callback
-						// digest covers it.
-						retryState: reentryRetryState(retryState),
-					},
-					organizationId,
-					messageType: request.messageType,
-					deliveryDomain: request.deliveryDomain,
-					routingLease,
-					allowWarmupOverflow: Boolean(
-						request.messageType === 'campaign' && route?.warmupOverflowEnabled
-					),
-					...((route?.ipPool ?? request.ipPool)
-						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
-						: {}),
-					// Omitted, never zeroed, when the recipient has no score: the
-					// MTA reads absence as "unknown" and applies its DEFAULT band,
-					// whereas 0 would order the message behind every cold contact.
-					...(engagementScore !== undefined ? { engagementScore } : {}),
-				} satisfies MtaExtras)
-			: providerKind === 'resend'
-				? ({ idempotencyKey } satisfies ResendExtras)
-				: providerKind === 'smtp'
-					? // Relay arm (plan G-08): stamp OUR VERP envelope sender at the
-						// return-path host the routing pass authorised — the SAME host the
-						// direct-MX arm stamps for this From domain — so relayed bounces
-						// reach our own bounce server and both arms present the same
-						// envelope-sender domain. Resolved by the routing pass, not by a
-						// second query on the send path. No authorised host simply keeps
-						// the composer's envelope sender: the send is unchanged and its
-						// cell is graded degraded-measurement, never blocked (plan D2).
-						relayReturnPathHost === undefined
-						? ({} satisfies SmtpExtras)
-						: ({ returnPathHost: relayReturnPathHost } satisfies SmtpExtras)
-					: {};
+	// The facts, not the shape: this boundary states what it knows about the send
+	// and the provider module turns that into its own typed extras. No branch on
+	// which provider — a new kind adds an adapter, never a case here.
+	const extras = buildDispatchExtrasFor(providerKind, {
+		idempotencyKey,
+		workAttemptId,
+		organizationId,
+		messageType: request.messageType,
+		deliveryDomain: request.deliveryDomain,
+		routingReentryToken: snapshot.token,
+		routingReentry: {
+			envelopeInput: request.envelopeInput,
+			// Must equal the snapshot's retryState above — the callback digest
+			// covers it.
+			retryState: reentryRetryState(retryState),
+		},
+		routingLease,
+		ipPool: route?.ipPool ?? request.ipPool,
+		warmupOverflowEnabled: route?.warmupOverflowEnabled,
+		engagementScore,
+		relayReturnPathHost,
+	});
 	const dispatched = await sendProviderDispatch(
 		ctx,
 		// The SAME instance the routing pass graded for return-path capability.
@@ -324,20 +329,45 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			retryState: nextRetryState(retryState),
 		};
 	}
-	if (providerKind === 'mta' && dispatched.result.acceptanceUnknown) {
-		return {
-			success: false,
-			acceptanceUnknown: true,
-			providerMessageId: idempotencyKey,
-			workAttemptId,
-			startedAt: retryState.startedAt,
-			envelopeInput: request.envelopeInput,
-			retryState: {
-				...retryState,
+	if (dispatched.result.acceptanceUnknown) {
+		if (providerKind === 'mta') {
+			return {
+				success: false,
+				acceptanceUnknown: true,
+				providerMessageId: idempotencyKey,
 				workAttemptId,
-				acceptanceReconciliation: true,
-			},
-		};
+				startedAt: retryState.startedAt,
+				envelopeInput: request.envelopeInput,
+				retryState: {
+					...retryState,
+					workAttemptId,
+					acceptanceReconciliation: true,
+				},
+			};
+		}
+		// A CAPABILITY, NOT A KIND LIST. The question a park is waiting on is
+		// "could this transport still tell us what happened?", and the catalog
+		// already answers it (`hasProviderFeedback`). A transport with no feedback
+		// channel — a bring-your-own SMTP relay — has nothing to wait for, so its
+		// ambiguity falls through to the throw below exactly as it does today.
+		//
+		// NOT A DEFERRAL, and deliberately not routed through one. An ambiguous
+		// timeout is our own request outcome going missing, not a receiver holding
+		// the message: borrowing the deferral shape would re-enqueue the send (D4
+		// forbids it) and would put a non-observation into
+		// `transportOutcomes.deferred`, whose two writers already measure from
+		// different points on the delivery path (see the ruler-asymmetry note in
+		// `delivery/deferralOutcome.ts`). Gate 2's numerator stays untouched here.
+		if (hasProviderFeedbackFor(providerKind)) {
+			return {
+				success: false,
+				acceptanceUnknown: true,
+				awaitingProviderFeedback: true,
+				providerType: dispatched.providerType,
+				startedAt: retryState.startedAt,
+				retryState,
+			};
+		}
 	}
 
 	throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');

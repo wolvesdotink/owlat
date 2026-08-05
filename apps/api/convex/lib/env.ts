@@ -155,6 +155,24 @@ export type EnvKey =
 	| 'SMTP_RELAY_SECURE'
 	| 'SMTP_RELAY_USERNAME'
 	| 'SMTP_RELAY_PASSWORD'
+	// Provider: Mailchimp Transactional (Mandrill). The instance-level outbound
+	// transport when `EMAIL_PROVIDER=mandrill`, and the reference arm a team
+	// arriving from Mailchimp migrates AWAY from under the ramp controller.
+	// The API key alone enables the kind; the three below only refine it.
+	| 'MANDRILL_API_KEY'
+	// Per-webhook signing key Mandrill shows after you create the webhook
+	// pointing at `<convex-site>/webhooks/mandrill`. Keys the HMAC-SHA1
+	// signature the inbound adapter verifies. Unset ⇒ no verified feedback
+	// loop, so bounces/complaints from this arm never reach the lifecycle.
+	| 'MANDRILL_WEBHOOK_KEY'
+	// Optional Mandrill subaccount. Isolates Owlat's traffic — and therefore
+	// its reputation — inside a shared Mandrill account. Unset ⇒ sends omit
+	// the field and land on the account's default reputation.
+	| 'MANDRILL_SUBACCOUNT'
+	// Optional default Mandrill dedicated-IP pool name. A resolved route's
+	// `providerRoutes.ipPool` overrides it per send; unset (and unrouted) ⇒
+	// sends omit the field and Mandrill picks the account default pool.
+	| 'MANDRILL_IP_POOL'
 	// LLM
 	| 'LLM_PROVIDER'
 	| 'LLM_API_KEY'

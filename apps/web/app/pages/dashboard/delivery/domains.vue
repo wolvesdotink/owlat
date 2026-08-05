@@ -391,11 +391,12 @@ onBeforeUnmount(() => {
 			</div>
 
 			<!-- Per-transport DNS guidance: what to check depends on how this
-				 instance sends (managed MTA records vs SES/relay/Resend that sign on
-				 your behalf). A sibling of — and demoted below — the "why add a
-				 domain" card, so the first thing under the h1 builds the mental model,
-				 not transports. The space-y-8 wrapper handles the spacing. -->
+				 instance sends (managed MTA records vs a relay that signs on your
+				 behalf). Demoted below the "why add a domain" card so the first thing
+				 under the h1 builds the mental model, not transports. Mandrill's exact
+				 derived records follow it. -->
 			<DeliveryDomainDnsGuidance />
+			<DeliveryMandrillDomainStatus />
 
 			<!-- Outbound IP identity is DNS setup too: keep quarantine reasons and
 			     exact PTR repair guidance on the day-one domains surface. -->

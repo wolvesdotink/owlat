@@ -13,7 +13,7 @@ const { showToast } = useToast();
 const isOpen = defineModel<boolean>('open', { default: false });
 
 type IntegrationImportStep = 'select' | 'configure' | 'importing' | 'complete';
-type IntegrationType = 'mailchimp' | 'stripe' | null;
+type IntegrationType = 'mailchimp' | 'stripe' | 'mandrill' | null;
 
 const step = ref<IntegrationImportStep>('select');
 const selectedIntegration = ref<IntegrationType>(null);
@@ -25,6 +25,13 @@ const credentials = reactive({
 	mailchimp: { apiKey: '', listId: '', showApiKey: false },
 	stripe: { apiKey: '', showApiKey: false },
 });
+
+// Carry the audience's unsubscribed + cleaned members into the suppression list
+// as well as its contacts. On by default: a migration that re-mails the people
+// who opted out at Mailchimp is a compliance failure on day one, and the
+// addresses are already on the wire — the contacts import fetches them and
+// currently drops them.
+const importSuppressions = ref(true);
 
 // Subscribe to import progress
 const { data: importProgress } = useConvexQuery(
@@ -49,6 +56,23 @@ const progressText = computed(() => {
 	const p = importProgress.value;
 	if (!p || p.status !== 'running') return '';
 	const processed = p.imported + p.updated + p.skipped + p.failed;
+	if (p.provider === 'mandrill') {
+		const carried = p.suppressionCounts;
+		const seen = carried
+			? carried.bouncedHard +
+				carried.bouncedSoft +
+				carried.complained +
+				carried.manual +
+				carried.unsubscribed +
+				carried.alreadyBlocked +
+				carried.alreadyUnsubscribed +
+				carried.noContact +
+				carried.skipped
+			: 0;
+		return p.totalEstimate
+			? `Reviewed ${seen.toLocaleString()} of ~${p.totalEstimate.toLocaleString()} blacklist entries...`
+			: `Reviewed ${seen.toLocaleString()} blacklist entries...`;
+	}
 	if (p.totalEstimate) {
 		return `Imported ${processed.toLocaleString()} of ~${p.totalEstimate.toLocaleString()}...`;
 	}
@@ -61,12 +85,21 @@ watch(importProgress, (p) => {
 
 	if (step.value === 'importing' && p.status === 'completed') {
 		step.value = 'complete';
+		const name = PROVIDER_NAMES[p.provider];
+		const carried = p.suppressionCounts;
 		if (p.imported > 0 || p.updated > 0) {
 			const totalProcessed = p.imported + p.updated;
-			const name = p.provider === 'mailchimp' ? 'Mailchimp' : 'Stripe';
 			showToast(
 				`Successfully processed ${totalProcessed} contact${totalProcessed !== 1 ? 's' : ''} from ${name}`
 			);
+		} else if (carried) {
+			const suppressed =
+				carried.bouncedHard +
+				carried.bouncedSoft +
+				carried.complained +
+				carried.manual +
+				carried.unsubscribed;
+			showToast(`Carried over ${suppressed} suppression${suppressed !== 1 ? 's' : ''} from ${name}`);
 		}
 	}
 
@@ -104,11 +137,22 @@ const allIntegrations = [
 		color: 'text-[#635BFF]',
 		bgColor: 'bg-[#635BFF]/10',
 	},
+	{
+		id: 'mandrill' as const,
+		name: 'Mandrill suppression list',
+		description: "Carry a Mandrill account's rejection blacklist into your suppression list",
+		icon: 'lucide:shield-ban',
+		color: 'text-[#F0483E]',
+		bgColor: 'bg-[#F0483E]/10',
+	},
 ];
+const FLAG_FOR_INTEGRATION = {
+	mailchimp: 'imports.mailchimp',
+	stripe: 'imports.stripe',
+	mandrill: 'imports.mandrill',
+} as const;
 const integrations = computed(() =>
-	allIntegrations.filter((i) =>
-		isFeatureEnabled(i.id === 'mailchimp' ? 'imports.mailchimp' : 'imports.stripe')
-	)
+	allIntegrations.filter((i) => isFeatureEnabled(FLAG_FOR_INTEGRATION[i.id]))
 );
 
 watch(isOpen, (newValue) => {
@@ -125,6 +169,7 @@ const reset = () => {
 	error.value = '';
 	credentials.mailchimp = { apiKey: '', listId: '', showApiKey: false };
 	credentials.stripe = { apiKey: '', showApiKey: false };
+	importSuppressions.value = true;
 	handleDuplicates.value = 'skip';
 	selectedTopicId.value = null;
 };
@@ -187,9 +232,17 @@ const startImport = async () => {
 					provider: 'mailchimp',
 					apiKey: credentials.mailchimp.apiKey.trim(),
 					listId: credentials.mailchimp.listId.trim(),
+					importSuppressions: importSuppressions.value,
 				},
 				handleDuplicates: handleDuplicates.value,
 				topicId: topicId as Id<"topics"> | undefined,
+			});
+		} else if (selectedIntegration.value === 'mandrill') {
+			// No credentials step: the key is `MANDRILL_API_KEY` in the backend
+			// environment, the same one the send transport uses (plan D2).
+			await convex.mutation(api.integrationImports.walker.startIntegrationImport, {
+				config: { provider: 'mandrill' },
+				handleDuplicates: handleDuplicates.value,
 			});
 		} else if (selectedIntegration.value === 'stripe') {
 			await convex.mutation(api.integrationImports.walker.startIntegrationImport, {
@@ -221,9 +274,30 @@ const handleCancel = async () => {
 	}
 };
 
+const PROVIDER_NAMES: Record<'mailchimp' | 'stripe' | 'mandrill', string> = {
+	mailchimp: 'Mailchimp',
+	stripe: 'Stripe',
+	mandrill: 'Mandrill',
+};
+
 const integrationName = computed(() =>
-	selectedIntegration.value === 'mailchimp' ? 'Mailchimp' : 'Stripe'
+	selectedIntegration.value ? PROVIDER_NAMES[selectedIntegration.value] : 'Mailchimp'
 );
+
+/** Suppression-only runs have no contacts to report. */
+const isSuppressionOnly = computed(() => importProgress.value?.provider === 'mandrill');
+
+const suppressionSummary = computed(() => {
+	const counts = importProgress.value?.suppressionCounts;
+	if (!counts) return null;
+	const blocked = counts.bouncedHard + counts.bouncedSoft + counts.complained + counts.manual;
+	return {
+		blocked,
+		unsubscribed: counts.unsubscribed,
+		alreadySuppressed: counts.alreadyBlocked + counts.alreadyUnsubscribed,
+		skipped: counts.skipped + counts.noContact,
+	};
+});
 </script>
 
 <template>
@@ -238,7 +312,9 @@ const integrationName = computed(() =>
 					<template v-else-if="step === 'configure'"
 						>Configure {{ integrationName }}</template
 					>
-					<template v-else-if="step === 'importing'">Importing contacts...</template>
+					<template v-else-if="step === 'importing'">{{
+							isSuppressionOnly ? 'Importing suppressions...' : 'Importing contacts...'
+						}}</template>
 					<template v-else-if="step === 'complete'">Import complete</template>
 				</p>
 			</div>
@@ -343,6 +419,41 @@ const integrationName = computed(() =>
 										Find your List ID in Mailchimp: Audience > Settings > Audience name and defaults
 									</p>
 								</div>
+								<label class="flex items-start gap-3 p-4 rounded-lg bg-bg-surface cursor-pointer">
+									<input
+										v-model="importSuppressions"
+										type="checkbox"
+										class="w-4 h-4 mt-0.5 text-brand"
+									/>
+									<span>
+										<span class="block text-sm font-medium text-text-primary"
+											>Also carry over suppressions</span
+										>
+										<span class="block text-xs text-text-tertiary mt-1">
+											Unsubscribed members are recorded as opt-outs and cleaned (hard-bounced)
+											addresses are added to your suppression list, so this audience is never
+											re-mailed from Owlat. Carried-over suppressions do not expire.
+										</span>
+									</span>
+								</label>
+							</div>
+
+							<!-- Mandrill Config — nothing to configure: the key is an
+							     environment variable (plan D2). -->
+							<div v-else-if="selectedIntegration === 'mandrill'" class="space-y-4">
+								<div class="p-4 rounded-lg bg-bg-surface">
+									<p class="text-sm text-text-secondary">
+										Imports the rejection blacklist from the Mandrill account configured in this
+										deployment's <code>MANDRILL_API_KEY</code> — the same key the Mandrill send
+										transport uses. Hard bounces, soft bounces and spam complaints are added to your
+										suppression list, <code>unsub</code> entries are recorded as opt-outs, and
+										entries that describe your account rather than a recipient are ignored.
+									</p>
+									<p class="text-xs text-text-tertiary mt-2">
+										No contacts are imported. Carried-over suppressions do not expire — remove an
+										address from the suppression list to resume mailing it.
+									</p>
+								</div>
 							</div>
 
 							<!-- Stripe Config -->
@@ -383,8 +494,11 @@ const integrationName = computed(() =>
 								</div>
 							</div>
 
-							<!-- Handle Duplicates -->
-							<div class="mt-6 p-4 rounded-lg bg-bg-surface">
+							<!-- Handle Duplicates (contact imports only) -->
+							<div
+								v-if="selectedIntegration !== 'mandrill'"
+								class="mt-6 p-4 rounded-lg bg-bg-surface"
+							>
 								<h4 class="text-sm font-medium text-text-primary mb-3">Handle Duplicates</h4>
 								<div class="flex gap-4">
 									<label class="flex items-center gap-2 cursor-pointer">
@@ -409,7 +523,10 @@ const integrationName = computed(() =>
 							</div>
 
 							<!-- Add to Topic -->
-							<div v-if="availableLists.length > 0" class="mt-4 p-4 rounded-lg bg-bg-surface">
+							<div
+								v-if="availableLists.length > 0 && selectedIntegration !== 'mandrill'"
+								class="mt-4 p-4 rounded-lg bg-bg-surface"
+							>
 								<h4 class="text-sm font-medium text-text-primary mb-3">Add to Topic</h4>
 								<select
 									:value="selectedTopicId ?? ''"
@@ -427,7 +544,10 @@ const integrationName = computed(() =>
 							</div>
 
 							<!-- Field Mapping Info -->
-							<div class="mt-4 p-4 rounded-lg bg-bg-surface">
+							<div
+								v-if="selectedIntegration !== 'mandrill'"
+								class="mt-4 p-4 rounded-lg bg-bg-surface"
+							>
 								<h4 class="text-sm font-medium text-text-primary mb-2">Field Mapping</h4>
 								<ul class="text-sm text-text-secondary space-y-1">
 									<template v-if="selectedIntegration === 'mailchimp'">
@@ -493,7 +613,7 @@ const integrationName = computed(() =>
 									{{ importProgress?.status === 'failed' ? 'Import Failed' : 'Import Complete!' }}
 								</p>
 							</div>
-							<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+							<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 								<div class="p-4 rounded-lg bg-bg-surface text-center">
 									<p class="text-2xl font-semibold text-success">{{ importProgress?.imported || 0 }}</p>
 									<p class="text-xs text-text-tertiary mt-1">Imported</p>
@@ -513,6 +633,30 @@ const integrationName = computed(() =>
 									<p class="text-xs text-text-tertiary mt-1">Failed</p>
 								</div>
 							</div>
+							<!-- Suppression carry-over (plan D9) -->
+							<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+								<div class="p-4 rounded-lg bg-bg-surface text-center">
+									<p class="text-2xl font-semibold text-warning">{{ suppressionSummary.blocked }}</p>
+									<p class="text-xs text-text-tertiary mt-1">Suppressed</p>
+								</div>
+								<div class="p-4 rounded-lg bg-bg-surface text-center">
+									<p class="text-2xl font-semibold text-brand">{{ suppressionSummary.unsubscribed }}</p>
+									<p class="text-xs text-text-tertiary mt-1">Unsubscribed</p>
+								</div>
+								<div class="p-4 rounded-lg bg-bg-surface text-center">
+									<p class="text-2xl font-semibold text-text-secondary">
+										{{ suppressionSummary.alreadySuppressed }}
+									</p>
+									<p class="text-xs text-text-tertiary mt-1">Already suppressed</p>
+								</div>
+								<div class="p-4 rounded-lg bg-bg-surface text-center">
+									<p class="text-2xl font-semibold text-text-secondary">
+										{{ suppressionSummary.skipped }}
+									</p>
+									<p class="text-xs text-text-tertiary mt-1">Not applicable</p>
+								</div>
+							</div>
+
 							<div
 								v-if="importProgress?.errors && importProgress.errors.length > 0"
 								class="p-4 rounded-lg bg-error-subtle border border-error/20"

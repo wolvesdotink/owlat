@@ -22,6 +22,22 @@ export type SendProviderKind = CoreSendProviderKind | PluginSendTransportKind;
  */
 export type DeclaredCustomReturnPathSupport = 'yes' | 'no' | 'probe';
 
+/**
+ * How this transport's SENDING DOMAINS are verified (plan D6/D7).
+ *
+ *  - `api`  the provider has a domain-identity API, so a registered sending
+ *           domain provider (`domains/providers/<kind>/`) can report whether a
+ *           domain is verified AT the provider. That report is what the
+ *           relay-verification seam reads before handing a From domain to a
+ *           relay.
+ *  - `none` nothing provider-side to ask. Either the transport's domains are
+ *           verified on a DNS path outside this seam (our own MTA) or the
+ *           provider offers no identity surface at all (Resend, a
+ *           bring-your-own SMTP relay) — the seam then keeps its honest
+ *           "unverifiable" posture rather than inventing a proof.
+ */
+export type DomainVerificationSupport = 'api' | 'none';
+
 export interface SendProviderCatalogEntry {
 	readonly kind: SendProviderKind;
 	readonly label: string;
@@ -37,6 +53,27 @@ export interface SendProviderCatalogEntry {
 	 * stamp our own return path — it never gates a send.
 	 */
 	readonly hasProviderFeedback?: boolean;
+	/**
+	 * Declared sending-domain verification path. Absent ⇒ `none` (fail closed):
+	 * a transport that never declared an identity API cannot be credited with
+	 * one. Core kinds must declare it explicitly — see
+	 * {@link CoreSendProviderCatalogEntry}.
+	 */
+	readonly domainVerification?: DomainVerificationSupport;
+}
+
+/**
+ * A CORE catalog entry — every kind that ships in this repo.
+ *
+ * `domainVerification` is REQUIRED here while it stays optional on the shared
+ * interface: a kind we write ourselves can always answer the question, and
+ * letting a new core kind coast on the fail-closed default is exactly how an
+ * `api` transport silently loses its relay eligibility. Bundled plugin
+ * transports keep the optional field — they are generated from plugin
+ * manifests, which have no domain-identity surface to declare.
+ */
+interface CoreSendProviderCatalogEntry extends SendProviderCatalogEntry {
+	readonly domainVerification: DomainVerificationSupport;
 }
 
 const CORE_SEND_PROVIDER_CATALOG = [
@@ -48,6 +85,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Our own MTA stamps the VERP envelope sender itself (smtp/sender.ts).
 		supportsCustomReturnPath: 'yes',
 		hasProviderFeedback: true,
+		// Our MTA's sending domains ARE verified — through `domains/providers/mta`
+		// and the generic DNS verifier — but never through this seam: the MTA is
+		// the arm a deliverability fallback moves traffic AWAY from, never the
+		// relay it moves traffic to, so it has no relay identity to report.
+		domainVerification: 'none',
 	},
 	{
 		kind: 'ses',
@@ -63,6 +105,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// bounce and complaint back to us.
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
+		// SES identity APIs (`getVerificationStatus` + the DKIM/MAIL FROM proof
+		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
+		domainVerification: 'api',
 	},
 	{
 		kind: 'resend',
@@ -71,6 +116,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		requiredEnvVars: ['RESEND_API_KEY'],
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
+		// Resend has a domains API, but nothing in this repo reads it: no
+		// `domains/providers/resend` adapter exists, so the seam must keep saying
+		// "unverifiable" rather than claim a proof we never fetched.
+		domainVerification: 'none',
 	},
 	{
 		kind: 'smtp',
@@ -81,8 +130,53 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// rewrite it. Only an observed delivered bounce settles it.
 		supportsCustomReturnPath: 'probe',
 		hasProviderFeedback: false,
+		// A bring-your-own relay has no identity API at all.
+		domainVerification: 'none',
 	},
-] as const satisfies readonly SendProviderCatalogEntry[];
+	{
+		kind: 'mandrill',
+		label: 'Mailchimp Transactional (Mandrill)',
+		// Mirrors Resend's schedule: another HTTP-API ESP whose retryable
+		// failures are the same two shapes (an hourly-quota RATE_LIMIT and a
+		// 5xx SERVER_ERROR), so the same backoff applies.
+		retryDelays: [1_000, 5_000, 30_000],
+		// The API key ALONE. `MANDRILL_WEBHOOK_KEY`, `MANDRILL_SUBACCOUNT` and
+		// `MANDRILL_IP_POOL` are deliberately absent: this list is the presence
+		// gate that decides whether the kind is configured (and therefore
+		// fallback-eligible), and a deployment that has not created a webhook or
+		// bought a dedicated IP still sends perfectly well.
+		requiredEnvVars: ['MANDRILL_API_KEY'],
+		// Mandrill accepts a per-message `return_path_domain`, but only for a
+		// domain SPF'd to Mandrill in the account — and whether VERP-style
+		// envelope senders survive is deployment-specific. Only an observed
+		// delivered bounce settles it (D5).
+		supportsCustomReturnPath: 'probe',
+		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject (D10).
+		hasProviderFeedback: true,
+		// Mandrill's sender-domain API (`senders/add-domain` / `check-domain`) is
+		// read by `domains/providers/mandrill` (P3.1), which registers the kind in
+		// `SENDING_DOMAIN_PROVIDERS` and answers the relay-verification seam from
+		// `sendingDomainRelayIdentities`. Declaring 'api' without that provider is
+		// a compile error (the `ApiVerifiedSendProviderKind` completeness guard),
+		// so this line and that registration can only move together.
+		domainVerification: 'api',
+	},
+] as const satisfies readonly CoreSendProviderCatalogEntry[];
+
+/**
+ * The core kinds whose sending domains are verified through a provider API —
+ * exactly the kinds `domains/providers` must register a domain-identity adapter
+ * for (D7).
+ *
+ * DERIVED from the catalog literal rather than restated beside it, so declaring
+ * `domainVerification: 'api'` on a new kind without registering its domain
+ * provider is a compile error in `domains/providers/index.ts` instead of a
+ * relay that silently reports every domain unverified.
+ */
+export type ApiVerifiedSendProviderKind = Extract<
+	(typeof CORE_SEND_PROVIDER_CATALOG)[number],
+	{ domainVerification: 'api' }
+>['kind'];
 
 interface GeneratedSendTransportCatalogEntry extends SendProviderCatalogEntry {
 	readonly pluginId: PluginId;
@@ -117,6 +211,30 @@ export function sendProviderCatalogEntry(kind: SendProviderKind): SendProviderCa
 	const entry = catalogByKind.get(kind);
 	if (!entry) throw new TypeError('Unknown send provider kind');
 	return entry;
+}
+
+/**
+ * This kind's declared sending-domain verification path, with the fail-closed
+ * default applied. Read it instead of the raw field so an absent declaration
+ * can never be mistaken for `api`.
+ */
+export function domainVerificationFor(kind: SendProviderKind): DomainVerificationSupport {
+	return sendProviderCatalogEntry(kind).domainVerification ?? 'none';
+}
+
+/**
+ * Does this kind report delivery outcomes back to us out of band (webhook /
+ * SNS)? Read it instead of the raw field so an absent declaration can never be
+ * mistaken for a feedback channel that does not exist (fail closed).
+ *
+ * Two consumers, and they must agree: the measurement grading widens a bounce
+ * tolerance for an arm whose bounces arrive over provider feedback rather than
+ * our own VERP stream, and the governed dispatch boundary keeps an
+ * ambiguous-acceptance send NON-TERMINAL only for a kind whose feedback could
+ * still speak to it. A kind with no feedback at all has nothing to wait for.
+ */
+export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
+	return sendProviderCatalogEntry(kind).hasProviderFeedback === true;
 }
 
 /**

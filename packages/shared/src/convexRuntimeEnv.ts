@@ -117,6 +117,14 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'SES_CONFIGURATION_SET',
 	'SES_SNS_TOPIC_ARN',
+	// Provider: Mailchimp Transactional (Mandrill). The send adapter reads the
+	// API key (and the optional subaccount/IP-pool defaults) at Convex function
+	// runtime, and the webhook route verifies X-Mandrill-Signature with the
+	// webhook key — none of them can stay behind in the compose .env.
+	'MANDRILL_API_KEY',
+	'MANDRILL_IP_POOL',
+	'MANDRILL_SUBACCOUNT',
+	'MANDRILL_WEBHOOK_KEY',
 	// Provider: generic SMTP relay (Mailgun/Postmark/SendGrid/Brevo/custom).
 	// The instance-level outbound transport when EMAIL_PROVIDER=smtp — the
 	// in-house SMTP relay adapter reads these at Convex function runtime, so they

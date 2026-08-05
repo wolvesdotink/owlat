@@ -2826,6 +2826,16 @@ different provider set (Resend ships only on this side). Exports a
   MTA carries `ipPool | engagementScore | dkimDomain | messageId`; SES
   and Resend carry `{}` today. Replaces the `params as MtaSendParams`
   cast in pre-deepening call sites.
+- `buildDispatchExtras?(input: DispatchExtrasInput) → ExtrasFor<K>` —
+  optional, pure and synchronous: turns the governed dispatch facts
+  (idempotency key, work attempt, re-entry material, lease, IP pool,
+  engagement score, authorised relay return-path host) into THIS
+  provider's extras. Reached through the registry's
+  `buildDispatchExtrasFor(kind, input)`; an absent builder (and every
+  hosted plugin transport, which parses its own extras) means no extras.
+  Replaces the per-kind ternary chain that used to live in
+  `delivery/governedDispatch.ts`, where every new provider kind had to
+  edit the governed send path to get a single per-send knob.
 
 Adding a core provider remains a one-folder change: a new
 `sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one core kind.

@@ -194,6 +194,38 @@ describe('resolveReturnPathCapability', () => {
 		}
 	});
 
+	it('mandrill is decided by the PROBE, and reads degraded until one settles', () => {
+		// D5: Mandrill accepts a per-message `return_path_domain`, but only for a
+		// domain SPF'd to it in the account, and whether VERP-style envelope
+		// senders survive is deployment-specific — so the catalog declares
+		// `probe` and an observed bounce is what settles it. Unprobed it reads
+		// exactly like unsupported, and it widens the bounce tolerance by the
+		// PROVIDER-FEEDBACK factor rather than the no-feedback one, because its
+		// webhooks do report bounces (D10) even if our own VERP stream cannot.
+		const unprobed = resolveReturnPathCapability('mandrill', null, T0);
+		expect(unprobed.declared).toBe('probe');
+		expect(unprobed.capability).toBe('unknown');
+		expect(isCustomReturnPathSupported(unprobed)).toBe(false);
+		expect(measurementQualityOf(unprobed)).toBe('degraded');
+		expect(unprobed.bounceToleranceMultiplier).toBe(2);
+
+		// A settled, fresh verdict is what turns the stamp on for the reference arm.
+		const supported = resolveReturnPathCapability(
+			'mandrill',
+			{
+				status: 'supported',
+				reason: 'observed_match',
+				sentEnvelopeSender: SENT,
+				startedAt: T0,
+				settledAt: T0,
+			},
+			T0 + 1000
+		);
+		expect(supported.capability).toBe('supported');
+		expect(measurementQualityOf(supported)).toBe('comparable');
+		expect(supported.bounceToleranceMultiplier).toBe(1);
+	});
+
 	it('an UNPROBED relay resolves to unknown — treated as unsupported, never an error', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
 		expect(resolved.capability).toBe('unknown');

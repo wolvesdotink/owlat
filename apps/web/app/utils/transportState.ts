@@ -40,6 +40,7 @@ export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
 	ses: 'Amazon SES',
 	resend: 'Resend',
 	smtp: 'SMTP relay',
+	mandrill: 'Mailchimp Transactional',
 };
 
 /**
@@ -78,6 +79,8 @@ const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
 	ses: 'Mail goes out through your Amazon SES account.',
 	resend: 'Mail goes out through your Resend account.',
 	smtp: 'Mail is handed to your SMTP relay, which delivers it on your behalf.',
+	mandrill:
+		'Mail goes out through your Mailchimp Transactional (Mandrill) account, so you keep the reputation you arrived with.',
 };
 
 export type ConfiguredTone = 'success' | 'error';

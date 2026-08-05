@@ -11,6 +11,7 @@ import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
+	type DispatchExtrasInput,
 	type EmailSendAttempt,
 	type EmailSendParams,
 	type ResendExtras,
@@ -37,6 +38,16 @@ function getResendClient(transport: SendTransportRecord): Resend {
 export const resendSendProvider: SendProviderModule<'resend'> = {
 	kind: 'resend',
 	retryDelays: RETRY_DELAYS_MS,
+
+	/**
+	 * Resend's one per-send knob: the stable idempotency key, forwarded as the
+	 * `Idempotency-Key` header so a surviving retry de-dupes AT RESEND instead of
+	 * double-sending. The governed boundary derives the key from the durable Send
+	 * row, which is what makes it stable across attempts.
+	 */
+	buildDispatchExtras(input: DispatchExtrasInput): ResendExtras {
+		return { idempotencyKey: input.idempotencyKey };
+	},
 
 	async sendEmail(
 		transport: SendTransportRecord,

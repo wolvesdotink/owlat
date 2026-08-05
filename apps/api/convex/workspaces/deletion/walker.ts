@@ -213,6 +213,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'domains',
 	'sendingDomainMtaIdentities',
 	'sendingDomainSesIdentities',
+	'sendingDomainRelayIdentities',
 
 	// Chat (children before parents)
 	'chatMentions',
@@ -332,6 +333,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	knowledgeEntries: makeSweepStep('knowledgeEntries'),
 	sendingDomainMtaIdentities: makeSweepStep('sendingDomainMtaIdentities'),
 	sendingDomainSesIdentities: makeSweepStep('sendingDomainSesIdentities'),
+	sendingDomainRelayIdentities: makeSweepStep('sendingDomainRelayIdentities'),
 	trackingDomains: makeSweepStep('trackingDomains'),
 	sendingReputation: makeSweepStep('sendingReputation'),
 	providerHealth: makeSweepStep('providerHealth'),

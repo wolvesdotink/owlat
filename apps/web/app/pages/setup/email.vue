@@ -29,6 +29,7 @@ const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
 const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
 const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
 const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
+const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
 const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
 const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
 const sesSecret = ref(env.value['AWS_SES_SECRET_ACCESS_KEY'] ?? '');
@@ -78,6 +79,7 @@ const draft = computed<EmailStepDraft>(() => ({
 	provider: provider.value,
 	requiresProvider: requiresProvider.value,
 	resendKey: resendKey.value,
+	mandrillKey: mandrillKey.value,
 	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
 	smtp: {
 		preset: smtpPreset.value,
@@ -132,6 +134,12 @@ const providerOptions = computed(() => {
 			label: 'Resend',
 			hint: 'Managed API with a generous free tier. Great developer experience.',
 			icon: 'lucide:zap',
+		},
+		{
+			value: 'mandrill',
+			label: 'Mailchimp Transactional (Mandrill)',
+			hint: 'Coming from Mailchimp? Keep the sending reputation you already have, then move onto your own MTA at your own pace.',
+			icon: 'lucide:shuffle',
 		},
 	];
 	if (!requiresProvider.value) {
@@ -296,6 +304,22 @@ async function next() {
 							autocomplete="off"
 							:error="showErrors ? errors.resendKey : undefined"
 						/>
+					</div>
+
+					<div v-if="provider === 'mandrill'" class="mt-5 space-y-3">
+						<UiInput
+							v-model="mandrillKey"
+							type="password"
+							label="Mailchimp Transactional API key"
+							placeholder="md-..."
+							autocomplete="off"
+							:error="showErrors ? errors.mandrillKey : undefined"
+						/>
+						<p class="text-xs text-text-tertiary">
+							Mailchimp Transactional &rarr; Settings &rarr; API keys. Bounce and complaint feedback
+							needs a webhook too — Delivery &rarr; Provider has the URL and the events to enable
+							once setup is done.
+						</p>
 					</div>
 
 					<div v-if="provider === 'ses'" class="mt-5 space-y-4">

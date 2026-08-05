@@ -67,7 +67,7 @@ export function setupStepPath(stepId: SetupStepId): string {
 
 // ── Shared draft types ───────────────────────────────────────────────────────
 
-export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'none';
+export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'mandrill' | 'none';
 
 export interface AdminDraft {
 	email: string;
@@ -97,6 +97,12 @@ export interface EmailStepDraft {
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
 	resendKey: string;
+	/**
+	 * Mailchimp Transactional (Mandrill) API key. One field, because that is the
+	 * whole sending credential — the webhook signing key, the subaccount and the
+	 * IP pool are set in `.env` out of band (see `PROVIDER_ENV_KEYS`).
+	 */
+	mandrillKey: string;
 	ses: SesCredentials;
 	smtp: SmtpRelayDraft;
 	/**
@@ -144,6 +150,9 @@ export function buildProviderEnv(
 		}
 		if (draft.provider === 'resend') {
 			next['RESEND_API_KEY'] = draft.resendKey;
+		}
+		if (draft.provider === 'mandrill') {
+			next['MANDRILL_API_KEY'] = draft.mandrillKey;
 		}
 		if (draft.provider === 'ses') {
 			next['AWS_SES_REGION'] = draft.ses.region;
@@ -198,6 +207,7 @@ const PROVIDER_LABELS: Record<ProviderChoice, string> = {
 	resend: 'Resend',
 	ses: 'Amazon SES',
 	smtp: 'SMTP relay',
+	mandrill: 'Mailchimp Transactional (Mandrill)',
 	none: 'None (receive-only)',
 };
 
@@ -219,7 +229,8 @@ export function buildSetupSummary(
 		rawProvider === 'mta' ||
 		rawProvider === 'resend' ||
 		rawProvider === 'ses' ||
-		rawProvider === 'smtp'
+		rawProvider === 'smtp' ||
+		rawProvider === 'mandrill'
 			? rawProvider
 			: 'none';
 

@@ -6,15 +6,28 @@
  * both the full per-message resolver and the health-free cell seam call one
  * implementation. Every read here is an indexed point read: the seam runs
  * inside enqueue transactions.
+ *
+ * D6/D7: the answer comes from the SENDING-DOMAIN PROVIDER REGISTRY, not from
+ * an identity check. This module used to open with `relayProviderType !== 'ses'
+ * → false` and then inline SES's proof, which made "verifiable" mean "is SES";
+ * the proof now lives with the provider that owns it
+ * (`domains/providers/<kind>/`) and this file only routes the question.
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { isSendingDomainProviderKind, providerFor } from '../../domains/providers';
 
 /**
  * True iff `domainName` carries a fresh, complete verification proof for the
- * configured relay provider. Only SES relays are verifiable today; anything
- * else is unverified by construction.
+ * configured relay provider.
+ *
+ * Fails closed in both directions it can: a relay kind with no registered
+ * sending-domain provider, and a registered provider that offers no
+ * relay-verification implementation, are both UNVERIFIABLE — which is the
+ * honest posture for a transport with no identity API (`smtp`, `resend`) and
+ * for our own MTA, which is never a fallback relay. Neither is an error: an
+ * unverifiable relay simply never gets handed the domain, and the routing gate
+ * turns that into an actionable `DeliverabilityRouteError`.
  */
 export async function relayDomainVerified(
 	ctx: QueryCtx | MutationCtx,
@@ -22,52 +35,8 @@ export async function relayDomainVerified(
 	relayProviderType: string,
 	now: number
 ): Promise<boolean> {
-	if (relayProviderType !== 'ses') return false;
-	const domain = await ctx.db
-		.query('domains')
-		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
-		.first();
-	if (!domain) return false;
-	const identity = await ctx.db
-		.query('sendingDomainSesIdentities')
-		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-		.first();
-	if (
-		!identity?.dnsRecords ||
-		!identity.verificationResults ||
-		!identity.isProviderVerified ||
-		!identity.verifiedAt ||
-		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
-	)
-		return false;
-	const proof = identity.verificationResults;
-	const spfProofState =
-		identity.spfProofState ??
-		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
-	const spfSatisfied =
-		spfProofState === 'dns_required'
-			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
-			: domain.providerType === 'mta' &&
-				domain.status === 'verified' &&
-				!identity.dnsRecords.spf &&
-				!proof.spf;
-	const results = [
-		...(spfProofState === 'dns_required' ? [proof.spf] : []),
-		...(proof.dkim ?? []),
-		...(proof.mailFrom ?? []),
-	];
-	return Boolean(
-		spfSatisfied &&
-		identity.dkimTokens.length > 0 &&
-		proof.dkim?.length === identity.dkimTokens.length &&
-		proof.dkim.every((result) => result.verified) &&
-		identity.dnsRecords.mailFrom?.length &&
-		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
-		proof.mailFrom.every((result) => result.verified) &&
-		results.every((result) => {
-			if (!result || !Number.isFinite(result.lastChecked)) return false;
-			const age = now - result.lastChecked;
-			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
-		})
-	);
+	if (!isSendingDomainProviderKind(relayProviderType)) return false;
+	const provider = providerFor(relayProviderType);
+	if (!provider.relayDomainVerified) return false;
+	return await provider.relayDomainVerified(ctx, domainName, now);
 }

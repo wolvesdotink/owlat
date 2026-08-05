@@ -33,9 +33,9 @@ import { isSpfAligned } from './spfAlignment';
  * (`apps/api/convex/lib/sendProviders/types.ts`) re-export it, so a new provider
  * kind can't be added on the backend and silently drift past this alignment guard.
  */
-export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
+export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const;
 
-/** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp'`). */
+/** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp' | 'mandrill'`). */
 export type CoreSendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
 export type HostedSendTransportKind = `plugin.${string}.${string}`;
 export type SendTransportKind = CoreSendTransportKind | HostedSendTransportKind;

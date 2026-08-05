@@ -17,7 +17,13 @@
  */
 
 import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha1Base64, missingSecretResult } from '../security';
+import {
+	constantTimeEqual,
+	hmacSha1Base64,
+	missingSecretResult,
+	parseFormParams,
+	urlAndSortedParamsSigningBase,
+} from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -25,20 +31,12 @@ import type { InboundEvent } from '../types';
  * Reconstruct the Twilio canonical validation string — full request URL
  * followed by every form param concatenated in alphabetical order (key
  * immediately followed by value, no separator).
+ *
+ * Delegates to the shared construction in `webhooks/security.ts`; Mandrill
+ * signs the identical string under its own key (plan D10).
  */
 export function twilioValidationString(url: string, params: Record<string, string>): string {
-	const keys = Object.keys(params).sort();
-	let s = url;
-	for (const k of keys) s += k + params[k];
-	return s;
-}
-
-function parseFormParams(rawBody: string): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [k, v] of new URLSearchParams(rawBody).entries()) {
-		out[k] = v;
-	}
-	return out;
+	return urlAndSortedParamsSigningBase(url, params);
 }
 
 /**

@@ -46,6 +46,7 @@ const relay = useRelayCredentialDraft('resend');
 const {
 	provider,
 	resendKey,
+	mandrillKey,
 	sesRegion,
 	sesAccess,
 	sesSecret,
@@ -181,6 +182,22 @@ async function applyCredentials() {
 			/>
 		</div>
 
+		<div v-if="provider === 'mandrill'" class="space-y-3" data-testid="mandrill-credentials">
+			<UiInput
+				v-model="mandrillKey"
+				type="password"
+				label="Mailchimp Transactional API key"
+				placeholder="md-..."
+				autocomplete="off"
+				:error="showErrors ? errors.mandrillKey : undefined"
+			/>
+			<p class="text-xs text-text-tertiary">
+				Mailchimp Transactional &rarr; Settings &rarr; API keys. Feedback (bounces, complaints,
+				rejects) needs a second variable, <code>MANDRILL_WEBHOOK_KEY</code>, which Mandrill issues
+				when you create the webhook — the delivery page has the URL and the event list.
+			</p>
+		</div>
+
 		<div v-if="provider === 'ses'" class="space-y-3">
 			<UiInput v-model="sesRegion" label="Region" placeholder="us-east-1" />
 			<UiInput v-model="sesAccess" label="Access key ID" autocomplete="off" />
@@ -203,7 +220,8 @@ async function applyCredentials() {
 		</div>
 
 		<p v-if="!canValidateLive" class="text-xs text-text-tertiary">
-			Amazon SES can’t be checked before applying — the live send test in the next step confirms it.
+			Amazon SES and Mailchimp Transactional can’t be checked before applying — the live send test in
+			the next step confirms it.
 		</p>
 
 		<div v-if="validationResult && !validationResult.ok" role="alert">

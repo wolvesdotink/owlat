@@ -95,6 +95,53 @@ export function routeProvidersForWrite(
 		}));
 }
 
+/**
+ * WHICH TRANSPORTS MAY BE THE DELIVERABILITY-FALLBACK RELAY — the browser's
+ * copy of `lib/sendProviders/fallbackEligibility.ts` (plan D6).
+ *
+ * The rule is a CAPABILITY, not a name: any configured transport that is not
+ * our own MTA. The MTA is the arm a fallback moves traffic away from, so routing
+ * it to itself would relieve a reputation problem through the transport that has
+ * it. The shipped screen asked `providerType === 'ses'` instead — a list of one
+ * — so a deployment migrating from Mandrill could save the route the backend
+ * would happily have accepted only by never using this screen.
+ *
+ * Enablement stands in for "configured" here on purpose: the route editor
+ * already disables the checkbox of an unavailable transport and `seedRouteProviders`
+ * un-enables a stale one, so an enabled entry is one the catalog vouched for.
+ */
+export function eligibleFallbackRelays(
+	providers: readonly RouteProviderEntry[]
+): RouteProviderEntry[] {
+	return providers.filter((provider) => provider.isEnabled && provider.providerType !== 'mta');
+}
+
+/**
+ * The refusal this fallback configuration would earn, or null when it would
+ * save.
+ *
+ * The sentences are the BACKEND'S, verbatim (`providerRoutes.setRoute`), for the
+ * reason the backend keeps one predicate for two callers: a client-side guard
+ * that phrases the same refusal differently teaches the operator a rule that
+ * does not exist. Checked in the same order the mutation checks them, so the
+ * first thing they read is the first thing it would complain about.
+ */
+export function fallbackRelayIssue(
+	providers: readonly RouteProviderEntry[],
+	relayProviderType: string
+): string | null {
+	if (relayProviderType === '' || relayProviderType === 'mta') {
+		return 'Deliverability fallback relay must be a configured non-MTA transport';
+	}
+	if (!eligibleFallbackRelays(providers).some((p) => p.providerType === relayProviderType)) {
+		return 'Deliverability fallback relay must be enabled in this route';
+	}
+	if (!providers.some((p) => p.isEnabled && p.providerType === 'mta')) {
+		return 'Deliverability fallback requires an enabled owned-MTA route';
+	}
+	return null;
+}
+
 export function transportLabel(options: readonly TransportOption[], providerType: string): string {
 	return options.find((option) => option.kind === providerType)?.label ?? providerType;
 }

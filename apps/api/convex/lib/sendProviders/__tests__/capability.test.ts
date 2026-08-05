@@ -22,6 +22,7 @@ const ENV_KEYS = [
 	'SMTP_RELAY_HOST',
 	'SMTP_RELAY_USERNAME',
 	'SMTP_RELAY_PASSWORD',
+	'MANDRILL_API_KEY',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -111,10 +112,25 @@ describe('deliveryConfiguredFromEnv — fail-closed', () => {
 		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
+	it('mandrill: requires the API key ONLY', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mandrill' });
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
+		// The webhook key, subaccount and IP pool are deliberately NOT required: a
+		// deployment that has not created a webhook or bought a dedicated IP still
+		// sends perfectly well, and demanding them would report a working Mandrill
+		// account as unconfigured.
+		setEnv({ EMAIL_PROVIDER: 'mandrill', MANDRILL_API_KEY: 'md-x' });
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
+	});
+
 	it('providerKindConfigured is the single per-kind cred source', () => {
 		setEnv({ RESEND_API_KEY: 're_x' });
 		expect(providerKindConfigured('resend')).toBe(true);
 		expect(providerKindConfigured('mta')).toBe(false);
+		expect(providerKindConfigured('mandrill')).toBe(false);
+		setEnv({ MANDRILL_API_KEY: 'md-x' });
+		expect(providerKindConfigured('mandrill')).toBe(true);
+		expect(providerKindConfigured('resend')).toBe(false);
 	});
 });
 

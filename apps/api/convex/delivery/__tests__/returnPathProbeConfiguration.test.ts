@@ -69,6 +69,51 @@ describe('the return-path probe on a deployment with no relay', () => {
 		expect(await probeRows(t)).toHaveLength(0);
 	});
 
+	/**
+	 * PROBE-DECIDED IS A CATALOG PROPERTY, NOT A KIND LIST (P1.3, plan D5).
+	 *
+	 * `isProbeableTransport` asks `isProbeDecidedReturnPathKind`, so a transport
+	 * whose catalog entry declares `supportsCustomReturnPath: 'probe'` is in
+	 * scope for the sweep the moment the entry lands — which is precisely what
+	 * makes the SECOND gate load-bearing. The two skip reasons are the whole
+	 * point of asserting this: `not_probeable` would mean the catalog declaration
+	 * never reached the scheduler, while `not_configured` means it did and the D2
+	 * configuration gate stopped it. Only the second is correct for a deployment
+	 * that has no Mandrill account.
+	 */
+	it('treats mandrill as probe-decided and gates it on its OWN credentials', async () => {
+		const t = convexTest(schema, modules);
+		// No `MANDRILL_API_KEY` in this suite's environment.
+		const result = await t.action(internal.delivery.relayReturnPathProbe.runReturnPathProbe, {
+			transportId: 'mandrill',
+			force: true,
+		});
+		expect(result).toEqual({ ran: false, reason: 'not_configured' });
+		expect(result).not.toMatchObject({ reason: 'not_probeable' });
+		expect(await probeRows(t)).toHaveLength(0);
+	});
+
+	it('still refuses an id this deployment cannot resolve at all', async () => {
+		// The counterweight: `not_probeable`/`unresolvable_transport` are still
+		// reachable, so the assertion above is about mandrill specifically rather
+		// than about a gate that stopped rejecting anything.
+		const t = convexTest(schema, modules);
+		expect(
+			await t.action(internal.delivery.relayReturnPathProbe.runReturnPathProbe, {
+				transportId: 'mandrill#nope',
+				force: true,
+			})
+		).toEqual({ ran: false, reason: 'unresolvable_transport' });
+		// `ses` is a catalogued transport that DECLARES its answer, so probing it
+		// would spend a real bounce to learn nothing.
+		expect(
+			await t.action(internal.delivery.relayReturnPathProbe.runReturnPathProbe, {
+				transportId: 'ses',
+				force: true,
+			})
+		).toEqual({ ran: false, reason: 'not_probeable' });
+	});
+
 	it('the hourly sweep probes nothing and records no verdict', async () => {
 		const t = convexTest(schema, modules);
 		const result = await t.action(internal.delivery.relayReturnPathProbe.sweepReturnPathProbes, {});
