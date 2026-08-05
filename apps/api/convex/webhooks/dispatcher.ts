@@ -27,6 +27,7 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
+import { syncMandrillReject } from './mandrillRejectSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import {
 	type InboundEvent,
@@ -142,6 +143,14 @@ const DISPATCH: DispatchTable = {
 			});
 			return;
 		}
+		// SUPPRESSION FIRST, bookkeeping second (the `dispatchComplaint`
+		// principle): a Mandrill `reject` is that provider's blacklist refusing an
+		// address, and mirroring it into ours is what stops the own arm mailing a
+		// population the reference arm no longer touches. See
+		// `./mandrillRejectSuppression` for which reject reasons are recipient
+		// truths and which are about our own account. A no-op for every other
+		// provider and every other failure.
+		await syncMandrillReject(ctx, e);
 		await ctx.runMutation(
 			e.providerType === 'mta'
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId

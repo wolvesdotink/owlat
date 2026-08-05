@@ -72,6 +72,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `seed_mailbox.rotation_reminder` | `seed_mailbox` | `{ provider, ageDays }` — advisory rotation nudge for a deliverability seed mailbox, emitted by the placement sweep. Provider and age only: never the seed address, never a credential, never mailbox contents. |
 | `seed_mailbox.rotation_acknowledged` | `seed_mailbox` | `{ provider, ageDays }` — the operator dismissed the nudge; the 90-day clock restarts from here. |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
+| `blocklist.provider_suppressed` | `blocklist` | `{ email, reason, provider, source, bounceType?, evidence? }` — a send provider's own suppression list added the address: `source: 'webhook'` is ongoing feedback (a Mandrill `reject`, `evidence` = its reject code), `source: 'import'` is the migration carry-over of an existing list. `userId` is the synthetic actor `system:<provider>_<source>`; one row per address that actually changed state, so a replayed batch or a re-run import adds none. |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |
 | `platform_admin.tier_override` | `platform_admin` | `{ tier }` |

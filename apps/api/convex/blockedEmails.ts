@@ -338,12 +338,45 @@ export const isBlockedInternal = internalQuery({
 
 // Internal function to add to blocklist from bounce/complaint handler
 // This is exported for use by other Convex functions
+//
+// THE ONE WRITER FOR PROVIDER-SOURCED SUPPRESSIONS. Two callers share it today
+// — the redacted-complaint path (`webhooks/complaintDispatch.ts`) and the
+// Mandrill reject sync (`webhooks/mandrillRejectSuppression.ts`, plan D9) — and
+// the suppression IMPORT that carries a migrating deployment's accumulated
+// Mandrill/Mailchimp list over is meant to be the third, so that "already
+// blocked ⇒ no second row, no second mirror, no second audit entry" is decided
+// once rather than once per ingress.
+//
+// Three additive widenings serve that (plan D9), all optional so every shipped
+// caller is untouched:
+//   - `reason` accepts `'manual'`, the class an operator-curated blacklist
+//     entry belongs to (Mandrill `custom` / `rule`). The schema union has
+//     always had it; only this validator was narrower.
+//   - `bounceType` is carried through to the row AND to the MTA mirror, where
+//     it decides permanent (`hard_bounce`) vs. expiring (`manual`) backstop
+//     entries — a soft-bounce suppression that mirrored as hard would be
+//     unrecoverable at the last hop.
+//   - `provenance` names WHO caused the suppression, and its presence is what
+//     turns on the audit entry. The lifecycle-effect callers have a Send row to
+//     explain themselves with; a provider blacklist hit or a bulk import has
+//     nothing on the suppression screen to say where the address came from.
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained')),
+		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
+		provenance: v.optional(
+			v.object({
+				/** Send-provider kind the suppression came from, e.g. `mandrill`. */
+				provider: v.string(),
+				/** Ongoing feedback vs. a one-off carry-over of an existing list. */
+				source: v.union(v.literal('webhook'), v.literal('import')),
+				/** The provider's own reason code, e.g. `MANDRILL_REJECT_SPAM`. */
+				evidence: v.optional(v.string()),
+			})
+		),
 	},
 	handler: async (ctx, args) => {
 		const normalizedEmail = normalizeEmail(args.email);
@@ -352,7 +385,10 @@ export const addFromEvent = internalMutation({
 		const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
 		if (existing) {
-			// Already blocked, just return the existing ID
+			// Already blocked, just return the existing ID. A replayed webhook batch
+			// or a re-run import therefore writes NOTHING — no row, no mirror, and
+			// (below) no audit entry, because an audit trail records state changes
+			// and this call changed no state.
 			return existing._id;
 		}
 
@@ -361,11 +397,29 @@ export const addFromEvent = internalMutation({
 		const blockedEmailId = await ctx.db.insert('blockedEmails', {
 			email: normalizedEmail,
 			reason: args.reason,
+			...(args.bounceType ? { bounceType: args.bounceType } : {}),
 			sourceType,
 			sourceEmailSendId: args.sourceEmailSendId,
 			sourceTransactionalSendId: args.sourceTransactionalSendId,
 			createdAt: Date.now(),
 		});
+
+		if (args.provenance) {
+			await recordAuditLog(ctx, {
+				userId: `system:${args.provenance.provider}_${args.provenance.source}`,
+				action: 'blocklist.provider_suppressed',
+				resource: 'blocklist',
+				resourceId: blockedEmailId,
+				details: {
+					email: normalizedEmail,
+					reason: args.reason,
+					provider: args.provenance.provider,
+					source: args.provenance.source,
+					...(args.bounceType ? { bounceType: args.bounceType } : {}),
+					...(args.provenance.evidence ? { evidence: args.provenance.evidence } : {}),
+				},
+			});
+		}
 
 		// Mirror provider-webhook bounce/complaint suppressions to the MTA's
 		// Redis backstop (Resend/SES events land here, never on the MTA list
@@ -373,6 +427,7 @@ export const addFromEvent = internalMutation({
 		await scheduleSuppressionMirror(ctx, {
 			email: normalizedEmail,
 			reason: args.reason,
+			...(args.bounceType ? { bounceType: args.bounceType } : {}),
 		});
 
 		return blockedEmailId;

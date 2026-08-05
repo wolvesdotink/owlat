@@ -159,6 +159,14 @@ export const AUDIT_ACTION_LITERALS = [
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),
+	// A SEND PROVIDER's own suppression list put the address here, not a person
+	// and not our own Send lifecycle: a Mandrill `reject` webhook while the
+	// reference arm is live, or the one-off carry-over of that list at migration
+	// time (Mandrill plan D9). Its own literal because `blocklist.added` carries
+	// an operator's user id and this one cannot — the actor is a provider, and an
+	// address suppressed here was never mailed by us at all, so nothing else in
+	// the trail explains why it stopped being mailable.
+	action('blocklist.provider_suppressed'),
 	// Segment
 	action('segment.created'),
 	action('segment.updated'),
