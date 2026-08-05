@@ -18,6 +18,13 @@ const sections = [
 		icon: 'lucide:send',
 	},
 	{
+		name: 'Migrate from Mailchimp / Mandrill',
+		description:
+			'Keep sending through your existing Mandrill account, carry the suppression history across, and let the ramp move traffic onto your own MTA as the numbers earn it',
+		href: '/dashboard/delivery/migrate',
+		icon: 'lucide:git-branch',
+	},
+	{
 		name: 'Sending domains',
 		description: 'Configure custom sending domains for better deliverability',
 		href: '/dashboard/delivery/domains',
