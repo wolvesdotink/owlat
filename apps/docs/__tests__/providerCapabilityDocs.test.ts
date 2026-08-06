@@ -117,6 +117,11 @@ describe('the providers page restates the send catalog without drifting from it'
 	});
 
 	it.each([
+		// `tier` is pinned like any other single-valued declaration: the row says
+		// which entry is `own` and which are `core`, and the own arm is what every
+		// ramp gate measures against. A kind shipping as `plugin`, or the `own` tier
+		// moving, must not be able to leave this table reading the old answer.
+		'tier',
 		'supportsCustomReturnPath',
 		'domainVerification',
 		'acceptanceSemantics',
