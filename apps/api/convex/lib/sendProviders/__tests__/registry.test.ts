@@ -62,10 +62,46 @@ describe('Send provider registry', () => {
 		'tagsFeedbackProvenance',
 	] as const;
 
+	/**
+	 * The fields deliberately left OUT of the projection — each one pinned by
+	 * `packages/shared/src/__tests__/sendProviderCatalog.test.ts` instead, where the
+	 * declaration lives.
+	 *
+	 * Named rather than implied, because a hand-written projection defaults to
+	 * "unchecked": a capability field added to the catalog after P1.1 would be in
+	 * neither the list above nor the expectations below, and this test — the one
+	 * whose name promises it pins the composed catalog's values — would stay green
+	 * with a wrong value in it. The coverage assertion under these two lists is
+	 * what inverts that default: an unclassified field fails, so pinning is what
+	 * happens unless someone deliberately excludes it here.
+	 */
+	const EXCLUDED_FIELDS = new Set([
+		'tier',
+		'optionalEnvVars',
+		'credentialFields',
+		'setupProbe',
+		// Bundled plugin entries only; the built-ins carry neither.
+		'pluginId',
+		'requiredCapability',
+	]);
+
 	function pinned(entry: (typeof SEND_PROVIDER_CATALOG)[number]): Record<string, unknown> {
 		const record = entry as unknown as Record<string, unknown>;
 		return Object.fromEntries(PINNED_FIELDS.map((field) => [field, record[field]]));
 	}
+
+	it('classifies every field a built-in entry declares as pinned or deliberately excluded', () => {
+		const classified = new Set<string>([...PINNED_FIELDS, ...EXCLUDED_FIELDS]);
+		for (const entry of SEND_PROVIDER_CATALOG.slice(0, 5)) {
+			const unclassified = Object.keys(entry).filter((key) => !classified.has(key));
+			expect(
+				unclassified,
+				`${entry.kind} declares a field this pin neither checks nor excludes — add it to ` +
+					'PINNED_FIELDS (with its value in the expectation below) or, if the shared ' +
+					'catalog suite already owns it, to EXCLUDED_FIELDS'
+			).toEqual([]);
+		}
+	});
 
 	it('reads the own arm from ONE declaration, in both packages', () => {
 		// Two names, one declaration. `OWN_ARM_TRANSPORT_KIND` is a RE-EXPORT of

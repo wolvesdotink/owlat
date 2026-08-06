@@ -21,6 +21,16 @@
  * compile if plugin-kit's union grows a member the send catalog has no spelling
  * for) and at RUN time (the same claim about the values, so a suite run catches
  * it even where the type check has not run yet).
+ *
+ * WHAT THIS PIN DOES NOT COVER — read before assuming one component can draw
+ * both tiers: it compares KIND NAMES only, never the per-kind property sets, and
+ * those diverge today. `envVar` is on every send-provider credential field and on
+ * plugin-kit's `secret` field alone; the `string` kinds carry `placeholder` here
+ * and `maxLength` there. The full list, with the reason for each, is the "WHAT
+ * 'SPELLED IDENTICALLY' COVERS" note in
+ * `packages/shared/src/sendProviderCredentialFields.ts`. Reconciling the shapes
+ * is P3.1's job; this file only keeps the vocabularies from drifting apart in the
+ * meantime.
  */
 
 import { SETTINGS_FIELD_KINDS, type PluginSettingsFieldKind } from '@owlat/plugin-kit';
