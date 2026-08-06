@@ -341,14 +341,36 @@ const CORE_SEND_PROVIDER_CATALOG = [
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 
 /**
- * The entries themselves, frozen.
+ * Freeze a data literal THROUGH — the object, its arrays and everything they
+ * hold — so that "single source of truth" is a runtime property and not just a
+ * `readonly` the checker enforces for callers who kept their types.
+ *
+ * `Object.freeze` alone is shallow: it would leave every entry object, every
+ * `requiredEnvVars` / `credentialFields` array and the attached preset table
+ * writable, and this module ships to the browser bundle, where a consumer
+ * reaching it through untyped JS or a cast could rewrite what every later reader
+ * sees. Terminates because the catalog is a finite tree of literals with no
+ * cycles; already-frozen members (the preset table freezes itself at its
+ * declaration) are re-frozen harmlessly.
+ */
+function deepFreeze<T>(value: T): T {
+	if (value === null || typeof value !== 'object') return value;
+	Object.freeze(value);
+	for (const member of Object.values(value)) deepFreeze(member);
+	return value;
+}
+
+/**
+ * The entries themselves, frozen THROUGH — see {@link deepFreeze}: the array,
+ * each entry, its env-var and credential-field arrays, and the SMTP preset table
+ * one of those fields carries.
  *
  * CORE, and the name says so: the backend composes bundled plugin entries onto
  * this list at load time and exports the union as `SEND_PROVIDER_CATALOG`. A
  * consumer in this package (or in web / setup-cli) has no plugin composition to
  * consult, so it must not be handed a name that implies it sees both tiers.
  */
-export const CORE_SEND_PROVIDER_CATALOG_ENTRIES = Object.freeze(CORE_SEND_PROVIDER_CATALOG);
+export const CORE_SEND_PROVIDER_CATALOG_ENTRIES = deepFreeze(CORE_SEND_PROVIDER_CATALOG);
 
 /**
  * A core send-transport kind — DERIVED from the catalog, per D1, so declaring an

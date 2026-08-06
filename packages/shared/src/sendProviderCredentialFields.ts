@@ -20,6 +20,27 @@
  * {@link SEND_PROVIDER_CREDENTIAL_FIELD_KINDS} for where the two vocabularies
  * are pinned to each other, and why the pin cannot live in this package.
  *
+ * WHAT "SPELLED IDENTICALLY" COVERS, EXACTLY: the KIND NAMES, and nothing else.
+ * The pin compares the two vocabularies' kind lists; it says nothing about the
+ * per-kind property sets, and those DO differ today. A renderer author writing
+ * the one component both tiers were meant to share must read this list first:
+ *
+ *  - `envVar` is on EVERY field here (a core credential's whole purpose is to
+ *    name the deployment variable it writes) and on plugin-kit's `secret` field
+ *    ALONE — a plugin `string`/`number`/`boolean`/`select` value is STORED by the
+ *    host, not written to the environment, so binding `field.envVar` for one
+ *    yields `undefined` and a control that writes nowhere.
+ *  - `string` carries {@link SendProviderStringField.placeholder} here and
+ *    `maxLength` in plugin-kit; neither has the other's. `secret` carries a
+ *    `placeholder` here and nothing but `envVar` there.
+ *  - plugin-kit additionally bounds a schema (`MAX_SETTINGS_FIELDS`,
+ *    `MAX_TEXT_LENGTH`, `RESERVED_FIELD_KEYS`) because a plugin manifest is
+ *    untrusted input validated at install time. These descriptors are in-repo
+ *    literals, so they have no manifest validator and no such bounds.
+ *
+ * Converging those shapes — or teaching one renderer to read both — is the
+ * seams plan's P3.1 work, not a claim this module already makes.
+ *
  * One validator family is the point. A renderer that already knows how to draw a
  * plugin's `secret` field draws a core provider's the same way, and the two
  * tiers converge rather than diverge when plugin transports gain capability
@@ -242,14 +263,46 @@ export interface SmtpRelayPresetConfig {
  * Attached to the `smtp` entry's {@link SendProviderHostPortField} in
  * `./sendProviderCatalog`, and re-exported from `./setupSendingPresets` where
  * the two callers above still import it from.
+ *
+ * FROZEN THROUGH, table and rows. The type says `SmtpRelayPresetConfig` with
+ * mutable members because two shipped callers spread a row into a form draft and
+ * a readonly type would ripple through both; the runtime freeze is what actually
+ * holds. Reachable as `smtp.credentialFields[0].presets` from a module described
+ * as the single source of truth, it is exactly the object an untyped or cast
+ * consumer could rewrite for every later reader.
  */
-export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = {
-	mailgun: { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', secure: false },
-	postmark: { label: 'Postmark', host: 'smtp.postmarkapp.com', port: '587', secure: false },
-	sendgrid: { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
-	brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
-	custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
-};
+export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = Object.freeze({
+	mailgun: Object.freeze({
+		label: 'Mailgun',
+		host: 'smtp.mailgun.org',
+		port: '587',
+		secure: false,
+	}),
+	postmark: Object.freeze({
+		label: 'Postmark',
+		host: 'smtp.postmarkapp.com',
+		port: '587',
+		secure: false,
+	}),
+	sendgrid: Object.freeze({
+		label: 'SendGrid',
+		host: 'smtp.sendgrid.net',
+		port: '587',
+		secure: false,
+	}),
+	brevo: Object.freeze({
+		label: 'Brevo',
+		host: 'smtp-relay.brevo.com',
+		port: '587',
+		secure: false,
+	}),
+	custom: Object.freeze({
+		label: 'Custom SMTP server',
+		host: '',
+		port: '587',
+		secure: false,
+	}),
+});
 
 /**
  * Every deployment env variable one field owns, in declaration order.
