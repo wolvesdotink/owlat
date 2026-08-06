@@ -15,32 +15,50 @@
 # Sibling of scripts/check-cross-package-imports.sh: one grep-shaped invariant,
 # plus two small checked-in lists that are strict in BOTH directions, exactly
 # like the file-size and dead-code baselines — an unlisted violation fails, and
-# a listed file that no longer violates fails too, so a list can only shrink.
+# a listed site that no longer violates fails too, so a list can only shrink.
 #
 #   scripts/provider-identity-allowlist.txt — DEBT. Sites that predate the rule,
-#     each with the family it belongs to and the piece that clears it. Drives to
+#     each under the family it belongs to and the piece that clears it. Drives to
 #     zero; that count is what acceptance criterion A1 measures.
-#   scripts/provider-identity-collisions.txt — NOT DEBT. Files where a kind's
+#   scripts/provider-identity-collisions.txt — NOT DEBT. Places where a kind's
 #     spelling belongs to a different vocabulary (the MTA routing API's
 #     'mta' | 'relay' | 'defer' answer, a docker compose profile name, the
 #     contact-import source registry). Nothing clears these because there is no
 #     coupling to remove; keeping them out of the debt list is what lets that
 #     list reach zero.
 #
-# WHAT IS SCANNED: every tracked .ts/.tsx/.vue under apps/ and packages/. The
-# backend is where Inventory A lives, but it is not where the next leak will be:
-# a sixth provider that needs no dispatch branch still gets a branch in the
-# transport editor and one in the setup wizard unless something says no. Those
-# are exactly the files the ecosystem goal (a provider ships as a plugin, with
-# zero host edits) has to keep clean, so they are in scope from the start, with
+# ENTRIES ARE `path` OR `path:literal`. A bare path licenses every kind literal
+# in the file; `path:mta` licenses ONLY that spelling and leaves every other
+# kind in the same file a violation. The collisions list is permanent, so a
+# file-granular licence there would blind the gate forever — apply.post.ts is
+# excused for one docker compose profile, and a real `kind === 'ses'` branch
+# added to that same handler next year must still fail. Debt entries can be
+# either: they are on their way out, so the coarse form costs nothing.
+#
+# WHAT IS SCANNED: every tracked .ts/.tsx/.vue under apps/, packages/ and
+# examples/. The backend is where Inventory A lives, but it is not where the
+# next leak will be: a sixth provider that needs no dispatch branch still gets a
+# branch in the transport editor and one in the setup wizard unless something
+# says no. examples/ is a workspace root (examples/plugins/*,
+# examples/conformance) and the home of the plugin tier — the tier whose whole
+# promise is that a provider ships without host edits, so a kind literal there
+# is the loudest possible contradiction. Those are exactly the files the
+# ecosystem goal has to keep clean, so they are in scope from the start, with
 # today's UI branches carried as named debt rather than as silence.
 #
 # Deliberately NOT scanned:
-#   * adapter folders: any path segment named after a catalog kind
-#     (lib/sendProviders/ses/**, domains/providers/mandrill/**,
-#     integrationImports/providers/mandrill/**, …), plus the file-per-kind
-#     layouts of the same idea (webhooks/adapters/ses.ts). Inside its own module
-#     an adapter IS that vendor; naming it there is the whole point.
+#   * adapter bundles: a directory named after a catalog kind directly under one
+#     of the ADAPTER_ROOTS below (lib/sendProviders/ses/**,
+#     domains/providers/mandrill/**, integrationImports/providers/mandrill/**),
+#     plus the file-per-kind layout of the same idea
+#     (webhooks/adapters/ses.ts). Inside its own module an adapter IS that
+#     vendor; naming it there is the whole point. The roots are listed rather
+#     than "any path segment that spells a kind", because a kind-named directory
+#     ANYWHERE would exempt exactly the thing this gate exists to stop — a
+#     per-vendor UI bundle (apps/web/app/pages/setup/smtp/, a `ses/` folder of
+#     dashboard panels) is a plausible next-provider shape and must fail. A new
+#     adapter root therefore shows up as a false positive, which review fixes,
+#     instead of as silence.
 #   * apps/mta/**: our own MTA is not a consumer of the provider catalog, it is
 #     the transport BEHIND one kind. Its `'mta' | 'relay' | 'defer'` routing
 #     decisions and `'smtp'` delivery outcomes are its own alphabets that happen
@@ -52,18 +70,17 @@
 #     the catalog as it grows, so the ratchet has nothing to say about it.
 #   * Convex's _generated/**.
 #
-# The stricter sibling is `apps/api/convex/lib/sendProviders/__tests__/
+# The narrower sibling is `apps/api/convex/lib/sendProviders/__tests__/
 # kindLiteralCustody.test.ts`: over apps/api/convex ONLY, it catches a kind
 # DECLARATION (`const RELAY_IDENTITY_PROOF_KIND = 'ses'` — the same fact with one
 # hop). Declarations are not a repo-wide rule (a catalog entry, an adapter, an
 # event payload and a fixture all legitimately write their own name), which is
-# why that half stays scoped to the backend and this gate carries the comparison
-# half everywhere. The two do not restate each other's lists: for comparisons
-# inside apps/api/convex that test READS the two files above, so a swept file is
-# de-licensed by exactly one deletion, here.
+# why that half stays scoped to the backend. COMPARISONS ARE THIS SCRIPT'S RULE
+# ALONE — that test used to restate them and no longer does, because two engines
+# for one rule is two engines that disagree.
 #
 # WHAT IS MATCHED: a comparison against a kind LITERAL in code —
-#   * `=== 'ses'`, `!== 'mta'`, `'resend' === x`, `case 'smtp':`
+#   * `=== 'ses'`, `!== 'mta'`, `== 'resend'`, `'resend' === x`, `case 'smtp':`
 #   * membership, which is how a multi-kind question ("which kinds accept a
 #     custom return path") gets written once `===` is blocked:
 #     `x.includes('ses')`, `set.has('mta')`, `kind.startsWith('mta')`,
@@ -79,6 +96,14 @@
 # The kind list is derived from SEND_TRANSPORT_KINDS in packages/shared, so a
 # provider added to the catalog is ratcheted the day it is declared rather than
 # the day someone remembers to update this script.
+#
+# MATCHED OVER A THREE-LINE WINDOW, not per line. `bun run ox:fmt` breaks a long
+# condition after the operator (`… .toLowerCase() ===` / `'resend'`) and prints a
+# long membership test as an array over one line per element (`[` / `'ses',` /
+# `'resend',` / `].includes(kind)`); a per-line grep calls all of that clean, so
+# the gate would be one cosmetic reformat away from bypassable. The window is
+# the stripped code of the previous two lines joined to the current one, and the
+# hit is reported on the line that completes it.
 #
 # Comments are stripped before matching. House style quotes the literal a seam
 # USED to be spelled with (`this used to read providerType === 'ses'`) in the
@@ -98,7 +123,10 @@ export LC_ALL=C
 
 allowlist_file="scripts/provider-identity-allowlist.txt"
 collisions_file="scripts/provider-identity-collisions.txt"
-SCAN_PATHS=(apps packages)
+SCAN_PATHS=(apps packages examples)
+# The three per-kind bundle roots plus the file-per-kind webhook adapters. A
+# directory named after a kind is an adapter only DIRECTLY under one of these.
+ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers webhooks/adapters)
 
 # The kinds, from their single declaration. Parsed rather than restated so the
 # ratchet cannot drift from the catalog. Each candidate file is flattened to one
@@ -127,6 +155,11 @@ if [ -z "$kinds" ]; then
 	exit 1
 fi
 kind_alt=$(printf '%s' "$kinds" | tr '\n' '|' | sed 's/|$//')
+kind_words=$(printf '%s' "$kinds" | tr '\n' ' ')
+root_alt=$(
+	IFS='|'
+	printf '%s' "${ADAPTER_ROOTS[*]}"
+)
 
 # Quotes: single, double or template.
 q="['\"\`]"
@@ -147,8 +180,11 @@ literal="$q($kind_alt)$q"
 
 # An empty list is a legitimate end state (that is what A1 asks for), so the
 # no-match exit of the filter must not read as an error under `pipefail`.
+# `path  # note` keeps a per-entry note next to the entry rather than in a
+# second copy of the list further up the file.
 read_list() {
-	{ grep -vE '^[[:space:]]*(#|$)' "$1" || true; } | sed 's/[[:space:]]*$//' | sort -u
+	{ grep -vE '^[[:space:]]*(#|$)' "$1" || true; } |
+		sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]*$//' | sort -u
 }
 
 for list_file in "$allowlist_file" "$collisions_file"; do
@@ -160,7 +196,38 @@ done
 
 allowed_debt=$(read_list "$allowlist_file")
 allowed_collision=$(read_list "$collisions_file")
-allowed=$(printf '%s\n%s\n' "$allowed_debt" "$allowed_collision" | grep . | sort -u)
+
+# `<list tag>\t<path>\t<literal or empty>`, the one form both halves below read.
+split_entries() {
+	awk -v tag="$1" '$0 != "" {
+		path = $0
+		literal = ""
+		i = index(path, ":")
+		if (i > 0) { literal = substr(path, i + 1); path = substr(path, 1, i - 1) }
+		printf "%s\t%s\t%s\n", tag, path, literal
+	}'
+}
+licences=$(
+	printf '%s\n' "$allowed_debt" | split_entries allowlist
+	printf '%s\n' "$allowed_collision" | split_entries collision
+)
+
+# A qualified entry whose literal is not a declared kind can never be used, so
+# it would surface as a confusing "stale entry". Say what is actually wrong.
+bad=$(printf '%s\n' "$licences" | awk -F'\t' -v kinds="$kind_words" '
+	$3 != "" {
+		n = split(kinds, k, " ")
+		for (i = 1; i <= n; i++) if (k[i] == $3) next
+		printf "  %s (in the %s list)\n", $2 ":" $3, $1
+	}')
+if [ -n "$bad" ]; then
+	echo "FAIL: entr(y/ies) qualified by something that is not a declared kind:"
+	echo ""
+	echo "$bad"
+	echo ""
+	echo "The part after the colon must be one of: $kind_words"
+	exit 1
+fi
 
 # One pass over the tree to find the files worth reading properly (~200 of
 # ~4500), then the exact test on those.
@@ -177,14 +244,14 @@ while IFS= read -r f; do
 		*/migrations/*) continue ;;
 		apps/mta/*) continue ;;
 	esac
-	# Adapter folder: a path segment named after a catalog kind.
-	if [[ "$f" =~ (^|/)($kind_alt)/ ]]; then continue; fi
-	# The same bundle written one-file-per-kind (webhooks/adapters/ses.ts).
-	if [[ "$f" =~ /(adapters|providers)/($kind_alt)\.(ts|tsx|vue)$ ]]; then continue; fi
+	# Adapter bundle: a kind-named directory directly under an adapter root…
+	if [[ "$f" =~ (^|/)($root_alt)/($kind_alt)/ ]]; then continue; fi
+	# …or the same bundle written one file per kind (webhooks/adapters/ses.ts).
+	if [[ "$f" =~ (^|/)($root_alt)/($kind_alt)\.(ts|tsx|vue)$ ]]; then continue; fi
 	# Comments are stripped by the state machine below, then the comparison is
-	# tested with one line of lookback, because a long condition is formatted
-	# with the operator at the end of one line and the literal alone on the
-	# next; a per-line grep would call that clean.
+	# tested over a three-line window, because the formatter breaks a long
+	# condition after the operator and prints a long membership test one element
+	# per line; a per-line grep would call both clean.
 	hits=$(awk -v pat="$comparison" '
 		function strip(s,   out, i, j, h, k) {
 			out = ""
@@ -222,19 +289,82 @@ while IFS= read -r f; do
 				}
 			}
 		}
+		function squeeze(s) {
+			gsub(/[[:space:]]+/, " ", s)
+			sub(/^ /, "", s)
+			sub(/ $/, "", s)
+			return s
+		}
+		# A match somewhere in the window is not a hit on THIS line: the two lines
+		# of lookback also contain every comparison they made themselves, which is
+		# reported where it happened. Only a match that ENDS inside the current
+		# line is new, so walk the matches and keep the first one that does.
+		function reaches(win, start,   off, s) {
+			off = 0
+			s = win
+			while (match(s, pat)) {
+				if (off + RSTART + RLENGTH - 1 >= start) return 1
+				off += RSTART + RLENGTH - 1
+				s = substr(s, RSTART + RLENGTH)
+				if (s == "") return 0
+			}
+			return 0
+		}
 		{
 			code = strip($0)
-			probe = code
-			if (prev ~ /(===|!==|==|!=)[[:space:]]*$/) probe = "=== " probe
-			if (probe ~ pat) printf "%d:%s\n", NR, code
-			prev = code
+			win = two " " one " " code
+			if (reaches(win, length(two) + length(one) + 3)) {
+				if (code ~ pat) printf "%d:%s\n", NR, code
+				else printf "%d:%s\n", NR, squeeze(win)
+			}
+			two = one
+			one = code
 		}
 	' "$f")
 	[ -n "$hits" ] && violations="$violations$(printf '%s' "$hits" | sed "s#^#$f:#")"$'\n'
 done < <(printf '%s\n' "$candidates")
 
-violating_files=$(printf '%s' "$violations" | grep . | cut -d: -f1 | sort -u)
-new=$(comm -23 <(printf '%s\n' "$violating_files" | grep . || true) <(printf '%s\n' "$allowed" | grep . || true))
+# Licensing is per LINE, not per file: a `path:literal` entry excuses only the
+# lines whose kind literals it names, and any other kind on any other line of
+# the same file is still a violation. `used` is the other direction — an entry
+# that excused nothing has outlived its literal and has to go.
+verdict=$(awk -F'\t' -v q="$q" -v kinds="$kind_words" '
+	FNR == NR {
+		if ($0 == "") next
+		n++; tag[n] = $1; lpath[n] = $2; lit[n] = $3; used[n] = 0
+		next
+	}
+	{
+		if ($0 == "") next
+		path = $0
+		sub(/:.*/, "", path)
+		nk = split(kinds, k, " ")
+		delete present
+		seen = 0
+		for (i = 1; i <= nk; i++) {
+			if ($0 ~ (q k[i] q)) { present[k[i]] = 1; seen++ }
+		}
+		full = 0
+		for (e = 1; e <= n; e++) {
+			if (lpath[e] != path) continue
+			if (lit[e] == "") { full = 1; used[e] = 1; continue }
+			if (lit[e] in present) { used[e] = 1; delete present[lit[e]] }
+		}
+		if (full) next
+		left = 0
+		for (x in present) left++
+		if (seen == 0 || left > 0) printf "U\t%s\n", $0
+	}
+	END {
+		for (e = 1; e <= n; e++) {
+			if (used[e]) continue
+			printf "S\t%s\t%s\n", tag[e], (lit[e] == "" ? lpath[e] : lpath[e] ":" lit[e])
+		}
+	}
+' <(printf '%s\n' "$licences") <(printf '%s\n' "$violations"))
+
+unlicensed=$(printf '%s\n' "$verdict" | { grep $'^U\t' || true; } | cut -f2-)
+new=$(printf '%s\n' "$unlicensed" | grep . | cut -d: -f1 | sort -u)
 
 fail=0
 if [ -n "$new" ]; then
@@ -243,7 +373,7 @@ if [ -n "$new" ]; then
 	echo ""
 	printf '%s\n' "$new" | while IFS= read -r f; do
 		[ -n "$f" ] || continue
-		printf '%s' "$violations" | grep -a "^$f:" | sed 's#^#  #'
+		printf '%s\n' "$unlicensed" | grep -a "^$f:" | sed 's#^#  #'
 	done
 	echo ""
 	echo "Ask the capability, not the name: declare what the seam needs on the"
@@ -254,16 +384,16 @@ if [ -n "$new" ]; then
 	echo ""
 	echo "If the literal is NOT a provider kind — the MTA routing API's answer, a"
 	echo "docker compose profile, a contact-import source — it belongs in"
-	echo "$collisions_file with the vocabulary it actually speaks."
+	echo "$collisions_file as \`path:literal\`, with the vocabulary it actually"
+	echo "speaks."
 	fail=1
 fi
 
-# Both lists are strict in the other direction too: a licence whose file no
-# longer violates has to go, or the next restatement inherits a pass it did not
-# earn.
-check_stale() {
-	local label="$1" file="$2" list="$3" stale count
-	stale=$(comm -13 <(printf '%s\n' "$violating_files" | grep . || true) <(printf '%s\n' "$list" | grep . || true))
+# Both lists are strict in the other direction too: a licence that excused
+# nothing has to go, or the next restatement inherits a pass it did not earn.
+report_stale() {
+	local label="$1" file="$2" tag="$3" stale count
+	stale=$(printf '%s\n' "$verdict" | { grep $'^S\t'"$tag"$'\t' || true; } | cut -f3-)
 	[ -n "$stale" ] || return 0
 	count=$(printf '%s\n' "$stale" | grep -c .)
 	echo "FAIL: $count stale $label entr(y/ies) in $file (no kind literal left,"
@@ -274,8 +404,8 @@ check_stale() {
 	echo "Delete these lines — the list only ever moves down."
 	fail=1
 }
-check_stale "allowlist" "$allowlist_file" "$allowed_debt"
-check_stale "collision" "$collisions_file" "$allowed_collision"
+report_stale "allowlist" "$allowlist_file" "allowlist"
+report_stale "collision" "$collisions_file" "collision"
 
 [ "$fail" -eq 1 ] && exit 1
 

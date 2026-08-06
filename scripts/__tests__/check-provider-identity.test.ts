@@ -119,23 +119,48 @@ describe('provider-identity ratchet, on the repository it guards', () => {
 	it.each([
 		['the allowlist', ALLOWLIST],
 		['the collisions list', COLLISIONS],
-	])('ships %s as real, deduplicated, explained paths', (_label, file) => {
+	])('ships %s as real, deduplicated, blocked paths', (_label, file) => {
 		const contents = readFileSync(file, 'utf8');
-		const entries = listEntries(contents);
+		const entries = parseList(contents);
 
 		expect(entries.length).toBeGreaterThan(0);
-		expect(new Set(entries).size).toBe(entries.length);
+		expect(new Set(entries.map((entry) => entry.raw)).size).toBe(entries.length);
 		for (const entry of entries) {
-			// Every licensed file is a real file, in scope, and named in the prose
-			// above the list — an entry with no family and no owner is how a
-			// survivor stops being anybody's problem.
-			expect(existsSync(resolve(REPO_ROOT, entry)), `${entry} does not exist`).toBe(true);
-			expect(entry).toMatch(/^(apps|packages)\//);
-			const explained = contents
-				.split('\n')
-				.filter((line) => line.startsWith('#'))
-				.some((line) => line.includes(entry));
-			expect(explained, `${entry} is listed but never explained`).toBe(true);
+			// Every licensed site is a real file, in scope, and under a block that
+			// says what it is — an entry with no family is how a survivor stops
+			// being anybody's problem.
+			expect(existsSync(resolve(REPO_ROOT, entry.path)), `${entry.path} does not exist`).toBe(true);
+			expect(entry.path).toMatch(/^(apps|packages|examples)\//);
+			expect(entry.block, `${entry.raw} sits under no block header`).not.toBe('');
+		}
+	});
+
+	it.each([
+		['the allowlist', ALLOWLIST],
+		['the collisions list', COLLISIONS],
+	])('writes each entry of %s exactly once, in the list itself', (_label, file) => {
+		// The lists used to repeat every path in the family prose as well as in the
+		// enforced list at the bottom. Only the enforced half is checked in either
+		// direction, so a sweep that deleted one line and not the other left the
+		// file documenting debt — with an owner — for a site that was already
+		// clear. Prose may DISCUSS a path inside a sentence; a comment line that is
+		// nothing but a path is the second copy coming back.
+		const restated = readFileSync(file, 'utf8')
+			.split('\n')
+			.filter((line) =>
+				/^#\s*(apps|packages|examples)\/\S+\.(ts|tsx|vue)(:[a-z0-9_-]+)?\s*$/.test(line)
+			);
+		expect(restated, 'these comment lines restate an entry — keep the entry only').toEqual([]);
+	});
+
+	it('gives every allowlist entry a family and an owning piece', () => {
+		// Debt with no owner is just a permanent exemption with better manners. The
+		// collisions list is exempt from this on purpose: nothing owns a vocabulary
+		// collision because there is nothing to clear.
+		for (const entry of parseList(readFileSync(ALLOWLIST, 'utf8'))) {
+			expect(entry.block, `${entry.raw} has no family/owner header`).toMatch(
+				/^[a-z0-9-]+ \(owner: .{10,}\)$/
+			);
 		}
 	});
 
@@ -143,17 +168,47 @@ describe('provider-identity ratchet, on the repository it guards', () => {
 		// The split is what makes acceptance criterion A1 reachable: the allowlist
 		// is debt that drives to zero, the collisions file is permanent. A file in
 		// both would let a real leak hide behind a collision licence.
-		const debt = new Set(listEntries(readFileSync(ALLOWLIST, 'utf8')));
-		const collisions = listEntries(readFileSync(COLLISIONS, 'utf8'));
-		expect(collisions.filter((entry) => debt.has(entry))).toEqual([]);
+		const debt = new Set(parseList(readFileSync(ALLOWLIST, 'utf8')).map((entry) => entry.path));
+		const collisions = parseList(readFileSync(COLLISIONS, 'utf8'));
+		expect(collisions.filter((entry) => debt.has(entry.path)).map((entry) => entry.raw)).toEqual(
+			[]
+		);
+	});
+
+	it('qualifies every permanent collision licence with the one spelling it excuses', () => {
+		// A bare path in the collisions list never expires, so it would license a
+		// real `kind === 'ses'` branch added to that file years from now. The debt
+		// list may use the coarse form — it is on its way out.
+		for (const entry of parseList(readFileSync(COLLISIONS, 'utf8'))) {
+			expect(entry.literal, `${entry.raw} licenses the whole file, forever`).toMatch(
+				/^[a-z0-9_-]+$/
+			);
+		}
 	});
 });
 
-function listEntries(contents: string): string[] {
-	return contents
-		.split('\n')
-		.map((line) => line.trim())
-		.filter((line) => line !== '' && !line.startsWith('#'));
+type ListEntry = { raw: string; path: string; literal?: string; block: string };
+
+/**
+ * The list format the script reads: `# ── block header ──` lines, then entries
+ * as `path` or `path:literal`, each optionally carrying a trailing `#` note.
+ */
+function parseList(contents: string): ListEntry[] {
+	const entries: ListEntry[] = [];
+	let block = '';
+	for (const line of contents.split('\n')) {
+		const header = /^#\s*──\s*(.+?)\s*─+\s*$/.exec(line);
+		if (header) {
+			block = header[1] ?? '';
+			continue;
+		}
+		const trimmed = line.trim();
+		if (trimmed === '' || trimmed.startsWith('#')) continue;
+		const raw = trimmed.replace(/\s+#.*$/, '').trim();
+		const [path, literal] = raw.split(':');
+		entries.push({ raw, path: path ?? raw, literal, block });
+	}
+	return entries;
 }
 
 describe('provider-identity ratchet, seeded violations', () => {
@@ -226,6 +281,96 @@ describe('provider-identity ratchet, seeded violations', () => {
 
 		expect(result.output).toContain('apps/api/convex/delivery/wrapped.ts:4');
 		expect(result.status).toBe(1);
+	});
+
+	it.each([
+		[
+			'a membership array the formatter split one element per line',
+			[
+				'export function decide(kind: string): boolean {',
+				'\treturn [',
+				"\t\t'ses',",
+				"\t\t'resend',",
+				"\t\t'mandrill',",
+				'\t].includes(kind);',
+				'}',
+				'',
+			],
+			6,
+		],
+		[
+			'a membership argument the formatter put on its own line',
+			[
+				'export function decide(providerDescriptorName: string): boolean {',
+				'\treturn providerDescriptorName.includes(',
+				"\t\t'ses'",
+				'\t);',
+				'}',
+				'',
+			],
+			3,
+		],
+	])('fails on %s', (_label, lines, line) => {
+		// `bun run ox:fmt` prints a long membership test as an array one element per
+		// line, and a long argument on its own line. Membership is the shape the
+		// question takes once `===` is blocked, so a per-line matcher would leave
+		// the gate one cosmetic reformat away from bypassable — for exactly the
+		// multi-kind questions the surviving families are made of.
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/wrappedMembership.ts': (lines as string[]).join('\n') },
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain(`apps/api/convex/delivery/wrappedMembership.ts:${line}`);
+		expect(result.status).toBe(1);
+	});
+
+	it('reports a comparison once, on the line that completes it', () => {
+		// The window is two lines of lookback, and those two lines contain every
+		// comparison they made themselves — already reported where they happened.
+		// Only a match that ends inside the current line is new; without that, one
+		// leak would be reported three times and a reviewer would go looking for
+		// three.
+		const root = sandbox({
+			files: {
+				'apps/api/convex/delivery/once.ts': [
+					'export function decide(kind: string): boolean {',
+					"\tif (kind === 'ses') return false;",
+					'\treturn true;',
+					'}',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/api/convex/delivery/once.ts:2');
+		expect(result.output).not.toContain('once.ts:3');
+		expect(result.output).not.toContain('once.ts:4');
+		expect(result.output).toContain('FAIL: 1 file(s)');
+		expect(result.status).toBe(1);
+	});
+
+	it('does not read a wrapped kind ARRAY as a comparison', () => {
+		// The other side of the window: a declaration printed one element per line
+		// is the catalog, the presets and every <option> list. Widening far enough
+		// to flag those would flag the declaration the whole plan wants code to
+		// read.
+		const root = sandbox({
+			files: {
+				'apps/api/convex/lib/sendProviders/kinds.ts': [
+					'export const RELAY_KINDS = [',
+					"\t'ses',",
+					"\t'resend',",
+					'] as const;',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('ok:');
+		expect(result.status).toBe(0);
 	});
 
 	it('reports every violating file, not just the first', () => {
@@ -306,11 +451,38 @@ describe('provider-identity ratchet, exemptions', () => {
 		expect(result.status).toBe(0);
 	});
 
+	it('exempts an adapter folder under integrationImports/providers', () => {
+		const root = sandbox({
+			files: { 'apps/api/convex/integrationImports/providers/mandrill/api.ts': violation },
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('ok:');
+		expect(result.status).toBe(0);
+	});
+
 	it('does not exempt a file merely named after a kind', () => {
 		const root = sandbox({ files: { 'apps/api/convex/delivery/ses.ts': violation } });
 		const result = runIn(root);
 
 		expect(result.output).toContain('apps/api/convex/delivery/ses.ts:2');
+		expect(result.status).toBe(1);
+	});
+
+	it.each([
+		['a per-vendor UI bundle', 'apps/web/app/pages/dashboard/delivery/smtp/CredentialsPanel.ts'],
+		['a per-vendor route directory', 'apps/web/app/pages/setup/ses/index.vue'],
+		['a kind-named directory in the backend', 'apps/api/convex/delivery/ses/helper.ts'],
+	])('does not exempt %s: a kind-named directory outside an adapter root', (_label, path) => {
+		// The exemption is anchored to lib/sendProviders/, domains/providers/,
+		// integrationImports/providers/ and webhooks/adapters/, not to "any path
+		// segment that spells a kind". A per-vendor folder of dashboard panels or
+		// wizard routes is precisely the next-provider host edit the ecosystem goal
+		// has to stop, and it would name itself after the kind on the way in.
+		const root = sandbox({ files: { [path]: leak("provider === 'smtp'") } });
+		const result = runIn(root);
+
+		expect(result.output).toContain(path);
 		expect(result.status).toBe(1);
 	});
 
@@ -420,7 +592,11 @@ describe('provider-identity ratchet, exemptions', () => {
 		expect(result.status).toBe(0);
 	});
 
-	it('reaches the UI and the shared packages, not just the backend', () => {
+	it('reaches the UI, the shared packages and the plugin tier, not just the backend', () => {
+		// examples/ is a workspace root (examples/plugins/*, examples/conformance)
+		// and the home of the tier whose whole promise is that a provider ships
+		// without host edits — P3.3's mock plugin ESP lands there. A kind literal in
+		// that tier is the loudest possible contradiction, so it is in scope.
 		const root = sandbox({
 			files: {
 				'apps/web/app/components/delivery/NewEditor.vue': [
@@ -431,11 +607,13 @@ describe('provider-identity ratchet, exemptions', () => {
 				].join('\n'),
 				'packages/shared/src/newRouting.ts': leak("kind !== 'smtp'"),
 				'apps/setup-cli/src/commands/newPrompt.ts': leak("provider === 'ses'"),
+				'examples/conformance/src/mockEsp.ts': leak("kind === 'mandrill'"),
 			},
 		});
 		const result = runIn(root);
 
-		expect(result.output).toContain('FAIL: 3 file(s)');
+		expect(result.output).toContain('examples/conformance/src/mockEsp.ts');
+		expect(result.output).toContain('FAIL: 4 file(s)');
 		expect(result.output).toContain('apps/web/app/components/delivery/NewEditor.vue:2');
 		expect(result.output).toContain('packages/shared/src/newRouting.ts');
 		expect(result.output).toContain('apps/setup-cli/src/commands/newPrompt.ts');
@@ -539,12 +717,60 @@ describe('provider-identity ratchet, the collisions list', () => {
 	it('licenses a spelling that belongs to another vocabulary', () => {
 		const root = sandbox({
 			files: { 'apps/web/server/api/setup/apply.post.ts': leak("profiles.includes('mta')") },
-			collisions: ['apps/web/server/api/setup/apply.post.ts'],
+			collisions: ['apps/web/server/api/setup/apply.post.ts:mta'],
 		});
 		const result = runIn(root);
 
 		expect(result.output).toContain('0 allowlisted site(s) remain, 1 vocabulary collision');
 		expect(result.status).toBe(0);
+	});
+
+	it('licenses that spelling only — a real kind branch in the same file still fails', () => {
+		// The collisions list is PERMANENT, so a file-granular licence would blind
+		// the gate to this file forever: the compose-profile entry would silently
+		// cover a `kind === 'ses'` branch added to the same handler years later.
+		const root = sandbox({
+			files: {
+				'apps/web/server/api/setup/apply.post.ts': [
+					'export async function apply(profiles: string[], kind: string) {',
+					"\tif (profiles.includes('mta')) await preflight();",
+					"\tif (kind === 'ses') await verifyIdentity();",
+					'}',
+					'',
+				].join('\n'),
+			},
+			collisions: ['apps/web/server/api/setup/apply.post.ts:mta'],
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/web/server/api/setup/apply.post.ts:3');
+		expect(result.output).not.toContain('apply.post.ts:2');
+		expect(result.status).toBe(1);
+	});
+
+	it('fails a qualified entry whose spelling is gone, even though the file still has others', () => {
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/moved.ts': leak("kind === 'ses'") },
+			allowlist: ['apps/api/convex/delivery/moved.ts'],
+			collisions: ['apps/api/convex/delivery/moved.ts:mta'],
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('stale collision entr');
+		expect(result.output).toContain('apps/api/convex/delivery/moved.ts:mta');
+		expect(result.status).toBe(1);
+	});
+
+	it('rejects a qualifier that is not a declared kind, instead of calling it stale', () => {
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/leak.ts': leak("kind === 'ses'") },
+			collisions: ['apps/api/convex/delivery/leak.ts:postmark'],
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('not a declared kind');
+		expect(result.output).toContain('apps/api/convex/delivery/leak.ts:postmark');
+		expect(result.status).toBe(1);
 	});
 
 	it('fails a stale collision entry, naming its own file', () => {
