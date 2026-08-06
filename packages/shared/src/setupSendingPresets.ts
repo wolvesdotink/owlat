@@ -66,6 +66,16 @@ export {
  * so the derived order (catalog order) differs from the hand-written one it
  * replaced while the SET is identical, which `sendProviderCatalog.test.ts` pins
  * against the pre-move literal.
+ *
+ * ONE PLACE THE ORDER IS OBSERVABLE, so that "not semantic" is not read as "not
+ * visible": {@link planTransportEnvChange} builds `merged` by iterating this
+ * list, and `writeEnvFile` (`./setupEnv`) serialises a map with
+ * `Object.entries`, i.e. in insertion order. A transport swap that introduces
+ * credential keys the existing `.env` did not already carry therefore writes
+ * those NEW lines in catalog order rather than in the historic hand-written one.
+ * Cosmetic and deliberately unpinned — no key is added, dropped or mis-valued,
+ * and keys already present keep their position — but it is a real difference a
+ * reader may notice in a generated file.
  */
 export const PROVIDER_ENV_KEYS: readonly ProviderEnvKey[] = Object.freeze([
 	'EMAIL_PROVIDER',
