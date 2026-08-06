@@ -61,6 +61,26 @@ export type DomainVerificationSupport = 'api' | 'none';
  * Absent ⇒ `unknown-on-timeout`, the fail-closed reading: claiming custody we
  * were never granted would leave a Send waiting `queued` for feedback that
  * never arrives, and claiming re-askability would double-deliver.
+ *
+ * NOTE — `accepted` IS NOT YET A GENERAL CAPABILITY. Only the own MTA declares
+ * it, and two sites outside this file still spell the custody arm as that one
+ * kind. A second kind declaring `accepted` must generalize BOTH in the same
+ * change, or its ambiguous sends die on the delivery deadline:
+ *
+ *  1. `delivery/lastMileRouting.ts` — the replay this declaration arms travels
+ *     as the `mtaReconciliation` input (that name is part of the work), and
+ *     `withReconciliationSafety` DEFERS every `ready` result whose
+ *     `providerKind !== 'mta'`, with a second pin on `baseProviderKind !==
+ *     'mta'` and a third on the relay arm. The reconciliation attempt would
+ *     therefore be deferred at 60s intervals until
+ *     `GOVERNED_MTA_MAX_MESSAGE_AGE_MS` elapses and the Send is terminalized as
+ *     a definite failure — for a message the transport may already have
+ *     delivered.
+ *  2. `delivery/sendLifecycle.ts` — `accepted` implies
+ *     `messageIdSource: 'idempotency-key'` (the shape of
+ *     {@link CoreSendProviderCatalogEntry} enforces the pair), so the
+ *     pre-dispatch identity binding comes with it; see the NOTE on
+ *     {@link MessageIdSource}.
  */
 export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
 
@@ -86,9 +106,13 @@ export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
  * reading (never pre-bind an identity we do not actually control).
  *
  * NOTE for a new kind declaring `idempotency-key`: the pre-dispatch binding
- * runs through `delivery/sendLifecycle.bindMtaProviderIdentity`, which stamps
- * the own-MTA provider type. That mutation must be generalized in the same
- * change — declaring the capability alone would mislabel the Send's transport.
+ * runs through `delivery/sendLifecycle.bindMtaProviderIdentity`, which patches
+ * `providerType: 'mta'` unconditionally — and `transitionMtaByProviderMessageId`
+ * reads that same stamp back for its `allowQueuedMtaTerminal` relaxation. That
+ * mutation must be generalized in the same change: declaring the capability
+ * alone would mislabel the Send's transport in every arm-keyed measurement row.
+ * The reconciliation pin in `delivery/lastMileRouting.ts` is the SECOND
+ * prerequisite of the same change — see the NOTE on {@link AcceptanceSemantics}.
  */
 export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
 
@@ -138,12 +162,28 @@ export interface SendProviderCatalogEntry {
  * of a message has that custody go unrecorded. Bundled plugin transports keep
  * the optional fields — they are generated from plugin manifests, which have no
  * such surface to declare (plugin-tier parity is plan P3.1).
+ *
+ * The two dispatch semantics are a PAIR, not two independent fields, so they
+ * are declared as a union rather than side by side: `accepted` means an
+ * ambiguous outcome is resolved by REPLAYING the attempt, which is only safe
+ * because the replay carries the id WE minted. An entry pairing `accepted` with
+ * a provider-minted id would (a) report `acceptedForDelivery` under an identity
+ * nothing pre-bound, parking the Send `queued` against a report that can never
+ * match it, and (b) answer an ambiguity with an idempotency key the provider
+ * never saw and re-dispatch to a transport with no idempotency surface — a
+ * double delivery. The illegal pairing is a build break here rather than a CI
+ * failure; the runtime loop in `__tests__/dispatchExtras.test.ts` keeps covering
+ * the untyped (bundled plugin) entries, which this type does not reach.
  */
-interface CoreSendProviderCatalogEntry extends SendProviderCatalogEntry {
+type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 	readonly domainVerification: DomainVerificationSupport;
-	readonly acceptanceSemantics: AcceptanceSemantics;
-	readonly messageIdSource: MessageIdSource;
-}
+} & (
+		| { readonly acceptanceSemantics: 'accepted'; readonly messageIdSource: 'idempotency-key' }
+		| {
+				readonly acceptanceSemantics: 'unknown-on-timeout';
+				readonly messageIdSource: MessageIdSource;
+		  }
+	);
 
 const CORE_SEND_PROVIDER_CATALOG = [
 	{
