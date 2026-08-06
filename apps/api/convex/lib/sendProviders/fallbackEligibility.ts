@@ -38,6 +38,18 @@ import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
  *
  * Fails closed on everything it cannot vouch for: an unknown or retired kind,
  * the owned MTA, and any kind `isConfigured` rejects.
+ *
+ * ELIGIBILITY IS NOT SUFFICIENCY. This answers "may this KIND relay at all",
+ * never "may it relay THIS domain" — the per-domain proof gate (D7,
+ * `relayDomainVerification.ts`) stands in front of every kind that gets past
+ * here. The two compose into one configuration worth knowing about: a kind
+ * whose catalog entry declares `domainVerification: 'none'` (`resend`, a
+ * bring-your-own `smtp` relay) is eligible and saveable, has no sending-domain
+ * provider to register an identity at, and therefore never clears the proof
+ * gate — so the operator learns of it only when the breaker opens and the send
+ * is refused. Pinned end to end by "saves a relay with no identity API, which
+ * then never clears the proof gate" in
+ * `convex/__tests__/providerRoutes.integration.test.ts`.
  */
 export function isFallbackRelayEligible(
 	kind: string | null | undefined,

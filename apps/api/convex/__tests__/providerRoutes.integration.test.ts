@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { relayDomainVerified } from '../lib/sendProviders/relayDomainVerification';
 
 const permissionState = vi.hoisted(() => ({ allowed: true }));
 
@@ -416,10 +417,137 @@ describe('deliverability relay domain lifecycle', () => {
 		}
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		const identities = await t.run(
-			async (ctx) => await ctx.db.query('sendingDomainSesIdentities').collect()
-		);
-		expect(identities).toEqual([]);
+		// BOTH identity stores, not just SES's. "Backfills nothing" is a claim
+		// about every destination the drain can write to, and the generic
+		// `sendingDomainRelayIdentities` row is where every kind after SES (D7)
+		// lands — a future `domainVerification: 'none'` kind that kept an
+		// `ensureRelayIdentity` would write THERE, and a SES-only assertion would
+		// stay green through exactly the regression this case exists to catch.
+		const { relayIdentities, sesIdentities } = await t.run(async (ctx) => ({
+			relayIdentities: await ctx.db.query('sendingDomainRelayIdentities').collect(),
+			sesIdentities: await ctx.db.query('sendingDomainSesIdentities').collect(),
+		}));
+		expect(sesIdentities).toEqual([]);
+		expect(relayIdentities).toEqual([]);
+	});
+
+	it('saves a relay with no identity API, which then never clears the proof gate', async () => {
+		// THE TWO HALVES COMPOSED. Eligibility and the domain proof are pinned
+		// separately elsewhere — `resend` is eligible; an unverifiable relay is
+		// refused — and each looks right on its own. Together they describe a
+		// configuration an operator can save and can never make work: `resend`
+		// declares `domainVerification: 'none'`, so it registers no sending-domain
+		// provider, so the drain writes nothing (correctly — there is nothing to
+		// register at) and `relayDomainVerified` answers false for every domain,
+		// forever. When the breaker opens, every affected send is refused with
+		// DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED and an instruction to verify the
+		// domain for the relay, which for this kind there is no way to satisfy.
+		//
+		// Pinned as the SHIPPED behaviour, not endorsed: making the refusal say so
+		// at save time is a copy-and-catalog change (which kinds may be offered as
+		// a fallback at all), and wave 0 may not change what an operator sees. This
+		// is the case that fails the day that rule changes.
+		vi.stubEnv('RESEND_API_KEY', 're_test_key');
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'resend', isEnabled: true },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'resend',
+					isWarmupOverflowEnabled: false,
+				},
+			})
+		).resolves.toBeTruthy();
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const { relayIdentities, sesIdentities, isVerified } = await t.run(async (ctx) => ({
+			relayIdentities: await ctx.db.query('sendingDomainRelayIdentities').collect(),
+			sesIdentities: await ctx.db.query('sendingDomainSesIdentities').collect(),
+			isVerified: await relayDomainVerified(ctx, 'relay.example', 'resend', Date.now()),
+		}));
+		expect(relayIdentities).toEqual([]);
+		expect(sesIdentities).toEqual([]);
+		expect(isVerified).toBe(false);
+	});
+
+	it('resolves the relay from the stored routes when the batch names none (P0.2)', async () => {
+		// THE MIGRATION WINDOW. Convex persists a scheduled function's arguments,
+		// so a continuation this drain queued for itself before `relayProviderType`
+		// existed arrives without one. Rejecting it would abandon the drain at its
+		// cursor — every domain past that point keeps no relay identity, the
+		// lifecycle's forward path only covers domains verified LATER, and the
+		// operator sees it as a refusal to relay long afterwards. So absent means
+		// "whichever relay the routes name", read from the same rows the forward
+		// path reads.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		// No route configured yet: nothing to resolve, and nothing written.
+		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			paginationOpts: { cursor: null, numItems: 32 },
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(
+			await t.run(async (ctx) => await ctx.db.query('sendingDomainRelayIdentities').collect())
+		).toEqual([]);
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'mandrill', isEnabled: true },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'mandrill',
+					isWarmupOverflowEnabled: false,
+				},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			paginationOpts: { cursor: null, numItems: 32 },
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const { relayIdentities, sesIdentities } = await t.run(async (ctx) => ({
+			relayIdentities: await ctx.db.query('sendingDomainRelayIdentities').collect(),
+			sesIdentities: await ctx.db.query('sendingDomainSesIdentities').collect(),
+		}));
+		// The kind came from the ROUTE, not from a default — a drain that fell back
+		// to SES here is precisely the pre-P0.2 behaviour this piece removed.
+		expect(sesIdentities).toEqual([]);
+		expect(relayIdentities).toHaveLength(1);
+		expect(relayIdentities[0]).toMatchObject({ providerKind: 'mandrill' });
 	});
 
 	it('backfills the relay kind the route named, through its own provider (P0.2)', async () => {
@@ -668,10 +796,18 @@ describe('deliverability relay domain lifecycle', () => {
 		//
 		// Not fixed in this piece: widening the read shape changes what the admin
 		// table renders, which is the user-visible change wave 0 may not make, and
-		// the row and the component have to move together. P1.2 (catalog-driven web
-		// UI) owns that pair. When it lands, THIS TEST IS THE ONE THAT MUST FLIP —
-		// `status` becomes `verified` and `dnsRecords` becomes populated — rather
-		// than a comment someone has to go looking for.
+		// the row and the component have to move together.
+		//
+		// NO PIECE OWNS THE PAIR YET. P1.2 (catalog-driven web UI) is the natural
+		// home but its scope names TransportEditor.vue, useSetupWizard.ts,
+		// useRelayCredentialDraft.ts, DeliverabilityFallbackEditor.vue and
+		// config.vue — not `RelayDomainStatus.vue` and not this query. They are
+		// carried into P1.2 as an explicit added input, named in this piece's
+		// handoff notes; this test cannot force that, because it asserts the
+		// CURRENT behaviour and therefore passes in both worlds. What it can do is
+		// make the fix impossible to ship silently: the assertions below have to be
+		// inverted by hand — `status` becomes `verified`, `dnsRecords` becomes
+		// populated — and the person inverting them is reading this paragraph.
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {
