@@ -66,12 +66,28 @@ export function buildTransactionalListUnsubscribe(
 	if (
 		envelopeInput.kind !== 'transactional' ||
 		envelopeInput.listUnsubscribe !== true ||
-		envelopeInput.contactId === undefined ||
 		!envelopeInput.convexSiteUrl
 	) {
 		return {};
 	}
-	const header = getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId);
+	// A seed probe on the automation stream is marketing-shaped mail with no
+	// contact to unsubscribe, and the RFC 8058 pair is exactly the kind of
+	// feature a filter weighs — dropping it would measure a materially different
+	// message than the one being measured, and would fail
+	// `assertMarketingOneClickHeaders` besides. Same header shape as a
+	// subscriber's, minted against the probe's own token namespace, so it can no
+	// more reach a contact record than the campaign shadow copy's can.
+	const header =
+		envelopeInput.seedProbeId !== undefined
+			? getSeedProbeListUnsubscribeHeader(
+					envelopeInput.convexSiteUrl,
+					envelopeInput.organizationId ?? '',
+					envelopeInput.seedProbeId
+				)
+			: envelopeInput.contactId !== undefined
+				? getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId)
+				: undefined;
+	if (header === undefined) return {};
 	return {
 		'List-Unsubscribe': header.listUnsubscribe,
 		'List-Unsubscribe-Post': header.listUnsubscribePost,
@@ -80,23 +96,30 @@ export function buildTransactionalListUnsubscribe(
 
 /**
  * The D18 invariant, enforced structurally rather than by convention: a seed
- * shadow copy is NEVER countable, and a countable Send NEVER carries the probe
- * header. `seedProbeId` and `emailSendId`/`contactId` are mutually exclusive,
- * and `seedProbeId` always travels with its durable ledger reference.
+ * probe is NEVER countable, and a countable Send NEVER carries the probe
+ * header. `seedProbeId` and the envelope's countable id (`emailSendId` on a
+ * campaign, `sendId` on a transactional one) are mutually exclusive, as are
+ * `seedProbeId` and a contact, and `seedProbeId` always travels with its
+ * durable ledger reference.
  *
- * Asserted on the composition path, which every campaign envelope — real or
- * shadow — passes through before dispatch.
+ * Asserted on the composition path, which EVERY envelope — campaign or
+ * transactional, real or probe — passes through before dispatch. Both kinds are
+ * checked because both now produce probes: the campaign shadow copy for the
+ * `campaign` cell, `delivery/seedScheduledProbe.ts` for the other two.
  */
 export function assertSeedShadowExclusion(envelopeInput: WorkerEnvelopeInput): void {
 	if (!isSeedShadowEnvelope(envelopeInput)) return;
-	if (
-		envelopeInput.emailSendId !== undefined ||
-		envelopeInput.contactInfo.contactId !== undefined
-	) {
-		throw new Error('A seed shadow copy must not carry a countable Send or a contact.');
+	const countableSendId =
+		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
+	const contactId =
+		envelopeInput.kind === 'campaign'
+			? envelopeInput.contactInfo.contactId
+			: envelopeInput.contactId;
+	if (countableSendId !== undefined || contactId !== undefined) {
+		throw new Error('A seed probe must not carry a countable Send or a contact.');
 	}
 	if (envelopeInput.seedProbeRef === undefined) {
-		throw new Error('A seed shadow copy must carry its probe ledger reference.');
+		throw new Error('A seed probe must carry its probe ledger reference.');
 	}
 }
 
@@ -148,6 +171,9 @@ export function resolveListUnsubscribeHeader(
 }
 
 export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeInput {
+	// The D18 exclusion, ahead of the per-kind split: both kinds carry probes now,
+	// so asserting it inside one branch would leave the other unchecked.
+	assertSeedShadowExclusion(envelopeInput);
 	if (envelopeInput.kind === 'transactional') {
 		// Build the unsubscribe + preference footer URLs only when the template
 		// opted in (`showUnsubscribe`) AND the send has a resolvable contact +
@@ -171,6 +197,10 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 			unsubscribeUrl,
 			preferenceUrl,
 			organizationId: envelopeInput.organizationId,
+			// The join key between this send and the IMAP observation. Absent on
+			// every envelope bound for a real recipient; without it a scheduled
+			// probe would be mailed and never found again.
+			seedProbeId: envelopeInput.seedProbeId,
 		};
 	}
 
@@ -183,8 +213,6 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	// audiences (topic AND segment) — the RFC 8058 one-click endpoint removes the
 	// contact by id across every topic, and Gmail/Yahoo's 2024 bulk-sender rule
 	// requires the header on segment blasts just as much as topic newsletters.
-	assertSeedShadowExclusion(envelopeInput);
-
 	const isTopic = envelopeInput.audienceType !== 'segment';
 	const hasContact = envelopeInput.contactInfo.contactId !== undefined;
 
@@ -395,11 +423,15 @@ export const sendSingleEmail = internalAction({
 			sendRef:
 				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
 					? { kind: 'campaign', id: envelopeInput.emailSendId }
-					: envelopeInput.kind === 'campaign' && envelopeInput.seedProbeRef
-						? // A seed shadow copy's durable reference is its probe ledger
-							// row (D18): enough for a stable idempotency key and an
-							// authenticated re-entry token, and deliberately not a Send.
-							{ kind: 'seedProbe', id: envelopeInput.seedProbeRef }
+					: // A seed probe's durable reference is its probe ledger row (D18):
+						// enough for a stable idempotency key and an authenticated
+						// re-entry token, and deliberately not a Send. Checked ahead of
+						// `sendId` on either kind — the exclusion above already refuses an
+						// envelope carrying both, so the order only decides which error a
+						// malformed probe would produce, and this one keeps the probe arm
+						// unreachable-by-a-countable-send by construction.
+						envelopeInput.seedProbeRef
+						? { kind: 'seedProbe', id: envelopeInput.seedProbeRef }
 						: envelopeInput.kind === 'transactional' && envelopeInput.sendId
 							? { kind: 'transactional', id: envelopeInput.sendId }
 							: undefined,
@@ -423,7 +455,6 @@ export const sendSingleEmail = internalAction({
 		// selects and expires work on it, so a probe that never gets here is never
 		// looked for and never classified `missing`.
 		if (
-			envelopeInput.kind === 'campaign' &&
 			envelopeInput.seedProbeRef !== undefined &&
 			envelopeInput.organizationId !== undefined &&
 			dispatchResult.success

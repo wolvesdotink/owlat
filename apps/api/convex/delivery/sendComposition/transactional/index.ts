@@ -12,17 +12,13 @@
  * change is a single composer file.
  */
 
+import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import { buildFeedbackId } from '../feedbackId';
 import { personalize } from '../personalization';
 import type { TransformConfig } from '../transform';
-import type {
-	ComposerOutput,
-	TransactionalComposeInput,
-} from '../types';
+import type { ComposerOutput, TransactionalComposeInput } from '../types';
 
-export function composeTransactional(
-	input: TransactionalComposeInput,
-): ComposerOutput {
+export function composeTransactional(input: TransactionalComposeInput): ComposerOutput {
 	const vars = input.dataVariables ?? {};
 	const subject = personalize(input.template.subject, vars, { escape: 'header' });
 	const html = personalize(input.template.htmlContent, vars, { escape: 'html' });
@@ -46,6 +42,14 @@ export function composeTransactional(
 		if (feedbackId) {
 			headers['Feedback-ID'] = feedbackId;
 		}
+	}
+
+	// Deliverability seed probe: the ONE header that distinguishes a scheduled
+	// probe from the stream's ordinary mail. Opaque id, no recipient PII, and
+	// only ever set by the scheduled-probe builder — a real recipient's envelope
+	// never carries `seedProbeId`.
+	if (input.seedProbeId) {
+		headers[SEED_PROBE_HEADER] = input.seedProbeId;
 	}
 
 	// The footer needs BOTH the unsubscribe and preference URLs (matching the

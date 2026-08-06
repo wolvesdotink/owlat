@@ -132,6 +132,12 @@ export type TransactionalComposeInput = {
 	// stream) so transactional/automation spam complaints aggregate separately.
 	// The BetterAuth org id (a string) anchors the stable SenderId.
 	organizationId?: string;
+	// Deliverability seed probe id. Present ONLY on a scheduled probe addressed
+	// to an operator-owned seed mailbox (`delivery/seedScheduledProbe.ts`); the
+	// composer stamps it as `X-Owlat-Seed-Probe` so the IMAP poller can find the
+	// message again. Same opaque value and same header as the campaign shadow
+	// copy's — one join key for one poller, not a second one per stream.
+	seedProbeId?: string;
 };
 
 export type TestComposeInput = {
