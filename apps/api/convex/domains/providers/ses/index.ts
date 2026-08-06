@@ -142,7 +142,8 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	 * `providerRoutes.ts` used to do inline — the same existence read on the
 	 * frozen `sendingDomainSesIdentities` sibling, the same scheduled
 	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
-	 * of whichever kind the route actually named (plan D2).
+	 * of whichever kind the route actually named (the seams plan's D2 —
+	 * capabilities, not identity).
 	 */
 	async ensureRelayIdentity(ctx, domain) {
 		const existing = await ctx.db

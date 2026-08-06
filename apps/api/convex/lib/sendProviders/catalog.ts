@@ -14,12 +14,18 @@ import type {
 } from './catalogTypes';
 
 /**
+ * PLAN NUMBERS below name their own plan: the comments on the entries are the
+ * MANDRILL plan's, the ones on the plugin guard are the SEAMS plan's, and a
+ * bare `D2` would be ambiguous between them.
+ *
  * The declaration vocabulary — the capability unions and the entry shapes — was
- * split into `./catalogTypes.ts` when the `domainVerification` field pushed this
- * file past the ~500 LOC ratchet (`scripts/check-file-size.sh`) — a pure
- * extraction, no behaviour. EVERY name that module exports is re-exported here,
- * so every consumer keeps importing `lib/sendProviders/catalog`, nothing had to
- * move, and `vi.mock` of this module still intercepts the accessors; the
+ * split into `./catalogTypes.ts` when the acceptance/message-id semantics the
+ * seams plan's P0.1 added (and the PREREQUISITES note that came with them) took
+ * this file past the ~500 LOC ratchet (`scripts/check-file-size.sh`): 253 lines
+ * on `main`, `domainVerification` already among them, 536 by the end of P0.1. A
+ * pure extraction, no behaviour. EVERY name that module exports is re-exported
+ * here, so every consumer keeps importing `lib/sendProviders/catalog`, nothing
+ * had to move, and `vi.mock` of this module still intercepts the accessors; the
  * PREREQUISITES note on `AcceptanceSemantics` travelled with the type.
  */
 export type {
@@ -128,20 +134,22 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Mandrill accepts a per-message `return_path_domain`, but only for a
 		// domain SPF'd to Mandrill in the account — and whether VERP-style
 		// envelope senders survive is deployment-specific. Only an observed
-		// delivered bounce settles it (D5).
+		// delivered bounce settles it (Mandrill plan D5).
 		supportsCustomReturnPath: 'probe',
-		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject (D10).
+		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject
+		// (Mandrill plan D10).
 		hasProviderFeedback: true,
 		// Mandrill's sender-domain API (`senders/add-domain` / `check-domain`) is
-		// read by `domains/providers/mandrill` (P3.1), which registers the kind in
-		// `SENDING_DOMAIN_PROVIDERS` and answers the relay-verification seam from
-		// `sendingDomainRelayIdentities`. Declaring 'api' without that provider is
-		// a compile error (the `ApiVerifiedSendProviderKind` completeness guard),
-		// so this line and that registration can only move together.
+		// read by `domains/providers/mandrill` (the MANDRILL plan's P3.1), which
+		// registers the kind in `SENDING_DOMAIN_PROVIDERS` and answers the
+		// relay-verification seam from `sendingDomainRelayIdentities`. Declaring
+		// 'api' without that provider is a compile error (the
+		// `ApiVerifiedSendProviderKind` completeness guard), so this line and that
+		// registration can only move together.
 		domainVerification: 'api',
-		// `send-raw` has no idempotency surface (D4): a lost response may sit on
-		// top of an accepted and delivered message, so the ambiguity parks on
-		// Mandrill's webhook feedback instead of being replayed.
+		// `send-raw` has no idempotency surface (Mandrill plan D4): a lost response
+		// may sit on top of an accepted and delivered message, so the ambiguity
+		// parks on Mandrill's webhook feedback instead of being replayed.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
 	},
@@ -171,13 +179,14 @@ const pluginCatalog =
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG as readonly GeneratedSendTransportCatalogEntry[];
 
 /**
- * THE UNTYPED TIER FAILS CLOSED TOO (plan P0.1 / D2).
+ * THE UNTYPED TIER FAILS CLOSED TOO (the seams plan's P0.1 / D2).
  *
  * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
  * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
  * entries are generated and reach the catalog through a cast, so the type says
  * nothing about them. Today they cannot carry either field at all — the plugin
- * codegen emits a fixed shape with no semantics — but plan P3.1 gives the plugin
+ * codegen emits a fixed shape with no semantics — but the seams plan's P3.1
+ * (contract parity — not the Mandrill plan's P3.1) gives the plugin
  * `sendTransport` contract the capability fields, and at that moment the
  * PREREQUISITES note on {@link AcceptanceSemantics} would be the only thing
  * standing between a manifest and a mislabelled measurement plane: a bundled
@@ -195,8 +204,8 @@ const pluginCatalog =
  * pairing discussion on {@link CoreSendProviderCatalogEntry}). Only the values
  * whose prerequisites live outside the catalog are refused.
  *
- * P3.1 relaxes this by generalizing the three sites in that note and deleting
- * the check — in that order, deliberately, in one change.
+ * That P3.1 relaxes this by generalizing the three sites in that note and
+ * deleting the check — in that order, deliberately, in one change.
  */
 function assertPluginDispatchSemanticsAreGeneral(
 	entries: readonly GeneratedSendTransportCatalogEntry[]
@@ -274,7 +283,7 @@ export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
  * mistaken for custody the transport never took.
  *
  * This is the capability that replaced `providerKind === 'mta'` at the two
- * acceptance sites in `delivery/governedDispatch.ts` (plan D2).
+ * acceptance sites in `delivery/governedDispatch.ts` (the seams plan's D2).
  */
 export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemantics {
 	return sendProviderCatalogEntry(kind).acceptanceSemantics ?? 'unknown-on-timeout';

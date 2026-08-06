@@ -1,13 +1,25 @@
 /**
  * Send-provider catalog — the DECLARATION vocabulary.
  *
- * Split out of `./catalog.ts` when the `domainVerification` field (P0.3) pushed
- * that file past the ~500 LOC ratchet `scripts/check-file-size.sh` enforces —
- * a pure extraction, no behaviour, made here because the ratchet has to be
- * green at the wave boundary. The seam is the one the file already had: the
- * capability unions and the entry shapes are the vocabulary a catalog entry is
- * written in, `catalog.ts` is the entries themselves plus the accessors that
- * apply each field's fail-closed default.
+ * PLAN NUMBERS: this file's comments cite THREE plans, so each citation names
+ * its own — the seams plan (which owns the branch), the Mandrill provider plan,
+ * and the deliverability plan that shipped the return-path probe. A bare `D2`
+ * here would be ambiguous between at least two of them.
+ *
+ * Split out of `./catalog.ts` when the seams plan's P0.1 took it past the ~500
+ * LOC ratchet `scripts/check-file-size.sh` enforces: `catalog.ts` was 253 lines
+ * on `main` — `domainVerification` and its entries already among them — and
+ * reached 536 through the acceptance/message-id semantics vocabulary below and
+ * the PREREQUISITES note that came with it. A pure extraction, no behaviour,
+ * made in P0.3 because the ratchet has to be green at the wave boundary rather
+ * than because P0.3 is what grew the file. (Which matters if the vocabulary is
+ * ever generalized away: the question "can the split be reverted?" is about
+ * these types, not about `domainVerification`.)
+ *
+ * The seam is the one the file already had: the capability unions and the entry
+ * shapes are the vocabulary a catalog entry is written in, `catalog.ts` is the
+ * entries themselves plus the accessors that apply each field's fail-closed
+ * default.
  *
  * IMPORT THROUGH `catalog.ts`, not through here: it re-exports every name this
  * module exports, so the import site stays `lib/sendProviders/catalog` and
@@ -23,8 +35,9 @@ export type SendProviderKind = CoreSendProviderKind | PluginSendTransportKind;
 
 /**
  * Whether this transport lets us set the RFC5321.MailFrom (the VERP envelope
- * sender) on a send — the ONE capability the catalog did not express (plan D4:
- * a flag on the existing catalog, never a second credential model).
+ * sender) on a send — the ONE capability the catalog did not express (the
+ * DELIVERABILITY plan's D4: a flag on the existing catalog, never a second
+ * credential model).
  *
  *  - `yes`   the transport is under our control or documented to honour it.
  *  - `no`    the transport owns the envelope sender; bounces land at the
@@ -32,7 +45,8 @@ export type SendProviderKind = CoreSendProviderKind | PluginSendTransportKind;
  *  - `probe` unknowable statically — a bring-your-own SMTP relay. The verdict
  *            comes from a probe whose delivered bounce we actually observed;
  *            until then it resolves to `unknown`, which is treated exactly
- *            like `no` (never an error, never a blocker — plan D2).
+ *            like `no` (never an error, never a blocker — the DELIVERABILITY
+ *            plan's D2).
  */
 export type DeclaredCustomReturnPathSupport = 'yes' | 'no' | 'probe';
 
@@ -55,7 +69,8 @@ export type DomainVerificationSupport = 'api' | 'none';
 
 /**
  * What a SUCCESSFUL dispatch means for this transport, and therefore what an
- * AMBIGUOUS one may be answered with (plan D2 — capabilities, not identity).
+ * AMBIGUOUS one may be answered with (the SEAMS plan's D2 — capabilities, not
+ * identity).
  *
  *  - `accepted`  the transport takes CUSTODY of the message. Success is an
  *                intake acceptance, not a delivery: the Send stays `queued`
@@ -69,7 +84,8 @@ export type DomainVerificationSupport = 'api' | 'none';
  *  - `unknown-on-timeout` the send IS the handoff — there is no separate
  *                custody state to report — and a lost response CANNOT be
  *                re-asked: a replay on a transport with no idempotency surface
- *                would double-deliver (plan D4). An ambiguous outcome parks
+ *                would double-deliver (the MANDRILL plan's D4, which is where
+ *                that posture was first argued). An ambiguous outcome parks
  *                awaiting provider feedback where the kind has a feedback
  *                channel, and fails where it has none.
  *
@@ -201,7 +217,10 @@ export interface SendProviderCatalogEntry {
  * silently loses its relay eligibility, or how a transport that takes custody
  * of a message has that custody go unrecorded. Bundled plugin transports keep
  * the optional fields — they are generated from plugin manifests, which have no
- * such surface to declare (plugin-tier parity is plan P3.1) — and are held to
+ * such surface to declare (plugin-tier parity is the SEAMS plan's P3.1 —
+ * contract parity for capabilities, extras and instances, NOT the Mandrill
+ * plan's P3.1, which is the domain-identity adapter that already shipped) — and
+ * are held to
  * the same custody prerequisites at composition time by
  * `assertPluginDispatchSemanticsAreGeneral` in `./catalog.ts` instead.
  *
