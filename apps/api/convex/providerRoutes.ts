@@ -9,14 +9,17 @@ import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
-import { isFallbackRelayEligible } from './lib/sendProviders/fallbackEligibility';
-import { enabledFallbackRelayKinds } from './lib/sendProviders/fallbackRelays';
-import { OWN_ARM_TRANSPORT_KIND } from './lib/sendProviders/strategies';
 import {
-	OWN_SENDING_DOMAIN_PROVIDER_KIND,
-	isSendingDomainProviderKind,
-	providerFor,
-} from './domains/providers';
+	isFallbackRelayEligible,
+	routeCarriesEnabledRelay,
+	routeCarriesOwnArm,
+} from './lib/sendProviders/fallbackEligibility';
+import {
+	enabledFallbackRelayKinds,
+	ensureRelayIdentities,
+	relayIdentityBackfills,
+} from './lib/sendProviders/fallbackRelays';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './domains/providers';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
@@ -276,29 +279,22 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 			args.relayProviderType === undefined
 				? await enabledFallbackRelayKinds(ctx)
 				: [args.relayProviderType];
-		// Bound to their modules: the drain holds the functions, not the receivers.
-		const backfills = kinds
-			.filter((kind) => isSendingDomainProviderKind(kind))
-			.map((kind) => providerFor(kind))
-			.map((provider) => provider.ensureRelayIdentity?.bind(provider))
-			.filter((ensureRelayIdentity) => ensureRelayIdentity !== undefined);
+		// Resolved once per BATCH, not once per domain: an empty result means the
+		// configured relay has nothing to register at, and the drain then stops
+		// before it reads a page rather than paginating the whole domain table to
+		// call nothing. The registry filter itself lives with the rule, in
+		// `lib/sendProviders/fallbackRelays.ts` — the forward half of this pair
+		// (`domains/lifecycle.ts`'s `provision_relay_identity_if_enabled` effect)
+		// calls the same two functions, so neither half can grow a private idea of
+		// which relay a domain's identity is for or of which domains get one.
+		const backfills = relayIdentityBackfills(kinds);
 		if (backfills.length === 0) return;
 		const page = await ctx.db
 			.query('domains')
 			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.paginate(args.paginationOpts);
 		for (const domain of page.page) {
-			// A relay identity coexists on a domain whose PRIMARY provider is our
-			// own MTA; a domain already hosted at some provider owns its identity
-			// through the ordinary lifecycle. D3's sanctioned identity check, read
-			// from the domain-provider registry's single declaration — these are
-			// domain-provider kinds, not send transports, so the constant is the
-			// registry's and not `OWN_ARM_TRANSPORT_KIND`. (`domains/lifecycle.ts`
-			// spells the same rule for the forward path; P0.4 owns collapsing it.)
-			if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) continue;
-			for (const ensureRelayIdentity of backfills) {
-				await ensureRelayIdentity(ctx, domain);
-			}
+			await ensureRelayIdentities(ctx, domain, backfills);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
@@ -367,25 +363,15 @@ export const setRoute = authedMutation({
 			if (!isFallbackRelayEligible(fallback.relayProviderType, () => isRelayReady)) {
 				throwInvalidInput('Deliverability fallback relay must be a configured non-MTA transport');
 			}
-			if (
-				!args.providers.some(
-					(provider) => provider.isEnabled && provider.providerType === fallback.relayProviderType
-				)
-			) {
+			// The other two conditions, asked through the same module the
+			// eligibility question comes from — and for the same reason. The
+			// `deployment.relay` checklist item reports on exactly these three, so a
+			// copy of either rule here is a copy that can start disagreeing with what
+			// the operator is told about the route they just saved.
+			if (!routeCarriesEnabledRelay(args.providers, fallback.relayProviderType)) {
 				throwInvalidInput('Deliverability fallback relay must be enabled in this route');
 			}
-			// The one identity D3 sanctions — own MTA vs. not-own — read from its
-			// SINGLE declaration rather than restated as a literal here. A
-			// deliverability fallback is by definition traffic moving off our own
-			// infrastructure onto a relay, so the route it is configured on has to
-			// carry the arm it moves away FROM. `OWN_ARM_TRANSPORT_KIND` is the same
-			// constant the adaptive mix splits its arms on, which is what keeps this
-			// precondition and that split from ever meaning two different transports.
-			if (
-				!args.providers.some(
-					(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
-				)
-			) {
+			if (!routeCarriesOwnArm(args.providers)) {
 				throwInvalidInput('Deliverability fallback requires an enabled owned-MTA route');
 			}
 		}

@@ -69,9 +69,12 @@ import {
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
 import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
-import { enabledFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import {
-	OWN_SENDING_DOMAIN_PROVIDER_KIND,
+	enabledFallbackRelayKinds,
+	ensureRelayIdentities,
+	relayIdentityBackfills,
+} from '../lib/sendProviders/fallbackRelays';
+import {
 	isSendingDomainProviderKind,
 	providerFor,
 	type ProviderIdentity,
@@ -567,37 +570,28 @@ async function applyEffects(
 				break;
 			}
 			case 'provision_relay_identity_if_enabled': {
-				// OUR OWN INFRASTRUCTURE, read from its one declaration rather than
-				// spelled as a literal here: `provisionDeliverabilityRelayBatch` — the
-				// catch-up half of this pair — filters domains on the same constant,
-				// so neither half can quietly start matching a different kind.
-				if (effect.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) break;
-				// ONE reading of "which relay is the fallback configured to use",
-				// shared with the catch-up drain in `providerRoutes.ts` — the two
-				// halves of "every domain gets an identity exactly once" must not
-				// disagree about which relay that identity is for.
-				const relayKinds = await enabledFallbackRelayKinds(ctx);
-				// ASK THE KIND, don't name it. Whichever relay the fallback configured
-				// gets the backfill its own module implements — the same
-				// `ensureRelayIdentity` the catch-up drain in `providerRoutes.ts` calls,
-				// so the two halves of "every domain gets an identity exactly once"
-				// cannot provision different things. A kind with no identity API to
-				// register at omits the method and this does nothing at all, which is
-				// what the old if-chain achieved by not listing it.
-				//
-				// The doc is re-read rather than carried on the effect: the status
-				// patch has already landed, and the adapters do an indexed
-				// "already have one?" read before scheduling anything.
+				// THE FORWARD HALF OF A PAIR, and the pair shares ONE implementation:
+				// `enabledFallbackRelayKinds` → `relayIdentityBackfills` →
+				// `ensureRelayIdentities` is the whole rule, and the catch-up drain
+				// (`providerRoutes.provisionDeliverabilityRelayBatch`) walks the same
+				// three. Neither the "which relay" reading, nor the registry filter,
+				// nor the own-MTA-primary gate is restated here — two spellings of
+				// "every domain gets an identity exactly once" is how one half starts
+				// provisioning a domain the other half skips, with the only symptom a
+				// relay refusing a real send.
+				const backfills = relayIdentityBackfills(await enabledFallbackRelayKinds(ctx));
+				if (backfills.length === 0) break;
+				// The doc is re-read rather than taken from the effect: the status
+				// patch has already landed, the own-MTA gate downstream reads the same
+				// subject the drain reads, and the adapters do an indexed "already
+				// have one?" read before scheduling anything.
 				const domain = await ctx.db.get(effect.domainId);
 				if (!domain) break;
-				for (const kind of relayKinds) {
-					if (!isSendingDomainProviderKind(kind)) continue;
-					const provider = providerFor(kind);
-					// Scheduled inside the adapter, never inline: a provider outage must
-					// not roll back the domain's → verified transition (the same
-					// reasoning as `register_with_provider`).
-					await provider.ensureRelayIdentity?.(ctx, domain);
-				}
+				// Adapters SCHEDULE the provider call rather than making it, and
+				// `ensureRelayIdentities` swallows a throw from the read they make
+				// first: nothing in this effect may roll back the domain's → verified
+				// transition (the same reasoning as `register_with_provider`).
+				await ensureRelayIdentities(ctx, domain, backfills);
 				break;
 			}
 		}
