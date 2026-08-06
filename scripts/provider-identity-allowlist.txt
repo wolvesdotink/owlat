@@ -36,12 +36,24 @@
 # to all of apps/, packages/ and examples/ instead of stopping at the backend,
 # and what it found — the setup wizard, the transport editor, the CLI and the
 # shared validators, none of which any Wave-0 piece touched — is carried here as
-# named debt rather than left invisible. A1's "the allowlist contains exactly the
-# definitional sites" therefore describes the END of Wave 1, not the end of
-# P0.5: the pieces named below delete these lines, and the definitional sites
-# themselves are not in this file at all because they are declarations. That is
-# the ecosystem goal's real surface — while these branches exist, a provider that
-# needs no backend edit still cannot ship without a host edit.
+# named debt rather than left invisible. That is the ecosystem goal's real
+# surface: while these branches exist, a provider that needs no backend edit
+# still cannot ship without a host edit.
+#
+# SO A1 IS NOT REACHABLE AS WRITTEN, AND THIS FILE IS WHERE THAT BECOMES
+# VISIBLE — the plan owner's call, not P0.5's to make silently. Two things are
+# true at once. The definitional sites A1 names are not in this file at all,
+# because after P0.1–P0.4 they are declarations rather than comparisons (listing
+# them would trip the stale-entry check and turn the gate red). And of the
+# families below, three carry no owning card in this plan: `return-path` (2
+# entries, waiting on the capability reaching SendingDomainProviderModule),
+# `adapter-adjacent` (2 entries, waiting on the relay-identity sweep becoming the
+# table's own dispatch) and `provider-shaped-ui-followup` (4 entries, waiting on
+# the wizard-descriptor follow-up after P1.2). Wave 1 therefore ends at 8
+# entries, not 0. Either those 8 grow owning cards or A1 is restated as "the
+# allowlist contains only entries with a named owner"; until one of the two
+# happens, a wave gate reading A1 literally will read as failed for a criterion
+# nothing in the plan can satisfy.
 #
 # THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
 # it; because the ratchet fails on an entry that excuses nothing, that piece's
@@ -107,7 +119,7 @@ apps/web/app/pages/dashboard/delivery/config.vue  # provider panels keyed on kin
 apps/web/app/components/delivery/TransportCredentialsStep.vue  # per-kind fields inside the wizard step
 apps/web/app/composables/setupWizardValidation.ts  # per-kind required-field rules
 apps/web/app/pages/desktop/setup.vue  # the desktop wizard's own copy
-apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy
+apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to collisions:mta after its per-kind fields AND its own-arm branch go, because the compose profile stays
 
 
 # ── credentials-and-probes (owner: P1.1 — catalog fields in packages/shared) ──
@@ -134,14 +146,20 @@ packages/shared/src/featureFlags.ts  # which feature profile each kind implies
 # apps/api/convex/lib/sendProviders/strategies/adaptive_mix, and neither
 # packages/shared nor the CLI may import app code. P1.1 moves the catalog — and
 # with it this declaration — into packages/shared, at which point every one of
-# these reads the constant instead of restating it. quickstart.ts and
-# pages/setup/email.vue additionally ask the docker COMPOSE question
-# `profiles.includes('mta')`, which is a vocabulary collision rather than debt;
-# their whole-file licence here covers it until their real leak is swept, which
-# is when it moves to scripts/provider-identity-collisions.txt.
+# these reads the constant instead of restating it.
+#
+# TWO ENTRIES DO NOT SIMPLY DISAPPEAR — quickstart.ts and (in the family above)
+# pages/setup/email.vue. Each asks TWO questions spelled 'mta': the own-arm one,
+# which is debt, and the docker COMPOSE one, `profiles.includes('mta')`, which is
+# a vocabulary collision that nothing ever removes. Per-literal qualification
+# cannot tell them apart, so the whole-file licence here covers both and the
+# stale-entry check will NOT fire when the own-arm branch goes — the sweeper has
+# to MOVE the line to scripts/provider-identity-collisions.txt as
+# `path:mta` rather than delete it, or the debt count keeps a site it no longer
+# owns. Their entry lines say so, and P1.1 carries the move.
 
 apps/setup-cli/src/commands/doctor.ts  # the own-MTA branch of the diagnosis
-apps/setup-cli/src/commands/quickstart.ts  # own-arm plus the compose profile
+apps/setup-cli/src/commands/quickstart.ts  # MOVES to collisions:mta when P1.1 lands — the surviving 'mta' is the compose profile, which no sweep removes
 apps/setup-cli/src/commands/setup.ts  # the top-level flow's own-arm question
 apps/web/app/composables/useRelayRemovalGuard.ts  # "is the arm you are removing ours"
 apps/web/app/utils/providerRouting.ts  # the client-side split
