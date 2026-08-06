@@ -14,6 +14,7 @@ import {
 	useRelayCredentialDraft,
 } from '~/composables/useRelayCredentialDraft';
 import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
+import { credentialEnvVarFor } from '~/composables/setupWizardCredentials';
 import TransportCredentialFields from './TransportCredentialFields.vue';
 
 /**
@@ -80,7 +81,22 @@ const { provider, credentialValues, preset, presetOptions } = relay;
 // lives in. Seeded from the ACTIVE mode (via the shared `seedOutboundTlsMode`)
 // so re-applying an edit preserves a previously-chosen floor; falls back to the
 // `opportunistic` backend default (today's behaviour) when unset/unknown.
-credentialValues['OUTBOUND_TLS_MODE'] = seedOutboundTlsMode(props.currentOutboundTlsMode);
+//
+// The own arm's outbound-TLS descriptor, by KEY. The same key names the slot
+// this screen fills with that floor's guidance (`#outboundTlsMode`, below) —
+// both address the FIELD, which is why neither names an env variable.
+//
+// THE VARIABLE NAME IS READ FROM THE DESCRIPTOR, never spelled here. The values
+// map is keyed by `string`, so a hand-written `'OUTBOUND_TLS_MODE'` had no
+// compile-time link to the field that renders it: rename the variable in the
+// catalog and this write lands on a dead key, the select falls back to the
+// descriptor's default, and every apply silently lowers an operator's
+// `require-verified` floor back to `opportunistic` — with a green build.
+const OUTBOUND_TLS_FIELD_KEY = 'outboundTlsMode';
+const outboundTlsEnvVar = credentialEnvVarFor(OWN_SEND_PROVIDER_KIND, OUTBOUND_TLS_FIELD_KEY);
+if (outboundTlsEnvVar !== undefined) {
+	credentialValues[outboundTlsEnvVar] = seedOutboundTlsMode(props.currentOutboundTlsMode);
+}
 
 const fromEmail = ref('');
 const fromName = ref('');

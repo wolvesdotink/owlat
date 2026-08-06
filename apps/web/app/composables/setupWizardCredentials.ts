@@ -13,6 +13,8 @@
  *
  *   {@link seedCredentialValues}   the blank form, with each descriptor's
  *                                  declared default already in it
+ *   {@link credentialEnvVarFor}    one field KEY → the variable it writes, for a
+ *                                  surface that seeds one field itself
  *   {@link credentialFieldEnv}     one descriptor → the env variables it owns
  *   {@link transportCredentialEnv} one KIND → the env patch its form writes
  *   {@link credentialValuesFromDraft} / {@link draftCredentialsFromValues}
@@ -75,6 +77,26 @@ export function hostPortFieldFor(
 	return credentialFieldsFor(kind).find(
 		(field): field is SendProviderHostPortField => field.kind === 'host-port'
 	);
+}
+
+/**
+ * The env variable ONE named field of a kind writes, or `undefined` when that
+ * kind declares no such field.
+ *
+ * For the surface that has to SEED one field from a value of its own (the
+ * transport editor seeds the outbound-TLS floor from the active mode, so
+ * re-applying an edit cannot silently reset it). Spelling the variable name
+ * there instead would be a second declaration with no link to the descriptor:
+ * `TransportCredentialValues` is keyed by `string`, so a rename in the catalog
+ * would leave that write landing on a dead key, the control falling back to its
+ * default, and every apply quietly lowering the operator's chosen floor — with a
+ * green build.
+ */
+export function credentialEnvVarFor(
+	kind: string | null | undefined,
+	fieldKey: string
+): string | undefined {
+	return credentialFieldsFor(kind).find((field) => field.key === fieldKey)?.envVar;
 }
 
 /** Read a form checkbox back out of its string value. */
@@ -140,6 +162,13 @@ export function firstPreset(
  *  - `boolean` writes `'true'` / `'false'`.
  *  - everything else writes what was typed, verbatim. A region or an API key is
  *    free text: normalising it here would silently change a credential.
+ *
+ * EXPORTED FOR ITS SUITE, which is a real consumer and the only possible one for
+ * the `boolean` rule: no shipped entry declares a boolean credential, so that
+ * branch cannot be reached through {@link transportCredentialEnv} and would ship
+ * unproven until provider N+1 met it. (Nuxt auto-imports every exported name in
+ * this directory into every component namespace, so an export here has to earn
+ * itself — see the collision note on `~/utils/transportState`.)
  */
 export function credentialFieldEnv(
 	field: SendProviderCredentialField,
