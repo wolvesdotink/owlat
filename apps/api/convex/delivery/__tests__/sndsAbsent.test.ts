@@ -2,10 +2,16 @@
  * P4-1 (d): the D2 proof.
  *
  * SNDS enrollment is free, but it is still an account. A deployment that never
- * enrolled must send, poll, evaluate and render exactly as cleanly as one that
- * did — the only difference being lower measurement confidence and a slower
- * Microsoft ramp. This suite asserts that literally: no network call, no
- * write, no throw, no error state, and the documented substitution in force.
+ * enrolled must send, poll and render exactly as cleanly as one that did — the
+ * only difference being lower measurement confidence and a slower Microsoft
+ * ramp. This suite asserts that literally on the INGEST side: no network call,
+ * no write, no throw, no error state.
+ *
+ * The gate half of this proof went with the gate. `evaluateSndsGate` and
+ * `snds.getMicrosoftGateInput` were a parallel route no controller ever
+ * consumed, removed under D20 (issue #515); the substitution they described is
+ * the `microsoft_snds` row of the degradation matrix, which the controller DOES
+ * fold, and `ramp/__tests__/degradationMatrix.test.ts` asserts its D2 posture.
  */
 
 import { convexTest } from 'convex-test';
@@ -13,7 +19,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { parseSndsFeedUrls } from '../sndsConfig';
-import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../ramp/sndsGate';
 
 import { modules } from './helpers/convexModules';
 
@@ -59,64 +64,5 @@ describe('SNDS absent — the poller', () => {
 			deleted: 0,
 			continuationScheduled: false,
 		});
-	});
-});
-
-describe('SNDS absent — the gate', () => {
-	it('reports the documented substitution rather than an error', async () => {
-		const t = convexTest(schema, modules);
-		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, {});
-
-		expect(input.available).toBe(false);
-		if (input.available) return;
-		expect(input.reason).toBe('not_enrolled');
-		// The cell's own outcome counters, dwell x2, ceiling one phase lower. NOT
-		// SMTP reply classification (issue #501): the classifier's per-category
-		// counts do reach Convex now, but the clause that reads them belongs to the
-		// standalone evaluator and this substitution covers relay-equipped cells
-		// too, whose gate 2 never consults it.
-		expect(input.substitution).toEqual({
-			source: 'own_bounce_deferral_complaint',
-			dwellMultiplier: 2,
-			ceilingPhaseDelta: -1,
-			confidence: 'low',
-			confidenceNote: expect.stringContaining('Measurement confidence: low'),
-			isBlocking: false,
-		});
-		expect(input.substitution).toEqual(SNDS_ABSENT_SUBSTITUTION);
-		// D2, asserted rather than assumed: the substitution is never a blocker,
-		// and the sentence the UI shows explains rather than nags (D14).
-		expect(input.substitution.isBlocking).toBe(false);
-		expect(input.substitution.confidenceNote).not.toMatch(
-			/error|failed|invalid|incomplete|required|must/i
-		);
-	});
-
-	it('HOLDS the ramp instead of breaching it, and says so in plain language', async () => {
-		const t = convexTest(schema, modules);
-		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, {});
-		const verdict = evaluateSndsGate(input);
-
-		expect(verdict.verdict).toBe('insufficient_data');
-		if (verdict.verdict !== 'insufficient_data') return;
-		expect(verdict.substitution).toEqual(SNDS_ABSENT_SUBSTITUTION);
-		// The reason is an explanation, never a nag: no error, no failure, no
-		// "setup incomplete", no instruction that the operator MUST do anything.
-		expect(verdict.reason).toMatch(/outcomes of its own sends/);
-		expect(verdict.reason).not.toMatch(/error|failed|invalid|incomplete|required|must/i);
-		// Absence never promotes — and, just as importantly, never demotes.
-		expect(sndsPromotionPass(input)).toBe(false);
-	});
-
-	it('an enrolled deployment with no data yet takes the SAME substitution path', async () => {
-		const t = convexTest(schema, modules);
-		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
-		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, {});
-
-		expect(input.available).toBe(false);
-		if (input.available) return;
-		expect(input.reason).toBe('no_data');
-		expect(input.substitution).toEqual(SNDS_ABSENT_SUBSTITUTION);
-		expect(evaluateSndsGate(input).verdict).toBe('insufficient_data');
 	});
 });

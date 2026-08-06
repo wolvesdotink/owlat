@@ -3,10 +3,10 @@
  *
  * PURE: strings in, values out. No clock, no database, no Convex function —
  * which is the whole reason it is its own module. Both SNDS sides need these:
- * `sndsPoll.ts` (the action that fetches) and `snds.ts` (the mutations and the
- * gate query) each have to know whether an enrolment exists, which addresses we
- * claim, and how far back a day may reach. Keeping them in the poller made the
- * durable module import the action module — a query depending on fetch plumbing
+ * `sndsPoll.ts` (the action that fetches) and `snds.ts` (the durable mutations)
+ * each have to know whether an enrolment exists, which addresses we claim, and
+ * how far back a day may reach. Keeping them in the poller made the durable
+ * module import the action module — a mutation depending on fetch plumbing
  * purely to read configuration. Both now depend on this, and on nothing else.
  */
 
@@ -70,9 +70,10 @@ export function parseSndsFeedUrls(raw: string | undefined): string[] {
  *
  * An SNDS key can cover a whole registered range, so a feed may legitimately
  * carry addresses that are not ours. When the operator declares their pool we
- * treat it as an allowlist and drop everything else; when they do not, the feed
- * is stored unattributed and the GATE refuses to read it as positive evidence
- * (see `snds.ts`'s `getMicrosoftGateInput`).
+ * treat it as an allowlist and drop everything else; when they do not, whatever
+ * the key's range covers is stored unattributed — which is why the poller is the
+ * only place the claim is enforced, and why `rampPromotionEvidence.ts` reads the
+ * stored rows deployment-wide rather than pretending to scope them.
  *
  * The grammar is `domains/spf.ts`'s, read leniently: one parser for one env var,
  * because a typo in the pool must not take the poller down but it also must not

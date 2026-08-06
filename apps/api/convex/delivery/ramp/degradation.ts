@@ -84,9 +84,18 @@ export interface RampDegradation {
 	readonly paceCeilingDay: number | undefined;
 	readonly confidence: RampGateConfidence;
 	/**
-	 * NO `notes` AND NO `improvements` HERE ON PURPOSE. Both are 1:1 projections
-	 * of `absent` — two representations of one fact, free to drift — so the copy is
-	 * derived where it is rendered, in `./measurementConfidence.ts`, from this list.
+	 * NO `notes` AND NO `improvements` HERE ON PURPOSE. Both would be 1:1
+	 * projections of `absent` — two representations of one fact, free to drift —
+	 * so a renderer derives them from that list at the point it renders them.
+	 *
+	 * NOTHING DOES TODAY, and that is worth saying plainly rather than leaving as
+	 * an implication. A `rampCellConfidence` projection over this list shipped in
+	 * P3-8 and no screen ever consumed it; it went under D20 (issue #515). The
+	 * delivery dashboard grades a cell with `dashboardConfidence`
+	 * (`../deliverabilityDashboardView.ts`), which answers in machine-readable
+	 * improvement CODES rendered by `apps/web/app/utils/deliverabilityMeasurement.ts`
+	 * — so the operator copy for the table's entries lives in `absent`'s
+	 * `confidenceNote` / `improvement` fields and is read by nothing.
 	 */
 	/** ALWAYS false. Absence never blocks anything (D2). */
 	readonly isBlocking: false;
