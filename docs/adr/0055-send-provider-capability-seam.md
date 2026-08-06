@@ -90,14 +90,25 @@ reads the file and asserts it.
 For a core kind the pairing is a compile-time union rather than two independent
 fields, constrained in both directions: `accepted` only with `idempotency-key`
 (a replay is safe only when it carries the id we minted) and `idempotency-key`
-only with `accepted`. Bundled plugin entries are untyped and may present a mixed
-pairing, so the governed boundary reads the two fields independently — widening
-the union is a type change, not a behaviour change.
+only with `accepted`. The governed boundary still reads the two fields
+INDEPENDENTLY rather than deriving one from the other, so widening that union
+later is a type change, not a behaviour change.
 
-What is NOT yet general is `accepted` itself: two sites outside the catalog still
-spell the custody arm as the own MTA, and a second kind declaring custody must
-generalize both in the same change. **Which two, and what breaks if one is
-missed, is written out once** — in the PREREQUISITES note on
+Bundled plugin entries are generated and reach the catalog through a cast, so
+the union does not constrain them. The half of the rule that is about safety
+rather than tidiness is enforced for that tier at COMPOSITION time instead:
+building a catalog whose plugin entry declares `accepted` or `idempotency-key`
+throws, naming the entry. A prose note is not a control, and the failure mode it
+would otherwise guard is silent — a plugin's sends attributed to the own arm in
+every measurement row, or its ambiguous outcomes deferred until the delivery
+deadline calls them failures. Plan P3.1 gives plugin transports the capability
+fields; it relaxes this by generalizing the sites below and deleting the check,
+in that order.
+
+What is NOT yet general is `accepted` itself: three sites outside the catalog
+still spell the custody arm as the own MTA, and a second kind declaring custody
+must generalize all three in the same change. **Which three, and what breaks if
+one is missed, is written out once** — in the PREREQUISITES note on
 `AcceptanceSemantics` in `apps/api/convex/lib/sendProviders/catalog.ts`, the
 declaration site. This ADR deliberately does not restate it, so generalizing
 those sites stays a single-file edit.

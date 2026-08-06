@@ -28,10 +28,15 @@ import { describe, expect, it, vi } from 'vitest';
  *
  *  - `undeclared` declares NEITHER semantic — the shape every bundled entry has
  *    right now, since manifests carry no semantics surface at all.
- *  - `mixed` declares an id of ours WITHOUT custody. `CoreSendProviderCatalogEntry`
- *    forbids that pairing for a kind shipping in this repo, but this tier is
- *    untyped, so the accessors must keep reading the two fields independently
- *    rather than rounding one to the other.
+ *  - `partial` declares ONE of the two and leaves the other to its default.
+ *    `CoreSendProviderCatalogEntry` makes the pair inseparable for a kind
+ *    shipping in this repo, but this tier is untyped, so the accessors must keep
+ *    reading the two fields independently rather than rounding one to the other
+ *    or discarding a declaration that arrived without its twin.
+ *
+ * Neither declares `accepted` or `idempotency-key`: those are refused outright
+ * for this tier by the composition-time guard in `catalog.ts`, which
+ * `pluginCustodyGuard.test.ts` covers.
  */
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
@@ -45,15 +50,14 @@ vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 			requiredCapability: 'send:transport',
 		}),
 		Object.freeze({
-			kind: 'plugin.mail-pack.mixed',
+			kind: 'plugin.mail-pack.partial',
 			pluginId: 'mail-pack',
-			localId: 'mixed',
-			label: 'Mixed-declaration transport',
+			localId: 'partial',
+			label: 'Partially declared transport',
 			retryDelays: Object.freeze([0]),
 			requiredEnvVars: Object.freeze([]),
 			requiredCapability: 'send:transport',
-			acceptanceSemantics: 'unknown-on-timeout',
-			messageIdSource: 'idempotency-key',
+			messageIdSource: 'composed',
 		}),
 	]),
 }));
@@ -68,7 +72,7 @@ import {
 } from '../catalog';
 
 const UNDECLARED = 'plugin.mail-pack.undeclared' as SendProviderKind;
-const MIXED = 'plugin.mail-pack.mixed' as SendProviderKind;
+const PARTIAL = 'plugin.mail-pack.partial' as SendProviderKind;
 
 describe('an entry that declares neither dispatch semantic', () => {
 	it('really declares neither — so the defaults are what the accessors answered', () => {
@@ -90,12 +94,16 @@ describe('an entry that declares neither dispatch semantic', () => {
 	});
 });
 
-describe('an untyped entry with a mixed pairing', () => {
-	it('is read field by field — custody is not inferred from owning the id', () => {
-		expect(messageIdSourceFor(MIXED)).toBe('idempotency-key');
-		expect(preassignsProviderMessageId(messageIdSourceFor(MIXED))).toBe(true);
-		expect(acceptanceSemanticsFor(MIXED)).toBe('unknown-on-timeout');
-		expect(takesCustodyOnAcceptance(acceptanceSemanticsFor(MIXED))).toBe(false);
+describe('an untyped entry that declares only one of the two', () => {
+	it('is read field by field — the declared one stands, the absent one defaults', () => {
+		// The two fields are a PAIR only in the core type. At runtime they are read
+		// independently, so a half-declared entry must not have its declaration
+		// discarded for arriving alone, nor its silence filled in from its twin.
+		expect(sendProviderCatalogEntry(PARTIAL).acceptanceSemantics).toBeUndefined();
+		expect(messageIdSourceFor(PARTIAL)).toBe('composed');
+		expect(preassignsProviderMessageId(messageIdSourceFor(PARTIAL))).toBe(false);
+		expect(acceptanceSemanticsFor(PARTIAL)).toBe('unknown-on-timeout');
+		expect(takesCustodyOnAcceptance(acceptanceSemanticsFor(PARTIAL))).toBe(false);
 	});
 });
 

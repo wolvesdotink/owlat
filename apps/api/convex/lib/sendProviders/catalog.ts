@@ -65,14 +65,15 @@ export type DomainVerificationSupport = 'api' | 'none';
  * PREREQUISITES OUTSIDE THE CATALOG — the canonical list; everything else that
  * mentions this constraint (ADR 0055, the provider docs page, the NOTE on
  * {@link MessageIdSource}) POINTS HERE rather than restating it, so generalizing
- * the two sites below is one edit plus three link targets rather than four prose
- * rewrites. Keep it that way.
+ * the three sites below is one edit plus three link targets rather than four
+ * prose rewrites. Keep it that way, and when a site is generalized, strike it
+ * from HERE rather than adding a second list somewhere else.
  *
  * `accepted` IS NOT YET A GENERAL CAPABILITY. Only the own MTA declares it, and
- * two sites outside this file still spell the custody arm as that one kind. A
+ * three sites outside this file still spell the custody arm as that one kind. A
  * second kind declaring `accepted` — which, by the shape of
  * {@link CoreSendProviderCatalogEntry}, also declares
- * `messageIdSource: 'idempotency-key'` — must generalize BOTH in the same
+ * `messageIdSource: 'idempotency-key'` — must generalize ALL THREE in the same
  * change, or its ambiguous sends die on the delivery deadline and its rows
  * name the wrong transport:
  *
@@ -93,7 +94,21 @@ export type DomainVerificationSupport = 'api' | 'none';
  *     every arm-keyed measurement row. This one is triggered by
  *     `messageIdSource: 'idempotency-key'` ON ITS OWN, so it is also the
  *     prerequisite of any future kind that pre-assigns its id without claiming
- *     custody.
+ *     custody. It owns the operator-visible wording too: the governed
+ *     boundary's `Unable to bind MTA provider identity` throw names that
+ *     mutation on purpose (grep one, find the other), so the string is renamed
+ *     WITH it rather than before it.
+ *  3. `delivery/sendCompletion.ts` — the only consumer of the
+ *     `acceptedForDelivery` verdict this declaration produces, and it is
+ *     MTA-shaped in three ways: the arm comment calls it "MTA intake", the
+ *     identity-conflict guard throws `MTA acceptance conflicts with the Send
+ *     provider identity.` at whoever is on call, and the patch defaults
+ *     `providerType: returnValue.providerType ?? 'mta'`. That default is DEAD
+ *     as written — `dispatchGovernedEmail`'s success branch always carries a
+ *     `providerType` — but a second custody kind that leaves it standing has
+ *     one silent `'mta'` stamp waiting behind any future caller that omits it,
+ *     on exactly the rows item 2 exists to keep honest. Generalize the wording
+ *     and delete the default, or re-derive why it is safe.
  */
 export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
 
@@ -171,7 +186,9 @@ export interface SendProviderCatalogEntry {
  * silently loses its relay eligibility, or how a transport that takes custody
  * of a message has that custody go unrecorded. Bundled plugin transports keep
  * the optional fields — they are generated from plugin manifests, which have no
- * such surface to declare (plugin-tier parity is plan P3.1).
+ * such surface to declare (plugin-tier parity is plan P3.1) — and are held to
+ * the same custody prerequisites at composition time by
+ * {@link assertPluginDispatchSemanticsAreGeneral} instead.
  *
  * For a CORE kind the two dispatch semantics are a PAIR, not two independent
  * fields, so they are declared as a union rather than side by side — and the
@@ -197,10 +214,11 @@ export interface SendProviderCatalogEntry {
  *    it is a type change rather than a behaviour change.
  *
  * An illegal pairing is a build break here rather than a CI failure. Untyped
- * (bundled plugin) entries never reach this type: their fail-closed defaults —
- * and their freedom to present a mixed pairing — are covered at runtime by
- * `__tests__/undeclaredSemanticsFailClosed.test.ts`, which mocks a generated
- * catalog entry that declares neither field.
+ * (bundled plugin) entries never reach this type, so the half of the rule that
+ * is about SAFETY rather than about tidiness is enforced for them at composition
+ * time by {@link assertPluginDispatchSemanticsAreGeneral}; their fail-closed
+ * defaults are pinned by `__tests__/undeclaredSemanticsFailClosed.test.ts`,
+ * which mocks a generated catalog entry that declares neither field.
  */
 type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 	readonly domainVerification: DomainVerificationSupport;
@@ -348,6 +366,53 @@ interface GeneratedSendTransportCatalogEntry extends SendProviderCatalogEntry {
 
 const pluginCatalog =
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG as readonly GeneratedSendTransportCatalogEntry[];
+
+/**
+ * THE UNTYPED TIER FAILS CLOSED TOO (plan P0.1 / D2).
+ *
+ * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
+ * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
+ * entries are generated and reach the catalog through a cast, so the type says
+ * nothing about them. Today they cannot carry either field at all — the plugin
+ * codegen emits a fixed shape with no semantics — but plan P3.1 gives the plugin
+ * `sendTransport` contract the capability fields, and at that moment the
+ * PREREQUISITES note on {@link AcceptanceSemantics} would be the only thing
+ * standing between a manifest and a mislabelled measurement plane: a bundled
+ * plugin declaring `idempotency-key` gets `bindMtaProviderIdentity` stamping
+ * `providerType: 'mta'` onto its Sends, and one declaring `accepted` gets its
+ * ambiguous outcomes replayed down an arm `withReconciliationSafety` defers
+ * until the delivery deadline terminalizes them as definite failures.
+ *
+ * A note is not a control. This is: composing a catalog with either declaration
+ * on a plugin entry throws at module load — a boot/codegen failure the author of
+ * the manifest sees immediately, rather than a wrong number in a ramp decision
+ * nobody attributes to a plugin. It is deliberately NOT the full core union: a
+ * plugin may pair `unknown-on-timeout` with any id source, because reading the
+ * two fields independently is a property the governed boundary keeps (see the
+ * pairing discussion on {@link CoreSendProviderCatalogEntry}). Only the values
+ * whose prerequisites live outside the catalog are refused.
+ *
+ * P3.1 relaxes this by generalizing the three sites in that note and deleting
+ * the check — in that order, deliberately, in one change.
+ */
+function assertPluginDispatchSemanticsAreGeneral(
+	entries: readonly GeneratedSendTransportCatalogEntry[]
+): void {
+	for (const entry of entries) {
+		const custody = entry.acceptanceSemantics === 'accepted';
+		const ownId = entry.messageIdSource === 'idempotency-key';
+		if (!custody && !ownId) continue;
+		throw new TypeError(
+			`Bundled plugin send transport '${entry.kind}' declares ${
+				custody ? 'acceptanceSemantics: accepted' : 'messageIdSource: idempotency-key'
+			}, which is not yet available outside the own MTA: the custody arm and the ` +
+				'pre-dispatch identity binding are still MTA-shaped. See the PREREQUISITES note ' +
+				'on AcceptanceSemantics in lib/sendProviders/catalog.ts before enabling it.'
+		);
+	}
+}
+
+assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([
 	...CORE_SEND_PROVIDER_CATALOG,
