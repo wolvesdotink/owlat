@@ -24,21 +24,27 @@
  * the verdict is `unknown`, never a claimed problem we didn't verify.
  */
 
+import type { SendTransportKind } from './sendProviderCatalog';
 import { isSpfAligned } from './spfAlignment';
 
 /**
- * The send-transport kinds Owlat supports, as a runtime `as const` tuple so the
- * `SendTransportKind` type derives from ONE source. This is the canonical list:
- * the backend's `SEND_PROVIDER_KINDS` / `SendProviderKind`
- * (`apps/api/convex/lib/sendProviders/types.ts`) re-export it, so a new provider
- * kind can't be added on the backend and silently drift past this alignment guard.
+ * The send-transport kinds Owlat supports — DERIVED from the send-provider
+ * catalog (`./sendProviderCatalog`, the seams plan's D1), not declared here.
+ *
+ * This was one of the five places the same union was written out. It is
+ * re-exported rather than moved so every consumer keeps importing it from
+ * `@owlat/shared` unchanged, and so the alignment guard below still reads the
+ * canonical list: a new provider kind cannot be added to the catalog and
+ * silently drift past it.
  */
-export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const;
+export { SEND_TRANSPORT_KINDS } from './sendProviderCatalog';
 
-/** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp' | 'mandrill'`). */
-export type CoreSendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
-export type HostedSendTransportKind = `plugin.${string}.${string}`;
-export type SendTransportKind = CoreSendTransportKind | HostedSendTransportKind;
+export type {
+	/** A send-transport kind — the catalog's own union. */
+	CoreSendProviderKind as CoreSendTransportKind,
+	HostedSendTransportKind,
+	SendTransportKind,
+} from './sendProviderCatalog';
 
 /**
  * A single From-domain's alignment against the active transport:

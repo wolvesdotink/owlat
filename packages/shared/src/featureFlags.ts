@@ -14,6 +14,12 @@ import {
 	MAX_PLUGIN_FEATURE_FLAGS,
 	snapshotPluginFeatureFlagDefinition,
 } from './pluginFeatureFlagDefinition';
+import {
+	coreSendProviderCatalogEntry,
+	isCoreSendProviderKind,
+	SEND_TRANSPORT_KINDS,
+	type CoreSendProviderKind,
+} from './sendProviderCatalog';
 
 export { isPluginFeatureFlagDefinition };
 
@@ -737,16 +743,23 @@ export function needsDeliveryProvider(
 
 /**
  * The delivery-provider kinds the bulk send path can route through, selected by
- * the `EMAIL_PROVIDER` env var. Kept as a local list so this module stays
- * browser-safe and dependency-free; it mirrors the backend `SendProviderKind`
- * (`apps/api/convex/lib/sendProviders/types.ts`).
+ * the `EMAIL_PROVIDER` env var.
+ *
+ * DERIVED from the send-provider catalog (the seams plan's D1), not a local
+ * list: this was the second of two declarations of the same union inside THIS
+ * package, and the two did not import each other. `./sendProviderCatalog` is
+ * data only, so the module stays browser-safe.
+ *
+ * The name survives the move because the setup surfaces read the union under it;
+ * it is `SEND_TRANSPORT_KINDS` with another label, and the catalog suite pins
+ * that they are the same list.
  */
-export const DELIVERY_PROVIDER_KINDS = ['mta', 'resend', 'ses', 'smtp', 'mandrill'] as const;
-export type DeliveryProviderKind = (typeof DELIVERY_PROVIDER_KINDS)[number];
+export const DELIVERY_PROVIDER_KINDS = SEND_TRANSPORT_KINDS;
+export type DeliveryProviderKind = CoreSendProviderKind;
 
 /** True iff `value` names a known delivery provider (no implicit MTA default). */
 export function isDeliveryProviderKind(value: string | undefined): value is DeliveryProviderKind {
-	return value !== undefined && (DELIVERY_PROVIDER_KINDS as readonly string[]).includes(value);
+	return isCoreSendProviderKind(value);
 }
 
 /**
@@ -764,26 +777,12 @@ export function isDeliveryProviderKind(value: string | undefined): value is Deli
  * answered separately by `isDeliveryProviderKind`.
  */
 export function getSendPathRequiredEnv(provider: string | undefined): string[] {
-	switch (provider) {
-		case 'mta':
-			return ['MTA_API_URL', 'MTA_API_KEY'];
-		case 'resend':
-			return ['RESEND_API_KEY'];
-		case 'ses':
-			return ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'];
-		case 'smtp':
-			// Host + the credentials this deployment authenticates to the relay
-			// with. Port/TLS have safe defaults (587 / STARTTLS), so they are not
-			// required to send.
-			return ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'];
-		case 'mandrill':
-			// The API key alone enables the kind. The webhook key, subaccount and
-			// IP pool are all optional refinements — a deployment can send through
-			// Mailchimp Transactional with nothing but this one variable.
-			return ['MANDRILL_API_KEY'];
-		default:
-			return [];
-	}
+	// The catalog's `requiredEnvVars` IS this table — it was a per-kind switch
+	// here, a per-kind list in the backend catalog and a third in
+	// `./setupSendingPresets` until the seams plan's D1 collapsed them. Which
+	// variables are the presence gate (and why an optional refinement such as
+	// `MANDRILL_WEBHOOK_KEY` is not one) is argued on the entries themselves.
+	return [...(coreSendProviderCatalogEntry(provider)?.requiredEnvVars ?? [])];
 }
 
 /**
