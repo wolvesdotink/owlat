@@ -82,24 +82,38 @@ What `domains/lifecycle.ts` still carries `providerType` branches for is the
 RETURN-PATH family — which `mailFrom` bundle a custom return-path host
 publishes, and which reflection action pushes it to the provider — and a new
 kind silently gets neither. That capability has no home on the adapter
-interface yet. It is one of four families of surviving kind literals, and the
-families are DATA rather than prose: `SURVIVING_KIND_LITERALS` in
-`apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`
-enumerates every file outside an adapter folder that still spells a kind, with
-its family and its owner, and fails in both directions — an unenumerated literal
-fails, and an entry whose literal has been swept fails until it is deleted.
+interface yet. It is one of the surviving families of kind literals, and the
+families are DATA rather than prose, split by what the literal is. A kind
+*declaration* (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
+`apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, with
+its family and its owner; a *comparison* — the return-path branches included —
+is enumerated by the ratchet's allowlist below. Both fail in both directions:
+an unenumerated literal fails, and an entry whose literal has been swept fails
+until it is deleted.
 
 That map seeded `bun run lint:providers`
 (`scripts/check-provider-identity.sh`), the CI gate that carries the same rule
-across the whole of `apps/` and `packages/`: no comparison against a kind
-literal outside an adapter folder, licensed only by
-`scripts/provider-identity-allowlist.txt`, which carries a family and an owner
-per entry and is strict in both directions so it can only shrink. The two are
-deliberately not the same check — the vitest one also catches a kind
-*declaration* (`const X = 'ses'`, the same fact with one hop) but only inside
-`apps/api/convex`, while the ratchet takes the comparison half everywhere,
-including the setup wizard and the transport editor, where the UI branches that
-would make provider N+1 a host edit still live.
+across `apps/` and `packages/`: no comparison against a kind literal — `===`,
+`case`, or membership (`kinds.includes('ses')`) — outside an adapter folder.
+Out of its reach on purpose: `apps/mta` (its `'mta' | 'relay' | 'defer'`
+routing decisions are its own alphabet, not the catalog's), `migrations/`
+(frozen replays, pinned to the kinds of their date), tests and fixtures, and
+generated code. Two checked-in files license the rest, both strict in both
+directions so they can only shrink: `scripts/provider-identity-allowlist.txt`
+is debt, one family and one owning piece per entry, and its entry count is what
+"zero identity checks" is measured against;
+`scripts/provider-identity-collisions.txt` is the permanent set where the
+spelling belongs to a different vocabulary (the MTA routing API's answer, a
+docker compose profile, the contact-import registry) and there is no coupling
+to remove.
+
+The two checks are deliberately not the same — the vitest one also catches a
+kind *declaration* (`const X = 'ses'`, the same fact with one hop) but only
+inside `apps/api/convex`, while the ratchet takes the comparison half
+everywhere, including the setup wizard and the transport editor, where the UI
+branches that would make provider N+1 a host edit still live. They do not keep
+two lists: for comparisons inside the backend, `kindLiteralCustody.test.ts`
+reads the ratchet's files, so a swept file is de-licensed by one deletion.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
