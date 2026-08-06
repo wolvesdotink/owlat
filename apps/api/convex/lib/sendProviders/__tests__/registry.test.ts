@@ -7,8 +7,13 @@ import {
 	isRetryableErrorCode,
 	type SendProviderKind,
 } from '../index';
-import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared';
+import {
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	OWN_SEND_PROVIDER_KIND,
+	isOwnSendProviderKind,
+} from '@owlat/shared';
 import { SEND_PROVIDER_CATALOG } from '../catalog';
+import { OWN_ARM_TRANSPORT_KIND } from '../strategies/adaptive_mix';
 
 describe('Send provider registry', () => {
 	it('providerFor returns the module for each kind', () => {
@@ -61,6 +66,20 @@ describe('Send provider registry', () => {
 		const record = entry as unknown as Record<string, unknown>;
 		return Object.fromEntries(PINNED_FIELDS.map((field) => [field, record[field]]));
 	}
+
+	it('reads the own arm from ONE declaration, in both packages', () => {
+		// Two names for one fact, and they must not drift. `OWN_ARM_TRANSPORT_KIND`
+		// is the backend's: a literal type that three compile-time guards key off,
+		// which is why it is still written out here. `OWN_SEND_PROVIDER_KIND` is
+		// DERIVED from `tier: 'own'` in `@owlat/shared`, for the packages that may
+		// not import backend code (apps/web, apps/setup-cli and shared itself) and
+		// used to restate `=== 'mta'` instead. A catalog that moved the tier to
+		// another entry without moving the constant fails here rather than in
+		// production, where it would mean the ramp and the UI disagree about which
+		// arm is ours.
+		expect(OWN_ARM_TRANSPORT_KIND).toBe(OWN_SEND_PROVIDER_KIND);
+		expect(isOwnSendProviderKind(OWN_ARM_TRANSPORT_KIND)).toBe(true);
+	});
 
 	it('composes the shared catalog entries themselves, never a copy of them', () => {
 		// The backend joins adapters to the catalog; it does not re-declare it

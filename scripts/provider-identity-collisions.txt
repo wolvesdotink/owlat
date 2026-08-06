@@ -40,12 +40,17 @@ apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candi
 # ── docker compose profile names ──────────────────────────────────────────────
 #
 # A compose PROFILE (packages/shared/src/featureFlags.ts, `getActiveProfiles`)
-# is a deployment topology, not a transport kind. Two other files ask the same
-# compose question (apps/setup-cli/src/commands/quickstart.ts,
-# apps/web/app/pages/setup/email.vue); both are in the debt list already for
-# OTHER literals, and a whole-file licence there covers this too. When their
-# real leaks are swept, the compose question is what moves here.
+# is a deployment topology, not a transport kind. One more file asks the same
+# compose question (apps/web/app/pages/setup/email.vue); it is in the debt list
+# already for OTHER literals, and a whole-file licence there covers this too.
+# When its real leaks are swept, the compose question is what moves here — as
+# quickstart.ts's did when P1.1 swept its own-arm branch.
+#
+# `getActiveProfiles` itself is no longer listed anywhere: the own-arm QUESTION
+# in front of it now reads the catalog (`isOwnSendProviderKind`) and the profile
+# name it adds is written, never compared, so the ratchet has nothing to match.
 
+apps/setup-cli/src/commands/quickstart.ts:mta  # composeProfilesUnion.includes('mta') — the profile the default self-host ships
 apps/web/server/api/setup/apply.post.ts:mta  # profiles.includes('mta') gates the outbound-IP preflight
 
 

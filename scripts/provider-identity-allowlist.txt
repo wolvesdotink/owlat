@@ -19,6 +19,13 @@
 # excuses no kind literal FAILS the gate, so a cleanup cannot leave its licence
 # behind for the next restatement to inherit.
 #
+# WHAT P1.1 DID HERE, for the record: it moved the catalog into packages/shared,
+# which put `OWN_SEND_PROVIDER_KIND` / `isOwnSendProviderKind` — the D3 own-arm
+# declaration — where the CLI, the web app and this package can all read it, and
+# repointed the kind parser at the top of check-provider-identity.sh at the same
+# time (SEND_TRANSPORT_KINDS is a derivation now, so there is no literal array
+# left for it to read).
+#
 # EVERY ENTRY IS DEBT WITH AN OWNER. A file whose kind-shaped literal belongs to
 # a DIFFERENT vocabulary — the MTA routing API's answer, a docker compose
 # profile, the contact-import registry — is not debt and is not licensed here.
@@ -44,23 +51,32 @@
 # VISIBLE — the plan owner's call, not P0.5's to make silently. Two things are
 # true at once. The definitional sites A1 names are not in this file at all,
 # because after P0.1–P0.4 they are declarations rather than comparisons (listing
-# them would trip the stale-entry check and turn the gate red). And of the
-# families below, three carry no owning card in this plan: `return-path` (2
-# entries, waiting on the capability reaching SendingDomainProviderModule),
+# them would trip the stale-entry check and turn the gate red). And FOUR of the
+# families below carry no owning card in this plan: `return-path` (2 entries,
+# waiting on the capability reaching SendingDomainProviderModule),
 # `adapter-adjacent` (2 entries, waiting on the relay-identity sweep becoming the
-# table's own dispatch) and `provider-shaped-ui-followup` (4 entries, waiting on
-# the wizard-descriptor follow-up after P1.2). Wave 1 therefore ends at 8
-# entries, not 0. Either those 8 grow owning cards or A1 is restated as "the
-# allowlist contains only entries with a named owner"; until one of the two
-# happens, a wave gate reading A1 literally will read as failed for a criterion
-# nothing in the plan can satisfy.
+# table's own dispatch), `provider-shaped-ui-followup` (4 entries, waiting on the
+# wizard-descriptor follow-up after P1.2) and `credentials-and-probes` (6
+# entries, the CLI/endpoint half of the descriptor rollout — see that family's
+# own header for why P1.1 was the wrong owner for it).
+#
+# THE ARITHMETIC, kept current because a prediction nobody updates is worse than
+# none. P0.5 opened this file at 26. P1.1 cleared 8 — the whole
+# `own-arm-outside-convex` family plus the one own-arm question filed under
+# `credentials-and-probes` — leaving 18, of which one (quickstart.ts) MOVED to
+# the collisions list rather than vanishing. P1.2 clears
+# `provider-shaped-ui` (4). WAVE 1 THEREFORE ENDS AT 14, NOT 0. Either those 14
+# grow owning cards or A1 is restated as "the allowlist contains only entries
+# with a named owner"; until one of the two happens, a wave gate reading A1
+# literally will read as failed for a criterion nothing in the plan can satisfy.
 #
 # THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
 # it; because the ratchet fails on an entry that excuses nothing, that piece's
-# diff has to include the deletion here or the lint job goes red. P1.1
-# additionally turns SEND_TRANSPORT_KINDS into a derivation, which means
-# repointing the kind parser at the top of check-provider-identity.sh in the same
-# change. Two families have no owning piece INSIDE this plan and say so.
+# diff has to include the deletion here or the lint job goes red. AND IT MUST
+# CORRECT THIS PROSE WHEN THE OWNERSHIP IS WRONG: a family whose named owner has
+# already merged is a family nobody is coming back for, which is the one state
+# this file must never be left in. Four families have no owning piece INSIDE this
+# plan and say so.
 #
 # Kind DECLARATIONS inside apps/api/convex are a different rule with a different
 # list: SURVIVING_KIND_LITERALS in
@@ -122,13 +138,27 @@ apps/web/app/pages/desktop/setup.vue  # the desktop wizard's own copy
 apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to collisions:mta after its per-kind fields AND its own-arm branch go, because the compose profile stays
 
 
-# ── credentials-and-probes (owner: P1.1 — catalog fields in packages/shared) ──
+# ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
 #
 # Which env vars a kind needs, which kinds can be live-checked before saving, and
 # what a validator asks of each — all of it restated per vendor outside the
 # catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
-# catalog entry are the declarations these read once P1.1 lands; P1.3's
-# consistency guards then keep them honest.
+# catalog entry are the declarations these read; P1.1 landed them, and the entry
+# it CLEARED from this family was the eighth
+# (packages/shared/src/featureFlags.ts, whose `=== 'mta'` was an own-arm question
+# wearing this family's label).
+#
+# THE OWNER MOVED, DELIBERATELY. This family said "owner: P1.1" while P1.1's card
+# is the catalog's DATA HALF; declaring a field is not the same as rewriting the
+# six surfaces that render it, and the pieces that do exist stop short of these
+# files: P1.2 is `apps/web/app/**` (its card names four components and
+# composables, none of them below), and P1.3 is TESTS — it pins that every
+# `setupProbe.validator` names a real export, which is a guard on the declaration,
+# not a rewrite of the switch that dispatches it. So the CLI's prompts and
+# config writer, the two validate endpoints and the probe dispatch itself have no
+# owning card in this plan. Recorded with an honest owner rather than left
+# attributed to a piece that has merged — an owner who has shipped is how a
+# family becomes nobody's.
 
 apps/setup-cli/src/commands/setupNonInteractive.ts  # the non-interactive env table
 apps/setup-cli/src/commands/setupSendingProvider.ts  # the interactive prompts
@@ -136,32 +166,3 @@ apps/setup-cli/src/lib/setupConfig.ts  # the written config's per-kind keys
 apps/web/server/api/delivery/validate-transport.post.ts  # per-kind live checks
 apps/web/server/api/setup/validate-provider.post.ts  # the wizard's copy of them
 packages/shared/src/setupValidators.ts  # the probes themselves
-packages/shared/src/featureFlags.ts  # which feature profile each kind implies
-
-
-# ── own-arm-outside-convex (owner: P1.1 — the own-arm declaration moves to shared) ──
-#
-# Honest own-vs-relay questions, D3, asked in packages the one sanctioned
-# declaration cannot reach: OWN_ARM_TRANSPORT_KIND lives in
-# apps/api/convex/lib/sendProviders/strategies/adaptive_mix, and neither
-# packages/shared nor the CLI may import app code. P1.1 moves the catalog — and
-# with it this declaration — into packages/shared, at which point every one of
-# these reads the constant instead of restating it.
-#
-# TWO ENTRIES DO NOT SIMPLY DISAPPEAR — quickstart.ts and (in the family above)
-# pages/setup/email.vue. Each asks TWO questions spelled 'mta': the own-arm one,
-# which is debt, and the docker COMPOSE one, `profiles.includes('mta')`, which is
-# a vocabulary collision that nothing ever removes. Per-literal qualification
-# cannot tell them apart, so the whole-file licence here covers both and the
-# stale-entry check will NOT fire when the own-arm branch goes — the sweeper has
-# to MOVE the line to scripts/provider-identity-collisions.txt as
-# `path:mta` rather than delete it, or the debt count keeps a site it no longer
-# owns. Their entry lines say so, and P1.1 carries the move.
-
-apps/setup-cli/src/commands/doctor.ts  # the own-MTA branch of the diagnosis
-apps/setup-cli/src/commands/quickstart.ts  # MOVES to collisions:mta when P1.1 lands — the surviving 'mta' is the compose profile, which no sweep removes
-apps/setup-cli/src/commands/setup.ts  # the top-level flow's own-arm question
-apps/web/app/composables/useRelayRemovalGuard.ts  # "is the arm you are removing ours"
-apps/web/app/utils/providerRouting.ts  # the client-side split
-apps/web/server/api/delivery/apply-transport.post.ts  # the same split server-side
-packages/shared/src/transportAlignment.ts  # alignment between the two arms

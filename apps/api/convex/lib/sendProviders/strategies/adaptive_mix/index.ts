@@ -61,6 +61,16 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * "is this our own MTA?" test READS one of the two rather than restating the
  * literal.
  *
+ * OUTSIDE apps/api IT IS THE CATALOG'S `tier: 'own'` — `OWN_SEND_PROVIDER_KIND`
+ * and `isOwnSendProviderKind` in `@owlat/shared` (the seams plan's P1.1), which
+ * DERIVE the same fact from the entry declaring that tier. `apps/web`,
+ * `apps/setup-cli` and `packages/shared` may not import backend code, so before
+ * the catalog moved they had no declaration to read and restated `=== 'mta'` in
+ * seven places; those are gone. The constant here stays written out because it
+ * carries a LITERAL TYPE that three compile-time guards key off (a value derived
+ * with `find` cannot), and `lib/sendProviders/__tests__/registry.test.ts` pins
+ * the two equal so the pair cannot drift.
+ *
  * THE OWN-ARM SWEEP IS DONE (the seams plan's P0.4). Every site outside the
  * adapter folders that asked "is this our own MTA?" now reads this constant or
  * its domain-provider twin — the send lifecycle, the webhook dispatcher and the

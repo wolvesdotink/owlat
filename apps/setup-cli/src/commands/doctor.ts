@@ -28,6 +28,7 @@ import {
 	resolveFlags,
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
+import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { readEnv, type EnvMap } from '../lib/env';
 import {
 	fcrdnsReasonMessage,
@@ -312,7 +313,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 	// A configured direct-delivery MTA that cannot reach recipient MX servers is
 	// not ready to send. Treat every infrastructure finding as a real doctor
 	// failure, including the source-IP-bound TCP/25 checks.
-	if (needsDeliveryProvider(flags) && env['EMAIL_PROVIDER'] === 'mta' && env['MTA_API_URL']) {
+	if (
+		needsDeliveryProvider(flags) &&
+		isOwnSendProviderKind(env['EMAIL_PROVIDER']) &&
+		env['MTA_API_URL']
+	) {
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) {
 			check(finding.ok, `SEND PATH: ${finding.message}`);
 		}

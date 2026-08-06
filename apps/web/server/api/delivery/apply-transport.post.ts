@@ -51,6 +51,7 @@ import {
 	type TransportEnvPlan,
 } from '@owlat/shared/setupSendingPresets';
 import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
+import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
@@ -239,7 +240,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	// provider of `mta` — or of nothing at all — is a deployment sending on its
 	// own from the moment this returns.
 	const resultingProvider = (merged['EMAIL_PROVIDER'] ?? '').trim();
-	if (resultingProvider === '' || resultingProvider === 'mta') {
+	if (resultingProvider === '' || isOwnSendProviderKind(resultingProvider)) {
 		const refusal = await unconfirmedRelayRemoval(client, body?.relayRemovalConfirmation);
 		if (refusal !== null) return refusal;
 	}

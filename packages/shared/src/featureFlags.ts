@@ -17,6 +17,7 @@ import {
 import {
 	coreSendProviderCatalogEntry,
 	isCoreSendProviderKind,
+	isOwnSendProviderKind,
 	SEND_TRANSPORT_KINDS,
 	type CoreSendProviderKind,
 } from './sendProviderCatalog';
@@ -696,7 +697,12 @@ export function getActiveProfiles(
 	// provider, or when a receiving flag (postbox/inbox) needs it for inbound /
 	// hosted send. The receiving cases add the 'mta' profile via their
 	// dockerProfiles; the provider case is env-driven, so it is added here.
-	if (opts.deliveryProvider === 'mta') profiles.add('mta');
+	//
+	// TWO VOCABULARIES, one spelling. The question is the OWN-ARM one (D3) and is
+	// asked through the catalog's declaration; the string added is a docker
+	// COMPOSE PROFILE name, which belongs to compose and moves only when the
+	// compose file does.
+	if (isOwnSendProviderKind(opts.deliveryProvider)) profiles.add('mta');
 	return Array.from(profiles).sort();
 }
 

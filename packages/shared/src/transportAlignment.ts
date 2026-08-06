@@ -24,7 +24,7 @@
  * the verdict is `unknown`, never a claimed problem we didn't verify.
  */
 
-import type { SendTransportKind } from './sendProviderCatalog';
+import { isOwnSendProviderKind, type SendTransportKind } from './sendProviderCatalog';
 import { isSpfAligned } from './spfAlignment';
 
 /**
@@ -139,7 +139,12 @@ export function checkFromAlignment(
 	// undeclared DKIM domain aligns. Its return-path is a SHARED VERP bounce
 	// domain that does NOT align per From-domain, so an undeclared return-path is
 	// always `null` (unknown) — never a claimed alignment we didn't verify.
-	const dkimPerFromDomain = facts.kind === 'mta';
+	//
+	// The question is "is this OUR arm" (D3), not "is this kind spelled 'mta'":
+	// what makes the assumption safe is that we run the signer. Asked through the
+	// catalog's own declaration so it moves with the catalog rather than being
+	// restated here.
+	const dkimPerFromDomain = isOwnSendProviderKind(facts.kind);
 	const dkim = identityAlignment(facts.dkimDomain, from, dkimPerFromDomain);
 	const returnPath = identityAlignment(facts.returnPathDomain, from, false);
 

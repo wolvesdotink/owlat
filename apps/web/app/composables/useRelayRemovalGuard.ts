@@ -18,6 +18,7 @@
 
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import { api } from '@owlat/api';
+import { isOwnSendProviderKind } from '@owlat/shared';
 import {
 	relayRemovalConsequenceCopy,
 	type RelayRemovalConsequence,
@@ -116,7 +117,7 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 		removesReferenceArm: computed(() => {
 			const resulting = resultingProvider.value.trim();
 			return (
-				(resulting === 'mta' || NO_PROVIDER.has(resulting)) &&
+				(isOwnSendProviderKind(resulting) || NO_PROVIDER.has(resulting)) &&
 				referenceTransportId.value !== null &&
 				relayRemoval.value?.kind === 'unsafe'
 			);
