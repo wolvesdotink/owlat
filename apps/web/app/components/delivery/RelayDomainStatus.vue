@@ -1,4 +1,25 @@
 <script setup lang="ts">
+/**
+ * The SES escape-hatch relay's per-domain identity panel.
+ *
+ * WHY THIS ONE IS STILL NAMED AFTER A VENDOR, when the rest of the delivery UI
+ * stopped being (the seams plan's D5). Every string here is downstream of the
+ * QUERY, and `providerRoutes.listDeliverabilityRelayDomains` reads the frozen
+ * `sendingDomainSesIdentities` sibling table directly — the SES proof, its DKIM
+ * tokens, its dedicated MAIL FROM records and its `spfProofState`. A relay of
+ * another kind never appears in these rows: Mandrill's identities land in the
+ * generic `sendingDomainRelayIdentities` table and are rendered by
+ * `MandrillDomainStatus.vue` beside this card, and a `domainVerification: 'none'`
+ * relay has no identity to show at all.
+ *
+ * So renaming the copy to "your relay" would be the WRONG generalisation — it
+ * would claim to cover relays whose rows this panel cannot see. What makes it
+ * generic is a BACKEND change: one query over `sendingDomainRelayIdentities`
+ * answering for whichever kinds the domain-provider registry can prove, at which
+ * point this card and its Mandrill sibling collapse into one that names the
+ * relay from its catalog label. That belongs to the registry work, not to a
+ * rendering refactor, and P1.2 deliberately left it rather than paper over it.
+ */
 import { api } from "@owlat/api";
 import type { Id } from "@owlat/api/dataModel";
 
