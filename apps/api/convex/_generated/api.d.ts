@@ -584,6 +584,7 @@ import type * as lib_secretLeakScan from "../lib/secretLeakScan.js";
 import type * as lib_sendDailyStats from "../lib/sendDailyStats.js";
 import type * as lib_sendProviders_capability from "../lib/sendProviders/capability.js";
 import type * as lib_sendProviders_catalog from "../lib/sendProviders/catalog.js";
+import type * as lib_sendProviders_catalogTypes from "../lib/sendProviders/catalogTypes.js";
 import type * as lib_sendProviders_cellRoute from "../lib/sendProviders/cellRoute.js";
 import type * as lib_sendProviders_destinationProvider from "../lib/sendProviders/destinationProvider.js";
 import type * as lib_sendProviders_dispatch from "../lib/sendProviders/dispatch.js";
@@ -1515,6 +1516,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendDailyStats": typeof lib_sendDailyStats;
   "lib/sendProviders/capability": typeof lib_sendProviders_capability;
   "lib/sendProviders/catalog": typeof lib_sendProviders_catalog;
+  "lib/sendProviders/catalogTypes": typeof lib_sendProviders_catalogTypes;
   "lib/sendProviders/cellRoute": typeof lib_sendProviders_cellRoute;
   "lib/sendProviders/destinationProvider": typeof lib_sendProviders_destinationProvider;
   "lib/sendProviders/dispatch": typeof lib_sendProviders_dispatch;
