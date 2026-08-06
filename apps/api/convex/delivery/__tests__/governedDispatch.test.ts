@@ -19,7 +19,10 @@ const sendProviderDispatch = vi.hoisted(() => vi.fn());
  * `declare()` sees the real catalog, and every test resets it afterwards.
  */
 const declared = vi.hoisted(() => ({
-	current: null as null | { acceptanceSemantics: string; messageIdSource: string },
+	current: null as null | {
+		acceptanceSemantics: AcceptanceSemantics;
+		messageIdSource: MessageIdSource;
+	},
 }));
 
 vi.mock('../lastMileRouting', () => ({ resolveLastMileRouting }));
@@ -32,13 +35,12 @@ vi.mock('../../lib/sendProviders/catalog', async (importOriginal) => {
 			declared.current?.acceptanceSemantics ?? actual.acceptanceSemanticsFor(kind),
 		messageIdSourceFor: (kind: SendProviderKind) =>
 			declared.current?.messageIdSource ?? actual.messageIdSourceFor(kind),
-		// DELEGATES when unsteered rather than restating the rule: a copy of
-		// production's derivation here would keep passing after that derivation
-		// changed, which is precisely the regression this file exists to catch.
-		preassignsProviderMessageId: (kind: SendProviderKind) =>
-			declared.current
-				? declared.current.messageIdSource === 'idempotency-key'
-				: actual.preassignsProviderMessageId(kind),
+		// NOTHING ELSE IS REPLACED. `preassignsProviderMessageId` and
+		// `takesCustodyOnAcceptance` take the DECLARATION rather than the kind, so
+		// steering the two lookups above is enough and the real derivations run in
+		// both modes — a copy of them here would keep passing after production's
+		// rule tightened, which is precisely the regression this file exists to
+		// catch.
 	};
 });
 
@@ -793,6 +795,80 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			// The park arm hands the retry state back UNMARKED: a reconciliation flag
 			// here would send the next attempt down the replay path this transport
 			// has no idempotency surface for.
+			expect(
+				(result as { retryState: WorkerRetryState }).retryState.acceptanceReconciliation
+			).toBeUndefined();
+		});
+	});
+
+	/**
+	 * TWO FIELDS, TWO BEHAVIOURS — steered apart.
+	 *
+	 * The two blocks above move both declarations together, so every behaviour
+	 * there correlates with BOTH flags and a boundary that conflated them would
+	 * still pass. This one splits the pair: the id is ours (so the identity IS
+	 * bound and substituted) while acceptance is unknown-on-timeout (so nothing is
+	 * accepted and the ambiguity PARKS rather than replays). Any single predicate
+	 * driving all four behaviours fails at least one case here.
+	 *
+	 * `CoreSendProviderCatalogEntry` deliberately forbids this pairing for a kind
+	 * that ships in this repo — see the union's doc block — but a bundled plugin
+	 * entry is untyped and can present it, and the widening the doc block
+	 * describes must stay a type change rather than a behaviour change. Steering
+	 * the accessors is how that stays true without shipping such a kind.
+	 */
+	describe('a transport whose declarations are MIXED — our id, no custody', () => {
+		beforeEach(() => {
+			// Contradicts the MTA on the acceptance half only: a kind whose feedback
+			// channel exists (`hasProviderFeedback: true`), so the park arm is
+			// reachable and the assertion is about custody rather than about having
+			// nowhere to park.
+			declare('unknown-on-timeout', 'idempotency-key');
+			routeTo('mta');
+		});
+
+		it('binds the pre-assigned identity — that follows the id, not the custody', async () => {
+			providerAnswers('mta', { success: true, id: 'provider-assigned-id' });
+
+			await dispatchGovernedEmail(ctx, baseRequest);
+
+			expect(identityBindings()).toEqual([{ send: SEND_REF, providerMessageId: IDEMPOTENCY_KEY }]);
+		});
+
+		it('records OUR id and still claims no acceptance', async () => {
+			providerAnswers('mta', { success: true, id: 'a-dedup-sentinel' });
+
+			const result = await dispatchGovernedEmail(ctx, baseRequest);
+
+			expect(result).toEqual({
+				success: true,
+				providerMessageId: IDEMPOTENCY_KEY,
+				providerType: 'mta',
+				sendLatencyMs: 9,
+			});
+			expect('acceptedForDelivery' in result).toBe(false);
+		});
+
+		it('parks an ambiguous acceptance — a pre-assigned id is not permission to replay', async () => {
+			providerAnswers('mta', {
+				success: false,
+				errorCode: 'AMBIGUOUS_TIMEOUT',
+				errorMessage: 'request outcome unknown',
+				acceptanceUnknown: true,
+			});
+
+			const result = await dispatchGovernedEmail(ctx, baseRequest);
+
+			expect(result).toEqual({
+				success: false,
+				acceptanceUnknown: true,
+				awaitingProviderFeedback: true,
+				providerType: 'mta',
+				startedAt: expect.any(Number),
+				retryState: expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }),
+			});
+			// Knowing the id says nothing about whether the intake is re-askable:
+			// only the acceptance declaration does, and it said no.
 			expect(
 				(result as { retryState: WorkerRetryState }).retryState.acceptanceReconciliation
 			).toBeUndefined();

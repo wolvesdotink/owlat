@@ -62,10 +62,19 @@ export type DomainVerificationSupport = 'api' | 'none';
  * were never granted would leave a Send waiting `queued` for feedback that
  * never arrives, and claiming re-askability would double-deliver.
  *
- * NOTE — `accepted` IS NOT YET A GENERAL CAPABILITY. Only the own MTA declares
- * it, and two sites outside this file still spell the custody arm as that one
- * kind. A second kind declaring `accepted` must generalize BOTH in the same
- * change, or its ambiguous sends die on the delivery deadline:
+ * PREREQUISITES OUTSIDE THE CATALOG — the canonical list; everything else that
+ * mentions this constraint (ADR 0055, the provider docs page, the NOTE on
+ * {@link MessageIdSource}) POINTS HERE rather than restating it, so generalizing
+ * the two sites below is one edit plus three link targets rather than four prose
+ * rewrites. Keep it that way.
+ *
+ * `accepted` IS NOT YET A GENERAL CAPABILITY. Only the own MTA declares it, and
+ * two sites outside this file still spell the custody arm as that one kind. A
+ * second kind declaring `accepted` — which, by the shape of
+ * {@link CoreSendProviderCatalogEntry}, also declares
+ * `messageIdSource: 'idempotency-key'` — must generalize BOTH in the same
+ * change, or its ambiguous sends die on the delivery deadline and its rows
+ * name the wrong transport:
  *
  *  1. `delivery/lastMileRouting.ts` — the replay this declaration arms travels
  *     as the `mtaReconciliation` input (that name is part of the work), and
@@ -76,11 +85,15 @@ export type DomainVerificationSupport = 'api' | 'none';
  *     `GOVERNED_MTA_MAX_MESSAGE_AGE_MS` elapses and the Send is terminalized as
  *     a definite failure — for a message the transport may already have
  *     delivered.
- *  2. `delivery/sendLifecycle.ts` — `accepted` implies
- *     `messageIdSource: 'idempotency-key'` (the shape of
- *     {@link CoreSendProviderCatalogEntry} enforces the pair), so the
- *     pre-dispatch identity binding comes with it; see the NOTE on
- *     {@link MessageIdSource}.
+ *  2. `delivery/sendLifecycle.ts` — the pre-dispatch identity binding runs
+ *     through `bindMtaProviderIdentity`, which patches `providerType: 'mta'`
+ *     onto the Send unconditionally, and `transitionMtaByProviderMessageId`
+ *     reads that same stamp back for its `allowQueuedMtaTerminal` relaxation.
+ *     Declaring the capability alone would mislabel the Send's transport in
+ *     every arm-keyed measurement row. This one is triggered by
+ *     `messageIdSource: 'idempotency-key'` ON ITS OWN, so it is also the
+ *     prerequisite of any future kind that pre-assigns its id without claiming
+ *     custody.
  */
 export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
 
@@ -105,14 +118,11 @@ export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
  * Absent ⇒ `provider`: an id we cannot predict, which is the fail-closed
  * reading (never pre-bind an identity we do not actually control).
  *
- * NOTE for a new kind declaring `idempotency-key`: the pre-dispatch binding
- * runs through `delivery/sendLifecycle.bindMtaProviderIdentity`, which patches
- * `providerType: 'mta'` unconditionally — and `transitionMtaByProviderMessageId`
- * reads that same stamp back for its `allowQueuedMtaTerminal` relaxation. That
- * mutation must be generalized in the same change: declaring the capability
- * alone would mislabel the Send's transport in every arm-keyed measurement row.
- * The reconciliation pin in `delivery/lastMileRouting.ts` is the SECOND
- * prerequisite of the same change — see the NOTE on {@link AcceptanceSemantics}.
+ * NOTE for a new kind declaring `idempotency-key`: the pre-dispatch binding it
+ * turns on runs through `delivery/sendLifecycle.bindMtaProviderIdentity`, which
+ * is not yet kind-agnostic and must be generalized in the same change — item 2
+ * of the PREREQUISITES list on {@link AcceptanceSemantics}, which is the one
+ * place that constraint is written out.
  */
 export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
 
@@ -163,17 +173,34 @@ export interface SendProviderCatalogEntry {
  * the optional fields — they are generated from plugin manifests, which have no
  * such surface to declare (plugin-tier parity is plan P3.1).
  *
- * The two dispatch semantics are a PAIR, not two independent fields, so they
- * are declared as a union rather than side by side: `accepted` means an
- * ambiguous outcome is resolved by REPLAYING the attempt, which is only safe
- * because the replay carries the id WE minted. An entry pairing `accepted` with
- * a provider-minted id would (a) report `acceptedForDelivery` under an identity
- * nothing pre-bound, parking the Send `queued` against a report that can never
- * match it, and (b) answer an ambiguity with an idempotency key the provider
- * never saw and re-dispatch to a transport with no idempotency surface — a
- * double delivery. The illegal pairing is a build break here rather than a CI
- * failure; the runtime loop in `__tests__/dispatchExtras.test.ts` keeps covering
- * the untyped (bundled plugin) entries, which this type does not reach.
+ * For a CORE kind the two dispatch semantics are a PAIR, not two independent
+ * fields, so they are declared as a union rather than side by side — and the
+ * union constrains BOTH directions:
+ *
+ *  - `accepted` ⇒ `idempotency-key`, because an ambiguous outcome is resolved by
+ *    REPLAYING the attempt, which is only safe when the replay carries the id WE
+ *    minted. An entry pairing `accepted` with a provider-minted id would (a)
+ *    report `acceptedForDelivery` under an identity nothing pre-bound, parking
+ *    the Send `queued` against a report that can never match it, and (b) answer
+ *    an ambiguity with an idempotency key the provider never saw and re-dispatch
+ *    to a transport with no idempotency surface — a double delivery.
+ *  - `idempotency-key` ⇒ `accepted`, because a core kind whose message id we
+ *    mint ourselves has, by construction, an intake that can be re-asked under
+ *    it. Declaring the id without the custody would take the pre-dispatch
+ *    identity binding — and with it every prerequisite in item 2 of the
+ *    PREREQUISITES list on {@link AcceptanceSemantics} — while still refusing to
+ *    reconcile an ambiguous send: all of the generalization cost, none of the
+ *    safety it buys. If a real transport ever needs that mixed shape, widen this
+ *    union deliberately; the governed boundary already reads the two fields
+ *    INDEPENDENTLY, which `delivery/__tests__/governedDispatch.test.ts` →
+ *    `describe('a transport whose declarations are MIXED')` proves, so widening
+ *    it is a type change rather than a behaviour change.
+ *
+ * An illegal pairing is a build break here rather than a CI failure. Untyped
+ * (bundled plugin) entries never reach this type: their fail-closed defaults —
+ * and their freedom to present a mixed pairing — are covered at runtime by
+ * `__tests__/undeclaredSemanticsFailClosed.test.ts`, which mocks a generated
+ * catalog entry that declares neither field.
  */
 type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 	readonly domainVerification: DomainVerificationSupport;
@@ -181,7 +208,7 @@ type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 		| { readonly acceptanceSemantics: 'accepted'; readonly messageIdSource: 'idempotency-key' }
 		| {
 				readonly acceptanceSemantics: 'unknown-on-timeout';
-				readonly messageIdSource: MessageIdSource;
+				readonly messageIdSource: 'provider' | 'composed';
 		  }
 	);
 
@@ -395,15 +422,37 @@ export function messageIdSourceFor(kind: SendProviderKind): MessageIdSource {
 }
 
 /**
- * Is this kind's provider message id known BEFORE the send — i.e. is it the
+ * Is this transport's provider message id known BEFORE the send — i.e. is it the
  * idempotency key the governed boundary derived from the durable Send row?
  *
  * ONE definition, because two sites must agree or a Send is bound to an id it
  * will never be reported under: the pre-dispatch identity binding and the
  * recorded `providerMessageId` after a successful attempt.
+ *
+ * Takes the DECLARATION, not the kind — `preassignsProviderMessageId(
+ * messageIdSourceFor(kind))` — so that the lookup and the derivation are
+ * separable. A test that steers what a kind declares then still runs THIS rule
+ * rather than a copy of it, which is the only way a later tightening here
+ * cannot silently pass a suite that restated the old rule.
  */
-export function preassignsProviderMessageId(kind: SendProviderKind): boolean {
-	return messageIdSourceFor(kind) === 'idempotency-key';
+export function preassignsProviderMessageId(source: MessageIdSource): boolean {
+	return source === 'idempotency-key';
+}
+
+/**
+ * Does a successful dispatch mean the transport took CUSTODY of the message
+ * (delivery still pending, its own feedback still to come) rather than the
+ * handoff itself — and is an ambiguous outcome therefore RE-ASKABLE by replay?
+ *
+ * The twin of {@link preassignsProviderMessageId}, and named for the same
+ * reason: the acceptance half of the pair has three consumers already (the
+ * `acceptedForDelivery` verdict and the reconciliation arm in
+ * `delivery/governedDispatch.ts`, plus the pins that check them), and a raw
+ * `=== 'accepted'` at each is how one of them drifts. Takes the declaration:
+ * `takesCustodyOnAcceptance(acceptanceSemanticsFor(kind))`.
+ */
+export function takesCustodyOnAcceptance(semantics: AcceptanceSemantics): boolean {
+	return semantics === 'accepted';
 }
 
 /**

@@ -33,10 +33,12 @@ import { fileURLToPath } from 'node:url';
 import { buildDispatchExtrasFor, providerFor } from '../index';
 import {
 	acceptanceSemanticsFor,
+	isCoreSendProviderKind,
 	messageIdSourceFor,
 	preassignsProviderMessageId,
 	SEND_PROVIDER_CATALOG,
 	SEND_PROVIDER_KINDS,
+	takesCustodyOnAcceptance,
 } from '../catalog';
 import type {
 	DispatchExtrasInput,
@@ -376,10 +378,13 @@ describe('the module contract', () => {
 
 /**
  * WHAT EACH SHIPPED KIND DECLARES — read from the REAL catalog. Nothing in this
- * file mocks `../catalog`, deliberately: a steerable accessor here could report
+ * file mocks anything, deliberately: a steerable accessor here could report
  * whatever a test had last set and these pins would then pass for any catalog
- * content. The suite that does need to steer the declarations
- * (`delivery/__tests__/governedDispatch.test.ts`) keeps its mock to itself.
+ * content. The two suites that DO need something the shipped catalog cannot
+ * produce keep their mocks to themselves —
+ * `delivery/__tests__/governedDispatch.test.ts` steers what a kind declares, and
+ * `undeclaredSemanticsFailClosed.test.ts` supplies the generated plugin entries
+ * that declare nothing (the only way the fail-closed defaults are reachable).
  */
 describe('declared dispatch semantics', () => {
 	/**
@@ -399,30 +404,36 @@ describe('declared dispatch semantics', () => {
 		expect(messageIdSourceFor(kind)).toBe(messageId);
 	});
 
-	it('takes custody for exactly the transports that mint no id of their own', () => {
+	it('pairs custody with an id of its own in BOTH directions, for every core kind', () => {
 		// The coupling is not decorative: the ambiguous-acceptance arm resolves by
 		// REPLAYING the attempt, which is only safe because the replay carries the
 		// same idempotency key. A kind that claimed custody without owning its
-		// message id would double-deliver on every lost response (D4).
-		for (const kind of SEND_PROVIDER_KINDS) {
-			if (acceptanceSemanticsFor(kind) !== 'accepted') continue;
-			expect(messageIdSourceFor(kind)).toBe('idempotency-key');
-			expect(preassignsProviderMessageId(kind)).toBe(true);
+		// message id would double-deliver on every lost response (D4) — and one
+		// that owned its id without claiming custody would pay for the pre-dispatch
+		// identity binding and still refuse to reconcile. `CoreSendProviderCatalogEntry`
+		// makes both a build break; this executes the same rule against the values.
+		const coreKinds = SEND_PROVIDER_KINDS.filter(isCoreSendProviderKind);
+		expect([...coreKinds].sort()).toEqual([...CORE_KINDS].sort());
+		for (const kind of coreKinds) {
+			const acceptance = acceptanceSemanticsFor(kind);
+			const messageId = messageIdSourceFor(kind);
+			if (takesCustodyOnAcceptance(acceptance)) expect(messageId).toBe('idempotency-key');
+			if (preassignsProviderMessageId(messageId)) expect(acceptance).toBe('accepted');
 		}
 	});
 
-	it('fails closed for an entry that declares neither', () => {
-		// Bundled plugin entries are generated from manifests, which carry no
-		// semantics surface yet (parity is plan P3.1). An absent declaration must
-		// read as "no custody, no id of ours" — never the reverse.
-		for (const entry of SEND_PROVIDER_CATALOG) {
-			if (entry.acceptanceSemantics === undefined) {
-				expect(acceptanceSemanticsFor(entry.kind)).toBe('unknown-on-timeout');
-			}
-			if (entry.messageIdSource === undefined) {
-				expect(messageIdSourceFor(entry.kind)).toBe('provider');
-				expect(preassignsProviderMessageId(entry.kind)).toBe(false);
-			}
+	it('leaves no shipped kind on a fail-closed default — every core entry declares both', () => {
+		// The defaults THEMSELVES cannot be exercised from the real catalog: core
+		// entries must declare both fields and the generated plugin catalog is empty
+		// in this build, so a loop here would assert nothing. They are pinned
+		// against a mocked generated entry in `undeclaredSemanticsFailClosed.test.ts`
+		// instead. What this pins is the other half — that nothing shipped is
+		// relying on them.
+		const coreEntries = SEND_PROVIDER_CATALOG.filter((entry) => isCoreSendProviderKind(entry.kind));
+		expect(coreEntries).toHaveLength(CORE_KINDS.length);
+		for (const entry of coreEntries) {
+			expect(entry.acceptanceSemantics).toBeDefined();
+			expect(entry.messageIdSource).toBeDefined();
 		}
 	});
 });

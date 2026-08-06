@@ -11,7 +11,9 @@ import type { ActionCtx } from '../_generated/server';
 import {
 	acceptanceSemanticsFor,
 	hasProviderFeedbackFor,
+	messageIdSourceFor,
 	preassignsProviderMessageId,
+	takesCustodyOnAcceptance,
 } from '../lib/sendProviders/catalog';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
@@ -268,8 +270,13 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	// transport's catalog entry, so a new provider kind never edits this file:
 	//   · does its provider message id exist before the send (ours, not theirs)?
 	//   · does a successful dispatch mean CUSTODY rather than delivery?
-	const providerMessageIdIsPreassigned = preassignsProviderMessageId(providerKind);
-	const takesCustodyOnAcceptance = acceptanceSemanticsFor(providerKind) === 'accepted';
+	// Both halves are read the same way — the catalog's own predicate applied to
+	// the catalog's own declaration — so neither question is ever spelled as a
+	// bare comparison here, and a second consumer joins by calling the same pair.
+	const providerMessageIdIsPreassigned = preassignsProviderMessageId(
+		messageIdSourceFor(providerKind)
+	);
+	const transportTakesCustody = takesCustodyOnAcceptance(acceptanceSemanticsFor(providerKind));
 	// Only a transport whose message id we minted ourselves can have an identity
 	// bound BEFORE the network crossing — for anyone else the id does not exist
 	// until the response carries it. Binding early is what lets a webhook that
@@ -329,7 +336,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			providerMessageId: providerMessageIdIsPreassigned ? idempotencyKey : dispatched.result.id,
 			providerType: dispatched.providerType,
 			sendLatencyMs: dispatched.latencyMs,
-			...(takesCustodyOnAcceptance ? { acceptedForDelivery: true as const } : {}),
+			...(transportTakesCustody ? { acceptedForDelivery: true as const } : {}),
 		};
 	}
 	if (dispatched.result.errorCode === 'ROUTING_DEFERRED') {
@@ -355,7 +362,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		// idempotency key we minted answers the same question twice without
 		// mailing anyone twice, so the ambiguity is resolved by replaying the
 		// attempt rather than by guessing (plan D4).
-		if (takesCustodyOnAcceptance) {
+		if (transportTakesCustody) {
 			return {
 				success: false,
 				acceptanceUnknown: true,
