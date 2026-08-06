@@ -289,6 +289,14 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			send: request.sendRef,
 			providerMessageId: idempotencyKey,
 		});
+		// THE LAST MTA-NAMED STRING HERE, AND IT IS NAMED FOR THE MUTATION ABOVE,
+		// NOT FOR THE KIND: an operator who greps `bindMtaProviderIdentity` finds
+		// this throw and vice versa. It moves WITH that rename — item 2 of the
+		// PREREQUISITES note on `AcceptanceSemantics` in
+		// `lib/sendProviders/catalog.ts`, which is what a second kind declaring
+		// `messageIdSource: 'idempotency-key'` must do before it can reach this
+		// line at all. Renaming the string on its own would break that grep and
+		// still leave the mutation stamping the own arm's kind onto the Send.
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
 	const engagementScore = normalizeEngagementScore(request.engagementScore);

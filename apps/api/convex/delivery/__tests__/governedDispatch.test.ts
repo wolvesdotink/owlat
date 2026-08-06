@@ -702,6 +702,10 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			);
 			providerAnswers('smtp', { success: true, id: 'relay-assigned-id' });
 
+			// The wording still names the MTA because it names the MUTATION that
+			// rejected (`bindMtaProviderIdentity`), which is itself still MTA-shaped
+			// — item 2 of the PREREQUISITES note on `AcceptanceSemantics`. Both move
+			// in the same change; this pin is the reminder that they must.
 			await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
 				'Unable to bind MTA provider identity: identity_conflict'
 			);

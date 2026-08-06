@@ -18,8 +18,10 @@
  * were still spelled `providerKind === 'mta'` — identity binding, message-id
  * substitution, acceptance, and the reconciliation of an ambiguous acceptance.
  * They are now declared on the catalog entry (`acceptanceSemantics`,
- * `messageIdSource`); `describe('declared dispatch semantics')` below PINS those
- * declarations against the real, unmocked catalog, and the proof that the
+ * `messageIdSource`); `describe('declared dispatch semantics')` below checks the
+ * INVARIANTS over those declarations against the real, unmocked catalog (the
+ * per-kind values themselves are pinned once, by `registry.test.ts`'s
+ * whole-catalog assertion), and the proof that the
  * governed boundary obeys the declaration rather than the kind name lives beside
  * the function it tests, in
  * `delivery/__tests__/governedDispatch.test.ts` → `describe('reads the declared
@@ -377,32 +379,26 @@ describe('the module contract', () => {
 });
 
 /**
- * WHAT EACH SHIPPED KIND DECLARES — read from the REAL catalog. Nothing in this
- * file mocks anything, deliberately: a steerable accessor here could report
- * whatever a test had last set and these pins would then pass for any catalog
- * content. The two suites that DO need something the shipped catalog cannot
- * produce keep their mocks to themselves —
+ * THE RULES OVER WHAT EACH SHIPPED KIND DECLARES — checked against the REAL
+ * catalog. Nothing in this file mocks anything, deliberately: a steerable
+ * accessor here could report whatever a test had last set and these pins would
+ * then pass for any catalog content. The two suites that DO need something the
+ * shipped catalog cannot produce keep their mocks to themselves —
  * `delivery/__tests__/governedDispatch.test.ts` steers what a kind declares, and
  * `undeclaredSemanticsFailClosed.test.ts` supplies the generated plugin entries
  * that declare nothing (the only way the fail-closed defaults are reachable).
  */
 describe('declared dispatch semantics', () => {
-	/**
-	 * Each core kind must ANSWER both questions — `CoreSendProviderCatalogEntry`
-	 * makes them required, so this pins the answers rather than their presence.
+	/*
+	 * WHAT each kind declares is pinned ONCE, in `registry.test.ts`, whose
+	 * whole-catalog `toEqual` already carries both fields for all five kinds.
+	 * Restating the 5×2 table here would make a sixth core kind a two-file edit
+	 * for one fact — the shotgun surgery this piece exists to remove — and would
+	 * fail against a hand-maintained fixture rather than against the catalog.
+	 * What lives here instead are the RULES over those values, which no snapshot
+	 * can express: the pairing invariant, and that nothing shipped leans on a
+	 * fail-closed default.
 	 */
-	it.each([
-		{ kind: 'mta', acceptance: 'accepted', messageId: 'idempotency-key' },
-		{ kind: 'ses', acceptance: 'unknown-on-timeout', messageId: 'provider' },
-		{ kind: 'resend', acceptance: 'unknown-on-timeout', messageId: 'provider' },
-		// A relay hands back no id of its own: the adapter reports the RFC 5322
-		// `Message-ID` the composer minted (`smtp/index.ts` → `composed.messageId`).
-		{ kind: 'smtp', acceptance: 'unknown-on-timeout', messageId: 'composed' },
-		{ kind: 'mandrill', acceptance: 'unknown-on-timeout', messageId: 'provider' },
-	] as const)('$kind declares $acceptance / $messageId', ({ kind, acceptance, messageId }) => {
-		expect(acceptanceSemanticsFor(kind)).toBe(acceptance);
-		expect(messageIdSourceFor(kind)).toBe(messageId);
-	});
 
 	it('pairs custody with an id of its own in BOTH directions, for every core kind', () => {
 		// The coupling is not decorative: the ambiguous-acceptance arm resolves by
