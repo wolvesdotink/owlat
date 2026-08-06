@@ -238,7 +238,6 @@ describe('the substitution table names only signals that run', () => {
 		expect(degradation.dwellMultiplier).toBe(2);
 		expect(degradedCeilingCap(degradation)).toBe(0.8);
 	});
-
 });
 
 describe('the degradation matrix substitutes exactly what the plan says', () => {
