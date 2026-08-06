@@ -32,11 +32,12 @@ AS BUILT, including the two places the plan's intent and the shipped code differ
 
 ### The catalog answers capability questions; nothing names a kind
 
-Four fields on `SendProviderCatalogEntry` carry everything the rest of the
+Six fields on `SendProviderCatalogEntry` carry everything the rest of the
 system needs: `requiredEnvVars`, `hasProviderFeedback`,
-`supportsCustomReturnPath`, and the new `domainVerification: 'api' | 'none'`.
+`supportsCustomReturnPath`, `domainVerification: 'api' | 'none'`, and the two
+dispatch semantics below.
 
-Two former identity checks now read them:
+Three former identity checks now read them:
 
 - **Fallback eligibility** — a kind may be the deliverability-fallback relay iff
   it is configured and is not `mta`. The MTA is the arm a fallback moves traffic
@@ -51,6 +52,8 @@ Two former identity checks now read them:
 - **Relay domain verification** — a relay's From domain is verified iff a
   registered sending-domain provider for that kind says so. Kinds with no such
   provider keep an honest "unverifiable" posture and fail closed.
+- **Governed dispatch** — see "What a dispatch means is declared, not
+  recognized" below.
 
 ### Per-send extras belong to the adapter
 
@@ -59,6 +62,40 @@ carry a ternary chain of per-kind extras, which is a seam leak by construction:
 every new kind edited a file that has nothing to do with it. The refactor was
 behaviour-identical and gated on the existing dispatch integration suite running
 unmodified.
+
+### What a dispatch MEANS is declared, not recognized
+
+Moving the extras left four behaviours in `delivery/governedDispatch.ts` still
+spelled `providerKind === 'mta'`: the pre-dispatch identity binding, the
+substitution of our own id for the one the response carried, the
+`acceptedForDelivery` verdict, and the replay-reconciliation arm of an ambiguous
+acceptance. Those are two questions, so they became two declared fields on the
+catalog entry:
+
+- `acceptanceSemantics: 'accepted' | 'unknown-on-timeout'` — does a successful
+  send mean the transport took CUSTODY (delivery still pending, the Send stays
+  `queued` for feedback), or is the send itself the handoff? `accepted` is also
+  what makes an ambiguous outcome re-askable by replay.
+- `messageIdSource: 'provider' | 'idempotency-key' | 'composed'` — where the
+  recorded `providerMessageId` comes from, and therefore whether it exists
+  *before* the network crossing. Only `idempotency-key` gets an identity bound
+  pre-dispatch and gets our value substituted for whatever came back.
+
+Both fail closed when absent (`unknown-on-timeout` / `provider`), because
+claiming custody we were never granted parks a Send against feedback that never
+arrives, and claiming re-askability double-delivers. After this,
+`governedDispatch.ts` compares no provider kind to a literal at all — a test
+reads the file and asserts it.
+
+The pairing is a compile-time union rather than two independent fields: a core
+entry may only declare `accepted` together with `idempotency-key`, since a
+replay is safe only when it carries the id we minted. What is NOT yet general is
+`accepted` itself. Two sites still spell the custody arm as the own MTA —
+`sendLifecycle.bindMtaProviderIdentity` patches `providerType: 'mta'`
+unconditionally, and `lastMileRouting`'s `mtaReconciliation` pin defers every
+non-`mta` reconciliation attempt until the delivery deadline kills the send.
+A second kind declaring custody must generalize both in the same change; the
+catalog says so at the declaration site.
 
 ### The sibling-table pattern stops at two
 
@@ -174,10 +211,17 @@ own feedback is what usually makes it moot.
 
 - Adding provider N+1 is a bounded checklist: kind literal, env keys, catalog
   entry, adapter, plus a webhook adapter and a domain-identity provider only if
-  the declared capabilities say so. Four of those steps are compile-time
+  the declared capabilities say so. Five of those steps are compile-time
   enforced and the rest are covered by conformance suites that iterate every
   catalog kind, so a new kind joins them by existing. The checklist is
   documented in `apps/docs/content/3.developer/15.providers.md`.
+- The custody/message-id declaration widened what a catalog entry is responsible
+  for, and one of its values has out-of-catalog prerequisites (see "What a
+  dispatch MEANS is declared, not recognized"). Until `sendLifecycle` and
+  `lastMileRouting` are capability-driven too, `acceptanceSemantics: 'accepted'`
+  is the own MTA's alone — declared honestly rather than hidden, so the next
+  author reads the constraint at the field instead of discovering it from a
+  deferred send.
 - `sendingDomainRelayIdentities` is now the growth point for provider identity
   state. Its `providerKind` is a string and its `providerDetails` blob is
   versioned, so the next kind adds rows rather than columns — but that also
