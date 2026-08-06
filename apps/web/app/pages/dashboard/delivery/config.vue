@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import {
-	SEND_TRANSPORT_KINDS,
-	coreSendProviderCatalogEntry,
-} from '@owlat/shared/sendProviderCatalog';
+import { SEND_TRANSPORT_KINDS } from '@owlat/shared/sendProviderCatalog';
 import { buildProviderEnvSkeleton } from '~/utils/deliveryEnvSnippet';
+import { providerFeedbackPanel, providerFeedbackWebhookUrl } from '~/utils/providerFeedbackPanel';
 
 useHead({ title: 'Delivery provider — Owlat' });
 
@@ -24,44 +22,27 @@ const {
 
 const canSend = computed(() => status.value?.canSend === true);
 
-// The active transport's CATALOG ENTRY — what it needs and what it can do. Every
-// panel below keys off a capability it declares rather than off its name (the
-// seams plan's D2), so a sixth provider gets the panels its capabilities earn
-// without a line changing on this page.
-const activeEntry = computed(() =>
-	coreSendProviderCatalogEntry(status.value?.provider ?? undefined)
-);
-
 // Provider feedback loop -----------------------------------------------------
-// `hasProviderFeedback` is the capability that decides whether there is a
-// webhook to wire up at all. WHICH ceremony the operator has to perform is a
-// property of the mechanism, not of the vendor: an SNS topic subscription is a
-// different set of steps from a signed webhook with a key. So the panel is
-// chosen from a mechanism table — a lookup, never a comparison — and a kind with
-// feedback but no operator-facing setup (our own MTA, which we wire ourselves)
-// is simply absent from it and renders no panel, exactly as before.
-const FEEDBACK_PANEL_BY_KIND: Readonly<Record<string, 'sns-topic' | 'signed-webhook'>> = {
-	ses: 'sns-topic',
-	mandrill: 'signed-webhook',
-};
-const feedbackPanel = computed(() =>
-	activeEntry.value?.hasProviderFeedback === true
-		? FEEDBACK_PANEL_BY_KIND[activeEntry.value.kind]
-		: undefined
-);
+// WHICH panel (if any) this transport's feedback channel needs, and where the
+// provider posts — both are declarations on its catalog entry, resolved by
+// `providerFeedbackPanel` (the seams plan's D2: capabilities, not identity). The
+// page therefore names no provider: a sixth one gets the panel its declaration
+// earns, and a kind whose channel needs nothing from the operator — our own MTA,
+// which we wire ourselves — renders none, exactly as before.
+const feedbackPanel = computed(() => providerFeedbackPanel(status.value?.provider));
 
 const runtimeConfig = useRuntimeConfig();
-// Absolute HTTPS endpoint the provider posts to — one route per kind, named
-// after it, so the URL is derived rather than written out per panel. When the
-// site URL is unknown we return '' (never a relative path — an SNS HTTPS
-// subscription can't use one) so the copy block hides behind a "site URL not
-// configured" hint instead of handing the operator a broken value. Mirrors the
-// useFormSettings precedent.
-const feedbackWebhookUrl = computed(() => {
-	const kind = activeEntry.value?.kind;
-	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
-	return kind && base ? `${base.replace(/\/$/, '')}/webhooks/${kind}` : '';
-});
+// Absolute HTTPS endpoint the provider posts to: this deployment's site URL plus
+// the path the entry declares. When the site URL is unknown it is '' (never a
+// relative path — an SNS HTTPS subscription can't use one) so the copy block
+// hides behind a "site URL not configured" hint instead of handing the operator
+// a broken value. Mirrors the useFormSettings precedent.
+const feedbackWebhookUrl = computed(() =>
+	providerFeedbackWebhookUrl(
+		status.value?.provider,
+		runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl
+	)
+);
 
 // Live "last event received" — enabled only for the SNS panel so we don't poll
 // otherwise.
@@ -77,6 +58,12 @@ const lastSesEventLabel = computed(() => {
 // The signed-webhook panel's own read: because the SIGNING key is not part of
 // what the transport needs to SEND, `getStatus.requiredEnv` cannot answer
 // whether it is present.
+//
+// STILL A PER-KIND QUERY, and knowingly so: the backend has one key-presence
+// read per signed kind rather than one that answers for whichever kind is
+// active. Only Mandrill declares `setupPanel: 'signed-webhook'` today, so the
+// pair is correct — and generalising the read is the webhook-registry piece's
+// (the seams plan's P2.1), which is where a second signed kind must land it.
 const { data: mandrillFeedback } = useOrganizationQuery(
 	api.delivery.status.getMandrillFeedbackStatus,
 	() => (feedbackPanel.value === 'signed-webhook' ? {} : undefined)
