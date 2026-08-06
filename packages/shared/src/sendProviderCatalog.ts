@@ -96,8 +96,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Our own MTA stamps the VERP envelope sender itself (smtp/sender.ts).
 		supportsCustomReturnPath: 'yes',
 		hasProviderFeedback: true,
-		// The one channel with NO operator ceremony: our own MTA posts here with the
-		// secret the installer wrote beside `MTA_API_KEY` — no console, no panel.
+		// The one channel with NO operator ceremony: our own MTA posts here with
+		// the secret the installer wrote beside `MTA_API_KEY` — so no panel.
 		providerFeedback: { webhookPath: '/webhooks/mta', signingKeyEnvVar: 'MTA_WEBHOOK_SECRET' },
 		// Our MTA's sending domains ARE verified — through `domains/providers/mta`
 		// and the generic DNS verifier — but never through this seam: the MTA is
@@ -162,9 +162,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// bounce and complaint back to us.
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
-		// SNS delivers the notifications, so the operator's job is a SUBSCRIPTION to
-		// this endpoint rather than a key: SES signs with a certificate the verifier
-		// fetches, hence no `signingKeyEnvVar`.
+		// SNS delivers the notifications, so the operator's job is a SUBSCRIPTION
+		// rather than a key: SES signs with a certificate the verifier fetches.
 		providerFeedback: { webhookPath: '/webhooks/ses', setupPanel: 'sns-topic' },
 		// SES identity APIs (`getVerificationStatus` + the DKIM/MAIL FROM proof
 		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
@@ -310,8 +309,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 				label: 'Mailchimp Transactional API key',
 				envVar: 'MANDRILL_API_KEY',
 				placeholder: 'md-...',
+				// ONE SENTENCE FOR TWO SURFACES, both of which closed by POINTING AT THE
+				// CARD that issues the second variable (ratified in the allowlist).
 				description:
-					'Mailchimp Transactional → Settings → API keys. Feedback (bounces, complaints, rejects) needs a second variable, MANDRILL_WEBHOOK_KEY, which Mandrill issues when you create the webhook.',
+					'Mailchimp Transactional → Settings → API keys. Feedback (bounces, complaints, rejects) needs a second variable, MANDRILL_WEBHOOK_KEY, which Mandrill issues when you create the webhook — the webhook card on the delivery page has the URL and the events to enable.',
 				required: true,
 			},
 		],
@@ -324,8 +325,7 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// (Mandrill plan D10).
 		hasProviderFeedback: true,
 		// The operator creates the webhook in Mandrill's console and copies the key
-		// it issues into `MANDRILL_WEBHOOK_KEY` — which is why the panel reports
-		// that variable's PRESENCE beside the endpoint.
+		// it issues in — which is why the panel reports that variable's PRESENCE.
 		providerFeedback: {
 			webhookPath: '/webhooks/mandrill',
 			signingKeyEnvVar: 'MANDRILL_WEBHOOK_KEY',

@@ -28,6 +28,7 @@ import {
 	credentialFieldEnvVars,
 } from '@owlat/shared/sendProviderCatalog';
 import {
+	credentialFieldEnv,
 	credentialFieldsFor,
 	credentialValuesFromDraft,
 	draftCredentialsFromValues,
@@ -46,6 +47,16 @@ interface ExpectedField {
 	label: string;
 	envVars: string[];
 	required: boolean;
+	/**
+	 * The two RENDERED strings a descriptor may carry besides its label —
+	 * `TransportCredentialFields.vue` draws both. They are pinned for the same
+	 * reason the label is, and because the first revision of this pin left them
+	 * out and two copy changes walked straight through it: Mandrill's note lost
+	 * the pointer to the card that issues `MANDRILL_WEBHOOK_KEY`, and the relay
+	 * host gained a hint the wizard's step never showed.
+	 */
+	description?: string;
+	placeholder?: string;
 }
 
 /** The forms the four incumbents (plus Mandrill) shipped, field for field. */
@@ -69,6 +80,7 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			label: 'Region',
 			envVars: ['AWS_SES_REGION'],
 			required: true,
+			placeholder: 'us-east-1',
 		},
 		{
 			key: 'accessKeyId',
@@ -92,6 +104,7 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			label: 'Resend API key',
 			envVars: ['RESEND_API_KEY'],
 			required: true,
+			placeholder: 're_...',
 		},
 	],
 	smtp: [
@@ -101,6 +114,12 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			label: 'Server host',
 			envVars: ['SMTP_RELAY_HOST', 'SMTP_RELAY_PORT', 'SMTP_RELAY_SECURE'],
 			required: true,
+			// THE ONE HINT THAT MOVED, and it moved by ADDITION: the in-app editor
+			// showed it, the wizard's step did not, and a descriptor has one. Ratified
+			// in `scripts/provider-identity-allowlist.txt` — the composite's own
+			// docblock argues the pair must hint together, since the port input beside
+			// it always showed its declared default.
+			placeholder: 'smtp.mailgun.org',
 		},
 		{
 			key: 'username',
@@ -124,6 +143,13 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			label: 'Mailchimp Transactional API key',
 			envVars: ['MANDRILL_API_KEY'],
 			required: true,
+			// BOTH shipped blocks closed by pointing at the card that issues the
+			// second variable. Dropping that pointer left the operator told they need
+			// `MANDRILL_WEBHOOK_KEY` with nowhere to get it, which is why the sentence
+			// is pinned whole rather than by its opening clause.
+			description:
+				'Mailchimp Transactional → Settings → API keys. Feedback (bounces, complaints, rejects) needs a second variable, MANDRILL_WEBHOOK_KEY, which Mandrill issues when you create the webhook — the webhook card on the delivery page has the URL and the events to enable.',
+			placeholder: 'md-...',
 		},
 	],
 };
@@ -194,6 +220,11 @@ describe('credential descriptors — the shipped forms, pinned', () => {
 			label: field.label,
 			envVars: [...credentialFieldEnvVars(field)],
 			required: field.required === true,
+			// Undefined rather than omitted on both, so an ADDED description or
+			// placeholder fails here too — `toEqual` ignores an undefined-valued key
+			// on one side, but not a string where the table says nothing.
+			description: field.description,
+			placeholder: 'placeholder' in field ? field.placeholder : undefined,
 		}));
 		expect(actual).toEqual(EXPECTED_FIELDS[kind]);
 	});
@@ -261,6 +292,68 @@ describe('credential descriptors — the env patch, pinned', () => {
 		]) {
 			expect(written.has(name)).toBe(false);
 		}
+	});
+});
+
+/**
+ * THE FOUR NORMALISATION RULES, one field kind at a time.
+ *
+ * `transportCredentialEnv` above proves them for the kinds that SHIP, which is
+ * what the deployments in the field run — but no shipped entry declares a
+ * `boolean` credential, so that rule is the one branch provider N+1 reaches
+ * first and nothing else can exercise. The same argument
+ * `transportDnsGuidance`'s capability layer makes: the only thing that can prove
+ * a branch before its first caller arrives is a test that calls it.
+ */
+describe('one descriptor → the env lines it owns', () => {
+	it('writes free text verbatim — normalising a credential would change it', () => {
+		const field = { kind: 'secret', key: 'apiKey', label: 'API key', envVar: 'ACME_KEY' } as const;
+		expect(credentialFieldEnv(field, { ACME_KEY: '  spaced-secret  ' })).toEqual({
+			ACME_KEY: '  spaced-secret  ',
+		});
+		expect(credentialFieldEnv(field, {})).toEqual({ ACME_KEY: '' });
+	});
+
+	it('falls back to a select’s declared default rather than writing a blank', () => {
+		const field = {
+			kind: 'select',
+			key: 'mode',
+			label: 'Mode',
+			envVar: 'ACME_MODE',
+			options: [{ value: 'fast', label: 'Fast' }],
+			default: 'fast',
+		} as const;
+		expect(credentialFieldEnv(field, {})).toEqual({ ACME_MODE: 'fast' });
+		expect(credentialFieldEnv(field, { ACME_MODE: 'slow' })).toEqual({ ACME_MODE: 'slow' });
+	});
+
+	it('writes a boolean as an explicit true/false, defaulted from the descriptor', () => {
+		// The branch NO shipped kind reaches. An unchecked box must write `'false'`,
+		// never an absent key: the patch is cleared-then-set, so a missing key is a
+		// variable the deployment loses rather than a toggle left off.
+		const field = { kind: 'boolean', key: 'pool', label: 'Dedicated IP', envVar: 'ACME_POOL' };
+		expect(credentialFieldEnv(field, {})).toEqual({ ACME_POOL: 'false' });
+		expect(credentialFieldEnv({ ...field, default: true }, {})).toEqual({ ACME_POOL: 'true' });
+		expect(credentialFieldEnv(field, { ACME_POOL: 'true' })).toEqual({ ACME_POOL: 'true' });
+		expect(credentialFieldEnv(field, { ACME_POOL: 'nonsense' })).toEqual({ ACME_POOL: 'false' });
+	});
+
+	it('trims a composite’s host and defaults its port and TLS flag', () => {
+		const field = {
+			kind: 'host-port',
+			key: 'relay',
+			label: 'Server host',
+			envVar: 'ACME_HOST',
+			portEnvVar: 'ACME_PORT',
+			secureEnvVar: 'ACME_SECURE',
+			portDefault: '2525',
+			secureDefault: true,
+		} as const;
+		expect(credentialFieldEnv(field, { ACME_HOST: ' relay.acme.test ' })).toEqual({
+			ACME_HOST: 'relay.acme.test',
+			ACME_PORT: '2525',
+			ACME_SECURE: 'true',
+		});
 	});
 });
 

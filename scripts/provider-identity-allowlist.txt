@@ -176,8 +176,10 @@ apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 #
 # ── COPY THE PLAN OWNER SHOULD RATIFY AT THE WAVE-1 GATE ──
 #
-# P1.2 changed exactly two operator-facing strings, both because keeping them
-# would have kept per-vendor knowledge in a template:
+# P1.2 changed FOUR operator-facing strings. Three are what a descriptor costs —
+# the editor and the wizard step worded the same field differently, and one
+# descriptor cannot say two things — and one is a per-vendor list that was a
+# second declaration of a capability:
 #
 #   1. the transport editor's and wizard step's "cannot be tested" notice used
 #      to list the vendors without a probe ("SES, Mailchimp Transactional and
@@ -186,12 +188,34 @@ apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 #      line only ever renders for one kind and the list was a second declaration
 #      of `setupProbe`;
 #   2. `RelayDomainStatus.vue` stopped rendering for deployments the query
-#      cannot speak for — see the note in that family below.
+#      cannot speak for — see the note in that family below;
+#   3. Mandrill's API-key note. Both surfaces shipped it, worded slightly
+#      differently, and both closed by POINTING AT THE CARD that issues the
+#      second variable ("the webhook card below has the URL and the events to
+#      enable" / "the delivery page has the URL and the event list"). The
+#      descriptor carries one sentence: the wizard's fuller opening, closing with
+#      "the webhook card on the delivery page has the URL and the events to
+#      enable" — the pointer names the page rather than "below", because a
+#      descriptor does not know where it is rendered. Dropping the pointer, which
+#      the first revision did, left the operator told they need
+#      `MANDRILL_WEBHOOK_KEY` and given nowhere to get it;
+#   4. the relay host's placeholder ("smtp.mailgun.org"). The in-app editor
+#      showed it and the wizard's step did not, so making the step render the
+#      descriptor ADDS a hint to one empty, disabled-on-a-named-preset input.
+#      The `host-port` composite's docblock argues the pair must hint together —
+#      the port input beside it always showed its declared default.
 #
 # Everything else the refactor touched keeps its shipped wording, pinned as
-# literals in `composables/__tests__/setupWizardCredentials.test.ts` and
-# `relayCredentialDraft.test.ts` rather than asserted against the catalog (an
-# assertion that a label equals `entry.label` agrees with any rename).
+# literals in `composables/__tests__/setupWizardCredentials.test.ts` (labels,
+# descriptions AND placeholders — the first revision pinned only the labels,
+# which is how 3 and 4 above got in unremarked) and `relayCredentialDraft.test.ts`
+# rather than asserted against the catalog (an assertion that a label equals
+# `entry.label` agrees with any rename).
+#
+# ONE RENDERING DIFFERENCE, not a string: the variable names inside a
+# descriptor's `description` are typeset as `<code>`, which is what both
+# hand-written blocks did. Matched by SHAPE (`WORD_WORD`) in
+# `TransportCredentialFields.vue`, so no provider is named to get it.
 
 
 # ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
@@ -235,10 +259,20 @@ apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to 
 # used to render for every deployment with an owned sending domain, since the
 # query synthesises `provisioning` for any domain with no identity row. A
 # Resend/SMTP/own-MTA deployment was therefore told to wait for an SES
-# provisioning run that would never start. The gate is now the capability plus
-# the data (`utils/relayIdentityPanel.ts`): a configured escape-hatch relay
-# declaring `domainVerification: 'api'`, or a row that already carries identity
-# state.
+# provisioning run that would never start. The gate is now the data plus the
+# capability OF THE KIND THE QUERY ANSWERS FOR (`utils/relayIdentityPanel.ts`):
+# a row that already carries identity state, or a configured escape-hatch relay
+# that is both in this panel's answering set and declares
+# `domainVerification: 'api'`.
+#
+# THE ANSWERING SET IS WHY THE GATE IS NOT PURELY CAPABILITY-DRIVEN, which reads
+# like a D5 violation and is not. Mandrill is a SECOND `api` kind, so a gate that
+# asked the capability alone showed this SES-worded card — "SES status:
+# provisioning" — to a Mandrill-only deployment, beside the Mandrill panel that
+# was already rendering its real rows. A gate cannot be more general than the
+# data behind it. `RelayDomainStatus.vue` therefore passes the kinds its query
+# can speak for (one, today), and that argument becomes the set the generic read
+# can prove when the query above lands.
 
 
 # ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
