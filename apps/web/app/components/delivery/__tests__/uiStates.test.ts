@@ -335,7 +335,12 @@ describe('calm states', () => {
 
 	it('renders insufficient_data as a distance from a floor, in a neutral tone', () => {
 		const wrapper = mount(MeasurementGateList, {
-			props: { gates: [holdingGate()], failedGate: null, requiresCorroboration: false },
+			props: {
+				gates: [holdingGate()],
+				failedGate: null,
+				requiresCorroboration: false,
+				decisionWindowLabel: 'the last 24 hours',
+			},
 		});
 		expect(wrapper.text()).toContain('Not enough data yet');
 		expect(wrapper.html()).not.toMatch(ALARM);

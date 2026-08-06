@@ -29,6 +29,7 @@ function mountCard() {
 		props: {
 			cell: cellView({ gates: [failingGate(), holdingGate('deferral')], trend: [] }),
 			referenceTransportId: 'ses',
+			decisionWindowLabel: 'the last 24 hours',
 		},
 		global: { stubs, components: { DeliveryMeasurementGateList: MeasurementGateList } },
 	});

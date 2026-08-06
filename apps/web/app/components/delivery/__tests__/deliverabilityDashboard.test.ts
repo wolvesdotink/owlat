@@ -27,7 +27,7 @@ const stubs = {
 
 function mountCard(cell: DeliverabilityDashboardCell, referenceTransportId: string | null = 'ses') {
 	return mount(MeasurementCellCard, {
-		props: { cell, referenceTransportId },
+		props: { cell, referenceTransportId, decisionWindowLabel: 'the last 24 hours' },
 		global: {
 			stubs,
 			components: { DeliveryMeasurementGateList: MeasurementGateList },
@@ -97,9 +97,32 @@ describe('measurement cell card — insufficient data is not a failure', () => {
 		const gate = wrapper.find('[data-testid="measurement-gate-hard_bounce"]');
 		expect(gate.attributes('data-status')).toBe('insufficient_data');
 		expect(gate.text()).toContain('Not enough data yet');
-		expect(gate.text()).toContain('124 of 400 sends this window');
+		expect(gate.text()).toContain('124 of 400 sends in the checks’ window');
 		// Thin is not broken: nothing in a holding gate may render in an error tone.
 		expect(gate.classes().join(' ')).not.toContain('error');
+		wrapper.unmount();
+	});
+
+	/**
+	 * THE SPAN THE NUMBERS ARE OVER IS ON THE CARD (#510).
+	 *
+	 * "124 of 400 sends" is the evaluator's count over the ramp controller's
+	 * window, and it sits directly under a table covering seven days. The card
+	 * used to leave a reader to assume one span for both — the sentence now names
+	 * whose window it means, and the list above it says which window that is.
+	 */
+	it('names the window the checks were decided over, beside a table over another', () => {
+		const wrapper = mountCard(cellView({ gates: [holdingGate()] }));
+
+		const span = wrapper.find('[data-testid="measurement-gate-window"]');
+		expect(span.exists()).toBe(true);
+		expect(span.text()).toContain('the last 24 hours');
+		expect(span.text()).toContain('ramp controller');
+		// The counters keep their own span, and the card says so where it prints
+		// them rather than borrowing the checks' one.
+		expect(wrapper.find('[data-testid="measurement-arm-table"]').text()).not.toContain(
+			'the last 24 hours'
+		);
 		wrapper.unmount();
 	});
 });

@@ -5,7 +5,15 @@
  * Every gate is rendered WITH the numbers that produced its verdict, because a
  * verdict nobody can check is not a measurement. A gate that is holding renders
  * in a neutral tone and says how far off its floor it is — "not enough data
- * yet, 124 of 400 sends this window" — never as a failure (plan D10/D2).
+ * yet, 124 of 400 sends in the checks' window" — never as a failure (D10/D2).
+ *
+ * AND WITH THE SPAN THOSE NUMBERS ARE OVER, which is NOT the window the cards
+ * around this list report. Every verdict here is reached over the ramp
+ * controller's own evaluation window, so the screen and the controller agree
+ * (#510) — and the only way that agreement is not a new confusion is if the list
+ * says which window it means. The label is a prop rather than a constant: the
+ * server sends the span, and a hard-coded "24 hours" would outlive a change to
+ * the controller's cadence.
  *
  * Prop-driven and read-only: no writes, no controls. P3-6 owns the control
  * surface.
@@ -23,6 +31,13 @@ const props = defineProps<{
 	/** Named so the corroboration caveat (D17) can point at the right gate. */
 	failedGate: DeliverabilityDashboardGate['gate'] | null;
 	requiresCorroboration: boolean;
+	/**
+	 * The span every verdict below was decided over, in words
+	 * (`decisionWindowLabel`). REQUIRED, not defaulted: a screen that forgot it
+	 * would put gate numbers from one span under a heading about another, which is
+	 * the thing #510 fixed on the server.
+	 */
+	decisionWindowLabel: string;
 }>();
 
 const TONE_CLASS = {
@@ -48,6 +63,13 @@ const rows = computed(() =>
 <template>
 	<div>
 		<h4 class="text-sm font-semibold text-text-primary">Checks</h4>
+		<!--
+			The span, once, above the list — every sentence below is over it, and
+			none of them is over the window the surrounding card reports.
+		-->
+		<p class="mt-1 text-xs text-text-secondary" data-testid="measurement-gate-window">
+			Decided over {{ props.decisionWindowLabel }} — the same window the ramp controller acts on.
+		</p>
 		<ul class="mt-2 space-y-2" data-testid="measurement-gate-list">
 			<li
 				v-for="row in rows"
