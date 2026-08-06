@@ -26,9 +26,16 @@
  * denominator describing an experiment that never ran. The only catchable
  * moment is the moment the literal is typed.
  *
- * NARROWER THAN THE RATCHET IT ANTICIPATES, still: `lint:providers` (P0.5) runs
- * over the whole repo and in CI's lint job rather than over `apps/api/convex`
- * in a vitest. P0.5 subsumes this file and deletes it.
+ * NARROWER THAN THE RATCHET IT SEEDED, still: `lint:providers`
+ * (`scripts/check-provider-identity.sh`, P0.5) runs in CI's lint job over the
+ * whole of `apps/` and `packages/` — the setup wizard and the transport editor
+ * included, which is where provider N+1's host edit would otherwise appear.
+ * What it deliberately does NOT take with it is the DECLARATION half below: a
+ * catalog entry, an adapter, an event payload and a fixture all legitimately
+ * write their own name, so `= 'ses'` is only a leak inside `apps/api/convex`,
+ * where this file — a source assertion with the whole module graph in hand —
+ * is the cheaper place to say so. This file therefore stays: comparisons
+ * everywhere are the ratchet's, declarations in the backend are this one's.
  */
 
 import { describe, expect, it } from 'vitest';

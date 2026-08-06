@@ -87,8 +87,19 @@ families are DATA rather than prose: `SURVIVING_KIND_LITERALS` in
 `apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`
 enumerates every file outside an adapter folder that still spells a kind, with
 its family and its owner, and fails in both directions — an unenumerated literal
-fails, and an entry whose literal has been swept fails until it is deleted. That
-map is what the seams plan's P0.5 ratchet seeds its allowlist from.
+fails, and an entry whose literal has been swept fails until it is deleted.
+
+That map seeded `bun run lint:providers`
+(`scripts/check-provider-identity.sh`), the CI gate that carries the same rule
+across the whole of `apps/` and `packages/`: no comparison against a kind
+literal outside an adapter folder, licensed only by
+`scripts/provider-identity-allowlist.txt`, which carries a family and an owner
+per entry and is strict in both directions so it can only shrink. The two are
+deliberately not the same check — the vitest one also catches a kind
+*declaration* (`const X = 'ses'`, the same fact with one hop) but only inside
+`apps/api/convex`, while the ratchet takes the comparison half everywhere,
+including the setup wizard and the transport editor, where the UI branches that
+would make provider N+1 a host edit still live.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
