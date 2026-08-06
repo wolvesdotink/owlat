@@ -32,9 +32,13 @@ import { buildMandrillIdentity, describeMandrillIdentity } from './identity';
 import { loadMandrillRow, resolveDomainName, upsertMandrillIdentity } from './persistence';
 import { buildMandrillDnsRecords } from './records';
 import { mandrillReferenceArm, mandrillRelayDomainVerified } from './relayVerification';
-import type { ProviderCheckResult, SendingDomainProviderModule } from '../types';
+import type { ProviderCheckResult, RelayProvingProviderModule } from '../types';
 
-export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
+// `RelayProvingProviderModule`, not the plain module type: the catalog declares
+// `domainVerification: 'api'` for this kind, and that promise is only worth
+// something if the three relay seams below are REQUIRED here (see the type's
+// own comment, and `../index.ts`'s `_relayProofTypecheck`).
+export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	kind: 'mandrill',
 
 	/**

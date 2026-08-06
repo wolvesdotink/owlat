@@ -20,12 +20,17 @@ import { mandrillProvider } from './mandrill';
 import { mtaProvider } from './mta';
 import { sesProvider } from './ses';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
-import type { SendingDomainProviderKind, SendingDomainProviderModule } from './types';
+import type {
+	RelayProvingProviderModule,
+	SendingDomainProviderKind,
+	SendingDomainProviderModule,
+} from './types';
 
 export type {
 	SendingDomainProviderKind,
 	SendingDomainIdentityRegistry,
 	SendingDomainProviderModule,
+	RelayProvingProviderModule,
 	ProviderIdentity,
 	ProviderIdentityFor,
 	MtaIdentity,
@@ -124,19 +129,53 @@ export type _ApiVerifiedKindsHaveDomainProviders =
 	AssertEveryApiVerifiedKindHasProvider<ApiVerifiedKindMissingProvider>;
 
 /**
+ * The second half of the same promise: a registered provider for an `api` kind
+ * must actually IMPLEMENT the relay seams, not merely occupy the key.
+ *
+ * The guard above proves the kind is in this registry. It cannot prove the
+ * adapter answers anything — `relayDomainVerified`, `ensureRelayIdentity` and
+ * `describeReferenceArm` are optional on the module interface, because absence
+ * is the honest answer for a `domainVerification: 'none'` kind (our own MTA is
+ * registered here and implements none of the three). So a new `api` kind could
+ * register an adapter with an empty relay surface, compile green, and fail
+ * silently in the three ways {@link RelayProvingProviderModule} spells out.
+ *
+ * This mapped type closes that: for exactly the kinds the CATALOG declares
+ * `api`, the registered module must be relay-proving. Intersecting with
+ * `SendingDomainProviderKind` is not a weakening — an `api` kind that is not
+ * registered at all is already the guard above, which names it more directly
+ * than a missing-property error would.
+ *
+ * Runtime twin: the capability table in `./__tests__/registry.test.ts`, which
+ * also walks bundled plugin kinds the literal types above cannot see.
+ */
+type RelayProvingKind = ApiVerifiedSendProviderKind & SendingDomainProviderKind;
+const _relayProofTypecheck: { [K in RelayProvingKind]: RelayProvingProviderModule<K> } =
+	SENDING_DOMAIN_PROVIDERS;
+void _relayProofTypecheck;
+
+/**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
  * `domains.providerType` is validated as a literal union before this is
  * called, so a throw here means a data-integrity bug (or a brand-new provider
  * landed without a registry entry).
+ *
+ * REGISTRATION IS `hasOwnProperty`, not truthiness, for the same reason
+ * {@link isSendingDomainProviderKind} below spells it that way: `providerType`
+ * reaches us as a plain string (the schema keeps it `v.optional(v.string())`
+ * for forward-compat), and a string like `constructor` or `__proto__` finds an
+ * INHERITED member on any object literal. A truthiness check hands that
+ * inherited value back as if it were an adapter, and the caller then fails on
+ * `adapter.registerDomain is not a function` — a confusing error, one call
+ * later, instead of the accurate one here.
  */
 export function providerFor<K extends SendingDomainProviderKind>(
 	kind: K
 ): SendingDomainProviderModule<K> {
-	const mod = SENDING_DOMAIN_PROVIDERS[kind];
-	if (!mod) {
+	if (!Object.prototype.hasOwnProperty.call(SENDING_DOMAIN_PROVIDERS, kind)) {
 		throw new Error(`Unknown sending domain provider: ${kind}`);
 	}
-	return mod as unknown as SendingDomainProviderModule<K>;
+	return SENDING_DOMAIN_PROVIDERS[kind] as unknown as SendingDomainProviderModule<K>;
 }
 
 /**

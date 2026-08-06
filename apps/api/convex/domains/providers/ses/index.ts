@@ -22,9 +22,13 @@ import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
 import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
-import type { ProviderCheckResult, SendingDomainProviderModule, SesIdentity } from '../types';
+import type { ProviderCheckResult, RelayProvingProviderModule, SesIdentity } from '../types';
 
-export const sesProvider: SendingDomainProviderModule<'ses'> = {
+// `RelayProvingProviderModule`, not the plain module type: the catalog declares
+// `domainVerification: 'api'` for this kind, and that promise is only worth
+// something if the three relay seams below are REQUIRED here (see the type's
+// own comment, and `../index.ts`'s `_relayProofTypecheck`).
+export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	kind: 'ses',
 
 	async registerDomain(domain, options) {

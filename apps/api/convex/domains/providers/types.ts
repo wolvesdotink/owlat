@@ -1,10 +1,10 @@
 /**
  * Sending domain provider adapter (module) — shared types.
  *
- * One TypeScript interface, two concrete implementations (MTA and SES). The
- * **Sending domain lifecycle (module)** dispatches per-provider work through
- * `providerFor(kind)` in `./index.ts`; provider variation lives entirely
- * behind this seam.
+ * One TypeScript interface, one concrete implementation per registered kind
+ * (`SendingDomainIdentityRegistry` below). The **Sending domain lifecycle
+ * (module)** dispatches per-provider work through `providerFor(kind)` in
+ * `./index.ts`; provider variation lives entirely behind this seam.
  *
  * Per ADR-0018:
  * - Each adapter owns its per-provider sibling identity table
@@ -281,3 +281,38 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 */
 	clearIdentity(ctx: MutationCtx, domainId: Id<'domains'>): Promise<void>;
 }
+
+/**
+ * The module shape a kind declaring `domainVerification: 'api'` must have —
+ * every optional relay seam above, made REQUIRED.
+ *
+ * The catalog entry is a PROMISE ("this relay can prove a sending domain"), and
+ * three separate pieces of the system read it: the enqueue-path proof
+ * (`relayDomainVerified`), the backfill that writes the identity that proof is
+ * read from (`ensureRelayIdentity`), and the alignment pre-flight's second arm
+ * (`describeReferenceArm`). A provider that is REGISTERED but implements none of
+ * them satisfies the registry's completeness guard and still breaks all three:
+ * every domain reports unverified, the fallback refuses to relay any of them,
+ * and the ramp holds at s=0 — with the only symptom a runtime refusal on a real
+ * send, in a deployment that had just been told its relay was ready.
+ *
+ * The methods stay OPTIONAL on {@link SendingDomainProviderModule} because
+ * absence is a real answer for a kind that declares `domainVerification: 'none'`
+ * (our own MTA, Resend, a bring-your-own SMTP relay): it keeps the seam's honest
+ * "unverifiable" posture rather than being a gap. This type is how the two
+ * readings are kept apart — the same field being absent is legitimate for one
+ * kind and a build failure for another, and which one it is comes from the
+ * catalog rather than from a reviewer noticing.
+ *
+ * Annotate an `api` kind's adapter with this (see `../ses/index.ts`,
+ * `../mandrill/index.ts`). The registry's `_relayProofTypecheck` in `./index.ts`
+ * is what makes forgetting to a compile error rather than a convention.
+ */
+export type RelayProvingProviderModule<K extends SendingDomainProviderKind> =
+	SendingDomainProviderModule<K> &
+		Required<
+			Pick<
+				SendingDomainProviderModule<K>,
+				'relayDomainVerified' | 'ensureRelayIdentity' | 'describeReferenceArm'
+			>
+		>;
