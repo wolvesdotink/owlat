@@ -84,9 +84,10 @@ const EXEMPT_PREFIXES = [
  * the FAMILY it belongs to, and who clears it.
  *
  * Declarations only — a `const X = 'ses'`. The COMPARISON survivors used to be
- * enumerated here too and are not any more: they are read from the ratchet's
- * allowlist (see {@link licensedComparisons}), because two hand-kept lists of
- * the same five files is exactly the shape that goes out of sync.
+ * enumerated here too and are not any more: they live in
+ * `scripts/provider-identity-allowlist.txt`, read by `bun run lint:providers`
+ * and by nothing else, because two hand-kept lists of the same files is exactly
+ * the shape that goes out of sync.
  *
  * None of these may be passed off to P0.5 as "definitional" — the definitional
  * entry is the one declaration at the bottom of this map. The rest are
@@ -123,11 +124,11 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
 }
 
 /**
- * Comparisons only, and only outside comments.
+ * Comments removed, so only real code reaches the declaration matcher.
  *
- * The docblocks that explain the sweep QUOTE the literals they removed —
- * `providerType === 'mta'` appears a dozen times as prose, and a check that
- * could not tell prose from code would force those explanations out of the
+ * The docblocks that explain the sweep QUOTE what they removed — `= 'mta'` and
+ * `providerType === 'mta'` both appear as prose a dozen times over — and a check
+ * that could not tell prose from code would force those explanations out of the
  * codebase, which is the opposite of what the rule is for. Block comments and
  * line comments are stripped before matching.
  */
