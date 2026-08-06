@@ -61,6 +61,37 @@ export const SENDING_DOMAIN_PROVIDERS = {
  */
 export const OWN_SENDING_DOMAIN_PROVIDER_KIND = mtaProvider.kind;
 
+/**
+ * Compile-time pin: the two names for our own infrastructure are ONE STRING.
+ *
+ * They are separately derived — this one from `mtaProvider.kind`, its twin from
+ * a literal in `strategies/adaptive_mix` — and that independence is the point
+ * of the type-level assertion below rather than a comment. Without it, renaming
+ * `mtaProvider.kind` (or introducing a second own-infrastructure kind) leaves
+ * `setRoute` still accepting a fallback route while the relay-identity drain
+ * beside it filters on the OTHER constant and matches zero domains: no relay
+ * identity is written, every pre-existing domain then fails `relayDomainVerified`
+ * and the fallback refuses to relay it, and the only symptom is a runtime
+ * refusal on a real send.
+ *
+ * A `typeof import(...)` in type position, so nothing at runtime imports the
+ * strategy barrel from the domain-provider registry — the constraint is paid
+ * for entirely at build time. Asserted in BOTH directions: each literal type
+ * must be assignable to the other, so widening either declaration fails here
+ * too. Its runtime twin is one line in `./__tests__/registry.test.ts`.
+ */
+type OwnArmTransportKind =
+	typeof import('../../lib/sendProviders/strategies/adaptive_mix').OWN_ARM_TRANSPORT_KIND;
+type AssertOwnKindsAgree<
+	_A extends OwnArmTransportKind,
+	_B extends OwnSendingDomainProviderKind,
+> = true;
+type OwnSendingDomainProviderKind = typeof OWN_SENDING_DOMAIN_PROVIDER_KIND;
+export type _OwnInfrastructureKindsAgree = AssertOwnKindsAgree<
+	OwnSendingDomainProviderKind,
+	OwnArmTransportKind
+>;
+
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`, so a
 // missing method (or a kind mismatch) is a compile error.

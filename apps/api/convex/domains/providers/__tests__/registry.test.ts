@@ -12,11 +12,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+	OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	SENDING_DOMAIN_PROVIDERS,
 	isSendingDomainProviderKind,
 	providerFor,
 	type SendingDomainProviderKind,
 } from '../index';
+import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
 	SEND_PROVIDER_CATALOG,
 	domainVerificationFor,
@@ -30,6 +32,25 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		for (const [key, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
 			expect(provider.kind).toBe(key);
 		}
+	});
+
+	it('names our own infrastructure with the same string the send arms do', () => {
+		// D3 sanctions ONE identity check — own infrastructure vs. everything else
+		// — and this pins that the two type domains spell it identically.
+		// `providerRoutes.setRoute` demands an enabled arm of
+		// `OWN_ARM_TRANSPORT_KIND` while the relay-identity drain three functions
+		// above it filters domains on `OWN_SENDING_DOMAIN_PROVIDER_KIND`; if those
+		// ever named different transports the route would still save and the drain
+		// would match zero domains, leaving every pre-existing domain without the
+		// relay identity its fallback later refuses to relay without.
+		//
+		// The build-time twin (`_OwnInfrastructureKindsAgree` in `../index.ts`) is
+		// the real enforcement, and it fails the whole typecheck rather than this
+		// file. This line is here so the failure is also legible as a test.
+		expect(OWN_SENDING_DOMAIN_PROVIDER_KIND).toBe(OWN_ARM_TRANSPORT_KIND);
+		expect(SENDING_DOMAIN_PROVIDERS[OWN_SENDING_DOMAIN_PROVIDER_KIND]).toBe(
+			SENDING_DOMAIN_PROVIDERS.mta
+		);
 	});
 
 	it('providerFor returns the adapter for a registered kind', () => {
