@@ -108,7 +108,7 @@ describe('systemMailRetryDisposition reads the catalog, not a list of two names'
 	it.each(coreKinds)('classifies an ambiguous %s send from its declaration', (kind) => {
 		expect({
 			kind,
-			disposition: systemMailRetryDisposition(kind, KEY, 'AMBIGUOUS_TIMEOUT'),
+			disposition: systemMailRetryDisposition(kind, KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT),
 		}).toEqual({
 			kind,
 			disposition: deduplicatesOnIdempotencyKeyFor(kind) ? 'safe_to_retry' : 'terminal',
@@ -118,13 +118,19 @@ describe('systemMailRetryDisposition reads the catalog, not a list of two names'
 	it('is terminal without a key even for a transport that dedups', () => {
 		// There is nothing to dedup ON. The MTA would mint a fresh message id for
 		// the repeat, which is a second message.
-		expect(systemMailRetryDisposition('mta', undefined, 'AMBIGUOUS_TIMEOUT')).toBe('terminal');
+		expect(systemMailRetryDisposition('mta', undefined, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe(
+			'terminal'
+		);
 	});
 
 	it('is terminal for a kind this deployment does not know', () => {
-		expect(systemMailRetryDisposition('postmark', KEY, 'AMBIGUOUS_TIMEOUT')).toBe('terminal');
-		expect(systemMailRetryDisposition(undefined, KEY, 'AMBIGUOUS_TIMEOUT')).toBe('terminal');
-		expect(systemMailRetryDisposition('', KEY, 'AMBIGUOUS_TIMEOUT')).toBe('terminal');
+		expect(systemMailRetryDisposition('postmark', KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe(
+			'terminal'
+		);
+		expect(systemMailRetryDisposition(undefined, KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe(
+			'terminal'
+		);
+		expect(systemMailRetryDisposition('', KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe('terminal');
 	});
 
 	it('leaves a known pre-accept failure retryable regardless of the transport', () => {
@@ -173,8 +179,8 @@ describe('a kind the old literal could never have matched', () => {
 		});
 		const { systemMailRetryDisposition: rule } = await import('../../systemMailOutcome');
 
-		expect(rule('mock-dedupes', KEY, 'AMBIGUOUS_TIMEOUT')).toBe('safe_to_retry');
-		expect(rule('mock-plain', KEY, 'AMBIGUOUS_TIMEOUT')).toBe('terminal');
+		expect(rule('mock-dedupes', KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe('safe_to_retry');
+		expect(rule('mock-plain', KEY, EmailErrorCode.AMBIGUOUS_TIMEOUT)).toBe('terminal');
 
 		vi.doUnmock('../catalog');
 	});
