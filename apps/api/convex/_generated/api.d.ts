@@ -70,6 +70,7 @@ import type * as analytics_seedProbeLedger from "../analytics/seedProbeLedger.js
 import type * as analytics_seedProbePoller from "../analytics/seedProbePoller.js";
 import type * as analytics_seedRotationSweep from "../analytics/seedRotationSweep.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
+import type * as analytics_smtpResponseCategories from "../analytics/smtpResponseCategories.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
 import type * as analytics_transportOutcomeSummary from "../analytics/transportOutcomeSummary.js";
@@ -830,6 +831,7 @@ import type * as schema_relayIdentities from "../schema/relayIdentities.js";
 import type * as schema_returnPath from "../schema/returnPath.js";
 import type * as schema_seedPlacement from "../schema/seedPlacement.js";
 import type * as schema_sendAssignments from "../schema/sendAssignments.js";
+import type * as schema_smtpResponseCategories from "../schema/smtpResponseCategories.js";
 import type * as schema_snds from "../schema/snds.js";
 import type * as schema_templates from "../schema/templates.js";
 import type * as schema_topics from "../schema/topics.js";
@@ -1001,6 +1003,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/seedProbePoller": typeof analytics_seedProbePoller;
   "analytics/seedRotationSweep": typeof analytics_seedRotationSweep;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
+  "analytics/smtpResponseCategories": typeof analytics_smtpResponseCategories;
   "analytics/spamRate": typeof analytics_spamRate;
   "analytics/spendBudget": typeof analytics_spendBudget;
   "analytics/transportOutcomeSummary": typeof analytics_transportOutcomeSummary;
@@ -1761,6 +1764,7 @@ declare const fullApi: ApiFromModules<{
   "schema/returnPath": typeof schema_returnPath;
   "schema/seedPlacement": typeof schema_seedPlacement;
   "schema/sendAssignments": typeof schema_sendAssignments;
+  "schema/smtpResponseCategories": typeof schema_smtpResponseCategories;
   "schema/snds": typeof schema_snds;
   "schema/templates": typeof schema_templates;
   "schema/topics": typeof schema_topics;
