@@ -30,6 +30,10 @@ function context(dnsblCheckedAt?: number): ChecklistVerificationContext {
 		settings: null,
 		routes: [],
 		relayIdentities: [],
+		// Required rather than optional since P0.4: an empty list is a real answer
+		// ("no relay is ready"), an omission is not, and the `deployment.relay`
+		// item's fail-closed verdict reads identically to both.
+		readyRelayKinds: [],
 		tracking: [],
 		postmaster: null,
 		warming: {

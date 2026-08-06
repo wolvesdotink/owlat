@@ -42,9 +42,11 @@ import type { SendingDomainProviderKind } from '../domains/providers/types';
  * NOT DEFINITIONAL, and it must not be allowlisted as such by the P0.5 ratchet:
  * it is a statement about WHICH TABLE the context loader reads, and it is
  * deleted by the generic `sendingDomainRelayIdentities` read (P1.2). It is
- * enumerated as such in the family list in the `OWN_ARM_TRANSPORT_KIND`
- * docblock (`lib/sendProviders/strategies/adaptive_mix/index.ts`), which is
- * where that ratchet seeds its allowlist from.
+ * enumerated under the `frozen-sibling-read` family, with that owner, in
+ * `SURVIVING_KIND_LITERALS`
+ * (`lib/sendProviders/__tests__/kindLiteralCustody.test.ts`) — which is where
+ * P0.5 seeds its allowlist from, and which fails the moment this declaration is
+ * deleted without the entry going with it.
  */
 export const RELAY_IDENTITY_PROOF_KIND = 'ses' as const;
 
@@ -102,14 +104,16 @@ export type ChecklistVerificationContext = {
 	 * goes on reporting the fallback relay ready. Two rules, one question, and
 	 * the operator is told the thing that will not work does.
 	 *
-	 * OPTIONAL, AND ABSENT MEANS NOTHING IS READY. A context assembled without
-	 * this projection cannot credit any relay, so `deployment.relay` reports "No
-	 * verified relay fallback is configured" rather than falling back to a
-	 * weaker source it would then present as the same verdict. Same fail-closed
-	 * posture `isFallbackRelayEligible` takes about every input it cannot vouch
-	 * for.
+	 * REQUIRED, like every other field here, and for the reason they are: an
+	 * empty array is a real answer ("nothing is ready", the fail-closed posture
+	 * `isFallbackRelayEligible` takes about every input it cannot vouch for),
+	 * but an OMISSION is not. Optional plus a `?? []` default would turn a
+	 * future context assembler that forgot to project it into the entirely
+	 * plausible-looking verdict "No verified relay fallback is configured"
+	 * instead of a build failure, on the one item whose whole job is to tell an
+	 * operator whether their fallback works.
 	 */
-	readyRelayKinds?: readonly string[];
+	readyRelayKinds: readonly string[];
 };
 
 export function checklistObservation(

@@ -34,7 +34,12 @@ import {
 	isSendingDomainProviderKind,
 	providerFor,
 } from '../../domains/providers';
-import type { SendingDomainProviderKind } from '../../domains/providers/types';
+import type {
+	EnsureRelayIdentityOptions,
+	SendingDomainProviderKind,
+} from '../../domains/providers/types';
+import { isSendProviderKind } from './types';
+import { isSendProviderReady } from './capability';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
@@ -69,6 +74,43 @@ export async function enabledFallbackRelayKinds(
 }
 
 /**
+ * The same list, narrowed to the relays this deployment can ACTUALLY send
+ * through — the readiness half of the `deployment.relay` checklist item.
+ *
+ * BUILT ON {@link enabledFallbackRelayKinds}, not beside it. The checklist's
+ * context loader holds its own `providerRoutes` read (a wider `.take`, for the
+ * validators that want the rows themselves) and computing this from those rows
+ * would be a second reading of one configuration — the exact thing this
+ * module's header says it exists to prevent, and not a theoretical one: a
+ * deployment carrying more route rows than the scan limit would have the
+ * checklist crediting a relay off row five while the provisioning drain, which
+ * stops at {@link PROVIDER_ROUTE_SCAN_LIMIT}, has registered no identity at it.
+ * One rule, one row limit, one type guard, one extra tiny indexed read.
+ *
+ * WHY READINESS AND NOT ENV PRESENCE. `isSendProviderReady` is the authority
+ * `setRoute` and `resolveRoute` gate on, and it resolves the mutable
+ * `send:transport` grant as well as the credentials. The validators run in the
+ * Node runtime with no `ctx`, so the only configured-ness they could compute
+ * unaided is env presence — which agrees with the mutation on every core kind
+ * and disagrees on exactly the tier where being wrong is expensive: a bundled
+ * plugin transport whose grant was revoked keeps its env vars, so `resolveRoute`
+ * stops using it as the fallback while an env-only checklist goes on reporting
+ * the fallback relay ready.
+ *
+ * A non-catalog kind (a row written by a newer deployment, a retired kind) is
+ * dropped before the readiness call rather than passed to a lookup that would
+ * throw on it; the validator's own eligibility predicate refuses it again for
+ * the same reason.
+ */
+export async function readyFallbackRelayKinds(ctx: QueryCtx | MutationCtx): Promise<string[]> {
+	const ready: string[] = [];
+	for (const kind of await enabledFallbackRelayKinds(ctx)) {
+		if (isSendProviderKind(kind) && (await isSendProviderReady(ctx, kind))) ready.push(kind);
+	}
+	return ready;
+}
+
+/**
  * One relay's `ensureRelayIdentity`, already bound to its module, WITH the kind
  * it belongs to.
  *
@@ -82,7 +124,11 @@ export async function enabledFallbackRelayKinds(
  */
 export type RelayIdentityBackfill = {
 	readonly kind: SendingDomainProviderKind;
-	readonly ensureRelayIdentity: (ctx: MutationCtx, domain: Doc<'domains'>) => Promise<void>;
+	readonly ensureRelayIdentity: (
+		ctx: MutationCtx,
+		domain: Doc<'domains'>,
+		options: EnsureRelayIdentityOptions
+	) => Promise<void>;
 };
 
 /** What one page (or one domain) of backfill actually managed to do. */
@@ -153,11 +199,19 @@ export function relayIdentityBackfills(
  * So the outcome is RETURNED rather than only logged, and the drain summarizes
  * it once per page — a wholly failed drain stays visible without the rollback
  * coming back.
+ *
+ * WHAT "ENSURE" MEANS IS THE CALLER'S TO SAY, and travels as
+ * {@link EnsureRelayIdentityOptions} rather than being decided here: the drain
+ * converges (an existing row is done), the forward path re-registers (its
+ * `→ verified` edge is the operator's only repair lever for an identity removed
+ * at the provider). Sharing one implementation is what this module is for;
+ * making that sharing pick one of the two intents silently is not.
  */
 export async function ensureRelayIdentities(
 	ctx: MutationCtx,
 	domain: Doc<'domains'>,
-	backfills: readonly RelayIdentityBackfill[]
+	backfills: readonly RelayIdentityBackfill[],
+	options: EnsureRelayIdentityOptions
 ): Promise<RelayIdentityBackfillOutcome> {
 	if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) {
 		return { attempted: 0, failedKinds: [] };
@@ -165,7 +219,7 @@ export async function ensureRelayIdentities(
 	const failedKinds: SendingDomainProviderKind[] = [];
 	for (const { kind, ensureRelayIdentity } of backfills) {
 		try {
-			await ensureRelayIdentity(ctx, domain);
+			await ensureRelayIdentity(ctx, domain, options);
 		} catch (error) {
 			failedKinds.push(kind);
 			logError(`[Relay identity] ${kind} backfill failed for ${domain.domain}:`, error);
