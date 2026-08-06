@@ -82,10 +82,13 @@ What `domains/lifecycle.ts` still carries `providerType` branches for is the
 RETURN-PATH family — which `mailFrom` bundle a custom return-path host
 publishes, and which reflection action pushes it to the provider — and a new
 kind silently gets neither. That capability has no home on the adapter
-interface yet. It is one of four families of surviving kind literals, all
-enumerated with their owners in the docblock on `OWN_ARM_TRANSPORT_KIND`
-(`apps/api/convex/lib/sendProviders/strategies/adaptive_mix/index.ts`), which is
-where the "own vs. not-own is the only sanctioned identity" rule is declared.
+interface yet. It is one of four families of surviving kind literals, and the
+families are DATA rather than prose: `SURVIVING_KIND_LITERALS` in
+`apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`
+enumerates every file outside an adapter folder that still spells a kind, with
+its family and its owner, and fails in both directions — an unenumerated literal
+fails, and an entry whose literal has been swept fails until it is deleted. That
+map is what the seams plan's P0.5 ratchet seeds its allowlist from.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a

@@ -74,35 +74,31 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * `armForTransport`, the same function `sendAssignments` records with, rather
  * than through a second copy of the split.
  *
- * WHAT STILL SPELLS A KIND, and why none of it is an own-arm restatement the
- * allowlist could pass off as definitional. Written here rather than left for
- * the ratchet author (P0.5) to discover, because none of it is a substitution:
- * the first three need a capability that does not exist yet, and the fourth is
- * not a provider kind at all.
+ * WHAT STILL SPELLS A KIND is DATA, not this docblock:
+ * `SURVIVING_KIND_LITERALS` in
+ * `lib/sendProviders/__tests__/kindLiteralCustody.test.ts` enumerates every
+ * such file with its family and its owner, and asserts the set in BOTH
+ * directions — an unenumerated literal fails, and an entry whose literal has
+ * been swept fails until it is deleted. That is what P0.5 seeds its allowlist
+ * from; prose here would go stale the first time a family cleared, with nothing
+ * failing. The families, for orientation only:
  *
- *   1. THE RETURN-PATH FAMILY. `domains/lifecycle.ts` decides which `mailFrom`
- *      bundle to publish and which reflection action to schedule by branching on
- *      `providerType`, and `delivery/checklistDomainValidators.ts`'s
- *      `domain.return_path` item restates the same branch to say what the
- *      ACTIVE return path is. That capability has no home on the sending-domain
- *      adapter interface yet (`domains/providers/index.ts` says so in full);
- *      giving it one moves both sites at once.
- *   2. SES-SHAPED READS of the frozen sibling table, largest being
- *      `providerRoutes.listDeliverabilityRelayDomains` — carried into P1.2 as an
- *      explicit added input, since the read and the component that renders it
- *      have to move together. `delivery/checklistValidatorTypes.ts`'s
- *      `RELAY_IDENTITY_PROOF_KIND` declares the same fact for the
- *      `deployment.relay` item and is retired by the same generic
- *      `sendingDomainRelayIdentities` read. `webhooks/complaintDispatch.ts`'s
- *      blocklist gate (which event sources carry a `deliveryDomain` tag) and
- *      `delivery/lastMileRouting.ts`'s relay-reconciliation gate are the same
- *      shape at a smaller scale.
- *   3. HISTORICAL AND ADAPTER-ADJACENT. `migrations/0018_*` rewrites rows that
- *      were written under the old spelling and must keep naming them;
- *      `domains/mandrillRelay.ts` and `domains/mandrillRelayMutations.ts` are
- *      one kind's provisioning actions living beside their adapter rather than
- *      inside it — the out-of-adapter pattern `docs/abstractions.md` records as
- *      unclaimed by any card, SES's `sesRelayMutations` included.
+ *   1. THE RETURN-PATH FAMILY (`domains/lifecycle.ts`,
+ *      `delivery/checklistDomainValidators.ts`) — which `mailFrom` bundle to
+ *      publish, which reflection action to schedule, and what the item reports
+ *      as the ACTIVE return path. That capability has no home on the
+ *      sending-domain adapter interface yet (`domains/providers/index.ts` says
+ *      so in full); giving it one moves both sites at once.
+ *   2. FROZEN-SIBLING READS — `providerRoutes.listDeliverabilityRelayDomains`
+ *      and `delivery/checklistValidatorTypes.ts`'s `RELAY_IDENTITY_PROOF_KIND`,
+ *      both retired by the generic `sendingDomainRelayIdentities` read in P1.2
+ *      (the read and the component that renders it have to move together).
+ *   3. ADAPTER-ADJACENT — one kind's actions living beside its adapter rather
+ *      than inside it (`domains/mandrillRelay*.ts`,
+ *      `webhooks/mandrillRejectSuppression.ts`, and SES's `sesRelayMutations`),
+ *      plus `migrations/0018_*`, which rewrites rows written under the old
+ *      spelling and must keep naming them. `docs/abstractions.md` records the
+ *      pattern as unclaimed by any card.
  *   4. NOT A PROVIDER KIND AT ALL, and must not be swept: the MTA's routing-API
  *      wire vocabulary (`decision.kind === 'mta'` in
  *      `delivery/lastMileRouting.ts` and `lib/sendProviders/mta/index.ts`) is
