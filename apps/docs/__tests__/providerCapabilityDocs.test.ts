@@ -77,6 +77,31 @@ describe('the providers page restates the send catalog without drifting from it'
 		expect(columns).toEqual(entries.map((entry) => `\`${entry.kind}\``));
 	});
 
+	it('has a row for every capability field the catalog declares', () => {
+		// THE OMISSION THE CELL CHECKS CANNOT SEE. Every assertion below starts
+		// from a field NAME, so a field added to the catalog and not to the table
+		// is invisible to all of them — which is exactly what happened when
+		// `deduplicatesOnIdempotencyKey` landed: the page went on saying "every
+		// catalog entry answers six capability questions" while the answer to the
+		// seventh decided whether an ambiguous password reset may be re-sent.
+		//
+		// Read off `mta`, the entry that declares every field, and excused only for
+		// the two the entry type does not carry: `kind` and `label` are identity,
+		// `retryDelays` is a schedule rather than a capability, and `pluginId` is
+		// tier bookkeeping.
+		const notCapabilities = new Set(['kind', 'label', 'retryDelays', 'pluginId']);
+		const mta = entries.find((entry) => entry.kind === 'mta');
+		expect(mta, 'the catalog no longer declares an mta entry').toBeDefined();
+		const declaredFields = [...mta!.body.matchAll(/\n\t\t([a-zA-Z]+):/g)]
+			.map((match) => match[1]!)
+			.filter((field) => !notCapabilities.has(field));
+		const lines = providers.split('\n');
+		expect(
+			declaredFields.filter((field) => !lines.some((line) => line.startsWith(`| \`${field}\` |`))),
+			'these catalog fields have no row in the Declared capabilities table'
+		).toEqual([]);
+	});
+
 	it.each([
 		'supportsCustomReturnPath',
 		'domainVerification',
@@ -96,12 +121,15 @@ describe('the providers page restates the send catalog without drifting from it'
 		}
 	});
 
-	it('hasProviderFeedback: yes/no matches the declared boolean', () => {
-		const { cells } = tableRow('hasProviderFeedback');
-		for (const [index, entry] of entries.entries()) {
-			const declaredFeedback = /\n\t\thasProviderFeedback: (true|false),/.exec(entry.body)?.[1];
-			expect(declaredFeedback, `${entry.kind} declares no hasProviderFeedback`).toBeDefined();
-			expect(cells[index], entry.kind).toBe(declaredFeedback === 'true' ? 'yes' : 'no');
+	it.each(['hasProviderFeedback', 'deduplicatesOnIdempotencyKey'])(
+		'%s: yes/no matches the declared boolean',
+		(field) => {
+			const { cells } = tableRow(field);
+			for (const [index, entry] of entries.entries()) {
+				const value = new RegExp(`\\n\\t\\t${field}: (true|false),`).exec(entry.body)?.[1];
+				expect(value, `${entry.kind} declares no ${field}`).toBeDefined();
+				expect(cells[index], `${entry.kind} / ${field}`).toBe(value === 'true' ? 'yes' : 'no');
+			}
 		}
-	});
+	);
 });
