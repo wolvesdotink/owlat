@@ -39,13 +39,16 @@ vi.mock('../../scaling/degradation.js', async () => {
 });
 vi.mock('../routingDecision.js', () => ({
 	readRoutingLease: vi.fn().mockResolvedValue({
-		token: 'test-routing-lease',
-		destinationProvider: 'other',
-		probe: false,
-		globalProbe: false,
-		globalBreakerGeneration: 0,
-		providerBreakerGeneration: 0,
-		expiresAt: Date.now() + 60_000,
+		status: 'ok',
+		lease: {
+			token: 'test-routing-lease',
+			destinationProvider: 'other',
+			probe: false,
+			globalProbe: false,
+			globalBreakerGeneration: 0,
+			providerBreakerGeneration: 0,
+			expiresAt: Date.now() + 60_000,
+		},
 	}),
 	isRoutingLeaseBoundTo: vi.fn().mockReturnValue(true),
 	createRoutingDecisionHandler: vi.fn().mockReturnValue(() => new Response(null, { status: 204 })),
