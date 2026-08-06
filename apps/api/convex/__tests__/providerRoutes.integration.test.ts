@@ -573,6 +573,52 @@ describe('deliverability relay domain lifecycle', () => {
 		expect(relayIdentities[0]?.status).toBe('pending_dns');
 	});
 
+	it('matches an existing relay identity for a domain stored with mixed case', async () => {
+		// The generic `sendingDomainRelayIdentities` table keys on the LOWERCASED
+		// name (every writer in `mandrill/persistence.ts` normalises), while the
+		// `domains` row it is keyed from is normalised only by `domains.create` —
+		// the seed loader and any future writer can put mixed case in the table.
+		// The drain hands the provider the doc rather than re-resolving the name,
+		// so the normalisation the round-trip used to supply has to be done at the
+		// existence read or every drain page re-provisions the domain.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'Relay.Example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainRelayIdentities', {
+				organizationId: TEST_ORG_ID,
+				domain: 'relay.example',
+				providerKind: 'mandrill',
+				status: 'pending_dns',
+				spf: { isValid: false },
+				dkim: { isValid: false },
+				lastCheckedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			relayProviderType: 'mandrill',
+			paginationOpts: { cursor: null, numItems: 32 },
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const relayIdentities = await t.run(
+			async (ctx) => await ctx.db.query('sendingDomainRelayIdentities').collect()
+		);
+		// One row, still the operator-visible pending verdict: a re-provision would
+		// have called `senders/add-domain` again and overwritten it with `verified`.
+		expect(relayIdentities).toHaveLength(1);
+		expect(relayIdentities[0]?.status).toBe('pending_dns');
+	});
+
 	it('exposes exact SES DNS and verification state to the admin UI query', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
@@ -609,6 +655,53 @@ describe('deliverability relay domain lifecycle', () => {
 				dnsRecords: { spf: { host: '@' } },
 			},
 		]);
+	});
+
+	it('PINNED DIVERGENCE (P1.2): reports a non-SES relay identity as provisioning', async () => {
+		// KNOWN-BROKEN, ON PURPOSE, AND HELD HERE SO IT CANNOT BE FORGOTTEN.
+		// `listDeliverabilityRelayDomains` still reads `sendingDomainSesIdentities`
+		// directly and shapes its row around SES's DNS bundle, so a deployment
+		// whose fallback relay is Mandrill relays correctly (the drain above proves
+		// the identity is written) while this query — the entire content of
+		// `RelayDomainStatus.vue` — reports `provisioning` with no DNS records for
+		// every owned-MTA domain, forever.
+		//
+		// Not fixed in this piece: widening the read shape changes what the admin
+		// table renders, which is the user-visible change wave 0 may not make, and
+		// the row and the component have to move together. P1.2 (catalog-driven web
+		// UI) owns that pair. When it lands, THIS TEST IS THE ONE THAT MUST FLIP —
+		// `status` becomes `verified` and `dnsRecords` becomes populated — rather
+		// than a comment someone has to go looking for.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainRelayIdentities', {
+				organizationId: TEST_ORG_ID,
+				domain: 'relay.example',
+				providerKind: 'mandrill',
+				status: 'verified',
+				spf: { isValid: true },
+				dkim: { isValid: true },
+				lastCheckedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			paginationOpts: { cursor: null, numItems: 100 },
+		});
+		expect(result.page).toMatchObject([
+			{ domain: 'relay.example', status: 'provisioning', isProviderVerified: false },
+		]);
+		expect(result.page[0]?.dnsRecords).toBeUndefined();
 	});
 
 	it('distinguishes primary verification and paginates beyond 512 domains', async () => {

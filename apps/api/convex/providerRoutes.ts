@@ -172,6 +172,11 @@ export const listTransportCatalog = authedQuery({
  * the write half only, and widening the read shape from a wave-0 refactor
  * would be exactly the user-visible change wave 0 is not allowed to make.
  * Until then: a non-SES fallback relays correctly and reports nothing here.
+ *
+ * The divergence is PINNED, not merely described: `__tests__/providerRoutes.
+ * integration.test.ts` → "PINNED DIVERGENCE (P1.2)" inserts a verified Mandrill
+ * relay identity and asserts this query answers `provisioning` with no DNS
+ * records. P1.2's first act is that test failing, not a comment hunt.
  */
 export const listDeliverabilityRelayDomains = authedQuery({
 	args: { paginationOpts: paginationOptsValidator },
