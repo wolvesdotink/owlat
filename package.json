@@ -129,7 +129,7 @@
 		"fast-xml-builder": "^1.2.0",
 		"ip-address": "^10.4.0",
 		"js-cookie": "^3.0.8",
-		"js-yaml": "^3.15.0",
+		"js-yaml": "^3.15.1",
 		"linkify-it": "^5.0.2",
 		"nodemailer": "9.0.3",
 		"nuxt": "4.5.2",
