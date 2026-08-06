@@ -64,3 +64,54 @@ export function isFallbackRelayEligible(
 	if (kind === OWN_ARM_TRANSPORT_KIND) return false;
 	return isConfigured(kind);
 }
+
+/**
+ * One entry of a `providerRoutes` row's `providers` array, structurally: the
+ * two fields both predicates below read. Structural rather than
+ * `Doc<'providerRoutes'>['providers'][number]` so this module keeps no schema
+ * edge — `setRoute` asks it of the arguments it is about to persist and the
+ * checklist asks it of the row it just read, and neither has to convert.
+ */
+export type RouteProviderEntry = { readonly providerType: string; readonly isEnabled: boolean };
+
+/**
+ * Is `relayKind` a LIVE ARM of this route, and not merely the kind its fallback
+ * names?
+ *
+ * The second of the three conditions an enabled deliverability fallback has to
+ * satisfy — eligibility ({@link isFallbackRelayEligible}), this pairing, and
+ * the own arm ({@link routeCarriesOwnArm}) — and the reason it lives here
+ * rather than inline at `setRoute` is that `setRoute` is not the only asker:
+ * the `deployment.relay` checklist item reports the same route as ready or not,
+ * and a checklist that re-expressed the rule would go on reporting a route as
+ * unready after the mutation learned to accept it (or the reverse). Two copies
+ * of a save-time rule drift in whichever direction the next change moves one of
+ * them; the expensive one is the checklist telling an operator their perfectly
+ * saveable route is broken, which is the exact bug the leak sweep just removed
+ * from this item.
+ */
+export function routeCarriesEnabledRelay(
+	providers: readonly RouteProviderEntry[],
+	relayKind: string
+): boolean {
+	return providers.some((provider) => provider.isEnabled && provider.providerType === relayKind);
+}
+
+/**
+ * Does this route carry the arm a fallback moves traffic AWAY from?
+ *
+ * The third condition, and the one a route cannot be a fallback route without:
+ * a deliverability fallback is by definition traffic leaving our own
+ * infrastructure for a relay, so a route with no enabled own-MTA arm has
+ * nothing to fall back FROM.
+ *
+ * D3's one sanctioned identity — own arm vs. everything else — read from its
+ * SINGLE declaration. `OWN_ARM_TRANSPORT_KIND` is the same constant the
+ * adaptive mix splits its arms on, which is what keeps this precondition and
+ * that split from ever meaning two different transports.
+ */
+export function routeCarriesOwnArm(providers: readonly RouteProviderEntry[]): boolean {
+	return providers.some(
+		(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
+	);
+}

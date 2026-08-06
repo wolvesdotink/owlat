@@ -6,12 +6,17 @@ import {
 	type DeliverabilityCheckId,
 } from '@owlat/shared';
 import { providerKindConfigured } from '../lib/sendProviders/capability';
-import { isFallbackRelayEligible } from '../lib/sendProviders/fallbackEligibility';
+import {
+	isFallbackRelayEligible,
+	routeCarriesEnabledRelay,
+	routeCarriesOwnArm,
+} from '../lib/sendProviders/fallbackEligibility';
 import { detectIpProvider } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
 import {
 	checklistObservation,
 	pendingDnsStatus,
+	RELAY_IDENTITY_PROOF_KIND,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
@@ -244,28 +249,25 @@ export async function observeDeploymentCheck(
 			// identities provisioned and a checklist item that said "No verified relay
 			// fallback is configured" forever.
 			//
-			// The same predicate `setRoute` and `resolveRoute` gate on, judged
-			// against the same env-only credential source a caller with nothing else
-			// in hand uses. It is what keeps the row's free-form `relayProviderType`
-			// from crediting the OWN MTA (which a fallback moves traffic away from,
-			// never to) or a retired kind: both fail closed here.
-			const relayReady = (relayKind: string): boolean =>
-				isFallbackRelayEligible(relayKind, providerKindConfigured);
-			const routeReady = context.routes.some((route) => {
+			// EVERY condition asked of the module that owns it, so that "is this
+			// route a working fallback?" has one answer here and at save time.
+			// `isFallbackRelayEligible` is the same predicate `setRoute` and
+			// `resolveRoute` gate on (judged against the env-only credential source a
+			// caller with nothing else in hand uses), and the two route-shape
+			// preconditions are the same two functions `setRoute` throws on. Between
+			// them they keep the row's free-form `relayProviderType` from crediting
+			// the OWN MTA (which a fallback moves traffic away from, never to), a
+			// retired kind, or a relay that is not a live arm of the route at all.
+			const readyFallbackKinds = context.routes.flatMap((route) => {
 				const fallback = route.deliverabilityFallback;
-				return (
-					fallback?.isEnabled === true &&
-					relayReady(fallback.relayProviderType) &&
-					// The relay must ALSO be an enabled entry on the route it is the
-					// fallback for — the same pairing `setRoute` enforces at save time,
-					// read here against whichever kind the fallback named rather than
-					// against a literal.
-					route.providers.some(
-						(candidate) =>
-							candidate.providerType === fallback.relayProviderType && candidate.isEnabled
-					)
-				);
+				if (fallback?.isEnabled !== true) return [];
+				const configured =
+					isFallbackRelayEligible(fallback.relayProviderType, providerKindConfigured) &&
+					routeCarriesEnabledRelay(route.providers, fallback.relayProviderType) &&
+					routeCarriesOwnArm(route.providers);
+				return configured ? [fallback.relayProviderType] : [];
 			});
+			const routeReady = readyFallbackKinds.length > 0;
 			// STILL SES-SHAPED, and deliberately left so by the leak sweep: the
 			// identity half reads `context.relayIdentities`, which the verification
 			// context types as rows of the FROZEN `sendingDomainSesIdentities`
@@ -273,10 +275,27 @@ export async function observeDeploymentCheck(
 			// table is the same read `providerRoutes.listDeliverabilityRelayDomains`
 			// has to grow (the two carry different per-kind identity shapes and have
 			// to move together — see the sending-domain section of
-			// `docs/abstractions.md`). Until then a non-SES relay reaches "the route
-			// is configured, the proof is absent" rather than the flatly wrong "no
-			// relay fallback is configured" it used to get.
+			// `docs/abstractions.md`).
+			//
+			// SO THE TWO HALVES ARE HELD TOGETHER RATHER THAN LEFT TO DRIFT. Those
+			// rows prove ONE kind's identities ({@link RELAY_IDENTITY_PROOF_KIND}),
+			// and a deployment that switches its fallback to another relay KEEPS
+			// them: nothing deletes the SES siblings on a switch and `verifyDomain`
+			// goes on refreshing them, so a proof read that ignored which kind is
+			// configured would report a relay holding zero identities as fully
+			// proven — a false green exactly where the operator is asking whether
+			// the fallback will work. Until the generic read lands, a relay whose
+			// proofs this deployment cannot see reaches "the route is configured,
+			// the proof is absent", which is both true and the same warn a missing
+			// SES proof gets.
+			//
+			// EVERY configured relay, not merely one of them: a deployment can route
+			// its message types to different fallbacks, and a proof that covers one
+			// of them says nothing about the other. `every` fails closed on the
+			// mixed configuration; `some` would report the whole item green on the
+			// strength of the one relay this deployment can still read proofs for.
 			const identitiesReady =
+				readyFallbackKinds.every((kind) => kind === RELAY_IDENTITY_PROOF_KIND) &&
 				context.relayIdentities.length > 0 &&
 				context.relayIdentities.every(
 					(identity) =>

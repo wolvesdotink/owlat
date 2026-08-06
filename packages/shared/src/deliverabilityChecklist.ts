@@ -91,7 +91,7 @@ export const DELIVERABILITY_NEXT_ACTIONS: Record<DeliverabilityCheckId, string> 
 	'deployment.tls': 'Install a current TLS certificate covering the SMTP hostname.',
 	'deployment.dnsbl': 'Follow the named blocklist delisting runbook before sending.',
 	'deployment.warmup': 'Keep eligible campaign volume within the current warm-up cap.',
-	'deployment.relay': 'Configure and verify an SES fallback route for urgent mail.',
+	'deployment.relay': 'Configure and verify a relay fallback route for urgent mail.',
 	'deployment.ipv6_address': 'Allocate one stable, publicly routed IPv6 sending address.',
 	'deployment.ipv6_source': 'Bind outbound SMTP explicitly to the verified IPv6 address.',
 	'deployment.ipv6_ptr': 'Set the IPv6 PTR to the same dedicated mail hostname.',
