@@ -28,6 +28,8 @@ import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checkl
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
+import { isSendProviderReady } from '../lib/sendProviders/capability';
+import { isSendProviderKind } from '../lib/sendProviders/types';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -98,6 +100,41 @@ async function loadRelayIdentities(
 	return identities.filter(
 		(identity): identity is Doc<'sendingDomainSesIdentities'> => identity !== undefined
 	);
+}
+
+/**
+ * Which relay kinds the enabled deliverability fallbacks name AND this
+ * deployment can actually send through.
+ *
+ * THE READINESS HALF OF `deployment.relay`, resolved here because this is where
+ * a `ctx` exists. The validators run in the Node runtime, so the only
+ * configured-ness they could compute unaided is env presence — which agrees
+ * with `setRoute` on every core kind and disagrees on a bundled plugin
+ * transport whose `send:transport` grant has been revoked (env vars intact,
+ * grant gone). `isSendProviderReady` is the authority both `setRoute` and
+ * `resolveRoute` use, so asking it here is what keeps the item's verdict and
+ * the mutation's decision from being two different rules.
+ *
+ * BOUNDED BY THE FALLBACKS, not by the catalog: at most one relay kind per
+ * route row, and the routes are already read. A non-catalog kind (a row written
+ * by a newer deployment, a retired kind) is dropped before the readiness call
+ * rather than passed to a lookup that would throw on it; the validator's own
+ * eligibility predicate refuses it again for the same reason.
+ */
+async function readyFallbackRelayKinds(
+	ctx: QueryCtx,
+	routes: readonly Doc<'providerRoutes'>[]
+): Promise<string[]> {
+	const named = new Set<string>();
+	for (const route of routes) {
+		const fallback = route.deliverabilityFallback;
+		if (fallback?.isEnabled === true) named.add(fallback.relayProviderType);
+	}
+	const ready: string[] = [];
+	for (const kind of named) {
+		if (isSendProviderKind(kind) && (await isSendProviderReady(ctx, kind))) ready.push(kind);
+	}
+	return ready;
 }
 
 export function loopbackDomains(
@@ -485,6 +522,7 @@ export const getVerificationContext = internalQuery({
 			relayIdentities,
 			tracking,
 			postmaster,
+			readyRelayKinds: needsRelay ? await readyFallbackRelayKinds(ctx, routes) : [],
 		};
 	},
 });

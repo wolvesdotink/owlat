@@ -5,7 +5,6 @@ import {
 	serializeDeliverabilityObservation,
 	type DeliverabilityCheckId,
 } from '@owlat/shared';
-import { providerKindConfigured } from '../lib/sendProviders/capability';
 import {
 	isFallbackRelayEligible,
 	routeCarriesEnabledRelay,
@@ -249,20 +248,35 @@ export async function observeDeploymentCheck(
 			// identities provisioned and a checklist item that said "No verified relay
 			// fallback is configured" forever.
 			//
-			// EVERY condition asked of the module that owns it, so that "is this
-			// route a working fallback?" has one answer here and at save time.
-			// `isFallbackRelayEligible` is the same predicate `setRoute` and
-			// `resolveRoute` gate on (judged against the env-only credential source a
-			// caller with nothing else in hand uses), and the two route-shape
+			// EVERY condition asked of the module that owns it, AND against the same
+			// evidence, so that "is this route a working fallback?" has one answer
+			// here and at save time. `isFallbackRelayEligible` is the predicate
+			// `setRoute` and `resolveRoute` gate on and the two route-shape
 			// preconditions are the same two functions `setRoute` throws on. Between
 			// them they keep the row's free-form `relayProviderType` from crediting
 			// the OWN MTA (which a fallback moves traffic away from, never to), a
 			// retired kind, or a relay that is not a live arm of the route at all.
+			//
+			// READINESS, NOT ENV PRESENCE, and injected rather than read here.
+			// `isFallbackRelayEligible` takes its configured-ness from the caller
+			// precisely so the two askers cannot disagree; `setRoute` hands it
+			// `isSendProviderReady`, which for a plugin transport also resolves the
+			// mutable `send:transport` grant. This validator runs in the Node runtime
+			// with no `ctx`, so `delivery/checklist.ts` resolves that same predicate
+			// where a `ctx` exists and projects the answer onto the context. Reading
+			// `providerKindConfigured` here instead would agree with the mutation on
+			// every core kind and disagree on exactly the tier where it matters: a
+			// bundled plugin relay whose grant was revoked keeps its env vars, so
+			// `resolveRoute` stops using it as the fallback while this item goes on
+			// reporting the fallback relay ready.
+			const readyRelayKinds = context.readyRelayKinds ?? [];
 			const readyFallbackKinds = context.routes.flatMap((route) => {
 				const fallback = route.deliverabilityFallback;
 				if (fallback?.isEnabled !== true) return [];
 				const configured =
-					isFallbackRelayEligible(fallback.relayProviderType, providerKindConfigured) &&
+					isFallbackRelayEligible(fallback.relayProviderType, (kind) =>
+						readyRelayKinds.includes(kind)
+					) &&
 					routeCarriesEnabledRelay(route.providers, fallback.relayProviderType) &&
 					routeCarriesOwnArm(route.providers);
 				return configured ? [fallback.relayProviderType] : [];
@@ -319,11 +333,25 @@ export async function observeDeploymentCheck(
 					: routeReady
 						? 'The deliverability fallback relay is enabled, but at least one domain proof is absent or stale.'
 						: 'No verified relay fallback is configured.',
-				context.relayIdentities.flatMap((identity) => [
-					`domain-id=${identity.domainId}`,
-					`provider-verified=${identity.isProviderVerified}`,
-					`verified-at=${identity.verifiedAt ?? 'missing'}`,
-				])
+				// THE EVIDENCE SAYS WHOSE PROOF IT IS. These rows are always the one
+				// kind's frozen siblings, and a deployment that switched its fallback
+				// keeps them — so on a Mandrill route the unqualified list read
+				// "at least one domain proof is absent or stale" beside
+				// `provider-verified=true` for every domain, which is the same false
+				// green the `every(kind === RELAY_IDENTITY_PROOF_KIND)` gate above
+				// exists to prevent, re-appearing in the record an operator opens to
+				// understand the warn. The two leading facts name the proof's kind and
+				// the configured relay's, so a stored observation is self-explaining
+				// even when the rows and the route disagree.
+				[
+					`proof-kind=${RELAY_IDENTITY_PROOF_KIND}`,
+					`configured-relay=${readyFallbackKinds.join(',') || 'none'}`,
+					...context.relayIdentities.flatMap((identity) => [
+						`domain-id=${identity.domainId}`,
+						`provider-verified=${identity.isProviderVerified}`,
+						`verified-at=${identity.verifiedAt ?? 'missing'}`,
+					]),
+				]
 			);
 		}
 		case 'deployment.ipv6_address':

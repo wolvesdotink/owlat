@@ -23,7 +23,7 @@
  * another provider's proof as its own.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../checklistProviderDetection', () => ({
 	detectIpProvider: vi.fn(async () => null),
@@ -72,9 +72,19 @@ function provenIdentity(): ChecklistVerificationContext['relayIdentities'][numbe
 	} as unknown as ChecklistVerificationContext['relayIdentities'][number];
 }
 
+/**
+ * READINESS IS PROJECTED, not re-derived. `delivery/checklist.ts` resolves
+ * `isSendProviderReady` — credentials, flag AND the mutable plugin capability
+ * grant — where a `ctx` exists and hands the answer to the Node-runtime
+ * validator, so these cases state it directly. That the projection itself
+ * matches the mutation is proved against the real query in
+ * `./checklistRelayReadinessProjection.test.ts`; what is proved HERE is that
+ * the item asks the projected answer rather than a private one.
+ */
 function context(
 	routes: ChecklistVerificationContext['routes'],
-	relayIdentities: ChecklistVerificationContext['relayIdentities'] = [provenIdentity()]
+	relayIdentities: ChecklistVerificationContext['relayIdentities'] = [provenIdentity()],
+	readyRelayKinds: readonly string[] = []
 ): ChecklistVerificationContext {
 	return {
 		domain: null,
@@ -84,6 +94,7 @@ function context(
 		relayIdentities,
 		tracking: [],
 		postmaster: null,
+		readyRelayKinds,
 	};
 }
 
@@ -94,20 +105,11 @@ const observe = async (
 	return { status: observation.status, diagnostic: observation.diagnostic };
 };
 
-function configureSes(): void {
-	vi.stubEnv('AWS_SES_REGION', 'eu-central-1');
-	vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'AKIA-test');
-	vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
-}
-
-afterEach(() => {
-	vi.unstubAllEnvs();
-});
-
 describe('deployment.relay readiness — the shipped SES verdict is unchanged', () => {
 	it('passes for a configured, enabled SES fallback with a current proof', async () => {
-		configureSes();
-		expect(await observe(context([route('ses', ['mta', 'ses'])]))).toEqual({
+		expect(
+			await observe(context([route('ses', ['mta', 'ses'])], [provenIdentity()], ['ses']))
+		).toEqual({
 			status: 'pass',
 			diagnostic:
 				'The deliverability fallback relay is enabled and every relay identity has a current provider and SPF proof.',
@@ -115,12 +117,11 @@ describe('deployment.relay readiness — the shipped SES verdict is unchanged', 
 	});
 
 	it('warns when the SES route is ready but a domain proof is stale', async () => {
-		configureSes();
 		const stale = {
 			...provenIdentity(),
 			verifiedAt: NOW - 400 * 24 * 60 * 60 * 1000,
 		} as ChecklistVerificationContext['relayIdentities'][number];
-		expect(await observe(context([route('ses', ['mta', 'ses'])], [stale]))).toEqual({
+		expect(await observe(context([route('ses', ['mta', 'ses'])], [stale], ['ses']))).toEqual({
 			status: 'warn',
 			diagnostic:
 				'The deliverability fallback relay is enabled, but at least one domain proof is absent or stale.',
@@ -128,8 +129,9 @@ describe('deployment.relay readiness — the shipped SES verdict is unchanged', 
 	});
 
 	it('warns when the fallback is switched off', async () => {
-		configureSes();
-		expect(await observe(context([route('ses', ['mta', 'ses'], false)]))).toEqual({
+		expect(
+			await observe(context([route('ses', ['mta', 'ses'], false)], [provenIdentity()], ['ses']))
+		).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
 		});
@@ -137,12 +139,9 @@ describe('deployment.relay readiness — the shipped SES verdict is unchanged', 
 });
 
 describe('deployment.relay readiness — every eligible relay counts, not just SES', () => {
-	it.each([
-		['mandrill', ['MANDRILL_API_KEY']],
-		['resend', ['RESEND_API_KEY']],
-	])(
+	it.each(['mandrill', 'resend'])(
 		'sees the route half of a configured, enabled %s fallback the old gate could never see',
-		async (kind, envKeys) => {
+		async (kind) => {
 			// THE DIFFERENTIAL CASE. Neither kind is `ses`, so the shipped
 			// `relayProviderType === 'ses'` gate made this expectation unsatisfiable:
 			// the item reported "No verified relay fallback is configured" for a
@@ -153,8 +152,9 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 			// while the identity half can still only read one kind's sibling rows
 			// (see the leftover-rows case below for why that half must not be
 			// credited to another kind).
-			for (const key of envKeys) vi.stubEnv(key, 'configured');
-			expect(await observe(context([route(kind, ['mta', kind])]))).toEqual({
+			expect(
+				await observe(context([route(kind, ['mta', kind])], [provenIdentity()], [kind]))
+			).toEqual({
 				status: 'warn',
 				diagnostic:
 					'The deliverability fallback relay is enabled, but at least one domain proof is absent or stale.',
@@ -170,10 +170,10 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 		// provider and SPF proof") for a relay that holds ZERO identities and refuses
 		// every domain the moment the breaker opens. The proof rows belong to one
 		// kind; only that kind may be proven by them.
-		vi.stubEnv('MANDRILL_API_KEY', 'configured');
-		configureSes();
 		expect(
-			await observe(context([route('mandrill', ['mta', 'mandrill'])], [provenIdentity()]))
+			await observe(
+				context([route('mandrill', ['mta', 'mandrill'])], [provenIdentity()], ['mandrill'])
+			)
 		).toEqual({
 			status: 'warn',
 			diagnostic:
@@ -184,10 +184,14 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 		// question asked twice, and one answer must not cover the other.
 		expect(
 			await observe(
-				context([
-					route(RELAY_IDENTITY_PROOF_KIND, ['mta', RELAY_IDENTITY_PROOF_KIND]),
-					route('mandrill', ['mta', 'mandrill']),
-				])
+				context(
+					[
+						route(RELAY_IDENTITY_PROOF_KIND, ['mta', RELAY_IDENTITY_PROOF_KIND]),
+						route('mandrill', ['mta', 'mandrill']),
+					],
+					[provenIdentity()],
+					[RELAY_IDENTITY_PROOF_KIND, 'mandrill']
+				)
 			)
 		).toEqual({
 			status: 'warn',
@@ -199,7 +203,8 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 			await observe(
 				context(
 					[route(RELAY_IDENTITY_PROOF_KIND, ['mta', RELAY_IDENTITY_PROOF_KIND])],
-					[provenIdentity()]
+					[provenIdentity()],
+					[RELAY_IDENTITY_PROOF_KIND]
 				)
 			)
 		).toEqual({
@@ -217,11 +222,11 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 		// tells a Mandrill deployment what to do next. Both are pinned here so they
 		// cannot separate again, and against the CATALOG's own vocabulary rather than
 		// a hand-written list, so a sixth kind cannot be smuggled into either.
-		configureSes();
 		const { DELIVERABILITY_NEXT_ACTIONS } = await import('@owlat/shared');
 		const copy = [
-			(await observe(context([route('ses', ['mta', 'ses'])]))).diagnostic,
-			(await observe(context([route('ses', ['mta', 'ses'])], []))).diagnostic,
+			(await observe(context([route('ses', ['mta', 'ses'])], [provenIdentity()], ['ses'])))
+				.diagnostic,
+			(await observe(context([route('ses', ['mta', 'ses'])], [], ['ses']))).diagnostic,
 			(await observe(context([]))).diagnostic,
 			DELIVERABILITY_NEXT_ACTIONS['deployment.relay'],
 		];
@@ -240,18 +245,21 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 		// D3's one sanctioned identity, read through `isFallbackRelayEligible`: the
 		// MTA is the arm a fallback moves traffic away from. A route row naming it
 		// would otherwise match an enabled `mta` entry — which every deployment has
-		// — and report a relay that does not exist as ready.
-		vi.stubEnv('MTA_API_URL', 'https://mta.test/');
-		vi.stubEnv('MTA_API_KEY', 'test-key');
-		expect(await observe(context([route('mta', ['mta'])]))).toEqual({
+		// — and report a relay that does not exist as ready. Handed a projection
+		// that says the own MTA IS ready, so the refusal is the eligibility rule
+		// and not a missing credential.
+		expect(await observe(context([route('mta', ['mta'])], [provenIdentity()], ['mta']))).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
 		});
 	});
 
-	it('refuses a relay kind this deployment has no credentials for', async () => {
-		// No `MANDRILL_API_KEY`. A relay whose credentials are absent is not a
-		// fallback, it is a second outage — the same reading `resolveRoute` gates on.
+	it('refuses a relay kind this deployment cannot actually send through', async () => {
+		// The projection does not name it: credentials absent, flag off, or — the
+		// case env presence alone cannot see — a bundled plugin transport whose
+		// `send:transport` grant has been revoked. A relay this deployment cannot
+		// send through is not a fallback, it is a second outage, and that is the
+		// same reading `setRoute` and `resolveRoute` gate on.
 		expect(await observe(context([route('mandrill', ['mta', 'mandrill'])]))).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
@@ -259,7 +267,13 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 	});
 
 	it('refuses a relay kind no longer in the catalog', async () => {
-		expect(await observe(context([route('postmark', ['mta', 'postmark'])]))).toEqual({
+		// Fails closed even against a projection that vouches for it: a retired kind
+		// has no catalog entry, so nothing downstream could dispatch through it.
+		expect(
+			await observe(
+				context([route('postmark', ['mta', 'postmark'])], [provenIdentity()], ['postmark'])
+			)
+		).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
 		});
@@ -270,8 +284,7 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 		// for — `routeCarriesEnabledRelay`, the same function `setRoute` throws on
 		// at save time rather than a second copy of the rule. Read against whichever
 		// kind the fallback named, so it is the same rule for every kind.
-		configureSes();
-		expect(await observe(context([route('ses', ['mta'])]))).toEqual({
+		expect(await observe(context([route('ses', ['mta'])], [provenIdentity()], ['ses']))).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
 		});
@@ -284,8 +297,7 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 		// same three predicates the mutation asks is what stops this item reporting
 		// a route as ready that the mutation refuses to save (or the reverse, once
 		// the save-time rules move).
-		configureSes();
-		expect(await observe(context([route('ses', ['ses'])]))).toEqual({
+		expect(await observe(context([route('ses', ['ses'])], [provenIdentity()], ['ses']))).toEqual({
 			status: 'warn',
 			diagnostic: 'No verified relay fallback is configured.',
 		});
