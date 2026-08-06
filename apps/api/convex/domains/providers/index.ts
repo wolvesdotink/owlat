@@ -224,3 +224,34 @@ export function isSendingDomainProviderKind(
 		typeof kind === 'string' && Object.prototype.hasOwnProperty.call(SENDING_DOMAIN_PROVIDERS, kind)
 	);
 }
+
+/**
+ * Is this domain row's PRIMARY provider our own infrastructure — INCLUDING the
+ * legacy rows that never recorded one?
+ *
+ * `domains.providerType` is `v.optional(v.string())` (schema/domains.ts), and a
+ * row written before the field existed carries `undefined` while being, in
+ * fact, an own-MTA domain: `devShortcuts/forceVerifyDomain.ts` has always
+ * written the own-MTA identity sibling for exactly `'mta' | undefined`, and it
+ * is the only place that spelling was ever stated.
+ *
+ * SO THIS IS THE READ-SIDE PREDICATE, and deliberately WIDER than a bare
+ * comparison against {@link OWN_SENDING_DOMAIN_PROVIDER_KIND}. The gates that
+ * REFRESH a coexisting relay identity (`domains/dnsVerification.ts`,
+ * `domains/sesRelayVerification.ts`) were spelled `providerType !== 'ses'`
+ * before the leak sweep, which admitted the undefined row; answering them with
+ * the bare constant would have quietly dropped it, leaving a legacy domain's
+ * relay proof to go stale with no operator action that clears it.
+ *
+ * The WRITE side is not this predicate and must not become it:
+ * `ensureRelayIdentities` (lib/sendProviders/fallbackRelays.ts) provisions
+ * identities for `providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND` only,
+ * which is what the shipped drain did (`providerRoutes.ts`, `!== 'mta'`
+ * → skip). Refreshing a proof a domain already carries is a repair; minting a
+ * new provider-side identity for a row whose provider was never recorded is a
+ * guess, and the two questions are allowed to differ. `undefined` reaching
+ * here at all is the artifact — new rows always record a kind.
+ */
+export function isOwnPrimarySendingDomain(providerType: string | undefined): boolean {
+	return providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND || providerType === undefined;
+}

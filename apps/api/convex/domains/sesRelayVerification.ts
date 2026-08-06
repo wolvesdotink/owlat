@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { runDnsLookups } from './dnsVerification';
-import { OWN_SENDING_DOMAIN_PROVIDER_KIND, providerFor } from './providers';
+import { isOwnPrimarySendingDomain, providerFor } from './providers';
 
 /**
  * Refresh the independent DNS and provider proof for an SES relay identity
@@ -17,6 +17,13 @@ import { OWN_SENDING_DOMAIN_PROVIDER_KIND, providerFor } from './providers';
  * ordinary lifecycle (SES-primary domains, refused by both spellings) and by
  * the relay provisioning pair, which provisions own-MTA-primary domains and
  * nothing else (`lib/sendProviders/fallbackRelays.ts`).
+ *
+ * `isOwnPrimarySendingDomain` rather than a bare comparison for the reason that
+ * predicate states: `providerType` is optional in the schema and the old
+ * spelling admitted the legacy row that never recorded one. Its caller
+ * (`domains/dnsVerification.ts`) applies the same predicate before scheduling
+ * this action — two gates, one reading, so this one can only ever refuse MORE
+ * than the caller and never a row the caller let through.
  */
 export const refreshSesRelayIdentity = internalAction({
 	args: { domainId: v.id('domains') },
@@ -25,11 +32,7 @@ export const refreshSesRelayIdentity = internalAction({
 			ctx.runQuery(internal.domains.queries.getDomainForRegistration, args),
 			ctx.runQuery(internal.domains.queries.getSesIdentity, args),
 		]);
-		if (
-			!domain ||
-			!identity?.dnsRecords ||
-			domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND
-		) {
+		if (!domain || !identity?.dnsRecords || !isOwnPrimarySendingDomain(domain.providerType)) {
 			return { refreshed: false };
 		}
 
