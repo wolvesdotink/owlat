@@ -42,6 +42,10 @@ describe('Send provider registry', () => {
 				// custody, and only its message id is one we minted ourselves.
 				acceptanceSemantics: 'accepted',
 				messageIdSource: 'idempotency-key',
+				// The dedup surface the SYSTEM/AUTH mail path asks about (P0.4). Not a
+				// derivation of the pair above: `resend` declares it true without taking
+				// custody, and every other kind declares it false.
+				deduplicatesOnIdempotencyKey: true,
 			},
 			{
 				kind: 'ses',
@@ -53,6 +57,7 @@ describe('Send provider registry', () => {
 				domainVerification: 'api',
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
 			},
 			{
 				kind: 'resend',
@@ -64,6 +69,9 @@ describe('Send provider registry', () => {
 				domainVerification: 'none',
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'provider',
+				// The `Idempotency-Key` header Resend threads — a dedup surface without
+				// custody, which is why this is its own field.
+				deduplicatesOnIdempotencyKey: true,
 			},
 			{
 				kind: 'smtp',
@@ -77,6 +85,7 @@ describe('Send provider registry', () => {
 				// A relay assigns no id of its own — the adapter reports the
 				// `Message-ID` the composer minted.
 				messageIdSource: 'composed',
+				deduplicatesOnIdempotencyKey: false,
 			},
 			{
 				kind: 'mandrill',
@@ -92,6 +101,7 @@ describe('Send provider registry', () => {
 				domainVerification: 'api',
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
 			},
 		]);
 	});

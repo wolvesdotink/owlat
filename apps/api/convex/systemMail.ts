@@ -6,8 +6,8 @@ import { internalAction, type ActionCtx } from './_generated/server';
 import { getOptional } from './lib/env';
 import {
 	EmailErrorCode,
+	buildSystemMailExtrasFor,
 	isSendProviderKind,
-	type MtaExtras,
 	type SendProviderKind,
 } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
@@ -25,11 +25,15 @@ import {
  * Routes through the configured delivery provider so a Resend/SES deployment
  * does NOT need the built-in MTA running just to send auth mail — the
  * prerequisite that lets the MTA become an opt-in service (see the `mta`
- * docker profile). Every branch — mta, resend, ses — routes through the shared
- * `sendProviderDispatch`; the MTA path passes ipPool 'transactional' and
- * `mtaSendProvider` defaults dkimDomain to the from-domain and generates a
- * random messageId, preserving the previous /send body byte-for-byte, so the
- * default self-host is unchanged.
+ * docker profile). EVERY kind takes one path through the shared
+ * `sendProviderDispatch`, and this module names none of them: the per-send knobs
+ * come from `buildSystemMailExtras` on the provider module (the seams plan's
+ * P0.4, folding this file's `provider === 'mta'` arm and `provider === 'resend'`
+ * ternary into the same contract P0.1 gave the governed boundary). The MTA's
+ * adapter still supplies ipPool 'transactional' plus the system intake scope and
+ * still defaults dkimDomain to the from-domain and mints a random messageId, so
+ * the /send/system body is byte-for-byte what it was and the default self-host is
+ * unchanged.
  *
  * Fail-closed: if no provider is configured the action throws — a deployment
  * that uses email-based auth must configure a transport. RFC 3834 §5: these are
@@ -107,49 +111,16 @@ export async function attemptSystemEmail(
 	}
 
 	try {
-		if (provider === 'mta') {
-			// Behavior-preserving MTA path — routes through the shared provider
-			// dispatch just like every other kind. `mtaSendProvider` defaults
-			// dkimDomain to the from-domain and generates a random messageId; ipPool
-			// 'transactional' is passed explicitly, so the /send body matches the
-			// previous dedicated client byte-for-byte.
-			const dispatched = await sendProviderDispatch(
-				ctx,
-				defaultSendTransportId('mta'),
-				{
-					to: args.to,
-					from: args.from,
-					subject: args.subject,
-					html: args.html,
-					headers: { 'Auto-Submitted': 'auto-generated' },
-				},
-				{
-					ipPool: 'transactional',
-					organizationId: 'system',
-					intakePath: 'system',
-					...(args.idempotencyKey ? { messageId: args.idempotencyKey } : {}),
-				} satisfies MtaExtras
-			);
-			if (!dispatched.result.success) {
-				return failedAttempt(
-					provider,
-					args,
-					dispatched.result.errorCode,
-					dispatched.result.errorMessage
-				);
-			}
-			return {
-				status: 'accepted',
-				provider: dispatched.providerType,
-				providerMessageId: dispatched.result.id,
-				latencyMs: dispatched.latencyMs,
-				attempts: dispatched.attempts,
-			};
-		}
-
-		// Every non-MTA kind — built-in (resend / ses) or plugin-contributed —
-		// routes through the shared provider dispatch, carrying the RFC 3834
-		// anti-loop header the MTA path stamps server-side.
+		// ONE dispatch for every kind — built-in (mta / ses / resend / smtp /
+		// mandrill) or plugin-contributed — carrying the RFC 3834 anti-loop header
+		// and whatever per-send knobs the PROVIDER asks for.
+		//
+		// There used to be two arms here: an `if (provider === 'mta')` copy of this
+		// whole call whose only difference was an inline MTA payload, and a
+		// `provider === 'resend' && key` ternary for the dedup header. Same shape
+		// the governed boundary shed in P0.1, one file over — and the same cost, a
+		// send path every new kind had to edit to be allowed any knob at all. The
+		// facts go in, the module decides what to make of them.
 		const dispatched = await sendProviderDispatch(
 			ctx,
 			defaultSendTransportId(provider),
@@ -160,7 +131,7 @@ export async function attemptSystemEmail(
 				html: args.html,
 				headers: { 'Auto-Submitted': 'auto-generated' },
 			},
-			provider === 'resend' && args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}
+			buildSystemMailExtrasFor(provider, { idempotencyKey: args.idempotencyKey })
 		);
 		if (!dispatched.result.success) {
 			return failedAttempt(

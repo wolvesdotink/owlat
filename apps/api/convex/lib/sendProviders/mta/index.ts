@@ -23,6 +23,7 @@ import {
 	type MtaExtras,
 	type MtaIpPool,
 	type SendProviderModule,
+	type SystemMailExtrasInput,
 } from '../types';
 import { transportEnvOptional } from '../transportEnv';
 import { sendTransportEnvName, type SendTransportRecord } from '../transports';
@@ -254,6 +255,31 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// absence as "unknown" and applies its DEFAULT band, whereas 0 would
 			// order the message behind every cold contact.
 			...(input.engagementScore !== undefined ? { engagementScore: input.engagementScore } : {}),
+		};
+	},
+
+	/**
+	 * The SYSTEM/AUTH mail intake — password reset, invitation, double opt-in.
+	 *
+	 * Three constants and one fact. `intakePath: 'system'` and `organizationId:
+	 * 'system'` are what make this a fixed-scope `/send/system` post rather than a
+	 * governed campaign send, and `ipPool: 'transactional'` is the pool auth mail
+	 * belongs in — none of them is a routing decision, which is exactly why they
+	 * are the MTA's business and not the caller's. The fact is the caller's
+	 * idempotency key, carried as the MTA's `messageId` because that is the id its
+	 * intake dedups on (`deduplicatesOnIdempotencyKey: true` in the catalog is the
+	 * same statement, read by the retry-disposition rule). Absent ⇒ omitted, and
+	 * the MTA mints a random one.
+	 *
+	 * Lifted verbatim out of `systemMail.ts`'s `if (provider === 'mta')` arm, so
+	 * the /send/system body is byte-for-byte what it has always been.
+	 */
+	buildSystemMailExtras(input: SystemMailExtrasInput): MtaExtras {
+		return {
+			ipPool: 'transactional',
+			organizationId: 'system',
+			intakePath: 'system',
+			...(input.idempotencyKey ? { messageId: input.idempotencyKey } : {}),
 		};
 	},
 

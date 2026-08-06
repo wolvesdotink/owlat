@@ -165,7 +165,10 @@ describe('the SES spelling is unchanged and stated once', () => {
 		// Byte-identical to the two lines the verifier used to carry, now the one
 		// place that spelling exists — `domains/sesRelayVerification.ts` asks the
 		// same adapter rather than repeating it.
-		expect(sesProvider.verificationStatusFields({ verified })).toEqual({ sesStatus: expected });
+		// Non-null asserted, not guarded: the SES adapter declaring this method is
+		// itself part of what this suite pins (the capability table below), so an
+		// adapter that dropped it must fail here rather than skip the case.
+		expect(sesProvider.verificationStatusFields!({ verified })).toEqual({ sesStatus: expected });
 	});
 
 	it('is declared by exactly the shipped adapters that have a pill to show', async () => {

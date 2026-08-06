@@ -172,6 +172,37 @@ export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
  */
 export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
 
+/**
+ * Does handing this transport the SAME idempotency key twice deliver the message
+ * once? (the SEAMS plan's D2 — capabilities, not identity.)
+ *
+ * A narrower question than {@link AcceptanceSemantics}, and deliberately a
+ * separate field rather than a derivation of it. Acceptance semantics answer what
+ * the GOVERNED boundary may do with an ambiguous outcome — replay the attempt, or
+ * park it for feedback — and only the own MTA takes custody. This answers
+ * whether a repeat of the request is safe at all, which is true of every
+ * transport with a dedup surface, custody or not: our MTA dedups its intake on
+ * the message id we mint, and Resend dedups on the `Idempotency-Key` header
+ * while still minting the id it reports back.
+ *
+ * Its consumer is the SYSTEM/AUTH mail path (`lib/systemMailOutcome.ts`), which
+ * has no durable Send row, no governed re-entry and no measurement plane — just a
+ * caller-supplied key and one question: after an AMBIGUOUS_TIMEOUT, may the
+ * caller send this password reset again? A transport with no dedup surface must
+ * answer no, because the timeout may sit on top of a delivered message.
+ *
+ * A kind declaring `true` must ALSO carry the key into its request — the two
+ * halves are the same promise, and a declaration without the wiring turns a
+ * double delivery into a "safe" retry. Both halves are the adapter's:
+ * `buildSystemMailExtras` is where the key becomes this provider's dedup token,
+ * and `lib/sendProviders/__tests__/systemMailExtras.test.ts` pins the pair in
+ * both directions for every core kind.
+ *
+ * Absent ⇒ `false`, the fail-closed reading: crediting a dedup surface a
+ * transport does not have re-sends real mail to a real person.
+ */
+export type IdempotencyKeyDeduplication = boolean;
+
 export interface SendProviderCatalogEntry {
 	readonly kind: SendProviderKind;
 	readonly label: string;
@@ -205,17 +236,25 @@ export interface SendProviderCatalogEntry {
 	 * (fail closed). Read it through `messageIdSourceFor`.
 	 */
 	readonly messageIdSource?: MessageIdSource;
+	/**
+	 * Does a repeat request under the same idempotency key deliver once? Absent ⇒
+	 * `false` (fail closed). Read it through `deduplicatesOnIdempotencyKeyFor` —
+	 * see {@link IdempotencyKeyDeduplication}.
+	 */
+	readonly deduplicatesOnIdempotencyKey?: IdempotencyKeyDeduplication;
 }
 
 /**
  * A CORE catalog entry — every kind that ships in this repo.
  *
- * `domainVerification`, `acceptanceSemantics` and `messageIdSource` are
- * REQUIRED here while they stay optional on the shared interface: a kind we
- * write ourselves can always answer these questions, and letting a new core
- * kind coast on the fail-closed default is exactly how an `api` transport
- * silently loses its relay eligibility, or how a transport that takes custody
- * of a message has that custody go unrecorded. Bundled plugin transports keep
+ * `domainVerification`, `acceptanceSemantics`, `messageIdSource` and
+ * `deduplicatesOnIdempotencyKey` are REQUIRED here while they stay optional on
+ * the shared interface: a kind we write ourselves can always answer these
+ * questions, and letting a new core kind coast on the fail-closed default is
+ * exactly how an `api` transport silently loses its relay eligibility, how a
+ * transport that takes custody of a message has that custody go unrecorded, or
+ * how a transport that DOES dedup leaves every ambiguous system mail
+ * unresendable. Bundled plugin transports keep
  * the optional fields — they are generated from plugin manifests, which have no
  * such surface to declare (plugin-tier parity is the SEAMS plan's P3.1 —
  * contract parity for capabilities, extras and instances, NOT the Mandrill
@@ -256,6 +295,13 @@ export interface SendProviderCatalogEntry {
  */
 export type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 	readonly domainVerification: DomainVerificationSupport;
+	/**
+	 * NOT part of the pair below, on purpose. `accepted` implies it (custody is
+	 * re-askable precisely because the intake dedups), but the converse is false —
+	 * Resend dedups on a header and mints its own id — so folding it into the
+	 * union would make a real transport undeclarable.
+	 */
+	readonly deduplicatesOnIdempotencyKey: IdempotencyKeyDeduplication;
 } & (
 		| { readonly acceptanceSemantics: 'accepted'; readonly messageIdSource: 'idempotency-key' }
 		| {

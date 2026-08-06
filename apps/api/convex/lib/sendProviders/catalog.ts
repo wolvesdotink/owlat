@@ -34,6 +34,7 @@ export type {
 	CoreSendProviderKind,
 	DeclaredCustomReturnPathSupport,
 	DomainVerificationSupport,
+	IdempotencyKeyDeduplication,
 	MessageIdSource,
 	SendProviderCatalogEntry,
 	SendProviderKind,
@@ -61,6 +62,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// exists before the request does — which is what lets the durable Send be
 		// bound to it pre-dispatch, and what makes a lost response replayable.
 		messageIdSource: 'idempotency-key',
+		// Its intake dedups on that same id, which is what makes the replay above
+		// safe — and what lets an ambiguous system/auth mail be sent again.
+		deduplicatesOnIdempotencyKey: true,
 	},
 	{
 		kind: 'ses',
@@ -84,6 +88,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// rather than a retryable code.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
+		// No dedup header, no dedup id: a repeat request after a lost response
+		// delivers a second copy.
+		deduplicatesOnIdempotencyKey: false,
 	},
 	{
 		kind: 'resend',
@@ -101,6 +108,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// governed boundary has no acceptance state to reconcile against.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
+		// That header is exactly the dedup surface the system/auth mail path asks
+		// about. Custody is a different question, and this kind answers only one of
+		// the two yes — which is why the two fields are not one declaration.
+		deduplicatesOnIdempotencyKey: true,
 	},
 	{
 		kind: 'smtp',
@@ -117,6 +128,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// A relay hands back no id of its own: the adapter reports the RFC 5322
 		// `Message-ID` we minted while composing the message.
 		messageIdSource: 'composed',
+		// No dedup surface at all: once the message is on the wire, a repeat is a
+		// second message.
+		deduplicatesOnIdempotencyKey: false,
 	},
 	{
 		kind: 'mandrill',
@@ -152,6 +166,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// parks on Mandrill's webhook feedback instead of being replayed.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
+		// `send-raw` has no idempotency surface either (Mandrill plan D4), so a
+		// repeat under the same key is a second delivery.
+		deduplicatesOnIdempotencyKey: false,
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 
@@ -224,7 +241,40 @@ function assertPluginDispatchSemanticsAreGeneral(
 	}
 }
 
+/**
+ * THE THIRD DECLARATION WHOSE PREREQUISITE LIVES OUTSIDE THE CATALOG (P0.4).
+ *
+ * `deduplicatesOnIdempotencyKey` is a promise with two halves: the catalog says
+ * a repeat is safe, and the kind's `buildSystemMailExtras` carries the key the
+ * repeat would be deduplicated on. The plugin tier can only make the first half
+ * — its modules have no extras contract at all until the seams plan's P3.1, so
+ * `buildSystemMailExtrasFor` returns the empty extras for every hosted kind.
+ *
+ * A bundled entry declaring `true` would therefore have
+ * `systemMailRetryDisposition` report an ambiguous password reset as
+ * `safe_to_retry` while the key never reached the provider — and the "retry"
+ * would be a second mail to a real person. Refused at composition time, like the
+ * custody pair above, so the manifest author sees a boot failure instead.
+ *
+ * P3.1 deletes this the moment plugin modules can build extras.
+ */
+function assertPluginIdempotencyClaimsAreDeliverable(
+	entries: readonly GeneratedSendTransportCatalogEntry[]
+): void {
+	for (const entry of entries) {
+		if (entry.deduplicatesOnIdempotencyKey !== true) continue;
+		throw new TypeError(
+			`Bundled plugin send transport '${entry.kind}' declares deduplicatesOnIdempotencyKey: ` +
+				'true, but the plugin tier has no per-send extras contract yet, so the system/auth ' +
+				'mail path cannot hand it the key it would deduplicate on — an ambiguous send would ' +
+				'be reported safe to retry and re-mail the recipient. See buildSystemMailExtras in ' +
+				'lib/sendProviders/types.ts.'
+		);
+	}
+}
+
 assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
+assertPluginIdempotencyClaimsAreDeliverable(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([
 	...CORE_SEND_PROVIDER_CATALOG,
@@ -330,6 +380,24 @@ export function preassignsProviderMessageId(source: MessageIdSource): boolean {
  */
 export function takesCustodyOnAcceptance(semantics: AcceptanceSemantics): boolean {
 	return semantics === 'accepted';
+}
+
+/**
+ * May the same request be sent to this kind twice under one idempotency key
+ * without delivering twice? — see {@link IdempotencyKeyDeduplication}.
+ *
+ * Read it instead of the raw field so an absent declaration can never be
+ * mistaken for a dedup surface the transport does not have: this is what decides
+ * whether an ambiguous password-reset send may be retried, and a wrong `true`
+ * mails a real person twice.
+ *
+ * Takes the KIND rather than the declaration (unlike
+ * {@link preassignsProviderMessageId}), because there is no derivation to
+ * separate from the lookup — the field IS the answer, and the only thing the
+ * accessor adds is the default.
+ */
+export function deduplicatesOnIdempotencyKeyFor(kind: SendProviderKind): boolean {
+	return sendProviderCatalogEntry(kind).deduplicatesOnIdempotencyKey === true;
 }
 
 /**

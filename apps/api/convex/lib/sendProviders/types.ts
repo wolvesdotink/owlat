@@ -13,6 +13,7 @@
 import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
+import type { SystemMailExtrasCapableModule } from './systemMailExtras';
 import type { SendTransportId, SendTransportRecord } from './transports';
 
 /**
@@ -28,6 +29,7 @@ import type { SendTransportId, SendTransportRecord } from './transports';
  * into a non-`'use node'` bundle.
  */
 export { SEND_PROVIDER_KINDS, isSendProviderKind } from './catalog';
+export type { SystemMailExtrasInput, SystemMailExtrasCapableModule } from './systemMailExtras';
 export type { CoreSendProviderKind, SendProviderKind } from './catalog';
 
 /**
@@ -400,9 +402,12 @@ export interface ReturnPathProbeCapableModule {
 
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
-export interface SendProviderModule<
-	K extends SendProviderKind,
-> extends ReturnPathProbeCapableModule {
+export interface SendProviderModule<K extends SendProviderKind>
+	extends
+		ReturnPathProbeCapableModule,
+		// The system/auth mail path's per-send knobs, declared in
+		// `./systemMailExtras.ts` (which also says why they live there).
+		SystemMailExtrasCapableModule<ExtrasFor<K>> {
 	readonly kind: K;
 
 	/**

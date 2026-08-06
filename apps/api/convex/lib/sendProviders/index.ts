@@ -27,6 +27,7 @@ import type {
 	SendProviderExtras,
 	SendProviderKind,
 	SendProviderModule,
+	SystemMailExtrasInput,
 } from './types';
 
 export type {
@@ -46,6 +47,7 @@ export type {
 	EmailAttachment,
 	DispatchResult,
 	SendProviderExtras,
+	SystemMailExtrasInput,
 } from './types';
 export { EmailErrorCode, isRetryableErrorCode, isSendProviderKind } from './types';
 export type {
@@ -149,4 +151,22 @@ export function buildDispatchExtrasFor(
 ): SendProviderExtras {
 	if (!isCoreSendProviderKind(kind)) return {};
 	return providerFor(kind).buildDispatchExtras?.(input) ?? {};
+}
+
+/**
+ * The same question for the SYSTEM/AUTH mail path (`systemMail.ts`).
+ *
+ * Split from {@link buildDispatchExtrasFor} because the INPUTS are genuinely
+ * different — the system intake has no durable Send row and therefore none of
+ * the governance identities the dispatch input requires (see
+ * `SystemMailExtrasInput`) — while the rule about branching is identical: the
+ * boundary supplies the facts, the module decides what to make of them, and
+ * nothing here knows which provider it is talking to.
+ */
+export function buildSystemMailExtrasFor(
+	kind: SendProviderKind,
+	input: SystemMailExtrasInput
+): SendProviderExtras {
+	if (!isCoreSendProviderKind(kind)) return {};
+	return providerFor(kind).buildSystemMailExtras?.(input) ?? {};
 }

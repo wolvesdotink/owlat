@@ -16,6 +16,7 @@ import {
 	type EmailSendParams,
 	type ResendExtras,
 	type SendProviderModule,
+	type SystemMailExtrasInput,
 } from '../types';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
@@ -47,6 +48,16 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 	 */
 	buildDispatchExtras(input: DispatchExtrasInput): ResendExtras {
 		return { idempotencyKey: input.idempotencyKey };
+	},
+
+	/**
+	 * The same knob on the system/auth mail path, where the key is the CALLER's
+	 * and may be absent. Forwarding it is what makes this kind's catalog
+	 * `deduplicatesOnIdempotencyKey: true` true in practice: without the header,
+	 * a repeat after an ambiguous timeout is simply a second mail.
+	 */
+	buildSystemMailExtras(input: SystemMailExtrasInput): ResendExtras | undefined {
+		return input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined;
 	},
 
 	async sendEmail(

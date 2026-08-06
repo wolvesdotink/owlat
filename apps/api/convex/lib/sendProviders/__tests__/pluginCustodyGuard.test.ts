@@ -80,6 +80,18 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		);
 	});
 
+	it('refuses one that claims it DEDUPLICATES on our idempotency key', async () => {
+		// The third declaration whose prerequisite lives outside the catalog (the
+		// seams plan's P0.4). The plugin tier has no per-send extras contract until
+		// P3.1, so `buildSystemMailExtrasFor` returns the empty extras for every
+		// hosted kind — the key never reaches the provider. Crediting the claim
+		// would have `systemMailRetryDisposition` report an ambiguous password
+		// reset as safe to retry, and the "retry" would be a second mail.
+		await expect(
+			composeCatalogWith([entry({ deduplicatesOnIdempotencyKey: true })])
+		).rejects.toThrow(/deduplicatesOnIdempotencyKey: true[\s\S]*buildSystemMailExtras/);
+	});
+
 	it('admits every declaration whose prerequisites are already met', async () => {
 		// The guard is deliberately NOT the core union: an entry may pair
 		// `unknown-on-timeout` with any id source, including one it composed
@@ -97,10 +109,16 @@ describe('composing the catalog with a bundled plugin transport', () => {
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'composed',
 			}),
+			entry({ kind: 'plugin.mail-pack.d', deduplicatesOnIdempotencyKey: false }),
 		])) as { SEND_PROVIDER_KINDS: readonly string[] };
 
 		expect(admitted.SEND_PROVIDER_KINDS).toEqual(
-			expect.arrayContaining(['plugin.mail-pack.a', 'plugin.mail-pack.b', 'plugin.mail-pack.c'])
+			expect.arrayContaining([
+				'plugin.mail-pack.a',
+				'plugin.mail-pack.b',
+				'plugin.mail-pack.c',
+				'plugin.mail-pack.d',
+			])
 		);
 	});
 });
