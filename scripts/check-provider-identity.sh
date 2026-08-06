@@ -63,8 +63,13 @@
 #     the transport BEHIND one kind. Its `'mta' | 'relay' | 'defer'` routing
 #     decisions and `'smtp'` delivery outcomes are its own alphabets that happen
 #     to share two spellings, so a kind ratchet reading them reads noise.
-#   * tests and fixtures (__tests__/**, *.test.ts, *.spec.ts): a test's job is
-#     often to drive one named kind through a kind-agnostic seam.
+#   * tests: __tests__/**, *.test.{ts,tsx,vue}, *.spec.{ts,tsx,vue}, and the
+#     Playwright tree */e2e/** — its page objects and seeded data are scaffolding
+#     for specs that are already exempt, and exempting the spec but not the page
+#     object it drives is a line nobody can act on. A test's job is often to drive
+#     one named kind through a kind-agnostic seam. That list is exhaustive: a
+#     module merely NAMED fixtures (packages/email-renderer/src/preview/
+#     fixtures.ts) ships, so it is scanned like any other source file.
 #   * migrations/**: a migration is a frozen replay of the schema as it stood on
 #     its date. It is pinned to the kinds that existed then and must NOT follow
 #     the catalog as it grows, so the ratchet has nothing to say about it.
@@ -84,7 +89,8 @@
 #   * membership, which is how a multi-kind question ("which kinds accept a
 #     custom return path") gets written once `===` is blocked:
 #     `x.includes('ses')`, `set.has('mta')`, `kind.startsWith('mta')`,
-#     `['ses', 'resend'].includes(kind)`, `new Set(['ses']).has(kind)`
+#     `kinds.indexOf('ses') !== -1`, `['ses', 'resend'].includes(kind)`,
+#     `new Set(['ses']).has(kind)`, `['ses', 'resend'].some((k) => k === kind)`
 # in single quotes, double quotes or backticks. KNOWN LIMIT: an array of kinds
 # bound to a name first (`const RELAY_KINDS = ['ses', 'resend']` … elsewhere …
 # `RELAY_KINDS.includes(kind)`) is a kind DECLARATION, and declarations are the
@@ -111,9 +117,20 @@
 # the sweep and must not be what a ratchet punishes. The stripper is a small
 # state machine over `//` tails, `/* … */` (inline, trailing or spanning lines,
 # with no assumption that continuation lines start with `*`) and `<!-- … -->`,
-# so prose in any shape is invisible to the match. It does not parse strings, so
-# a `//` or `/*` inside a string literal starts a comment as far as it is
-# concerned: that direction only ever HIDES a match, never invents one.
+# so prose in any shape is invisible to the match.
+#
+# IT TRACKS STRINGS TOO, because the alternative fails OPEN. A `//` inside a
+# string is not a comment: a provider doc link on the same line as a branch
+# (`href="https://docs.aws…"` next to `provider === 'ses'`) would hide it, and
+# those links live in exactly the per-vendor panels this gate carries as debt. A
+# `/*` inside a string is worse — `accept = "*/*"` would open a block comment
+# that never closes, and every line below it in the file would go unread. So
+# string content is kept and comment openers inside it are ignored, with `\`
+# escapes honoured; quoted strings are forgotten at the newline (an unbalanced
+# apostrophe in Vue prose is not an opener) and template literals are carried
+# across lines. If the machine still ends a file inside a comment or a string —
+# which no compiling source file does — the run FAILS rather than pretending the
+# unread remainder was clean.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -168,10 +185,14 @@ comparison="(===|!==|==|!=)[[:space:]]*$q($kind_alt)$q"
 comparison="$comparison|$q($kind_alt)$q[[:space:]]*(===|!==|==|!=)"
 comparison="$comparison|case[[:space:]]+$q($kind_alt)$q[[:space:]]*:"
 # Membership: the shape the same question takes once `===` is blocked.
-# `kinds.includes('ses')`, `set.has('mta')`, `kind.startsWith('mta')`.
-comparison="$comparison|(includes|has|startsWith|endsWith)[(][[:space:]]*$q($kind_alt)$q"
-# `['ses', 'resend'].includes(kind)`, `new Set(['ses']).has(kind)`.
-comparison="$comparison|$q($kind_alt)$q[^]]*[]][[:space:]]*[)]?[[:space:]]*[.](includes|has)[(]"
+# `kinds.includes('ses')`, `set.has('mta')`, `kind.startsWith('mta')`,
+# `kinds.indexOf('ses') !== -1`. `lastIndexOf` is spelled out rather than left to
+# fall out of `indexOf`: the capital I means it does not contain it.
+comparison="$comparison|(includes|has|startsWith|endsWith|indexOf|lastIndexOf)[(][[:space:]]*$q($kind_alt)$q"
+# `['ses', 'resend'].includes(kind)`, `new Set(['ses']).has(kind)`,
+# `['ses', 'resend'].some((k) => k === kind)` — an inline array of kinds is the
+# question whichever consultation follows it, so `some`/`find`/`filter` count.
+comparison="$comparison|$q($kind_alt)$q[^]]*[]][[:space:]]*[)]?[[:space:]]*[.](includes|has|some|find|filter)[(]"
 
 # Any mention of a kind, quoted — the cheap pre-filter below. Deliberately much
 # looser than `$comparison`: it has to catch the line a formatter split after
@@ -235,12 +256,15 @@ candidates=$(git ls-files -- "${SCAN_PATHS[@]}" | grep -E '\.(ts|tsx|vue)$' |
 	tr '\n' '\0' | xargs -0 grep -lasE "$literal" 2>/dev/null)
 
 violations=""
+unterminated=""
 while IFS= read -r f; do
 	[ -f "$f" ] || continue
 	case "$f" in
 		*/_generated/*) continue ;;
 		*/__tests__/*) continue ;;
-		*.test.ts | *.spec.ts) continue ;;
+		*.test.ts | *.test.tsx | *.test.vue) continue ;;
+		*.spec.ts | *.spec.tsx | *.spec.vue) continue ;;
+		*/e2e/*) continue ;;
 		*/migrations/*) continue ;;
 		apps/mta/*) continue ;;
 	esac
@@ -253,41 +277,52 @@ while IFS= read -r f; do
 	# condition after the operator and prints a long membership test one element
 	# per line; a per-line grep would call both clean.
 	hits=$(awk -v pat="$comparison" '
-		function strip(s,   out, i, j, h, k) {
+		# Comment stripper. It tracks STRING state too, for one reason: a `//` or a
+		# `/*` inside a string literal is not a comment opener, and reading it as
+		# one is the fail-open direction. A doc link (`href="https://docs.aws…"`)
+		# would swallow the rest of its line, and a glob (`accept = "*/*"`) would
+		# open a block comment that never closes and blind the ratchet to the whole
+		# rest of the file. String CONTENT is kept, not stripped: the literals this
+		# gate matches ARE strings.
+		function strip(s,   out, i, n, ch, pair) {
 			out = ""
-			while (1) {
+			i = 1
+			n = length(s)
+			while (i <= n) {
+				ch = substr(s, i, 1)
 				if (inblock) {
-					k = index(s, "*/")
-					if (k == 0) return out
-					s = substr(s, k + 2)
-					inblock = 0
+					if (substr(s, i, 2) == "*/") { inblock = 0; i += 2 } else i++
 					continue
 				}
 				if (inhtml) {
-					k = index(s, "-->")
-					if (k == 0) return out
-					s = substr(s, k + 3)
-					inhtml = 0
+					if (substr(s, i, 3) == "-->") { inhtml = 0; i += 3 } else i++
 					continue
 				}
-				i = index(s, "//")
-				j = index(s, "/*")
-				h = index(s, "<!--")
-				k = 0
-				if (i > 0) k = i
-				if (j > 0 && (k == 0 || j < k)) k = j
-				if (h > 0 && (k == 0 || h < k)) k = h
-				if (k == 0) return out s
-				if (k == i) return out substr(s, 1, i - 1)
-				out = out substr(s, 1, k - 1)
-				if (k == j) {
-					s = substr(s, k + 2)
-					inblock = 1
-				} else {
-					s = substr(s, k + 4)
-					inhtml = 1
+				if (instr != "") {
+					out = out ch
+					# A backslash escapes the next character, so `it\047s` inside
+					# single quotes does not end the string where it appears to.
+					if (ch == "\\") { out = out substr(s, i + 1, 1); i += 2; continue }
+					if (ch == instr) instr = ""
+					i++
+					continue
 				}
+				pair = substr(s, i, 2)
+				if (pair == "//") break
+				if (pair == "/*") { inblock = 1; i += 2; continue }
+				if (substr(s, i, 4) == "<!--") { inhtml = 1; i += 4; continue }
+				if (ch == "\047" || ch == "\"" || ch == "`") instr = ch
+				out = out ch
+				i++
 			}
+			# A quoted string cannot span lines in TS, so an unbalanced quote is
+			# prose — an apostrophe in a Vue text node, a quote inside a regex
+			# character class — and forgetting it at the newline keeps the blast
+			# radius to that line. A template literal DOES span lines, so that state
+			# is remembered across them; if it never closes, the END rule below
+			# fails the file rather than letting the remainder go unread.
+			if (instr == "\047" || instr == "\"") instr = ""
+			return out
 		}
 		function squeeze(s) {
 			gsub(/[[:space:]]+/, " ", s)
@@ -320,9 +355,40 @@ while IFS= read -r f; do
 			two = one
 			one = code
 		}
+		# FAIL CLOSED ON A STRIPPER THAT LOST ITS PLACE. A source file cannot end
+		# inside a block comment, an HTML comment or a template literal and still
+		# compile, so if the state machine thinks it did, the machine is wrong —
+		# and being wrong in that direction means every line after the mistake was
+		# read as comment and never matched. That is the silent failure a ratchet
+		# cannot afford, so it is reported instead of assumed harmless.
+		END {
+			if (inblock) printf "!unterminated\tblock comment\n"
+			else if (inhtml) printf "!unterminated\tHTML comment\n"
+			else if (instr != "") printf "!unterminated\ttemplate literal\n"
+		}
 	' "$f")
+	case "$hits" in
+		*'!unterminated'*)
+			state=$(printf '%s\n' "$hits" | { grep -a '^!unterminated' || true; } | cut -f2-)
+			unterminated="$unterminated  $f (inside a $state at end of file)"$'\n'
+			hits=$(printf '%s\n' "$hits" | { grep -av '^!unterminated' || true; })
+			;;
+	esac
 	[ -n "$hits" ] && violations="$violations$(printf '%s' "$hits" | sed "s#^#$f:#")"$'\n'
 done < <(printf '%s\n' "$candidates")
+
+if [ -n "$unterminated" ]; then
+	echo "FAIL: the comment/string stripper reached the end of these file(s) still"
+	echo "inside a comment or a string:"
+	echo ""
+	printf '%s' "$unterminated"
+	echo ""
+	echo "No compiling source file ends that way, so the stripper misread"
+	echo "something — and everything after the point where it lost its place went"
+	echo "unchecked. Fix the state machine in this script (or the file, if it"
+	echo "really is malformed); do not leave the gate reading half a file."
+	exit 1
+fi
 
 # Licensing is per LINE, not per file: a `path:literal` entry excuses only the
 # lines whose kind literals it names, and any other kind on any other line of

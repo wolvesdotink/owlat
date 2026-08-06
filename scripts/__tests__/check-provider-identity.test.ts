@@ -228,6 +228,17 @@ describe('provider-identity ratchet, seeded violations', () => {
 		['a membership argument', "RELAY_KINDS.includes('ses')"],
 		['a Set lookup argument', "configured.has('mandrill')"],
 		['a prefix test', "kind.startsWith('mta')"],
+		// The same question one spelling further out. `indexOf(...) !== -1` is
+		// where an author blocked by both `===` and `.includes` lands next, and
+		// `lastIndexOf` does not contain `indexOf` (capital I), so it is its own
+		// alternative and needs its own case.
+		['an indexOf test', "kinds.indexOf('ses') !== -1"],
+		['a lastIndexOf test', "kinds.lastIndexOf('mta') === 0"],
+		['an inline array asked with some', "['ses', 'resend'].some((k) => k === kind)"],
+		[
+			'an inline array asked with find',
+			"['ses', 'mandrill'].find((k) => k === kind) !== undefined",
+		],
 	])('fails on %s', (_label, comparison) => {
 		const root = sandbox({ files: { 'apps/api/convex/delivery/seededLeak.ts': leak(comparison) } });
 		const result = runIn(root);
@@ -422,6 +433,15 @@ describe('provider-identity ratchet, exemptions', () => {
 		],
 		['a __tests__ directory', 'apps/api/convex/delivery/__tests__/harness.ts'],
 		['a test file', 'apps/api/convex/delivery/seam.test.ts'],
+		// The exclusion list has to cover the spellings tests actually use, or the
+		// header's promise ("tests are out of scope") is one a Playwright page
+		// object cannot cash — and the failure text forbids the only remedy it
+		// offers. A spec under e2e/ was already exempt by extension; the page
+		// object it drives and the data it seeds are the same scaffolding.
+		['a component test named .test.tsx', 'apps/web/app/components/Editor.test.tsx'],
+		['a spec named .spec.vue', 'apps/web/app/components/Editor.spec.vue'],
+		['a Playwright page object', 'apps/web/e2e/page-objects/DeliveryPage.ts'],
+		['a Playwright fixture', 'apps/web/e2e/fixtures/test-data.ts'],
 		['a migration', 'apps/api/convex/migrations/0019_relay_kinds.ts'],
 		['convex generated code', 'apps/api/convex/_generated/api.ts'],
 	])('exempts %s', (_label, path) => {
@@ -647,6 +667,162 @@ describe('provider-identity ratchet, exemptions', () => {
 
 		expect(result.output).toContain('ok:');
 		expect(result.status).toBe(0);
+	});
+});
+
+describe('provider-identity ratchet, a string is not a comment', () => {
+	// The stripper's job is to hide PROSE. Every case below is the opposite
+	// mistake — hiding code because a string happened to contain a comment
+	// opener — and each is paired with the prose case it must not break, because
+	// this is the direction where a ratchet fails OPEN and says `ok:`.
+
+	it('sees a comparison on a line that also carries a URL', () => {
+		// `//` inside a string is not a comment. Provider doc links sit in exactly
+		// the per-vendor panels the allowlist carries as debt, so this is both a
+		// natural accident and a one-character deliberate bypass.
+		const root = sandbox({
+			files: {
+				'apps/web/app/components/delivery/Docs.vue': [
+					'<template>',
+					'\t<a href="https://docs.aws.amazon.com/ses" v-if="provider === \'ses\'">docs</a>',
+					'</template>',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/web/app/components/delivery/Docs.vue:2');
+		expect(result.status).toBe(1);
+	});
+
+	it('still hides a comment that follows a URL on the same line', () => {
+		// The pair: teaching the stripper about strings must not stop a real `//`
+		// tail from being a comment.
+		const root = sandbox({
+			files: {
+				'apps/api/convex/delivery/documented.ts': [
+					'export function decide(kind: string): boolean {',
+					"\treturn eligible(kind); // https://docs.aws.amazon.com/ses — was kind === 'ses'",
+					'}',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('ok:');
+		expect(result.status).toBe(0);
+	});
+
+	it('does not let a glob string open a block comment that swallows the rest of the file', () => {
+		// `'*/*'` used to start a block comment that never closed, so EVERY line
+		// below it went unread — silently, for the whole file. Twenty-one tracked
+		// files ended a run in that state, including nuxt.config.ts (a route glob)
+		// and the media picker below.
+		const root = sandbox({
+			files: {
+				'apps/web/app/components/MediaPicker.vue': [
+					'<script setup lang="ts">',
+					"const resolvedAccept = props.allowAllFiles ? '*/*' : props.accept;",
+					'',
+					'function label(kind: string): string {',
+					"\treturn kind === 'ses' ? 'Amazon SES' : 'other';",
+					'}',
+					'</script>',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/web/app/components/MediaPicker.vue:5');
+		expect(result.status).toBe(1);
+	});
+
+	it('passes the same glob with no comparison under it', () => {
+		const root = sandbox({
+			files: {
+				'apps/web/app/components/MediaPicker.vue': [
+					'<script setup lang="ts">',
+					"const resolvedAccept = props.allowAllFiles ? '*/*' : props.accept;",
+					'</script>',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('ok:');
+		expect(result.status).toBe(0);
+	});
+
+	it('follows a template literal across lines and keeps reading after it closes', () => {
+		// A template literal is the one string that spans lines, so its state is
+		// carried across them. Carrying it means the `//` in the URL inside it is
+		// not a comment, and closing it means the branch underneath is still code.
+		const root = sandbox({
+			files: {
+				'apps/web/app/composables/useHelp.ts': [
+					'export const help = `',
+					'\tRead https://docs.aws.amazon.com/ses/latest/ first.',
+					'`;',
+					'export function decide(kind: string): boolean {',
+					"\treturn kind === 'ses';",
+					'}',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/web/app/composables/useHelp.ts:5');
+		expect(result.status).toBe(1);
+	});
+
+	it('does not let an apostrophe in template prose hide the next line', () => {
+		// A single quote in a Vue text node opens nothing: quoted strings cannot
+		// span lines, so the stripper forgets them at the newline rather than
+		// reading the rest of the file as one long string.
+		const root = sandbox({
+			files: {
+				'apps/web/app/components/delivery/Prose.vue': [
+					'<template>',
+					"\t<p>You'll need credentials before sending.</p>",
+					'\t<div v-if="provider === \'resend\'">key</div>',
+					'</template>',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('apps/web/app/components/delivery/Prose.vue:3');
+		expect(result.status).toBe(1);
+	});
+
+	it('fails loudly when it reaches the end of a file still inside a comment', () => {
+		// The backstop for the whole family: no compiling source file ends inside
+		// a block comment, so if the stripper thinks one did, the stripper is
+		// wrong — and everything after its mistake was read as prose. Better a red
+		// gate naming the file than a green one that read half of it.
+		const root = sandbox({
+			files: {
+				'apps/api/convex/delivery/malformed.ts': [
+					"/* the old gate compared kind === 'ses'",
+					'export function decide(kind: string): boolean {',
+					'\treturn eligible(kind);',
+					'}',
+					'',
+				].join('\n'),
+			},
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('still');
+		expect(result.output).toContain('apps/api/convex/delivery/malformed.ts');
+		expect(result.output).toContain('block comment at end of file');
+		expect(result.status).toBe(1);
 	});
 });
 

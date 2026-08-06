@@ -94,7 +94,8 @@ until it is deleted.
 The comparison half is `bun run lint:providers`
 (`scripts/check-provider-identity.sh`), the CI gate that carries the rule across
 `apps/`, `packages/` and `examples/`: no comparison against a kind literal —
-`===`, `==`, `case`, or membership (`kinds.includes('ses')`) — outside an
+`===`, `==`, `case`, or membership (`kinds.includes('ses')`,
+`kinds.indexOf('ses') !== -1`, `['ses', 'resend'].some(…)`) — outside an
 adapter bundle. `examples/` is in scope because it is a workspace root and the
 home of the plugin tier, whose whole promise is that a provider ships without
 host edits. An "adapter bundle" is a kind-named directory directly under
@@ -103,9 +104,14 @@ host edits. An "adapter bundle" is a kind-named directory directly under
 that spells a kind, so a per-vendor folder of UI panels still fails. Also out of
 reach on purpose: `apps/mta` (its `'mta' | 'relay' | 'defer'` routing decisions
 are its own alphabet, not the catalog's), `migrations/` (frozen replays, pinned
-to the kinds of their date), tests and fixtures, and generated code. Matching
-runs over a three-line window, so reformatting a long condition or a long
-membership array does not de-fang it.
+to the kinds of their date), tests (`__tests__/`, `*.test.*`, `*.spec.*` and the
+Playwright tree `e2e/`, whose page objects are scaffolding for specs that are
+already exempt), and generated code. A module merely *named* `fixtures.ts` ships,
+so it is scanned like any other source. Matching runs over a three-line window,
+so reformatting a long condition or a long membership array does not de-fang it,
+and the comment stripper tracks string literals — a `//` in a doc link or a `*/`
+in a glob is not a comment, and reading one as a comment is how a text gate goes
+quietly blind.
 
 Two checked-in files license the rest, both strict in both directions so they
 can only shrink: `scripts/provider-identity-allowlist.txt` is debt, written once
