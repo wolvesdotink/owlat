@@ -459,6 +459,68 @@ describe('deliverability relay domain lifecycle', () => {
 		});
 	});
 
+	it.each([
+		{
+			relayProviderType: 'mandrill',
+			table: 'sendingDomainRelayIdentities',
+			empty: 'sendingDomainSesIdentities',
+		},
+		{
+			relayProviderType: 'ses',
+			table: 'sendingDomainSesIdentities',
+			empty: 'sendingDomainRelayIdentities',
+		},
+	] as const)(
+		'setRoute drains the relay the ROUTE named — $relayProviderType (P0.2)',
+		async ({ relayProviderType, table, empty }) => {
+			// THE WIRE ITSELF. Every other drain case above calls the batch mutation
+			// with a hand-supplied kind, which proves the drain honours its argument
+			// but not that `setRoute` passes the RIGHT one. Pin the whole path — an
+			// operator saves a fallback, the scheduled backfill runs — because a
+			// literal in that one `runAfter` call would leave a Mandrill deployment
+			// registering SES identities against an AWS account it may not have, and
+			// nothing else in this suite would notice.
+			vi.stubEnv('MANDRILL_API_KEY', 'md-test-key');
+			vi.stubEnv('AWS_SES_REGION', 'eu-central-1');
+			vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'aws-test-key');
+			vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'aws-test-secret');
+			const t = convexTest(schema, modules).withIdentity(identity);
+			await t.run(async (ctx) => {
+				await ctx.db.insert('domains', {
+					domain: 'relay.example',
+					providerType: 'mta',
+					status: 'verified',
+					dnsRecords: {},
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+			});
+
+			await t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: relayProviderType, isEnabled: true },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType,
+					isWarmupOverflowEnabled: false,
+				},
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const { provisioned, untouched } = await t.run(async (ctx) => ({
+				provisioned: await ctx.db.query(table).collect(),
+				untouched: await ctx.db.query(empty).collect(),
+			}));
+			expect(provisioned).toHaveLength(1);
+			// The other kind's identity store is not merely absent from the route —
+			// it was never written to.
+			expect(untouched).toEqual([]);
+		}
+	);
+
 	it('does not re-provision a domain that already holds the relay identity', async () => {
 		// The existence check belongs to the PROVIDER now (each kind knows where
 		// its identity lives); this pins that moving it did not lose it, for both
