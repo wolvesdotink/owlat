@@ -17,10 +17,17 @@ import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 
 const permissionState = vi.hoisted(() => ({ allowed: true }));
 
+/** The singleton org every generic relay-identity row is written under. */
+const TEST_ORG_ID = 'org-test';
+
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
+		// The generic `sendingDomainRelayIdentities` row is org-scoped, so the
+		// relay-identity backfill resolves the singleton org. Nothing in this file
+		// stands up a BetterAuth component to answer it from.
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-test'),
 		// `authedQuery`/`authedMutation` floor + the handler's own role check.
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
@@ -57,6 +64,28 @@ vi.mock('../domains/providers/ses', async () => {
 				identity: { kind: 'ses', dkimTokens: ['one'], verificationToken: 'proof' },
 			}),
 		},
+	};
+});
+
+// The Mandrill relay's one network call, answered with a fully verified domain
+// so the backfill's write is observable. `checkSenderDomain` keeps its real
+// implementation — nothing here reaches it.
+vi.mock('../domains/providers/mandrill/api', async () => {
+	const actual = await vi.importActual<typeof import('../domains/providers/mandrill/api')>(
+		'../domains/providers/mandrill/api'
+	);
+	return {
+		...actual,
+		addSenderDomain: vi.fn(async (domain: string) => ({
+			outcome: 'ok' as const,
+			state: {
+				domain,
+				spf: { isValid: true },
+				dkim: { isValid: true },
+				isValidSigning: true,
+				verifiedAt: Date.now(),
+			},
+		})),
 	};
 });
 
@@ -248,6 +277,46 @@ describe('providerRoutes mutation contracts', () => {
 		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
 	});
 
+	it('requires the arm the fallback moves traffic away from to be enabled', async () => {
+		// The own-MTA precondition (D3's one sanctioned identity). A fallback is
+		// traffic leaving OUR infrastructure for a relay, so a route that carries
+		// no enabled own-MTA arm has nothing to fall back FROM — the relay would
+		// simply be the route. Present-but-disabled is the interesting shape: the
+		// operator toggled the arm off and left the fallback configured.
+		vi.stubEnv('MANDRILL_API_KEY', 'md-test-key');
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		const fallbackToMandrill = {
+			isEnabled: true,
+			relayProviderType: 'mandrill',
+			isWarmupOverflowEnabled: false,
+		};
+
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: false },
+					{ providerType: 'mandrill', isEnabled: true },
+				],
+				deliverabilityFallback: fallbackToMandrill,
+			})
+		).rejects.toThrow('Deliverability fallback requires an enabled owned-MTA route');
+		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+
+		// …and the same route saves the moment that arm is enabled.
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'mandrill', isEnabled: true },
+				],
+				deliverabilityFallback: fallbackToMandrill,
+			})
+		).resolves.toBeTruthy();
+	});
+
 	it('removeRoute returns a truthy value after deleting an existing route', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.mutation(api.providerRoutes.setRoute, singleMtaRoute);
@@ -306,7 +375,11 @@ describe('deliverability relay domain lifecycle', () => {
 			}
 		});
 
+		// `relayProviderType` is the drain's subject, not decoration: the batch
+		// backfills the identity of the kind the ROUTE named. SES is what this
+		// case has always exercised, and its outcome is unchanged.
 		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			relayProviderType: 'ses',
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -314,6 +387,128 @@ describe('deliverability relay domain lifecycle', () => {
 			async (ctx) => await ctx.db.query('sendingDomainSesIdentities').collect()
 		);
 		expect(identities).toHaveLength(40);
+	});
+
+	it('backfills nothing for a relay kind with no identity API (P0.2)', async () => {
+		// The gate that used to keep this honest was `relayProviderType !== 'ses'`
+		// in `setRoute`. Once fallback became a CAPABILITY question, a `resend` or
+		// `smtp` route saves — and the drain, still naming SES inline, would have
+		// registered SES identities for every MTA domain of a deployment that may
+		// hold no AWS credentials at all, then told the operator to publish
+		// `amazonses.com` DNS for a provider they never chose.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		for (const relayProviderType of ['resend', 'smtp', 'mta', 'plugin.retired.postmark', '']) {
+			await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				relayProviderType,
+				paginationOpts: { cursor: null, numItems: 32 },
+			});
+		}
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const identities = await t.run(
+			async (ctx) => await ctx.db.query('sendingDomainSesIdentities').collect()
+		);
+		expect(identities).toEqual([]);
+	});
+
+	it('backfills the relay kind the route named, through its own provider (P0.2)', async () => {
+		// The positive half of the same claim: Mandrill declares
+		// `domainVerification: 'api'` and registers a sending-domain provider, so
+		// the SAME drain backfills ITS identity — into the generic
+		// `sendingDomainRelayIdentities` row (D7), with no SES identity written at
+		// all. Nothing in `providerRoutes.ts` names either kind.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			relayProviderType: 'mandrill',
+			paginationOpts: { cursor: null, numItems: 32 },
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const { relayIdentities, sesIdentities } = await t.run(async (ctx) => ({
+			relayIdentities: await ctx.db.query('sendingDomainRelayIdentities').collect(),
+			sesIdentities: await ctx.db.query('sendingDomainSesIdentities').collect(),
+		}));
+		expect(sesIdentities).toEqual([]);
+		expect(relayIdentities).toHaveLength(1);
+		expect(relayIdentities[0]).toMatchObject({
+			domain: 'relay.example',
+			providerKind: 'mandrill',
+			status: 'verified',
+		});
+	});
+
+	it('does not re-provision a domain that already holds the relay identity', async () => {
+		// The existence check belongs to the PROVIDER now (each kind knows where
+		// its identity lives); this pins that moving it did not lose it, for both
+		// registered kinds.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert('domains', {
+				domain: 'relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId,
+				dkimTokens: ['already-here'],
+				verificationToken: 'already-here',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainRelayIdentities', {
+				organizationId: TEST_ORG_ID,
+				domain: 'relay.example',
+				providerKind: 'mandrill',
+				status: 'pending_dns',
+				spf: { isValid: false },
+				dkim: { isValid: false },
+				lastCheckedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		for (const relayProviderType of ['ses', 'mandrill']) {
+			await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				relayProviderType,
+				paginationOpts: { cursor: null, numItems: 32 },
+			});
+		}
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const { relayIdentities, sesIdentities } = await t.run(async (ctx) => ({
+			relayIdentities: await ctx.db.query('sendingDomainRelayIdentities').collect(),
+			sesIdentities: await ctx.db.query('sendingDomainSesIdentities').collect(),
+		}));
+		expect(sesIdentities).toHaveLength(1);
+		expect(sesIdentities[0]?.verificationToken).toBe('already-here');
+		expect(relayIdentities).toHaveLength(1);
+		expect(relayIdentities[0]?.status).toBe('pending_dns');
 	});
 
 	it('exposes exact SES DNS and verification state to the admin UI query', async () => {

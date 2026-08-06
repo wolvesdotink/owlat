@@ -10,6 +10,8 @@ import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { isFallbackRelayEligible } from './lib/sendProviders/fallbackEligibility';
+import { OWN_ARM_TRANSPORT_KIND } from './lib/sendProviders/strategies';
+import { isSendingDomainProviderKind, providerFor } from './domains/providers';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
@@ -194,28 +196,50 @@ export const listDeliverabilityRelayDomains = authedQuery({
 	},
 });
 
-/** Cursor drain used when fallback is enabled; future domains use lifecycle provisioning. */
+/**
+ * Cursor drain used when fallback is enabled; future domains use lifecycle
+ * provisioning.
+ *
+ * WHICH relay is a PARAMETER, not a literal (plan D2). This mutation used to
+ * name `sendingDomainSesIdentities` and `domains.sesRelay.provision` directly,
+ * which was correct only for as long as SES was the one relay a route could
+ * name. Since the fallback gate became a capability question, `resend`, `smtp`
+ * and `mandrill` routes save too — and every one of them would have had SES
+ * identities provisioned across the whole domain table, calling an API the
+ * deployment may hold no credentials for and publishing DNS guidance for a
+ * provider the operator never chose. The kind now travels from the route that
+ * named it and the backfill is asked of THAT kind's sending-domain provider.
+ *
+ * A relay with nothing to register at (`domainVerification: 'none'`, so no
+ * `ensureRelayIdentity` — Resend, a bring-your-own SMTP relay) stops the drain
+ * before it reads a page: there is no identity to backfill, which is the same
+ * honest posture `relayDomainVerification.ts` takes on the read side.
+ */
 export const provisionDeliverabilityRelayBatch = internalMutation({
-	args: { paginationOpts: paginationOptsValidator },
+	args: { relayProviderType: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
+		const relay = isSendingDomainProviderKind(args.relayProviderType)
+			? providerFor(args.relayProviderType)
+			: null;
+		// Bound to its module: the drain holds the function, not the receiver.
+		const ensureRelayIdentity = relay?.ensureRelayIdentity?.bind(relay);
+		if (!ensureRelayIdentity) return;
 		const page = await ctx.db
 			.query('domains')
 			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.paginate(args.paginationOpts);
 		for (const domain of page.page) {
+			// A relay identity coexists on a domain whose PRIMARY provider is our
+			// own MTA; a domain already hosted at some provider owns its identity
+			// through the ordinary lifecycle. (Domain-provider kinds, not send
+			// transports — generalizing this one belongs with `domains/lifecycle.ts`,
+			// which spells the same rule.)
 			if (domain.providerType !== 'mta') continue;
-			const existing = await ctx.db
-				.query('sendingDomainSesIdentities')
-				.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-				.first();
-			if (!existing) {
-				await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
-					domainId: domain._id,
-				});
-			}
+			await ensureRelayIdentity(ctx, domain._id);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				relayProviderType: args.relayProviderType,
 				paginationOpts: { cursor: page.continueCursor, numItems: args.paginationOpts.numItems },
 			});
 		}
@@ -287,8 +311,17 @@ export const setRoute = authedMutation({
 			) {
 				throwInvalidInput('Deliverability fallback relay must be enabled in this route');
 			}
+			// The one identity D3 sanctions — own MTA vs. not-own — read from its
+			// SINGLE declaration rather than restated as a literal here. A
+			// deliverability fallback is by definition traffic moving off our own
+			// infrastructure onto a relay, so the route it is configured on has to
+			// carry the arm it moves away FROM. `OWN_ARM_TRANSPORT_KIND` is the same
+			// constant the adaptive mix splits its arms on, which is what keeps this
+			// precondition and that split from ever meaning two different transports.
 			if (
-				!args.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+				!args.providers.some(
+					(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
+				)
 			) {
 				throwInvalidInput('Deliverability fallback requires an enabled owned-MTA route');
 			}
@@ -302,6 +335,7 @@ export const setRoute = authedMutation({
 		});
 		if (fallback?.isEnabled) {
 			await ctx.scheduler.runAfter(0, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				relayProviderType: fallback.relayProviderType,
 				paginationOpts: { cursor: null, numItems: 32 },
 			});
 		}
