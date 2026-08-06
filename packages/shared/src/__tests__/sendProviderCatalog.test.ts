@@ -48,6 +48,9 @@ import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
  *   getSendPathRequiredEnv    packages/shared/src/featureFlags.ts (the switch)
  *   PROVIDER_ENV_KEYS         packages/shared/src/setupSendingPresets.ts
  *   SMTP_RELAY_PRESETS        packages/shared/src/setupSendingPresets.ts
+ *   OUTBOUND_TLS_MODE_OPTIONS apps/web/app/composables/setupOutboundTls.ts
+ *                             (its `{ value, label }` half — the `hint` copy
+ *                             stayed in that file)
  *
  * ORDER IS ASSERTED WHERE IT WAS PRESERVED and stated explicitly where it was
  * not: `DELIVERY_PROVIDER_KINDS` and `PROVIDER_ENV_KEYS` were hand-written in
@@ -77,6 +80,23 @@ const SEND_PATH_REQUIRED_ENV_BEFORE: Record<string, string[]> = {
 	smtp: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
 	mandrill: ['MANDRILL_API_KEY'],
 };
+
+/**
+ * The outbound-TLS selector's `{ value, label }` pairs exactly as
+ * `apps/web/app/composables/setupOutboundTls.ts` declared them pre-move (its
+ * `hint` paragraphs stayed in that file and are pinned by the web suite).
+ *
+ * This one is a snapshot rather than a comparison against the export for the
+ * reason every other table here is: the wizard's selector is now DERIVED from
+ * the catalog descriptor, and asserting the export against itself would prove
+ * attachment while leaving the operator-facing copy free to change with every
+ * suite in the repo staying green.
+ */
+const OUTBOUND_TLS_OPTIONS_BEFORE = [
+	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
+	{ value: 'require', label: 'Always encrypt' },
+	{ value: 'require-verified', label: 'Always encrypt and verify' },
+];
 
 /** `PROVIDER_ENV_KEYS` as `setupSendingPresets.ts` declared it pre-move. */
 const PROVIDER_ENV_KEYS_BEFORE = [
@@ -312,6 +332,15 @@ describe('the entries themselves', () => {
 		]);
 	});
 
+	it('keeps the selector’s labels at their pre-move copy, not just its values', () => {
+		// The values are pinned above against `OUTBOUND_TLS_MODES`; the LABELS are
+		// the half that moved out of `apps/web` into the descriptor, and they are
+		// what an operator actually reads. Without this literal the previous
+		// assertion compares the export to itself, so re-wording an option would be
+		// a green monorepo.
+		expect([...OUTBOUND_TLS_MODE_OPTIONS]).toEqual(OUTBOUND_TLS_OPTIONS_BEFORE);
+	});
+
 	it('names a real validator on every setup probe, and only where one exists', () => {
 		const probes = ENTRIES.filter((entry) => entry.setupProbe !== undefined);
 		// The literal, pinned: which kinds can be checked before applying is a
@@ -441,6 +470,32 @@ describe('the module stays data only — it ships to the browser', () => {
 		for (const shape of [/AKIA[A-Z0-9]{8}/, /BEGIN [A-Z ]*PRIVATE KEY/, /re_[A-Za-z0-9]{8}/]) {
 			expect(shape.test(serialized), String(shape)).toBe(false);
 		}
+	});
+
+	it('is frozen THROUGH, not just at the top — including the attached preset table', () => {
+		// A shallow `Object.freeze` on the array would leave every entry, every
+		// env-var/credential-field array and `SMTP_RELAY_PRESETS` writable by any
+		// consumer that reaches this module through a cast — and this one ships to
+		// the browser. Walked rather than spot-checked so a field added later is
+		// covered without anyone remembering to add a line.
+		const walk = (value: unknown, path: string): void => {
+			if (!value || typeof value !== 'object') return;
+			expect(Object.isFrozen(value), path).toBe(true);
+			for (const [key, member] of Object.entries(value)) walk(member, `${path}.${key}`);
+		};
+		walk(CORE_SEND_PROVIDER_CATALOG_ENTRIES, 'entries');
+		walk(SMTP_RELAY_PRESETS, 'SMTP_RELAY_PRESETS');
+		// ...and the freeze BITES: a write through an untyped alias is refused
+		// rather than quietly rewriting the single source of truth.
+		const smtp = coreSendProviderCatalogEntry('smtp');
+		const endpoint = smtp?.credentialFields.find((field) => field.kind === 'host-port');
+		const presets = (endpoint?.kind === 'host-port' ? endpoint.presets : undefined) as unknown as
+			| Record<string, { host: string }>
+			| undefined;
+		expect(() => {
+			presets!['postmark']!.host = 'smtp.attacker.example';
+		}).toThrow(TypeError);
+		expect(SMTP_RELAY_PRESETS.postmark.host).toBe('smtp.postmarkapp.com');
 	});
 
 	it('carries no functions — a descriptor is data, and data is what a bundle may hold', () => {
