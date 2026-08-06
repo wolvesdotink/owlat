@@ -71,6 +71,7 @@ function relayPatch(): Record<string, string> {
 function summary(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		referenceTransportId: 'ses',
+		isRelayConfigured: true,
 		relayRemoval: {
 			kind: 'unsafe',
 			dependentCells: ['campaign:gmail', 'automation:yahoo'],
@@ -215,15 +216,65 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 	});
 
 	it('lets the change through on a deployment that never had a relay', async () => {
-		// THE SUMMARY THE QUERY ACTUALLY RETURNS. `getIndependenceSummary` answers
-		// `{kind:'safe'}` for every deployment with no reference arm, so a standalone
-		// one is not a second shape to recognise here — pinning it as
-		// `referenceTransportId: null` beside an UNSAFE removal would pin a state the
-		// backend cannot produce, and with it a clause that decides nothing.
-		answerSummaryWith(summary({ referenceTransportId: null, relayRemoval: { kind: 'safe' } }));
+		// THE SUMMARY THE QUERY ACTUALLY RETURNS for a standalone deployment: no
+		// relay of any kind, so `{kind:'safe'}` and nothing to confirm. This is the
+		// case the skip above exists for, and the ONLY configuration that may reach
+		// it — the case below is the one that used to reach it wrongly.
+		answerSummaryWith(
+			summary({
+				referenceTransportId: null,
+				isRelayConfigured: false,
+				relayRemoval: { kind: 'safe' },
+			})
+		);
 
 		expect((await callRoute()).ok).toBe(true);
 		expect(pushMock).toHaveBeenCalledTimes(1);
+	});
+
+	/**
+	 * ONE RELAY IN `EMAIL_PROVIDER`, ONE IN `providerRoutes` (#513) — the shape
+	 * that actually loses the confirmation.
+	 *
+	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is
+	 * `null` here exactly as it is on the standalone deployment above; the
+	 * summary's own removal read is the ONLY thing telling these two apart, which
+	 * is why the endpoint may not re-derive "is there a relay" from the id. This
+	 * apply repoints `EMAIL_PROVIDER` at the built-in MTA and so genuinely
+	 * disconnects an arm two cells are still leaning on — the two-`providerRoutes`
+	 * shape is harmless by comparison, because its apply removes nothing.
+	 *
+	 * The summary below is the one `getIndependenceSummary` now returns for this
+	 * deployment; that half is pinned in
+	 * `apps/api/convex/delivery/__tests__/seedGateWiring.test.ts`.
+	 */
+	it('demands the phrase with a relay in the env and another in the routes (#513)', async () => {
+		answerSummaryWith(
+			summary({
+				referenceTransportId: null,
+				isRelayConfigured: true,
+				relayRemoval: {
+					kind: 'unsafe',
+					dependentCells: ['campaign:gmail', 'automation:yahoo'],
+					projectedSafeAt: null,
+				},
+			})
+		);
+
+		const res = await callRoute();
+
+		expect(res.ok).toBe(false);
+		expect(res.applied).toBe(false);
+		expect(res.message).toContain(RELAY_REMOVAL_CONFIRMATION);
+		expect(res.needsRelayRemovalConfirmation).toBe(true);
+		expect(res.message).toContain('2 cells have not graduated yet');
+		// No single arm to name, so the consequence says "the relay" rather than
+		// inventing one or printing a bare null.
+		expect(res.message).toContain('through the relay');
+		expect(res.message).not.toContain('null');
+		// The assertions that carry the weight: nothing was repointed.
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
 	});
 
 	it('refuses rather than guessing when the removal read cannot be made', async () => {
