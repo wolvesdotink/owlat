@@ -34,8 +34,16 @@
  * catalog entry, an adapter, an event payload and a fixture all legitimately
  * write their own name, so `= 'ses'` is only a leak inside `apps/api/convex`,
  * where this file — a source assertion with the whole module graph in hand —
- * is the cheaper place to say so. This file therefore stays: comparisons
- * everywhere are the ratchet's, declarations in the backend are this one's.
+ * is the cheaper place to say so. This file therefore stays: declarations in
+ * the backend are this file's rule, comparisons everywhere are the ratchet's.
+ *
+ * ONE LIST, NOT TWO. The comparison half is still asserted here (this file sees
+ * the module graph; the ratchet sees text), but the SURVIVORS it allows are
+ * read out of the ratchet's own two files rather than restated — see
+ * {@link licensedComparisons}. Enumerating the same five files in two formats
+ * in two jobs is how a swept file gets de-licensed in one place and leaves the
+ * other red with a differently-worded message: a cleanup deletes one line, in
+ * `scripts/provider-identity-allowlist.txt`, and both gates follow.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -46,6 +54,32 @@ import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
 import { OWN_ARM_TRANSPORT_KIND } from '../strategies/adaptive_mix';
 
 const convexRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const repoRoot = resolve(convexRoot, '../../..');
+
+/**
+ * The comparison survivors, read from the ratchet's lists instead of restated.
+ *
+ * `scripts/provider-identity-allowlist.txt` is debt with an owner and shrinks to
+ * zero; `scripts/provider-identity-collisions.txt` is the permanent set where a
+ * kind's spelling belongs to another vocabulary. Both are repo-relative, so the
+ * entries under this backend are re-based onto `convexRoot`. If either file is
+ * missing the read throws, which is the correct outcome: an empty licence set
+ * would silently turn this assertion into a much stricter rule and fail on the
+ * sanctioned sites.
+ */
+const CONVEX_PREFIX = 'apps/api/convex/';
+function licensedComparisons(): Set<string> {
+	const licensed = new Set<string>();
+	for (const list of ['provider-identity-allowlist.txt', 'provider-identity-collisions.txt']) {
+		const contents = readFileSync(join(repoRoot, 'scripts', list), 'utf8');
+		for (const line of contents.split('\n')) {
+			const entry = line.trim();
+			if (entry === '' || entry.startsWith('#')) continue;
+			if (entry.startsWith(CONVEX_PREFIX)) licensed.add(entry.slice(CONVEX_PREFIX.length));
+		}
+	}
+	return licensed;
+}
 
 /**
  * Directories the rule does not reach.
@@ -69,48 +103,28 @@ const EXEMPT_PREFIXES = [
 ];
 
 /**
- * Every file outside an adapter folder that still spells a transport kind, the
- * FAMILY it belongs to, and who clears it.
+ * Every file outside an adapter folder that still DECLARES a transport kind,
+ * the FAMILY it belongs to, and who clears it.
  *
- * None of these is an own-arm restatement, and none may be passed off to P0.5
- * as "definitional" — the definitional entries are exactly the two declarations
- * at the bottom of this map. The rest are capability gaps with named owners.
+ * Declarations only — a `const X = 'ses'`. The COMPARISON survivors used to be
+ * enumerated here too and are not any more: they are read from the ratchet's
+ * allowlist (see {@link licensedComparisons}), because two hand-kept lists of
+ * the same five files is exactly the shape that goes out of sync.
+ *
+ * None of these may be passed off to P0.5 as "definitional" — the definitional
+ * entry is the one declaration at the bottom of this map. The rest are
+ * capability gaps with named owners.
  */
 const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }> = {
-	'domains/lifecycle.ts': {
-		family: 'return-path',
-		owner:
-			'the sending-domain adapter interface growing the return-path capability ' +
-			'(domains/providers/index.ts states the gap in full)',
-	},
-	'delivery/checklistDomainValidators.ts': {
-		family: 'return-path',
-		owner: 'the same capability — the domain.return_path item restates the lifecycle branch',
-	},
 	'delivery/checklistValidatorTypes.ts': {
 		family: 'frozen-sibling-read',
 		owner:
 			'P1.2 — replaced by asking the loaded rows which kind they belong to, once the ' +
 			'generic sendingDomainRelayIdentities read lands',
 	},
-	'domains/mandrillRelay.ts': {
-		family: 'adapter-adjacent',
-		owner: "one kind's provisioning actions living beside its adapter (docs/abstractions.md)",
-	},
-	'domains/mandrillRelayMutations.ts': {
-		family: 'adapter-adjacent',
-		owner: 'the same move',
-	},
 	'webhooks/mandrillRejectSuppression.ts': {
 		family: 'adapter-adjacent',
-		owner: "the same move — one kind's reject-suppression sync beside its inbound adapter",
-	},
-	'delivery/lastMileRouting.ts': {
-		family: 'wire-vocabulary',
-		owner:
-			"nobody: the MTA routing API's decision.kind is 'mta' | 'relay' | 'defer' on the " +
-			'response, a different alphabet that happens to share a spelling. Rewriting it ' +
-			'would change the protocol.',
+		owner: "one kind's reject-suppression sync moving beside its inbound adapter",
 	},
 	'lib/sendProviders/strategies/adaptive_mix/index.ts': {
 		family: 'definitional',
@@ -145,31 +159,54 @@ function strippedOfComments(source: string): string {
 }
 
 /**
- * Comparisons AND declarations.
+ * A DECLARATION: `const RELAY_IDENTITY_PROOF_KIND = 'ses'` — the same fact as a
+ * comparison with an extra hop, and the half no repo-wide text ratchet can
+ * carry (a catalog entry, an adapter, an event payload and a fixture all
+ * legitimately write their own name).
  *
- * A comparison is the leak the plan names, but a `const X = 'ses'` is the same
- * fact with an extra hop — `RELAY_IDENTITY_PROOF_KIND` is exactly that, and a
- * scan that only saw `===` would have let this piece ADD a survivor while
- * reporting the family list complete. Object properties (`kind: 'ses'`,
- * `providerType: 'mta'`) are NOT matched: those are the adapters and the
+ * `===`, `!==`, `<=` and `>=` are excluded by the leading character class so
+ * this sees assignments only. Object properties (`kind: 'ses'`,
+ * `providerType: 'mta'`) are NOT matched either: those are the adapters and the
  * events declaring what they are, which is the seam working.
  */
-function literalPattern(kind: string): RegExp {
-	return new RegExp(`(===|!==|case|=)\\s*'${kind}'|'${kind}'\\s*(===|!==)`, 'g');
+function declarationPattern(kind: string): RegExp {
+	return new RegExp(`(^|[^=!<>])=\\s*'${kind}'`, 'gm');
 }
 
-const offenders = sourceFiles(convexRoot)
+/**
+ * A COMPARISON: the ratchet's rule, restated here over the module graph.
+ *
+ * Same shapes the shell gate matches — operator forms and the membership forms
+ * a multi-kind question takes once `===` is blocked — so the two agree about
+ * what needs a licence. The licence itself is not restated: it is read from the
+ * ratchet's files.
+ */
+function comparisonPattern(kind: string): RegExp {
+	return new RegExp(
+		`(===|!==|case)\\s*'${kind}'|'${kind}'\\s*(===|!==)|(includes|has|startsWith|endsWith)\\(\\s*'${kind}'`,
+		'g'
+	);
+}
+
+const inScope = sourceFiles(convexRoot)
 	.map((file) => ({
 		path: relative(convexRoot, file).replaceAll('\\', '/'),
 		source: strippedOfComments(readFileSync(file, 'utf8')),
 	}))
 	.filter((file) => !EXEMPT_PREFIXES.some((prefix) => file.path.startsWith(prefix)))
-	.filter((file) => !file.path.endsWith('.test.ts'))
-	.map((file) => ({
-		path: file.path,
-		kinds: SEND_TRANSPORT_KINDS.filter((kind) => literalPattern(kind).test(file.source)),
-	}))
-	.filter((file) => file.kinds.length > 0);
+	.filter((file) => !file.path.endsWith('.test.ts'));
+
+function offendersMatching(pattern: (kind: string) => RegExp) {
+	return inScope
+		.map((file) => ({
+			path: file.path,
+			kinds: SEND_TRANSPORT_KINDS.filter((kind) => pattern(kind).test(file.source)),
+		}))
+		.filter((file) => file.kinds.length > 0);
+}
+
+const declarationOffenders = offendersMatching(declarationPattern);
+const comparisonOffenders = offendersMatching(comparisonPattern);
 
 describe('kind literals outside the adapter folders are an enumerated, shrinking set', () => {
 	it('walks a real tree', () => {
@@ -183,25 +220,55 @@ describe('kind literals outside the adapter folders are an enumerated, shrinking
 		expect(scanned.length).toBeGreaterThan(200);
 	});
 
-	it('leaves no kind literal that is not enumerated with a family and an owner', () => {
-		const unexplained = offenders.filter((file) => !(file.path in SURVIVING_KIND_LITERALS));
+	it('leaves no kind declaration that is not enumerated with a family and an owner', () => {
+		const unexplained = declarationOffenders.filter(
+			(file) => !(file.path in SURVIVING_KIND_LITERALS)
+		);
 		expect(
 			unexplained.map((file) => `${file.path} (${file.kinds.join(', ')})`),
-			'These files compare or declare a provider kind as a literal. Ask the catalog ' +
+			'These files declare a provider kind as a literal. Ask the catalog ' +
 				'(lib/sendProviders/catalog.ts) or, for own-vs-not-own, read OWN_ARM_TRANSPORT_KIND / ' +
 				'OWN_SENDING_DOMAIN_PROVIDER_KIND. Adding an entry to SURVIVING_KIND_LITERALS is a ' +
 				'plan change, not a fix.'
 		).toEqual([]);
 	});
 
-	it('keeps the enumeration honest — every entry still has a literal to explain', () => {
+	it('keeps the enumeration honest — every entry still has a declaration to explain', () => {
 		// Shrink-only, enforced rather than promised: an entry whose literal has
 		// since been swept must be deleted, or the next restatement in that file
-		// inherits a pass it did not earn — and P0.5's allowlist, which seeds from
-		// this map, would inherit it too.
-		const withLiterals = new Set(offenders.map((file) => file.path));
+		// inherits a pass it did not earn.
+		const withLiterals = new Set(declarationOffenders.map((file) => file.path));
 		const stale = Object.keys(SURVIVING_KIND_LITERALS).filter((path) => !withLiterals.has(path));
-		expect(stale, 'these entries no longer have a literal — delete them').toEqual([]);
+		expect(stale, 'these entries no longer have a declaration — delete them').toEqual([]);
+	});
+
+	it('licenses surviving comparisons from the ratchet’s allowlist, not a second list', () => {
+		// The comparison half of the rule, asserted with the module graph in hand
+		// but licensed from `scripts/provider-identity-allowlist.txt` (debt, with
+		// an owner) and `scripts/provider-identity-collisions.txt` (another
+		// vocabulary, permanent). One deletion de-licenses a swept file in both
+		// gates; the shell gate is what fails on a licence that outlived its
+		// literal, so this side deliberately does not restate that check.
+		const licensed = licensedComparisons();
+		expect(
+			licensed.size,
+			'no allowlist entries resolved under apps/api/convex — the lists moved and this ' +
+				'assertion just became vacuously strict'
+		).toBeGreaterThan(0);
+		// …and the scan itself finds something, so a broken pattern cannot pass by
+		// finding nothing. `decision.kind === 'mta'` is the permanent collision
+		// entry: it is in scope, it matches, and it is licensed.
+		expect(comparisonOffenders.map((file) => file.path)).toContain('delivery/lastMileRouting.ts');
+
+		const unlicensed = comparisonOffenders.filter((file) => !licensed.has(file.path));
+		expect(
+			unlicensed.map((file) => `${file.path} (${file.kinds.join(', ')})`),
+			'These files compare a provider kind against a literal. Ask the capability, not ' +
+				'the name. `bun run lint:providers` says the same thing over the whole repo; if ' +
+				'the literal genuinely belongs to another vocabulary it goes in ' +
+				'scripts/provider-identity-collisions.txt, and nothing else may be added to ' +
+				'scripts/provider-identity-allowlist.txt.'
+		).toEqual([]);
 	});
 
 	it('leaves no restated own-arm comparison at all', () => {
@@ -241,13 +308,7 @@ describe('kind literals outside the adapter folders are an enumerated, shrinking
 			expect(entry.owner.length, `${path} has no owner`).toBeGreaterThan(10);
 		}
 		expect(new Set(Object.values(SURVIVING_KIND_LITERALS).map((entry) => entry.family))).toEqual(
-			new Set([
-				'return-path',
-				'frozen-sibling-read',
-				'adapter-adjacent',
-				'wire-vocabulary',
-				'definitional',
-			])
+			new Set(['frozen-sibling-read', 'adapter-adjacent', 'definitional'])
 		);
 	});
 });
