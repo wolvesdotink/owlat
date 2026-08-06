@@ -11,28 +11,38 @@
 # whose file no longer holds a kind literal FAILS the gate, so a cleanup cannot
 # leave its licence behind for the next restatement to inherit.
 #
-# Every entry carries a FAMILY and an OWNER, the discipline the backend's
-# stricter sibling established (SURVIVING_KIND_LITERALS in
-# apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts, which
-# this list is seeded from and which additionally catches kind DECLARATIONS
-# inside apps/api/convex). Two families are permanent — a spelling collision
-# with another vocabulary is not an identity check. The rest are debt with a
-# named owner, and the entry leaves when the owner lands.
+# EVERY ENTRY IS DEBT WITH AN OWNER. A file whose kind-shaped literal belongs to
+# a DIFFERENT vocabulary (the MTA routing API's answer, a docker compose
+# profile, the contact-import registry) is not debt and is not licensed here —
+# it lives in scripts/provider-identity-collisions.txt, so that this list can
+# reach zero. THE ENTRY COUNT BELOW IS WHAT ACCEPTANCE CRITERION A1 MEASURES.
 #
+# SCOPE NOTE — WIDER THAN P0.5'S CARD READS. The card names the D3 definitional
+# sites (the own-arm constant, delivery/relayConfiguration.ts, the hybrid
+# detection in route.ts / routing.ts) as the expected contents. After the P0.1–
+# P0.4 sweep none of those four files COMPARES a kind any more — the own-arm
+# site is a declaration (`export const OWN_ARM_TRANSPORT_KIND = 'mta'`, which
+# the backend's kindLiteralCustody.test.ts owns), and the other three retain
+# the literal only in the prose explaining what replaced it. Listing them would
+# trip the stale-entry check and turn the gate red. So the scan was widened to
+# all of apps/ and packages/ instead of stopping at the backend, and what it
+# found — the setup wizard, the transport editor, the CLI and the shared
+# validators, none of which any Wave-0 piece touched — is carried here as named
+# debt rather than left invisible. That is the ecosystem goal's real surface:
+# while these branches exist, a provider that needs no backend edit still
+# cannot ship without a host edit.
 #
-# ── collision (permanent: a different alphabet, same spelling) ────────────────
+# THE OWNING PIECE MUST DELETE ITS LINES. Each family below names the piece
+# that clears it; because the ratchet fails on a stale entry, that piece's diff
+# has to include the deletion here or the lint job goes red. P1.1 additionally
+# turns SEND_TRANSPORT_KINDS into a derivation, which means repointing the kind
+# parser at the top of check-provider-identity.sh in the same change.
 #
-# apps/api/convex/delivery/lastMileRouting.ts
-#   `decision.kind === 'mta'` reads the MTA routing API's answer — 'mta' |
-#   'relay' | 'defer', "who should carry this message", the same alphabet this
-#   file's own `candidateProvider` speaks two statements earlier. Rewriting it
-#   would change the protocol, not remove a coupling. The provider-kind question
-#   beside it already goes through OWN_ARM_TRANSPORT_KIND.
-#
-# apps/web/app/components/contacts/IntegrationImportModal.vue
-#   'mandrill' here is an INTEGRATION IMPORT source (contacts and suppressions,
-#   `integrationImports/providers/`), a different registry that happens to share
-#   a vendor name with a send transport. Its own seam work is not this plan's.
+# Kind DECLARATIONS inside apps/api/convex are a different rule with a different
+# list: SURVIVING_KIND_LITERALS in
+# apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts. That
+# test reads THIS file for the comparison half rather than restating it, so a
+# swept backend file is de-licensed by exactly one deletion — here.
 #
 #
 # ── return-path (owner: the sending-domain adapter interface) ─────────────────
@@ -41,6 +51,8 @@
 # accept one at all, is branched on 'mta'/'ses' while the catalog already
 # declares `supportsCustomReturnPath`. The capability has no home on
 # `SendingDomainProviderModule` yet; `domains/providers/index.ts` states the gap.
+# No wave-0 or wave-1 piece clears this one — whichever piece finally grows that
+# capability (D1's field reaching the module contract) deletes these two lines.
 #
 # apps/api/convex/domains/lifecycle.ts          — the record-set derivation
 # apps/api/convex/delivery/checklistDomainValidators.ts — restates it as a check
@@ -58,13 +70,14 @@
 # apps/api/convex/domains/mandrillRelayMutations.ts
 #
 #
-# ── provider-shaped-ui (owner: D5 — the UI renders descriptors) ───────────────
+# ── provider-shaped-ui (owner: P1.2 — the UI renders descriptors, D5) ─────────
 #
 # Per-kind credential fields, wizard steps and status panels, written as one
 # branch per vendor. This is the family the ecosystem goal turns on: while these
 # branches exist, a provider that needs no backend edit still cannot ship
 # without a UI edit. The catalog's typed `credentialFields` descriptors and a
-# renderer that loops over them retire the whole family at once.
+# renderer that loops over them retire the whole family at once — P1.2 deletes
+# these seven lines with the branches.
 #
 # apps/web/app/components/delivery/TransportCredentialsStep.vue
 # apps/web/app/components/delivery/TransportEditor.vue
@@ -75,12 +88,13 @@
 # apps/web/app/pages/setup/email.vue
 #
 #
-# ── credentials-and-probes (owner: D1 — catalog fields in packages/shared) ────
+# ── credentials-and-probes (owner: P1.1 — catalog fields in packages/shared) ──
 #
 # Which env vars a kind needs, which kinds can be live-checked before saving,
 # and what a validator asks of each — all of it restated per vendor outside the
 # catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
-# catalog entry are the declarations these read once D1 lands.
+# catalog entry are the declarations these read once P1.1 lands; P1.3's
+# consistency guards then keep them honest. Both pieces delete lines here.
 #
 # apps/setup-cli/src/commands/setupNonInteractive.ts
 # apps/setup-cli/src/commands/setupSendingProvider.ts
@@ -92,14 +106,19 @@
 # packages/shared/src/featureFlags.ts   — which feature profile each kind implies
 #
 #
-# ── own-arm-outside-convex (owner: D1 — the own-arm declaration in shared) ────
+# ── own-arm-outside-convex (owner: P1.1 — the own-arm declaration in shared) ──
 #
 # Honest own-vs-relay questions (D3) asked in packages the one sanctioned
 # declaration cannot reach: OWN_ARM_TRANSPORT_KIND lives in
 # apps/api/convex/lib/sendProviders/strategies/adaptive_mix, and neither
-# packages/shared nor the CLI may import app code. D1 moves the catalog — and
+# packages/shared nor the CLI may import app code. P1.1 moves the catalog — and
 # with it this declaration — into packages/shared, at which point every one of
-# these reads the constant instead of restating it.
+# these reads the constant instead of restating it, and P1.1 deletes these
+# lines. (apps/setup-cli/src/commands/quickstart.ts and
+# apps/web/app/pages/setup/email.vue additionally ask the docker COMPOSE
+# question `profiles.includes('mta')`, which is a vocabulary collision rather
+# than debt; it is recorded in the collisions file, which explains why the
+# licence still lives here until their real leak is swept.)
 #
 # apps/setup-cli/src/commands/doctor.ts
 # apps/setup-cli/src/commands/quickstart.ts
@@ -110,7 +129,6 @@
 # packages/shared/src/transportAlignment.ts
 
 apps/api/convex/delivery/checklistDomainValidators.ts
-apps/api/convex/delivery/lastMileRouting.ts
 apps/api/convex/domains/lifecycle.ts
 apps/api/convex/domains/mandrillRelay.ts
 apps/api/convex/domains/mandrillRelayMutations.ts
@@ -120,7 +138,6 @@ apps/setup-cli/src/commands/setup.ts
 apps/setup-cli/src/commands/setupNonInteractive.ts
 apps/setup-cli/src/commands/setupSendingProvider.ts
 apps/setup-cli/src/lib/setupConfig.ts
-apps/web/app/components/contacts/IntegrationImportModal.vue
 apps/web/app/components/delivery/TransportCredentialsStep.vue
 apps/web/app/components/delivery/TransportEditor.vue
 apps/web/app/composables/setupWizardValidation.ts
