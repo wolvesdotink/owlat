@@ -135,6 +135,21 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		expect(section).toContain('sendingDomainRelayIdentities');
 	});
 
+	it('keeps the forward-provisioning caveat alive exactly as long as the if-chain', () => {
+		// The page warns that registering an adapter does not by itself put a kind
+		// on the FORWARD relay-provisioning path, because
+		// `provision_relay_identity_if_enabled` still schedules from a hand-written
+		// list of relay kinds. That warning is a fact about `domains/lifecycle.ts`,
+		// so — like the two sibling-table claims above — it is asserted against
+		// that file in BOTH directions: while the if-chain is there the page must
+		// name the effect, and the moment P0.4 turns it into a registry walk the
+		// page must stop, rather than telling the next author that a new kind's
+		// `ensureRelayIdentity` is unreachable on the forward path when it is not.
+		const lifecycle = read('apps/api/convex/domains/lifecycle.ts');
+		const stillAHandWrittenList = lifecycle.includes("relayKinds.has('ses')");
+		expect(section.includes('provision_relay_identity_if_enabled')).toBe(stillAHandWrittenList);
+	});
+
 	it('keeps the sibling-table claim honest about the writers outside the adapters', () => {
 		// The write half is the one a developer adding relay kind #4 acts on: the
 		// page must not let them believe `writeIdentity` is the whole write path

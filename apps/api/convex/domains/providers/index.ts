@@ -22,15 +22,19 @@
  *
  * WHAT THAT ONE FOLDER DOES NOT YET COVER. Every piece of per-provider work the
  * **Sending domain lifecycle (module)** dispatches goes through
- * `providerFor(kind)` — but the lifecycle still carries `providerType` branches
- * of its own, and one of them decides whether a new kind is reached at all: the
- * forward relay-identity provisioning in `domains/lifecycle.ts` (the
- * `provision_relay_identity_if_enabled` effect) is a hand-written list of relay
- * kinds, not a registry walk, so a fourth adapter with `ensureRelayIdentity` is
- * called by the catch-up drain in `providerRoutes.ts` and by nothing on the
- * forward path. The return-path branches are the same family. Clearing all of
- * them is the seams plan's P0.4 leak sweep; until it lands, read that file
- * before assuming a newly registered kind is wired end to end.
+ * `providerFor(kind)` — but `domains/lifecycle.ts` still carries `providerType`
+ * branches of its own, and one of them decides whether a newly registered kind
+ * is reached at all: the forward `provision_relay_identity_if_enabled` effect
+ * is a hand-written list of relay kinds rather than a registry walk. The
+ * return-path branches are the same family.
+ *
+ * What that costs a new kind is stated ONCE, on `ensureRelayIdentity`'s
+ * contract in `./types.ts` — that docblock is the home, this is the pointer,
+ * and `domains/lifecycle.ts` points at the same place. Clearing the branches is
+ * the seams plan's P0.4 leak sweep; until it lands, read the lifecycle before
+ * assuming a newly registered kind is wired end to end. This paragraph is
+ * pinned to that if-chain by `./__tests__/registry.test.ts`, so it cannot
+ * outlive it.
  *
  * Per ADR-0018, extended by Mandrill plan D6/D7.
  */

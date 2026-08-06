@@ -76,14 +76,15 @@ domains use it.
 
 **But registering an adapter is not yet the whole wiring.** `domains/lifecycle.ts`
 still carries `providerType` branches of its own, and one of them decides
-whether a new adapter is reached at all: the forward relay-identity
-provisioning (the `provision_relay_identity_if_enabled` effect) is a
-hand-written list of relay kinds, so a fourth kind's `ensureRelayIdentity` is
-called by the catch-up drain in `providerRoutes.ts` and by nothing on the
-forward path — domains verifying after that point silently get no identity. The
-return-path branches in the same file are the same family. Clearing them is the
-seams plan's P0.4 leak sweep; until it lands, read that file when you add a
-kind.
+whether a new adapter is reached at all: the forward
+`provision_relay_identity_if_enabled` effect is a hand-written list of relay
+kinds rather than a registry walk. The return-path branches in the same file are
+the same family. What that costs a fourth kind is written out once — on
+`ensureRelayIdentity`'s contract in
+`apps/api/convex/domains/providers/types.ts` — so read it there rather than
+trusting a summary here. Clearing the branches is the seams plan's P0.4 leak
+sweep; this paragraph is pinned to that if-chain by
+`apps/docs/__tests__/abstractionsDocs.test.ts` and must go when it does.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
@@ -112,10 +113,17 @@ so the pattern to mirror for relay kind #4 is an out-of-adapter
 method. `sendingDomainMtaIdentities` has out-of-adapter writers too
 (`devShortcuts/forceVerifyDomain.ts`, the demo seed). And SES/MTA-shaped
 **readers** sit outside the adapters as well, the largest being
-`providerRoutes.listDeliverabilityRelayDomains`, which reports the relay DNS
-status the web UI renders and is carried into P1.2 together with
-`RelayDomainStatus.vue`. Folding the write path in is P0.4; the read path is
-P1.2.
+`providerRoutes.listDeliverabilityRelayDomains`, which point-reads the frozen
+SES sibling for every domain and therefore reports nothing once the configured
+relay is some other kind.
+
+Folding the write path in is P0.4. **No piece card owns the read.** P1.2
+(catalog-driven web UI) is its natural home, but that card's scope names the
+four Vue files and two composables and neither this query nor
+`RelayDomainStatus.vue` — the two have to change together, since the per-kind
+identity shapes differ. So the pair is carried into P1.2 as an added input, not
+as work someone already signed up for; the query's own docblock says so at
+length and is the home for that statement.
 
 ### Inbound channel adapters
 
