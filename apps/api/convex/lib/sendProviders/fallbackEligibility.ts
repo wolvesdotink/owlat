@@ -24,10 +24,13 @@
  * credential source. Either way this module owns the RULE and never the
  * evidence.
  *
- * Isolate-safe: catalog types only, no env and no `'use node'` edges.
+ * Isolate-safe: the catalog and the own-arm constant only — both pure modules,
+ * no env reads and no `'use node'` edges (the same import `warmingCapGate.ts`
+ * takes for the same constant, on the same enqueue path).
  */
 
 import { isSendProviderKind, type SendProviderKind } from './catalog';
+import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
 
 /**
  * True iff `kind` may serve as the deliverability fallback relay, judged
@@ -41,6 +44,11 @@ export function isFallbackRelayEligible(
 	isConfigured: (kind: SendProviderKind) => boolean
 ): boolean {
 	if (!isSendProviderKind(kind)) return false;
-	if (kind === 'mta') return false;
+	// D3's one sanctioned identity — own arm vs. everything else — read from its
+	// SINGLE declaration rather than restated here. `OWN_ARM_TRANSPORT_KIND` is
+	// the same constant `adaptive_mix` splits its arms on, which is what keeps
+	// "the arm a fallback moves traffic away from" and "the arm the mix calls
+	// own" from ever meaning two different transports.
+	if (kind === OWN_ARM_TRANSPORT_KIND) return false;
 	return isConfigured(kind);
 }
