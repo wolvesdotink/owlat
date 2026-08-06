@@ -58,8 +58,11 @@ function sandbox(options: {
 	allowlist?: string[];
 	collisions?: string[];
 	kinds?: string[] | null;
-	/** Write the kind array wrapped across lines, as oxfmt does once it is long. */
-	wrapKinds?: boolean;
+	/**
+	 * Give each entry a nested credential-field descriptor, which has a `kind:`
+	 * of its own one level deeper — the shape the real catalog has since P1.1.
+	 */
+	withCredentialFields?: boolean;
 }): string {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-provider-identity-'));
 	sandboxes.push(root);
@@ -77,14 +80,16 @@ function sandbox(options: {
 
 	const kinds = options.kinds === undefined ? DEFAULT_KINDS : options.kinds;
 	if (kinds !== null) {
-		const quoted = kinds.map((k) => `'${k}'`);
-		const array = options.wrapKinds
-			? `[\n${quoted.map((k) => `\t${k},`).join('\n')}\n]`
-			: `[${quoted.join(', ')}]`;
+		// The catalog literal, as the script parses it: entry `kind:` at two tabs,
+		// bounded by the const declaration and the `satisfies` that closes it.
+		const fields = options.withCredentialFields
+			? "\t\tcredentialFields: [{ kind: 'secret', envVar: 'X' }],\n"
+			: '';
+		const entries = kinds.map((k) => `\t{\n\t\tkind: '${k}',\n${fields}\t},\n`).join('');
 		write(
 			root,
-			'packages/shared/src/transportAlignment.ts',
-			`export const SEND_TRANSPORT_KINDS = ${array} as const;\n`
+			'packages/shared/src/sendProviderCatalog.ts',
+			`const CORE_SEND_PROVIDER_CATALOG = [\n${entries}] as const satisfies readonly CoreSendProviderCatalogEntry[];\n`
 		);
 	}
 
@@ -995,20 +1000,27 @@ describe('provider-identity ratchet, the kind list', () => {
 		expect(result.status).toBe(0);
 	});
 
-	it('reads the declaration when the formatter has wrapped it across lines', () => {
-		// A sixth kind pushes the array past oxfmt's print width and it wraps. A
-		// line-anchored parser would then report the declaration as MISSING and
-		// fail lint:providers with "the declaration moved" — on a cosmetic
-		// reformat, sending the reader hunting for a move that never happened.
+	it('reads only the ENTRY kinds, never a credential field\u2019s own `kind:`', () => {
+		// The catalog entries carry typed credential-field descriptors (D5), and a
+		// descriptor has a `kind:` too — `kind: 'secret'`, `kind: 'host-port'`.
+		// A parser that read those as transport kinds would turn every
+		// `=== 'secret'` in the repo into a provider-identity violation, and the
+		// gate would be unusable the day someone compares a field kind.
 		const root = sandbox({
-			files: { 'apps/api/convex/delivery/newKind.ts': leak("kind === 'postmark'") },
+			files: {
+				'apps/api/convex/delivery/newKind.ts': leak("kind === 'postmark'"),
+				'apps/web/app/utils/fieldKind.ts': leak("field === 'secret'"),
+			},
 			kinds: [...DEFAULT_KINDS, 'postmark'],
-			wrapKinds: true,
+			withCredentialFields: true,
 		});
 		const result = runIn(root);
 
-		expect(result.output).not.toContain('could not read SEND_TRANSPORT_KINDS');
+		expect(result.output).not.toContain('could not read the send-provider kinds');
+		// The new transport kind IS ratcheted...
 		expect(result.output).toContain('apps/api/convex/delivery/newKind.ts:2');
+		// ...and the field kind that shares the property name is not.
+		expect(result.output).not.toContain('apps/web/app/utils/fieldKind.ts');
 		expect(result.status).toBe(1);
 	});
 
@@ -1019,7 +1031,7 @@ describe('provider-identity ratchet, the kind list', () => {
 		});
 		const result = runIn(root);
 
-		expect(result.output).toContain('SEND_TRANSPORT_KINDS');
+		expect(result.output).toContain('could not read the send-provider kinds');
 		expect(result.status).toBe(1);
 	});
 });

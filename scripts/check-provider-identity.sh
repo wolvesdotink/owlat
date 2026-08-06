@@ -4,7 +4,8 @@
 # enforced by a ratchet, not vigilance").
 #
 # A send provider is described by the capability catalog
-# (apps/api/convex/lib/sendProviders/catalog.ts) and discovered from config; it
+# (packages/shared/src/sendProviderCatalog.ts, joined to its adapters by
+# apps/api/convex/lib/sendProviders/catalog.ts) and discovered from config; it
 # is never recognised by name. Code that asks `providerKind === 'ses'` has
 # hard-coded one vendor into a seam that is supposed to read a declaration —
 # which is how the four incumbents each grew private special cases (Inventory A
@@ -99,7 +100,7 @@
 # would flag the catalog, the presets and every `<option>` list, which is the
 # declaration the whole plan wants code to read.
 #
-# The kind list is derived from SEND_TRANSPORT_KINDS in packages/shared, so a
+# The kind list is parsed from the catalog entries in packages/shared, so a
 # provider added to the catalog is ratcheted the day it is declared rather than
 # the day someone remembers to update this script.
 #
@@ -145,30 +146,28 @@ SCAN_PATHS=(apps packages examples)
 # directory named after a kind is an adapter only DIRECTLY under one of these.
 ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers webhooks/adapters)
 
-# The kinds, from their single declaration. Parsed rather than restated so the
-# ratchet cannot drift from the catalog. Each candidate file is flattened to one
-# line first: the array is one line today, but a sixth kind pushes it past
-# oxfmt's print width and the declaration wraps — a per-line grep would then
-# report the declaration as missing and send the reader hunting for a move that
-# never happened.
+# The kinds, from their single declaration: the catalog entries themselves
+# (P1.1 / D1 — SEND_TRANSPORT_KINDS is now `CATALOG.map(entry => entry.kind)`,
+# so there is no literal array left to read). Parsed rather than restated so the
+# ratchet cannot drift from the catalog.
 #
-# NOTE FOR P1.1: when SEND_TRANSPORT_KINDS stops being a literal array and
-# becomes a derivation from the catalog, this parser has to be repointed at the
-# catalog's own declaration. It fails closed and says so, but the message below
-# is the one to update alongside it.
-kinds_source="packages/shared/src"
-kinds=$(git ls-files -- "$kinds_source" | grep -E '\.ts$' |
-	while IFS= read -r kf; do
-		grep -q 'SEND_TRANSPORT_KINDS' "$kf" 2>/dev/null || continue
-		tr '\n' ' ' <"$kf"
-		printf '\n'
-	done |
-	grep -oE "SEND_TRANSPORT_KINDS[[:space:]]*=[[:space:]]*\[[^]]*\]" |
+# TWO ANCHORS, BOTH LOAD-BEARING. The region is bounded by the catalog literal's
+# own delimiters, and inside it only a `kind:` at exactly TWO tabs counts — the
+# indentation of an ENTRY. Credential-field descriptors nested one level deeper
+# have a `kind:` too (`kind: 'secret'`, `kind: 'host-port'`), and reading those
+# as transport kinds would turn `=== 'string'` anywhere in the repo into a
+# provider-identity violation. The docs-lint over the same literal
+# (apps/docs/__tests__/providerCapabilityDocs.test.ts) anchors on the same two
+# tabs, for the same reason.
+kinds_source="packages/shared/src/sendProviderCatalog.ts"
+kinds=$(sed -n "/^const CORE_SEND_PROVIDER_CATALOG = \[$/,/^\] as const satisfies/p" \
+	"$kinds_source" 2>/dev/null |
+	grep -E "^		kind: '[a-z0-9_-]+',$" |
 	grep -oE "'[a-z0-9_-]+'" | tr -d "'" | sort -u)
 if [ -z "$kinds" ]; then
-	echo "FAIL: could not read SEND_TRANSPORT_KINDS out of $kinds_source." >&2
-	echo "The kind declaration moved or stopped being a literal array; point this" >&2
-	echo "script at its new home so the ratchet keeps following the catalog." >&2
+	echo "FAIL: could not read the send-provider kinds out of $kinds_source." >&2
+	echo "The catalog moved, or its entries stopped being a literal array; point" >&2
+	echo "this script at their new home so the ratchet keeps following the catalog." >&2
 	exit 1
 fi
 kind_alt=$(printf '%s' "$kinds" | tr '\n' '|' | sed 's/|$//')
