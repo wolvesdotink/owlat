@@ -74,17 +74,15 @@ value is not a crash) and falls back to `mta`. Registering an adapter therefore
 makes a kind *reachable*; naming it in `EMAIL_PROVIDER` is what makes new
 domains use it.
 
-**But registering an adapter is not yet the whole wiring.** `domains/lifecycle.ts`
-still carries `providerType` branches of its own, and one of them decides
-whether a new adapter is reached at all: the forward
-`provision_relay_identity_if_enabled` effect is a hand-written list of relay
-kinds rather than a registry walk. The return-path branches in the same file are
-the same family. What that costs a fourth kind is written out once — on
-`ensureRelayIdentity`'s contract in
-`apps/api/convex/domains/providers/types.ts` — so read it there rather than
-trusting a summary here. Clearing the branches is the seams plan's P0.4 leak
-sweep; this paragraph is pinned to that if-chain by
-`apps/docs/__tests__/abstractionsDocs.test.ts` and must go when it does.
+**But registering an adapter is not yet the whole wiring.** Relay-identity
+provisioning is: both the forward path (a domain reaching `verified`) and the
+catch-up drain walk this registry and ask `ensureRelayIdentity`, so a newly
+registered kind is on both the moment it registers (the seams plan's P0.4).
+What `domains/lifecycle.ts` still carries `providerType` branches for is the
+RETURN-PATH family — which `mailFrom` bundle a custom return-path host
+publishes, and which reflection action pushes it to the provider — and a new
+kind silently gets neither. That capability has no home on the adapter
+interface yet.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
@@ -103,11 +101,10 @@ frozen: no third sibling is ever added, no new kind gets rows there, and they
 keep the MTA's and SES's.
 
 **Neither half of that access is encapsulated yet.** Each adapter has
-`writeIdentity` / `clearIdentity`, but the forward SES relay provisioning does
-not go through them: `sesRelay.provision` (scheduled by the
-`provision_relay_identity_if_enabled` effect, and by the SES adapter's own
-`ensureRelayIdentity`) calls `sesRelayMutations.storeProvisioning`, which
-inserts into `sendingDomainSesIdentities` from outside `domains/providers/` —
+`writeIdentity` / `clearIdentity`, but the SES relay provisioning does not go
+through them: `sesRelay.provision` (the action the SES adapter's own
+`ensureRelayIdentity` schedules) calls `sesRelayMutations.storeProvisioning`,
+which inserts into `sendingDomainSesIdentities` from outside `domains/providers/` —
 so the pattern to mirror for relay kind #4 is an out-of-adapter
 `<kind>RelayMutations.ts` plus a scheduled `provision` action, not an adapter
 method. `sendingDomainMtaIdentities` has out-of-adapter writers too
@@ -117,7 +114,9 @@ method. `sendingDomainMtaIdentities` has out-of-adapter writers too
 SES sibling for every domain and therefore reports nothing once the configured
 relay is some other kind.
 
-Folding the write path in is P0.4. **No piece card owns the read.** P1.2
+**No piece card owns either half.** P0.4 routed the SCHEDULING of that write
+through the adapter (`ensureRelayIdentity`) but left the insert where it is;
+folding the insert itself in is unclaimed. Nor is the read. P1.2
 (catalog-driven web UI) is its natural home, but that card's scope names the
 four Vue files and two composables and neither this query nor
 `RelayDomainStatus.vue` — the two have to change together, since the per-kind

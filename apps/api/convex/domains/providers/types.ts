@@ -5,11 +5,11 @@
  * (`SendingDomainIdentityRegistry` below). The **Sending domain lifecycle
  * (module)** dispatches per-provider work through `providerFor(kind)` in
  * `./index.ts`; provider variation lives entirely behind this seam — with the
- * `providerType` branches the lifecycle still carries of its own as the stated
- * exception. What those branches cost a newly registered kind is written out
- * ONCE, on {@link SendingDomainProviderModule.ensureRelayIdentity} below; that
- * docblock is the home, and `./index.ts` and `domains/lifecycle.ts` point at
- * it rather than restating it. The seams plan's P0.4 clears the branches.
+ * RETURN-PATH branches the lifecycle still carries of its own as the stated
+ * exception (`./index.ts`'s header says what they cost a new kind). The seams
+ * plan's P0.4 cleared the identity ones: both relay-identity provisioning paths
+ * now walk the registry through
+ * {@link SendingDomainProviderModule.ensureRelayIdentity}.
  *
  * PLAN NUMBERS: every D-/P-number in this file names its plan, because more
  * than one plan's numbering reaches this seam — the Mandrill provider plan's
@@ -235,26 +235,16 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
 	 * this of the kind the route named.
 	 *
-	 * THE ONE HOME for the forward-path gap. Domains verified AFTER that point
-	 * are meant to get theirs from the lifecycle's
-	 * `provision_relay_identity_if_enabled` effect, so that the two paths
-	 * together cover every domain exactly once. Today that effect
-	 * (`domains/lifecycle.ts`) still schedules per relay kind from a hand-written
-	 * if-chain rather than through this method: the pairing holds for the two
-	 * shipped kinds, but a NEW `domainVerification: 'api'` kind gets the backfill
-	 * and NOT the forward path — its domains verify, silently receive no relay
-	 * identity, and its fallback then refuses to relay them, with the only
-	 * symptom a runtime refusal on a real send. The seams plan's P0.4 routes that
-	 * site here.
-	 *
-	 * Everywhere else that mentions this gap — `./index.ts`'s registry header,
-	 * `domains/lifecycle.ts`'s own one-line note, and the sending-domain section
-	 * of `docs/abstractions.md` — POINTS HERE rather than restating it, so P0.4
-	 * rewrites one paragraph and deletes three pointers instead of hunting four
-	 * copies of the same rationale. The two prose copies are pinned to the
-	 * if-chain in both directions (`domains/providers/__tests__/registry.test.ts`
-	 * and `apps/docs/__tests__/abstractionsDocs.test.ts`), so a surviving pointer
-	 * fails a test rather than misleading the next author.
+	 * BOTH HALVES ASK THIS METHOD (the seams plan's P0.4). Domains verified after
+	 * the operator switched the fallback on get theirs from the lifecycle's
+	 * `provision_relay_identity_if_enabled` effect, which walks the same registry
+	 * with the same relay kinds — so the two paths together cover every domain
+	 * exactly once, and a NEW `domainVerification: 'api'` kind is on both the
+	 * moment it registers. The forward path used to be a hand-written if-chain
+	 * naming `ses` and `mandrill`, which gave a newly registered kind the backfill
+	 * and NOT the forward path: its domains verified, silently received no relay
+	 * identity, and its fallback then refused to relay them, with the only symptom
+	 * a runtime refusal on a real send.
 	 *
 	 * Implementations SCHEDULE the provider call rather than making it: this
 	 * runs inside the drain's transaction, and a provider outage must not roll

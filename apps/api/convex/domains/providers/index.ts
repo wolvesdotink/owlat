@@ -20,21 +20,15 @@
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
  *
- * WHAT THAT ONE FOLDER DOES NOT YET COVER. Every piece of per-provider work the
- * **Sending domain lifecycle (module)** dispatches goes through
- * `providerFor(kind)` — but `domains/lifecycle.ts` still carries `providerType`
- * branches of its own, and one of them decides whether a newly registered kind
- * is reached at all: the forward `provision_relay_identity_if_enabled` effect
- * is a hand-written list of relay kinds rather than a registry walk. The
- * return-path branches are the same family.
- *
- * What that costs a new kind is stated ONCE, on `ensureRelayIdentity`'s
- * contract in `./types.ts` — that docblock is the home, this is the pointer,
- * and `domains/lifecycle.ts` points at the same place. Clearing the branches is
- * the seams plan's P0.4 leak sweep; until it lands, read the lifecycle before
- * assuming a newly registered kind is wired end to end. This paragraph is
- * pinned to that if-chain by `./__tests__/registry.test.ts`, so it cannot
- * outlive it.
+ * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
+ * paths now walk this registry (the seams plan's P0.4 routed the forward one
+ * here), so a registered kind is reached end to end for identities. What
+ * `domains/lifecycle.ts` still carries of its own is the RETURN-PATH family —
+ * `setReturnPathHost` and its post-registration reconcile branch on
+ * `providerType` to decide which bundle of `mailFrom` records to publish and
+ * which reflection action to schedule, so a newly registered kind silently gets
+ * neither. That is a separate capability from the identity seams below and it
+ * has no home on this interface yet.
  *
  * Per ADR-0018, extended by Mandrill plan D6/D7.
  */

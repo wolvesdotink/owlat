@@ -576,22 +576,27 @@ async function applyEffects(
 				// shared with the catch-up drain in `providerRoutes.ts` — the two
 				// halves of "every domain gets an identity exactly once" must not
 				// disagree about which relay that identity is for.
-				const relayKinds = new Set(await enabledFallbackRelayKinds(ctx));
-				// One line per relay kind that provisions an identity on OUR domain
-				// while another provider stays primary. Both are scheduled, not
-				// inline: a provider outage must never roll back the domain's
-				// → verified transition (same reasoning as `register_with_provider`).
-				// P0.4: convert to providerFor(kind).ensureRelayIdentity?.(ctx, domain)
-				// — contract in domains/providers/types.ts.
-				if (relayKinds.has('ses')) {
-					await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
-						domainId: effect.domainId,
-					});
-				}
-				if (relayKinds.has('mandrill')) {
-					await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
-						domainId: effect.domainId,
-					});
+				const relayKinds = await enabledFallbackRelayKinds(ctx);
+				// ASK THE KIND, don't name it. Whichever relay the fallback configured
+				// gets the backfill its own module implements — the same
+				// `ensureRelayIdentity` the catch-up drain in `providerRoutes.ts` calls,
+				// so the two halves of "every domain gets an identity exactly once"
+				// cannot provision different things. A kind with no identity API to
+				// register at omits the method and this does nothing at all, which is
+				// what the old if-chain achieved by not listing it.
+				//
+				// The doc is re-read rather than carried on the effect: the status
+				// patch has already landed, and the adapters do an indexed
+				// "already have one?" read before scheduling anything.
+				const domain = await ctx.db.get(effect.domainId);
+				if (!domain) break;
+				for (const kind of relayKinds) {
+					if (!isSendingDomainProviderKind(kind)) continue;
+					const provider = providerFor(kind);
+					// Scheduled inside the adapter, never inline: a provider outage must
+					// not roll back the domain's → verified transition (the same
+					// reasoning as `register_with_provider`).
+					await provider.ensureRelayIdentity?.(ctx, domain);
 				}
 				break;
 			}
