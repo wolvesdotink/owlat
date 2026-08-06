@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 /**
  * Docs-lint for the "Declared capabilities" table on the providers page.
  *
- * That table restates `SendProviderCatalogEntry` declarations cell by cell, and
+ * That table restates the catalog's per-entry declarations cell by cell, and
  * nothing checked it — so it drifted: it still showed `ses` /
  * `supportsCustomReturnPath` as `probe` long after the catalog settled that kind
  * to `no`, which reads as "we probe SES's envelope sender" to anyone deciding
@@ -22,14 +22,21 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const catalogSource = readRepoFile('apps/api/convex/lib/sendProviders/catalog.ts');
+const catalogSource = readRepoFile('packages/shared/src/sendProviderCatalog.ts');
 const providers = readRepoFile('apps/docs/content/3.developer/15.providers.md');
 
 /** Every core catalog entry, as the literal declares it. */
 function coreCatalogEntries(): Array<{ kind: string; body: string }> {
 	const start = catalogSource.indexOf('const CORE_SEND_PROVIDER_CATALOG = [');
-	expect(start, 'catalog.ts no longer declares CORE_SEND_PROVIDER_CATALOG').toBeGreaterThan(-1);
+	expect(
+		start,
+		'sendProviderCatalog.ts no longer declares CORE_SEND_PROVIDER_CATALOG'
+	).toBeGreaterThan(-1);
 	const block = catalogSource.slice(start, catalogSource.indexOf('] as const satisfies', start));
+	// TWO TABS: an ENTRY's `kind:`. Credential-field descriptors (D5) nest one
+	// level deeper and carry a `kind:` of their own (`kind: 'secret'`), which this
+	// anchor must not read as a transport kind — the same anchor, for the same
+	// reason, as the kind parser in scripts/check-provider-identity.sh.
 	const marks = [...block.matchAll(/\n\t\tkind: '([a-z][a-zA-Z0-9]*)',/g)];
 	return marks.map((mark, index) => ({
 		kind: mark[1]!,

@@ -109,7 +109,7 @@ What is NOT yet general is `accepted` itself: three sites outside the catalog
 still spell the custody arm as the own MTA, and a second kind declaring custody
 must generalize all three in the same change. **Which three, and what breaks if
 one is missed, is written out once** — in the PREREQUISITES note on
-`AcceptanceSemantics` in `apps/api/convex/lib/sendProviders/catalogTypes.ts`, the
+`AcceptanceSemantics` in `packages/shared/src/sendProviderCatalogTypes.ts`, the
 declaration site. This ADR deliberately does not restate it, so generalizing
 those sites stays a single-file edit.
 
@@ -235,7 +235,7 @@ own feedback is what usually makes it moot.
   for, and one of its values has prerequisites outside the catalog. Until those
   are met, `acceptanceSemantics: 'accepted'` is the own MTA's alone — declared
   honestly rather than hidden, so the next author reads the constraint at the
-  field (the PREREQUISITES note in `catalogTypes.ts`, which is where it lives) instead
+  field (the PREREQUISITES note in `packages/shared/src/sendProviderCatalogTypes.ts`, which is where it lives) instead
   of discovering it from a deferred send.
 - `sendingDomainRelayIdentities` is now the growth point for provider identity
   state. Its `providerKind` is a string and its `providerDetails` blob is

@@ -27,7 +27,7 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface | Env var | Implementations | Files |
 |---|---|---|---|
 | `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta) | see `domains/providers/` below | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts` |
-| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` |
+| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
 | `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
 
 The first row is **history, not a seam to implement**: there is no `EmailProvider`
@@ -42,6 +42,23 @@ and `domainVerification.ts` holds the From-address helpers **and** the
 `getDomainVerificationStatus`) that the send path checks before a campaign goes
 out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
 created domain's `providerType` — see the section below.
+
+The send-provider seam is deliberately **two halves**. The DATA half — what each
+kind is, needs and can do (`kind`, `label`, `tier`, `requiredEnvVars`,
+`optionalEnvVars`, `credentialFields`, `supportsCustomReturnPath`,
+`hasProviderFeedback`, `domainVerification`, `retryDelays`, the dispatch
+semantics, `setupProbe`) — is `packages/shared/src/sendProviderCatalog.ts`, a
+leaf module with no adapter code and no secrets, so `apps/web`, `apps/setup-cli`
+and the docs suite read the same declaration the backend does. The kind union
+(`SEND_TRANSPORT_KINDS`), the setup surfaces' `DELIVERY_PROVIDER_KINDS`,
+`getSendPathRequiredEnv`, `PROVIDER_ENV_KEYS` and the SMTP relay presets are all
+derived from it rather than restated — before the seams plan's P1.1 they were
+five independent declarations. The CODE half —
+`apps/api/convex/lib/sendProviders/catalog.ts` — joins those entries to the
+adapter modules and to the bundled plugin tier, and owns the accessors that read
+the COMPOSED catalog. Adding a provider means adding an entry, not editing a
+table somewhere else; the accompanying `bun run lint:providers` ratchet parses
+its kinds out of that same literal.
 
 Send providers additionally take **operator-installed** implementations: a
 bundled plugin contributing a `sendTransports` entry appears as the kind
