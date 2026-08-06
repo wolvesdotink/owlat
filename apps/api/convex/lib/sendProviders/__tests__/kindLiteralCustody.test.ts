@@ -10,13 +10,14 @@
  * left a stale claim behind, and a family that appeared was invisible until
  * someone re-read the file.
  *
- * SO THE LIST IS DATA HERE, ASSERTED IN BOTH DIRECTIONS. A literal in a file
- * that is not in {@link SURVIVING_KIND_LITERALS} fails; an entry in that map
- * whose file no longer has one fails and must be deleted. That is the
- * shrink-only property P0.5's `lint:providers` allowlist needs, enforced rather
- * than promised, and this map is what that ratchet seeds from — with each entry
- * carrying its FAMILY and its OWNER, so the allowlist never has to pass a
- * survivor off as "definitional".
+ * SO THE LIST IS DATA HERE, ASSERTED IN BOTH DIRECTIONS. A declaration in a
+ * file that is not in {@link SURVIVING_KIND_LITERALS} fails; an entry in that
+ * map whose file no longer has one fails and must be deleted. Shrink-only,
+ * enforced rather than promised, with each entry carrying its FAMILY and its
+ * OWNER — the same discipline the ratchet's allowlist keeps for comparisons, in
+ * the one place a repo-wide text gate cannot follow. The two lists are
+ * DISJOINT and neither is derived from the other: this map holds backend
+ * declarations, `scripts/provider-identity-allowlist.txt` holds comparisons.
  *
  * WHY A SOURCE ASSERTION. The behaviour a restated literal breaks is not
  * observable from any single module's tests: today the duplicate and the
@@ -26,24 +27,26 @@
  * denominator describing an experiment that never ran. The only catchable
  * moment is the moment the literal is typed.
  *
- * NARROWER THAN THE RATCHET IT SEEDED, still: `lint:providers`
+ * DECLARATIONS ONLY, AND ONLY HERE. `lint:providers`
  * (`scripts/check-provider-identity.sh`, P0.5) runs in CI's lint job over the
- * whole of `apps/` and `packages/` — the setup wizard and the transport editor
- * included, which is where provider N+1's host edit would otherwise appear.
- * What it deliberately does NOT take with it is the DECLARATION half below: a
+ * whole of `apps/`, `packages/` and `examples/` — the setup wizard and the
+ * transport editor included, which is where provider N+1's host edit would
+ * otherwise appear — and it owns the COMPARISON half outright, over a strict
+ * superset of the files below (it reads `domains/providers/index.ts` and
+ * `webhooks/adapters/index.ts`, which this file exempts wholesale) and with more
+ * shapes (`==`, `!=` and the wrapped membership forms).
+ *
+ * What the ratchet deliberately does NOT take with it is the DECLARATION half: a
  * catalog entry, an adapter, an event payload and a fixture all legitimately
  * write their own name, so `= 'ses'` is only a leak inside `apps/api/convex`,
- * where this file — a source assertion with the whole module graph in hand —
- * is the cheaper place to say so. This file therefore stays: declarations in
- * the backend are this file's rule, comparisons everywhere are the ratchet's.
+ * where a source assertion with the module graph in hand is the cheaper place to
+ * say so. That is the whole of this file's remaining job.
  *
- * ONE LIST, NOT TWO. The comparison half is still asserted here (this file sees
- * the module graph; the ratchet sees text), but the SURVIVORS it allows are
- * read out of the ratchet's own two files rather than restated — see
- * {@link licensedComparisons}. Enumerating the same five files in two formats
- * in two jobs is how a swept file gets de-licensed in one place and leaves the
- * other red with a differently-worded message: a cleanup deletes one line, in
- * `scripts/provider-identity-allowlist.txt`, and both gates follow.
+ * ONE RULE, ONE ENGINE. An earlier revision asserted comparisons here too,
+ * licensed from the ratchet's own files. Two regexes for one rule is two regexes
+ * that drift: that pair already disagreed about `kind == 'ses'`, which the
+ * ratchet fails and the restatement passed. The restatement is gone; the
+ * allowlist is read by exactly one gate.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -54,32 +57,6 @@ import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
 import { OWN_ARM_TRANSPORT_KIND } from '../strategies/adaptive_mix';
 
 const convexRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const repoRoot = resolve(convexRoot, '../../..');
-
-/**
- * The comparison survivors, read from the ratchet's lists instead of restated.
- *
- * `scripts/provider-identity-allowlist.txt` is debt with an owner and shrinks to
- * zero; `scripts/provider-identity-collisions.txt` is the permanent set where a
- * kind's spelling belongs to another vocabulary. Both are repo-relative, so the
- * entries under this backend are re-based onto `convexRoot`. If either file is
- * missing the read throws, which is the correct outcome: an empty licence set
- * would silently turn this assertion into a much stricter rule and fail on the
- * sanctioned sites.
- */
-const CONVEX_PREFIX = 'apps/api/convex/';
-function licensedComparisons(): Set<string> {
-	const licensed = new Set<string>();
-	for (const list of ['provider-identity-allowlist.txt', 'provider-identity-collisions.txt']) {
-		const contents = readFileSync(join(repoRoot, 'scripts', list), 'utf8');
-		for (const line of contents.split('\n')) {
-			const entry = line.trim();
-			if (entry === '' || entry.startsWith('#')) continue;
-			if (entry.startsWith(CONVEX_PREFIX)) licensed.add(entry.slice(CONVEX_PREFIX.length));
-		}
-	}
-	return licensed;
-}
 
 /**
  * Directories the rule does not reach.
@@ -173,21 +150,6 @@ function declarationPattern(kind: string): RegExp {
 	return new RegExp(`(^|[^=!<>])=\\s*'${kind}'`, 'gm');
 }
 
-/**
- * A COMPARISON: the ratchet's rule, restated here over the module graph.
- *
- * Same shapes the shell gate matches — operator forms and the membership forms
- * a multi-kind question takes once `===` is blocked — so the two agree about
- * what needs a licence. The licence itself is not restated: it is read from the
- * ratchet's files.
- */
-function comparisonPattern(kind: string): RegExp {
-	return new RegExp(
-		`(===|!==|case)\\s*'${kind}'|'${kind}'\\s*(===|!==)|(includes|has|startsWith|endsWith)\\(\\s*'${kind}'`,
-		'g'
-	);
-}
-
 const inScope = sourceFiles(convexRoot)
 	.map((file) => ({
 		path: relative(convexRoot, file).replaceAll('\\', '/'),
@@ -206,7 +168,6 @@ function offendersMatching(pattern: (kind: string) => RegExp) {
 }
 
 const declarationOffenders = offendersMatching(declarationPattern);
-const comparisonOffenders = offendersMatching(comparisonPattern);
 
 describe('kind literals outside the adapter folders are an enumerated, shrinking set', () => {
 	it('walks a real tree', () => {
@@ -240,35 +201,6 @@ describe('kind literals outside the adapter folders are an enumerated, shrinking
 		const withLiterals = new Set(declarationOffenders.map((file) => file.path));
 		const stale = Object.keys(SURVIVING_KIND_LITERALS).filter((path) => !withLiterals.has(path));
 		expect(stale, 'these entries no longer have a declaration — delete them').toEqual([]);
-	});
-
-	it('licenses surviving comparisons from the ratchet’s allowlist, not a second list', () => {
-		// The comparison half of the rule, asserted with the module graph in hand
-		// but licensed from `scripts/provider-identity-allowlist.txt` (debt, with
-		// an owner) and `scripts/provider-identity-collisions.txt` (another
-		// vocabulary, permanent). One deletion de-licenses a swept file in both
-		// gates; the shell gate is what fails on a licence that outlived its
-		// literal, so this side deliberately does not restate that check.
-		const licensed = licensedComparisons();
-		expect(
-			licensed.size,
-			'no allowlist entries resolved under apps/api/convex — the lists moved and this ' +
-				'assertion just became vacuously strict'
-		).toBeGreaterThan(0);
-		// …and the scan itself finds something, so a broken pattern cannot pass by
-		// finding nothing. `decision.kind === 'mta'` is the permanent collision
-		// entry: it is in scope, it matches, and it is licensed.
-		expect(comparisonOffenders.map((file) => file.path)).toContain('delivery/lastMileRouting.ts');
-
-		const unlicensed = comparisonOffenders.filter((file) => !licensed.has(file.path));
-		expect(
-			unlicensed.map((file) => `${file.path} (${file.kinds.join(', ')})`),
-			'These files compare a provider kind against a literal. Ask the capability, not ' +
-				'the name. `bun run lint:providers` says the same thing over the whole repo; if ' +
-				'the literal genuinely belongs to another vocabulary it goes in ' +
-				'scripts/provider-identity-collisions.txt, and nothing else may be added to ' +
-				'scripts/provider-identity-allowlist.txt.'
-		).toEqual([]);
 	});
 
 	it('leaves no restated own-arm comparison at all', () => {

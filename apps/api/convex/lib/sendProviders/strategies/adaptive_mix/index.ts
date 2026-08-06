@@ -74,44 +74,41 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * `armForTransport`, the same function `sendAssignments` records with, rather
  * than through a second copy of the split.
  *
- * WHAT STILL SPELLS A KIND is DATA, not this docblock:
- * `SURVIVING_KIND_LITERALS` in
- * `lib/sendProviders/__tests__/kindLiteralCustody.test.ts` enumerates every
- * such file with its family and its owner, and asserts the set in BOTH
- * directions — an unenumerated literal fails, and an entry whose literal has
- * been swept fails until it is deleted. That is what P0.5 seeds its allowlist
- * from; prose here would go stale the first time a family cleared, with nothing
- * failing. The families, for orientation only:
+ * WHAT STILL SPELLS A KIND is DATA IN THREE PLACES, none of them this docblock,
+ * and none of them derived from another — prose here would go stale the first
+ * time a family cleared, with nothing failing:
  *
- *   1. THE RETURN-PATH FAMILY (`domains/lifecycle.ts`,
- *      `delivery/checklistDomainValidators.ts`) — which `mailFrom` bundle to
- *      publish, which reflection action to schedule, and what the item reports
- *      as the ACTIVE return path. That capability has no home on the
- *      sending-domain adapter interface yet (`domains/providers/index.ts` says
- *      so in full); giving it one moves both sites at once.
- *   2. FROZEN-SIBLING READS — `providerRoutes.listDeliverabilityRelayDomains`
- *      and `delivery/checklistValidatorTypes.ts`'s `RELAY_IDENTITY_PROOF_KIND`,
- *      both retired by the generic `sendingDomainRelayIdentities` read in P1.2
- *      (the read and the component that renders it have to move together).
- *   3. ADAPTER-ADJACENT — one kind's actions living beside its adapter rather
- *      than inside it (`domains/mandrillRelay*.ts`,
- *      `webhooks/mandrillRejectSuppression.ts`, and SES's `sesRelayMutations`),
- *      plus `migrations/0018_*`, which rewrites rows written under the old
- *      spelling and must keep naming them. `docs/abstractions.md` records the
- *      pattern as unclaimed by any card.
- *   4. NOT A PROVIDER KIND AT ALL, and must not be swept: the MTA's routing-API
- *      wire vocabulary (`decision.kind === 'mta'` in
- *      `delivery/lastMileRouting.ts` and `lib/sendProviders/mta/index.ts`) is
- *      `'mta' | 'relay' | 'defer'` on the response, a different alphabet that
- *      happens to share a spelling. A ratchet that rewrote it would change the
- *      protocol.
+ *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
+ *     `SURVIVING_KIND_LITERALS` in
+ *     `lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, each entry with
+ *     its family and its owner, asserted in both directions. This declaration is
+ *     in it, as the one `definitional` entry; so, in spirit, is
+ *     `domains/providers/mta/index.ts`'s `kind`, inside an adapter folder the
+ *     rule does not reach. That map holds declarations ONLY.
+ *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
+ *     read by `bun run lint:providers` over `apps/`, `packages/` and
+ *     `examples/`. Each entry sits under a family header naming the piece that
+ *     deletes it; the count is what acceptance criterion A1 measures, and the
+ *     gate fails on an entry that no longer excuses anything.
+ *   * COMPARISONS that are NOT debt — `scripts/provider-identity-collisions.txt`,
+ *     for a spelling that belongs to another alphabet: the MTA routing API's
+ *     `'mta' | 'relay' | 'defer'` answer (`delivery/lastMileRouting.ts`), a
+ *     docker compose profile, the contact-import source registry. Permanent, and
+ *     `path:literal`-qualified so the licence covers that spelling and nothing
+ *     else. Rewriting one of these would change a protocol, not remove a
+ *     coupling, so it must NOT go in the allowlist — that is what lets the
+ *     allowlist reach zero.
  *
- * So the ratchet (P0.5) seeds its allowlist with families 1–4 EXPLICITLY
- * enumerated and each carrying its owner, not with a blanket "definitional"
- * label — an allowlist that claims these are definitional stops meaning what
- * the plan says it means, and shrink-only then locks the claim in. The
- * definitional entries are exactly two: this declaration and
- * `domains/providers/mta/index.ts`'s `kind`, which its twin reads.
+ * Read those three, not this list. For orientation only, the surviving families
+ * as of P0.5: the RETURN-PATH pair (`domains/lifecycle.ts`,
+ * `delivery/checklistDomainValidators.ts`), waiting on a capability that has no
+ * home on the sending-domain adapter interface yet; FROZEN-SIBLING READS
+ * (`providerRoutes.listDeliverabilityRelayDomains`,
+ * `delivery/checklistValidatorTypes.ts`), retired by the generic
+ * `sendingDomainRelayIdentities` read in P1.2; ADAPTER-ADJACENT actions living
+ * beside an adapter rather than inside it (`domains/mandrillRelay*.ts`,
+ * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches
+ * in `apps/web`, which P1.2 and its follow-up delete.
  */
 export const OWN_ARM_TRANSPORT_KIND = 'mta';
 
