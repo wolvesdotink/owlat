@@ -91,29 +91,36 @@ is enumerated by the ratchet's allowlist below. Both fail in both directions:
 an unenumerated literal fails, and an entry whose literal has been swept fails
 until it is deleted.
 
-That map seeded `bun run lint:providers`
-(`scripts/check-provider-identity.sh`), the CI gate that carries the same rule
-across `apps/` and `packages/`: no comparison against a kind literal — `===`,
-`case`, or membership (`kinds.includes('ses')`) — outside an adapter folder.
-Out of its reach on purpose: `apps/mta` (its `'mta' | 'relay' | 'defer'`
-routing decisions are its own alphabet, not the catalog's), `migrations/`
-(frozen replays, pinned to the kinds of their date), tests and fixtures, and
-generated code. Two checked-in files license the rest, both strict in both
-directions so they can only shrink: `scripts/provider-identity-allowlist.txt`
-is debt, one family and one owning piece per entry, and its entry count is what
-"zero identity checks" is measured against;
+The comparison half is `bun run lint:providers`
+(`scripts/check-provider-identity.sh`), the CI gate that carries the rule across
+`apps/`, `packages/` and `examples/`: no comparison against a kind literal —
+`===`, `==`, `case`, or membership (`kinds.includes('ses')`) — outside an
+adapter bundle. `examples/` is in scope because it is a workspace root and the
+home of the plugin tier, whose whole promise is that a provider ships without
+host edits. An "adapter bundle" is a kind-named directory directly under
+`lib/sendProviders/`, `domains/providers/`, `integrationImports/providers/` or
+`webhooks/adapters/` — anchored to those roots rather than to any path segment
+that spells a kind, so a per-vendor folder of UI panels still fails. Also out of
+reach on purpose: `apps/mta` (its `'mta' | 'relay' | 'defer'` routing decisions
+are its own alphabet, not the catalog's), `migrations/` (frozen replays, pinned
+to the kinds of their date), tests and fixtures, and generated code. Matching
+runs over a three-line window, so reformatting a long condition or a long
+membership array does not de-fang it.
+
+Two checked-in files license the rest, both strict in both directions so they
+can only shrink: `scripts/provider-identity-allowlist.txt` is debt, written once
+per entry under a family header naming the piece that deletes it, and its entry
+count is what "zero identity checks" is measured against;
 `scripts/provider-identity-collisions.txt` is the permanent set where the
 spelling belongs to a different vocabulary (the MTA routing API's answer, a
-docker compose profile, the contact-import registry) and there is no coupling
-to remove.
+docker compose profile, the contact-import registry) and there is no coupling to
+remove. Entries are `path` or `path:literal`; collision entries must be
+qualified, because a permanent whole-file licence would excuse a real kind
+branch added to that file years later.
 
-The two checks are deliberately not the same — the vitest one also catches a
-kind *declaration* (`const X = 'ses'`, the same fact with one hop) but only
-inside `apps/api/convex`, while the ratchet takes the comparison half
-everywhere, including the setup wizard and the transport editor, where the UI
-branches that would make provider N+1 a host edit still live. They do not keep
-two lists: for comparisons inside the backend, `kindLiteralCustody.test.ts`
-reads the ratchet's files, so a swept file is de-licensed by one deletion.
+The two checks are disjoint, not overlapping: declarations in the backend belong
+to the vitest one, comparisons everywhere belong to the ratchet, and neither
+list is derived from or restated in the other.
 
 Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
