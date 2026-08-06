@@ -26,7 +26,10 @@ useSchemaOrg([
 <template>
 	<div>
 		<HeroSection />
-		<HowItWorksSection />
+		<ProductShowcaseSection />
+		<DarkSection>
+			<SystemMapSection />
+		</DarkSection>
 		<FeatureBento />
 		<DarkSection>
 			<DeveloperSection />
