@@ -10,7 +10,10 @@
  */
 
 import type { TestConvex } from 'convex-test';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type {
+	DeliverabilityStream,
+	DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import type { SeedPlacement, SeedTransportArm } from '@owlat/shared/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
 import type schema from '../../schema';
@@ -70,6 +73,14 @@ export interface SeedProbeOptions {
 	/** Omitted entirely when `unattributed` — the arm the worker never recorded. */
 	readonly arm?: SeedTransportArm;
 	readonly provider?: DestinationProviderKey;
+	/**
+	 * The cell's stream axis. Defaults to `campaign` — the shadow copy's own
+	 * stream, and what every pre-existing case here means. The other two are
+	 * written by the SCHEDULED probe (`delivery/seedScheduledProbe.ts`), and a
+	 * fixture that could not express them would leave the streams gate 5 was
+	 * blind to untestable through the real reduction.
+	 */
+	readonly stream?: DeliverabilityStream;
 	/** How long before now the probe was classified. Default: an hour. */
 	readonly classifiedAgoMs?: number;
 	/** Left unclassified: a probe the poller has not reported on yet. */
@@ -84,6 +95,7 @@ export interface SeedProbeOptions {
  */
 export async function insertSeedProbes(t: SeedHarness, options: SeedProbeOptions): Promise<void> {
 	const provider = options.provider ?? 'gmail';
+	const stream = options.stream ?? 'campaign';
 	const accountId = await insertSeedAccount(t, {
 		organizationId: options.organizationId,
 		provider,
@@ -94,10 +106,10 @@ export async function insertSeedProbes(t: SeedHarness, options: SeedProbeOptions
 		for (let index = 0; index < options.count; index += 1) {
 			await ctx.db.insert('seedPlacementProbes', {
 				organizationId: options.organizationId,
-				probeId: `probe-${provider}-${arm}-${options.placement}-${at}-${index}`,
+				probeId: `probe-${stream}-${provider}-${arm}-${options.placement}-${at}-${index}`,
 				accountId,
 				provider,
-				stream: 'campaign' as const,
+				stream,
 				...(options.unattributed === true ? {} : { transportArm: arm }),
 				dispatchedAt: at,
 				sentAt: at,

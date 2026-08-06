@@ -292,12 +292,64 @@ describe('absence stays absent — the gate holds and says why', () => {
 	it('does not lend a cell the probes of another STREAM', async () => {
 		const t = convexTest(schema, modules);
 		await standaloneCell(t);
-		// Every probe the shadow copy writes today is a CAMPAIGN probe, so the
-		// transactional and automation cells of the same provider have no seed
-		// evidence at all. That is a hold, not a borrowed verdict.
+		// A cell is only ever decided on ITS OWN stream's probes. With campaign
+		// probes alone the transactional cell of the same provider has no evidence
+		// at all, and that is a hold — never a borrowed verdict.
 		await seedProbes(t, { count: 20, placement: 'inbox' });
 
 		expect((await dashboardSeedGate(t)).status).toBe('pass');
+		expect(
+			(await dashboardSeedGate(t, { stream: 'transactional', destinationProvider: 'gmail' })).status
+		).toBe('insufficient_data');
+	});
+
+	/**
+	 * THE HOLD WAS THE ABSENCE OF A PRODUCER, NOT A PROPERTY OF THE GATE.
+	 *
+	 * `seedPlacementProbes.stream` shipped as `v.literal('campaign')` because the
+	 * shadow copy was the only writer, so the transactional and automation cells
+	 * held forever whatever the operator did. The scheduled probe writes those
+	 * streams now, and the READER never changed: the same reduction, the same
+	 * cell key, the same gate. These two cases prove that end to end — the same
+	 * evidence that passes a campaign cell passes its own cell on either of the
+	 * other streams, and still does not leak sideways.
+	 */
+	it('reaches a verdict on a TRANSACTIONAL cell once that stream has probes', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox', stream: 'transactional' });
+
+		const gate = await dashboardSeedGate(t, {
+			stream: 'transactional',
+			destinationProvider: 'gmail',
+		});
+		expect(gate.status).toBe('pass');
+		expect(gate.measurement.ownSample).toBe(20);
+		// The campaign cell, which has no probes of its own, still holds.
+		expect((await dashboardSeedGate(t)).status).toBe('insufficient_data');
+	});
+
+	it('fails a transactional cell whose own stream collapsed into spam', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 4, placement: 'inbox', stream: 'transactional' });
+		await seedProbes(t, { count: 16, placement: 'spam', stream: 'transactional' });
+		// A healthy CAMPAIGN sweep on the same provider must not rescue it.
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		const cell: DeliverabilityCell = { stream: 'transactional', destinationProvider: 'gmail' };
+		expect((await dashboardSeedGate(t, cell)).status).toBe('fail');
+		expect((await dashboardSeedGate(t)).status).toBe('pass');
+	});
+
+	it('reaches a verdict on an AUTOMATION cell the same way', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox', stream: 'automation' });
+
+		expect(
+			(await dashboardSeedGate(t, { stream: 'automation', destinationProvider: 'gmail' })).status
+		).toBe('pass');
 		expect(
 			(await dashboardSeedGate(t, { stream: 'transactional', destinationProvider: 'gmail' })).status
 		).toBe('insufficient_data');
