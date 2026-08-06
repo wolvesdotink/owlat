@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * Docs-lint for the "Declared capabilities" table on the providers page.
+ *
+ * That table restates `SendProviderCatalogEntry` declarations cell by cell, and
+ * nothing checked it — so it drifted: it still showed `ses` /
+ * `supportsCustomReturnPath` as `probe` long after the catalog settled that kind
+ * to `no`, which reads as "we probe SES's envelope sender" to anyone deciding
+ * whether their VERP stream will work. The correction was easy; noticing it was
+ * not. This pins every mechanical cell to the catalog literal so the next stale
+ * one fails a test instead of waiting for a reader.
+ *
+ * Only cells whose value IS the declaration are pinned. `requiredEnvVars` and
+ * the `mta` `domainVerification` cell are prose summaries by design ("AWS keys",
+ * "own DNS path"), so they stay the author's to write.
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(here, '../../..');
+const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
+
+const catalogSource = readRepoFile('apps/api/convex/lib/sendProviders/catalog.ts');
+const providers = readRepoFile('apps/docs/content/3.developer/15.providers.md');
+
+/** Every core catalog entry, as the literal declares it. */
+function coreCatalogEntries(): Array<{ kind: string; body: string }> {
+	const start = catalogSource.indexOf('const CORE_SEND_PROVIDER_CATALOG = [');
+	expect(start, 'catalog.ts no longer declares CORE_SEND_PROVIDER_CATALOG').toBeGreaterThan(-1);
+	const block = catalogSource.slice(start, catalogSource.indexOf('] as const satisfies', start));
+	const marks = [...block.matchAll(/\n\t\tkind: '([a-z][a-zA-Z0-9]*)',/g)];
+	return marks.map((mark, index) => ({
+		kind: mark[1]!,
+		body: block.slice(mark.index!, marks[index + 1]?.index ?? block.length),
+	}));
+}
+
+function declared(body: string, field: string): string | undefined {
+	return new RegExp(`\\n\\t\\t${field}: '([a-z-]+)',`).exec(body)?.[1];
+}
+
+/**
+ * The cells of one table row, in the column order the header declares — with
+ * the leading `|` and the two label columns dropped.
+ */
+function tableRow(field: string): { columns: string[]; cells: string[] } {
+	const lines = providers.split('\n');
+	const headerIndex = lines.findIndex((line) => line.startsWith('| Field | Meaning |'));
+	expect(headerIndex, 'the declared-capabilities table is gone').toBeGreaterThan(-1);
+	const split = (line: string) =>
+		line
+			.split('|')
+			.slice(1, -1)
+			.map((cell) => cell.trim());
+	const row = lines.find((line) => line.startsWith(`| \`${field}\` |`));
+	expect(row, `the ${field} row is gone`).toBeDefined();
+	return { columns: split(lines[headerIndex]!).slice(2), cells: split(row!).slice(2) };
+}
+
+/** `` `probe` → settles `no_envelope_control` `` ⇒ `probe`. */
+function leadingValue(cell: string): string {
+	return /^`?([a-z][a-z-]*)`?/.exec(cell)?.[1] ?? cell;
+}
+
+describe('the providers page restates the send catalog without drifting from it', () => {
+	const entries = coreCatalogEntries();
+
+	it('finds the core kinds in the catalog literal', () => {
+		expect(entries.map((entry) => entry.kind)).toContain('ses');
+		expect(entries.length).toBeGreaterThan(3);
+	});
+
+	it('gives the table one column per core kind, in the catalog order', () => {
+		const { columns } = tableRow('hasProviderFeedback');
+		expect(columns).toEqual(entries.map((entry) => `\`${entry.kind}\``));
+	});
+
+	it.each([
+		'supportsCustomReturnPath',
+		'domainVerification',
+		'acceptanceSemantics',
+		'messageIdSource',
+	])('%s: every cell leads with the value the catalog declares', (field) => {
+		const { cells } = tableRow(field);
+		for (const [index, entry] of entries.entries()) {
+			const value = declared(entry.body, field);
+			expect(value, `${entry.kind} declares no ${field}`).toBeDefined();
+			// The `mta` domain-verification cell is prose ("own DNS path"): the
+			// kind verifies through our own DNS path rather than a provider API,
+			// which `none` states accurately but unhelpfully. Every other cell is
+			// the declaration.
+			if (field === 'domainVerification' && entry.kind === 'mta') continue;
+			expect(leadingValue(cells[index]!), `${entry.kind} / ${field}`).toBe(value);
+		}
+	});
+
+	it('hasProviderFeedback: yes/no matches the declared boolean', () => {
+		const { cells } = tableRow('hasProviderFeedback');
+		for (const [index, entry] of entries.entries()) {
+			const declaredFeedback = /\n\t\thasProviderFeedback: (true|false),/.exec(entry.body)?.[1];
+			expect(declaredFeedback, `${entry.kind} declares no hasProviderFeedback`).toBeDefined();
+			expect(cells[index], entry.kind).toBe(declaredFeedback === 'true' ? 'yes' : 'no');
+		}
+	});
+});
