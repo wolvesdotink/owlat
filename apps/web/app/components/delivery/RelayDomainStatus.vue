@@ -18,10 +18,37 @@
  * answering for whichever kinds the domain-provider registry can prove, at which
  * point this card and its Mandrill sibling collapse into one that names the
  * relay from its catalog label. That belongs to the registry work, not to a
- * rendering refactor, and P1.2 deliberately left it rather than paper over it.
+ * rendering refactor, and it is recorded with that owner in
+ * `scripts/provider-identity-allowlist.txt` rather than left as a note here.
+ *
+ * WHAT DID CHANGE HERE, because it needed no backend: WHEN the card renders.
+ * The query answers for every owned sending domain, so a deployment sending
+ * through Resend (or an SMTP relay, or nothing but its own MTA) saw this SES
+ * card telling it to wait for a provisioning run that would never start. The
+ * gate is now the capability — is any configured escape-hatch relay one that
+ * verifies domains through an identity API? — plus the data itself, in
+ * `~/utils/relayIdentityPanel`, so published identity state stays visible even
+ * after the fallback is switched off.
  */
-import { api } from "@owlat/api";
-import type { Id } from "@owlat/api/dataModel";
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
+import { relayIdentityPanelVisible } from '~/utils/relayIdentityPanel';
+
+/**
+ * The relays this org has configured as a deliverability escape hatch, enabled
+ * or not — publishing a relay's DNS is what an operator does BEFORE switching
+ * the hatch on. Read here rather than passed in, because this card is
+ * self-querying by design (the `MandrillDomainStatus.vue` precedent): the page
+ * embeds it as one tag and learns nothing about what it needs.
+ */
+const { data: routes } = useOrganizationQuery(api.providerRoutes.listRoutes);
+const configuredRelayKinds = computed(() => [
+	...new Set(
+		(routes.value ?? []).flatMap((route) =>
+			route.deliverabilityFallback ? [route.deliverabilityFallback.relayProviderType] : []
+		)
+	),
+]);
 
 interface RelayDnsRecord {
 	type?: string;
@@ -38,9 +65,12 @@ const {
 } = usePaginatedQuery(api.providerRoutes.listDeliverabilityRelayDomains, () => ({}), {
 	initialNumItems: 100,
 });
-const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === "CanLoadMore");
+const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
+const isVisible = computed(() =>
+	relayIdentityPanelVisible(relayDomains.value, configuredRelayKinds.value)
+);
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
-	label: "Verify relay domain",
+	label: 'Verify relay domain',
 });
 const { showToast: showNotification } = useToast();
 const verifyingRelayDomainId = ref<string | null>(null);
@@ -53,7 +83,7 @@ function relayRecords(
 				mailFrom?: RelayDnsRecord[];
 		  }
 		| null
-		| undefined,
+		| undefined
 ): RelayDnsRecord[] {
 	return [
 		...(records?.spf ? [records.spf] : []),
@@ -62,16 +92,16 @@ function relayRecords(
 	];
 }
 
-async function handleVerifyRelayDomain(domainId: Id<"domains">) {
+async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 	verifyingRelayDomainId.value = domainId;
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
-	if (result !== undefined) showNotification("Relay DNS verification refreshed");
+	if (result !== undefined) showNotification('Relay DNS verification refreshed');
 }
 </script>
 
 <template>
-	<div v-if="relayDomains?.length" class="card p-6 space-y-4" data-testid="relay-domain-status">
+	<div v-if="isVisible" class="card p-6 space-y-4" data-testid="relay-domain-status">
 		<div>
 			<h2 class="text-lg font-medium text-text-primary">SES escape-hatch domains</h2>
 			<p class="mt-1 text-sm text-text-secondary">
