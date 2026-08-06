@@ -1,14 +1,18 @@
 /**
  * Send-provider catalog — the DECLARATION vocabulary.
  *
- * Split out of `./catalog.ts` when that file crossed the ~500 LOC ratchet
- * (`scripts/check-file-size.sh`). The seam is the one the file already had: the
+ * Split out of `./catalog.ts` when the `domainVerification` field (P0.3) pushed
+ * that file past the ~500 LOC ratchet `scripts/check-file-size.sh` enforces —
+ * a pure extraction, no behaviour, made here because the ratchet has to be
+ * green at the wave boundary. The seam is the one the file already had: the
  * capability unions and the entry shapes are the vocabulary a catalog entry is
  * written in, `catalog.ts` is the entries themselves plus the accessors that
- * apply each field's fail-closed default. Nothing imports this module directly
- * — `catalog.ts` re-exports every name here, so the import site stays
- * `lib/sendProviders/catalog` and `vi.mock` of that module still intercepts the
- * accessors.
+ * apply each field's fail-closed default.
+ *
+ * IMPORT THROUGH `catalog.ts`, not through here: it re-exports every name this
+ * module exports, so the import site stays `lib/sendProviders/catalog` and
+ * `vi.mock` of that module still intercepts the accessors. Adding a type here
+ * means adding it to that re-export block too.
  */
 
 import type { PluginId, PluginSendTransportKind } from '@owlat/plugin-kit';

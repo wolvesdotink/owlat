@@ -15,13 +15,16 @@ import type {
 
 /**
  * The declaration vocabulary — the capability unions and the entry shapes — was
- * split into `./catalogTypes.ts` when this file crossed the ~500 LOC ratchet
- * (`scripts/check-file-size.sh`). It is re-exported here, so every consumer
- * keeps importing `lib/sendProviders/catalog` and nothing had to move; the
+ * split into `./catalogTypes.ts` when the `domainVerification` field pushed this
+ * file past the ~500 LOC ratchet (`scripts/check-file-size.sh`) — a pure
+ * extraction, no behaviour. EVERY name that module exports is re-exported here,
+ * so every consumer keeps importing `lib/sendProviders/catalog`, nothing had to
+ * move, and `vi.mock` of this module still intercepts the accessors; the
  * PREREQUISITES note on `AcceptanceSemantics` travelled with the type.
  */
 export type {
 	AcceptanceSemantics,
+	CoreSendProviderCatalogEntry,
 	CoreSendProviderKind,
 	DeclaredCustomReturnPathSupport,
 	DomainVerificationSupport,
