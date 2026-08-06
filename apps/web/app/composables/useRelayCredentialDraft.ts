@@ -31,6 +31,7 @@ import {
 	coreSendProviderCatalogEntry,
 	isOwnSendProviderKind,
 	type OwnSendProviderKind,
+	type SendProviderHostPortField,
 } from '@owlat/shared/sendProviderCatalog';
 import {
 	draftCredentialsFromValues,
@@ -68,9 +69,10 @@ export interface RelayProviderOption {
  *
  * Deliberately not in the catalog, which states so itself: a descriptor carries
  * the label a form needs, and "hints, icons and per-vendor prose" stay where the
- * copy is written. What is NOT here any more is the label and the kind list —
- * both are read from the catalog below, so this table can only ever ADD copy to
- * a provider that already exists.
+ * copy is written. What is NOT here any more is the KIND LIST — it is read from
+ * the catalog below, so this table can only ever ADD copy to a provider that
+ * already exists, and the one `label` it still carries is the own arm's (see
+ * that row).
  *
  * A kind with no row still appears, with the catalog's label, a neutral icon and
  * no sentence: a provider must never be missing from the picker because nobody
@@ -79,9 +81,21 @@ export interface RelayProviderOption {
  * order, which would reorder a shipped form); anything else follows in catalog
  * order.
  */
-const TRANSPORT_PICKER_COPY: readonly { kind: string; hint: string; icon: string }[] = [
+const TRANSPORT_PICKER_COPY: readonly {
+	kind: string;
+	hint: string;
+	icon: string;
+	label?: string;
+}[] = [
 	{
 		kind: OWN_SEND_PROVIDER_KIND,
+		// THE ONE `label` OVERRIDE, and it is on the one kind D3 calls special by
+		// definition: this picker's own-arm option is an INSTRUCTION ("Run your own
+		// MTA"), not the transport's name, and it is what the shipped editor says.
+		// Every relay takes the catalog's label — none of the four incumbents
+		// needed an override, and a new provider cannot need one either, because
+		// the fallback is the entry's own label.
+		label: 'Run your own MTA',
 		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
 		icon: 'lucide:server',
 	},
@@ -115,7 +129,7 @@ function pickerOption(kind: string): RelayProviderOption {
 	const copy = TRANSPORT_PICKER_COPY.find((row) => row.kind === kind);
 	return {
 		value: kind as RelayProviderChoice,
-		label: coreSendProviderCatalogEntry(kind)?.label ?? kind,
+		label: copy?.label ?? coreSendProviderCatalogEntry(kind)?.label ?? kind,
 		hint: copy?.hint ?? '',
 		icon: copy?.icon ?? 'lucide:send',
 	};
@@ -190,15 +204,23 @@ export type RelayCredentialFields = DraftCredentials;
  */
 const PROBE_REQUEST_BODIES: Record<
 	string,
-	(values: TransportCredentialValues) => Record<string, unknown>
+	(
+		values: TransportCredentialValues,
+		endpoint: SendProviderHostPortField | undefined
+	) => Record<string, unknown>
 > = {
 	validateResendKey: (values) => ({ apiKey: values['RESEND_API_KEY'] ?? '' }),
-	validateSmtpRelay: (values) => {
+	validateSmtpRelay: (values, endpoint) => {
 		const port = (values['SMTP_RELAY_PORT'] ?? '').trim();
+		// The BLANK-PORT fallback is the descriptor's `portDefault`, not a literal
+		// repeated here: the env patch already writes that same declared default,
+		// so a probe with its own number would hand the operator a successful
+		// handshake against a port the applied transport does not use.
+		const declaredPort = (endpoint?.portDefault ?? '').trim();
 		return {
 			smtp: {
 				host: (values['SMTP_RELAY_HOST'] ?? '').trim(),
-				port: port ? Number.parseInt(port, 10) : 587,
+				port: Number.parseInt(port || declaredPort || '587', 10),
 				secure: values['SMTP_RELAY_SECURE'] === 'true',
 				username: values['SMTP_RELAY_USERNAME'] ?? '',
 				password: values['SMTP_RELAY_PASSWORD'] ?? '',
@@ -302,7 +324,10 @@ export function useRelayCredentialDraft(
 		if (buildBody === undefined) return null;
 		return await $fetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
 			method: 'POST',
-			body: { provider: provider.value, ...buildBody({ ...credentialValues }) },
+			body: {
+				provider: provider.value,
+				...buildBody({ ...credentialValues }, hostPortField.value),
+			},
 		});
 	}
 

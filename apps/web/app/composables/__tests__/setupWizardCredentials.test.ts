@@ -36,7 +36,9 @@ import {
 	secretEnvKeys,
 	transportCredentialEnv,
 } from '../setupWizardCredentials';
-import { buildProviderEnv, type EmailStepDraft } from '../useSetupWizard';
+import { buildProviderEnv, buildSetupSummary, type EmailStepDraft } from '../useSetupWizard';
+import { getDefaultFlags } from '@owlat/shared/featureFlags';
+import { credentialErrorFor, validateEmailStep } from '../setupWizardValidation';
 
 interface ExpectedField {
 	key: string;
@@ -52,7 +54,10 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 		{
 			key: 'outboundTlsMode',
 			kind: 'select',
-			label: 'Outbound TLS',
+			// The string the shipped editor shows. A LITERAL, not a read of the
+			// entry: the risk this suite exists for is precisely a descriptor whose
+			// label drifts from the form an operator already knows.
+			label: 'Connection security',
 			envVars: ['OUTBOUND_TLS_MODE'],
 			required: false,
 		},
@@ -321,5 +326,86 @@ describe('buildProviderEnv writes exactly the selected kind’s credentials', ()
 		);
 		const env = buildProviderEnv({}, draft({ provider: kind, ...credentials }));
 		expect(env).toEqual({ EMAIL_PROVIDER: kind, ...EXPECTED_ENV[kind] });
+	});
+});
+
+/**
+ * THE REVIEW STEP'S NAMES, as literals for the same reason the field labels
+ * above are: this step summarises what the operator just chose, and the strings
+ * it shows are the ones the shipped wizard shipped.
+ */
+describe('the review step names every choice as it always has', () => {
+	const admin = { email: 'admin@example.com', name: 'Alex Operator', password: 'a-long-password' };
+	const labelFor = (provider: string | undefined) =>
+		buildSetupSummary(
+			getDefaultFlags(),
+			provider === undefined ? {} : { EMAIL_PROVIDER: provider },
+			admin
+		).providerLabel;
+
+	it('keeps the own arm’s qualifier, which no catalog entry carries', () => {
+		expect(labelFor('mta')).toBe('Owlat MTA (self-hosted)');
+	});
+
+	it('takes every relay’s name from the catalog', () => {
+		for (const entry of CORE_SEND_PROVIDER_CATALOG_ENTRIES) {
+			if (entry.tier === 'own') continue;
+			expect(labelFor(entry.kind)).toBe(entry.label);
+		}
+	});
+
+	it('has its own word for no transport at all', () => {
+		expect(labelFor(undefined)).toBe('None (receive-only)');
+		expect(labelFor('not-a-transport')).toBe('None (receive-only)');
+	});
+});
+
+/**
+ * THE ONE CREDENTIAL ERROR, for both surfaces at once.
+ *
+ * The transport editor and the wizard's credential step both need "the message
+ * for the selected kind, whichever field set it belongs to". They used to spell
+ * that out as an identical `errors.resendKey ?? errors.mandrillKey ?? …` chain
+ * in two templates — per-vendor knowledge in a `.vue` file, duplicated, and
+ * silently non-exhaustive: a new key rendered nowhere while Apply refused.
+ */
+describe('credentialErrorFor', () => {
+	const filled: Record<string, Partial<EmailStepDraft>> = {
+		mta: {},
+		ses: { ses: { region: 'eu-west-1', accessKeyId: 'AKIA', secretAccessKey: 's' } },
+		resend: { resendKey: 're_1' },
+		smtp: {
+			smtp: {
+				preset: 'custom',
+				host: 'smtp.acme.test',
+				port: '',
+				secure: false,
+				username: 'u',
+				password: 'p',
+			},
+		},
+		mandrill: { mandrillKey: 'md-1' },
+	};
+
+	it.each(CATALOG_KINDS)('surfaces %s’s missing-credential message', (kind) => {
+		const errors = validateEmailStep(draft({ provider: kind }));
+		const message = credentialErrorFor(errors);
+		// The own MTA collects no credential that can be missing; every relay does.
+		if (kind === 'mta') expect(message).toBeUndefined();
+		else expect(typeof message).toBe('string');
+	});
+
+	it.each(CATALOG_KINDS)('says nothing once %s’s credentials are filled in', (kind) => {
+		expect(credentialErrorFor(validateEmailStep(draft({ provider: kind, ...filled[kind] })))).toBe(
+			undefined
+		);
+	});
+
+	it('ignores the errors that are not about credentials', () => {
+		// A bad From address and a missing MTA identity both belong to other
+		// controls on the screen; announcing either beside the API key would point
+		// the operator at the wrong field.
+		expect(credentialErrorFor({ fromEmail: 'bad address', mtaIdentity: 'no PTR' })).toBeUndefined();
+		expect(credentialErrorFor({})).toBeUndefined();
 	});
 });

@@ -205,18 +205,34 @@ export interface SetupSummary {
 }
 
 /**
- * The operator's name for each choice — the catalog's label for every kind it
- * declares, plus this surface's own word for "no transport at all".
+ * The operator's name for each choice on the REVIEW step — the catalog's label
+ * for every kind it declares, plus this surface's own words for the two answers
+ * no catalog entry carries.
  *
- * DERIVED (D1). The hand-written table this replaced was a second spelling of
- * `entry.label` that had already drifted: it read "Owlat MTA (self-hosted)"
- * where the catalog, the delivery hub and the transport editor all say the
- * label the entry carries. One declaration means the review step, the picker
- * and the dashboard cannot disagree about what the operator just chose.
+ * DERIVED (D1): the hand-written table this replaced restated `entry.label` for
+ * all four relays, so a provider had to be remembered here as well as declared.
+ * TWO STRINGS SURVIVE IT, and neither is a vendor's:
+ *
+ *  - `none` is this surface's own answer ("no transport at all"), legal for a
+ *    receive-only install and never a catalog entry;
+ *  - the OWN ARM's qualifier. This step summarises a CHOICE rather than naming a
+ *    product — "(self-hosted)" is what distinguishes it from the managed options
+ *    listed beside it — and it is the string the shipped review step has always
+ *    shown. Keyed by `OWN_SEND_PROVIDER_KIND`, D3's one definitional identity,
+ *    so it is not a vendor table and cannot grow one: any other kind, present or
+ *    future, reads its label from the entry.
+ *
+ * The delivery hub, the transport editor's picker and this step each still word
+ * the own MTA slightly differently, exactly as they shipped; unifying that copy
+ * is a deliberate wording decision for the plan owner, not something a rendering
+ * refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
  */
 const RECEIVE_ONLY_LABEL = 'None (receive-only)';
 
+const OWN_ARM_REVIEW_LABEL = 'Owlat MTA (self-hosted)';
+
 function providerLabel(provider: ProviderChoice): string {
+	if (isOwnSendProviderKind(provider)) return OWN_ARM_REVIEW_LABEL;
 	return coreSendProviderCatalogEntry(provider)?.label ?? RECEIVE_ONLY_LABEL;
 }
 

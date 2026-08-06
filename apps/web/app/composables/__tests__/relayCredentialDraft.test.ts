@@ -12,7 +12,7 @@
  *    explaining why there isn't one;
  *  - the REDACTION LIST: which values must never reach the screen or a log.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	OWN_SEND_PROVIDER_KIND,
@@ -23,6 +23,7 @@ import {
 	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
 	useRelayCredentialDraft,
 } from '../useRelayCredentialDraft';
+import { hostPortFieldFor } from '../setupWizardCredentials';
 
 describe('the transport picker', () => {
 	it('offers the relays in the order the shipped screens listed them', () => {
@@ -45,8 +46,23 @@ describe('the transport picker', () => {
 		);
 	});
 
-	it('names each transport with the CATALOG’s label, not a second copy of it', () => {
-		for (const option of TRANSPORT_EDITOR_PROVIDER_OPTIONS) {
+	it('shows the labels the shipped editor showed, to the letter', () => {
+		// LITERALS, not a read of the catalog: an assertion that each label equals
+		// `entry.label` agrees with any label the catalog happens to hold, which is
+		// the one thing this pin has to be able to disagree with. The picker's
+		// own-arm option is an instruction rather than a name and is the ONE copy
+		// override left in the draft; every relay takes the entry's label.
+		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => option.label)).toEqual([
+			'Run your own MTA',
+			'Amazon SES',
+			'SMTP relay',
+			'Resend',
+			'Mailchimp Transactional (Mandrill)',
+		]);
+	});
+
+	it('takes every RELAY’s label from the catalog, not from a second copy', () => {
+		for (const option of RELAY_PROVIDER_OPTIONS) {
 			expect(option.label).toBe(coreSendProviderCatalogEntry(option.value)?.label);
 		}
 	});
@@ -73,6 +89,31 @@ describe('the pre-apply handshake is a declared capability', () => {
 	it('answers null rather than posting a body it cannot build', async () => {
 		const draft = useRelayCredentialDraft(OWN_SEND_PROVIDER_KIND);
 		await expect(draft.validateLive()).resolves.toBeNull();
+	});
+
+	it('probes the port the env patch will actually write', async () => {
+		// A blank port means the descriptor's declared default in BOTH places, or
+		// the operator tests one endpoint and deploys another.
+		const bodies: Record<string, unknown>[] = [];
+		vi.stubGlobal(
+			'$fetch',
+			vi.fn(async (_url: string, options: { body: Record<string, unknown> }) => {
+				bodies.push(options.body);
+				return { ok: true, message: 'ok' };
+			})
+		);
+		const draft = useRelayCredentialDraft('smtp');
+		draft.credentialValues['SMTP_RELAY_PORT'] = '   ';
+		await draft.validateLive();
+		expect((bodies[0]?.['smtp'] as { port: number }).port).toBe(
+			Number(hostPortFieldFor('smtp')?.portDefault)
+		);
+
+		draft.credentialValues['SMTP_RELAY_PORT'] = '2525';
+		await draft.validateLive();
+		expect((bodies[1]?.['smtp'] as { port: number }).port).toBe(2525);
+		// NOT `unstubAllGlobals`: the shared setup file installs Vue's reactivity
+		// primitives as globals, and clearing every stub would take those with it.
 	});
 });
 
