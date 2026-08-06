@@ -1,0 +1,139 @@
+# Provider-identity allowlist — scripts/check-provider-identity.sh.
+#
+# The files that may still compare a send-provider kind against a literal.
+# Everything else asks the capability catalog. One repo-relative path per line;
+# `#` comments and blank lines ignored.
+#
+# THIS LIST ONLY SHRINKS. That is a review convention, not a suggestion: a pull
+# request that ADDS a line is asking to reintroduce the coupling the seams plan
+# exists to remove, and has to argue why the seam cannot read a declaration
+# instead. The ratchet enforces the other direction mechanically — an entry
+# whose file no longer holds a kind literal FAILS the gate, so a cleanup cannot
+# leave its licence behind for the next restatement to inherit.
+#
+# Every entry carries a FAMILY and an OWNER, the discipline the backend's
+# stricter sibling established (SURVIVING_KIND_LITERALS in
+# apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts, which
+# this list is seeded from and which additionally catches kind DECLARATIONS
+# inside apps/api/convex). Two families are permanent — a spelling collision
+# with another vocabulary is not an identity check. The rest are debt with a
+# named owner, and the entry leaves when the owner lands.
+#
+#
+# ── collision (permanent: a different alphabet, same spelling) ────────────────
+#
+# apps/api/convex/delivery/lastMileRouting.ts
+#   `decision.kind === 'mta'` reads the MTA routing API's answer — 'mta' |
+#   'relay' | 'defer', "who should carry this message", the same alphabet this
+#   file's own `candidateProvider` speaks two statements earlier. Rewriting it
+#   would change the protocol, not remove a coupling. The provider-kind question
+#   beside it already goes through OWN_ARM_TRANSPORT_KIND.
+#
+# apps/web/app/components/contacts/IntegrationImportModal.vue
+#   'mandrill' here is an INTEGRATION IMPORT source (contacts and suppressions,
+#   `integrationImports/providers/`), a different registry that happens to share
+#   a vendor name with a send transport. Its own seam work is not this plan's.
+#
+#
+# ── return-path (owner: the sending-domain adapter interface) ─────────────────
+#
+# Which `mailFrom` bundle a custom return-path host publishes, and which kinds
+# accept one at all, is branched on 'mta'/'ses' while the catalog already
+# declares `supportsCustomReturnPath`. The capability has no home on
+# `SendingDomainProviderModule` yet; `domains/providers/index.ts` states the gap.
+#
+# apps/api/convex/domains/lifecycle.ts          — the record-set derivation
+# apps/api/convex/delivery/checklistDomainValidators.ts — restates it as a check
+#
+#
+# ── adapter-adjacent (owner: one kind's scheduled work moving beside it) ──────
+#
+# Mandrill adapter code that cannot sit in domains/providers/mandrill/: these
+# are a scheduled action and its mutation, so the module path IS the Convex
+# function path. Both literals ask "is this row/domain mine?" of the
+# deliberately kind-agnostic sendingDomainRelayIdentities table; when a second
+# kind wants the same sweep, that question becomes the table's own dispatch.
+#
+# apps/api/convex/domains/mandrillRelay.ts
+# apps/api/convex/domains/mandrillRelayMutations.ts
+#
+#
+# ── provider-shaped-ui (owner: D5 — the UI renders descriptors) ───────────────
+#
+# Per-kind credential fields, wizard steps and status panels, written as one
+# branch per vendor. This is the family the ecosystem goal turns on: while these
+# branches exist, a provider that needs no backend edit still cannot ship
+# without a UI edit. The catalog's typed `credentialFields` descriptors and a
+# renderer that loops over them retire the whole family at once.
+#
+# apps/web/app/components/delivery/TransportCredentialsStep.vue
+# apps/web/app/components/delivery/TransportEditor.vue
+# apps/web/app/composables/setupWizardValidation.ts
+# apps/web/app/composables/useSetupWizard.ts
+# apps/web/app/pages/dashboard/delivery/config.vue
+# apps/web/app/pages/desktop/setup.vue
+# apps/web/app/pages/setup/email.vue
+#
+#
+# ── credentials-and-probes (owner: D1 — catalog fields in packages/shared) ────
+#
+# Which env vars a kind needs, which kinds can be live-checked before saving,
+# and what a validator asks of each — all of it restated per vendor outside the
+# catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
+# catalog entry are the declarations these read once D1 lands.
+#
+# apps/setup-cli/src/commands/setupNonInteractive.ts
+# apps/setup-cli/src/commands/setupSendingProvider.ts
+# apps/setup-cli/src/lib/setupConfig.ts
+# apps/web/app/composables/useRelayCredentialDraft.ts
+# apps/web/server/api/delivery/validate-transport.post.ts
+# apps/web/server/api/setup/validate-provider.post.ts
+# packages/shared/src/setupValidators.ts
+# packages/shared/src/featureFlags.ts   — which feature profile each kind implies
+#
+#
+# ── own-arm-outside-convex (owner: D1 — the own-arm declaration in shared) ────
+#
+# Honest own-vs-relay questions (D3) asked in packages the one sanctioned
+# declaration cannot reach: OWN_ARM_TRANSPORT_KIND lives in
+# apps/api/convex/lib/sendProviders/strategies/adaptive_mix, and neither
+# packages/shared nor the CLI may import app code. D1 moves the catalog — and
+# with it this declaration — into packages/shared, at which point every one of
+# these reads the constant instead of restating it.
+#
+# apps/setup-cli/src/commands/doctor.ts
+# apps/setup-cli/src/commands/quickstart.ts
+# apps/setup-cli/src/commands/setup.ts
+# apps/web/app/composables/useRelayRemovalGuard.ts
+# apps/web/app/utils/providerRouting.ts
+# apps/web/server/api/delivery/apply-transport.post.ts
+# packages/shared/src/transportAlignment.ts
+
+apps/api/convex/delivery/checklistDomainValidators.ts
+apps/api/convex/delivery/lastMileRouting.ts
+apps/api/convex/domains/lifecycle.ts
+apps/api/convex/domains/mandrillRelay.ts
+apps/api/convex/domains/mandrillRelayMutations.ts
+apps/setup-cli/src/commands/doctor.ts
+apps/setup-cli/src/commands/quickstart.ts
+apps/setup-cli/src/commands/setup.ts
+apps/setup-cli/src/commands/setupNonInteractive.ts
+apps/setup-cli/src/commands/setupSendingProvider.ts
+apps/setup-cli/src/lib/setupConfig.ts
+apps/web/app/components/contacts/IntegrationImportModal.vue
+apps/web/app/components/delivery/TransportCredentialsStep.vue
+apps/web/app/components/delivery/TransportEditor.vue
+apps/web/app/composables/setupWizardValidation.ts
+apps/web/app/composables/useRelayCredentialDraft.ts
+apps/web/app/composables/useRelayRemovalGuard.ts
+apps/web/app/composables/useSetupWizard.ts
+apps/web/app/pages/dashboard/delivery/config.vue
+apps/web/app/pages/desktop/setup.vue
+apps/web/app/pages/setup/email.vue
+apps/web/app/utils/providerRouting.ts
+apps/web/server/api/delivery/apply-transport.post.ts
+apps/web/server/api/delivery/validate-transport.post.ts
+apps/web/server/api/setup/validate-provider.post.ts
+packages/shared/src/featureFlags.ts
+packages/shared/src/setupValidators.ts
+packages/shared/src/transportAlignment.ts
