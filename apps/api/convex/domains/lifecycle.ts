@@ -71,6 +71,7 @@ import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
 import { enabledFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import {
+	OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	isSendingDomainProviderKind,
 	providerFor,
 	type ProviderIdentity,
@@ -566,7 +567,11 @@ async function applyEffects(
 				break;
 			}
 			case 'provision_relay_identity_if_enabled': {
-				if (effect.providerType !== 'mta') break;
+				// OUR OWN INFRASTRUCTURE, read from its one declaration rather than
+				// spelled as a literal here: `provisionDeliverabilityRelayBatch` — the
+				// catch-up half of this pair — filters domains on the same constant,
+				// so neither half can quietly start matching a different kind.
+				if (effect.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) break;
 				// ONE reading of "which relay is the fallback configured to use",
 				// shared with the catch-up drain in `providerRoutes.ts` — the two
 				// halves of "every domain gets an identity exactly once" must not
