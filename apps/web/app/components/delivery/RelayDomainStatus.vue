@@ -23,16 +23,28 @@
  *
  * WHAT DID CHANGE HERE, because it needed no backend: WHEN the card renders.
  * The query answers for every owned sending domain, so a deployment sending
- * through Resend (or an SMTP relay, or nothing but its own MTA) saw this SES
- * card telling it to wait for a provisioning run that would never start. The
- * gate is now the capability — is any configured escape-hatch relay one that
- * verifies domains through an identity API? — plus the data itself, in
- * `~/utils/relayIdentityPanel`, so published identity state stays visible even
- * after the fallback is switched off.
+ * through Resend (or an SMTP relay, or Mandrill, or nothing but its own MTA) saw
+ * this SES card telling it to wait for a provisioning run that would never
+ * start. The gate is now the data itself plus the capability of the kind THIS
+ * QUERY ANSWERS FOR, in `~/utils/relayIdentityPanel` — so published identity
+ * state stays visible even after the fallback is switched off, and a
+ * Mandrill-only deployment (a second `api` relay, with its own panel beside
+ * this one) is not shown an SES provisioning run it never asked for.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { relayIdentityPanelVisible } from '~/utils/relayIdentityPanel';
+
+/**
+ * THE KINDS THIS CARD CAN SPEAK FOR — one, and it is a literal on purpose.
+ *
+ * Not a capability question but a DATA question: `listDeliverabilityRelayDomains`
+ * reads the frozen `sendingDomainSesIdentities` table, so `ses` is the only kind
+ * whose rows can appear above. It is written here, next to the query that makes
+ * it true, rather than inferred from the copy — and it becomes the set of kinds
+ * the generic `sendingDomainRelayIdentities` read can prove when that lands.
+ */
+const ANSWERS_FOR_KINDS = ['ses'] as const;
 
 /**
  * The relays this org has configured as a deliverability escape hatch, enabled
@@ -67,7 +79,7 @@ const {
 });
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 const isVisible = computed(() =>
-	relayIdentityPanelVisible(relayDomains.value, configuredRelayKinds.value)
+	relayIdentityPanelVisible(relayDomains.value, configuredRelayKinds.value, ANSWERS_FOR_KINDS)
 );
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
 	label: 'Verify relay domain',
