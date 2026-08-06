@@ -70,6 +70,25 @@
 # with a named owner"; until one of the two happens, a wave gate reading A1
 # literally will read as failed for a criterion nothing in the plan can satisfy.
 #
+# ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
+#
+# P1.1 re-attributed one family (`credentials-and-probes`, 6 entries) away from
+# itself, because P1.1's card is the catalog's DATA half and no existing card
+# covers the CLI prompts, the config writer, the two validate endpoints or
+# setupValidators.ts. That is an honest correction, but it is also a PLAN-LEVEL
+# ownership change made inside a build piece, and its arithmetic consequence is
+# above: Wave 1 now ends at 14 allowlisted entries rather than the 8 P0.5
+# predicted. The ask is one of two things, at the gate rather than at A1:
+#
+#   (a) give those 6 a card in Wave 2 — "the descriptor rollout outside
+#       apps/web" — which is the smaller of the two changes and keeps A1 as
+#       written reachable at the end of that wave; or
+#   (b) restate A1 as "the allowlist contains only entries with a named owner",
+#       which is what the file already enforces mechanically.
+#
+# Not P1.1's call either way. Recorded here AND in the piece summary so it is
+# decided rather than discovered.
+#
 # THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
 # it; because the ratchet fails on an entry that excuses nothing, that piece's
 # diff has to include the deletion here or the lint job goes red. AND IT MUST
