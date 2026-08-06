@@ -10,6 +10,7 @@ import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { isFallbackRelayEligible } from './lib/sendProviders/fallbackEligibility';
+import { enabledFallbackRelayKinds } from './lib/sendProviders/fallbackRelays';
 import { OWN_ARM_TRANSPORT_KIND } from './lib/sendProviders/strategies';
 import {
 	OWN_SENDING_DOMAIN_PROVIDER_KIND,
@@ -167,16 +168,28 @@ export const listTransportCatalog = authedQuery({
  * Deliberately NOT fixed here. Making the read generic is not a table swap —
  * the per-kind identity shapes differ (Mandrill remembers provider VERDICTS,
  * not tokens, and derives its records), so the row this returns and the
- * component that renders it have to change together. That pairing is P1.2's
- * (catalog-driven web UI, which owns `RelayDomainStatus.vue`); this piece is
- * the write half only, and widening the read shape from a wave-0 refactor
- * would be exactly the user-visible change wave 0 is not allowed to make.
- * Until then: a non-SES fallback relays correctly and reports nothing here.
+ * component that renders it have to change together, and widening the read
+ * shape from a wave-0 refactor would be exactly the user-visible change wave 0
+ * is not allowed to make. This piece is the write half only. Until the pair
+ * moves: a non-SES fallback relays correctly and reports nothing here.
  *
- * The divergence is PINNED, not merely described: `__tests__/providerRoutes.
- * integration.test.ts` → "PINNED DIVERGENCE (P1.2)" inserts a verified Mandrill
- * relay identity and asserts this query answers `provisioning` with no DNS
- * records. P1.2's first act is that test failing, not a comment hunt.
+ * NO PIECE CURRENTLY OWNS THE FIX, and that is stated rather than wished away.
+ * The natural home is P1.2 (catalog-driven web UI), but its scope names
+ * `TransportEditor.vue`, `useSetupWizard.ts`, `useRelayCredentialDraft.ts`,
+ * `DeliverabilityFallbackEditor.vue` and `config.vue` — neither this query nor
+ * `RelayDomainStatus.vue`, which the plan mentions only in its duplication
+ * inventory. So this pair is carried into P1.2 as an explicit added input (it
+ * is called out by name in this piece's handoff notes); a reader who arrives
+ * here from the code rather than from the plan should not conclude someone
+ * already signed up for it.
+ *
+ * The divergence is at least PINNED rather than merely described:
+ * `__tests__/providerRoutes.integration.test.ts` → "PINNED DIVERGENCE (P1.2)"
+ * inserts a VERIFIED Mandrill relay identity and asserts this query still
+ * answers `provisioning` with no DNS records. That test asserts today's broken
+ * behaviour, so it cannot fail the fix into existence — it exists so that
+ * whoever does make the read generic has to delete an assertion that spells out
+ * what used to be wrong, instead of discovering the SES-shaped row by surprise.
  */
 export const listDeliverabilityRelayDomains = authedQuery({
 	args: { paginationOpts: paginationOptsValidator },
@@ -243,28 +256,33 @@ export const listDeliverabilityRelayDomains = authedQuery({
  * before it reads a page: there is no identity to backfill, which is the same
  * honest posture `relayDomainVerification.ts` takes on the read side.
  *
- * ONE-DEPLOY MIGRATION HAZARD, by design. Convex persists a scheduled
- * function's arguments, so a continuation this mutation scheduled for itself
- * BEFORE `relayProviderType` existed fails argument validation when it runs
- * after the deploy. That window is the ≤500 ms between a page finishing and its
- * successor running, and the only relay a pre-P0.2 route could name was SES.
- * The failure is loud (a failed scheduled function, named in the deployment
- * logs) rather than silent, and the drain is idempotent: re-saving the route
- * re-runs it from the first page and every already-provisioned domain is
- * skipped by its provider's existence check. Accepting the argument as optional
- * to swallow that one window would make "no kind named" a permanently legal
- * call — a silent no-op for every future caller — which is a worse trade than a
- * diagnosable failure that heals on the next save.
+ * `relayProviderType` IS OPTIONAL, and absent is a definite answer rather than
+ * a no-op. Convex persists a scheduled function's arguments, so a continuation
+ * this mutation scheduled for itself BEFORE the argument existed would fail
+ * argument validation the moment the deploy lands — and the shipped gate
+ * already admits `ses`, `resend`, `smtp` and `mandrill` fallbacks, so that
+ * abandoned drain could belong to any of them. It would stop at its cursor and
+ * every domain past it would keep no relay identity (the lifecycle's forward
+ * path only covers domains verified LATER), which the operator only ever sees
+ * as a refusal to relay, and only once the breaker opens. So absent means
+ * "whichever relays the routes currently name" — resolved from the same
+ * `providerRoutes` read the forward path uses, per page, so an operator who
+ * changes the relay mid-drain gets the new one.
  */
 export const provisionDeliverabilityRelayBatch = internalMutation({
-	args: { relayProviderType: v.string(), paginationOpts: paginationOptsValidator },
+	args: { relayProviderType: v.optional(v.string()), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		const relay = isSendingDomainProviderKind(args.relayProviderType)
-			? providerFor(args.relayProviderType)
-			: null;
-		// Bound to its module: the drain holds the function, not the receiver.
-		const ensureRelayIdentity = relay?.ensureRelayIdentity?.bind(relay);
-		if (!ensureRelayIdentity) return;
+		const kinds =
+			args.relayProviderType === undefined
+				? await enabledFallbackRelayKinds(ctx)
+				: [args.relayProviderType];
+		// Bound to their modules: the drain holds the functions, not the receivers.
+		const backfills = kinds
+			.filter((kind) => isSendingDomainProviderKind(kind))
+			.map((kind) => providerFor(kind))
+			.map((provider) => provider.ensureRelayIdentity?.bind(provider))
+			.filter((ensureRelayIdentity) => ensureRelayIdentity !== undefined);
+		if (backfills.length === 0) return;
 		const page = await ctx.db
 			.query('domains')
 			.withIndex('by_status', (q) => q.eq('status', 'verified'))
@@ -278,7 +296,9 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 			// registry's and not `OWN_ARM_TRANSPORT_KIND`. (`domains/lifecycle.ts`
 			// spells the same rule for the forward path; P0.4 owns collapsing it.)
 			if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) continue;
-			await ensureRelayIdentity(ctx, domain);
+			for (const ensureRelayIdentity of backfills) {
+				await ensureRelayIdentity(ctx, domain);
+			}
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {

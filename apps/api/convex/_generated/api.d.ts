@@ -588,6 +588,7 @@ import type * as lib_sendProviders_cellRoute from "../lib/sendProviders/cellRout
 import type * as lib_sendProviders_destinationProvider from "../lib/sendProviders/destinationProvider.js";
 import type * as lib_sendProviders_dispatch from "../lib/sendProviders/dispatch.js";
 import type * as lib_sendProviders_fallbackEligibility from "../lib/sendProviders/fallbackEligibility.js";
+import type * as lib_sendProviders_fallbackRelays from "../lib/sendProviders/fallbackRelays.js";
 import type * as lib_sendProviders_health from "../lib/sendProviders/health.js";
 import type * as lib_sendProviders_index from "../lib/sendProviders/index.js";
 import type * as lib_sendProviders_mandrill_errors from "../lib/sendProviders/mandrill/errors.js";
@@ -1518,6 +1519,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/destinationProvider": typeof lib_sendProviders_destinationProvider;
   "lib/sendProviders/dispatch": typeof lib_sendProviders_dispatch;
   "lib/sendProviders/fallbackEligibility": typeof lib_sendProviders_fallbackEligibility;
+  "lib/sendProviders/fallbackRelays": typeof lib_sendProviders_fallbackRelays;
   "lib/sendProviders/health": typeof lib_sendProviders_health;
   "lib/sendProviders/index": typeof lib_sendProviders_index;
   "lib/sendProviders/mandrill/errors": typeof lib_sendProviders_mandrill_errors;

@@ -69,6 +69,7 @@ import {
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
 import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
+import { enabledFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import {
 	isSendingDomainProviderKind,
 	providerFor,
@@ -566,15 +567,11 @@ async function applyEffects(
 			}
 			case 'provision_relay_identity_if_enabled': {
 				if (effect.providerType !== 'mta') break;
-				// Bounded by the fixed message-type enum (campaign, transactional,
-				// automation); take one spare row so a malformed duplicate still cannot
-				// turn the verified-domain transition into an unbounded scan.
-				const routes = await ctx.db.query('providerRoutes').take(4);
-				const relayKinds = new Set(
-					routes
-						.filter((route) => route.deliverabilityFallback?.isEnabled)
-						.map((route) => route.deliverabilityFallback?.relayProviderType)
-				);
+				// ONE reading of "which relay is the fallback configured to use",
+				// shared with the catch-up drain in `providerRoutes.ts` — the two
+				// halves of "every domain gets an identity exactly once" must not
+				// disagree about which relay that identity is for.
+				const relayKinds = new Set(await enabledFallbackRelayKinds(ctx));
 				// One line per relay kind that provisions an identity on OUR domain
 				// while another provider stays primary. Both are scheduled, not
 				// inline: a provider outage must never roll back the domain's
