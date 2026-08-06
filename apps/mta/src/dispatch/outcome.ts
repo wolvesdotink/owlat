@@ -21,6 +21,7 @@ import {
 	pressureAdjustedDelayMs,
 } from '../intelligence/warmingProviderPolicy.js';
 import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
+import { classifiedResponseEffect } from './outcomeClassifiedResponse.js';
 
 export { classifyResult } from './outcomeClassification.js';
 export type { DispatchOutcome } from './outcomeClassification.js';
@@ -262,6 +263,9 @@ function reduceDeferred(
 					annotation: outcome.classification.annotation,
 				},
 			},
+			// THE DENOMINATOR of the ramp's block clause: an observation about what the
+			// receiver said, and no send-state change. See `outcomeClassifiedResponse.ts`.
+			classifiedResponseEffect(outcome, ctx),
 		],
 		defer: {
 			delayMs: deferDelayMs,
@@ -334,6 +338,9 @@ function reduceNonRetryableDeferral(
 					timestamp: Date.now(),
 				},
 			},
+			// THE NUMERATOR, beside the bounce rather than inside it: the bounce moves
+			// the send to a terminal status, this one moves a counter.
+			classifiedResponseEffect(outcome, ctx),
 			{ kind: 'suppress_recipient', address: job.to, reason: 'hard_bounce' },
 		],
 		defer: undefined,
