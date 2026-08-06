@@ -43,7 +43,7 @@ export default defineNuxtConfig({
 		// Variable wght axis required: the design system's weight-based emphasis
 		// uses intermediate instances (450/550) that a static 400/500/600/700
 		// subset would snap to the nearest hundred.
-		families: [{ name: 'Instrument Sans', weights: ['400 700'] }],
+		families: [{ name: 'Figtree', weights: ['300 900'] }],
 	},
 
 	security: {
@@ -216,7 +216,7 @@ export default defineNuxtConfig({
 	colorMode: {
 		classSuffix: '',
 		preference: 'system',
-		fallback: 'dark',
+		fallback: 'light',
 		storageKey: 'owlat-theme',
 	},
 

@@ -1,6 +1,6 @@
-/* Dark Mode (default) */
-:root,
-:root.dark {
+/* Dark Mode Overrides (light is the default — see light.css) */
+:root.dark,
+.dark {
 	/* Fluid Functionalism surface ladder — dark.
 	   Eight bg/shadow pairs; each nested layer lifts one step off its substrate.
 	   Dark elevation = lighter background + inset top highlight + inset ring +
