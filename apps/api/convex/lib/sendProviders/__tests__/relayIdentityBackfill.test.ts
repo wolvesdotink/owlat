@@ -46,6 +46,13 @@ function backfill(kind: string, throws = false): RelayIdentityBackfill {
 	};
 }
 
+/**
+ * The drain's intent. Every case here is about the SWALLOWING, which both
+ * intents share; the pair itself is pinned end to end in
+ * `domains/__tests__/relayIdentityForwardPath.test.ts`.
+ */
+const DRAIN = { reprovision: false } as const;
+
 describe('ensureRelayIdentities reports what it swallowed', () => {
 	it('names the kind that threw and keeps going', async () => {
 		// A ONE-KIND FAILURE MUST NOT COST THE OTHER. The loop exists because a
@@ -55,7 +62,7 @@ describe('ensureRelayIdentities reports what it swallowed', () => {
 		const bad = backfill('ses', true);
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		const outcome = await ensureRelayIdentities(ctx, ownDomain(), [bad, good]);
+		const outcome = await ensureRelayIdentities(ctx, ownDomain(), [bad, good], DRAIN);
 
 		expect(outcome).toEqual({ attempted: 2, failedKinds: ['ses'] });
 		expect(good.ensureRelayIdentity).toHaveBeenCalledTimes(1);
@@ -70,10 +77,12 @@ describe('ensureRelayIdentities reports what it swallowed', () => {
 	it('reports a wholly failed page rather than an empty success', async () => {
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		const outcome = await ensureRelayIdentities(ctx, ownDomain(), [
-			backfill('ses', true),
-			backfill('mandrill', true),
-		]);
+		const outcome = await ensureRelayIdentities(
+			ctx,
+			ownDomain(),
+			[backfill('ses', true), backfill('mandrill', true)],
+			DRAIN
+		);
 
 		expect(outcome).toEqual({ attempted: 2, failedKinds: ['ses', 'mandrill'] });
 		logged.mockRestore();
@@ -82,7 +91,7 @@ describe('ensureRelayIdentities reports what it swallowed', () => {
 	it('never throws, so the caller’s transaction survives', async () => {
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		await expect(
-			ensureRelayIdentities(ctx, ownDomain(), [backfill('ses', true)])
+			ensureRelayIdentities(ctx, ownDomain(), [backfill('ses', true)], DRAIN)
 		).resolves.toBeDefined();
 		logged.mockRestore();
 	});
@@ -93,7 +102,7 @@ describe('ensureRelayIdentities reports what it swallowed', () => {
 		// not the same fact as zero failures out of many.
 		const only = backfill('ses');
 
-		expect(await ensureRelayIdentities(ctx, ownDomain('ses'), [only])).toEqual({
+		expect(await ensureRelayIdentities(ctx, ownDomain('ses'), [only], DRAIN)).toEqual({
 			attempted: 0,
 			failedKinds: [],
 		});

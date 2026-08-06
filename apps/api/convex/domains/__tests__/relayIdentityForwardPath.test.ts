@@ -313,17 +313,21 @@ describe('the two kinds the if-chain named keep their shipped behaviour', () => 
 		expect(scheduled).toEqual([{ name: 'domains/mandrillRelay:provision', args: { domainId } }]);
 	});
 
-	it('does not re-register an SES identity the domain already carries', async () => {
-		// THE ONE DELIBERATE DELTA of routing this site through the adapter. The
-		// if-chain scheduled `sesRelay.provision` unconditionally, so a domain that
-		// dropped to `pending` and re-verified was re-registered at SES and had its
-		// DKIM tokens (and the DNS records the operator had published) rewritten.
-		// `ensureRelayIdentity` owns the "already have one?" check — the drain has
-		// asked it since P0.3, and the shipped effect's own comment instructed this
-		// conversion — so the two halves now cover every domain EXACTLY once rather
-		// than merely at least once. The cost is written out on the adapter method:
-		// an identity deleted on the SES side while this row survives is no longer
-		// repairable by taking the domain out of `verified` and back.
+	it('re-registers an SES identity the domain already carries — the repair lever', async () => {
+		// THE FORWARD PATH RE-REGISTERS; THE DRAIN CONVERGES. Both halves call the
+		// same `ensureRelayIdentity` since P0.4, and the thing they do NOT agree on
+		// travels with the call (`EnsureRelayIdentityOptions`): the drain walks
+		// every verified domain on every page and must skip the ones already done,
+		// while this edge fires only on a real `→ verified` transition — which an
+		// operator reaches by taking the domain out of `verified` and putting it
+		// back.
+		//
+		// That deliberate act is their ONLY lever for re-registering an identity
+		// deleted or disabled on the AWS side while our sibling row survived:
+		// nothing in the stored state distinguishes that from "waiting for the
+		// CNAMEs", so the drain cannot detect it, and no other surface re-registers.
+		// It shipped unconditional and it stays unconditional — a wave the plan
+		// requires to be behaviour-neutral is not where a repair path disappears.
 		const t = convexTest(schema, modules);
 		await seedRoute(t, 'ses');
 		const domainId = await seedPendingDomain(t, 'mta');
@@ -338,6 +342,40 @@ describe('the two kinds the if-chain named keep their shipped behaviour', () => 
 		});
 
 		await verify(t, domainId);
+
+		expect(await scheduledNames(t)).toContain('domains/sesRelay:provision');
+	});
+
+	it('leaves an identity the DRAIN already provisioned alone', async () => {
+		// The other side of the same option, asserted through the drain so the two
+		// intents are pinned against one implementation rather than one of them
+		// being taken on trust from a docblock.
+		const t = convexTest(schema, modules);
+		await seedRoute(t, 'ses');
+		// Seeded straight into `verified` — the drain's own subject. Reaching that
+		// state through `verify()` would fire the forward path first, and this case
+		// is about the drain alone.
+		await t.run(async (ctx) => {
+			const id = await ctx.db.insert('domains', {
+				domain: 'drained.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: { dkim: [] },
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId: id,
+				dkimTokens: ['one', 'two', 'three'],
+				verificationToken: 'already-registered',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			paginationOpts: { cursor: null, numItems: 10 },
+		});
 
 		expect(await scheduledNames(t)).not.toContain('domains/sesRelay:provision');
 	});

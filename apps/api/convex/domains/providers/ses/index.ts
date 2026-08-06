@@ -166,31 +166,28 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	 * of whichever kind the route actually named (the seams plan's D2 —
 	 * capabilities, not identity).
 	 *
-	 * ONE DELIBERATE DELTA FOR THE FORWARD PATH, recorded here rather than left to
-	 * be discovered. The lifecycle's `provision_relay_identity_if_enabled` effect
-	 * used to schedule `sesRelay.provision` UNCONDITIONALLY on every real
-	 * `→ verified` edge; the drain has skipped existing rows since P0.3, and the
-	 * shipped effect's own comment instructed this conversion ("P0.4: convert to
-	 * providerFor(kind).ensureRelayIdentity?.(ctx, domain)"). What the two halves
-	 * now share is "exactly once", not "at least once".
+	 * THE EXISTENCE CHECK IS CONDITIONAL ON THE CALLER'S INTENT, not on this
+	 * adapter's taste — see {@link EnsureRelayIdentityOptions}. The drain asks
+	 * `reprovision: false` and an existing row ends the call; the lifecycle's
+	 * `→ verified` edge asks `reprovision: true` and re-registers regardless,
+	 * exactly as the effect it replaced did. That edge is the operator's only
+	 * repair lever for an identity deleted or disabled on the AWS side while this
+	 * row survived, and nothing in the stored state can detect that case for
+	 * them: `verificationStatusFields` collapses every non-`Success` status to
+	 * `Pending`, so a check clever enough to notice would also re-register every
+	 * domain still waiting for its CNAMEs, on every drain page.
 	 *
-	 * What that costs: a domain whose SES identity is deleted or disabled on the
-	 * AWS side while this row survives used to be repairable by taking the domain
-	 * out of `verified` and back (the effect re-registered it); now neither half
-	 * will. It is not repairable by making the check cleverer either — nothing in
-	 * the stored state distinguishes "deleted at the provider" from "waiting for
-	 * the operator to publish the CNAMEs", because `verificationStatusFields`
-	 * collapses every non-`Success` status to `Pending`, and re-provisioning on
-	 * that would re-register every pending domain on every drain page. Repair
-	 * needs a signal the sibling does not carry; until it exists the operator's
-	 * lever is deleting the sibling row.
+	 * Re-registering is safe to repeat: `sesRelay.provision` re-asks SES for the
+	 * identity's tokens and upserts the sibling through `storeProvisioning`.
 	 */
-	async ensureRelayIdentity(ctx, domain) {
-		const existing = await ctx.db
-			.query('sendingDomainSesIdentities')
-			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-			.first();
-		if (existing) return;
+	async ensureRelayIdentity(ctx, domain, options) {
+		if (!options.reprovision) {
+			const existing = await ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+				.first();
+			if (existing) return;
+		}
 		await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, { domainId: domain._id });
 	},
 

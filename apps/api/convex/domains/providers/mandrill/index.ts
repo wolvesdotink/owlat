@@ -125,10 +125,18 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	 * `./persistence.ts`), and a `domains` row whose name is not already
 	 * lowercase — nothing in the schema forces it — would otherwise miss its own
 	 * identity here and be re-provisioned on every drain page.
+	 *
+	 * The existence read is SKIPPED for a caller asking `reprovision: true` (the
+	 * lifecycle's `→ verified` edge, which shipped unconditional and is the
+	 * operator's repair lever for an identity removed at the provider) — see
+	 * {@link EnsureRelayIdentityOptions}. Repeating is safe: `mandrillRelay.provision`
+	 * re-registers and `storeIdentity` upserts.
 	 */
-	async ensureRelayIdentity(ctx, domain) {
-		const organizationId = await getSingletonOrganizationId(ctx);
-		if (await loadMandrillRow(ctx, organizationId, domain.domain.toLowerCase())) return;
+	async ensureRelayIdentity(ctx, domain, options) {
+		if (!options.reprovision) {
+			const organizationId = await getSingletonOrganizationId(ctx);
+			if (await loadMandrillRow(ctx, organizationId, domain.domain.toLowerCase())) return;
+		}
 		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
 			domainId: domain._id,
 		});

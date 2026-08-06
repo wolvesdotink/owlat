@@ -300,16 +300,31 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 		// commits as a success, schedules its successor and reports the drain
 		// complete having provisioned nothing, and the only later symptom is the
 		// relay refusing those From domains once the breaker opens.
+		//
+		// COUNTED, NOT ESTIMATED. The numbers are the domains that actually failed
+		// and the per-kind tally, never the page size: a page holds every verified
+		// domain, most of which the own-MTA gate skips without attempting anything,
+		// so reporting `page.page.length` would tell an operator chasing a relay
+		// refusal that a 99%-successful page failed wholesale.
+		//
+		// `reprovision: false` — the drain converges. It re-runs whenever an
+		// operator touches the fallback and walks every verified domain each time,
+		// so a domain that already holds an identity is done; re-registering it
+		// would re-issue a provider call per domain per page. The forward path is
+		// the half that repairs (`reprovision: true`); see
+		// `EnsureRelayIdentityOptions`.
 		const failedByKind = new Map<string, number>();
+		let failedDomains = 0;
 		for (const domain of page.page) {
-			const outcome = await ensureRelayIdentities(ctx, domain, backfills);
+			const outcome = await ensureRelayIdentities(ctx, domain, backfills, { reprovision: false });
+			if (outcome.failedKinds.length > 0) failedDomains += 1;
 			for (const kind of outcome.failedKinds) {
 				failedByKind.set(kind, (failedByKind.get(kind) ?? 0) + 1);
 			}
 		}
 		if (failedByKind.size > 0) {
 			logError(
-				`[Relay identity] Drain page left ${page.page.length} domains partly unprovisioned: ` +
+				`[Relay identity] Drain page left ${failedDomains} domain(s) unprovisioned: ` +
 					[...failedByKind].map(([kind, count]) => `${kind}=${count}`).join(', ')
 			);
 		}

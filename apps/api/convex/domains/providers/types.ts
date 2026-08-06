@@ -149,6 +149,38 @@ export type ProviderVerificationStatusFields = {
 	readonly sesStatus?: string;
 };
 
+/**
+ * WHY the caller is asking for a relay identity — the one thing the two
+ * provisioning halves do NOT agree on.
+ *
+ * They agree on everything else (which relays, which domains, schedule-never-
+ * call), which is why they share one implementation since P0.4. They do not
+ * agree on what "ensure" means when a sibling row already exists:
+ *
+ *  - the CATCH-UP DRAIN (`providerRoutes.provisionDeliverabilityRelayBatch`)
+ *    walks every verified domain on every page and must be cheap and
+ *    convergent: a domain that already has a row is done, and re-registering it
+ *    would re-issue a provider call per domain per drain. `reprovision: false`.
+ *  - the FORWARD PATH (`domains/lifecycle.ts`'s
+ *    `provision_relay_identity_if_enabled`) fires on a real `→ verified` edge,
+ *    which an operator can only reach by taking the domain out of `verified`
+ *    and putting it back. That deliberate act is the ONLY repair lever for an
+ *    identity deleted or disabled at the provider while our sibling row
+ *    survived — nothing in the stored state distinguishes that from "waiting
+ *    for the CNAMEs", so the drain cannot detect it and no other surface
+ *    re-registers. It shipped unconditional and it stays unconditional:
+ *    `reprovision: true`.
+ *
+ * Required rather than optional, and a named field rather than a bare boolean,
+ * because the failure it prevents is silent in both directions — a drain that
+ * re-provisions hammers the provider, a forward path that does not quietly
+ * removes the repair lever, and neither shows up in a test that only checks
+ * that a row exists afterwards.
+ */
+export type EnsureRelayIdentityOptions = {
+	readonly reprovision: boolean;
+};
+
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
 export interface SendingDomainProviderModule<K extends SendingDomainProviderKind> {
@@ -313,8 +345,17 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * for {@link relayDomainVerified}, because a kind that promises a proof and
 	 * never provisions the identity that proof is read from reports every domain
 	 * unverified and its fallback never relays.
+	 *
+	 * The CALLER'S INTENT travels with the call — see
+	 * {@link EnsureRelayIdentityOptions}. The two halves genuinely want different
+	 * things from "ensure", and the parameter is what keeps sharing one
+	 * implementation from silently picking one of them.
 	 */
-	ensureRelayIdentity?(ctx: MutationCtx, domain: Doc<'domains'>): Promise<void>;
+	ensureRelayIdentity?(
+		ctx: MutationCtx,
+		domain: Doc<'domains'>,
+		options: EnsureRelayIdentityOptions
+	): Promise<void>;
 
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 
