@@ -636,20 +636,21 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 	});
 
 	/**
-	 * THE DIVERGENCE THIS SUITE DOES NOT CLOSE, PINNED SO IT CANNOT GO SILENT.
+	 * THE DIVERGENCE THAT USED TO BE PINNED HERE, PINNED SHUT (#510).
 	 *
-	 * One rule over two spans: the evaluator, the constants and the complaint
-	 * line agree, and the own arm is still summarized over SEVEN days here and
-	 * ONE there. On a standalone cell — no relay anywhere, so the predicate this
-	 * PR fixes is not even in play — a hard-bounce spike four days old is inside
-	 * the screen's window and outside the controller's, and the screen renders a
-	 * red gate-1 fail on a cell the ramp is holding for want of data.
+	 * The fixture is the issue's, unchanged: a standalone cell — no relay
+	 * anywhere, so the evaluator choice is not in play — clean today and spiking
+	 * four days ago. The spike is inside the screen's seven-day window and
+	 * outside the controller's day, and the screen used to render a red gate-1
+	 * fail on a cell the ramp was holding for want of data.
 	 *
-	 * Asserted, not merely documented, because #510 is a decision about which
-	 * span the screen REPORTS: whoever takes it has to delete this test, which is
-	 * the moment the module docblock's disclosure has to go with it.
+	 * Now both readers grade both arms over the controller's span, so the VERDICT
+	 * and the DECIDING GATE are the same object on both sides — while the arm the
+	 * card renders is still the seven days plan D2/D5 asks for, spike included.
+	 * That split is the whole fix, so it is asserted in one test: same verdict,
+	 * different reported counters, and the query naming both spans on the wire.
 	 */
-	it('still grades the own arm over a wider span than the controller (#510)', async () => {
+	it('reports the controller’s verdict on a four-day-old spike, over the week it renders (#510)', async () => {
 		const t = convexTest(schema, modules);
 		await seedRampCell(t, { organizationId: ORG });
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
@@ -662,32 +663,32 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		});
 
 		const controller = await controllerEvaluation(t);
+		const dashboard = await dashboardOf(t);
 		const view = await dashboardCellView(t);
 		const gateOf = (gates: readonly RampGateResult[]): RampGateResult => {
 			const gate = gates.find((result) => result.gate === 'hard_bounce');
 			if (gate === undefined) throw new Error('no hard-bounce gate');
 			return gate;
 		};
-		// The spike is four days back: the controller's 24h window never sees it.
+		// The spike is four days back: neither reader's evaluation window sees it.
 		expect(gateOf(controller.perGate)).toMatchObject({
 			status: 'insufficient_data',
+			reason: 'baseline_sample_below_floor',
 			measurement: { ownRate: 0, ownSample: 5000 },
 		});
 		expect(controller.verdict).toBe('insufficient_data');
-		// The screen sees both days and fails the cell on the absolute clause.
-		expect(gateOf(view.gates)).toMatchObject({
-			status: 'fail',
-			reason: 'absolute_threshold_breached',
-			measurement: { ownRate: 0.1, ownSample: 10_000 },
-		});
-		expect(view.verdict).toBe('fail');
-		// The EVALUATOR still agreed — this is the span, and nothing above it.
-		// Gate 3 grades `medium` on both sides only where the trailing twin ran.
-		const complaintOf = (gates: readonly RampGateResult[]): RampGateResult => {
-			const gate = gates.find((result) => result.gate === 'complaint');
-			if (gate === undefined) throw new Error('no complaint gate');
-			return gate;
-		};
-		expect(complaintOf(view.gates).confidence).toBe(complaintOf(controller.perGate).confidence);
+		// THE WHOLE POINT: the same gate, reason and numbers on the screen.
+		expect(gateOf(view.gates)).toMatchObject(gateOf(controller.perGate));
+		expect(view.verdict).toBe(controller.verdict);
+		// EVERY gate, not just the one that decides: a second arm's span could
+		// only diverge on a gate this fixture does not exercise.
+		expect(view.gates).toMatchObject(controller.perGate.map((gate) => ({ ...gate })));
+		// AND THE SPIKE IS STILL REPORTED. The arm the card renders covers the
+		// week, so an operator sees the 1000 bounces the verdict did not decide on
+		// — which is why the query names the two spans separately.
+		expect(view.own.sent).toBe(10_000);
+		expect(view.own.hardBounced).toBe(1000);
+		expect(dashboard.decisionWindowStart).toBeGreaterThan(dashboard.windowStart);
+		expect(dashboard.decisionWindowEnd).toBeLessThanOrEqual(dashboard.windowEnd);
 	});
 });

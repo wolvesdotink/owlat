@@ -59,13 +59,13 @@ export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * MS_PER_DAY;
  * about which actuator a cell is on.
  *
  * EVERY READER THAT PICKS AN EVALUATOR ANCHORS ON THIS CONSTANT, including the
- * ones whose own window is wider. The delivery dashboard summarizes seven days,
- * and it still chooses the cell's evaluator over THIS span — a screen that chose
- * over its own would keep the two-armed one for six days after the relay went
- * quiet while the cron had already switched, which is the same divergence one
- * window over. A reader asking about a DIFFERENT ROW SET (the same screen's
- * trend, over the days its chart plots) is not choosing an evaluator and does
- * not anchor here.
+ * ones whose own window is wider. The delivery dashboard REPORTS seven days, and
+ * it both chooses the cell's evaluator and grades both arms over THIS span — a
+ * screen that chose over its own would keep the two-armed evaluator for six days
+ * after the relay went quiet while the cron had already switched, and one that
+ * GRADED over its own reached verdicts the cron never reached (#510). A reader
+ * asking about a DIFFERENT ROW SET (the same screen's trend, over the days its
+ * chart plots) is not choosing an evaluator and does not anchor here.
  */
 export const RAMP_REFERENCE_ARM_WINDOW_MS = RAMP_AIMD.evaluationWindowMs;
 
@@ -159,10 +159,11 @@ export function withReferenceArm(
  * trend plots a relay series when the relay carried something inside the days
  * the chart plots (`deliverabilityDashboard.ts`), and re-scoping that one to 24h
  * would erase the very days that explain the absent arm. `loadCellInput` states
- * the rule inline over the summary it already holds and is pinned against this
- * one by the agreement suite in `delivery/__tests__/seedGateWiring.test.ts`,
- * which pins the chart's own scoping beside it; it does not import from here
- * only because that file sits exactly on the 500-LOC ratchet cap.
+ * the rule inline over the summary it already holds — as the dashboard now does
+ * too, asking it of the very summary it grades — and is pinned against this one
+ * by the agreement suite in `delivery/__tests__/seedGateWiring.test.ts`, which
+ * pins the chart's own scoping beside it; it does not import from here only
+ * because that file sits exactly on the 500-LOC ratchet cap.
  */
 export function hasReferenceArmOutcomes(reference: TransportOutcomeSummary): boolean {
 	return reference.sent > 0;

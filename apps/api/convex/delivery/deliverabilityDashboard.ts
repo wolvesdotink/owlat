@@ -7,32 +7,36 @@
  * worth. It is READ-ONLY by construction — there is no mutation in this module
  * and there will not be one; P3-6 adds the control surface separately.
  *
- * SHAPE. One index read per (cell, arm) over the widest window any sub-view
- * needs (the evaluation window, the trailing baseline, the daily trend), and
- * every number derived from those rows by the ONE summarizer (ADR-0042 / D5).
+ * SHAPE. One index read per (cell, arm) over the widest window any sub-view needs
+ * (the deciding span, the reported window, the trailing baseline, the daily
+ * trend), every number derived from those rows by the ONE summarizer (ADR-0042).
  *
- * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY. One RULE over two
- * SPANS. The rule is shared and cannot differ: which evaluator grades the cell,
- * which constants it grades on and which complaint line applies are read off one
- * `resolveRampDegradation` fold on both sides. The spans are not: this screen's
- * evaluation window is SEVEN days (`DASHBOARD_WINDOW_DAYS`, floored to UTC days)
- * and the controller's is ONE (`RAMP_AIMD.evaluationWindowMs`, the cadence its
- * cron ticks at), and the trailing baseline is `30d..7d` on both sides but
- * floored to UTC days here and anchored on the tick's clock there.
+ * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY: THE VERDICT. One rule
+ * over one span. The rule is shared — which evaluator grades the cell, which
+ * constants it grades on and which complaint line applies are read off one
+ * `resolveRampDegradation` fold on both sides — and BOTH ARMS now reach that
+ * evaluator summarized over the CONTROLLER'S evaluation window
+ * (`RAMP_AIMD.evaluationWindowMs`, the cadence its cron ticks at), anchored on
+ * the same clock. A hard-bounce spike four days old is outside that span on both
+ * sides, so the screen no longer renders a red gate-1 fail on a cell the ramp is
+ * holding for want of data (#510).
  *
- * WHICH LEAVES THE VERDICT AND THE DECIDING GATE ABLE TO DIFFER, and this
- * module does not promise otherwise. A hard-bounce spike four days old is inside
- * this screen's window and outside the controller's, so the screen renders a red
- * gate-1 fail on a cell the ramp is holding for want of data. The screen is the
- * WIDER reader and therefore the more pessimistic one on a stale spike — and the
- * more forgiving one on a fresh spike that six clean days dilute. Tracked as
- * #510: closing it is a decision about which span this screen REPORTS, not a
- * wiring fix.
+ * THE SEVEN DAYS DID NOT GO AWAY — THEY STOPPED DECIDING. `DASHBOARD_WINDOW_DAYS`
+ * is still what the arm table, the trend, the sample counts and the confidence
+ * cap are reported over (plan D2/D5); the harm in #510 was a VERDICT that
+ * disagreed, not a column that was wide. So each arm is summarized TWICE out of
+ * the one index read it already costs — the deciding span for the evaluator, the
+ * reported window for the cards — and BOTH ARE NAMED ON THE WIRE
+ * (`windowStart`/`windowEnd` beside `decisionWindowStart`/`decisionWindowEnd`),
+ * so the screen labels every number with the span it is over.
  *
- * AND "THE SAME CONSTANTS" IS NOT "THE SAME INPUTS". `ownTrailingBaseline` is an
- * input, built here over `BASELINE_WIDTH_DAYS` of UTC days and there over
- * `30d..7d` of the tick's clock — the same rule, again over spans that differ by
- * up to a day at each edge.
+ * WHAT STILL DIFFERS, AND IT IS NOT WHAT THE WINDOW'S OWN GATES DECIDE ON.
+ * `ownTrailingBaseline` is built here over `BASELINE_WIDTH_DAYS` of UTC days and
+ * there over `30d..7d` of the tick's clock, and the engagement floor's RECENT arm
+ * is this screen's seven UTC days against the controller's `[now - 7d, now)`.
+ * Same rule, spans that differ by up to a day at each edge: enough to move the
+ * clauses that compare a cell against its OWN past where the baseline is thin at
+ * exactly that edge, and never enough to grade the two arms on different rows.
  *
  * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
  * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
@@ -52,28 +56,24 @@
  * verdicts on it. So this module resolves the cell's degradation the way
  * `loadCellInput` does — the same `hasReferenceArmOutcomes` predicate, the same
  * `resolveRampDegradation` fold — and the choices that fall out of it (which
- * evaluator runs, which constants it runs on, which complaint line applies) are
- * the fold's answers here as they are there. `referenceTransportId` stays
- * configuration, because NAMING the second arm is the only question it answers,
- * and `isRelayConfigured` travels beside it for the one other configuration
- * question the screen asks: whether "connect a relay you already pay for" is
- * advice this deployment can act on. Neither of them frames the screen.
+ * evaluator runs, which constants, which complaint line) are the fold's answers
+ * here as they are there. `referenceTransportId` stays configuration, because
+ * NAMING the second arm is all it answers, and `isRelayConfigured` travels beside
+ * it for the one other configuration question the screen asks: whether "connect a
+ * relay you already pay for" is advice this deployment can act on.
  *
  * ONE RULE IS NOT ENOUGH — IT HAS TO BE ASKED OVER THE SAME SPAN. The predicate
- * is asked here over `RAMP_REFERENCE_ARM_WINDOW_MS`, the controller's span, and
- * NOT over this screen's seven-day window. Asked over seven days it would answer
- * "this cell has a relay" for six days after the relay went quiet, while the
- * cron had already moved the cell onto the trailing-baseline twin — the same
- * divergence one window over rather than closed. So the reference arm is
- * summarized TWICE out of the one index read: once over the controller's span,
- * which decides the evaluator, and once over the evaluation window, which is the
- * column the screen renders beside the own arm.
+ * is asked here OF THE SAME SUMMARY the evaluator is given, exactly as
+ * `loadCellInput` asks it, so "does this cell have a relay?" and "what did that
+ * relay do?" can never answer over different days. Asked over seven days it
+ * would keep the two-armed evaluator on screen for six days after the relay went
+ * quiet, while the cron had already moved the cell onto the trailing twin.
  *
  * WHICH IS WHY `reference` IS NULL ON A CELL WHOSE RELAY WENT QUIET four days
- * ago even though the window can still see the traffic: the arm is what the
- * evaluator was given, and it was given none. The days the relay did carry are
- * not lost — the TREND keeps plotting them, because a chart's predicate belongs
- * to the chart's own rows (see the `buildDashboardTrend` call below).
+ * ago even though the reported window can still see the traffic: the arm is what
+ * the evaluator was given, and it was given none. The days the relay did carry
+ * are not lost — the TREND keeps plotting them, because a chart's predicate
+ * belongs to the chart's own rows (see the `buildDashboardTrend` call below).
  */
 
 import {
@@ -99,6 +99,7 @@ import {
 	type TransportOutcomeSummary,
 } from '../analytics/transportOutcomeSummary';
 import { relayConfiguration } from './relayConfiguration';
+import { RAMP_AIMD } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
 import {
@@ -111,7 +112,6 @@ import {
 	hasReferenceArmOutcomes,
 	loadRampDeploymentPresence,
 	withReferenceArm,
-	RAMP_REFERENCE_ARM_WINDOW_MS,
 } from './rampIntegrationPresence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import type { RampGateResult } from './ramp/gateTypes';
@@ -171,6 +171,11 @@ async function readRouteStatesByProvider(
  * floor contracts for it, and the trailing-baseline evaluator's relative clauses
  * (gate 1's 1.5x rule, gate 3's unsubscribe proxy) compare against it. A young
  * cell simply has no baseline, and both hold rather than failing.
+ *
+ * ON UTC DAYS, WHERE THE CONTROLLER'S IS ON THE TICK'S CLOCK — the one span the
+ * two readers still floor differently (see the module note). It stays that way
+ * because the baseline's DISJOINTNESS from the reported window is what
+ * `dashboardWindow` makes true by construction.
  */
 function trailingBaselineFor(
 	ownBuckets: readonly TransportOutcomeBucket[],
@@ -182,11 +187,20 @@ function trailingBaselineFor(
 	});
 }
 
-/** Gate 4 (engagement) for one cell, over the same rows every other view uses. */
+/**
+ * Gate 4 (engagement) for one cell, over the same rows every other view uses.
+ *
+ * BOTH SPANS ARE ARGUMENTS, because this gate reads both: the concurrent RATIO
+ * compares the arms over the deciding window, the slow-poison FLOOR compares a
+ * RECENT window against the prior baseline. One summary for both — which this
+ * screen passed while it graded everything over seven days — hands the ratio a
+ * week where the cron gives it a day.
+ */
 function engagementGateFor(input: {
 	readonly cell: DeliverabilityCell;
 	readonly own: TransportOutcomeSummary;
 	readonly reference: TransportOutcomeSummary | null;
+	readonly ownRecent: TransportOutcomeSummary;
 	readonly ownPriorBaseline: TransportOutcomeSummary;
 	readonly now: number;
 }): RampGateResult {
@@ -194,7 +208,7 @@ function engagementGateFor(input: {
 		cell: input.cell,
 		own: input.own,
 		reference: input.reference,
-		ownRecent: input.own,
+		ownRecent: input.ownRecent,
 		ownPriorBaseline: input.ownPriorBaseline,
 		now: input.now,
 	});
@@ -202,8 +216,22 @@ function engagementGateFor(input: {
 
 export interface DeliverabilityDashboard {
 	readonly generatedAt: number;
+	/**
+	 * THE REPORTED WINDOW — inclusive start, exclusive end, `DASHBOARD_WINDOW_DAYS`
+	 * of UTC days. Every COUNTER and RATE on a cell (`own`, `reference`, the trend,
+	 * the confidence cap) is summarized over exactly this span, and no verdict is.
+	 */
 	readonly windowStart: number;
 	readonly windowEnd: number;
+	/**
+	 * THE DECIDING SPAN — the controller's own evaluation window, and what every
+	 * `verdict`, `failedGate` and per-gate `measurement` below was reached over.
+	 * Outcomes are stored in DAILY buckets, so the rows behind those verdicts are
+	 * the UTC days this span touches, exactly as they are in the cron. Reported so
+	 * the screen can name it beside the window heading; nothing decides on it here.
+	 */
+	readonly decisionWindowStart: number;
+	readonly decisionWindowEnd: number;
 	/**
 	 * WHAT TO CALL THE SECOND ARM, and nothing else. It is the id of the single
 	 * configured relay kind, and `null` for TWO configurations that have nothing
@@ -249,18 +277,16 @@ export interface DeliverabilityDashboard {
 // the caller's own organization — no credentials, no recipient identities, and
 // no cross-tenant reach (org id comes from the session, not from args).
 export const getDeliverabilityDashboard = authedQuery({
-	// No arguments AT ALL, on purpose. `dashboardWindow` fixes the evaluation
-	// window at `DASHBOARD_WINDOW_DAYS`, which is NOT the controller's cadence —
-	// that is one day, and the two readers can reach different verdicts because of
-	// it (see the module note and #510). A caller-chosen window on top of that
-	// would silently change what every gate verdict on this screen means.
+	// No arguments AT ALL, on purpose: the REPORTED window is fixed at
+	// `DASHBOARD_WINDOW_DAYS` and the DECIDING span at the controller's cadence.
+	// A caller-chosen window would silently change what every number here is over,
+	// and a caller-chosen deciding span what its verdicts mean (#510).
 	args: {},
 	handler: async (ctx): Promise<DeliverabilityDashboard> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
 		// The clock is read HERE, in the shell, and passed down: every decision
-		// function below it is pure (plan D15). There is deliberately no `now`
-		// argument — a caller-supplied clock on a public read is a way to make a
-		// stale window look fresh.
+		// function below it is pure (plan D15). There is deliberately no `now` arg —
+		// a caller-supplied clock on a public read makes a stale window look fresh.
 		const now = Date.now();
 		const window = dashboardWindow(now);
 		// BOTH READINGS OF THE RELAY LIST, from ONE scan (`relayConfiguration`), and
@@ -272,30 +298,32 @@ export const getDeliverabilityDashboard = authedQuery({
 		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
 		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
 		// THE DEPLOYMENT HALF OF THE SUBSTITUTION MAP, read ONCE for the whole grid
-		// through the reader the controller's tick uses. Every entry but the
-		// reference arm is deployment-level; the reference arm is completed per cell
-		// below, from that cell's own rows.
+		// through the reader the controller's tick uses. Every entry but the reference
+		// arm is deployment-level; that one is completed per cell below, from its rows.
 		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
 		// there seed mailboxes at all), not a per-cell one, and it only lowers
 		// confidence — a deployment with none is supported, never nagged (plan D2).
 		// ONE row through the seed index, not a placement window: the screen needs
-		// the boolean, and the roll-up it used to buy it from scans the probe
-		// index, expands one observation per probe and fans out a `db.get` per
-		// account — all of it discarded.
+		// the boolean, and the roll-up it used to buy it from scans the probe index,
+		// expands one observation per probe and fans out a `db.get` per account.
 		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
 		// GATE 5'S EVIDENCE, from the SAME reader the controller uses and read ONCE
 		// for the whole grid rather than once per cell — the probe ledger read is
 		// org-wide and every cell takes its own slice out of the index. A deployment
 		// with no probes gets an empty index and every cell's gate 5 holds, which is
-		// what it should say: the screen must report the verdict the controller
-		// would reach, not a friendlier one (ADR-0042).
+		// what it should say: the screen reports the verdict the controller would
+		// reach, not a friendlier one (ADR-0042).
 		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
-		const evaluationWindow = { since: window.sinceDay, until: window.untilDay };
-		// THE CONTROLLER'S SPAN, anchored on the same clock it anchors on, so the
-		// evaluator predicate below covers the days the cron's covers and no others.
-		// Cell-independent, so it is derived once rather than per cell.
-		const referenceArmWindow = { since: now - RAMP_REFERENCE_ARM_WINDOW_MS };
+		// THE REPORTED WINDOW: the seven UTC days every counter, rate and trend point
+		// on this screen is summarized over (plan D2/D5). Nothing is GRADED over it.
+		const reportedWindow = { since: window.sinceDay, until: window.untilDay };
+		// THE DECIDING SPAN: the controller's own evaluation window, anchored on the
+		// same clock its tick anchors on, so both arms reach the evaluator over the
+		// days the cron's arms cover and no others (#510). It answers the reference
+		// arm's PRESENCE predicate too — `RAMP_REFERENCE_ARM_WINDOW_MS` is pinned
+		// equal to this constant. Cell-independent, so it is derived once.
+		const decisionWindow = { since: now - RAMP_AIMD.evaluationWindowMs };
 		// THE SAME LOWER BOUND THE CONTROLLER READS FROM, through the same helper:
 		// the screen's own 30-day baseline bound is derived from tomorrow's UTC
 		// boundary and the controller's from `now`, and gate 2's instrument check
@@ -329,21 +357,26 @@ export const getDeliverabilityDashboard = authedQuery({
 				...readWindow,
 			});
 
-			const own = summarizeTransportOutcomeBuckets(ownBuckets, evaluationWindow);
+			// TWO SUMMARIES PER ARM, ONE INDEX READ EACH: the DECIDING pair the
+			// evaluator grades and the REPORTED pair the cards render. The second
+			// summary costs nothing the read has not already paid for, and it is the
+			// whole of #510's fix — the screen used to hand the evaluator the reported
+			// pair, and so reached verdicts the cron never reached.
+			const decisionOwn = summarizeTransportOutcomeBuckets(ownBuckets, decisionWindow);
+			const reportedOwn = summarizeTransportOutcomeBuckets(ownBuckets, reportedWindow);
 			const ownTrailingBaseline = trailingBaselineFor(ownBuckets, window);
-			// THE ONE PREDICATE (`hasReferenceArmOutcomes`) OVER THE CONTROLLER'S SPAN
+			// THE ONE PREDICATE (`hasReferenceArmOutcomes`) OVER THE SUMMARY IT GRADES
 			// — the arm is ABSENT, not empty, when nothing was sent through it, and
 			// "when" has to mean the same days on both sides. Asked over this screen's
 			// seven days instead, a relay switched off yesterday would keep the
-			// two-armed evaluator on screen for six more days while the cron had
-			// already moved the cell onto the trailing twin. Second summary, same
-			// index read.
-			const hasReferenceArm = hasReferenceArmOutcomes(
-				summarizeTransportOutcomeBuckets(referenceBuckets, referenceArmWindow)
-			);
-			// THE COLUMN, over the window this screen reports: the arm the evaluator
-			// was given, summarized across the same seven days as `own` beside it.
-			const windowReference = summarizeTransportOutcomeBuckets(referenceBuckets, evaluationWindow);
+			// two-armed evaluator on screen for six more days.
+			const decisionReference = summarizeTransportOutcomeBuckets(referenceBuckets, decisionWindow);
+			const hasReferenceArm = hasReferenceArmOutcomes(decisionReference);
+			// THE ARM THE EVALUATOR IS GIVEN, and the COLUMN the screen renders beside
+			// the own arm — one arm over two spans, present or absent together, so a
+			// card can never show a relay column the verdict was not graded on.
+			const referenceArm = hasReferenceArm ? decisionReference : null;
+			const windowReference = summarizeTransportOutcomeBuckets(referenceBuckets, reportedWindow);
 			const reference = hasReferenceArm ? windowReference : null;
 			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
 			const cellSeeds = seedSweepsForCell(seedSweeps, cell);
@@ -370,8 +403,9 @@ export const getDeliverabilityDashboard = authedQuery({
 				// verdict — they size the controller's MOVE, which this screen reports
 				// from the route state rather than re-deriving.
 				config: degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation),
-				own,
-				reference,
+				// THE DECIDING PAIR, never the reported one (#510).
+				own: decisionOwn,
+				reference: referenceArm,
 				// The trailing twin's second series, DISJOINT from the evaluation
 				// window by construction. The reference-arm evaluator has a concurrent
 				// arm and ignores it.
@@ -394,8 +428,12 @@ export const getDeliverabilityDashboard = authedQuery({
 				hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
 				engagement: engagementGateFor({
 					cell,
-					own,
-					reference,
+					own: decisionOwn,
+					reference: referenceArm,
+					// THE FLOOR'S RECENT ARM is seven days on both sides, so the REPORTED
+					// summary is the one to hand it; the deciding one would compare a day
+					// against a month.
+					ownRecent: reportedOwn,
 					ownPriorBaseline: ownTrailingBaseline,
 					now,
 				}),
@@ -409,7 +447,10 @@ export const getDeliverabilityDashboard = authedQuery({
 					cellKey,
 					ownShare: resolveOwnShare(routeState),
 					phaseCeiling: routeState?.phaseCeiling ?? null,
-					own,
+					// THE REPORTED PAIR: columns, counters and the honesty denominator are
+					// the seven days plan D2/D5 specifies. The VERDICT beside them travels
+					// inside `evaluation`, over the deciding span.
+					own: reportedOwn,
 					reference,
 					evaluation,
 					hasSeedCoverage,
@@ -445,6 +486,11 @@ export const getDeliverabilityDashboard = authedQuery({
 			generatedAt: now,
 			windowStart: window.sinceDay,
 			windowEnd: window.untilDay,
+			// THE SPAN THE VERDICTS WERE REACHED OVER, on the wire beside the reported
+			// one so the screen can name both (#510). Open-ended in the summary, so its
+			// end is the read's own clock — the `now` every gate was evaluated at.
+			decisionWindowStart: decisionWindow.since,
+			decisionWindowEnd: now,
 			referenceTransportId,
 			isRelayConfigured,
 			hasSeedCoverage,

@@ -8,8 +8,11 @@
  * THE ONE RULE THIS MODULE EXISTS TO ENFORCE: a rate is never computed here.
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
  * ONE derivation seam (ADR-0042 / plan D5) — so the controller's gates and this
- * screen cannot disagree about how a number is DERIVED from a set of rows. Which
- * rows each hands it is a separate question, and there they do differ (#510).
+ * screen cannot disagree about how a number is DERIVED from a set of rows. WHICH
+ * ROWS each is handed used to be a separate question and is no longer: the
+ * verdicts on a cell view are reached over the controller's own evaluation
+ * window, and the counters beside them are reported over
+ * `DASHBOARD_WINDOW_DAYS`, with the query naming both spans on the wire (#510).
  * This module groups buckets into days, hands each day's rows to that
  * summarizer, and labels the result. If you find yourself typing `/` next to a
  * counter in this file, you are writing the bug D5 exists to prevent.
@@ -58,12 +61,15 @@ export const DASHBOARD_MAX_TREND_DAYS = 30;
 // ============ WINDOW ============
 
 /**
- * The span this screen reports over, and NOT caller-negotiable.
+ * The span this screen REPORTS over, and NOT caller-negotiable.
  *
  * Deliberately NOT the controller's cadence, which is one day
- * (`RAMP_AIMD.evaluationWindowMs`): the two readers grade the own arm over
- * different spans and can therefore reach different verdicts on one cell, which
- * is #510 and not something this constant closes.
+ * (`RAMP_AIMD.evaluationWindowMs`) — and deliberately not what any VERDICT on
+ * this screen is decided over either. Both arms are summarized a second time
+ * over the controller's span before they reach the evaluator, so the two readers
+ * agree on the verdict (#510); this constant governs the counters, the rates,
+ * the trend and the confidence cap rendered beside it, which plan D2/D5 asks for
+ * over a week rather than over a day.
  */
 export const DASHBOARD_WINDOW_DAYS = 7;
 
@@ -238,6 +244,12 @@ export interface DashboardConfidence {
  * not the outcome summaries, so re-deriving a level from rates — which is what
  * the placeholder this replaced did — is not reachable from here.
  *
+ * `ownSent` IS THE REPORTED WINDOW'S SAMPLE, not the deciding span's. This is a
+ * judgement about the CELL rendered beside the cell's own counters: "nothing sent
+ * yet" has to mean the week the card is showing, and `send_more_volume` invites
+ * an operator to fill a week rather than a day (#510). The LEVEL it starts from
+ * is still the evaluator's, over the deciding span.
+ *
  * The IMPROVEMENT CODES are this module's, because they are the one thing the
  * evaluator does not answer: it grades what it measured, and these name what an
  * operator could add to make the next grade better. They are advice and never a
@@ -304,9 +316,26 @@ export interface DashboardCellView {
 	 * numbers under one name on one screen is how a reader learns to distrust it.
 	 */
 	readonly cleanStreakIncludingThisWindow: number;
+	/**
+	 * THE REPORTED ARMS — every counter and rate summarized over the query's
+	 * `windowStart`/`windowEnd` (`DASHBOARD_WINDOW_DAYS`). NOT the summaries the
+	 * verdict below was reached over: those are the controller's span, which the
+	 * query names separately as `decisionWindowStart`/`decisionWindowEnd`, and a
+	 * screen that renders these two side by side has to say which is which (#510).
+	 */
 	readonly own: TransportOutcomeSummary;
-	/** `null` = standalone cell (D2), rendered with its confidence caveat. */
+	/**
+	 * `null` = standalone cell (D2), rendered with its confidence caveat — and
+	 * `null` exactly when the DECIDING span found no reference arm, so the column
+	 * is present precisely when the verdict was graded against a second arm.
+	 */
 	readonly reference: TransportOutcomeSummary | null;
+	/**
+	 * THE DECIDED FIELDS — verdict, failed gate, corroboration and every per-gate
+	 * `measurement` are the evaluator's, over the DECIDING span. They are the
+	 * controller's own verdicts on the same rows, not this screen's re-derivation
+	 * of them over a week (#510).
+	 */
 	readonly verdict: RampGateEvaluation['verdict'];
 	readonly failedGate: RampGateResult['gate'] | null;
 	readonly requiresCorroboration: boolean;
@@ -319,14 +348,22 @@ export interface DashboardCellView {
  * Assemble one cell's view. Every number in the result is either a counter or a
  * rate the summarizer already derived; this function copies, it does not
  * compute.
+ *
+ * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the
+ * REPORTED window's summaries and `evaluation` carries the DECIDING span's
+ * verdicts. Keeping them separate arguments is what lets the shell hand each
+ * consumer the right one — the confidence denominator takes the reported sample
+ * (plan D2/D5), the gate rows take the evaluator's (#510).
  */
 export function buildDashboardCellView(input: {
 	readonly cell: DeliverabilityCell;
 	readonly cellKey: string;
 	readonly ownShare: number;
 	readonly phaseCeiling: number | null;
+	/** The REPORTED window's arms — never the ones the evaluator graded. */
 	readonly own: TransportOutcomeSummary;
 	readonly reference: TransportOutcomeSummary | null;
+	/** The evaluator's answer over the DECIDING span (the controller's). */
 	readonly evaluation: RampGateEvaluation;
 	readonly hasSeedCoverage: boolean;
 	/** MEASUREMENT: did a relay carry THIS cell in the controller's span. */
