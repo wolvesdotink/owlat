@@ -5,53 +5,55 @@
 # vocabulary that happens to share the spelling. There is no coupling to remove,
 # so no piece owns them and no sweep clears them: carrying them as "debt with an
 # owner" would have made scripts/provider-identity-allowlist.txt permanently
-# non-empty, and acceptance criterion A1 ("the allowlist contains exactly the
-# definitional sites") unreachable by construction. Split out, the debt list can
-# actually reach zero and this one can stay honest about being permanent.
+# non-empty, and acceptance criterion A1 unreachable by construction. Split out,
+# the debt list can actually reach zero and this one can stay honest about being
+# permanent.
+#
+# ONE ENTRY PER SPELLING, NOT PER FILE. `path:literal` licenses that literal and
+# nothing else; a bare path would license the whole file FOREVER, and these
+# entries never expire — a `kind === 'ses'` branch added to the setup-apply
+# handler next year would inherit a licence granted for a docker compose
+# profile. Anything in these files that is not the named other-alphabet word is
+# still a violation.
 #
 # ADDING a line here is a claim that needs evidence in review — name the other
 # alphabet and where it is declared. "It reads better this way" is not another
 # alphabet. The ratchet still enforces the other direction mechanically: an
-# entry whose file no longer holds a kind literal fails the gate, so a file that
-# stops speaking the other vocabulary loses its licence.
+# entry that excuses nothing fails the gate, so a file that stops speaking the
+# other vocabulary loses its licence.
 #
-# One repo-relative path per line; `#` comments and blank lines ignored.
-#
-#
+# ONE PLACE PER ENTRY. The note travels on the entry line (`path:literal  #
+# note`, `#` comments and blank lines ignored) and the alphabet is described in
+# the block header above it. Nothing here is written twice — a list that
+# restates its own entries in prose is a list where a sweep deletes one copy.
+
+
 # ── the MTA routing API's answer ──────────────────────────────────────────────
 #
-# apps/api/convex/delivery/lastMileRouting.ts
-#   `decision.kind === 'mta'` reads the routing API's response type — 'mta' |
-#   'relay' | 'defer', "who should carry this message", the same alphabet this
-#   file's own `candidateProvider` speaks two statements earlier. Rewriting it
-#   would change the protocol, not remove a coupling. The provider-kind question
-#   beside it already goes through OWN_ARM_TRANSPORT_KIND. (apps/mta itself is
-#   out of scan scope for the same reason.)
-#
-#
+# 'mta' | 'relay' | 'defer' on the routing response: "who should carry this
+# message". Rewriting it would change the protocol, not remove a coupling.
+# (apps/mta itself is out of scan scope for the same reason.)
+
+apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candidateProvider in the same alphabet
+
+
 # ── docker compose profile names ──────────────────────────────────────────────
 #
-# apps/web/server/api/setup/apply.post.ts
-#   `profiles.includes('mta')` asks whether the compose stack about to come up
-#   HAS an MTA container, so the wizard knows whether to run the outbound-IP
-#   preflight. 'mta' is a compose PROFILE (packages/shared/src/featureFlags.ts,
-#   `getActiveProfiles`) — a deployment topology, not a transport kind. Two
-#   other files ask the same compose question
-#   (apps/setup-cli/src/commands/quickstart.ts, apps/web/app/pages/setup/
-#   email.vue); those two are in the debt list already for OTHER literals, so
-#   their licence lives there and moving it would make the debt list
-#   under-count. When their real leaks are swept, the compose question is what
-#   moves here.
-#
-#
+# A compose PROFILE (packages/shared/src/featureFlags.ts, `getActiveProfiles`)
+# is a deployment topology, not a transport kind. Two other files ask the same
+# compose question (apps/setup-cli/src/commands/quickstart.ts,
+# apps/web/app/pages/setup/email.vue); both are in the debt list already for
+# OTHER literals, and a whole-file licence there covers this too. When their
+# real leaks are swept, the compose question is what moves here.
+
+apps/web/server/api/setup/apply.post.ts:mta  # profiles.includes('mta') gates the outbound-IP preflight
+
+
 # ── the contact-import source registry ────────────────────────────────────────
 #
-# apps/web/app/components/contacts/IntegrationImportModal.vue
-#   'mandrill' here is an INTEGRATION IMPORT source (contacts and suppressions,
-#   apps/api/convex/integrationImports/providers/), a different registry that
-#   happens to share a vendor name with a send transport. That registry's own
-#   seam work is not this plan's.
+# Integration IMPORT sources (contacts and suppressions,
+# apps/api/convex/integrationImports/providers/) are a different registry that
+# happens to share a vendor name with a send transport. That registry's own seam
+# work is not this plan's.
 
-apps/api/convex/delivery/lastMileRouting.ts
-apps/web/app/components/contacts/IntegrationImportModal.vue
-apps/web/server/api/setup/apply.post.ts
+apps/web/app/components/contacts/IntegrationImportModal.vue:mandrill  # an import source, not a transport

@@ -1,156 +1,149 @@
 # Provider-identity allowlist — scripts/check-provider-identity.sh.
 #
-# The files that may still compare a send-provider kind against a literal.
-# Everything else asks the capability catalog. One repo-relative path per line;
-# `#` comments and blank lines ignored.
+# The sites that may still compare a send-provider kind against a literal.
+# Everything else asks the capability catalog. One repo-relative path per line,
+# optionally `path:literal` to license a single spelling; a trailing `#` note
+# and blank lines are ignored.
+#
+# ONE PLACE PER ENTRY. Each family below is a comment header naming its OWNER,
+# then the entries themselves — the paths are written exactly once, in the list
+# the ratchet reads, with their note on the same line. An earlier draft repeated
+# every path in the family prose as well, which meant a sweep had to delete two
+# lines and the gate only ever checked one of them: the file would then still
+# document debt, with an owner, for a site that had already been cleared.
 #
 # THIS LIST ONLY SHRINKS. That is a review convention, not a suggestion: a pull
 # request that ADDS a line is asking to reintroduce the coupling the seams plan
 # exists to remove, and has to argue why the seam cannot read a declaration
-# instead. The ratchet enforces the other direction mechanically — an entry
-# whose file no longer holds a kind literal FAILS the gate, so a cleanup cannot
-# leave its licence behind for the next restatement to inherit.
+# instead. The ratchet enforces the other direction mechanically — an entry that
+# excuses no kind literal FAILS the gate, so a cleanup cannot leave its licence
+# behind for the next restatement to inherit.
 #
 # EVERY ENTRY IS DEBT WITH AN OWNER. A file whose kind-shaped literal belongs to
-# a DIFFERENT vocabulary (the MTA routing API's answer, a docker compose
-# profile, the contact-import registry) is not debt and is not licensed here —
-# it lives in scripts/provider-identity-collisions.txt, so that this list can
+# a DIFFERENT vocabulary — the MTA routing API's answer, a docker compose
+# profile, the contact-import registry — is not debt and is not licensed here.
+# It lives in scripts/provider-identity-collisions.txt, so that this list can
 # reach zero. THE ENTRY COUNT BELOW IS WHAT ACCEPTANCE CRITERION A1 MEASURES.
 #
-# SCOPE NOTE — WIDER THAN P0.5'S CARD READS. The card names the D3 definitional
-# sites (the own-arm constant, delivery/relayConfiguration.ts, the hybrid
-# detection in route.ts / routing.ts) as the expected contents. After the P0.1–
-# P0.4 sweep none of those four files COMPARES a kind any more — the own-arm
-# site is a declaration (`export const OWN_ARM_TRANSPORT_KIND = 'mta'`, which
-# the backend's kindLiteralCustody.test.ts owns), and the other three retain
-# the literal only in the prose explaining what replaced it. Listing them would
-# trip the stale-entry check and turn the gate red. So the scan was widened to
-# all of apps/ and packages/ instead of stopping at the backend, and what it
-# found — the setup wizard, the transport editor, the CLI and the shared
-# validators, none of which any Wave-0 piece touched — is carried here as named
-# debt rather than left invisible. That is the ecosystem goal's real surface:
-# while these branches exist, a provider that needs no backend edit still
-# cannot ship without a host edit.
+# SCOPE NOTE — WIDER THAN P0.5'S CARD READS, AND SO IS A1. The card names the D3
+# definitional sites — the own-arm constant, delivery/relayConfiguration.ts, the
+# hybrid detection in route.ts / routing.ts — as the expected contents. After the
+# P0.1–P0.4 sweep none of those four files COMPARES a kind any more: the own-arm
+# site is a declaration, `export const OWN_ARM_TRANSPORT_KIND = 'mta'`, which the
+# backend's kindLiteralCustody.test.ts owns, and the other three retain the
+# literal only in the prose explaining what replaced it. Listing any of them
+# would trip the stale-entry check and turn the gate red. So the scan was widened
+# to all of apps/, packages/ and examples/ instead of stopping at the backend,
+# and what it found — the setup wizard, the transport editor, the CLI and the
+# shared validators, none of which any Wave-0 piece touched — is carried here as
+# named debt rather than left invisible. A1's "the allowlist contains exactly the
+# definitional sites" therefore describes the END of Wave 1, not the end of
+# P0.5: the pieces named below delete these lines, and the definitional sites
+# themselves are not in this file at all because they are declarations. That is
+# the ecosystem goal's real surface — while these branches exist, a provider that
+# needs no backend edit still cannot ship without a host edit.
 #
-# THE OWNING PIECE MUST DELETE ITS LINES. Each family below names the piece
-# that clears it; because the ratchet fails on a stale entry, that piece's diff
-# has to include the deletion here or the lint job goes red. P1.1 additionally
-# turns SEND_TRANSPORT_KINDS into a derivation, which means repointing the kind
-# parser at the top of check-provider-identity.sh in the same change.
+# THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
+# it; because the ratchet fails on an entry that excuses nothing, that piece's
+# diff has to include the deletion here or the lint job goes red. P1.1
+# additionally turns SEND_TRANSPORT_KINDS into a derivation, which means
+# repointing the kind parser at the top of check-provider-identity.sh in the same
+# change. Two families have no owning piece INSIDE this plan and say so.
 #
 # Kind DECLARATIONS inside apps/api/convex are a different rule with a different
 # list: SURVIVING_KIND_LITERALS in
 # apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts. That
-# test reads THIS file for the comparison half rather than restating it, so a
-# swept backend file is de-licensed by exactly one deletion — here.
-#
-#
-# ── return-path (owner: the sending-domain adapter interface) ─────────────────
+# test carries declarations only and does not restate anything from this file;
+# comparisons are this ratchet's rule alone, everywhere.
+
+
+# ── return-path (owner: no piece in this plan — the sending-domain adapter interface) ──
 #
 # Which `mailFrom` bundle a custom return-path host publishes, and which kinds
 # accept one at all, is branched on 'mta'/'ses' while the catalog already
 # declares `supportsCustomReturnPath`. The capability has no home on
-# `SendingDomainProviderModule` yet; `domains/providers/index.ts` states the gap.
-# No wave-0 or wave-1 piece clears this one — whichever piece finally grows that
-# capability (D1's field reaching the module contract) deletes these two lines.
+# `SendingDomainProviderModule` yet; domains/providers/index.ts states the gap in
+# full. No wave-0 or wave-1 piece clears this one — whichever piece finally grows
+# that capability, D1's field reaching the module contract, deletes both lines.
+
+apps/api/convex/domains/lifecycle.ts  # the record-set derivation
+apps/api/convex/delivery/checklistDomainValidators.ts  # restates it as a checklist item
+
+
+# ── adapter-adjacent (owner: no piece in this plan — one kind's scheduled work moving beside it) ──
 #
-# apps/api/convex/domains/lifecycle.ts          — the record-set derivation
-# apps/api/convex/delivery/checklistDomainValidators.ts — restates it as a check
-#
-#
-# ── adapter-adjacent (owner: one kind's scheduled work moving beside it) ──────
-#
-# Mandrill adapter code that cannot sit in domains/providers/mandrill/: these
-# are a scheduled action and its mutation, so the module path IS the Convex
-# function path. Both literals ask "is this row/domain mine?" of the
-# deliberately kind-agnostic sendingDomainRelayIdentities table; when a second
-# kind wants the same sweep, that question becomes the table's own dispatch.
-#
-# apps/api/convex/domains/mandrillRelay.ts
-# apps/api/convex/domains/mandrillRelayMutations.ts
-#
-#
+# Mandrill adapter code that cannot sit in domains/providers/mandrill/: these are
+# a scheduled action and its mutation, so the module path IS the Convex function
+# path. Both literals ask "is this row/domain mine?" of the deliberately
+# kind-agnostic sendingDomainRelayIdentities table; when a second kind wants the
+# same sweep, that question becomes the table's own dispatch.
+
+apps/api/convex/domains/mandrillRelay.ts  # the scheduled provisioning sweep
+apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
+
+
 # ── provider-shaped-ui (owner: P1.2 — the UI renders descriptors, D5) ─────────
 #
-# Per-kind credential fields, wizard steps and status panels, written as one
-# branch per vendor. This is the family the ecosystem goal turns on: while these
-# branches exist, a provider that needs no backend edit still cannot ship
-# without a UI edit. The catalog's typed `credentialFields` descriptors and a
-# renderer that loops over them retire the whole family at once — P1.2 deletes
-# these seven lines with the branches.
+# Per-kind credential fields and status panels, written as one branch per vendor.
+# This is the family the ecosystem goal turns on: while these branches exist, a
+# provider that needs no backend edit still cannot ship without a UI edit. The
+# catalog's typed `credentialFields` descriptors and a renderer that loops over
+# them retire them. These four files are the ones P1.2's card names.
+
+apps/web/app/components/delivery/TransportEditor.vue  # the per-provider credential blocks
+apps/web/app/composables/useSetupWizard.ts  # buildProviderEnv, ProviderChoice and the labels
+apps/web/app/composables/useRelayCredentialDraft.ts  # the draft's per-kind field set
+apps/web/app/pages/dashboard/delivery/config.vue  # provider panels keyed on kind
+
+
+# ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
 #
-# apps/web/app/components/delivery/TransportCredentialsStep.vue
-# apps/web/app/components/delivery/TransportEditor.vue
-# apps/web/app/composables/setupWizardValidation.ts
-# apps/web/app/composables/useSetupWizard.ts
-# apps/web/app/pages/dashboard/delivery/config.vue
-# apps/web/app/pages/desktop/setup.vue
-# apps/web/app/pages/setup/email.vue
-#
-#
+# The same family, in files P1.2's card does NOT name: the wizard's own step
+# component and validator, and the two standalone setup pages. They fall out of
+# the descriptor work only if it is carried all the way through the wizard, so
+# they are recorded here with an honest owner rather than filed under a card that
+# will merge without them and leave the count unattended.
+
+apps/web/app/components/delivery/TransportCredentialsStep.vue  # per-kind fields inside the wizard step
+apps/web/app/composables/setupWizardValidation.ts  # per-kind required-field rules
+apps/web/app/pages/desktop/setup.vue  # the desktop wizard's own copy
+apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy
+
+
 # ── credentials-and-probes (owner: P1.1 — catalog fields in packages/shared) ──
 #
-# Which env vars a kind needs, which kinds can be live-checked before saving,
-# and what a validator asks of each — all of it restated per vendor outside the
+# Which env vars a kind needs, which kinds can be live-checked before saving, and
+# what a validator asks of each — all of it restated per vendor outside the
 # catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
 # catalog entry are the declarations these read once P1.1 lands; P1.3's
-# consistency guards then keep them honest. Both pieces delete lines here.
+# consistency guards then keep them honest.
+
+apps/setup-cli/src/commands/setupNonInteractive.ts  # the non-interactive env table
+apps/setup-cli/src/commands/setupSendingProvider.ts  # the interactive prompts
+apps/setup-cli/src/lib/setupConfig.ts  # the written config's per-kind keys
+apps/web/server/api/delivery/validate-transport.post.ts  # per-kind live checks
+apps/web/server/api/setup/validate-provider.post.ts  # the wizard's copy of them
+packages/shared/src/setupValidators.ts  # the probes themselves
+packages/shared/src/featureFlags.ts  # which feature profile each kind implies
+
+
+# ── own-arm-outside-convex (owner: P1.1 — the own-arm declaration moves to shared) ──
 #
-# apps/setup-cli/src/commands/setupNonInteractive.ts
-# apps/setup-cli/src/commands/setupSendingProvider.ts
-# apps/setup-cli/src/lib/setupConfig.ts
-# apps/web/app/composables/useRelayCredentialDraft.ts
-# apps/web/server/api/delivery/validate-transport.post.ts
-# apps/web/server/api/setup/validate-provider.post.ts
-# packages/shared/src/setupValidators.ts
-# packages/shared/src/featureFlags.ts   — which feature profile each kind implies
-#
-#
-# ── own-arm-outside-convex (owner: P1.1 — the own-arm declaration in shared) ──
-#
-# Honest own-vs-relay questions (D3) asked in packages the one sanctioned
+# Honest own-vs-relay questions, D3, asked in packages the one sanctioned
 # declaration cannot reach: OWN_ARM_TRANSPORT_KIND lives in
 # apps/api/convex/lib/sendProviders/strategies/adaptive_mix, and neither
 # packages/shared nor the CLI may import app code. P1.1 moves the catalog — and
 # with it this declaration — into packages/shared, at which point every one of
-# these reads the constant instead of restating it, and P1.1 deletes these
-# lines. (apps/setup-cli/src/commands/quickstart.ts and
-# apps/web/app/pages/setup/email.vue additionally ask the docker COMPOSE
-# question `profiles.includes('mta')`, which is a vocabulary collision rather
-# than debt; it is recorded in the collisions file, which explains why the
-# licence still lives here until their real leak is swept.)
-#
-# apps/setup-cli/src/commands/doctor.ts
-# apps/setup-cli/src/commands/quickstart.ts
-# apps/setup-cli/src/commands/setup.ts
-# apps/web/app/composables/useRelayRemovalGuard.ts
-# apps/web/app/utils/providerRouting.ts
-# apps/web/server/api/delivery/apply-transport.post.ts
-# packages/shared/src/transportAlignment.ts
+# these reads the constant instead of restating it. quickstart.ts and
+# pages/setup/email.vue additionally ask the docker COMPOSE question
+# `profiles.includes('mta')`, which is a vocabulary collision rather than debt;
+# their whole-file licence here covers it until their real leak is swept, which
+# is when it moves to scripts/provider-identity-collisions.txt.
 
-apps/api/convex/delivery/checklistDomainValidators.ts
-apps/api/convex/domains/lifecycle.ts
-apps/api/convex/domains/mandrillRelay.ts
-apps/api/convex/domains/mandrillRelayMutations.ts
-apps/setup-cli/src/commands/doctor.ts
-apps/setup-cli/src/commands/quickstart.ts
-apps/setup-cli/src/commands/setup.ts
-apps/setup-cli/src/commands/setupNonInteractive.ts
-apps/setup-cli/src/commands/setupSendingProvider.ts
-apps/setup-cli/src/lib/setupConfig.ts
-apps/web/app/components/delivery/TransportCredentialsStep.vue
-apps/web/app/components/delivery/TransportEditor.vue
-apps/web/app/composables/setupWizardValidation.ts
-apps/web/app/composables/useRelayCredentialDraft.ts
-apps/web/app/composables/useRelayRemovalGuard.ts
-apps/web/app/composables/useSetupWizard.ts
-apps/web/app/pages/dashboard/delivery/config.vue
-apps/web/app/pages/desktop/setup.vue
-apps/web/app/pages/setup/email.vue
-apps/web/app/utils/providerRouting.ts
-apps/web/server/api/delivery/apply-transport.post.ts
-apps/web/server/api/delivery/validate-transport.post.ts
-apps/web/server/api/setup/validate-provider.post.ts
-packages/shared/src/featureFlags.ts
-packages/shared/src/setupValidators.ts
-packages/shared/src/transportAlignment.ts
+apps/setup-cli/src/commands/doctor.ts  # the own-MTA branch of the diagnosis
+apps/setup-cli/src/commands/quickstart.ts  # own-arm plus the compose profile
+apps/setup-cli/src/commands/setup.ts  # the top-level flow's own-arm question
+apps/web/app/composables/useRelayRemovalGuard.ts  # "is the arm you are removing ours"
+apps/web/app/utils/providerRouting.ts  # the client-side split
+apps/web/server/api/delivery/apply-transport.post.ts  # the same split server-side
+packages/shared/src/transportAlignment.ts  # alignment between the two arms
