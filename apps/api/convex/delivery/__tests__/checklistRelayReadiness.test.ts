@@ -290,16 +290,20 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 		});
 	});
 
-	it('refuses a fallback on a route carrying no own-MTA arm', async () => {
-		// `routeCarriesOwnArm`, again the function `setRoute` throws on: a
-		// deliverability fallback is traffic leaving our own infrastructure, so a
-		// route with no enabled own arm has nothing to fall back FROM. Asking the
-		// same three predicates the mutation asks is what stops this item reporting
-		// a route as ready that the mutation refuses to save (or the reverse, once
-		// the save-time rules move).
+	it('does NOT re-judge the own-arm precondition setRoute already enforces', async () => {
+		// The third condition `setRoute` throws on (`routeCarriesOwnArm`) is
+		// deliberately NOT asked here. The mutation refuses to SAVE a fallback on a
+		// route with no enabled own arm, so the only rows this could ever reject are
+		// ones persisted before that gate existed — and the operator would then be
+		// told "No verified relay fallback is configured" about a relay that works,
+		// for a configuration they did not change and cannot fix from this item.
+		//
+		// Re-using the save-time RULES is the point of asking the same module; re-
+		// litigating a save-time SHAPE the operator cannot act on is not.
 		expect(await observe(context([route('ses', ['ses'])], [provenIdentity()], ['ses']))).toEqual({
-			status: 'warn',
-			diagnostic: 'No verified relay fallback is configured.',
+			status: 'pass',
+			diagnostic:
+				'The deliverability fallback relay is enabled and every relay identity has a current provider and SPF proof.',
 		});
 	});
 });

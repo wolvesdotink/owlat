@@ -8,7 +8,6 @@ import {
 import {
 	isFallbackRelayEligible,
 	routeCarriesEnabledRelay,
-	routeCarriesOwnArm,
 } from '../lib/sendProviders/fallbackEligibility';
 import { detectIpProvider } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
@@ -248,14 +247,22 @@ export async function observeDeploymentCheck(
 			// identities provisioned and a checklist item that said "No verified relay
 			// fallback is configured" forever.
 			//
-			// EVERY condition asked of the module that owns it, AND against the same
-			// evidence, so that "is this route a working fallback?" has one answer
-			// here and at save time. `isFallbackRelayEligible` is the predicate
-			// `setRoute` and `resolveRoute` gate on and the two route-shape
-			// preconditions are the same two functions `setRoute` throws on. Between
-			// them they keep the row's free-form `relayProviderType` from crediting
-			// the OWN MTA (which a fallback moves traffic away from, never to), a
-			// retired kind, or a relay that is not a live arm of the route at all.
+			// TWO CONDITIONS, BOTH ASKED OF THE MODULE THAT OWNS THEM, so that "is
+			// this route a working fallback?" has one answer here and at save time.
+			// `isFallbackRelayEligible` is the predicate `setRoute` and `resolveRoute`
+			// gate on, and `routeCarriesEnabledRelay` is the pairing rule `setRoute`
+			// throws on. Between them they keep the row's free-form
+			// `relayProviderType` from crediting the OWN MTA (which a fallback moves
+			// traffic away from, never to), a retired kind, or a relay that is not a
+			// live arm of the route at all.
+			//
+			// `routeCarriesOwnArm` — `setRoute`'s THIRD precondition — is deliberately
+			// NOT asked. `setRoute` already refuses to save such a route, so re-asking
+			// it here can only re-judge rows persisted before that gate existed, and
+			// the item would then report "No verified relay fallback is configured"
+			// for a deployment whose configuration did not change and whose relay
+			// works. A checklist re-litigating a save-time shape it cannot fix is
+			// noise; a checklist re-using the save-time RULES is the point.
 			//
 			// READINESS, NOT ENV PRESENCE, and injected rather than read here.
 			// `isFallbackRelayEligible` takes its configured-ness from the caller
@@ -269,16 +276,21 @@ export async function observeDeploymentCheck(
 			// bundled plugin relay whose grant was revoked keeps its env vars, so
 			// `resolveRoute` stops using it as the fallback while this item goes on
 			// reporting the fallback relay ready.
-			const readyRelayKinds = context.readyRelayKinds ?? [];
+			//
+			// THIS HALF IS A DELIBERATE VERDICT CHANGE, and the only one the sweep
+			// makes to this item: the shipped gate asked nothing about credentials,
+			// so a deployment that rotated its relay's keys out kept reporting `pass`
+			// while `resolveRoute` had already stopped using the fallback. It now
+			// warns. That is the item's whole job — it is the readiness question —
+			// but it does flip a verdict for a deployment whose ROUTE did not change,
+			// so it is stated here rather than discovered.
 			const readyFallbackKinds = context.routes.flatMap((route) => {
 				const fallback = route.deliverabilityFallback;
 				if (fallback?.isEnabled !== true) return [];
 				const configured =
 					isFallbackRelayEligible(fallback.relayProviderType, (kind) =>
-						readyRelayKinds.includes(kind)
-					) &&
-					routeCarriesEnabledRelay(route.providers, fallback.relayProviderType) &&
-					routeCarriesOwnArm(route.providers);
+						context.readyRelayKinds.includes(kind)
+					) && routeCarriesEnabledRelay(route.providers, fallback.relayProviderType);
 				return configured ? [fallback.relayProviderType] : [];
 			});
 			const routeReady = readyFallbackKinds.length > 0;

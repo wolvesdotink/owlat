@@ -10,8 +10,7 @@
  */
 
 import { getOptional } from '../env';
-import { isFallbackRelayEligible } from './fallbackEligibility';
-import { routeCarriesOwnArm } from './fallbackEligibility';
+import { isFallbackRelayEligible, routeCarriesOwnArm } from './fallbackEligibility';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
