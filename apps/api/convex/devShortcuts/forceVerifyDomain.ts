@@ -29,6 +29,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { assertDevDeployment } from './_guard';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -87,7 +88,10 @@ export const forceVerifyDomainInternal = internalMutation({
 		// SES provider has its own sibling table and ADR-0018's per-provider
 		// exclusivity invariant requires we don't write across both. SES
 		// domains keep whatever identity row their own register flow created.
-		if (domain.providerType === 'mta' || domain.providerType === undefined) {
+		if (
+			domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND ||
+			domain.providerType === undefined
+		) {
 			const existingIdentity = await ctx.db
 				.query('sendingDomainMtaIdentities')
 				.withIndex('by_domain', (q) => q.eq('domainId', domainId))

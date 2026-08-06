@@ -14,6 +14,7 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import type { InboundEventOf } from './types';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import { observeYahooCflReport } from './yahooCflObservation';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 
 /**
  * SUPPRESSION FIRST, bookkeeping second. A complaint must always reach the
@@ -44,7 +45,7 @@ export async function dispatchComplaint(
 		return;
 	} else {
 		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
+			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
 				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{

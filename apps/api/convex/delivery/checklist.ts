@@ -27,6 +27,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -117,7 +118,10 @@ export function loopbackDomains(
 			)
 			.every((item) => item.status === 'pass');
 		const eligible =
-			infrastructureHealthy && domain.providerType === 'mta' && deploymentReady && domainReady;
+			infrastructureHealthy &&
+			domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND &&
+			deploymentReady &&
+			domainReady;
 		return {
 			id: domain._id,
 			domain: domain.domain,
@@ -125,7 +129,7 @@ export function loopbackDomains(
 			...(!eligible
 				? {
 						blockedReason:
-							!infrastructureHealthy || domain.providerType !== 'mta'
+							!infrastructureHealthy || domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND
 								? 'This proof requires a healthy built-in MTA domain.'
 								: !deploymentReady
 									? 'Verify every blocking server identity and delivery-path check first.'

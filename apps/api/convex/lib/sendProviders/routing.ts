@@ -11,6 +11,7 @@
 
 import { getOptional } from '../env';
 import { isFallbackRelayEligible } from './fallbackEligibility';
+import { routeCarriesOwnArm } from './fallbackEligibility';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
@@ -137,7 +138,7 @@ export function resolveRoute(
 	const isHybridRelaySelection = Boolean(
 		fallbackConfig?.isEnabled &&
 		resolved.providerType === fallbackConfig.relayProviderType &&
-		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+		routeCarriesOwnArm(routeConfig.providers)
 	);
 	if (isHybridRelaySelection && !deliverability?.isRelayDomainVerified) {
 		throw new DeliverabilityRouteError();

@@ -26,6 +26,7 @@ import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
 import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
 
@@ -151,7 +152,7 @@ export const getStatus = adminQuery({
 			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
 			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
 			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
-			mtaHealth: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
+			mtaHealth: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
 		};
 	},
 });
@@ -276,7 +277,7 @@ export const getTransportSummary = authedQuery({
 			canSend,
 			advancedRoutingActive,
 			health,
-			infrastructure: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
+			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,

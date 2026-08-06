@@ -9,6 +9,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalAction } from '../_generated/server';
 
 const PROBE_TIMEOUT_MS = 15 * 60_000;
@@ -43,7 +44,7 @@ export const start = authedAction({
 		if (!startContext.allowed) {
 			throw new Error('Complete the blocking deliverability checks before running a proof.');
 		}
-		if (getOptional('EMAIL_PROVIDER') !== 'mta') {
+		if (getOptional('EMAIL_PROVIDER') !== OWN_ARM_TRANSPORT_KIND) {
 			throw new Error(
 				'The end-to-end proof requires the built-in MTA as the active delivery provider.'
 			);

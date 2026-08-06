@@ -38,6 +38,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { isSendProviderReady } from '../lib/sendProviders/capability';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { listSendTransports } from '../lib/sendProviders/transports';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { offerBimiRecord, type BimiOffer } from './bimi';
@@ -160,7 +161,7 @@ export type StreamSubdomainWizardResult =
  */
 async function referenceTransportConfigured(ctx: QueryCtx): Promise<boolean> {
 	for (const transport of listSendTransports()) {
-		if (transport.kind === 'mta') continue;
+		if (transport.kind === OWN_ARM_TRANSPORT_KIND) continue;
 		if (await isSendProviderReady(ctx, transport.kind)) return true;
 	}
 	return false;

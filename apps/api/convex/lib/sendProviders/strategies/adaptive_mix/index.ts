@@ -61,41 +61,59 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * "is this our own MTA?" test READS one of the two rather than restating the
  * literal.
  *
- * IT IS NOT YET TRUE OF THE WHOLE TREE, and that is written here rather than
- * left for the ratchet author to discover. Roughly four dozen sites outside the
- * adapter folders still spell a kind literally. They fall into four families,
- * none of which is this piece's (the seams plan's P0.4 leak sweep converted the
- * checklist, the lifecycle's relay-identity path, the DNS verifier and system
- * mail):
+ * THE OWN-ARM SWEEP IS DONE (the seams plan's P0.4). Every site outside the
+ * adapter folders that asked "is this our own MTA?" now reads this constant or
+ * its domain-provider twin — the send lifecycle, the webhook dispatcher and the
+ * complaint handler, delivery status, the seed-probe arm attribution in the
+ * worker, last-mile routing, the checklist and its loopback gates, delivery
+ * health, the relay-kind definition in `delivery/relayConfiguration.ts`, the
+ * hybrid detection in `route.ts`/`routing.ts` (through
+ * `fallbackEligibility.routeCarriesOwnArm`), the stream-subdomain wizard, the dev
+ * force-verify shortcut and SES's relay provisioning action. So does the
+ * measurement plane: `delivery/worker.ts` files a seed probe's arm through
+ * `armForTransport`, the same function `sendAssignments` records with, rather
+ * than through a second copy of the split.
  *
- *   1. OWN-ARM CUSTODY, restated. `delivery/sendLifecycle.ts`,
- *      `webhooks/dispatcher.ts`, `delivery/status.ts`, `delivery/worker.ts`,
- *      `delivery/lastMileRouting.ts`, `delivery/checklist.ts`,
- *      `delivery/checklistDomainValidators.ts`,
- *      `domains/streamSubdomainWizard.ts`, `devShortcuts/forceVerifyDomain.ts`.
- *      Same QUESTION as this constant, asked with a literal — mechanical to
- *      route through here, and the reason the ratchet's allowlist must not
- *      simply swallow them as "definitional".
- *   2. THE RETURN-PATH FAMILY. `domains/lifecycle.ts` decides which `mailFrom`
+ * WHAT STILL SPELLS A KIND, and why none of it is an own-arm restatement the
+ * allowlist could pass off as definitional. Written here rather than left for
+ * the ratchet author (P0.5) to discover, because each needs a CAPABILITY that
+ * does not exist yet — a sweep, not a substitution:
+ *
+ *   1. THE RETURN-PATH FAMILY. `domains/lifecycle.ts` decides which `mailFrom`
  *      bundle to publish and which reflection action to schedule by branching on
- *      `providerType`; that capability has no home on the sending-domain adapter
- *      interface yet (`domains/providers/index.ts` says so in full).
- *   3. SES-SHAPED READS of the frozen sibling table, largest being
+ *      `providerType`, and `delivery/checklistDomainValidators.ts`'s
+ *      `domain.return_path` item restates the same branch to say what the
+ *      ACTIVE return path is. That capability has no home on the sending-domain
+ *      adapter interface yet (`domains/providers/index.ts` says so in full);
+ *      giving it one moves both sites at once.
+ *   2. SES-SHAPED READS of the frozen sibling table, largest being
  *      `providerRoutes.listDeliverabilityRelayDomains` — carried into P1.2 as an
  *      explicit added input, since the read and the component that renders it
- *      have to move together. `webhooks/complaintDispatch.ts`'s blocklist gate
- *      and `delivery/lastMileRouting.ts`'s relay-reconciliation gate are the
- *      same shape at a smaller scale.
- *   4. HISTORICAL AND ADAPTER-ADJACENT. `migrations/0018_*` rewrites rows that
+ *      have to move together. `delivery/checklistValidatorTypes.ts`'s
+ *      `RELAY_IDENTITY_PROOF_KIND` declares the same fact for the
+ *      `deployment.relay` item and is retired by the same generic
+ *      `sendingDomainRelayIdentities` read. `webhooks/complaintDispatch.ts`'s
+ *      blocklist gate (which event sources carry a `deliveryDomain` tag) and
+ *      `delivery/lastMileRouting.ts`'s relay-reconciliation gate are the same
+ *      shape at a smaller scale.
+ *   3. HISTORICAL AND ADAPTER-ADJACENT. `migrations/0018_*` rewrites rows that
  *      were written under the old spelling and must keep naming them;
- *      `domains/sesRelay.ts`, `domains/mandrillRelay.ts` and
- *      `domains/mandrillRelayMutations.ts` are one kind's provisioning actions
- *      living beside their adapter rather than inside it.
+ *      `domains/mandrillRelay.ts` and `domains/mandrillRelayMutations.ts` are
+ *      one kind's provisioning actions living beside their adapter rather than
+ *      inside it (P1.1 moves them in).
+ *   4. NOT A PROVIDER KIND AT ALL, and must not be swept: the MTA's routing-API
+ *      wire vocabulary (`decision.kind === 'mta'` in
+ *      `delivery/lastMileRouting.ts` and `lib/sendProviders/mta/index.ts`) is
+ *      `'mta' | 'relay' | 'defer'` on the response, a different alphabet that
+ *      happens to share a spelling. A ratchet that rewrote it would change the
+ *      protocol.
  *
  * So the ratchet (P0.5) seeds its allowlist with families 1–4 EXPLICITLY
  * enumerated and each carrying its owner, not with a blanket "definitional"
  * label — an allowlist that claims these are definitional stops meaning what
- * the plan says it means, and shrink-only then locks the claim in.
+ * the plan says it means, and shrink-only then locks the claim in. The
+ * definitional entries are exactly two: this declaration and
+ * `domains/providers/mta/index.ts`'s `kind`, which its twin reads.
  */
 export const OWN_ARM_TRANSPORT_KIND = 'mta';
 

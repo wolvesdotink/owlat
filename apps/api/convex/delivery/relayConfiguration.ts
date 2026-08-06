@@ -19,6 +19,7 @@
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bindsPhaseLadder } from './ramp/degradation';
 import type { RampDegradation } from './ramp/degradation';
 
@@ -42,11 +43,12 @@ export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]>
 	const kinds = new Set<string>();
 	for (const route of routes) {
 		for (const provider of route.providers) {
-			if (provider.isEnabled && provider.providerType !== 'mta') kinds.add(provider.providerType);
+			if (provider.isEnabled && provider.providerType !== OWN_ARM_TRANSPORT_KIND)
+				kinds.add(provider.providerType);
 		}
 	}
 	const envProvider = getOptional('EMAIL_PROVIDER')?.trim();
-	if (envProvider !== undefined && envProvider !== '' && envProvider !== 'mta') {
+	if (envProvider !== undefined && envProvider !== '' && envProvider !== OWN_ARM_TRANSPORT_KIND) {
 		kinds.add(envProvider);
 	}
 	return [...kinds].sort();

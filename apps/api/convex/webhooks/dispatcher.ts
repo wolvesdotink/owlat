@@ -29,6 +29,7 @@ import { logError } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { syncMandrillReject } from './mandrillRejectSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
 	type InboundEvent,
 	type InboundEventKind,
@@ -84,7 +85,7 @@ const DISPATCH: DispatchTable = {
 						acceptedAt: e.at,
 					}
 				)
-			: e.providerType === 'mta'
+			: e.providerType === OWN_ARM_TRANSPORT_KIND
 				? await ctx.runMutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
 						providerMessageId: e.providerMessageId,
 						at: e.at,
@@ -98,7 +99,7 @@ const DISPATCH: DispatchTable = {
 		// Duplicate accepted-delivery webhooks are safe: the receipt writer below
 		// is idempotent by provider message id.
 		const isProductionTelemetry =
-			e.providerType === 'mta'
+			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? e.deliveryDomain === 'production'
 				: e.deliveryDomain !== 'member_test';
 		if (
@@ -152,7 +153,7 @@ const DISPATCH: DispatchTable = {
 		// provider and every other failure.
 		await syncMandrillReject(ctx, e);
 		await ctx.runMutation(
-			e.providerType === 'mta'
+			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
 				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{
@@ -194,7 +195,7 @@ const DISPATCH: DispatchTable = {
 			return;
 		}
 		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
+			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
 				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{

@@ -5,6 +5,7 @@ import type { ActionCtx } from '../_generated/server';
 import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { MtaIpPool, SendProviderKind } from '../lib/sendProviders';
 import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
 import { transportEnvOptional } from '../lib/sendProviders/transportEnv';
 import { defaultSendTransportId, resolveSendTransport } from '../lib/sendProviders/transports';
@@ -101,7 +102,7 @@ function withReconciliationSafety(
 	mtaReconciliation: boolean | undefined
 ): LastMileRoutingResult {
 	if (!mtaReconciliation) return result;
-	if (result.kind === 'ready' && result.providerKind !== 'mta') {
+	if (result.kind === 'ready' && result.providerKind !== OWN_ARM_TRANSPORT_KIND) {
 		// OUR OWN IDEMPOTENCY WAIT, not the receiver's answer: nothing about this
 		// identity's standing has been observed, so it is not gate 2's evidence.
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
@@ -177,7 +178,7 @@ export async function resolveLastMileRouting(
 	// The governed last mile leases from — and sends through — the DEFAULT MTA
 	// transport. Reading its configuration through the record keeps the gate and
 	// the lease pointed at the same instance.
-	const mtaTransport = resolveSendTransport(defaultSendTransportId('mta'));
+	const mtaTransport = resolveSendTransport(defaultSendTransportId(OWN_ARM_TRANSPORT_KIND));
 	if (
 		!transportEnvOptional(mtaTransport, 'MTA_API_URL') ||
 		!transportEnvOptional(mtaTransport, 'MTA_API_KEY')
@@ -191,7 +192,7 @@ export async function resolveLastMileRouting(
 	if (!baseProviderKind) {
 		throw new Error('Owned-MTA routing has no configured base transport.');
 	}
-	if (input.mtaReconciliation && baseProviderKind !== 'mta') {
+	if (input.mtaReconciliation && baseProviderKind !== OWN_ARM_TRANSPORT_KIND) {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
 
@@ -205,7 +206,7 @@ export async function resolveLastMileRouting(
 		organizationId,
 		recipient: input.to,
 		from: input.from,
-		candidateProvider: baseProviderKind === 'mta' ? 'mta' : 'relay',
+		candidateProvider: baseProviderKind === OWN_ARM_TRANSPORT_KIND ? 'mta' : 'relay',
 		ipPool: (plan.baseRoute?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
 		allowWarmupOverflow: Boolean(
 			input.messageType === 'campaign' && plan.baseRoute?.warmupOverflowEnabled
@@ -223,7 +224,7 @@ export async function resolveLastMileRouting(
 		return { kind: 'defer', retryAfterMs: decision.retryAfterMs, origin: decision.origin };
 	}
 	if (decision.kind === 'mta') {
-		if (baseProviderKind !== 'mta') {
+		if (baseProviderKind !== OWN_ARM_TRANSPORT_KIND) {
 			throw new Error('MTA returned an owned route for a relay-only candidate.');
 		}
 		if (route?.deliverabilityReason === 'breaker_open' && !decision.isProviderProbe) {
@@ -240,7 +241,7 @@ export async function resolveLastMileRouting(
 		}
 		return {
 			kind: 'ready',
-			providerKind: 'mta',
+			providerKind: OWN_ARM_TRANSPORT_KIND,
 			route: plan.baseRoute,
 			organizationId,
 			routingLease: decision.leaseToken,
@@ -250,7 +251,7 @@ export async function resolveLastMileRouting(
 	if (input.mtaReconciliation) {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
-	if (baseProviderKind === 'mta' && route?.providerType !== 'ses') {
+	if (baseProviderKind === OWN_ARM_TRANSPORT_KIND && route?.providerType !== 'ses') {
 		const relayReason = decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open';
 		const relay = await ctx.runQuery(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {
 			messageType: input.messageType,
@@ -264,7 +265,7 @@ export async function resolveLastMileRouting(
 		// The MTA has already declined this message, so there is nowhere to send
 		// it right now. Hold rather than terminalizing a message the policy
 		// intends to pause.
-		if (relay.deferralCode || !providerKind || providerKind === 'mta') {
+		if (relay.deferralCode || !providerKind || providerKind === OWN_ARM_TRANSPORT_KIND) {
 			console.warn(
 				`[lastMileRouting] holding delivery: ${relay.deferralCode ?? 'relay_unavailable'}`
 			);
