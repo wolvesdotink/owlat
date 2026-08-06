@@ -26,7 +26,7 @@ Factories cache the resolved provider per-process. Tests can call
 
 | Interface | Env var | Implementations | Files |
 |---|---|---|---|
-| `EmailProvider` (domain identity/verification) | `EMAIL_PROVIDER` (mta) | SES, MTA | `emailProviders/{domainVerification,sesIdentity,mtaIdentity}.ts` |
+| `EmailProvider` (domain identity/verification) — **legacy, superseded** by the sending-domain provider registry below; there is no `EmailProvider` interface left in the tree. Write a `domains/providers/<kind>/` adapter, never an implementation of this row. | — | — | `emailProviders/{sesIdentity,mtaIdentity}.ts` survive as the two provider identity API clients those adapters call; `domainVerification.ts` is From-address helpers only |
 | Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` |
 | `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
 
@@ -51,17 +51,39 @@ registry keyed by `domains.providerType`, one adapter folder per kind (`mta`,
 `ses`, `mandrill`). It owns everything provider-specific about a *sending
 domain*: registering the identity at the provider, the DNS records to publish,
 the provider-side verification check, and — for relays — the proof the
-deliverability fallback reads before handing a From domain over. The lifecycle
-never branches on `providerType`; it calls `providerFor(kind)`.
+deliverability fallback reads before handing a From domain over. Every piece of
+that work is dispatched through `providerFor(kind)`.
 
-Which of those a kind must implement is declared, not assumed: the send-provider
-catalog's `domainVerification: 'api' | 'none'` field is the promise, and a kind
-declaring `api` must both register an adapter here and implement the three relay
-seams (`RelayProvingProviderModule`) — both are compile errors otherwise. Rows
-land in the generic, org-scoped `sendingDomainRelayIdentities` table; the two
-per-provider sibling tables (`sendingDomainMtaIdentities`,
-`sendingDomainSesIdentities`) are frozen and read only through their own
-adapters.
+**But registering an adapter is not yet the whole wiring.** `domains/lifecycle.ts`
+still carries `providerType` branches of its own, and one of them decides
+whether a new adapter is reached at all: the forward relay-identity
+provisioning (the `provision_relay_identity_if_enabled` effect) is a
+hand-written list of relay kinds, so a fourth kind's `ensureRelayIdentity` is
+called by the catch-up drain in `providerRoutes.ts` and by nothing on the
+forward path — domains verifying after that point silently get no identity. The
+return-path branches in the same file are the same family. Clearing them is the
+seams plan's P0.4 leak sweep; until it lands, read that file when you add a
+kind.
+
+Which seams a kind must implement is declared, not assumed: the send-provider
+catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
+**core** kind, declaring `api` must both register an adapter here and implement
+the three relay seams (`RelayProvingProviderModule`) — both are compile errors
+otherwise. A bundled plugin transport's generated catalog entry is untyped, so
+it gets neither error; the runtime seam stays fail-closed (an unregistered kind
+is unverifiable, never credited with another provider's proof) and the type-level
+half is the seams plan's P3.2.
+
+Where a kind's identity row lives depends on when the kind arrived. Anything
+added after MTA and SES writes to the generic, org-scoped
+`sendingDomainRelayIdentities` table — Mandrill does. The two per-provider
+sibling tables (`sendingDomainMtaIdentities`, `sendingDomainSesIdentities`) are
+frozen: no third sibling is ever added, no new kind gets rows there, and they
+keep the MTA's and SES's. They are *written* only through their own adapters —
+but SES/MTA-shaped **readers** still sit outside `domains/providers/`, the
+largest being `providerRoutes.listDeliverabilityRelayDomains`, which reports the
+relay DNS status the web UI renders and is carried into P1.2 together with
+`RelayDomainStatus.vue`. Do not read "encapsulated" here.
 
 ### Inbound channel adapters
 

@@ -21,17 +21,31 @@ function read(relativePath: string): string {
 
 const abstractions = read('docs/abstractions.md');
 
-/** The registry keys in `SEND_PROVIDERS`, read from the registry itself. */
-function coreSendProviderKinds(): string[] {
-	const source = read('apps/api/convex/lib/sendProviders/index.ts');
-	const start = source.indexOf('export const SEND_PROVIDERS = {');
-	expect(start, 'sendProviders/index.ts no longer declares SEND_PROVIDERS').toBeGreaterThan(-1);
+/**
+ * The keys of a `const <NAME> = { … } as const;` registry, read from the
+ * registry's own source.
+ *
+ * One helper for both registries on the page: they are declared identically, so
+ * the parsing assumptions (top-level tab indentation, `} as const;` terminator)
+ * live in one place. Two copies of this is how a reformat gets fixed for one
+ * registry and leaves the other silently matching nothing — inside the file
+ * whose whole job is noticing drift.
+ */
+function registryKeys(relativePath: string, declaration: string): string[] {
+	const source = read(relativePath);
+	const start = source.indexOf(declaration);
+	expect(start, `${relativePath} no longer declares ${declaration}`).toBeGreaterThan(-1);
 	const body = source.slice(start, source.indexOf('} as const;', start));
-	return [...body.matchAll(/^\t([a-z][a-zA-Z0-9]*): /gm)].map((match) => match[1]!);
+	const keys = [...body.matchAll(/^\t([a-z][a-zA-Z0-9]*): /gm)].map((match) => match[1]!);
+	expect(keys.length, `no keys parsed out of ${declaration}`).toBeGreaterThan(1);
+	return keys;
 }
 
 describe('docs/abstractions.md: the send-provider row matches the registry', () => {
-	const kinds = coreSendProviderKinds();
+	const kinds = registryKeys(
+		'apps/api/convex/lib/sendProviders/index.ts',
+		'export const SEND_PROVIDERS = {'
+	);
 
 	it('derives a non-trivial core adapter set from the registry', () => {
 		expect(kinds.length).toBeGreaterThan(1);
@@ -53,13 +67,13 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 	});
 });
 
-/** The registry keys in `SENDING_DOMAIN_PROVIDERS`, read from the registry itself. */
-function sendingDomainProviderKinds(): string[] {
-	const source = read('apps/api/convex/domains/providers/index.ts');
-	const start = source.indexOf('export const SENDING_DOMAIN_PROVIDERS = {');
-	expect(start, 'domains/providers/index.ts no longer declares the registry').toBeGreaterThan(-1);
-	const body = source.slice(start, source.indexOf('} as const;', start));
-	return [...body.matchAll(/^\t([a-z][a-zA-Z0-9]*): /gm)].map((match) => match[1]!);
+/** The `### Sending-domain identity providers` section, heading to next heading. */
+function sendingDomainSection(): string {
+	const heading = '### Sending-domain identity providers';
+	const start = abstractions.indexOf(heading);
+	expect(start, 'the sending-domain provider section is gone').toBeGreaterThan(-1);
+	const end = abstractions.indexOf('\n### ', start + 1);
+	return abstractions.slice(start, end === -1 ? undefined : end);
 }
 
 /**
@@ -71,24 +85,26 @@ function sendingDomainProviderKinds(): string[] {
  * next person who trusts the page.
  */
 describe('docs/abstractions.md: the sending-domain provider section matches the registry', () => {
-	const kinds = sendingDomainProviderKinds();
+	const kinds = registryKeys(
+		'apps/api/convex/domains/providers/index.ts',
+		'export const SENDING_DOMAIN_PROVIDERS = {'
+	);
+	const section = sendingDomainSection();
 
 	it('derives a non-trivial adapter set from the registry', () => {
-		expect(kinds.length).toBeGreaterThan(1);
 		expect(kinds).toContain('ses');
 	});
 
 	it('lists exactly the sending-domain adapters the registry ships', () => {
-		const heading = '### Sending-domain identity providers';
-		const start = abstractions.indexOf(heading);
-		expect(start, 'the sending-domain provider section is gone').toBeGreaterThan(-1);
-		const end = abstractions.indexOf('\n### ', start + 1);
-		const section = abstractions.slice(start, end === -1 ? undefined : end);
-		// The kind list, and only it: an all-lowercase code span closing a
-		// comma-or-paren-delimited enumeration. Table and type names in the same
-		// section are camelCase, so they cannot be mistaken for a kind.
-		const listed = [...section.matchAll(/`([a-z][a-z0-9]*)`(?=[,)])/g)].map((match) => match[1]!);
-		expect([...new Set(listed)].sort()).toEqual([...kinds].sort());
+		// Anchored on the ENUMERATION rather than on punctuation. The previous
+		// version matched any all-lowercase code span followed by `,` or `)`
+		// anywhere in the section, so an ordinary prose edit ("a kind declaring
+		// `api`, …") failed the test as a registry mismatch — blaming the registry
+		// for a sentence.
+		const enumeration = /one adapter folder per kind \(([^)]+)\)/.exec(section);
+		expect(enumeration, 'the section no longer enumerates the adapter folders').not.toBeNull();
+		const listed = [...enumeration![1]!.matchAll(/`([^`]+)`/g)].map((match) => match[1]!);
+		expect(listed.sort()).toEqual([...kinds].sort());
 	});
 
 	it('names the capability that decides which adapters must prove a relay domain', () => {
@@ -99,5 +115,29 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		const types = 'apps/api/convex/domains/providers/types.ts';
 		expect(existsSync(resolve(repoRoot, types))).toBe(true);
 		expect(read(types)).toContain('export type RelayProvingProviderModule');
+	});
+
+	it('keeps the sibling-table claim honest about the readers outside the adapters', () => {
+		// The section says the two frozen sibling tables are WRITTEN only through
+		// their adapters, and names the reader that is not. That exception is a
+		// fact about `providerRoutes.ts`, so it is asserted against that file in
+		// BOTH directions: while the SES-shaped read is still there the page must
+		// name it, and once P1.2 makes the read generic the page must stop.
+		const routes = read('apps/api/convex/providerRoutes.ts');
+		const stillReadsTheSibling = routes.includes("query('sendingDomainSesIdentities')");
+		expect(section.includes('listDeliverabilityRelayDomains')).toBe(stillReadsTheSibling);
+		expect(section).toContain('sendingDomainSesIdentities');
+		expect(section).toContain('sendingDomainRelayIdentities');
+	});
+
+	it('marks the superseded EmailProvider row as legacy rather than as a peer seam', () => {
+		// The row sits ABOVE this section in the canonical provider table, so a
+		// developer adding provider #4 reads it first. There is no `EmailProvider`
+		// interface left in the tree; leaving the row unqualified is how someone
+		// writes an implementation of it instead of an adapter folder.
+		const row = abstractions.split('\n').find((line) => line.startsWith('| `EmailProvider`'));
+		expect(row, 'the EmailProvider row is gone — drop this case with it').toBeDefined();
+		expect(row).toContain('superseded');
+		expect(row).toContain('domains/providers/');
 	});
 });
