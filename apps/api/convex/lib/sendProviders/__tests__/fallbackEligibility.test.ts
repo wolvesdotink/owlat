@@ -99,15 +99,33 @@ describe('isFallbackRelayEligible', () => {
 });
 
 describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
-	/** Kinds are single lowercase tokens; match on word boundaries, not substrings. */
+	/**
+	 * Tokenize on word boundaries rather than substrings, so "unverified" is not
+	 * read as naming `resend` and a namespaced plugin kind (`plugin.acme.esp`)
+	 * survives as one token — hence `.` inside the token but STRIPPED at its
+	 * edges. Without that trim, "…enable the relay for ses." tokenizes as `ses.`
+	 * and a kind at the end of a clause would walk straight past this guard.
+	 */
 	function wordsOf(message: string): Set<string> {
 		return new Set(
 			message
 				.toLowerCase()
 				.split(/[^a-z0-9.]+/)
+				.map((token) => token.replace(/^\.+|\.+$/g, ''))
 				.filter(Boolean)
 		);
 	}
+
+	it('tokenizes clause-final and namespaced kinds the way the guard below needs', () => {
+		// The guard is only as good as this: a self-test, because a tokenizer that
+		// silently stopped seeing kinds would make every assertion below vacuous.
+		const words = wordsOf('Configure the relay for ses. Or plugin.acme.esp, or resend!');
+		expect(words.has('ses')).toBe(true);
+		expect(words.has('plugin.acme.esp')).toBe(true);
+		expect(words.has('resend')).toBe(true);
+		// Substrings are not matches: "unverified" must not read as `resend`.
+		expect(wordsOf('unverified').has('resend')).toBe(false);
+	});
 
 	it('names no provider in either refusal', () => {
 		// The `unavailable` message used to read "enable the verified Amazon SES
@@ -120,6 +138,11 @@ describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
 			for (const entry of SEND_PROVIDER_CATALOG) {
 				expect(message).not.toContain(entry.label);
 				expect(words.has(entry.kind)).toBe(false);
+				// Belt and braces for the kinds whose names are also English words
+				// or live at a clause boundary: the raw message, on word boundaries.
+				expect(message.toLowerCase()).not.toMatch(
+					new RegExp(`(^|[^a-z0-9.])${entry.kind.replace(/\./g, '\\.')}([^a-z0-9.]|$)`)
+				);
 			}
 			// The vendor names behind the labels, spelled out: a future rewording
 			// that says "Amazon" or "Mailchimp" without the exact label would slip

@@ -87,30 +87,46 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 		expect(apiVerifiedKinds).toEqual(['ses', 'mandrill']);
 	});
 
-	it('only api-verified kinds implement the relay-verification read seam', () => {
-		// A provider may be registered without one (our MTA is: its domains are
-		// verified on the ordinary DNS path and it is never a fallback relay).
-		// What must never happen is the reverse — a kind the catalog promises can
-		// prove a domain, whose provider has no way to prove it.
-		for (const [kind, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
-			const declaresApi = domainVerificationFor(kind as SendProviderKind) === 'api';
-			expect(typeof provider.relayDomainVerified === 'function').toBe(declaresApi);
-		}
-	});
+	/**
+	 * The relay seams that are implemented IF AND ONLY IF the catalog declares
+	 * `domainVerification: 'api'` for the kind — one table rather than one
+	 * near-identical test per method, so the next optional per-kind seam is a
+	 * row and a change to the rule is a single edit.
+	 *
+	 * Both directions matter. A provider may be registered with neither (our MTA
+	 * is: its domains are verified on the ordinary DNS path and it is never a
+	 * fallback relay), so implementing one while declaring `none` is a sign the
+	 * catalog and the adapter disagree about what the kind is.
+	 */
+	const relayContractByCapability = [
+		{
+			method: 'relayDomainVerified',
+			// The read half (D6). A kind the catalog promises can prove a domain,
+			// whose provider has no way to prove it, answers "unverified" forever.
+		},
+		{
+			method: 'ensureRelayIdentity',
+			// The write half (P0.2). The drain in `providerRoutes.ts` no longer names
+			// a kind: it asks whichever provider the route configured. A kind that
+			// promises a proof but never provisions the identity that proof is read
+			// from reports every pre-existing domain unverified — and its fallback
+			// refuses to relay any of them, with the only symptom a runtime refusal
+			// on a real send.
+		},
+	] as const;
 
-	it('every kind that can prove a domain also backfills its own relay identity', () => {
-		// P0.2's write half, and the exact mirror of the read-seam rule above. The
-		// drain in `providerRoutes.ts` no longer names a kind: it asks whichever
-		// provider the route configured for `ensureRelayIdentity`. A kind the
-		// catalog promises can prove a domain, but whose provider cannot provision
-		// the identity that proof is read from, would report every pre-existing
-		// domain unverified — and its fallback would refuse to relay any of them,
-		// with the only symptom a runtime refusal on a real send.
-		for (const [kind, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
-			const declaresApi = domainVerificationFor(kind as SendProviderKind) === 'api';
-			expect(typeof provider.ensureRelayIdentity === 'function').toBe(declaresApi);
+	it.each(relayContractByCapability)(
+		'implements $method exactly when the catalog declares domainVerification: api',
+		({ method }) => {
+			for (const [kind, provider] of Object.entries(SENDING_DOMAIN_PROVIDERS)) {
+				const declaresApi = domainVerificationFor(kind as SendProviderKind) === 'api';
+				expect({ kind, implements: typeof provider[method] === 'function' }).toEqual({
+					kind,
+					implements: declaresApi,
+				});
+			}
 		}
-	});
+	);
 
 	it('every kind that can prove a domain also describes its own reference arm', () => {
 		// P3.1's second half: the alignment pre-flight asks the registry for the
