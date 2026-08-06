@@ -38,6 +38,60 @@ export type DeclaredCustomReturnPathSupport = 'yes' | 'no' | 'probe';
  */
 export type DomainVerificationSupport = 'api' | 'none';
 
+/**
+ * What a SUCCESSFUL dispatch means for this transport, and therefore what an
+ * AMBIGUOUS one may be answered with (plan D2 — capabilities, not identity).
+ *
+ *  - `accepted`  the transport takes CUSTODY of the message. Success is an
+ *                intake acceptance, not a delivery: the Send stays `queued`
+ *                until the transport's own feedback terminalizes it, so the
+ *                governed boundary reports `acceptedForDelivery`. Intake is
+ *                idempotent under the key WE minted (such a kind declares
+ *                `messageIdSource: 'idempotency-key'`), which is what makes an
+ *                ambiguous outcome RE-ASKABLE: replaying the attempt either
+ *                finds the existing work or creates it, and no recipient can be
+ *                mailed twice.
+ *  - `unknown-on-timeout` the send IS the handoff — there is no separate
+ *                custody state to report — and a lost response CANNOT be
+ *                re-asked: a replay on a transport with no idempotency surface
+ *                would double-deliver (plan D4). An ambiguous outcome parks
+ *                awaiting provider feedback where the kind has a feedback
+ *                channel, and fails where it has none.
+ *
+ * Absent ⇒ `unknown-on-timeout`, the fail-closed reading: claiming custody we
+ * were never granted would leave a Send waiting `queued` for feedback that
+ * never arrives, and claiming re-askability would double-deliver.
+ */
+export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
+
+/**
+ * Where the `providerMessageId` recorded against the durable Send comes from —
+ * and, decisively, WHEN it exists.
+ *
+ *  - `provider`        the transport mints it and we learn it from the send
+ *                      response (SES `MessageId`, Resend/Mandrill ids).
+ *  - `composed`        we mint it as the message's RFC 5322 `Message-ID` while
+ *                      composing, and the transport echoes that back — the
+ *                      relay never assigns an id of its own.
+ *  - `idempotency-key` the id IS the stable per-Send idempotency key the
+ *                      governed boundary derived from the durable row, so it is
+ *                      known BEFORE the network crossing. Only such a kind gets
+ *                      its identity bound pre-dispatch (a webhook that races the
+ *                      send response can then still be attributed), and only
+ *                      such a kind has the value substituted for whatever the
+ *                      response carried — the MTA answers a dedup sentinel on a
+ *                      deduplicated intake.
+ *
+ * Absent ⇒ `provider`: an id we cannot predict, which is the fail-closed
+ * reading (never pre-bind an identity we do not actually control).
+ *
+ * NOTE for a new kind declaring `idempotency-key`: the pre-dispatch binding
+ * runs through `delivery/sendLifecycle.bindMtaProviderIdentity`, which stamps
+ * the own-MTA provider type. That mutation must be generalized in the same
+ * change — declaring the capability alone would mislabel the Send's transport.
+ */
+export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
+
 export interface SendProviderCatalogEntry {
 	readonly kind: SendProviderKind;
 	readonly label: string;
@@ -60,20 +114,35 @@ export interface SendProviderCatalogEntry {
 	 * {@link CoreSendProviderCatalogEntry}.
 	 */
 	readonly domainVerification?: DomainVerificationSupport;
+	/**
+	 * What a successful — and an ambiguous — dispatch means for this transport.
+	 * Absent ⇒ `unknown-on-timeout` (fail closed). Read it through
+	 * {@link acceptanceSemanticsFor}.
+	 */
+	readonly acceptanceSemantics?: AcceptanceSemantics;
+	/**
+	 * Where this transport's provider message id comes from. Absent ⇒ `provider`
+	 * (fail closed). Read it through {@link messageIdSourceFor}.
+	 */
+	readonly messageIdSource?: MessageIdSource;
 }
 
 /**
  * A CORE catalog entry — every kind that ships in this repo.
  *
- * `domainVerification` is REQUIRED here while it stays optional on the shared
- * interface: a kind we write ourselves can always answer the question, and
- * letting a new core kind coast on the fail-closed default is exactly how an
- * `api` transport silently loses its relay eligibility. Bundled plugin
- * transports keep the optional field — they are generated from plugin
- * manifests, which have no domain-identity surface to declare.
+ * `domainVerification`, `acceptanceSemantics` and `messageIdSource` are
+ * REQUIRED here while they stay optional on the shared interface: a kind we
+ * write ourselves can always answer these questions, and letting a new core
+ * kind coast on the fail-closed default is exactly how an `api` transport
+ * silently loses its relay eligibility, or how a transport that takes custody
+ * of a message has that custody go unrecorded. Bundled plugin transports keep
+ * the optional fields — they are generated from plugin manifests, which have no
+ * such surface to declare (plugin-tier parity is plan P3.1).
  */
 interface CoreSendProviderCatalogEntry extends SendProviderCatalogEntry {
 	readonly domainVerification: DomainVerificationSupport;
+	readonly acceptanceSemantics: AcceptanceSemantics;
+	readonly messageIdSource: MessageIdSource;
 }
 
 const CORE_SEND_PROVIDER_CATALOG = [
@@ -90,6 +159,14 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// the arm a deliverability fallback moves traffic AWAY from, never the
 		// relay it moves traffic to, so it has no relay identity to report.
 		domainVerification: 'none',
+		// `POST /send` is an INTAKE: it enqueues the work and answers; the message
+		// is delivered (or not) later and reported over the MTA's own webhook. So a
+		// success here is custody, not delivery, and the Send stays `queued`.
+		acceptanceSemantics: 'accepted',
+		// The id the MTA correlates work by IS the idempotency key we minted, so it
+		// exists before the request does — which is what lets the durable Send be
+		// bound to it pre-dispatch, and what makes a lost response replayable.
+		messageIdSource: 'idempotency-key',
 	},
 	{
 		kind: 'ses',
@@ -108,6 +185,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// SES identity APIs (`getVerificationStatus` + the DKIM/MAIL FROM proof
 		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
 		domainVerification: 'api',
+		// SES has no idempotency surface: a replayed request after a lost response
+		// would double-deliver, which is why its adapter answers AMBIGUOUS_TIMEOUT
+		// rather than a retryable code.
+		acceptanceSemantics: 'unknown-on-timeout',
+		messageIdSource: 'provider',
 	},
 	{
 		kind: 'resend',
@@ -120,6 +202,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// `domains/providers/resend` adapter exists, so the seam must keep saying
 		// "unverifiable" rather than claim a proof we never fetched.
 		domainVerification: 'none',
+		// Resend threads our `Idempotency-Key` header, so a RETRY inside the
+		// dispatch loop is safe — but the id Resend returns is its own, and the
+		// governed boundary has no acceptance state to reconcile against.
+		acceptanceSemantics: 'unknown-on-timeout',
+		messageIdSource: 'provider',
 	},
 	{
 		kind: 'smtp',
@@ -132,6 +219,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		hasProviderFeedback: false,
 		// A bring-your-own relay has no identity API at all.
 		domainVerification: 'none',
+		acceptanceSemantics: 'unknown-on-timeout',
+		// A relay hands back no id of its own: the adapter reports the RFC 5322
+		// `Message-ID` we minted while composing the message.
+		messageIdSource: 'composed',
 	},
 	{
 		kind: 'mandrill',
@@ -160,6 +251,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// a compile error (the `ApiVerifiedSendProviderKind` completeness guard),
 		// so this line and that registration can only move together.
 		domainVerification: 'api',
+		// `send-raw` has no idempotency surface (D4): a lost response may sit on
+		// top of an accepted and delivered message, so the ambiguity parks on
+		// Mandrill's webhook feedback instead of being replayed.
+		acceptanceSemantics: 'unknown-on-timeout',
+		messageIdSource: 'provider',
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 
@@ -235,6 +331,39 @@ export function domainVerificationFor(kind: SendProviderKind): DomainVerificatio
  */
 export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
 	return sendProviderCatalogEntry(kind).hasProviderFeedback === true;
+}
+
+/**
+ * What a dispatch outcome MEANS for this kind — see {@link AcceptanceSemantics}.
+ * Read it instead of the raw field so an absent declaration can never be
+ * mistaken for custody the transport never took.
+ *
+ * This is the capability that replaced `providerKind === 'mta'` at the two
+ * acceptance sites in `delivery/governedDispatch.ts` (plan D2).
+ */
+export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemantics {
+	return sendProviderCatalogEntry(kind).acceptanceSemantics ?? 'unknown-on-timeout';
+}
+
+/**
+ * Where this kind's provider message id comes from — see
+ * {@link MessageIdSource}. Read it instead of the raw field so an absent
+ * declaration can never be mistaken for an id we control.
+ */
+export function messageIdSourceFor(kind: SendProviderKind): MessageIdSource {
+	return sendProviderCatalogEntry(kind).messageIdSource ?? 'provider';
+}
+
+/**
+ * Is this kind's provider message id known BEFORE the send — i.e. is it the
+ * idempotency key the governed boundary derived from the durable Send row?
+ *
+ * ONE definition, because two sites must agree or a Send is bound to an id it
+ * will never be reported under: the pre-dispatch identity binding and the
+ * recorded `providerMessageId` after a successful attempt.
+ */
+export function preassignsProviderMessageId(kind: SendProviderKind): boolean {
+	return messageIdSourceFor(kind) === 'idempotency-key';
 }
 
 /**

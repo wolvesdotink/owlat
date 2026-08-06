@@ -37,6 +37,11 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'yes',
 				hasProviderFeedback: true,
 				domainVerification: 'none',
+				// The two dispatch semantics the governed boundary used to spell as
+				// `providerKind === 'mta'` (plan P0.1/D2). Only the own MTA takes
+				// custody, and only its message id is one we minted ourselves.
+				acceptanceSemantics: 'accepted',
+				messageIdSource: 'idempotency-key',
 			},
 			{
 				kind: 'ses',
@@ -46,6 +51,8 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
 				domainVerification: 'api',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
 			},
 			{
 				kind: 'resend',
@@ -55,6 +62,8 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
 				domainVerification: 'none',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
 			},
 			{
 				kind: 'smtp',
@@ -64,6 +73,10 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'probe',
 				hasProviderFeedback: false,
 				domainVerification: 'none',
+				acceptanceSemantics: 'unknown-on-timeout',
+				// A relay assigns no id of its own — the adapter reports the
+				// `Message-ID` the composer minted.
+				messageIdSource: 'composed',
 			},
 			{
 				kind: 'mandrill',
@@ -77,6 +90,8 @@ describe('Send provider registry', () => {
 				hasProviderFeedback: true,
 				// P3.1 flipped this once `domains/providers/mandrill` registered.
 				domainVerification: 'api',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
 			},
 		]);
 	});
