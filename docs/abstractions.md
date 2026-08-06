@@ -44,6 +44,25 @@ deletion-over-seams rule: a provider directory exists only once a second
 real implementation (or a real caller) does. Re-introduce one by following
 the Pattern above when that day comes — don't keep empty sockets around.
 
+### Sending-domain identity providers
+
+`SendingDomainProviderModule` (`apps/api/convex/domains/providers/`) — a
+registry keyed by `domains.providerType`, one adapter folder per kind (`mta`,
+`ses`, `mandrill`). It owns everything provider-specific about a *sending
+domain*: registering the identity at the provider, the DNS records to publish,
+the provider-side verification check, and — for relays — the proof the
+deliverability fallback reads before handing a From domain over. The lifecycle
+never branches on `providerType`; it calls `providerFor(kind)`.
+
+Which of those a kind must implement is declared, not assumed: the send-provider
+catalog's `domainVerification: 'api' | 'none'` field is the promise, and a kind
+declaring `api` must both register an adapter here and implement the three relay
+seams (`RelayProvingProviderModule`) — both are compile errors otherwise. Rows
+land in the generic, org-scoped `sendingDomainRelayIdentities` table; the two
+per-provider sibling tables (`sendingDomainMtaIdentities`,
+`sendingDomainSesIdentities`) are frozen and read only through their own
+adapters.
+
 ### Inbound channel adapters
 
 `@owlat/channels` (`packages/channels/src/inboundRegistry.ts`) — registry

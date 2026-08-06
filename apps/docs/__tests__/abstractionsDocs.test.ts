@@ -52,3 +52,52 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 		expect(existsSync(resolve(repoRoot, adapter))).toBe(true);
 	});
 });
+
+/** The registry keys in `SENDING_DOMAIN_PROVIDERS`, read from the registry itself. */
+function sendingDomainProviderKinds(): string[] {
+	const source = read('apps/api/convex/domains/providers/index.ts');
+	const start = source.indexOf('export const SENDING_DOMAIN_PROVIDERS = {');
+	expect(start, 'domains/providers/index.ts no longer declares the registry').toBeGreaterThan(-1);
+	const body = source.slice(start, source.indexOf('} as const;', start));
+	return [...body.matchAll(/^\t([a-z][a-zA-Z0-9]*): /gm)].map((match) => match[1]!);
+}
+
+/**
+ * The sending-domain provider registry is the second provider seam on the page,
+ * and the one the page used to omit entirely while listing the older
+ * `EmailProvider` factory it long outgrew. Same treatment as the send-provider
+ * row above: the kinds are read from the registry, so a fourth adapter folder
+ * that never reaches the docs fails here rather than being discovered by the
+ * next person who trusts the page.
+ */
+describe('docs/abstractions.md: the sending-domain provider section matches the registry', () => {
+	const kinds = sendingDomainProviderKinds();
+
+	it('derives a non-trivial adapter set from the registry', () => {
+		expect(kinds.length).toBeGreaterThan(1);
+		expect(kinds).toContain('ses');
+	});
+
+	it('lists exactly the sending-domain adapters the registry ships', () => {
+		const heading = '### Sending-domain identity providers';
+		const start = abstractions.indexOf(heading);
+		expect(start, 'the sending-domain provider section is gone').toBeGreaterThan(-1);
+		const end = abstractions.indexOf('\n### ', start + 1);
+		const section = abstractions.slice(start, end === -1 ? undefined : end);
+		// The kind list, and only it: an all-lowercase code span closing a
+		// comma-or-paren-delimited enumeration. Table and type names in the same
+		// section are camelCase, so they cannot be mistaken for a kind.
+		const listed = [...section.matchAll(/`([a-z][a-z0-9]*)`(?=[,)])/g)].map((match) => match[1]!);
+		expect([...new Set(listed)].sort()).toEqual([...kinds].sort());
+	});
+
+	it('names the capability that decides which adapters must prove a relay domain', () => {
+		// The page's claim is that the obligation is DECLARED and compile-enforced;
+		// these are the two names a reader has to be able to grep for.
+		expect(abstractions).toContain("domainVerification: 'api' | 'none'");
+		expect(abstractions).toContain('RelayProvingProviderModule');
+		const types = 'apps/api/convex/domains/providers/types.ts';
+		expect(existsSync(resolve(repoRoot, types))).toBe(true);
+		expect(read(types)).toContain('export type RelayProvingProviderModule');
+	});
+});
