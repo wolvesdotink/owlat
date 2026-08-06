@@ -13,6 +13,7 @@
  * Per ADR-0018.
  */
 
+import { internal } from '../../../_generated/api';
 import { createSESIdentityManager } from '../../../lib/emailProviders/sesIdentity';
 import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
@@ -131,6 +132,22 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 	// arm this deployment has always compared against, now answered through the
 	// registry instead of an `=== 'ses'` branch in the pre-flight.
 	describeReferenceArm: sesReferenceArm,
+
+	/**
+	 * The relay-identity backfill. Byte-identical to what the drain in
+	 * `providerRoutes.ts` used to do inline — the same existence read on the
+	 * frozen `sendingDomainSesIdentities` sibling, the same scheduled
+	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
+	 * of whichever kind the route actually named (plan D2).
+	 */
+	async ensureRelayIdentity(ctx, domainId) {
+		const existing = await ctx.db
+			.query('sendingDomainSesIdentities')
+			.withIndex('by_domain', (q) => q.eq('domainId', domainId))
+			.first();
+		if (existing) return;
+		await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, { domainId });
+	},
 
 	async writeIdentity(ctx, domainId, identity) {
 		const existing = await ctx.db

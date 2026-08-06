@@ -210,6 +210,38 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 		now: number
 	): Promise<ReferenceAlignmentArm | null>;
 
+	/**
+	 * BACKFILL: make sure this provider holds a relay identity for `domainId`,
+	 * whose PRIMARY provider is somebody else (in practice our own MTA).
+	 *
+	 * The write half of what {@link relayDomainVerified} later reads, and the
+	 * catch-up path for the domains that already existed when an operator
+	 * switched the deliverability fallback on —
+	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
+	 * this of the kind the route named. Domains verified AFTER that point get
+	 * theirs from the lifecycle's `provision_relay_identity_if_enabled` effect
+	 * instead, so the two together cover every domain exactly once.
+	 *
+	 * Implementations SCHEDULE the provider call rather than making it: this
+	 * runs inside the drain's transaction, and a provider outage must not roll
+	 * back a batch (the same reasoning as `register_with_provider`). They also
+	 * own the "already have one?" check, because where that identity lives is
+	 * per-provider knowledge — the frozen `sendingDomainSesIdentities` sibling
+	 * for SES, the generic `sendingDomainRelayIdentities` row for every kind
+	 * after it (D7).
+	 *
+	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
+	 * identity API to register at (`domainVerification: 'none'` — our own MTA,
+	 * Resend, a bring-your-own SMTP relay) has no relay identity to backfill,
+	 * and the drain then does nothing at all rather than provisioning some other
+	 * kind's. Every kind declaring `domainVerification: 'api'` implements it —
+	 * pinned by `./__tests__/registry.test.ts`, beside the same completeness rule
+	 * for {@link relayDomainVerified}, because a kind that promises a proof and
+	 * never provisions the identity that proof is read from reports every domain
+	 * unverified and its fallback never relays.
+	 */
+	ensureRelayIdentity?(ctx: MutationCtx, domainId: Id<'domains'>): Promise<void>;
+
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 
 	/**

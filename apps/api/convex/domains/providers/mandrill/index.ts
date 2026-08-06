@@ -24,6 +24,7 @@
  * Per ADR-0018, extended by plan D6/D7.
  */
 
+import { internal } from '../../../_generated/api';
 import { logError } from '../../../lib/runtimeLog';
 import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
 import { addSenderDomain, checkSenderDomain } from './api';
@@ -103,6 +104,25 @@ export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
 	// `./relayVerification.ts`.
 	relayDomainVerified: mandrillRelayDomainVerified,
 	describeReferenceArm: mandrillReferenceArm,
+
+	/**
+	 * The relay-identity backfill for the domains that predate the fallback
+	 * being switched to Mandrill. The existence read is on the GENERIC
+	 * `sendingDomainRelayIdentities` row (D7) rather than on a sibling table of
+	 * its own, which is the only thing that differs from the SES adapter's
+	 * implementation of the same contract.
+	 *
+	 * A domain row that vanished mid-drain schedules nothing: there would be no
+	 * name to register and `mandrillRelay.provision` would answer
+	 * `{ provisioned: false }` anyway.
+	 */
+	async ensureRelayIdentity(ctx, domainId) {
+		const domainName = await resolveDomainName(ctx, domainId);
+		if (domainName === null) return;
+		const organizationId = await getSingletonOrganizationId(ctx);
+		if (await loadMandrillRow(ctx, organizationId, domainName)) return;
+		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, { domainId });
+	},
 
 	/**
 	 * Persist the identity the lifecycle just registered. The `domainId` is
