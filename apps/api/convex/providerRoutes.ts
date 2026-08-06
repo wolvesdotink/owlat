@@ -20,6 +20,7 @@ import {
 	relayIdentityBackfills,
 } from './lib/sendProviders/fallbackRelays';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './domains/providers';
+import { logError } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
@@ -293,8 +294,24 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 			.query('domains')
 			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.paginate(args.paginationOpts);
+		// ONE SUMMARY PER PAGE, because the per-domain throw is swallowed so it
+		// cannot roll the page back. Without it a page in which every domain's
+		// backfill threw — a transient org lookup, a provider row that vanished —
+		// commits as a success, schedules its successor and reports the drain
+		// complete having provisioned nothing, and the only later symptom is the
+		// relay refusing those From domains once the breaker opens.
+		const failedByKind = new Map<string, number>();
 		for (const domain of page.page) {
-			await ensureRelayIdentities(ctx, domain, backfills);
+			const outcome = await ensureRelayIdentities(ctx, domain, backfills);
+			for (const kind of outcome.failedKinds) {
+				failedByKind.set(kind, (failedByKind.get(kind) ?? 0) + 1);
+			}
+		}
+		if (failedByKind.size > 0) {
+			logError(
+				`[Relay identity] Drain page left ${page.page.length} domains partly unprovisioned: ` +
+					[...failedByKind].map(([kind, count]) => `${kind}=${count}`).join(', ')
+			);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {

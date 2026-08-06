@@ -268,7 +268,7 @@ function assertPluginIdempotencyClaimsAreDeliverable(
 				'true, but the plugin tier has no per-send extras contract yet, so the system/auth ' +
 				'mail path cannot hand it the key it would deduplicate on — an ambiguous send would ' +
 				'be reported safe to retry and re-mail the recipient. See buildSystemMailExtras in ' +
-				'lib/sendProviders/types.ts.'
+				'lib/sendProviders/systemMailExtras.ts.'
 		);
 	}
 }

@@ -34,6 +34,7 @@ import {
 	isSendingDomainProviderKind,
 	providerFor,
 } from '../../domains/providers';
+import type { SendingDomainProviderKind } from '../../domains/providers/types';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
@@ -68,13 +69,28 @@ export async function enabledFallbackRelayKinds(
 }
 
 /**
- * One relay's `ensureRelayIdentity`, already bound to its module.
+ * One relay's `ensureRelayIdentity`, already bound to its module, WITH the kind
+ * it belongs to.
  *
- * The functions travel, not the kinds: resolving the registry once per BATCH
- * rather than once per domain is what lets the drain decide, before it reads a
- * page, that there is nothing to provision at all.
+ * Resolving the registry once per BATCH rather than once per domain is what
+ * lets the drain decide, before it reads a page, that there is nothing to
+ * provision at all. The kind travels alongside because the failure path is the
+ * only place a caller learns anything: with two relays configured — the case
+ * the loop exists for — a log line naming only the domain cannot tell an
+ * operator which relay to re-provision, and the symptom they are chasing (that
+ * relay refusing this From domain when the breaker opens) names neither.
  */
-export type RelayIdentityBackfill = (ctx: MutationCtx, domain: Doc<'domains'>) => Promise<void>;
+export type RelayIdentityBackfill = {
+	readonly kind: SendingDomainProviderKind;
+	readonly ensureRelayIdentity: (ctx: MutationCtx, domain: Doc<'domains'>) => Promise<void>;
+};
+
+/** What one page (or one domain) of backfill actually managed to do. */
+export type RelayIdentityBackfillOutcome = {
+	readonly attempted: number;
+	/** The kinds whose `ensureRelayIdentity` threw, deduplicated. */
+	readonly failedKinds: readonly SendingDomainProviderKind[];
+};
 
 /**
  * The registered backfills for `relayKinds` — the "ask the kind, don't name it"
@@ -91,9 +107,14 @@ export function relayIdentityBackfills(
 ): readonly RelayIdentityBackfill[] {
 	return relayKinds
 		.filter((kind) => isSendingDomainProviderKind(kind))
-		.map((kind) => providerFor(kind))
-		.map((provider) => provider.ensureRelayIdentity?.bind(provider))
-		.filter((ensureRelayIdentity) => ensureRelayIdentity !== undefined);
+		.map((kind) => ({ kind, provider: providerFor(kind) }))
+		.map(({ kind, provider }) => ({
+			kind,
+			ensureRelayIdentity: provider.ensureRelayIdentity?.bind(provider),
+		}))
+		.filter(
+			(backfill): backfill is RelayIdentityBackfill => backfill.ensureRelayIdentity !== undefined
+		);
 }
 
 /**
@@ -123,18 +144,32 @@ export function relayIdentityBackfills(
  * drain gets the same protection for the same reason: one bad kind must not
  * cost the whole page. Losing a backfill is recoverable (the drain re-runs when
  * the operator touches the fallback); losing the transition is not.
+ *
+ * SWALLOWED, NOT SILENT. The drain used to await the adapter directly, so a
+ * throw failed the scheduled mutation and showed up in Convex's
+ * scheduled-function failures; the transaction protection above takes that
+ * signal away, and a page in which every domain threw would otherwise commit,
+ * schedule its successor and report completion having provisioned nothing.
+ * So the outcome is RETURNED rather than only logged, and the drain summarizes
+ * it once per page — a wholly failed drain stays visible without the rollback
+ * coming back.
  */
 export async function ensureRelayIdentities(
 	ctx: MutationCtx,
 	domain: Doc<'domains'>,
 	backfills: readonly RelayIdentityBackfill[]
-): Promise<void> {
-	if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) return;
-	for (const ensureRelayIdentity of backfills) {
+): Promise<RelayIdentityBackfillOutcome> {
+	if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) {
+		return { attempted: 0, failedKinds: [] };
+	}
+	const failedKinds: SendingDomainProviderKind[] = [];
+	for (const { kind, ensureRelayIdentity } of backfills) {
 		try {
 			await ensureRelayIdentity(ctx, domain);
 		} catch (error) {
-			logError(`[Relay identity] Backfill failed for ${domain.domain}:`, error);
+			failedKinds.push(kind);
+			logError(`[Relay identity] ${kind} backfill failed for ${domain.domain}:`, error);
 		}
 	}
+	return { attempted: backfills.length, failedKinds };
 }

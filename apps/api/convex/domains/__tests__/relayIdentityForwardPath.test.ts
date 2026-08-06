@@ -230,6 +230,34 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 		expect(ensureMockRelayIdentity).toHaveBeenCalledTimes(1);
 	});
 
+	it('names the failing relay when an adapter throws, and still lands the transition', async () => {
+		// TWO RULES AT ONE SITE. The throw is swallowed because this runs inside the
+		// mutation that lands `→ verified`: propagating it would roll the transition
+		// back and the operator would see Verify error out with the domain stuck —
+		// the failure the "schedule, never call inline" rule exists to prevent,
+		// arriving through the read the adapters do before they schedule.
+		//
+		// But the swallow is the only thing standing between a failed backfill and
+		// silence, and with two relays configured — the case the loop exists for —
+		// a log line naming only the domain cannot tell an operator WHICH relay to
+		// re-provision, while the symptom they are chasing (that relay refusing
+		// this From domain once the breaker opens) names neither. So the kind
+		// travels bound to the function and lands in the message.
+		const t = convexTest(schema, modules);
+		await seedRoute(t, MOCK_RELAY_KIND);
+		const domainId = await seedPendingDomain(t, 'mta');
+		ensureMockRelayIdentity.mockRejectedValueOnce(new Error('provider lookup failed'));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await verify(t, domainId);
+
+		expect(await t.run(async (ctx) => (await ctx.db.get(domainId))?.status)).toBe('verified');
+		expect(logged.mock.calls.map(([message]) => String(message))).toContainEqual(
+			expect.stringContaining(`${MOCK_RELAY_KIND} backfill failed for forward.example.com`)
+		);
+		logged.mockRestore();
+	});
+
 	it('does nothing when no route has the fallback switched on', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
@@ -290,9 +318,12 @@ describe('the two kinds the if-chain named keep their shipped behaviour', () => 
 		// if-chain scheduled `sesRelay.provision` unconditionally, so a domain that
 		// dropped to `pending` and re-verified was re-registered at SES and had its
 		// DKIM tokens (and the DNS records the operator had published) rewritten.
-		// `ensureRelayIdentity` owns the "already have one?" check — that is what
-		// makes the forward path and the catch-up drain cover every domain EXACTLY
-		// once rather than merely at least once.
+		// `ensureRelayIdentity` owns the "already have one?" check — the drain has
+		// asked it since P0.3, and the shipped effect's own comment instructed this
+		// conversion — so the two halves now cover every domain EXACTLY once rather
+		// than merely at least once. The cost is written out on the adapter method:
+		// an identity deleted on the SES side while this row survives is no longer
+		// repairable by taking the domain out of `verified` and back.
 		const t = convexTest(schema, modules);
 		await seedRoute(t, 'ses');
 		const domainId = await seedPendingDomain(t, 'mta');

@@ -159,12 +159,31 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	describeReferenceArm: sesReferenceArm,
 
 	/**
-	 * The relay-identity backfill. Byte-identical to what the drain in
-	 * `providerRoutes.ts` used to do inline — the same existence read on the
-	 * frozen `sendingDomainSesIdentities` sibling, the same scheduled
+	 * The relay-identity backfill. What the drain in `providerRoutes.ts` used to
+	 * do inline — the same indexed read on the frozen
+	 * `sendingDomainSesIdentities` sibling, the same scheduled
 	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
 	 * of whichever kind the route actually named (the seams plan's D2 —
 	 * capabilities, not identity).
+	 *
+	 * ONE DELIBERATE DELTA FOR THE FORWARD PATH, recorded here rather than left to
+	 * be discovered. The lifecycle's `provision_relay_identity_if_enabled` effect
+	 * used to schedule `sesRelay.provision` UNCONDITIONALLY on every real
+	 * `→ verified` edge; the drain has skipped existing rows since P0.3, and the
+	 * shipped effect's own comment instructed this conversion ("P0.4: convert to
+	 * providerFor(kind).ensureRelayIdentity?.(ctx, domain)"). What the two halves
+	 * now share is "exactly once", not "at least once".
+	 *
+	 * What that costs: a domain whose SES identity is deleted or disabled on the
+	 * AWS side while this row survives used to be repairable by taking the domain
+	 * out of `verified` and back (the effect re-registered it); now neither half
+	 * will. It is not repairable by making the check cleverer either — nothing in
+	 * the stored state distinguishes "deleted at the provider" from "waiting for
+	 * the operator to publish the CNAMEs", because `verificationStatusFields`
+	 * collapses every non-`Success` status to `Pending`, and re-provisioning on
+	 * that would re-register every pending domain on every drain page. Repair
+	 * needs a signal the sibling does not carry; until it exists the operator's
+	 * lever is deleting the sibling row.
 	 */
 	async ensureRelayIdentity(ctx, domain) {
 		const existing = await ctx.db

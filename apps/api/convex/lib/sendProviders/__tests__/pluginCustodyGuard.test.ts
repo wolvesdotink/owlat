@@ -92,6 +92,37 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		).rejects.toThrow(/deduplicatesOnIdempotencyKey: true[\s\S]*buildSystemMailExtras/);
 	});
 
+	it('sends the manifest author to files that actually declare what the message names', async () => {
+		// A BOOT FAILURE IS A ONE-SHOT EXPLANATION. Whoever hits it is reading the
+		// string, not the codebase, so a pointer at the wrong file costs them the
+		// hunt the message exists to save — and asserting only that the identifier
+		// appears cannot tell a right path from a wrong one. `buildSystemMailExtras`
+		// in particular is declared in its OWN module rather than in `types.ts`
+		// (the file-size ratchet), which is exactly the kind of split a stale
+		// pointer survives.
+		const messages = await Promise.all(
+			[
+				entry({ kind: 'plugin.mail-pack.custodian', acceptanceSemantics: 'accepted' }),
+				entry({ deduplicatesOnIdempotencyKey: true }),
+			].map((candidate) =>
+				composeCatalogWith([candidate]).then(
+					() => '',
+					(error: unknown) => (error as Error).message
+				)
+			)
+		);
+		const { readFileSync } = await import('node:fs');
+		const { dirname, resolve } = await import('node:path');
+		const { fileURLToPath } = await import('node:url');
+		const sendProviders = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+		for (const message of messages) {
+			const pointer =
+				/See (?:the PREREQUISITES note on )?(\w+) in lib\/sendProviders\/([\w/]+\.ts)/;
+			const [, symbol, path] = pointer.exec(message)!;
+			expect(readFileSync(resolve(sendProviders, path!), 'utf8')).toContain(symbol!);
+		}
+	});
+
 	it('admits every declaration whose prerequisites are already met', async () => {
 		// The guard is deliberately NOT the core union: an entry may pair
 		// `unknown-on-timeout` with any id source, including one it composed
