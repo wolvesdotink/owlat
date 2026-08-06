@@ -5,6 +5,8 @@ import {
 	serializeDeliverabilityObservation,
 	type DeliverabilityCheckId,
 } from '@owlat/shared';
+import { providerKindConfigured } from '../lib/sendProviders/capability';
+import { isFallbackRelayEligible } from '../lib/sendProviders/fallbackEligibility';
 import { detectIpProvider } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
 import {
@@ -234,16 +236,46 @@ export async function observeDeploymentCheck(
 					)
 				: checklistObservation('mta.warming', 'warn', 'No warming state has been synced yet.');
 		case 'deployment.relay': {
+			// ASK THE CAPABILITY, don't name the provider. This used to require
+			// `relayProviderType === 'ses'` and an enabled `'ses'` route entry, which
+			// was true of the gate above it at the time — `setRoute` refused any other
+			// relay. Since P0.2 it does not, so a deployment relaying through
+			// Mandrill (or a bring-your-own SMTP relay) had a fallback configured,
+			// identities provisioned and a checklist item that said "No verified relay
+			// fallback is configured" forever.
+			//
+			// The same predicate `setRoute` and `resolveRoute` gate on, judged
+			// against the same env-only credential source a caller with nothing else
+			// in hand uses. It is what keeps the row's free-form `relayProviderType`
+			// from crediting the OWN MTA (which a fallback moves traffic away from,
+			// never to) or a retired kind: both fail closed here.
+			const relayReady = (relayKind: string): boolean =>
+				isFallbackRelayEligible(relayKind, providerKindConfigured);
 			const routeReady = context.routes.some((route) => {
 				const fallback = route.deliverabilityFallback;
 				return (
 					fallback?.isEnabled === true &&
-					fallback.relayProviderType === 'ses' &&
+					relayReady(fallback.relayProviderType) &&
+					// The relay must ALSO be an enabled entry on the route it is the
+					// fallback for — the same pairing `setRoute` enforces at save time,
+					// read here against whichever kind the fallback named rather than
+					// against a literal.
 					route.providers.some(
-						(candidate) => candidate.providerType === 'ses' && candidate.isEnabled
+						(candidate) =>
+							candidate.providerType === fallback.relayProviderType && candidate.isEnabled
 					)
 				);
 			});
+			// STILL SES-SHAPED, and deliberately left so by the leak sweep: the
+			// identity half reads `context.relayIdentities`, which the verification
+			// context types as rows of the FROZEN `sendingDomainSesIdentities`
+			// sibling. Widening it to the generic `sendingDomainRelayIdentities`
+			// table is the same read `providerRoutes.listDeliverabilityRelayDomains`
+			// has to grow (the two carry different per-kind identity shapes and have
+			// to move together — see the sending-domain section of
+			// `docs/abstractions.md`). Until then a non-SES relay reaches "the route
+			// is configured, the proof is absent" rather than the flatly wrong "no
+			// relay fallback is configured" it used to get.
 			const identitiesReady =
 				context.relayIdentities.length > 0 &&
 				context.relayIdentities.every(
@@ -256,12 +288,17 @@ export async function observeDeploymentCheck(
 				);
 			const pass = routeReady && identitiesReady;
 			return checklistObservation(
+				// The validator ID is a STABLE KEY, not a description: it is serialized
+				// into the evidence stored against past checklist runs, so renaming it
+				// would orphan that history for a deployment's own audit trail. The
+				// copy below is what an operator reads, and that no longer names a
+				// provider (the same call P0.2 made for the routing error copy).
 				'provider-route.ses-relay-readiness',
 				pass ? 'pass' : 'warn',
 				pass
-					? 'The SES fallback route is enabled and every relay identity has a current provider and SPF proof.'
+					? 'The deliverability fallback relay is enabled and every relay identity has a current provider and SPF proof.'
 					: routeReady
-						? 'The SES fallback route is enabled, but at least one domain proof is absent or stale.'
+						? 'The deliverability fallback relay is enabled, but at least one domain proof is absent or stale.'
 						: 'No verified relay fallback is configured.',
 				context.relayIdentities.flatMap((identity) => [
 					`domain-id=${identity.domainId}`,
