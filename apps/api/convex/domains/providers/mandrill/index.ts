@@ -114,11 +114,16 @@ export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
 	 *
 	 * The caller hands over the whole domain doc, so the name this table keys on
 	 * is read straight off it — no `resolveDomainName` round-trip per drained
-	 * domain, and no "the row vanished" branch to reason about.
+	 * domain, and no "the row vanished" branch to reason about. That shortcut
+	 * replaces the round-trip's READ, not its NORMALISATION: every row in
+	 * `sendingDomainRelayIdentities` is keyed on the lowercased name (see
+	 * `./persistence.ts`), and a `domains` row whose name is not already
+	 * lowercase — nothing in the schema forces it — would otherwise miss its own
+	 * identity here and be re-provisioned on every drain page.
 	 */
 	async ensureRelayIdentity(ctx, domain) {
 		const organizationId = await getSingletonOrganizationId(ctx);
-		if (await loadMandrillRow(ctx, organizationId, domain.domain)) return;
+		if (await loadMandrillRow(ctx, organizationId, domain.domain.toLowerCase())) return;
 		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
 			domainId: domain._id,
 		});
