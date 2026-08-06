@@ -21,7 +21,11 @@ import { api, internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
-import { isSendingDomainProviderKind, providerFor } from './providers';
+import {
+	OWN_SENDING_DOMAIN_PROVIDER_KIND,
+	isSendingDomainProviderKind,
+	providerFor,
+} from './providers';
 import type { ProviderCheckResult } from './providers';
 import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
 import {
@@ -413,9 +417,9 @@ export const verifyDomain = authedAction({
 			if (adapter.runProviderCheck) {
 				try {
 					providerCheck = await adapter.runProviderCheck(domain.domain);
-					// Mirror the provider verdict into verificationResults for the
-					// builder UI's per-record display. WHICH field carries it — and
-					// whether this provider has a verdict worth showing at all — is the
+					// Mirror the provider verdict into the persisted
+					// `verificationResults` bundle. WHICH field carries it — and whether
+					// this provider has a verdict worth recording at all — is the
 					// adapter's own business; this used to be `providerType === 'ses'`
 					// followed by the SES field name spelled here.
 					Object.assign(results, adapter.verificationStatusFields?.(providerCheck));
@@ -440,13 +444,23 @@ export const verifyDomain = authedAction({
 			throwInternal(`Verification failed: ${outcome.reason}`);
 		}
 
-		// A primary MTA domain may also carry a coexisting SES escape-hatch
-		// identity. Verify that identity against its own records and provider
-		// verdict; never borrow the primary domain's status or DNS proof.
+		// A domain whose PRIMARY provider is our own MTA may also carry a
+		// coexisting relay identity. Verify that identity against its own records
+		// and provider verdict; never borrow the primary domain's status or DNS
+		// proof.
+		//
+		// The gate is D3's sanctioned own-vs-not-own identity, read from the
+		// domain-provider registry's single declaration — it used to be
+		// `providerType !== 'ses'`, which named the RELAY rather than the rule and
+		// so had to be re-read every time a second relay kind landed. The two
+		// spellings pick out the same rows: the only writers of an SES sibling with
+		// DNS records are the ordinary lifecycle (SES-primary domains, excluded by
+		// both) and the relay provisioning pair, which provisions own-MTA-primary
+		// domains and nothing else (`lib/sendProviders/fallbackRelays.ts`).
 		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
 			domainId: args.domainId,
 		});
-		if (domain.providerType !== 'ses' && sesIdentity?.dnsRecords) {
+		if (domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND && sesIdentity?.dnsRecords) {
 			await ctx.runAction(internal.domains.sesRelayVerification.refreshSesRelayIdentity, {
 				domainId: args.domainId,
 			});

@@ -4,11 +4,19 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { runDnsLookups } from './dnsVerification';
-import { providerFor } from './providers';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND, providerFor } from './providers';
 
 /**
  * Refresh the independent DNS and provider proof for an SES relay identity
- * attached to a primary non-SES sending domain.
+ * COEXISTING on a sending domain whose primary provider is our own MTA.
+ *
+ * The gate below is D3's sanctioned own-vs-not-own identity, read from the
+ * domain-provider registry's single declaration; it used to be
+ * `providerType === 'ses'` — the relay's name standing in for the rule. Same
+ * rows either way: an SES sibling with DNS records is written only by the
+ * ordinary lifecycle (SES-primary domains, refused by both spellings) and by
+ * the relay provisioning pair, which provisions own-MTA-primary domains and
+ * nothing else (`lib/sendProviders/fallbackRelays.ts`).
  */
 export const refreshSesRelayIdentity = internalAction({
 	args: { domainId: v.id('domains') },
@@ -17,7 +25,11 @@ export const refreshSesRelayIdentity = internalAction({
 			ctx.runQuery(internal.domains.queries.getDomainForRegistration, args),
 			ctx.runQuery(internal.domains.queries.getSesIdentity, args),
 		]);
-		if (!domain || !identity?.dnsRecords || domain.providerType === 'ses') {
+		if (
+			!domain ||
+			!identity?.dnsRecords ||
+			domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND
+		) {
 			return { refreshed: false };
 		}
 
