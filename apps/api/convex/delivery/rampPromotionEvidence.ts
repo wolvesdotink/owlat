@@ -149,12 +149,26 @@ async function latestSndsGreenBandAt(ctx: RampReadCtx, since: number): Promise<n
 	return latest;
 }
 
+/**
+ * WHEN THIS CELL'S PROBES LAST LANDED CLEAN — scoped to the WHOLE cell key.
+ *
+ * Both axes are filtered, because the caller asks per cell. The stream filter
+ * was a no-op while every probe was a campaign probe (`delivery/seedShadowCopy.ts`
+ * was the only writer); now that `delivery/seedScheduledProbe.ts` writes the
+ * other two streams, an unfiltered read would let one stream's clean sweep serve
+ * as another's promotion evidence — the same lending gate 5 refuses, arriving
+ * through the promotion door instead.
+ *
+ * An absent reading is `null`, which reports `unknown` and never PERMANENTLY
+ * blocks a promotion (plan D2) — so narrowing here costs a cell nothing but the
+ * borrowed claim.
+ */
 async function latestSeedProbePassAt(
 	ctx: RampReadCtx,
 	args: {
 		organizationId: string;
 		since: number;
-		provider: DeliverabilityCell['destinationProvider'];
+		cell: DeliverabilityCell;
 	}
 ): Promise<number | null> {
 	const rows = await ctx.db
@@ -165,7 +179,9 @@ async function latestSeedProbePassAt(
 		.take(SCAN_LIMIT);
 	let latest: number | null = null;
 	for (const row of rows) {
-		if (row.provider !== args.provider) continue;
+		if (row.provider !== args.cell.destinationProvider || row.stream !== args.cell.stream) {
+			continue;
+		}
 		// "REACHED", through the shipped predicate rather than a second taxonomy: a
 		// Gmail Promotions tab is a delivered probe, and a local `=== 'inbox'` test
 		// would quietly hold every promotion on a provider that categorises mail.
@@ -364,11 +380,7 @@ export async function loadRampPromotionEvidence(
 	] = await Promise.all([
 		latestGoogleCompliancePassAt(ctx, since),
 		latestSndsGreenBandAt(ctx, since),
-		latestSeedProbePassAt(ctx, {
-			organizationId,
-			since,
-			provider: cell.destinationProvider,
-		}),
+		latestSeedProbePassAt(ctx, { organizationId, since, cell }),
 		dnsblDays(ctx, { organizationId, cell, now }),
 		worstCellDeferralRate(ctx, { organizationId, now }),
 	]);

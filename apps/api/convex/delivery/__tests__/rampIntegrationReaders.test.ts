@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
+	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
 import schema from '../../schema';
 import { modules } from '../../__tests__/testModules';
@@ -144,17 +145,18 @@ async function seedAccount(t: Harness): Promise<void> {
 
 async function seedProbe(
 	t: Harness,
-	args: { sentAt: number; classifiedAt?: number }
+	args: { sentAt: number; classifiedAt?: number; stream?: DeliverabilityStream }
 ): Promise<void> {
+	const stream = args.stream ?? 'campaign';
 	await t.run(async (ctx) => {
 		const account = await ctx.db.query('externalMailAccounts').first();
 		if (account === null) throw new Error('fixture missing the seed account');
 		await ctx.db.insert('seedPlacementProbes', {
 			organizationId: ORG,
-			probeId: `probe_${args.sentAt}`,
+			probeId: `probe_${stream}_${args.sentAt}`,
 			accountId: account._id,
 			provider: 'gmail' as const,
-			stream: 'campaign' as const,
+			stream,
 			sentAt: args.sentAt,
 			dispatchedAt: args.sentAt,
 			placement: 'inbox' as const,
@@ -511,6 +513,32 @@ describe('the promotion-evidence reader', () => {
 			await ctx.db.patch(probe._id, { classifiedAt: undefined });
 		});
 		expect((await evidence(t)).seedProbePassAt).toBeNull();
+	});
+
+	/**
+	 * ...AND ON THIS CELL'S OWN STREAM ONLY.
+	 *
+	 * The filter was invisible while the campaign shadow copy was the ledger's
+	 * only writer. The scheduled probe (`delivery/seedScheduledProbe.ts`) now
+	 * writes the transactional and automation streams too, and a promotion that
+	 * counted them would let one stream's clean sweep advance another's phase —
+	 * exactly the lending gate 5 refuses, arriving through the promotion door.
+	 */
+	it('does not take another STREAM’s clean probe as this cell’s promotion evidence', async () => {
+		const t = convexTest(schema, modules);
+		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedAccount(t);
+		await seedProbe(t, {
+			sentAt: NOW - 2 * MS_PER_DAY,
+			classifiedAt: NOW - MS_PER_DAY,
+			stream: 'transactional',
+		});
+		// CELL is the campaign/gmail cell: same provider, same week, other stream.
+		expect((await evidence(t)).seedProbePassAt).toBeNull();
+
+		// Its own stream's probe is read exactly as before.
+		await seedProbe(t, { sentAt: NOW - 2 * MS_PER_DAY, classifiedAt: NOW - MS_PER_DAY });
+		expect((await evidence(t)).seedProbePassAt).toBe(NOW - MS_PER_DAY);
 	});
 
 	/**
