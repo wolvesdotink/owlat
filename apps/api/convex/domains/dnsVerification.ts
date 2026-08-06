@@ -414,10 +414,11 @@ export const verifyDomain = authedAction({
 				try {
 					providerCheck = await adapter.runProviderCheck(domain.domain);
 					// Mirror the provider verdict into verificationResults for the
-					// builder UI's per-record display (the SES status pill).
-					if (domain.providerType === 'ses') {
-						results.sesStatus = providerCheck.verified ? 'Success' : 'Pending';
-					}
+					// builder UI's per-record display. WHICH field carries it — and
+					// whether this provider has a verdict worth showing at all — is the
+					// adapter's own business; this used to be `providerType === 'ses'`
+					// followed by the SES field name spelled here.
+					Object.assign(results, adapter.verificationStatusFields?.(providerCheck));
 				} catch (error) {
 					logError('[DNS Verification] Failed to run provider check:', error);
 					providerCheck = {

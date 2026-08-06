@@ -22,7 +22,12 @@ import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
 import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
-import type { ProviderCheckResult, RelayProvingProviderModule, SesIdentity } from '../types';
+import type {
+	ProviderCheckResult,
+	ProviderVerificationStatusFields,
+	RelayProvingProviderModule,
+	SesIdentity,
+} from '../types';
 
 // `RelayProvingProviderModule`, not the plain module type: the catalog declares
 // `domainVerification: 'api'` for this kind, and that promise is only worth
@@ -125,6 +130,18 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 				lastError: `SES check error: ${message}`,
 			};
 		}
+	},
+
+	/**
+	 * SES's verdict as the builder UI's status pill reads it — the ONE statement
+	 * of that spelling, shared with the relay-identity refresher in
+	 * `domains/sesRelayVerification.ts`. It lived in `domains/dnsVerification.ts`
+	 * behind `providerType === 'ses'`, which made "does this provider have a
+	 * verdict worth showing?" a question about a name rather than about the
+	 * provider.
+	 */
+	verificationStatusFields(check: ProviderCheckResult): ProviderVerificationStatusFields {
+		return { sesStatus: check.verified ? 'Success' : 'Pending' };
 	},
 
 	// The relay-verification read seam (Mandrill plan D6). SES is the one shipped kind that

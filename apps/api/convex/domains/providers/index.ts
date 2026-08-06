@@ -55,6 +55,7 @@ export type {
 	MandrillIdentity,
 	RelayIdentityStatus,
 	ProviderCheckResult,
+	ProviderVerificationStatusFields,
 } from './types';
 
 // Registry — keyed by `domains.providerType`. The lifecycle calls

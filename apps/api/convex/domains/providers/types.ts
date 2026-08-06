@@ -122,6 +122,25 @@ export type ProviderCheckResult = {
 	lastError?: string;
 };
 
+/**
+ * The slice of `domains.verificationResults` a provider may write about ITSELF
+ * — its own verdict, mirrored into the record bundle the domain-records screen
+ * renders beside the DNS results.
+ *
+ * The key is SES-named because the PERSISTED FIELD is (`verificationResults`'s
+ * validator in `lib/convexValidators.ts`, and rows written since long before
+ * this seam existed). That is schema vocabulary, not an identity check: per D10
+ * persisted shapes stay additive, so a second provider that wants a status pill
+ * adds its OWN optional key here and fills it from its OWN adapter. What the
+ * seam removes is the `providerType === 'ses'` branch that used to decide, in
+ * `domains/dnsVerification.ts`, which provider was allowed to have a verdict
+ * worth showing.
+ */
+export type ProviderVerificationStatusFields = {
+	/** SES's `verificationStatus`, as the builder UI's status pill reads it. */
+	readonly sesStatus?: string;
+};
+
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
 export interface SendingDomainProviderModule<K extends SendingDomainProviderKind> {
@@ -174,6 +193,22 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * `{ verified: true }`, i.e. the DNS evidence stands alone.
 	 */
 	runProviderCheck?(domain: string): Promise<ProviderCheckResult>;
+
+	/**
+	 * Optional: this provider's own verdict, projected into the shared
+	 * `domains.verificationResults` bundle so the domain-records screen can show
+	 * it beside the DNS results (see {@link ProviderVerificationStatusFields}).
+	 *
+	 * Pure and synchronous: the verdict is already in hand — the verifier has just
+	 * awaited {@link runProviderCheck} — and this only decides how to SPELL it.
+	 *
+	 * OPTIONAL, and absence is a real answer: a kind whose provider verdict has no
+	 * place on the screen (our own MTA has no provider verdict at all; Mandrill's
+	 * lives on its own relay panel) omits it and the verifier writes nothing extra,
+	 * which is exactly what the `providerType === 'ses'` branch this replaced
+	 * achieved for every kind that was not SES.
+	 */
+	verificationStatusFields?(check: ProviderCheckResult): ProviderVerificationStatusFields;
 
 	// ── Relay-domain verification (runs inside queries/mutations) ─────────
 

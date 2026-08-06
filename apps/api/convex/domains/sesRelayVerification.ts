@@ -22,8 +22,12 @@ export const refreshSesRelayIdentity = internalAction({
 		}
 
 		const results = await runDnsLookups(domain.domain, identity.dnsRecords);
-		const providerCheck = await providerFor('ses').runProviderCheck!(domain.domain);
-		results.sesStatus = providerCheck.verified ? 'Success' : 'Pending';
+		const sesAdapter = providerFor('ses');
+		const providerCheck = await sesAdapter.runProviderCheck!(domain.domain);
+		// The same projection the DNS verifier applies, asked of the same adapter:
+		// how SES's verdict is spelled into `verificationResults` is stated once,
+		// in `domains/providers/ses/index.ts`.
+		Object.assign(results, sesAdapter.verificationStatusFields!(providerCheck));
 		const outcome = await ctx.runMutation(internal.domains.sesRelayMutations.storeVerification, {
 			domainId: args.domainId,
 			dnsRecords: identity.dnsRecords,
