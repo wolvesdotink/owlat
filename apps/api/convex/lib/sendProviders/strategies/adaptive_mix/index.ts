@@ -76,8 +76,9 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *
  * WHAT STILL SPELLS A KIND, and why none of it is an own-arm restatement the
  * allowlist could pass off as definitional. Written here rather than left for
- * the ratchet author (P0.5) to discover, because each needs a CAPABILITY that
- * does not exist yet — a sweep, not a substitution:
+ * the ratchet author (P0.5) to discover, because none of it is a substitution:
+ * the first three need a capability that does not exist yet, and the fourth is
+ * not a provider kind at all.
  *
  *   1. THE RETURN-PATH FAMILY. `domains/lifecycle.ts` decides which `mailFrom`
  *      bundle to publish and which reflection action to schedule by branching on
@@ -100,7 +101,8 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *      were written under the old spelling and must keep naming them;
  *      `domains/mandrillRelay.ts` and `domains/mandrillRelayMutations.ts` are
  *      one kind's provisioning actions living beside their adapter rather than
- *      inside it (P1.1 moves them in).
+ *      inside it — the out-of-adapter pattern `docs/abstractions.md` records as
+ *      unclaimed by any card, SES's `sesRelayMutations` included.
  *   4. NOT A PROVIDER KIND AT ALL, and must not be swept: the MTA's routing-API
  *      wire vocabulary (`decision.kind === 'mta'` in
  *      `delivery/lastMileRouting.ts` and `lib/sendProviders/mta/index.ts`) is
