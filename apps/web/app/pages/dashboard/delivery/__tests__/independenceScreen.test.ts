@@ -221,9 +221,33 @@ describe('independence screen', () => {
 		wrapper.unmount();
 	});
 
+	/**
+	 * TWO RELAY KINDS: no single arm to NAME, and every figure still about a relay
+	 * (#513). The screen used to key its whole variant on `referenceTransportId`,
+	 * so this deployment read as "Warm-up autopilot" with a capacity headline —
+	 * over a summary whose own share and removal warning were about a relay.
+	 */
+	it('stays the independence screen when two relays leave no single one to name', () => {
+		data.value = independenceSummary({ referenceTransportId: null, isRelayConfigured: true });
+		const wrapper = mountPage();
+
+		expect(wrapper.find('h1').text()).toBe('Sending independence');
+		expect(headTitle()).toContain('Sending independence');
+		// The share, not today's capacity.
+		expect(wrapper.find('[data-testid="independence-headline"]').text()).toContain('42');
+		// The relay is unnamed, not absent: plural copy, never the standalone
+		// sentence that promises there is nothing to move away from.
+		expect(wrapper.text()).toContain('instead of the relays you have connected');
+		expect(wrapper.text()).not.toContain('There is no relay to move away from');
+		// And the dangerous route off the page is still offered.
+		expect(wrapper.find('[data-testid="relay-removal-open"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
 	it('becomes Warm-up autopilot with no relay, headed by today’s capacity (D14)', () => {
 		data.value = independenceSummary({
 			referenceTransportId: null,
+			isRelayConfigured: false,
 			ownShare: 1,
 			projection: { kind: 'already_independent' },
 			relayRemoval: { kind: 'safe' },
