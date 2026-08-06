@@ -87,15 +87,20 @@ arrives, and claiming re-askability double-delivers. After this,
 `governedDispatch.ts` compares no provider kind to a literal at all — a test
 reads the file and asserts it.
 
-The pairing is a compile-time union rather than two independent fields: a core
-entry may only declare `accepted` together with `idempotency-key`, since a
-replay is safe only when it carries the id we minted. What is NOT yet general is
-`accepted` itself. Two sites still spell the custody arm as the own MTA —
-`sendLifecycle.bindMtaProviderIdentity` patches `providerType: 'mta'`
-unconditionally, and `lastMileRouting`'s `mtaReconciliation` pin defers every
-non-`mta` reconciliation attempt until the delivery deadline kills the send.
-A second kind declaring custody must generalize both in the same change; the
-catalog says so at the declaration site.
+For a core kind the pairing is a compile-time union rather than two independent
+fields, constrained in both directions: `accepted` only with `idempotency-key`
+(a replay is safe only when it carries the id we minted) and `idempotency-key`
+only with `accepted`. Bundled plugin entries are untyped and may present a mixed
+pairing, so the governed boundary reads the two fields independently — widening
+the union is a type change, not a behaviour change.
+
+What is NOT yet general is `accepted` itself: two sites outside the catalog still
+spell the custody arm as the own MTA, and a second kind declaring custody must
+generalize both in the same change. **Which two, and what breaks if one is
+missed, is written out once** — in the PREREQUISITES note on
+`AcceptanceSemantics` in `apps/api/convex/lib/sendProviders/catalog.ts`, the
+declaration site. This ADR deliberately does not restate it, so generalizing
+those sites stays a single-file edit.
 
 ### The sibling-table pattern stops at two
 
@@ -216,12 +221,11 @@ own feedback is what usually makes it moot.
   catalog kind, so a new kind joins them by existing. The checklist is
   documented in `apps/docs/content/3.developer/15.providers.md`.
 - The custody/message-id declaration widened what a catalog entry is responsible
-  for, and one of its values has out-of-catalog prerequisites (see "What a
-  dispatch MEANS is declared, not recognized"). Until `sendLifecycle` and
-  `lastMileRouting` are capability-driven too, `acceptanceSemantics: 'accepted'`
-  is the own MTA's alone — declared honestly rather than hidden, so the next
-  author reads the constraint at the field instead of discovering it from a
-  deferred send.
+  for, and one of its values has prerequisites outside the catalog. Until those
+  are met, `acceptanceSemantics: 'accepted'` is the own MTA's alone — declared
+  honestly rather than hidden, so the next author reads the constraint at the
+  field (the PREREQUISITES note in `catalog.ts`, which is where it lives) instead
+  of discovering it from a deferred send.
 - `sendingDomainRelayIdentities` is now the growth point for provider identity
   state. Its `providerKind` is a string and its `providerDetails` blob is
   versioned, so the next kind adds rows rather than columns — but that also
