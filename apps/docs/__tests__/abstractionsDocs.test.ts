@@ -47,8 +47,11 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 		'export const SEND_PROVIDERS = {'
 	);
 
-	it('derives a non-trivial core adapter set from the registry', () => {
-		expect(kinds.length).toBeGreaterThan(1);
+	// Non-triviality is `registryKeys`'s own assertion (a parse that matched
+	// nothing must not silently agree with an empty row), stated once there
+	// rather than restated per registry. What is left here is membership: `smtp`
+	// is the adapter whose absence from the page is what started this file.
+	it('parses the smtp adapter out of the registry', () => {
 		expect(kinds).toContain('smtp');
 	});
 
@@ -91,7 +94,9 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 	);
 	const section = sendingDomainSection();
 
-	it('derives a non-trivial adapter set from the registry', () => {
+	// Same split as the send-provider block above: `registryKeys` owns the
+	// non-vacuity assertion, this case owns membership.
+	it('parses the ses adapter out of the registry', () => {
 		expect(kinds).toContain('ses');
 	});
 
@@ -118,16 +123,28 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 	});
 
 	it('keeps the sibling-table claim honest about the readers outside the adapters', () => {
-		// The section says the two frozen sibling tables are WRITTEN only through
-		// their adapters, and names the reader that is not. That exception is a
-		// fact about `providerRoutes.ts`, so it is asserted against that file in
-		// BOTH directions: while the SES-shaped read is still there the page must
-		// name it, and once P1.2 makes the read generic the page must stop.
+		// The section says an SES-shaped READ of the frozen sibling still sits
+		// outside `domains/providers/`. That exception is a fact about
+		// `providerRoutes.ts`, so it is asserted against that file in BOTH
+		// directions: while the read is still there the page must name it, and
+		// once P1.2 makes the read generic the page must stop.
 		const routes = read('apps/api/convex/providerRoutes.ts');
 		const stillReadsTheSibling = routes.includes("query('sendingDomainSesIdentities')");
 		expect(section.includes('listDeliverabilityRelayDomains')).toBe(stillReadsTheSibling);
 		expect(section).toContain('sendingDomainSesIdentities');
 		expect(section).toContain('sendingDomainRelayIdentities');
+	});
+
+	it('keeps the sibling-table claim honest about the writers outside the adapters', () => {
+		// The write half is the one a developer adding relay kind #4 acts on: the
+		// page must not let them believe `writeIdentity` is the whole write path
+		// while the forward provisioning inserts the row from
+		// `sesRelayMutations.ts`. Pinned in BOTH directions against that file, so
+		// that when P0.4 folds the write behind the adapter the page must stop
+		// naming it — the same treatment the reader half gets above.
+		const mutations = read('apps/api/convex/domains/sesRelayMutations.ts');
+		const stillWritesOutsideTheAdapter = mutations.includes("insert('sendingDomainSesIdentities'");
+		expect(section.includes('sesRelayMutations')).toBe(stillWritesOutsideTheAdapter);
 	});
 
 	it('marks the superseded EmailProvider row as legacy rather than as a peer seam', () => {

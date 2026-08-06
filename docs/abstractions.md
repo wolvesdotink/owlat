@@ -26,9 +26,22 @@ Factories cache the resolved provider per-process. Tests can call
 
 | Interface | Env var | Implementations | Files |
 |---|---|---|---|
-| `EmailProvider` (domain identity/verification) — **legacy, superseded** by the sending-domain provider registry below; there is no `EmailProvider` interface left in the tree. Write a `domains/providers/<kind>/` adapter, never an implementation of this row. | — | — | `emailProviders/{sesIdentity,mtaIdentity}.ts` survive as the two provider identity API clients those adapters call; `domainVerification.ts` is From-address helpers only |
+| `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta) | see `domains/providers/` below | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts` |
 | Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` |
 | `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
+
+The first row is **history, not a seam to implement**: there is no `EmailProvider`
+interface left in the tree. Its job moved to the sending-domain provider registry
+([below](#sending-domain-identity-providers)), so write a
+`domains/providers/<kind>/` adapter, never an implementation of that row. What
+survives under `emailProviders/` is what those adapters call:
+`sesIdentity.ts` / `mtaIdentity.ts` are the two provider identity API clients,
+and `domainVerification.ts` holds the From-address helpers **and** the
+`domains`-table verification gate (`isDomainVerified`,
+`isDomainVerificationFresh`, `validateDomainForSending`,
+`getDomainVerificationStatus`) that the send path checks before a campaign goes
+out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
+created domain's `providerType` — see the section below.
 
 Send providers additionally take **operator-installed** implementations: a
 bundled plugin contributing a `sendTransports` entry appears as the kind
@@ -53,6 +66,13 @@ domain*: registering the identity at the provider, the DNS records to publish,
 the provider-side verification check, and — for relays — the proof the
 deliverability fallback reads before handing a From domain over. Every piece of
 that work is dispatched through `providerFor(kind)`.
+
+Which kind a *newly created* domain gets is still an env decision:
+`domains/lifecycle.ts` reads `EMAIL_PROVIDER`, narrows it through
+`isSendingDomainProviderKind` (the registry's own guard, so an unrecognized
+value is not a crash) and falls back to `mta`. Registering an adapter therefore
+makes a kind *reachable*; naming it in `EMAIL_PROVIDER` is what makes new
+domains use it.
 
 **But registering an adapter is not yet the whole wiring.** `domains/lifecycle.ts`
 still carries `providerType` branches of its own, and one of them decides
@@ -79,11 +99,23 @@ added after MTA and SES writes to the generic, org-scoped
 `sendingDomainRelayIdentities` table — Mandrill does. The two per-provider
 sibling tables (`sendingDomainMtaIdentities`, `sendingDomainSesIdentities`) are
 frozen: no third sibling is ever added, no new kind gets rows there, and they
-keep the MTA's and SES's. They are *written* only through their own adapters —
-but SES/MTA-shaped **readers** still sit outside `domains/providers/`, the
-largest being `providerRoutes.listDeliverabilityRelayDomains`, which reports the
-relay DNS status the web UI renders and is carried into P1.2 together with
-`RelayDomainStatus.vue`. Do not read "encapsulated" here.
+keep the MTA's and SES's.
+
+**Neither half of that access is encapsulated yet.** Each adapter has
+`writeIdentity` / `clearIdentity`, but the forward SES relay provisioning does
+not go through them: `sesRelay.provision` (scheduled by the
+`provision_relay_identity_if_enabled` effect, and by the SES adapter's own
+`ensureRelayIdentity`) calls `sesRelayMutations.storeProvisioning`, which
+inserts into `sendingDomainSesIdentities` from outside `domains/providers/` —
+so the pattern to mirror for relay kind #4 is an out-of-adapter
+`<kind>RelayMutations.ts` plus a scheduled `provision` action, not an adapter
+method. `sendingDomainMtaIdentities` has out-of-adapter writers too
+(`devShortcuts/forceVerifyDomain.ts`, the demo seed). And SES/MTA-shaped
+**readers** sit outside the adapters as well, the largest being
+`providerRoutes.listDeliverabilityRelayDomains`, which reports the relay DNS
+status the web UI renders and is carried into P1.2 together with
+`RelayDomainStatus.vue`. Folding the write path in is P0.4; the read path is
+P1.2.
 
 ### Inbound channel adapters
 
