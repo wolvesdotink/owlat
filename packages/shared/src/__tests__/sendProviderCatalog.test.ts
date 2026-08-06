@@ -512,3 +512,52 @@ describe('the module stays data only — it ships to the browser', () => {
 		walk(ENTRIES);
 	});
 });
+
+/**
+ * THE FEEDBACK CHANNEL — where a transport's bounces and complaints arrive, and
+ * what wiring that up asks of the operator (`providerFeedback`).
+ *
+ * It exists because the delivery config page used to choose its panel from a
+ * table of kind literals in a `.vue` file, so a provider with real feedback got
+ * no panel, no endpoint and no explanation until somebody edited that file.
+ * Both halves are pinned as literals here: the PATHS are URLs operators have
+ * already pasted into a provider console (`apps/api/convex/http.ts` registers
+ * each one by hand), and the PANEL is what the shipped page draws.
+ */
+describe('the feedback channel each transport declares', () => {
+	it('declares a channel exactly where there is feedback to receive', () => {
+		for (const entry of ENTRIES) {
+			expect([entry.kind, hasProviderFeedbackOf(entry)]).toEqual([
+				entry.kind,
+				entry.providerFeedback !== undefined,
+			]);
+		}
+	});
+
+	it('names the routes the backend actually registers', () => {
+		expect(
+			ENTRIES.filter((entry) => entry.providerFeedback !== undefined).map((entry) => [
+				entry.kind,
+				entry.providerFeedback?.webhookPath,
+				entry.providerFeedback?.signingKeyEnvVar,
+				entry.providerFeedback?.setupPanel,
+			])
+		).toEqual([
+			['mta', '/webhooks/mta', 'MTA_WEBHOOK_SECRET', undefined],
+			['ses', '/webhooks/ses', undefined, 'sns-topic'],
+			['resend', '/webhooks/resend', 'RESEND_WEBHOOK_SECRET', undefined],
+			['mandrill', '/webhooks/mandrill', 'MANDRILL_WEBHOOK_KEY', 'signed-webhook'],
+		]);
+	});
+
+	it('keeps every signing key OUT of the presence gate that decides configured', () => {
+		// A deployment that has not created a webhook yet still sends perfectly
+		// well, so the key belongs beside the required list, never in it.
+		for (const entry of ENTRIES) {
+			const key = entry.providerFeedback?.signingKeyEnvVar;
+			if (key === undefined) continue;
+			expect(entry.requiredEnvVars, entry.kind).not.toContain(key);
+			expect(entry.optionalEnvVars ?? [], entry.kind).toContain(key);
+		}
+	});
+});

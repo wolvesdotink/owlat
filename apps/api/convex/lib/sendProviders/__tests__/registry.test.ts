@@ -80,6 +80,10 @@ describe('Send provider registry', () => {
 		'optionalEnvVars',
 		'credentialFields',
 		'setupProbe',
+		// The feedback channel descriptor (route path, signing key, setup panel):
+		// pinned per kind, as literals, by the shared catalog suite — restating a
+		// route here would be the second copy that suite exists to prevent.
+		'providerFeedback',
 		// Bundled plugin entries only; the built-ins carry neither.
 		'pluginId',
 		'requiredCapability',

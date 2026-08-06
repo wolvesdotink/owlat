@@ -46,8 +46,8 @@ created domain's `providerType` — see the section below.
 The send-provider seam is deliberately **two halves**. The DATA half — what each
 kind is, needs and can do (`kind`, `label`, `tier`, `requiredEnvVars`,
 `optionalEnvVars`, `credentialFields`, `supportsCustomReturnPath`,
-`hasProviderFeedback`, `domainVerification`, `retryDelays`, the dispatch
-semantics, `setupProbe`) — is `packages/shared/src/sendProviderCatalog.ts`, a
+`hasProviderFeedback`, `providerFeedback`, `domainVerification`, `retryDelays`,
+the dispatch semantics, `setupProbe`) — is `packages/shared/src/sendProviderCatalog.ts`, a
 leaf module with no adapter code and no secrets, so `apps/web`, `apps/setup-cli`
 and the docs suite read the same declaration the backend does. The kind union
 (`SEND_TRANSPORT_KINDS`), the setup surfaces' `DELIVERY_PROVIDER_KINDS`,

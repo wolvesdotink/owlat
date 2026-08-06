@@ -25,12 +25,15 @@
  * The seam inside the shared half is the one the backend file already had: the
  * capability unions and the entry shapes are the vocabulary an entry is written
  * in, `./sendProviderCatalog` is the entries themselves plus the accessors that
- * apply each field's fail-closed default, and `./sendProviderCredentialFields`
- * is D5's form vocabulary. IMPORT THROUGH `./sendProviderCatalog`: it re-exports
- * every name this module exports.
+ * apply each field's fail-closed default, and the descriptor vocabulary an entry
+ * is written in sits beside it — `./sendProviderCredentialFields` (D5's form
+ * fields) and `./sendProviderFeedback` (where a provider's feedback arrives).
+ * IMPORT THROUGH `./sendProviderCatalog`: it re-exports every name this module
+ * exports.
  */
 
 import type { SendProviderCredentialField } from './sendProviderCredentialFields';
+import type { SendProviderFeedbackChannel } from './sendProviderFeedback';
 
 /**
  * A send transport contributed by a bundled plugin, namespaced by its plugin id
@@ -332,6 +335,12 @@ export interface SendProviderCatalogEntryShape {
 	 * stamp our own return path — it never gates a send.
 	 */
 	readonly hasProviderFeedback?: boolean;
+	/**
+	 * WHERE that feedback arrives and what the operator has to do to turn it on —
+	 * see {@link SendProviderFeedbackChannel}. Absent ⇒ nothing declared, which is
+	 * the only honest reading for a kind that has no feedback at all.
+	 */
+	readonly providerFeedback?: SendProviderFeedbackChannel;
 	/**
 	 * Declared sending-domain verification path. Absent ⇒ `none` (fail closed):
 	 * a transport that never declared an identity API cannot be credited with

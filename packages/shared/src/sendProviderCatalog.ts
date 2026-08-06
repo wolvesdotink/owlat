@@ -34,9 +34,10 @@
  * they shipped.
  */
 
-import type { OutboundTlsMode } from './outboundTlsMode';
+import { deepFreeze } from './deepFreeze';
 import {
 	credentialFieldEnvVars,
+	OUTBOUND_TLS_MODE_OPTIONS,
 	SMTP_RELAY_PRESETS,
 	type CredentialFieldEnvVar,
 } from './sendProviderCredentialFields';
@@ -47,27 +48,8 @@ import type {
 
 export * from './sendProviderCapabilities';
 export * from './sendProviderCatalogTypes';
+export * from './sendProviderFeedback';
 export * from './sendProviderCredentialFields';
-
-/**
- * The outbound-TLS floor, as the transport form's option list.
- *
- * `satisfies` against {@link OutboundTlsMode} rather than a free-text select, so
- * renaming a mode in `./outboundTlsMode` breaks this build instead of leaving
- * the form writing a value the backend rejects. That the list is COMPLETE is
- * pinned by the catalog suite, which compares it to `OUTBOUND_TLS_MODES`.
- *
- * EXPORTED because the wizard's selector derives from it. The label is a
- * descriptor's copy and has ONE home — `setupOutboundTls.ts` in `apps/web` maps
- * this list and adds only its own `hint` paragraph, so renaming a label here
- * renames it in the rendered form too. A second hand-written copy of the labels
- * would be exactly the duplication this catalog exists to collapse.
- */
-export const OUTBOUND_TLS_MODE_OPTIONS = [
-	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
-	{ value: 'require', label: 'Always encrypt' },
-	{ value: 'require-verified', label: 'Always encrypt and verify' },
-] as const satisfies readonly { readonly value: OutboundTlsMode; readonly label: string }[];
 
 /**
  * The kinds that ship in this repo. Bundled plugin transports are composed onto
@@ -101,7 +83,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 			{
 				kind: 'select',
 				key: 'outboundTlsMode',
-				label: 'Outbound TLS',
+				// The string the shipped editor shows: the catalog is its ONE
+				// declaration (D1), so the label moved here rather than changing on
+				// the way in — renaming a field on a live editor is a user-visible
+				// change no wave of this plan ships.
+				label: 'Connection security',
 				envVar: 'OUTBOUND_TLS_MODE',
 				options: OUTBOUND_TLS_MODE_OPTIONS,
 				default: 'opportunistic',
@@ -110,6 +96,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Our own MTA stamps the VERP envelope sender itself (smtp/sender.ts).
 		supportsCustomReturnPath: 'yes',
 		hasProviderFeedback: true,
+		// The one channel with NO operator ceremony: our own MTA posts here with the
+		// secret the installer wrote beside `MTA_API_KEY` — no console, no panel.
+		providerFeedback: { webhookPath: '/webhooks/mta', signingKeyEnvVar: 'MTA_WEBHOOK_SECRET' },
 		// Our MTA's sending domains ARE verified — through `domains/providers/mta`
 		// and the generic DNS verifier — but never through this seam: the MTA is
 		// the arm a deliverability fallback moves traffic AWAY from, never the
@@ -173,6 +162,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// bounce and complaint back to us.
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
+		// SNS delivers the notifications, so the operator's job is a SUBSCRIPTION to
+		// this endpoint rather than a key: SES signs with a certificate the verifier
+		// fetches, hence no `signingKeyEnvVar`.
+		providerFeedback: { webhookPath: '/webhooks/ses', setupPanel: 'sns-topic' },
 		// SES identity APIs (`getVerificationStatus` + the DKIM/MAIL FROM proof
 		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
 		domainVerification: 'api',
@@ -212,6 +205,14 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		],
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
+		// Mandrill's ceremony, but NO `setupPanel`: the shipped delivery page has
+		// never drawn one for Resend, and the key-presence read a panel reports is
+		// still a per-kind backend query (the seams plan's P2.1 makes it one read
+		// for every signed kind). The gap is declared rather than absent.
+		providerFeedback: {
+			webhookPath: '/webhooks/resend',
+			signingKeyEnvVar: 'RESEND_WEBHOOK_SECRET',
+		},
 		// Resend has a domains API, but nothing in this repo reads it: no
 		// `domains/providers/resend` adapter exists, so the seam must keep saying
 		// "unverifiable" rather than claim a proof we never fetched.
@@ -249,6 +250,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 				secureEnvVar: 'SMTP_RELAY_SECURE',
 				portDefault: '587',
 				secureDefault: false,
+				// The example the shipped form has always shown in an empty host
+				// box, beside the port's own `587` hint.
+				placeholder: 'smtp.mailgun.org',
 				presets: SMTP_RELAY_PRESETS,
 				required: true,
 			},
@@ -319,6 +323,14 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject
 		// (Mandrill plan D10).
 		hasProviderFeedback: true,
+		// The operator creates the webhook in Mandrill's console and copies the key
+		// it issues into `MANDRILL_WEBHOOK_KEY` — which is why the panel reports
+		// that variable's PRESENCE beside the endpoint.
+		providerFeedback: {
+			webhookPath: '/webhooks/mandrill',
+			signingKeyEnvVar: 'MANDRILL_WEBHOOK_KEY',
+			setupPanel: 'signed-webhook',
+		},
 		// Mandrill's sender-domain API (`senders/add-domain` / `check-domain`) is
 		// read by `domains/providers/mandrill` (the MANDRILL plan's P3.1), which
 		// registers the kind in `SENDING_DOMAIN_PROVIDERS` and answers the
@@ -339,26 +351,6 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		tagsFeedbackProvenance: false,
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
-
-/**
- * Freeze a data literal THROUGH — the object, its arrays and everything they
- * hold — so that "single source of truth" is a runtime property and not just a
- * `readonly` the checker enforces for callers who kept their types.
- *
- * `Object.freeze` alone is shallow: it would leave every entry object, every
- * `requiredEnvVars` / `credentialFields` array and the attached preset table
- * writable, and this module ships to the browser bundle, where a consumer
- * reaching it through untyped JS or a cast could rewrite what every later reader
- * sees. Terminates because the catalog is a finite tree of literals with no
- * cycles; already-frozen members (the preset table freezes itself at its
- * declaration) are re-frozen harmlessly.
- */
-function deepFreeze<T>(value: T): T {
-	if (value === null || typeof value !== 'object') return value;
-	Object.freeze(value);
-	for (const member of Object.values(value)) deepFreeze(member);
-	return value;
-}
 
 /**
  * The entries themselves, frozen THROUGH — see {@link deepFreeze}: the array,

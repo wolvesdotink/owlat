@@ -63,6 +63,31 @@
  * label a form needs; the rest stays where the copy is written.
  */
 
+import type { OutboundTlsMode } from './outboundTlsMode';
+
+/**
+ * The outbound-TLS floor, as the transport form's option list — one
+ * `select` field's OPTION DATA, which is why it lives beside the field kinds
+ * rather than beside the entry that attaches it (the SMTP preset table moved
+ * here for the same reason).
+ *
+ * `satisfies` against {@link OutboundTlsMode} rather than a free-text select, so
+ * renaming a mode in `./outboundTlsMode` breaks this build instead of leaving
+ * the form writing a value the backend rejects. That the list is COMPLETE is
+ * pinned by the catalog suite, which compares it to `OUTBOUND_TLS_MODES`.
+ *
+ * EXPORTED because the wizard's selector derives from it. The label is a
+ * descriptor's copy and has ONE home — `setupOutboundTls.ts` in `apps/web` maps
+ * this list and adds only its own `hint` paragraph, so renaming a label here
+ * renames it in the rendered form too. A second hand-written copy of the labels
+ * would be exactly the duplication this catalog exists to collapse.
+ */
+export const OUTBOUND_TLS_MODE_OPTIONS = [
+	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
+	{ value: 'require', label: 'Always encrypt' },
+	{ value: 'require-verified', label: 'Always encrypt and verify' },
+] as const satisfies readonly { readonly value: OutboundTlsMode; readonly label: string }[];
+
 /**
  * The field kinds a provider's credential form is described with — the plugin
  * `settingsSchema` vocabulary plus the two composites argued above.
@@ -214,6 +239,17 @@ export interface SendProviderHostPortField extends SendProviderCredentialFieldCo
 	readonly portDefault: string;
 	/** true ⇒ implicit TLS (usually 465); false ⇒ STARTTLS upgrade (587). */
 	readonly secureDefault: boolean;
+	/**
+	 * Shown in the empty HOST input — an EXAMPLE endpoint, never a value that
+	 * gets submitted.
+	 *
+	 * The composite carries it because its parts hint as a SET: the port input
+	 * already shows {@link SendProviderHostPortField.portDefault}, so a host with
+	 * no example left the two halves of one decision inconsistent about whether
+	 * they hint at all (which is exactly what happened when the shipped SMTP
+	 * form's `placeholder="smtp.mailgun.org"` had nowhere to be declared).
+	 */
+	readonly placeholder?: string;
 	/**
 	 * Well-known endpoints this field prefills from — the field's own data, which
 	 * is why the preset table moved here from `setupSendingPresets.ts` when the
