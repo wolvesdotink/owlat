@@ -1,0 +1,257 @@
+/**
+ * Send-provider CREDENTIAL FIELDS — the typed UI field descriptors of the seams
+ * plan's D5 ("a provider is a bundle; UI renders descriptors, it doesn't know
+ * providers"), plus the SMTP relay preset table that is one field's data.
+ *
+ * DATA ONLY. A descriptor names a field, its label, and the DEPLOYMENT ENV
+ * VARIABLE that carries its value — never the value itself. This module ends up
+ * in the web client bundle, so there is nothing here a browser may not see (the
+ * seams plan's D1 risk row: "moving catalog data to packages/shared leaks
+ * backend concerns into client bundles").
+ *
+ * THE VOCABULARY, AND THE OPEN QUESTION P1.1 CLOSED. The plan asked whether
+ * `credentialFields` should reuse the plugin platform's `settingsSchema` field
+ * vocabulary exactly (`string | secret | number | boolean | select`,
+ * `packages/plugin-kit/src/settingsSchema.ts`) or that base plus composite
+ * kinds. The answer implemented here is the plan's recommendation: THE SAME FIVE
+ * BASE KINDS, SPELLED IDENTICALLY, plus exactly two composites —
+ * {@link SendProviderRegionSelectField} and {@link SendProviderHostPortField}.
+ *
+ * One validator family is the point. A renderer that already knows how to draw a
+ * plugin's `secret` field draws a core provider's the same way, and the two
+ * tiers converge rather than diverge when plugin transports gain capability
+ * metadata (the seams plan's P3.1). The composites earn their place by carrying
+ * a RELATIONSHIP the base kinds cannot express and a renderer would otherwise
+ * have to hard-code per vendor: a region belongs to the provider's own closed
+ * set of region identifiers, and a relay endpoint is host + port + implicit-TLS
+ * moving together under one preset. Both are decomposable — each names its env
+ * variables explicitly — so a renderer that does not implement a composite can
+ * still fall back to its parts.
+ *
+ * The `secret` kind matches the plugin platform's meaning exactly: the value is
+ * supplied through the deployment environment and is never rendered back. The
+ * transport editor's write-only credential drafts
+ * (`apps/web/app/composables/useRelayCredentialDraft.ts`) are already that rule.
+ *
+ * WHAT IS NOT HERE: hints, icons, per-vendor prose, and the operator-facing
+ * option copy for values that belong to another module's contract (the
+ * outbound-TLS option hints live beside the wizard). Descriptors carry the
+ * label a form needs; the rest stays where the copy is written.
+ */
+
+/**
+ * The field kinds a provider's credential form is described with — the plugin
+ * `settingsSchema` vocabulary plus the two composites argued above.
+ */
+export type SendProviderCredentialFieldKind =
+	| 'string'
+	| 'secret'
+	| 'number'
+	| 'boolean'
+	| 'select'
+	| 'region-select'
+	| 'host-port';
+
+interface SendProviderCredentialFieldCommon {
+	/** Stable identifier within the provider's form. */
+	readonly key: string;
+	/** The form label, as the shipped surfaces already word it. */
+	readonly label: string;
+	/** One sentence of operator guidance; omitted when the label says it all. */
+	readonly description?: string;
+	/**
+	 * Must this field be filled for the transport to be usable? Mirrors the
+	 * entry's `requiredEnvVars` — a required field's env variable is in that list
+	 * and an optional one is not. `credentialsConsistency` in P1.3 pins the pair.
+	 */
+	readonly required?: boolean;
+	/** The deployment environment variable this field's value is written to. */
+	readonly envVar: string;
+}
+
+/** A single-line free-text value (the plugin platform's `string`). */
+export interface SendProviderStringField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'string';
+	readonly default?: string;
+	/** Shown in the empty input; an EXAMPLE, never a value that gets submitted. */
+	readonly placeholder?: string;
+}
+
+/**
+ * A sensitive credential. Write-only: the form collects it, the deployment env
+ * holds it, and no surface ever renders it back — the same contract the plugin
+ * platform's `secret` field states at length.
+ */
+export interface SendProviderSecretField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'secret';
+	readonly placeholder?: string;
+}
+
+/** A numeric value (the plugin platform's `number`). */
+export interface SendProviderNumberField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'number';
+	readonly default?: number;
+	readonly min?: number;
+	readonly max?: number;
+}
+
+/** A toggle (the plugin platform's `boolean`). */
+export interface SendProviderBooleanField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'boolean';
+	readonly default?: boolean;
+}
+
+/** One option of a {@link SendProviderSelectField} / region select. */
+export interface SendProviderFieldOption {
+	readonly value: string;
+	readonly label: string;
+}
+
+/** A choice from a closed, declared set (the plugin platform's `select`). */
+export interface SendProviderSelectField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'select';
+	readonly options: readonly SendProviderFieldOption[];
+	readonly default?: string;
+}
+
+/**
+ * COMPOSITE 1 — the provider's REGION identifier.
+ *
+ * Structurally a select whose option set is the provider's, not ours: SES's
+ * region list changes when AWS adds a region, and pinning it here would be a
+ * table that goes stale silently and blocks an operator from a region that
+ * exists. So `options` is optional — declare it only when the set is genuinely
+ * closed — and the renderer falls back to a text input seeded from `default`,
+ * which is exactly what the shipped SES form does today.
+ *
+ * It is not just a `string` field because the RELATIONSHIP is the point: a
+ * renderer (or a future region picker) can act on "this is the provider's
+ * region" without knowing which provider asked.
+ */
+export interface SendProviderRegionSelectField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'region-select';
+	/** Present only when the provider's region set is closed and known to us. */
+	readonly options?: readonly SendProviderFieldOption[];
+	readonly default?: string;
+	readonly placeholder?: string;
+}
+
+/**
+ * COMPOSITE 2 — a relay ENDPOINT: host, port and implicit-TLS, which move
+ * together.
+ *
+ * Three env variables under one descriptor because they are one decision. A
+ * preset sets all three at once ({@link SmtpRelayPresetConfig}), and the safe
+ * defaults are a pair: STARTTLS on 587. Split into three base fields, a renderer
+ * would have to re-learn per vendor that choosing "Postmark" fills the other
+ * two, and that a blank port means 587 rather than "unset".
+ *
+ * Every part names its own env variable, so a renderer that ignores the
+ * composite can still draw three plain fields and write the same env.
+ */
+export interface SendProviderHostPortField extends SendProviderCredentialFieldCommon {
+	readonly kind: 'host-port';
+	/** `envVar` carries the host; these two carry the rest of the endpoint. */
+	readonly portEnvVar: string;
+	readonly secureEnvVar: string;
+	/** String because it feeds a form field; blank ⇒ the backend default 587. */
+	readonly portDefault: string;
+	/** true ⇒ implicit TLS (usually 465); false ⇒ STARTTLS upgrade (587). */
+	readonly secureDefault: boolean;
+	/**
+	 * Well-known endpoints this field prefills from — the field's own data, which
+	 * is why the preset table moved here from `setupSendingPresets.ts` when the
+	 * catalog became the single declaration (the seams plan's P1.1: "SMTP presets
+	 * become catalog-attached data").
+	 */
+	readonly presets?: Readonly<Record<string, SmtpRelayPresetConfig>>;
+}
+
+/** One provider credential-form field. */
+export type SendProviderCredentialField =
+	| SendProviderStringField
+	| SendProviderSecretField
+	| SendProviderNumberField
+	| SendProviderBooleanField
+	| SendProviderSelectField
+	| SendProviderRegionSelectField
+	| SendProviderHostPortField;
+
+/**
+ * Which well-known relay a "SMTP relay" install points at; `custom` leaves the
+ * fields for the operator.
+ */
+export type SmtpRelayPreset = 'mailgun' | 'postmark' | 'sendgrid' | 'brevo' | 'custom';
+
+export interface SmtpRelayPresetConfig {
+	label: string;
+	/** Blank for `custom` ⇒ the operator fills it in. */
+	host: string;
+	/** String because it feeds a form field. */
+	port: string;
+	secure: boolean;
+}
+
+/**
+ * Connection presets for the generic SMTP relay transport — the single source
+ * of truth both the web setup wizard (`apps/web/app/pages/setup/email.vue`) and
+ * the setup CLI (`apps/setup-cli`) prefill from, so the two can never drift.
+ *
+ * There is deliberately no per-provider API adapter: every one of these speaks
+ * plain SMTP submission, so a single set of `SMTP_RELAY_*` env vars drives them
+ * all. Ports/TLS mirror each provider's documented submission endpoint; every
+ * one defaults to STARTTLS on 587, which the backend `smtp` adapter upgrades and
+ * enforces (`requireTLS`). `custom` carries the same safe default so the fields
+ * are never empty.
+ *
+ * Attached to the `smtp` entry's {@link SendProviderHostPortField} in
+ * `./sendProviderCatalog`, and re-exported from `./setupSendingPresets` where
+ * the two callers above still import it from.
+ */
+export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = {
+	mailgun: { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', secure: false },
+	postmark: { label: 'Postmark', host: 'smtp.postmarkapp.com', port: '587', secure: false },
+	sendgrid: { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
+	brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
+	custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
+};
+
+/**
+ * Every deployment env variable one field owns, in declaration order.
+ *
+ * ONE definition, because two consumers must agree or a credential leaks past a
+ * gate: `PROVIDER_ENV_KEYS` (the allowlist `POST /api/delivery/apply-transport`
+ * checks a browser's patch against, and the clear-then-set list a transport swap
+ * iterates) is derived from it, and any renderer that writes a field's value
+ * reads the same names. A composite that answered only with `envVar` would leave
+ * `SMTP_RELAY_PORT` outside the allowlist — unsettable by the editor that
+ * renders it.
+ */
+export function credentialFieldEnvVars<F extends SendProviderCredentialField>(
+	field: F
+): readonly CredentialFieldEnvVar<F>[] {
+	const names =
+		field.kind === 'host-port'
+			? [field.envVar, field.portEnvVar, field.secureEnvVar]
+			: [field.envVar];
+	// The conditional return type is the DECLARATION (it is what makes
+	// `ProviderEnvKey` a union of literals rather than `string`); the body cannot
+	// prove a conditional type to the checker, so the cast is where the two meet.
+	// Both arms are enumerated directly above it.
+	return names as CredentialFieldEnvVar<F>[];
+}
+
+/**
+ * The env variables one field descriptor owns, at the type level — the
+ * derivation {@link credentialFieldEnvVars} performs at runtime.
+ *
+ * Distributes over a union of field types, which is what lets `ProviderEnvKey`
+ * stay a union of string LITERALS after the allowlist stopped being one: the
+ * apply endpoint narrows on it, and a widened `string` would make its "only
+ * transport keys may be patched" guard a runtime-only claim.
+ */
+export type CredentialFieldEnvVar<F extends SendProviderCredentialField> = F extends {
+	readonly kind: 'host-port';
+}
+	? F['envVar'] | F['portEnvVar'] | F['secureEnvVar']
+	: F['envVar'];

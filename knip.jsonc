@@ -78,6 +78,7 @@
 				"src/featureFlags.ts",
 				"src/setupProgress.ts",
 				"src/setupValidators.ts",
+				"src/sendProviderCatalog.ts",
 				"src/setupEnv.ts",
 				"src/convexRuntimeEnv.ts",
 				"src/secretBox.ts",
