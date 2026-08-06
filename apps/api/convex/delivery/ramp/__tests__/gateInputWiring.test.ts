@@ -51,38 +51,25 @@ const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
  * none. Asserted EXACTLY, not as a floor: closing a gap without deleting its
  * line here fails this suite, so the list can only ever shrink.
  *
- * `smtpBlocks` (issue #501) — the SMTP response classifier runs in the MTA
- * (`apps/mta/src/.../classifySmtpResponse`) and nothing carries its per-category
- * counts into Convex, so no reader can build the observation gate 1b's block
- * clause consumes. Wiring it is a transport-telemetry surface of its own, not a
- * line in a controller; tracked separately rather than faked with a zeroed
- * observation, which would read as "we measured no blocks" instead of "we did
- * not measure".
+ * EMPTY, and the empty state is the point. `smtpBlocks` (issue #501) was the
+ * last entry: the SMTP response classifier runs in the MTA and nothing carried
+ * its per-category counts into Convex, so gate 2's block clause had a reader and
+ * no producer and `evaluateSmtpBlockMessages` returned null on every tick of
+ * every deployment. Closing it took the shape the line here predicted — the
+ * category now travels as a TYPED field on an `smtp.classified` webhook (never
+ * re-parsed out of a prose `message`, which would be a second classifier free to
+ * disagree with the MTA's), and `analytics/smtpResponseCategories.ts` receives it
+ * into a per-(org, cell, arm, day) sharded counter that both readers summarize.
  *
- * RE-EXAMINED AGAINST THIS WAVE'S NEW WRITERS, and it still cannot be closed
- * from this side. The `deferred` counter (`delivery/deferralOutcome.ts`) records
- * the LAST-MILE ROUTER's own `origin: 'governed'` defers — our decision, with no
- * receiver response behind it to classify. The MTA's classification lives in
- * `dispatch/outcome.ts`, where a retryable 4xx emits NO `notify_convex` event at
- * all and a non-retryable one arrives as a `bounced` event whose category
- * survives only inside a prose `message` string — and re-parsing that string
- * here would be a SECOND classifier disagreeing with the MTA's, which is the one
- * thing `@owlat/shared/smtpBlockCategories` exists to prevent. Closing it needs
- * the category to travel as a typed field on the webhook and a per-(cell, arm,
- * day) counter to receive it.
+ * The MTA's daily Redis stream `mta:delivery-log:<day>` is still where to VERIFY
+ * those categories in a live deployment; it is not, and never was, where to read
+ * them from — a log rather than a counter, with no stream and no arm, so no
+ * cell.
  *
- * THE CATEGORY DOES PERSIST IN ONE PLACE, and it is the first thing the next
- * implementer will find, so it is named here with the reason it is not the
- * answer: the MTA's daily Redis stream `mta:delivery-log:<day>`
- * (`apps/mta/src/monitoring/deliveryLogger.ts` writes `category`, `annotation`,
- * `provider` and `orgId`), readable over the master-key `/delivery-logs` route.
- * It is a LOG, not a counter — no stream and no arm, so no cell; approximate
- * MAXLEN trimming; a 72-hour default TTL against a 7-day evaluation window; and
- * reading it from Convex would put an operator-facing debug surface on the ramp's
- * critical path. It is where to VERIFY the categories in a live deployment, not
- * where to read them from.
+ * A NEW GAP HAS TO BE WRITTEN DOWN HERE TO LAND, which is what makes an unsupplied
+ * field a tracked absence instead of a silent one.
  */
-const KNOWN_UNSUPPLIED: readonly string[] = ['smtpBlocks'];
+const KNOWN_UNSUPPLIED: readonly string[] = [];
 
 /**
  * THE TWO PRODUCTION READERS, named rather than counted. The controller's read

@@ -92,6 +92,10 @@ import { hasSeedAccounts } from '../analytics/seedAccounts';
 import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
 import { seedSweepsForCell } from '../analytics/seedPlacementSweeps';
 import {
+	readCellArmCategoryBuckets,
+	summarizeSmtpBlockObservation,
+} from '../analytics/smtpResponseCategories';
+import {
 	deferralTelemetryReadSince,
 	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
@@ -357,6 +361,24 @@ export const getDeliverabilityDashboard = authedQuery({
 				...readWindow,
 			});
 
+			// WHAT THE RECEIVERS SAID, over the DECIDING span (issue #501) — the same
+			// rows and the same summarizer the controller reads, over the controller's
+			// own window, because this observation exists only to be GRADED: gate 2's
+			// block clause takes it, and a clause graded over the reported seven days
+			// would reach verdicts the cron never reached — the exact divergence #510
+			// closed for the outcome summaries. `null` for a cell with no classified
+			// responses in the window, so the block clause holds its verdict rather
+			// than rendering a measured zero.
+			const smtpBlocks = summarizeSmtpBlockObservation(
+				await readCellArmCategoryBuckets(ctx.db, {
+					organizationId,
+					cell: cellKey,
+					arm: 'own',
+					...decisionWindow,
+				}),
+				decisionWindow
+			);
+
 			// TWO SUMMARIES PER ARM, ONE INDEX READ EACH: the DECIDING pair the
 			// evaluator grades and the REPORTED pair the cards render. The second
 			// summary costs nothing the read has not already paid for, and it is the
@@ -426,6 +448,9 @@ export const getDeliverabilityDashboard = authedQuery({
 				// span on the CLOCK and clamps its rows to it, so the two cannot differ
 				// even where their read bounds do.
 				hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
+				// ABSENT, NEVER ZEROED — the same distinction the controller reads,
+				// drawn in the same summarizer over the same rows.
+				smtpBlocks,
 				engagement: engagementGateFor({
 					cell,
 					own: decisionOwn,
