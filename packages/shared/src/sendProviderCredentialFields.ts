@@ -16,6 +16,9 @@
  * kinds. The answer implemented here is the plan's recommendation: THE SAME FIVE
  * BASE KINDS, SPELLED IDENTICALLY, plus exactly two composites —
  * {@link SendProviderRegionSelectField} and {@link SendProviderHostPortField}.
+ * "Spelled identically" is ENFORCED rather than asserted in prose — see
+ * {@link SEND_PROVIDER_CREDENTIAL_FIELD_KINDS} for where the two vocabularies
+ * are pinned to each other, and why the pin cannot live in this package.
  *
  * One validator family is the point. A renderer that already knows how to draw a
  * plugin's `secret` field draws a core provider's the same way, and the two
@@ -42,15 +45,31 @@
 /**
  * The field kinds a provider's credential form is described with — the plugin
  * `settingsSchema` vocabulary plus the two composites argued above.
+ *
+ * A VALUE, not just a type, because "spelled identically" has to be checkable.
+ * `packages/shared` may not import `@owlat/plugin-kit` (nothing in this package
+ * may depend on the plugin platform), so the two lists cannot be one
+ * declaration; what keeps them from diverging silently is
+ * `apps/api/convex/lib/sendProviders/__tests__/credentialFieldVocabulary.test.ts`,
+ * a package that may import both, which pins `SETTINGS_FIELD_KINDS` as a subset
+ * of this list at build time AND at run time. A kind added to (or renamed in)
+ * plugin-kit is a red suite the moment it happens, instead of a renderer with no
+ * branch for it discovered at P3.1.
  */
-export type SendProviderCredentialFieldKind =
-	| 'string'
-	| 'secret'
-	| 'number'
-	| 'boolean'
-	| 'select'
-	| 'region-select'
-	| 'host-port';
+export const SEND_PROVIDER_CREDENTIAL_FIELD_KINDS = [
+	// The plugin `settingsSchema` five, in its order.
+	'string',
+	'secret',
+	'number',
+	'boolean',
+	'select',
+	// The two composites.
+	'region-select',
+	'host-port',
+] as const;
+
+/** One of {@link SEND_PROVIDER_CREDENTIAL_FIELD_KINDS}. */
+export type SendProviderCredentialFieldKind = (typeof SEND_PROVIDER_CREDENTIAL_FIELD_KINDS)[number];
 
 interface SendProviderCredentialFieldCommon {
 	/** Stable identifier within the provider's form. */
@@ -60,9 +79,17 @@ interface SendProviderCredentialFieldCommon {
 	/** One sentence of operator guidance; omitted when the label says it all. */
 	readonly description?: string;
 	/**
-	 * Must this field be filled for the transport to be usable? Mirrors the
-	 * entry's `requiredEnvVars` — a required field's env variable is in that list
-	 * and an optional one is not. `credentialsConsistency` in P1.3 pins the pair.
+	 * Must this field be filled for the transport to be usable?
+	 *
+	 * It qualifies {@link SendProviderCredentialFieldCommon.envVar} AND NOTHING
+	 * ELSE. Mirrors the entry's `requiredEnvVars`: `required: true` ⇒ `envVar` is
+	 * in that list, `required` absent ⇒ it is not. A composite's SECONDARY
+	 * variables (a {@link SendProviderHostPortField}'s `portEnvVar` and
+	 * `secureEnvVar`) are always optional — they carry declared defaults — so they
+	 * belong to `optionalEnvVars` however this flag reads. The rule a
+	 * `credentialsConsistency` guard should encode is therefore about `envVar`
+	 * alone, not about {@link credentialFieldEnvVars}, which answers with the
+	 * whole composite.
 	 */
 	readonly required?: boolean;
 	/** The deployment environment variable this field's value is written to. */
@@ -148,10 +175,18 @@ export interface SendProviderRegionSelectField extends SendProviderCredentialFie
  *
  * Every part names its own env variable, so a renderer that ignores the
  * composite can still draw three plain fields and write the same env.
+ *
+ * `required` on this field qualifies the HOST (`envVar`) only. `portEnvVar` and
+ * `secureEnvVar` are always OPTIONAL — each has a declared default below, which
+ * is what makes a blank port mean 587 rather than "unset" — so they belong to
+ * the entry's `optionalEnvVars` even on a field declared `required: true`.
  */
 export interface SendProviderHostPortField extends SendProviderCredentialFieldCommon {
 	readonly kind: 'host-port';
-	/** `envVar` carries the host; these two carry the rest of the endpoint. */
+	/**
+	 * `envVar` carries the host; these two carry the rest of the endpoint, and
+	 * both are optional-with-a-default regardless of the field's `required`.
+	 */
 	readonly portEnvVar: string;
 	readonly secureEnvVar: string;
 	/** String because it feeds a form field; blank ⇒ the backend default 587. */

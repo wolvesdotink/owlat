@@ -7,7 +7,9 @@ import {
 import { OUTBOUND_TLS_MODES } from '../outboundTlsMode';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	OUTBOUND_TLS_MODE_OPTIONS,
 	OWN_SEND_PROVIDER_KIND,
+	SEND_PROVIDER_CREDENTIAL_FIELD_KINDS,
 	SEND_TRANSPORT_KINDS,
 	TRANSPORT_CREDENTIAL_ENV_KEYS,
 	acceptanceSemanticsOf,
@@ -22,6 +24,7 @@ import {
 	supportsCustomReturnPathOf,
 	tagsFeedbackProvenanceOf,
 	type CoreSendProviderCatalogEntry,
+	type OwnSendProviderKind,
 } from '../sendProviderCatalog';
 import * as setupValidators from '../setupValidators';
 import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
@@ -206,6 +209,30 @@ describe('PROVIDER_ENV_KEYS is derived from the credential fields', () => {
 		expect([...TRANSPORT_CREDENTIAL_ENV_KEYS]).toEqual(walked);
 	});
 
+	it('describes every field in the declared vocabulary, and marks required on `envVar` only', () => {
+		const vocabulary = new Set<string>(SEND_PROVIDER_CREDENTIAL_FIELD_KINDS);
+		for (const entry of ENTRIES) {
+			const required = new Set(entry.requiredEnvVars);
+			for (const field of entry.credentialFields) {
+				expect(vocabulary, `${entry.kind}/${field.key}`).toContain(field.kind);
+				// `required` qualifies `envVar` and nothing else: it says that ONE
+				// variable is in `requiredEnvVars`. A composite's secondary variables
+				// carry declared defaults and stay optional either way — the rule
+				// P1.3's consistency guard should encode, pinned here so it is a rule
+				// about the shipped catalog rather than a sentence in a docblock.
+				expect(required.has(field.envVar), `${entry.kind}/${field.key}`).toBe(
+					field.required === true
+				);
+				if (field.kind === 'host-port') {
+					for (const name of [field.portEnvVar, field.secureEnvVar]) {
+						expect(required.has(name), `${entry.kind}/${name}`).toBe(false);
+						expect(entry.optionalEnvVars ?? [], `${entry.kind}/${name}`).toContain(name);
+					}
+				}
+			}
+		}
+	});
+
 	it('gives the composite endpoint field all three of its variables', () => {
 		// A `host-port` descriptor that answered with `envVar` alone would leave
 		// SMTP_RELAY_PORT / SMTP_RELAY_SECURE outside the apply endpoint's
@@ -276,6 +303,13 @@ describe('the entries themselves', () => {
 		expect(select!.kind === 'select' ? select!.options.map((o) => o.value) : []).toEqual([
 			...OUTBOUND_TLS_MODES,
 		]);
+		// ...and the exported list IS that field's option list, not a parallel one.
+		// `apps/web/app/composables/setupOutboundTls.ts` maps this export and adds
+		// only its `hint` copy, so the selector the wizard renders and the
+		// descriptor the catalog declares cannot disagree about a label.
+		expect(select!.kind === 'select' ? select!.options : []).toEqual([
+			...OUTBOUND_TLS_MODE_OPTIONS,
+		]);
 	});
 
 	it('names a real validator on every setup probe, and only where one exists', () => {
@@ -307,6 +341,13 @@ describe('the entries themselves', () => {
 		expect(OWN_SEND_PROVIDER_KIND).toBe('mta');
 		expect(ENTRIES.find((entry) => entry.tier === 'own')?.kind).toBe(OWN_SEND_PROVIDER_KIND);
 		expect(isOwnSendProviderKind(OWN_SEND_PROVIDER_KIND)).toBe(true);
+		// The TYPE is the literal too, not the wide kind union — that is what lets
+		// the backend's `OWN_ARM_TRANSPORT_KIND` be a re-export of this constant
+		// while the three compile-time guards keyed off its literal type keep
+		// working. `OwnSendProviderKind` is not assignable from any other kind, so
+		// this line stops compiling if the annotation widens.
+		const ownKind: OwnSendProviderKind = OWN_SEND_PROVIDER_KIND;
+		expect(ownKind).toBe(OWN_SEND_PROVIDER_KIND);
 		for (const other of ['ses', 'resend', 'smtp', 'mandrill', 'MTA', '', undefined, null]) {
 			expect(isOwnSendProviderKind(other), String(other)).toBe(false);
 		}

@@ -55,7 +55,9 @@ export {
 } from './deliverabilityAlerts';
 export {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	OUTBOUND_TLS_MODE_OPTIONS,
 	OWN_SEND_PROVIDER_KIND,
+	SEND_PROVIDER_CREDENTIAL_FIELD_KINDS,
 	SEND_TRANSPORT_KINDS,
 	TRANSPORT_CREDENTIAL_ENV_KEYS,
 	acceptanceSemanticsOf,
@@ -78,8 +80,8 @@ export {
 	type FeedbackProvenanceTagging,
 	type IdempotencyKeyDeduplication,
 	type MessageIdSource,
+	type OwnSendProviderKind,
 	type SendProviderBooleanField,
-	type SendProviderCatalogEntry,
 	type SendProviderCatalogEntryShape,
 	type SendProviderCredentialField,
 	type SendProviderCredentialFieldKind,

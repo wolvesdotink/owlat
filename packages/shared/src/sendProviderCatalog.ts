@@ -43,7 +43,6 @@ import {
 import type {
 	CoreSendProviderCatalogEntry,
 	HostedSendTransportKind,
-	SendProviderCatalogEntryShape,
 } from './sendProviderCatalogTypes';
 
 export * from './sendProviderCapabilities';
@@ -58,11 +57,13 @@ export * from './sendProviderCredentialFields';
  * the form writing a value the backend rejects. That the list is COMPLETE is
  * pinned by the catalog suite, which compares it to `OUTBOUND_TLS_MODES`.
  *
- * The hint copy for each mode stays beside the wizard
- * (`apps/web/app/composables/setupOutboundTls.ts`): a descriptor carries the
- * label a form needs, not the paragraph a page writes around it.
+ * EXPORTED because the wizard's selector derives from it. The label is a
+ * descriptor's copy and has ONE home — `setupOutboundTls.ts` in `apps/web` maps
+ * this list and adds only its own `hint` paragraph, so renaming a label here
+ * renames it in the rendered form too. A second hand-written copy of the labels
+ * would be exactly the duplication this catalog exists to collapse.
  */
-const OUTBOUND_TLS_MODE_OPTIONS = [
+export const OUTBOUND_TLS_MODE_OPTIONS = [
 	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
 	{ value: 'require', label: 'Always encrypt' },
 	{ value: 'require-verified', label: 'Always encrypt and verify' },
@@ -360,15 +361,6 @@ export type CoreSendProviderKind = (typeof CORE_SEND_PROVIDER_CATALOG)[number]['
 export type SendTransportKind = CoreSendProviderKind | HostedSendTransportKind;
 
 /**
- * A catalog entry with its `kind` narrowed — the shape every consumer outside
- * the declaration itself sees. (The declaration vocabulary has to leave `kind`
- * as `string`; see {@link SendProviderCatalogEntryShape}.)
- */
-export type SendProviderCatalogEntry = SendProviderCatalogEntryShape & {
-	readonly kind: SendTransportKind;
-};
-
-/**
  * The send-transport kinds Owlat supports, in catalog order. THE canonical list:
  * the backend's `SEND_PROVIDER_KINDS`, the setup surfaces'
  * `DELIVERY_PROVIDER_KINDS` and the outbound-alignment guard's
@@ -408,6 +400,26 @@ export function coreSendProviderCatalogEntry(
 	return kind === undefined ? undefined : catalogByKind.get(kind);
 }
 
+/** The entry declaring `tier: 'own'`, as a type. */
+type OwnCatalogEntry = Extract<(typeof CORE_SEND_PROVIDER_CATALOG)[number], { tier: 'own' }>;
+
+/**
+ * THE OWN ARM's kind, at the TYPE level — the literal, derived.
+ *
+ * `Extract<…, { tier: 'own' }>['kind']` reads the same declaration
+ * {@link OWN_SEND_PROVIDER_KIND} reads at runtime, so the compile-time guards
+ * that need a literal (the backend's `OWN_ARM_TRANSPORT_KIND` and the
+ * `_OwnInfrastructureKindsAgree` pin against the domain-provider registry's
+ * `mtaProvider.kind`) can key off the catalog instead of off a second literal
+ * somebody has to keep equal to it. Moving `tier: 'own'` to another entry moves
+ * this type with it, and those guards then fail at BUILD time rather than
+ * waiting for the runtime assertion in the backend's registry suite.
+ *
+ * Deliberately narrower than {@link CoreSendProviderKind}: a consumer that wants
+ * "some send kind" wants that union; a consumer that wants "ours" wants this.
+ */
+export type OwnSendProviderKind = OwnCatalogEntry['kind'];
+
 /**
  * THE OWN ARM, as a declaration — D3's "the own MTA is special by definition,
  * and by nothing else".
@@ -418,14 +430,18 @@ export function coreSendProviderCatalogEntry(
  * `apps/api/convex/lib/sendProviders/strategies/adaptive_mix` — unreachable from
  * this package, from `apps/web` and from `apps/setup-cli`, all three of which
  * ask the same question, so all three restated it as `=== 'mta'`. It lives here
- * now because this is the leaf every one of them may import.
+ * now because this is the leaf every one of them may import, and the backend
+ * constant re-exports THIS rather than restating the literal.
  *
  * The catalog suite pins that exactly one entry carries `tier: 'own'`, which is
- * what makes the `find` below total; the type is the narrowed union, so a
- * consumer switching on it still gets exhaustiveness.
+ * what makes the filter below total; the type is {@link OwnSendProviderKind},
+ * derived from the same tier, so nothing downstream loses the literal by reading
+ * the constant instead of writing the string.
  */
-export const OWN_SEND_PROVIDER_KIND: CoreSendProviderKind = (() => {
-	const own = CORE_SEND_PROVIDER_CATALOG.filter((entry) => entry.tier === 'own');
+export const OWN_SEND_PROVIDER_KIND: OwnSendProviderKind = (() => {
+	const own = CORE_SEND_PROVIDER_CATALOG.filter(
+		(entry): entry is OwnCatalogEntry => entry.tier === 'own'
+	);
 	if (own.length !== 1) {
 		throw new TypeError('Exactly one send provider entry may declare tier: own');
 	}

@@ -292,10 +292,11 @@ export interface SendProviderSetupProbe {
  * to be: the union is DERIVED from the entries (`SendProviderKind =
  * (typeof CATALOG)[number]['kind']`, D1), so a vocabulary that named the union
  * would be defined in terms of the literal that is defined in terms of it.
- * `./sendProviderCatalog` re-exports this shape with `kind` narrowed to
- * {@link SendProviderCatalogEntry} the moment the literal exists, and the
- * backend widens THAT with its plugin-kit-typed fields — so no consumer outside
- * the declaration itself sees the loose form.
+ * Once the literal exists, `./sendProviderCatalog` derives the narrowed union
+ * from it (`CoreSendProviderKind`) and the backend's `SendProviderCatalogEntry`
+ * (`apps/api/convex/lib/sendProviders/catalogTypes.ts`) is this shape with
+ * `kind` narrowed to the COMPOSED union and widened by its plugin-kit-typed
+ * fields — so no consumer outside the declaration itself sees the loose form.
  */
 export interface SendProviderCatalogEntryShape {
 	readonly kind: string;
