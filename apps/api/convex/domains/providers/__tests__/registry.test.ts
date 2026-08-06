@@ -34,6 +34,7 @@ import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
 	SEND_PROVIDER_CATALOG,
 	domainVerificationFor,
+	isCoreSendProviderKind,
 	type ApiVerifiedSendProviderKind,
 	type SendProviderKind,
 } from '../../../lib/sendProviders/catalog';
@@ -145,11 +146,20 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 			(entry) => domainVerificationFor(entry.kind) === 'api'
 		).map((entry) => entry.kind);
 
-		// Non-vacuity only — a superset assertion on purpose, since a bundled
-		// plugin kind declaring `api` legitimately widens this list and must
-		// reach the per-kind loop below rather than fail an equality here. The
-		// exact CORE set is pinned at the type level by the case below.
+		// Both readings, in the same case. The COMPOSED catalog is asserted as a
+		// superset on purpose: a bundled plugin kind declaring `api` legitimately
+		// widens it and must reach the per-kind loop below, naming itself, rather
+		// than fail an equality here.
 		expect(apiVerified).toEqual(expect.arrayContaining(['ses', 'mandrill']));
+		// The CORE half keeps its exact pin at RUNTIME as well as at the type
+		// level. `_ApiVerifiedCoreSetIsExactly_Ses_Mandrill` at the bottom of this
+		// file is the same statement, but only `bun run typecheck` sees it —
+		// vitest does not typecheck — so without this line a third core kind
+		// declaring `domainVerification: 'api'` leaves `npx vitest run` fully
+		// green, silently accepted by the suite whose stated job is to make the
+		// core set explicit. The widening above was for the plugin tier; the core
+		// tier did not need to lose anything for it.
+		expect(apiVerified.filter(isCoreSendProviderKind)).toEqual(['ses', 'mandrill']);
 		for (const kind of apiVerified) {
 			expect({ kind, registered: isSendingDomainProviderKind(kind) }).toEqual({
 				kind,
