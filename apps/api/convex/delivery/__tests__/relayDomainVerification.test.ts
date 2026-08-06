@@ -1,5 +1,12 @@
 /**
- * Relay-domain verification through the sending-domain provider registry (D7).
+ * Relay-domain verification through the sending-domain provider registry.
+ *
+ * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
+ * gates, `D7` = one generic relay-identity table + this registry; `P3.1` = the
+ * Mandrill domain-identity adapter). The seams plan that owns the branch
+ * numbers those differently — its D6 is the webhook registry and its D7 is the
+ * `@owlat/mta-protocol` package — so the qualification is written out once here
+ * rather than left to the reader. This seam is the seams plan's P0.3.
  *
  * `relayDomainVerified` used to open with `relayProviderType !== 'ses' → false`
  * and inline SES's proof. It now dispatches to the registered provider for the
@@ -10,9 +17,9 @@
  *     (`smtp`, `resend`) and for the owned MTA, which is never a relay;
  *   - the same answer for a kind this deployment has never heard of.
  *
- * P3.1 added the second kind that CAN answer — Mandrill, from the generic
- * identity table — so the last block covers it as its own proof rather than as
- * the "unknown kind" placeholder it used to be.
+ * Mandrill (Mandrill plan P3.1) added the second kind that CAN answer — from
+ * the generic identity table — so it gets a block covering its own proof rather
+ * than being the "unknown kind" placeholder it used to be.
  */
 
 import { convexTest } from 'convex-test';
@@ -74,8 +81,8 @@ async function seedSesRelay(
 
 /**
  * A fresh, fully verified Mandrill relay identity in the GENERIC
- * `sendingDomainRelayIdentities` table (D7) — Mandrill's own verdict rather
- * than our DNS crawl, which is why it needs no `domains` row of its own.
+ * `sendingDomainRelayIdentities` table (Mandrill D7) — Mandrill's own verdict
+ * rather than our DNS crawl, which is why it needs no `domains` row of its own.
  */
 async function seedMandrillIdentity(
 	ctx: { db: DatabaseWriter },
@@ -175,6 +182,19 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 		});
 	});
 
+	it('refuses a domain whose only proof belongs to another relay', async () => {
+		// The mirror of the Mandrill block's "no Mandrill identity, however
+		// verified it is at SES": with ONLY a Mandrill row on the domain, a `ses`
+		// relay must still be unverifiable. Both directions are needed — a lookup
+		// that resolved every kind to one adapter would be caught in one direction
+		// only, and which direction depends on which adapter it collapsed to.
+		const t = harness();
+		await t.run(async (ctx) => {
+			await seedMandrillIdentity(ctx);
+			expect(await relayDomainVerified(ctx, DOMAIN, 'ses', NOW)).toBe(false);
+		});
+	});
+
 	it('refuses when a published apex SPF row has no verified result', async () => {
 		const t = harness();
 		await t.run(async (ctx) => {
@@ -216,23 +236,22 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
 		});
 	});
 
-	it('reports unverifiable for an unknown kind, without throwing', async () => {
-		const t = harness();
-		await t.run(async (ctx) => {
-			await seedSesRelay(ctx);
-			expect(await relayDomainVerified(ctx, DOMAIN, 'postmark', NOW)).toBe(false);
-			expect(await relayDomainVerified(ctx, DOMAIN, '', NOW)).toBe(false);
-		});
-	});
+	// An unknown kind is covered by the fail-closed table at the bottom of this
+	// file, which asserts the same two inputs (`postmark`, `''`) against a domain
+	// carrying BOTH shipped proofs rather than just SES's, and adds the
+	// near-misses. `expect(...).toBe(false)` fails on a throw, so the "without
+	// throwing" half is preserved there too.
 });
 
 /**
- * MANDRILL (P3.1) — the second kind to answer this seam, and the proof that
- * "verifiable" now means "a registered provider says so" rather than "is SES".
+ * MANDRILL (Mandrill plan P3.1) — the second kind to answer this seam, and the
+ * proof that "verifiable" now means "a registered provider says so" rather than
+ * "is SES".
  *
- * Its proof is a row in the GENERIC `sendingDomainRelayIdentities` table (D7)
- * rather than a per-provider sibling, and it is Mandrill's own verdict rather
- * than our DNS crawl — so the cases that can go wrong are different ones: a
+ * Its proof is a row in the GENERIC `sendingDomainRelayIdentities` table
+ * (Mandrill D7) rather than a per-provider sibling, and it is Mandrill's own
+ * verdict rather than our DNS crawl — so the cases that can go wrong are
+ * different ones: a
  * status that is not `verified`, record verdicts that contradict it, and an
  * observation that has aged out.
  */
@@ -289,18 +308,26 @@ describe('relayDomainVerified — Mandrill', () => {
  * module carry `relayProviderType !== 'ses' → false` for so long: the shipped
  * kinds all agreed with it. These two cases pin the DISPATCH instead. The first
  * walks every registered provider and requires the seam's answer to be the
- * provider's own, so a re-introduced identity check (or a kind quietly special
- * cased) diverges on some row without anyone having to add a case for it. The
- * second is the fail-closed side: nothing the caller can put in that string may
- * ever produce a proof.
+ * provider's own, so a kind quietly special cased — or a new kind whose adapter
+ * is never reached — diverges on some row without anyone having to add a case
+ * for it. The second is the fail-closed side: nothing the caller can put in
+ * that string may ever produce a proof.
+ *
+ * What the first case does NOT prove is the cross-credit: with both proofs
+ * seeded, a lookup that resolved `mandrill` to the SES adapter would answer
+ * `true` on both sides of the equality and pass. That property is asserted
+ * where a single proof is seeded — "refuses a domain whose only proof belongs
+ * to another relay" in the SES block, and its mirror in the Mandrill block —
+ * one case per direction.
  */
 describe('relayDomainVerified — dispatch, not a per-kind rulebook', () => {
 	it('answers exactly what the registered provider answers, for every registered kind', async () => {
 		const t = harness();
 		await t.run(async (ctx) => {
-			// Both shipped proofs present at once, so the table is not vacuously
-			// all-false and each kind has something it COULD wrongly credit itself
-			// with — SES's sibling row and Mandrill's generic row, same domain.
+			// Both shipped proofs present at once, so the agreement below is not
+			// vacuously all-false: the two `api` kinds must answer `true` through
+			// their own adapters, and everything else must still answer `false`
+			// with two proofs sitting on the same domain.
 			await seedSesRelay(ctx);
 			await seedMandrillIdentity(ctx);
 

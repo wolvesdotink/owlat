@@ -1,9 +1,17 @@
 /**
- * Sending-domain provider registry (plan D7).
+ * Sending-domain provider registry.
+ *
+ * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
+ * gates, `D7` = one generic relay-identity table + this registry; `P3.1` = the
+ * Mandrill domain-identity adapter). The seams plan that owns the branch
+ * numbers those differently — its D6 is the webhook registry and its D7 is the
+ * `@owlat/mta-protocol` package — so the qualification is written out once here
+ * rather than left to the reader. This work is the seams plan's P0.3, and its
+ * `domainVerification` field is adopted by that plan's D1.
  *
  * The registry is what turned the two hard-coded relay gates into capability
- * lookups: routing asks the CATALOG whether a kind may relay (D6), and the
- * relay-verification seam asks THIS registry whether the kind can prove a
+ * lookups: routing asks the CATALOG whether a kind may relay (Mandrill D6), and
+ * the relay-verification seam asks THIS registry whether the kind can prove a
  * domain. Both halves have to stay in agreement, and the agreement is enforced
  * at compile time — so these tests pin the runtime half (lookup + guard) and
  * the type-level half is asserted structurally, in a way that fails the build
@@ -18,7 +26,6 @@ import {
 	providerFor,
 	type RelayProvingProviderModule,
 	type SendingDomainProviderKind,
-	type SendingDomainProviderModule,
 } from '../index';
 import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
@@ -96,22 +103,31 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 	});
 });
 
-describe('completeness against the send-provider catalog (D6/D7)', () => {
+describe('completeness against the send-provider catalog (Mandrill D6/D7)', () => {
 	/**
 	 * The runtime twin of the `_ApiVerifiedKindsHaveDomainProviders` mapped-type
 	 * guard in `../index.ts`. That guard is the real enforcement — it fails the
-	 * BUILD, naming the kind — but it only sees core kinds' literal types, so
-	 * this walks the whole catalog including anything a bundled plugin
-	 * contributes.
+	 * BUILD, naming the kind — but it only sees CORE kinds' literal types
+	 * (`ApiVerifiedSendProviderKind` is an `Extract` over the core catalog
+	 * literal), so this walks the whole composed catalog including anything a
+	 * bundled plugin contributes. A bundled plugin transport whose generated
+	 * entry declared `api` compiles clean through both type guards; this case is
+	 * the only thing that catches it, so it asserts the PROPERTY per kind rather
+	 * than short-circuiting on a hardcoded set — a plugin kind must fail here
+	 * naming itself, not fail an equality against `['ses', 'mandrill']`.
 	 */
 	it('every kind declaring domainVerification: api has a registered provider', () => {
 		const apiVerified = SEND_PROVIDER_CATALOG.filter(
 			(entry) => domainVerificationFor(entry.kind) === 'api'
 		).map((entry) => entry.kind);
 
-		expect(apiVerified).toEqual(['ses', 'mandrill']);
+		// Non-vacuity only — the exact core set is pinned by the case below.
+		expect(apiVerified).toEqual(expect.arrayContaining(['ses', 'mandrill']));
 		for (const kind of apiVerified) {
-			expect(isSendingDomainProviderKind(kind)).toBe(true);
+			expect({ kind, registered: isSendingDomainProviderKind(kind) }).toEqual({
+				kind,
+				registered: true,
+			});
 		}
 	});
 
@@ -125,21 +141,30 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 	});
 
 	/**
-	 * The relay seams that are implemented IF AND ONLY IF the catalog declares
+	 * ALL THREE relay seams are implemented IF AND ONLY IF the catalog declares
 	 * `domainVerification: 'api'` for the kind — one table rather than one
 	 * near-identical test per method, so the next optional per-kind seam is a
-	 * row and a change to the rule is a single edit.
+	 * row and a change to the rule is a single edit. This table is the ONLY
+	 * runtime statement of that rule: the bespoke per-method cases it replaced
+	 * (a "leaves the seams optional for `mta`" case and a
+	 * `relayDomainVerified ⇒ describeReferenceArm` case) each restated a slice
+	 * of it, so a change to the rule had to be made in three places or the suite
+	 * disagreed with itself.
 	 *
-	 * Both directions matter. A provider may be registered with neither (our MTA
-	 * is: its domains are verified on the ordinary DNS path and it is never a
-	 * fallback relay), so implementing one while declaring `none` is a sign the
+	 * Both directions matter, and the `iff` is what makes the second one an
+	 * assertion. A provider may be registered implementing NONE of the three —
+	 * our own MTA is, which is also why the methods cannot simply be required on
+	 * the base interface: its domains are verified on the ordinary DNS path and
+	 * it is never a fallback relay, so absence is an honest answer rather than a
+	 * gap. Implementing one while declaring `none` is therefore a sign the
 	 * catalog and the adapter disagree about what the kind is.
 	 */
 	const relayContractByCapability = [
 		{
 			method: 'relayDomainVerified',
-			// The read half (D6). A kind the catalog promises can prove a domain,
-			// whose provider has no way to prove it, answers "unverified" forever.
+			// The read half (Mandrill D6). A kind the catalog promises can prove a
+			// domain, whose provider has no way to prove it, answers "unverified"
+			// forever.
 		},
 		{
 			method: 'ensureRelayIdentity',
@@ -149,6 +174,14 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 			// from reports every pre-existing domain unverified — and its fallback
 			// refuses to relay any of them, with the only symptom a runtime refusal
 			// on a real send.
+		},
+		{
+			method: 'describeReferenceArm',
+			// The measurement half. The dual-transport alignment pre-flight asks the
+			// registry for the second arm instead of testing `=== 'ses'`; a relay
+			// that can prove a domain but cannot describe its arm resolves `unknown`
+			// and holds the ramp at s=0 forever — silently, since nothing else in
+			// the system notices.
 		},
 	] as const;
 
@@ -212,28 +245,5 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 		// hold the ramp at s=0, silently.
 		const pinned: RelayProvingProviderModule<'ses'> = withoutArm;
 		expect(pinned).toBe(SENDING_DOMAIN_PROVIDERS.ses);
-	});
-
-	it('leaves the three seams OPTIONAL for a kind that declares none', () => {
-		// The other direction of the same rule, and the reason the methods cannot
-		// simply be required on the base interface: our own MTA is registered here,
-		// declares `domainVerification: 'none'`, and implements none of the three —
-		// which is an honest answer ("no identity API"), not a gap.
-		const own: SendingDomainProviderModule<'mta'> = SENDING_DOMAIN_PROVIDERS.mta;
-		expect(domainVerificationFor(own.kind)).toBe('none');
-		expect(own.relayDomainVerified).toBeUndefined();
-		expect(own.ensureRelayIdentity).toBeUndefined();
-		expect(own.describeReferenceArm).toBeUndefined();
-	});
-
-	it('every kind that can prove a domain also describes its own reference arm', () => {
-		// P3.1's second half: the alignment pre-flight asks the registry for the
-		// second arm instead of testing `=== 'ses'`. A relay that can prove a
-		// domain but cannot describe it would resolve `unknown` and hold the ramp
-		// at s=0 forever — silently, since nothing else in the system notices.
-		for (const provider of Object.values(SENDING_DOMAIN_PROVIDERS)) {
-			if (provider.relayDomainVerified === undefined) continue;
-			expect(typeof provider.describeReferenceArm).toBe('function');
-		}
 	});
 });
