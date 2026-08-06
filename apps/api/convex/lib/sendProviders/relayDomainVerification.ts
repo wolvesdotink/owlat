@@ -7,7 +7,10 @@
  * implementation. Every read here is an indexed point read: the seam runs
  * inside enqueue transactions.
  *
- * D6/D7: the answer comes from the SENDING-DOMAIN PROVIDER REGISTRY, not from
+ * Mandrill plan D6/D7 (= the seams plan's P0.3; that plan's own D6/D7 are the
+ * webhook registry and the mta-protocol package, so the numbers here are
+ * qualified rather than left ambiguous): the answer comes from the
+ * SENDING-DOMAIN PROVIDER REGISTRY, not from
  * an identity check. This module used to open with `relayProviderType !== 'ses'
  * → false` and then inline SES's proof, which made "verifiable" mean "is SES";
  * the proof now lives with the provider that owns it

@@ -28,7 +28,7 @@ import type { MandrillIdentity } from '../types';
  * The row for one (organization, domain).
  *
  * Keyed by domain NAME rather than by `domainId`, because that is how the
- * generic table is keyed (D7): a relay identity can exist for a domain whose
+ * generic table is keyed (Mandrill plan D7): a relay identity can exist for a domain whose
  * primary `domains` row belongs to another provider entirely, and the
  * enqueue-path proof looks it up by envelope From domain with no id in hand.
  */

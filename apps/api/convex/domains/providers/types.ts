@@ -4,7 +4,12 @@
  * One TypeScript interface, one concrete implementation per registered kind
  * (`SendingDomainIdentityRegistry` below). The **Sending domain lifecycle
  * (module)** dispatches per-provider work through `providerFor(kind)` in
- * `./index.ts`; provider variation lives entirely behind this seam.
+ * `./index.ts`; provider variation lives entirely behind this seam — with the
+ * `providerType` branches the lifecycle still carries of its own as the stated
+ * exception (see the "WHAT THAT ONE FOLDER DOES NOT YET COVER" note in
+ * `./index.ts`; the seams plan's P0.4 clears them).
+ *
+ * Plan numbers here are the Mandrill plan's, qualified in `./index.ts`.
  *
  * Per ADR-0018:
  * - Each adapter owns its per-provider sibling identity table
@@ -38,7 +43,7 @@ export type SesIdentity = {
 
 /**
  * A Mandrill sending-domain identity, as `senders/add-domain` /
- * `senders/check-domain` last described it (P3.1).
+ * `senders/check-domain` last described it (Mandrill P3.1).
  *
  * It carries STATE rather than secrets or per-domain tokens, which is the whole
  * difference from SES: Mandrill signs every account's mail with one shared,
@@ -80,7 +85,7 @@ export type MandrillIdentity = {
 export type RelayIdentityStatus = 'unverified' | 'pending_dns' | 'verified' | 'failed';
 
 /**
- * The REGISTRY of sending-domain provider kinds, keyed by kind (D7). One line
+ * The REGISTRY of sending-domain provider kinds, keyed by kind (Mandrill D7). One line
  * per provider, mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`:
  * the kind union, the per-kind identity payload and the module registry's
  * completeness guard all derive from this single map, so adding a provider is
@@ -169,7 +174,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	/**
 	 * Does this provider hold a fresh, complete proof that `domainName` may be
 	 * RELAYED through it right now? The read half of the deliverability
-	 * fallback (D6), called by `lib/sendProviders/relayDomainVerification.ts`
+	 * fallback (Mandrill D6), called by `lib/sendProviders/relayDomainVerification.ts`
 	 * once the configured relay kind has been resolved to its provider.
 	 *
 	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
@@ -240,7 +245,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * own the "already have one?" check, because where that identity lives is
 	 * per-provider knowledge — the frozen `sendingDomainSesIdentities` sibling
 	 * for SES, the generic `sendingDomainRelayIdentities` row for every kind
-	 * after it (D7).
+	 * after it (Mandrill D7).
 	 *
 	 * Takes the whole `domains` DOC, not an id: the caller is a paginated drain
 	 * that already holds the row (it filters on `providerType` a line earlier),

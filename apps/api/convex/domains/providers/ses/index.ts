@@ -127,7 +127,7 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 		}
 	},
 
-	// The relay-verification read seam (D6). SES is the one shipped kind that
+	// The relay-verification read seam (Mandrill plan D6). SES is the one shipped kind that
 	// declares `domainVerification: 'api'`, so it is the one kind that can
 	// answer this; see `./relayVerification.ts` for the proof it requires.
 	relayDomainVerified: sesRelayDomainVerified,

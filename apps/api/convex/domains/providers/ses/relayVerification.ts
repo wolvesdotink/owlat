@@ -4,7 +4,9 @@
  *
  * Lifted verbatim out of `lib/sendProviders/relayDomainVerification.ts`, which
  * used to hard-code `relayProviderType !== 'ses' → false` and then inline this
- * proof. It now dispatches through the sending-domain provider registry (D6/D7)
+ * proof. It now dispatches through the sending-domain provider registry
+ * (Mandrill plan D6/D7 — plan numbers in this folder are the Mandrill plan's,
+ * qualified in `../index.ts`)
  * and this module is SES's registered implementation, so a new relay ships its
  * own proof instead of editing the seam.
  *

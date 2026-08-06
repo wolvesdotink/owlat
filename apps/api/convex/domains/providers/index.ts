@@ -1,19 +1,38 @@
 /**
  * Sending domain provider adapter (module) — registry + dispatch.
  *
- * Adding a third sending provider is a one-folder change:
+ * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
+ * gates, `D7` = one generic relay-identity table + this registry). The seams
+ * plan that owns the branch numbers those differently — its D6 is the webhook
+ * registry and its D7 is the `@owlat/mta-protocol` package — so the
+ * qualification is written out once here rather than left to the reader. This
+ * registry is the seams plan's P0.3.
+ *
+ * Adding a sending provider is a one-folder change:
  *   1. Create `convex/domains/providers/<kind>/index.ts` with the adapter.
  *   2. Add the kind and its identity payload to `SendingDomainIdentityRegistry`
  *      in `./types.ts`. Rows go in the generic, org-scoped
- *      `sendingDomainRelayIdentities` table (D7) — the per-provider sibling
- *      pattern stopped at `sendingDomainMtaIdentities` /
- *      `sendingDomainSesIdentities`, which stay frozen.
+ *      `sendingDomainRelayIdentities` table (Mandrill D7) — the per-provider
+ *      sibling pattern stopped at `sendingDomainMtaIdentities` /
+ *      `sendingDomainSesIdentities`, which stay frozen and keep the MTA's and
+ *      SES's rows.
  *   3. Add one entry to `SENDING_DOMAIN_PROVIDERS` below.
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
- * The **Sending domain lifecycle (module)** never branches on `providerType`.
  *
- * Per ADR-0018, extended by plan D6/D7.
+ * WHAT THAT ONE FOLDER DOES NOT YET COVER. Every piece of per-provider work the
+ * **Sending domain lifecycle (module)** dispatches goes through
+ * `providerFor(kind)` — but the lifecycle still carries `providerType` branches
+ * of its own, and one of them decides whether a new kind is reached at all: the
+ * forward relay-identity provisioning in `domains/lifecycle.ts` (the
+ * `provision_relay_identity_if_enabled` effect) is a hand-written list of relay
+ * kinds, not a registry walk, so a fourth adapter with `ensureRelayIdentity` is
+ * called by the catch-up drain in `providerRoutes.ts` and by nothing on the
+ * forward path. The return-path branches are the same family. Clearing all of
+ * them is the seams plan's P0.4 leak sweep; until it lands, read that file
+ * before assuming a newly registered kind is wired end to end.
+ *
+ * Per ADR-0018, extended by Mandrill plan D6/D7.
  */
 
 import { mandrillProvider } from './mandrill';
@@ -105,7 +124,7 @@ const _typecheck: { [K in SendingDomainProviderKind]: SendingDomainProviderModul
 void _typecheck;
 
 /**
- * Compile-time completeness guard (D6/D7): every send-transport kind whose
+ * Compile-time completeness guard (Mandrill D6/D7): every send-transport kind whose
  * catalog entry declares `domainVerification: 'api'` MUST have a registered
  * domain-identity provider here.
  *
@@ -119,6 +138,17 @@ void _typecheck;
  * One-directional on purpose: a registered provider whose kind declares `none`
  * (our MTA, whose domains are verified on the ordinary DNS path and which is
  * never a relay) is entirely legitimate.
+ *
+ * CORE KINDS ONLY. `ApiVerifiedSendProviderKind` is an `Extract` over the CORE
+ * catalog literal, and `domainVerification` is optional on the shared entry
+ * interface precisely so generated plugin entries can omit it — so a bundled
+ * plugin transport declaring `api` compiles clean through this guard and
+ * through `_relayProofTypecheck` below. Runtime stays fail-closed
+ * (`isSendingDomainProviderKind` rejects `plugin.<id>.<kind>`, so the seam
+ * answers "unverifiable" rather than crediting a proof), and the one gate that
+ * NOTICES is the catalog-walking case in `./__tests__/registry.test.ts`.
+ * Closing it at the type level is the seams plan's P3.2 (plugin domain
+ * identity).
  */
 type ApiVerifiedKindMissingProvider = Exclude<
 	ApiVerifiedSendProviderKind,
