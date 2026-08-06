@@ -159,15 +159,35 @@ ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers 
 # provider-identity violation. The docs-lint over the same literal
 # (apps/docs/__tests__/providerCapabilityDocs.test.ts) anchors on the same two
 # tabs, for the same reason.
+#
+# A PARTIAL PARSE IS A FAILURE, NOT A SHORTER LIST. The array this replaced was
+# read as ONE match, so a format change made the read EMPTY and tripped the
+# fail-closed branch below. A per-line parser has a third outcome the array had
+# not: it can read four kinds out of five, leave `kinds` non-empty, print `ok:`
+# and un-ratchet every `=== '<the fifth>'` in the repo with no signal — the
+# "vigilance, not a ratchet" failure D2 exists to prevent, made invisible by a
+# green gate. So the entry OPENINGS inside the same region are counted too, and
+# a disagreement between the two counts fails exactly like reading nothing.
 kinds_source="packages/shared/src/sendProviderCatalog.ts"
-kinds=$(sed -n "/^const CORE_SEND_PROVIDER_CATALOG = \[$/,/^\] as const satisfies/p" \
-	"$kinds_source" 2>/dev/null |
-	grep -E "^		kind: '[a-z0-9_-]+',$" |
-	grep -oE "'[a-z0-9_-]+'" | tr -d "'" | sort -u)
-if [ -z "$kinds" ]; then
-	echo "FAIL: could not read the send-provider kinds out of $kinds_source." >&2
-	echo "The catalog moved, or its entries stopped being a literal array; point" >&2
-	echo "this script at their new home so the ratchet keeps following the catalog." >&2
+catalog_block=$(sed -n "/^const CORE_SEND_PROVIDER_CATALOG = \[$/,/^\] as const satisfies/p" \
+	"$kinds_source" 2>/dev/null)
+# A trailing `//` note on the declaration line is tolerated: house style comments
+# a new entry, and a gate that fails on a comment is a gate people route around.
+kinds=$(printf '%s\n' "$catalog_block" |
+	sed -nE "s|^		kind: '([a-z0-9_-]+)',([[:space:]]*//.*)?$|\1|p" | sort -u)
+# `^\t{` UNANCHORED at the end on purpose: an entry written on ONE line
+# (`\t{ kind: 'postmark', label: 'X' },`) opens the same way, carries a `kind:`
+# the two-tab anchor cannot see, and would otherwise balance the counts by being
+# invisible to both sides.
+entry_count=$(printf '%s\n' "$catalog_block" | { grep -c "^	{" || true; })
+kind_count=$(printf '%s\n' "$kinds" | { grep -c . || true; })
+if [ -z "$kinds" ] || [ "$kind_count" -ne "$entry_count" ]; then
+	echo "FAIL: could not read the send-provider kinds out of $kinds_source" >&2
+	echo "(read $kind_count kind(s) out of $entry_count entr(y/ies))." >&2
+	echo "The catalog moved, an entry's \`kind:\` is not a lone two-tab line with a" >&2
+	echo "lowercase literal, or its entries stopped being a literal array. Fix the" >&2
+	echo "entry or point this script at their new home — a kind the parser drops is a" >&2
+	echo "kind nothing ratchets." >&2
 	exit 1
 fi
 kind_alt=$(printf '%s' "$kinds" | tr '\n' '|' | sed 's/|$//')

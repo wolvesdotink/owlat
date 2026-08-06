@@ -63,6 +63,12 @@ function sandbox(options: {
 	 * of its own one level deeper — the shape the real catalog has since P1.1.
 	 */
 	withCredentialFields?: boolean;
+	/**
+	 * The catalog entries verbatim, for the cases that are ABOUT the parse: the
+	 * text between `const CORE_SEND_PROVIDER_CATALOG = [` and the `satisfies`
+	 * that closes it. Overrides `kinds`.
+	 */
+	rawEntries?: string;
 }): string {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-provider-identity-'));
 	sandboxes.push(root);
@@ -79,13 +85,15 @@ function sandbox(options: {
 	);
 
 	const kinds = options.kinds === undefined ? DEFAULT_KINDS : options.kinds;
-	if (kinds !== null) {
+	if (options.rawEntries !== undefined || kinds !== null) {
 		// The catalog literal, as the script parses it: entry `kind:` at two tabs,
 		// bounded by the const declaration and the `satisfies` that closes it.
 		const fields = options.withCredentialFields
 			? "\t\tcredentialFields: [{ kind: 'secret', envVar: 'X' }],\n"
 			: '';
-		const entries = kinds.map((k) => `\t{\n\t\tkind: '${k}',\n${fields}\t},\n`).join('');
+		const entries =
+			options.rawEntries ??
+			(kinds ?? []).map((k) => `\t{\n\t\tkind: '${k}',\n${fields}\t},\n`).join('');
 		write(
 			root,
 			'packages/shared/src/sendProviderCatalog.ts',
@@ -1032,6 +1040,44 @@ describe('provider-identity ratchet, the kind list', () => {
 		const result = runIn(root);
 
 		expect(result.output).toContain('could not read the send-provider kinds');
+		expect(result.status).toBe(1);
+	});
+
+	it('fails on a PARTIAL parse rather than ratcheting the kinds it managed to read', () => {
+		// The array this parser replaced could only succeed or read nothing. A
+		// per-line parser can read four entries out of five — and then `kinds` is
+		// non-empty, the script prints `ok:` and the fifth kind is un-ratcheted
+		// everywhere with no signal at all. That is the failure mode a green gate
+		// hides, so the entry openings are counted and a disagreement is fatal.
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/newKind.ts': leak("kind === 'postmark'") },
+			rawEntries:
+				"\t{\n\t\tkind: 'mta',\n\t},\n" +
+				// The same entry written with its `kind:` beside the brace: legal
+				// TypeScript, invisible to the line anchor.
+				"\t{ kind: 'postmark', label: 'Postmark' },\n",
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('could not read the send-provider kinds');
+		expect(result.output).toContain('read 1 kind(s) out of 2 entr(y/ies)');
+		expect(result.output).not.toContain('ok:');
+		expect(result.status).toBe(1);
+	});
+
+	it('tolerates a trailing note on the declaration line, and still ratchets that kind', () => {
+		// House style comments a new entry. A gate that fails on a comment is a
+		// gate people route around, so the note is parsed past rather than tripped
+		// over — and the kind it annotates is guarded like any other.
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/newKind.ts': leak("kind === 'postmark'") },
+			rawEntries:
+				"\t{\n\t\tkind: 'mta',\n\t},\n" + "\t{\n\t\tkind: 'postmark', // the new relay\n\t},\n",
+		});
+		const result = runIn(root);
+
+		expect(result.output).not.toContain('could not read the send-provider kinds');
+		expect(result.output).toContain('apps/api/convex/delivery/newKind.ts:2');
 		expect(result.status).toBe(1);
 	});
 });
