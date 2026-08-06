@@ -122,9 +122,7 @@ export function firstPreset(
 ): { key: SmtpRelayPreset; config: { host: string; port: string; secure: boolean } } | undefined {
 	const entries = Object.entries(field.presets ?? {});
 	const first = entries[0];
-	return first === undefined
-		? undefined
-		: { key: first[0] as SmtpRelayPreset, config: first[1] };
+	return first === undefined ? undefined : { key: first[0] as SmtpRelayPreset, config: first[1] };
 }
 
 /**
@@ -161,7 +159,9 @@ export function credentialFieldEnv(
 		return { [field.envVar]: values[field.envVar] || (field.default ?? '') };
 	}
 	if (field.kind === 'boolean') {
-		return { [field.envVar]: String(readBooleanValue(values[field.envVar], field.default ?? false)) };
+		return {
+			[field.envVar]: String(readBooleanValue(values[field.envVar], field.default ?? false)),
+		};
 	}
 	return { [field.envVar]: values[field.envVar] ?? '' };
 }

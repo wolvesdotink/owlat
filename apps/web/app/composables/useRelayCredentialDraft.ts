@@ -33,7 +33,6 @@ import {
 	type OwnSendProviderKind,
 } from '@owlat/shared/sendProviderCatalog';
 import {
-	credentialFieldsFor,
 	draftCredentialsFromValues,
 	firstPreset,
 	hostPortFieldFor,

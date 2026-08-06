@@ -64,11 +64,15 @@
 # none. P0.5 opened this file at 26. P1.1 cleared 8 — the whole
 # `own-arm-outside-convex` family plus the one own-arm question filed under
 # `credentials-and-probes` — leaving 18, of which one (quickstart.ts) MOVED to
-# the collisions list rather than vanishing. P1.2 clears
-# `provider-shaped-ui` (4). WAVE 1 THEREFORE ENDS AT 14, NOT 0. Either those 14
-# grow owning cards or A1 is restated as "the allowlist contains only entries
-# with a named owner"; until one of the two happens, a wave gate reading A1
-# literally will read as failed for a criterion nothing in the plan can satisfy.
+# the collisions list rather than vanishing. P1.2 cleared 5: the whole
+# `provider-shaped-ui` family (the 4 its card names) PLUS
+# `TransportCredentialsStep.vue` from the follow-up family below — the wizard
+# step reads the same draft the editor does, so once that draft stopped holding
+# a named ref per vendor there was no per-kind block left in it to license.
+# WAVE 1 THEREFORE ENDS AT 13, NOT 0. Either those 13 grow owning cards or A1 is
+# restated as "the allowlist contains only entries with a named owner"; until one
+# of the two happens, a wave gate reading A1 literally will read as failed for a
+# criterion nothing in the plan can satisfy.
 #
 # ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
 #
@@ -129,29 +133,34 @@ apps/api/convex/domains/mandrillRelay.ts  # the scheduled provisioning sweep
 apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 
 
-# ── provider-shaped-ui (owner: P1.2 — the UI renders descriptors, D5) ─────────
+# ── provider-shaped-ui — CLEARED by P1.2 (the UI renders descriptors, D5) ─────
 #
-# Per-kind credential fields and status panels, written as one branch per vendor.
-# This is the family the ecosystem goal turns on: while these branches exist, a
-# provider that needs no backend edit still cannot ship without a UI edit. The
-# catalog's typed `credentialFields` descriptors and a renderer that loops over
-# them retire them. These four files are the ones P1.2's card names.
-
-apps/web/app/components/delivery/TransportEditor.vue  # the per-provider credential blocks
-apps/web/app/composables/useSetupWizard.ts  # buildProviderEnv, ProviderChoice and the labels
-apps/web/app/composables/useRelayCredentialDraft.ts  # the draft's per-kind field set
-apps/web/app/pages/dashboard/delivery/config.vue  # provider panels keyed on kind
+# Kept as a note rather than as entries, because the entries are gone: the
+# transport editor, the wizard's credential step, the shared relay draft, the
+# setup wizard's env/label derivations and the delivery config page all read the
+# catalog now. `TransportCredentialFields.vue` renders whatever the selected
+# entry's `credentialFields` declare, `buildProviderEnv` writes whatever those
+# descriptors own, and the config page's panels key on `hasProviderFeedback`.
+# The one thing apps/web still spells per vendor is COPY the catalog deliberately
+# does not carry — a picker hint, an icon, the paragraph a feedback ceremony
+# needs — and every one of those is optional: a kind with no row still renders,
+# with the catalog's label.
 
 
 # ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
 #
-# The same family, in files P1.2's card does NOT name: the wizard's own step
-# component and validator, and the two standalone setup pages. They fall out of
-# the descriptor work only if it is carried all the way through the wizard, so
-# they are recorded here with an honest owner rather than filed under a card that
-# will merge without them and leave the count unattended.
+# The same family, in files P1.2's card does NOT name: the step validator and the
+# two standalone setup pages. They fall out of the descriptor work only if it is
+# carried all the way through the WIZARD DRAFT — `EmailStepDraft` still spells
+# its credential half per vendor (`resendKey`, `ses.region`, `smtp.host`), which
+# is what these three read — so they are recorded here with an honest owner
+# rather than filed under a card that will merge without them and leave the count
+# unattended. P1.2 left ONE bridge in place for them,
+# `apps/web/app/composables/setupWizardCredentials.ts`, which projects between
+# that draft and the env-keyed descriptor values in both directions and is
+# exhaustive over `TransportCredentialEnvKey`; it holds no kind literal, and it
+# is deleted by whichever piece makes the draft the values map itself.
 
-apps/web/app/components/delivery/TransportCredentialsStep.vue  # per-kind fields inside the wizard step
 apps/web/app/composables/setupWizardValidation.ts  # per-kind required-field rules
 apps/web/app/pages/desktop/setup.vue  # the desktop wizard's own copy
 apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to collisions:mta after its per-kind fields AND its own-arm branch go, because the compose profile stays

@@ -28,7 +28,9 @@ const canSend = computed(() => status.value?.canSend === true);
 // panel below keys off a capability it declares rather than off its name (the
 // seams plan's D2), so a sixth provider gets the panels its capabilities earn
 // without a line changing on this page.
-const activeEntry = computed(() => coreSendProviderCatalogEntry(status.value?.provider ?? undefined));
+const activeEntry = computed(() =>
+	coreSendProviderCatalogEntry(status.value?.provider ?? undefined)
+);
 
 // Provider feedback loop -----------------------------------------------------
 // `hasProviderFeedback` is the capability that decides whether there is a

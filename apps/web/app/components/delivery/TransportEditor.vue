@@ -310,7 +310,10 @@ function cancel() {
 			>
 				<template #outboundTlsMode="{ value }">
 					<p class="text-sm text-text-secondary">{{ outboundTlsHint(value) }}</p>
-					<p v-if="value === 'require-verified'" class="text-xs text-warning flex items-start gap-1.5">
+					<p
+						v-if="value === 'require-verified'"
+						class="text-xs text-warning flex items-start gap-1.5"
+					>
 						<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
 						<span>
 							“Always encrypt and verify” can bounce mail to receivers whose mail servers have a
@@ -408,7 +411,10 @@ function cancel() {
 			>
 				<template #consequence>
 					<p data-testid="transport-removal-consequence">{{ dialogConsequence }}</p>
-					<p v-if="removalConsequence.safeDate !== null" data-testid="transport-removal-dialog-date">
+					<p
+						v-if="removalConsequence.safeDate !== null"
+						data-testid="transport-removal-dialog-date"
+					>
 						{{ removalConsequence.safeDate }}
 					</p>
 				</template>

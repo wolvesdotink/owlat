@@ -44,7 +44,8 @@ import TransportCredentialFields from './TransportCredentialFields.vue';
 const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 
 const relay = useRelayCredentialDraft('resend');
-const { provider, credentialValues, preset, presetOptions, enteredSecrets, canValidateLive } = relay;
+const { provider, credentialValues, preset, presetOptions, enteredSecrets, canValidateLive } =
+	relay;
 
 const providerOptions = RELAY_PROVIDER_OPTIONS;
 
