@@ -16,7 +16,9 @@ import {
 	SENDING_DOMAIN_PROVIDERS,
 	isSendingDomainProviderKind,
 	providerFor,
+	type RelayProvingProviderModule,
 	type SendingDomainProviderKind,
+	type SendingDomainProviderModule,
 } from '../index';
 import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
@@ -64,6 +66,20 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 			/Unknown sending domain provider/
 		);
 	});
+
+	it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])(
+		'providerFor refuses the inherited member %s rather than returning it',
+		(inherited) => {
+			// `providerType` reaches the lookup as a plain string, and every object
+			// literal inherits these. A truthiness check would hand `Object.prototype`
+			// (or its constructor) back as if it were an adapter, and the caller would
+			// fail one line later on `adapter.registerDomain is not a function` —
+			// pointing at the lifecycle instead of at the unknown provider kind.
+			expect(() => providerFor(inherited as SendingDomainProviderKind)).toThrow(
+				/Unknown sending domain provider/
+			);
+		}
+	);
 
 	it('isSendingDomainProviderKind answers from the registry, not a restated list', () => {
 		for (const kind of Object.keys(SENDING_DOMAIN_PROVIDERS)) {
@@ -148,6 +164,67 @@ describe('completeness against the send-provider catalog (D6/D7)', () => {
 			}
 		}
 	);
+
+	/**
+	 * THE COMPILE-TIME HALF, pinned from both sides.
+	 *
+	 * `_relayProofTypecheck` in `../index.ts` is the enforcement: for exactly the
+	 * kinds the catalog declares `domainVerification: 'api'`, the registered
+	 * module must be a {@link RelayProvingProviderModule} — all three relay seams
+	 * present. The runtime table above walks the modules we ship; these three
+	 * cases walk the TYPE, so a loosening that no shipped adapter happens to
+	 * exercise still fails.
+	 *
+	 * Each `@ts-expect-error` is itself the assertion: TypeScript reports an
+	 * UNUSED `@ts-expect-error` as an error of its own, so if the requirement is
+	 * ever weakened back to optional these lines fail `bun run typecheck` — the
+	 * one gate that sees them, since vitest does not typecheck. The runtime
+	 * `expect` below each keeps the value honest (and the linter quiet).
+	 */
+	it('will not let an api-verified module drop the enqueue-path proof', () => {
+		const withoutProof: Omit<
+			RelayProvingProviderModule<'ses'>,
+			'relayDomainVerified'
+		> = SENDING_DOMAIN_PROVIDERS.ses;
+		// @ts-expect-error — a kind whose catalog entry promises a proof may not
+		// omit the method that answers it: every domain would report unverified.
+		const pinned: RelayProvingProviderModule<'ses'> = withoutProof;
+		expect(pinned).toBe(SENDING_DOMAIN_PROVIDERS.ses);
+	});
+
+	it('will not let an api-verified module drop the identity backfill', () => {
+		const withoutBackfill: Omit<
+			RelayProvingProviderModule<'ses'>,
+			'ensureRelayIdentity'
+		> = SENDING_DOMAIN_PROVIDERS.ses;
+		// @ts-expect-error — without the write half the proof above has nothing to
+		// read, so every pre-existing domain stays unrelayable.
+		const pinned: RelayProvingProviderModule<'ses'> = withoutBackfill;
+		expect(pinned).toBe(SENDING_DOMAIN_PROVIDERS.ses);
+	});
+
+	it('will not let an api-verified module drop its reference-arm description', () => {
+		const withoutArm: Omit<
+			RelayProvingProviderModule<'ses'>,
+			'describeReferenceArm'
+		> = SENDING_DOMAIN_PROVIDERS.ses;
+		// @ts-expect-error — the alignment pre-flight would resolve `unknown` and
+		// hold the ramp at s=0, silently.
+		const pinned: RelayProvingProviderModule<'ses'> = withoutArm;
+		expect(pinned).toBe(SENDING_DOMAIN_PROVIDERS.ses);
+	});
+
+	it('leaves the three seams OPTIONAL for a kind that declares none', () => {
+		// The other direction of the same rule, and the reason the methods cannot
+		// simply be required on the base interface: our own MTA is registered here,
+		// declares `domainVerification: 'none'`, and implements none of the three —
+		// which is an honest answer ("no identity API"), not a gap.
+		const own: SendingDomainProviderModule<'mta'> = SENDING_DOMAIN_PROVIDERS.mta;
+		expect(domainVerificationFor(own.kind)).toBe('none');
+		expect(own.relayDomainVerified).toBeUndefined();
+		expect(own.ensureRelayIdentity).toBeUndefined();
+		expect(own.describeReferenceArm).toBeUndefined();
+	});
 
 	it('every kind that can prove a domain also describes its own reference arm', () => {
 		// P3.1's second half: the alignment pre-flight asks the registry for the

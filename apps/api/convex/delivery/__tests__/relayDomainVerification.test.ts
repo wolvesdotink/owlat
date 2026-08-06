@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import schema from '../../schema';
 import { relayDomainVerified } from '../../lib/sendProviders/relayDomainVerification';
+import { SENDING_DOMAIN_PROVIDERS } from '../../domains/providers';
 import type { DatabaseWriter } from '../../_generated/server';
 
 import { modules } from '../../__tests__/testModules';
@@ -65,6 +66,35 @@ async function seedSesRelay(
 		},
 		isProviderVerified: true,
 		verifiedAt: NOW,
+		createdAt: NOW,
+		updatedAt: NOW,
+		...overrides,
+	});
+}
+
+/**
+ * A fresh, fully verified Mandrill relay identity in the GENERIC
+ * `sendingDomainRelayIdentities` table (D7) — Mandrill's own verdict rather
+ * than our DNS crawl, which is why it needs no `domains` row of its own.
+ */
+async function seedMandrillIdentity(
+	ctx: { db: DatabaseWriter },
+	overrides: Partial<{
+		status: 'unverified' | 'pending_dns' | 'verified' | 'failed';
+		spf: { isValid: boolean };
+		dkim: { isValid: boolean };
+		lastCheckedAt: number;
+	}> = {}
+): Promise<void> {
+	await ctx.db.insert('sendingDomainRelayIdentities', {
+		organizationId: 'org-a',
+		domain: DOMAIN,
+		providerKind: 'mandrill',
+		status: 'verified' as const,
+		spf: { isValid: true },
+		dkim: { isValid: true },
+		lastCheckedAt: NOW,
+		nextCheckDueAt: NOW + 24 * 60 * 60 * 1000,
 		createdAt: NOW,
 		updatedAt: NOW,
 		...overrides,
@@ -207,30 +237,6 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
  * observation that has aged out.
  */
 describe('relayDomainVerified — Mandrill', () => {
-	async function seedMandrillIdentity(
-		ctx: { db: DatabaseWriter },
-		overrides: Partial<{
-			status: 'unverified' | 'pending_dns' | 'verified' | 'failed';
-			spf: { isValid: boolean };
-			dkim: { isValid: boolean };
-			lastCheckedAt: number;
-		}> = {}
-	): Promise<void> {
-		await ctx.db.insert('sendingDomainRelayIdentities', {
-			organizationId: 'org-a',
-			domain: DOMAIN,
-			providerKind: 'mandrill',
-			status: 'verified' as const,
-			spf: { isValid: true },
-			dkim: { isValid: true },
-			lastCheckedAt: NOW,
-			nextCheckDueAt: NOW + 24 * 60 * 60 * 1000,
-			createdAt: NOW,
-			updatedAt: NOW,
-			...overrides,
-		});
-	}
-
 	it('accepts a fresh, verified identity', async () => {
 		const t = harness();
 		await t.run(async (ctx) => {
@@ -272,4 +278,71 @@ describe('relayDomainVerified — Mandrill', () => {
 			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
 		});
 	});
+});
+
+/**
+ * THE SEAM'S OWN PROPERTY, asserted over the registry rather than over a list of
+ * kinds spelled out here.
+ *
+ * Everything above pins a KIND's answer, which is what the byte-identical gate
+ * needs — but a hand-listed set is exactly what let the pre-D6 version of this
+ * module carry `relayProviderType !== 'ses' → false` for so long: the shipped
+ * kinds all agreed with it. These two cases pin the DISPATCH instead. The first
+ * walks every registered provider and requires the seam's answer to be the
+ * provider's own, so a re-introduced identity check (or a kind quietly special
+ * cased) diverges on some row without anyone having to add a case for it. The
+ * second is the fail-closed side: nothing the caller can put in that string may
+ * ever produce a proof.
+ */
+describe('relayDomainVerified — dispatch, not a per-kind rulebook', () => {
+	it('answers exactly what the registered provider answers, for every registered kind', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			// Both shipped proofs present at once, so the table is not vacuously
+			// all-false and each kind has something it COULD wrongly credit itself
+			// with — SES's sibling row and Mandrill's generic row, same domain.
+			await seedSesRelay(ctx);
+			await seedMandrillIdentity(ctx);
+
+			const answers = await Promise.all(
+				Object.entries(SENDING_DOMAIN_PROVIDERS).map(async ([kind, provider]) => ({
+					kind,
+					throughTheSeam: await relayDomainVerified(ctx, DOMAIN, kind, NOW),
+					// Absent implementation is the provider's answer too: "I cannot
+					// prove this", which the seam must relay as `false` rather than
+					// treat as a gap to fill in on the provider's behalf.
+					fromTheProvider: provider.relayDomainVerified
+						? await provider.relayDomainVerified(ctx, DOMAIN, NOW)
+						: false,
+				}))
+			);
+
+			for (const { kind, throughTheSeam, fromTheProvider } of answers) {
+				expect({ kind, verified: throughTheSeam }).toEqual({ kind, verified: fromTheProvider });
+			}
+			// Non-vacuity: at least the two `domainVerification: 'api'` kinds must
+			// have said yes, or the agreement above proves nothing.
+			expect(
+				answers
+					.filter((answer) => answer.throughTheSeam)
+					.map((answer) => answer.kind)
+					.sort()
+			).toEqual(['mandrill', 'ses']);
+		});
+	});
+
+	it.each(['postmark', '', ' ses', 'SES', '__proto__', 'constructor', 'toString'])(
+		"never credits the unregistered kind %j with another provider's proof",
+		async (kind) => {
+			// The domain carries BOTH shipped proofs, so any leniency here — a
+			// case-folded match, a prototype member mistaken for an adapter, a
+			// trimmed string — surfaces as `true` rather than as a silent no-op.
+			const t = harness();
+			await t.run(async (ctx) => {
+				await seedSesRelay(ctx);
+				await seedMandrillIdentity(ctx);
+				expect(await relayDomainVerified(ctx, DOMAIN, kind, NOW)).toBe(false);
+			});
+		}
+	);
 });
