@@ -121,7 +121,10 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 			(entry) => domainVerificationFor(entry.kind) === 'api'
 		).map((entry) => entry.kind);
 
-		// Non-vacuity only — the exact core set is pinned by the case below.
+		// Non-vacuity only — a superset assertion on purpose, since a bundled
+		// plugin kind declaring `api` legitimately widens this list and must
+		// reach the per-kind loop below rather than fail an equality here. The
+		// exact CORE set is pinned at the type level by the case below.
 		expect(apiVerified).toEqual(expect.arrayContaining(['ses', 'mandrill']));
 		for (const kind of apiVerified) {
 			expect({ kind, registered: isSendingDomainProviderKind(kind) }).toEqual({
@@ -131,6 +134,15 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 		}
 	});
 
+	/**
+	 * The exact core api-verified set — the lower half of a two-sided pin. This
+	 * assignment proves `'ses' | 'mandrill'` is CONTAINED in
+	 * `ApiVerifiedSendProviderKind`; the complement (nothing else is in it) is
+	 * `_ApiVerifiedCoreSetIsExactly_Ses_Mandrill` at the bottom of this file,
+	 * where a type alias is legal. Containment alone would not be a pin: a third
+	 * core kind declaring `domainVerification: 'api'` widens the derived type and
+	 * this line still compiles.
+	 */
 	it('pins the compile-time guard to the same set the catalog declares', () => {
 		// If `domainVerification: 'api'` is added to a kind, this assignment stops
 		// compiling until the kind is added here AND registered above — which is
@@ -139,6 +151,9 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 		const apiVerifiedKinds: ApiVerifiedSendProviderKind[] = ['ses', 'mandrill'];
 		expect(apiVerifiedKinds).toEqual(['ses', 'mandrill']);
 	});
+
+	// The other direction of the same pin lives at the bottom of this file
+	// (`_ApiVerifiedCoreSetIsExactly_Ses_Mandrill`), where a type alias is legal.
 
 	/**
 	 * ALL THREE relay seams are implemented IF AND ONLY IF the catalog declares
@@ -247,3 +262,26 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 		expect(pinned).toBe(SENDING_DOMAIN_PROVIDERS.ses);
 	});
 });
+
+/**
+ * The upper half of the api-verified set pin, and the reason the case
+ * `pins the compile-time guard to the same set the catalog declares` can call
+ * itself exact rather than merely non-vacuous.
+ *
+ * That case's assignment proves `'ses' | 'mandrill'` is CONTAINED in
+ * `ApiVerifiedSendProviderKind`; on its own it survives a third core kind
+ * declaring `domainVerification: 'api'` without a word. `Exclude` here is the
+ * complement, and `AssertNoOtherApiVerifiedKind` accepts only `never` — so the
+ * third kind fails `bun run typecheck` (the one gate that sees this file;
+ * vitest does not typecheck), naming itself, until it is added to that literal.
+ *
+ * Nothing UNSAFE follows from a widened set — a missing adapter is caught by
+ * `_ApiVerifiedKindsHaveDomainProviders` and a hollow one by
+ * `_relayProofTypecheck`, both in `../index.ts`. What this buys is that the new
+ * kind is ACKNOWLEDGED: the literal above is where a human states the core set,
+ * and the runtime table above walks it.
+ */
+type AssertNoOtherApiVerifiedKind<_T extends never> = true;
+export type _ApiVerifiedCoreSetIsExactly_Ses_Mandrill = AssertNoOtherApiVerifiedKind<
+	Exclude<ApiVerifiedSendProviderKind, 'ses' | 'mandrill'>
+>;
