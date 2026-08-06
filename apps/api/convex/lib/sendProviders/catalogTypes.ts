@@ -203,6 +203,36 @@ export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
  */
 export type IdempotencyKeyDeduplication = boolean;
 
+/**
+ * Does the feedback this transport sends us carry OUR OWN provenance tag —
+ * `deliveryDomain` on the inbound event? (the SEAMS plan's D2 — capabilities,
+ * not identity.)
+ *
+ * `deliveryDomain` is not a provider field. It has exactly one writer,
+ * `applyFeedbackProvenancePolicy` in `apps/mta/src/bounce/outcome.ts`, which
+ * stamps `production` only on a report it attributed by VERP exactly and drops
+ * the effect list entirely when the provenance is `unknown`. So on an event
+ * that carries it, `production` IS "exactly attributed, and not member-preview
+ * mail"; on an event from a third-party ESP's webhook it is simply absent,
+ * because nothing of ours touched that report.
+ *
+ * Its consumer is the recipient-only complaint (RFC 5965 §3.2 — the FBL
+ * redacted the Message-ID, so there is no send to transition and the address is
+ * all we have). A tagged source must show `production` before we blocklist the
+ * address; an UNtagged source has no tag to show, so requiring one would drop
+ * every redacted complaint it ever sends — a complainer who stays mailable,
+ * which is the outcome an FBL exists to prevent. That is what the shipped
+ * `providerType === 'ses'` special case bought, for one provider, by name.
+ *
+ * Absent ⇒ `false` — "we do not stamp this transport's feedback" — which is
+ * both the fail-closed reading and simply true of every transport that is not
+ * ours: the tag is written by our own MTA, on the way out of our own
+ * infrastructure. A handler that cannot identify the SOURCE at all is a
+ * different question and is not answered here (see
+ * `webhooks/complaintDispatch.ts`, which requires the tag in that case).
+ */
+export type FeedbackProvenanceTagging = boolean;
+
 export interface SendProviderCatalogEntry {
 	readonly kind: SendProviderKind;
 	readonly label: string;
@@ -242,6 +272,12 @@ export interface SendProviderCatalogEntry {
 	 * see {@link IdempotencyKeyDeduplication}.
 	 */
 	readonly deduplicatesOnIdempotencyKey?: IdempotencyKeyDeduplication;
+	/**
+	 * Does this transport's inbound feedback carry our own `deliveryDomain`
+	 * provenance tag? Absent ⇒ `false` (fail closed). Read it through
+	 * `tagsFeedbackProvenanceFor` — see {@link FeedbackProvenanceTagging}.
+	 */
+	readonly tagsFeedbackProvenance?: FeedbackProvenanceTagging;
 }
 
 /**
@@ -302,6 +338,14 @@ export type CoreSendProviderCatalogEntry = SendProviderCatalogEntry & {
 	 * union would make a real transport undeclarable.
 	 */
 	readonly deduplicatesOnIdempotencyKey: IdempotencyKeyDeduplication;
+	/**
+	 * Also required here, and also not part of the pair: a kind we write
+	 * ourselves knows whether we stamp its feedback. A core kind coasting on the
+	 * `false` default would have every redacted complaint it reports suppressed
+	 * without provenance — or, if it IS ours and declares nothing, every such
+	 * complaint dropped.
+	 */
+	readonly tagsFeedbackProvenance: FeedbackProvenanceTagging;
 } & (
 		| { readonly acceptanceSemantics: 'accepted'; readonly messageIdSource: 'idempotency-key' }
 		| {

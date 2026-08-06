@@ -121,7 +121,7 @@ describe('the providers page restates the send catalog without drifting from it'
 		}
 	});
 
-	it.each(['hasProviderFeedback', 'deduplicatesOnIdempotencyKey'])(
+	it.each(['hasProviderFeedback', 'deduplicatesOnIdempotencyKey', 'tagsFeedbackProvenance'])(
 		'%s: yes/no matches the declared boolean',
 		(field) => {
 			const { cells } = tableRow(field);

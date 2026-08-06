@@ -46,6 +46,9 @@ describe('Send provider registry', () => {
 				// derivation of the pair above: `resend` declares it true without taking
 				// custody, and every other kind declares it false.
 				deduplicatesOnIdempotencyKey: true,
+				// The one transport whose feedback carries OUR provenance tag: mail
+				// leaving our own infrastructure is VERP-attributed on the way out.
+				tagsFeedbackProvenance: true,
 			},
 			{
 				kind: 'ses',
@@ -58,6 +61,7 @@ describe('Send provider registry', () => {
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'provider',
 				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'resend',
@@ -72,6 +76,7 @@ describe('Send provider registry', () => {
 				// The `Idempotency-Key` header Resend threads — a dedup surface without
 				// custody, which is why this is its own field.
 				deduplicatesOnIdempotencyKey: true,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'smtp',
@@ -86,6 +91,7 @@ describe('Send provider registry', () => {
 				// `Message-ID` the composer minted.
 				messageIdSource: 'composed',
 				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'mandrill',
@@ -102,6 +108,7 @@ describe('Send provider registry', () => {
 				acceptanceSemantics: 'unknown-on-timeout',
 				messageIdSource: 'provider',
 				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 		]);
 	});

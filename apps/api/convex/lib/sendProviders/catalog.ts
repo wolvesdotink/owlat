@@ -34,6 +34,7 @@ export type {
 	CoreSendProviderKind,
 	DeclaredCustomReturnPathSupport,
 	DomainVerificationSupport,
+	FeedbackProvenanceTagging,
 	IdempotencyKeyDeduplication,
 	MessageIdSource,
 	SendProviderCatalogEntry,
@@ -65,6 +66,10 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// Its intake dedups on that same id, which is what makes the replay above
 		// safe — and what lets an ambiguous system/auth mail be sent again.
 		deduplicatesOnIdempotencyKey: true,
+		// The ONE transport whose feedback we stamp ourselves: mail leaving our own
+		// infrastructure is VERP-attributed on the way out, and the bounce/FBL
+		// processor writes `deliveryDomain` onto the event it emits.
+		tagsFeedbackProvenance: true,
 	},
 	{
 		kind: 'ses',
@@ -91,6 +96,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// No dedup header, no dedup id: a repeat request after a lost response
 		// delivers a second copy.
 		deduplicatesOnIdempotencyKey: false,
+		// SNS notifications are SES's own report about a message we handed it;
+		// nothing of ours annotates them, so there is no provenance tag to read.
+		tagsFeedbackProvenance: false,
 	},
 	{
 		kind: 'resend',
@@ -112,6 +120,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// about. Custody is a different question, and this kind answers only one of
 		// the two yes — which is why the two fields are not one declaration.
 		deduplicatesOnIdempotencyKey: true,
+		// A third-party ESP's webhook, unannotated by us.
+		tagsFeedbackProvenance: false,
 	},
 	{
 		kind: 'smtp',
@@ -131,6 +141,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// No dedup surface at all: once the message is on the wire, a repeat is a
 		// second message.
 		deduplicatesOnIdempotencyKey: false,
+		// `hasProviderFeedback: false` — there is no feedback to tag.
+		tagsFeedbackProvenance: false,
 	},
 	{
 		kind: 'mandrill',
@@ -169,6 +181,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// `send-raw` has no idempotency surface either (Mandrill plan D4), so a
 		// repeat under the same key is a second delivery.
 		deduplicatesOnIdempotencyKey: false,
+		// A third-party ESP's webhook, unannotated by us.
+		tagsFeedbackProvenance: false,
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 
@@ -398,6 +412,18 @@ export function takesCustodyOnAcceptance(semantics: AcceptanceSemantics): boolea
  */
 export function deduplicatesOnIdempotencyKeyFor(kind: SendProviderKind): boolean {
 	return sendProviderCatalogEntry(kind).deduplicatesOnIdempotencyKey === true;
+}
+
+/**
+ * Does this kind's inbound feedback carry our own `deliveryDomain` provenance
+ * tag? — see {@link FeedbackProvenanceTagging}.
+ *
+ * Read it instead of the raw field so an absent declaration resolves to "we do
+ * not stamp this transport's feedback", which is both the fail-closed reading
+ * and the true one for every transport that is not ours.
+ */
+export function tagsFeedbackProvenanceFor(kind: SendProviderKind): boolean {
+	return sendProviderCatalogEntry(kind).tagsFeedbackProvenance === true;
 }
 
 /**
