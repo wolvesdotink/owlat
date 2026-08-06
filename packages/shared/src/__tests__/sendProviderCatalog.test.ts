@@ -1,0 +1,328 @@
+import { describe, expect, it } from 'vitest';
+import {
+	DELIVERY_PROVIDER_KINDS,
+	getSendPathRequiredEnv,
+	isDeliveryProviderKind,
+} from '../featureFlags';
+import { OUTBOUND_TLS_MODES } from '../outboundTlsMode';
+import {
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	SEND_TRANSPORT_KINDS,
+	TRANSPORT_CREDENTIAL_ENV_KEYS,
+	coreSendProviderCatalogEntry,
+	credentialFieldEnvVars,
+	isCoreSendProviderKind,
+	type CoreSendProviderCatalogEntry,
+} from '../sendProviderCatalog';
+import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
+
+/**
+ * THE SINGLE-SOURCE GATE for the seams plan's P1.1 / D1.
+ *
+ * The catalog moved into this package so that five separate declarations of the
+ * same facts could become one. The risk that move carries is not that a table is
+ * missing — a missing table fails to compile — but that a DERIVED table quietly
+ * says something different from the literal it replaced. So every derivation is
+ * pinned against a SNAPSHOT OF ITS PRE-MOVE VALUE, written out here as a literal
+ * rather than computed from the catalog: a test that re-derived the expectation
+ * would agree with any catalog, including a wrong one.
+ *
+ * The snapshots below are the values as they stood on `main` @ c3889fa2, in the
+ * files they were taken from:
+ *
+ *   SEND_TRANSPORT_KINDS      packages/shared/src/transportAlignment.ts
+ *   DELIVERY_PROVIDER_KINDS   packages/shared/src/featureFlags.ts
+ *   getSendPathRequiredEnv    packages/shared/src/featureFlags.ts (the switch)
+ *   PROVIDER_ENV_KEYS         packages/shared/src/setupSendingPresets.ts
+ *   SMTP_RELAY_PRESETS        packages/shared/src/setupSendingPresets.ts
+ *
+ * ORDER IS ASSERTED WHERE IT WAS PRESERVED and stated explicitly where it was
+ * not: `DELIVERY_PROVIDER_KINDS` and `PROVIDER_ENV_KEYS` were hand-written in
+ * an order neither consumer reads (a membership check, and an iteration whose
+ * result is consumed as key/value pairs), and both now follow catalog order. The
+ * SET is pinned in both cases — nothing gained an entry, nothing lost one — and
+ * the new order is pinned too, so a future reordering is still a visible change.
+ */
+
+/**
+ * The entries under the shape a CONSUMER sees. The exported const keeps its
+ * literal types (the backend's `ApiVerifiedSendProviderKind` guard extracts a
+ * kind union out of them), and reading an optional field off that union is a
+ * compile error for the entries that do not declare it — which is exactly the
+ * widening every real caller does.
+ */
+const ENTRIES: readonly CoreSendProviderCatalogEntry[] = CORE_SEND_PROVIDER_CATALOG_ENTRIES;
+
+/** The kind list exactly as `transportAlignment.ts` declared it pre-move. */
+const KINDS_BEFORE = ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const;
+
+/** The `getSendPathRequiredEnv` switch, arm for arm, pre-move. */
+const SEND_PATH_REQUIRED_ENV_BEFORE: Record<string, string[]> = {
+	mta: ['MTA_API_URL', 'MTA_API_KEY'],
+	resend: ['RESEND_API_KEY'],
+	ses: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+	smtp: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
+	mandrill: ['MANDRILL_API_KEY'],
+};
+
+/** `PROVIDER_ENV_KEYS` as `setupSendingPresets.ts` declared it pre-move. */
+const PROVIDER_ENV_KEYS_BEFORE = [
+	'EMAIL_PROVIDER',
+	'RESEND_API_KEY',
+	'MANDRILL_API_KEY',
+	'AWS_SES_REGION',
+	'AWS_SES_ACCESS_KEY_ID',
+	'AWS_SES_SECRET_ACCESS_KEY',
+	'SMTP_RELAY_HOST',
+	'SMTP_RELAY_PORT',
+	'SMTP_RELAY_SECURE',
+	'SMTP_RELAY_USERNAME',
+	'SMTP_RELAY_PASSWORD',
+	'OUTBOUND_TLS_MODE',
+	'DEFAULT_FROM_EMAIL',
+	'DEFAULT_FROM_NAME',
+];
+
+describe('the kind union is the catalog, and the catalog is the kind union', () => {
+	it('SEND_TRANSPORT_KINDS is byte-identical to the tuple it replaced', () => {
+		expect([...SEND_TRANSPORT_KINDS]).toEqual([...KINDS_BEFORE]);
+	});
+
+	it('derives it from the entries rather than beside them', () => {
+		expect([...SEND_TRANSPORT_KINDS]).toEqual(ENTRIES.map((entry) => entry.kind));
+	});
+
+	it('DELIVERY_PROVIDER_KINDS covers the same SET (its order was never read)', () => {
+		expect([...DELIVERY_PROVIDER_KINDS].sort()).toEqual([...KINDS_BEFORE].sort());
+		expect([...DELIVERY_PROVIDER_KINDS]).toEqual([...SEND_TRANSPORT_KINDS]);
+	});
+
+	it('recognises every declared kind and nothing else', () => {
+		for (const kind of KINDS_BEFORE) {
+			expect(isCoreSendProviderKind(kind)).toBe(true);
+			expect(isDeliveryProviderKind(kind)).toBe(true);
+		}
+		for (const other of ['sendgrid', '', 'MTA', 'plugin.acme.postmark', undefined]) {
+			expect(isCoreSendProviderKind(other)).toBe(false);
+			expect(isDeliveryProviderKind(other)).toBe(false);
+		}
+	});
+
+	it('never answers from an inherited property', () => {
+		// `catalogByKind` is a Map, not an object literal — but the predicate is
+		// what routing and the setup surfaces gate on, so prove it.
+		for (const inherited of ['constructor', '__proto__', 'toString']) {
+			expect(isCoreSendProviderKind(inherited)).toBe(false);
+			expect(coreSendProviderCatalogEntry(inherited)).toBeUndefined();
+		}
+	});
+});
+
+describe('getSendPathRequiredEnv is the catalog’s requiredEnvVars', () => {
+	it.each(Object.entries(SEND_PATH_REQUIRED_ENV_BEFORE))(
+		'%s returns the pre-move list, in order',
+		(kind, expected) => {
+			expect(getSendPathRequiredEnv(kind)).toEqual(expected);
+		}
+	);
+
+	it('still returns [] for an unset or unknown provider (no implicit default)', () => {
+		expect(getSendPathRequiredEnv(undefined)).toEqual([]);
+		expect(getSendPathRequiredEnv('')).toEqual([]);
+		expect(getSendPathRequiredEnv('sendgrid')).toEqual([]);
+	});
+
+	it('hands back a fresh mutable array, never the frozen declaration', () => {
+		const first = getSendPathRequiredEnv('mta');
+		first.push('MUTATED');
+		expect(getSendPathRequiredEnv('mta')).toEqual(SEND_PATH_REQUIRED_ENV_BEFORE['mta']);
+	});
+});
+
+describe('PROVIDER_ENV_KEYS is derived from the credential fields', () => {
+	it('covers exactly the pre-move set — nothing added, nothing dropped', () => {
+		expect([...PROVIDER_ENV_KEYS].sort()).toEqual([...PROVIDER_ENV_KEYS_BEFORE].sort());
+	});
+
+	it('is the catalog order, with the three keys that belong to no kind around it', () => {
+		expect([...PROVIDER_ENV_KEYS]).toEqual([
+			'EMAIL_PROVIDER',
+			'OUTBOUND_TLS_MODE',
+			'AWS_SES_REGION',
+			'AWS_SES_ACCESS_KEY_ID',
+			'AWS_SES_SECRET_ACCESS_KEY',
+			'RESEND_API_KEY',
+			'SMTP_RELAY_HOST',
+			'SMTP_RELAY_PORT',
+			'SMTP_RELAY_SECURE',
+			'SMTP_RELAY_USERNAME',
+			'SMTP_RELAY_PASSWORD',
+			'MANDRILL_API_KEY',
+			'DEFAULT_FROM_EMAIL',
+			'DEFAULT_FROM_NAME',
+		]);
+	});
+
+	it('KEEPS OUT the variables that are required to send but are not form fields', () => {
+		// The clear-then-set rule makes this a real hazard rather than tidiness:
+		// every key in this list is unset on every transport apply. `MTA_API_URL` /
+		// `MTA_API_KEY` are the installer's, and `MANDRILL_WEBHOOK_KEY` is issued
+		// after the transport is connected — admitting either would let a Resend
+		// key rotation tear down a working MTA or a working feedback loop.
+		for (const key of [
+			'MTA_API_URL',
+			'MTA_API_KEY',
+			'MANDRILL_WEBHOOK_KEY',
+			'MANDRILL_SUBACCOUNT',
+			'MANDRILL_IP_POOL',
+			'RESEND_WEBHOOK_SECRET',
+		]) {
+			expect(PROVIDER_ENV_KEYS, key).not.toContain(key);
+			// ...and each of them IS declared by its kind, so the exclusion is the
+			// catalog answering a different question, not the catalog forgetting.
+			const declared = ENTRIES.flatMap((entry) => [
+				...entry.requiredEnvVars,
+				...(entry.optionalEnvVars ?? []),
+			]);
+			expect(declared, key).toContain(key);
+		}
+	});
+
+	it('TRANSPORT_CREDENTIAL_ENV_KEYS is exactly the fields’ env vars', () => {
+		const walked = ENTRIES.flatMap((entry) =>
+			entry.credentialFields.flatMap((field) => credentialFieldEnvVars(field))
+		);
+		expect([...TRANSPORT_CREDENTIAL_ENV_KEYS]).toEqual(walked);
+	});
+
+	it('gives the composite endpoint field all three of its variables', () => {
+		// A `host-port` descriptor that answered with `envVar` alone would leave
+		// SMTP_RELAY_PORT / SMTP_RELAY_SECURE outside the apply endpoint's
+		// allowlist — unsettable by the very editor that renders them.
+		const smtp = coreSendProviderCatalogEntry('smtp');
+		const endpoint = smtp?.credentialFields.find((field) => field.kind === 'host-port');
+		expect(endpoint, 'the smtp entry no longer declares an endpoint field').toBeDefined();
+		expect(credentialFieldEnvVars(endpoint!)).toEqual([
+			'SMTP_RELAY_HOST',
+			'SMTP_RELAY_PORT',
+			'SMTP_RELAY_SECURE',
+		]);
+	});
+});
+
+describe('the entries themselves', () => {
+	it('declares every kind exactly once', () => {
+		expect(new Set(SEND_TRANSPORT_KINDS).size).toBe(SEND_TRANSPORT_KINDS.length);
+	});
+
+	it('has exactly one `own` tier — the D3 identity that legitimately exists', () => {
+		const own = ENTRIES.filter((entry) => entry.tier === 'own');
+		expect(own.map((entry) => entry.kind)).toEqual(['mta']);
+	});
+
+	it('declares no bundled-plugin entries (the backend composes those)', () => {
+		for (const entry of ENTRIES) {
+			expect(entry.tier, entry.kind).not.toBe('plugin');
+		}
+	});
+
+	it('gives every required env var a form field, or a stated reason it has none', () => {
+		// A required variable with no field is a variable an operator cannot enter
+		// through the UI. That is TRUE of the MTA's two (the installer writes
+		// them), and of nothing else — a new relay that forgets its field would
+		// otherwise ship a transport nobody can configure.
+		for (const entry of ENTRIES) {
+			const fieldVars = new Set(
+				entry.credentialFields.flatMap((field) => credentialFieldEnvVars(field))
+			);
+			const missing = entry.requiredEnvVars.filter((name) => !fieldVars.has(name));
+			expect(missing, entry.kind).toEqual(
+				entry.kind === 'mta' ? ['MTA_API_URL', 'MTA_API_KEY'] : []
+			);
+		}
+	});
+
+	it('gives every field a unique key within its own form', () => {
+		for (const entry of ENTRIES) {
+			const keys = entry.credentialFields.map((field) => field.key);
+			expect(new Set(keys).size, entry.kind).toBe(keys.length);
+		}
+	});
+
+	it('never writes the same env var from two different fields', () => {
+		const all = [...TRANSPORT_CREDENTIAL_ENV_KEYS];
+		expect(new Set(all).size).toBe(all.length);
+	});
+
+	it('offers every outbound-TLS mode the backend accepts', () => {
+		// The MTA's only form field is a select over another module's union. A
+		// missing option is a floor an operator cannot choose; an extra one is a
+		// value the backend rejects (the `satisfies` in the catalog catches that
+		// half at compile time, this catches the other).
+		const mta = coreSendProviderCatalogEntry('mta');
+		const select = mta?.credentialFields.find((field) => field.kind === 'select');
+		expect(select, 'the mta entry no longer declares its TLS select').toBeDefined();
+		expect(select!.kind === 'select' ? select!.options.map((o) => o.value) : []).toEqual([
+			...OUTBOUND_TLS_MODES,
+		]);
+	});
+
+	it('names a real validator on every setup probe, and only where one exists', () => {
+		const probes = ENTRIES.filter((entry) => entry.setupProbe !== undefined);
+		expect(probes.map((entry) => [entry.kind, entry.setupProbe?.validator])).toEqual([
+			['resend', 'validateResendKey'],
+			['smtp', 'validateSmtpRelay'],
+		]);
+	});
+});
+
+describe('the SMTP presets are the endpoint field’s data', () => {
+	it('is byte-identical to the table it replaced', () => {
+		expect(SMTP_RELAY_PRESETS).toEqual({
+			mailgun: { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', secure: false },
+			postmark: { label: 'Postmark', host: 'smtp.postmarkapp.com', port: '587', secure: false },
+			sendgrid: { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
+			brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
+			custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
+		});
+	});
+
+	it('is the very table the smtp entry attaches, not a second copy', () => {
+		const smtp = coreSendProviderCatalogEntry('smtp');
+		const endpoint = smtp?.credentialFields.find((field) => field.kind === 'host-port');
+		expect(endpoint?.kind === 'host-port' ? endpoint.presets : undefined).toBe(SMTP_RELAY_PRESETS);
+	});
+
+	it('carries the endpoint defaults the form falls back to', () => {
+		const smtp = coreSendProviderCatalogEntry('smtp');
+		const endpoint = smtp?.credentialFields.find((field) => field.kind === 'host-port');
+		expect(endpoint?.kind === 'host-port' ? endpoint.portDefault : undefined).toBe('587');
+		expect(endpoint?.kind === 'host-port' ? endpoint.secureDefault : undefined).toBe(false);
+	});
+});
+
+describe('the module stays data only — it ships to the browser', () => {
+	it('declares env NAMES and never a value that looks like a credential', () => {
+		const serialized = JSON.stringify(ENTRIES);
+		// `re_...` and `md-...` are placeholders and stay; a real key would not be
+		// three characters long. AKIA-prefixed access keys and PEM blocks have no
+		// placeholder form at all, so any occurrence is the real thing.
+		for (const shape of [/AKIA[A-Z0-9]{8}/, /BEGIN [A-Z ]*PRIVATE KEY/, /re_[A-Za-z0-9]{8}/]) {
+			expect(shape.test(serialized), String(shape)).toBe(false);
+		}
+	});
+
+	it('carries no functions — a descriptor is data, and data is what a bundle may hold', () => {
+		const walk = (value: unknown): void => {
+			if (typeof value === 'function') expect.unreachable('the catalog carries a function');
+			if (Array.isArray(value)) {
+				for (const item of value) walk(item);
+				return;
+			}
+			if (value && typeof value === 'object') {
+				for (const item of Object.values(value)) walk(item);
+			}
+		};
+		walk(ENTRIES);
+	});
+});
