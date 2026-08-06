@@ -17,11 +17,13 @@ import type { SystemMailExtrasCapableModule } from './systemMailExtras';
 import type { SendTransportId, SendTransportRecord } from './transports';
 
 /**
- * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
- * and the `isSendProviderKind` guard derive from one source. The canonical list
- * lives in `@owlat/shared` (`SEND_TRANSPORT_KINDS`) — the SAME tuple the outbound
- * DMARC-alignment guard keys off — and is re-exported here so a new provider kind
- * can't be added on either side without the other seeing it. This re-export lives
+ * The provider kinds, as a runtime list so both the `SendProviderKind` type and
+ * the `isSendProviderKind` guard derive from one source. That source is the
+ * send-provider catalog in `@owlat/shared` (the seams plan's D1): its entries
+ * are the declaration, `SEND_TRANSPORT_KINDS` is `entries.map(e => e.kind)`, and
+ * the outbound DMARC-alignment guard reads the SAME derivation. Re-exported here
+ * so a new provider kind can't be added on either side without the other seeing
+ * it. This re-export lives
  * in this pure, isolate-safe module (no `'use node'` deps) so the isolate
  * function modules that only need the guard — `delivery/enqueue.ts`,
  * `delivery/status.ts`, `routing.ts`, `capability.ts` — can import it without

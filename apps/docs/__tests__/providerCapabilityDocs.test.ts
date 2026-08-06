@@ -92,16 +92,23 @@ describe('the providers page restates the send catalog without drifting from it'
 		// catalog entry answers six capability questions" while the answer to the
 		// seventh decided whether an ambiguous password reset may be re-sent.
 		//
-		// Read off `mta`, the entry that declares every field, and excused only for
-		// the two the entry type does not carry: `kind` and `label` are identity,
-		// `retryDelays` is a schedule rather than a capability, and `pluginId` is
-		// tier bookkeeping.
+		// Read off the UNION OF EVERY ENTRY, not off one of them. An earlier
+		// version read `mta` alone, on the premise that it declares every field —
+		// and that premise expired the moment `setupProbe` landed on `resend` and
+		// `smtp` and on nothing else, which is exactly the drift this test exists
+		// to catch. A field only the relay kinds can answer is still a field the
+		// table owes a row.
+		//
+		// Excused: `kind` and `label` are identity, `retryDelays` is a schedule
+		// rather than a capability, and `pluginId` is tier bookkeeping.
 		const notCapabilities = new Set(['kind', 'label', 'retryDelays', 'pluginId']);
-		const mta = entries.find((entry) => entry.kind === 'mta');
-		expect(mta, 'the catalog no longer declares an mta entry').toBeDefined();
-		const declaredFields = [...mta!.body.matchAll(/\n\t\t([a-zA-Z]+):/g)]
-			.map((match) => match[1]!)
-			.filter((field) => !notCapabilities.has(field));
+		const declaredFields = [
+			...new Set(
+				entries.flatMap((entry) =>
+					[...entry.body.matchAll(/\n\t\t([a-zA-Z]+):/g)].map((match) => match[1]!)
+				)
+			),
+		].filter((field) => !notCapabilities.has(field));
 		const lines = providers.split('\n');
 		expect(
 			declaredFields.filter((field) => !lines.some((line) => line.startsWith(`| \`${field}\` |`))),

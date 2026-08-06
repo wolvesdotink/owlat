@@ -7,13 +7,23 @@ import {
 import { OUTBOUND_TLS_MODES } from '../outboundTlsMode';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	OWN_SEND_PROVIDER_KIND,
 	SEND_TRANSPORT_KINDS,
 	TRANSPORT_CREDENTIAL_ENV_KEYS,
+	acceptanceSemanticsOf,
 	coreSendProviderCatalogEntry,
 	credentialFieldEnvVars,
+	deduplicatesOnIdempotencyKeyOf,
+	domainVerificationOf,
+	hasProviderFeedbackOf,
 	isCoreSendProviderKind,
+	isOwnSendProviderKind,
+	messageIdSourceOf,
+	supportsCustomReturnPathOf,
+	tagsFeedbackProvenanceOf,
 	type CoreSendProviderCatalogEntry,
 } from '../sendProviderCatalog';
+import * as setupValidators from '../setupValidators';
 import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
 
 /**
@@ -172,6 +182,7 @@ describe('PROVIDER_ENV_KEYS is derived from the credential fields', () => {
 		for (const key of [
 			'MTA_API_URL',
 			'MTA_API_KEY',
+			'MTA_WEBHOOK_SECRET',
 			'MANDRILL_WEBHOOK_KEY',
 			'MANDRILL_SUBACCOUNT',
 			'MANDRILL_IP_POOL',
@@ -269,10 +280,89 @@ describe('the entries themselves', () => {
 
 	it('names a real validator on every setup probe, and only where one exists', () => {
 		const probes = ENTRIES.filter((entry) => entry.setupProbe !== undefined);
+		// The literal, pinned: which kinds can be checked before applying is a
+		// product decision, and a probe appearing on SES (which has no cheap
+		// pre-apply check) should be a test failure rather than a UI surprise.
 		expect(probes.map((entry) => [entry.kind, entry.setupProbe?.validator])).toEqual([
 			['resend', 'validateResendKey'],
 			['smtp', 'validateSmtpRelay'],
 		]);
+		// ...and the OTHER direction, which the literal cannot give: the name has
+		// to resolve to something callable in the module the descriptor points at.
+		// Pinning the string alone would pass a typo (`validateResendKeys`) and a
+		// later rename in `../setupValidators` straight through to P1.3, which
+		// inherits a descriptor addressing nothing.
+		const exported = setupValidators as unknown as Record<string, unknown>;
+		for (const entry of probes) {
+			expect(typeof exported[entry.setupProbe!.validator], entry.kind).toBe('function');
+		}
+	});
+
+	it('gives the own arm a derived declaration rather than a comparison to copy', () => {
+		// D3's one sanctioned identity, as a value: `tier: 'own'` is the
+		// declaration and this is what a consumer reads. `apps/web`,
+		// `apps/setup-cli` and this package restated `=== 'mta'` in seven places
+		// before it existed, because the only declaration lived in Convex code they
+		// may not import.
+		expect(OWN_SEND_PROVIDER_KIND).toBe('mta');
+		expect(ENTRIES.find((entry) => entry.tier === 'own')?.kind).toBe(OWN_SEND_PROVIDER_KIND);
+		expect(isOwnSendProviderKind(OWN_SEND_PROVIDER_KIND)).toBe(true);
+		for (const other of ['ses', 'resend', 'smtp', 'mandrill', 'MTA', '', undefined, null]) {
+			expect(isOwnSendProviderKind(other), String(other)).toBe(false);
+		}
+	});
+});
+
+describe('the fail-closed defaults are code, not just docblocks', () => {
+	/**
+	 * Every capability field is optional and every absent value MEANS something —
+	 * and the meaning is the SAFE reading in each case. These accessors are that
+	 * rule, in one place, taking an entry so the backend (which resolves against
+	 * the composed core+plugin catalog) and web/CLI (which resolve against the
+	 * core one) apply the same rule through their own lookups.
+	 */
+	const UNDECLARED = {
+		kind: 'plugin.acme.postmark',
+		label: 'Postmark',
+		retryDelays: [],
+		requiredEnvVars: [],
+	} as const;
+
+	it('reads an entry that declares nothing at its fail-closed value', () => {
+		expect(supportsCustomReturnPathOf(UNDECLARED)).toBe('no');
+		expect(domainVerificationOf(UNDECLARED)).toBe('none');
+		expect(hasProviderFeedbackOf(UNDECLARED)).toBe(false);
+		expect(acceptanceSemanticsOf(UNDECLARED)).toBe('unknown-on-timeout');
+		expect(messageIdSourceOf(UNDECLARED)).toBe('provider');
+		expect(deduplicatesOnIdempotencyKeyOf(UNDECLARED)).toBe(false);
+		expect(tagsFeedbackProvenanceOf(UNDECLARED)).toBe(false);
+	});
+
+	it('reads an ABSENT entry the same way — an unknown kind has declared nothing', () => {
+		// The reading a consumer gets for a kind this catalog does not know: web
+		// and the CLI hold `coreSendProviderCatalogEntry` results, which are
+		// `undefined` for a bundled plugin kind they cannot see. Crediting such a
+		// kind with a capability is exactly what the defaults exist to prevent.
+		expect(supportsCustomReturnPathOf(undefined)).toBe('no');
+		expect(domainVerificationOf(undefined)).toBe('none');
+		expect(hasProviderFeedbackOf(undefined)).toBe(false);
+		expect(acceptanceSemanticsOf(undefined)).toBe('unknown-on-timeout');
+		expect(messageIdSourceOf(undefined)).toBe('provider');
+		expect(deduplicatesOnIdempotencyKeyOf(undefined)).toBe(false);
+		expect(tagsFeedbackProvenanceOf(undefined)).toBe(false);
+	});
+
+	it('hands back what a core entry actually declares, default or not', () => {
+		const mta = coreSendProviderCatalogEntry('mta');
+		expect(acceptanceSemanticsOf(mta)).toBe('accepted');
+		expect(messageIdSourceOf(mta)).toBe('idempotency-key');
+		expect(hasProviderFeedbackOf(mta)).toBe(true);
+		expect(tagsFeedbackProvenanceOf(mta)).toBe(true);
+		const ses = coreSendProviderCatalogEntry('ses');
+		expect(domainVerificationOf(ses)).toBe('api');
+		expect(supportsCustomReturnPathOf(ses)).toBe('no');
+		expect(deduplicatesOnIdempotencyKeyOf(ses)).toBe(false);
+		expect(supportsCustomReturnPathOf(coreSendProviderCatalogEntry('smtp'))).toBe('probe');
 	});
 });
 

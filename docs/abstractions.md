@@ -55,10 +55,18 @@ and the docs suite read the same declaration the backend does. The kind union
 derived from it rather than restated — before the seams plan's P1.1 they were
 five independent declarations. The CODE half —
 `apps/api/convex/lib/sendProviders/catalog.ts` — joins those entries to the
-adapter modules and to the bundled plugin tier, and owns the accessors that read
-the COMPOSED catalog. Adding a provider means adding an entry, not editing a
-table somewhere else; the accompanying `bun run lint:providers` ratchet parses
-its kinds out of that same literal.
+adapter modules and to the bundled plugin tier, and owns the kind-keyed
+accessors that resolve against the COMPOSED catalog. Those accessors are a
+lookup plus a rule, and only the lookup is the backend's: each field's
+fail-closed default (`hasProviderFeedback` absent ⇒ `false`,
+`acceptanceSemantics` absent ⇒ `unknown-on-timeout`, …) is applied by the shared
+module's `…Of(entry)` functions, so web and the CLI get the same reading from
+their own core-only lookup. `tier: 'own'` is likewise read through
+`isOwnSendProviderKind` rather than compared to a literal — the one identity
+question D3 sanctions, asked in the one place that declares the answer. Adding a
+provider means adding an entry, not editing a table somewhere else; the
+accompanying `bun run lint:providers` ratchet parses its kinds out of that same
+literal.
 
 Send providers additionally take **operator-installed** implementations: a
 bundled plugin contributing a `sendTransports` entry appears as the kind
