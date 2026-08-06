@@ -12,7 +12,7 @@
  * A SEPARATE FILE, not two more declarations in `./types.ts`, because that file
  * sits within a few dozen lines of the ~500 LOC ratchet
  * (`scripts/check-file-size.sh`) — the same reason P0.1's declaration vocabulary
- * became `./catalogTypes.ts`. The mix-in is parameterized by the EXTRAS type
+ * became `./catalogTypes.ts` (and, in P1.1, `@owlat/shared`). The mix-in is parameterized by the EXTRAS type
  * rather than by the kind so that nothing here has to import `ExtrasFor`, which
  * keeps the dependency one-directional: `./types.ts` reads this, never the
  * reverse.

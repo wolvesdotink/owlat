@@ -7,6 +7,7 @@ import {
 	isRetryableErrorCode,
 	type SendProviderKind,
 } from '../index';
+import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared';
 import { SEND_PROVIDER_CATALOG } from '../catalog';
 
 describe('Send provider registry', () => {
@@ -27,8 +28,51 @@ describe('Send provider registry', () => {
 		expect(keys).toEqual(['mandrill', 'mta', 'resend', 'ses', 'smtp']);
 	});
 
+	/**
+	 * The fields this pin is about — "ordering, credentials, and retry behavior",
+	 * plus the capability declarations the governed boundary reads.
+	 *
+	 * A PROJECTION rather than the whole entry since P1.1 moved the entries into
+	 * `@owlat/shared`: they also carry `tier`, `optionalEnvVars`, the D5
+	 * `credentialFields` descriptors and `setupProbe`, and restating a form
+	 * descriptor here would be a second copy of a pin that already exists in that
+	 * package's own suite (`sendProviderCatalog.test.ts`) — the exact duplication
+	 * the catalog move exists to end. What THIS file owns is the COMPOSED catalog:
+	 * that the five built-ins come first, in this order, with these values, before
+	 * any bundled plugin entry. The identity assertion below closes the gap a
+	 * projection would otherwise leave (a backend copy that drifted from the
+	 * shared declaration would still project correctly).
+	 */
+	const PINNED_FIELDS = [
+		'kind',
+		'label',
+		'retryDelays',
+		'requiredEnvVars',
+		'supportsCustomReturnPath',
+		'hasProviderFeedback',
+		'domainVerification',
+		'acceptanceSemantics',
+		'messageIdSource',
+		'deduplicatesOnIdempotencyKey',
+		'tagsFeedbackProvenance',
+	] as const;
+
+	function pinned(entry: (typeof SEND_PROVIDER_CATALOG)[number]): Record<string, unknown> {
+		const record = entry as unknown as Record<string, unknown>;
+		return Object.fromEntries(PINNED_FIELDS.map((field) => [field, record[field]]));
+	}
+
+	it('composes the shared catalog entries themselves, never a copy of them', () => {
+		// The backend joins adapters to the catalog; it does not re-declare it
+		// (P1.1 / D1). Reference identity is the cheapest proof that no second
+		// literal crept back in.
+		for (const [index, entry] of CORE_SEND_PROVIDER_CATALOG_ENTRIES.entries()) {
+			expect(SEND_PROVIDER_CATALOG[index]).toBe(entry);
+		}
+	});
+
 	it('pins built-in ordering, credentials, and retry behavior before plugin entries', () => {
-		expect(SEND_PROVIDER_CATALOG.slice(0, 5)).toEqual([
+		expect(SEND_PROVIDER_CATALOG.slice(0, 5).map(pinned)).toEqual([
 			{
 				kind: 'mta',
 				label: 'Owlat MTA',
