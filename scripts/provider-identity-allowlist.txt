@@ -140,11 +140,58 @@ apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 # setup wizard's env/label derivations and the delivery config page all read the
 # catalog now. `TransportCredentialFields.vue` renders whatever the selected
 # entry's `credentialFields` declare, `buildProviderEnv` writes whatever those
-# descriptors own, and the config page's panels key on `hasProviderFeedback`.
-# The one thing apps/web still spells per vendor is COPY the catalog deliberately
-# does not carry — a picker hint, an icon, the paragraph a feedback ceremony
-# needs — and every one of those is optional: a kind with no row still renders,
-# with the catalog's label.
+# descriptors own, and the config page's feedback panel is chosen by the entry's
+# own `providerFeedback` declaration (ceremony + route), not by a kind.
+#
+# WHAT APPS/WEB STILL SPELLS PER VENDOR, stated exactly rather than waved at,
+# because the first version of this note claimed "all of it is optional" and that
+# was false for two tables:
+#
+#   utils/transportState.ts        TRANSPORT_LABEL / TRANSPORT_DESCRIPTION.
+#                                  Were exhaustive `Record<DeliveryProviderKind,
+#                                  …>` — a sixth kind was a COMPILE ERROR in a
+#                                  file outside its bundle, which is what A3
+#                                  forbids. P1.2 made both `Partial` overrides
+#                                  over a catalog-derived fallback, so the
+#                                  mechanism is now one declaration. The rows
+#                                  that remain are WORDING: the hub says "Owlat
+#                                  mail server" where the catalog says "Owlat
+#                                  MTA", and drops Mandrill's parenthetical.
+#   utils/transportDnsGuidance.ts  the DNS paragraph each incumbent earned, over
+#                                  a `tier` / `domainVerification` fallback that
+#                                  a new kind reaches (and that a test drives,
+#                                  since no shipped kind does).
+#   useRelayCredentialDraft.ts     picker hints and icons, plus ONE label: the
+#                                  editor's own-arm option reads "Run your own
+#                                  MTA", an instruction rather than a name.
+#   useSetupWizard.ts              the review step's "Owlat MTA (self-hosted)",
+#                                  keyed by OWN_SEND_PROVIDER_KIND.
+#
+# Every one of those is optional per kind — a provider with no row renders, with
+# the catalog's label — and none is keyed by a vendor literal, so lint:providers
+# stays quiet and A3 holds. What is NOT resolved is A2 for the own arm: four
+# surfaces word it four ways, exactly as they shipped. Unifying that copy is a
+# WORDING DECISION for the plan owner (it changes three live screens), and P1.2
+# deliberately did not take it: waves 0–2 ship no user-visible change.
+#
+# ── COPY THE PLAN OWNER SHOULD RATIFY AT THE WAVE-1 GATE ──
+#
+# P1.2 changed exactly two operator-facing strings, both because keeping them
+# would have kept per-vendor knowledge in a template:
+#
+#   1. the transport editor's and wizard step's "cannot be tested" notice used
+#      to list the vendors without a probe ("SES, Mailchimp Transactional and
+#      your own MTA can't be tested before applying"); it now names the SELECTED
+#      transport ("This transport can't be tested before applying"), because the
+#      line only ever renders for one kind and the list was a second declaration
+#      of `setupProbe`;
+#   2. `RelayDomainStatus.vue` stopped rendering for deployments the query
+#      cannot speak for — see the note in that family below.
+#
+# Everything else the refactor touched keeps its shipped wording, pinned as
+# literals in `composables/__tests__/setupWizardCredentials.test.ts` and
+# `relayCredentialDraft.test.ts` rather than asserted against the catalog (an
+# assertion that a label equals `entry.label` agrees with any rename).
 
 
 # ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
@@ -164,6 +211,34 @@ apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 apps/web/app/composables/setupWizardValidation.ts  # per-kind required-field rules
 apps/web/app/pages/desktop/setup.vue  # the desktop wizard's own copy
 apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to collisions:mta after its per-kind fields AND its own-arm branch go, because the compose profile stays
+
+
+# ── relay-identity-panel (owner: the relay-identity read, backend — no card yet) ──
+#
+# NO ENTRIES, because there is no kind literal left to license: what is recorded
+# here is the HALF OF P1.2'S CARD THAT NEEDS A BACKEND CHANGE, so the wave gate
+# can see a named owner instead of a bullet with no diff.
+#
+# `RelayDomainStatus.vue` is worded for SES throughout — "SES escape-hatch
+# domains", "SES status", the dedicated MAIL FROM copy — and that wording is
+# HONEST, because every string is downstream of
+# `providerRoutes.listDeliverabilityRelayDomains`, which reads the frozen
+# `sendingDomainSesIdentities` sibling table directly. Generalising the copy
+# without generalising the read would claim to cover relays whose rows the panel
+# cannot see. THE UNBLOCKING CHANGE IS ONE QUERY: a read over the generic
+# `sendingDomainRelayIdentities` table (which the domain-provider registry
+# already writes) answering for whichever kinds that registry can prove, after
+# which this card and `MandrillDomainStatus.vue` collapse into one that names the
+# relay from its catalog label.
+#
+# What P1.2 DID fix from the web side, because it needed no backend: the panel
+# used to render for every deployment with an owned sending domain, since the
+# query synthesises `provisioning` for any domain with no identity row. A
+# Resend/SMTP/own-MTA deployment was therefore told to wait for an SES
+# provisioning run that would never start. The gate is now the capability plus
+# the data (`utils/relayIdentityPanel.ts`): a configured escape-hatch relay
+# declaring `domainVerification: 'api'`, or a row that already carries identity
+# state.
 
 
 # ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
