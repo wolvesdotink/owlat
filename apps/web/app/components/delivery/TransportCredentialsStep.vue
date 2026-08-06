@@ -26,7 +26,11 @@
  */
 import { computed, ref } from 'vue';
 import type { EmailStepDraft } from '~/composables/useSetupWizard';
-import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
+import {
+	credentialErrorFor,
+	emailStepIsValid,
+	validateEmailStep,
+} from '~/composables/setupWizardValidation';
 import {
 	RELAY_PROVIDER_OPTIONS,
 	applyTransportEnv,
@@ -62,15 +66,12 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 /**
- * The ONE credential error the selected kind can raise. `validateEmailStep`
- * keys its errors by the wizard draft's per-vendor field names and reports at
- * most one per kind, so the first present is that kind's; the descriptor
- * renderer decides which control announces it.
+ * The ONE credential error the selected kind can raise — from
+ * `credentialErrorFor`, the same helper the in-app transport editor calls, so
+ * neither screen can be left announcing a key the other has learned about.
  */
 const credentialFieldError = computed(() =>
-	showErrors.value
-		? (errors.value.resendKey ?? errors.value.mandrillKey ?? errors.value.ses ?? errors.value.smtp)
-		: undefined
+	showErrors.value ? credentialErrorFor(errors.value) : undefined
 );
 const credentialError = ref('');
 const restartNotice = ref('');
@@ -171,13 +172,19 @@ async function applyCredentials() {
 		</p>
 
 		<!-- ONE form for every relay: the selected entry's `credentialFields`
-		     descriptors, rendered generically (plan D5). -->
+		     descriptors, rendered generically (plan D5).
+
+		     WITHOUT the endpoint's implicit-TLS toggle, which this step has never
+		     offered: every preset it can choose declares STARTTLS, and giving a
+		     shipped wizard a new control is an additive change this refactor does
+		     not get to make. The value is still written from the preset. -->
 		<TransportCredentialFields
 			:kind="provider"
 			:values="credentialValues"
 			:preset="preset"
 			:preset-options="presetOptions"
 			:error="credentialFieldError"
+			:endpoint-security-toggle="false"
 			@update:preset="preset = $event"
 		/>
 

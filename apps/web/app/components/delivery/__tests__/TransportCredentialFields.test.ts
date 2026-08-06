@@ -119,6 +119,33 @@ describe('TransportCredentialFields — the host-port composite', () => {
 		expect(values['SMTP_RELAY_SECURE']).toBe('false');
 	});
 
+	it('hints the host with the descriptor’s example, as the shipped form did', () => {
+		const { wrapper } = mountFields('smtp', { preset: 'custom' });
+		expect(wrapper.find('#field-server-host').attributes('placeholder')).toBe('smtp.mailgun.org');
+		// Both halves of one endpoint hint, or neither: the port already showed its
+		// declared default.
+		expect(wrapper.find('#field-port').attributes('placeholder')).toBe('587');
+	});
+
+	it('withholds the implicit-TLS toggle from a surface that never offered it', () => {
+		// The connect-a-provider wizard's step rendered preset/host/port/user/pass
+		// and no TLS control; sharing this renderer must not hand it a new one.
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: 'smtp',
+				values: seedCredentialValues('smtp'),
+				preset: 'mailgun' as SmtpPreset,
+				presetOptions: [{ value: 'mailgun' as SmtpPreset, label: 'Mailgun' }],
+				endpointSecurityToggle: false,
+			},
+			global: { stubs: wizardStubs },
+		});
+		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+		// The rest of the endpoint is untouched.
+		expect(wrapper.find('#field-server-host').exists()).toBe(true);
+		expect(wrapper.find('#field-port').exists()).toBe(true);
+	});
+
 	it('asks the parent to change preset rather than changing it behind its back', async () => {
 		const { wrapper } = mountFields('smtp');
 		await wrapper.find('#field-provider-preset').setValue('custom');
@@ -126,26 +153,52 @@ describe('TransportCredentialFields — the host-port composite', () => {
 	});
 });
 
-describe('TransportCredentialFields — errors are announced on a control', () => {
-	it.each(KINDS.filter((kind) => credentialFieldsFor(kind).some((f) => f.required === true)))(
-		'attaches %s’s credential error to its first required field',
+describe('TransportCredentialFields — where a credential error is announced', () => {
+	const ERROR = 'Credentials are required.';
+
+	it.each(['resend', 'mandrill'])(
+		'binds %s’s error to its one control, which is what its shipped block did',
 		(kind) => {
-			const first = credentialFieldsFor(kind).find((field) => field.required === true)!;
-			const { wrapper } = mountFields(kind, { error: 'Credentials are required.' });
+			const only = credentialFieldsFor(kind)[0]!;
+			const { wrapper } = mountFields(kind, { error: ERROR });
 			const alerts = wrapper.findAll('[role="alert"]');
 			expect(alerts).toHaveLength(1);
-			expect(alerts[0]!.text()).toBe('Credentials are required.');
-			// …and on the FIRST required control, not on some later one: the stub
-			// renders the message inside the field it belongs to, so the input beside
-			// it is the one a screen reader lands on.
+			expect(alerts[0]!.text()).toBe(ERROR);
+			// Inside the field's own wrapper, so the input beside it is the one a
+			// screen reader lands on.
 			expect(alerts[0]!.element.parentElement?.querySelector('input')?.id).toBe(
-				fieldId(first.label)
+				fieldId(only.label)
 			);
+		}
+	);
+
+	it.each(['ses', 'smtp'])(
+		'renders %s’s SET-level message after the group, bound to no single input',
+		(kind) => {
+			const { wrapper } = mountFields(kind, { error: ERROR });
+			const alerts = wrapper.findAll('[role="alert"]');
+			expect(alerts).toHaveLength(1);
+			expect(alerts[0]!.text()).toBe(ERROR);
+			// The regression this pins: bound to a control, "Port must be a whole
+			// number…" appeared under the DISABLED host input, and a filled-in SES
+			// region was marked invalid because the missing field was the secret
+			// below it. A set-level paragraph sits beside the group, not inside a
+			// field, so no input owns it.
+			expect(alerts[0]!.element.tagName).toBe('P');
+			expect(alerts[0]!.element.parentElement).toBe(wrapper.element);
+			expect(alerts[0]!.element.querySelector('input')).toBeNull();
 		}
 	);
 
 	it('announces nothing when the step has no credential error', () => {
 		expect(mountFields('ses').wrapper.findAll('[role="alert"]')).toHaveLength(0);
+		expect(mountFields('resend').wrapper.findAll('[role="alert"]')).toHaveLength(0);
+	});
+
+	it.each(KINDS)('never drops %s’s error on the floor', (kind) => {
+		// Whichever placement the form's shape earns, the message is on screen.
+		if (credentialFieldsFor(kind).length === 0) return;
+		expect(mountFields(kind, { error: ERROR }).wrapper.text()).toContain(ERROR);
 	});
 });
 

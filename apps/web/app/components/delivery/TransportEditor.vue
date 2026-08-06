@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { OUTBOUND_TLS_MODE_OPTIONS, seedOutboundTlsMode } from '~/composables/setupOutboundTls';
 import type { EmailStepDraft, ProviderChoice } from '~/composables/useSetupWizard';
-import { transportStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
+import {
+	credentialErrorFor,
+	transportStepIsValid,
+	validateEmailStep,
+} from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { isCoreSendProviderKind, OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
 import {
@@ -103,15 +107,13 @@ const showErrors = computed(() => submitted.value);
 
 /**
  * The ONE credential error the selected kind can raise, whichever field set it
- * belongs to. `validateEmailStep` reports at most one per kind — it is keyed by
- * the wizard draft's per-vendor field names, which the descriptor renderer below
- * neither has nor needs — so the first one present is that kind's, and the
- * renderer decides which control announces it.
+ * belongs to. Asked of `credentialErrorFor`, beside the rules that produce those
+ * keys and exhaustive over them, rather than re-derived from the draft's
+ * per-vendor field names here — the wizard's credential step asks the same
+ * question, and the two must not be able to answer it differently.
  */
 const credentialError = computed(() =>
-	showErrors.value
-		? (errors.value.resendKey ?? errors.value.mandrillKey ?? errors.value.ses ?? errors.value.smtp)
-		: undefined
+	showErrors.value ? credentialErrorFor(errors.value) : undefined
 );
 
 /**
@@ -124,7 +126,8 @@ const credentialError = computed(() =>
  */
 const isValid = computed(() => transportStepIsValid(draft.value));
 
-// Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
+// Whether a pre-apply handshake exists at all is the catalog's `setupProbe`
+// (absent ⇒ no cheap check, and the button is not offered).
 const canTest = relay.canValidateLive;
 
 // ── Test ─────────────────────────────────────────────────────────────────────

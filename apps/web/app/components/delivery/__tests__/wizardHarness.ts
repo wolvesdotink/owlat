@@ -126,6 +126,7 @@ export const wizardStubs = {
 		template: `<span>
 			<label :for="fieldId(label)">{{ label }}</label>
 			<input :id="fieldId(label)" :type="type || 'text'" :value="modelValue" :disabled="disabled"
+				:placeholder="placeholder"
 				@input="$emit('update:modelValue', $event.target.value)" />
 			<span v-if="error" role="alert">{{ error }}</span>
 		</span>`,
