@@ -46,6 +46,21 @@ export const SENDING_DOMAIN_PROVIDERS = {
 	mandrill: mandrillProvider,
 } as const;
 
+/**
+ * OUR OWN INFRASTRUCTURE, in the domain-provider type domain — the one kind
+ * whose sending domains we host ourselves, and therefore the one kind a relay
+ * identity may COEXIST on (a domain already hosted at some provider owns its
+ * identity through the ordinary lifecycle).
+ *
+ * D3 sanctions this identity check; it does not sanction restating it. Read
+ * from the adapter's own `kind` so the value has exactly one declaration —
+ * `domains/providers/mta/index.ts` — rather than a literal at each site that
+ * asks the question. `OWN_ARM_TRANSPORT_KIND` (lib/sendProviders/strategies) is
+ * the twin of this constant in the SEND-TRANSPORT type domain: same string,
+ * different union, each declared once.
+ */
+export const OWN_SENDING_DOMAIN_PROVIDER_KIND = mtaProvider.kind;
+
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`, so a
 // missing method (or a kind mismatch) is a compile error.

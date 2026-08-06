@@ -579,6 +579,17 @@ async function applyEffects(
 				// while another provider stays primary. Both are scheduled, not
 				// inline: a provider outage must never roll back the domain's
 				// → verified transition (same reasoning as `register_with_provider`).
+				//
+				// THE SEAM FOR THIS ALREADY EXISTS (P0.2): `ensureRelayIdentity` on
+				// the sending-domain provider module does precisely this — schedule
+				// the kind's own provision call unless its identity is already there
+				// — and `providerRoutes.provisionDeliverabilityRelayBatch` drives the
+				// backfill half through it. This forward half is P0.4's to convert
+				// (`for (const kind of relayKinds) if (isSendingDomainProviderKind(kind))
+				// await providerFor(kind).ensureRelayIdentity?.(ctx, domain)`), which
+				// is behaviour-identical for the two kinds below. Until it does, a new
+				// `domainVerification: 'api'` kind is backfilled but not provisioned
+				// forward: reuse that method here rather than adding a third line.
 				if (relayKinds.has('ses')) {
 					await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
 						domainId: effect.domainId,

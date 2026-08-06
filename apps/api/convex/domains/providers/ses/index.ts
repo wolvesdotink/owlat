@@ -140,13 +140,13 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
 	 * of whichever kind the route actually named (plan D2).
 	 */
-	async ensureRelayIdentity(ctx, domainId) {
+	async ensureRelayIdentity(ctx, domain) {
 		const existing = await ctx.db
 			.query('sendingDomainSesIdentities')
-			.withIndex('by_domain', (q) => q.eq('domainId', domainId))
+			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 			.first();
 		if (existing) return;
-		await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, { domainId });
+		await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, { domainId: domain._id });
 	},
 
 	async writeIdentity(ctx, domainId, identity) {

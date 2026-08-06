@@ -112,16 +112,16 @@ export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
 	 * its own, which is the only thing that differs from the SES adapter's
 	 * implementation of the same contract.
 	 *
-	 * A domain row that vanished mid-drain schedules nothing: there would be no
-	 * name to register and `mandrillRelay.provision` would answer
-	 * `{ provisioned: false }` anyway.
+	 * The caller hands over the whole domain doc, so the name this table keys on
+	 * is read straight off it — no `resolveDomainName` round-trip per drained
+	 * domain, and no "the row vanished" branch to reason about.
 	 */
-	async ensureRelayIdentity(ctx, domainId) {
-		const domainName = await resolveDomainName(ctx, domainId);
-		if (domainName === null) return;
+	async ensureRelayIdentity(ctx, domain) {
 		const organizationId = await getSingletonOrganizationId(ctx);
-		if (await loadMandrillRow(ctx, organizationId, domainName)) return;
-		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, { domainId });
+		if (await loadMandrillRow(ctx, organizationId, domain.domain)) return;
+		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
+			domainId: domain._id,
+		});
 	},
 
 	/**

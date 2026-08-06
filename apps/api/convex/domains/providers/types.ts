@@ -211,16 +211,24 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	): Promise<ReferenceAlignmentArm | null>;
 
 	/**
-	 * BACKFILL: make sure this provider holds a relay identity for `domainId`,
+	 * BACKFILL: make sure this provider holds a relay identity for `domain`,
 	 * whose PRIMARY provider is somebody else (in practice our own MTA).
 	 *
 	 * The write half of what {@link relayDomainVerified} later reads, and the
 	 * catch-up path for the domains that already existed when an operator
 	 * switched the deliverability fallback on —
 	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
-	 * this of the kind the route named. Domains verified AFTER that point get
-	 * theirs from the lifecycle's `provision_relay_identity_if_enabled` effect
-	 * instead, so the two together cover every domain exactly once.
+	 * this of the kind the route named.
+	 *
+	 * Domains verified AFTER that point are meant to get theirs from the
+	 * lifecycle's `provision_relay_identity_if_enabled` effect, so that the two
+	 * paths together cover every domain exactly once. Today that effect
+	 * (`domains/lifecycle.ts`) still schedules per relay kind from a hand-written
+	 * if-chain rather than through this method: the pairing holds for the two
+	 * shipped kinds, but a NEW `domainVerification: 'api'` kind gets the backfill
+	 * and not the forward path until P0.4 routes that site here — which is why
+	 * the comment there names this method rather than leaving the next author to
+	 * invent a second seam.
 	 *
 	 * Implementations SCHEDULE the provider call rather than making it: this
 	 * runs inside the drain's transaction, and a provider outage must not roll
@@ -229,6 +237,12 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * per-provider knowledge — the frozen `sendingDomainSesIdentities` sibling
 	 * for SES, the generic `sendingDomainRelayIdentities` row for every kind
 	 * after it (D7).
+	 *
+	 * Takes the whole `domains` DOC, not an id: the caller is a paginated drain
+	 * that already holds the row (it filters on `providerType` a line earlier),
+	 * and a name-keyed implementation re-reading it would cost one extra
+	 * document read per domain per page — plus a "the row vanished mid-drain"
+	 * branch that cannot happen when the doc was in hand.
 	 *
 	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
 	 * identity API to register at (`domainVerification: 'none'` — our own MTA,
@@ -240,7 +254,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * never provisions the identity that proof is read from reports every domain
 	 * unverified and its fallback never relays.
 	 */
-	ensureRelayIdentity?(ctx: MutationCtx, domainId: Id<'domains'>): Promise<void>;
+	ensureRelayIdentity?(ctx: MutationCtx, domain: Doc<'domains'>): Promise<void>;
 
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 

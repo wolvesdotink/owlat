@@ -11,7 +11,11 @@ import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/c
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { isFallbackRelayEligible } from './lib/sendProviders/fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './lib/sendProviders/strategies';
-import { isSendingDomainProviderKind, providerFor } from './domains/providers';
+import {
+	OWN_SENDING_DOMAIN_PROVIDER_KIND,
+	isSendingDomainProviderKind,
+	providerFor,
+} from './domains/providers';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
@@ -149,14 +153,33 @@ export const listTransportCatalog = authedQuery({
 	},
 });
 
-/** Operational SES relay DNS/status for every owned-MTA sending domain. */
+/**
+ * Operational SES relay DNS/status for every owned-MTA sending domain.
+ *
+ * STILL SES-ONLY, and knowingly so. This reads the frozen
+ * `sendingDomainSesIdentities` sibling directly and shapes the result around
+ * SES's DNS bundle (dkim tokens, MAIL FROM, `spfProofState`), which is what its
+ * one consumer — `RelayDomainStatus.vue` — renders. The drain below now
+ * backfills whichever kind the route named, so with a non-SES relay configured
+ * this table reports `provisioning` for every domain forever: the identity
+ * exists, in `sendingDomainRelayIdentities`, and this query cannot see it.
+ *
+ * Deliberately NOT fixed here. Making the read generic is not a table swap —
+ * the per-kind identity shapes differ (Mandrill remembers provider VERDICTS,
+ * not tokens, and derives its records), so the row this returns and the
+ * component that renders it have to change together. That pairing is P1.2's
+ * (catalog-driven web UI, which owns `RelayDomainStatus.vue`); this piece is
+ * the write half only, and widening the read shape from a wave-0 refactor
+ * would be exactly the user-visible change wave 0 is not allowed to make.
+ * Until then: a non-SES fallback relays correctly and reports nothing here.
+ */
 export const listDeliverabilityRelayDomains = authedQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'organization:manage');
 		const page = await ctx.db
 			.query('domains')
-			.withIndex('by_provider_type', (q) => q.eq('providerType', 'mta'))
+			.withIndex('by_provider_type', (q) => q.eq('providerType', OWN_SENDING_DOMAIN_PROVIDER_KIND))
 			.paginate(args.paginationOpts);
 		const now = Date.now();
 		return {
@@ -214,6 +237,19 @@ export const listDeliverabilityRelayDomains = authedQuery({
  * `ensureRelayIdentity` — Resend, a bring-your-own SMTP relay) stops the drain
  * before it reads a page: there is no identity to backfill, which is the same
  * honest posture `relayDomainVerification.ts` takes on the read side.
+ *
+ * ONE-DEPLOY MIGRATION HAZARD, by design. Convex persists a scheduled
+ * function's arguments, so a continuation this mutation scheduled for itself
+ * BEFORE `relayProviderType` existed fails argument validation when it runs
+ * after the deploy. That window is the ≤500 ms between a page finishing and its
+ * successor running, and the only relay a pre-P0.2 route could name was SES.
+ * The failure is loud (a failed scheduled function, named in the deployment
+ * logs) rather than silent, and the drain is idempotent: re-saving the route
+ * re-runs it from the first page and every already-provisioned domain is
+ * skipped by its provider's existence check. Accepting the argument as optional
+ * to swallow that one window would make "no kind named" a permanently legal
+ * call — a silent no-op for every future caller — which is a worse trade than a
+ * diagnosable failure that heals on the next save.
  */
 export const provisionDeliverabilityRelayBatch = internalMutation({
 	args: { relayProviderType: v.string(), paginationOpts: paginationOptsValidator },
@@ -231,11 +267,13 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 		for (const domain of page.page) {
 			// A relay identity coexists on a domain whose PRIMARY provider is our
 			// own MTA; a domain already hosted at some provider owns its identity
-			// through the ordinary lifecycle. (Domain-provider kinds, not send
-			// transports — generalizing this one belongs with `domains/lifecycle.ts`,
-			// which spells the same rule.)
-			if (domain.providerType !== 'mta') continue;
-			await ensureRelayIdentity(ctx, domain._id);
+			// through the ordinary lifecycle. D3's sanctioned identity check, read
+			// from the domain-provider registry's single declaration — these are
+			// domain-provider kinds, not send transports, so the constant is the
+			// registry's and not `OWN_ARM_TRANSPORT_KIND`. (`domains/lifecycle.ts`
+			// spells the same rule for the forward path; P0.4 owns collapsing it.)
+			if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) continue;
+			await ensureRelayIdentity(ctx, domain);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
