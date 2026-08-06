@@ -135,16 +135,18 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		expect(section).toContain('sendingDomainRelayIdentities');
 	});
 
-	it('keeps the forward-provisioning caveat alive exactly as long as the if-chain', () => {
-		// The page warns that registering an adapter does not by itself put a kind
-		// on the FORWARD relay-provisioning path, because
-		// `provision_relay_identity_if_enabled` still schedules from a hand-written
-		// list of relay kinds. That warning is a fact about `domains/lifecycle.ts`,
-		// so — like the two sibling-table claims above — it is asserted against
-		// that file in BOTH directions: while the if-chain is there the page must
-		// name the effect, and the moment P0.4 turns it into a registry walk the
-		// page must stop, rather than telling the next author that a new kind's
-		// `ensureRelayIdentity` is unreachable on the forward path when it is not.
+	it('names the forward-provisioning effect exactly while it is a hand-written list', () => {
+		// The page's warning that registering an adapter does not by itself put a
+		// kind on the FORWARD relay-provisioning path is a fact about
+		// `domains/lifecycle.ts` — true only while
+		// `provision_relay_identity_if_enabled` schedules from a hand-written list
+		// of relay kinds. So, like the two sibling-table claims around it, it is
+		// asserted against that file in BOTH directions: while such a list is there
+		// the page must name the effect; while it is a registry walk (as it is
+		// today) the page must NOT, rather than telling the next author that a new
+		// kind's `ensureRelayIdentity` is unreachable on the forward path when it
+		// is not. The guard is what keeps a reintroduced if-chain from landing
+		// silently.
 		const lifecycle = read('apps/api/convex/domains/lifecycle.ts');
 		const stillAHandWrittenList = lifecycle.includes("relayKinds.has('ses')");
 		expect(section.includes('provision_relay_identity_if_enabled')).toBe(stillAHandWrittenList);
@@ -153,10 +155,11 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 	it('keeps the sibling-table claim honest about the writers outside the adapters', () => {
 		// The write half is the one a developer adding relay kind #4 acts on: the
 		// page must not let them believe `writeIdentity` is the whole write path
-		// while the forward provisioning inserts the row from
-		// `sesRelayMutations.ts`. Pinned in BOTH directions against that file, so
-		// that when P0.4 folds the write behind the adapter the page must stop
-		// naming it — the same treatment the reader half gets above.
+		// while the relay provisioning inserts the row from `sesRelayMutations.ts`
+		// (it still does — no card owns folding that insert behind the adapter).
+		// Pinned in BOTH directions against that file, so that the page must stop
+		// naming it the moment the insert moves — the same treatment the reader
+		// half gets above.
 		const mutations = read('apps/api/convex/domains/sesRelayMutations.ts');
 		const stillWritesOutsideTheAdapter = mutations.includes("insert('sendingDomainSesIdentities'");
 		expect(section.includes('sesRelayMutations')).toBe(stillWritesOutsideTheAdapter);

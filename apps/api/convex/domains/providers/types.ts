@@ -124,20 +124,28 @@ export type ProviderCheckResult = {
 
 /**
  * The slice of `domains.verificationResults` a provider may write about ITSELF
- * — its own verdict, mirrored into the record bundle the domain-records screen
- * renders beside the DNS results.
+ * — its own verdict, mirrored into the record bundle that travels with the
+ * domain's DNS results.
  *
- * The key is SES-named because the PERSISTED FIELD is (`verificationResults`'s
- * validator in `lib/convexValidators.ts`, and rows written since long before
- * this seam existed). That is schema vocabulary, not an identity check: per D10
- * persisted shapes stay additive, so a second provider that wants a status pill
- * adds its OWN optional key here and fills it from its OWN adapter. What the
- * seam removes is the `providerType === 'ses'` branch that used to decide, in
- * `domains/dnsVerification.ts`, which provider was allowed to have a verdict
- * worth showing.
+ * PERSISTED, AND CURRENTLY UNREAD BY THE WEB APP. `sesStatus` is written here
+ * and by `domains/sesRelayVerification.ts`, validated in
+ * `lib/convexValidators.ts`, and read by nothing in `apps/web` — the
+ * domain-records screen renders spf/dkim/dmarc/mailFrom only. The seam is
+ * therefore about WHO DECIDES the projection, not about a pill on a screen: a
+ * developer adding provider #4 should implement it to keep the provider's own
+ * verdict in the domain's record, and should not expect it to appear anywhere
+ * until the domain-records UI grows a consumer (P1.2 territory).
+ *
+ * The key is SES-named because the PERSISTED FIELD is (rows written since long
+ * before this seam existed). That is schema vocabulary, not an identity check:
+ * per D10 persisted shapes stay additive, so a second provider that wants a
+ * status of its own adds its OWN optional key here and fills it from its OWN
+ * adapter. What the seam removes is the `providerType === 'ses'` branch that
+ * used to decide, in `domains/dnsVerification.ts`, which provider was allowed
+ * to have a verdict worth recording.
  */
 export type ProviderVerificationStatusFields = {
-	/** SES's `verificationStatus`, as the builder UI's status pill reads it. */
+	/** SES's `verificationStatus`, spelled as the persisted field has always held it. */
 	readonly sesStatus?: string;
 };
 
@@ -196,15 +204,16 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 
 	/**
 	 * Optional: this provider's own verdict, projected into the shared
-	 * `domains.verificationResults` bundle so the domain-records screen can show
-	 * it beside the DNS results (see {@link ProviderVerificationStatusFields}).
+	 * `domains.verificationResults` bundle that is persisted beside the DNS
+	 * results (see {@link ProviderVerificationStatusFields}, which says plainly
+	 * what does and does not read the projection today).
 	 *
 	 * Pure and synchronous: the verdict is already in hand — the verifier has just
 	 * awaited {@link runProviderCheck} — and this only decides how to SPELL it.
 	 *
-	 * OPTIONAL, and absence is a real answer: a kind whose provider verdict has no
-	 * place on the screen (our own MTA has no provider verdict at all; Mandrill's
-	 * lives on its own relay panel) omits it and the verifier writes nothing extra,
+	 * OPTIONAL, and absence is a real answer: a kind with no provider verdict to
+	 * record (our own MTA has none at all; Mandrill keeps its state on its own
+	 * identity row) omits it and the verifier writes nothing extra,
 	 * which is exactly what the `providerType === 'ses'` branch this replaced
 	 * achieved for every kind that was not SES.
 	 */

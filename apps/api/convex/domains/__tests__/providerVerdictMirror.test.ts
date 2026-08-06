@@ -3,12 +3,12 @@
  *
  * `verifyDomain` runs the DNS lookups, then asks the domain's provider for its
  * own verdict (`runProviderCheck`), then mirrors that verdict into
- * `verificationResults` so the domain-records screen can show it beside the DNS
- * rows. The mirror used to be guarded by `domain.providerType === 'ses'` with the
- * SES field name and the 'Success'/'Pending' spelling written out in the
- * verifier — so "does this provider have a verdict worth showing?" was a question
- * about a NAME, and a kind that shipped one had to edit the verifier to be
- * allowed to answer.
+ * `verificationResults`, so the verdict is persisted beside the DNS rows. The
+ * mirror used to be guarded by `domain.providerType === 'ses'` with the SES
+ * field name and the 'Success'/'Pending' spelling written out in the verifier —
+ * so "does this provider have a verdict worth recording?" was a question about a
+ * NAME, and a kind that shipped one had to edit the verifier to be allowed to
+ * answer.
  *
  * It is now `verificationStatusFields` on the adapter contract. The differential
  * case below drives a MOCK KIND whose adapter returns a projection the old
@@ -21,6 +21,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
+import { modules } from '../../__tests__/testModules';
 import { sesProvider } from '../providers/ses';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -91,16 +92,6 @@ vi.mock('../providers', async (importOriginal) => {
 	};
 });
 
-const modules = {
-	...import.meta.glob('../../**/*.*s'),
-	...Object.fromEntries(
-		Object.entries(import.meta.glob('../**/*.*s')).map(([p, m]) => [
-			p.replace(/^\.\.\//, '../../domains/'),
-			m,
-		])
-	),
-};
-
 type TestConvex = ReturnType<typeof convexTest>;
 
 async function verifiedDomainResults(
@@ -146,7 +137,7 @@ describe('verifyDomain mirrors whatever verdict the ADAPTER projects', () => {
 	it('writes nothing for a provider that has a check but no status to show', async () => {
 		// Absence is a real answer. Our own MTA is the shipped example: it has no
 		// provider verdict at all, and a mirror it never asked for would put a
-		// meaningless pill on its records screen.
+		// meaningless SES-named status on its record.
 		const t = convexTest(schema, modules);
 		expect(await verifiedDomainResults(t, MOCK_SILENT_KIND)).not.toHaveProperty('sesStatus');
 	});
@@ -171,11 +162,11 @@ describe('the SES spelling is unchanged and stated once', () => {
 		expect(sesProvider.verificationStatusFields!({ verified })).toEqual({ sesStatus: expected });
 	});
 
-	it('is declared by exactly the shipped adapters that have a pill to show', async () => {
+	it('is declared by exactly the shipped adapters with a verdict to record', async () => {
 		// One table rather than a case per adapter. Mandrill HAS a provider verdict
-		// (`check-domain`) and still declares nothing here on purpose: its state is
-		// rendered on its own relay panel from the generic identity row, and
-		// borrowing SES's field would put an SES-labelled pill on a Mandrill domain.
+		// (`check-domain`) and still declares nothing here on purpose: its state
+		// lives on its own generic identity row, and borrowing SES's field would
+		// file an SES-named status against a Mandrill domain.
 		const { SENDING_DOMAIN_PROVIDERS } = await import('../providers');
 		const declared = Object.fromEntries(
 			Object.entries(SENDING_DOMAIN_PROVIDERS).map(([kind, provider]) => [

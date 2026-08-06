@@ -133,12 +133,16 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	},
 
 	/**
-	 * SES's verdict as the builder UI's status pill reads it — the ONE statement
-	 * of that spelling, shared with the relay-identity refresher in
+	 * SES's verdict as `verificationResults.sesStatus` has always held it — the
+	 * ONE statement of that spelling, shared with the relay-identity refresher in
 	 * `domains/sesRelayVerification.ts`. It lived in `domains/dnsVerification.ts`
 	 * behind `providerType === 'ses'`, which made "does this provider have a
-	 * verdict worth showing?" a question about a name rather than about the
+	 * verdict worth recording?" a question about a name rather than about the
 	 * provider.
+	 *
+	 * The field is persisted and currently read by nothing in `apps/web` — see
+	 * {@link ProviderVerificationStatusFields}; implementing this keeps the
+	 * verdict in the domain's record, it does not put anything on a screen.
 	 */
 	verificationStatusFields(check: ProviderCheckResult): ProviderVerificationStatusFields {
 		return { sesStatus: check.verified ? 'Success' : 'Pending' };

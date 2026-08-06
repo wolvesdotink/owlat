@@ -110,16 +110,17 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		expect(isSendingDomainProviderKind('constructor')).toBe(false);
 	});
 
-	it('does not outlive its own forward-path caveat', () => {
-		// `../index.ts` warns that registering an adapter does not by itself put a
-		// kind on the FORWARD relay-provisioning path, because
-		// `provision_relay_identity_if_enabled` still schedules from a hand-written
-		// list of relay kinds. Pinned to that if-chain in BOTH directions — the
-		// same treatment `apps/docs/__tests__/abstractionsDocs.test.ts` gives the
-		// abstraction page's copy of the warning. Without it, P0.4 turns the effect
-		// into a registry walk and a surviving warning tells the next author their
-		// kind is unreachable on the forward path when it is not; nothing else in
-		// the tree would notice.
+	it('names the forward-provisioning effect exactly while it is a hand-written list', () => {
+		// `../index.ts` may warn that registering an adapter does not by itself put
+		// a kind on the FORWARD relay-provisioning path only while
+		// `provision_relay_identity_if_enabled` schedules from a hand-written list
+		// of relay kinds. Pinned in BOTH directions — the same treatment
+		// `apps/docs/__tests__/abstractionsDocs.test.ts` gives the abstraction
+		// page's copy of the warning. The effect is a registry walk today, so a
+		// surviving warning would tell the next author their kind is unreachable on
+		// the forward path when it is not; and if the walk is ever unwound back
+		// into a list, the warning has to come back. Nothing else in the tree would
+		// notice either direction.
 		const stillAHandWrittenList =
 			readSource('../../lifecycle.ts').includes("relayKinds.has('ses')");
 		expect(readSource('../index.ts').includes('provision_relay_identity_if_enabled')).toBe(
