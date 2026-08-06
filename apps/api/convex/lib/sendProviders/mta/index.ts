@@ -11,6 +11,7 @@
 import {
 	extractDomainOrNull,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	ROUTING_LEASE_UNREADABLE_CODE,
 	type DeliveryDomain,
 	type GovernedMessageType,
 } from '@owlat/shared';
@@ -379,6 +380,14 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
+		// FIRST, AND SEPARATELY FROM THE PREFIX MATCH BELOW. This 409 reports the
+		// MTA's own lease store failing to give back a record it wrote — no
+		// receiver saw the message and nothing was decided about the sending
+		// identity — so it must not be folded into the governance bucket gate 2
+		// counts (issue #505). It reschedules identically; only the origin differs.
+		if (httpStatus === 409 && message.includes(ROUTING_LEASE_UNREADABLE_CODE)) {
+			return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
+		}
 		if (
 			httpStatus === 409 &&
 			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))
