@@ -13,7 +13,7 @@
  * is what makes "the label is the catalog's" a checkable statement rather than a
  * comment.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
 import TransportCredentialFields from '../TransportCredentialFields.vue';
@@ -24,6 +24,50 @@ import {
 } from '~/composables/setupWizardCredentials';
 import type { SmtpPreset } from '~/composables/useSetupWizard';
 import { wizardStubs } from './wizardHarness';
+
+/**
+ * PROVIDER N+1, INJECTED — the descriptor shapes the vocabulary allows and no
+ * shipped entry uses yet.
+ *
+ * The catalog is deep-frozen and the renderer reads it by kind, so the only way
+ * to mount a field shape nobody has declared is to hand the lookup one. Every
+ * real kind passes straight through to the actual implementation, so the suite
+ * above is unaffected; `NEXT_KIND` is the one name that resolves to this fixture.
+ *
+ * Worth the mock because the property under test is exactly the one the shipped
+ * catalog CANNOT prove: "adding a provider adds zero lines to a .vue file" is
+ * only true for the descriptor shapes this renderer actually draws, and a kind
+ * whose declared options were silently dropped would look perfect in every test
+ * that iterates the five entries we ship.
+ */
+const { NEXT_KIND, NEXT_FIELDS } = vi.hoisted(() => ({
+	NEXT_KIND: 'acme-post',
+	NEXT_FIELDS: [
+		{
+			kind: 'region-select' as const,
+			key: 'region',
+			label: 'Sending region',
+			envVar: 'ACME_REGION',
+			// The descriptor's own words: "present only when the provider's region
+			// set is closed and known to us".
+			options: [
+				{ value: 'eu', label: 'Europe' },
+				{ value: 'us', label: 'United States' },
+			],
+			default: 'eu',
+			required: true,
+		},
+	],
+}));
+
+vi.mock('~/composables/setupWizardCredentials', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('~/composables/setupWizardCredentials')>();
+	return {
+		...actual,
+		credentialFieldsFor: (kind: string | null | undefined) =>
+			kind === NEXT_KIND ? NEXT_FIELDS : actual.credentialFieldsFor(kind),
+	};
+});
 
 const KINDS = CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind);
 
@@ -91,7 +135,62 @@ describe('TransportCredentialFields — one renderer, every kind', () => {
 	it('renders the entry’s own operator guidance where it declares one', () => {
 		// Mandrill's descriptor carries the note about the SIGNING key it does not
 		// collect here; it travels with the provider, not with this component.
-		expect(mountFields('mandrill').wrapper.text()).toContain('MANDRILL_WEBHOOK_KEY');
+		const text = mountFields('mandrill').wrapper.text();
+		expect(text).toContain('MANDRILL_WEBHOOK_KEY');
+		// …including the POINTER at the card that issues it. Told they need a
+		// second variable and not where it comes from, an operator is stuck — which
+		// is why both hand-written blocks closed with this clause.
+		expect(text).toContain('the webhook card on the delivery page has the URL');
+	});
+
+	it('typesets the variable names inside that guidance as code', () => {
+		// Both shipped blocks wrapped the variable in a `<code>`: it is the one
+		// token in the sentence that has to be copied exactly. Matched by SHAPE, so
+		// the prose around it stays prose.
+		const wrapper = mountFields('mandrill').wrapper;
+		expect(wrapper.findAll('code').map((node) => node.text())).toEqual(['MANDRILL_WEBHOOK_KEY']);
+		// And the sentence still reads as declared — no space introduced where the
+		// runs were joined.
+		expect(wrapper.find('p.text-xs').text()).toBe(credentialFieldsFor('mandrill')[0]!.description);
+	});
+});
+
+describe('TransportCredentialFields — a descriptor shape no shipped kind uses yet', () => {
+	it('draws a region-select with a declared option set as a picker', () => {
+		// The silent failure this closes: `options` is part of the vocabulary, and a
+		// renderer whose only special cases were host-port/select/boolean dropped
+		// them on the floor and handed the operator a free-text box — with a green
+		// build and a green suite, because no shipped entry declares a closed region
+		// set.
+		const values: TransportCredentialValues = {};
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: NEXT_KIND,
+				values,
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+			},
+			global: { stubs: wizardStubs },
+		});
+		const select = wrapper.find('#field-sending-region');
+		expect(select.element.tagName).toBe('SELECT');
+		expect(wrapper.findAll('#field-sending-region option').map((o) => o.text())).toEqual([
+			'Europe',
+			'United States',
+		]);
+		// Seeded from the descriptor's default, and writing straight onto the
+		// declared variable.
+		expect((select.element as HTMLSelectElement).value).toBe('eu');
+		select.setValue('us');
+		expect(values['ACME_REGION']).toBe('us');
+	});
+
+	it('leaves a region-select with no declared set as the free-text input SES ships', () => {
+		// SES's region list changes when AWS adds a region, so its descriptor
+		// deliberately declares none — and the shipped form is a text box.
+		const region = mountFields('ses').wrapper.find('#field-region');
+		expect(region.element.tagName).toBe('INPUT');
+		expect(region.attributes('placeholder')).toBe('us-east-1');
 	});
 });
 
