@@ -20,9 +20,13 @@
  *
  *    IT USED TO SAY "SMTP reply classification" HERE, and in the note the UI
  *    renders. Microsoft is unusually explicit in its 5xx text and the MTA does
- *    classify it, but nothing carries those per-category counts into Convex per
- *    (cell, arm), so the ramp reads none of it (issue #501). The substitution
- *    below names what the cell actually runs on.
+ *    classify it — and since issue #501 those categories DO reach Convex. What
+ *    still makes the claim wrong for this entry is scope: the clause that reads
+ *    them (`evaluateSmtpBlockMessages`) belongs to the STANDALONE evaluator, and
+ *    this substitution applies to relay-equipped deployments too, where gate 2
+ *    is the deferral rate alone. Naming it here would promise a signal half the
+ *    cells it covers do not run. The substitution below names what every cell it
+ *    covers actually runs on.
  */
 
 import {

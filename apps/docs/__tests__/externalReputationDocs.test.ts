@@ -55,8 +55,11 @@ describe('external reputation provider guidance', () => {
 		// The substitution the page names has to be the one the table applies
 		// (`ramp/degradationMatrix.ts`, the `microsoft_snds` entry). It said "SMTP
 		// reply classification" until issue #501 established that no deployment
-		// carries those categories into Convex — a page promising a signal the ramp
-		// does not read is the same defect as a gate clause with no producer.
+		// carried those categories into Convex. They do now — and the entry still
+		// may not name it, because the clause that reads them belongs to the
+		// standalone evaluator while this substitution covers relay-equipped cells
+		// too. A page promising a signal half the cells it describes never consult
+		// is the same defect, on a smaller share of deployments.
 		expect(feedbackDoc).toMatch(/outcomes of\s+its own sends/i);
 		expect(feedbackDoc).not.toMatch(/SMTP reply\s+classification/i);
 	});

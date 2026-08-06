@@ -63,14 +63,18 @@ export type RampIntegrationPresence = Readonly<Record<RampIntegrationId, boolean
  * dashboard renders these and the audit row records them: "the microsoft cell is
  * running on its own outcome counters" is a fact the table produced.
  *
- * A SOURCE HAS TO BE SOMETHING A DEPLOYMENT ACTUALLY RUNS ON. `smtp_classification`
- * was in this list and named by the Microsoft entry below; the classifier that
- * produces those categories runs in the MTA and nothing carries its per-category
- * counts into Convex, so the gate clause it would feed has a reader and no
- * producer (issue #501). A source nobody supplies is a sentence the operator is
- * told and a row the audit trail keeps about a signal that never ran, which is
- * the defect this wave exists to repair — so the name lands here again with its
- * supplier, not before it.
+ * A SOURCE HAS TO BE SOMETHING EVERY CELL IT IS CLAIMED FOR ACTUALLY RUNS ON.
+ * `smtp_classification` was in this list and named by the Microsoft entry below.
+ * Its producer now exists — issue #501 wired the MTA's categories into
+ * `analytics/smtpResponseCategories.ts` — but the name still does not belong
+ * here, and for a second reason the first one hid: the clause that reads those
+ * counts (`evaluateSmtpBlockMessages`) is on the STANDALONE evaluator alone,
+ * while every entry in this table applies to relay-equipped deployments too. A
+ * source this table names is rendered on the cell's confidence note and recorded
+ * in every audit row for it, so naming it would tell a relay-equipped operator
+ * their Microsoft cell runs on a signal its evaluator never consults. Making
+ * the entry conditional on the evaluator is a change to the table's shape, not a
+ * line in this list.
  */
 export const RAMP_SUBSTITUTE_SOURCES = [
 	/** The warming-pace multiplier stands in for the share actuator (D3). */
@@ -200,13 +204,15 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		// sends.
 		//
 		// NOT `smtp_classification`, which this entry claimed until issue #501 was
-		// read to the end. Microsoft IS unusually explicit in its 5xx text and the
-		// MTA does classify it — but that classification never leaves the MTA: no
-		// row carries per-category counts per (cell, arm) into Convex, so the gate
-		// clause that would consume them (`evaluateSmtpBlockMessages`) has a reader
-		// and no producer. Naming it here put a signal no deployment runs on the
-		// cell's confidence note and in every audit row for that cell. The name
-		// comes back when the telemetry surface does.
+		// read to the end. Microsoft IS unusually explicit in its 5xx text, the MTA
+		// does classify it, and since #501 those per-category counts DO reach Convex
+		// per (cell, arm). What still disqualifies the name is SCOPE: the clause
+		// that consumes them (`evaluateSmtpBlockMessages`) runs on the standalone
+		// evaluator only, and this entry covers relay-equipped deployments too,
+		// whose gate 2 is the deferral rate alone. Naming it here would put on the
+		// cell's confidence note — and in every audit row for that cell — a signal
+		// half the deployments it covers never consult. The name comes back when
+		// the table can express the condition.
 		//
 		// `seed_placement` IS CONDITIONAL, exactly as it is on the Gmail entry
 		// above, and the table cannot express the condition because the fold unions
