@@ -18,16 +18,18 @@
  * were still spelled `providerKind === 'mta'` — identity binding, message-id
  * substitution, acceptance, and the reconciliation of an ambiguous acceptance.
  * They are now declared on the catalog entry (`acceptanceSemantics`,
- * `messageIdSource`), and `describe('governed dispatch reads the declared
- * semantics')` below proves the boundary obeys the DECLARATION by driving sends
- * whose declarations contradict their kind.
+ * `messageIdSource`); `describe('declared dispatch semantics')` below PINS those
+ * declarations against the real, unmocked catalog, and the proof that the
+ * governed boundary obeys the declaration rather than the kind name lives beside
+ * the function it tests, in
+ * `delivery/__tests__/governedDispatch.test.ts` → `describe('reads the declared
+ * dispatch semantics, not the kind')`.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ActionCtx } from '../../../_generated/server';
 import { buildDispatchExtrasFor, providerFor } from '../index';
 import {
 	acceptanceSemanticsFor,
@@ -35,8 +37,6 @@ import {
 	preassignsProviderMessageId,
 	SEND_PROVIDER_CATALOG,
 	SEND_PROVIDER_KINDS,
-	type AcceptanceSemantics,
-	type MessageIdSource,
 } from '../catalog';
 import type {
 	DispatchExtrasInput,
@@ -45,40 +45,6 @@ import type {
 	SendProviderKind,
 	SmtpExtras,
 } from '../types';
-
-/**
- * The governed boundary is driven through mocked routing + dispatch so a single
- * send can be replayed under DECLARED semantics that deliberately disagree with
- * the kind's identity — the only way to prove the boundary reads the catalog
- * rather than the kind name (plan D2).
- */
-const resolveLastMileRouting = vi.hoisted(() => vi.fn());
-const sendProviderDispatch = vi.hoisted(() => vi.fn());
-const declared = vi.hoisted(() => ({
-	current: null as null | { acceptanceSemantics: string; messageIdSource: string },
-}));
-
-vi.mock('../../../delivery/lastMileRouting', () => ({ resolveLastMileRouting }));
-vi.mock('../dispatch', () => ({ sendProviderDispatch }));
-// Pass-through by default: every other consumer in the graph (the registry, the
-// extras builders above) keeps the real catalog. Only the two semantics
-// accessors are steerable, and only while a test sets `declared.current`.
-vi.mock('../catalog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../catalog')>();
-	return {
-		...actual,
-		acceptanceSemanticsFor: (kind: SendProviderKind) =>
-			declared.current?.acceptanceSemantics ?? actual.acceptanceSemanticsFor(kind),
-		messageIdSourceFor: (kind: SendProviderKind) =>
-			declared.current?.messageIdSource ?? actual.messageIdSourceFor(kind),
-		preassignsProviderMessageId: (kind: SendProviderKind) =>
-			(declared.current?.messageIdSource ?? actual.messageIdSourceFor(kind)) === 'idempotency-key',
-	};
-});
-
-// Imported AFTER the mock declarations for readability only — `vi.mock` is
-// hoisted above every import in this file.
-import { dispatchGovernedEmail, type WorkerRetryState } from '../../../delivery/governedDispatch';
 
 const ENVELOPE_INPUT = {
 	kind: 'campaign',
@@ -408,6 +374,13 @@ describe('the module contract', () => {
 	});
 });
 
+/**
+ * WHAT EACH SHIPPED KIND DECLARES — read from the REAL catalog. Nothing in this
+ * file mocks `../catalog`, deliberately: a steerable accessor here could report
+ * whatever a test had last set and these pins would then pass for any catalog
+ * content. The suite that does need to steer the declarations
+ * (`delivery/__tests__/governedDispatch.test.ts`) keeps its mock to itself.
+ */
 describe('declared dispatch semantics', () => {
 	/**
 	 * Each core kind must ANSWER both questions — `CoreSendProviderCatalogEntry`
@@ -451,210 +424,6 @@ describe('declared dispatch semantics', () => {
 				expect(preassignsProviderMessageId(entry.kind)).toBe(false);
 			}
 		}
-	});
-});
-
-/**
- * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND (plan P0.1 / D2).
- *
- * Four behaviours used to be spelled `providerKind === 'mta'` in
- * `delivery/governedDispatch.ts`: the pre-dispatch identity binding, the
- * message-id substitution, `acceptedForDelivery`, and the replay-reconciliation
- * arm of an ambiguous acceptance. Each case below drives a send whose DECLARED
- * semantics contradict its kind — custody on a relay, none on the MTA — so the
- * suite fails against the identity checks and passes only against declarations.
- */
-describe('governed dispatch reads the declared semantics', () => {
-	const IDEMPOTENCY_KEY = 'send_send-row-1';
-	const SEND_REF = { kind: 'campaign' as const, id: 'send-row-1' as never };
-	const GOVERNED_REQUEST = {
-		envelopeInput: ENVELOPE_INPUT,
-		deliveryDomain: 'production' as const,
-		messageType: 'campaign' as const,
-		to: 'recipient@example.com',
-		from: 'sender@example.com',
-		organizationId: 'org-1',
-		sendRef: SEND_REF,
-		message: { subject: 'Subject', html: '<p>Body</p>', text: 'Body' },
-	};
-
-	const runMutation = vi.fn();
-	const ctx = { runMutation } as unknown as ActionCtx;
-
-	function declare(acceptanceSemantics: AcceptanceSemantics, messageIdSource: MessageIdSource) {
-		declared.current = { acceptanceSemantics, messageIdSource };
-	}
-
-	function routeTo(providerKind: SendProviderKind) {
-		resolveLastMileRouting.mockResolvedValue({
-			kind: 'ready',
-			providerKind,
-			route: null,
-			organizationId: 'org-1',
-		});
-	}
-
-	function providerAnswers(providerType: SendProviderKind, result: Record<string, unknown>) {
-		sendProviderDispatch.mockResolvedValue({ result, providerType, latencyMs: 9, attempts: 1 });
-	}
-
-	/** The identity-binding mutation is the only one carrying a message id. */
-	function identityBindings(): unknown[] {
-		return runMutation.mock.calls
-			.map((call) => call[1] as Record<string, unknown>)
-			.filter((args) => args['providerMessageId'] !== undefined);
-	}
-
-	beforeEach(() => {
-		declared.current = null;
-		resolveLastMileRouting.mockReset();
-		sendProviderDispatch.mockReset();
-		runMutation.mockReset();
-		runMutation.mockImplementation(async (_ref: unknown, args: Record<string, unknown>) =>
-			args['providerMessageId'] === undefined
-				? { token: 'reentry-token', expiresAt: Date.now() }
-				: { ok: true }
-		);
-	});
-
-	describe('a transport that DECLARES custody — proven on a relay kind', () => {
-		beforeEach(() => {
-			declare('accepted', 'idempotency-key');
-			routeTo('smtp');
-		});
-
-		it('binds the pre-assigned identity before crossing the network', async () => {
-			providerAnswers('smtp', { success: true, id: 'relay-assigned-id' });
-
-			await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(identityBindings()).toEqual([{ send: SEND_REF, providerMessageId: IDEMPOTENCY_KEY }]);
-		});
-
-		it('records OUR id, not the one the response carried', async () => {
-			providerAnswers('smtp', { success: true, id: 'a-dedup-sentinel' });
-
-			expect(await dispatchGovernedEmail(ctx, GOVERNED_REQUEST)).toEqual({
-				success: true,
-				providerMessageId: IDEMPOTENCY_KEY,
-				providerType: 'smtp',
-				sendLatencyMs: 9,
-				acceptedForDelivery: true,
-			});
-		});
-
-		it('replays an ambiguous acceptance instead of parking it', async () => {
-			providerAnswers('smtp', {
-				success: false,
-				errorCode: 'AMBIGUOUS_TIMEOUT',
-				errorMessage: 'request outcome unknown',
-				acceptanceUnknown: true,
-			});
-
-			const result = await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(result).toMatchObject({
-				success: false,
-				acceptanceUnknown: true,
-				providerMessageId: IDEMPOTENCY_KEY,
-				workAttemptId: expect.any(String),
-				envelopeInput: ENVELOPE_INPUT,
-				retryState: { acceptanceReconciliation: true },
-			});
-			// The park arm is the OTHER answer to the same ambiguity; a custody
-			// transport must not take it, or the reconciliation never happens.
-			expect('awaitingProviderFeedback' in result).toBe(false);
-		});
-	});
-
-	describe('a transport that declares NO custody — proven on the MTA kind', () => {
-		beforeEach(() => {
-			declare('unknown-on-timeout', 'provider');
-			routeTo('mta');
-		});
-
-		it('binds no identity — the id does not exist until the response carries it', async () => {
-			providerAnswers('mta', { success: true, id: 'provider-assigned-id' });
-
-			await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(identityBindings()).toEqual([]);
-		});
-
-		it('records the provider id and claims no acceptance', async () => {
-			providerAnswers('mta', { success: true, id: 'provider-assigned-id' });
-
-			const result = await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(result).toEqual({
-				success: true,
-				providerMessageId: 'provider-assigned-id',
-				providerType: 'mta',
-				sendLatencyMs: 9,
-			});
-			// Absent, not present-and-false: `sendCompletion` reads this key's
-			// presence to decide whether a Send stays queued for feedback.
-			expect('acceptedForDelivery' in result).toBe(false);
-		});
-
-		it('parks an ambiguous acceptance on the feedback channel instead of replaying it', async () => {
-			providerAnswers('mta', {
-				success: false,
-				errorCode: 'AMBIGUOUS_TIMEOUT',
-				errorMessage: 'request outcome unknown',
-				acceptanceUnknown: true,
-			});
-
-			const result = await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(result).toEqual({
-				success: false,
-				acceptanceUnknown: true,
-				awaitingProviderFeedback: true,
-				providerType: 'mta',
-				startedAt: expect.any(Number),
-				retryState: expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }),
-			});
-			// The park arm hands the retry state back UNMARKED: a reconciliation flag
-			// here would send the next attempt down the replay path this transport
-			// has no idempotency surface for.
-			expect(
-				(result as { retryState: WorkerRetryState }).retryState.acceptanceReconciliation
-			).toBeUndefined();
-		});
-	});
-
-	describe('the shipped declarations keep the shipped behaviour', () => {
-		it('the own MTA still binds, substitutes, and reports acceptance', async () => {
-			routeTo('mta');
-			providerAnswers('mta', { success: true, id: 'mta-dedup-sentinel' });
-
-			const result = await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(identityBindings()).toEqual([{ send: SEND_REF, providerMessageId: IDEMPOTENCY_KEY }]);
-			expect(result).toEqual({
-				success: true,
-				providerMessageId: IDEMPOTENCY_KEY,
-				providerType: 'mta',
-				sendLatencyMs: 9,
-				acceptedForDelivery: true,
-			});
-		});
-
-		it('a relay still records the id its send produced, unbound and unaccepted', async () => {
-			routeTo('smtp');
-			providerAnswers('smtp', { success: true, id: 'relay-message-id' });
-
-			const result = await dispatchGovernedEmail(ctx, GOVERNED_REQUEST);
-
-			expect(identityBindings()).toEqual([]);
-			expect(result).toEqual({
-				success: true,
-				providerMessageId: 'relay-message-id',
-				providerType: 'smtp',
-				sendLatencyMs: 9,
-			});
-		});
 	});
 });
 
