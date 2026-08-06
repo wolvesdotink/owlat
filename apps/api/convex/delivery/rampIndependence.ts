@@ -8,13 +8,34 @@
  * so the page and the server cannot disagree about a figure an operator is about
  * to put in front of their boss.
  *
- * D14 IS THE WHOLE SHAPE OF THIS FILE. With no reference transport there is
- * nothing to become independent OF, so the screen is not a degraded
- * "Independence" — it is "Warm-up autopilot", whose headline is TODAY'S CAPACITY
- * and what is holding it back. Both variants are answered here, from the same
- * read, and neither is an error state: `spendAvoidedMinorUnits` is simply `null`
- * when nobody has recorded a relay price, and the projection is
- * `already_independent` rather than "unknown".
+ * D14 IS THE WHOLE SHAPE OF THIS FILE. With NO RELAY AT ALL there is nothing to
+ * become independent OF, so the screen is not a degraded "Independence" — it is
+ * "Warm-up autopilot", whose headline is TODAY'S CAPACITY and what is holding it
+ * back. Both variants are answered here, from the same read, and neither is an
+ * error state: `spendAvoidedMinorUnits` is simply `null` when nobody has
+ * recorded a relay price, and the projection is `already_independent` rather
+ * than "unknown".
+ *
+ * WHICH READING OF THE RELAY LIST DECIDES THAT VARIANT (#513). Every figure on
+ * this screen keys on `isRelayConfigured` — "is there a second sender AT ALL" —
+ * and NOT on `referenceTransportId`, which is the narrower "is there exactly one
+ * kind to NAME". They disagree on a deployment relaying through two kinds, and
+ * that disagreement used to frame it as standalone: the reference arm was not
+ * read, so the relay's sends were structurally absent from the denominator, the
+ * share came out 1, and `relayRemoval` answered `safe`. That last one is a
+ * GUARD, not a sentence — `apps/web/server/api/delivery/apply-transport.post.ts`
+ * demands no confirmation phrase on `safe` — so the misreading skipped the
+ * RELAY_REMOVAL_CONFIRMATION path on cells still leaning on a relay an apply was
+ * about to disconnect. `referenceTransportId` survives on the summary for the
+ * one job it is honest at: NAMING the relay in copy, with `null` meaning "more
+ * than one, so no single name" and the shared copy saying "the relay".
+ *
+ * The measured arm is not the reading either, and neither is the
+ * `hasSecondSender` union beside it in `relayConfiguration.ts`: a graduated cell
+ * sits at full share and measures no reference arm by construction, so the
+ * measurement alone would deny a relay the operator is looking at, and the
+ * union's degradation half would put an `unsafe` removal warning on a genuinely
+ * standalone deployment that has no relay to remove.
  *
  * THE PRICE COMES FROM SETTINGS, NOT FROM A NEW TABLE (plan D4). An admin
  * records what their relay charges per thousand messages on the existing
@@ -50,7 +71,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
 import { loadRouteStatesByCell } from '../lib/deliverabilityRouteState';
-import { referenceRelayTransportId } from './relayConfiguration';
+import { relayConfiguration } from './relayConfiguration';
 import { loadWarmingCapacity } from './warmingCapacity';
 
 /** How much history the stacked chart shows. Bounded by the 90-day retention. */
@@ -79,8 +100,19 @@ export interface WarmupCapacityHeadline {
 
 export interface IndependenceSummary {
 	readonly generatedAt: number;
-	/** The deployment's second arm, or `null` for a standalone install (D14). */
+	/**
+	 * The deployment's second arm BY NAME, or `null` when there is no single one
+	 * to name — which is BOTH a standalone install and one relaying through two
+	 * kinds. Read it to word copy, never to decide whether a relay exists:
+	 * {@link IndependenceSummary.isRelayConfigured} is that question (#513).
+	 */
 	readonly referenceTransportId: string | null;
+	/**
+	 * Is there a second sender AT ALL — the reading every figure below keys on,
+	 * and the same one `getDeliverabilityDashboard` publishes off the same scan,
+	 * so the two queries cannot describe one deployment two ways.
+	 */
+	readonly isRelayConfigured: boolean;
 	/** Own-arm share of everything sent in the window, or `null` for no traffic. */
 	readonly ownShare: number | null;
 	readonly series: readonly IndependenceDayPoint[];
@@ -107,7 +139,7 @@ export interface IndependenceSummary {
  */
 async function readIndependenceSeries(
 	ctx: QueryCtx,
-	args: { organizationId: string; sinceDay: number; untilDay: number; hasReferenceArm: boolean }
+	args: { organizationId: string; sinceDay: number; untilDay: number; isRelayConfigured: boolean }
 ): Promise<IndependenceDayPoint[]> {
 	const own = new Map<number, number>();
 	const reference = new Map<number, number>();
@@ -123,9 +155,13 @@ async function readIndependenceSeries(
 	//
 	// The reference arm is not read at all on a standalone deployment: there is no
 	// second arm, so those fifteen ranges could only ever come back empty (D2).
+	// THE SKIP KEYS ON "IS THERE A RELAY AT ALL", never on "is there exactly one
+	// to name" (#513): under the narrower reading a two-relay deployment skipped
+	// the reads, and the relay's sends went missing from the denominator rather
+	// than merely unnamed — a share of 1 on a deployment relaying half its mail.
 	const reads = allDeliverabilityCells().flatMap((cell) => {
 		const cellKey = deliverabilityCellKey(cell);
-		const arms: readonly ('own' | 'reference')[] = args.hasReferenceArm
+		const arms: readonly ('own' | 'reference')[] = args.isRelayConfigured
 			? ['own', 'reference']
 			: ['own'];
 		return arms.map(async (arm) => ({
@@ -188,18 +224,19 @@ export const getIndependenceSummary = authedQuery({
 		const now = Date.now();
 		const untilDay = utcDayStart(now) + DAY_MS;
 		const sinceDay = untilDay - INDEPENDENCE_WINDOW_DAYS * DAY_MS;
-		const referenceTransportId = await referenceRelayTransportId(ctx);
-		const hasReferenceArm = referenceTransportId !== null;
+		// BOTH READINGS, FROM ONE SCAN. The id NAMES the arm; the boolean decides
+		// whether there is one — see the header (#513).
+		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
 		const series = await readIndependenceSeries(ctx, {
 			organizationId,
 			sinceDay,
 			untilDay,
-			hasReferenceArm,
+			isRelayConfigured,
 		});
 		const projection = projectIndependenceDate({
 			points: series,
 			now,
-			hasReferenceTransport: hasReferenceArm,
+			hasReferenceTransport: isRelayConfigured,
 		});
 		const cells = await readCellPositions(ctx, organizationId);
 		const monthToDateOwnSends = ownSendsSince(series, utcMonthStart(now));
@@ -217,7 +254,7 @@ export const getIndependenceSummary = authedQuery({
 		// formatted under a guessed one.
 		const storedCurrency = settings?.relayCurrency;
 		const hasPrice =
-			hasReferenceArm &&
+			isRelayConfigured &&
 			storedPrice !== undefined &&
 			Number.isFinite(storedPrice) &&
 			storedPrice > 0 &&
@@ -228,6 +265,7 @@ export const getIndependenceSummary = authedQuery({
 		return {
 			generatedAt: now,
 			referenceTransportId,
+			isRelayConfigured,
 			ownShare: independenceShare(series),
 			series,
 			projection,
@@ -237,10 +275,13 @@ export const getIndependenceSummary = authedQuery({
 			}),
 			spendAvoidedCurrency: hasPrice ? (storedCurrency ?? null) : null,
 			monthToDateOwnSends,
-			relayRemoval: hasReferenceArm
+			relayRemoval: isRelayConfigured
 				? assessRelayRemoval({ cells, projection })
-				: // Nothing to remove, so nothing to warn about. Not an error, not a
-					// "setup incomplete": this is the supported standalone shape (D2).
+				: // NO RELAY AT ALL: nothing to remove, so nothing to warn about. Not an
+					// error, not a "setup incomplete" — the supported standalone shape (D2),
+					// and the only configuration that may reach this branch. Two relay kinds
+					// took it too until #513, and `safe` is what the apply-transport endpoint
+					// skips its confirmation phrase on.
 					{ kind: 'safe' },
 			capacity: {
 				remainingToday: capacityProjection?.remainingToday ?? null,
