@@ -146,8 +146,10 @@ describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
 			}
 			// The vendor names behind the labels, spelled out: a future rewording
 			// that says "Amazon" or "Mailchimp" without the exact label would slip
-			// past the loop above.
-			expect(message).not.toMatch(/amazon|mailchimp|mandrill|resend|postmark|sendgrid/i);
+			// past the loop above. Only names that are NOT catalog kinds belong
+			// here — the loop owns `mandrill` and `resend`, on word boundaries, and
+			// substring-matching `resend` would fail an innocent "before resending".
+			expect(message).not.toMatch(/amazon|mailchimp|postmark|sendgrid/i);
 		}
 	});
 

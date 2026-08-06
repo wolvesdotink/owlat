@@ -153,10 +153,14 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	describeIdentity(identity: ProviderIdentityFor<K>): string;
 
 	/**
-	 * Optional per-provider verification check. Today only SES has one
-	 * (live `getVerificationStatus` call); MTA omits it (the lifecycle
-	 * treats absent as `{ verified: true }`). Called by the DNS verifier
+	 * Optional per-provider verification check, called by the DNS verifier
 	 * action before `recordVerification`.
+	 *
+	 * A capability, not a kind: whichever kinds hold a provider-side opinion
+	 * about whether the domain is verified implement it (today SES's live
+	 * `getVerificationStatus` and Mandrill's `check-domain`). A kind with no
+	 * such API omits it — our own MTA does — and the lifecycle treats absent as
+	 * `{ verified: true }`, i.e. the DNS evidence stands alone.
 	 */
 	runProviderCheck?(domain: string): Promise<ProviderCheckResult>;
 
