@@ -105,13 +105,13 @@ describe('the pre-apply handshake is a declared capability', () => {
 		const draft = useRelayCredentialDraft('smtp');
 		draft.credentialValues['SMTP_RELAY_PORT'] = '   ';
 		await draft.validateLive();
-		expect((bodies[0]?.['smtp'] as { port: number }).port).toBe(
+		expect((bodies[0]!['smtp'] as { port: number }).port).toBe(
 			Number(hostPortFieldFor('smtp')?.portDefault)
 		);
 
 		draft.credentialValues['SMTP_RELAY_PORT'] = '2525';
 		await draft.validateLive();
-		expect((bodies[1]?.['smtp'] as { port: number }).port).toBe(2525);
+		expect((bodies[1]!['smtp'] as { port: number }).port).toBe(2525);
 		// NOT `unstubAllGlobals`: the shared setup file installs Vue's reactivity
 		// primitives as globals, and clearing every stub would take those with it.
 	});

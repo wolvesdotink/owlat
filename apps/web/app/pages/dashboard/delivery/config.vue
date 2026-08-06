@@ -46,6 +46,15 @@ const feedbackWebhookUrl = computed(() =>
 
 // Live "last event received" — enabled only for the SNS panel so we don't poll
 // otherwise.
+//
+// STILL A PER-KIND QUERY, and knowingly so, exactly like the signed-webhook read
+// below: `getLastSesEventAt` reads SES's own event table, while the gate above it
+// is now a MECHANISM (`setupPanel: 'sns-topic'`). Only SES declares that panel
+// today, so the pair is correct — but a second SNS kind would render this card's
+// "Last event received" from SES's table under ITS name, reporting another
+// provider's feedback health as its own. Generalising the read to "the active
+// transport's last feedback event" is the webhook-registry piece's (the seams
+// plan's P2.1), which is where a second `sns-topic` kind must land it.
 const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
 	feedbackPanel.value === 'sns-topic' ? {} : undefined
 );
