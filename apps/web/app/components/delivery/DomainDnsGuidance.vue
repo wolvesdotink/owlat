@@ -10,6 +10,7 @@
  * member-safe `getTransportSummary` for the active kind.
  */
 import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
+import { coreSendProviderCatalogEntry } from '@owlat/shared/sendProviderCatalog';
 import { api } from '@owlat/api';
 import { TRANSPORT_LABEL } from '~/utils/transportState';
 
@@ -20,12 +21,45 @@ interface Guidance {
 	points: string[];
 }
 
+/**
+ * WHAT A TRANSPORT WITHOUT ITS OWN PARAGRAPH SAYS — derived from the catalog's
+ * `domainVerification` capability (the seams plan's D5), because that capability
+ * IS the answer to "how does this domain become mine for sending?".
+ *
+ * `api` means the provider has an identity API we (or the operator) register the
+ * domain with, so the ownership step is real and separate from the DNS.
+ * `none` means the transport publishes nothing about the domain and the records
+ * are the provider's own to document.
+ *
+ * A new provider therefore renders honest guidance the day it is declared,
+ * instead of the blank card (or the compile error) a per-kind table produced.
+ * The five paragraphs below are OVERRIDES — the copy each incumbent earned,
+ * kept verbatim — not the mechanism.
+ */
+const CAPABILITY_GUIDANCE: Record<'api' | 'none', Guidance> = {
+	api: {
+		lead: 'Your provider verifies this domain through its own identity API.',
+		points: [
+			'Publish the SPF and DKIM records your provider shows for this domain, exactly as displayed.',
+			'Then complete the provider’s own domain verification. Until that clears, it can reject mail from this domain no matter how good the DNS is.',
+			'Keep a DMARC record on the domain so receivers can check that SPF or DKIM aligns; your existing policy stays authoritative.',
+		],
+	},
+	none: {
+		lead: 'Your provider handles SPF and DKIM for you.',
+		points: [
+			'Follow your provider’s setup guide to add their SPF include and DKIM records for this domain.',
+			'Then confirm two things: your domain’s SPF authorizes the provider, and mail from it carries a DKIM signature that validates for your domain.',
+		],
+	},
+};
+
 // Copy keyed by transport kind. Static, plain-language, deliberately no DNS
 // generation — the records themselves live in the table below (MTA) or in the
-// provider’s own console (SES / SMTP / Resend). Keyed by DeliveryProviderKind so
-// a new transport is a compile error here, not a silently missing entry; the
-// human name comes from the shared TRANSPORT_LABEL.
-const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
+// provider’s own console (SES / SMTP / Resend). Each entry OVERRIDES the
+// capability-derived paragraph above with the wording that transport earned; a
+// kind with no entry falls back to its capability rather than to nothing.
+const GUIDANCE: Partial<Record<DeliveryProviderKind, Guidance>> = {
 	mta: {
 		lead: 'Owlat manages the DNS for you.',
 		points: [
@@ -73,7 +107,9 @@ const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
 const guidance = computed<{ label: string; lead: string; points: string[] } | null>(() => {
 	const kind = summary.value?.provider ?? undefined;
 	if (!isDeliveryProviderKind(kind)) return null;
-	return { label: TRANSPORT_LABEL[kind], ...GUIDANCE[kind] };
+	const entry = coreSendProviderCatalogEntry(kind);
+	const derived = CAPABILITY_GUIDANCE[entry?.domainVerification ?? 'none'];
+	return { label: TRANSPORT_LABEL[kind], ...(GUIDANCE[kind] ?? derived) };
 });
 
 const open = ref(false);
