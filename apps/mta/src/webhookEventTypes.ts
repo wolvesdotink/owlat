@@ -11,6 +11,7 @@ import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
 } from '@owlat/shared/mtaWebhookEvent';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type {
 	DestinationProviderKey,
 	InboundEmailPayload,
@@ -109,6 +110,13 @@ export interface MtaWebhookEvent {
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	/**
+	 * The classifier's verdict on ONE 4xx/5xx response (`smtp.classified` events),
+	 * in the SHARED vocabulary rather than in prose. Typed against
+	 * `@owlat/shared/smtpBlockCategories` so the string this service puts on the
+	 * wire and the string Convex narrows on the way in cannot drift apart.
+	 */
+	smtpCategory?: SmtpFailureCategory;
 	/** Confirmed IPv6 identity/SPF regression fields. */
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
