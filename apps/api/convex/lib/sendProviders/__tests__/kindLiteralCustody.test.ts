@@ -104,10 +104,13 @@ const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }>
 		family: 'adapter-adjacent',
 		owner: "one kind's reject-suppression sync moving beside its inbound adapter",
 	},
-	'lib/sendProviders/strategies/adaptive_mix/index.ts': {
-		family: 'definitional',
-		owner: 'nobody: OWN_ARM_TRANSPORT_KIND is D3’s one sanctioned declaration',
-	},
+	// `lib/sendProviders/strategies/adaptive_mix/index.ts` used to be here, as the
+	// one `definitional` entry: `OWN_ARM_TRANSPORT_KIND = 'mta'`. P1.1 made it a
+	// re-export of the catalog's `tier: 'own'` (`OWN_SEND_PROVIDER_KIND` in
+	// `@owlat/shared`), which carries the same literal type through
+	// `Extract<…, { tier: 'own' }>['kind']` — so the declaration is the catalog
+	// entry now, outside this rule's reach by construction, and D3's one
+	// sanctioned identity is spelled exactly once in the repo.
 };
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
@@ -240,8 +243,12 @@ describe('kind literals outside the adapter folders are an enumerated, shrinking
 			expect(entry.family, `${path} has no family`).toMatch(/^[a-z-]+$/);
 			expect(entry.owner.length, `${path} has no owner`).toBeGreaterThan(10);
 		}
+		// `definitional` used to be a third family, holding one entry:
+		// `OWN_ARM_TRANSPORT_KIND`. P1.1 made that a re-export of the catalog's
+		// `tier: 'own'`, so there is no definitional literal left inside
+		// apps/api/convex and the family is gone rather than empty.
 		expect(new Set(Object.values(SURVIVING_KIND_LITERALS).map((entry) => entry.family))).toEqual(
-			new Set(['frozen-sibling-read', 'adapter-adjacent', 'definitional'])
+			new Set(['frozen-sibling-read', 'adapter-adjacent'])
 		);
 	});
 });

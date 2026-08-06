@@ -68,16 +68,20 @@ describe('Send provider registry', () => {
 	}
 
 	it('reads the own arm from ONE declaration, in both packages', () => {
-		// Two names for one fact, and they must not drift. `OWN_ARM_TRANSPORT_KIND`
-		// is the backend's: a literal type that three compile-time guards key off,
-		// which is why it is still written out here. `OWN_SEND_PROVIDER_KIND` is
-		// DERIVED from `tier: 'own'` in `@owlat/shared`, for the packages that may
-		// not import backend code (apps/web, apps/setup-cli and shared itself) and
-		// used to restate `=== 'mta'` instead. A catalog that moved the tier to
-		// another entry without moving the constant fails here rather than in
-		// production, where it would mean the ramp and the UI disagree about which
-		// arm is ours.
+		// Two names, one declaration. `OWN_ARM_TRANSPORT_KIND` is a RE-EXPORT of
+		// `OWN_SEND_PROVIDER_KIND`, which is derived from the entry declaring
+		// `tier: 'own'` — so this pair can no longer drift at all, and the type-level
+		// half (`OwnSendProviderKind`, which the compile-time guards key off) fails
+		// the build rather than a test. What is still worth asserting at run time is
+		// the OTHER end: that the own arm is the kind the backend's composed catalog
+		// actually carries, and that the capability-shaped reading agrees with the
+		// constant — a catalog whose `own` tier moved would answer differently here
+		// before it reached production, where it would mean the ramp and the UI
+		// disagree about which arm is ours.
 		expect(OWN_ARM_TRANSPORT_KIND).toBe(OWN_SEND_PROVIDER_KIND);
+		expect(SEND_PROVIDER_CATALOG.find((entry) => entry.tier === 'own')?.kind).toBe(
+			OWN_ARM_TRANSPORT_KIND
+		);
 		expect(isOwnSendProviderKind(OWN_ARM_TRANSPORT_KIND)).toBe(true);
 	});
 

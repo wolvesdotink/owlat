@@ -25,6 +25,7 @@
  * handle is better than a confident wrong one.
  */
 
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared';
 import type { ProviderEntry, SendRouteStrategyModule } from '../types';
 import { decideMixAssignment } from './mix';
 import type { MixArm } from './mix';
@@ -55,21 +56,27 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * Resend, an SMTP relay, a plugin transport) is a reference arm.
  *
  * THE ONE IDENTITY THE SEAMS PLAN SANCTIONS (its D3): own vs. not-own is a
- * definition, not a branch on a provider's name, and this declaration plus its
+ * definition, not a branch on a provider's name, and this name plus its
  * domain-provider twin (`OWN_SENDING_DOMAIN_PROVIDER_KIND`, pinned equal to it
- * at build time) are where that definition lives. The rule is that every other
- * "is this our own MTA?" test READS one of the two rather than restating the
- * literal.
+ * at build time) are where that definition lives for backend code. The rule is
+ * that every other "is this our own MTA?" test READS one of the two rather than
+ * restating the literal.
  *
- * OUTSIDE apps/api IT IS THE CATALOG'S `tier: 'own'` — `OWN_SEND_PROVIDER_KIND`
- * and `isOwnSendProviderKind` in `@owlat/shared` (the seams plan's P1.1), which
- * DERIVE the same fact from the entry declaring that tier. `apps/web`,
- * `apps/setup-cli` and `packages/shared` may not import backend code, so before
- * the catalog moved they had no declaration to read and restated `=== 'mta'` in
- * seven places; those are gone. The constant here stays written out because it
- * carries a LITERAL TYPE that three compile-time guards key off (a value derived
- * with `find` cannot), and `lib/sendProviders/__tests__/registry.test.ts` pins
- * the two equal so the pair cannot drift.
+ * IT IS NOT A DECLARATION — it is a RE-EXPORT of the catalog's `tier: 'own'`
+ * (`OWN_SEND_PROVIDER_KIND` in `@owlat/shared`, the seams plan's P1.1), which
+ * DERIVES the same fact from the entry declaring that tier. Before the catalog
+ * moved, `apps/web`, `apps/setup-cli` and `packages/shared` — none of which may
+ * import backend code — had no declaration to read and restated `=== 'mta'` in
+ * seven places; those are gone, and so is the last backend literal, because the
+ * shared constant is typed `OwnSendProviderKind` (`Extract<…, { tier: 'own'
+ * }>['kind']`). That is a LITERAL type, which is what the three compile-time
+ * guards keying off `typeof OWN_ARM_TRANSPORT_KIND` need, so moving the tier to
+ * another entry now fails the BUILD instead of waiting for the runtime pin in
+ * `lib/sendProviders/__tests__/registry.test.ts`.
+ *
+ * The name survives the move because it says which VOCABULARY it belongs to:
+ * send-transport kinds, as opposed to the sending-domain provider kinds its twin
+ * lives in. Same string, two unions.
  *
  * THE OWN-ARM SWEEP IS DONE (the seams plan's P0.4). Every site outside the
  * adapter folders that asked "is this our own MTA?" now reads this constant or
@@ -91,10 +98,11 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
  *     `SURVIVING_KIND_LITERALS` in
  *     `lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, each entry with
- *     its family and its owner, asserted in both directions. This declaration is
- *     in it, as the one `definitional` entry; so, in spirit, is
- *     `domains/providers/mta/index.ts`'s `kind`, inside an adapter folder the
- *     rule does not reach. That map holds declarations ONLY.
+ *     its family and its owner, asserted in both directions. This file is no
+ *     longer in it: the `definitional` entry it used to hold went when the
+ *     constant below became a re-export. `domains/providers/mta/index.ts`'s
+ *     `kind` still spells one, inside an adapter folder the rule does not reach.
+ *     That map holds declarations ONLY.
  *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
  *     read by `bun run lint:providers` over `apps/`, `packages/` and
  *     `examples/`. Each entry sits under a family header naming the piece that
@@ -120,7 +128,7 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches
  * in `apps/web`, which P1.2 and its follow-up delete.
  */
-export const OWN_ARM_TRANSPORT_KIND = 'mta';
+export const OWN_ARM_TRANSPORT_KIND = OWN_SEND_PROVIDER_KIND;
 
 /** Both arms of a route, found in one pass so neither lookup can drift. */
 function armEntries(entries: readonly ProviderEntry[]): {
