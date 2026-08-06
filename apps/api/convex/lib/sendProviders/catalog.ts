@@ -1,7 +1,17 @@
 /** Isolate-safe catalog for built-in and statically bundled send transports. */
 
 import type { PluginId } from '@owlat/plugin-kit';
-import { CORE_SEND_PROVIDER_CATALOG_ENTRIES, isCoreSendProviderKind } from '@owlat/shared';
+import {
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	acceptanceSemanticsOf,
+	deduplicatesOnIdempotencyKeyOf,
+	domainVerificationOf,
+	hasProviderFeedbackOf,
+	isCoreSendProviderKind,
+	messageIdSourceOf,
+	supportsCustomReturnPathOf,
+	tagsFeedbackProvenanceOf,
+} from '@owlat/shared';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG } from '../../plugins/sendTransportCatalog.generated';
 import type {
 	AcceptanceSemantics,
@@ -54,13 +64,6 @@ export type {
 } from './catalogTypes';
 
 /**
- * The kinds that ship in this repo, from their one declaration. Aliased to the
- * name this file used while it held them, because that name is what the
- * completeness guard below and the docs-lint over the entries both read.
- */
-const CORE_SEND_PROVIDER_CATALOG = CORE_SEND_PROVIDER_CATALOG_ENTRIES;
-
-/**
  * The core kinds whose sending domains are verified through a provider API —
  * exactly the kinds `domains/providers` must register a domain-identity adapter
  * for (Mandrill plan D7 = the seams plan's P0.3).
@@ -71,7 +74,7 @@ const CORE_SEND_PROVIDER_CATALOG = CORE_SEND_PROVIDER_CATALOG_ENTRIES;
  * relay that silently reports every domain unverified.
  */
 export type ApiVerifiedSendProviderKind = Extract<
-	(typeof CORE_SEND_PROVIDER_CATALOG)[number],
+	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
 	{ domainVerification: 'api' }
 >['kind'];
 
@@ -166,7 +169,7 @@ assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
 assertPluginIdempotencyClaimsAreDeliverable(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([
-	...CORE_SEND_PROVIDER_CATALOG,
+	...CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	...pluginCatalog,
 ]);
 
@@ -195,12 +198,23 @@ export function sendProviderCatalogEntry(kind: SendProviderKind): SendProviderCa
 }
 
 /**
+ * THE ACCESSORS BELOW ARE A LOOKUP PLUS A RULE, AND ONLY THE LOOKUP IS THIS
+ * FILE'S. Each resolves a kind against the COMPOSED catalog — core entries plus
+ * the bundled plugin tier, which is why they cannot live in `@owlat/shared` —
+ * and then defers the fail-closed default to that package's `…Of(entry)`
+ * accessor, which is where each field's docblock states the rule. Web and the
+ * CLI hold `coreSendProviderCatalogEntry` results and call the same `…Of`, so
+ * the two consumers apply ONE rule through two lookups rather than each
+ * restating a `?? false`.
+ */
+
+/**
  * This kind's declared sending-domain verification path, with the fail-closed
  * default applied. Read it instead of the raw field so an absent declaration
  * can never be mistaken for `api`.
  */
 export function domainVerificationFor(kind: SendProviderKind): DomainVerificationSupport {
-	return sendProviderCatalogEntry(kind).domainVerification ?? 'none';
+	return domainVerificationOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -215,7 +229,7 @@ export function domainVerificationFor(kind: SendProviderKind): DomainVerificatio
  * still speak to it. A kind with no feedback at all has nothing to wait for.
  */
 export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
-	return sendProviderCatalogEntry(kind).hasProviderFeedback === true;
+	return hasProviderFeedbackOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -227,7 +241,7 @@ export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
  * acceptance sites in `delivery/governedDispatch.ts` (the seams plan's D2).
  */
 export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemantics {
-	return sendProviderCatalogEntry(kind).acceptanceSemantics ?? 'unknown-on-timeout';
+	return acceptanceSemanticsOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -236,7 +250,7 @@ export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemant
  * declaration can never be mistaken for an id we control.
  */
 export function messageIdSourceFor(kind: SendProviderKind): MessageIdSource {
-	return sendProviderCatalogEntry(kind).messageIdSource ?? 'provider';
+	return messageIdSourceOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -288,7 +302,7 @@ export function takesCustodyOnAcceptance(semantics: AcceptanceSemantics): boolea
  * accessor adds is the default.
  */
 export function deduplicatesOnIdempotencyKeyFor(kind: SendProviderKind): boolean {
-	return sendProviderCatalogEntry(kind).deduplicatesOnIdempotencyKey === true;
+	return deduplicatesOnIdempotencyKeyOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -300,7 +314,7 @@ export function deduplicatesOnIdempotencyKeyFor(kind: SendProviderKind): boolean
  * and the true one for every transport that is not ours.
  */
 export function tagsFeedbackProvenanceFor(kind: SendProviderKind): boolean {
-	return sendProviderCatalogEntry(kind).tagsFeedbackProvenance === true;
+	return tagsFeedbackProvenanceOf(sendProviderCatalogEntry(kind));
 }
 
 /**
@@ -315,5 +329,5 @@ export function tagsFeedbackProvenanceFor(kind: SendProviderKind): boolean {
  * on proving a capability the routing gate never consults.
  */
 export function isProbeDecidedReturnPathKind(kind: SendProviderKind): boolean {
-	return catalogByKind.get(kind)?.supportsCustomReturnPath === 'probe';
+	return supportsCustomReturnPathOf(catalogByKind.get(kind)) === 'probe';
 }

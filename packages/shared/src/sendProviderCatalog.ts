@@ -25,8 +25,9 @@
  * DATA ONLY — labels, typed field descriptors, env NAMES. Never env values,
  * never secrets, never adapter code: this module is in the web client bundle.
  * The vocabulary it is written in lives in `./sendProviderCatalogTypes` and
- * `./sendProviderCredentialFields`, both re-exported here so consumers import
- * one module.
+ * `./sendProviderCredentialFields`, and the fail-closed default behind each
+ * optional capability field lives in `./sendProviderCapabilities`. All three are
+ * re-exported here so consumers import one module.
  *
  * ENTRY ORDER IS THE CANONICAL ORDER. `SEND_TRANSPORT_KINDS` and every table
  * derived from it follow it: our own MTA first, then the relays in the order
@@ -45,6 +46,7 @@ import type {
 	SendProviderCatalogEntryShape,
 } from './sendProviderCatalogTypes';
 
+export * from './sendProviderCapabilities';
 export * from './sendProviderCatalogTypes';
 export * from './sendProviderCredentialFields';
 
@@ -80,7 +82,14 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		tier: 'own',
 		retryDelays: [1_000, 5_000],
 		requiredEnvVars: ['MTA_API_URL', 'MTA_API_KEY'],
-		optionalEnvVars: ['OUTBOUND_TLS_MODE'],
+		// `MTA_WEBHOOK_SECRET` for the same reason `resend` declares
+		// `RESEND_WEBHOOK_SECRET` and `mandrill` declares `MANDRILL_WEBHOOK_KEY`:
+		// the MTA's feedback path (`webhooks/adapters/mta.ts`, the TLS-report
+		// endpoint, the checklist loopback) reads it, but a deployment that has not
+		// issued it still sends perfectly well — so it belongs beside the required
+		// list, not in it. It is not a credential FIELD either: the installer
+		// writes it alongside `MTA_API_KEY`.
+		optionalEnvVars: ['OUTBOUND_TLS_MODE', 'MTA_WEBHOOK_SECRET'],
 		// NOT a credential form field, deliberately: `MTA_API_URL` / `MTA_API_KEY`
 		// are written by the installer when it stands the MTA up, not typed by an
 		// operator — which is why `PROVIDER_ENV_KEYS` (derived from the FIELDS
@@ -397,6 +406,46 @@ export function coreSendProviderCatalogEntry(
 	kind: string | undefined
 ): CoreSendProviderCatalogEntry | undefined {
 	return kind === undefined ? undefined : catalogByKind.get(kind);
+}
+
+/**
+ * THE OWN ARM, as a declaration — D3's "the own MTA is special by definition,
+ * and by nothing else".
+ *
+ * Derived from `tier: 'own'` rather than written out, so the one identity
+ * question that legitimately exists has exactly one answer in the repo. It used
+ * to be `OWN_ARM_TRANSPORT_KIND` inside
+ * `apps/api/convex/lib/sendProviders/strategies/adaptive_mix` — unreachable from
+ * this package, from `apps/web` and from `apps/setup-cli`, all three of which
+ * ask the same question, so all three restated it as `=== 'mta'`. It lives here
+ * now because this is the leaf every one of them may import.
+ *
+ * The catalog suite pins that exactly one entry carries `tier: 'own'`, which is
+ * what makes the `find` below total; the type is the narrowed union, so a
+ * consumer switching on it still gets exhaustiveness.
+ */
+export const OWN_SEND_PROVIDER_KIND: CoreSendProviderKind = (() => {
+	const own = CORE_SEND_PROVIDER_CATALOG.filter((entry) => entry.tier === 'own');
+	if (own.length !== 1) {
+		throw new TypeError('Exactly one send provider entry may declare tier: own');
+	}
+	return own[0]!.kind;
+})();
+
+/**
+ * Is this the OWN arm — our own MTA — rather than a relay?
+ *
+ * The one capability-shaped reading of a kind's identity, per D3: the own MTA is
+ * the arm a deliverability fallback moves traffic AWAY from, so "ours vs. not
+ * ours" is a real question rather than a vendor special case. Ask it here
+ * instead of comparing to a literal, so the answer moves with the catalog.
+ *
+ * Takes `string | undefined` because most callers hold an env value or a stored
+ * provider name: an unset or unknown provider is not the own arm, which is both
+ * the true and the fail-closed answer.
+ */
+export function isOwnSendProviderKind(kind: string | undefined | null): boolean {
+	return kind != null && kind === OWN_SEND_PROVIDER_KIND;
 }
 
 /** Every credential field declared by any core kind, as a type. */
