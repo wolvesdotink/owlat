@@ -306,6 +306,11 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'storage.get',
 	'storage.list',
 	'storage.set',
+	// The sending-domain identity half of a bundled transport (the seams plan's
+	// P3.2). Its own operation rather than `transport.send`: it is a provider call
+	// this deployment makes ABOUT a customer's domain, and recording it as a send
+	// would put identity registrations into the row that means messages we sent.
+	'transport.domain_identity',
 	'transport.feedback',
 	'transport.send',
 	'webhook.publish',

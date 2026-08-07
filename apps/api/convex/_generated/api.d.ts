@@ -400,6 +400,8 @@ import type * as domains_mandrillRelayMutations from '../domains/mandrillRelayMu
 import type * as domains_mandrillRelayQueries from '../domains/mandrillRelayQueries.js';
 import type * as domains_mtaSts from '../domains/mtaSts.js';
 import type * as domains_mtaStsVerify from '../domains/mtaStsVerify.js';
+import type * as domains_pluginRelay from '../domains/pluginRelay.js';
+import type * as domains_pluginRelayMutations from '../domains/pluginRelayMutations.js';
 import type * as domains_providers_index from '../domains/providers/index.js';
 import type * as domains_providers_mandrill_api from '../domains/providers/mandrill/api.js';
 import type * as domains_providers_mandrill_identity from '../domains/providers/mandrill/identity.js';
@@ -409,6 +411,9 @@ import type * as domains_providers_mandrill_records from '../domains/providers/m
 import type * as domains_providers_mandrill_relayVerification from '../domains/providers/mandrill/relayVerification.js';
 import type * as domains_providers_mandrill_validators from '../domains/providers/mandrill/validators.js';
 import type * as domains_providers_mta_index from '../domains/providers/mta/index.js';
+import type * as domains_providers_plugin_index from '../domains/providers/plugin/index.js';
+import type * as domains_providers_plugin_persistence from '../domains/providers/plugin/persistence.js';
+import type * as domains_providers_plugin_state from '../domains/providers/plugin/state.js';
 import type * as domains_providers_registerAction from '../domains/providers/registerAction.js';
 import type * as domains_providers_ses_index from '../domains/providers/ses/index.js';
 import type * as domains_providers_ses_mailFrom from '../domains/providers/ses/mailFrom.js';
@@ -774,6 +779,8 @@ import type * as plugins_llmAccounting from '../plugins/llmAccounting.js';
 import type * as plugins_llmRequest from '../plugins/llmRequest.js';
 import type * as plugins_sendTransportAuthorization from '../plugins/sendTransportAuthorization.js';
 import type * as plugins_sendTransportCatalog_generated from '../plugins/sendTransportCatalog.generated.js';
+import type * as plugins_sendTransportDomainIdentityAuthorization from '../plugins/sendTransportDomainIdentityAuthorization.js';
+import type * as plugins_sendTransportDomainIdentityCatalog from '../plugins/sendTransportDomainIdentityCatalog.js';
 import type * as plugins_sendTransportDomainIdentityCatalog_generated from '../plugins/sendTransportDomainIdentityCatalog.generated.js';
 import type * as plugins_sendTransportDomainIdentityModules_generated from '../plugins/sendTransportDomainIdentityModules.generated.js';
 import type * as plugins_sendTransportWebhookAuthorization from '../plugins/sendTransportWebhookAuthorization.js';
@@ -1339,6 +1346,8 @@ declare const fullApi: ApiFromModules<{
 	'domains/mandrillRelayQueries': typeof domains_mandrillRelayQueries;
 	'domains/mtaSts': typeof domains_mtaSts;
 	'domains/mtaStsVerify': typeof domains_mtaStsVerify;
+	'domains/pluginRelay': typeof domains_pluginRelay;
+	'domains/pluginRelayMutations': typeof domains_pluginRelayMutations;
 	'domains/providers/index': typeof domains_providers_index;
 	'domains/providers/mandrill/api': typeof domains_providers_mandrill_api;
 	'domains/providers/mandrill/identity': typeof domains_providers_mandrill_identity;
@@ -1348,6 +1357,9 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/mandrill/relayVerification': typeof domains_providers_mandrill_relayVerification;
 	'domains/providers/mandrill/validators': typeof domains_providers_mandrill_validators;
 	'domains/providers/mta/index': typeof domains_providers_mta_index;
+	'domains/providers/plugin/index': typeof domains_providers_plugin_index;
+	'domains/providers/plugin/persistence': typeof domains_providers_plugin_persistence;
+	'domains/providers/plugin/state': typeof domains_providers_plugin_state;
 	'domains/providers/registerAction': typeof domains_providers_registerAction;
 	'domains/providers/ses/index': typeof domains_providers_ses_index;
 	'domains/providers/ses/mailFrom': typeof domains_providers_ses_mailFrom;
@@ -1713,6 +1725,8 @@ declare const fullApi: ApiFromModules<{
 	'plugins/llmRequest': typeof plugins_llmRequest;
 	'plugins/sendTransportAuthorization': typeof plugins_sendTransportAuthorization;
 	'plugins/sendTransportCatalog.generated': typeof plugins_sendTransportCatalog_generated;
+	'plugins/sendTransportDomainIdentityAuthorization': typeof plugins_sendTransportDomainIdentityAuthorization;
+	'plugins/sendTransportDomainIdentityCatalog': typeof plugins_sendTransportDomainIdentityCatalog;
 	'plugins/sendTransportDomainIdentityCatalog.generated': typeof plugins_sendTransportDomainIdentityCatalog_generated;
 	'plugins/sendTransportDomainIdentityModules.generated': typeof plugins_sendTransportDomainIdentityModules_generated;
 	'plugins/sendTransportWebhookAuthorization': typeof plugins_sendTransportWebhookAuthorization;
