@@ -99,13 +99,19 @@ export const PROVIDER_MX_EXCHANGES = {
 } as const satisfies Record<DestinationProviderKey, string>;
 
 /**
- * Where each feedback-loop operator's own mailboxes live.
+ * Where each feedback-loop operator's own mailboxes live — ONE declaration.
  *
  * `bounce/outcome.ts` maps an ARF `sourceIsp` token onto the SAME cell axis the
  * send was counted in, so the FBL token's cell and the taxonomy's answer for
  * that operator's domain have to be the same key — otherwise a complaint lands
  * in a different cell than the send it complains about. Typed as a total record
  * so a token added to `fblProcessor.isp()` fails the build here too.
+ *
+ * Both suites that make that claim read this table:
+ * `__tests__/destinationTaxonomy.test.ts` drives it through the reducer from a
+ * synthetic attempt, and `bounce/__tests__/yahooArf.test.ts` drives it through
+ * real ARF bytes. Neither carries an operator-domain column of its own — a
+ * seventh FBL token gets a domain here, once.
  */
 export const FBL_OPERATOR_DOMAINS = {
 	microsoft: 'outlook.com',
