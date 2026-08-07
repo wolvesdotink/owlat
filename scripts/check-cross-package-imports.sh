@@ -48,36 +48,50 @@ fi
 
 echo "ok:   no relative imports crossing package boundaries (use @owlat/* specifiers)"
 
-# ── The one-way edge: @owlat/shared must never import @owlat/mta-protocol ──
+# ── The one-way edge: nothing in packages/ may import @owlat/mta-protocol ──
 #
-# D7's wire package is a LEAF. It depends on `@owlat/shared` because the wire is
-# stated in terms of the shared vocabularies (DeliveryDomain, the
-# destination-provider taxonomy, the readiness verdicts), and re-declaring any of
-# them to buy literal zero-dependency status would trade one duplication for a
-# worse one. That trade is only safe while the edge runs ONE WAY: the reverse
-# import would make a package cycle that `bun install`, knip, tsc and
-# check-build-graph.ts all accept in silence, so the invariant is checked here.
+# D7's wire package is a LEAF: apps import it, packages/ does not. It depends on
+# `@owlat/shared` because the wire is stated in terms of the shared vocabularies
+# (DeliveryDomain, GovernedRoutingContext, the destination-provider taxonomy, the
+# readiness verdicts), and re-declaring any of them to buy literal
+# zero-dependency status would trade one duplication for a worse one. That trade
+# is only safe while the edge runs ONE WAY.
+#
+# The `@owlat/shared` direction would make an outright package cycle, which `bun
+# install`, knip, tsc and check-build-graph.ts all accept in silence. The other
+# packages would not cycle — which is worse, not better: nothing else in CI would
+# notice at all, and the leaf would have quietly become a mid-graph node that
+# every consumer of that package now carries. So the scan is every workspace
+# package except the wire package itself.
 cycle=""
-if node -e 'const m = require("./packages/shared/package.json"); const deps = { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies }; process.exit("@owlat/mta-protocol" in deps ? 1 : 0)'; then
-	:
-else
-	cycle="packages/shared/package.json declares a dependency on @owlat/mta-protocol"$'\n'
-fi
+while IFS= read -r m; do
+	case "$m" in
+		packages/mta-protocol/package.json) continue ;;
+	esac
+	if node -e 'const m = require("./" + process.argv[1]); const deps = { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies }; process.exit("@owlat/mta-protocol" in deps ? 1 : 0)' "$m"; then
+		:
+	else
+		cycle="$cycle$m declares a dependency on @owlat/mta-protocol"$'\n'
+	fi
+done < <(git ls-files -- 'packages/*/package.json')
 
 while IFS= read -r f; do
 	[ -f "$f" ] || continue
+	case "$f" in
+		packages/mta-protocol/*) continue ;;
+	esac
 	if grep -qIE "['\"]@owlat/mta-protocol(/|['\"])" "$f" 2>/dev/null; then
 		cycle="$cycle$f imports @owlat/mta-protocol"$'\n'
 	fi
-done < <(git ls-files -- 'packages/shared/*.ts' 'packages/shared/*.js' 'packages/shared/*.mjs')
+done < <(git ls-files -- 'packages/*.ts' 'packages/*.tsx' 'packages/*.vue' 'packages/*.js' 'packages/*.mjs' 'packages/*.cjs')
 
 if [ -n "$cycle" ]; then
 	echo ""
-	echo "FAIL: @owlat/shared must never depend on @owlat/mta-protocol (D7's one-way edge)."
+	echo "FAIL: packages/ must never depend on @owlat/mta-protocol (D7's one-way edge)."
 	echo "The wire package is a leaf: apps import it, packages/ does not."
 	echo ""
 	printf '%s' "$cycle" | sed 's#^#  #'
 	exit 1
 fi
 
-echo "ok:   @owlat/shared does not depend on @owlat/mta-protocol (D7 one-way edge)"
+echo "ok:   no packages/ workspace depends on @owlat/mta-protocol (D7 one-way edge)"

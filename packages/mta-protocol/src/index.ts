@@ -11,18 +11,22 @@
  * brains (Convex governance vs. the MTA's breakers/pools/leases); it makes
  * their conversation impossible to drift.
  *
- * ON THE ONE DEPENDENCY. D7 asks for a zero-dependency leaf, and this is a leaf
- * — nothing in `packages/` imports it, only the two apps do — but it does
- * depend on `@owlat/shared`. That is deliberate: the wire is STATED IN TERMS OF
- * the shared vocabularies (`DeliveryDomain`, `GovernedRoutingContext`, the
- * destination-provider taxonomy D8 gives exactly one declaration, the IP
- * readiness verdicts), and a package that re-declared any of them to buy
- * literal zero-dependency status would trade one duplication for a worse one.
+ * ON THE ONE DEPENDENCY — recorded in full in
+ * `docs/adr/0056-mta-protocol-package.md`. D7 asks for a zero-dependency leaf,
+ * and this is a leaf — nothing in `packages/` imports it, only the two apps do
+ * — but it does depend on `@owlat/shared`. That is deliberate: the wire is
+ * STATED IN TERMS OF the shared vocabularies (`DeliveryDomain`,
+ * `GovernedRoutingContext`, the destination-provider taxonomy D8 gives exactly
+ * one declaration, the IP readiness verdicts), and a package that re-declared
+ * any of them to buy literal zero-dependency status would trade one duplication
+ * for a worse one.
  *
- * The dependency runs one way and one way only: `@owlat/shared` must never
- * import this package. That is not left to good intentions — a package cycle is
- * something `bun install`, knip and `tsc` all accept in silence — so
- * `scripts/check-cross-package-imports.sh` asserts it on every `bun run lint`.
+ * The dependency runs one way and one way only: nothing in `packages/` may
+ * import this package. That is not left to good intentions — the
+ * `@owlat/shared` direction is a cycle `bun install`, knip and `tsc` all accept
+ * in silence, and any other `packages/` importer would not even cycle — so
+ * `scripts/check-cross-package-imports.sh` asserts it over every workspace
+ * manifest and source file on every `bun run lint`.
  *
  * Runtime imports here are taken from `@owlat/shared`'s SUBPATHS, never its
  * barrel: the barrel re-exports modules that pull `tldts` (~1MB of public-suffix
@@ -38,7 +42,7 @@ export type {
 	MtaSendRequestDraft,
 	MtaSendResponse,
 } from './send';
-export { MTA_SEND_ERROR_CODES } from './send';
+export { MTA_SEND_ERROR_CODES, isMtaSendErrorCode } from './send';
 
 export type {
 	MtaDeferOrigin,
