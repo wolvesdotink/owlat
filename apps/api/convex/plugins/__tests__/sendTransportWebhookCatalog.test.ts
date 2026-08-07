@@ -9,8 +9,9 @@
  * never emitted (a route that 500s a retrying provider until it disables the
  * endpoint), a module for a transport the send catalog does not hold or another
  * plugin owns (events attributed to an arm the measurement plane does not have),
- * and two webhooks under one plugin id (the route is keyed by that id, so one of
- * them would silently never be reachable).
+ * two webhooks under one plugin id (the route is keyed by that id, so one of
+ * them would silently never be reachable), and two webhooks sharing a signing
+ * secret (a body signed for one would verify at the other's route).
  *
  * Each case swaps the generated modules and re-imports, so what is under test is
  * the guard in `sendTransportWebhookCatalog.ts`, not a copy of it.
@@ -112,6 +113,27 @@ describe('a well-formed composition', () => {
 		}
 	});
 
+	it('holds two plugins whose webhooks name their own signing variables', async () => {
+		const registry = await load({
+			send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.other-pack.relay', 'other-pack')],
+			catalog: [
+				webhookEntry(KIND, 'mail-pack'),
+				webhookEntry('plugin.other-pack.relay', 'other-pack', {
+					signature: { ...signature(), secretEnvVar: 'PLUGIN_OTHER_WEBHOOK_SECRET' },
+				}),
+			],
+			modules: [
+				moduleEntry(KIND, 'mail-pack'),
+				moduleEntry('plugin.other-pack.relay', 'other-pack'),
+			],
+		});
+
+		expect(registry.pluginSendTransportWebhookFor('mail-pack')?.definition.kind).toBe(KIND);
+		expect(registry.pluginSendTransportWebhookFor('other-pack')?.definition.kind).toBe(
+			'plugin.other-pack.relay'
+		);
+	});
+
 	it('exposes the transport definition the authorization seam resolves by kind', async () => {
 		const registry = await load(WELL_FORMED);
 		expect(registry.pluginSendTransportWebhookDefinition(KIND)?.pluginId).toBe('mail-pack');
@@ -157,6 +179,26 @@ describe('a composition that cannot be trusted fails at load', () => {
 				modules: [moduleEntry(KIND, 'mail-pack'), moduleEntry('plugin.mail-pack.eu', 'mail-pack')],
 			},
 			/Invalid bundled send transport webhook registry/,
+		],
+		[
+			// Two plugins, one signing variable: a body signed for either verifies at
+			// BOTH routes, so one provider's bounce can be dispatched under the
+			// other's kind — feedback graded against the wrong measurement arm. No
+			// upstream check catches it: the manifest validator sees one manifest at
+			// a time and only requires the `PLUGIN_` prefix.
+			'two webhooks sharing a signing secret',
+			{
+				send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.other-pack.relay', 'other-pack')],
+				catalog: [
+					webhookEntry(KIND, 'mail-pack'),
+					webhookEntry('plugin.other-pack.relay', 'other-pack'),
+				],
+				modules: [
+					moduleEntry(KIND, 'mail-pack'),
+					moduleEntry('plugin.other-pack.relay', 'other-pack'),
+				],
+			},
+			/share a signing secret/,
 		],
 		[
 			'a duplicated kind',

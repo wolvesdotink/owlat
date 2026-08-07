@@ -1,26 +1,25 @@
 /**
- * Host enforcement of a plugin import provider's inbound signature-verification
- * contract. The host recomputes the declared HMAC over the raw request body
- * with the secret named by the contract and compares it to the caller-supplied
- * header value in constant time.
+ * Host enforcement of a plugin's inbound signature-verification contract. The
+ * host recomputes the declared HMAC with the secret named by the contract and
+ * compares it to the caller-supplied header value in constant time — a plugin
+ * never sees the secret and never decides whether bytes are authentic.
  *
  * Fails closed:
  *   - secret unset/empty     → 503 (retryable once the operator configures it)
  *   - header missing/empty   → 401
  *   - signature mismatch     → 401
  *
- * A passing check of {@link verifyPluginInboundSignature} proves ORIGIN ONLY —
- * that the caller holds the shared secret. It is NOT replay-resistant: the
- * signed payload is the raw body alone (no timestamp, tolerance, or nonce), so a
- * captured request verifies forever. It gates no endpoint; the import-provider
- * contract that declares it has no inbound HTTP surface yet.
+ * {@link verifyPluginReplayBoundSignature} is the form that gates a live
+ * endpoint — the send transport feedback webhook (D6/P2.2). It binds a
+ * caller-supplied timestamp into the signed string and refuses one outside the
+ * contract's tolerance, which bounds how long a captured request stays valid;
+ * the route pairs it with delivery de-duplication over that same window, which
+ * removes what remains. Neither half is sufficient alone.
  *
- * {@link verifyPluginReplayBoundSignature} is the form that DOES gate one — the
- * send transport feedback webhook (D6/P2.2). It binds a caller-supplied
- * timestamp into the signed string and refuses one outside the contract's
- * tolerance, which bounds how long a captured request stays valid; the route
- * pairs it with delivery de-duplication over that same window, which removes
- * what remains. Neither half is sufficient alone.
+ * The ORIGIN-ONLY form the import-provider contract declares lives in
+ * `./importProviderSignature.ts` and shares the two primitives below. It is in
+ * its own module so the orphan gate keeps asking whether anything calls it —
+ * nothing does, and that is a fact worth failing on the day it changes.
  *
  * Uses Web Crypto so this module stays V8-isolate-safe (no 'use node').
  */
@@ -59,16 +58,17 @@ async function computeSignature(
 }
 
 /**
- * Compare a caller-supplied signature against the recomputed one, in constant
- * time, having read the secret through the contract. Shared by both verifiers so
- * the fail-closed order (secret first, header second, comparison last) is stated
- * once.
+ * The configuration gate, first for every verifier: an unset secret is the
+ * deployment's problem, not the caller's, and it is answered 503 so an operator
+ * still wiring an endpoint up sees "misconfigured" rather than a 401 that reads
+ * as a caller error. It costs one environment read, which is why it can run
+ * before anything else.
  */
-async function verifyAgainst(
-	contract: PluginInboundSignatureContract,
-	signingBase: string,
-	providedSignature: string | null | undefined
-): Promise<InboundSignatureResult> {
+export function readSignatureSecret(
+	contract: PluginInboundSignatureContract
+):
+	| { readonly ok: true; readonly secret: string }
+	| { readonly ok: false; readonly status: 503; readonly reason: string } {
 	const secret = getPluginSecret(contract.secretEnvVar);
 	if (secret === undefined) {
 		return {
@@ -77,6 +77,20 @@ async function verifyAgainst(
 			reason: `Inbound signature is not configured (missing ${contract.secretEnvVar})`,
 		};
 	}
+	return { ok: true, secret };
+}
+
+/**
+ * Compare a caller-supplied signature against the recomputed one, in constant
+ * time. Shared by both verifiers so the remaining fail-closed order (header
+ * present, then comparison) is stated once.
+ */
+export async function compareSignature(
+	contract: PluginInboundSignatureContract,
+	secret: string,
+	signingBase: string,
+	providedSignature: string | null | undefined
+): Promise<InboundSignatureResult> {
 	if (providedSignature === null || providedSignature === undefined || providedSignature === '') {
 		return { ok: false, status: 401, reason: 'Missing inbound signature' };
 	}
@@ -85,19 +99,6 @@ async function verifyAgainst(
 		return { ok: false, status: 401, reason: 'Inbound signature mismatch' };
 	}
 	return { ok: true };
-}
-
-/**
- * Verify a plugin-sourced inbound request against its declared contract. The
- * secret is read from the environment variable the contract names; a plugin can
- * never disable this check.
- */
-export async function verifyPluginInboundSignature(
-	contract: PluginInboundSignatureContract,
-	rawBody: string,
-	providedSignature: string | null | undefined
-): Promise<InboundSignatureResult> {
-	return verifyAgainst(contract, rawBody, providedSignature);
 }
 
 /**
@@ -121,52 +122,64 @@ export type ReplayBoundSignatureResult =
 	| ReplayBoundVerification
 	| { readonly ok: false; readonly status: 401 | 503; readonly reason: string };
 
+/** One inbound delivery, named by the route it arrived on and its contract. */
+export interface ReplayBoundDelivery {
+	readonly contract: PluginReplayBoundSignatureContract;
+	/** The plugin whose route this arrived on; part of the delivery's name. */
+	readonly pluginId: string;
+	/** The transport kind its events will be attributed to. */
+	readonly transportKind: string;
+	readonly rawBody: string;
+	readonly signature: string | null | undefined;
+	readonly timestamp: string | null | undefined;
+	readonly nowMs: number;
+}
+
 /**
  * Verify an inbound request against a contract that carries replay provisions.
  *
- * Order is fail-closed and deliberate: configuration (503, retryable once the
- * operator sets the secret), then the timestamp header, then freshness, then the
- * signature itself. Freshness is checked BEFORE the HMAC so a flood of stale
- * captures costs a header parse rather than a key import — and after it, since
- * the timestamp is inside the signed string, a rewritten one cannot verify.
+ * Order is fail-closed and deliberate: configuration first (503, retryable once
+ * the operator sets the secret — an environment read costs nothing, and an
+ * operator wiring an endpoint up must not be told 401 about a deployment
+ * problem), then the timestamp header, then freshness, then the signature
+ * itself. Freshness is checked BEFORE the HMAC so a flood of stale captures
+ * costs a header parse rather than a key import — and it is safe to check
+ * before it, since the timestamp is inside the signed string and a rewritten one
+ * cannot verify.
  *
  * The tolerance is clamped again here: the manifest validator bounds it, but
  * this module must not depend on a generated artifact having been validated by
  * the version of the kit that is running now.
  */
 export async function verifyPluginReplayBoundSignature(
-	contract: PluginReplayBoundSignatureContract,
-	rawBody: string,
-	providedSignature: string | null | undefined,
-	providedTimestamp: string | null | undefined,
-	nowMs: number
+	delivery: ReplayBoundDelivery
 ): Promise<ReplayBoundSignatureResult> {
-	if (
-		providedTimestamp === null ||
-		providedTimestamp === undefined ||
-		!/^\d{1,15}$/.test(providedTimestamp)
-	) {
+	const { contract, timestamp, nowMs } = delivery;
+	const configured = readSignatureSecret(contract);
+	if (!configured.ok) return configured;
+	if (timestamp === null || timestamp === undefined || !/^\d{1,15}$/.test(timestamp)) {
 		return { ok: false, status: 401, reason: 'Missing or malformed inbound timestamp' };
 	}
 	const toleranceSeconds = Math.min(
 		Math.max(Math.trunc(contract.replay.toleranceSeconds), 1),
 		PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS
 	);
-	const skewSeconds = Math.abs(nowMs / 1000 - Number(providedTimestamp));
+	const skewSeconds = Math.abs(nowMs / 1000 - Number(timestamp));
 	if (!(skewSeconds <= toleranceSeconds)) {
 		// Both directions: a stale capture AND a far-future timestamp, which is how
 		// a captured request would otherwise be parked for later.
 		return { ok: false, status: 401, reason: 'Inbound timestamp outside tolerance' };
 	}
-	const verification = await verifyAgainst(
+	const verification = await compareSignature(
 		contract,
-		`${providedTimestamp}.${rawBody}`,
-		providedSignature
+		configured.secret,
+		`${timestamp}.${delivery.rawBody}`,
+		delivery.signature
 	);
 	if (!verification.ok) return verification;
 	return {
 		ok: true,
-		deliveryDigest: await deliveryDigestOf(contract, providedTimestamp, providedSignature!),
+		deliveryDigest: await deliveryDigestOf(delivery, timestamp, delivery.signature!),
 		// Two tolerances wide, not one: the request stays verifiable until its own
 		// timestamp plus the tolerance, and our clock may sit a tolerance behind it.
 		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
@@ -175,7 +188,17 @@ export async function verifyPluginReplayBoundSignature(
 
 /**
  * A collision-resistant name for one delivery: the secret-bearing header value,
- * domain-separated by the contract's own header names and the timestamp.
+ * domain-separated by the OWNING PLUGIN, its transport kind, the contract's own
+ * header names and the timestamp.
+ *
+ * The plugin id is in there because nothing forbids two bundled plugins from
+ * naming the same `secretEnvVar` and the same headers (the manifest validator
+ * only requires the `PLUGIN_` prefix, and it validates one manifest at a time).
+ * Without it, one plugin's claimed delivery would answer for the byte-identical
+ * delivery to another's route — and the loser of that race is not an attacker,
+ * it is a real provider whose bounce is then dropped as a "replay" and never
+ * redelivered. The signing base cannot carry the id (the provider computes the
+ * HMAC), but the digest is entirely ours.
  *
  * Hashed rather than stored raw because the signature is a MAC computed under a
  * live shared secret, and a de-duplication table is not a place to accumulate
@@ -183,14 +206,23 @@ export async function verifyPluginReplayBoundSignature(
  * enough to make forging a colliding digest infeasible.
  */
 async function deliveryDigestOf(
-	contract: PluginReplayBoundSignatureContract,
+	delivery: ReplayBoundDelivery,
 	timestamp: string,
 	signature: string
 ): Promise<string> {
+	const { contract } = delivery;
 	const digest = await crypto.subtle.digest(
 		'SHA-256',
 		new TextEncoder().encode(
-			`owlat.plugin.webhook.v1\n${contract.header}\n${contract.replay.timestampHeader}\n${timestamp}\n${signature}`
+			[
+				'owlat.plugin.webhook.v1',
+				delivery.pluginId,
+				delivery.transportKind,
+				contract.header,
+				contract.replay.timestampHeader,
+				timestamp,
+				signature,
+			].join('\n')
 		)
 	);
 	return bytesToHex(digest);

@@ -64,6 +64,8 @@ interface GeneratedWebhookModule {
  * validator's guarantee no longer holds.
  */
 const BY_PLUGIN_ID = new Map<string, HostedSendTransportWebhook>();
+/** Signing variables already spoken for, so no two webhooks can share one. */
+const SECRET_ENV_VARS = new Set<string>();
 
 for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES as readonly GeneratedWebhookModule[]) {
 	const definition = CATALOG.byKind(generated.kind);
@@ -84,6 +86,17 @@ for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES as readonl
 	if (sendProviderCatalogEntry(definition.kind).pluginId !== definition.pluginId) {
 		throw new TypeError('Bundled send transport webhook is not owned by its transport');
 	}
+	// ONE SECRET, ONE PLUGIN. The manifest validator sees one manifest at a time,
+	// so nothing upstream stops two bundled plugins from naming the same signing
+	// variable — and if two did, a body signed for one would verify at the other's
+	// route and be dispatched under the other's kind, grading a delivery against
+	// the wrong measurement arm. Refused at module load, where a composition
+	// mistake is a deployment that does not start rather than a request that is
+	// silently misattributed.
+	if (SECRET_ENV_VARS.has(definition.signature.secretEnvVar)) {
+		throw new TypeError('Two bundled send transport webhooks share a signing secret');
+	}
+	SECRET_ENV_VARS.add(definition.signature.secretEnvVar);
 	BY_PLUGIN_ID.set(generated.pluginId, {
 		definition,
 		module: parseHostedWebhookModule(generated.module),

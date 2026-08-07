@@ -1,101 +1,23 @@
+/**
+ * The replay-bound form — the one that gates a live endpoint (D6/P2.2).
+ *
+ * `./importProviderSignature.test.ts` proves ORIGIN. None of that proves
+ * FRESHNESS, and on an unauthenticated internet-facing route those are different
+ * questions: a captured request that verifies forever is a permanent licence to
+ * re-apply whatever it carried. These cases pin the three things that close it —
+ * the timestamp inside the signed string, a digest the caller cannot forge for a
+ * body they did not sign, and a digest that names ONE plugin's delivery.
+ */
+
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-	PluginInboundSignatureAlgorithm,
-	PluginInboundSignatureContract,
-	PluginInboundSignatureEncoding,
-	PluginReplayBoundSignatureContract,
-} from '@owlat/plugin-kit';
-import {
-	verifyPluginInboundSignature,
-	verifyPluginReplayBoundSignature,
-} from '../inboundSignature';
+import type { PluginReplayBoundSignatureContract } from '@owlat/plugin-kit';
+import { verifyPluginReplayBoundSignature, type ReplayBoundDelivery } from '../inboundSignature';
 
 const SECRET_ENV = 'PLUGIN_INBOUND_SECRET';
 const SECRET = 'super-secret-signing-key';
 const BODY = '{"event":"deal.won","id":"42"}';
 
-function contract(
-	algorithm: PluginInboundSignatureAlgorithm,
-	encoding: PluginInboundSignatureEncoding
-): PluginInboundSignatureContract {
-	return { header: 'x-signature', algorithm, encoding, secretEnvVar: SECRET_ENV };
-}
-
-function reference(
-	algorithm: PluginInboundSignatureAlgorithm,
-	encoding: PluginInboundSignatureEncoding
-): string {
-	const hash = algorithm === 'hmac-sha256' ? 'sha256' : 'sha1';
-	return createHmac(hash, SECRET).update(BODY).digest(encoding);
-}
-
-describe('plugin inbound signature verification', () => {
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	it.each([
-		['hmac-sha256', 'hex'],
-		['hmac-sha256', 'base64'],
-		['hmac-sha1', 'hex'],
-		['hmac-sha1', 'base64'],
-	] as const)('accepts a correct %s / %s signature', async (algorithm, encoding) => {
-		vi.stubEnv(SECRET_ENV, SECRET);
-		const result = await verifyPluginInboundSignature(
-			contract(algorithm, encoding),
-			BODY,
-			reference(algorithm, encoding)
-		);
-		expect(result.ok).toBe(true);
-	});
-
-	it('fails closed with 503 when the signing secret is unset', async () => {
-		const result = await verifyPluginInboundSignature(
-			contract('hmac-sha256', 'hex'),
-			BODY,
-			reference('hmac-sha256', 'hex')
-		);
-		expect(result).toMatchObject({ ok: false, status: 503 });
-	});
-
-	it.each([null, undefined, ''] as const)(
-		'rejects a missing signature (%p) with 401',
-		async (sig) => {
-			vi.stubEnv(SECRET_ENV, SECRET);
-			const result = await verifyPluginInboundSignature(contract('hmac-sha256', 'hex'), BODY, sig);
-			expect(result).toMatchObject({ ok: false, status: 401 });
-		}
-	);
-
-	it('rejects a tampered body / mismatched signature with 401', async () => {
-		vi.stubEnv(SECRET_ENV, SECRET);
-		const result = await verifyPluginInboundSignature(
-			contract('hmac-sha256', 'hex'),
-			`${BODY} tampered`,
-			reference('hmac-sha256', 'hex')
-		);
-		expect(result).toMatchObject({ ok: false, status: 401 });
-	});
-
-	it('rejects a signature computed with the wrong secret', async () => {
-		vi.stubEnv(SECRET_ENV, SECRET);
-		const wrong = createHmac('sha256', 'attacker-key').update(BODY).digest('hex');
-		const result = await verifyPluginInboundSignature(contract('hmac-sha256', 'hex'), BODY, wrong);
-		expect(result).toMatchObject({ ok: false, status: 401 });
-	});
-});
-
-/**
- * The replay-bound form — the one that gates a live endpoint (D6/P2.2).
- *
- * Everything above proves ORIGIN. None of it proves FRESHNESS, and on an
- * unauthenticated internet-facing route those are different questions: a
- * captured request that verifies forever is a permanent licence to re-apply
- * whatever it carried. These cases pin the two things that close that — the
- * timestamp inside the signed string, and a digest the caller cannot forge for a
- * body they did not sign.
- */
 describe('replay-bound plugin inbound signature verification', () => {
 	const replayContract: PluginReplayBoundSignatureContract = {
 		header: 'x-signature',
@@ -112,19 +34,27 @@ describe('replay-bound plugin inbound signature verification', () => {
 	const now = 1_770_000_000_000;
 	const nowSeconds = Math.floor(now / 1000);
 
+	/** One delivery to `mail-pack`'s route, with whatever this case overrides. */
+	function delivery(overrides: Partial<ReplayBoundDelivery> = {}): ReplayBoundDelivery {
+		return {
+			contract: replayContract,
+			pluginId: 'mail-pack',
+			transportKind: 'plugin.mail-pack.postmark',
+			rawBody: BODY,
+			signature: signed(nowSeconds),
+			timestamp: String(nowSeconds),
+			nowMs: now,
+			...overrides,
+		};
+	}
+
 	afterEach(() => {
 		vi.unstubAllEnvs();
 	});
 
 	it('accepts a fresh, correctly signed request and names the delivery', async () => {
 		vi.stubEnv(SECRET_ENV, SECRET);
-		const result = await verifyPluginReplayBoundSignature(
-			replayContract,
-			BODY,
-			signed(nowSeconds),
-			String(nowSeconds),
-			now
-		);
+		const result = await verifyPluginReplayBoundSignature(delivery());
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('unreachable');
@@ -138,25 +68,38 @@ describe('replay-bound plugin inbound signature verification', () => {
 
 	it('gives identical bytes the same digest, and anything else a different one', async () => {
 		vi.stubEnv(SECRET_ENV, SECRET);
-		const verify = (body: string, timestampSeconds: number) =>
-			verifyPluginReplayBoundSignature(
-				replayContract,
-				body,
-				signed(timestampSeconds, body),
-				String(timestampSeconds),
-				timestampSeconds * 1000
-			);
-		const digest = async (body: string, timestampSeconds: number) => {
-			const result = await verify(body, timestampSeconds);
+		const digest = async (overrides: Partial<ReplayBoundDelivery>) => {
+			const result = await verifyPluginReplayBoundSignature(delivery(overrides));
+			if (!result.ok) throw new Error('expected a verified result');
+			return result.deliveryDigest;
+		};
+		const same = { rawBody: BODY, signature: signed(nowSeconds) };
+
+		expect(await digest(same)).toBe(await digest(same));
+		// A different body or a different second is a different delivery — otherwise
+		// one claim would swallow a legitimate later event.
+		expect(await digest(same)).not.toBe(
+			await digest({ rawBody: `${BODY} `, signature: signed(nowSeconds, `${BODY} `) })
+		);
+		expect(await digest(same)).not.toBe(
+			await digest({ timestamp: String(nowSeconds + 1), signature: signed(nowSeconds + 1) })
+		);
+	});
+
+	it('names ONE plugin: the same signed bytes at another route are another delivery', async () => {
+		// Two bundled plugins may legitimately end up with the same secret value
+		// (an operator can set two variables to one string). If the digest ignored
+		// the owner, the first claim would 409 the second plugin's real bounce and
+		// that feedback would be lost — a claim is only released on OUR failure.
+		vi.stubEnv(SECRET_ENV, SECRET);
+		const digest = async (overrides: Partial<ReplayBoundDelivery>) => {
+			const result = await verifyPluginReplayBoundSignature(delivery(overrides));
 			if (!result.ok) throw new Error('expected a verified result');
 			return result.deliveryDigest;
 		};
 
-		expect(await digest(BODY, nowSeconds)).toBe(await digest(BODY, nowSeconds));
-		// A different body or a different second is a different delivery — otherwise
-		// one claim would swallow a legitimate later event.
-		expect(await digest(BODY, nowSeconds)).not.toBe(await digest(`${BODY} `, nowSeconds));
-		expect(await digest(BODY, nowSeconds)).not.toBe(await digest(BODY, nowSeconds + 1));
+		expect(await digest({})).not.toBe(await digest({ pluginId: 'other-pack' }));
+		expect(await digest({})).not.toBe(await digest({ transportKind: 'plugin.mail-pack.other' }));
 	});
 
 	it.each([
@@ -166,11 +109,7 @@ describe('replay-bound plugin inbound signature verification', () => {
 		vi.stubEnv(SECRET_ENV, SECRET);
 		const timestamp = nowSeconds + offset;
 		const result = await verifyPluginReplayBoundSignature(
-			replayContract,
-			BODY,
-			signed(timestamp),
-			String(timestamp),
-			now
+			delivery({ signature: signed(timestamp), timestamp: String(timestamp) })
 		);
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
@@ -180,11 +119,7 @@ describe('replay-bound plugin inbound signature verification', () => {
 		for (const offset of [-300, 300]) {
 			const timestamp = nowSeconds + offset;
 			const result = await verifyPluginReplayBoundSignature(
-				replayContract,
-				BODY,
-				signed(timestamp),
-				String(timestamp),
-				now
+				delivery({ signature: signed(timestamp), timestamp: String(timestamp) })
 			);
 			expect(result.ok, `offset ${offset}`).toBe(true);
 		}
@@ -194,13 +129,7 @@ describe('replay-bound plugin inbound signature verification', () => {
 		'rejects a malformed timestamp (%p) with 401',
 		async (timestamp) => {
 			vi.stubEnv(SECRET_ENV, SECRET);
-			const result = await verifyPluginReplayBoundSignature(
-				replayContract,
-				BODY,
-				signed(nowSeconds),
-				timestamp,
-				now
-			);
+			const result = await verifyPluginReplayBoundSignature(delivery({ timestamp }));
 			expect(result).toMatchObject({ ok: false, status: 401 });
 		}
 	);
@@ -210,11 +139,7 @@ describe('replay-bound plugin inbound signature verification', () => {
 		// passed the origin-only verifier must not pass this one.
 		vi.stubEnv(SECRET_ENV, SECRET);
 		const result = await verifyPluginReplayBoundSignature(
-			replayContract,
-			BODY,
-			createHmac('sha256', SECRET).update(BODY).digest('hex'),
-			String(nowSeconds),
-			now
+			delivery({ signature: createHmac('sha256', SECRET).update(BODY).digest('hex') })
 		);
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
@@ -222,13 +147,8 @@ describe('replay-bound plugin inbound signature verification', () => {
 	it('rejects a timestamp rewritten to look fresh', async () => {
 		// The attacker's obvious move against a freshness check that is not signed.
 		vi.stubEnv(SECRET_ENV, SECRET);
-		const captured = signed(nowSeconds - 10_000);
 		const result = await verifyPluginReplayBoundSignature(
-			replayContract,
-			BODY,
-			captured,
-			String(nowSeconds),
-			now
+			delivery({ signature: signed(nowSeconds - 10_000) })
 		);
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
@@ -239,23 +159,35 @@ describe('replay-bound plugin inbound signature verification', () => {
 		vi.stubEnv(SECRET_ENV, SECRET);
 		const timestamp = nowSeconds - 1_000;
 		const result = await verifyPluginReplayBoundSignature(
-			{ ...replayContract, replay: { timestampHeader: 'x-timestamp', toleranceSeconds: 86_400 } },
-			BODY,
-			signed(timestamp),
-			String(timestamp),
-			now
+			delivery({
+				contract: {
+					...replayContract,
+					replay: { timestampHeader: 'x-timestamp', toleranceSeconds: 86_400 },
+				},
+				signature: signed(timestamp),
+				timestamp: String(timestamp),
+			})
 		);
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
 
 	it('still fails closed with 503 when the secret is unset', async () => {
-		const result = await verifyPluginReplayBoundSignature(
-			replayContract,
-			BODY,
-			signed(nowSeconds),
-			String(nowSeconds),
-			now
-		);
+		const result = await verifyPluginReplayBoundSignature(delivery());
 		expect(result).toMatchObject({ ok: false, status: 503 });
 	});
+
+	it.each([
+		['a stale timestamp', String(nowSeconds - 10_000)],
+		['a malformed timestamp', 'yesterday'],
+		['no timestamp at all', null],
+	] as const)(
+		'answers 503 rather than 401 for %s while the secret is unset',
+		async (_label, timestamp) => {
+			// The documented order is the real one: an operator wiring the endpoint up
+			// sees "this deployment is misconfigured", not a caller-shaped 401 that
+			// sends them looking at the provider's clock.
+			const result = await verifyPluginReplayBoundSignature(delivery({ timestamp }));
+			expect(result).toMatchObject({ ok: false, status: 503 });
+		}
+	);
 });

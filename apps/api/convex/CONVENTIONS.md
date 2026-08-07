@@ -340,9 +340,11 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 - Plugin import providers resolve through the host and call `authorizeStart`
   before a run opens; the paged fetch continues only while flag, grant, env, and
   singleton scope hold. A provider's inbound signature contract is mandatory and
-  verified by the host in constant time against the raw body; it proves origin
-  only and carries no replay resistance, so any future inbound HTTP surface must
-  add replay defense before accepting plugin-sourced traffic.
+  verified by the host in constant time against the raw body
+  (`plugins/importProviderSignature.ts` — its own module so `lint:convex-orphans`
+  keeps reporting that nothing calls it); it proves origin only and carries no
+  replay resistance, so any future inbound HTTP surface must add replay defense
+  before accepting plugin-sourced traffic.
 - Plugin nav and settings entries are data-only links. Core entries register
   first and registry dedup is by destination href, first-registered-wins, so a
   plugin cannot shadow a core destination. Labels are clamped to 64 UTF-16 code

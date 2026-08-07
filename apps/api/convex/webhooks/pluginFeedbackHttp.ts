@@ -172,13 +172,17 @@ async function deliver(
 
 	// (5) AUTHENTICITY, host-owned. The plugin's own module is not consulted:
 	// it never sees the secret and never decides whether bytes are trustworthy.
-	const verification = await verifyPluginReplayBoundSignature(
-		signature,
+	// The delivery is named by the plugin it arrived for, so one plugin's claim
+	// can never answer for another's — see `deliveryDigestOf`.
+	const verification = await verifyPluginReplayBoundSignature({
+		contract: signature,
+		pluginId,
+		transportKind: definition.kind,
 		rawBody,
-		request.headers.get(signature.header),
-		request.headers.get(signature.replay.timestampHeader),
-		Date.now()
-	);
+		signature: request.headers.get(signature.header),
+		timestamp: request.headers.get(signature.replay.timestampHeader),
+		nowMs: Date.now(),
+	});
 	if (!verification.ok) {
 		logError(`[${definition.kind} Webhook] ${verification.reason}`);
 		return jsonResponse(verification.status, { error: verification.reason });

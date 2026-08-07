@@ -767,6 +767,7 @@ import type * as plugins_hostedContributionCatalog from '../plugins/hostedContri
 import type * as plugins_importProviderCatalog from '../plugins/importProviderCatalog.js';
 import type * as plugins_importProviderCatalog_generated from '../plugins/importProviderCatalog.generated.js';
 import type * as plugins_importProviderModules_generated from '../plugins/importProviderModules.generated.js';
+import type * as plugins_importProviderSignature from '../plugins/importProviderSignature.js';
 import type * as plugins_inboundSignature from '../plugins/inboundSignature.js';
 import type * as plugins_llm from '../plugins/llm.js';
 import type * as plugins_llmAccounting from '../plugins/llmAccounting.js';
@@ -1703,6 +1704,7 @@ declare const fullApi: ApiFromModules<{
 	'plugins/importProviderCatalog': typeof plugins_importProviderCatalog;
 	'plugins/importProviderCatalog.generated': typeof plugins_importProviderCatalog_generated;
 	'plugins/importProviderModules.generated': typeof plugins_importProviderModules_generated;
+	'plugins/importProviderSignature': typeof plugins_importProviderSignature;
 	'plugins/inboundSignature': typeof plugins_inboundSignature;
 	'plugins/llm': typeof plugins_llm;
 	'plugins/llmAccounting': typeof plugins_llmAccounting;
