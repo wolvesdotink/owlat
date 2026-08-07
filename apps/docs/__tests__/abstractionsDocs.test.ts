@@ -68,6 +68,38 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 		const adapter = 'apps/api/convex/lib/sendProviders/pluginProvider.ts';
 		expect(existsSync(resolve(repoRoot, adapter))).toBe(true);
 	});
+
+	it('lists exactly the catalog values the plugin tier may not reach', () => {
+		// The page's plugin-tier paragraph enumerates the values whose prerequisites
+		// live in backend code. That list SHRANK in the seams plan's P3.2 —
+		// `domainVerification: 'api'` moved from refused to DERIVED — and the page
+		// kept the old sentence while its own P3.2 section a hundred lines below
+		// said the opposite: the repo's inventory of record contradicting itself
+		// within one page, which is worse than either half being wrong alone.
+		//
+		// Pinned against the composition-time refusal rather than restated as prose,
+		// so a third refused value (or a second one becoming derivable) fails here
+		// instead of quietly making the paragraph false again.
+		const catalog = read('apps/api/convex/lib/sendProviders/catalog.ts');
+		const refusal = /function assertPluginDispatchSemanticsAreGeneral[\s\S]*?\n}/.exec(catalog);
+		expect(refusal, 'the composition-time refusal is gone').not.toBeNull();
+		expect(refusal![0]).toContain("'accepted'");
+		expect(refusal![0]).toContain("'idempotency-key'");
+		expect(refusal![0]).not.toContain('domainVerification');
+
+		// Wrapping-insensitive: the claim is the sentence, not where the paragraph
+		// happens to break.
+		const unwrapped = abstractions.replace(/\s+/g, ' ');
+		expect(unwrapped).toContain(
+			"`acceptanceSemantics: 'accepted'` and `messageIdSource: 'idempotency-key'` — are not in this tier's unions at all"
+		);
+		// And the derivation the refusal does NOT cover has to be stated, because
+		// that is the fact codegen implements.
+		expect(unwrapped).toContain('`hasProviderFeedback` and `domainVerification` are DERIVED');
+		expect(read('packages/plugin-codegen/src/renderSendTransport.ts')).toContain(
+			"domainVerification: transport.domainIdentity === undefined ? undefined : 'api'"
+		);
+	});
 });
 
 /** A `### `-level section of the page, heading to next heading. */

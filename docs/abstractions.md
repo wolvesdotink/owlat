@@ -83,11 +83,14 @@ vocabulary a core entry does — `supportsCustomReturnPath`, `messageIdSource`,
 its module may build per-send extras on both the governed and the system-mail
 paths, so the capability accessors answer for a plugin kind exactly as they do
 for a core one. Three things are still declared differently, on purpose:
-`hasProviderFeedback` is DERIVED from whether the contribution carries a
-`webhook` (one fact, not two fields that could disagree); the values whose
-prerequisites live in backend code — `acceptanceSemantics: 'accepted'`,
-`messageIdSource: 'idempotency-key'`, `domainVerification: 'api'` — are not in
-this tier's unions at all; and `supportsCustomReturnPath` narrows to `no`,
+`hasProviderFeedback` and `domainVerification` are DERIVED, from whether the
+contribution carries a `webhook` and a `domainIdentity` respectively (one fact
+each, not two fields that could disagree — the identity half is the seams plan's
+P3.2, and the derivation is why this tier can now verify a sending domain
+without the word being declarable); the values whose prerequisites live in
+backend code — `acceptanceSemantics: 'accepted'` and
+`messageIdSource: 'idempotency-key'` — are not in this tier's unions at all; and
+`supportsCustomReturnPath` narrows to `no`,
 because both other values claim that our own bounce processor can attribute this
 transport's bounces and the envelope sender that would make that true carries a
 VERP local part the HOST signs. A claim graded `supported` on an arm whose
