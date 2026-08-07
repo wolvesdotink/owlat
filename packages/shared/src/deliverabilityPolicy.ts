@@ -1,3 +1,4 @@
+import type { DestinationProviderKey } from './deliverabilityRouting';
 import type { OutboundTlsMode } from './outboundTlsMode';
 
 /**
@@ -50,10 +51,23 @@ export interface DestinationProviderProfile {
 	maxDeliveriesPerConnection: number;
 }
 
-/** Checked-in startup defaults; runtime operator overrides remain authoritative. */
-export const DESTINATION_PROVIDER_PROFILES: Readonly<
-	Record<string, Readonly<DestinationProviderProfile>>
-> = Object.freeze({
+/**
+ * Checked-in startup defaults; runtime operator overrides remain authoritative.
+ *
+ * TOTAL OVER THE TAXONOMY (D8). The `satisfies` below is the build failure a
+ * sixth destination provider has to hit: add a key to
+ * `DESTINATION_PROVIDER_KEYS` and this declaration stops compiling until that
+ * provider gets a considered shaping row, instead of silently falling through
+ * to `__default__` (30/min, opportunistic TLS) everywhere `getProfile` reads.
+ *
+ * It is a `satisfies` and not the exported type because the EXPORTED shape must
+ * stay string-keyed: `config/ispProfiles.ts` looks profiles up by
+ * `canonicalProfileKey`, which is deliberately a raw DOMAIN for operators
+ * outside the taxonomy (the pinned divergence documented there), and the docs
+ * table iterates the object's own entries. Both are legitimate string reads of
+ * a table whose membership is nonetheless exhaustively checked here.
+ */
+const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze({
 	gmail: Object.freeze({
 		defaultRate: 100,
 		ceiling: 300,
@@ -104,4 +118,18 @@ export const DESTINATION_PROVIDER_PROFILES: Readonly<
 		maxConnections: 3,
 		maxDeliveriesPerConnection: 100,
 	}),
-});
+}) satisfies Readonly<
+	Record<
+		// `other` is deliberately absent: it is the taxonomy's UNNAMED cell, and
+		// `__default__` is its row — `getProfile` finds no checked-in entry for it
+		// and falls through to the generic default, which an operator can override
+		// once for every unnamed operator at the same time. Giving `other` a row of
+		// its own would take that override away from it.
+		Exclude<DestinationProviderKey, 'other'> | '__default__',
+		Readonly<DestinationProviderProfile>
+	>
+>;
+
+export const DESTINATION_PROVIDER_PROFILES: Readonly<
+	Record<string, Readonly<DestinationProviderProfile>>
+> = CHECKED_IN_DESTINATION_PROVIDER_PROFILES;
