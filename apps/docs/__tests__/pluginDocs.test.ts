@@ -61,6 +61,7 @@ const REGION_MAP: ReadonlyArray<{ region: string; page: keyof typeof PAGES }> = 
 	{ region: 'cron-module', page: 'authoring' },
 	{ region: 'send-transport-module', page: 'contributions' },
 	{ region: 'send-transport-webhook-module', page: 'contributions' },
+	{ region: 'send-transport-domain-identity-module', page: 'contributions' },
 	{ region: 'agent-step-module', page: 'contributions' },
 	{ region: 'automation-step-module', page: 'contributions' },
 	{ region: 'import-provider-module', page: 'contributions' },
@@ -883,6 +884,60 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 				},
 			},
 		});
+	});
+
+	it('documents the three sending-domain identity bounds', () => {
+		// The DNS-fact bounds are silent truncations, which is the direction an
+		// author cannot discover from a failure: a provider returning nine selectors
+		// gets eight stored and a pre-flight that compares the wrong set. Derived
+		// from the declaration, so a fourth bound fails until the prose names it.
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/sendTransportDomainIdentity.ts')],
+			declaredPattern: /^export const (PLUGIN_DOMAIN_IDENTITY_MAX_\w+) = /gm,
+			section: section(docs.contributions, '### Sending-domain identity'),
+			rendered: {
+				PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS: {
+					literal: '8',
+					prose: 'At most 8 of each (`PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS`)',
+				},
+				PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH: {
+					literal: '255',
+					prose: 'at most 255 characters (`PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH`)',
+				},
+				PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH: {
+					literal: '500',
+					prose: 'truncated at 500 characters (`PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH`)',
+				},
+			},
+		});
+	});
+
+	/**
+	 * The two DERIVED catalog fields, pinned as prose.
+	 *
+	 * This page is the only published reference for the tier, and it spent a
+	 * release telling authors that `domainVerification: 'api'` was refused at
+	 * authoring time — true when the tier had no identity contract, and silently
+	 * false the day it got one, because nothing pinned the sentence. Both
+	 * derivations are asserted against the contract that performs them, so the next
+	 * capability to become derivable fails here rather than shipping a page that
+	 * refuses it.
+	 */
+	it('states both derived transport capabilities the way the contract derives them', () => {
+		const capabilities = section(docs.contributions, '### Capabilities');
+		expect(capabilities).toContain(
+			'`hasProviderFeedback` is true exactly when the contribution carries a `webhook`'
+		);
+		expect(capabilities).toContain(
+			'`domainVerification` is `api` exactly when it carries a `domainIdentity`'
+		);
+		// And the page must NOT still list either one as unavailable.
+		expect(capabilities).not.toContain("`domainVerification: 'api'` — are not available");
+		const definition = read('packages/plugin-kit/src/sendTransport.ts');
+		expect(definition).toContain('readonly webhook?: PluginSendTransportWebhookDefinition;');
+		expect(definition).toContain(
+			'readonly domainIdentity?: PluginSendTransportDomainIdentityDefinition;'
+		);
 	});
 
 	it('documents the plugin-id length ceiling on both pages that state it', () => {

@@ -221,6 +221,55 @@ export const webhook: PluginSendTransportWebhookModule = {
 };
 // #endregion send-transport-webhook-module
 
+// #region send-transport-domain-identity-module
+import type {
+	PluginDomainIdentityResult,
+	PluginSendTransportDomainIdentityModule,
+} from '@owlat/plugin-kit';
+
+/** Observations ONLY: the host derives the status and owns the freshness bound. */
+export const domainIdentity: PluginSendTransportDomainIdentityModule = {
+	// The credential comes from the resolved configuration, never from
+	// `process.env`: an environment read resolves the deployment-default instance
+	// whichever instance the host meant.
+	registerDomain: (domain, config) => askProvider('POST', domain, config.env['PLUGIN_ACME_TOKEN']),
+	checkDomain: (domain, config) => askProvider('GET', domain, config.env['PLUGIN_ACME_TOKEN']),
+};
+
+async function askProvider(
+	method: 'GET' | 'POST',
+	domain: string,
+	token: string | undefined
+): Promise<PluginDomainIdentityResult> {
+	const response = await fetch(`https://api.example.net/domains/${domain}`, {
+		method,
+		headers: { Authorization: `Bearer ${token ?? ''}` },
+	});
+	// Three distinguishable answers, because the host writes each one differently:
+	// only `ok` refreshes the proof's age, and only `auth_failed` condemns a key.
+	if (response.status === 401 || response.status === 403) {
+		return { outcome: 'auth_failed', error: 'the provider rejected the token' };
+	}
+	if (!response.ok) return { outcome: 'unavailable', error: `HTTP ${response.status}` };
+	const body = (await response.json()) as {
+		readonly owned?: boolean;
+		readonly spf?: boolean;
+		readonly dkim?: boolean;
+		readonly selector?: string;
+	};
+	return {
+		outcome: 'ok',
+		state: {
+			isOwnershipVerified: body.owned === true,
+			spf: { isValid: body.spf === true },
+			dkim: { isValid: body.dkim === true },
+			dkimSelectors: body.selector ? [body.selector] : [],
+			spfMechanisms: ['include:spf.example.net'],
+		},
+	};
+}
+// #endregion send-transport-domain-identity-module
+
 // #region agent-step-module
 import type {
 	PluginAgentStepInput,
@@ -451,6 +500,42 @@ describe('docs samples: modules behave as the chapter describes', () => {
 			);
 			expect(attempt.success).toBe(false);
 			if (!attempt.success) expect(PLUGIN_SEND_FAILURE_CODES).toContain(attempt.code);
+		} finally {
+			globalThis.fetch = original;
+		}
+	});
+
+	it('the domain identity reports observations, and never a status', async () => {
+		const original = globalThis.fetch;
+		const answer = (status: number, body: unknown): typeof fetch =>
+			(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+		const config = { instanceKey: null, env: { PLUGIN_ACME_TOKEN: 'token' } };
+		try {
+			globalThis.fetch = answer(403, {});
+			await expect(domainIdentity.checkDomain('example.com', config)).resolves.toEqual({
+				outcome: 'auth_failed',
+				error: 'the provider rejected the token',
+			});
+
+			globalThis.fetch = answer(503, {});
+			await expect(domainIdentity.checkDomain('example.com', config)).resolves.toMatchObject({
+				outcome: 'unavailable',
+			});
+
+			globalThis.fetch = answer(200, { owned: true, spf: true, dkim: true, selector: 'acme' });
+			const observed = await domainIdentity.registerDomain('example.com', config);
+			// No `status` anywhere in what a module may return: the host derives it, so
+			// "verified" means the same thing at every relay tier.
+			expect(observed).toEqual({
+				outcome: 'ok',
+				state: {
+					isOwnershipVerified: true,
+					spf: { isValid: true },
+					dkim: { isValid: true },
+					dkimSelectors: ['acme'],
+					spfMechanisms: ['include:spf.example.net'],
+				},
+			});
 		} finally {
 			globalThis.fetch = original;
 		}

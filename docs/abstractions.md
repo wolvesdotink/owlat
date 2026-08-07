@@ -215,7 +215,16 @@ domain's whole lifecycle through code this repository does not contain.
 For the plugin tier the host keeps everything that decides anything: the proof
 rule and its freshness bound (`PLUGIN_RELAY_PROOF_MAX_AGE_MS`, a host constant a
 manifest may not weaken), the derived `status`, the row, and the write rules for
-the three call outcomes. The plugin's module owns only the provider
+the three call outcomes. The rule and the write rules are stated ONCE for the
+shared table, in `providers/relayIdentityProof.ts` and
+`providers/relayIdentityPersistence.ts`, and every kind that writes
+`sendingDomainRelayIdentities` calls them: two tiers reading one table under two
+definitions of "proven" is how one relay ends up handed a From domain another
+would refuse, with both suites green. What a kind still owns is its cadence, its
+`providerDetails` blob and its freshness bound — facts about a provider, not
+about the row. The due-check sweep dispatches the same way: it asks the relay
+registry for the arm that re-asks a row's provider rather than comparing the
+kind, so a new kind joins the sweep by registering. The plugin's module owns only the provider
 conversation — `registerDomain` / `checkDomain`, called from
 `domains/pluginRelay.ts` under a re-checked `send:transport` grant and audited as
 `transport.domain_identity`. Same split as the feedback webhook's.
