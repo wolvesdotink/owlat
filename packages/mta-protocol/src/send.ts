@@ -13,7 +13,11 @@
  * whose only contract with it was that both had been edited by the same hand.
  */
 
-import type { DeliveryDomain, GovernedIpPool, GovernedMessageType } from '@owlat/shared';
+import type {
+	DeliveryDomain,
+	GovernedIpPool,
+	GovernedMessageType,
+} from '@owlat/shared/routingDispatch';
 
 /**
  * The callback material a bounded routing attempt carries, whose canonical

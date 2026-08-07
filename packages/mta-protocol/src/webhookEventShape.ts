@@ -9,12 +9,17 @@
  * free to gain a field the other never heard of. Both are now views of
  * {@link MtaWebhookEventFields}: {@link MtaWebhookEventDraft} is the producer's
  * (every field optional, the payload types its own), and
- * {@link MtaWebhookEvent} is the validated wire union {@link isMtaWebhookEvent}
- * proves.
+ * {@link ValidatedMtaWebhookEvent} is the wire union `isMtaWebhookEvent` proves.
+ *
+ * ON THE TWO NAMES. The validated union is deliberately NOT called
+ * `MtaWebhookEvent`: `apps/mta` already owns that name for its producer draft
+ * (`src/webhookEventTypes.ts`), and one identifier meaning two different types
+ * either side of one wire is exactly the confusion this package exists to
+ * remove. A draft is not proof, and the names now say so.
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import type { DeliveryDomain } from '@owlat/shared';
+import type { DeliveryDomain } from '@owlat/shared/routingDispatch';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
@@ -89,8 +94,9 @@ export interface MtaWebhookPayloads {
 /**
  * EVERY field any MTA webhook event may carry, all optional.
  *
- * Declared once here; narrowed per event kind by {@link MtaWebhookEvent}'s
- * variants, and left wide by {@link MtaWebhookEventDraft} for the producers.
+ * Declared once here; narrowed per event kind by
+ * {@link ValidatedMtaWebhookEvent}'s variants, and left wide by
+ * {@link MtaWebhookEventDraft} for the producers.
  */
 export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhookPayloads> {
 	eventId?: string;
@@ -174,8 +180,9 @@ export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhook
  * producer's own payload types.
  *
  * This is what the MTA's emitters build and what its durable outbox carries.
- * `isMtaWebhookEvent` is what turns one of these into a {@link MtaWebhookEvent}
- * at the ingress boundary — a draft is not proof.
+ * `isMtaWebhookEvent` is what turns one of these into a
+ * {@link ValidatedMtaWebhookEvent} at the ingress boundary — a draft is not
+ * proof.
  */
 export type MtaWebhookEventDraft<P extends MtaWebhookPayloads = MtaWebhookPayloads> =
 	MtaWebhookEventFields<P> & {
@@ -183,13 +190,26 @@ export type MtaWebhookEventDraft<P extends MtaWebhookPayloads = MtaWebhookPayloa
 		timestamp: number;
 	};
 
-interface EventBase<K extends MtaWebhookEventType> extends MtaWebhookEventFields {
+/**
+ * The fields the VALIDATED union carries on every variant.
+ *
+ * Three fields are subtracted, and the subtraction is the point: `bounceType`,
+ * `reportedDomain` and `sourceIsp` belong to `bounced`/`complained` alone, and
+ * the pre-D7 Convex union forbade reading them anywhere else. Sharing one field
+ * declaration with the producer draft must not quietly hand every variant a
+ * `sourceIsp` that is always `undefined` — the variants below re-add each one
+ * where it genuinely travels.
+ */
+interface EventBase<K extends MtaWebhookEventType> extends Omit<
+	MtaWebhookEventFields,
+	'bounceType' | 'reportedDomain' | 'sourceIsp'
+> {
 	event: K;
 	timestamp: number;
 }
 
-/** The VALIDATED wire union — what {@link isMtaWebhookEvent} proves. */
-export type MtaWebhookEvent =
+/** The VALIDATED wire union — what `isMtaWebhookEvent` proves. */
+export type ValidatedMtaWebhookEvent =
 	| (EventBase<'sent'> & { messageId: string })
 	| (EventBase<'bounced'> & {
 			messageId?: string;

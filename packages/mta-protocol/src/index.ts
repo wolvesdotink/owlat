@@ -18,8 +18,15 @@
  * destination-provider taxonomy D8 gives exactly one declaration, the IP
  * readiness verdicts), and a package that re-declared any of them to buy
  * literal zero-dependency status would trade one duplication for a worse one.
+ *
  * The dependency runs one way and one way only: `@owlat/shared` must never
- * import this package.
+ * import this package. That is not left to good intentions — a package cycle is
+ * something `bun install`, knip and `tsc` all accept in silence — so
+ * `scripts/check-cross-package-imports.sh` asserts it on every `bun run lint`.
+ *
+ * Runtime imports here are taken from `@owlat/shared`'s SUBPATHS, never its
+ * barrel: the barrel re-exports modules that pull `tldts` (~1MB of public-suffix
+ * data), and the Convex bundle would carry it for the sake of one guard.
  */
 
 export type {
@@ -46,6 +53,7 @@ export {
 	MTA_DEFER_REASON_ORIGIN,
 	MTA_RELAY_ALLOWED_REASON,
 	MTA_RELAY_DECISION_REASONS,
+	isMtaRelayDecisionReason,
 	mtaDeferReasonOrigin,
 } from './routingDecision';
 
@@ -54,13 +62,13 @@ export type {
 	GooglePostmasterDomainAuthorizationEvent,
 	GooglePostmasterStatsEvent,
 	GooglePostmasterWebhookEvent,
-	MtaWebhookEvent,
 	MtaWebhookEventDraft,
 	MtaWebhookEventFields,
 	MtaWebhookEventType,
 	MtaWebhookPayloads,
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
+	ValidatedMtaWebhookEvent,
 } from './webhookEvent';
 export {
 	MTA_WEBHOOK_EVENT_TYPES,

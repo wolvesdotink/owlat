@@ -217,6 +217,10 @@
 			"types": "./src/ipReadiness.ts",
 			"import": "./src/ipReadiness.ts"
 		},
+		"./routingDispatch": {
+			"types": "./src/routingDispatch.ts",
+			"import": "./src/routingDispatch.ts"
+		},
 		"./deliverabilityRouting": {
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"

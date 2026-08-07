@@ -16,11 +16,16 @@ import {
 	POSTMASTER_MAX_COMPLIANCE_CHECKS,
 	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
 	POSTMASTER_TOKEN,
-	type MtaWebhookEvent,
 	type MtaWebhookEventType,
+	type ValidatedMtaWebhookEvent,
 } from './webhookEventShape';
+// SUBPATHS, never the `@owlat/shared` barrel. This module is the only one in
+// the package with RUNTIME imports, and the barrel re-exports `dnsZone` and
+// `spfAlignment`, both of which pull `tldts` (~1MB of PSL data) — a cost every
+// consumer of `isMtaWebhookEvent` would pay, the Convex bundle included.
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import { isDeliveryDomain, parseIpAddress } from '@owlat/shared';
+import { isDeliveryDomain } from '@owlat/shared/routingDispatch';
+import { parseIpAddress } from '@owlat/shared/ipAddress';
 import { isDeliverabilityProbeTokenFormat } from '@owlat/shared/deliverabilityProbeFormat';
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
@@ -44,7 +49,7 @@ export function isMtaWebhookEventType(value: unknown): value is MtaWebhookEventT
 }
 
 /** Validate the event-specific required fields plus every known optional field. */
-export function isMtaWebhookEvent(value: unknown): value is MtaWebhookEvent {
+export function isMtaWebhookEvent(value: unknown): value is ValidatedMtaWebhookEvent {
 	if (!isRecord(value) || !isMtaWebhookEventType(value['event']) || !finite(value['timestamp'])) {
 		return false;
 	}

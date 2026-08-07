@@ -1,14 +1,16 @@
 /**
- * Wire-compat: the frozen fixtures ARE what the types say, byte for byte.
+ * Wire-compat: the frozen fixtures are canonical, and mean what they claim.
  *
- * The risk D7 carries is that extracting the Convex<->MTA contract into shared
- * TypeScript lets narrowing quietly re-shape what is serialized. A type cannot
- * be tested, so this suite tests the only thing that can be: the BYTES. Each
- * fixture is parsed, annotated with the wire type it claims to be, and
- * re-serialized — a field renamed, reordered, added or dropped by the type
- * declaration breaks the round trip.
+ * The TYPE half of this gate is not here — it is in `wireFixtures.ts` itself,
+ * where every fixture is a typed literal `satisfies`-checked against its wire
+ * declaration and serialized. A field renamed or dropped by the declaration
+ * fails `tsc` before this suite runs, which is the earliest anything can catch
+ * it. What runs HERE is what a type cannot state: that each fixture is
+ * canonical JSON (so byte comparison against a live handler is meaningful),
+ * that the reason tables and their fixtures cover each other exactly, and that
+ * every fixture passes the runtime guard its consumer actually applies.
  *
- * The two apps' halves of this gate live in
+ * The two apps' halves live in
  * `apps/mta/src/routes/__tests__/wireCompat.test.ts` (the handlers produce and
  * accept these bytes) and
  * `apps/api/convex/lib/sendProviders/__tests__/mtaWireCompat.test.ts` (the
@@ -19,12 +21,17 @@ import { describe, expect, it } from 'vitest';
 import {
 	MTA_DEFER_REASON_ORIGIN,
 	MTA_RELAY_DECISION_REASONS,
+	isMtaRelayDecisionReason,
 	mtaDeferReasonOrigin,
 	type MtaDeferReason,
 	type MtaRoutingDecisionResponse,
 } from '../routingDecision';
 import type { MtaSendRequest, MtaSendResponse } from '../send';
-import { isMtaWebhookEvent, MTA_WEBHOOK_EVENT_TYPES, type MtaWebhookEvent } from '../webhookEvent';
+import {
+	isMtaWebhookEvent,
+	MTA_WEBHOOK_EVENT_TYPES,
+	type ValidatedMtaWebhookEvent,
+} from '../webhookEvent';
 import { normalizeIpReputationPayload } from '../ipReputation';
 import {
 	DECISION_DEFER_BYTES,
@@ -42,12 +49,17 @@ import {
 } from '../wireFixtures';
 
 /**
- * Parse, re-declare as the wire type, re-serialize. `JSON.stringify` walks the
- * parsed object's OWN key order, so this fails on a renamed key, a dropped key,
- * a reordered key and a changed value alike — the four ways a type extraction
- * can silently move the wire.
+ * Assert the fixture is CANONICAL JSON and hand it back parsed.
+ *
+ * Not a type check — `JSON.parse … as T` erases, and asserting `stringify` over
+ * `parse` would hold for any canonical string no matter what the declarations
+ * say. `wireFixtures.ts` does the type half at compile time. What this buys is
+ * the premise the apps' suites rest on: no insignificant whitespace, no
+ * `1.0`-for-`1`, no escape the re-serialization would normalize away — so
+ * `expect(await response.text()).toBe(FIXTURE)` over there is a real
+ * byte-for-byte comparison rather than a lucky one.
  */
-function roundTrips<T>(bytes: string): T {
+function canonical<T>(bytes: string): T {
 	const parsed = JSON.parse(bytes) as T;
 	expect(JSON.stringify(parsed)).toBe(bytes);
 	return parsed;
@@ -55,7 +67,7 @@ function roundTrips<T>(bytes: string): T {
 
 describe('send intake wire', () => {
 	it('carries a governed request byte-identically', () => {
-		const request = roundTrips<MtaSendRequest>(GOVERNED_SEND_REQUEST_BYTES);
+		const request = canonical<MtaSendRequest>(GOVERNED_SEND_REQUEST_BYTES);
 		expect(request.messageId).toBe('send-fixture-1');
 		expect(request.ipPool).toBe('campaign');
 		// Carried, never re-derived: the callback digest is taken over exactly
@@ -64,7 +76,7 @@ describe('send intake wire', () => {
 	});
 
 	it('carries a system request byte-identically', () => {
-		const request = roundTrips<MtaSendRequest>(SYSTEM_SEND_REQUEST_BYTES);
+		const request = canonical<MtaSendRequest>(SYSTEM_SEND_REQUEST_BYTES);
 		expect(request.organizationId).toBe('system');
 		expect(request.ipPool).toBe('transactional');
 		// The system intake refuses tenant routing material outright.
@@ -78,11 +90,11 @@ describe('send intake wire', () => {
 		['intake pending', SEND_INTAKE_PENDING_BYTES],
 		['lease required', SEND_LEASE_REQUIRED_BYTES],
 	])('carries the %s response byte-identically', (_label, bytes) => {
-		roundTrips<MtaSendResponse>(bytes);
+		canonical<MtaSendResponse>(bytes);
 	});
 
 	it('keeps `id` the caller’s message id and the queue identity separate', () => {
-		const accepted = roundTrips<MtaSendResponse>(SEND_ACCEPTED_BYTES);
+		const accepted = canonical<MtaSendResponse>(SEND_ACCEPTED_BYTES);
 		const request = JSON.parse(GOVERNED_SEND_REQUEST_BYTES) as MtaSendRequest;
 		expect('success' in accepted && accepted.id).toBe(request.messageId);
 		expect('success' in accepted && accepted.workAttemptId).toBe(request.workAttemptId);
@@ -91,7 +103,7 @@ describe('send intake wire', () => {
 
 describe('routing decision wire', () => {
 	it('carries the mta decision byte-identically', () => {
-		const decision = roundTrips<MtaRoutingDecisionResponse>(DECISION_MTA_BYTES);
+		const decision = canonical<MtaRoutingDecisionResponse>(DECISION_MTA_BYTES);
 		expect(decision.decision).toBe('mta');
 		// Convex validates this answer by EXACT key count (2 outer, 3 in the lease).
 		expect(Object.keys(decision)).toHaveLength(2);
@@ -103,7 +115,7 @@ describe('routing decision wire', () => {
 	});
 
 	it('carries the reason-less relay decision byte-identically', () => {
-		const decision = roundTrips<MtaRoutingDecisionResponse>(DECISION_RELAY_ALLOWED_BYTES);
+		const decision = canonical<MtaRoutingDecisionResponse>(DECISION_RELAY_ALLOWED_BYTES);
 		expect(Object.keys(decision)).toEqual(['decision']);
 	});
 
@@ -116,10 +128,24 @@ describe('routing decision wire', () => {
 	it.each(Object.entries(DECISION_RELAY_REASON_BYTES))(
 		'carries the %s relay decision byte-identically',
 		(reason, bytes) => {
-			const decision = roundTrips<MtaRoutingDecisionResponse>(bytes);
+			const decision = canonical<MtaRoutingDecisionResponse>(bytes);
 			expect(decision).toEqual({ decision: 'relay', reason });
 		}
 	);
+
+	it('recognises exactly the relay reasons the one list names', () => {
+		// Convex's validator accepts a relay answer through THIS guard. A reason
+		// the emitter may legally send but the guard does not know falls through
+		// to the unrecognised-answer branch and silently becomes a 60-second
+		// defer, so the two must be the same list — not two copies of it.
+		for (const reason of MTA_RELAY_DECISION_REASONS) {
+			expect(isMtaRelayDecisionReason(reason)).toBe(true);
+		}
+		expect(isMtaRelayDecisionReason('provider_pool_exhausted')).toBe(false);
+		expect(isMtaRelayDecisionReason('constructor')).toBe(false);
+		expect(isMtaRelayDecisionReason('__proto__')).toBe(false);
+		expect(isMtaRelayDecisionReason(undefined)).toBe(false);
+	});
 
 	it('has a fixture for every defer reason, and no reason without one', () => {
 		expect(Object.keys(DECISION_DEFER_BYTES).sort()).toEqual(
@@ -130,7 +156,7 @@ describe('routing decision wire', () => {
 	it.each(Object.entries(DECISION_DEFER_BYTES))(
 		'carries the %s defer decision byte-identically and classifies its origin',
 		(reason, bytes) => {
-			const decision = roundTrips<MtaRoutingDecisionResponse>(bytes);
+			const decision = canonical<MtaRoutingDecisionResponse>(bytes);
 			expect(Object.keys(decision)).toEqual(['decision', 'reason', 'retryAfterMs']);
 			expect(mtaDeferReasonOrigin(reason)).toBe(MTA_DEFER_REASON_ORIGIN[reason as MtaDeferReason]);
 		}
@@ -160,7 +186,7 @@ describe('webhook event wire', () => {
 	it.each(Object.entries(WEBHOOK_EVENT_BYTES))(
 		'carries the %s event byte-identically and past the ingress guard',
 		(event, bytes) => {
-			const parsed = roundTrips<MtaWebhookEvent>(bytes);
+			const parsed = canonical<ValidatedMtaWebhookEvent>(bytes);
 			expect(parsed.event).toBe(event);
 			expect(isMtaWebhookEvent(parsed)).toBe(true);
 		}
@@ -173,7 +199,7 @@ describe('webhook event wire', () => {
 	});
 
 	it('keeps the FBL-only fields on the complaint event', () => {
-		const complaint = JSON.parse(WEBHOOK_EVENT_BYTES.complained) as MtaWebhookEvent;
+		const complaint = JSON.parse(WEBHOOK_EVENT_BYTES.complained) as ValidatedMtaWebhookEvent;
 		// `sourceIsp` is the destination-provider union, not a free string: a
 		// consumer comparing it to 'yahoo' compares against a checked constant.
 		expect(complaint).toMatchObject({ reportedDomain: 'mail.example.org', sourceIsp: 'yahoo' });
@@ -182,7 +208,7 @@ describe('webhook event wire', () => {
 
 describe('ip-reputation snapshot wire', () => {
 	it('carries the snapshot byte-identically', () => {
-		roundTrips<unknown>(IP_REPUTATION_SNAPSHOT_BYTES);
+		canonical<unknown>(IP_REPUTATION_SNAPSHOT_BYTES);
 	});
 
 	it('normalizes the snapshot into the stored DTO', () => {

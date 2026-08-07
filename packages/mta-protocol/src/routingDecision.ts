@@ -10,7 +10,7 @@
  * wire, whose own comment admitted the drift risk. This is the one.
  */
 
-import type { GovernedRoutingContext } from '@owlat/shared';
+import type { GovernedRoutingContext } from '@owlat/shared/routingDispatch';
 
 /** The decision request body. `requireProviderProbe` is the one optional knob. */
 export type MtaRoutingDecisionRequest = GovernedRoutingContext & {
@@ -70,6 +70,12 @@ export function mtaDeferReasonOrigin(reason: unknown): MtaDeferOrigin | undefine
  * A bare `{ decision: 'relay' }` (no reason) is the answer to a request that
  * NAMED relay as its candidate provider, and carries no reason because none of
  * these applies.
+ *
+ * Like {@link MTA_DEFER_REASON_ORIGIN}, this is BOTH the type's source and the
+ * accept-list Convex validates an answer against ({@link
+ * isMtaRelayDecisionReason}) — a reason added here reaches both ends at once, so
+ * the emitter and the validator cannot drift into a relay answer the reader
+ * silently turns into a 60-second defer.
  */
 export const MTA_RELAY_DECISION_REASONS = [
 	'provider_breaker',
@@ -79,6 +85,13 @@ export const MTA_RELAY_DECISION_REASONS = [
 ] as const;
 
 export type MtaRelayDecisionReason = (typeof MTA_RELAY_DECISION_REASONS)[number];
+
+const RELAY_DECISION_REASONS = new Set<string>(MTA_RELAY_DECISION_REASONS);
+
+/** Recognise one answered relay reason. A `Set`, so no inherited key matches. */
+export function isMtaRelayDecisionReason(reason: unknown): reason is MtaRelayDecisionReason {
+	return typeof reason === 'string' && RELAY_DECISION_REASONS.has(reason);
+}
 
 /** The authenticated last-mile lease the MTA grants with an `mta` decision. */
 export interface MtaRoutingLeaseGrant {
