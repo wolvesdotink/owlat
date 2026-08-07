@@ -9,6 +9,7 @@
  * (mailbox re-activation, audit prefixes) that differ between personal and shared.
  */
 
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -156,7 +157,7 @@ export async function insertExternalAccountRow(
 		address: string;
 		scope?: 'shared';
 		/** Deliverability SEED mailbox (not a user inbox). Tagged at connect time. */
-		seed?: { seedProvider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other' };
+		seed?: { seedProvider: DestinationProviderKey };
 		auditPrefix?: string;
 		fields: ExternalConnectFields;
 		now: number;
