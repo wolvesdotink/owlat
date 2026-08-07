@@ -1,3 +1,14 @@
+import {
+	MAX_FIELD_DESCRIPTION_LENGTH,
+	MAX_FIELD_LABEL_LENGTH,
+	readDescriptorRequired,
+	validateDescriptorBooleanDefault,
+	validateDescriptorKey,
+	validateDescriptorNumberField,
+	validateDescriptorSelectField,
+	validateDescriptorText,
+} from './fieldDescriptorManifest';
+import { isPluginSecretEnvVar } from './inboundSignature';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
 	isRecord,
@@ -8,18 +19,20 @@ import {
 } from './manifestValue';
 import {
 	MAX_SETTINGS_FIELDS,
-	MAX_SETTINGS_OPTIONS,
 	MAX_TEXT_LENGTH,
-	RESERVED_FIELD_KEYS,
 	SETTINGS_FIELD_KINDS,
 	type PluginSettingsFieldKind,
 } from './settingsSchema';
 
-const FIELD_KEY = /^[a-zA-Z][a-zA-Z0-9]*$/;
-const MAX_KEY_LENGTH = 64;
-const MAX_LABEL_LENGTH = 80;
-const MAX_DESCRIPTION_LENGTH = 280;
-
+/**
+ * Manifest-time validation of the optional `settingsSchema` top-level field.
+ *
+ * The five kinds' SHARED rules — key, label, description, `required`, numeric
+ * range, select options — live in `./fieldDescriptorManifest`, because a send
+ * transport's credential form is the same five and the two must not drift. What
+ * stays here is this vocabulary's own delta: a `secret` names an environment
+ * variable instead of holding a value, and a `string` carries `maxLength`.
+ */
 const COMMON_FIELDS = new Set(['kind', 'key', 'label', 'description', 'required']);
 const KIND_EXTRA_FIELDS: Record<PluginSettingsFieldKind, readonly string[]> = {
 	string: ['default', 'maxLength'],
@@ -29,7 +42,6 @@ const KIND_EXTRA_FIELDS: Record<PluginSettingsFieldKind, readonly string[]> = {
 	select: ['options', 'default'],
 };
 
-/** Manifest-time validation of the optional `settingsSchema` top-level field. */
 export function validateSettingsSchema(value: unknown, issues: PluginManifestIssue[]): void {
 	if (value === undefined) return;
 	const items = validateDescriptorSafeArray(value, '$.settingsSchema', issues);
@@ -85,76 +97,21 @@ function validateField(
 		issues
 	);
 
-	validateKey(item.value, path, seenKeys, issues);
-	validateBoundedString(item.value, 'label', path, MAX_LABEL_LENGTH, true, issues);
-	validateBoundedString(item.value, 'description', path, MAX_DESCRIPTION_LENGTH, false, issues);
-	validateRequired(item.value, path, issues);
+	validateDescriptorKey(item.value, path, seenKeys, issues);
+	validateDescriptorText(item.value, 'label', path, MAX_FIELD_LABEL_LENGTH, true, issues);
+	validateDescriptorText(
+		item.value,
+		'description',
+		path,
+		MAX_FIELD_DESCRIPTION_LENGTH,
+		false,
+		issues
+	);
+	// The tri-state answer is for the credential form, which JOINS `envVar` to the
+	// list `required` implies. A settings field has nothing to join, so reporting
+	// a malformed value is all this vocabulary needs.
+	readDescriptorRequired(item.value, path, issues);
 	validateKindSpecific(fieldKind, item.value, path, issues);
-}
-
-function validateKey(
-	field: Record<string, unknown>,
-	path: string,
-	seenKeys: Set<string>,
-	issues: PluginManifestIssue[]
-): void {
-	const key = readDataProperty(field, 'key', issues, true, path);
-	if (key.kind !== 'value') return;
-	if (
-		typeof key.value !== 'string' ||
-		key.value.length > MAX_KEY_LENGTH ||
-		!FIELD_KEY.test(key.value) ||
-		RESERVED_FIELD_KEYS.has(key.value)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.key`,
-			'must be a non-reserved alphanumeric identifier of at most 64 characters'
-		);
-		return;
-	}
-	if (seenKeys.has(key.value)) {
-		addManifestIssue(issues, 'duplicate', `${path}.key`, `duplicates field ${key.value}`);
-		return;
-	}
-	seenKeys.add(key.value);
-}
-
-function validateBoundedString(
-	field: Record<string, unknown>,
-	name: string,
-	path: string,
-	maxLength: number,
-	required: boolean,
-	issues: PluginManifestIssue[]
-): void {
-	const property = readDataProperty(field, name, issues, required, path);
-	if (property.kind !== 'value') return;
-	if (
-		typeof property.value !== 'string' ||
-		property.value.trim() !== property.value ||
-		property.value.length < 1 ||
-		property.value.length > maxLength
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.${name}`,
-			`must be a trimmed string of at most ${maxLength} characters`
-		);
-	}
-}
-
-function validateRequired(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const required = readDataProperty(field, 'required', issues, false, path);
-	if (required.kind === 'value' && typeof required.value !== 'boolean') {
-		addManifestIssue(issues, 'invalid_type', `${path}.required`, 'must be a boolean');
-	}
 }
 
 function validateKindSpecific(
@@ -172,26 +129,25 @@ function validateKindSpecific(
 			validateSecretEnvVar(field, path, issues);
 			return;
 		case 'number':
-			validateNumberField(field, path, issues);
+			validateDescriptorNumberField(field, path, issues);
 			return;
 		case 'boolean':
-			validateBooleanDefault(field, path, issues);
+			validateDescriptorBooleanDefault(field, path, issues);
 			return;
 		case 'select':
-			validateSelectField(field, path, issues);
+			validateDescriptorSelectField(field, path, issues);
 			return;
 	}
 }
 
 /**
  * A `secret` field stores nothing: it names the deployment environment variable
- * that supplies the credential. The name must be `PLUGIN_`-prefixed, matching
- * the import-provider `secretEnvVar` rule, so a plugin can only ever point at a
- * plugin-scoped variable and never at a core deployment secret.
+ * that supplies the credential. The name must be `PLUGIN_`-prefixed so a plugin
+ * can only ever point at a plugin-scoped variable and never at a core deployment
+ * secret — the same fence, through the same predicate, that an inbound signature
+ * contract's `secretEnvVar` passes, because it is the same rule about the same
+ * namespace and the host reads the VALUE in both cases.
  */
-const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
-const MAX_ENV_VAR_LENGTH = 128;
-
 function validateSecretEnvVar(
 	field: Record<string, unknown>,
 	path: string,
@@ -199,11 +155,7 @@ function validateSecretEnvVar(
 ): void {
 	const envVar = readDataProperty(field, 'envVar', issues, true, path);
 	if (envVar.kind !== 'value') return;
-	if (
-		typeof envVar.value !== 'string' ||
-		envVar.value.length > MAX_ENV_VAR_LENGTH ||
-		!SECRET_ENV_VAR.test(envVar.value)
-	) {
+	if (!isPluginSecretEnvVar(envVar.value)) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
@@ -250,8 +202,8 @@ function validateStringDefault(
 		);
 		return;
 	}
-	// Mirror validateNumberField's min/max default check: the default must also
-	// satisfy the field's own declared maxLength (already validated by
+	// Mirror validateDescriptorNumberField's min/max default check: the default
+	// must also satisfy the field's own declared maxLength (already validated by
 	// validateMaxLength), otherwise the field ships a default that its own
 	// `:maxlength` input constraint and any re-save could never reproduce.
 	const maxLength = readDataProperty(field, 'maxLength', issues, false, path);
@@ -268,115 +220,4 @@ function validateStringDefault(
 			`must be at most ${maxLength.value} characters (the field's maxLength)`
 		);
 	}
-}
-
-function validateNumberField(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const min = readFiniteNumber(field, 'min', path, issues);
-	const max = readFiniteNumber(field, 'max', path, issues);
-	if (min !== undefined && max !== undefined && min > max) {
-		addManifestIssue(issues, 'invalid_type', `${path}.min`, 'must not exceed max');
-	}
-	const value = readDataProperty(field, 'default', issues, false, path);
-	if (value.kind !== 'value') return;
-	if (typeof value.value !== 'number' || !Number.isFinite(value.value)) {
-		addManifestIssue(issues, 'invalid_type', `${path}.default`, 'must be a finite number');
-		return;
-	}
-	if ((min !== undefined && value.value < min) || (max !== undefined && value.value > max)) {
-		addManifestIssue(issues, 'invalid_type', `${path}.default`, 'must fall within min and max');
-	}
-}
-
-function readFiniteNumber(
-	field: Record<string, unknown>,
-	name: string,
-	path: string,
-	issues: PluginManifestIssue[]
-): number | undefined {
-	const property = readDataProperty(field, name, issues, false, path);
-	if (property.kind !== 'value') return undefined;
-	if (typeof property.value !== 'number' || !Number.isFinite(property.value)) {
-		addManifestIssue(issues, 'invalid_type', `${path}.${name}`, 'must be a finite number');
-		return undefined;
-	}
-	return property.value;
-}
-
-function validateBooleanDefault(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const value = readDataProperty(field, 'default', issues, false, path);
-	if (value.kind === 'value' && typeof value.value !== 'boolean') {
-		addManifestIssue(issues, 'invalid_type', `${path}.default`, 'must be a boolean');
-	}
-}
-
-function validateSelectField(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const optionsValue = readDataProperty(field, 'options', issues, true, path);
-	if (optionsValue.kind !== 'value') return;
-	const items = validateDescriptorSafeArray(optionsValue.value, `${path}.options`, issues);
-	if (!items) return;
-	if (items.length < 1 || items.length > MAX_SETTINGS_OPTIONS) {
-		addManifestIssue(
-			issues,
-			'invalid_type',
-			`${path}.options`,
-			`must contain 1 to ${MAX_SETTINGS_OPTIONS} options`
-		);
-		return;
-	}
-	const seenValues = new Set<string>();
-	for (const [index, item] of items.entries()) {
-		validateSelectOption(item, `${path}.options[${index}]`, seenValues, issues);
-	}
-	const value = readDataProperty(field, 'default', issues, false, path);
-	if (value.kind !== 'value') return;
-	if (typeof value.value !== 'string' || !seenValues.has(value.value)) {
-		addManifestIssue(
-			issues,
-			'invalid_type',
-			`${path}.default`,
-			'must match a declared option value'
-		);
-	}
-}
-
-function validateSelectOption(
-	item: DataProperty,
-	path: string,
-	seenValues: Set<string>,
-	issues: PluginManifestIssue[]
-): void {
-	if (item.kind !== 'value') return;
-	if (!isRecord(item.value)) {
-		addManifestIssue(issues, 'invalid_type', path, 'must be a plain object');
-		return;
-	}
-	validateKnownFields(item.value, path, new Set(['value', 'label']), issues);
-	const value = readDataProperty(item.value, 'value', issues, true, path);
-	if (value.kind === 'value') {
-		if (typeof value.value !== 'string' || value.value.length < 1 || value.value.length > 128) {
-			addManifestIssue(
-				issues,
-				'invalid_format',
-				`${path}.value`,
-				'must be a string of 1 to 128 characters'
-			);
-		} else if (seenValues.has(value.value)) {
-			addManifestIssue(issues, 'duplicate', `${path}.value`, `duplicates option ${value.value}`);
-		} else {
-			seenValues.add(value.value);
-		}
-	}
-	validateBoundedString(item.value, 'label', path, MAX_LABEL_LENGTH, true, issues);
 }

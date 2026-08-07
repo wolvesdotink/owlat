@@ -1,4 +1,7 @@
-import type { PluginReplayBoundSignatureContract } from './inboundSignature';
+// A VALUE import, and safe: `./inboundSignature` is a leaf that imports nothing.
+// `isPluginSecretEnvVar` is the one statement of the `PLUGIN_` namespace rule,
+// and the transport predicate below composes onto it rather than restating it.
+import { isPluginSecretEnvVar, type PluginReplayBoundSignatureContract } from './inboundSignature';
 import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 // TYPE-ONLY, and it has to stay that way: `./sendTransportCredentials` reads the
 // variable bound declared below, so a value import here would close a runtime
@@ -150,21 +153,11 @@ export interface PluginSendTransportDefinition {
 	 * instance-scoped to read and the send would go out on the DEFAULT instance's
 	 * credentials.
 	 *
-	 * `PLUGIN_`-PREFIXED, like every other manifest-declared variable whose VALUE
-	 * the host reads (a settings `secret`, a webhook signing key). The prefix
-	 * fences the plugin namespace off from the HOST's own deployment credentials:
-	 * a manifest cannot name — and so cannot be handed — `MTA_API_KEY` or
-	 * `AWS_SECRET_ACCESS_KEY`. It is deliberately NOT a per-plugin fence: the
-	 * shipped manifests name their variables after the vendor rather than after
-	 * the plugin id (`slack-approvals` declares `PLUGIN_SLACK_BOT_TOKEN`), so one
-	 * plugin can name another's variable, exactly as the platform's settings
-	 * `secret` and webhook signing-secret rules already allow. Defense in depth,
-	 * not isolation between bundled plugins — a bundled module runs in the same
-	 * Node action and could read `process.env` itself.
-	 *
-	 * A name containing `__` is refused too: the instance suffix separator is
-	 * `__`, so `PLUGIN_A__EU` as a BASE name would let the default instance read
-	 * the `eu` instance's credential.
+	 * NAMES ARE HELD TO {@link isPluginSendTransportEnvVar}: the shared `PLUGIN_`
+	 * namespace fence (so a manifest cannot name — and so cannot be handed —
+	 * `MTA_API_KEY` or `AWS_SECRET_ACCESS_KEY`), plus the instance-suffix rule
+	 * that refuses a base name containing `__`. Both rules, and why each exists,
+	 * are on that predicate.
 	 */
 	readonly requiredEnvVars?: readonly string[];
 	/**
@@ -246,27 +239,39 @@ export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS = 12;
 export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH = 96;
 
 /**
- * `PLUGIN_`-prefixed, uppercase, and containing NO `__`.
+ * The instance-suffix separator, as the transport contract has to spell it: a
+ * named instance of a transport reads `<BASE>__<INSTANCEKEY>`.
  *
- * The prefix is the namespace that keeps a manifest from naming — and the host
- * from handing over — a variable belonging to the HOST rather than to the plugin
- * tier; it is the same rule a settings `secret` and a webhook signing key already
- * follow, for the same reason (the host reads the VALUE, not just the presence).
- * It does not partition the namespace BETWEEN plugins, and cannot: the shipped
- * manifests name their variables after the vendor, not after the plugin id.
- *
- * The `__` exclusion is the instance-suffix rule: a named instance reads
- * `<BASE>__<INSTANCEKEY>`, so a BASE name containing the separator would make
- * `PLUGIN_ACME_TOKEN__EU` addressable both as the `eu` instance's credential and
- * as some other transport's default one — two transport ids sharing one
- * credential set, which is exactly what instance resolution refuses everywhere
- * else.
+ * The host's own copy is `SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR` in
+ * `apps/api/convex/lib/sendProviders/transports.ts`, which is where the suffix is
+ * actually JOINED; a manifest-validating kit cannot import backend code, so the
+ * separator appears here as the thing a base name may not contain.
  */
-const TRANSPORT_ENV_VAR = /^PLUGIN_[A-Z0-9]+(?:_[A-Z0-9]+)*$/;
+const SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR = '__';
 
 /**
  * Whether a value names a configuration variable a bundled send transport is
  * allowed to declare (and therefore be handed the value of).
+ *
+ * THE NAMESPACE RULE IS NOT RESTATED HERE — it is {@link isPluginSecretEnvVar},
+ * the one predicate every manifest-declared variable whose VALUE the host reads
+ * already passes (a settings `secret`, a webhook signing key). Composing onto it
+ * rather than writing a second regex is deliberate: the two would otherwise be
+ * free to disagree about what "the `PLUGIN_` namespace" means, and this is the
+ * more dangerous of the two surfaces to have the weaker fence on.
+ *
+ * WHAT THIS PREDICATE ADDS is only what is true of a transport variable and of
+ * nothing else:
+ *
+ *  - A TIGHTER LENGTH CAP. A base name is read again with an instance suffix
+ *    appended, so it has to leave room for one.
+ *  - NO `__`. A named instance reads `<BASE>__<INSTANCEKEY>`, so a BASE name
+ *    containing the separator would make `PLUGIN_ACME_TOKEN__EU` addressable both
+ *    as the `eu` instance's credential and as some other transport's default one
+ *    — two transport ids sharing one credential set, which is exactly what
+ *    instance resolution refuses everywhere else. A TRAILING `_` is refused for
+ *    the same reason: it is half a separator, and a base ending in one leaves the
+ *    split between base and suffix ambiguous.
  *
  * Declared beside the contract and shared by everyone who upholds it: the
  * manifest validator refuses a bad name at authoring time, and the host
@@ -276,9 +281,10 @@ const TRANSPORT_ENV_VAR = /^PLUGIN_[A-Z0-9]+(?:_[A-Z0-9]+)*$/;
  */
 export function isPluginSendTransportEnvVar(value: unknown): value is string {
 	return (
-		typeof value === 'string' &&
+		isPluginSecretEnvVar(value) &&
 		value.length <= PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH &&
-		TRANSPORT_ENV_VAR.test(value)
+		!value.includes(SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR) &&
+		!value.endsWith('_')
 	);
 }
 

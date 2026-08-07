@@ -22,7 +22,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isPluginSendTransportEnvVar, parsePluginManifest, validatePluginManifest } from '../index';
+import {
+	isPluginSecretEnvVar,
+	isPluginSendTransportEnvVar,
+	parsePluginManifest,
+	validatePluginManifest,
+} from '../index';
 
 const PATH = '$.contributes.sendTransports[0]';
 
@@ -90,6 +95,37 @@ describe('declared configuration variables', () => {
 			`${PATH}.requiredEnvVars[0]`
 		);
 		expect(isPluginSendTransportEnvVar(envVar)).toBe(false);
+	});
+
+	/**
+	 * THE FENCE IS ONE RULE, NOT TWO. `isPluginSendTransportEnvVar` composes onto
+	 * `isPluginSecretEnvVar` rather than restating the namespace, so a future
+	 * tightening of the shared predicate — the obvious edit, since that is where
+	 * the rule reads as authoritative — cannot leave the transport surface, the one
+	 * whose VALUES the host hands to third-party code, on the older, weaker fence.
+	 * This pins the implication in both directions that matter.
+	 */
+	it.each([
+		'PLUGIN_MAIL_PACK_TOKEN',
+		'PLUGIN_A',
+		'MTA_API_KEY',
+		'plugin_mail_pack_token',
+		'PLUGIN_MAIL_PACK__EU',
+		'PLUGIN_MAIL_PACK_',
+		'PLUGIN_',
+		'',
+	])('never accepts %s outside the shared PLUGIN_ namespace fence', (name) => {
+		if (isPluginSendTransportEnvVar(name)) expect(isPluginSecretEnvVar(name)).toBe(true);
+	});
+
+	it('is strictly narrower than the shared fence, by the instance-suffix rule', () => {
+		// The delta, stated as a case: `__` and a trailing `_` are legal for a
+		// signing secret (nothing appends a suffix to one) and refused for a
+		// transport variable (a named instance reads `<BASE>__<INSTANCEKEY>`).
+		for (const name of ['PLUGIN_MAIL_PACK__EU', 'PLUGIN_MAIL_PACK_']) {
+			expect(isPluginSecretEnvVar(name)).toBe(true);
+			expect(isPluginSendTransportEnvVar(name)).toBe(false);
+		}
 	});
 
 	it('refuses a name declared in both lists — one variable, one meaning', () => {
@@ -396,6 +432,101 @@ describe('declared credential form', () => {
 				)
 			)
 		).toContain(`${PATH}.credentialFields[1].key`);
+	});
+
+	/**
+	 * "THE SETTINGS FIVE, VALIDATED THE SAME WAY" HAS TO BE TRUE OF THE CODE.
+	 *
+	 * Each of these is a form that contradicts itself, and each is refused by
+	 * `settingsSchema`'s validator — so a credential form that accepted it would
+	 * make the shared sentence false and hand a renderer a control an operator
+	 * cannot satisfy: a required select preselected to a value not in its own
+	 * option list (written straight into the variable on submit), or a numeric
+	 * field whose declared bounds exclude every value it will accept.
+	 */
+	it.each([
+		[
+			'a select default that names no declared option',
+			{
+				kind: 'select',
+				options: [{ value: 'us', label: 'United States' }],
+				default: 'ap',
+			},
+			'default',
+		],
+		[
+			'two options carrying one value',
+			{
+				kind: 'select',
+				options: [
+					{ value: 'us', label: 'United States' },
+					{ value: 'us', label: 'US East' },
+				],
+			},
+			'options[1].value',
+		],
+		['a min above its own max', { kind: 'number', min: 100, max: 10 }, 'min'],
+		[
+			'a default outside its own bounds',
+			{ kind: 'number', min: 1, max: 100, default: 99_999 },
+			'default',
+		],
+	])('refuses %s', (_label, overrides, field) => {
+		expect(
+			issuePaths(
+				withFields({
+					key: 'region',
+					label: 'Region',
+					required: true,
+					envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					...overrides,
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].${field}`);
+	});
+
+	it('refuses two fields writing ONE variable — the mirror of the join', () => {
+		// `key` uniqueness says nothing about the write target. Two inputs bound to
+		// one variable render as two questions, and whichever is applied last
+		// silently discards the other entry.
+		expect(
+			issuePaths(
+				withFields(
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'API token',
+						required: true,
+						envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					},
+					{
+						kind: 'string',
+						key: 'alias',
+						label: 'Token alias',
+						required: true,
+						envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					}
+				)
+			)
+		).toContain(`${PATH}.credentialFields[1].envVar`);
+	});
+
+	it('does not add a MISLEADING env-var issue to a malformed required', () => {
+		// `required: 'yes'` is one mistake. Reading it as `false` and then joining
+		// against `optionalEnvVars` would tell the author to move a variable that is
+		// already in the right list — advice that makes the manifest wrong.
+		const paths = issuePaths(
+			withFields({
+				kind: 'secret',
+				key: 'token',
+				label: 'API token',
+				required: 'yes',
+				envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+			})
+		);
+
+		expect(paths).toContain(`${PATH}.credentialFields[0].required`);
+		expect(paths).not.toContain(`${PATH}.credentialFields[0].envVar`);
 	});
 
 	it('refuses a select with no options to choose from', () => {

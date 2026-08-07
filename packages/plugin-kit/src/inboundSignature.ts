@@ -38,10 +38,27 @@ export const PLUGIN_INBOUND_MAX_NAME_LENGTH = 128;
  * generated artifact — because an artifact is exactly the place where the
  * validator's guarantee may no longer hold (a hand edit, a bad merge, a partial
  * regeneration, or a manifest validated by an older kit).
+ *
+ * THE RULE IS STATED ONCE, HERE, FOR EVERY DECLARATION WHOSE VALUE THE HOST
+ * READS. A settings `secret` (`./settingsSchemaManifest`) and a send transport's
+ * configuration variables (`./sendTransport`) pass the same fence through the
+ * same predicate — the second by COMPOSING onto it, so a future tightening of the
+ * namespace lands on all three at once rather than on whichever copy the author
+ * happened to be reading.
  */
 const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
 
-/** Whether a value names a signing secret this contract is allowed to read. */
+/**
+ * Whether a value names a plugin-scoped variable a manifest may point the host
+ * at — the shared `PLUGIN_` namespace fence described above.
+ *
+ * It is deliberately NOT a per-plugin fence, and cannot be: the shipped manifests
+ * name their variables after the vendor rather than after the plugin id
+ * (`slack-approvals` declares `PLUGIN_SLACK_BOT_TOKEN`), so one plugin can name
+ * another's variable. Defense in depth against the HOST's own credentials, not
+ * isolation between bundled plugins — a bundled module runs in the same Node
+ * action and could read `process.env` itself.
+ */
 export function isPluginSecretEnvVar(value: unknown): value is string {
 	return (
 		typeof value === 'string' &&
