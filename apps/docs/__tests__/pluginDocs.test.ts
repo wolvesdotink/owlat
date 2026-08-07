@@ -41,6 +41,7 @@ const PAGES = {
 	connectedApps: '46.plugin-connected-apps.md',
 	sandboxedJobs: '47.plugin-sandboxed-jobs.md',
 	troubleshooting: '48.plugin-troubleshooting.md',
+	sendProviders: '49.plugin-send-providers.md',
 } as const;
 
 const docs = Object.fromEntries(
@@ -59,6 +60,7 @@ const REGION_MAP: ReadonlyArray<{ region: string; page: keyof typeof PAGES }> = 
 	{ region: 'contribution-manifest', page: 'authoring' },
 	{ region: 'gate-module', page: 'authoring' },
 	{ region: 'cron-module', page: 'authoring' },
+	{ region: 'send-provider-manifest', page: 'sendProviders' },
 	{ region: 'send-transport-module', page: 'contributions' },
 	{ region: 'send-transport-webhook-module', page: 'contributions' },
 	{ region: 'send-transport-domain-identity-module', page: 'contributions' },

@@ -348,6 +348,78 @@ export const importProvider: PluginImportProviderModule = {
 };
 // #endregion import-provider-module
 
+// The send-provider authoring guide's centrepiece: ONE manifest declaring all
+// three executable halves of a bundle. It grows the same file, so it imports
+// only the capability constant it adds — `definePlugin` is already in scope from
+// the minimal manifest above, exactly as the guide's prose says.
+// #region send-provider-manifest
+import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
+
+export const acmeRelayPlugin = definePlugin({
+	id: 'acme-relay',
+	version: '1.0.0',
+	capabilities: [PLUGIN_SEND_TRANSPORT_CAPABILITY],
+	// Deployment-wide: the plugin is off until both are set. The signing secret
+	// belongs HERE and not on the transport — without it the feedback route can
+	// verify nothing and answers every delivery 503.
+	flag: { default: false, requiredEnvVars: ['ACME_RELAY_ENABLED', 'PLUGIN_ACME_WEBHOOK_SECRET'] },
+	contributes: {
+		sendTransports: [
+			{
+				id: 'relay',
+				label: 'Acme Relay',
+				module: { exportPath: './convex/transport' },
+				retryDelays: [1_000, 5_000],
+				// THIS TRANSPORT's own configuration: resolved per named instance
+				// (`PLUGIN_ACME_TOKEN__EU` for `plugin.acme-relay.relay#eu`) and handed
+				// to `send` keyed by the base name.
+				requiredEnvVars: ['PLUGIN_ACME_TOKEN'],
+				optionalEnvVars: ['PLUGIN_ACME_REGION'],
+				credentialFields: [
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'API token',
+						required: true,
+						envVar: 'PLUGIN_ACME_TOKEN',
+					},
+					{
+						kind: 'select',
+						key: 'region',
+						label: 'Sending region',
+						options: [
+							{ value: 'eu', label: 'Europe' },
+							{ value: 'us', label: 'United States' },
+						],
+						default: 'eu',
+						envVar: 'PLUGIN_ACME_REGION',
+					},
+				],
+				// `no` is the only value this tier may declare.
+				supportsCustomReturnPath: 'no',
+				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
+				// Declaring a webhook IS `hasProviderFeedback: true` for this kind.
+				webhook: {
+					module: { exportPath: './convex/webhook' },
+					signature: {
+						header: 'x-acme-signature',
+						algorithm: 'hmac-sha256',
+						encoding: 'hex',
+						secretEnvVar: 'PLUGIN_ACME_WEBHOOK_SECRET',
+						// REQUIRED: without replay provisions a captured request verifies
+						// forever. The host signs `<timestamp>.<rawBody>`.
+						replay: { timestampHeader: 'x-acme-timestamp', toleranceSeconds: 300 },
+					},
+				},
+				// Declaring an identity IS `domainVerification: 'api'` for this kind.
+				domainIdentity: { module: { exportPath: './convex/domainIdentity' } },
+			},
+		],
+	},
+});
+// #endregion send-provider-manifest
+
 describe('docs samples: the manifests validate through the shipped validator', () => {
 	it('accepts the minimal manifest', () => {
 		expect(helloPlugin.id).toBe('hello-owlat');
@@ -390,6 +462,22 @@ describe('docs samples: the manifests validate through the shipped validator', (
 				},
 			})
 		).toThrow(PluginManifestError);
+	});
+
+	/**
+	 * The send-provider bundle's two DERIVED capability words, and the two halves
+	 * that derive them. The guide's whole framing rests on this: an author deletes
+	 * a half they do not need and loses the promise with it, rather than leaving a
+	 * boolean behind that says a parser exists when none does.
+	 */
+	it('derives the bundle capability words from the halves that implement them', () => {
+		const transport = acmeRelayPlugin.contributes.sendTransports[0];
+		expect(transport.webhook.module.exportPath).toBe('./convex/webhook');
+		expect(transport.domainIdentity.module.exportPath).toBe('./convex/domainIdentity');
+		expect(transport.supportsCustomReturnPath).toBe('no');
+		// The declared form writes only variables the transport reads.
+		const declared = new Set<string>([...transport.requiredEnvVars, ...transport.optionalEnvVars]);
+		for (const field of transport.credentialFields) expect(declared.has(field.envVar)).toBe(true);
 	});
 
 	it('rejects contributions declared without a feature flag', () => {
