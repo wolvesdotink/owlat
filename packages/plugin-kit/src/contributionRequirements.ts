@@ -63,6 +63,11 @@ export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 			// declared signature, rejects a replay, reauthorizes the contribution and
 			// dispatches the parsed events into the inbound plane.
 			{ role: 'webhook', dispatch: 'wired' },
+			// The sending-domain identity half (D5/P3.2): the transport is registered
+			// into the host's relay-identity registry at composition time, and
+			// `domains/pluginRelay.ts` calls this module to register and re-check the
+			// identity whose row `relayDomainVerified` reads on the enqueue path.
+			{ role: 'domainIdentity', dispatch: 'wired' },
 		],
 	},
 	{

@@ -210,6 +210,18 @@ export type {
 	PluginStaticModuleExport,
 } from './sendTransport';
 export {
+	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH,
+	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
+	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
+} from './sendTransportDomainIdentity';
+export type {
+	PluginDomainIdentityResult,
+	PluginDomainIdentityState,
+	PluginDomainRecordVerdict,
+	PluginSendTransportDomainIdentityDefinition,
+	PluginSendTransportDomainIdentityModule,
+} from './sendTransportDomainIdentity';
+export {
 	PLUGIN_SEND_TRANSPORT_CREDENTIAL_FIELD_KINDS,
 	PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
 } from './sendTransportCredentials';

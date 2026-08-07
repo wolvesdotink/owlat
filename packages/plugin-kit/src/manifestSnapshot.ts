@@ -78,6 +78,15 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 							: webhookValue
 					);
 				}
+				// The sending-domain identity (P3.2) carries one nested descriptor of
+				// its own, and it is an export path codegen imports into generated
+				// Convex code — the same time-of-check/time-of-use gap the webhook's
+				// `module` has, so it is snapshotted for the same reason.
+				if (field === 'domainIdentity') {
+					return snapshotRecord(fieldValue, (identityField, identityValue) =>
+						identityField === 'module' ? snapshotRecord(identityValue) : identityValue
+					);
+				}
 				if (field === 'retryDelays') {
 					return snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues);
 				}

@@ -3,6 +3,10 @@
 // and the transport predicate below composes onto it rather than restating it.
 import { isPluginSecretEnvVar, type PluginReplayBoundSignatureContract } from './inboundSignature';
 import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+// TYPE-ONLY, and it has to stay that way: `./sendTransportDomainIdentity` reads
+// the module-export and config shapes declared below, so a value import here
+// would close a runtime cycle between two modules that only share a vocabulary.
+import type { PluginSendTransportDomainIdentityDefinition } from './sendTransportDomainIdentity';
 // TYPE-ONLY, and it has to stay that way: `./sendTransportCredentials` reads the
 // variable bound declared below, so a value import here would close a runtime
 // cycle between two modules that only share a vocabulary.
@@ -133,11 +137,12 @@ export type PluginSendTransportMessageIdSource = 'provider' | 'composed';
  *    host SIGNS, and a probe wire to settle the second — see
  *    {@link PluginSendTransportCustomReturnPathSupport}. `no` is the only value
  *    this tier has.
- *  - `domainVerification: 'api'` needs a registered sending-domain provider
- *    (`domainIdentity` module export — the seams plan's P3.2).
  *  - `hasProviderFeedback` is DERIVED, not declared: it is true exactly when
  *    {@link PluginSendTransportDefinition.webhook} is present, which is the same
  *    fact stated once. A boolean beside it could only ever disagree.
+ *  - `domainVerification` is DERIVED the same way and for the same reason: it is
+ *    `'api'` exactly when {@link PluginSendTransportDefinition.domainIdentity} is
+ *    present (the seams plan's P3.2), and `'none'` otherwise.
  *  - `tagsFeedbackProvenance` says our own MTA stamped the report on its way out
  *    of our own infrastructure. It is never true of a third party.
  *  - `setupProbe` names an exported validator in `@owlat/shared/setupValidators`,
@@ -218,6 +223,22 @@ export interface PluginSendTransportDefinition {
 	 * see the note on {@link PluginSendTransportDefinition}.
 	 */
 	readonly webhook?: PluginSendTransportWebhookDefinition;
+	/**
+	 * Optional sending-domain identity: how this provider proves that a customer's
+	 * own domain may be signed and relayed by it (the seams plan's P3.2).
+	 *
+	 * Declaring one IS the catalog's `domainVerification: 'api'` for this kind, and
+	 * registers this transport into the host's sending-domain provider registry at
+	 * composition time — see
+	 * {@link PluginSendTransportDomainIdentityDefinition} for what the host keeps
+	 * of that decision and what it hands the module.
+	 *
+	 * AT MOST ONE PER TRANSPORT and one per transport is the whole rule: unlike the
+	 * feedback webhook, whose route surface is keyed by plugin id, an identity is
+	 * scoped to the transport whose account and credentials it was registered
+	 * under.
+	 */
+	readonly domainIdentity?: PluginSendTransportDomainIdentityDefinition;
 	/**
 	 * The credential FORM for this transport's configuration, as typed descriptors
 	 * — the catalog entry's `credentialFields` (D5), spelled in the vocabulary the

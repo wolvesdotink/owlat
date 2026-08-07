@@ -76,6 +76,7 @@ export function validateSendTransportContributions(
 				'messageIdSource',
 				'deduplicatesOnIdempotencyKey',
 				'webhook',
+				'domainIdentity',
 			]),
 			issues
 		);
@@ -91,6 +92,7 @@ export function validateSendTransportContributions(
 		}
 		validateCredentialFields(item.value, path, declaredEnvVars, issues);
 		validateCapabilities(item.value, path, issues);
+		validateDomainIdentity(item.value, path, declaredEnvVars, issues);
 		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
 				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
@@ -331,6 +333,53 @@ const CONFIG_ENV_VAR_FIELDS = ['requiredEnvVars', 'optionalEnvVars'] as const;
 export type ConfigEnvVarField = (typeof CONFIG_ENV_VAR_FIELDS)[number];
 /** The names each list ACCEPTED — a rejected name joins nothing. */
 export type DeclaredConfigEnvVars = Readonly<Record<ConfigEnvVarField, ReadonlySet<string>>>;
+
+/**
+ * Validate an optional sending-domain identity (the seams plan's P3.2).
+ *
+ * Two rules, and the second is the one an author will not expect.
+ *
+ * THE SHAPE. One field, `module`, held to the same export-path rules as every
+ * other executable half — codegen provenance-verifies it and imports it into
+ * generated Convex code, so a path it cannot resolve must be refused here rather
+ * than at build time.
+ *
+ * THE JOIN TO CONFIGURATION. A domain-identity module is called with
+ * {@link PluginSendTransportConfig} — the values of THIS TRANSPORT's own declared
+ * variables, and nothing else. The plugin's deployment-wide `flag.requiredEnvVars`
+ * are deliberately not in it (they gate whether the plugin may run, they are not
+ * this transport's credential), so a transport that declares an identity without
+ * declaring a required variable of its own hands its module an EMPTY environment
+ * and every provider call it makes is unauthenticated. The symptom is a relay
+ * that reports every domain unverified forever, with the only evidence a provider
+ * 401 in a scheduled action's log — so it is refused where the author can read
+ * why.
+ */
+function validateDomainIdentity(
+	transport: Record<string, unknown>,
+	path: string,
+	declaredEnvVars: DeclaredConfigEnvVars,
+	issues: PluginManifestIssue[]
+): void {
+	const identity = readDataProperty(transport, 'domainIdentity', issues, false, path);
+	if (identity.kind !== 'value') return;
+	const identityPath = `${path}.domainIdentity`;
+	if (!isRecord(identity.value)) {
+		addManifestIssue(issues, 'invalid_type', identityPath, 'must be a plain object');
+		return;
+	}
+	validateKnownFields(identity.value, identityPath, new Set(['module']), issues);
+	validateModule(identity.value, identityPath, issues);
+	if (declaredEnvVars.requiredEnvVars.size === 0) {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			identityPath,
+			'must accompany at least one requiredEnvVars entry — the identity module is handed ' +
+				"this transport's own configuration, and with none it calls the provider unauthenticated"
+		);
+	}
+}
 
 /** The declared capability fields — each optional, each with a fail-closed default. */
 function validateCapabilities(
