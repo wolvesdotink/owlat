@@ -84,6 +84,7 @@ vi.mock('@owlat/smtp-client', () => ({
 	isSmtpError: () => false,
 }));
 
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { sendProviderDispatch } from '../dispatch';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
@@ -101,6 +102,13 @@ function fakeCtx(): Parameters<typeof sendProviderDispatch>[0] {
 		scheduler: { runAfter: vi.fn(async () => undefined) },
 	} as unknown as Parameters<typeof sendProviderDispatch>[0];
 }
+
+/**
+ * Built through the kit's own grammar rather than written out: the plugin kind is
+ * a security boundary (every ownership check reads the plugin id back out of it),
+ * so a test that spelled it by hand could drift from the one codegen emits.
+ */
+const SENDBIRD_KIND = pluginNamespacedKind(parsePluginId('mail-pack'), 'sendbird');
 
 const params = {
 	to: 'to@example.com',
@@ -301,13 +309,9 @@ describe('two transports of the same kind', () => {
 		// HANDED — under the base name, whichever instance it was — so a module
 		// written without knowing instances exist still cannot send the third message
 		// with the EU token.
-		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
-		await sendProviderDispatch(
-			fakeCtx(),
-			namedSendTransportId('plugin.mail-pack.sendbird', 'eu'),
-			params
-		);
-		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		await sendProviderDispatch(fakeCtx(), namedSendTransportId(SENDBIRD_KIND, 'eu'), params);
+		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
 
 		expect(pluginSendMock.mock.calls.map((call) => call[0])).toEqual([
 			{
@@ -335,10 +339,10 @@ describe('two transports of the same kind', () => {
 		// Health and measurement stay keyed by KIND (one row per kind, instances
 		// share it), while the dispatch result names the instance — the same split
 		// the core kinds above have.
-		const primary = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		const primary = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
 		const eu = await sendProviderDispatch(
 			fakeCtx(),
-			namedSendTransportId('plugin.mail-pack.sendbird', 'eu'),
+			namedSendTransportId(SENDBIRD_KIND, 'eu'),
 			params
 		);
 

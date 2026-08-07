@@ -84,7 +84,10 @@ describe('per-instance configuration reaches the module', () => {
 	});
 
 	it('hands the DEFAULT instance the unsuffixed values, keyed by base name', async () => {
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(
 			KIND,
 			[],
@@ -104,7 +107,10 @@ describe('per-instance configuration reaches the module', () => {
 		// The whole point of the piece: two transport ids of one plugin kind, two
 		// credential sets. A module written against `env.PLUGIN_POSTMARK_TOKEN` gets
 		// the EU token here without knowing an instance exists.
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(
 			KIND,
 			[],
@@ -124,7 +130,10 @@ describe('per-instance configuration reaches the module', () => {
 	});
 
 	it('fails the attempt CLOSED when a required variable is missing, without calling the module', async () => {
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(
 			KIND,
 			[],
@@ -143,7 +152,10 @@ describe('per-instance configuration reaches the module', () => {
 	it('hands over nothing the transport did not declare', async () => {
 		vi.stubEnv('MTA_API_KEY', 'the-deployments-own-mta-key');
 		vi.stubEnv('PLUGIN_POSTMARK_UNDECLARED', 'not-yours');
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(
 			KIND,
 			[],
@@ -153,7 +165,7 @@ describe('per-instance configuration reaches the module', () => {
 
 		await provider.sendEmail(transportRecord(null), params);
 
-		const config = send.mock.calls[0]?.[2] as { env: Record<string, string> };
+		const config = send.mock.calls[0]?.[2] as unknown as { env: Record<string, string> };
 		expect(Object.keys(config.env).sort()).toEqual([
 			'PLUGIN_POSTMARK_STREAM',
 			'PLUGIN_POSTMARK_TOKEN',
@@ -168,7 +180,10 @@ describe('per-instance configuration reaches the module', () => {
 		// name outside the namespace — so the send fails closed instead of the
 		// module being handed the value.
 		vi.stubEnv('MTA_API_KEY', 'the-deployments-own-mta-key');
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(
 			KIND,
 			[],
@@ -184,7 +199,10 @@ describe('per-instance configuration reaches the module', () => {
 	});
 
 	it('gives a transport that declares no configuration the empty record', async () => {
-		const send = vi.fn(async () => ({ success: true as const, id: 'x' }));
+		const send = vi.fn(async (_params: unknown, _extras: unknown, _config: unknown) => ({
+			success: true as const,
+			id: 'x',
+		}));
 		const provider = createHostedSendProvider(KIND, [], { parseExtras: () => undefined, send });
 
 		await provider.sendEmail(transportRecord(null), params);

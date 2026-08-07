@@ -81,6 +81,7 @@ vi.mock('@owlat/smtp-client', () => ({
 	isSmtpError: () => false,
 }));
 
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { sendProviderDispatch } from '../dispatch';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
@@ -118,6 +119,13 @@ function fakeCtx(): Parameters<typeof sendProviderDispatch>[0] {
 		scheduler: { runAfter: vi.fn(async () => undefined) },
 	} as unknown as Parameters<typeof sendProviderDispatch>[0];
 }
+
+/**
+ * Built through the kit's own grammar rather than written out: the plugin kind is
+ * a security boundary (every ownership check reads the plugin id back out of it),
+ * so a test that spelled it by hand could drift from the one codegen emits.
+ */
+const SENDBIRD_KIND = pluginNamespacedKind(parsePluginId('mail-pack'), 'sendbird');
 
 const params = {
 	to: 'to@example.com',
@@ -232,11 +240,11 @@ describe('dispatch results and errors carry no sealed config', () => {
 		// The host hands this value to third-party code by design (the seams plan's
 		// P3.1), which makes every OTHER surface the interesting one: the record the
 		// router holds, the result the Send row is written from, and the failure text.
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		const dispatched = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
 
 		expect(dispatched.transportId).toBe('plugin.mail-pack.sendbird');
 		expectNoSecret(JSON.stringify(dispatched));
-		expectNoSecret(JSON.stringify(resolveSendTransport('plugin.mail-pack.sendbird')));
+		expectNoSecret(JSON.stringify(resolveSendTransport(SENDBIRD_KIND)));
 		// It DID reach the module, under the base name — otherwise this test would
 		// pass on a transport that simply never got its credential.
 		expect(pluginSendMock.mock.calls[0]?.[0]).toEqual({
@@ -253,7 +261,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 			throw new Error(`upstream rejected ${JSON.stringify(config.env)}`);
 		});
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		const dispatched = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
 
 		expect(dispatched.result.success).toBe(false);
 		expectNoSecret(JSON.stringify(dispatched));
@@ -298,7 +306,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 		await sendProviderDispatch(fakeCtx(), 'smtp', params);
 		await sendProviderDispatch(fakeCtx(), namedSendTransportId('smtp', 'backup'), params);
 		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
-		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
 
 		expectNoSecret(written.join('\n'));
 	});
