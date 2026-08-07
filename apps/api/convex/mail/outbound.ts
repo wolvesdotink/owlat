@@ -606,8 +606,9 @@ export const dispatchDraft = internalAction({
 		if (mta) {
 			for (let i = 0; i < recipients.length; i++) {
 				const to = recipients[i];
-				// Prefix lets mtaWebhook parse the Convex mailMessages id from
-				// `payload.messageId` on sent/bounced events. Matches the
+				// Prefix lets the `pb-` branch of webhooks/dispatcher.ts parse the
+				// Convex mailMessages id out of the `payload.messageId` that
+				// webhooks/adapters/mta.ts reports on sent/bounced events. Matches the
 				// recipients[idx].mtaJobId written by the lifecycle's
 				// insert_mail_message effect.
 				const mtaMessageId = `pb-${mailMessageId}-${i}`;

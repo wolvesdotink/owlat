@@ -77,14 +77,21 @@ accepting unsigned/unverified traffic.
 | `BETTER_AUTH_SECRET`      | `apps/api/convex/auth.ts`                                    | Session signing fails.      |
 | `INSTANCE_SECRET`         | Mailbox auth, unsubscribe tokens.                            | Various.                    |
 | `MTA_API_KEY`             | Outbound mail dispatch, attachment scan.                     | No outbound mail.           |
-| `MTA_WEBHOOK_SECRET`      | `mtaWebhook.handleMtaWebhook`                                | 503.                        |
-| `RESEND_WEBHOOK_SECRET`   | `resendWebhook.handleResendWebhook`                          | 503.                        |
+| `MTA_WEBHOOK_SECRET`      | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)            | 503.                        |
+| `RESEND_WEBHOOK_SECRET`   | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)      | 503.                        |
 | `TWILIO_AUTH_TOKEN`       | `webhooks/adapters/twilio.ts` (SMS webhook verification)     | 503.                        |
-| `META_APP_SECRET`         | `channelWebhooks.handleWhatsAppWebhook` POST                 | 503.                        |
-| `META_VERIFY_TOKEN`       | `channelWebhooks.handleWhatsAppWebhook` GET                  | 503.                        |
-| `GENERIC_WEBHOOK_SECRET`  | `channelWebhooks.handleGenericWebhook`                       | 503.                        |
+| `META_APP_SECRET`         | `webhooks/channels.ts` `handleWhatsAppWebhook` POST          | 503.                        |
+| `META_VERIFY_TOKEN`       | `webhooks/channels.ts` `handleWhatsAppWebhook` GET           | 503.                        |
+| `GENERIC_WEBHOOK_SECRET`  | `webhooks/channels.ts` `handleGenericWebhook`                | 503.                        |
 | `UNSUBSCRIBE_SECRET`      | Unsubscribe-link HMAC.                                       | Link generation/verify fails.|
 | `GOOGLE_SAFE_BROWSING_API_KEY` (optional) | URL-reputation scanner.                          | Reputation skipped.         |
+
+The send-provider feedback routes (`/webhooks/mta`, `/webhooks/resend`,
+`/webhooks/ses`, `/webhooks/mandrill`) share one HTTP entry point —
+`webhooks/providerFeedbackHttp.ts`, which resolves the per-kind adapter from
+the `webhooks/adapters/` registry. Each adapter's `verifySignature` is where
+its 503 is returned, via `missingSecretResult` in `webhooks/security.ts`; the
+row above names the adapter, not the route handler, for that reason.
 
 ---
 

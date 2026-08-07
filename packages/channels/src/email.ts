@@ -5,7 +5,14 @@
  * into the unified ChannelAdapter interface.
  */
 
-import type { ChannelAdapter, OutboundMessage, SendResult, ParsedMessage, DeliveryStatus, ChannelHealth } from './types';
+import type {
+	ChannelAdapter,
+	OutboundMessage,
+	SendResult,
+	ParsedMessage,
+	DeliveryStatus,
+	ChannelHealth,
+} from './types';
 
 interface EmailInboundPayload {
 	from?: string;
@@ -54,7 +61,8 @@ export class EmailAdapter implements ChannelAdapter {
 	}
 
 	async validateSignature(_headers: Record<string, string>, _body: string): Promise<boolean> {
-		// MTA webhook signature validation is handled by mtaWebhook.ts
+		// MTA webhook signature validation is handled by the API's MTA feedback
+		// adapter (apps/api/convex/webhooks/adapters/mta.ts).
 		return true;
 	}
 

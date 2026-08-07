@@ -2291,8 +2291,9 @@ on `bounced`, `email_complained` on `complained`), `campaign_stats_sent` /
 blobs on terminal worker outcomes), and `customer_webhook` (routes through
 `webhooks/scheduleFanout` to the Webhook event registry). Replaces the
 low-level `mark*` mutations in `emailSends.ts` / `transactionalSends.ts`
-and the open-coded `processBounceEvent` / `processComplaintEvent` in
-`resendWebhook.ts`. Three producers of transition calls today: the **Webhook
+and the open-coded `processBounceEvent` / `processComplaintEvent` that used to
+live in the per-provider webhook entry points (now `webhooks/adapters/resend.ts`
+and its siblings, which only parse). Three producers of transition calls today: the **Webhook
 dispatcher** for external events, the **Send completion (module)** for
 workpool completions, and direct callers (the open / click trackers).
 _Avoid_: Send state (names the value, not the machine).
@@ -3085,8 +3086,10 @@ receiveMessage`, `internal.circuit_breaker_tripped` →
 `organizationSettings.setAbuseStatusInternal`, etc. Typed dispatch table
 `{ [K in InboundDeliveryEvent['kind']]: Handler<K> }` — adding a new kind
 without registering a handler is a compile error. Replaces the per-handler
-`if (payload.event === 'X')` chain in `resendWebhook.ts` and
-`mtaWebhook.ts`.
+`if (payload.event === 'X')` chain that used to live in each provider's own
+webhook entry point; those are now parse-only adapters
+(`webhooks/adapters/resend.ts`, `webhooks/adapters/mta.ts`) behind one
+dispatcher.
 
 **Webhook event** (outbound):
 A customer-subscribable event Owlat emits. Identified by its wire literal
