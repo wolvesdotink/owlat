@@ -8,6 +8,11 @@
  * source of truth, and adding to it is the only place TypeScript will allow.
  */
 
+// The kit's namespace predicate, imported rather than restated — see
+// `getPluginTransportEnv`. A leaf contract with no runtime of its own, which is
+// what lets this module stay importable from every isolate.
+import { isPluginSecretEnvVar } from '@owlat/plugin-kit';
+
 export type EnvKey =
 	// Auth & instance
 	| 'BETTER_AUTH_SECRET'
@@ -341,17 +346,6 @@ export function getSendTransportEnv(key: string): string | undefined {
 }
 
 /**
- * `PLUGIN_`-prefixed — the namespace a bundled plugin's own variables live in.
- *
- * Covers the instance-suffixed form too (`PLUGIN_ACME_TOKEN__EU`), which is one
- * more name inside the same namespace. Fencing the shape is what keeps this
- * untyped read from being used — by a future caller, or by a hand-edited
- * generated artifact — to hand a plugin a deployment credential that is not its
- * own.
- */
-const PLUGIN_TRANSPORT_ENV_KEY_PATTERN = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
-
-/**
  * Read one bundled SEND TRANSPORT's declared configuration variable.
  *
  * Accepts an arbitrary key (not the typed `EnvKey` union) because the names are
@@ -364,11 +358,22 @@ const PLUGIN_TRANSPORT_ENV_KEY_PATTERN = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
  * no matter which transport id the send was addressed to. So the namespace fence
  * is the security boundary, and it is checked here as well as at manifest
  * validation, because the host's caller is a generated artifact rather than a
- * validated manifest. Returns `undefined` when unset, empty, or outside the
- * namespace, so the caller fails closed.
+ * validated manifest — the innermost of the three readings, and the one that has
+ * to hold for an artifact no validator ever saw. Returns `undefined` when unset,
+ * empty, or outside the namespace, so the caller fails closed.
+ *
+ * THE FENCE IS THE KIT'S OWN PREDICATE, not a fourth copy of the pattern.
+ * `isPluginSecretEnvVar` is where the `PLUGIN_` namespace is defined — the
+ * manifest validator and the catalog composition guard both compose onto it — and
+ * a private regex here would be free to disagree with it in the one direction
+ * nobody would notice: a tightening that lands on the two outer readings and not
+ * on this one still hands the value over. It accepts the instance-suffixed form
+ * (`PLUGIN_ACME_TOKEN__EU`) because that is one more name inside the same
+ * namespace; only a BASE name is held to the stricter no-`__` rule, and that is
+ * the manifest's business, not this read's.
  */
 export function getPluginTransportEnv(key: string): string | undefined {
-	if (!PLUGIN_TRANSPORT_ENV_KEY_PATTERN.test(key)) return undefined;
+	if (!isPluginSecretEnvVar(key)) return undefined;
 	return readNonEmptyEnv(key);
 }
 
