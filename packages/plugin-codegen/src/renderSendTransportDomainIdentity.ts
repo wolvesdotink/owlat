@@ -45,10 +45,14 @@ interface RenderedSendTransportDomainIdentity extends PluginModuleFileEntry {
  * one `renderSendTransport.ts` makes for `instanceEnvVars`: a flag variable
  * gates whether the PLUGIN may run and is read unsuffixed by the authorization
  * path, while only an instance-scoped variable gets a `__<INSTANCEKEY>` copy.
- * Manifest validation already refuses an identity on a transport with no
- * required variable of its own, so a manifest this codegen sees has one — but
- * the artifact is what runs, and an entry whose required list rendered empty
- * would have the host call the provider with an empty environment.
+ *
+ * The filter is applied to both lists unconditionally. An entry whose required
+ * list came out empty is refused by the HOST at load
+ * (`assertResolvableConfiguration` in
+ * `apps/api/convex/plugins/sendTransportDomainIdentityCatalog.ts`), which is the
+ * right place for it: the artifact is data, and a renderer that silently zeroed
+ * the optional list too would only make a refused entry look partially
+ * intentional.
  */
 function domainIdentitiesFor(
 	plugins: readonly BundledPlugin[]
@@ -59,8 +63,7 @@ function domainIdentitiesFor(
 			const flagEnvVars = plugin.manifest.flag?.requiredEnvVars ?? [];
 			const isOwnEnvVar = (name: string): boolean => !flagEnvVars.includes(name);
 			const requiredEnvVars = (transport.requiredEnvVars ?? []).filter(isOwnEnvVar);
-			const optionalEnvVars =
-				requiredEnvVars.length > 0 ? (transport.optionalEnvVars ?? []).filter(isOwnEnvVar) : [];
+			const optionalEnvVars = (transport.optionalEnvVars ?? []).filter(isOwnEnvVar);
 			return [
 				{
 					packageName: parsePluginPackageName(plugin.packageName),
