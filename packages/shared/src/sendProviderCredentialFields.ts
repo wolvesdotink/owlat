@@ -63,6 +63,7 @@
  * label a form needs; the rest stays where the copy is written.
  */
 
+import { deepFreeze } from './deepFreeze';
 import type { OutboundTlsMode } from './outboundTlsMode';
 
 /**
@@ -300,44 +301,47 @@ export interface SmtpRelayPresetConfig {
  * `./sendProviderCatalog`, and re-exported from `./setupSendingPresets` where
  * the two callers above still import it from.
  *
- * FROZEN THROUGH, table and rows. The type says `SmtpRelayPresetConfig` with
- * mutable members because two shipped callers spread a row into a form draft and
- * a readonly type would ripple through both; the runtime freeze is what actually
- * holds. Reachable as `smtp.credentialFields[0].presets` from a module described
- * as the single source of truth, it is exactly the object an untyped or cast
- * consumer could rewrite for every later reader.
+ * FROZEN THROUGH, table and rows — by {@link deepFreeze}, the same call the
+ * catalog itself is frozen with, rather than by a hand-rolled `Object.freeze`
+ * per row (which is a step the sixth preset gets written without). The type says
+ * `SmtpRelayPresetConfig` with mutable members because two shipped callers
+ * spread a row into a form draft and a readonly type would ripple through both;
+ * the runtime freeze is what actually holds. Reachable as
+ * `smtp.credentialFields[0].presets` from a module described as the single
+ * source of truth, it is exactly the object an untyped or cast consumer could
+ * rewrite for every later reader.
  */
-export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = Object.freeze({
-	mailgun: Object.freeze({
+export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = deepFreeze({
+	mailgun: {
 		label: 'Mailgun',
 		host: 'smtp.mailgun.org',
 		port: '587',
 		secure: false,
-	}),
-	postmark: Object.freeze({
+	},
+	postmark: {
 		label: 'Postmark',
 		host: 'smtp.postmarkapp.com',
 		port: '587',
 		secure: false,
-	}),
-	sendgrid: Object.freeze({
+	},
+	sendgrid: {
 		label: 'SendGrid',
 		host: 'smtp.sendgrid.net',
 		port: '587',
 		secure: false,
-	}),
-	brevo: Object.freeze({
+	},
+	brevo: {
 		label: 'Brevo',
 		host: 'smtp-relay.brevo.com',
 		port: '587',
 		secure: false,
-	}),
-	custom: Object.freeze({
+	},
+	custom: {
 		label: 'Custom SMTP server',
 		host: '',
 		port: '587',
 		secure: false,
-	}),
+	},
 });
 
 /**
