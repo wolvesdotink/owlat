@@ -27,7 +27,12 @@ import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { resolvePool } from '../scaling/poolRules.js';
 import { selectIpWithLease } from '../scaling/ipPool.js';
 import type { DestinationProviderKey, IpPoolType } from '../types.js';
-import type { MtaRoutingDecisionRequest, MtaRoutingDecisionResponse } from '@owlat/mta-protocol';
+import {
+	MTA_ROUTING_DECISION_REQUEST_KEYS,
+	MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS,
+	type MtaRoutingDecisionRequest,
+	type MtaRoutingDecisionResponse,
+} from '@owlat/mta-protocol';
 
 const ROUTING_LEASE_TTL_SECONDS = 15 * 60;
 const ROUTING_LEASE_PREFIX = 'mta:routing-lease:';
@@ -89,27 +94,27 @@ function authorizedForOrg(c: Context, organizationId: string): boolean {
 	return auth.isMasterKey || auth.orgCredential?.organizationId === organizationId;
 }
 
+/**
+ * Judge one decision request.
+ *
+ * The key list is the PACKAGE's, never a copy of it (D7). This check is exact —
+ * an unknown key is a 400 — and Convex's producer spreads a typed
+ * `MtaRoutingDecisionRequest` onto the wire, so a field added to the contract
+ * and honoured by that producer would be refused here the moment it was added
+ * there. Convex cannot distinguish that 400 from an unreachable endpoint, so it
+ * would defer EVERY governed own-MTA send as `local` — uncounted by gate 2 —
+ * with nothing failing to compile on either side. Deriving both lists from the
+ * declaration is what makes that a compile error instead.
+ */
 function validRequest(value: unknown): value is MtaRoutingDecisionRequest {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	const body = value as Record<string, unknown>;
-	const exact = [
-		'messageId',
-		'workAttemptId',
-		'routingReentryToken',
-		'startedAt',
-		'deliveryDomain',
-		'messageType',
-		'organizationId',
-		'recipient',
-		'from',
-		'candidateProvider',
-		'ipPool',
-		'allowWarmupOverflow',
-	];
+	const exact: readonly string[] = MTA_ROUTING_DECISION_REQUEST_KEYS;
+	const optional: readonly string[] = MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS;
 	return (
-		Object.keys(body).every((key) => [...exact, 'requireProviderProbe'].includes(key)) &&
+		Object.keys(body).every((key) => exact.includes(key) || optional.includes(key)) &&
 		Object.keys(body).length ===
-			exact.length + (body['requireProviderProbe'] === undefined ? 0 : 1) &&
+			exact.length + optional.filter((key) => body[key] !== undefined).length &&
 		exact.every((key) => key in body) &&
 		typeof body['messageId'] === 'string' &&
 		body['messageId'].length > 0 &&

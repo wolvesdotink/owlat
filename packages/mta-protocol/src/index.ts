@@ -50,6 +50,7 @@ export type {
 	MtaRelayDecisionReason,
 	MtaRoutingDecision,
 	MtaRoutingDecisionRequest,
+	MtaRoutingDecisionRequestKey,
 	MtaRoutingDecisionResponse,
 	MtaRoutingLeaseGrant,
 } from './routingDecision';
@@ -57,6 +58,8 @@ export {
 	MTA_DEFER_REASON_ORIGIN,
 	MTA_RELAY_ALLOWED_REASON,
 	MTA_RELAY_DECISION_REASONS,
+	MTA_ROUTING_DECISION_REQUEST_KEYS,
+	MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS,
 	isMtaRelayDecisionReason,
 	mtaDeferReasonOrigin,
 } from './routingDecision';

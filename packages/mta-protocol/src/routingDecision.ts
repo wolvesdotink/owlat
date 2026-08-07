@@ -22,6 +22,65 @@ export type MtaRoutingDecisionRequest = GovernedRoutingContext & {
 	requireProviderProbe?: boolean;
 };
 
+/** Every field of the request body the MTA REQUIRES — i.e. the whole context. */
+export type MtaRoutingDecisionRequestKey = keyof GovernedRoutingContext;
+
+/**
+ * The required field set, written once as a record so BOTH directions are a
+ * compile error: a key here that `GovernedRoutingContext` does not have is an
+ * excess property, and a field added to the context and not added here is a
+ * missing one.
+ *
+ * That second direction is the one that used to bite. The MTA's `validRequest`
+ * checks an EXACT key list, and Convex's producer spreads a typed
+ * {@link MtaRoutingDecisionRequest} onto the wire — so a new context field
+ * reached the body the moment the producer was made to compile, while a
+ * hand-mirrored list on the reader's side answered the enlarged body 400. Convex
+ * cannot tell a 400 from an unreachable endpoint: every governed own-MTA send
+ * would defer as `local`, uncounted by gate 2, with nothing failing to compile
+ * on either side. The list the reader checks against is this one now.
+ */
+const MTA_ROUTING_DECISION_REQUIRED_FIELDS: Record<MtaRoutingDecisionRequestKey, true> = {
+	messageId: true,
+	workAttemptId: true,
+	routingReentryToken: true,
+	startedAt: true,
+	deliveryDomain: true,
+	messageType: true,
+	organizationId: true,
+	recipient: true,
+	from: true,
+	candidateProvider: true,
+	allowWarmupOverflow: true,
+	ipPool: true,
+};
+
+/** The required keys, as the accept-list a reader validates a body against. */
+export const MTA_ROUTING_DECISION_REQUEST_KEYS = Object.keys(
+	MTA_ROUTING_DECISION_REQUIRED_FIELDS
+) as readonly MtaRoutingDecisionRequestKey[];
+
+/** Every field of the request body the MTA merely PERMITS. */
+type MtaRoutingDecisionOptionalKey = Exclude<
+	keyof MtaRoutingDecisionRequest,
+	MtaRoutingDecisionRequestKey
+>;
+
+const MTA_ROUTING_DECISION_OPTIONAL_FIELDS: Record<MtaRoutingDecisionOptionalKey, true> = {
+	requireProviderProbe: true,
+};
+
+/**
+ * The optional keys — a body may carry these and no key at all beyond them and
+ * {@link MTA_ROUTING_DECISION_REQUEST_KEYS}. Written as a record for the same
+ * two-way reason: an optional field added to {@link MtaRoutingDecisionRequest}
+ * fails to compile here until the reader is told to accept it, rather than
+ * being answered 400 by a reader nobody updated.
+ */
+export const MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS = Object.keys(
+	MTA_ROUTING_DECISION_OPTIONAL_FIELDS
+) as readonly MtaRoutingDecisionOptionalKey[];
+
 /**
  * WHO DECIDED TO DEFER — the MTA's routing governance, or a fault on our own
  * side. Both shapes are `defer` to the caller (the message waits either way),

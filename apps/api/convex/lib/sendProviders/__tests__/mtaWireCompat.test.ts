@@ -32,7 +32,10 @@ import {
 	WEBHOOK_EVENT_BYTES,
 } from '@owlat/mta-protocol/wireFixtures';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
-import { MTA_DEFER_REASON_ORIGIN } from '@owlat/mta-protocol/routingDecision';
+import {
+	MTA_DEFER_REASON_ORIGIN,
+	MTA_ROUTING_DECISION_REQUEST_KEYS,
+} from '@owlat/mta-protocol/routingDecision';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { EmailErrorCode } from '../types';
@@ -248,6 +251,19 @@ describe('MTA -> Convex routing decision bytes', () => {
 		ipPool: 'campaign' as const,
 		allowWarmupOverflow: true,
 	};
+
+	it('posts exactly the keys the contract declares required, and no other', async () => {
+		stubFetch(new Response(DECISION_MTA_BYTES, { status: 200 }));
+		await resolveMtaRoutingDecision(resolveSendTransport('mta'), input);
+		const body = JSON.parse(captured!.body) as Record<string, unknown>;
+		// The MTA's `validRequest` checks an EXACT key list, and takes BOTH its
+		// lists from the package now. This is the other half of that statement:
+		// the producer puts those same keys on the wire and nothing else, so an
+		// enlarged contract cannot reach the intake ahead of its reader — which
+		// would be answered 400, and a 400 is indistinguishable here from an
+		// unreachable MTA, so every governed own-MTA send would defer as `local`.
+		expect(Object.keys(body).sort()).toEqual([...MTA_ROUTING_DECISION_REQUEST_KEYS].sort());
+	});
 
 	it('resolves the frozen mta answer into the lease it grants', async () => {
 		stubFetch(new Response(DECISION_MTA_BYTES, { status: 200 }));
