@@ -13,6 +13,12 @@ defineOgImage('Docs', { title: 'Owlat Docs', description: 'Email infrastructure 
 const visible = ref(false)
 const activeTab = ref<'sdk' | 'java' | 'curl'>('sdk')
 
+const tabFiles: Record<'sdk' | 'java' | 'curl', string> = {
+	sdk: 'send.ts',
+	java: 'Send.java',
+	curl: 'terminal',
+}
+
 const { target: linksRef, isVisible: linksVisible } = useScrollReveal()
 const { target: guidesRef, isVisible: guidesVisible } = useScrollReveal()
 const { target: codeRef, isVisible: codeVisible } = useScrollReveal()
@@ -76,43 +82,37 @@ const popularGuides = [
 	<div :class="['landing', { visible }]">
 		<!-- Hero -->
 		<section class="hero-section">
+			<div class="hero-aurora" aria-hidden="true" />
 			<div class="hero-container">
 				<div class="hero-grid">
 					<!-- Left column -->
 					<div class="hero-content">
-						<span class="hero-badge anim-badge">Documentation</span>
+						<span class="eyebrow anim-badge">Documentation</span>
 
-						<div class="hero-title-row anim-title">
-							<div
-								class="hero-logo"
-								style="
-									-webkit-mask: url('/logo.svg') no-repeat center / contain;
-									mask: url('/logo.svg') no-repeat center / contain;
-									background: var(--color-brand);
-								"
-								aria-hidden="true"
-							/>
-							<h1 class="hero-title">Owlat</h1>
-						</div>
-
-						<p class="hero-subtitle anim-subtitle">Email infrastructure for product teams</p>
+						<h1 class="hero-title anim-title">
+							Email infrastructure,
+							<span class="title-accent title-warm">end to end.</span>
+						</h1>
 
 						<p class="hero-tagline anim-tagline">
 							Everything you need to build, send, and optimize email — from drag-and-drop
 							templates to transactional APIs and deliverability tooling.
 						</p>
 
-						<div class="hero-accent anim-accent" />
-
 						<div class="hero-actions anim-actions">
-							<NuxtLink to="/guide/getting-started" class="btn-primary">
-								Start with the Guide
-								<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
+							<NuxtLink to="/guide/getting-started" class="btn btn-primary group no-underline">
+								<span>Start with the Guide</span>
+								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M5 12h14" />
+									<path d="m12 5 7 7-7 7" />
 								</svg>
 							</NuxtLink>
-							<NuxtLink to="/api" class="btn-secondary">
-								Explore the API
+							<NuxtLink to="/api" class="btn btn-hairline group no-underline">
+								<span>Explore the API</span>
+								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M5 12h14" />
+									<path d="m12 5 7 7-7 7" />
+								</svg>
 							</NuxtLink>
 						</div>
 					</div>
@@ -120,13 +120,11 @@ const popularGuides = [
 					<!-- Right column: SDK snippet -->
 					<div class="hero-snippet anim-snippet">
 						<div class="snippet-card">
-							<div class="snippet-chrome">
+							<div class="window-chrome">
 								<div class="chrome-dots">
-									<span class="dot dot-red" />
-									<span class="dot dot-yellow" />
-									<span class="dot dot-green" />
+									<span v-for="i in 3" :key="i" class="dot" />
 								</div>
-								<span class="chrome-label">TypeScript</span>
+								<span class="chrome-pill">quickstart.ts</span>
 							</div>
 							<div class="snippet-body">
 								<pre><code><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
@@ -177,7 +175,10 @@ const popularGuides = [
 		<!-- Popular Guides -->
 		<section ref="guidesRef" :class="['popular-section', { visible: guidesVisible }]">
 			<div class="section-container">
-				<h2 class="section-heading reveal-item" :style="{ '--i': 0 }">Popular Guides</h2>
+				<div class="section-header reveal-item" :style="{ '--i': 0 }">
+					<span class="eyebrow">Guides</span>
+					<h2 class="section-title">Popular <span class="title-accent">guides.</span></h2>
+				</div>
 				<div class="guides-grid">
 					<NuxtLink
 						v-for="(guide, i) in popularGuides"
@@ -199,15 +200,17 @@ const popularGuides = [
 		<!-- Code Preview -->
 		<section ref="codeRef" :class="['code-section', { visible: codeVisible }]">
 			<div class="section-container">
-				<h2 class="section-heading reveal-item" :style="{ '--i': 0 }">Send your first email in seconds</h2>
+				<div class="section-header reveal-item" :style="{ '--i': 0 }">
+					<span class="eyebrow">Quickstart</span>
+					<h2 class="section-title">Send your first email in <span class="title-accent">seconds.</span></h2>
+				</div>
 
 				<div class="code-window reveal-item" :style="{ '--i': 1 }">
-					<div class="code-chrome">
+					<div class="window-chrome">
 						<div class="chrome-dots">
-							<span class="dot dot-red" />
-							<span class="dot dot-yellow" />
-							<span class="dot dot-green" />
+							<span v-for="i in 3" :key="i" class="dot" />
 						</div>
+						<span class="chrome-pill chrome-pill-center">{{ tabFiles[activeTab] }}</span>
 						<div class="code-tabs">
 							<button
 								:class="['code-tab', { active: activeTab === 'sdk' }]"
@@ -302,7 +305,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 							<svg class="oss-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
 								<path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18a4.65 4.65 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3" />
 							</svg>
-							<span class="oss-label">Open Source</span>
+							<span class="oss-label">Open <span class="title-accent">source.</span></span>
 						</div>
 						<p class="oss-description">
 							Owlat is open source and community-driven. Explore the codebase,
@@ -312,10 +315,10 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 							href="https://github.com/wolvesdotink/owlat"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="oss-link"
+							class="btn btn-hairline btn-sm group oss-link no-underline"
 						>
-							View on GitHub
-							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<span>View on GitHub</span>
+							<svg class="arrow-nudge" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 							</svg>
 						</a>
@@ -345,6 +348,45 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	padding: 0 24px;
 }
 
+/* ── Section rhythm: eyebrow → title → sub ── */
+.eyebrow {
+	display: block;
+	font-size: var(--text-caption);
+	line-height: var(--text-caption--line-height);
+	font-weight: 450;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: var(--color-text-tertiary);
+}
+
+.section-title {
+	font-size: clamp(1.5rem, 3vw, 2rem);
+	font-weight: 450;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+	color: var(--color-text-primary);
+	margin-top: 8px;
+}
+
+.title-accent {
+	font-family: var(--font-display);
+	font-style: italic;
+	font-weight: 400;
+	letter-spacing: -0.01em;
+}
+
+/* Warm gradient for the hero's display phrase. */
+.title-warm {
+	background: linear-gradient(100deg, var(--color-text-primary) 15%, var(--color-brand) 80%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.section-header {
+	margin-bottom: 28px;
+}
+
 /* ── Scroll Reveal ── */
 .reveal-item {
 	opacity: 0;
@@ -363,8 +405,21 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 /* ── Hero ── */
 .hero-section {
 	position: relative;
-	padding: 80px 0 64px;
+	padding: 96px 0 72px;
 	overflow: hidden;
+}
+
+/* Restrained bottom aurora — static terracotta wash anchored below the fold */
+.hero-aurora {
+	position: absolute;
+	left: 18%;
+	right: 18%;
+	bottom: -34vh;
+	height: 40vh;
+	border-radius: 50%;
+	filter: blur(120px);
+	background: radial-gradient(ellipse closest-side, rgba(196, 120, 90, 0.16), transparent 72%);
+	pointer-events: none;
 }
 
 .hero-container {
@@ -382,147 +437,52 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	align-items: center;
 }
 
-.hero-badge {
-	display: inline-block;
-	padding: 4px 14px;
-	font-size: 12px;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	color: var(--color-brand);
-	background: var(--color-brand-soft, rgba(191, 106, 62, 0.1));
-	border: 1px solid color-mix(in srgb, var(--color-brand) 30%, transparent);
-	border-radius: 9999px;
-}
-
-.hero-title-row {
-	display: flex;
-	align-items: center;
-	gap: 14px;
-	margin-top: 24px;
-}
-
-.hero-logo {
-	width: 48px;
-	height: 48px;
-}
-
 .hero-title {
-	font-family: var(--font-display, ui-serif, Georgia, serif);
-	font-size: 48px;
-	font-weight: 700;
+	margin-top: 16px;
+	font-size: clamp(2.25rem, 4.5vw, 3.25rem);
+	font-weight: 450;
+	letter-spacing: -0.02em;
+	line-height: 1.12;
 	color: var(--color-text-primary);
-	line-height: 1.1;
 }
 
-.hero-subtitle {
-	margin-top: 16px;
-	font-family: var(--font-display, ui-serif, Georgia, serif);
-	font-size: 22px;
-	font-weight: 500;
-	color: var(--color-text-primary);
-	line-height: 1.3;
+.hero-title .title-accent {
+	display: block;
+	padding-bottom: 2px;
 }
 
 .hero-tagline {
-	margin-top: 14px;
-	font-size: 16px;
+	margin-top: 18px;
+	font-size: var(--text-md);
 	line-height: 1.65;
 	color: var(--color-text-secondary);
 	max-width: 480px;
 }
 
-.hero-accent {
-	margin-top: 20px;
-	width: 40px;
-	height: 2px;
-	background: var(--color-brand);
-	opacity: 0.6;
-	border-radius: 1px;
-}
-
 .hero-actions {
 	display: flex;
 	gap: 12px;
-	margin-top: 28px;
+	margin-top: 32px;
+	flex-wrap: wrap;
 }
 
-/* ── Buttons ── */
-.btn-primary {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 22px;
-	font-size: 15px;
-	font-weight: 600;
-	color: #fff;
-	background: var(--color-brand);
-	border: 1px solid var(--color-brand);
-	border-radius: 8px;
-	text-decoration: none;
-	transition:
-		background var(--motion-fast) var(--ease-spring),
-		transform var(--motion-fast) var(--ease-spring);
+/* Arrow nudge inside pill CTAs / links */
+.arrow-nudge {
+	transition: transform var(--motion-fast) var(--ease-spring);
 }
 
-.btn-primary:hover {
-	background: var(--color-brand-hover);
+.group:hover .arrow-nudge {
+	transform: translateX(3px);
 }
 
-.btn-primary:active {
-	transform: scale(0.98);
-}
-
-.btn-primary svg {
-	transition: transform var(--motion-moderate) var(--ease-spring);
-}
-
-.btn-primary:hover svg {
-	transform: translateX(2px);
-}
-
-.btn-secondary {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 22px;
-	font-size: 15px;
-	font-weight: 600;
-	color: var(--color-text-primary);
-	background: transparent;
-	border: 1px solid var(--color-border-default);
-	border-radius: 8px;
-	text-decoration: none;
-	transition:
-		border-color var(--motion-fast) var(--ease-spring),
-		background var(--motion-fast) var(--ease-spring),
-		transform var(--motion-fast) var(--ease-spring);
-}
-
-.btn-secondary:hover {
-	border-color: var(--color-brand);
-	background: var(--color-brand-soft, rgba(191, 106, 62, 0.06));
-}
-
-.btn-secondary:active {
-	transform: scale(0.98);
-}
-
-/* ── Hero Snippet ── */
-.snippet-card {
-	border-radius: var(--radius-card);
-	overflow: hidden;
-	background: var(--surface-2);
-	box-shadow: var(--shadow-2);
-}
-
-.snippet-chrome {
+/* ── Window chrome (shared by snippet + code window) ── */
+.window-chrome {
+	position: relative;
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 10px 16px;
+	padding: 10px 14px;
 	border-bottom: 1px solid var(--color-border-subtle);
-	background: var(--color-bg-surface);
+	background: var(--surface-1);
 }
 
 .chrome-dots {
@@ -531,19 +491,36 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .dot {
-	width: 10px;
-	height: 10px;
+	width: 8px;
+	height: 8px;
 	border-radius: 50%;
+	background: var(--color-border-strong);
 }
 
-.dot-red { background: #ec6a5e; }
-.dot-yellow { background: #f4bf4f; }
-.dot-green { background: #62c554; }
-
-.chrome-label {
-	font-size: 13px;
-	font-weight: 500;
+.chrome-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 2px 12px;
+	border: 1px solid var(--color-border-subtle);
+	border-radius: 9999px;
+	background: var(--surface-3);
+	font-family: var(--font-mono);
+	font-size: 10px;
 	color: var(--color-text-tertiary);
+	white-space: nowrap;
+}
+
+/* ── Hero Snippet ── */
+.snippet-card {
+	border-radius: var(--radius-card);
+	overflow: hidden;
+	background: var(--surface-3);
+	border: 1px solid var(--color-border-subtle);
+	box-shadow: var(--shadow-4);
 }
 
 .snippet-body {
@@ -554,11 +531,32 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 .snippet-body pre,
 .code-body pre {
 	margin: 0;
-	font-size: 14px;
+	font-size: 13.5px;
 	line-height: 1.7;
-	font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+	font-family: var(--font-mono);
 	color: var(--color-text-primary);
 	white-space: pre;
+}
+
+/* ── Cards (shared recipe: white, hairline, hover lift) ── */
+.section-card,
+.guide-card,
+.oss-banner {
+	background: var(--surface-3);
+	border: 1px solid var(--color-border-subtle);
+	border-radius: var(--radius-card);
+	box-shadow: var(--shadow-1);
+	text-decoration: none;
+	transition:
+		border-color var(--motion-fast) var(--ease-spring),
+		box-shadow var(--motion-fast) var(--ease-spring);
+}
+
+.section-card:hover,
+.guide-card:hover,
+.oss-banner:hover {
+	border-color: var(--color-border-default);
+	box-shadow: var(--shadow-3);
 }
 
 /* ── Quick Links ── */
@@ -576,19 +574,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	position: relative;
 	display: block;
 	padding: 22px 24px;
-	border-radius: var(--radius-card);
-	background: var(--surface-2);
-	box-shadow: var(--shadow-2);
-	text-decoration: none;
-	transition:
-		background var(--motion-moderate) var(--ease-spring),
-		box-shadow var(--motion-moderate) var(--ease-spring);
-}
-
-/* Hover: +6% surface, one elevation step */
-.section-card:hover {
-	background: var(--surface-2-hover);
-	box-shadow: var(--shadow-3);
 }
 
 .section-card-header {
@@ -603,7 +588,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	justify-content: center;
 	width: 32px;
 	height: 32px;
-	border-radius: 8px;
+	border-radius: 10px;
 	background: var(--color-brand-soft);
 	color: var(--color-brand);
 	transition: background var(--motion-fast) var(--ease-spring);
@@ -615,17 +600,17 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 .section-label {
 	font-size: 16px;
-	font-weight: 600;
+	font-weight: 550;
 	color: var(--color-text-primary);
 }
 
 .section-count {
-	font-size: 12px;
-	font-weight: 500;
-	padding: 2px 8px;
+	font-size: var(--text-2xs);
+	font-weight: 450;
+	padding: 2px 9px;
 	border-radius: 9999px;
 	color: var(--color-text-tertiary);
-	background: var(--color-bg-soft);
+	border: 1px solid var(--color-border-subtle);
 }
 
 .section-description {
@@ -658,14 +643,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	padding: 0 0 80px;
 }
 
-.section-heading {
-	font-family: var(--font-display, ui-serif, Georgia, serif);
-	font-size: 24px;
-	font-weight: 600;
-	color: var(--color-text-primary);
-	margin-bottom: 24px;
-}
-
 .guides-grid {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
@@ -676,23 +653,11 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	position: relative;
 	display: block;
 	padding: 20px 22px;
-	border-radius: var(--radius-card);
-	background: var(--surface-2);
-	box-shadow: var(--shadow-2);
-	text-decoration: none;
-	transition:
-		background var(--motion-moderate) var(--ease-spring),
-		box-shadow var(--motion-moderate) var(--ease-spring);
-}
-
-.guide-card:hover {
-	background: var(--surface-2-hover);
-	box-shadow: var(--shadow-3);
 }
 
 .guide-title {
 	font-size: 16px;
-	font-weight: 600;
+	font-weight: 550;
 	color: var(--color-text-primary);
 	transition: color var(--motion-fast) var(--ease-spring);
 }
@@ -733,17 +698,9 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 .code-window {
 	border-radius: var(--radius-card);
 	overflow: hidden;
-	background: var(--surface-2);
+	background: var(--surface-3);
+	border: 1px solid var(--color-border-subtle);
 	box-shadow: var(--shadow-2);
-}
-
-.code-chrome {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	padding: 10px 16px;
-	border-bottom: 1px solid var(--color-border-subtle);
-	background: var(--color-bg-surface);
 }
 
 .code-tabs {
@@ -751,18 +708,18 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	gap: 2px;
 	margin-left: auto;
 	background: var(--color-bg-soft);
-	border-radius: 6px;
+	border-radius: 9999px;
 	padding: 2px;
 }
 
 .code-tab {
 	padding: 4px 14px;
-	font-size: 13px;
-	font-weight: 500;
+	font-size: var(--text-caption);
+	font-weight: 450;
 	color: var(--color-text-tertiary);
 	background: transparent;
 	border: none;
-	border-radius: 5px;
+	border-radius: 9999px;
 	cursor: pointer;
 	transition:
 		color var(--motion-fast) var(--ease-spring),
@@ -776,8 +733,8 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 
 .code-tab.active {
 	color: var(--color-text-primary);
-	font-weight: var(--font-weight-medium, 500);
-	background: var(--surface-4);
+	font-weight: 550;
+	background: var(--surface-3);
 	box-shadow: var(--shadow-1);
 }
 
@@ -815,24 +772,12 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .oss-banner {
+	display: block;
 	padding: 32px 36px;
-	border-radius: var(--radius-card);
-	background: var(--surface-2);
-	box-shadow: var(--shadow-2);
-	transition:
-		background var(--motion-moderate) var(--ease-spring),
-		box-shadow var(--motion-moderate) var(--ease-spring);
-}
-
-.oss-banner:hover {
-	background: var(--surface-2-hover);
-	box-shadow: var(--shadow-3);
 }
 
 .oss-content {
 	max-width: 520px;
-	position: relative;
-	z-index: 2;
 }
 
 .oss-icon-row {
@@ -846,32 +791,21 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 .oss-label {
-	font-size: 16px;
-	font-weight: 600;
+	font-size: 1.25rem;
+	font-weight: 450;
+	letter-spacing: -0.01em;
 	color: var(--color-text-primary);
 }
 
 .oss-description {
-	margin-top: 8px;
-	font-size: 15px;
+	margin-top: 10px;
+	font-size: var(--text-md);
 	line-height: 1.6;
 	color: var(--color-text-secondary);
 }
 
 .oss-link {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 16px;
-	font-size: 15px;
-	font-weight: 600;
-	color: var(--color-brand);
-	text-decoration: none;
-	transition: gap var(--motion-moderate) var(--ease-spring);
-}
-
-.oss-link:hover {
-	gap: 10px;
+	margin-top: 18px;
 }
 
 /* ── Footer ── */
@@ -888,9 +822,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 /* ── Entrance Animations ── */
 .anim-badge,
 .anim-title,
-.anim-subtitle,
 .anim-tagline,
-.anim-accent,
 .anim-actions,
 .anim-snippet {
 	opacity: 0;
@@ -916,34 +848,22 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	transition-delay: 0.1s;
 }
 
-.visible .anim-subtitle {
+.visible .anim-tagline {
 	opacity: 1;
 	transform: translateY(0);
 	transition-delay: 0.18s;
 }
 
-.visible .anim-tagline {
-	opacity: 1;
-	transform: translateY(0);
-	transition-delay: 0.24s;
-}
-
-.visible .anim-accent {
-	opacity: 1;
-	transform: translateY(0);
-	transition-delay: 0.28s;
-}
-
 .visible .anim-actions {
 	opacity: 1;
 	transform: translateY(0);
-	transition-delay: 0.32s;
+	transition-delay: 0.26s;
 }
 
 .visible .anim-snippet {
 	opacity: 1;
 	transform: translateY(0);
-	transition-delay: 0.25s;
+	transition-delay: 0.22s;
 }
 
 /* ── Responsive ── */
@@ -953,10 +873,6 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 		gap: 36px;
 	}
 
-	.hero-title {
-		font-size: 38px;
-	}
-
 	.sections-grid {
 		grid-template-columns: 1fr;
 	}
@@ -964,41 +880,28 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	.guides-grid {
 		grid-template-columns: repeat(2, 1fr);
 	}
-
-	.section-description {
-		padding-left: 42px;
-	}
 }
 
 @media (max-width: 580px) {
 	.hero-section {
-		padding: 56px 0 48px;
-	}
-
-	.hero-title {
-		font-size: 32px;
-	}
-
-	.hero-logo {
-		width: 38px;
-		height: 38px;
+		padding: 64px 0 48px;
 	}
 
 	.hero-actions {
 		flex-direction: column;
+		align-items: stretch;
 	}
 
 	.guides-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.code-tabs {
-		margin-left: 0;
+	.chrome-pill-center {
+		display: none;
 	}
 
-	.code-chrome {
-		flex-wrap: wrap;
-		gap: 10px;
+	.code-tabs {
+		margin-left: auto;
 	}
 
 	.section-description {
@@ -1006,10 +909,10 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 	}
 }
 
-/* ── Syntax Highlighting ── */
+/* ── Syntax Highlighting (tokenized via main.css — flips with color mode) ── */
 .c-kw { color: var(--color-brand); font-weight: 500; }
-.c-fn { color: #d9946e; }
-.c-str { color: #7a9b6e; }
+.c-fn { color: var(--color-syntax-fn); }
+.c-str { color: var(--color-syntax-str); }
 .c-prop { color: var(--color-text-primary); }
 .c-comment { color: var(--color-text-tertiary); }
 </style>

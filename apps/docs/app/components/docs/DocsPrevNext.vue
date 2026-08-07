@@ -6,7 +6,7 @@
 				<NuxtLink
 					v-if="prev"
 					:to="prev.path"
-					class="prev-next-card group flex flex-col gap-1.5 p-4 rounded-(--radius-card) surface-2"
+					class="prev-next-card group flex flex-col gap-1.5 p-4 rounded-(--radius-card)"
 				>
 					<span class="text-xs uppercase tracking-widest text-text-tertiary"> Previous </span>
 					<span
@@ -30,7 +30,7 @@
 				<NuxtLink
 					v-if="next"
 					:to="next.path"
-					class="prev-next-card group flex flex-col items-end gap-1.5 p-4 rounded-(--radius-card) surface-2"
+					class="prev-next-card group flex flex-col items-end gap-1.5 p-4 rounded-(--radius-card)"
 				>
 					<span class="text-xs uppercase tracking-widest text-text-tertiary"> Next </span>
 					<span
@@ -84,14 +84,17 @@ const next = computed<SurroundItem | null>(() => {
 <style scoped>
 .prev-next-card {
 	text-decoration: none;
+	background: var(--surface-3);
+	border: 1px solid var(--color-border-subtle);
+	box-shadow: var(--shadow-1);
 	transition:
-		background-color var(--motion-moderate) var(--ease-spring),
-		box-shadow var(--motion-moderate) var(--ease-spring);
+		border-color var(--motion-fast) var(--ease-spring),
+		box-shadow var(--motion-fast) var(--ease-spring);
 }
 
-/* Hover: +6% surface shift, one elevation step up — no glow, no lift. */
+/* Hover: hairline darkens one step, shadow lifts one step. */
 .prev-next-card:hover {
-	background: var(--surface-2-hover);
+	border-color: var(--color-border-default);
 	box-shadow: var(--shadow-2);
 }
 </style>

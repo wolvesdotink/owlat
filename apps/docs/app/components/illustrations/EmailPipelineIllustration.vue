@@ -29,7 +29,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 
 				<!-- Filters -->
 				<filter id="email-shadow" x="-20%" y="-20%" width="140%" height="140%">
-					<feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.3" />
+					<feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1a1a1a" flood-opacity="0.1" />
 				</filter>
 				<filter id="email-glow" x="-50%" y="-50%" width="200%" height="200%">
 					<feGaussianBlur in="SourceGraphic" stdDeviation="6" />

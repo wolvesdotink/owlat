@@ -44,7 +44,7 @@ defineProps<{
 	background: var(--surface-2);
 	border: 1px solid var(--color-border-subtle);
 	box-shadow: var(--shadow-1);
-	border-radius: 10px;
+	border-radius: 12px;
 	text-decoration: none;
 	color: inherit;
 	overflow: hidden;
