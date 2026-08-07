@@ -30,11 +30,15 @@ export interface PluginImportProviderDefinition {
 	/**
 	 * Required inbound signature-verification contract for plugin-sourced events.
 	 *
-	 * Its `replay` provisions are deliberately NOT accepted here: no HTTP surface
-	 * dispatches import-provider callbacks yet, so declaring replay defense would
-	 * describe a check nothing performs. The piece that opens that surface adds
-	 * `replay: 'required'` to this validator, exactly as the send-transport
-	 * feedback webhook does today.
+	 * Passing it proves ORIGIN ONLY — that the request was signed with the shared
+	 * secret. It carries no replay resistance: the signed payload is the raw body
+	 * alone, with no timestamp, tolerance, or nonce, so a captured request
+	 * verifies forever. That is tolerable here and only here, because no HTTP
+	 * surface dispatches import-provider callbacks yet. The contract's `replay`
+	 * provisions are therefore deliberately NOT accepted on this bucket —
+	 * declaring a defense nothing performs is worse than declaring none — and the
+	 * piece that opens that surface flips this validator to `replay: 'required'`,
+	 * exactly as the send-transport feedback webhook already is.
 	 */
 	readonly signature: PluginInboundSignatureContract;
 	/** Optional per-provider default double-opt-in attestation source label. */

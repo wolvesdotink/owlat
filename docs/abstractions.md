@@ -223,9 +223,39 @@ the delivery page tells an operator to paste); the two are cross-checked against
 the real router by `lib/sendProviders/__tests__/feedbackRoutes.test.ts`.
 
 A bundled plugin transport's feedback does **not** arrive here. It gets its own
-route surface keyed by plugin id — the seams plan's P2.2 — and until that lands,
-the plugin tier's fail-closed reading (`hasProviderFeedbackOf` ⇒ `false`) is what
-covers it.
+route surface keyed by plugin id — the next section.
+
+### Bundled-plugin feedback webhooks
+
+`pluginSendTransportWebhookFor`
+(`apps/api/convex/plugins/sendTransportWebhookCatalog.ts`) — the plugin tier's
+half of the same seam (the seams plan's D6, wired by P2.2). A plugin transport
+may declare a `webhook` on its `sendTransports` contribution: a parse-only module
+export plus the signature contract the HOST verifies it with. One route serves
+all of them, `POST /webhooks/plugin/<pluginId>`
+(`webhooks/pluginFeedbackHttp.ts`), keyed by plugin id rather than by kind —
+which is why the manifest validator refuses a second webhook per plugin.
+
+**The tiers differ in who verifies.** A core adapter owns its provider's
+signature ceremony because we wrote it. A plugin's authenticity is never a
+plugin's decision: the host recomputes the declared HMAC over
+`<timestamp>.<rawBody>` in constant time, enforces the contract's timestamp
+tolerance, and refuses a delivery digest it has already claimed
+(`pluginWebhookDeliveries`, released again when a delivery does not complete).
+The plugin module only turns verified bytes into the four feedback facts
+(`delivered` / `bounced` / `complained` / `deferred`), and the host revalidates
+every field of its output before dispatching, stamping `providerType` from the
+registry rather than from the plugin. A webhook declared without a signature
+contract, or with one carrying no replay provisions, fails MANIFEST VALIDATION —
+so an unverifiable webhook cannot be bundled at all.
+
+Two more gates sit on the request path that the core route has no notion of: the
+hosted-contribution authorization seam (`plugins/sendTransportWebhookAuthorization.ts`,
+audited as `transport.feedback`) rechecks flag, operator grant, env and singleton
+scope on every delivery, so disabling a plugin stops its inbound events as surely
+as its outbound sends; and raw-payload retention is OPT-IN per adapter rather
+than the pipeline default. The adversarial suite is
+`webhooks/__tests__/pluginFeedbackRoute.test.ts`.
 
 ### Inbound channel adapters
 

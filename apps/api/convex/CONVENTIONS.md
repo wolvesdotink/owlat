@@ -313,6 +313,24 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   kind, its owner, and its subscription eligibility, and the authorization seam
   rechecks flag, grant, and env before a plugin may publish one. Emit-time
   payload data is untrusted and is clamped and scrubbed before delivery.
+- A bundled send transport may declare a FEEDBACK webhook on the same
+  contribution; all of them arrive on one route, `POST
+  /webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
+  plugin, enforced at manifest time). The host owns authenticity end to end: it
+  recomputes the declared HMAC over `<timestamp>.<rawBody>` in constant time,
+  refuses a timestamp outside the declared tolerance, and refuses a delivery
+  digest it has already claimed — a claim it releases again when the delivery
+  does not complete, so a provider's redelivery after OUR failure is never
+  mistaken for a replay. A manifest cannot opt out: a webhook without a signature
+  contract, or with one carrying no replay provisions, fails validation. The
+  plugin module only parses verified bytes; its output is untrusted and is
+  re-validated field by field, with `providerType` stamped from the registry.
+  Reauthorize (flag, grant, env, singleton scope) on EVERY delivery — an
+  operator disabling a plugin must stop its inbound events as surely as its
+  outbound sends — and audit under `transport.feedback`, never `transport.send`.
+  Raw-payload retention is opt-in per adapter. The route reads an unknown plugin
+  id as 404 before it reads a byte, and never lets an unauthenticated caller
+  write an audit row.
 - Plugin import providers resolve through the host and call `authorizeStart`
   before a run opens; the paged fetch continues only while flag, grant, env, and
   singleton scope hold. A provider's inbound signature contract is mandatory and

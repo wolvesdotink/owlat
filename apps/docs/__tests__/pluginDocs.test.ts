@@ -60,6 +60,7 @@ const REGION_MAP: ReadonlyArray<{ region: string; page: keyof typeof PAGES }> = 
 	{ region: 'gate-module', page: 'authoring' },
 	{ region: 'cron-module', page: 'authoring' },
 	{ region: 'send-transport-module', page: 'contributions' },
+	{ region: 'send-transport-webhook-module', page: 'contributions' },
 	{ region: 'agent-step-module', page: 'contributions' },
 	{ region: 'automation-step-module', page: 'contributions' },
 	{ region: 'import-provider-module', page: 'contributions' },
