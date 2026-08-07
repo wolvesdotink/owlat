@@ -53,14 +53,21 @@ import { warmingProviderDailyStatsKey } from '../intelligence/warmingKeys.js';
 import { reduce } from '../bounce/outcome.js';
 import type { BasePhaseCtx, BounceAttempt } from '../bounce/types.js';
 import type { FblSourceIspToken } from '../bounce/fblProcessor.js';
+import { destinationFromMx } from '../smtp/destinationProvider.js';
+import { isAttemptSnapshot } from '../queue/smtpOutcomeSnapshot.js';
 import type { ParsedMessage } from '@owlat/mail-message';
 import { createTestConfig } from './helpers/fixtures.js';
 import {
 	DESTINATION_DOMAIN_CORPUS,
 	FBL_OPERATOR_DOMAINS,
+	PROVIDER_MX_EXCHANGES,
 } from './helpers/destinationDomainCorpus.js';
 
 const IP = '10.0.0.9';
+/** What every shipped caller has already applied before a key reaches a store. */
+function normalizedDomain(domain: string): string {
+	return domain.trim().toLowerCase().replace(/\.$/, '');
+}
 /** Fixed clock: the ISP metric row and the snapshot route each derive their own
  *  UTC date, and a real clock can put them on opposite sides of midnight. */
 const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);
@@ -146,7 +153,7 @@ describe('consumer: ipReputation.ts — the ISP-metrics axis', () => {
 		}
 	});
 
-	it('iterates the WHOLE taxonomy, so a sixth provider is read and not silently dropped', async () => {
+	it('reads back every key the taxonomy declares', async () => {
 		for (const provider of DESTINATION_PROVIDER_KEYS) {
 			await redis.flushall();
 			vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
@@ -172,13 +179,32 @@ describe('consumer: ipReputation.ts — the ISP-metrics axis', () => {
 });
 
 describe('consumer: warmingProviderStore.ts — the warming provider dimension', () => {
-	it('finds the day it recorded for every cell the corpus produces', async () => {
+	/**
+	 * The SHIPPED producer for this dimension. `dispatch/effects.ts` hands
+	 * `recordProviderWarmingSend` the `providerKey` of the destination snapshot,
+	 * so the corpus domain has to travel through `destinationFromMx` — computing
+	 * the cell in the test and handing it straight back to the store would assert
+	 * the test's own input.
+	 */
+	function shippedSnapshot(domain: string, provider: DestinationProviderKey) {
+		return destinationFromMx(domain, {
+			status: 'deliverable',
+			source: 'mx',
+			hosts: [{ exchange: PROVIDER_MX_EXCHANGES[provider], priority: 10 }],
+		});
+	}
+
+	it('finds the day the shipped producer recorded, for every domain in the corpus', async () => {
 		for (const { domain, provider, note } of DESTINATION_DOMAIN_CORPUS) {
 			await redis.flushall();
-			const cell = destinationProviderForDomain(domain);
+			const snapshot = shippedSnapshot(domain, provider);
+			// The MX-derived producer and the address classifier are two different
+			// classifiers; on an operator's OWN MX they have to land on one cell.
+			expect(snapshot.providerKey, `${domain} — ${note}`).toBe(provider);
+
 			await recordProviderWarmingSend(
 				redis,
-				{ ip: IP, provider: cell, utcDate: UTC_DATE },
+				{ ip: IP, provider: snapshot.providerKey, utcDate: UTC_DATE },
 				'campaign'
 			);
 
@@ -190,7 +216,7 @@ describe('consumer: warmingProviderStore.ts — the warming provider dimension',
 		}
 	});
 
-	it('enumerates the WHOLE taxonomy, so a sixth provider gets a warming dimension', async () => {
+	it('round-trips every key the taxonomy declares', async () => {
 		for (const provider of DESTINATION_PROVIDER_KEYS) {
 			await redis.flushall();
 			await recordProviderWarmingSend(redis, { ip: IP, provider, utcDate: UTC_DATE }, 'campaign');
@@ -205,17 +231,25 @@ describe('consumer: warmingProviderStore.ts — the warming provider dimension',
 	it('keys its Redis dimension by the taxonomy key, never by the domain', async () => {
 		for (const { domain, provider } of DESTINATION_DOMAIN_CORPUS) {
 			await redis.flushall();
-			const cell = destinationProviderForDomain(domain);
+			const snapshot = shippedSnapshot(domain, provider);
+			// The snapshot carries BOTH keys, and for an unknown operator they
+			// DIFFER — `throttleKey` is the domain there. So the domain is genuinely
+			// within reach of this keyspace, and "no domain leaked" is a falsifiable
+			// claim about writing `providerKey` rather than `throttleKey`.
+			if (provider === 'other') {
+				expect(snapshot.throttleKey).toBe(snapshot.recipientDomain);
+				expect(snapshot.throttleKey).not.toBe(snapshot.providerKey);
+			}
 			await recordProviderWarmingSend(
 				redis,
-				{ ip: IP, provider: cell, utcDate: UTC_DATE },
+				{ ip: IP, provider: snapshot.providerKey, utcDate: UTC_DATE },
 				'campaign'
 			);
 
 			const written = await redis.keys('*');
 			expect(written, domain).toContain(warmingProviderDailyStatsKey(IP, provider, UTC_DATE));
 			expect(
-				written.some((key) => key.includes(domain.toLowerCase())),
+				written.some((key) => key.includes(snapshot.recipientDomain)),
 				`${domain} must not leak into the warming keyspace`
 			).toBe(false);
 		}
@@ -273,8 +307,21 @@ describe('consumer: config/ispProfiles.ts — the PINNED DIVERGENCE', () => {
 			// The divergence, stated as an assertion: the taxonomy says `other`,
 			// profile selection says "this domain's own shaping row".
 			expect(destinationProviderForDomain(domain)).toBe('other');
-			expect(canonicalProfileKey(domain), `${domain} — ${note}`).toBe(domain.toLowerCase());
+			expect(canonicalProfileKey(domain), `${domain} — ${note}`).toBe(normalizedDomain(domain));
 		}
+	});
+
+	it('normalizes the unknown-operator branch exactly like the fold branch', () => {
+		// The one input class where the two halves of `canonicalProfileKey` could
+		// disagree: an unknown operator spelled in a form the shared classifier
+		// folds away. Two rows for one operator would split its shaping and
+		// throttle budget, each half never backing off on the other's evidence.
+		expect(canonicalProfileKey('example.com.')).toBe(canonicalProfileKey('example.com'));
+		expect(canonicalProfileKey('  EXAMPLE.com.  ')).toBe('example.com');
+		// …and the same normalization on the folding side, which is what makes the
+		// two branches one contract rather than two.
+		expect(canonicalProfileKey('gmail.com.')).toBe('gmail');
+		expect(canonicalProfileKey('  GMAIL.COM  ')).toBe('gmail');
 	});
 
 	it('accepts a bare provider key, which is not a domain the classifier could fold', () => {
@@ -302,5 +349,51 @@ describe('consumer: config/ispProfiles.ts — the PINNED DIVERGENCE', () => {
 		// `gmail.com` folds to `gmail` before the read, so a stray per-domain row is
 		// never consulted — the whole point of canonicalizing first.
 		expect(await getProfile(redis, 'gmail.com')).toEqual(DESTINATION_PROVIDER_PROFILES['gmail']);
+	});
+});
+
+describe('consumer: queue/smtpOutcomeSnapshot.ts — the replay guard fails closed', () => {
+	/**
+	 * The journal replays this payload verbatim after the SMTP transaction, so
+	 * the guard is the only thing standing between a corrupt `providerKey` and
+	 * the outcome journal. It used to be `[...].includes(String(providerKey))`,
+	 * which COERCED — an object whose `toString()` said `'gmail'` was accepted.
+	 * Delegating to the taxonomy's own guard tightened that, and these cases pin
+	 * the tightening so a later edit back to a truthiness or `typeof` check is a
+	 * red test rather than a silent hole.
+	 */
+	function snapshotWithProviderKey(providerKey: unknown): unknown {
+		return {
+			domain: 'example.com',
+			pool: 'campaign',
+			ip: IP,
+			eligibilityGeneration: 1,
+			utcDate: UTC_DATE,
+			providerVolumePressure: 0,
+			destination: {
+				recipientDomain: 'example.com',
+				providerKey,
+				throttleKey: 'example.com',
+				daneDiscoveryAuthenticated: true,
+				mx: { status: 'deliverable', source: 'mx', hosts: [{ exchange: 'mx.test', priority: 10 }] },
+			},
+		};
+	}
+
+	it('accepts exactly the keys the taxonomy declares', () => {
+		for (const provider of DESTINATION_PROVIDER_KEYS) {
+			expect(isAttemptSnapshot(snapshotWithProviderKey(provider)), provider).toBe(true);
+		}
+	});
+
+	it('rejects a provider key outside the taxonomy', () => {
+		expect(isAttemptSnapshot(snapshotWithProviderKey('proton'))).toBe(false);
+		expect(isAttemptSnapshot(snapshotWithProviderKey(''))).toBe(false);
+		expect(isAttemptSnapshot(snapshotWithProviderKey(undefined))).toBe(false);
+	});
+
+	it('rejects a non-string that merely STRINGIFIES to a taxonomy key', () => {
+		expect(isAttemptSnapshot(snapshotWithProviderKey({ toString: () => 'gmail' }))).toBe(false);
+		expect(isAttemptSnapshot(snapshotWithProviderKey(['gmail']))).toBe(false);
 	});
 });

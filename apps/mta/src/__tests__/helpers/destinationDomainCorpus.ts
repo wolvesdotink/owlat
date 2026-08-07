@@ -48,13 +48,23 @@ export const DESTINATION_DOMAIN_CORPUS: readonly DestinationDomainCase[] = [
 
 	// ── everything else is `other`, and staying `other` is the contract ───────
 	{ domain: 'example.com', provider: 'other', note: 'ordinary custom domain' },
+	{
+		domain: 'example.com.',
+		provider: 'other',
+		note: 'unknown operator in fully-qualified trailing-dot form: one operator, one key',
+	},
 	{ domain: 'protonmail.com', provider: 'other', note: 'mailbox provider outside the taxonomy' },
 	{ domain: 'comcast.net', provider: 'other', note: 'FBL operator outside the taxonomy' },
 	{ domain: 'mail.ru', provider: 'other', note: 'FBL operator outside the taxonomy' },
 	{
+		domain: 'acme.example',
+		provider: 'other',
+		note: 'Google Workspace tenant on its own domain: `other` until an MX observation says otherwise',
+	},
+	{
 		domain: 'mail.google.com',
 		provider: 'other',
-		note: 'custom-tenant Google: deliberately NOT gmail without an MX observation',
+		note: 'Google-branded HOST that is not a mailbox domain',
 	},
 	{ domain: 'notgmail.com', provider: 'other', note: 'substring of a named domain, not a match' },
 	{
@@ -64,6 +74,29 @@ export const DESTINATION_DOMAIN_CORPUS: readonly DestinationDomainCase[] = [
 	},
 	{ domain: 'googlemail.co', provider: 'other', note: 'adversarial: typo-squat of an alias' },
 ] as const;
+
+/**
+ * One representative MX exchange per taxonomy cell.
+ *
+ * The warming dimension is NOT labelled from the address domain: the shipped
+ * producer is `destinationFromMx`, which classifies from validated MX hostnames
+ * (`smtp/destinationProvider.ts`) and hands `providerKey` to the warming effect
+ * in `dispatch/effects.ts`. Driving the corpus through that producer is what
+ * makes the warming assertions falsifiable — a domain reaches the classifier for
+ * real instead of the test computing the cell and handing it back to itself.
+ *
+ * Keyed by the CELL, not by the domain, so an entry whose address domain is
+ * deliberately not its brand (`mail.google.com` is `other`) gets the unknown
+ * operator's MX and stays `other` end to end. Total over the taxonomy, so a
+ * sixth provider fails the build here too.
+ */
+export const PROVIDER_MX_EXCHANGES = {
+	gmail: 'gmail-smtp-in.l.google.com',
+	microsoft: 'owlat-test.mail.protection.outlook.com',
+	yahoo: 'mta5.am0.yahoodns.net',
+	apple: 'mx01.mail.icloud.com',
+	other: 'mx.unknown-operator.example',
+} as const satisfies Record<DestinationProviderKey, string>;
 
 /**
  * Where each feedback-loop operator's own mailboxes live.

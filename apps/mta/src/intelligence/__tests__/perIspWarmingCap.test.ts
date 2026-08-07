@@ -24,6 +24,7 @@ import {
 	warmingStateKey,
 } from '../warmingKeys.js';
 import { resolveProviderCap } from './helpers/providerCapGate.js';
+import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { DestinationProviderKey } from '../../types.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -116,7 +117,9 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 	it('never lets the union of provider sends exceed the per-IP daily cap', async () => {
 		const dailyCap = 120;
 		await seedIpCap(dailyCap);
-		const providers: DestinationProviderKey[] = ['gmail', 'microsoft', 'yahoo', 'apple', 'other'];
+		// The WHOLE taxonomy (D8), not a copy of it: with a sixth destination
+		// provider a hardcoded five would stop being the union this bounds.
+		const providers: readonly DestinationProviderKey[] = DESTINATION_PROVIDER_KEYS;
 		let accepted = 0;
 		// Every provider believes it may use the whole per-IP cap; the authoritative
 		// per-IP counter is what actually bounds the union.
