@@ -240,22 +240,41 @@ which is why the manifest validator refuses a second webhook per plugin.
 signature ceremony because we wrote it. A plugin's authenticity is never a
 plugin's decision: the host recomputes the declared HMAC over
 `<timestamp>.<rawBody>` in constant time, enforces the contract's timestamp
-tolerance, and refuses a delivery digest it has already claimed
-(`pluginWebhookDeliveries`, released again when a delivery does not complete).
-The plugin module only turns verified bytes into the four feedback facts
-(`delivered` / `bounced` / `complained` / `deferred`), and the host revalidates
-every field of its output before dispatching, stamping `providerType` from the
-registry rather than from the plugin. A webhook declared without a signature
-contract, or with one carrying no replay provisions, fails MANIFEST VALIDATION —
-so an unverifiable webhook cannot be bundled at all.
+tolerance, and applies a delivery digest it has already claimed exactly zero
+further times (`pluginWebhookDeliveries`, released again when a delivery does not
+complete; a repeat is answered `200 { duplicate: true }`, because the ordinary
+cause is our own lost acknowledgement and a `4xx` run is what makes a provider
+deactivate an endpoint). The plugin module only turns verified bytes into the
+four feedback facts (`delivered` / `bounced` / `complained` / `deferred`), and
+the host revalidates every field of its output before dispatching, stamping
+`providerType` from the registry rather than from the plugin and refusing a
+provider message id in a namespace Owlat reserves for its own messages (`pb-`,
+`rp-probe.` — `delivery/messageIdRouting.ts`), since the id is what chooses the
+dispatcher's lane. A webhook declared without a signature contract, or with one
+carrying no replay provisions, fails MANIFEST VALIDATION — so an unverifiable
+webhook cannot be bundled at all; the host re-asserts the parts of that it
+depends on (the `PLUGIN_` secret namespace, bounded replay provisions) when it
+loads the generated artifact, which is where a validator's guarantee can have
+gone stale.
 
 Two more gates sit on the request path that the core route has no notion of: the
 hosted-contribution authorization seam (`plugins/sendTransportWebhookAuthorization.ts`,
 audited as `transport.feedback`) rechecks flag, operator grant, env and singleton
 scope on every delivery, so disabling a plugin stops its inbound events as surely
 as its outbound sends; and raw-payload retention is OPT-IN per adapter rather
-than the pipeline default. The adversarial suite is
-`webhooks/__tests__/pluginFeedbackRoute.test.ts`.
+than the pipeline default — but where it is opted into it keeps the pipeline's
+verify → store → parse order, so the delivery an operator most needs the bytes of
+(the one a drifted parse half rejected) is retained rather than lost. The
+adversarial suite is `webhooks/__tests__/pluginFeedbackRoute.test.ts`.
+
+**One confusion this route does not close.** `transitionByProviderMessageId`
+resolves a provider message id with no `providerType` scoping, so any feedback
+source that can name another provider's id can move that provider's Send — a
+property the core adapters already have against each other, now also reachable
+from a third-party-fed route. The reserved-prefix refusal above closes the arms
+that are not Sends at all (Postbox, return-path probes); scoping the lookup by
+provider is dispatcher-wide work and belongs with P3.1's parity pass, not to one
+caller.
 
 **The capability declaration has not caught up.** The route delivers the events,
 but a bundled plugin's catalog entry still carries no `hasProviderFeedback`
