@@ -12,6 +12,10 @@ import {
 	renderAutomationModules,
 } from './renderAutomation';
 import { renderCronCatalog, renderCronModules } from './renderCron';
+import {
+	renderSendTransportWebhookCatalog,
+	renderSendTransportWebhookModules,
+} from './renderSendTransportWebhook';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
 	importProvidersFor,
@@ -26,6 +30,8 @@ export interface GeneratedPluginComposition {
 	readonly nuxt: string;
 	readonly sendTransportCatalog: string;
 	readonly sendTransportModules: string;
+	readonly sendTransportWebhookCatalog: string;
+	readonly sendTransportWebhookModules: string;
 	readonly agentStepCatalog: string;
 	readonly agentStepModules: string;
 	readonly draftStrategyCatalog: string;
@@ -63,6 +69,8 @@ export const GENERATED_ARTIFACT_PATHS: Readonly<Record<keyof GeneratedPluginComp
 		nuxt: 'apps/web/app/plugins/plugin-composition.generated.ts',
 		sendTransportCatalog: 'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
 		sendTransportModules: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
+		sendTransportWebhookCatalog: 'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
+		sendTransportWebhookModules: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
 		agentStepCatalog: 'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 		agentStepModules: 'apps/api/convex/plugins/agentStepModules.generated.ts',
 		draftStrategyCatalog: 'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
@@ -128,6 +136,8 @@ export function renderPluginComposition(
 		nuxt: `${shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
 		sendTransportCatalog: renderSendTransportCatalog(plugins),
 		sendTransportModules: renderSendTransportModules(plugins),
+		sendTransportWebhookCatalog: renderSendTransportWebhookCatalog(plugins),
+		sendTransportWebhookModules: renderSendTransportWebhookModules(plugins),
 		agentStepCatalog: renderAgentStepCatalog(agentSteps),
 		agentStepModules: renderAgentStepModules(agentSteps),
 		draftStrategyCatalog: renderDraftStrategyCatalog(plugins),

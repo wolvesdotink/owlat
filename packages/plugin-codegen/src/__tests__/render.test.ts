@@ -520,6 +520,97 @@ describe('composition rendering', () => {
 		expect(rendered.nuxt).not.toContain('/transports/postmark');
 	});
 
+	it('emits the feedback webhook as a data catalog plus an isolate-safe registry', () => {
+		// The seams plan's D6/P2.2. Two artifacts, for the same reason the send
+		// half has two: the catalog is read by the HTTP router (which must know the
+		// signature contract BEFORE it trusts a byte), the module registry carries
+		// the executable parse half.
+		const [plugin] = composeBundledPlugins([
+			{
+				packageName: '@acme/mail-plugin',
+				manifest: {
+					id: 'mail-pack',
+					version: '1.0.0',
+					capabilities: ['send:transport'],
+					flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+					contributes: {
+						sendTransports: [
+							{
+								id: 'postmark',
+								label: 'Postmark',
+								module: { exportPath: './transports/postmark' },
+								retryDelays: [1000],
+								webhook: {
+									module: { exportPath: './webhooks/postmark' },
+									signature: {
+										header: 'x-postmark-signature',
+										algorithm: 'hmac-sha256',
+										encoding: 'hex',
+										secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+										replay: { timestampHeader: 'x-postmark-timestamp', toleranceSeconds: 300 },
+									},
+									storeRawPayload: true,
+								},
+							},
+						],
+					},
+				},
+			},
+		]);
+		if (!plugin) throw new Error('Expected plugin fixture');
+		const rendered = renderPluginComposition([plugin]);
+
+		expect(rendered.sendTransportWebhookCatalog).toContain('plugin.mail-pack.postmark');
+		expect(rendered.sendTransportWebhookCatalog).toContain('PLUGIN_POSTMARK_WEBHOOK_SECRET');
+		expect(rendered.sendTransportWebhookCatalog).toContain('"x-postmark-timestamp"');
+		expect(rendered.sendTransportWebhookCatalog).toContain('toleranceSeconds: 300');
+		expect(rendered.sendTransportWebhookCatalog).toContain('storeRawPayload: true');
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('@acme/mail-plugin');
+
+		// NOT `'use node'`: the router that dispatches this registry runs in the
+		// Convex isolate, and a Node-only registry there would fail at push time.
+		expect(rendered.sendTransportWebhookModules).not.toContain("'use node'");
+		expect(rendered.sendTransportWebhookModules).toContain(
+			'satisfies PluginSendTransportWebhookModule'
+		);
+		expect(rendered.sendTransportWebhookModules).toContain(
+			'from "@acme/mail-plugin/webhooks/postmark"'
+		);
+		// The send half is untouched by the feedback half.
+		expect(rendered.sendTransportModules).toContain("'use node';");
+		expect(rendered.sendTransportModules).not.toContain('/webhooks/postmark');
+	});
+
+	it('omits a transport that declares no webhook from the feedback artifacts', () => {
+		const [plugin] = composeBundledPlugins([
+			{
+				packageName: '@acme/mail-plugin',
+				manifest: {
+					id: 'mail-pack',
+					version: '1.0.0',
+					capabilities: ['send:transport'],
+					flag: { default: false },
+					contributes: {
+						sendTransports: [
+							{
+								id: 'postmark',
+								label: 'Postmark',
+								module: { exportPath: './transports/postmark' },
+								retryDelays: [],
+							},
+						],
+					},
+				},
+			},
+		]);
+		if (!plugin) throw new Error('Expected plugin fixture');
+		const rendered = renderPluginComposition([plugin]);
+
+		expect(rendered.sendTransportWebhookCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.sendTransportWebhookModules).not.toContain('import ');
+		expect(rendered.sendTransportCatalog).toContain('plugin.mail-pack.postmark');
+	});
+
 	it('statically imports and installs components in deterministic isolated namespaces', () => {
 		const plugins = composeBundledPlugins([
 			{

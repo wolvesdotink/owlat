@@ -443,6 +443,8 @@ describe('generated composition freshness', () => {
 				'apps/web/app/plugins/plugin-composition.generated.ts',
 				'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
 				'apps/api/convex/plugins/sendTransportModules.generated.ts',
+				'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
+				'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
 				'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 				'apps/api/convex/plugins/agentStepModules.generated.ts',
 				'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
