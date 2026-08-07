@@ -38,8 +38,17 @@
  *    untrusted input validated at install time. These descriptors are in-repo
  *    literals, so they have no manifest validator and no such bounds.
  *
- * Converging those shapes — or teaching one renderer to read both — is the
- * seams plan's P3.1 work, not a claim this module already makes.
+ * Converging those shapes is STILL OPEN, and P3.1 (contract parity) deliberately
+ * did not do it. That piece gave the plugin tier the catalog's CAPABILITY
+ * vocabulary and the deployment variables a transport's configuration lives in —
+ * everything routing, dispatch, ramp and measurement read — and stopped there,
+ * because a `credentialFields` declaration has no renderer to reach: a bundled
+ * plugin's catalog entry is an `apps/api` artifact that `apps/web` never sees, so
+ * the descriptor would be a bucket with no consumer, which is exactly what the
+ * platform's own honesty gate exists to prevent. The UI half of plugin parity is
+ * the seams plan's P3.3 (the fixture ESP that must render its credentials form),
+ * and it is the piece that should decide whether the two shapes converge or one
+ * renderer learns to read both.
  *
  * One validator family is the point. A renderer that already knows how to draw a
  * plugin's `secret` field draws a core provider's the same way, and the two

@@ -323,8 +323,10 @@ export interface SendProviderCatalogEntryShape {
 	readonly optionalEnvVars?: readonly string[];
 	/**
 	 * The credential FORM, as typed descriptors (D5). Absent for generated plugin
-	 * entries, which have no form surface to declare until plugin-tier parity
-	 * (the seams plan's P3.1).
+	 * entries: contract parity (the seams plan's P3.1) gave that tier the
+	 * capability vocabulary and its configuration variables, but a form descriptor
+	 * has no renderer to reach there yet — see the note on
+	 * `./sendProviderCredentialFields`, which is where that decision is argued.
 	 */
 	readonly credentialFields?: readonly SendProviderCredentialField[];
 	/** Declared envelope-sender control. Absent ⇒ `no` (fail closed). */
