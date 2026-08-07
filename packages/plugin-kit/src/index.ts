@@ -178,7 +178,12 @@ export type {
 	PluginInboundSignatureContract,
 	PluginInboundSignatureEncoding,
 } from './importProvider';
-export { PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS } from './inboundSignature';
+export {
+	isBoundedReplayToleranceSeconds,
+	isPluginSecretEnvVar,
+	PLUGIN_INBOUND_MAX_NAME_LENGTH,
+	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
+} from './inboundSignature';
 export type { PluginReplayBoundSignatureContract } from './inboundSignature';
 export {
 	PLUGIN_SEND_FAILURE_CODES,

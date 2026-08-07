@@ -1,4 +1,9 @@
-import type { PluginId, PluginReplayBoundSignatureContract } from '@owlat/plugin-kit';
+import {
+	isBoundedReplayToleranceSeconds,
+	isPluginSecretEnvVar,
+	type PluginId,
+	type PluginReplayBoundSignatureContract,
+} from '@owlat/plugin-kit';
 import { isSendProviderKind, sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG } from './sendTransportWebhookCatalog.generated';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES } from './sendTransportWebhookModules.generated';
@@ -86,6 +91,7 @@ for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES as readonl
 	if (sendProviderCatalogEntry(definition.kind).pluginId !== definition.pluginId) {
 		throw new TypeError('Bundled send transport webhook is not owned by its transport');
 	}
+	assertVerifiableSignature(definition.signature);
 	// ONE SECRET, ONE PLUGIN. The manifest validator sees one manifest at a time,
 	// so nothing upstream stops two bundled plugins from naming the same signing
 	// variable — and if two did, a body signed for one would verify at the other's
@@ -129,6 +135,44 @@ export function pluginSendTransportWebhookDefinition(
 	kind: string
 ): { readonly pluginId: PluginId } | undefined {
 	return CATALOG.byKind(kind);
+}
+
+/**
+ * Refuse a signature contract this host could not honestly verify with.
+ *
+ * The manifest validator checks both of these at authoring time; they are
+ * re-asserted here for the same reason the whole load-time guard exists — the
+ * generated artifact, not the manifest, is what the route actually runs, and a
+ * hand edit, a bad merge, a partial regeneration or a manifest validated by an
+ * older kit all end at an entry no validator ever saw.
+ *
+ * THE NAMESPACE IS THE SECURITY FLOOR. `readSignatureSecret` resolves the named
+ * variable through `getPluginSecret`, which reads arbitrary keys: an entry
+ * carrying `secretEnvVar: 'CONVEX_DEPLOY_KEY'` would make every internet request
+ * to this plugin's route an HMAC oracle over an unrelated host secret, under
+ * attacker-chosen bodies. The predicate is the kit's own, so the rule the
+ * validator enforces and the rule the host re-asserts cannot drift apart.
+ *
+ * REPLAY PROVISIONS MUST BE THERE AND BOUNDED. Without them
+ * `verifyPluginReplayBoundSignature` dereferences a missing `replay` and every
+ * delivery becomes an opaque 500 at request time; with an unbounded tolerance a
+ * captured request would stay valid for as long as the artifact claimed. Both are
+ * deployment mistakes, and a deployment mistake must stop the deployment.
+ */
+function assertVerifiableSignature(signature: PluginReplayBoundSignatureContract): void {
+	if (!isPluginSecretEnvVar(signature.secretEnvVar)) {
+		throw new TypeError('Bundled send transport webhook signs with a non-plugin secret');
+	}
+	const replay: Partial<PluginReplayBoundSignatureContract['replay']> | undefined =
+		signature.replay;
+	if (
+		!replay ||
+		typeof replay.timestampHeader !== 'string' ||
+		replay.timestampHeader.length === 0 ||
+		!isBoundedReplayToleranceSeconds(replay.toleranceSeconds)
+	) {
+		throw new TypeError('Bundled send transport webhook declares no bounded replay window');
+	}
 }
 
 /**

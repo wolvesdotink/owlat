@@ -1,4 +1,9 @@
-import { PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS } from './inboundSignature';
+import {
+	isBoundedReplayToleranceSeconds,
+	isPluginSecretEnvVar,
+	PLUGIN_INBOUND_MAX_NAME_LENGTH,
+	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
+} from './inboundSignature';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { isRecord, readDataProperty, validateKnownFields } from './manifestValue';
 
@@ -15,20 +20,12 @@ import { isRecord, readDataProperty, validateKnownFields } from './manifestValue
  */
 export type InboundSignatureReplayMode = 'required' | 'forbidden';
 
-/**
- * The HMAC signing secret must live in a plugin-scoped `PLUGIN_`-prefixed env
- * var so a manifest can never designate an unrelated host secret (e.g.
- * `DATABASE_URL`, an admin token) as its signing key — which turns signature
- * verification into an HMAC oracle over that secret. `getPluginSecret` reads
- * arbitrary keys, so this namespace is the only barrier.
- */
-const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
 const HEADER = /^[a-z0-9][a-z0-9-]*$/;
 const BASE_FIELDS = ['header', 'algorithm', 'encoding', 'secretEnvVar'] as const;
 const REPLAY_FIELDS = new Set(['timestampHeader', 'toleranceSeconds']);
 const ALGORITHMS = new Set(['hmac-sha256', 'hmac-sha1']);
 const ENCODINGS = new Set(['hex', 'base64']);
-const MAX_HEADER_LENGTH = 128;
+const MAX_HEADER_LENGTH = PLUGIN_INBOUND_MAX_NAME_LENGTH;
 
 /**
  * Validate the signature contract at `path`, which the caller has already read
@@ -71,13 +68,11 @@ export function validateInboundSignatureContract(
 		addManifestIssue(issues, 'invalid_format', `${path}.encoding`, 'must be hex or base64');
 	}
 
+	// The namespace rule itself lives in `./inboundSignature`, beside the contract
+	// type, because the HOST re-asserts it when it loads a generated artifact —
+	// and two spellings of a security floor are one spelling too many.
 	const secretEnvVar = readDataProperty(value, 'secretEnvVar', issues, true, path);
-	if (
-		secretEnvVar.kind === 'value' &&
-		(typeof secretEnvVar.value !== 'string' ||
-			secretEnvVar.value.length > MAX_HEADER_LENGTH ||
-			!SECRET_ENV_VAR.test(secretEnvVar.value))
-	) {
+	if (secretEnvVar.kind === 'value' && !isPluginSecretEnvVar(secretEnvVar.value)) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
@@ -105,12 +100,7 @@ function validateReplay(
 	validateHeaderName(replay.value, 'timestampHeader', replayPath, issues);
 
 	const tolerance = readDataProperty(replay.value, 'toleranceSeconds', issues, true, replayPath);
-	if (
-		tolerance.kind === 'value' &&
-		(!Number.isSafeInteger(tolerance.value) ||
-			(tolerance.value as number) < 1 ||
-			(tolerance.value as number) > PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS)
-	) {
+	if (tolerance.kind === 'value' && !isBoundedReplayToleranceSeconds(tolerance.value)) {
 		addManifestIssue(
 			issues,
 			'invalid_type',

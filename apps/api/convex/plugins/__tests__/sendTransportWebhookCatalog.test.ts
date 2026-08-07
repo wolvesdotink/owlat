@@ -10,8 +10,11 @@
  * endpoint), a module for a transport the send catalog does not hold or another
  * plugin owns (events attributed to an arm the measurement plane does not have),
  * two webhooks under one plugin id (the route is keyed by that id, so one of
- * them would silently never be reachable), and two webhooks sharing a signing
- * secret (a body signed for one would verify at the other's route).
+ * them would silently never be reachable), two webhooks sharing a signing secret
+ * (a body signed for one would verify at the other's route), and a contract this
+ * host could not honestly verify with — a secret outside the `PLUGIN_` namespace
+ * (an HMAC oracle over an unrelated host secret) or replay provisions that are
+ * missing or unbounded.
  *
  * Each case swaps the generated modules and re-imports, so what is under test is
  * the guard in `sendTransportWebhookCatalog.ts`, not a copy of it.
@@ -199,6 +202,57 @@ describe('a composition that cannot be trusted fails at load', () => {
 				],
 			},
 			/share a signing secret/,
+		],
+		[
+			// The namespace is what stops a manifest from designating an unrelated
+			// host secret as its signing key: `getPluginSecret` reads whatever key it
+			// is given, so an artifact naming one would make this route an HMAC oracle
+			// over that secret, under bodies the caller chooses.
+			'a webhook signing with a secret outside the plugin namespace',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: { ...signature(), secretEnvVar: 'CONVEX_DEPLOY_KEY' },
+					}),
+				],
+			},
+			/non-plugin secret/,
+		],
+		[
+			// Not a security hole but a deployment that cannot work: the verifier
+			// dereferences `replay.timestampHeader`, so every delivery would be an
+			// opaque 500 at request time instead of a failure at load.
+			'a webhook with no replay provisions',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: {
+							header: 'x-postmark-signature',
+							algorithm: 'hmac-sha256',
+							encoding: 'hex',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						},
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			'a webhook whose freshness window is unbounded',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: {
+							...signature(),
+							replay: { timestampHeader: 'x-postmark-timestamp', toleranceSeconds: 86_400 },
+						},
+					}),
+				],
+			},
+			/bounded replay window/,
 		],
 		[
 			'a duplicated kind',

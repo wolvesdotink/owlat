@@ -23,6 +23,46 @@ export type PluginInboundSignatureEncoding = 'hex' | 'base64';
 /** Widest accepted freshness window for a replay-bound contract, in seconds. */
 export const PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS = 900;
 
+/** Longest accepted header or environment-variable name in a contract. */
+export const PLUGIN_INBOUND_MAX_NAME_LENGTH = 128;
+
+/**
+ * The signing secret must live in a plugin-scoped `PLUGIN_`-prefixed variable.
+ *
+ * THE ONLY BARRIER between a manifest and the host's whole environment: the host
+ * reads the named key verbatim, so a contract naming `CONVEX_DEPLOY_KEY` or an
+ * admin token would turn its endpoint into an HMAC oracle over that secret,
+ * against attacker-chosen bodies. Declared here, next to the contract type, and
+ * shared by everyone who has to uphold it: the manifest validator refuses such a
+ * contract at authoring time, and the host re-asserts it when it loads a
+ * generated artifact — because an artifact is exactly the place where the
+ * validator's guarantee may no longer hold (a hand edit, a bad merge, a partial
+ * regeneration, or a manifest validated by an older kit).
+ */
+const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
+
+/** Whether a value names a signing secret this contract is allowed to read. */
+export function isPluginSecretEnvVar(value: unknown): value is string {
+	return (
+		typeof value === 'string' &&
+		value.length <= PLUGIN_INBOUND_MAX_NAME_LENGTH &&
+		SECRET_ENV_VAR.test(value)
+	);
+}
+
+/**
+ * Whether a freshness window is a usable one — an integer from 1 second to
+ * {@link PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS}. Zero and negatives would
+ * refuse every real delivery; anything wider stops bounding a captured request.
+ */
+export function isBoundedReplayToleranceSeconds(value: unknown): value is number {
+	return (
+		Number.isSafeInteger(value) &&
+		(value as number) >= 1 &&
+		(value as number) <= PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS
+	);
+}
+
 /**
  * Replay provisions: what turns an origin proof into a delivery that can only
  * happen once.
