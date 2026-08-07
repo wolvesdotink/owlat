@@ -231,7 +231,7 @@ describe('getCampaignSendEstimate — day counts', () => {
 	/**
 	 * The advisory readout and the BINDING gate must count the same IPs.
 	 * `warmingState.totalDailyCap` / `totalSentToday` roll up every campaign-pool
-	 * IP regardless of `active` (packages/shared/src/ipReadinessSync.ts), so
+	 * IP regardless of `active` (packages/mta-protocol/src/ipReputation.ts), so
 	 * deriving today's remainder from them let a DEACTIVATED 100,000-cap IP make
 	 * this query answer "fits within today's remaining capacity (100,050 emails)"
 	 * about the very campaign the gate refuses as a five-day schedule
