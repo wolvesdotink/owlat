@@ -2,6 +2,11 @@
  *
  * Import this single file in each app's main.css after @import 'tailwindcss'.
  */
+
+/* Bind the `dark:` variant to the color-mode class (not the OS media query)
+ * so it always agrees with the token layer, which flips on `.dark`. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @import './tokens.css';
 @import './dark.css';
 @import './light.css';
