@@ -30,7 +30,10 @@ import {
 	SEND_DEDUPLICATED_BYTES,
 	SEND_INTAKE_PENDING_BYTES,
 	SEND_LEASE_REQUIRED_BYTES,
+	IP_REPUTATION_SNAPSHOT_BYTES,
+	WIRE_FIXTURE_NOW,
 } from '@owlat/mta-protocol/wireFixtures';
+import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 
 const canSend = vi.hoisted(() => vi.fn());
 const canSendScope = vi.hoisted(() => vi.fn());
@@ -38,6 +41,10 @@ const relayAllowed = vi.hoisted(() => vi.fn());
 const reserveProbe = vi.hoisted(() => vi.fn());
 const reserveWarmingSlot = vi.hoisted(() => vi.fn());
 const selectIpWithLease = vi.hoisted(() => vi.fn());
+const getWarmingState = vi.hoisted(() => vi.fn());
+const getPoolStatus = vi.hoisted(() => vi.fn());
+const getIpMetrics = vi.hoisted(() => vi.fn());
+const getIspMetrics = vi.hoisted(() => vi.fn());
 
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
 	canSend,
@@ -45,10 +52,12 @@ vi.mock('../../intelligence/circuitBreaker.js', () => ({
 	isRelayAllowedByGlobalBreaker: relayAllowed,
 	reserveHalfOpenProbe: reserveProbe,
 	releaseHalfOpenProbe: vi.fn().mockResolvedValue(undefined),
+	getState: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('../../intelligence/warming.js', () => ({
 	reserveWarmingSlot,
 	releaseWarmingSlot: vi.fn().mockResolvedValue(undefined),
+	getWarmingState,
 }));
 vi.mock('../../smtp/destinationProvider.js', () => ({
 	resolveDestinationSnapshot: vi.fn().mockResolvedValue({ providerKey: 'gmail' }),
@@ -59,6 +68,31 @@ vi.mock('../../scaling/poolRules.js', () => ({
 vi.mock('../../scaling/ipPool.js', () => ({
 	selectIpWithLease,
 	isIpEligibilityLeaseValid: vi.fn().mockResolvedValue(true),
+	getPoolStatus,
+}));
+vi.mock('../../monitoring/collector.js', () => ({ getIpMetrics, getIspMetrics }));
+vi.mock('../../scaling/fcrdns.js', () => ({
+	getFcrdnsReadiness: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../scaling/ipv6SpfReadiness.js', () => ({
+	getIpv6SpfReadiness: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../scaling/sourceAddressReadiness.js', () => ({
+	getSourceAddressReadiness: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../intelligence/dnsbl.js', () => ({
+	configuredDnsblZones: vi.fn().mockReturnValue([{ id: 'spamhaus-zen' }]),
+	getDnsblStatus: vi
+		.fn()
+		.mockResolvedValue({ overallStatus: 'clean', 'spamhaus-zenAt': String(1_750_000_000_000) }),
+	hasUnmeasuredDnsblZone: vi.fn().mockReturnValue(false),
+}));
+// The snapshot route is master-key-only; WHO may read it is not what this suite
+// pins, so the gate is stubbed open and the bytes are the subject.
+vi.mock('../../auth/masterKeyAuth.js', () => ({
+	masterKeyAuth: () => async (_c: unknown, next: () => Promise<void>) => {
+		await next();
+	},
 }));
 vi.mock('../../scaling/degradation.js', () => ({
 	checkSystemHealth: vi
@@ -68,6 +102,7 @@ vi.mock('../../scaling/degradation.js', () => ({
 
 const { createRoutingDecisionHandler } = await import('../routingDecision.js');
 const { createSendHandler } = await import('../send.js');
+const { createIpReputationRoutes } = await import('../ipReputation.js');
 
 const REQUEST = JSON.parse(GOVERNED_SEND_REQUEST_BYTES) as {
 	messageId: string;
@@ -96,6 +131,12 @@ beforeEach(() => {
 	reserveProbe.mockResolvedValue(true);
 	reserveWarmingSlot.mockResolvedValue({ allowed: true, reservation: undefined });
 	selectIpWithLease.mockResolvedValue({ ip: '192.0.2.10', eligibilityGeneration: 1 });
+	getWarmingState.mockResolvedValue({ phase: 'ramp', currentDay: 5 });
+	getPoolStatus.mockResolvedValue([
+		{ ip: '192.0.2.10', pool: 'campaign', active: true, blockReasons: [] },
+	]);
+	getIpMetrics.mockResolvedValue({ sent: 400, delivered: 390, bounced: 4, deferred: 6 });
+	getIspMetrics.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -342,5 +383,48 @@ describe('send intake', () => {
 		expect(response.status).toBe(409);
 		expect(await response.text()).toBe(SEND_LEASE_REQUIRED_BYTES);
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+});
+
+// ─── GET /ip-reputation ────────────────────────────────────────────────────
+
+describe('ip-reputation snapshot', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ now: WIRE_FIXTURE_NOW, toFake: ['Date'] });
+	});
+
+	it('serves the frozen snapshot bytes the warming sync normalizes', async () => {
+		// The one leg of this wire whose producer is NOT bound to the contract at
+		// compile time: `createIpReputationRoutes` is deliberately wider than
+		// `MtaIpReputationPayload` and weaker in two places, so nothing stops it
+		// renaming a field the normalizer requires. Rename `warmingPhase` and
+		// `normalizeIpReputationPayload` returns null for every real snapshot —
+		// `delivery/warmingSync.ts` stops caching MTA warming state and the plane
+		// goes stale with no error anywhere. This byte comparison is what catches
+		// it, so it drives the SHIPPED route rather than a rebuilt summary.
+		const redis = {} as unknown as Redis;
+		const config = {
+			ipPools: { transactional: [], campaign: ['192.0.2.10'] },
+		} as unknown as MtaConfig;
+		const app = new Hono();
+		app.route('/ip-reputation', createIpReputationRoutes(redis, config));
+
+		const response = await app.request('/ip-reputation');
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe(IP_REPUTATION_SNAPSHOT_BYTES);
+	});
+
+	it('serves a snapshot the consumer’s normalizer accepts', async () => {
+		const redis = {} as unknown as Redis;
+		const config = {
+			ipPools: { transactional: [], campaign: ['192.0.2.10'] },
+		} as unknown as MtaConfig;
+		const app = new Hono();
+		app.route('/ip-reputation', createIpReputationRoutes(redis, config));
+
+		const payload: unknown = await (await app.request('/ip-reputation')).json();
+		// The other half of the same statement: the bytes above are not merely
+		// stable, they are bytes the far end can still read.
+		expect(normalizeIpReputationPayload(payload)).not.toBeNull();
 	});
 });

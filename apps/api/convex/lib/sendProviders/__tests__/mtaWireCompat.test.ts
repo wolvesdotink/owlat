@@ -5,10 +5,14 @@
  * ends against it. The stated risk of that move is that TS narrowing silently
  * changes wire semantics — a field renamed, reordered, defaulted or dropped by
  * the new declaration rather than by anyone's intent. Types cannot be tested,
- * so this drives the SHIPPED adapter and compares what it hands `fetch` against
- * the frozen fixtures in `@owlat/mta-protocol/wireFixtures` — the same module
- * `apps/mta`'s handlers are pinned to, so the two ends cannot agree with
- * themselves and disagree with each other.
+ * so this drives the SHIPPED code and compares it against the frozen fixtures in
+ * `@owlat/mta-protocol/wireFixtures` — the same module `apps/mta`'s handlers are
+ * pinned to, so the two ends cannot agree with themselves and disagree with each
+ * other.
+ *
+ * All four conversations, from this end: the send adapter's request bytes, the
+ * decision answers it resolves, the webhook events its ingress adapter parses,
+ * and the ip-reputation snapshot its normalizer accepts.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +27,7 @@ import {
 	SEND_DEDUPLICATED_BYTES,
 	SEND_INTAKE_PENDING_BYTES,
 	SYSTEM_SEND_REQUEST_BYTES,
+	WEBHOOK_EVENT_BYTES,
 } from '@owlat/mta-protocol/wireFixtures';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { MTA_DEFER_REASON_ORIGIN } from '@owlat/mta-protocol/routingDecision';
@@ -30,6 +35,7 @@ import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { EmailErrorCode } from '../types';
 import { resolveSendTransport } from '../transports';
+import { mtaAdapter } from '../../../webhooks/adapters/mta';
 
 const GOVERNED = JSON.parse(GOVERNED_SEND_REQUEST_BYTES) as MtaSendRequest;
 const SYSTEM = JSON.parse(SYSTEM_SEND_REQUEST_BYTES) as MtaSendRequest;
@@ -230,6 +236,40 @@ describe('MTA -> Convex routing decision bytes', () => {
 			retryAfterMs: 60_000,
 			origin: 'local',
 		});
+	});
+});
+
+describe('MTA -> Convex webhook event bytes', () => {
+	// Absorbing the two webhook-event declarations into one is the change most
+	// able to move this wire silently, because the merged field set is WIDER than
+	// either half was. So drive the shipped ingress — `parseEvent` runs
+	// `isMtaWebhookEvent` and then each variant's own required-field check — and
+	// prove the frozen bytes still come out as the inbound event they always did.
+	// A field the union stopped requiring, or started requiring, lands as `null`.
+	it.each([
+		['sent', 'email.delivered'],
+		['bounced', 'email.bounced'],
+		['complained', 'email.complained'],
+		['routing.reentry', 'internal.routing_reentry'],
+		['postmaster.stats', 'internal.postmaster_stats'],
+		['postmaster.compliance', 'internal.postmaster_compliance'],
+	] as const)('parses the frozen %s event into an %s inbound event', (event, kind) => {
+		expect(mtaAdapter.parseEvent(WEBHOOK_EVENT_BYTES[event])).toMatchObject({ kind });
+	});
+
+	it('carries the FBL provenance a complaint names off the merged field set', () => {
+		// `reportedDomain`/`sourceIsp` live on the `complained` variant alone. The
+		// merged declaration must not have quietly made them universal-and-absent.
+		expect(mtaAdapter.parseEvent(WEBHOOK_EVENT_BYTES.complained)).toMatchObject({
+			reportedDomain: 'mail.example.org',
+			sourceIsp: 'yahoo',
+		});
+	});
+
+	it('rejects an event the ingress guard does not recognise', () => {
+		expect(mtaAdapter.parseEvent('{"event":"brand_new_event","timestamp":1750000000000}')).toBe(
+			null
+		);
 	});
 });
 
