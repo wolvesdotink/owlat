@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<feGaussianBlur in="SourceGraphic" stdDeviation="8" />
 				</filter>
 				<filter id="auth-shadow" x="-20%" y="-20%" width="140%" height="140%">
-					<feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000" flood-opacity="0.25" />
+					<feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#1a1a1a" flood-opacity="0.08" />
 				</filter>
 
 				<pattern id="auth-dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
