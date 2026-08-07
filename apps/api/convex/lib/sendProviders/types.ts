@@ -106,17 +106,11 @@ export interface MtaExtras {
 	/** Opaque Convex-issued server-side re-entry snapshot handle. */
 	routingReentryToken?: string;
 	/**
-	 * Callback material whose canonical digest is authenticated by the token.
-	 *
-	 * The wire's own declaration ({@link MtaRoutingReentry}, D7) with ONE field
-	 * narrowed: `retryState` is exactly {@link DispatchReentryRetryState}, the
-	 * three fields the digest is computed over. The wire type permits two more
-	 * (`workAttemptId`, `acceptanceReconciliation`) because the `routing.reentry`
-	 * webhook echoes back whatever it was sent, but `reentryRetryState()` in
-	 * `delivery/governedDispatch.ts` deliberately drops both from the MTA-facing
-	 * copy — a successor must mint its own work identity. Stating the narrowing
-	 * here keeps both facts, and keeps the digest field set named in exactly one
-	 * place instead of restated inline.
+	 * Callback material whose canonical digest is authenticated by the token:
+	 * the wire's {@link MtaRoutingReentry} (D7) with `retryState` narrowed to
+	 * {@link DispatchReentryRetryState}. `reentryRetryState()` in
+	 * `delivery/governedDispatch.ts` drops the wire's optional `workAttemptId`
+	 * and `acceptanceReconciliation` so a successor mints its own work identity.
 	 */
 	routingReentry?: Omit<MtaRoutingReentry, 'retryState'> & {
 		retryState: DispatchReentryRetryState;
