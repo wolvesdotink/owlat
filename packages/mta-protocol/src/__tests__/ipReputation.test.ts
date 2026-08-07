@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeIpReputationPayload } from '../ipReadinessSync';
+import { normalizeIpReputationPayload } from '../ipReputation';
 
 const baseIp = {
 	ip: '203.0.113.1',

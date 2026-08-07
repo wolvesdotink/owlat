@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeIpReputationPayload } from '@owlat/shared/ipReadinessSync';
+import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 
 const legacyIp = {
 	ip: '203.0.113.10',

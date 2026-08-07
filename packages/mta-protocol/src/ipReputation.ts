@@ -1,14 +1,21 @@
-import { getWarmingDisplayCapForDay, GRADUATED_DISPLAY_CAP } from './warming';
+/**
+ * The MTA -> Convex `GET /ip-reputation` snapshot (D7).
+ *
+ * The MTA holds per-IP warming and readiness state in Redis; `delivery/warmingSync.ts`
+ * pulls it every five minutes and caches it in Convex. This module owns the
+ * SHAPE that travels and the normalizer that turns it into the stored DTO —
+ * one declaration, imported by the producer and the consumer alike.
+ */
+
+import { getWarmingDisplayCapForDay, GRADUATED_DISPLAY_CAP } from '@owlat/shared/warming';
 import {
 	isFcrdnsFailureReason,
 	isFcrdnsVerdict,
 	type FcrdnsFailureReason,
 	type FcrdnsVerdict,
-} from './fcrdns';
-import { isDnsblListId, type DnsblListId } from './dnsbl';
+} from '@owlat/shared/fcrdns';
+import { isDnsblListId, type DnsblListId } from '@owlat/shared/dnsbl';
 import {
-	IP_READINESS_BLOCK_REASONS,
-	DNSBL_STATUSES,
 	isDnsblStatus,
 	isIpReadinessBlockReason,
 	isIpv6SpfFailureReason,
@@ -19,12 +26,7 @@ import {
 	type Ipv6SpfVerdict,
 	type SourceAddressFailureReason,
 	type SourceAddressVerdict,
-} from './ipReadiness';
-
-export { IP_READINESS_BLOCK_REASONS, isIpReadinessBlockReason };
-export type { IpReadinessBlockReason };
-export { DNSBL_STATUSES, isDnsblStatus };
-export type { DnsblStatus };
+} from '@owlat/shared/ipReadiness';
 
 export interface MtaIpReputationPayload {
 	date: string;
