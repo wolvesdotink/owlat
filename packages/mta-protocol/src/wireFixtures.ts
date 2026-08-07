@@ -6,6 +6,9 @@
  * risk this package carries is that extracting the contract into shared types
  * lets TypeScript narrowing quietly re-shape what is serialized; a fixture each
  * suite kept its own copy of would drift with the code it was meant to catch.
+ * "Test-only" is therefore enforced, not just stated: importing the
+ * `@owlat/mta-protocol/wireFixtures` subpath outside a `__tests__/` folder fails
+ * `scripts/check-cross-package-imports.sh`.
  *
  * TWO GATES HOLD THE FIXTURES TO THE CONTRACT, and they catch different things.
  *

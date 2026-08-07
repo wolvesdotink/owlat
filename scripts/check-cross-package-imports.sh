@@ -95,3 +95,41 @@ if [ -n "$cycle" ]; then
 fi
 
 echo "ok:   no packages/ workspace depends on @owlat/mta-protocol (D7 one-way edge)"
+
+# ── `@owlat/mta-protocol/wireFixtures` is test-only, and only this says so ──
+#
+# The frozen wire fixtures live in `src/` rather than a `__tests__` folder for
+# one reason: it is the only place BOTH apps can import ONE copy from, and a
+# fixture each suite kept its own copy of would drift with the code it exists to
+# catch. The cost of that is a public subpath export — so `import { … } from
+# '@owlat/mta-protocol/wireFixtures'` resolves just as happily from a shipped
+# handler as from a suite, and knip treats the subpath as an entry, which exempts
+# everything it exports from the dead-code ratchet. Nothing else would notice
+# fixture bytes reaching production; this does.
+fixtures=""
+while IFS= read -r f; do
+	[ -f "$f" ] || continue
+	case "$f" in
+		*/__tests__/*) continue ;;
+		scripts/check-cross-package-imports.sh) continue ;;
+	esac
+	if grep -qIE "['\"]@owlat/mta-protocol/wireFixtures['\"]" "$f" 2>/dev/null; then
+		fixtures="$fixtures$f"$'\n'
+	fi
+done < <(git ls-files -- '*.ts' '*.tsx' '*.vue' '*.js' '*.mjs' '*.cjs')
+
+if [ -n "$fixtures" ]; then
+	count=$(printf '%s' "$fixtures" | grep -c .)
+	echo ""
+	echo "FAIL: $count file(s) outside a __tests__/ folder import @owlat/mta-protocol/wireFixtures."
+	echo "The frozen wire fixtures are test-only; production code must import the"
+	echo "wire declarations ('@owlat/mta-protocol/send', '/routingDecision', …)."
+	echo ""
+	printf '%s' "$fixtures" | while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		grep -nE "['\"]@owlat/mta-protocol/wireFixtures['\"]" "$f" | sed "s#^#  $f:#"
+	done
+	exit 1
+fi
+
+echo "ok:   @owlat/mta-protocol/wireFixtures imported only from __tests__/ folders"

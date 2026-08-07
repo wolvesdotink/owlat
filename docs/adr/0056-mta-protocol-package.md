@@ -101,6 +101,12 @@ apps can import ONE copy from. A fixture each suite kept its own copy of would
 drift with the code it was meant to catch, and the two ends would agree with
 themselves while disagreeing with each other.
 
+The cost of that placement is a public `./wireFixtures` subpath, which resolves
+from a shipped handler as happily as from a suite and which knip reads as an
+entry, exempting everything it exports from the dead-code ratchet. So "test-only"
+is asserted too, in the same `scripts/check-cross-package-imports.sh` pass: the
+specifier is a lint failure in any file outside a `__tests__/` folder.
+
 Each fixture is `satisfies`-checked against its declaration, so a rename fails
 `tsc` before a suite runs; the decision fixtures are additionally keyed
 `Record<…Reason, string>`, so the union cannot grow a member nobody wrote bytes
