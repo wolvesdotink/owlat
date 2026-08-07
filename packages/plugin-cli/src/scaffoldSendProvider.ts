@@ -106,14 +106,18 @@ export const SCAFFOLD_TRANSPORT_LOCAL_ID = 'relay';
  * Three things in the emitted source still carry the id — the module export
  * names, the endpoint literals and the error messages — so the width cannot be
  * made id-independent outright, only pushed far past every plausible provider
- * name (`sendgrid`, `elastic-email`, `my-longer-provider`). `parsePluginId`
- * accepts up to 64 characters; beyond the bound below the emitted files are still
- * correct, still compile and still pass their own suite — the author's formatter
- * simply rewraps two or three lines on first run. The bound is a TESTED claim
- * rather than an estimate: the generator's suite runs the repository's real
- * `oxfmt --check` over the output at exactly this length.
+ * name (`sendgrid`, `elastic-email`, `my-transactional-email-relay`).
+ * `parsePluginId` accepts up to 64 characters; beyond the bound below the emitted
+ * files are still correct, still compile and still pass their own suite — the
+ * author's formatter simply rewraps two or three lines on first run, which the
+ * emitted README's Development block tells them to do. The bound is a MEASURED
+ * claim rather than an estimate: the generator's suite runs the repository's real
+ * `oxfmt --check` over the output at exactly this length, and what binds it is one
+ * line — `export const <camel>DomainIdentity:
+ * PluginSendTransportDomainIdentityModule = {`, whose two halves are the package's
+ * public surface and the kit's own contract name.
  */
-export const SCAFFOLD_FORMATTED_ID_MAX_LENGTH = 24;
+export const SCAFFOLD_FORMATTED_ID_MAX_LENGTH = 28;
 
 /**
  * Every name a bundle is generated around, from the ONE input they all derive
@@ -364,10 +368,21 @@ export const ${names.camel}Plugin = definePlugin({
 		],
 	},
 });
+
+/**
+ * AND AS THIS MODULE'S DEFAULT, re-exported by \`src/index.ts\`. The generated
+ * composition imports every plugin package by default import, so a package whose
+ * root entry carried only a named export would compose into \`undefined\`.
+ */
+export default ${names.camel}Plugin;
 `;
 }
 
 function indexSource(names: SendProviderNames): string {
 	return `export { ${names.camel}Plugin } from './manifest';
+// The generated composition imports every plugin package by DEFAULT import
+// (\`import manifest from '<package>'\`), so the root entry re-exports it as one
+// too — a package with only the named export composes into \`undefined\`.
+export { default } from './manifest';
 `;
 }

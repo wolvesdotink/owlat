@@ -151,6 +151,16 @@ export const ${names.camel}Transport: PluginSendTransportModule<Extras> = {
 		return { campaignTag: context.messageType };
 	},
 };
+
+/**
+ * AND THE SAME OBJECT AS THIS MODULE'S DEFAULT, which is the export the host
+ * actually reads: codegen renders \`import x from '<package>/convex/transport'\`
+ * into the generated registry, so a half that exported only by name would compose
+ * into an entry whose \`module\` is \`undefined\` — and the first send would fail as
+ * an unattributable \`UNKNOWN\`. The named export stays, because it is what this
+ * package's own suite and any consumer of the package import.
+ */
+export default ${names.camel}Transport;
 `;
 }
 
@@ -244,7 +254,7 @@ function toFeedbackEvent(raw: WireEvent): PluginWebhookFeedbackEvent | null {
 			// refuses the whole batch for it. Say so here, where the wire shape is
 			// understood, rather than letting a host-side message describe it.
 			if (id === undefined && recipient === undefined) {
-				throw new TypeError('${names.id}: complaint names no message or recipient');
+				throw new TypeError('${names.id}: complaint names nobody');
 			}
 			return {
 				kind: 'complained',
@@ -297,6 +307,9 @@ export const ${names.camel}Webhook: PluginSendTransportWebhookModule = {
 		return out;
 	},
 };
+
+/** The default export codegen imports; see \`convex/transport.ts\` for why. */
+export default ${names.camel}Webhook;
 `;
 }
 
@@ -344,6 +357,28 @@ interface DomainResponse {
 	readonly dkim_valid?: unknown;
 }
 
+/**
+ * A domain THIS ACCOUNT DOES NOT HAVE — an observation, not an outage.
+ *
+ * TODO: check that your provider really answers 404 for an unregistered domain
+ * (some answer 200 with an empty body, some 400), and delete this if it does not.
+ * Getting the distinction wrong costs a signal in one direction only: reported as
+ * \`unavailable\`, a domain deleted at the provider — or one registered under a
+ * different account — keeps its stored proof until the host's freshness bound
+ * expires it, and nothing tells the operator. Reported as the observations below,
+ * the host derives \`unverified\` on the next scheduled check.
+ */
+const NOT_REGISTERED: PluginDomainIdentityResult = {
+	outcome: 'ok',
+	state: {
+		isOwnershipVerified: false,
+		spf: { isValid: false },
+		dkim: { isValid: false },
+		dkimSelectors: [],
+		spfMechanisms: [],
+	},
+};
+
 /** One call, with the outcome split the host's write rules need. */
 async function call(
 	method: 'GET' | 'POST',
@@ -365,6 +400,7 @@ async function call(
 	if (response.status === 401 || response.status === 403) {
 		return { outcome: 'auth_failed', error: 'the provider rejected this credential' };
 	}
+	if (response.status === 404) return NOT_REGISTERED;
 	if (!response.ok) {
 		return { outcome: 'unavailable', error: \`provider answered \${response.status}\` };
 	}
@@ -402,5 +438,8 @@ export const ${names.camel}DomainIdentity: PluginSendTransportDomainIdentityModu
 		return call('GET', domain, config);
 	},
 };
+
+/** The default export codegen imports; see \`convex/transport.ts\` for why. */
+export default ${names.camel}DomainIdentity;
 `;
 }

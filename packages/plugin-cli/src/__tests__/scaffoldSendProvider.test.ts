@@ -213,7 +213,46 @@ describe('the send-provider template', () => {
 		const names = sendProviderNames(id);
 		expect(names.camel).toBe(toCamelCase(id));
 		expect(file('src/manifest.ts')).toContain(`export const ${names.camel}Plugin = definePlugin({`);
-		expect(file('src/index.ts')).toBe(`export { ${names.camel}Plugin } from './manifest';\n`);
+		expect(file('src/index.ts')).toContain(`export { ${names.camel}Plugin } from './manifest';`);
+	});
+
+	/**
+	 * EVERY HALF IS DEFAULT-EXPORTED, WHICH IS THE EXPORT CODEGEN READS.
+	 *
+	 * The generated registries are `import bundledPluginX from '<package><path>'`
+	 * — a DEFAULT import, for the manifest at the package root and for each
+	 * contribution module at its export path. A bundle that exported only by name
+	 * would compose into an entry whose `module` is `undefined`: the emitted
+	 * package's own suite stays green, this generator's determinism stays green,
+	 * and the first real send fails as an unattributable `UNKNOWN` inside the
+	 * hosted adapter. Nothing else in this repository can see that, because
+	 * `plugins.config.ts` is empty and no generated file imports a real package.
+	 *
+	 * Both halves are asserted: the named export the package's own suite imports,
+	 * and the default the host does — and for every module path the manifest
+	 * declares, so a fourth half added later cannot arrive without one.
+	 */
+	it('default-exports the manifest and every module the generated registries import', () => {
+		const names = sendProviderNames(id);
+		expect(file('src/manifest.ts')).toContain(`export default ${names.camel}Plugin;`);
+		expect(file('src/index.ts')).toContain(`export { default } from './manifest';`);
+
+		const exported = new Map([
+			['./src/convex/transport.ts', `${names.camel}Transport`],
+			['./src/convex/webhook.ts', `${names.camel}Webhook`],
+			['./src/convex/domainIdentity.ts', `${names.camel}DomainIdentity`],
+		]);
+		// Driven off the export map rather than off the list above, so a module path
+		// added to the manifest without a default export fails here.
+		for (const target of Object.values(SEND_PROVIDER_MODULE_EXPORTS)) {
+			const name = exported.get(target);
+			expect(name, `${target} has no expected export name`).toBeTypeOf('string');
+			const source = file(target.replace(/^\.\//, ''));
+			expect(source, `${target} does not export ${name!} by name`).toContain(
+				`export const ${name!}`
+			);
+			expect(source, `${target} has no default export`).toContain(`export default ${name!};`);
+		}
 	});
 
 	/**

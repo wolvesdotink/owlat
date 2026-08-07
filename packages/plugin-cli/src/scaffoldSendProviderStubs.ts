@@ -27,6 +27,7 @@ export function manifestTestSource(names: SendProviderNames): string {
 	return `import { parsePluginManifest } from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
 import { ${names.camel}Plugin as plugin } from '../manifest';
+import rootDefault from '../index';
 import { ${c.apiKey}, ${c.webhookSecret} } from '../envNames';
 
 const transport = plugin.contributes.sendTransports[0];
@@ -34,6 +35,13 @@ const transport = plugin.contributes.sendTransports[0];
 describe('${names.id} manifest', () => {
 	it('is a valid plugin manifest declaring the ${names.id} id', () => {
 		expect(parsePluginManifest(plugin).id).toBe('${names.id}');
+	});
+
+	it('is what this package default-exports, which is how codegen imports it', () => {
+		// The generated composition writes \`import manifest from '<package>'\`. A
+		// package carrying only the named export composes into \`undefined\`, and the
+		// failure surfaces as a transport whose module is missing at the first send.
+		expect(rootDefault).toBe(plugin);
 	});
 
 	it('declares all three halves of the send-provider bundle', () => {
@@ -217,20 +225,25 @@ import { ${c.apiKey} } from '../envNames';
 
 const config = { instanceKey: null, env: { [${c.apiKey}]: 'test-key' } };
 
+/** Make the module's one call answer a given way. */
+function stubFetch(response: Partial<Response> & { readonly json?: () => Promise<unknown> }) {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => response as Response)
+	);
+}
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
 describe('${names.id} sending-domain identity', () => {
 	it('reports observations rather than a verdict', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({
-				ok: true,
-				status: 200,
-				json: async () => ({ verified: true, spf_valid: true, dkim_valid: true }),
-			}))
-		);
+		stubFetch({
+			ok: true,
+			status: 200,
+			json: async () => ({ verified: true, spf_valid: true, dkim_valid: true }),
+		});
 		const result = await identity.checkDomain('sender.example.com', config);
 		expect(result.outcome).toBe('ok');
 		expect(result.outcome === 'ok' && result.state.isOwnershipVerified).toBe(true);
@@ -239,16 +252,24 @@ describe('${names.id} sending-domain identity', () => {
 	});
 
 	it('distinguishes a rejected credential from an outage', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({ ok: false, status: 401 }))
-		);
+		stubFetch({ ok: false, status: 401 });
 		expect((await identity.checkDomain('a.example.com', config)).outcome).toBe('auth_failed');
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({ ok: false, status: 503 }))
-		);
+		stubFetch({ ok: false, status: 503 });
 		expect((await identity.checkDomain('a.example.com', config)).outcome).toBe('unavailable');
+	});
+
+	/**
+	 * THE THIRD ANSWER, and the one a hand-written mapping usually folds into the
+	 * outage branch: a domain this account does not have is an OBSERVATION. Reported
+	 * as \`unavailable\`, a domain deleted at the provider keeps its stored proof
+	 * until the host's freshness bound expires it and nothing tells the operator;
+	 * reported as observations, the next scheduled check derives it unverified.
+	 */
+	it('reads an unregistered domain as an observation, not as an outage', async () => {
+		stubFetch({ ok: false, status: 404 });
+		const result = await identity.checkDomain('gone.example.com', config);
+		expect(result.outcome).toBe('ok');
+		expect(result.outcome === 'ok' && result.state.isOwnershipVerified).toBe(false);
 	});
 
 	it('fails closed when this instance has no credential', async () => {
@@ -309,6 +330,11 @@ bun run --cwd <path-to-this-package> typecheck
 bun run --cwd <path-to-this-package> lint
 bun run --cwd <path-to-this-package> test
 \`\`\`
+
+What was emitted is already formatted at the repository's width. A plugin id
+much longer than \`${names.id}\` pushes two or three generated lines past it —
+if the format gate reports this package, run the repository's \`bun run ox:fmt\`
+once and commit the rewrap.
 
 ## Publishing it as your own package
 
