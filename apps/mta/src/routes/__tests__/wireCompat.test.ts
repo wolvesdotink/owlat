@@ -88,7 +88,7 @@ vi.mock('../../intelligence/dnsbl.js', () => ({
 	configuredDnsblZones: vi.fn().mockReturnValue([{ id: 'spamhaus-zen' }]),
 	getDnsblStatus: vi
 		.fn()
-		.mockResolvedValue({ overallStatus: 'clean', 'spamhaus-zenAt': String(1_750_000_000_000) }),
+		.mockResolvedValue({ overallStatus: 'clean', 'spamhaus-zenAt': String(WIRE_FIXTURE_NOW) }),
 	hasUnmeasuredDnsblZone: vi.fn().mockReturnValue(false),
 }));
 // The snapshot route is master-key-only; WHO may read it is not what this suite

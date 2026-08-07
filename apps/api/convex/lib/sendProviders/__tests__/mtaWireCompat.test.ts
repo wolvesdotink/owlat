@@ -30,6 +30,7 @@ import {
 	SEND_INTAKE_PENDING_BYTES,
 	SYSTEM_SEND_REQUEST_BYTES,
 	WEBHOOK_EVENT_BYTES,
+	WIRE_FIXTURE_NOW,
 } from '@owlat/mta-protocol/wireFixtures';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import {
@@ -241,7 +242,7 @@ describe('MTA -> Convex routing decision bytes', () => {
 		messageId: 'send-fixture-1',
 		workAttemptId: 'work-fixture-1',
 		routingReentryToken: 'reentry-fixture-1',
-		startedAt: 1_750_000_000_000,
+		startedAt: WIRE_FIXTURE_NOW,
 		deliveryDomain: 'production' as const,
 		messageType: 'campaign' as const,
 		organizationId: 'org-fixture-1',
