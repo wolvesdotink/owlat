@@ -219,23 +219,25 @@ describe('docs/abstractions.md: the feedback adapter section matches the registr
 		expect(read(catalog)).toContain('export type FeedbackReportingSendProviderKind');
 	});
 
-	it('keeps the static-route claim honest against http.ts', () => {
-		// The section promises that each kind's route is written out rather than
-		// derived, because those URLs are already in provider consoles. Asserted
-		// against the router itself: every registered kind must have its own path
-		// literal, so a "tidy-up" that loops over the registry fails here.
+	it('still states the static-route rule, and points at a gate that exists', () => {
+		// The page's other claim is that each kind's route is WRITTEN OUT rather
+		// than derived, because those URLs are already pasted into provider
+		// consoles we do not own. This case deliberately does NOT re-assert that
+		// against `http.ts`: the assertion lives once, in
+		// `apps/api/convex/lib/sendProviders/__tests__/feedbackRoutes.test.ts` —
+		// the package whose change would break it, and the one
+		// `scripts/ci-select-affected.sh` selects for an apps/api pull request.
+		// A copy here could only restate it as `/webhooks/${kind}`, which is the
+		// derivation the seam exists to forbid: the day a renamed kind keeps its
+		// old URL — the exact case this protects — the copy would fail demanding
+		// a route under the NEW name, i.e. a second route, and the console would
+		// still be pointing at the first.
 		//
-		// This is the MIRROR, not the gate. The gate is
-		// `apps/api/convex/lib/sendProviders/__tests__/feedbackRoutes.test.ts`,
-		// which makes the same assertion inside the package that would break it —
-		// `scripts/ci-select-affected.sh` does not select `@owlat/docs` for an
-		// apps/api-only pull request, so this case alone would not fail one. What
-		// it uniquely owns is that the PAGE still states the rule it enumerates.
-		const http = read('apps/api/convex/http.ts');
-		for (const kind of kinds) {
-			expect(http, `http.ts stopped writing out /webhooks/${kind}`).toContain(
-				`path: '/webhooks/${kind}'`
-			);
-		}
+		// What the page uniquely owes a reader is that the rule is still written
+		// down beside a gate that still exists.
+		expect(feedbackSection).toContain('routes stay static and per kind');
+		const gate = 'apps/api/convex/lib/sendProviders/__tests__/feedbackRoutes.test.ts';
+		expect(feedbackSection).toContain('__tests__/feedbackRoutes.test.ts');
+		expect(existsSync(resolve(repoRoot, gate))).toBe(true);
 	});
 });

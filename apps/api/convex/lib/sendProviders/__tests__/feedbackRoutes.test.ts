@@ -99,12 +99,31 @@ describe('every declared feedback route is a route the backend registers', () =>
 			resolve(dirname(fileURLToPath(import.meta.url)), '../../../http.ts'),
 			'utf8'
 		);
+		// COMMENTS ARE STRIPPED FIRST. The natural shape of the refactor this
+		// forbids is a loop over the registry with the four hand-written blocks
+		// left commented out above it "for reference" — after which `getRoutes()`
+		// still reports the same four paths and a containment check over the RAW
+		// text still finds the four literals, in the comment. Every gate green,
+		// every URL now a function of a kind's spelling. The line-comment pass
+		// requires the `//` not to follow a `:`, so a `scheme://host` inside a
+		// string survives it.
+		const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 		for (const entry of declaring) {
-			expect(
-				source,
-				`http.ts stopped writing out ${entry.providerFeedback!.webhookPath}`
-			).toContain(`path: '${entry.providerFeedback!.webhookPath}'`);
+			expect(code, `http.ts stopped writing out ${entry.providerFeedback!.webhookPath}`).toContain(
+				`path: '${entry.providerFeedback!.webhookPath}'`
+			);
 		}
+		// And the rule stated directly rather than only through its instances:
+		// EVERY route path in the file is a written-out string literal. Four
+		// surviving literals beside a generated fifth is the same defect, and the
+		// loop above cannot see it — it only asks whether its own four are there.
+		const derived = [...code.matchAll(/\bpath(?:Prefix)?:\s*(.)/g)].filter(
+			(match) => match[1] !== "'" && match[1] !== '"'
+		);
+		expect(
+			derived.map((match) => match[0]),
+			'every route path in http.ts must be a written-out literal, never a template or a variable'
+		).toEqual([]);
 	});
 
 	it('declares the path a kind’s route actually has, not one derived from its name', () => {
