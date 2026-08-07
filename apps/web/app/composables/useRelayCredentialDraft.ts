@@ -202,13 +202,12 @@ export type RelayCredentialFields = DraftCredentials;
  * `setupValidators.ts`); when that endpoint takes descriptor values directly,
  * this collapses into one generic body.
  */
-const PROBE_REQUEST_BODIES: Record<
-	string,
-	(
-		values: TransportCredentialValues,
-		endpoint: SendProviderHostPortField | undefined
-	) => Record<string, unknown>
-> = {
+export type ProbeRequestBuilder = (
+	values: TransportCredentialValues,
+	endpoint: SendProviderHostPortField | undefined
+) => Record<string, unknown>;
+
+const PROBE_REQUEST_BODIES: Record<string, ProbeRequestBuilder> = {
 	validateResendKey: (values) => ({ apiKey: values['RESEND_API_KEY'] ?? '' }),
 	validateSmtpRelay: (values, endpoint) => {
 		const port = (values['SMTP_RELAY_PORT'] ?? '').trim();
@@ -228,6 +227,23 @@ const PROBE_REQUEST_BODIES: Record<
 		};
 	},
 };
+
+/**
+ * The builder a probe's live check sends its body with, or `undefined` when the
+ * probe has none — the ONE reading of the table above.
+ *
+ * Exported so the endpoint's own suite (`server/api/delivery/__tests__/
+ * validate-transport-probes.test.ts`) can post the body the SHIPPED editor
+ * posts. That suite asks whether `/api/delivery/validate-transport` accepts what
+ * each declared probe sends; with a fixture of its own it would only ever have
+ * proved that the endpoint accepts what its author wrote, leaving a rename of a
+ * key here green on both sides and 400 on every "Test connection" click.
+ */
+export function probeRequestBuilder(
+	validator: string | undefined
+): ProbeRequestBuilder | undefined {
+	return validator === undefined ? undefined : PROBE_REQUEST_BODIES[validator];
+}
 
 export interface RelayCredentialDraft {
 	readonly provider: Ref<ProviderChoice>;
@@ -309,18 +325,16 @@ export function useRelayCredentialDraft(
 
 	const activeProbe = computed(() => coreSendProviderCatalogEntry(provider.value)?.setupProbe);
 
-	const canValidateLive = computed(() => {
-		const validator = activeProbe.value?.validator;
-		return validator !== undefined && validator in PROBE_REQUEST_BODIES;
-	});
+	const canValidateLive = computed(
+		() => probeRequestBuilder(activeProbe.value?.validator) !== undefined
+	);
 
 	function clearEnteredSecrets(): void {
 		for (const key of secretKeys) credentialValues[key] = '';
 	}
 
 	async function validateLive(): Promise<ValidateTransportResponse | null> {
-		const validator = activeProbe.value?.validator;
-		const buildBody = validator === undefined ? undefined : PROBE_REQUEST_BODIES[validator];
+		const buildBody = probeRequestBuilder(activeProbe.value?.validator);
 		if (buildBody === undefined) return null;
 		return await $fetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
 			method: 'POST',

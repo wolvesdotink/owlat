@@ -27,15 +27,21 @@
  *
  * THE BROWSER'S HALF IS ONE FILE OVER, and it is not the same question. The
  * button is not drawn off `setupProbe` alone: `TransportEditor.vue` reads
- * `canValidateLive`, which is `setupProbe.validator !== undefined && validator in
- * PROBE_REQUEST_BODIES` — a module-private per-probe body table in
- * `useRelayCredentialDraft.ts`, so a declared probe with no builder there hides
- * the button instead of shipping a broken one. `apps/web/app/composables/
- * __tests__/relayCredentialDraft.test.ts` ("offers a live check for %s only when
- * its entry declares a setup probe") is what pins that table to the catalog in
- * both directions; this file pins the server's. Neither can stand for the other:
- * a sixth kind needs an entry in BOTH tables, and each suite names the one it
- * owns.
+ * `canValidateLive`, which asks whether the probe's validator has a request-body
+ * builder in `useRelayCredentialDraft.ts` — so a declared probe with no builder
+ * there hides the button instead of shipping a broken one. `apps/web/app/
+ * composables/__tests__/relayCredentialDraft.test.ts` ("offers a live check for
+ * %s only when its entry declares a setup probe") is what pins that table to the
+ * catalog in both directions; this file pins the endpoint's switch. Neither can
+ * stand for the other: a sixth kind needs an entry in BOTH, and each suite names
+ * the one it owns.
+ *
+ * WHAT THIS FILE DOES NOT HOLD IS A BODY OF ITS OWN. Every request below is
+ * built by that same shipped builder (`probeRequestBuilder`, exported for exactly
+ * this) over form values seeded from the kind's own descriptors. A fixture table
+ * here would have made the suite ask "does the endpoint accept what this test's
+ * author wrote", which is answerable by a pair of files that agree with each
+ * other and with nothing the operator's browser sends.
  *
  * IT ALSO CARRIES THE ENDPOINT'S ONLY GATE TEST, which is more than the join.
  * `validate-transport.post.ts` had no suite at all before this one, and mocking
@@ -47,8 +53,17 @@
  * it ever moves.
  */
 
-import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared';
+import {
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	type CoreSendProviderCatalogEntry,
+} from '@owlat/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	hostPortFieldFor,
+	seedCredentialValues,
+	type TransportCredentialValues,
+} from '~/composables/setupWizardCredentials';
+import { probeRequestBuilder } from '~/composables/useRelayCredentialDraft';
 
 /** Which validator the route reached, recorded by the stubs installed below. */
 const { probeCalls } = vi.hoisted(() => ({ probeCalls: [] as string[] }));
@@ -93,26 +108,40 @@ async function callRoute(): Promise<ProbeResult> {
 }
 
 /**
- * The request body each probe's live check needs, keyed by the VALIDATOR the
- * descriptor names — the same key `useRelayCredentialDraft`'s browser-side
- * builders use, and never the provider kind.
+ * One kind's form as an operator would have left it: the descriptors' declared
+ * defaults (`seedCredentialValues` — the very seed the shipped draft starts
+ * from), with every text and secret field filled in.
  *
- * A declared probe with no entry here fails the coverage assertion below with a
- * message naming the endpoint, which is the moment an author learns that the
- * switch has to learn the new kind too.
+ * Derived per field kind rather than written out, so a sixth provider's form is
+ * filled the day its entry lands. Composite and choice fields keep their seeded
+ * values, which is what an operator who accepted the defaults would send.
  */
-const PROBE_BODIES: Record<string, Record<string, unknown>> = {
-	validateResendKey: { apiKey: 're_stub_key' },
-	validateSmtpRelay: {
-		smtp: {
-			host: 'smtp.example.com',
-			port: 587,
-			secure: false,
-			username: 'postmaster@example.com',
-			password: 'stub-password',
-		},
-	},
-};
+function enteredValues(entry: CoreSendProviderCatalogEntry): TransportCredentialValues {
+	const values = seedCredentialValues(entry.kind);
+	for (const field of entry.credentialFields) {
+		if (field.kind === 'string' || field.kind === 'secret') {
+			values[field.envVar] = `stub-${field.key}`;
+		}
+	}
+	return values;
+}
+
+/**
+ * The body the SHIPPED editor would post for this kind — built by
+ * `useRelayCredentialDraft`'s own `probeRequestBuilder`, never by a fixture
+ * written here.
+ *
+ * That is the whole point of the import. A per-validator body table of this
+ * suite's own would prove only that the endpoint accepts what its author wrote:
+ * rename a key in the browser's builder (`{ key }` for `{ apiKey }`) and both
+ * this suite and the composable's would stay green while every "Test connection"
+ * click in the shipped editor answered 400. Going through the builder makes that
+ * rename fail here, which is the one place it can.
+ */
+function probeBodyFor(entry: CoreSendProviderCatalogEntry): Record<string, unknown> | undefined {
+	const build = probeRequestBuilder(entry.setupProbe?.validator);
+	return build?.(enteredValues(entry), hostPortFieldFor(entry.kind));
+}
 
 const PROBE_ENTRIES = CORE_SEND_PROVIDER_CATALOG_ENTRIES.filter(
 	(entry) => entry.setupProbe !== undefined
@@ -155,21 +184,28 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 		);
 	});
 
-	it('knows what each declared probe has to send', () => {
-		const uncovered = PROBE_ENTRIES.filter(
-			(entry) => PROBE_BODIES[entry.setupProbe!.validator] === undefined
-		);
+	it('has a shipped request body for every declared probe', () => {
+		// The precondition of the cases below: with no builder there is no body to
+		// post, and each of them would fail on the endpoint's `provider is required.`
+		// 400 rather than on the thing it means to ask. WHY a builder must exist is
+		// `apps/web/app/composables/__tests__/relayCredentialDraft.test.ts`'s rule —
+		// a declared probe with no builder hides the editor's button — so this only
+		// says the fixtures below are real, and names the endpoint an author has to
+		// teach when they add one.
+		const uncovered = PROBE_ENTRIES.filter((entry) => probeBodyFor(entry) === undefined);
 		expect(
 			uncovered.map((entry) => `${entry.kind} → ${entry.setupProbe!.validator}`),
 			'a kind declaring setupProbe must be one POST /api/delivery/validate-transport ' +
-				'accepts — teach that endpoint the kind, then add its request body here'
+				'accepts — teach that endpoint the kind, then give the probe a request-body ' +
+				'builder in app/composables/useRelayCredentialDraft.ts'
 		).toEqual([]);
 	});
 
-	it.each(PROBE_ENTRIES.map((entry) => [entry.kind, entry.setupProbe!.validator]))(
+	it.each(PROBE_ENTRIES.map((entry) => [entry.kind, entry.setupProbe!.validator] as const))(
 		'%s reaches the validator its descriptor names (%s)',
 		async (kind, validator) => {
-			body = { provider: kind, ...PROBE_BODIES[validator] };
+			const entry = CORE_SEND_PROVIDER_CATALOG_ENTRIES.find((row) => row.kind === kind)!;
+			body = { provider: kind, ...probeBodyFor(entry) };
 			const result = await callRoute();
 			// The descriptor's name is not decoration: it is what the transport
 			// editor labels the button with and what the browser keys its request
@@ -190,7 +226,7 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 			.mockReset()
 			.mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403 }));
 		const entry = PROBE_ENTRIES[0]!;
-		body = { provider: entry.kind, ...PROBE_BODIES[entry.setupProbe!.validator] };
+		body = { provider: entry.kind, ...probeBodyFor(entry) };
 
 		await expect(callRoute()).rejects.toMatchObject({ statusCode: 403 });
 		// The ordering is the point: a gate that ran AFTER the validator would let
