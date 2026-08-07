@@ -26,15 +26,30 @@
  * against the SOURCE TEXT of the core lookup would survive all three and quietly
  * keep claiming a hole the codebase had already filled.
  *
- * WHEN IT GOES RED, DELETE IT. This file has no value except as the receipt for
- * an obligation the Wave-3 gate must not record as met.
+ * WHEN IT GOES RED, DELETE IT — that is, when a composed-catalog view for this
+ * app lands and `credentialFieldsFor` can answer for a plugin kind. This file has
+ * no value except as the receipt for an obligation the Wave-3 gate must not record
+ * as met, and a GREEN run here is what the absence of the capability looks like:
+ * the gate cannot read A4's credentials clause off this suite's exit code in
+ * either direction.
  *
- * THE PLAN-OWNER REPORT is `.pipeline/P3.3_CREDENTIALS_UI_GAP.md` (the format
- * `.pipeline/P0.4_RESIDUAL_KIND_LITERALS.md` established): the asymmetry, the
- * four blocked call sites, the named owning card, and the line the wave gate
- * needs — A4 is not met until that card lands. A green suite here is what the
- * absence of the capability looks like, so the gate must read that file rather
- * than this file's exit code.
+ * WHAT IS ACTUALLY MISSING, in full, so this file needs no companion document:
+ * two lookups answer "what is this send-provider kind?" and only one composes both
+ * tiers. `sendProviderCatalogEntry` (`apps/api/convex/lib/sendProviders/catalog.ts`)
+ * carries core AND bundled-plugin entries; `coreSendProviderCatalogEntry`
+ * (`packages/shared/src/sendProviderCatalog.ts`) is core-only by construction and
+ * by name, because `packages/shared` may not depend on `apps/api`, where the
+ * composed catalog is built. Every surface in this app resolves through the
+ * core-only half — the four call sites the cases below drive — so a plugin
+ * transport's descriptors exist and never arrive, and an operator can configure a
+ * bundled plugin ESP only by hand-editing deployment environment variables.
+ *
+ * THE OWNING WORK is a new card, "a composed-catalog view for `apps/web`": a
+ * Convex query exposing the composed entry plus a lookup those four sites read
+ * through. Sized S/M and not an architecture change — `delivery/status.ts` already
+ * ships a plugin-aware `providerLabel` to this app off the composed catalog. The
+ * plan owner's copy of this report lives with the pipeline's working notes, OUTSIDE
+ * this repository; everything the reader of a clone needs is above.
  */
 
 import { describe, expect, it } from 'vitest';

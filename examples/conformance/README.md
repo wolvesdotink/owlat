@@ -70,11 +70,11 @@ rather than three unrelated demos.
      view for `apps/web`, in the spirit of P1.2, which has already shipped — and
      until it lands the gap is pinned at the surface that owes it, in
      `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`.
-     The report the plan owner reads, in the format
-     `.pipeline/P0.4_RESIDUAL_KIND_LITERALS.md` established, is
-     `.pipeline/P3.3_CREDENTIALS_UI_GAP.md`: the one asymmetry, the four call
+     That file's header is the full account — the one asymmetry, the four call
      sites it blocks, the owning card, and the "A4 is not met until this lands"
-     line for the wave gate.
+     line for the wave gate — so a reader of a clone needs nothing else. A green
+     run there is what the absence of the capability looks like, so the gate must
+     not read the clause off its exit code.
   2. _Return-path probes._ Superseded rather than missing: P3.1 made
      `supportsCustomReturnPath: 'no'` the only value this tier may declare, so a
      plugin kind is unprobeable by construction and the obligation is discharged
