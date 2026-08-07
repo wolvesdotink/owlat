@@ -45,8 +45,6 @@ export const AWAITING_CALL_SITE: Readonly<Record<string, string>> = Object.freez
 		'webhookEvents is dispatch: declared — the persisted event validators are closed core-only unions, so no publish path can authorize a plugin event yet',
 	importProviderAuthorization:
 		'importProviders is dispatch: declared — the import walker dispatches through a core-only provider registry, so no walk can authorize a plugin provider yet',
-	inboundSignature:
-		'the plugin inbound-signature verifier gates no HTTP endpoint yet; the docs state this explicitly on the import-provider contract',
 });
 
 export interface OrphanCheckOptions {

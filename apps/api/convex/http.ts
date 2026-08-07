@@ -26,6 +26,7 @@ import {
 	providerFeedbackWebhook,
 	webhookUrlValidationProbe,
 } from './webhooks/providerFeedbackHttp';
+import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhook';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { handleVerifyCredential } from './mail/authHttp';
@@ -289,6 +290,23 @@ http.route({
 	path: '/webhooks/ses',
 	method: 'POST',
 	handler: providerFeedbackWebhook('ses'),
+});
+
+// POST /webhooks/plugin/<pluginId> - feedback from a BUNDLED PLUGIN transport
+// (the seams plan's D6/P2.2). One route for every plugin-tier transport, keyed
+// by plugin id rather than by kind, dispatched through the generated webhook
+// registry behind the hosted-contribution authorization seam. A `pathPrefix`
+// because the addressable set is whatever `plugins.config.ts` bundles — but the
+// prefix itself is WRITTEN OUT, for the same reason every path above is: these
+// URLs get pasted into provider consoles we do not own, and a path assembled
+// from a variable is a path that can move without anyone editing this file.
+// `PLUGIN_FEEDBACK_PATH_PREFIX` in the handler is the parsing half of the same
+// string; `webhooks/__tests__/pluginFeedbackRouteRegistration.test.ts` drives
+// the real router with it, so the two cannot drift apart silently.
+http.route({
+	pathPrefix: '/webhooks/plugin/',
+	method: 'POST',
+	handler: pluginFeedbackWebhook,
 });
 
 // POST /webhooks/mta-mailbox - Personal-mail (Postbox) inbound delivery from MTA
