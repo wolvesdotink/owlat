@@ -9,6 +9,7 @@ import {
 	validateKnownFields,
 } from './manifestValue';
 import { isPluginSendTransportEnvVar, PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
+import { validateCredentialFields } from './sendTransportCredentialsManifest';
 import { isSafeStaticExportPath } from './staticExportPath';
 
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
@@ -49,6 +50,7 @@ export function validateSendTransportContributions(
 				'retryDelays',
 				'requiredEnvVars',
 				'optionalEnvVars',
+				'credentialFields',
 				'supportsCustomReturnPath',
 				'messageIdSource',
 				'deduplicatesOnIdempotencyKey',
@@ -60,7 +62,8 @@ export function validateSendTransportContributions(
 		validateLabel(item.value, path, issues);
 		validateModule(item.value, path, issues);
 		validateRetryDelays(item.value, path, issues);
-		validateConfigEnvVars(item.value, path, issues);
+		const declaredEnvVars = validateConfigEnvVars(item.value, path, issues);
+		validateCredentialFields(item.value, path, declaredEnvVars, issues);
 		validateCapabilities(item.value, path, issues);
 		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
@@ -215,7 +218,8 @@ function validateWebhook(
 }
 
 /**
- * The transport's OWN configuration variables (the seams plan's P3.1).
+ * The transport's OWN configuration variables (the seams plan's P3.1), reported
+ * back as the two accepted sets so the credential form can be joined to them.
  *
  * Both lists are validated as ONE namespace: a name may appear in exactly one of
  * them, because a variable cannot be both the presence gate and a refinement the
@@ -229,10 +233,14 @@ function validateConfigEnvVars(
 	transport: Record<string, unknown>,
 	path: string,
 	issues: PluginManifestIssue[]
-): void {
+): DeclaredConfigEnvVars {
 	const declared = new Set<string>();
+	const accepted: Record<ConfigEnvVarField, Set<string>> = {
+		requiredEnvVars: new Set(),
+		optionalEnvVars: new Set(),
+	};
 	let total = 0;
-	for (const field of ['requiredEnvVars', 'optionalEnvVars'] as const) {
+	for (const field of CONFIG_ENV_VAR_FIELDS) {
 		const property = readDataProperty(transport, field, issues, false, path);
 		if (property.kind !== 'value') continue;
 		const items = validateDescriptorSafeArray(property.value, `${path}.${field}`, issues);
@@ -260,6 +268,7 @@ function validateConfigEnvVars(
 				continue;
 			}
 			declared.add(item.value);
+			accepted[field].add(item.value);
 		}
 	}
 	if (total > PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS) {
@@ -270,7 +279,32 @@ function validateConfigEnvVars(
 			`must declare at most ${PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS} configuration variables`
 		);
 	}
+	// AN OPTIONAL-ONLY DECLARATION IS REFUSED, not quietly accepted. Declaring
+	// configuration is what makes a transport instance-scoped, and an instance is
+	// resolved by asking which of its REQUIRED variables are present under the
+	// `__<INSTANCEKEY>` suffix. With none, every named instance of the kind would
+	// be graded against an empty requirement list — vacuously configured on one
+	// side, refused as `revoked` on the other — while the send went out on the
+	// default instance's credentials. Saying so here is the only place an author
+	// finds out; the two downstream answers are both wrong and neither is theirs
+	// to read.
+	if (accepted.requiredEnvVars.size === 0 && accepted.optionalEnvVars.size > 0) {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			`${path}.optionalEnvVars`,
+			'must accompany at least one requiredEnvVars entry — a transport whose whole ' +
+				'configuration is optional has no per-instance credential to resolve'
+		);
+	}
+	return accepted;
 }
+
+const CONFIG_ENV_VAR_FIELDS = ['requiredEnvVars', 'optionalEnvVars'] as const;
+/** Which of the two lists a variable was declared in. */
+export type ConfigEnvVarField = (typeof CONFIG_ENV_VAR_FIELDS)[number];
+/** The names each list ACCEPTED — a rejected name joins nothing. */
+export type DeclaredConfigEnvVars = Readonly<Record<ConfigEnvVarField, ReadonlySet<string>>>;
 
 /** The declared capability fields — each optional, each with a fail-closed default. */
 function validateCapabilities(

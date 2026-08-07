@@ -1,5 +1,9 @@
 import type { PluginReplayBoundSignatureContract } from './inboundSignature';
 import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+// TYPE-ONLY, and it has to stay that way: `./sendTransportCredentials` reads the
+// variable bound declared below, so a value import here would close a runtime
+// cycle between two modules that only share a vocabulary.
+import type { PluginSendTransportCredentialField } from './sendTransportCredentials';
 
 /** Capability assigned by the host to every bundled send transport. */
 export const PLUGIN_SEND_TRANSPORT_CAPABILITY = 'send:transport' as const;
@@ -62,6 +66,11 @@ export interface PluginSendTransportWebhookDefinition {
  *          without forwarding it is a promise the module does not keep: the
  *          measurement plane then grades this arm's bounce data as comparable
  *          with our own VERP stream while the bounces still land at the provider.
+ *          So it is a PAIR, like `deduplicatesOnIdempotencyKey`: a transport
+ *          declaring `yes` MUST export
+ *          {@link PluginSendTransportModule.buildDispatchExtras}, which is the
+ *          only wire the host has to hand it a return path, and the host refuses
+ *          the composition otherwise.
  *  - `no`  the transport owns the envelope sender. The fail-closed default.
  *
  * THE CORE VOCABULARY'S THIRD VALUE, `probe`, IS NOT AVAILABLE HERE, and its
@@ -119,9 +128,6 @@ export type PluginSendTransportMessageIdSource = 'provider' | 'composed';
  *    of our own infrastructure. It is never true of a third party.
  *  - `setupProbe` names an exported validator in `@owlat/shared/setupValidators`,
  *    which is host code a manifest cannot add to.
- *  - `credentialFields` describes a form no surface renders for this tier yet;
- *    declaring one would be a bucket with no consumer, which the platform's own
- *    honesty gate exists to prevent.
  */
 export interface PluginSendTransportDefinition {
 	readonly id: PluginLocalId;
@@ -145,11 +151,20 @@ export interface PluginSendTransportDefinition {
 	 * credentials.
 	 *
 	 * `PLUGIN_`-PREFIXED, like every other manifest-declared variable whose VALUE
-	 * the host reads (a settings `secret`, a webhook signing key). The prefix is
-	 * the namespace that keeps a manifest from naming — and being handed —
-	 * `MTA_API_KEY` or `AWS_SECRET_ACCESS_KEY`. A name containing `__` is refused
-	 * too: the instance suffix separator is `__`, so `PLUGIN_A__EU` as a BASE name
-	 * would let the default instance read the `eu` instance's credential.
+	 * the host reads (a settings `secret`, a webhook signing key). The prefix
+	 * fences the plugin namespace off from the HOST's own deployment credentials:
+	 * a manifest cannot name — and so cannot be handed — `MTA_API_KEY` or
+	 * `AWS_SECRET_ACCESS_KEY`. It is deliberately NOT a per-plugin fence: the
+	 * shipped manifests name their variables after the vendor rather than after
+	 * the plugin id (`slack-approvals` declares `PLUGIN_SLACK_BOT_TOKEN`), so one
+	 * plugin can name another's variable, exactly as the platform's settings
+	 * `secret` and webhook signing-secret rules already allow. Defense in depth,
+	 * not isolation between bundled plugins — a bundled module runs in the same
+	 * Node action and could read `process.env` itself.
+	 *
+	 * A name containing `__` is refused too: the instance suffix separator is
+	 * `__`, so `PLUGIN_A__EU` as a BASE name would let the default instance read
+	 * the `eu` instance's credential.
 	 */
 	readonly requiredEnvVars?: readonly string[];
 	/**
@@ -157,6 +172,15 @@ export interface PluginSendTransportDefinition {
 	 * default. Resolved and handed over exactly like the required ones (and under
 	 * the same naming rules), but absent from the presence gate, so a deployment
 	 * that never set one still counts as configured.
+	 *
+	 * ONLY MEANINGFUL BESIDE A REQUIRED ONE, and refused without one. A transport
+	 * whose entire configuration is optional has no credential of its own that a
+	 * deployment must set, so there is nothing an instance suffix could make
+	 * per-instance: every named instance of it would resolve against an empty
+	 * requirement list — configured by vacuous truth, or refused as revoked
+	 * depending on which side asked — while the send went out on the DEFAULT
+	 * instance's credentials. `instances_unsupported` is the honest answer, and
+	 * the manifest is refused rather than silently given it.
 	 */
 	readonly optionalEnvVars?: readonly string[];
 	/** Declared envelope-sender control. Absent ⇒ `no` (fail closed). */
@@ -185,6 +209,27 @@ export interface PluginSendTransportDefinition {
 	 * see the note on {@link PluginSendTransportDefinition}.
 	 */
 	readonly webhook?: PluginSendTransportWebhookDefinition;
+	/**
+	 * The credential FORM for this transport's configuration, as typed descriptors
+	 * — the catalog entry's `credentialFields` (D5), spelled in the vocabulary the
+	 * plugin platform's `settingsSchema` already uses, so one renderer draws a
+	 * plugin's credential the same way it draws a core provider's.
+	 *
+	 * DESCRIPTIVE ONLY. A descriptor names a variable and says how to ASK an
+	 * operator for it; nothing here decides what a send reads. The presence gate
+	 * is {@link PluginSendTransportDefinition.requiredEnvVars} and the values come
+	 * from {@link PluginSendTransportConfig}, both of which hold whether or not a
+	 * form was declared.
+	 *
+	 * EVERY FIELD'S `envVar` MUST BE ONE THIS TRANSPORT DECLARED, matched to the
+	 * field's own `required`: a `required: true` field names a member of
+	 * `requiredEnvVars`, any other field names a member of `optionalEnvVars`. The
+	 * join is what keeps a rendered form from asking for a variable no send reads
+	 * (an operator filling in a field that does nothing) or from omitting one that
+	 * gates the transport (a transport that stays unconfigured with a complete-
+	 * looking form) — and it is why the namespace rule needs no restating here.
+	 */
+	readonly credentialFields?: readonly PluginSendTransportCredentialField[];
 }
 
 /**
@@ -204,9 +249,11 @@ export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH = 96;
  * `PLUGIN_`-prefixed, uppercase, and containing NO `__`.
  *
  * The prefix is the namespace that keeps a manifest from naming — and the host
- * from handing over — a variable that is not the plugin's to read; it is the same
- * rule a settings `secret` and a webhook signing key already follow, for the same
- * reason (the host reads the VALUE, not just the presence).
+ * from handing over — a variable belonging to the HOST rather than to the plugin
+ * tier; it is the same rule a settings `secret` and a webhook signing key already
+ * follow, for the same reason (the host reads the VALUE, not just the presence).
+ * It does not partition the namespace BETWEEN plugins, and cannot: the shipped
+ * manifests name their variables after the vendor, not after the plugin id.
  *
  * The `__` exclusion is the instance-suffix rule: a named instance reads
  * `<BASE>__<INSTANCEKEY>`, so a BASE name containing the separator would make
@@ -361,116 +408,26 @@ export interface PluginSendTransportModule<Extras = unknown> {
 		extras: Extras,
 		config: PluginSendTransportConfig
 	): Promise<PluginSendAttempt>;
-	/** Turn one governed send's facts into this transport's extras. */
+	/**
+	 * Turn one governed send's facts into this transport's extras.
+	 *
+	 * A THROW YIELDS NO EXTRAS and the send proceeds without them. This builder is
+	 * an optional refinement of a message the host had already decided to send, so
+	 * a third-party throw must not be able to take the governed path down; the
+	 * host records the failure against this kind instead.
+	 */
 	buildDispatchExtras?(context: PluginSendDispatchContext): unknown;
 	/**
 	 * The system/auth mail path's extras. REQUIRED of a transport whose manifest
 	 * declares `deduplicatesOnIdempotencyKey: true` — that is the half of the
 	 * promise that carries the key into the request.
+	 *
+	 * A THROW FAILS THE ATTEMPT, unlike the builder above, and that asymmetry is
+	 * the dedup promise: empty extras here are indistinguishable from extras that
+	 * carried the key, so a swallowed throw would let `systemMailRetryDisposition`
+	 * report an ambiguous password reset as safe to retry while the key never
+	 * reached the provider — and the "retry" is a second mail to a real person. A
+	 * failed attempt before any mail goes out is the fail-closed answer.
 	 */
 	buildSystemMailExtras?(context: PluginSendSystemMailContext): unknown;
-}
-
-/**
- * The feedback vocabulary a plugin transport may report, as the four facts the
- * measurement plane and the Send lifecycle actually consume.
- *
- * Deliberately narrower than the host's own inbound event union: opens, clicks
- * and first-party unsubscribes come from Owlat's surfaces, not a relay's
- * counters, and a kind the host cannot attribute is a kind a plugin could use to
- * write rows nothing audits. A new member is a host change, by design.
- */
-export const PLUGIN_WEBHOOK_FEEDBACK_KINDS = [
-	'delivered',
-	'bounced',
-	'complained',
-	'deferred',
-] as const;
-
-export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[number];
-
-/**
- * One normalized feedback fact.
- *
- * `providerMessageId` is the id the transport's own `send` returned, which is
- * how the host joins the event to a Send. A complaint may instead carry only
- * `recipient` (RFC 5965 §3.2 redaction is routine), and the host suppresses by
- * address in that case — the one place an address alone is enough.
- *
- * Every field is re-validated by the host before it is trusted: plugin output is
- * untrusted input, exactly as a send attempt's result is.
- */
-export type PluginWebhookFeedbackEvent =
-	| {
-			readonly kind: 'delivered';
-			readonly providerMessageId: string;
-			/** Provider's event time, epoch milliseconds. */
-			readonly at: number;
-			readonly recipient?: string;
-	  }
-	| {
-			readonly kind: 'bounced';
-			readonly providerMessageId: string;
-			readonly at: number;
-			readonly bounceType: 'hard' | 'soft';
-			readonly bounceMessage?: string;
-	  }
-	| {
-			readonly kind: 'complained';
-			readonly at: number;
-			readonly providerMessageId?: string;
-			readonly recipient?: string;
-	  }
-	| {
-			readonly kind: 'deferred';
-			readonly providerMessageId: string;
-			readonly at: number;
-			/** Provider free text, for operator logs only. */
-			readonly reason?: string;
-	  };
-
-/**
- * Largest request body the feedback route reads, in BYTES of UTF-8 (not string
- * length). Over it, the provider is answered `413` before the module is called.
- */
-export const PLUGIN_WEBHOOK_MAX_BODY_BYTES = 1_048_576;
-
-/**
- * Largest batch one delivery may carry, as a count of returned events.
- *
- * Sized to what fits in {@link PLUGIN_WEBHOOK_MAX_BODY_BYTES} at the ~200 bytes
- * of JSON a feedback record costs, so the two limits bind at about the same
- * place. Declared here, in the contract an author reads, because an over-limit
- * batch is answered `413` and REDELIVERED IDENTICALLY by the provider until it
- * gives up: the feedback in it is lost, not delayed, and the fix (ask the
- * provider to chunk) is only available to an author who knows the number.
- */
-export const PLUGIN_WEBHOOK_MAX_BATCH_EVENTS = 5_000;
-
-/**
- * The webhook half of a bundled send transport: PARSE ONLY.
- *
- * There is no `verifySignature` here, and its absence is the contract. The host
- * has already verified the declared signature, enforced timestamp freshness and
- * rejected a replayed delivery before this module is called, so `rawBody` is
- * authentic bytes from the provider the plugin integrates. Giving a plugin the
- * authenticity decision would make the strength of an internet-facing endpoint a
- * property of third-party code.
- *
- * Return the empty array for a batch that carries nothing Owlat acts on — that
- * is how a provider's verification ping and its unconsumed event kinds are
- * acknowledged. Throwing is answered 400 without dispatching anything.
- *
- * TWO LIMITS BOUND WHAT ONE DELIVERY MAY CARRY, and both are the provider's to
- * respect, not yours to work around: {@link PLUGIN_WEBHOOK_MAX_BODY_BYTES} on
- * the request body, and {@link PLUGIN_WEBHOOK_MAX_BATCH_EVENTS} on the events
- * you return. Either is answered `413` — never a partial application — and the
- * provider will redeliver the same oversized delivery, so configure it to chunk
- * rather than expecting Owlat to split what it refused.
- *
- * This module runs inside the HTTP router's isolate, so it must not import Node
- * builtins; parsing a JSON or form body needs none.
- */
-export interface PluginSendTransportWebhookModule {
-	parseEvents(rawBody: string): readonly PluginWebhookFeedbackEvent[];
 }

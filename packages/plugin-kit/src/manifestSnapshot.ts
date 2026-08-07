@@ -1,6 +1,7 @@
 import { isPluginContributionKind } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
+import { PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS } from './sendTransportCredentials';
 import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchema';
 
 // Manifests are static declarations: these limits leave ample composition room
@@ -91,6 +92,30 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 						`${path}[${index}].${field}`,
 						PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
 						issues
+					);
+				}
+				// The credential form (D5). Each descriptor is a record whose `options`
+				// is a nested array of records, so the snapshot has to go two levels
+				// down for the same reason the webhook's does — a live inner array
+				// could pass validation and then render something else.
+				if (field === 'credentialFields') {
+					return snapshotArray(
+						fieldValue,
+						`${path}[${index}].credentialFields`,
+						PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+						issues,
+						(credentialField, fieldIndex) =>
+							snapshotRecord(credentialField, (descriptorField, descriptorValue) =>
+								descriptorField === 'options'
+									? snapshotArray(
+											descriptorValue,
+											`${path}[${index}].credentialFields[${fieldIndex}].options`,
+											MAX_SETTINGS_OPTIONS,
+											issues,
+											(option) => snapshotRecord(option)
+										)
+									: descriptorValue
+							)
 					);
 				}
 				if (field === 'lifecycleEdges') {

@@ -123,6 +123,33 @@ describe('declared configuration variables', () => {
 		);
 	});
 
+	it('bounds the two lists TOGETHER, which the snapshotter cannot see', () => {
+		// The case above is caught one layer earlier, by the per-array snapshot
+		// bound. A SPLIT declaration passes both arrays and still asks the host to
+		// resolve 13 variables on every send, so the validator has to add them up —
+		// the branch this case exists to reach.
+		const required = Array.from({ length: 7 }, (_, index) => `PLUGIN_MAIL_PACK_R${index}`);
+		const optional = Array.from({ length: 6 }, (_, index) => `PLUGIN_MAIL_PACK_O${index}`);
+		const paths = issuePaths(
+			manifestWith({ requiredEnvVars: required, optionalEnvVars: optional })
+		);
+
+		expect(paths).toContain(PATH);
+		expect(paths).not.toContain(`${PATH}.requiredEnvVars`);
+		expect(paths).not.toContain(`${PATH}.optionalEnvVars`);
+	});
+
+	it('refuses an optional-only declaration, which no instance could resolve', () => {
+		// Declaring configuration is what makes a transport instance-scoped, and an
+		// instance is resolved against its REQUIRED variables. With none, every
+		// named instance is graded against an empty list — vacuously configured on
+		// one side, `revoked` on the other — while the send goes out on the default
+		// instance's credentials.
+		expect(issuePaths(manifestWith({ optionalEnvVars: ['PLUGIN_MAIL_PACK_STREAM'] }))).toContain(
+			`${PATH}.optionalEnvVars`
+		);
+	});
+
 	it.each(['requiredEnvVars', 'optionalEnvVars'] as const)(
 		'rejects a %s accessor without evaluating it',
 		(field) => {
@@ -206,5 +233,242 @@ describe('declared capability fields', () => {
 		expect(issuePaths(manifestWith({ domainVerification: 'api' }))).toContain(
 			`${PATH}.domainVerification`
 		);
+	});
+});
+
+/**
+ * The credential FORM (D5) — descriptors, joined to the configuration.
+ *
+ * The join is the property under test. A descriptor's `envVar` must name a
+ * variable this transport declared, in the list its own `required` implies:
+ * otherwise the rendered form asks for a variable no send reads, or omits the
+ * one that decides whether the transport is configured — and the operator
+ * filling it in can see neither.
+ */
+describe('declared credential form', () => {
+	const CONFIGURED = {
+		requiredEnvVars: ['PLUGIN_MAIL_PACK_TOKEN'],
+		optionalEnvVars: ['PLUGIN_MAIL_PACK_STREAM'],
+	};
+
+	function withFields(...credentialFields: readonly unknown[]) {
+		return manifestWith({ ...CONFIGURED, credentialFields });
+	}
+
+	it('accepts the five settings kinds and keeps the descriptors frozen', () => {
+		const parsed = parsePluginManifest(
+			manifestWith({
+				requiredEnvVars: ['PLUGIN_MAIL_PACK_TOKEN'],
+				optionalEnvVars: [
+					'PLUGIN_MAIL_PACK_STREAM',
+					'PLUGIN_MAIL_PACK_PORT',
+					'PLUGIN_MAIL_PACK_TRACKING',
+					'PLUGIN_MAIL_PACK_REGION',
+				],
+				credentialFields: [
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'API token',
+						required: true,
+						envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					},
+					{ kind: 'string', key: 'stream', label: 'Stream', envVar: 'PLUGIN_MAIL_PACK_STREAM' },
+					{
+						kind: 'number',
+						key: 'port',
+						label: 'Port',
+						envVar: 'PLUGIN_MAIL_PACK_PORT',
+						default: 587,
+					},
+					{
+						kind: 'boolean',
+						key: 'tracking',
+						label: 'Open tracking',
+						envVar: 'PLUGIN_MAIL_PACK_TRACKING',
+					},
+					{
+						kind: 'select',
+						key: 'region',
+						label: 'Region',
+						envVar: 'PLUGIN_MAIL_PACK_REGION',
+						options: [{ value: 'eu', label: 'Europe' }],
+					},
+				],
+			})
+		);
+		const fields = parsed.contributes?.sendTransports?.[0]?.credentialFields;
+
+		expect(fields?.map((field) => field.kind)).toEqual([
+			'secret',
+			'string',
+			'number',
+			'boolean',
+			'select',
+		]);
+		expect(Object.isFrozen(fields)).toBe(true);
+	});
+
+	it('composes exactly as before when a transport declares no form', () => {
+		const parsed = parsePluginManifest(manifestWith(CONFIGURED));
+
+		expect(parsed.contributes?.sendTransports?.[0]?.credentialFields).toBeUndefined();
+	});
+
+	it('refuses a required field naming an OPTIONAL variable', () => {
+		expect(
+			issuePaths(
+				withFields({
+					kind: 'secret',
+					key: 'stream',
+					label: 'Stream',
+					required: true,
+					envVar: 'PLUGIN_MAIL_PACK_STREAM',
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].envVar`);
+	});
+
+	it('refuses an optional field naming a REQUIRED variable', () => {
+		expect(
+			issuePaths(
+				withFields({
+					kind: 'secret',
+					key: 'token',
+					label: 'API token',
+					envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].envVar`);
+	});
+
+	it('refuses a field naming a variable this transport never declared', () => {
+		// Which is also what keeps the namespace rule from needing a second home:
+		// every accepted name already passed `isPluginSendTransportEnvVar` as a
+		// member of one of the two lists.
+		expect(
+			issuePaths(
+				withFields({
+					kind: 'secret',
+					key: 'stolen',
+					label: 'Host credential',
+					required: true,
+					envVar: 'MTA_API_KEY',
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].envVar`);
+	});
+
+	it.each([
+		['a composite the tier does not offer', { kind: 'host-port' }, 'kind'],
+		['an unknown kind', { kind: 'wysiwyg' }, 'kind'],
+		['a reserved key', { key: '__proto__' }, 'key'],
+		['an empty label', { label: '' }, 'label'],
+		['a non-boolean required', { required: 'yes' }, 'required'],
+		['a non-numeric bound', { kind: 'number', min: 'low' }, 'min'],
+	])('refuses %s', (_label, overrides, field) => {
+		expect(
+			issuePaths(
+				withFields({
+					kind: 'secret',
+					key: 'token',
+					label: 'API token',
+					required: true,
+					envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					...overrides,
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].${field}`);
+	});
+
+	it('refuses a duplicate key — one form, one identifier per field', () => {
+		expect(
+			issuePaths(
+				withFields(
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'API token',
+						required: true,
+						envVar: 'PLUGIN_MAIL_PACK_TOKEN',
+					},
+					{ kind: 'string', key: 'token', label: 'Stream', envVar: 'PLUGIN_MAIL_PACK_STREAM' }
+				)
+			)
+		).toContain(`${PATH}.credentialFields[1].key`);
+	});
+
+	it('refuses a select with no options to choose from', () => {
+		expect(
+			issuePaths(
+				withFields({
+					kind: 'select',
+					key: 'stream',
+					label: 'Stream',
+					envVar: 'PLUGIN_MAIL_PACK_STREAM',
+					options: [],
+				})
+			)
+		).toContain(`${PATH}.credentialFields[0].options`);
+	});
+
+	it('bounds the form at one field per variable', () => {
+		const many = Array.from({ length: 13 }, (_, index) => ({
+			kind: 'string',
+			key: `field${index}`,
+			label: `Field ${index}`,
+			envVar: 'PLUGIN_MAIL_PACK_STREAM',
+		}));
+
+		expect(issuePaths(withFields(...many))).toContain(`${PATH}.credentialFields`);
+	});
+
+	it('reads the descriptors from a SNAPSHOT, options included', () => {
+		// Two levels down, for the reason the webhook's nested descriptors are: a
+		// live inner array could pass validation and then render something else.
+		const options = [{ value: 'eu', label: 'Europe' }];
+		const parsed = parsePluginManifest(
+			manifestWith({
+				...CONFIGURED,
+				credentialFields: [
+					{
+						kind: 'select',
+						key: 'stream',
+						label: 'Stream',
+						envVar: 'PLUGIN_MAIL_PACK_STREAM',
+						options,
+					},
+				],
+			})
+		);
+		options[0] = { value: 'us', label: 'United States' };
+		const field = parsed.contributes?.sendTransports?.[0]?.credentialFields?.[0];
+
+		expect(field?.kind === 'select' ? field.options : []).toEqual([
+			{ value: 'eu', label: 'Europe' },
+		]);
+	});
+
+	it('rejects a credentialFields accessor without evaluating it', () => {
+		let reads = 0;
+		const transport = transportDefinition(CONFIGURED);
+		Object.defineProperty(transport, 'credentialFields', {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return [];
+			},
+		});
+
+		expect(
+			issuePaths({
+				id: 'mail-pack',
+				version: '1.0.0',
+				capabilities: ['send:transport'],
+				flag: { default: false },
+				contributes: { sendTransports: [transport] },
+			})
+		).toContain(`${PATH}.credentialFields`);
+		expect(reads).toBe(0);
 	});
 });

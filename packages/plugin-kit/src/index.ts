@@ -191,9 +191,6 @@ export {
 	PLUGIN_SEND_TRANSPORT_CAPABILITY,
 	PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH,
 	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
-	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
-	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
-	PLUGIN_WEBHOOK_MAX_BODY_BYTES,
 } from './sendTransport';
 export type {
 	PluginSendAttachment,
@@ -210,11 +207,32 @@ export type {
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 	PluginSendTransportWebhookDefinition,
-	PluginSendTransportWebhookModule,
 	PluginStaticModuleExport,
+} from './sendTransport';
+export {
+	PLUGIN_SEND_TRANSPORT_CREDENTIAL_FIELD_KINDS,
+	PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+} from './sendTransportCredentials';
+export type {
+	PluginSendTransportBooleanCredentialField,
+	PluginSendTransportCredentialField,
+	PluginSendTransportCredentialFieldKind,
+	PluginSendTransportCredentialFieldOption,
+	PluginSendTransportNumberCredentialField,
+	PluginSendTransportSecretCredentialField,
+	PluginSendTransportSelectCredentialField,
+	PluginSendTransportStringCredentialField,
+} from './sendTransportCredentials';
+export {
+	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
+	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
+	PLUGIN_WEBHOOK_MAX_BODY_BYTES,
+} from './sendTransportFeedback';
+export type {
+	PluginSendTransportWebhookModule,
 	PluginWebhookFeedbackEvent,
 	PluginWebhookFeedbackKind,
-} from './sendTransport';
+} from './sendTransportFeedback';
 export { pluginContributionExportPaths, pluginContributionModules } from './contributionModules';
 export type { PluginContributionModuleReference } from './contributionModules';
 export type {
