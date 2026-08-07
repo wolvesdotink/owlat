@@ -66,11 +66,14 @@ const PLUGIN_ID = 'mock-esp';
  *   `supportsCustomReturnPath`, `assertPluginReturnPathClaimsAreHonest` and
  *   `messageIdSource`      `assertPluginDispatchSemanticsAreGeneral`, same import
  *
- * The values are bound to the real composition from the conformance side: that
- * suite reads this file and requires it to name the composed kind and every
- * composed `requiredEnvVars` / `instanceEnvVars` entry, so a rename or a renderer
- * that stopped folding the flag's variables in fails there rather than leaving
- * this suite grading a kind nothing composes.
+ * EVERY value below is bound to the real composition from the conformance side.
+ * That suite (`binds the ramp fixture to every value of the composed entry's
+ * narrowed copy`, and the roster case beside it) reads this file and requires it
+ * to spell the composed kind, every `requiredEnvVars` / `instanceEnvVars` entry,
+ * each credential field's variable WITH its kind and required-ness, and the two
+ * capability values — so a rename, a renderer that stopped folding the flag's
+ * variables in, or a tightened load-time guard fails there rather than leaving
+ * this suite satisfying a guard with a value the bundle no longer declares.
  */
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
@@ -93,6 +96,12 @@ vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	]),
 }));
 
+/**
+ * THE ROSTER, narrowed the same way and bound the same way: the operator's door
+ * resolves the plugin's flag and capability grant through it, and the conformance
+ * suite requires this copy to spell the composed package name, manifest id and
+ * version, every declared capability and every variable the flag requires.
+ */
 vi.mock('../../../plugins/plugins.generated', () => ({
 	bundledPluginComposition: Object.freeze([
 		Object.freeze({
@@ -119,7 +128,6 @@ import type { SendProviderKind } from '../../../lib/sendProviders/types';
 import { configuredRelayKinds } from '../../relayConfiguration';
 import {
 	armOutcomeTotals,
-	connectRelay,
 	RAMP_FIXTURE_GATE_BREACHING_BURST,
 	RAMP_FIXTURE_SHARE,
 	readManagedCell,
@@ -127,8 +135,8 @@ import {
 	runRampControllerTick,
 	seedArmOutcomes,
 	seedAssignedSend,
-	seedGreenWindows,
 	seedRampCell,
+	seedRelayMigration,
 	type Harness,
 } from '../../__tests__/rampCronFixtures';
 
@@ -170,14 +178,14 @@ afterEach(() => {
  * through `@acme/mock-esp`, a healthy history on both arms, and the plugin kind
  * named in `providerRoutes` under the one strategy that splits by the cell's
  * share.
+ *
+ * The state itself is the shared fixture's, which is the whole point of this
+ * suite: what makes it a PLUGIN deployment is the relay kind and nothing else, and
+ * a second hand-rolled copy of the seeding would be free to drift from the
+ * Mandrill suite it is meant to be comparable with.
  */
 async function seedPluginMigration(t: Harness): Promise<void> {
-	// The relay is expressed through the route row, never through an ambient
-	// single-transport env that would hand the fixture a sender it never named.
-	vi.stubEnv('EMAIL_PROVIDER', 'mta');
-	await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
-	await connectRelay(t, 'adaptive_mix', KIND);
-	await seedGreenWindows(t, { organizationId: ORG });
+	await seedRelayMigration(t, { organizationId: ORG, relayKind: KIND });
 }
 
 describe('a plugin transport is the reference arm by configuration and by attribution', () => {

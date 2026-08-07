@@ -18,6 +18,7 @@ import {
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import type { TestConvex } from 'convex-test';
+import { vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type schema from '../../schema';
@@ -277,6 +278,36 @@ export async function connectRelay(
 			updatedAt: Date.now(),
 		});
 	});
+}
+
+/**
+ * A DEPLOYMENT MID-RAMP WITH A RELAY — the whole starting state both reference-arm
+ * suites open every case with.
+ *
+ * Half the cell's traffic still going through the relay, a healthy history on both
+ * arms, and the relay kind named in `providerRoutes` under the one strategy that
+ * splits by the cell's share. `EMAIL_PROVIDER` is stubbed to the own MTA because
+ * `configuredRelayKinds` also reads the single-transport env: a runner with one
+ * exported would otherwise hand the fixture a second sender it never named.
+ *
+ * Shared rather than copied for the reason `seedAssignedSend` is: the two suites'
+ * copies were byte-identical apart from the org and the kind, so the day
+ * `seedRampCell` or `seedGreenWindows` gains a required option — or this state
+ * needs another row — one copy would be updated and the other would stay green on
+ * a premise the fixture no longer produces.
+ */
+export async function seedRelayMigration(
+	t: Harness,
+	args: { readonly organizationId: string; readonly relayKind: string }
+): Promise<void> {
+	vi.stubEnv('EMAIL_PROVIDER', 'mta');
+	await seedRampCell(t, {
+		organizationId: args.organizationId,
+		ownShare: RAMP_FIXTURE_SHARE,
+		cleanStreak: 3,
+	});
+	await connectRelay(t, 'adaptive_mix', args.relayKind);
+	await seedGreenWindows(t, { organizationId: args.organizationId });
 }
 
 /**

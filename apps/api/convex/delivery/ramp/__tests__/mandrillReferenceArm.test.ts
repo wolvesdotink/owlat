@@ -47,8 +47,8 @@ import {
 	runRampControllerTick,
 	seedArmOutcomes,
 	seedAssignedSend,
-	seedGreenWindows,
 	seedRampCell,
+	seedRelayMigration,
 	type Harness,
 } from '../../__tests__/rampCronFixtures';
 
@@ -70,14 +70,13 @@ afterEach(() => {
  * A DEPLOYMENT MID-MIGRATION: half the cell's traffic still going through
  * Mandrill, a healthy history on both arms, and Mandrill named as the relay in
  * `providerRoutes` under the one strategy that splits by the cell's share.
+ *
+ * The state itself is the shared fixture's — this only says which relay kind the
+ * reference arm is here, so the plugin suite's identical opening cannot drift from
+ * this one.
  */
 async function seedMandrillMigration(t: Harness): Promise<void> {
-	// The relay is expressed through the route row, never through an ambient
-	// single-transport env that would hand the fixture a sender it never named.
-	vi.stubEnv('EMAIL_PROVIDER', 'mta');
-	await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
-	await connectRelay(t, 'adaptive_mix', 'mandrill');
-	await seedGreenWindows(t, { organizationId: ORG });
+	await seedRelayMigration(t, { organizationId: ORG, relayKind: 'mandrill' });
 }
 
 /** The substitution table's resolution for this cell, read the way the cron reads it. */
