@@ -125,26 +125,47 @@ export function createHostedSendProvider(
 		 * A THROWN BUILDER YIELDS NO EXTRAS rather than failing the send: this runs
 		 * inside the governed boundary, before any dispatch bookkeeping, and a
 		 * third-party builder that throws must not be able to take down the send path
-		 * for a knob that is optional by construction.
+		 * for a knob that is optional by construction. It is not SILENT, though — a
+		 * builder that always throws would otherwise be indistinguishable from one
+		 * that works, so the failure is logged against the kind (outcome only; the
+		 * thrown text is untrusted and may quote configuration).
 		 */
 		...(module.buildDispatchExtras === undefined
 			? {}
 			: {
 					buildDispatchExtras(input: DispatchExtrasInput): unknown {
-						return callBuilder(() => module.buildDispatchExtras?.(toPluginDispatchContext(input)));
+						try {
+							return module.buildDispatchExtras?.(toPluginDispatchContext(input));
+						} catch {
+							console.warn(
+								`[pluginSendTransport] ${kind} buildDispatchExtras threw; sending without extras`
+							);
+							return undefined;
+						}
 					},
 				}),
+		/**
+		 * THE SYSTEM-MAIL BUILDER'S THROW PROPAGATES, and the asymmetry with the
+		 * builder above is the whole point of the dedup pair.
+		 *
+		 * Empty extras here are indistinguishable from extras that carried the
+		 * idempotency key, while `systemMailRetryDisposition` keeps reading the
+		 * catalog's `deduplicatesOnIdempotencyKey` — so a swallowed throw would have
+		 * an ambiguous password reset reported `safe_to_retry` with no key ever sent,
+		 * and the "retry" is a second mail to a real person. `systemMail.ts` builds
+		 * its extras inside the try that wraps the attempt, so a throw becomes a
+		 * failed attempt BEFORE any mail goes out. That is the fail-closed answer,
+		 * and it is the one the registry's pair guard promises.
+		 */
 		...(module.buildSystemMailExtras === undefined
 			? {}
 			: {
 					buildSystemMailExtras(input: SystemMailExtrasInput): unknown {
-						return callBuilder(() =>
-							module.buildSystemMailExtras?.({
-								...(input.idempotencyKey === undefined
-									? {}
-									: { idempotencyKey: input.idempotencyKey }),
-							} satisfies PluginSendSystemMailContext)
-						);
+						return module.buildSystemMailExtras?.({
+							...(input.idempotencyKey === undefined
+								? {}
+								: { idempotencyKey: input.idempotencyKey }),
+						} satisfies PluginSendSystemMailContext);
 					},
 				}),
 	});
@@ -173,15 +194,6 @@ function resolveHostedConfig(
 		if (env[name] === undefined) return null;
 	}
 	return Object.freeze({ instanceKey: transport.instanceKey, env: Object.freeze(env) });
-}
-
-/** Plugin output is untrusted, and so is a plugin throw. Neither may escape. */
-function callBuilder(build: () => unknown): unknown {
-	try {
-		return build();
-	} catch {
-		return undefined;
-	}
 }
 
 function toPluginDispatchContext(input: DispatchExtrasInput): PluginSendDispatchContext {

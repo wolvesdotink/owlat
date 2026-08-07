@@ -284,9 +284,12 @@ describe('the extras builders, at parity with a core adapter', () => {
 		expect(provider.buildSystemMailExtras).toBeUndefined();
 	});
 
-	it('swallows a THROWING builder rather than taking the send path down with it', () => {
+	it('swallows a THROWING dispatch builder, but says so against the kind', () => {
 		// This runs inside the governed boundary, before any dispatch bookkeeping.
-		// A knob that is optional by construction must not be able to fail a send.
+		// A knob that is optional by construction must not be able to fail a send —
+		// and it must not be invisible either, or a builder that always throws is
+		// indistinguishable from one that works.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const provider = createHostedSendProvider(KIND, [], {
 			parseExtras: (input: unknown) => input,
 			send: async () => ({ success: true as const, id: 'x' }),
@@ -296,6 +299,34 @@ describe('the extras builders, at parity with a core adapter', () => {
 		});
 
 		expect(provider.buildDispatchExtras?.(facts())).toBeUndefined();
+		expect(warn).toHaveBeenCalledTimes(1);
+		const logged = String(warn.mock.calls[0]?.[0]);
+		expect(logged).toContain(KIND);
+		// Outcome only. The thrown text is untrusted and may quote configuration.
+		expect(logged).not.toContain('secret plugin detail');
+		warn.mockRestore();
+	});
+
+	it('lets a THROWING SYSTEM-MAIL builder fail the attempt instead', () => {
+		// The asymmetry IS the dedup promise. Empty extras here are
+		// indistinguishable from extras that carried the key, while
+		// `systemMailRetryDisposition` keeps reading the catalog's
+		// `deduplicatesOnIdempotencyKey` — so swallowing this would report an
+		// ambiguous password reset `safe_to_retry` with no key ever sent, and the
+		// "retry" is a second mail to a real person. `systemMail.ts` calls this
+		// inside the try that wraps the attempt, so a throw is a failed attempt
+		// before any mail goes out.
+		const provider = createHostedSendProvider(KIND, [], {
+			parseExtras: (input: unknown) => input,
+			send: async () => ({ success: true as const, id: 'x' }),
+			buildSystemMailExtras: () => {
+				throw new Error('bad key shape');
+			},
+		});
+
+		expect(() => provider.buildSystemMailExtras?.({ idempotencyKey: 'reset-1' })).toThrow(
+			'bad key shape'
+		);
 	});
 
 	it('re-parses its own builder output at the same boundary a host value crosses', async () => {
@@ -325,8 +356,13 @@ describe('the extras builders, at parity with a core adapter', () => {
 });
 
 /**
- * THE REGISTRY-LEVEL PAIR. Both halves of the dedup promise are checked where
- * both are visible: the catalog declares it, the module carries it.
+ * THE REGISTRY-LEVEL PAIRS. Both halves of a promise are checked where both are
+ * visible: the catalog declares it, the module carries it.
+ *
+ * Two declarations are pairs of this shape, and neither can be checked at the
+ * catalog alone. `deduplicatesOnIdempotencyKey` needs `buildSystemMailExtras` to
+ * carry the key; `supportsCustomReturnPath: 'yes'` needs `buildDispatchExtras`,
+ * because that is the only wire a return-path host reaches a hosted module on.
  */
 describe('registering a hosted transport that claims idempotency-key dedup', () => {
 	const CATALOG = '../../../plugins/sendTransportCatalog.generated';
@@ -347,9 +383,14 @@ describe('registering a hosted transport that claims idempotency-key dedup', () 
 		});
 	}
 
-	async function composeRegistryWith(module: Record<string, unknown>): Promise<unknown> {
+	async function composeRegistryWith(
+		module: Record<string, unknown>,
+		entryOverrides: Record<string, unknown> = {}
+	): Promise<unknown> {
 		vi.resetModules();
-		vi.doMock(CATALOG, () => ({ BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: [catalogEntry()] }));
+		vi.doMock(CATALOG, () => ({
+			BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: [catalogEntry(entryOverrides)],
+		}));
 		vi.doMock(MODULES, () => ({
 			BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: [{ kind: KIND, pluginId: 'mail-pack', module }],
 		}));
@@ -401,5 +442,80 @@ describe('registering a hosted transport that claims idempotency-key dedup', () 
 		// The governed boundary asks the same module the same way; this one declares
 		// no dispatch builder, so it gets the empty extras that path always sent.
 		expect(registry.buildDispatchExtrasFor(KIND, facts())).toEqual({});
+	});
+
+	it('refuses a return-path claim the module has no wire to honour', async () => {
+		// The measurement bias with no symptom: `resolveReturnPathCapabilityForEntry`
+		// grades the arm `supported` and hands the ramp the COMPARABLE bounce
+		// tolerance, while the send goes out on the provider's own envelope sender
+		// and its bounces never reach our VERP stream. The controller then ramps the
+		// arm's share against evidence that structurally cannot arrive.
+		await expect(
+			composeRegistryWith(
+				{
+					parseExtras: (input: unknown) => input,
+					send: async () => ({ success: true, id: 'x' }),
+					buildSystemMailExtras: () => ({}),
+				},
+				{ supportsCustomReturnPath: 'yes' }
+			)
+		).rejects.toThrow(/supportsCustomReturnPath: 'yes'[\s\S]*buildDispatchExtras/);
+	});
+
+	it('registers a return-path claim the module CAN honour, and forwards the host', async () => {
+		const registry = (await composeRegistryWith(
+			{
+				parseExtras: (input: unknown) => input,
+				send: async () => ({ success: true, id: 'x' }),
+				buildSystemMailExtras: () => ({}),
+				buildDispatchExtras: (context: { returnPathHost?: string }) => ({
+					mailFrom: context.returnPathHost,
+				}),
+			},
+			{ supportsCustomReturnPath: 'yes' }
+		)) as {
+			buildDispatchExtrasFor: (kind: string, input: DispatchExtrasInput) => unknown;
+		};
+
+		expect(registry.buildDispatchExtrasFor(KIND, facts())).toEqual({
+			mailFrom: 'bounce.example.com',
+		});
+	});
+
+	it('sends whoever hits a boot failure to a file that declares what the message names', async () => {
+		// A BOOT FAILURE IS A ONE-SHOT EXPLANATION — the same rule
+		// `pluginCustodyGuard.test.ts` holds the catalog's throws to, applied to the
+		// registry's. Whoever hits one is reading the string, not the codebase.
+		// SEQUENTIALLY: `composeRegistryWith` resets and re-mocks one module
+		// registry, so overlapping compositions can both observe the last mock.
+		const bare = {
+			parseExtras: (input: unknown) => input,
+			send: async () => ({ success: true, id: 'x' }),
+		};
+		const messages: string[] = [];
+		for (const overrides of [{}, { supportsCustomReturnPath: 'yes' }]) {
+			messages.push(
+				await composeRegistryWith(bare, overrides).then(
+					() => '',
+					(error: unknown) => (error as Error).message
+				)
+			);
+		}
+		const { existsSync, readFileSync } = await import('node:fs');
+		const { dirname, resolve } = await import('node:path');
+		const { fileURLToPath } = await import('node:url');
+		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
+		for (const message of messages) {
+			const [, symbol, path] = /See (\w+) in (\S+\.ts)/.exec(message) ?? [];
+			expect({ message, symbol, path }).toMatchObject({
+				symbol: expect.any(String),
+				path: expect.any(String),
+			});
+			const onDisk = [resolve(repoRoot, path!), resolve(repoRoot, 'apps/api/convex', path!)].find(
+				(candidate) => existsSync(candidate)
+			);
+			expect({ path, onDisk }).toMatchObject({ onDisk: expect.any(String) });
+			expect(readFileSync(onDisk!, 'utf8')).toContain(symbol!);
+		}
 	});
 });
