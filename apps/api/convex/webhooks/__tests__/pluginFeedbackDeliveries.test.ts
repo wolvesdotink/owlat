@@ -77,7 +77,7 @@ describe('plugin webhook delivery claims', () => {
 		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toHaveLength(1);
 	});
 
-	it('ages expired rows out as it goes, with no cron', async () => {
+	it('ages expired rows out as it goes', async () => {
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
 		for (let index = 0; index < 10; index += 1) {
@@ -87,6 +87,38 @@ describe('plugin webhook delivery claims', () => {
 
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
 		expect(rows.map((row) => row.deliveryDigest)).toEqual(['fresh']);
+	});
+
+	it('the cron sweeps what an idle route leaves behind, and only that', async () => {
+		// The claim mutation's own sweep runs only when a delivery is authorized.
+		// Disable the plugin, or let the provider go quiet after a burst, and the
+		// residue would otherwise sit there forever — so the invariant "this table
+		// empties itself" belongs to the cron, not to the hot path.
+		const t = convexTest(schema, modules);
+		await t.mutation(internal.webhooks.pluginFeedbackDeliveries.claim, claimArgs('still-live'));
+		// Written straight to the table: the point is rows NO later claim ever
+		// reaches, which is exactly what going through the claim mutation would
+		// clean up on the way in.
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 5; index += 1) {
+				await ctx.db.insert('pluginWebhookDeliveries', {
+					pluginId: PLUGIN_ID,
+					transportKind: KIND,
+					deliveryDigest: `abandoned-${index}`,
+					claimedAt: Date.now() - TOLERANCE_MS,
+					expiresAt: Date.now() - 1,
+				});
+			}
+		});
+
+		const { deletedCount } = await t.mutation(
+			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+			{}
+		);
+
+		expect(deletedCount).toBe(5);
+		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows.map((row) => row.deliveryDigest)).toEqual(['still-live']);
 	});
 
 	it('releases a claim so a redelivery after our failure is accepted', async () => {

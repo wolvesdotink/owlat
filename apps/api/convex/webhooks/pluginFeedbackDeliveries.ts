@@ -20,9 +20,16 @@ import { internalMutation } from '../_generated/server';
 
 /**
  * Expired rows removed per claim. Bounded so the hot path stays O(1)-ish, and
- * enough to keep the table at steady state: every claim can retire more than one
- * predecessor, and every row expires within the contract's tolerance (at most
- * fifteen minutes), so no cron is needed to keep this table small.
+ * enough to hold the table at steady state under traffic: every claim can retire
+ * more than one predecessor, and every row expires within the contract's
+ * tolerance (at most fifteen minutes).
+ *
+ * OPPORTUNISTIC, not complete. This sweep only runs when a delivery is
+ * authorized, so a plugin that is disabled — or a provider that simply stops
+ * sending after a burst — strands whatever the last claim did not reach. The
+ * `cleanup plugin webhook replay claims` cron
+ * (`webhooks/cleanup.cleanupPluginWebhookDeliveries`) is what makes the table
+ * empty out when the route goes idle.
  */
 const EXPIRED_SWEEP_LIMIT = 32;
 

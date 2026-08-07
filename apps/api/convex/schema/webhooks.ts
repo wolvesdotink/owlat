@@ -98,13 +98,15 @@ export const webhookTables = {
 	// holds, so two requests share a digest exactly when they are the same signed
 	// bytes and nobody without the secret can mint a new one.
 	//
-	// The signature contract's timestamp tolerance is what makes this table small
-	// and complete: a captured request stops verifying once it falls outside the
-	// tolerance, so a claim only has to outlive that window (`expiresAt`), and the
-	// claim mutation ages expired rows out in bounded batches rather than through
-	// a cron. A claim is released again when the delivery does not complete, so a
-	// provider's redelivery after our failure is accepted rather than mistaken for
-	// an attack.
+	// The signature contract's timestamp tolerance is what makes this table small:
+	// a captured request stops verifying once it falls outside the tolerance, so a
+	// claim only has to outlive that window (`expiresAt`). The claim mutation ages
+	// expired rows out in bounded batches on its own hot path; because that only
+	// runs while deliveries arrive, a daily cron
+	// (`webhooks/cleanup.cleanupPluginWebhookDeliveries`) empties what an idle or
+	// disabled route leaves behind. A claim is released again when the delivery
+	// does not complete, so a provider's redelivery after our failure is accepted
+	// rather than mistaken for an attack.
 	pluginWebhookDeliveries: defineTable({
 		pluginId: v.string(),
 		// Namespaced `plugin.<pluginId>.<localId>` transport kind, for attribution.
