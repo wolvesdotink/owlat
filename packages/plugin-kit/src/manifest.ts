@@ -156,12 +156,15 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		capabilityItems !== undefined &&
 		!issues.some((issue) => issue.path.startsWith('$.capabilities'));
 	const contributions = readDataProperty(manifest, 'contributes', issues);
-	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
+	const webhookSecretEnvVars =
+		contributions.kind === 'value' ? validateContributions(contributions.value, issues) : [];
 	const flag = readDataProperty(manifest, 'flag', issues);
 	const flagIssueCount = issues.length;
-	if (flag.kind === 'value') validateFlag(flag.value, issues);
+	const flagRequiredEnvVars =
+		flag.kind === 'value' ? validateFlag(flag.value, issues) : new Set<string>();
 	const hasValidFlag =
 		flag.kind === 'value' && isRecord(flag.value) && issues.length === flagIssueCount;
+	requireWebhookSecretsAreFlagRequirements(webhookSecretEnvVars, flagRequiredEnvVars, issues);
 	if (declaresPluginStorage(capabilityItems) && !hasValidFlag) {
 		if (flag.kind === 'missing') {
 			addManifestIssue(
@@ -305,12 +308,18 @@ function declaresContributions(
 	);
 }
 
-function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
-	if (value === undefined) return;
+/**
+ * Validate every declared bucket, and report back the feedback-webhook signing
+ * secrets found on the way — the one contribution fact whose rule lives outside
+ * `$.contributes` (see `requireWebhookSecretsAreFlagRequirements`).
+ */
+function validateContributions(value: unknown, issues: PluginManifestIssue[]): readonly string[] {
+	if (value === undefined) return [];
 	if (!isRecord(value)) {
 		addManifestIssue(issues, 'invalid_type', '$.contributes', 'must be a plain object');
-		return;
+		return [];
 	}
+	let webhookSecretEnvVars: readonly string[] = [];
 	for (const key of Reflect.ownKeys(value)) {
 		if (typeof key !== 'string') {
 			addManifestIssue(
@@ -329,7 +338,9 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 		const contribution = readDataProperty(value, key, issues);
 		if (contribution.kind === 'value') {
 			const items = validateDescriptorSafeArray(contribution.value, path, issues);
-			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
+			if (key === 'sendTransports' && items) {
+				webhookSecretEnvVars = validateSendTransportContributions(items, issues);
+			}
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
 			if (key === 'sendGates' && items) validateAutonomyGateContributions(items, issues);
@@ -348,13 +359,18 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			if (key === 'settingsPanels' && items) validateSettingsPanelContributions(items, issues);
 		}
 	}
+	return webhookSecretEnvVars;
 }
 
-function validateFlag(value: unknown, issues: PluginManifestIssue[]): void {
-	if (value === undefined) return;
+/**
+ * Validate the flag, and report back the environment variables it makes a
+ * precondition of enablement.
+ */
+function validateFlag(value: unknown, issues: PluginManifestIssue[]): ReadonlySet<string> {
+	if (value === undefined) return new Set();
 	if (!isRecord(value)) {
 		addManifestIssue(issues, 'invalid_type', '$.flag', 'must be a plain object');
-		return;
+		return new Set();
 	}
 	validateKnownFields(value, '$.flag', new Set(['default', 'requiredEnvVars']), issues);
 	const defaultValue = readDataProperty(value, 'default', issues, true, '$.flag');
@@ -362,13 +378,52 @@ function validateFlag(value: unknown, issues: PluginManifestIssue[]): void {
 		addManifestIssue(issues, 'invalid_type', '$.flag.default', 'must be a boolean');
 	}
 	const requiredEnvVars = readDataProperty(value, 'requiredEnvVars', issues, false, '$.flag');
-	if (requiredEnvVars.kind === 'value') {
-		validateUniqueFormattedStringArray(requiredEnvVars.value, issues, {
-			path: '$.flag.requiredEnvVars',
-			format: ENV_VAR,
-			formatMessage: 'must be an uppercase environment variable name',
-			duplicateLabel: 'environment variable',
-		});
+	if (requiredEnvVars.kind !== 'value') return new Set();
+	const items = validateUniqueFormattedStringArray(requiredEnvVars.value, issues, {
+		path: '$.flag.requiredEnvVars',
+		format: ENV_VAR,
+		formatMessage: 'must be an uppercase environment variable name',
+		duplicateLabel: 'environment variable',
+	});
+	return new Set(
+		(items ?? []).flatMap((item) =>
+			item.kind === 'value' && typeof item.value === 'string' ? [item.value] : []
+		)
+	);
+}
+
+/**
+ * A feedback webhook's signing secret must also be a flag requirement.
+ *
+ * `signature.secretEnvVar` is not configuration the route can do without: with
+ * the variable unset the host cannot verify anything and answers EVERY delivery
+ * `503` — and a run of non-2xx is exactly what makes a provider deactivate an
+ * endpoint, so the failure mode is "this transport's feedback stops arriving,
+ * permanently", visible to the operator only as a log line. `flag.requiredEnvVars`
+ * is the one mechanism that turns a missing variable into something an operator
+ * sees BEFORE it matters: the host's flag mutation refuses to turn a plugin ON
+ * while a required variable is absent, and the Features surface names the ones
+ * that are. Requiring the join here means an author cannot ship the combination
+ * that fails silently.
+ *
+ * SCOPE: the feedback webhook only. An import provider also declares a signature
+ * contract, but its bucket is `'declared'` — no host path routes to it, so a
+ * missing secret there cannot cost anyone a live channel. When that bucket is
+ * wired, its secret joins this rule.
+ */
+function requireWebhookSecretsAreFlagRequirements(
+	webhookSecretEnvVars: readonly string[],
+	flagRequiredEnvVars: ReadonlySet<string>,
+	issues: PluginManifestIssue[]
+): void {
+	for (const secretEnvVar of webhookSecretEnvVars) {
+		if (flagRequiredEnvVars.has(secretEnvVar)) continue;
+		addManifestIssue(
+			issues,
+			'missing',
+			'$.flag.requiredEnvVars',
+			`must list ${secretEnvVar}, the feedback webhook's signing secret — without it every delivery is refused and the plugin should not be enableable`
+		);
 	}
 }
 

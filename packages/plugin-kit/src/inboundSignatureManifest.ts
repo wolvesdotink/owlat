@@ -30,16 +30,23 @@ const MAX_HEADER_LENGTH = PLUGIN_INBOUND_MAX_NAME_LENGTH;
 /**
  * Validate the signature contract at `path`, which the caller has already read
  * out of its contribution and proven present.
+ *
+ * Returns the well-formed `secretEnvVar`, or `undefined` when the contract does
+ * not name one this validator would accept. Returned rather than re-read by the
+ * caller because every property here is read exactly once: a second
+ * `readDataProperty` on the same field would report a getter twice and, for a
+ * hostile manifest, is precisely the time-of-check/time-of-use gap the snapshot
+ * pass exists to close.
  */
 export function validateInboundSignatureContract(
 	value: unknown,
 	path: string,
 	replayMode: InboundSignatureReplayMode,
 	issues: PluginManifestIssue[]
-): void {
+): string | undefined {
 	if (!isRecord(value)) {
 		addManifestIssue(issues, 'invalid_type', path, 'must be a plain object');
-		return;
+		return undefined;
 	}
 	const known = new Set<string>(BASE_FIELDS);
 	if (replayMode === 'required') known.add('replay');
@@ -72,16 +79,22 @@ export function validateInboundSignatureContract(
 	// type, because the HOST re-asserts it when it loads a generated artifact —
 	// and two spellings of a security floor are one spelling too many.
 	const secretEnvVar = readDataProperty(value, 'secretEnvVar', issues, true, path);
-	if (secretEnvVar.kind === 'value' && !isPluginSecretEnvVar(secretEnvVar.value)) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.secretEnvVar`,
-			'must be a PLUGIN_-prefixed uppercase environment variable name'
-		);
+	let acceptedSecretEnvVar: string | undefined;
+	if (secretEnvVar.kind === 'value') {
+		if (isPluginSecretEnvVar(secretEnvVar.value)) {
+			acceptedSecretEnvVar = secretEnvVar.value;
+		} else {
+			addManifestIssue(
+				issues,
+				'invalid_format',
+				`${path}.secretEnvVar`,
+				'must be a PLUGIN_-prefixed uppercase environment variable name'
+			);
+		}
 	}
 
 	if (replayMode === 'required') validateReplay(value, path, issues);
+	return acceptedSecretEnvVar;
 }
 
 function validateReplay(

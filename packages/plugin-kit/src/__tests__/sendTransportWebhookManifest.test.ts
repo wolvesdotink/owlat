@@ -54,7 +54,12 @@ function manifest(transports: readonly unknown[]) {
 		id: 'mail-pack',
 		version: '1.0.0',
 		capabilities: ['send:transport'],
-		flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+		// The signing secret is a flag requirement, not merely a variable the route
+		// reads — see the "an unset signing secret" cases below.
+		flag: {
+			default: false,
+			requiredEnvVars: ['POSTMARK_TOKEN', 'PLUGIN_POSTMARK_WEBHOOK_SECRET'],
+		},
 		contributes: { sendTransports: transports },
 	};
 }
@@ -186,6 +191,65 @@ describe('a webhook without a usable verifier does not compose', () => {
 		});
 		expect(issuePaths(manifest([declared]))).toContain(WEBHOOK_PATH);
 		expect(reads).toBe(0);
+	});
+});
+
+describe('an unset signing secret must block enablement, not every delivery', () => {
+	/**
+	 * `secretEnvVar` is the one variable the route cannot proceed without: unset,
+	 * the host can verify nothing and answers every delivery `503`, and a run of
+	 * non-2xx is what makes a provider deactivate an endpoint. The only mechanism
+	 * that catches that BEFORE it costs the operator the feedback channel is
+	 * `flag.requiredEnvVars`, which the host checks at enablement and on every
+	 * authorization — so the manifest has to require the two to agree.
+	 */
+	function manifestWithFlag(flag: unknown) {
+		return {
+			id: 'mail-pack',
+			version: '1.0.0',
+			capabilities: ['send:transport'],
+			flag,
+			contributes: { sendTransports: [transport({ webhook: webhook() })] },
+		};
+	}
+
+	it('rejects a webhook whose secret is not a flag requirement', () => {
+		const result = validatePluginManifest(
+			manifestWithFlag({ default: false, requiredEnvVars: ['POSTMARK_TOKEN'] })
+		);
+		expect(result.ok).toBe(false);
+		const issue = result.ok
+			? undefined
+			: result.issues.find((entry) => entry.path === '$.flag.requiredEnvVars');
+		expect(issue?.code).toBe('missing');
+		expect(issue?.message).toContain('PLUGIN_POSTMARK_WEBHOOK_SECRET');
+	});
+
+	it('rejects a webhook on a flag that requires nothing at all', () => {
+		expect(issuePaths(manifestWithFlag({ default: false }))).toContain('$.flag.requiredEnvVars');
+	});
+
+	it('accepts one that lists it', () => {
+		const result = validatePluginManifest(
+			manifestWithFlag({
+				default: false,
+				requiredEnvVars: ['POSTMARK_TOKEN', 'PLUGIN_POSTMARK_WEBHOOK_SECRET'],
+			})
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it('says nothing extra about a transport that declares no webhook', () => {
+		// The rule is the webhook's, not the bucket's: a send-only transport has no
+		// secret to require, and must not inherit one.
+		const result = validatePluginManifest({
+			id: 'mail-pack',
+			version: '1.0.0',
+			capabilities: ['send:transport'],
+			flag: { default: false },
+			contributes: { sendTransports: [transport()] },
+		});
+		expect(result.ok).toBe(true);
 	});
 });
 

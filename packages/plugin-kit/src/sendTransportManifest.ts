@@ -16,11 +16,20 @@ const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_TOTAL_DELAY_MS = 120_000;
 
+/**
+ * Validate the bucket, and report back the feedback webhook's signing-secret
+ * variable (when one was declared in an acceptable form).
+ *
+ * The secret leaves this validator because the rule it feeds is not local: a
+ * `secretEnvVar` must ALSO appear in `$.flag.requiredEnvVars`, which lives at the
+ * top of the manifest. See `validatePluginManifest`, which owns that join.
+ */
 export function validateSendTransportContributions(
 	items: readonly DataProperty[],
 	issues: PluginManifestIssue[]
-): void {
+): readonly string[] {
 	const seenIds = new Set<string>();
+	const webhookSecretEnvVars: string[] = [];
 	let webhookDeclaredAt: number | null = null;
 	for (const [index, item] of items.entries()) {
 		if (item.kind !== 'value') continue;
@@ -39,7 +48,7 @@ export function validateSendTransportContributions(
 		validateLabel(item.value, path, issues);
 		validateModule(item.value, path, issues);
 		validateRetryDelays(item.value, path, issues);
-		if (validateWebhook(item.value, path, issues)) {
+		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
 				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
 				// addresses exactly one inbound adapter, so a second declaration is a
@@ -56,6 +65,7 @@ export function validateSendTransportContributions(
 			}
 		}
 	}
+	return webhookSecretEnvVars;
 }
 
 function validateId(
@@ -141,7 +151,8 @@ function validateModule(
 function validateWebhook(
 	transport: Record<string, unknown>,
 	path: string,
-	issues: PluginManifestIssue[]
+	issues: PluginManifestIssue[],
+	webhookSecretEnvVars: string[]
 ): boolean {
 	const webhook = readDataProperty(transport, 'webhook', issues, false, path);
 	if (webhook.kind === 'missing') return false;
@@ -167,12 +178,13 @@ function validateWebhook(
 	// with `required` raises the missing-field issue itself.
 	const signature = readDataProperty(webhook.value, 'signature', issues, true, webhookPath);
 	if (signature.kind === 'value') {
-		validateInboundSignatureContract(
+		const secretEnvVar = validateInboundSignatureContract(
 			signature.value,
 			`${webhookPath}.signature`,
 			'required',
 			issues
 		);
+		if (secretEnvVar !== undefined) webhookSecretEnvVars.push(secretEnvVar);
 	}
 
 	const storeRawPayload = readDataProperty(

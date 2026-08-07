@@ -35,7 +35,7 @@ const MANIFEST = `export default {
 	id: 'webhook-pack',
 	version: '1.0.0',
 	capabilities: ['send:transport'],
-	flag: { default: false },
+	flag: { default: false, requiredEnvVars: ['PLUGIN_RELAY_WEBHOOK_SECRET'] },
 	contributes: {
 		sendTransports: [
 			{

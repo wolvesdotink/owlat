@@ -532,7 +532,10 @@ describe('composition rendering', () => {
 					id: 'mail-pack',
 					version: '1.0.0',
 					capabilities: ['send:transport'],
-					flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+					flag: {
+						default: false,
+						requiredEnvVars: ['POSTMARK_TOKEN', 'PLUGIN_POSTMARK_WEBHOOK_SECRET'],
+					},
 					contributes: {
 						sendTransports: [
 							{

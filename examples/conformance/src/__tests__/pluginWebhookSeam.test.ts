@@ -40,7 +40,13 @@ function manifest(webhook: unknown, overrides: Record<string, unknown> = {}) {
 		id: 'postmark-pack',
 		version: '1.0.0',
 		capabilities: ['send:transport'],
-		flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+		// The signing secret is a precondition of ENABLEMENT, not merely a variable
+		// the route reads: unset, the host can verify nothing and answers every
+		// delivery 503. See the "a secret an operator is never asked for" case.
+		flag: {
+			default: false,
+			requiredEnvVars: ['POSTMARK_TOKEN', 'PLUGIN_POSTMARK_WEBHOOK_SECRET'],
+		},
 		contributes: {
 			sendTransports: [
 				{
@@ -196,5 +202,27 @@ describe('a webhook the host cannot verify never becomes an artifact', () => {
 		// trustworthy, because an untrustworthy one cannot have been bundled.
 		const result = validatePluginManifest(manifest(webhook));
 		expect(result.ok).toBe(false);
+	});
+
+	it('is refused at validation: a secret an operator is never asked for', () => {
+		// The one failure the other cases cannot express, because it is not a
+		// property of the webhook at all: a perfectly-formed contract whose secret
+		// is absent from `flag.requiredEnvVars`. Nothing then blocks enablement, the
+		// operator pastes the URL into the provider console, and every delivery is
+		// answered 503 until the provider deactivates the endpoint — a feedback
+		// channel lost to a variable nobody was ever asked to set. The join has to
+		// hold at the seam, not just inside the kit's own suite, because it is the
+		// only rule here that spans two top-level sections of the manifest.
+		const result = validatePluginManifest(
+			manifest(
+				{ module: { exportPath: './convex/webhook' }, signature: SIGNATURE },
+				{ flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] } }
+			)
+		);
+		expect(result.ok).toBe(false);
+		const issue = result.ok
+			? undefined
+			: result.issues.find((entry) => entry.path === '$.flag.requiredEnvVars');
+		expect(issue?.message).toContain('PLUGIN_POSTMARK_WEBHOOK_SECRET');
 	});
 });
