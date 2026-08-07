@@ -32,13 +32,11 @@
  * That door is the last describe block, and without these two mocks it refuses
  * the kind — which is what makes them load-bearing rather than decoration.
  *
- * THE ENTRY IS HAND-WRITTEN because `apps/api` may not import from `examples/`.
- * It is the one the real renderer emits for the conformance fixture manifest, and
- * the binding is asserted THERE rather than claimed here: the conformance suite's
- * final block reads this file and requires it to name the composed kind and every
- * composed `requiredEnvVars` entry, so a renamed transport or a renderer that
- * stopped folding the flag's variables into the entry fails there instead of
- * leaving this suite grading a kind nothing composes.
+ * THE ENTRY IS HAND-WRITTEN because `apps/api` may not import from `examples/`,
+ * and it is a NARROWING of what the renderer emits rather than a transcription of
+ * it — see the note on the mock itself for which fields are here and which reader
+ * each one has. The binding to the real composition is asserted from the
+ * conformance side rather than claimed here.
  */
 
 import { convexTest } from 'convex-test';
@@ -48,47 +46,49 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const KIND = 'plugin.mock-esp.relay';
 const PLUGIN_ID = 'mock-esp';
 
+/**
+ * THE COMPOSED ENTRY, NARROWED TO WHAT THIS FILE'S CODE PATHS READ.
+ *
+ * It is NOT a transcription of the whole artifact, and saying so is the point: a
+ * transcribed copy of `label`, `retryDelays`, `hasProviderFeedback`, the
+ * credential fields' prose and the region field's default would be forty lines
+ * nothing here reaches and nothing binds, free to drift from the manifest that
+ * really produces them while this suite stayed green. Each field below has a
+ * reader on a path this file drives:
+ *
+ *   `kind`, `pluginId`     `isSendProviderKind` / `isSendProviderReady`, which is
+ *                          how the operator's door resolves the grant to recheck
+ *   `requiredEnvVars`      `providerKindConfigured` — the credentials gate
+ *   `instanceEnvVars`,     the catalog's own LOAD-TIME guards
+ *   `credentialFields`     (`assertPluginConfigurationIsWithinContract`: the
+ *                          `PLUGIN_` namespace and the per-entry bounds), which
+ *                          run on import of `lib/sendProviders/catalog.ts`
+ *   `supportsCustomReturnPath`, `assertPluginReturnPathClaimsAreHonest` and
+ *   `messageIdSource`      `assertPluginDispatchSemanticsAreGeneral`, same import
+ *
+ * The values are bound to the real composition from the conformance side: that
+ * suite reads this file and requires it to name the composed kind and every
+ * composed `requiredEnvVars` / `instanceEnvVars` entry, so a rename or a renderer
+ * that stopped folding the flag's variables in fails there rather than leaving
+ * this suite grading a kind nothing composes.
+ */
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
 		Object.freeze({
 			kind: 'plugin.mock-esp.relay',
 			pluginId: 'mock-esp',
-			localId: 'relay',
-			label: 'Mock ESP',
-			retryDelays: Object.freeze([1_000, 5_000]),
 			requiredEnvVars: Object.freeze([
 				'MOCK_ESP_ENABLED',
 				'PLUGIN_MOCK_ESP_WEBHOOK_SECRET',
 				'PLUGIN_MOCK_ESP_TOKEN',
 			]),
-			optionalEnvVars: Object.freeze(['PLUGIN_MOCK_ESP_REGION']),
 			instanceEnvVars: Object.freeze(['PLUGIN_MOCK_ESP_TOKEN', 'PLUGIN_MOCK_ESP_REGION']),
 			credentialFields: Object.freeze([
-				Object.freeze({
-					kind: 'secret',
-					key: 'token',
-					label: 'API token',
-					description: 'Issued in the Mock ESP console. Written to PLUGIN_MOCK_ESP_TOKEN.',
-					required: true,
-					envVar: 'PLUGIN_MOCK_ESP_TOKEN',
-				}),
-				Object.freeze({
-					kind: 'select',
-					key: 'region',
-					label: 'Sending region',
-					options: Object.freeze([
-						Object.freeze({ value: 'eu', label: 'Europe' }),
-						Object.freeze({ value: 'us', label: 'United States' }),
-					]),
-					default: 'eu',
-					envVar: 'PLUGIN_MOCK_ESP_REGION',
-				}),
+				Object.freeze({ kind: 'secret', required: true, envVar: 'PLUGIN_MOCK_ESP_TOKEN' }),
+				Object.freeze({ kind: 'select', envVar: 'PLUGIN_MOCK_ESP_REGION' }),
 			]),
 			supportsCustomReturnPath: 'no',
 			messageIdSource: 'provider',
-			hasProviderFeedback: true,
-			domainVerification: 'api',
-			requiredCapability: 'send:transport',
 		}),
 	]),
 }));
@@ -263,26 +263,33 @@ describe('a plugin transport is the reference arm by configuration and by attrib
 	});
 });
 
-describe('a burst on the plugin arm does not move the own arm', () => {
-	// THE CONTROL, and it has to be an INCREASE rather than a hold: a case below
-	// asserting "the reference burst did not stop the ramp" says nothing at all if
-	// this deployment was not ramping in the first place.
-	it('climbs on a clean deployment', async () => {
-		const t = convexTest(schema, modules);
-		await seedPluginMigration(t);
-
-		await runRampControllerTick(t);
-
-		const row = await readManagedCell(t);
-		expect(row?.ownShare).toBeGreaterThan(RAMP_FIXTURE_SHARE);
-		expect(row?.frozenUntil).toBeUndefined();
-		expect(await readMixDecision(t)).toMatchObject({ direction: 'increase', verdict: 'pass' });
-	});
-
-	// The day-1 fear of every third-party relay, in one fixture: the plugin has a
-	// terrible day — hard bounces, complaints and deferrals at once, on mail
-	// Owlat's MTA never touched. The own arm's share must not pay for it.
-	it('neither freezes nor decreases the own share on a reference-arm burst', async () => {
+/**
+ * THE WHOLE TICK, ONCE, OVER A NAMESPACED KIND — and deliberately only once.
+ *
+ * `mandrillReferenceArm.test.ts` owns the controller's freeze/decrease semantics
+ * against a reference arm: the clean climb, the reference-arm burst that must not
+ * move the own share, the own-arm burst that freezes and names its gate, the
+ * reference counters left untouched by a retreat. Restating them here with the
+ * kind swapped would be a byte-identical second copy of a rule whose every
+ * assertion is kind-blind — the next `freezeReason` or `failedGate` change would
+ * have to be applied to both, and applying it to one would leave the other green
+ * on stale expectations. That is the duplication class this plan exists to
+ * remove.
+ *
+ * WHAT IS NOT A COPY, and is the case below: `'mandrill'` is a CORE kind and
+ * `plugin.mock-esp.relay` is not. Everything the tick touches — the relay
+ * discovery read, the cell key, the arm columns, the audited decision — takes the
+ * transport as an opaque string today, and this drives a full tick to keep that
+ * true: a controller path that started resolving the configured relay through a
+ * core-only lookup, or choking on a dotted kind, would pass the Mandrill suite
+ * and fail here. One case, because one is what that question needs.
+ *
+ * It runs the REFERENCE-ARM BURST rather than the bare climb, which is strictly
+ * stronger: the assertion is `direction: 'increase'`, so a deployment that was
+ * not ramping fails it just as a leaked reference burst does.
+ */
+describe('the real tick runs a plugin-relay deployment end to end', () => {
+	it('climbs through a plugin-arm burst, on a kind no core catalog contains', async () => {
 		const t = convexTest(schema, modules);
 		await seedPluginMigration(t);
 		await seedArmOutcomes(t, {
@@ -294,55 +301,11 @@ describe('a burst on the plugin arm does not move the own arm', () => {
 		await runRampControllerTick(t);
 
 		const row = await readManagedCell(t);
-		// The SAME decision the control took, not merely "not a retreat".
 		expect(row?.ownShare).toBeGreaterThan(RAMP_FIXTURE_SHARE);
 		expect(row?.frozenUntil).toBeUndefined();
-		expect(row?.freezeReason).toBeUndefined();
 		const audited = await readMixDecision(t);
 		expect(audited).toMatchObject({ direction: 'increase', verdict: 'pass' });
 		expect(audited?.failedGate).toBeUndefined();
-	});
-});
-
-describe('a burst on the own arm retreats, and leaves the plugin arm alone', () => {
-	it('freezes and decreases the own share, naming the own-arm gate', async () => {
-		const t = convexTest(schema, modules);
-		await seedPluginMigration(t);
-		await seedArmOutcomes(t, {
-			organizationId: ORG,
-			arm: 'own',
-			...RAMP_FIXTURE_GATE_BREACHING_BURST,
-		});
-
-		await runRampControllerTick(t);
-
-		const row = await readManagedCell(t);
-		expect(row?.ownShare).toBeLessThan(RAMP_FIXTURE_SHARE);
-		expect(row?.frozenUntil).toBeGreaterThan(Date.now());
-		expect(row?.freezeReason).toBe('gate_breach');
-		expect(await readMixDecision(t)).toMatchObject({
-			direction: 'decrease',
-			failedGate: 'hard_bounce',
-		});
-	});
-
-	// THE OTHER HALF OF THE PROMISE. A retreat is a decision about the OWN arm, and
-	// the tick must not touch the reference arm's evidence on its way past — the
-	// plugin's counters are the comparison series the next tick reads.
-	it('leaves every reference-arm counter exactly as it found it', async () => {
-		const t = convexTest(schema, modules);
-		await seedPluginMigration(t);
-		await seedArmOutcomes(t, {
-			organizationId: ORG,
-			arm: 'own',
-			...RAMP_FIXTURE_GATE_BREACHING_BURST,
-		});
-		const before = await armOutcomeTotals(t, 'reference');
-
-		await runRampControllerTick(t);
-		await drainOutcomeWrites(t);
-
-		expect(await armOutcomeTotals(t, 'reference')).toEqual(before);
 	});
 });
 
@@ -361,16 +324,25 @@ describe('a burst on the own arm retreats, and leaves the plugin arm alone', () 
  * artifacts, and the reason they are here.
  */
 describe('an operator can route to a composed plugin kind, and only when it is granted', () => {
-	/** The plugin's flag and grant, as the operator's settings singleton stores them. */
-	async function grantPlugin(t: Harness, isGranted: boolean): Promise<void> {
+	/**
+	 * The plugin's two switches, as the operator's settings singleton stores them,
+	 * and INDEPENDENTLY — because `authorizeSystemBundledPlugin` reads them as two
+	 * gates and a case that moves both cannot say which one refused. A refactor
+	 * that dropped the capability check and kept only the flag has to be visible
+	 * here; with one boolean it would not be.
+	 */
+	async function grantPlugin(
+		t: Harness,
+		switches: { readonly isFlagEnabled: boolean; readonly isGranted: boolean }
+	): Promise<void> {
 		await t.run(async (ctx) => {
 			const settings = await ctx.db.query('instanceSettings').first();
 			if (!settings) throw new Error('the ramp fixture seeds instance settings');
 			await ctx.db.patch(settings._id, {
-				featureFlags: { ...(settings.featureFlags ?? {}), [`plugin.${PLUGIN_ID}`]: isGranted },
+				featureFlags: { ...settings.featureFlags, [`plugin.${PLUGIN_ID}`]: switches.isFlagEnabled },
 				pluginCapabilityGrants: {
-					...(settings.pluginCapabilityGrants ?? {}),
-					[`plugin.${PLUGIN_ID}`]: { 'send:transport': isGranted },
+					...settings.pluginCapabilityGrants,
+					[`plugin.${PLUGIN_ID}`]: { 'send:transport': switches.isGranted },
 				},
 			});
 		});
@@ -397,7 +369,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 	it('saves a route naming the plugin kind when flag, grant and credentials are present', async () => {
 		const t = convexTest(schema, modules);
 		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
-		await grantPlugin(t, true);
+		await grantPlugin(t, { isFlagEnabled: true, isGranted: true });
 		configurePlugin();
 
 		expect(
@@ -407,14 +379,31 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 		expect(await t.run(async (ctx) => await configuredRelayKinds(ctx))).toEqual([KIND]);
 	});
 
-	// FAIL CLOSED, on the axis only the plugin tier has: the kind is composed and
-	// its credentials are present, but the operator has not granted (or has
-	// revoked) `send:transport`. A core kind has no such gate, and a plugin kind
-	// must not be routable without it.
+	// FAIL CLOSED, on the axis only the plugin tier has: the kind is composed, its
+	// credentials are present and the plugin is ENABLED, but the operator has not
+	// granted (or has revoked) `send:transport`. A core kind has no such gate, and
+	// a plugin kind must not be routable without it. Flag on, grant off — so the
+	// refusal can only be the grant.
 	it('refuses the same route when the capability grant is absent', async () => {
 		const t = convexTest(schema, modules);
 		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
-		await grantPlugin(t, false);
+		await grantPlugin(t, { isFlagEnabled: true, isGranted: false });
+		configurePlugin();
+
+		await expect(
+			t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())
+		).rejects.toThrow();
+		expect(await t.run(async (ctx) => await configuredRelayKinds(ctx))).toEqual([]);
+	});
+
+	// THE MIRROR, and the reason the two switches are separate: a plugin the
+	// operator has turned OFF is not routable however broadly it was once granted.
+	// Together with the case above, neither gate can be dropped without one of them
+	// going red.
+	it('refuses the same route when the plugin itself is disabled', async () => {
+		const t = convexTest(schema, modules);
+		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
+		await grantPlugin(t, { isFlagEnabled: false, isGranted: true });
 		configurePlugin();
 
 		await expect(
@@ -428,7 +417,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 	it('refuses the same route when the declared credentials are unset', async () => {
 		const t = convexTest(schema, modules);
 		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
-		await grantPlugin(t, true);
+		await grantPlugin(t, { isFlagEnabled: true, isGranted: true });
 
 		await expect(
 			t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())

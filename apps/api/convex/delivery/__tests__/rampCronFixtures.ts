@@ -44,7 +44,12 @@ export const RAMP_FIXTURE_SHARE = 0.5;
  * different slice.
  */
 export const RAMP_FIXTURE_CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
-export const RAMP_FIXTURE_CELL_KEY = deliverabilityCellKey(RAMP_FIXTURE_CELL);
+
+/**
+ * Its encoded key. Module-private: every suite that needs it reads it through one
+ * of the helpers below, so the encoding stays this file's business.
+ */
+const RAMP_FIXTURE_CELL_KEY = deliverabilityCellKey(RAMP_FIXTURE_CELL);
 
 /**
  * A burst big enough to breach every ratio ceiling the gates carry — the shape
