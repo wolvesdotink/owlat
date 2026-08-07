@@ -26,6 +26,10 @@ export default defineConfig({
 			'@owlat/plugin-host': resolve(__dirname, '../../packages/plugin-host/src/index.ts'),
 			'@owlat/plugin-codegen': resolve(__dirname, '../../packages/plugin-codegen/src/index.ts'),
 			'@owlat/plugin-cli/run': resolve(__dirname, '../../packages/plugin-cli/src/run.ts'),
+			// The scaffold GENERATOR, for P3.4's conformance gate: the emitted
+			// send-provider bundle is driven through the shipped core modules, so the
+			// generator has to be called rather than its output copied.
+			'@owlat/plugin-cli/scaffold': resolve(__dirname, '../../packages/plugin-cli/src/scaffold.ts'),
 			'@owlat/example-deliverability-lab': resolve(
 				__dirname,
 				'../plugins/deliverability-lab/src/index.ts'

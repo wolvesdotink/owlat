@@ -11,6 +11,7 @@
 			"@owlat/plugin-host": ["../../packages/plugin-host/src/index.ts"],
 			"@owlat/plugin-codegen": ["../../packages/plugin-codegen/src/index.ts"],
 			"@owlat/plugin-cli/run": ["../../packages/plugin-cli/src/run.ts"],
+			"@owlat/plugin-cli/scaffold": ["../../packages/plugin-cli/src/scaffold.ts"],
 			"@owlat/example-deliverability-lab": ["../plugins/deliverability-lab/src/index.ts"],
 			"@owlat/example-escalation-guard": ["../plugins/escalation-guard/src/index.ts"],
 			"@owlat/code-worker/jobs/seedTest": ["../../apps/code-worker/src/jobs/seedTest.ts"],

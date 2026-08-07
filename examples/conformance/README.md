@@ -96,6 +96,26 @@ rather than three unrelated demos.
   `packages/plugin-codegen/src/__tests__/render.test.ts` and by no suite as code.
   The piece that closes that is P5.3 (the first real plugin provider, listed in
   `plugins.config.ts` — the repo's first non-empty composition).
+- **`scaffoldedProviderConformance.test.ts`** — the SCAFFOLD'S GATE (P3.4,
+  acceptance criterion A7). The parity proof above asks whether a package _can_
+  be a provider, against a fixture written by hand; this one asks whether the
+  package Owlat _hands an author_ already is one. Its subject is the real output
+  of `owlat plugins create --template send-provider`:
+  [`src/fixtures/scaffolded/bundle.ts`](src/fixtures/scaffolded) calls the
+  shipped `buildScaffold`, writes the emitted files to a throwaway directory,
+  imports the emitted TypeScript, and composes it through the real host and
+  renderer — so every value the core modules are fed travelled generator → file →
+  module → validation → composition → codegen. The suite then drives that bundle
+  through `resolveRoute` under every declared strategy, the deliverability
+  fallback and its per-domain proof gate, governed dispatch on a named instance's
+  credentials (with the emitted module's real `fetch` stubbed, so its
+  status→retry mapping is exercised at the governed boundary), `armForTransport`,
+  the return-path fold, the feedback route's verify → parse → revalidate chain,
+  the domain-identity split and the credential form. Nothing subject-specific is
+  spelled: the kind, the variable names, the signature contract and the fields
+  are all read off the composed artifact. The last block reads every materialised
+  file back off disk and compares it byte for byte with what the generator
+  emitted, so a fixture that patched a `TODO` to make a case pass fails there.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
