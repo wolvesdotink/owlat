@@ -15,7 +15,8 @@ import { internal } from '../_generated/api';
  */
 export const store = internalMutation({
 	args: {
-		source: v.string(), // 'resend' | 'mta' | 'ses'
+		// 'resend' | 'mta' | 'ses' | `plugin.<pluginId>.<localId>` (D6/P2.2).
+		source: v.string(),
 		rawPayload: v.string(),
 	},
 	returns: v.null(),

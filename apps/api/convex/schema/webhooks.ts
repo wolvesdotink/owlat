@@ -78,7 +78,11 @@ export const webhookTables = {
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution
 	webhookPayloads: defineTable({
-		source: v.string(), // 'resend' | 'mta' | 'ses'
+		// 'resend' | 'mta' | 'ses' | a namespaced `plugin.<pluginId>.<localId>`
+		// transport kind (D6/P2.2 — bundled-plugin feedback, retained only for the
+		// adapters that set `storeRawPayload`). Open by design: a reader that
+		// switches over the three core literals silently drops the plugin tier.
+		source: v.string(),
 		rawPayload: v.string(), // JSON string of the raw webhook body
 		receivedAt: v.number(),
 	})
