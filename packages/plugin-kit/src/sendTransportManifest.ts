@@ -1,3 +1,4 @@
+import { validateInboundSignatureContract } from './inboundSignatureManifest';
 import { isPluginLocalId } from './namespacedKind';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
@@ -20,6 +21,7 @@ export function validateSendTransportContributions(
 	issues: PluginManifestIssue[]
 ): void {
 	const seenIds = new Set<string>();
+	let webhookDeclaredAt: number | null = null;
 	for (const [index, item] of items.entries()) {
 		if (item.kind !== 'value') continue;
 		const path = `$.contributes.sendTransports[${index}]`;
@@ -30,13 +32,29 @@ export function validateSendTransportContributions(
 		validateKnownFields(
 			item.value,
 			path,
-			new Set(['id', 'label', 'module', 'retryDelays']),
+			new Set(['id', 'label', 'module', 'retryDelays', 'webhook']),
 			issues
 		);
 		validateId(item.value, path, seenIds, issues);
 		validateLabel(item.value, path, issues);
 		validateModule(item.value, path, issues);
 		validateRetryDelays(item.value, path, issues);
+		if (validateWebhook(item.value, path, issues)) {
+			if (webhookDeclaredAt !== null) {
+				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
+				// addresses exactly one inbound adapter, so a second declaration is a
+				// contribution no request could ever reach. Rejected at manifest time
+				// rather than resolved by an arbitrary rule at dispatch time.
+				addManifestIssue(
+					issues,
+					'duplicate',
+					`${path}.webhook`,
+					`duplicates the feedback webhook already declared at $.contributes.sendTransports[${webhookDeclaredAt}] — one plugin has one webhook route`
+				);
+			} else {
+				webhookDeclaredAt = index;
+			}
+		}
 	}
 }
 
@@ -112,6 +130,62 @@ function validateModule(
 			'must be a safe relative package export path'
 		);
 	}
+}
+
+/**
+ * Validate an optional feedback webhook. Returns whether one was DECLARED (as
+ * opposed to well-formed), because the one-per-plugin rule must count a
+ * malformed declaration too — otherwise dropping a required field would be a way
+ * to smuggle a second webhook past the count.
+ */
+function validateWebhook(
+	transport: Record<string, unknown>,
+	path: string,
+	issues: PluginManifestIssue[]
+): boolean {
+	const webhook = readDataProperty(transport, 'webhook', issues, false, path);
+	if (webhook.kind === 'missing') return false;
+	const webhookPath = `${path}.webhook`;
+	// An accessor has already been reported by `readDataProperty` and its value is
+	// deliberately never evaluated; it still counts as a declaration.
+	if (webhook.kind !== 'value') return true;
+	if (!isRecord(webhook.value)) {
+		addManifestIssue(issues, 'invalid_type', webhookPath, 'must be a plain object');
+		return true;
+	}
+	validateKnownFields(
+		webhook.value,
+		webhookPath,
+		new Set(['module', 'signature', 'storeRawPayload']),
+		issues
+	);
+	validateModule(webhook.value, webhookPath, issues);
+
+	// REQUIRED, and this is the piece's security floor: the route it feeds is
+	// unauthenticated and internet-facing, so a webhook whose authenticity nobody
+	// checks would be an open write path into the delivery record. `readDataProperty`
+	// with `required` raises the missing-field issue itself.
+	const signature = readDataProperty(webhook.value, 'signature', issues, true, webhookPath);
+	if (signature.kind === 'value') {
+		validateInboundSignatureContract(
+			signature.value,
+			`${webhookPath}.signature`,
+			'required',
+			issues
+		);
+	}
+
+	const storeRawPayload = readDataProperty(
+		webhook.value,
+		'storeRawPayload',
+		issues,
+		false,
+		webhookPath
+	);
+	if (storeRawPayload.kind === 'value' && typeof storeRawPayload.value !== 'boolean') {
+		addManifestIssue(issues, 'invalid_type', `${webhookPath}.storeRawPayload`, 'must be a boolean');
+	}
+	return true;
 }
 
 function validateRetryDelays(

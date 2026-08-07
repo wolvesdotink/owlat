@@ -33,6 +33,12 @@ import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
  * relaxing its capability check would widen the manifest ceiling for the day it
  * is wired. The split exists so the documentation and the conformance gate can
  * state which is which instead of implying that everything with a row runs.
+ *
+ * `moduleExports` says the same thing one level down. A contribution can carry a
+ * SECOND executable half on a named field, and that half has its own generated
+ * registry, its own host call site, and therefore its own reachability question —
+ * one a per-bucket answer cannot express. A bucket without the field carries
+ * exactly one module, whose class is the row's own `dispatch`.
  */
 export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 	{
@@ -40,6 +46,14 @@ export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		capability: PLUGIN_SEND_TRANSPORT_CAPABILITY,
 		noun: 'send transports',
 		dispatch: 'wired',
+		moduleExports: [
+			// The send half: `pluginProvider.ts` adapts it into the dispatch registry.
+			{ role: 'module', dispatch: 'wired' },
+			// The feedback half (D6/P2.2): `/webhooks/plugin/<pluginId>` verifies the
+			// declared signature, rejects a replay, reauthorizes the contribution and
+			// dispatches the parsed events into the inbound plane.
+			{ role: 'webhook', dispatch: 'wired' },
+		],
 	},
 	{
 		bucket: 'agentSteps',
@@ -121,6 +135,43 @@ export type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[n
 /** Whether the host invokes a bucket today, or only accepts and catalogues it. */
 export type ContributionDispatch =
 	(typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['dispatch'];
+
+/**
+ * One executable module a bucket's contributions can carry, and whether a
+ * production host path runs it. `role` is the contribution field the module
+ * hangs off — `'module'` for the contribution's own, the field name for a second
+ * half — matching `PluginContributionModuleReference.role`.
+ */
+export interface ContributionModuleExport {
+	readonly role: string;
+	readonly dispatch: ContributionDispatch;
+}
+
+/**
+ * Every (bucket, module export) pair the platform claims, flattened.
+ *
+ * A bucket that declares no `moduleExports` contributes one pair for its own
+ * `module` at the bucket's dispatch class, so the reachability gate can iterate
+ * ONE list and never has to decide whether a missing field means "one module" or
+ * "none". Wiring a second module export without moving its row here fails that
+ * gate, which is the point.
+ */
+export const PLUGIN_CONTRIBUTION_MODULE_EXPORTS: readonly (ContributionModuleExport & {
+	readonly bucket: PluginContributionKind;
+})[] = Object.freeze(
+	CONTRIBUTION_CAPABILITY_REQUIREMENTS.flatMap((requirement) =>
+		('moduleExports' in requirement
+			? (requirement.moduleExports as readonly ContributionModuleExport[])
+			: [{ role: 'module', dispatch: requirement.dispatch }]
+		).map((moduleExport) =>
+			Object.freeze({
+				bucket: requirement.bucket as PluginContributionKind,
+				role: moduleExport.role,
+				dispatch: moduleExport.dispatch,
+			})
+		)
+	)
+);
 
 function bucketsWithDispatch(dispatch: ContributionDispatch): readonly PluginContributionKind[] {
 	return Object.freeze(

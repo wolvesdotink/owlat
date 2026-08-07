@@ -139,6 +139,7 @@ export {
 	isPluginManifest,
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
+	PLUGIN_CONTRIBUTION_MODULE_EXPORTS,
 	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
 	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
@@ -177,7 +178,13 @@ export type {
 	PluginInboundSignatureContract,
 	PluginInboundSignatureEncoding,
 } from './importProvider';
-export { PLUGIN_SEND_FAILURE_CODES, PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
+export { PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS } from './inboundSignature';
+export type { PluginReplayBoundSignatureContract } from './inboundSignature';
+export {
+	PLUGIN_SEND_FAILURE_CODES,
+	PLUGIN_SEND_TRANSPORT_CAPABILITY,
+	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
+} from './sendTransport';
 export type {
 	PluginSendAttachment,
 	PluginSendAttempt,
@@ -187,11 +194,16 @@ export type {
 	PluginSendTransportKind,
 	PluginSendTransportModule,
 	PluginSendTransportParams,
+	PluginSendTransportWebhookDefinition,
+	PluginSendTransportWebhookModule,
 	PluginStaticModuleExport,
+	PluginWebhookFeedbackEvent,
+	PluginWebhookFeedbackKind,
 } from './sendTransport';
 export { pluginContributionExportPaths, pluginContributionModules } from './contributionModules';
 export type { PluginContributionModuleReference } from './contributionModules';
 export type {
+	ContributionModuleExport,
 	PluginComponentDefinition,
 	PluginContributionKind,
 	PluginContributions,

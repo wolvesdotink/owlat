@@ -61,6 +61,21 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 				if (field === 'module' || field === 'schedule' || field === 'signature') {
 					return snapshotRecord(fieldValue);
 				}
+				// The send transport's feedback webhook is the one nested descriptor
+				// carrying descriptors of its own (`module`, and a `signature` that
+				// carries `replay`). Snapshotting only the outer record would leave
+				// the inner ones live on the caller's object — the exact
+				// time-of-check/time-of-use gap this pass exists to close, on the
+				// fields that gate an internet-facing endpoint.
+				if (field === 'webhook') {
+					return snapshotRecord(fieldValue, (webhookField, webhookValue) =>
+						webhookField === 'module' || webhookField === 'signature'
+							? snapshotRecord(webhookValue, (signatureField, signatureValue) =>
+									signatureField === 'replay' ? snapshotRecord(signatureValue) : signatureValue
+								)
+							: webhookValue
+					);
+				}
 				if (field === 'retryDelays') {
 					return snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues);
 				}
