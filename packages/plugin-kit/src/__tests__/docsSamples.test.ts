@@ -157,6 +157,7 @@ export const cron: PluginCronModule = {
 // #region send-transport-module
 import type {
 	PluginSendAttempt,
+	PluginSendTransportConfig,
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 } from '@owlat/plugin-kit';
@@ -178,10 +179,20 @@ export const transport: PluginSendTransportModule<RelayExtras> = {
 		return { endpoint };
 	},
 
-	async send(params: PluginSendTransportParams, extras: RelayExtras): Promise<PluginSendAttempt> {
+	async send(
+		params: PluginSendTransportParams,
+		extras: RelayExtras,
+		// THIS INSTANCE's credentials, keyed by the name the manifest declared.
+		// Never `process.env`: that reads the deployment-default instance's token
+		// whichever transport id the send was addressed to.
+		config: PluginSendTransportConfig
+	): Promise<PluginSendAttempt> {
 		const response = await fetch(extras.endpoint, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json' },
+			headers: {
+				'content-type': 'application/json',
+				authorization: `Bearer ${config.env['PLUGIN_ACME_TOKEN'] ?? ''}`,
+			},
 			body: JSON.stringify({ to: params.to, from: params.from, subject: params.subject }),
 		});
 		if (response.status === 429) return { success: false, code: 'rate_limited' };

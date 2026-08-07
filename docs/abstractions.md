@@ -24,11 +24,11 @@ Factories cache the resolved provider per-process. Tests can call
 
 ## Providers in apps/api (`apps/api/convex/lib/`)
 
-| Interface | Env var | Implementations | Files |
-|---|---|---|---|
-| `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta) | see `domains/providers/` below | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts` |
-| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
-| `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
+| Interface                                                               | Env var                 | Implementations                                                             | Files                                                                                    |
+| ----------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta)  | see `domains/providers/` below                                              | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts`                         |
+| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`                                  | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
+| `LLMProvider`                                                           | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts`                                                                         |
 
 The first row is **history, not a seam to implement**: there is no `EmailProvider`
 interface left in the tree. Its job moved to the sending-domain provider registry
@@ -91,8 +91,17 @@ this tier's unions at all. A declared configuration variable is `PLUGIN_`-
 prefixed and may not contain `__`: the prefix fences the plugin namespace off
 from the host's own deployment credentials (it does not partition it between
 plugins), and the suffix is what separates one named instance's credential from
-another's. A `credentialFields` descriptor is DESCRIPTIVE — no surface renders a
-plugin's form yet; that is the plan's P3.3.
+another's. Both halves of that rule are ONE predicate,
+`isPluginSendTransportEnvVar`, which composes onto `isPluginSecretEnvVar` — the
+single statement of the `PLUGIN_` namespace, shared with settings `secret` fields
+and webhook signing keys — rather than restating it. A `credentialFields`
+descriptor is DESCRIPTIVE (no surface renders a plugin's form yet; that is the
+plan's P3.3) and is validated by the same field-descriptor validator the
+platform's `settingsSchema` uses, so "the settings five" is a shared
+implementation and not a shared sentence. What makes a plugin kind CONFIGURED is
+the union of the contributing plugin's `flag.requiredEnvVars` and the transport's
+own — the same two facts the authoritative dispatch path checks — while only the
+transport's own take an instance suffix.
 
 Speculative single-implementation seams (auth, storage, analytics,
 notifications, vector stores) have been **deleted**, per the project's
@@ -104,17 +113,17 @@ the Pattern above when that day comes — don't keep empty sockets around.
 
 `SendingDomainProviderModule` (`apps/api/convex/domains/providers/`) — a
 registry keyed by `domains.providerType`, one adapter folder per kind (`mta`,
-`ses`, `mandrill`). It owns everything provider-specific about a *sending
-domain*: registering the identity at the provider, the DNS records to publish,
+`ses`, `mandrill`). It owns everything provider-specific about a _sending
+domain_: registering the identity at the provider, the DNS records to publish,
 the provider-side verification check, and — for relays — the proof the
 deliverability fallback reads before handing a From domain over. Every piece of
 that work is dispatched through `providerFor(kind)`.
 
-Which kind a *newly created* domain gets is still an env decision:
+Which kind a _newly created_ domain gets is still an env decision:
 `domains/lifecycle.ts` reads `EMAIL_PROVIDER`, narrows it through
 `isSendingDomainProviderKind` (the registry's own guard, so an unrecognized
 value is not a crash) and falls back to `mta`. Registering an adapter therefore
-makes a kind *reachable*; naming it in `EMAIL_PROVIDER` is what makes new
+makes a kind _reachable_; naming it in `EMAIL_PROVIDER` is what makes new
 domains use it.
 
 **But registering an adapter is not yet the whole wiring.** Relay-identity
@@ -127,9 +136,9 @@ publishes, and which reflection action pushes it to the provider — and a new
 kind silently gets neither. That capability has no home on the adapter
 interface yet. It is one of the surviving families of kind literals, and the
 families are DATA rather than prose, split by what the literal is. A kind
-*declaration* (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
+_declaration_ (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
 `apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, with
-its family and its owner; a *comparison* — the return-path branches included —
+its family and its owner; a _comparison_ — the return-path branches included —
 is enumerated by the ratchet's allowlist below. Both fail in both directions:
 an unenumerated literal fails, and an entry whose literal has been swept fails
 until it is deleted.
@@ -149,7 +158,7 @@ reach on purpose: `apps/mta` (its `'mta' | 'relay' | 'defer'` routing decisions
 are its own alphabet, not the catalog's), `migrations/` (frozen replays, pinned
 to the kinds of their date), tests (`__tests__/`, `*.test.*`, `*.spec.*` and the
 Playwright tree `e2e/`, whose page objects are scaffolding for specs that are
-already exempt), and generated code. A module merely *named* `fixtures.ts` ships,
+already exempt), and generated code. A module merely _named_ `fixtures.ts` ships,
 so it is scanned like any other source. Matching runs over a three-line window,
 so reformatting a long condition or a long membership array does not de-fang it,
 and the comment stripper tracks string literals — a `//` in a doc link or a `*/`
@@ -316,13 +325,13 @@ adapter that normalizes the webhook payload into a canonical
 
 ## Channel adapters (`packages/channels/`)
 
-| Adapter | Outbound | Inbound |
-|---|---|---|
-| `EmailAdapter` | delegates to email provider | normalizes inbound (legacy MTA shape) |
-| `SmsAdapter` | Twilio (stub) | — |
-| `WhatsAppAdapter` | Meta (stub) | — |
-| `WebhookAdapter` | generic HTTP | — |
-| `ChatAdapter` | native Convex | — |
+| Adapter           | Outbound                    | Inbound                               |
+| ----------------- | --------------------------- | ------------------------------------- |
+| `EmailAdapter`    | delegates to email provider | normalizes inbound (legacy MTA shape) |
+| `SmsAdapter`      | Twilio (stub)               | —                                     |
+| `WhatsAppAdapter` | Meta (stub)                 | —                                     |
+| `WebhookAdapter`  | generic HTTP                | —                                     |
+| `ChatAdapter`     | native Convex               | —                                     |
 
 ---
 
@@ -389,4 +398,5 @@ mechanical search-and-replace:
 ```
 
 Already done:
+
 - `automationStepExecutor.ts` → `getEmailProvider()`
