@@ -199,9 +199,6 @@ vi.mock('@owlat/api/generated/sendTransportDomainIdentityModules', async () => {
 });
 
 import { type SendProviderKind } from '@owlat/api/sendProviders/catalog';
-// The host's own failure vocabulary, so the two fail-closed dispatch cases can
-// name the code they mean rather than a string that would survive a rename.
-import { EmailErrorCode } from '@owlat/api/sendProviders/types';
 import { buildDispatchExtrasFor } from '@owlat/api/sendProviders/registry';
 import { sendProviderDispatch } from '@owlat/api/sendProviders/dispatch';
 import { pluginSendTransportWebhookFor } from '@owlat/api/plugins/sendTransportWebhookCatalog';
@@ -273,6 +270,20 @@ describeSendProviderConformance({
 		},
 	},
 	webhookSecretValue: CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!,
+	// THIS FIXTURE'S "NETWORK": a module-level attempt log rather than a stubbed
+	// `fetch`. The shared body never learns which — it arranges, dispatches and
+	// reads back the two values the host decided (which instance's credential and
+	// which instance's optional value reached the module).
+	send: {
+		arrange: () => {
+			resetMockEspAttempts();
+		},
+		attempts: () =>
+			mockEspAttempts().map((attempt) => ({
+				credential: attempt.token,
+				optional: attempt.region,
+			})),
+	},
 	feedbackBatch: {
 		body: FEEDBACK_BODY,
 		kinds: ['email.delivered', 'email.bounced', 'email.complained', 'email.deferred'],
@@ -304,6 +315,16 @@ describe('the bundle composes to the exact kind two other packages spell', () =>
 });
 
 describe('a send actually goes out through the plugin module', () => {
+	/*
+	 * INSTANCE RESOLUTION AND THE TWO FAIL-CLOSED REFUSALS ARE NOT HERE. They are
+	 * the HOST's rules, they were written twice — once per subject — and the only
+	 * thing that differed was how each subject's network is arranged and read back.
+	 * They now live in `../sendProviderConformance`, driven through the `send`
+	 * harness this file supplies above, and run identically over P3.4's scaffolded
+	 * bundle. What is left below is the one dispatch fact only THIS fixture can be
+	 * asked: the extras seam, whose value shape is the fixture's own.
+	 */
+
 	/**
 	 * The governed dispatch entry point, driven with the fake context the shipped
 	 * plugin-dispatch suite uses: `runMutation` is the last-moment authorization
@@ -318,22 +339,6 @@ describe('a send actually goes out through the plugin module', () => {
 		};
 	}
 
-	/**
-	 * The mutation reference itself is `expect.anything()`, matching the shipped
-	 * `pluginDispatch.integration.test.ts`: a Convex function reference is an
-	 * opaque handle in this process, and what the assertion is FOR is the argument
-	 * set — the plugin whose grant is being rechecked, the kind it is being
-	 * rechecked for, and the attempt number that makes each retry its own decision.
-	 */
-	function expectAuthorizedOnce(context: ReturnType<typeof fakeContext>) {
-		expect(context.runMutation).toHaveBeenCalledTimes(1);
-		expect(context.runMutation).toHaveBeenCalledWith(expect.anything(), {
-			pluginId: MOCK_ESP_PLUGIN_ID,
-			providerKind: MOCK_ESP_KIND,
-			priorAttempts: 0,
-		});
-	}
-
 	// The fixture's attempt log is module state, so it is cleared by a HOOK rather
 	// than by a line each case has to remember: a case added below without that line
 	// would read the previous case's attempt and fail — or, under `toMatchObject`,
@@ -346,140 +351,9 @@ describe('a send actually goes out through the plugin module', () => {
 		vi.unstubAllEnvs();
 	});
 
-	// NAMED INSTANCES, which is the parity gap D4 opened and P3.1 closed. The send
-	// is addressed to `#eu`, so the module must be handed the `__EU`-suffixed
-	// credential — keyed by the BASE name, so a module written without knowing
-	// instances exist still reads the right one. Handing it the deployment-default
-	// token here would be the silent credential borrow instance resolution exists
-	// to prevent.
-	it("resolves the addressed instance's own credentials and hands over nothing else", async () => {
-		vi.stubEnv('SEND_TRANSPORT_INSTANCES', `${MOCK_ESP_KIND}#eu`);
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-		vi.stubEnv(`${MOCK_ESP_TOKEN_ENV}__EU`, 'tok-eu');
-		// The optional variable is instance-scoped too: the DEFAULT instance's value
-		// is set to something distinguishable, and the `#eu` instance's to another.
-		vi.stubEnv(MOCK_ESP_REGION_ENV, 'default-region');
-		vi.stubEnv(`${MOCK_ESP_REGION_ENV}__EU`, 'us');
-
-		const context = fakeContext();
-		const result = await sendProviderDispatch(context as never, `${MOCK_ESP_KIND}#eu` as never, {
-			to: 'recipient@example.com',
-			from: 'sender@example.com',
-			subject: 'Parity',
-			html: '<p>Parity</p>',
-		});
-
-		// THE GRANT IS RECHECKED BEFORE THE MODULE RUNS, on the kind the send was
-		// addressed to. An instance suffix must not smuggle a send past the plugin's
-		// authorization: the recheck names the bare kind, which is what the grant is
-		// held against.
-		expectAuthorizedOnce(context);
-		expect(result).toMatchObject({
-			providerType: KIND,
-			transportId: `${MOCK_ESP_KIND}#eu`,
-			attempts: 1,
-			result: { success: true },
-		});
-		expect(mockEspAttempts()).toEqual([
-			{
-				to: 'recipient@example.com',
-				instanceKey: 'eu',
-				// The instance's token, never the deployment default…
-				token: 'tok-eu',
-				// …and the optional variable from THIS instance's suffix rather than
-				// from the deployment default. Both keyed by the name the MANIFEST
-				// wrote, so a module that never heard of instances reads the right one.
-				region: 'us',
-				extras: {},
-			},
-		]);
-	});
-
-	// The default instance is the same path with no suffix, and it proves the
-	// suffix above was doing something rather than being the only value present.
-	it('resolves the deployment-default instance for the bare kind', async () => {
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-		vi.stubEnv(`${MOCK_ESP_TOKEN_ENV}__EU`, 'tok-eu');
-
-		await sendProviderDispatch(fakeContext() as never, KIND, {
-			to: 'recipient@example.com',
-			from: 'sender@example.com',
-			subject: 'Parity',
-			html: '<p>Parity</p>',
-		});
-
-		expect(mockEspAttempts()).toMatchObject([{ instanceKey: null, token: 'tok-live' }]);
-	});
-
-	/*
-	 * THE TWO FAIL-CLOSED CASES BELOW ARE NOT COPIES, and the reason is worth
-	 * writing down because both rules do have a shipped home.
-	 * `pluginCapabilityParity.test.ts` ("fails the attempt CLOSED when a required
-	 * variable is missing, without calling the module") and
-	 * `pluginDispatch.integration.test.ts` ("does not invoke plugin code when the
-	 * last-moment authorization is denied") own the rules — but both drive
-	 * `createHostedSendProvider` over a HAND-BUILT `SendTransportRecord`. What the
-	 * two cases here add is the half those bypass: the COMPOSED catalog resolving
-	 * the kind, the `SEND_TRANSPORT_INSTANCES` registry resolving the transport id,
-	 * and `sendProviderDispatch` in front of both. A composition that stopped
-	 * folding the flag's variables into the entry, or an instance resolver that
-	 * read the deployment default, keeps those two suites green and fails here.
-	 *
-	 * The ERROR CODE is asserted for the same reason: `success: false` with no
-	 * attempt recorded is also what a THROW looks like — `runAttempt` catches
-	 * everything and answers `UNKNOWN` — so a refactor that made either refusal
-	 * throw would leave a bare `success: false` assertion green while the
-	 * operator-facing failure stopped being attributable to credentials or to the
-	 * grant.
-	 */
-
-	// FAIL CLOSED BEFORE THE MODULE RUNS: a required variable this instance never
-	// set is an authentication failure the host reports, not a call into
-	// third-party code with an empty credential.
-	it('never calls the module when a required credential is unset', async () => {
-		vi.stubEnv(MOCK_ESP_ENABLED_ENV, 'true');
-		vi.stubEnv(MOCK_ESP_WEBHOOK_SECRET_ENV, 'whsec-mock-esp');
-
-		const result = await sendProviderDispatch(fakeContext() as never, KIND, {
-			to: 'recipient@example.com',
-			from: 'sender@example.com',
-			subject: 'Parity',
-			html: '<p>Parity</p>',
-		});
-
-		expect(result.result).toMatchObject({
-			success: false,
-			errorCode: EmailErrorCode.AUTH_FAILED,
-		});
-		expect(mockEspAttempts()).toEqual([]);
-	});
-
-	// AND THE REVOKED GRANT, which is the other reason the module must not run.
-	// The operator has taken `send:transport` away between the route resolving and
-	// the attempt being made; the recheck is what notices, and it notices BEFORE
-	// the send rather than after a message has left.
-	it('never calls the module when the capability grant is refused', async () => {
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-
-		const context = fakeContext(false);
-		const result = await sendProviderDispatch(context as never, KIND, {
-			to: 'recipient@example.com',
-			from: 'sender@example.com',
-			subject: 'Parity',
-			html: '<p>Parity</p>',
-		});
-
-		expectAuthorizedOnce(context);
-		expect(result.result).toMatchObject({
-			success: false,
-			errorCode: EmailErrorCode.AUTH_FAILED,
-		});
-		expect(mockEspAttempts()).toEqual([]);
-	});
-
 	/**
-	 * THE EXTRAS SEAM, driven end to end — the half of the bundle every other
-	 * dispatch case above sees as `extras: {}`.
+	 * THE EXTRAS SEAM, driven end to end — the half of the bundle every dispatch
+	 * case in the shared body sees as `extras: {}`.
 	 *
 	 * `buildDispatchExtrasFor` is the governed boundary's ONE question ("module,
 	 * what do you make of this send?"), and it asks both tiers identically. The
@@ -489,7 +363,10 @@ describe('a send actually goes out through the plugin module', () => {
 	 * shape, and the value comes back through `parseExtras` at the adapter's
 	 * untrusted-input boundary before the module's `send` is handed it.
 	 *
-	 * Without this, a codegen or host change that stopped wiring
+	 * It stays with this fixture because the SHAPE it asserts is the fixture's own
+	 * (`{ campaignTag }` built from the message type), and because reading it back
+	 * needs the fixture's recorded attempt rather than the two values the shared
+	 * harness reports. Without it, a codegen or host change that stopped wiring
 	 * `buildDispatchExtras` onto the hosted adapter would leave every case in this
 	 * file green — the bundle would simply lose a declared half in silence.
 	 */
@@ -557,6 +434,29 @@ describe('its feedback route carries the contract this manifest declared', () =>
 				toleranceSeconds: MOCK_ESP_TOLERANCE_SECONDS,
 			},
 		});
+	});
+
+	/**
+	 * BOTH HALVES OF THE TIMESTAMP RULE, because only one of them is visible in the
+	 * batch above.
+	 *
+	 * `FEEDBACK_BODY`'s last event is a kind this integration does not consume and
+	 * carries no `ts`: it must be ACKNOWLEDGED, or a provider redelivers the whole
+	 * batch forever and the four facts beside it never land. That is what the shared
+	 * body's chain case exercises. The other half is what keeps the first from being
+	 * a licence to accept anything — an event this integration DOES consume, with no
+	 * usable time, is a fact the host cannot place on any timeline and the module
+	 * refuses it rather than inventing `Date.now()`.
+	 *
+	 * Through the registry lookup, like every other module call in this package: a
+	 * registration answering this plugin id with somebody else's parser would
+	 * otherwise pass.
+	 */
+	it('still refuses a consumed event that carries no timestamp', () => {
+		const surface = pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID);
+		if (!surface) throw new Error('the fixture webhook is not registered');
+		const untimed = JSON.stringify({ events: [{ type: 'accepted', id: 'msg-9' }] });
+		expect(() => surface.module.parseEvents(untimed)).toThrow(TypeError);
 	});
 });
 

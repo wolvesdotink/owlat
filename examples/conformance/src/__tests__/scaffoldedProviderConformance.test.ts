@@ -164,11 +164,36 @@ const IDENTITY_CONFIG = {
 	env: Object.fromEntries(INSTANCE_REQUIRED_ENV.map((name) => [name, DEFAULT_CREDENTIAL])),
 };
 
-/** Make the emitted modules' one network call answer a given way. */
+/**
+ * Make the emitted modules' one network call answer a given way.
+ *
+ * The mock is kept, because it IS this subject's attempt log: the emitted module
+ * really calls `fetch`, so what it was handed can only be read back off the
+ * request it made. (The Mock ESP records an attempt list inside its module
+ * instead — the one difference the shared conformance body does not need to know
+ * about, which is why arranging and observing a send is a subject-supplied pair.)
+ */
+let lastFetch: ReturnType<typeof vi.fn> | undefined;
+
 function stubFetch(response: Partial<Response> & { readonly json?: () => Promise<unknown> }) {
 	const fetchMock = vi.fn(async (_url: unknown, _init?: unknown) => response as Response);
+	lastFetch = fetchMock;
 	vi.stubGlobal('fetch', fetchMock);
 	return fetchMock;
+}
+
+/** The request bodies the emitted send module put on the wire, parsed. */
+function sentRequests(): readonly {
+	readonly headers: Record<string, string>;
+	readonly body: Record<string, unknown>;
+}[] {
+	return (lastFetch?.mock.calls ?? []).map((call) => {
+		const init = call[1] as RequestInit | undefined;
+		return {
+			headers: (init?.headers ?? {}) as Record<string, string>,
+			body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+		};
+	});
 }
 
 const NOW = Date.now();
@@ -201,6 +226,21 @@ describeSendProviderConformance({
 	flagRequiredEnv: FLAG_ENV.requiredEnvVars,
 	signature: SIGNATURE,
 	webhookSecretValue: WEBHOOK_SECRET,
+	// THIS SUBJECT'S "NETWORK": the emitted module's real `fetch`, stubbed. The
+	// credential is read back out of the `authorization` header it sent and the
+	// optional value out of the request body — never out of the configuration it
+	// was handed, which is the whole point: a module reading `process.env` is given
+	// the right values and sends with the wrong ones.
+	send: {
+		arrange: () => {
+			stubFetch({ ok: true, status: 200, json: async () => ({ id: 'msg-1' }) });
+		},
+		attempts: () =>
+			sentRequests().map((request) => ({
+				credential: request.headers['authorization']?.replace(/^Bearer /, ''),
+				optional: request.body['region'] as string | undefined,
+			})),
+	},
 	feedbackBatch: {
 		body: JSON.stringify({
 			events: [
@@ -257,6 +297,15 @@ describe('the emitted bundle composes to the kind its two identifiers imply', ()
 });
 
 describe('a send actually goes out through the emitted send module', () => {
+	/*
+	 * INSTANCE RESOLUTION, THE GRANT RECHECK AND THE TWO FAIL-CLOSED REFUSALS ARE
+	 * NOT HERE. They are the HOST's rules and they run over this subject in
+	 * `../sendProviderConformance`, through the `send` harness declared above —
+	 * the same body, the same cases, over P3.3's hand-written fixture too. What is
+	 * left below is what only the EMITTED MODULE can be asked: the status mapping
+	 * it ships, measured in the retry budget the host spends because of it.
+	 */
+
 	/** The governed entry point's context: authorization recheck + audit sink. */
 	function fakeContext(isAuthorized = true) {
 		return {
@@ -278,90 +327,13 @@ describe('a send actually goes out through the emitted send module', () => {
 	});
 
 	/**
-	 * NAMED INSTANCES, which is the parity gap D4 opened and P3.1 closed — and the
-	 * property a template is most likely to break, because the wrong shape
-	 * (`process.env`) also "works" on the default instance.
-	 *
-	 * The send is addressed to `#eu`, so the emitted module must be handed the
-	 * `__EU`-suffixed credential keyed by its BASE name. The assertion reads the
-	 * value back off the REQUEST the module made — this subject's "attempt log".
-	 */
-	it("sends on the addressed instance's own credentials", async () => {
-		vi.stubEnv('SEND_TRANSPORT_INSTANCES', `${KIND}#eu`);
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-		for (const name of INSTANCE_REQUIRED_ENV) vi.stubEnv(`${name}__EU`, 'eu-key');
-		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'msg-eu-1' }) });
-
-		const context = fakeContext();
-		const result = await sendProviderDispatch(context as never, `${KIND}#eu` as never, message);
-
-		// The grant is rechecked on the BARE kind before the module runs: an
-		// instance suffix must not smuggle a send past the plugin's authorization.
-		expect(context.runMutation).toHaveBeenCalledWith(expect.anything(), {
-			pluginId: SCAFFOLDED_PLUGIN_ID,
-			providerKind: KIND,
-			priorAttempts: 0,
-		});
-		expect(result).toMatchObject({
-			providerType: KIND,
-			transportId: `${KIND}#eu`,
-			attempts: 1,
-			result: { success: true, id: 'msg-eu-1' },
-		});
-		const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-		expect(JSON.stringify(init?.headers)).toContain('eu-key');
-		expect(JSON.stringify(init?.headers)).not.toContain(DEFAULT_CREDENTIAL);
-	});
-
-	it('sends on the deployment-default instance for the bare kind', async () => {
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-		for (const name of INSTANCE_REQUIRED_ENV) vi.stubEnv(`${name}__EU`, 'eu-key');
-		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'msg-1' }) });
-
-		await sendProviderDispatch(fakeContext() as never, KIND, message);
-
-		const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-		expect(JSON.stringify(init?.headers)).toContain(DEFAULT_CREDENTIAL);
-	});
-
-	/**
-	 * FAIL CLOSED BEFORE THE MODULE RUNS. The error CODE is asserted, not just the
-	 * failure: `success: false` with no request made is also what a THROW looks
-	 * like, so a bare assertion would stay green while the operator-facing failure
-	 * stopped being attributable to credentials.
-	 */
-	it('never calls the module when a required credential is unset', async () => {
-		for (const name of FLAG_ENV.requiredEnvVars) vi.stubEnv(name, 'set');
-		vi.stubEnv(SIGNATURE.secretEnvVar, WEBHOOK_SECRET);
-		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'nope' }) });
-
-		const result = await sendProviderDispatch(fakeContext() as never, KIND, message);
-
-		expect(result.result).toMatchObject({
-			success: false,
-			errorCode: EmailErrorCode.AUTH_FAILED,
-		});
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it('never calls the module when the capability grant is refused', async () => {
-		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
-		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'nope' }) });
-
-		const result = await sendProviderDispatch(fakeContext(false) as never, KIND, message);
-
-		expect(result.result).toMatchObject({
-			success: false,
-			errorCode: EmailErrorCode.AUTH_FAILED,
-		});
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	/**
 	 * THE RETRY SEMANTICS THE TEMPLATE SHIPS. This is the part of a provider
 	 * integration that is the same for every vendor and the part an author is most
 	 * likely to get wrong, so the emitted mapping is pinned at the GOVERNED
-	 * boundary: a 429 and a 408 must come back retryable and a 400 must not.
+	 * boundary: a 429 and a 408 must come back retryable and a 400 must not. The
+	 * ATTEMPT COUNT is what makes it an assertion about the host's behaviour rather
+	 * than about a returned string — a code the loop does not treat as retryable
+	 * spends one attempt whatever it is called.
 	 */
 	it.each([
 		// A rate limit is retryable, so the loop spends the entry's whole
