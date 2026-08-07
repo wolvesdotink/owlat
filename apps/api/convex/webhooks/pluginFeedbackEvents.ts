@@ -15,7 +15,10 @@
  * `providerType` is stamped by the HOST from the registry's own kind, never read
  * from the plugin's output: it is what the measurement plane attributes the
  * outcome to, and letting a plugin name it would let one transport's feedback be
- * graded against another's arm.
+ * graded against another's arm. The message ID is the other half of that
+ * attribution — it chooses which lane the dispatcher routes into — so the
+ * namespaces Owlat reserves for its own ids are refused here too
+ * ({@link readProviderMessageId}).
  */
 
 import {
@@ -23,6 +26,7 @@ import {
 	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
 	type PluginWebhookFeedbackKind,
 } from '@owlat/plugin-kit';
+import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { InboundEvent } from './types';
 
 /**
@@ -84,7 +88,7 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 		case 'delivered':
 			return {
 				kind: 'email.delivered',
-				providerMessageId: readRequiredText(event['providerMessageId'], 'providerMessageId'),
+				providerMessageId: readProviderMessageId(event['providerMessageId']),
 				at,
 				providerType,
 				...optionalText('recipient', event['recipient']),
@@ -92,7 +96,7 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 		case 'bounced':
 			return {
 				kind: 'email.bounced',
-				providerMessageId: readRequiredText(event['providerMessageId'], 'providerMessageId'),
+				providerMessageId: readProviderMessageId(event['providerMessageId']),
 				at,
 				bounceType: readBounceType(event['bounceType']),
 				providerType,
@@ -104,6 +108,9 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 			// address in that case. It must still carry ONE of the two, or it names
 			// nothing and could only be recorded against a guess.
 			const providerMessageId = optionalText('providerMessageId', event['providerMessageId']);
+			if ('providerMessageId' in providerMessageId) {
+				assertUnreservedMessageId(providerMessageId['providerMessageId']!);
+			}
 			const recipient = optionalText('recipient', event['recipient']);
 			if (!('providerMessageId' in providerMessageId) && !('recipient' in recipient)) {
 				throw new PluginFeedbackEventError(
@@ -115,7 +122,7 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 		case 'deferred':
 			return {
 				kind: 'email.deferred',
-				providerMessageId: readRequiredText(event['providerMessageId'], 'providerMessageId'),
+				providerMessageId: readProviderMessageId(event['providerMessageId']),
 				at,
 				providerType,
 				...optionalText('reason', event['reason']),
@@ -176,6 +183,38 @@ function readBounceType(value: unknown): 'hard' | 'soft' {
 		throw new PluginFeedbackEventError('Plugin bounce type must be hard or soft');
 	}
 	return value;
+}
+
+/**
+ * A provider message id the plugin's own transport could plausibly have issued.
+ *
+ * `providerType` is stamped by the host, but the ID chooses the LANE: the
+ * dispatcher routes on its namespace before it routes on anything else, and
+ * `delivery/messageIdRouting.ts` reserves two prefixes for ids Owlat itself
+ * minted — `pb-` for a Postbox personal-mail dispatch and `rp-probe.` for a
+ * return-path capability probe. A third party's payload naming one of those
+ * would steer a plugin's bounce into the Postbox outbound lifecycle, or into the
+ * evidence a relay-capability probe is graded on, neither of which the plugin's
+ * transport sent. So the reserved namespaces are refused here, where the
+ * plugin's output is revalidated, rather than trusted to the dispatcher.
+ *
+ * WHAT THIS DOES NOT CLOSE: an id belonging to ANOTHER send provider's message.
+ * `transitionByProviderMessageId` resolves by id alone with no provider scoping,
+ * which the core adapters can already exploit against each other today; it is a
+ * dispatcher-wide property, recorded in `docs/abstractions.md` for P3.1 rather
+ * than patched from one caller.
+ */
+function readProviderMessageId(value: unknown): string {
+	return assertUnreservedMessageId(readRequiredText(value, 'providerMessageId'));
+}
+
+function assertUnreservedMessageId(providerMessageId: string): string {
+	if (isPostboxMessageId(providerMessageId) || isReturnPathProbeMessageId(providerMessageId)) {
+		throw new PluginFeedbackEventError(
+			'Plugin webhook event names a provider message id in a reserved namespace'
+		);
+	}
+	return providerMessageId;
 }
 
 function readRequiredText(value: unknown, field: string): string {
