@@ -8,19 +8,20 @@
  * code derived from the HTTP response.
  */
 
-import {
-	extractDomainOrNull,
-	ROUTING_LEASE_TOKEN_MAX_LENGTH,
-	type DeliveryDomain,
-	type GovernedMessageType,
-} from '@owlat/shared';
+import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import {
 	MTA_RELAY_ALLOWED_REASON,
 	isMtaRelayDecisionReason,
 	mtaDeferReasonOrigin,
 	type MtaRoutingDecision,
+	type MtaRoutingDecisionRequest,
 } from '@owlat/mta-protocol/routingDecision';
-import type { MtaSendRequestDraft, MtaSendResponse } from '@owlat/mta-protocol/send';
+import {
+	isMtaSendErrorCode,
+	type MtaSendAccepted,
+	type MtaSendRefused,
+	type MtaSendRequestDraft,
+} from '@owlat/mta-protocol/send';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -52,24 +53,19 @@ const MTA_DECISION_TIMEOUT_MS = 5_000;
  * from the default instance and then presenting it to `mta#secondary` would be
  * presenting one server's decision to another. The caller passes the transport
  * it is about to send through.
+ *
+ * `input` IS the request body, typed against its one declaration (D7) rather
+ * than restated field by field: the MTA's `validRequest` checks an EXACT key
+ * list, so a field added to `MtaRoutingDecisionRequest` and honoured there while
+ * this producer still emitted the old body would be answered 400 — and a 400 is
+ * indistinguishable here from an unreachable endpoint, so every governed
+ * own-MTA send would defer with nothing failing to compile. The one divergence
+ * is `ipPool`: the wire requires it, this caller may omit it, and the `??`
+ * below is where the default has always been applied.
  */
 export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
-	input: {
-		messageId: string;
-		workAttemptId: string;
-		routingReentryToken: string;
-		startedAt: number;
-		deliveryDomain: DeliveryDomain;
-		messageType: GovernedMessageType;
-		organizationId: string;
-		recipient: string;
-		from: string;
-		candidateProvider: 'mta' | 'relay';
-		ipPool?: MtaExtras['ipPool'];
-		allowWarmupOverflow: boolean;
-		requireProviderProbe?: boolean;
-	}
+	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] }
 ): Promise<MtaRoutingDecision> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
@@ -303,7 +299,12 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				if (response.status === 409) {
 					try {
 						const parsed = JSON.parse(errorText) as Record<string, unknown>;
-						intakePending = parsed['code'] === 'INTAKE_PENDING';
+						// Narrowed through the package's accept-list, not compared against
+						// a copy of one of its strings: drop `INTAKE_PENDING` from
+						// `MTA_SEND_ERROR_CODES` and this comparison stops compiling
+						// rather than silently never matching again.
+						const code = isMtaSendErrorCode(parsed['code']) ? parsed['code'] : undefined;
+						intakePending = code === 'INTAKE_PENDING';
 						if (typeof parsed['retryAfterMs'] === 'number') {
 							retryAfterMs = Math.min(Math.max(parsed['retryAfterMs'], 1_000), 3_600_000);
 						}
@@ -322,14 +323,22 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				};
 			}
 
-			const result = (await response.json()) as MtaSendResponse;
+			// Read through a PARTIAL of both answer shapes rather than narrowing the
+			// union with `in`. `in` THROWS on a primitive right-hand side, so a 2xx
+			// body that is a JSON scalar (`123`, `true`, `"queued"`) would land in
+			// the outer catch and be reported `acceptanceUnknown` — a definite
+			// refusal turned into a reconciliation replay by
+			// `delivery/governedDispatch.ts`. Plain property access reads `undefined`
+			// off a scalar and still throws on `null`, which is exactly what this
+			// path did before it was typed: same narrowing at the call sites, same
+			// runtime behaviour on every body.
+			const result = (await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>;
 
-			if ('success' in result && result.success && result.id) {
+			if (result.success && result.id) {
 				return { success: true, id: result.id };
 			}
 
-			const errorText =
-				('error' in result ? result.error : undefined) ?? 'MTA returned unsuccessful response';
+			const errorText = result.error ?? 'MTA returned unsuccessful response';
 			return {
 				success: false,
 				errorMessage: errorText,
@@ -357,6 +366,13 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
+		// Substring-matched on the free-text 409 body on purpose, and NOT compared
+		// against `MTA_SEND_ERROR_CODES`: this must classify any `ROUTING_DECISION_*`
+		// refusal, including one a newer MTA build knows and this reader does not.
+		// An accept-list here would send an unrecognised routing refusal down the
+		// generic 409 path instead of back to the worker for a fresh decision. The
+		// codes ARE derived from the package where a miss is safe — the
+		// `INTAKE_PENDING` read above.
 		if (
 			httpStatus === 409 &&
 			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))
