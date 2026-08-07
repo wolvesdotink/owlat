@@ -27,10 +27,6 @@ import { resendSendProvider } from './resend';
 import { smtpSendProvider } from './smtp';
 import { mandrillSendProvider } from './mandrill';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
-// The entry accessor, not a lookup — the composed entry is already in hand at the
-// one site that asks. `returnPathCapability.ts` reads it from here for the same
-// reason.
-import { supportsCustomReturnPathOf } from '@owlat/shared';
 import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
 import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
 import type {
@@ -142,23 +138,13 @@ for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly Genera
 				'lib/sendProviders/systemMailExtras.ts.'
 		);
 	}
-	// THE RETURN-PATH CLAIM IS THE SAME SHAPE OF PAIR, and it is refused the same
-	// way. `buildDispatchExtras` is the ONLY wire that carries a return-path host
-	// to a hosted module, so a transport declaring `yes` without one keeps its own
-	// envelope sender while `resolveReturnPathCapabilityForEntry` grades the arm
-	// `supported` and hands the ramp the COMPARABLE bounce tolerance. Its bounces
-	// then land at the provider, our VERP stream sees ~0 for that arm, and the
-	// controller ramps its share against evidence that structurally cannot arrive —
-	// the measurement bias with no symptom, which is why it is a boot failure and
-	// not a warning.
-	if (supportsCustomReturnPathOf(catalogEntry) === 'yes' && !hosted.buildDispatchExtras) {
-		throw new TypeError(
-			`Bundled send transport '${generated.kind}' declares supportsCustomReturnPath: 'yes' ` +
-				'but its module exports no buildDispatchExtras, so the host has no way to hand it ' +
-				'the return-path host it claims to honour. See buildDispatchExtras in ' +
-				'lib/sendProviders/pluginProvider.ts.'
-		);
-	}
+	// THE RETURN-PATH CLAIM IS NOT CHECKED HERE, and a reader comparing the two
+	// pairs will want to know why. It is not a pair at all at this tier: no value
+	// of `supportsCustomReturnPath` other than `no` may reach a bundled entry,
+	// because the wire the claim needs is a VERP address the HOST signs and a
+	// bundled module is never handed a signing key. That is refused one layer
+	// earlier, on the artifact itself — `assertPluginReturnPathClaimsAreHonest` in
+	// `./catalog.ts` — where it can be stated without a module in hand.
 	hostedProviders.set(generated.kind, hosted);
 }
 if (

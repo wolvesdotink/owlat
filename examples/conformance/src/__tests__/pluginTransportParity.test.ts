@@ -102,7 +102,10 @@ describe('a declared capability reaches the host unchanged', () => {
 						envVar: 'PLUGIN_POSTMARK_STREAM',
 					},
 				],
-				supportsCustomReturnPath: 'yes',
+				// The fail-closed default, spelled: it is the only return-path value
+				// this tier may declare, and spelling it is what the host re-reads on
+				// the artifact.
+				supportsCustomReturnPath: 'no',
 				messageIdSource: 'composed',
 				deduplicatesOnIdempotencyKey: true,
 				webhook: {
@@ -157,7 +160,7 @@ describe('a declared capability reaches the host unchanged', () => {
 					envVar: 'PLUGIN_POSTMARK_STREAM',
 				},
 			],
-			supportsCustomReturnPath: 'yes',
+			supportsCustomReturnPath: 'no',
 			messageIdSource: 'composed',
 			deduplicatesOnIdempotencyKey: true,
 			// DERIVED from the webhook declaration — never a field an author could
@@ -165,6 +168,28 @@ describe('a declared capability reaches the host unchanged', () => {
 			hasProviderFeedback: true,
 			requiredCapability: 'send:transport',
 		});
+	});
+
+	it("refuses a transport that claims the plugin's own flag variable", () => {
+		// The two scopes are the whole point of the split, and the collision is a
+		// natural manifest to write ("set the token to enable the pack"). Only the
+		// transport's own variables take the `__<INSTANCEKEY>` suffix, so a name in
+		// both would leave `#eu` graded configured on `PLUGIN_POSTMARK_TOKEN__EU`
+		// while the deployment-wide switch went unchecked — a transport listed and
+		// routed to inside a plugin nobody enabled, whose every send the
+		// authorization path then refuses. Refused where the author can still rename
+		// one of the two.
+		const result = validatePluginManifest(
+			manifest({ requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'] }, [
+				'POSTMARK_PACK_ENABLED',
+				'PLUGIN_POSTMARK_TOKEN',
+			])
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toContain(
+			'$.contributes.sendTransports[0].requiredEnvVars'
+		);
 	});
 
 	it('leaves a transport written against the older contract exactly as it was', () => {
@@ -191,6 +216,11 @@ describe('a declaration the host could not honour never becomes an artifact', ()
 			'a base name that would alias an instance suffix',
 			{ requiredEnvVars: ['PLUGIN_POSTMARK__EU'] },
 			'$.contributes.sendTransports[0].requiredEnvVars[0]',
+		],
+		[
+			'a return-path capability whose envelope sender the host would have to sign',
+			{ supportsCustomReturnPath: 'yes' },
+			'$.contributes.sendTransports[0].supportsCustomReturnPath',
 		],
 		[
 			'a return-path capability this tier cannot prove',

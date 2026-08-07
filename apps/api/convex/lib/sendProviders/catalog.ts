@@ -170,6 +170,46 @@ function assertPluginDispatchSemanticsAreGeneral(
 }
 
 /**
+ * THE RETURN-PATH CLAIM, RE-ASSERTED ON THE ARTIFACT (the seams plan's P3.1).
+ *
+ * `supportsCustomReturnPath` says our own bounce processor can attribute this
+ * transport's bounces, and only `no` is true of a bundled one. Both other values
+ * need an envelope sender whose local part is a VERP token signed with a
+ * deployment secret — minted by `buildVerpAddress` inside the host's own relay
+ * adapter — and a bundled module is handed configuration, never signing keys.
+ * `probe` needs `sendReturnPathProbe` on top, which `createHostedSendProvider`
+ * does not populate.
+ *
+ * IT IS REFUSED RATHER THAN IGNORED because ignoring it is invisible.
+ * `resolveReturnPathCapabilityForEntry` reads `yes` as `capability: 'supported'`,
+ * which hands the ramp controller the COMPARABLE bounce tolerance and tells the
+ * connection wizard the posture is `supported` — for an arm whose bounces land at
+ * the provider. Our VERP stream then sees ~0 for it and the controller ramps its
+ * share against evidence that structurally cannot arrive: a measurement bias with
+ * no symptom, which is exactly the class of mistake a boot failure is for.
+ *
+ * The kit's `PluginSendTransportCustomReturnPathSupport` refuses the words at
+ * `definePlugin` and the manifest validator refuses them again; this is the third
+ * reading, of the thing that actually runs.
+ */
+function assertPluginReturnPathClaimsAreHonest(
+	entries: readonly GeneratedSendTransportCatalogEntry[]
+): void {
+	for (const entry of entries) {
+		const declared = entry.supportsCustomReturnPath;
+		if (declared === undefined || declared === 'no') continue;
+		throw new TypeError(
+			`Bundled plugin send transport '${entry.kind}' declares supportsCustomReturnPath: ` +
+				`'${declared}', which no bundled transport can honour: the envelope sender it ` +
+				'claims to stamp carries a VERP local part the host signs, and a bundled module ' +
+				'is never handed that key — so the arm would be graded as measurable while its ' +
+				'bounces land at the provider. See PluginSendTransportCustomReturnPathSupport in ' +
+				'packages/plugin-kit/src/sendTransport.ts.'
+		);
+	}
+}
+
+/**
  * THE CONFIGURATION CONTRACT, RE-ASSERTED (the seams plan's P3.1) — the namespace
  * a declared variable lives in, and how many of them there may be.
  *
@@ -261,6 +301,7 @@ function assertBounded(
 }
 
 assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
+assertPluginReturnPathClaimsAreHonest(pluginCatalog);
 assertPluginConfigurationIsWithinContract(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([

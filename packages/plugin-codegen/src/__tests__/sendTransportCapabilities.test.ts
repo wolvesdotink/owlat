@@ -91,6 +91,50 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 		);
 	});
 
+	it('keeps a flag variable OUT of the instance half, even unvalidated', () => {
+		// The manifest validator refuses this overlap outright, so `compose` cannot
+		// build it — hence the unvalidated composition, which is the case the
+		// renderer actually has to survive: a hand-edited bundle, a partial
+		// regeneration, or a manifest validated by an older kit. Emitting
+		// `PLUGIN_POSTMARK_TOKEN` into `instanceEnvVars` would make `transports.ts`
+		// suffix the plugin's own switch, so `#eu` would be graded configured on
+		// `PLUGIN_POSTMARK_TOKEN__EU` while the unsuffixed variable that gates the
+		// plugin went unchecked — a transport listed, routed to, and refused on every
+		// send.
+		const catalog = renderPluginComposition([
+			{
+				packageName: '@acme/mail-plugin',
+				manifest: {
+					id: 'mail-pack',
+					version: '1.0.0',
+					capabilities: ['send:transport'],
+					flag: { default: false, requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'] },
+					contributes: {
+						sendTransports: [
+							{
+								id: 'postmark',
+								label: 'Postmark',
+								module: { exportPath: './transports/postmark' },
+								retryDelays: [1000],
+								requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+								optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'],
+							},
+						],
+					},
+				},
+			} as unknown as BundledPlugin,
+		]).sendTransportCatalog;
+
+		// The gate still names it exactly once, unsuffixed…
+		expect(catalog).toContain('requiredEnvVars: Object.freeze(["PLUGIN_POSTMARK_TOKEN"])');
+		// …and the entry has no instance half at all: subtracting the flag variable
+		// left the transport with nothing REQUIRED of its own, so the honest answer
+		// is `instances_unsupported` rather than an instance resolved against an
+		// empty requirement list.
+		expect(catalog).not.toContain('instanceEnvVars');
+		expect(catalog).not.toContain('optionalEnvVars');
+	});
+
 	it('refuses a transport whose only declaration is optional, before rendering anything', () => {
 		// It has nothing REQUIRED of its own, so there is no honest artifact to
 		// emit: gating it on an empty list would report it CONFIGURED with the
@@ -129,13 +173,17 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 	});
 
 	it('carries the declared capability fields through verbatim', () => {
+		// `no` is the only return-path value this tier may declare — the manifest
+		// validator refuses the other two, so the renderer never sees them. Spelling
+		// the default is still meaningful: it is what the host re-reads on the
+		// artifact.
 		const catalog = compose({
-			supportsCustomReturnPath: 'yes',
+			supportsCustomReturnPath: 'no',
 			messageIdSource: 'composed',
 			deduplicatesOnIdempotencyKey: true,
 		});
 
-		expect(catalog).toContain('supportsCustomReturnPath: "yes"');
+		expect(catalog).toContain('supportsCustomReturnPath: "no"');
 		expect(catalog).toContain('messageIdSource: "composed"');
 		expect(catalog).toContain('deduplicatesOnIdempotencyKey: true');
 	});
@@ -184,7 +232,7 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 					envVar: 'PLUGIN_POSTMARK_TOKEN',
 				},
 			],
-			supportsCustomReturnPath: 'yes',
+			supportsCustomReturnPath: 'no',
 			deduplicatesOnIdempotencyKey: true,
 		});
 		const order = [

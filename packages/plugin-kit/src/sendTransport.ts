@@ -63,29 +63,36 @@ export interface PluginSendTransportWebhookDefinition {
  * catalog's `supportsCustomReturnPath` (the seams plan's D1), as a plugin may
  * declare it.
  *
- *  - `yes` the transport honours an envelope sender we name, so the routing pass
- *          resolves one and hands it to {@link PluginSendTransportModule.buildDispatchExtras}
- *          as {@link PluginSendDispatchContext.returnPathHost}. Declaring it
- *          without forwarding it is a promise the module does not keep: the
- *          measurement plane then grades this arm's bounce data as comparable
- *          with our own VERP stream while the bounces still land at the provider.
- *          So it is a PAIR, like `deduplicatesOnIdempotencyKey`: a transport
- *          declaring `yes` MUST export
- *          {@link PluginSendTransportModule.buildDispatchExtras}, which is the
- *          only wire the host has to hand it a return path, and the host refuses
- *          the composition otherwise.
- *  - `no`  the transport owns the envelope sender. The fail-closed default.
+ *  - `no`  the transport owns the envelope sender. The fail-closed default, and
+ *          at this tier the ONLY value — the field exists so a manifest can spell
+ *          it, not so it can be varied.
  *
- * THE CORE VOCABULARY'S THIRD VALUE, `probe`, IS NOT AVAILABLE HERE, and its
- * absence is the contract: a probe verdict is evidence from a real send that
- * carried a signed VERP local part, which needs `sendReturnPathProbe` on the
- * adapter — a wire the plugin transport contract does not have (see
- * `createHostedSendProvider` in `apps/api/convex/lib/sendProviders/pluginProvider.ts`,
- * which never populates it). A plugin kind declaring `probe` would be settled
- * `unsupported` without a send anyway, so the type refuses the word instead of
- * letting an author write a capability that cannot be proven.
+ * THE CORE VOCABULARY'S OTHER TWO VALUES, `yes` AND `probe`, ARE NOT AVAILABLE
+ * HERE, and their absence is the contract. Both assert the same thing — that this
+ * transport's bounces come back to an address OUR bounce processor can attribute
+ * — and both need the same wire the plugin transport contract does not have: an
+ * envelope sender whose LOCAL PART is a VERP token signed with a deployment
+ * secret (`buildVerpAddress` in
+ * `apps/api/convex/lib/sendProviders/smtp/returnPath.ts`, called inside the
+ * host's own relay adapter). A bundled module is handed configuration, never
+ * signing keys, so the most it could stamp is a bounce address nothing can
+ * attribute. `probe` needs one thing more still — `sendReturnPathProbe` on the
+ * adapter, which `createHostedSendProvider` in
+ * `apps/api/convex/lib/sendProviders/pluginProvider.ts` never populates — so a
+ * plugin kind declaring it would be settled `unsupported` without a send anyway.
+ *
+ * WHY THE TYPE REFUSES THE WORDS INSTEAD OF LETTING AN AUTHOR WRITE ONE: nothing
+ * downstream would report the gap. `resolveReturnPathCapabilityForEntry` reads
+ * `yes` as `capability: 'supported'`, which hands the ramp controller the
+ * COMPARABLE bounce tolerance for an arm whose bounces land at the provider —
+ * our VERP stream sees ~0 for it and the controller ramps its share against
+ * evidence that structurally cannot arrive. A measurement bias with no symptom is
+ * worse than a capability nobody has, so this tier keeps the honest `no` until
+ * the contract carries a complete envelope sender (a host-signed ADDRESS, not a
+ * host name) and a probe wire to prove it. The host re-asserts this on the
+ * generated artifact for the same reason it re-asserts the rest.
  */
-export type PluginSendTransportCustomReturnPathSupport = 'yes' | 'no';
+export type PluginSendTransportCustomReturnPathSupport = 'no';
 
 /**
  * Where the provider message id this transport reports comes from — the
@@ -122,6 +129,10 @@ export type PluginSendTransportMessageIdSource = 'provider' | 'composed';
  * WHAT A PLUGIN STILL CANNOT DECLARE, and why — each is a promise whose other
  * half lives outside a manifest:
  *
+ *  - `supportsCustomReturnPath: 'yes'` / `'probe'` need an envelope sender the
+ *    host SIGNS, and a probe wire to settle the second — see
+ *    {@link PluginSendTransportCustomReturnPathSupport}. `no` is the only value
+ *    this tier has.
  *  - `domainVerification: 'api'` needs a registered sending-domain provider
  *    (`domainIdentity` module export — the seams plan's P3.2).
  *  - `hasProviderFeedback` is DERIVED, not declared: it is true exactly when
@@ -176,7 +187,12 @@ export interface PluginSendTransportDefinition {
 	 * the manifest is refused rather than silently given it.
 	 */
 	readonly optionalEnvVars?: readonly string[];
-	/** Declared envelope-sender control. Absent ⇒ `no` (fail closed). */
+	/**
+	 * Declared envelope-sender control. `no` is the only value this tier may
+	 * declare and absent means the same — see
+	 * {@link PluginSendTransportCustomReturnPathSupport} for what the other two
+	 * words would promise and which wire is missing.
+	 */
 	readonly supportsCustomReturnPath?: PluginSendTransportCustomReturnPathSupport;
 	/** Where the reported message id comes from. Absent ⇒ `provider` (fail closed). */
 	readonly messageIdSource?: PluginSendTransportMessageIdSource;
@@ -362,6 +378,17 @@ export interface PluginSendTransportConfig {
  * and the routing lease — are capability handles the backend authenticates
  * itself with, and a transport has no send to make with them. What is here is
  * what a relay could act on.
+ *
+ * THE ROUTED RELAY'S RETURN-PATH HOST IS NOT HERE EITHER, and that one is a
+ * safety property rather than a tier one. The host resolves that value for ONE
+ * transport kind and only after checking that the host's published SPF authorises
+ * THAT relay's sending IPs (`relayReturnPathHostFor` in
+ * `apps/api/convex/delivery/relayReturnPath.ts`). Offering the same string to a
+ * different transport would invite it to stamp an envelope-sender domain whose
+ * SPF does not list its outbound IPs — an SPF failure on the bounce domain of
+ * every send it stamped, which degrades the very arm being measured. So the fact
+ * stops at the host boundary, which is the other half of why
+ * {@link PluginSendTransportCustomReturnPathSupport} has only `no`.
  */
 export interface PluginSendDispatchContext {
 	/** The stable per-Send idempotency key, derived from the durable Send row. */
@@ -376,12 +403,6 @@ export interface PluginSendDispatchContext {
 	readonly warmupOverflowEnabled?: boolean;
 	/** Normalized recipient engagement (0–100); absent for an unscored recipient. */
 	readonly engagementScore?: number;
-	/**
-	 * The return-path host to stamp as the VERP envelope sender on this send.
-	 * Present only for a transport that declared
-	 * `supportsCustomReturnPath: 'yes'` AND whose From domain authorises it.
-	 */
-	readonly returnPathHost?: string;
 }
 
 /**

@@ -20,11 +20,16 @@
  * fields and assert the module refuses to load rather than shipping a plugin
  * whose sends are attributed to the own arm.
  *
- * The file also covers the parity fields' OWN composition guard — the `PLUGIN_`
- * namespace an `instanceEnvVars` name must live in, which is the one plugin
- * declaration whose VALUE the host reads and hands to third-party code, and HOW
- * MANY such names an entry may carry, which is a per-send cost the artifact pays
- * rather than a rule the manifest merely promised.
+ * The file also covers the parity fields' OWN composition guards:
+ *
+ *  - the `PLUGIN_` namespace an `instanceEnvVars` name must live in, which is the
+ *    one plugin declaration whose VALUE the host reads and hands to third-party
+ *    code, and HOW MANY such names an entry may carry, which is a per-send cost
+ *    the artifact pays rather than a rule the manifest merely promised;
+ *  - `supportsCustomReturnPath`, which no bundled transport may declare above
+ *    `no`: the claim grades the arm's bounce data as comparable with our own VERP
+ *    stream, and the envelope sender that would make it true carries a local part
+ *    the HOST signs.
  */
 
 import { existsSync } from 'node:fs';
@@ -159,6 +164,37 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		);
 	});
 
+	it.each(['yes', 'probe'])(
+		'refuses a return-path claim of %s, which no bundled transport can honour',
+		async (declared) => {
+			// The measurement bias with no symptom. `resolveReturnPathCapabilityForEntry`
+			// reads `yes` as `capability: 'supported'`, which hands the ramp controller
+			// the COMPARABLE bounce tolerance and tells the connection wizard the
+			// posture is `supported` — while the bounces land at the provider, because
+			// the envelope sender the claim promises carries a VERP local part the host
+			// signs with a deployment secret and no bundled module is handed that key.
+			// Our VERP stream then sees ~0 for the arm and the controller ramps its
+			// share against evidence that structurally cannot arrive. The kit's union
+			// refuses the words at `definePlugin`; this is the artifact's backstop.
+			await expect(
+				composeCatalogWith([entry({ supportsCustomReturnPath: declared })])
+			).rejects.toThrow(
+				new RegExp(`supportsCustomReturnPath: '${declared}'[\\s\\S]*VERP local part the host signs`)
+			);
+		}
+	);
+
+	it('ADMITS the return-path claim spelled at its fail-closed default', async () => {
+		// `no` is the value this tier HAS, and a manifest is free to spell it. Only a
+		// promise the host cannot keep is refused, so the guard reads the value rather
+		// than the presence of the field.
+		const admitted = (await composeCatalogWith([entry({ supportsCustomReturnPath: 'no' })])) as {
+			SEND_PROVIDER_KINDS: readonly string[];
+		};
+
+		expect(admitted.SEND_PROVIDER_KINDS).toContain('plugin.mail-pack.hosted');
+	});
+
 	it('ADMITS the dedup claim, which the module half of the promise now backs', async () => {
 		// Until plugin-tier parity this was refused outright, because the tier had no
 		// per-send extras contract and the key could never reach the provider. It has
@@ -196,6 +232,10 @@ describe('composing the catalog with a bundled plugin transport', () => {
 				),
 			}),
 			entry({
+				kind: 'plugin.mail-pack.bouncer',
+				supportsCustomReturnPath: 'yes',
+			}),
+			entry({
 				kind: 'plugin.mail-pack.verbose',
 				credentialFields: Object.freeze(
 					Array.from({ length: 13 }, (_, index) =>
@@ -223,6 +263,10 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		// the declaration vocabulary lives in `packages/shared`, the machinery that
 		// reads it in `apps/api/convex`.
 		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
+		// EVERY CANDIDATE REACHED ITS OWN GUARD. A candidate that tripped an earlier
+		// throw than the one it was written for would leave this loop asserting the
+		// same message twice — green, and blind to the pointer it was meant to check.
+		expect(new Set(messages).size).toBe(messages.length);
 		for (const message of messages) {
 			const pointer = /See (?:the PREREQUISITES note on )?(\w+) in (\S+\.ts)/;
 			const [, symbol, path] = pointer.exec(message) ?? [];

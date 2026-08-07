@@ -18,20 +18,41 @@ const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_TOTAL_DELAY_MS = 120_000;
 
+/** One accepted configuration variable, and the list it was declared in. */
+export interface SendTransportConfigEnvVar {
+	readonly name: string;
+	/** The manifest path of the LIST, which is what an issue about it points at. */
+	readonly path: string;
+}
+
 /**
- * Validate the bucket, and report back the feedback webhook's signing-secret
- * variable (when one was declared in an acceptable form).
+ * What this validator saw that a rule OUTSIDE `$.contributes` has to judge.
  *
- * The secret leaves this validator because the rule it feeds is not local: a
- * `secretEnvVar` must ALSO appear in `$.flag.requiredEnvVars`, which lives at the
- * top of the manifest. See `validatePluginManifest`, which owns that join.
+ * Two facts, and they pull in opposite directions against the same list — which
+ * is why both leave here rather than being decided locally:
+ *
+ *  - `webhookSecretEnvVars` MUST appear in `$.flag.requiredEnvVars` (an unset
+ *    signing secret refuses every delivery, so the plugin must not be enableable
+ *    without it);
+ *  - `configEnvVars` must NOT (a flag variable is a deployment-wide switch read
+ *    unsuffixed, a transport variable is read per instance under `__<KEY>`).
+ *
+ * `validatePluginManifest` owns both joins, because the flag lives at the top of
+ * the manifest and this validator only ever sees one bucket.
  */
+export interface SendTransportContributionFacts {
+	readonly webhookSecretEnvVars: readonly string[];
+	readonly configEnvVars: readonly SendTransportConfigEnvVar[];
+}
+
+/** Validate the bucket, and report back the two facts a top-level rule judges. */
 export function validateSendTransportContributions(
 	items: readonly DataProperty[],
 	issues: PluginManifestIssue[]
-): readonly string[] {
+): SendTransportContributionFacts {
 	const seenIds = new Set<string>();
 	const webhookSecretEnvVars: string[] = [];
+	const configEnvVars: SendTransportConfigEnvVar[] = [];
 	let webhookDeclaredAt: number | null = null;
 	for (const [index, item] of items.entries()) {
 		if (item.kind !== 'value') continue;
@@ -63,6 +84,11 @@ export function validateSendTransportContributions(
 		validateModule(item.value, path, issues);
 		validateRetryDelays(item.value, path, issues);
 		const declaredEnvVars = validateConfigEnvVars(item.value, path, issues);
+		for (const field of CONFIG_ENV_VAR_FIELDS) {
+			for (const name of declaredEnvVars[field]) {
+				configEnvVars.push({ name, path: `${path}.${field}` });
+			}
+		}
 		validateCredentialFields(item.value, path, declaredEnvVars, issues);
 		validateCapabilities(item.value, path, issues);
 		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
@@ -82,7 +108,7 @@ export function validateSendTransportContributions(
 			}
 		}
 	}
-	return webhookSecretEnvVars;
+	return { webhookSecretEnvVars, configEnvVars };
 }
 
 function validateId(
@@ -312,7 +338,18 @@ function validateCapabilities(
 	path: string,
 	issues: PluginManifestIssue[]
 ): void {
-	validateEnumField(transport, path, 'supportsCustomReturnPath', ['yes', 'no'], issues);
+	validateEnumField(
+		transport,
+		path,
+		'supportsCustomReturnPath',
+		['no'],
+		issues,
+		// The one field whose accepted set is a single value: naming it alone would
+		// read as a typo rather than as a tier boundary, so the message says which
+		// wire is missing. See PluginSendTransportCustomReturnPathSupport.
+		" — 'yes' and 'probe' need an envelope sender the host signs, which a " +
+			'bundled transport is never handed'
+	);
 	validateEnumField(transport, path, 'messageIdSource', ['provider', 'composed'], issues);
 	const dedup = readDataProperty(transport, 'deduplicatesOnIdempotencyKey', issues, false, path);
 	if (dedup.kind === 'value' && typeof dedup.value !== 'boolean') {
@@ -329,17 +366,19 @@ function validateCapabilities(
  * A closed-set field.
  *
  * The message NAMES the accepted values rather than describing them, because the
- * two words this tier refuses (`probe` on the return path, `idempotency-key` as
- * the id source) are words the CORE catalog accepts — an author reading the core
- * vocabulary and writing one of them needs to be told which set they are in, not
- * that their string was malformed.
+ * words this tier refuses (`yes` and `probe` on the return path,
+ * `idempotency-key` as the id source) are words the CORE catalog accepts — an
+ * author reading the core vocabulary and writing one of them needs to be told
+ * which set they are in, not that their string was malformed. `note` carries the
+ * reason for the field whose accepted set is too small to explain itself.
  */
 function validateEnumField(
 	transport: Record<string, unknown>,
 	path: string,
 	field: string,
 	accepted: readonly string[],
-	issues: PluginManifestIssue[]
+	issues: PluginManifestIssue[],
+	note = ''
 ): void {
 	const property = readDataProperty(transport, field, issues, false, path);
 	if (property.kind !== 'value') return;
@@ -348,7 +387,7 @@ function validateEnumField(
 			issues,
 			'invalid_format',
 			`${path}.${field}`,
-			`must be one of ${accepted.join(', ')}`
+			`must be one of ${accepted.join(', ')}${note}`
 		);
 	}
 }

@@ -11,8 +11,10 @@
  *     BASE name either way — so a transport cannot accidentally be written
  *     against one instance's spelling.
  *  2. NOTHING ELSE IS HANDED OVER. Not a variable the transport never declared,
- *     not one outside the `PLUGIN_` namespace, and never the governance handles
- *     on the governed dispatch input.
+ *     not one outside the `PLUGIN_` namespace, never the governance handles on
+ *     the governed dispatch input — and not the return-path host the routing pass
+ *     resolved for a DIFFERENT relay kind, which is authorised against that
+ *     relay's published SPF and belongs to nobody else.
  *  3. THE PROMISES ARE PAIRS. `deduplicatesOnIdempotencyKey: true` without a
  *     `buildSystemMailExtras` export is refused at registry load, which is the
  *     replacement for the blanket refusal the catalog used to make while the
@@ -229,9 +231,6 @@ describe('the extras builders, at parity with a core adapter', () => {
 			ipPool: 'transactional',
 			warmupOverflowEnabled: true,
 			engagementScore: 42,
-			// Renamed on the way across, because a plugin's version of this fact is
-			// "the envelope sender to stamp", not "the relay host the router resolved".
-			returnPathHost: 'bounce.example.com',
 		});
 		// The work-attempt id, the re-entry snapshot handle and the routing lease are
 		// capability handles the backend authenticates ITSELF with. No transport has
@@ -241,6 +240,29 @@ describe('the extras builders, at parity with a core adapter', () => {
 		expect(seen).not.toContain('lease-nobody-else-may-hold');
 		expect(seen).not.toContain('attempt-1');
 		expect(seen).not.toContain('org-1');
+	});
+
+	it("withholds the ROUTED RELAY's return-path host, which is not this kind's", () => {
+		// The input carries one whenever the route had a probe-decided relay among
+		// its candidates — including on a send this plugin kind won. It is resolved
+		// for THAT relay: `relayReturnPathHostFor` only returns a host whose published
+		// SPF authorises that relay's sending IPs, so offering it here would invite a
+		// stamp that fails SPF on the bounce domain of every message it stamped. And
+		// the VERP local part that makes a bounce attributable is signed by the host
+		// anyway, so a bare host is not a return path a module could use. Hence
+		// `supportsCustomReturnPath` has only `no` at this tier.
+		const buildDispatchExtras = vi.fn((context: unknown) => context);
+		const provider = createHostedSendProvider(KIND, [], {
+			parseExtras: (input: unknown) => input,
+			send: async () => ({ success: true as const, id: 'x' }),
+			buildDispatchExtras,
+		});
+
+		provider.buildDispatchExtras?.(facts());
+
+		expect(JSON.stringify(buildDispatchExtras.mock.calls[0]?.[0])).not.toContain(
+			'bounce.example.com'
+		);
 	});
 
 	it('omits an absent fact rather than passing a null through', () => {
@@ -356,13 +378,15 @@ describe('the extras builders, at parity with a core adapter', () => {
 });
 
 /**
- * THE REGISTRY-LEVEL PAIRS. Both halves of a promise are checked where both are
+ * THE REGISTRY-LEVEL PAIR. Both halves of a promise are checked where both are
  * visible: the catalog declares it, the module carries it.
  *
- * Two declarations are pairs of this shape, and neither can be checked at the
- * catalog alone. `deduplicatesOnIdempotencyKey` needs `buildSystemMailExtras` to
- * carry the key; `supportsCustomReturnPath: 'yes'` needs `buildDispatchExtras`,
- * because that is the only wire a return-path host reaches a hosted module on.
+ * ONE declaration is a pair of this shape, and it cannot be checked at the
+ * catalog alone: `deduplicatesOnIdempotencyKey` needs `buildSystemMailExtras` to
+ * carry the key. `supportsCustomReturnPath` deliberately is NOT one — no value of
+ * it above `no` may reach a bundled entry at all, because the wire it would need
+ * is an envelope sender the HOST signs, so it is refused one layer earlier on the
+ * artifact itself (`pluginCustodyGuard.test.ts`).
  */
 describe('registering a hosted transport that claims idempotency-key dedup', () => {
 	const CATALOG = '../../../plugins/sendTransportCatalog.generated';
@@ -444,78 +468,39 @@ describe('registering a hosted transport that claims idempotency-key dedup', () 
 		expect(registry.buildDispatchExtrasFor(KIND, facts())).toEqual({});
 	});
 
-	it('refuses a return-path claim the module has no wire to honour', async () => {
-		// The measurement bias with no symptom: `resolveReturnPathCapabilityForEntry`
-		// grades the arm `supported` and hands the ramp the COMPARABLE bounce
-		// tolerance, while the send goes out on the provider's own envelope sender
-		// and its bounces never reach our VERP stream. The controller then ramps the
-		// arm's share against evidence that structurally cannot arrive.
-		await expect(
-			composeRegistryWith(
-				{
-					parseExtras: (input: unknown) => input,
-					send: async () => ({ success: true, id: 'x' }),
-					buildSystemMailExtras: () => ({}),
-				},
-				{ supportsCustomReturnPath: 'yes' }
-			)
-		).rejects.toThrow(/supportsCustomReturnPath: 'yes'[\s\S]*buildDispatchExtras/);
-	});
-
-	it('registers a return-path claim the module CAN honour, and forwards the host', async () => {
-		const registry = (await composeRegistryWith(
-			{
-				parseExtras: (input: unknown) => input,
-				send: async () => ({ success: true, id: 'x' }),
-				buildSystemMailExtras: () => ({}),
-				buildDispatchExtras: (context: { returnPathHost?: string }) => ({
-					mailFrom: context.returnPathHost,
-				}),
-			},
-			{ supportsCustomReturnPath: 'yes' }
-		)) as {
-			buildDispatchExtrasFor: (kind: string, input: DispatchExtrasInput) => unknown;
-		};
-
-		expect(registry.buildDispatchExtrasFor(KIND, facts())).toEqual({
-			mailFrom: 'bounce.example.com',
-		});
-	});
-
-	it('sends whoever hits a boot failure to a file that declares what the message names', async () => {
+	it('sends whoever hits the boot failure to a file that declares what it names', async () => {
 		// A BOOT FAILURE IS A ONE-SHOT EXPLANATION — the same rule
 		// `pluginCustodyGuard.test.ts` holds the catalog's throws to, applied to the
-		// registry's. Whoever hits one is reading the string, not the codebase.
-		// SEQUENTIALLY: `composeRegistryWith` resets and re-mocks one module
-		// registry, so overlapping compositions can both observe the last mock.
-		const bare = {
+		// registry's. Whoever hits one is reading the string, not the codebase, so a
+		// pointer at a renamed file or a moved symbol costs them the hunt the message
+		// exists to save.
+		//
+		// ONE MESSAGE, asserted once. This registry has exactly one guard with a
+		// pointer in it; the return-path guard that used to sit beside it moved to
+		// the catalog, where the artifact is refused before a module is ever loaded.
+		// A loop over one case would only invite the failure mode the sibling file
+		// documents — two iterations quietly asserting the same message.
+		const message = await composeRegistryWith({
 			parseExtras: (input: unknown) => input,
 			send: async () => ({ success: true, id: 'x' }),
-		};
-		const messages: string[] = [];
-		for (const overrides of [{}, { supportsCustomReturnPath: 'yes' }]) {
-			messages.push(
-				await composeRegistryWith(bare, overrides).then(
-					() => '',
-					(error: unknown) => (error as Error).message
-				)
-			);
-		}
+		}).then(
+			() => '',
+			(error: unknown) => (error as Error).message
+		);
+
 		const { existsSync, readFileSync } = await import('node:fs');
 		const { dirname, resolve } = await import('node:path');
 		const { fileURLToPath } = await import('node:url');
 		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
-		for (const message of messages) {
-			const [, symbol, path] = /See (\w+) in (\S+\.ts)/.exec(message) ?? [];
-			expect({ message, symbol, path }).toMatchObject({
-				symbol: expect.any(String),
-				path: expect.any(String),
-			});
-			const onDisk = [resolve(repoRoot, path!), resolve(repoRoot, 'apps/api/convex', path!)].find(
-				(candidate) => existsSync(candidate)
-			);
-			expect({ path, onDisk }).toMatchObject({ onDisk: expect.any(String) });
-			expect(readFileSync(onDisk!, 'utf8')).toContain(symbol!);
-		}
+		const [, symbol, path] = /See (\w+) in (\S+\.ts)/.exec(message) ?? [];
+		expect({ message, symbol, path }).toMatchObject({
+			symbol: expect.any(String),
+			path: expect.any(String),
+		});
+		const onDisk = [resolve(repoRoot, path!), resolve(repoRoot, 'apps/api/convex', path!)].find(
+			(candidate) => existsSync(candidate)
+		);
+		expect({ path, onDisk }).toMatchObject({ onDisk: expect.any(String) });
+		expect(readFileSync(onDisk!, 'utf8')).toContain(symbol!);
 	});
 });

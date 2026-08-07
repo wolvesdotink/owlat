@@ -26,8 +26,8 @@ import { sendTransportEnvName, type SendTransportRecord } from './transports';
  * never populates `sendReturnPathProbe`, because the plugin transport contract
  * has no envelope-sender knob it could carry a SIGNED VERP local part on. A
  * plugin kind is therefore settled without a send rather than probed on somebody
- * else's wire — which is also why the kit's `supportsCustomReturnPath` union has
- * no `probe` member to declare.
+ * else's wire — which is why the kit's `supportsCustomReturnPath` union has only
+ * `no` in it, and why `catalog.ts` re-asserts that on the generated artifact.
  *
  * The two extras builders mirror the core adapter interface exactly (the seams
  * plan's P3.1): the governed boundary and the system-mail path ask every module
@@ -197,6 +197,22 @@ function resolveHostedConfig(
 	return Object.freeze({ instanceKey: transport.instanceKey, env: Object.freeze(env) });
 }
 
+/**
+ * The governed dispatch input, narrowed to what a bundled transport may act on.
+ *
+ * `relayReturnPathHost` IS DELIBERATELY NOT CARRIED ACROSS, and it is the one
+ * omission a reader will trip over, because the field is right there on the
+ * input. It is resolved for ONE transport kind — the probe-decided relay the
+ * route selected — and only after `relayReturnPathHostFor` has checked that
+ * host's published SPF authorises THAT relay's sending IPs. Handing the same
+ * string to a plugin kind that happened to win the same route would invite it to
+ * stamp an envelope-sender domain whose SPF does not list its outbound IPs,
+ * failing SPF on the bounce domain of every send it stamped. And it would not buy
+ * anything even then: the VERP local part that makes a bounce attributable is
+ * signed with a deployment secret inside the host's own relay adapter, so a bare
+ * host is not a return path a module could use. Which is why the kit's
+ * `supportsCustomReturnPath` has only `no` at this tier.
+ */
 function toPluginDispatchContext(input: DispatchExtrasInput): PluginSendDispatchContext {
 	return Object.freeze({
 		idempotencyKey: input.idempotencyKey,
@@ -207,9 +223,6 @@ function toPluginDispatchContext(input: DispatchExtrasInput): PluginSendDispatch
 			? {}
 			: { warmupOverflowEnabled: input.warmupOverflowEnabled }),
 		...(input.engagementScore === undefined ? {} : { engagementScore: input.engagementScore }),
-		...(input.relayReturnPathHost === undefined
-			? {}
-			: { returnPathHost: input.relayReturnPathHost }),
 	});
 }
 

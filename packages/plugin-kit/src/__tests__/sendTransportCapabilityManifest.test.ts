@@ -16,9 +16,16 @@
  *     base name carrying `__` would alias another instance's credential.
  *
  * The capability fields are checked for the values this tier REFUSES as much as
- * for the ones it accepts: `probe` and `idempotency-key` are legal words in the
- * core catalog, and an author who copies them across gets a named issue rather
- * than a silently-defaulted capability.
+ * for the ones it accepts: `yes` and `probe` on the return path, and
+ * `idempotency-key` as the id source, are legal words in the core catalog, and an
+ * author who copies one across gets a named issue rather than a
+ * silently-defaulted capability.
+ *
+ * A third rule joins them from outside this bucket: a transport's own variables
+ * may not name one of the PLUGIN's flag variables. The two lists are scoped
+ * differently — only a transport's own take the instance suffix — so an overlap
+ * would grade a named instance configured on the suffixed copy while the
+ * deployment-wide switch went unchecked.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -46,7 +53,10 @@ function manifestWith(overrides: Record<string, unknown>) {
 		id: 'mail-pack',
 		version: '1.0.0',
 		capabilities: ['send:transport'],
-		flag: { default: false, requiredEnvVars: ['PLUGIN_MAIL_PACK_TOKEN'] },
+		// The plugin's ENABLEMENT gate, deliberately NOT one of the transport's own
+		// variables: the two scopes may not overlap, and this fixture would be the
+		// first thing to trip over it if they did.
+		flag: { default: false, requiredEnvVars: ['PLUGIN_MAIL_PACK_ENABLED'] },
 		contributes: { sendTransports: [transportDefinition(overrides)] },
 	};
 }
@@ -137,6 +147,45 @@ describe('declared configuration variables', () => {
 				})
 			)
 		).toContain(`${PATH}.optionalEnvVars[0]`);
+	});
+
+	it.each(['requiredEnvVars', 'optionalEnvVars'])(
+		'refuses a flag variable claimed as %s — the two scopes take different names',
+		(field) => {
+			// "Set the token to enable the pack" is a natural manifest to write, and
+			// nothing about it looks wrong: both lists accept the same name shape. What
+			// breaks is downstream and PERMANENT. The host's presence gate is the union
+			// of the two lists, but only a transport's own variables are instance-scoped,
+			// so a name in both is suffixed for `#eu` — the instance is graded configured
+			// on `PLUGIN_MAIL_PACK_ENABLED__EU` while the unsuffixed switch that gates the
+			// plugin is never checked, the transport is listed and routed to, and every
+			// send is refused by the authorization path until someone edits the manifest.
+			const paths = issuePaths(
+				manifestWith(
+					field === 'requiredEnvVars'
+						? { requiredEnvVars: ['PLUGIN_MAIL_PACK_ENABLED'] }
+						: {
+								requiredEnvVars: ['PLUGIN_MAIL_PACK_TOKEN'],
+								optionalEnvVars: ['PLUGIN_MAIL_PACK_ENABLED'],
+							}
+				)
+			);
+
+			expect(paths).toContain(`${PATH}.${field}`);
+		}
+	);
+
+	it('names the collision and both scopes, where the author can still fix it', () => {
+		const result = validatePluginManifest(
+			manifestWith({ requiredEnvVars: ['PLUGIN_MAIL_PACK_ENABLED'] })
+		);
+
+		expect(result.ok).toBe(false);
+		expect(
+			result.ok
+				? undefined
+				: result.issues.find((issue) => issue.path === `${PATH}.requiredEnvVars`)?.message
+		).toMatch(/PLUGIN_MAIL_PACK_ENABLED.*flag.*unsuffixed.*__<INSTANCEKEY>/s);
 	});
 
 	it('refuses a repeat inside one list', () => {
@@ -231,21 +280,39 @@ describe('declared capability fields', () => {
 	it('accepts the values this tier can honour', () => {
 		const parsed = parsePluginManifest(
 			manifestWith({
-				supportsCustomReturnPath: 'yes',
+				supportsCustomReturnPath: 'no',
 				messageIdSource: 'composed',
 				deduplicatesOnIdempotencyKey: true,
 			})
 		);
 		const transport = parsed.contributes?.sendTransports?.[0];
 
-		expect(transport?.supportsCustomReturnPath).toBe('yes');
+		expect(transport?.supportsCustomReturnPath).toBe('no');
 		expect(transport?.messageIdSource).toBe('composed');
 		expect(transport?.deduplicatesOnIdempotencyKey).toBe(true);
 	});
 
+	it('says which wire is missing when a return-path claim is refused', () => {
+		// The one field whose accepted set is a single value: "must be one of no"
+		// alone reads as a typo. An author who copied `yes` from the core catalog
+		// needs to be told that the envelope sender is signed by the host, not that
+		// their string was malformed.
+		const result = validatePluginManifest(manifestWith({ supportsCustomReturnPath: 'yes' }));
+
+		expect(result.ok).toBe(false);
+		expect(
+			result.ok
+				? undefined
+				: result.issues.find((issue) => issue.path === `${PATH}.supportsCustomReturnPath`)?.message
+		).toMatch(/must be one of no.*envelope sender the host signs/s);
+	});
+
 	it.each([
-		// `probe` is a legal core value whose evidence is a real send carrying a
-		// signed VERP local part — a wire this contract does not have.
+		// Both of the core catalog's other words are refused, and for one reason:
+		// they claim OUR bounce processor can attribute this transport's bounces,
+		// which needs an envelope sender whose local part the host signs. `probe`
+		// needs a probe wire on top of that.
+		['yes', { supportsCustomReturnPath: 'yes' }, `${PATH}.supportsCustomReturnPath`],
 		['probe', { supportsCustomReturnPath: 'probe' }, `${PATH}.supportsCustomReturnPath`],
 		['maybe', { supportsCustomReturnPath: 'maybe' }, `${PATH}.supportsCustomReturnPath`],
 		[
