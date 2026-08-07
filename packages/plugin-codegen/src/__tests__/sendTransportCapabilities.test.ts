@@ -54,6 +54,7 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 		for (const field of [
 			'optionalEnvVars',
 			'instanceEnvVars',
+			'credentialFields',
 			'supportsCustomReturnPath',
 			'messageIdSource',
 			'deduplicatesOnIdempotencyKey',
@@ -82,14 +83,41 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 		expect(catalog).not.toContain('MAIL_PACK_ENABLED');
 	});
 
-	it('keeps the flag gate for a transport whose only declaration is optional', () => {
-		// Nothing REQUIRED of its own, so the presence gate stays the plugin's — and
-		// the empty required list is what makes the transport resolver refuse a named
-		// instance rather than let one resolve on the default's credentials.
-		const catalog = compose({ optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'] });
+	it('refuses a transport whose only declaration is optional, before rendering anything', () => {
+		// It has nothing REQUIRED of its own, so there is no honest artifact to
+		// emit: gating it on an empty list would report it CONFIGURED with the
+		// plugin's flag variable unset, and gating it on the flag would offer named
+		// instances whose configuration nothing could check. The manifest is refused
+		// instead, which is the one answer the author can act on.
+		expect(() => compose({ optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'] })).toThrow(
+			/optionalEnvVars must accompany at least one requiredEnvVars entry/
+		);
+	});
 
-		expect(catalog).toContain('requiredEnvVars: Object.freeze([])');
-		expect(catalog).toContain('instanceEnvVars: Object.freeze(["PLUGIN_POSTMARK_STREAM"])');
+	it('carries the credential form through, joined to the variables it names', () => {
+		const catalog = compose({
+			requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+			optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'],
+			credentialFields: [
+				{
+					kind: 'secret',
+					key: 'token',
+					label: 'Server token',
+					required: true,
+					envVar: 'PLUGIN_POSTMARK_TOKEN',
+				},
+				{
+					kind: 'string',
+					key: 'stream',
+					label: 'Message stream',
+					envVar: 'PLUGIN_POSTMARK_STREAM',
+				},
+			],
+		});
+
+		expect(catalog).toContain('credentialFields: Object.freeze([{"kind":"secret"');
+		expect(catalog).toContain('"envVar":"PLUGIN_POSTMARK_TOKEN"');
+		expect(catalog).toContain('"envVar":"PLUGIN_POSTMARK_STREAM"');
 	});
 
 	it('carries the declared capability fields through verbatim', () => {
@@ -134,18 +162,40 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 	});
 
 	it('renders a parseable module with the fields in a stable order', () => {
+		// A generated file that reshuffles itself is a diff nobody can review, so the
+		// emitter builds `[field, literal]` pairs in one list and this reads the
+		// rendered sequence back off it.
 		const catalog = compose({
 			requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+			credentialFields: [
+				{
+					kind: 'secret',
+					key: 'token',
+					label: 'Server token',
+					required: true,
+					envVar: 'PLUGIN_POSTMARK_TOKEN',
+				},
+			],
 			supportsCustomReturnPath: 'yes',
 			deduplicatesOnIdempotencyKey: true,
 		});
+		const order = [
+			'kind:',
+			'pluginId:',
+			'localId:',
+			'label:',
+			'retryDelays:',
+			'requiredEnvVars:',
+			'instanceEnvVars:',
+			'credentialFields:',
+			'supportsCustomReturnPath:',
+			'deduplicatesOnIdempotencyKey:',
+			'requiredCapability:',
+		];
 
-		expect(catalog.indexOf('requiredEnvVars')).toBeLessThan(catalog.indexOf('instanceEnvVars'));
-		expect(catalog.indexOf('instanceEnvVars')).toBeLessThan(
-			catalog.indexOf('supportsCustomReturnPath')
-		);
-		expect(catalog.indexOf('deduplicatesOnIdempotencyKey')).toBeLessThan(
-			catalog.indexOf('requiredCapability')
-		);
+		const positions = order.map((field) => catalog.indexOf(field));
+
+		expect(positions).toEqual([...positions].sort((left, right) => left - right));
+		expect(order.every((field) => catalog.includes(field))).toBe(true);
 	});
 });
