@@ -10,10 +10,6 @@ import {
 	sendProviderNames,
 } from './scaffoldSendProvider';
 
-// Re-exported from its own module so the send-provider template can derive the
-// same identifier without importing this one (which imports it).
-export { toCamelCase } from './names';
-
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
 

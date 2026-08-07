@@ -2,7 +2,8 @@ import { join } from 'node:path';
 import { parsePluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { describe, expect, it } from 'vitest';
-import { buildScaffold, toCamelCase } from '../scaffold';
+import { toCamelCase } from '../names';
+import { buildScaffold } from '../scaffold';
 
 const root = '/workspace';
 const targetDir = join(root, 'examples', 'plugins', 'my-plugin');
