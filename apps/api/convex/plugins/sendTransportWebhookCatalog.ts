@@ -11,6 +11,7 @@ import {
 	defineHostedContributionCatalog,
 	type HostedContributionDefinition,
 } from './hostedContributionCatalog';
+import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
  * Host view of a bundled send transport's FEEDBACK half (the seams plan's D6,
@@ -179,30 +180,15 @@ function assertVerifiableSignature(signature: PluginReplayBoundSignatureContract
  * Accept only a plain object exposing exactly `parseEvents` as a data property.
  *
  * The same bar `pluginProvider.parseHostedSendTransportModule` sets for the send
- * half: generated imports are code, and code that reached the registry with a
- * getter, a prototype, or a missing method is a failure that must happen at
- * module load — not one frame inside a live webhook.
+ * half, asked of the same helper: generated imports are code, and code that
+ * reached the registry with a getter, a prototype, an extra key or a missing
+ * method is a failure that must happen at module load — not one frame inside a
+ * live webhook.
  */
 function parseHostedWebhookModule(input: unknown): HostedSendTransportWebhookModule {
-	if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-		throw new TypeError('Invalid bundled send transport webhook module');
-	}
-	const prototype = Object.getPrototypeOf(input);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new TypeError('Invalid bundled send transport webhook module');
-	}
-	const descriptors = Object.getOwnPropertyDescriptors(input);
-	const keys = Reflect.ownKeys(descriptors);
-	const parseEvents = descriptors['parseEvents'];
-	if (
-		keys.length !== 1 ||
-		!parseEvents?.enumerable ||
-		!('value' in parseEvents) ||
-		typeof parseEvents.value !== 'function'
-	) {
-		throw new TypeError('Invalid bundled send transport webhook module');
-	}
-	return Object.freeze({
-		parseEvents: parseEvents.value as (rawBody: string) => unknown,
-	});
+	return readExactFunctionModule<HostedSendTransportWebhookModule>(
+		input,
+		['parseEvents'],
+		'Invalid bundled send transport webhook module'
+	);
 }

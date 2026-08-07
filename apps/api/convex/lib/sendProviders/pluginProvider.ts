@@ -18,6 +18,7 @@ import type {
 	SystemMailExtrasInput,
 } from './types';
 import { EmailErrorCode } from './types';
+import { readExactDataObject as readExactHostedDataObject } from '../../plugins/hostedModuleSnapshot';
 import { sendTransportEnvName, type SendTransportRecord } from './transports';
 
 /**
@@ -326,57 +327,24 @@ function pluginFailure(errorCode: EmailErrorCode): EmailSendAttempt {
 }
 
 /**
- * Every own key must be one this contract knows, every REQUIRED key must be
- * present, and every value must be a plain data property on a plain object.
+ * The exact-shape reader, with this tier's message bound in.
  *
- * `optionalKeys` is what lets a module ship an extras builder without loosening
- * anything else: an unknown key is still refused, so a bundled module cannot
- * smuggle in a surface the host never agreed to call.
+ * The RULE lives in `plugins/hostedModuleSnapshot.ts` — every own key must be one
+ * this contract knows, every required key must be present, and every value must
+ * be a plain data property on a plain object with a plain prototype — because the
+ * feedback half and the sending-domain identity half read their generated modules
+ * against the same bar, and three copies of it meant the next hardening would
+ * land in one of them.
  */
 function readExactDataObject(
 	input: unknown,
 	expectedKeys: readonly string[],
 	optionalKeys: readonly string[] = []
 ): Record<string, unknown> {
-	if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-		throw new TypeError('Invalid bundled send transport value');
-	}
-	let prototype: object | null;
-	let descriptors: Record<PropertyKey, PropertyDescriptor>;
-	try {
-		prototype = Object.getPrototypeOf(input);
-		descriptors = Object.getOwnPropertyDescriptors(input);
-	} catch {
-		throw new TypeError('Invalid bundled send transport value');
-	}
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new TypeError('Invalid bundled send transport value');
-	}
-	const keys = Reflect.ownKeys(descriptors);
-	if (
-		keys.length < expectedKeys.length ||
-		keys.some(
-			(key) =>
-				typeof key !== 'string' || !(expectedKeys.includes(key) || optionalKeys.includes(key))
-		)
-	) {
-		throw new TypeError('Invalid bundled send transport value');
-	}
-	const values: Record<string, unknown> = {};
-	for (const key of expectedKeys) {
-		const descriptor = descriptors[key];
-		if (!descriptor?.enumerable || !('value' in descriptor)) {
-			throw new TypeError('Invalid bundled send transport value');
-		}
-		values[key] = descriptor.value;
-	}
-	for (const key of optionalKeys) {
-		const descriptor = descriptors[key];
-		if (descriptor === undefined) continue;
-		if (!descriptor.enumerable || !('value' in descriptor)) {
-			throw new TypeError('Invalid bundled send transport value');
-		}
-		values[key] = descriptor.value;
-	}
-	return values;
+	return readExactHostedDataObject(
+		input,
+		expectedKeys,
+		optionalKeys,
+		'Invalid bundled send transport value'
+	);
 }
