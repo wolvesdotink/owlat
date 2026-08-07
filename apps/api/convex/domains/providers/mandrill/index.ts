@@ -28,6 +28,7 @@
 import { internal } from '../../../_generated/api';
 import { logError } from '../../../lib/runtimeLog';
 import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
+import { relayIdentityProvisioningIsSettled } from '../relayIdentityPersistence';
 import { addSenderDomain, checkSenderDomain } from './api';
 import { buildMandrillIdentity, describeMandrillIdentity } from './identity';
 import { loadMandrillRow, resolveDomainName, upsertMandrillIdentity } from './persistence';
@@ -119,24 +120,18 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	 *
 	 * The caller hands over the whole domain doc, so the name this table keys on
 	 * is read straight off it — no `resolveDomainName` round-trip per drained
-	 * domain, and no "the row vanished" branch to reason about. That shortcut
-	 * replaces the round-trip's READ, not its NORMALISATION: every row in
-	 * `sendingDomainRelayIdentities` is keyed on the lowercased name (see
-	 * `./persistence.ts`), and a `domains` row whose name is not already
-	 * lowercase — nothing in the schema forces it — would otherwise miss its own
-	 * identity here and be re-provisioned on every drain page.
+	 * domain, and no "the row vanished" branch to reason about.
 	 *
-	 * The existence read is SKIPPED for a caller asking `reprovision: true` (the
-	 * lifecycle's `→ verified` edge, which shipped unconditional and is the
-	 * operator's repair lever for an identity removed at the provider) — see
-	 * {@link EnsureRelayIdentityOptions}. Repeating is safe: `mandrillRelay.provision`
-	 * re-registers and `storeIdentity` upserts.
+	 * WHEN to schedule is not a fact about Mandrill. `reprovision`, the existence
+	 * read, and the lowercasing that read needs (nothing in the schema forces a
+	 * `domains` row's name lowercase, and every row in this table is keyed on the
+	 * lowercased one) are one rule about the SHARED row, so it is asked of
+	 * {@link relayIdentityProvisioningIsSettled} — where it is argued in full and
+	 * where the bundled plugin tier asks exactly the same question. Repeating is
+	 * safe: `mandrillRelay.provision` re-registers and `storeIdentity` upserts.
 	 */
 	async ensureRelayIdentity(ctx, domain, options) {
-		if (!options.reprovision) {
-			const organizationId = await getSingletonOrganizationId(ctx);
-			if (await loadMandrillRow(ctx, organizationId, domain.domain.toLowerCase())) return;
-		}
+		if (await relayIdentityProvisioningIsSettled(ctx, 'mandrill', domain.domain, options)) return;
 		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
 			domainId: domain._id,
 		});

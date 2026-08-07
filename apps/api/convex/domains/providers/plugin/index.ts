@@ -28,9 +28,8 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
 import { isFreshRelayProof, loadRelayIdentityForDomain } from '../relayIdentityProof';
-import { loadRelayIdentityRow } from '../relayIdentityPersistence';
+import { relayIdentityProvisioningIsSettled } from '../relayIdentityPersistence';
 import { PLUGIN_RELAY_PROOF_MAX_AGE_MS, readPluginProviderDetails } from './state';
 import type { HostedSendTransportDomainIdentityDefinition } from '../../../plugins/sendTransportDomainIdentityCatalog';
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
@@ -140,22 +139,17 @@ export function createHostedRelayIdentityProvider(
 		 * the mutation that lands a `→ verified` transition, and a provider outage
 		 * must not roll either back.
 		 *
-		 * The existence read is SKIPPED for a caller asking `reprovision: true` (the
-		 * lifecycle's `→ verified` edge, the operator's only repair lever for an
-		 * identity removed at the provider while our row survived). Repeating is safe:
-		 * the action re-registers and the mutation upserts.
+		 * WHEN to schedule is not this tier's judgement: `reprovision`, the existence
+		 * read and the lowercasing it needs are one rule about the shared row, stated
+		 * in {@link relayIdentityProvisioningIsSettled} and asked identically by
+		 * Mandrill. All that is left here is which action to schedule.
 		 */
 		async ensureRelayIdentity(
 			ctx: MutationCtx,
 			domain: Doc<'domains'>,
 			options: EnsureRelayIdentityOptions
 		): Promise<void> {
-			if (!options.reprovision) {
-				const organizationId = await getSingletonOrganizationId(ctx);
-				if (await loadRelayIdentityRow(ctx, organizationId, kind, domain.domain.toLowerCase())) {
-					return;
-				}
-			}
+			if (await relayIdentityProvisioningIsSettled(ctx, kind, domain.domain, options)) return;
 			await ctx.scheduler.runAfter(0, internal.domains.pluginRelay.provision, {
 				kind,
 				domain: domain.domain,

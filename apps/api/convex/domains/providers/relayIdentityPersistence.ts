@@ -26,6 +26,7 @@ import { CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION } from '../../lib/const
 import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
+import type { EnsureRelayIdentityOptions } from './relayIdentityTypes';
 
 /** One published record's stored verdict, exactly as the table holds it. */
 type StoredRecordVerdict = Doc<'sendingDomainRelayIdentities'>['spf'];
@@ -50,6 +51,47 @@ export async function loadRelayIdentityRow(
 			q.eq('organizationId', organizationId).eq('domain', domain).eq('providerKind', kind)
 		)
 		.first();
+}
+
+/**
+ * THE CONVERGENCE RULE for `ensureRelayIdentity`: has this (kind, domain)
+ * already got an identity, such that scheduling another provisioning call would
+ * be pure repetition?
+ *
+ * SHARED because it is a rule about the ROW, not about a provider, and both
+ * relay tiers that keep rows here were spelling it out identically. Neither half
+ * is cosmetic:
+ *
+ *  - the existence read is what makes the CATCH-UP DRAIN cheap and convergent.
+ *    It walks every verified domain on every page, so a domain that already has
+ *    a row must be done — otherwise the drain re-issues a provider call per
+ *    domain per page, forever.
+ *  - the LOWERCASING is what makes that read find the row. Every row in this
+ *    table is keyed on the lowercased name (see `upsertRelayIdentityRow`), and
+ *    nothing in the schema forces a `domains` row's own `domain` to be
+ *    lowercase — a mixed-case one would otherwise miss its own identity and be
+ *    re-provisioned on every drain.
+ *
+ * `reprovision: true` skips the read entirely: that is the lifecycle's
+ * `→ verified` edge, which shipped unconditional and is the operator's only
+ * repair lever for an identity removed at the provider while our row survived.
+ * Repeating is safe — the provisioning action re-registers and the mutation
+ * upserts.
+ *
+ * Stated here rather than once per adapter so that a revision to it (say, "also
+ * re-provision when the stored row is `failed`") cannot land in one tier's drain
+ * and leave the other's diverging, where the only symptoms are a hammered
+ * provider or an identity that never repairs.
+ */
+export async function relayIdentityProvisioningIsSettled(
+	ctx: MutationCtx,
+	kind: string,
+	domainName: string,
+	options: EnsureRelayIdentityOptions
+): Promise<boolean> {
+	if (options.reprovision) return false;
+	const organizationId = await getSingletonOrganizationId(ctx);
+	return (await loadRelayIdentityRow(ctx, organizationId, kind, domainName.toLowerCase())) !== null;
 }
 
 /** One observation, as the row records it. */
