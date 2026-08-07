@@ -66,10 +66,15 @@ rather than three unrelated demos.
      record A4 as met on this suite alone. The plugin's half is complete; the
      host's is not, because every `apps/web` surface resolves a kind through the
      core-only `coreSendProviderCatalogEntry` while the composed catalog is an
-     `apps/api` artifact. Closing it is a P1.2 follow-up (a composed-catalog view
-     for `apps/web`), and until it lands the gap is pinned at the surface that
-     owes it, in
+     `apps/api` artifact. Closing it needs a card of its own — a composed-catalog
+     view for `apps/web`, in the spirit of P1.2, which has already shipped — and
+     until it lands the gap is pinned at the surface that owes it, in
      `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`.
+     The report the plan owner reads, in the format
+     `.pipeline/P0.4_RESIDUAL_KIND_LITERALS.md` established, is
+     `.pipeline/P3.3_CREDENTIALS_UI_GAP.md`: the one asymmetry, the four call
+     sites it blocks, the owning card, and the "A4 is not met until this lands"
+     line for the wave gate.
   2. _Return-path probes._ Superseded rather than missing: P3.1 made
      `supportsCustomReturnPath: 'no'` the only value this tier may declare, so a
      plugin kind is unprobeable by construction and the obligation is discharged

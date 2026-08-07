@@ -28,6 +28,13 @@
  *
  * WHEN IT GOES RED, DELETE IT. This file has no value except as the receipt for
  * an obligation the Wave-3 gate must not record as met.
+ *
+ * THE PLAN-OWNER REPORT is `.pipeline/P3.3_CREDENTIALS_UI_GAP.md` (the format
+ * `.pipeline/P0.4_RESIDUAL_KIND_LITERALS.md` established): the asymmetry, the
+ * four blocked call sites, the named owning card, and the line the wave gate
+ * needs — A4 is not met until that card lands. A green suite here is what the
+ * absence of the capability looks like, so the gate must read that file rather
+ * than this file's exit code.
  */
 
 import { describe, expect, it } from 'vitest';
