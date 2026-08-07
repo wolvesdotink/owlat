@@ -306,6 +306,7 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'storage.get',
 	'storage.list',
 	'storage.set',
+	'transport.feedback',
 	'transport.send',
 	'webhook.publish',
 	'worker.enqueue',
