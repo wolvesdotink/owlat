@@ -20,9 +20,11 @@
  * fields and assert the module refuses to load rather than shipping a plugin
  * whose sends are attributed to the own arm.
  *
- * The file also covers the parity fields' OWN composition guard — the
- * `PLUGIN_` namespace an `instanceEnvVars` name must live in, which is the one
- * plugin declaration whose VALUE the host reads and hands to third-party code.
+ * The file also covers the parity fields' OWN composition guard — the `PLUGIN_`
+ * namespace an `instanceEnvVars` name must live in, which is the one plugin
+ * declaration whose VALUE the host reads and hands to third-party code, and HOW
+ * MANY such names an entry may carry, which is a per-send cost the artifact pays
+ * rather than a rule the manifest merely promised.
  */
 
 import { existsSync } from 'node:fs';
@@ -124,6 +126,39 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		).rejects.toThrow(/MTA_API_KEY[\s\S]*PLUGIN_ namespace/);
 	});
 
+	it('refuses an artifact that would make every send attempt read thousands of variables', async () => {
+		// The namespace bound above and this one are the same argument: the kit's
+		// rule is only a rule where it is enforced, and the ARTIFACT is what runs.
+		// The cost here is per-send rather than security — `resolveHostedConfig`
+		// reads every `instanceEnvVars` entry on each attempt, and again on each
+		// retry — which is exactly why a bound that only manifest validation applies
+		// is not a bound at all.
+		const many = Object.freeze(
+			Array.from({ length: 5_000 }, (_, index) => `PLUGIN_MAIL_PACK_V${index}`)
+		);
+
+		await expect(composeCatalogWith([entry({ instanceEnvVars: many })])).rejects.toThrow(
+			/declares 5000 instanceEnvVars[\s\S]*every send attempt/
+		);
+	});
+
+	it('refuses a credential FORM past the same bound', async () => {
+		const many = Object.freeze(
+			Array.from({ length: 13 }, (_, index) =>
+				Object.freeze({
+					kind: 'string',
+					key: `field${index}`,
+					label: `Field ${index}`,
+					envVar: `PLUGIN_MAIL_PACK_V${index}`,
+				})
+			)
+		);
+
+		await expect(composeCatalogWith([entry({ credentialFields: many })])).rejects.toThrow(
+			/declares 13 credentialFields/
+		);
+	});
+
 	it('ADMITS the dedup claim, which the module half of the promise now backs', async () => {
 		// Until plugin-tier parity this was refused outright, because the tier had no
 		// per-send extras contract and the key could never reach the provider. It has
@@ -153,6 +188,25 @@ describe('composing the catalog with a bundled plugin transport', () => {
 			entry({
 				kind: 'plugin.mail-pack.borrower',
 				instanceEnvVars: Object.freeze(['MTA_API_KEY']),
+			}),
+			entry({
+				kind: 'plugin.mail-pack.greedy',
+				instanceEnvVars: Object.freeze(
+					Array.from({ length: 13 }, (_, index) => `PLUGIN_MAIL_PACK_V${index}`)
+				),
+			}),
+			entry({
+				kind: 'plugin.mail-pack.verbose',
+				credentialFields: Object.freeze(
+					Array.from({ length: 13 }, (_, index) =>
+						Object.freeze({
+							kind: 'string',
+							key: `field${index}`,
+							label: `Field ${index}`,
+							envVar: `PLUGIN_MAIL_PACK_V${index}`,
+						})
+					)
+				),
 			}),
 		]) {
 			messages.push(

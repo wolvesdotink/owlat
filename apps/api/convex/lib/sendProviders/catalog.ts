@@ -1,6 +1,11 @@
 /** Isolate-safe catalog for built-in and statically bundled send transports. */
 
-import { isPluginSendTransportEnvVar, type PluginId } from '@owlat/plugin-kit';
+import {
+	PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
+	isPluginSendTransportEnvVar,
+	type PluginId,
+} from '@owlat/plugin-kit';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	acceptanceSemanticsOf,
@@ -165,7 +170,8 @@ function assertPluginDispatchSemanticsAreGeneral(
 }
 
 /**
- * THE CONFIGURATION NAMESPACE, RE-ASSERTED (the seams plan's P3.1).
+ * THE CONFIGURATION CONTRACT, RE-ASSERTED (the seams plan's P3.1) — the namespace
+ * a declared variable lives in, and how many of them there may be.
  *
  * `instanceEnvVars` is the one plugin declaration whose VALUES the host reads and
  * hands to third-party code, which is why the kit fences the names to the
@@ -177,25 +183,55 @@ function assertPluginDispatchSemanticsAreGeneral(
  * validator ever saw. An entry naming `MTA_API_KEY` would otherwise be handed
  * this deployment's own MTA credential.
  *
- * The predicate is the kit's own, so the two enforcements cannot drift apart.
- * `getPluginTransportEnv` fences the same namespace a third time at the read
- * itself; that one is the backstop for a caller, this one is the backstop for an
- * artifact, and a deployment mistake must stop the deployment.
+ * THE COUNT IS RE-ASSERTED FOR THE SAME REASON AND A DIFFERENT COST. The kit
+ * bounds `instanceEnvVars` because `resolveHostedConfig` reads every one of them
+ * on EVERY SEND ATTEMPT, and again on every retry: an entry listing thousands
+ * turns each attempt into that many environment reads before a byte goes on the
+ * wire. A bound that only manifest validation enforces is not a bound on the
+ * artifact, and the artifact is where the per-send cost is actually paid.
+ *
+ * The predicates and the bounds are the kit's own, so the two enforcements cannot
+ * drift apart. `getPluginTransportEnv` fences the same namespace a third time at
+ * the read itself; that one is the backstop for a caller, this one is the
+ * backstop for an artifact, and a deployment mistake must stop the deployment.
  *
  * THE CREDENTIAL FORM IS CHECKED TOO. A descriptor's `envVar` never gets read by
  * the host, but it is what a setup surface writes an operator's input INTO, so an
  * artifact whose form named `MTA_API_KEY` would offer to overwrite this
  * deployment's own credential from a plugin's panel.
+ *
+ * `optionalEnvVars` IS DELIBERATELY UNCHECKED, and a reader will ask why: no value
+ * of it is ever handed to plugin code or written by a form. The names the host
+ * resolves are `instanceEnvVars` — which the codegen composes from the required
+ * AND optional lists — so an optional variable that matters is already covered
+ * above, and one that is not in `instanceEnvVars` is a string nothing reads.
  */
-function assertPluginInstanceEnvVarsAreNamespaced(
+function assertPluginConfigurationIsWithinContract(
 	entries: readonly GeneratedSendTransportCatalogEntry[]
 ): void {
 	for (const entry of entries) {
+		const instanceEnvVars = entry.instanceEnvVars ?? [];
+		const credentialFields = entry.credentialFields ?? [];
+		assertBounded(
+			entry.kind,
+			'instanceEnvVars',
+			instanceEnvVars.length,
+			PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
+			'PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS in packages/plugin-kit/src/sendTransport.ts'
+		);
+		assertBounded(
+			entry.kind,
+			'credentialFields',
+			credentialFields.length,
+			PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+			'PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS in ' +
+				'packages/plugin-kit/src/sendTransportCredentials.ts'
+		);
 		const declared = [
-			...(entry.instanceEnvVars ?? []),
+			...instanceEnvVars,
 			// `credentialFieldEnvVars`, not `field.envVar`: a composite descriptor
 			// owns three names, and only the shared accessor knows that.
-			...(entry.credentialFields ?? []).flatMap((field) => credentialFieldEnvVars(field)),
+			...credentialFields.flatMap((field) => credentialFieldEnvVars(field)),
 		];
 		for (const name of declared) {
 			if (isPluginSendTransportEnvVar(name)) continue;
@@ -209,8 +245,23 @@ function assertPluginInstanceEnvVarsAreNamespaced(
 	}
 }
 
+function assertBounded(
+	kind: string,
+	field: string,
+	length: number,
+	limit: number,
+	pointer: string
+): void {
+	if (length <= limit) return;
+	throw new TypeError(
+		`Bundled plugin send transport '${kind}' declares ${length} ${field}, past the ${limit} a ` +
+			'bundled transport may carry — the host resolves them on every send attempt. See ' +
+			`${pointer}.`
+	);
+}
+
 assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
-assertPluginInstanceEnvVarsAreNamespaced(pluginCatalog);
+assertPluginConfigurationIsWithinContract(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([
 	...CORE_SEND_PROVIDER_CATALOG_ENTRIES,
