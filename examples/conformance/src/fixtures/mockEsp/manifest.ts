@@ -109,13 +109,16 @@ export const mockEspPlugin = definePlugin({
 						kind: 'secret',
 						key: 'token',
 						label: 'API token',
-						// THE SEMICOLON IS DELIBERATE. Real provider copy contains them, and
-						// the generated catalog carries this string verbatim — so the
-						// package's artifact reader (`src/generatedArtifact.ts`) is exercised
-						// against a literal it must not truncate. A reader that cut the
-						// source at the first `;` would take the whole parity suite down
-						// with an opaque `SyntaxError`; this keeps that a caught mistake.
-						description: `Issued in the Mock ESP console; written to ${MOCK_ESP_TOKEN_ENV}.`,
+						// EVERY AWKWARD CHARACTER AND WORD HERE IS DELIBERATE, because the
+						// generated catalog carries this string verbatim and the package's
+						// artifact reader (`src/generatedArtifact.ts`) parses that catalog as
+						// text before evaluating it. The semicolon is one a reader must not
+						// truncate at (a reader that did took the whole parity suite down
+						// with an opaque `SyntaxError`); `import` and `require` are the words
+						// its data-only guard scans for, which it must not find inside a
+						// string value. Real provider copy contains all three, and a fixture
+						// that avoided them would leave the reader's hardest input untested.
+						description: `Issued in the Mock ESP console; you import it there, and we require it before any send. Written to ${MOCK_ESP_TOKEN_ENV}.`,
 						required: true,
 						envVar: MOCK_ESP_TOKEN_ENV,
 					},
@@ -123,6 +126,11 @@ export const mockEspPlugin = definePlugin({
 						kind: 'select',
 						key: 'region',
 						label: 'Sending region',
+						// The other half of the reader's text handling: ` as const` is the
+						// one piece of TypeScript it strips from the artifact, and stripping
+						// it from inside a string value would silently rewrite an author's
+						// prose into something the bundle never declared.
+						description: 'Fixed per instance; the host reads it as const-like configuration.',
 						options: [
 							{ value: 'eu', label: 'Europe' },
 							{ value: 'us', label: 'United States' },

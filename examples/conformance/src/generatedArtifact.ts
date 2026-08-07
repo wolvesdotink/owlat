@@ -17,6 +17,17 @@
  * declaration last and terminates it — so a semicolon inside a string value is
  * just a character.
  *
+ * NOTHING ELSE READS INSIDE A STRING EITHER, and that is what `maskStrings`
+ * below is for. The catalog carries a plugin author's PROSE verbatim (a
+ * credential field's `label` and `description` are rendered through
+ * `JSON.stringify`), so a description reading "the token you import from the
+ * console" or "we require an API key" would otherwise trip the data-only guard
+ * with a message naming the wrong cause — the same class of failure as the
+ * truncation above — and a value containing " as const" would be silently
+ * rewritten. Both the guard and the `as const` strip therefore run over a MASKED
+ * view in which every string's content is filler of the same length, so offsets
+ * still line up with the real source.
+ *
  * THE DATA-ONLY GUARD IS THE POINT OF THE FUNCTION, not a precaution around it.
  * An artifact that grew an executable half (an import, a `require`, an arrow) is
  * one that can do work, and every caller here is asking "what data does this
@@ -24,6 +35,14 @@
  * evaluate half of something. The module registries, which are import statements
  * by construction, are therefore not readable this way and are not read this way.
  */
+
+/** Every string literal, blanked to same-length filler so offsets are preserved. */
+function maskStrings(source: string): string {
+	return source.replace(
+		/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g,
+		(literal) => `"${'x'.repeat(literal.length - 2)}"`
+	);
+}
 
 /**
  * @param source the whole rendered artifact, header comment included
@@ -37,11 +56,16 @@ export function evaluateGeneratedArtifact(source: string, constName: string): un
 	const literal = source
 		.slice(at + marker.length)
 		.trim()
-		.replace(/;\s*$/, '')
-		// The only TypeScript in the artifact, and only ever on a literal.
-		.replace(/\s+as const\b/g, '');
-	if (/\bimport\b|\brequire\b|=>/.test(literal)) {
+		.replace(/;\s*$/, '');
+	const masked = maskStrings(literal);
+	if (/\bimport\b|\brequire\b|=>/.test(masked)) {
 		throw new Error(`${constName} is no longer a data-only artifact`);
 	}
-	return new Function(`return ${literal};`)() as unknown;
+	// The only TypeScript in the artifact, and only ever on a literal. Cut from the
+	// end so each removal leaves the earlier offsets intact.
+	let code = literal;
+	for (const match of [...masked.matchAll(/\s+as const\b/g)].reverse()) {
+		code = code.slice(0, match.index) + code.slice(match.index + match[0].length);
+	}
+	return new Function(`return ${code};`)() as unknown;
 }
