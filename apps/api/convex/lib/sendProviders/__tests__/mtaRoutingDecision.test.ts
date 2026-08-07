@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailErrorCode } from '../types';
-import { MTA_DEFER_REASON_ORIGIN, mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
+import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
+import { MTA_DEFER_REASON_ORIGIN } from '@owlat/mta-protocol/routingDecision';
 import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import { resolveSendTransport } from '../transports';
 

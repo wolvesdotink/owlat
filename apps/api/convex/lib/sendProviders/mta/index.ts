@@ -16,6 +16,7 @@ import {
 } from '@owlat/shared';
 import {
 	MTA_RELAY_ALLOWED_REASON,
+	isMtaRelayDecisionReason,
 	mtaDeferReasonOrigin,
 	type MtaRoutingDecision,
 } from '@owlat/mta-protocol/routingDecision';
@@ -42,19 +43,6 @@ const MTA_RETRY_DELAYS = [1000, 5000] as const;
 
 const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
-
-/**
- * The wire contract lives in `@owlat/mta-protocol` (D7) — the decision union,
- * the relay reasons, and the defer-reason/origin table the MTA's own handler
- * now types its answers against. Re-exported here because this module is the
- * seam every Convex caller reaches the MTA through, so `from '../mta'` keeps
- * meaning what it always did; the DECLARATION is the package's, and the mirror
- * that used to sit here is gone.
- */
-export {
-	MTA_DEFER_REASON_ORIGIN,
-	type MtaRoutingDecision,
-} from '@owlat/mta-protocol/routingDecision';
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -124,13 +112,16 @@ export async function resolveMtaRoutingDecision(
 				};
 			}
 		}
+		// The accept-list is the package's constant, never a mirror of it: a relay
+		// reason the emitter may legally send but this reader does not recognise
+		// falls through to the unrecognised-answer return below and becomes a
+		// 60-second defer that `delivery/deferralOutcome.ts` never counts — a
+		// failover silently turned into a wait. The defer half is derived the same
+		// way, one line down.
 		if (
 			result['decision'] === 'relay' &&
 			Object.keys(result).length === 2 &&
-			(result['reason'] === 'provider_breaker' ||
-				result['reason'] === 'provider_probe_limit' ||
-				result['reason'] === 'provider_hysteresis' ||
-				result['reason'] === 'warmup_overflow')
+			isMtaRelayDecisionReason(result['reason'])
 		) {
 			return { kind: 'relay', reason: result['reason'] };
 		}
