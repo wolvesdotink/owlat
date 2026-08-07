@@ -18,7 +18,11 @@ import { isPluginContributionKind, type PluginContributions } from './contributi
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
-import { validateSendTransportContributions } from './sendTransportManifest';
+import {
+	validateSendTransportContributions,
+	type SendTransportConfigEnvVar,
+	type SendTransportContributionFacts,
+} from './sendTransportManifest';
 import type { PluginSettingsSchema } from './settingsSchema';
 import { validateSettingsSchema } from './settingsSchemaManifest';
 import { isSafeStaticExportPath } from './staticExportPath';
@@ -156,15 +160,22 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		capabilityItems !== undefined &&
 		!issues.some((issue) => issue.path.startsWith('$.capabilities'));
 	const contributions = readDataProperty(manifest, 'contributes', issues);
-	const webhookSecretEnvVars =
-		contributions.kind === 'value' ? validateContributions(contributions.value, issues) : [];
+	const transportFacts =
+		contributions.kind === 'value'
+			? validateContributions(contributions.value, issues)
+			: { webhookSecretEnvVars: [], configEnvVars: [] };
 	const flag = readDataProperty(manifest, 'flag', issues);
 	const flagIssueCount = issues.length;
 	const flagRequiredEnvVars =
 		flag.kind === 'value' ? validateFlag(flag.value, issues) : new Set<string>();
 	const hasValidFlag =
 		flag.kind === 'value' && isRecord(flag.value) && issues.length === flagIssueCount;
-	requireWebhookSecretsAreFlagRequirements(webhookSecretEnvVars, flagRequiredEnvVars, issues);
+	requireWebhookSecretsAreFlagRequirements(
+		transportFacts.webhookSecretEnvVars,
+		flagRequiredEnvVars,
+		issues
+	);
+	refuseFlagVariablesAsTransportConfig(transportFacts.configEnvVars, flagRequiredEnvVars, issues);
 	if (declaresPluginStorage(capabilityItems) && !hasValidFlag) {
 		if (flag.kind === 'missing') {
 			addManifestIssue(
@@ -309,17 +320,23 @@ function declaresContributions(
 }
 
 /**
- * Validate every declared bucket, and report back the feedback-webhook signing
- * secrets found on the way — the one contribution fact whose rule lives outside
- * `$.contributes` (see `requireWebhookSecretsAreFlagRequirements`).
+ * Validate every declared bucket, and report back the send-transport facts whose
+ * rules live outside `$.contributes` — the feedback-webhook signing secrets and
+ * the transports' own configuration variables (see
+ * `requireWebhookSecretsAreFlagRequirements` and
+ * `refuseFlagVariablesAsTransportConfig`).
  */
-function validateContributions(value: unknown, issues: PluginManifestIssue[]): readonly string[] {
-	if (value === undefined) return [];
+function validateContributions(
+	value: unknown,
+	issues: PluginManifestIssue[]
+): SendTransportContributionFacts {
+	const none: SendTransportContributionFacts = { webhookSecretEnvVars: [], configEnvVars: [] };
+	if (value === undefined) return none;
 	if (!isRecord(value)) {
 		addManifestIssue(issues, 'invalid_type', '$.contributes', 'must be a plain object');
-		return [];
+		return none;
 	}
-	let webhookSecretEnvVars: readonly string[] = [];
+	let transportFacts: SendTransportContributionFacts = none;
 	for (const key of Reflect.ownKeys(value)) {
 		if (typeof key !== 'string') {
 			addManifestIssue(
@@ -339,7 +356,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): r
 		if (contribution.kind === 'value') {
 			const items = validateDescriptorSafeArray(contribution.value, path, issues);
 			if (key === 'sendTransports' && items) {
-				webhookSecretEnvVars = validateSendTransportContributions(items, issues);
+				transportFacts = validateSendTransportContributions(items, issues);
 			}
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
@@ -359,7 +376,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): r
 			if (key === 'settingsPanels' && items) validateSettingsPanelContributions(items, issues);
 		}
 	}
-	return webhookSecretEnvVars;
+	return transportFacts;
 }
 
 /**
@@ -423,6 +440,42 @@ function requireWebhookSecretsAreFlagRequirements(
 			'missing',
 			'$.flag.requiredEnvVars',
 			`must list ${secretEnvVar}, the feedback webhook's signing secret — without it every delivery is refused and the plugin should not be enableable`
+		);
+	}
+}
+
+/**
+ * A send transport's own configuration variable may NOT be one of the plugin's
+ * flag requirements — the mirror image of the rule above, and the reason both
+ * facts leave the contribution validator together.
+ *
+ * "Set the token to enable the pack" is a natural thing to write, and the two
+ * lists accept the same names, so nothing about the manifest looks wrong. What
+ * breaks is downstream and permanent: the host composes a transport's presence
+ * gate as the UNION of the two lists, but only the transport's own variables are
+ * instance-scoped. A name in both is therefore read under the `__<INSTANCEKEY>`
+ * suffix for a named instance, so `plugin.acme.x#eu` counts as configured on
+ * `PLUGIN_ACME_TOKEN__EU` alone while the deployment-wide variable that gates the
+ * whole plugin is never checked. The transport is then listed, resolved, routed
+ * to — and refused by the authorization path on every single send, because the
+ * plugin is off. Not stale for a moment: wrong until someone edits the manifest.
+ *
+ * The two scopes are the whole point, so the fix is to name them differently
+ * (`PLUGIN_ACME_ENABLED` for the pack, `PLUGIN_ACME_TOKEN` for the transport) and
+ * this says so where the author can still do it.
+ */
+function refuseFlagVariablesAsTransportConfig(
+	configEnvVars: readonly SendTransportConfigEnvVar[],
+	flagRequiredEnvVars: ReadonlySet<string>,
+	issues: PluginManifestIssue[]
+): void {
+	for (const declared of configEnvVars) {
+		if (!flagRequiredEnvVars.has(declared.name)) continue;
+		addManifestIssue(
+			issues,
+			'duplicate',
+			declared.path,
+			`must not name ${declared.name}, which $.flag.requiredEnvVars already claims — a flag variable gates the whole plugin and is read unsuffixed, while a transport's own variable is read per instance as ${declared.name}__<INSTANCEKEY>`
 		);
 	}
 }

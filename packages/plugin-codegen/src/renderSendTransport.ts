@@ -78,11 +78,22 @@ interface RenderedSendTransport {
 function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly RenderedSendTransport[] {
 	return plugins.flatMap((plugin) =>
 		(plugin.manifest.contributes?.sendTransports ?? []).map((transport) => {
-			const declaredRequired = transport.requiredEnvVars ?? [];
-			const isInstanceScoped = declaredRequired.length > 0;
-			const declaredOptional = isInstanceScoped ? (transport.optionalEnvVars ?? []) : [];
-			const instanceEnvVars = isInstanceScoped ? [...declaredRequired, ...declaredOptional] : [];
 			const flagEnvVars = plugin.manifest.flag?.requiredEnvVars ?? [];
+			// A FLAG VARIABLE IS NEVER THIS TRANSPORT'S, whichever list it appears in.
+			// Manifest validation refuses the overlap outright, so a manifest this
+			// codegen sees has none — but the artifact is what runs, and an entry that
+			// carried a flag variable in `instanceEnvVars` would have `transports.ts`
+			// demand a `__<INSTANCEKEY>` copy of a deployment-wide switch and grade a
+			// named instance configured without ever checking the unsuffixed one. The
+			// subtraction happens BEFORE `isInstanceScoped`, so a transport whose whole
+			// "configuration" was the plugin's flag is correctly left with none.
+			const isOwnEnvVar = (name: string): boolean => !flagEnvVars.includes(name);
+			const declaredRequired = (transport.requiredEnvVars ?? []).filter(isOwnEnvVar);
+			const isInstanceScoped = declaredRequired.length > 0;
+			const declaredOptional = isInstanceScoped
+				? (transport.optionalEnvVars ?? []).filter(isOwnEnvVar)
+				: [];
+			const instanceEnvVars = isInstanceScoped ? [...declaredRequired, ...declaredOptional] : [];
 			return {
 				packageName: parsePluginPackageName(plugin.packageName),
 				pluginId: parsePluginId(plugin.manifest.id),
@@ -91,13 +102,11 @@ function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly Rendered
 				label: transport.label,
 				exportPath: transport.module.exportPath,
 				retryDelays: transport.retryDelays,
-				// Flag variables FIRST and deduplicated: the order is what a setup
-				// surface lists, and "enable the plugin, then give the transport its
-				// credential" is the order an operator does it in.
-				requiredEnvVars: [
-					...flagEnvVars,
-					...declaredRequired.filter((name) => !flagEnvVars.includes(name)),
-				],
+				// Flag variables FIRST: the order is what a setup surface lists, and
+				// "enable the plugin, then give the transport its credential" is the
+				// order an operator does it in. No dedup needed — `declaredRequired`
+				// already had them subtracted, which is the same thing said once.
+				requiredEnvVars: [...flagEnvVars, ...declaredRequired],
 				optionalEnvVars: declaredOptional,
 				instanceEnvVars,
 				// The FORM, carried through untouched: every descriptor's `envVar` was
