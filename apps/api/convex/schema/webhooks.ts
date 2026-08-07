@@ -87,6 +87,33 @@ export const webhookTables = {
 		// "last SES event received" line without scanning every source's rows.
 		.index('by_source_and_received_at', ['source', 'receivedAt']),
 
+	// Replay defense for the bundled-plugin feedback route
+	// (`/webhooks/plugin/<pluginId>`, the seams plan's D6/P2.2). One row per
+	// ACCEPTED delivery, named by a digest of the caller's signature — an HMAC
+	// over the signed timestamp and the exact body under a secret only the sender
+	// holds, so two requests share a digest exactly when they are the same signed
+	// bytes and nobody without the secret can mint a new one.
+	//
+	// The signature contract's timestamp tolerance is what makes this table small
+	// and complete: a captured request stops verifying once it falls outside the
+	// tolerance, so a claim only has to outlive that window (`expiresAt`), and the
+	// claim mutation ages expired rows out in bounded batches rather than through
+	// a cron. A claim is released again when the delivery does not complete, so a
+	// provider's redelivery after our failure is accepted rather than mistaken for
+	// an attack.
+	pluginWebhookDeliveries: defineTable({
+		pluginId: v.string(),
+		// Namespaced `plugin.<pluginId>.<localId>` transport kind, for attribution.
+		transportKind: v.string(),
+		// SHA-256 hex of the contract-domain-separated signature; never the
+		// signature itself, which is a live MAC under a shared secret.
+		deliveryDigest: v.string(),
+		claimedAt: v.number(),
+		expiresAt: v.number(),
+	})
+		.index('by_delivery_digest', ['deliveryDigest'])
+		.index('by_expires_at', ['expiresAt']),
+
 	// Transactional idempotency receipts for MTA campaign complaint alerts.
 	// The producer can retry after a lost HTTP response for up to its durable
 	// marker horizon; retaining the immutable alert projection lets the API

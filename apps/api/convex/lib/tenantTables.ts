@@ -309,6 +309,14 @@ export const NON_TENANT_TABLES = [
 	// infrastructure, not this org's contact business data, so it is out of the
 	// tenant wipe like `keyVault` / `recipientKeys`.
 	'keyRotations',
+	// Replay claims for the bundled-plugin feedback route (D6/P2.2). One row per
+	// accepted delivery, holding a HASH of the caller's signature and nothing
+	// else: no address, no message id, no payload. It is wire-protocol
+	// bookkeeping about requests the deployment received, it self-expires within
+	// the signature contract's tolerance (minutes), and wiping it early would only
+	// re-open a replay window — so it is out of the tenant wipe like the other
+	// protocol/telemetry tables.
+	'pluginWebhookDeliveries',
 ] as const satisfies readonly TableNames[];
 
 /**
