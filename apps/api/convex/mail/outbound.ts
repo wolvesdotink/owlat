@@ -11,7 +11,8 @@
  * 6. Deletes the draft row
  *
  * MTA delivery webhooks (sent/bounced) flow back to /webhooks/mta and
- * update mailMessages.outbound.state — see mtaWebhook.ts P2 extension.
+ * update mailMessages.outbound.state — see webhooks/adapters/mta.ts and the
+ * `pb-` branch of webhooks/dispatcher.ts.
  */
 
 import { v } from 'convex/values';

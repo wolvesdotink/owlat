@@ -1,7 +1,7 @@
 /**
  * Inbound channel adapter registry.
  *
- * Webhook handlers (mtaWebhook, resendWebhook, future Postmark/Mailgun/IMAP)
+ * Webhook adapters (the MTA's, and future Postmark/Mailgun/IMAP sources)
  * delegate payload parsing to a source-keyed adapter. Each adapter normalizes
  * the vendor-specific raw payload into a canonical `InboundEmailMessage` shape
  * so the persistence layer stays source-agnostic.
@@ -67,7 +67,8 @@ export interface InboundChannelAdapter {
 
 /**
  * MTA adapter — owlat-mta service forwards inbound mail via the
- * `inbound.received` event shape used by `mtaWebhook.ts`.
+ * `inbound.received` event shape parsed by the backend's
+ * `webhooks/adapters/mta.ts`.
  */
 export class MtaInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'mta';
