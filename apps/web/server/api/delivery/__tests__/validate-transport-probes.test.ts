@@ -12,11 +12,9 @@
  * Between the two, nothing asserted that they agreed — and both disagreements
  * are silent:
  *
- *   probe declared, endpoint doesn't take it   the transport editor draws a
- *                                              "Test connection" button (it
- *                                              derives from `setupProbe`) that
- *                                              answers 400 for every operator
- *                                              who presses it
+ *   probe declared, endpoint doesn't take it   every request the editor's "Test
+ *                                              connection" button can produce
+ *                                              answers 400
  *   endpoint takes it, no probe declared       a live check nothing offers, and
  *                                              a validator whose failure modes
  *                                              no surface can report
@@ -26,6 +24,27 @@
  * rewrite the endpoint's per-kind switch — that rewrite has no card in this plan
  * and is recorded as such in `scripts/provider-identity-allowlist.txt`. It makes
  * the switch answerable to the declaration.
+ *
+ * THE BROWSER'S HALF IS ONE FILE OVER, and it is not the same question. The
+ * button is not drawn off `setupProbe` alone: `TransportEditor.vue` reads
+ * `canValidateLive`, which is `setupProbe.validator !== undefined && validator in
+ * PROBE_REQUEST_BODIES` — a module-private per-probe body table in
+ * `useRelayCredentialDraft.ts`, so a declared probe with no builder there hides
+ * the button instead of shipping a broken one. `apps/web/app/composables/
+ * __tests__/relayCredentialDraft.test.ts` ("offers a live check for %s only when
+ * its entry declares a setup probe") is what pins that table to the catalog in
+ * both directions; this file pins the server's. Neither can stand for the other:
+ * a sixth kind needs an entry in BOTH tables, and each suite names the one it
+ * owns.
+ *
+ * IT ALSO CARRIES THE ENDPOINT'S ONLY GATE TEST, which is more than the join.
+ * `validate-transport.post.ts` had no suite at all before this one, and mocking
+ * `requireOrgAdmin` to keep the probes off the network makes DELETING the gate
+ * invisible here — on an endpoint that opens a caller-supplied SMTP `host:port`
+ * and spends a caller-supplied Resend key. So two assertions below are about
+ * authorisation rather than about probes, and they are the only ones anywhere:
+ * until the endpoint gets a suite of its own, they do not travel with the join if
+ * it ever moves.
  */
 
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared';
@@ -191,12 +210,18 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 			// the deliberate refusal). Matching only the status would keep this green
 			// if a later per-kind branch rejected the same body for its own reasons —
 			// i.e. exactly when the endpoint HAD grown a probe the catalog denies.
+			//
+			// A ROSTER-INDEPENDENT fragment, though. The copy names which kinds CAN
+			// be checked, so matching the whole sentence would fail every case here
+			// the day a sixth kind gains a probe and the wording is updated — noise
+			// on exactly the change this suite exists to guide. This much still
+			// cannot be produced by the other three 400s ('provider is required.',
+			// 'smtp.host, smtp.username, and smtp.password are required.',
+			// 'smtp.port must be a number.').
 			body = { provider: kind, apiKey: 'irrelevant' };
 			await expect(callRoute()).rejects.toMatchObject({
 				statusCode: 400,
-				message: expect.stringContaining(
-					'Only Resend and SMTP relays can be tested before applying'
-				),
+				message: expect.stringContaining('can be tested before applying'),
 			});
 			expect(probeCalls).toEqual([]);
 		}
