@@ -20,8 +20,12 @@ export const USAGE = `owlat plugins — manage bundled Owlat plugins
 Usage: owlat plugins <command> [options]
 
 Commands:
-  create <plugin-id> [--name <package>] [--dir <path>] [--dry-run]
+  create <plugin-id> [--name <package>] [--dir <path>] [--template <name>]
+         [--dry-run]
       Scaffold a new plugin package (never installs or executes code).
+      --template minimal (default) emits an empty manifest; --template
+      send-provider emits a complete send-transport bundle: send module,
+      feedback webhook, sending-domain identity, capabilities and test stubs.
   add <package> [--dry-run]
       Add a bundled plugin package to plugins.config.ts and preview its
       capability diff. --dry-run previews without writing.
@@ -46,13 +50,17 @@ export async function dispatchFinite(
 ): Promise<void> {
 	switch (command) {
 		case 'create': {
-			const args = parseArgs(argv, { booleans: ['dry-run'], values: ['name', 'dir'] });
+			const args = parseArgs(argv, {
+				booleans: ['dry-run'],
+				values: ['name', 'dir', 'template'],
+			});
 			await runCreate(
 				context.workspaceRoot,
 				{
 					idInput: requireSinglePositional(args, 'plugin id'),
 					name: args.values.get('name'),
 					dir: args.values.get('dir'),
+					template: args.values.get('template'),
 					dryRun: args.booleans.has('dry-run'),
 				},
 				context.io

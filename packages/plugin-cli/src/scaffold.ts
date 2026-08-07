@@ -1,31 +1,88 @@
 import { relative } from 'node:path';
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import { PluginCliError } from './errors';
 import { toPosix } from './paths';
+import {
+	SEND_PROVIDER_MODULE_EXPORTS,
+	sendProviderFiles,
+	sendProviderNames,
+} from './scaffoldSendProvider';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
 
 /**
+ * The templates `create` can emit.
+ *
+ *  - `minimal`       an empty manifest declaring nothing. The default, because
+ *                    most plugins contribute something other than a transport
+ *                    and every bucket is one `contributes` key away.
+ *  - `send-provider` a complete send-transport bundle (the seams plan's D4/P3.4):
+ *                    send module, feedback webhook, sending-domain identity,
+ *                    capability declarations, credential form and test stubs.
+ *                    Emitted whole rather than in pieces because the halves are
+ *                    joined — a webhook without its signature contract, or an
+ *                    identity without a required variable, is refused at manifest
+ *                    validation, so a partial skeleton would not compose.
+ */
+export const SCAFFOLD_TEMPLATES = ['minimal', 'send-provider'] as const;
+
+export type ScaffoldTemplate = (typeof SCAFFOLD_TEMPLATES)[number];
+
+export const DEFAULT_SCAFFOLD_TEMPLATE: ScaffoldTemplate = 'minimal';
+
+/** Narrow a `--template` argument, naming the accepted set on a miss. */
+export function parseScaffoldTemplate(input: string): ScaffoldTemplate {
+	if ((SCAFFOLD_TEMPLATES as readonly string[]).includes(input)) return input as ScaffoldTemplate;
+	throw new PluginCliError(`Unknown template: ${input}`, [
+		`Run one of: ${SCAFFOLD_TEMPLATES.join(', ')}`,
+	]);
+}
+
+/**
  * Build the deterministic file set for a new plugin package. Content is a pure
- * function of the plugin id, package name, and the target directory's position
- * within the workspace (which fixes the relative paths to the shared tsconfig,
- * lint config, and `@owlat/plugin-kit` source) — no timestamps or randomness —
- * so re-running `create` on an unchanged input yields byte-identical files.
+ * function of the plugin id, package name, chosen template, and the target
+ * directory's position within the workspace (which fixes the relative paths to
+ * the shared tsconfig, lint config, and `@owlat/plugin-kit` source) — no
+ * timestamps or randomness — so re-running `create` on an unchanged input yields
+ * byte-identical files.
  */
 export function buildScaffold(
 	workspaceRoot: string,
 	targetDir: string,
 	id: PluginId,
-	packageName: PluginPackageName
+	packageName: PluginPackageName,
+	template: ScaffoldTemplate = DEFAULT_SCAFFOLD_TEMPLATE
 ): ScaffoldFiles {
 	const toRoot = toPosix(relative(targetDir, workspaceRoot)) || '.';
 	const exportName = `${toCamelCase(id)}Plugin`;
+	// A contribution's executable half is imported by codegen through a
+	// condition-independent package export string, so the module map and the
+	// package's `exports` are one declaration: a template that emitted a module
+	// the package does not export would fail provenance verification at install
+	// time rather than here.
+	const moduleExports = template === 'send-provider' ? SEND_PROVIDER_MODULE_EXPORTS : {};
 	const files = new Map<string, string>();
 
-	files.set('package.json', `${JSON.stringify(packageJson(packageName, toRoot), null, '\t')}\n`);
+	const manifestJson = JSON.stringify(packageJson(packageName, toRoot, moduleExports), null, '\t');
+
+	files.set('package.json', `${manifestJson}\n`);
 	files.set('tsconfig.json', `${JSON.stringify(tsconfig(toRoot), null, '\t')}\n`);
 	files.set('vitest.config.ts', vitestConfig(toRoot));
+
+	// The three files above are the package's build wiring and are identical at
+	// every template; everything below is the template's own content.
+	if (template === 'send-provider') {
+		for (const [path, content] of sendProviderFiles(
+			sendProviderNames(id, toCamelCase(id)),
+			packageName
+		)) {
+			files.set(path, content);
+		}
+		return files;
+	}
+
 	files.set('README.md', readme(id, packageName));
 	files.set('src/manifest.ts', manifestSource(id, exportName));
 	files.set('src/index.ts', indexSource(exportName));
@@ -39,13 +96,17 @@ export function toCamelCase(id: string): string {
 	return id.replace(/-([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
-function packageJson(packageName: PluginPackageName, toRoot: string): Record<string, unknown> {
+function packageJson(
+	packageName: PluginPackageName,
+	toRoot: string,
+	moduleExports: Readonly<Record<string, string>>
+): Record<string, unknown> {
 	return {
 		name: packageName,
 		version: '0.0.0',
 		private: true,
 		type: 'module',
-		exports: { '.': './src/index.ts' },
+		exports: { '.': './src/index.ts', ...moduleExports },
 		scripts: {
 			test: 'vitest run',
 			'test:watch': 'vitest watch',

@@ -10,7 +10,8 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
-		"./run": "./src/run.ts"
+		"./run": "./src/run.ts",
+		"./scaffold": "./src/scaffold.ts"
 	},
 	"scripts": {
 		"start": "bun run src/index.ts",
