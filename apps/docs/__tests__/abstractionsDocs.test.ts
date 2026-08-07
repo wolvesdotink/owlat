@@ -126,6 +126,32 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		expect(read(types)).toContain('export type RelayProvingProviderModule');
 	});
 
+	it('names the second registry and the host-owned half of the plugin tier', () => {
+		// The page's P3.2 claim is that there are TWO questions with two registries:
+		// the closed primary union above, and the composed relay-identity one a
+		// bundled plugin transport joins. A reader who conflates them widens the
+		// wrong one, so both names have to be greppable — and both have to exist.
+		expect(section).toContain('relayIdentityProviderFor');
+		expect(section).toContain('RelayIdentityProviderModule');
+		const registry = read('apps/api/convex/domains/providers/index.ts');
+		expect(registry).toContain('export function relayIdentityProviderFor');
+		expect(read('apps/api/convex/domains/providers/types.ts')).toContain(
+			'export interface RelayIdentityProviderModule'
+		);
+
+		// The freshness bound is the one thing at this tier a manifest may not
+		// declare, and the page says so by name. Asserted against the constant, so
+		// a later move of it to the contract fails here rather than leaving the page
+		// promising a fence that no longer exists.
+		expect(section).toContain('PLUGIN_RELAY_PROOF_MAX_AGE_MS');
+		const state = 'apps/api/convex/domains/providers/plugin/state.ts';
+		expect(existsSync(resolve(repoRoot, state))).toBe(true);
+		expect(read(state)).toContain('export const PLUGIN_RELAY_PROOF_MAX_AGE_MS');
+		expect(read('packages/plugin-kit/src/sendTransportDomainIdentity.ts')).not.toContain(
+			'maxProofAgeMs'
+		);
+	});
+
 	it('keeps the sibling-table claim honest about the readers outside the adapters', () => {
 		// The section says an SES-shaped READ of the frozen sibling still sits
 		// outside `domains/providers/`. That exception is a fact about

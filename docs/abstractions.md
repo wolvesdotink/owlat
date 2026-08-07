@@ -194,14 +194,37 @@ Which seams a kind must implement is declared, not assumed: the send-provider
 catalog's `domainVerification: 'api' | 'none'` field is the promise. For a
 **core** kind, declaring `api` must both register an adapter here and implement
 the three relay seams (`RelayProvingProviderModule`) — both are compile errors
-otherwise. A bundled plugin transport's generated catalog entry is untyped, so
-it gets neither error; the runtime seam stays fail-closed (an unregistered kind
-is unverifiable, never credited with another provider's proof) and the type-level
-half is the seams plan's P3.2.
+otherwise. A **bundled plugin** transport declares neither word: its
+`domainVerification` is DERIVED from whether it contributes a `domainIdentity`
+module, so the promise and the code that keeps it are one declaration and cannot
+disagree (the seams plan's P3.2).
+
+**Two registries, two questions** (P3.2). `SENDING_DOMAIN_PROVIDERS` above
+answers "is this a PRIMARY sending-domain provider kind?" — the value a `domains`
+row records in `providerType`, whose adapter owns registration, the DNS bundle,
+the sibling identity and the return path. It stays a closed core union.
+`relayIdentityProviderFor(kind)` answers the smaller question "can this RELAY
+kind prove a domain?", asked by the routing gate, the identity backfill and the
+alignment pre-flight about a relay that COEXISTS on a domain our own MTA hosts.
+That one is composed at build time: every core adapter implementing all three
+relay seams, plus one `RelayIdentityProviderModule` per bundled plugin transport
+that declared a `domainIdentity`. Conflating them is what the split prevents —
+widening the primary union would make `EMAIL_PROVIDER=plugin.<id>.<local>` run a
+domain's whole lifecycle through code this repository does not contain.
+
+For the plugin tier the host keeps everything that decides anything: the proof
+rule and its freshness bound (`PLUGIN_RELAY_PROOF_MAX_AGE_MS`, a host constant a
+manifest may not weaken), the derived `status`, the row, and the write rules for
+the three call outcomes. The plugin's module owns only the provider
+conversation — `registerDomain` / `checkDomain`, called from
+`domains/pluginRelay.ts` under a re-checked `send:transport` grant and audited as
+`transport.domain_identity`. Same split as the feedback webhook's.
 
 Where a kind's identity row lives depends on when the kind arrived. Anything
 added after MTA and SES writes to the generic, org-scoped
-`sendingDomainRelayIdentities` table — Mandrill does. The two per-provider
+`sendingDomainRelayIdentities` table — Mandrill does, and so does every bundled
+plugin identity, keyed by its namespaced `plugin.<id>.<local>` kind (a plain
+string field: rows, not columns). The two per-provider
 sibling tables (`sendingDomainMtaIdentities`, `sendingDomainSesIdentities`) are
 frozen: no third sibling is ever added, no new kind gets rows there, and they
 keep the MTA's and SES's.

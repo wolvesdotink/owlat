@@ -22,12 +22,13 @@
  * have a row: a new bucket with no entry fails the coverage case below.
  *
  * MOST buckets carry exactly one executable module, so the seam key is the
- * bucket name. A bucket that carries a SECOND one — today only `sendTransports`,
- * whose contributions may declare a feedback `webhook` (D6/P2.2) — declares it in
- * the kernel's `moduleExports` and gets its own seam entry keyed
- * `<bucket>.<role>`. Its reachability is a genuinely separate question: the send
- * half can be wired while the feedback half is a contract nothing dispatches, and
- * a per-bucket answer would hide exactly that.
+ * bucket name. A bucket that carries MORE — today only `sendTransports`, whose
+ * contributions may declare a feedback `webhook` (D6/P2.2) and a sending-domain
+ * `domainIdentity` (D5/P3.2) — declares each in the kernel's `moduleExports` and
+ * gets its own seam entry keyed `<bucket>.<role>`. Their reachability is a
+ * genuinely separate question per half: the send half can be wired while the
+ * feedback half is a contract nothing dispatches, and a per-bucket answer would
+ * hide exactly that.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
@@ -61,6 +62,12 @@ const SEAMS: Readonly<Record<string, DispatchSeam>> = Object.freeze({
 		definedIn: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
 		because:
 			'the /webhooks/plugin/<pluginId> route must resolve the plugin’s parse half to dispatch its feedback',
+	},
+	'sendTransports.domainIdentity': {
+		symbol: 'BUNDLED_PLUGIN_SEND_TRANSPORT_DOMAIN_IDENTITY_MODULES',
+		definedIn: 'apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts',
+		because:
+			'the relay-identity action must resolve the plugin’s provider calls to register and re-check a sending domain',
 	},
 	agentSteps: {
 		symbol: 'BUNDLED_PLUGIN_AGENT_STEP_MODULES',
@@ -192,7 +199,7 @@ const UNDISPATCHED = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter(
  * assertion turns it into a required table row.
  */
 const MAXIMAL_NESTED_MODULES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-	sendTransports: ['webhook'],
+	sendTransports: ['domainIdentity', 'webhook'],
 });
 
 function maximalManifest(): PluginManifest {
