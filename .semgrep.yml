@@ -108,9 +108,11 @@ rules:
     message: |
       This handler reads a signature header but appears to only check it
       exists, never compares it. Use one of the existing verification
-      helpers (resendWebhook.verifySvixSignature, channelWebhooks
-      verifyTwilioSignature / verifyMetaSignature, or mailAuthHttp
-      constant-time HMAC compare) to actually validate the signature.
+      helpers (webhooks/adapters/resend.ts verifySvixHeaders,
+      webhooks/adapters/twilio.ts verifyTwilioRequest,
+      webhooks/adapters/meta.ts verifyMetaSignature, or the constant-time
+      HMAC compare in webhooks/security.ts that mail/authHttp.ts uses)
+      to actually validate the signature.
     patterns:
       - pattern-either:
           - pattern: |

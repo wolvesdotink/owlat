@@ -53,7 +53,7 @@ their tests.
 | Open-redirect filter            | `apps/web/app/utils/safeRedirect.ts`                              | `safeRedirect(value, fallback)`                                                   |
 | Raw-HTML sanitizer (emails)     | `packages/email-renderer/src/sanitize.ts`                         | `sanitizeRawHtml`, `sanitizeUrl`, `sanitizeCss`                                   |
 | Postbox/signature sanitizer     | `packages/shared/src/postboxSanitize.ts`                          | `POSTBOX_SANITIZE_CONFIG`                                                         |
-| Webhook signature verification  | `apps/api/convex/webhooks/adapters/` (resend, twilio, meta, mta, generic), `apps/api/convex/mail/authHttp.ts` | `verifySvixSignature`, `verifyTwilioSignature`, `verifyMetaSignature`, `constantTimeEqual` |
+| Webhook signature verification  | `apps/api/convex/webhooks/security.ts` (shared primitives), `apps/api/convex/webhooks/adapters/` (resend, twilio, meta, mta, mandrill, generic), `apps/api/convex/mail/authHttp.ts` | `constantTimeEqual`, `hmacSha256Hex` / `hmacSha256Base64`, `verifySvixHeaders`, `verifyTwilioRequest`, `verifyMetaSignature` |
 | RFC 5322 header construction    | `apps/api/convex/mail/outbound.ts`                                | `escapeHeader`, `encodeHeaderValue`, `safeAttachmentFilename`                     |
 | Outbound attachment scan        | `apps/api/convex/mail/outbound.ts`, `emailWorker.ts`              | `scanAttachment`, the `/scan/attachment` MTA call                                 |
 | Agent prompt-injection filter   | `apps/api/convex/agent/steps/security_scan/index.ts`              | `detectInjection`, `detectSmuggling`                                              |

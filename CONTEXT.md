@@ -3075,6 +3075,16 @@ challenge) live as additional helpers exported from the adapter module
 but run in the outer HTTP shell *before* `runInboundPipeline`, since the
 pipeline accepts POST events only. Adapters never write to the database
 and never call domain mutations.
+Writing the file is one of three halves for a **send provider**'s feedback
+adapter: it is additionally registered by kind in
+`webhooks/adapters/index.ts` (`PROVIDER_FEEDBACK_ADAPTERS`, whose mapped
+type over `FeedbackReportingSendProviderKind` makes a missing or
+mis-keyed entry a build error) and served by the shared
+`providerFeedbackWebhook(kind)` handler on a static `/webhooks/<kind>`
+route written out by hand in `http.ts` — never derived from the registry,
+because those URLs are already pasted into provider consoles. The
+`channels.ts` adapters (twilio, meta, generic) are not send transports:
+no kind, no catalog entry, and they keep their own per-vendor handlers.
 _Avoid_: Webhook handler (the HTTP handler still owns that name).
 
 **Webhook dispatcher**:
