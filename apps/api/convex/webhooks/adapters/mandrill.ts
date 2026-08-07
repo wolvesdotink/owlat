@@ -37,8 +37,9 @@
  *    gate compare two different rulers.
  *
  * Mandrill probes a new webhook with an unsigned HEAD request and a signed POST
- * carrying `mandrill_events=[]`. The HEAD is answered by the GET route in
- * `mandrillWebhook.ts` (Convex routes HEAD to the GET handler); the empty batch
+ * carrying `mandrill_events=[]`. The HEAD is answered by the GET route on
+ * `/webhooks/mandrill` (Convex routes HEAD to the GET handler), which serves
+ * `webhookUrlValidationProbe` from `../providerFeedbackHttp.ts`; the empty batch
  * parses to zero events and the pipeline acknowledges it without dispatching.
  *
  * https://mailchimp.com/developer/transactional/guides/track-respond-activity-webhooks/
@@ -294,7 +295,7 @@ export function parseMandrillBatch(rawBody: string): InboundEvent[] {
 	return events;
 }
 
-export const mandrillAdapter: InboundBatchAdapter = {
+export const mandrillAdapter: InboundBatchAdapter<'mandrill'> = {
 	source: 'mandrill',
 
 	async verifySignature(request, rawBody) {

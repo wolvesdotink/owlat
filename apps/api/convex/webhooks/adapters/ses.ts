@@ -297,7 +297,7 @@ function parseTimestamp(value: string | undefined, fallback: number): number {
 	return Number.isNaN(ms) ? fallback : ms;
 }
 
-export const sesAdapter: InboundAdapter = {
+export const sesAdapter: InboundAdapter<'ses'> = {
 	source: 'ses',
 
 	async verifySignature(_request, rawBody) {

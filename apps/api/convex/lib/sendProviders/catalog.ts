@@ -78,6 +78,29 @@ export type ApiVerifiedSendProviderKind = Extract<
 	{ domainVerification: 'api' }
 >['kind'];
 
+/**
+ * The core kinds that report their own delivery outcomes back to us out of band
+ * — exactly the kinds `webhooks/adapters` must register an inbound adapter for
+ * (the seams plan's D6 = P2.1).
+ *
+ * The twin of {@link ApiVerifiedSendProviderKind}, derived the same way and for
+ * the same reason: `hasProviderFeedback: true` is a promise that somewhere a
+ * route exists where this transport's bounces and complaints land, and the
+ * promise is kept by a registry entry. Declaring it without registering an
+ * adapter is a compile error in `webhooks/adapters/index.ts` rather than an arm
+ * whose bad news is dropped — which reads to the ramp controller as a CLEAN arm,
+ * the failure mode that has no symptom at all.
+ *
+ * `Extract` over the CORE catalog literal, so it narrows to the kinds this repo
+ * ships. Bundled plugin entries are generated and untyped here (they cannot
+ * declare the field at all today); their feedback plane is the seams plan's
+ * P2.2, a separate route surface keyed by plugin id.
+ */
+export type FeedbackReportingSendProviderKind = Extract<
+	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
+	{ hasProviderFeedback: true }
+>['kind'];
+
 interface GeneratedSendTransportCatalogEntry extends SendProviderCatalogEntry {
 	readonly pluginId: PluginId;
 	readonly requiredCapability: 'send:transport';

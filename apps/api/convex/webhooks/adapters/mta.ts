@@ -11,6 +11,16 @@
  * Inbound mail (`inbound.received`) delegates parsing to the existing
  * `@owlat/channels` inbound adapter so the MTA SMTP server and the
  * webhook share the same envelope-to-NormalizedInboundMail translation.
+ *
+ * Events carried by `POST /webhooks/mta` (parsed here, routed by the
+ * dispatcher):
+ *   email.sent / email.bounced / email.complained          — Send lifecycle
+ *   email.sent / email.bounced (with `pb-` messageId)      — Postbox outbound state
+ *   inbound.received                                       — inbox.messages
+ *   internal.circuit_breaker_tripped                       — org abuse status
+ *   internal.campaign_complaint_rate                       — org abuse status
+ *   internal.ip_event (blocklisted/delisted/warming_complete/all_blocked)
+ *                                                          — warmingSync + log
  */
 
 import { getInboundChannelAdapter } from '@owlat/channels';
@@ -96,7 +106,7 @@ export async function verifyMtaHeaders(
 	return constantTimeEqual(signature, expected);
 }
 
-export const mtaAdapter: InboundAdapter = {
+export const mtaAdapter: InboundAdapter<'mta'> = {
 	source: 'mta',
 	shouldStoreRawPayload: (rawBody) => !isSensitiveInternalPayload(rawBody),
 

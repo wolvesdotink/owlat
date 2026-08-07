@@ -96,7 +96,7 @@ export async function verifySvixHeaders(
 	return false;
 }
 
-export const resendAdapter: InboundAdapter = {
+export const resendAdapter: InboundAdapter<'resend'> = {
 	source: 'resend',
 
 	async verifySignature(request, rawBody) {

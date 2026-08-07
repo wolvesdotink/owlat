@@ -4,8 +4,11 @@
  * Pipeline: rate-limit → adapter.verifySignature → conditional audit-store
  * → adapter.parseEvent → dispatchInboundEvent → HTTP response.
  *
- * Replaces the verify/parse/audit/dispatch ceremony that resendWebhook.ts
- * and mtaWebhook.ts each open-coded.
+ * Replaces the verify/parse/audit/dispatch ceremony that each provider's own
+ * HTTP entry point used to open-code. The send-provider half of those entry
+ * points is now one parameterized dispatcher over one registry
+ * (`./providerFeedbackHttp.ts` + `./adapters/index.ts`, the seams plan's P2.1);
+ * the channel half still registers a handler per vendor (`./channels.ts`).
  */
 
 import { internal } from '../_generated/api';
@@ -15,9 +18,19 @@ import { logError } from '../lib/runtimeLog';
 import { dispatchInboundEvent } from './dispatcher';
 import type { InboundEvent } from './types';
 
-export interface InboundAdapter {
+/**
+ * @typeParam S - This adapter's own wire identifier, as a literal type where the
+ * caller cares which one it is. It defaults to `string`, so an adapter that is
+ * nobody's registry value (the channel adapters) writes `InboundAdapter` exactly
+ * as before; the four send-provider feedback adapters name their kind, which is
+ * what lets `./adapters/index.ts` prove at compile time that the key a route is
+ * dispatched by IS the source the pipeline rate-limits and audits under. Keyed
+ * and sourced are two spellings of one fact, and they used to be kept in
+ * agreement only by a runtime test in another folder.
+ */
+export interface InboundAdapter<S extends string = string> {
 	/** Wire identifier for audit-payload `source` field and logs. */
-	readonly source: string;
+	readonly source: S;
 	/**
 	 * Verify the request signature. Must read its secret via
 	 * `lib/env.getOptional` and fail-closed with status 503 when the secret
@@ -74,12 +87,17 @@ export interface InboundAdapter {
  * and Mandrill's empty-batch verification ping — are answered 200 without
  * dispatching anything.
  */
-export interface InboundBatchAdapter extends Omit<InboundAdapter, 'parseEvent'> {
+export interface InboundBatchAdapter<S extends string = string> extends Omit<
+	InboundAdapter<S>,
+	'parseEvent'
+> {
 	parseEvents(rawBody: string): InboundEvent[];
 }
 
 /** Either adapter shape. What `runInboundPipeline` accepts. */
-export type AnyInboundAdapter = InboundAdapter | InboundBatchAdapter;
+export type AnyInboundAdapter<S extends string = string> =
+	| InboundAdapter<S>
+	| InboundBatchAdapter<S>;
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
 	return new Response(JSON.stringify(body), {
