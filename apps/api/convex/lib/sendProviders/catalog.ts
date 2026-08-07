@@ -4,6 +4,7 @@ import { isPluginSendTransportEnvVar, type PluginId } from '@owlat/plugin-kit';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	acceptanceSemanticsOf,
+	credentialFieldEnvVars,
 	deduplicatesOnIdempotencyKeyOf,
 	domainVerificationOf,
 	hasProviderFeedbackOf,
@@ -92,9 +93,13 @@ export type ApiVerifiedSendProviderKind = Extract<
  * the failure mode that has no symptom at all.
  *
  * `Extract` over the CORE catalog literal, so it narrows to the kinds this repo
- * ships. Bundled plugin entries are generated and untyped here (they cannot
- * declare the field at all today); their feedback plane is the seams plan's
- * P2.2, a separate route surface keyed by plugin id.
+ * ships. A bundled plugin entry carries a DERIVED `hasProviderFeedback` — true
+ * exactly when the manifest declared a feedback `webhook` (the seams plan's
+ * P3.1) — so `hasProviderFeedbackFor` answers true for plugin kinds too and the
+ * governed boundary takes the `awaitingProviderFeedback` branch for them. That
+ * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface (P2.2),
+ * not by this mapped-type guard, which is why the tier stays outside the
+ * `Extract` rather than being missing from it by oversight.
  */
 export type FeedbackReportingSendProviderKind = Extract<
 	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
@@ -176,17 +181,29 @@ function assertPluginDispatchSemanticsAreGeneral(
  * `getPluginTransportEnv` fences the same namespace a third time at the read
  * itself; that one is the backstop for a caller, this one is the backstop for an
  * artifact, and a deployment mistake must stop the deployment.
+ *
+ * THE CREDENTIAL FORM IS CHECKED TOO. A descriptor's `envVar` never gets read by
+ * the host, but it is what a setup surface writes an operator's input INTO, so an
+ * artifact whose form named `MTA_API_KEY` would offer to overwrite this
+ * deployment's own credential from a plugin's panel.
  */
 function assertPluginInstanceEnvVarsAreNamespaced(
 	entries: readonly GeneratedSendTransportCatalogEntry[]
 ): void {
 	for (const entry of entries) {
-		for (const name of entry.instanceEnvVars ?? []) {
+		const declared = [
+			...(entry.instanceEnvVars ?? []),
+			// `credentialFieldEnvVars`, not `field.envVar`: a composite descriptor
+			// owns three names, and only the shared accessor knows that.
+			...(entry.credentialFields ?? []).flatMap((field) => credentialFieldEnvVars(field)),
+		];
+		for (const name of declared) {
 			if (isPluginSendTransportEnvVar(name)) continue;
 			throw new TypeError(
 				`Bundled plugin send transport '${entry.kind}' declares the configuration variable ` +
 					`'${name}', which is outside the PLUGIN_ namespace a bundled transport may be ` +
-					'handed the value of.'
+					'handed the value of. See isPluginSendTransportEnvVar in ' +
+					'packages/plugin-kit/src/sendTransport.ts.'
 			);
 		}
 	}

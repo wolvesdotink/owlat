@@ -302,8 +302,10 @@ export function isEnvPresent(key: string): boolean {
 }
 
 /**
- * The one untyped-key read. Both escape hatches below delegate here so
- * "unset or empty means absent" has a single definition.
+ * The one untyped-key read. Every escape hatch below delegates here — each
+ * fencing its own key shape first — so "unset or empty means absent" has a
+ * single definition. Deliberately uncounted: the sentence went stale the first
+ * time a third one was added.
  */
 function readNonEmptyEnv(key: string): string | undefined {
 	const value = process.env[key];

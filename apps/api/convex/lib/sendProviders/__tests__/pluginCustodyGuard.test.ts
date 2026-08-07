@@ -102,6 +102,28 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		).rejects.toThrow(/PLUGIN_ namespace/);
 	});
 
+	it('refuses a CREDENTIAL FORM naming a variable outside the namespace', async () => {
+		// A descriptor's `envVar` is never read by the host — it is what a setup
+		// surface writes an operator's input INTO. An artifact whose form named
+		// `MTA_API_KEY` would offer to overwrite this deployment's own credential
+		// from a plugin's panel.
+		await expect(
+			composeCatalogWith([
+				entry({
+					credentialFields: Object.freeze([
+						Object.freeze({
+							kind: 'secret',
+							key: 'token',
+							label: 'Token',
+							required: true,
+							envVar: 'MTA_API_KEY',
+						}),
+					]),
+				}),
+			])
+		).rejects.toThrow(/MTA_API_KEY[\s\S]*PLUGIN_ namespace/);
+	});
+
 	it('ADMITS the dedup claim, which the module half of the promise now backs', async () => {
 		// Until plugin-tier parity this was refused outright, because the tier had no
 		// per-send extras contract and the key could never reach the provider. It has
@@ -128,6 +150,10 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		for (const candidate of [
 			entry({ kind: 'plugin.mail-pack.custodian', acceptanceSemantics: 'accepted' }),
 			entry({ kind: 'plugin.mail-pack.owner', messageIdSource: 'idempotency-key' }),
+			entry({
+				kind: 'plugin.mail-pack.borrower',
+				instanceEnvVars: Object.freeze(['MTA_API_KEY']),
+			}),
 		]) {
 			messages.push(
 				await composeCatalogWith([candidate]).then(

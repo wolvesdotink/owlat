@@ -22,20 +22,30 @@
  * for) and at RUN time (the same claim about the values, so a suite run catches
  * it even where the type check has not run yet).
  *
- * WHAT THIS PIN DOES NOT COVER — read before assuming one component can draw
- * both tiers: it compares KIND NAMES only, never the per-kind property sets, and
- * those diverge today. `envVar` is on every send-provider credential field and on
- * plugin-kit's `secret` field alone; the `string` kinds carry `placeholder` here
- * and `maxLength` there. The full list, with the reason for each, is the "WHAT
- * 'SPELLED IDENTICALLY' COVERS" note in
- * `packages/shared/src/sendProviderCredentialFields.ts`. Reconciling the shapes
- * is P3.1's job; this file only keeps the vocabularies from drifting apart in the
- * meantime.
+ * THE SHAPES ARE PINNED NOW TOO, for the tier that has to land in the catalog.
+ * P3.1 gave a bundled send transport its own `credentialFields`, and a generated
+ * entry's descriptors go into the SAME catalog field a core entry's do — so a
+ * renderer reading the composed catalog cannot tell which tier wrote them. That
+ * only holds if `PluginSendTransportCredentialField` is assignable to
+ * `SendProviderCredentialField`, which is the second compile-time assertion
+ * below. The plugin platform's own `settingsSchema` field shape is deliberately
+ * NOT held to it: it names no `envVar` on four of its five kinds and carries
+ * `maxLength` where the catalog carries `placeholder`, differences that belong to
+ * a settings form rather than to a credential one. The full list, with the reason
+ * for each, is the "WHAT 'SPELLED IDENTICALLY' COVERS" note in
+ * `packages/shared/src/sendProviderCredentialFields.ts`.
  */
 
-import { SETTINGS_FIELD_KINDS, type PluginSettingsFieldKind } from '@owlat/plugin-kit';
+import {
+	PLUGIN_SEND_TRANSPORT_CREDENTIAL_FIELD_KINDS,
+	SETTINGS_FIELD_KINDS,
+	type PluginSendTransportCredentialField,
+	type PluginSendTransportCredentialFieldKind,
+	type PluginSettingsFieldKind,
+} from '@owlat/plugin-kit';
 import {
 	SEND_PROVIDER_CREDENTIAL_FIELD_KINDS,
+	type SendProviderCredentialField,
 	type SendProviderCredentialFieldKind,
 } from '@owlat/shared';
 import { describe, expect, it } from 'vitest';
@@ -56,6 +66,22 @@ type _BaseFiveAgree = PluginSettingsFieldKind extends SendProviderCredentialFiel
 const _baseFiveAgree: _BaseFiveAgree = true;
 void _baseFiveAgree;
 
+/**
+ * Compile-time, and the one that carries weight at run time: a bundled
+ * transport's declared credential descriptor IS a send-provider credential
+ * field. The assignment is the assertion — a plugin-kit widening that the shared
+ * descriptors have no shape for fails `tsc` here, naming the member, rather than
+ * reaching the catalog as a field the renderer cannot draw.
+ */
+const _pluginDescriptorsAreCatalogDescriptors: readonly SendProviderCredentialField[] =
+	[] as readonly PluginSendTransportCredentialField[];
+void _pluginDescriptorsAreCatalogDescriptors;
+
+/** And its kind union stays inside the catalog's, composites excluded. */
+const _pluginFieldKindsAreCatalogKinds: readonly SendProviderCredentialFieldKind[] =
+	[] as readonly PluginSendTransportCredentialFieldKind[];
+void _pluginFieldKindsAreCatalogKinds;
+
 describe('send-provider credential fields reuse the plugin settings vocabulary', () => {
 	it('spells every plugin settings field kind identically', () => {
 		const credentialKinds = new Set<string>(SEND_PROVIDER_CREDENTIAL_FIELD_KINDS);
@@ -74,5 +100,12 @@ describe('send-provider credential fields reuse the plugin settings vocabulary',
 			'region-select',
 			'host-port',
 		]);
+	});
+
+	it('offers a bundled transport the base five and withholds the composites', () => {
+		// A composite carries a RELATIONSHIP between variables that only means
+		// something to a renderer that already knows it; a plugin expresses the same
+		// configuration as the parts, which is the documented fallback anyway.
+		expect([...PLUGIN_SEND_TRANSPORT_CREDENTIAL_FIELD_KINDS]).toEqual([...SETTINGS_FIELD_KINDS]);
 	});
 });

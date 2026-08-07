@@ -38,6 +38,13 @@ vi.mock('@owlat/smtp-client', () => ({
 //  - `sendbird` declares its own instance-scoped variables, so the host resolves
 //    them per instance and hands them over — and named instances become as
 //    ordinary for it as they are for `smtp`.
+//  - `mailhawk` is the ARTIFACT a validator never saw: instance-scoped variables
+//    with none of them REQUIRED. The manifest validator refuses that declaration
+//    and the codegen withholds `instanceEnvVars` from it, so it can only arrive
+//    by hand edit, bad merge or partial regeneration — and the resolver must
+//    still answer `instances_unsupported` rather than `revoked`, which would name
+//    a configuration this deployment removed for an instance that was never
+//    resolvable.
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
 		Object.freeze({
@@ -59,6 +66,16 @@ vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 			instanceEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
 			requiredCapability: 'send:transport',
 		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.mailhawk',
+			pluginId: 'mail-pack',
+			localId: 'mailhawk',
+			label: 'Mailhawk',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['MAIL_PACK_ENABLED']),
+			instanceEnvVars: Object.freeze(['PLUGIN_MAILHAWK_REGION']),
+			requiredCapability: 'send:transport',
+		}),
 	]),
 }));
 
@@ -74,6 +91,14 @@ vi.mock('../../../plugins/sendTransportModules.generated', () => ({
 		}),
 		Object.freeze({
 			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: () => pluginSendMock(),
+			},
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.mailhawk',
 			pluginId: 'mail-pack',
 			module: {
 				parseExtras: (input: unknown) => input,
@@ -200,6 +225,25 @@ describe('resolution failure modes', () => {
 		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
 			'plugin.mail-pack.postmark#alt'
 		);
+	});
+
+	it('refuses instances of a kind whose instance-scoped variables are all OPTIONAL', () => {
+		// `instances_unsupported`, not `revoked`. With no REQUIRED instance-scoped
+		// variable there is nothing an instance's presence could be checked against,
+		// so admitting the kind and then failing every instance would report a
+		// revocation that never happened — and would do it even with
+		// `PLUGIN_MAILHAWK_REGION__EU` set.
+		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.mailhawk#eu');
+		vi.stubEnv('PLUGIN_MAILHAWK_REGION__EU', 'eu-central');
+		vi.stubEnv('MAIL_PACK_ENABLED', 'true');
+		_resetSendTransportCacheForTests();
+
+		expect(reasonFor('plugin.mail-pack.mailhawk#eu')).toBe('instances_unsupported');
+		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
+			'plugin.mail-pack.mailhawk#eu'
+		);
+		// The DEFAULT instance is unaffected: its gate is the plugin's flag variable.
+		expect(resolveSendTransport('plugin.mail-pack.mailhawk').instanceKey).toBeNull();
 	});
 
 	it('resolves a NAMED instance of a plugin kind that DOES declare its own configuration', () => {

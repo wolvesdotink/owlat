@@ -106,7 +106,7 @@ export type SendTransportResolutionReason =
 	| 'unknown_kind'
 	/** A named instance that `SEND_TRANSPORT_INSTANCES` does not declare. */
 	| 'unregistered_instance'
-	/** A named instance of a kind that cannot have instances (a plugin kind). */
+	/** A named instance of a kind with no instance-scoped configuration of its own. */
 	| 'instances_unsupported'
 	/** A declared instance whose configuration has been removed. */
 	| 'revoked';
@@ -263,14 +263,25 @@ function isNamedInstanceConfigured(record: SendTransportRecord): boolean {
  *
  * A CAPABILITY QUESTION, not a tier one: the answer is "does this kind have
  * configuration of its own that an instance suffix reaches?". Core kinds always
- * do. A plugin kind does exactly when it declared `instanceEnvVars`, which is
- * also the list the host resolves and hands to its module — so a kind that can
- * be addressed per instance is, by construction, a kind that is SENT per
- * instance.
+ * do. A plugin kind does exactly when it declared a REQUIRED instance-scoped
+ * variable, which is also what the host resolves and hands to its module — so a
+ * kind that can be addressed per instance is, by construction, a kind that is
+ * SENT per instance.
+ *
+ * REQUIRED, not merely declared, so that this answer and
+ * {@link isNamedInstanceConfigured} can never disagree. That one fails closed on
+ * an empty requirement list, so a kind admitted here on optional variables alone
+ * would report every named instance `revoked` — a reason that names a
+ * configuration this deployment removed, for an instance that was never
+ * resolvable in the first place. The manifest validator refuses an optional-only
+ * declaration and the codegen withholds `instanceEnvVars` from one, so this is
+ * the third statement of the same rule and the one that holds for an artifact no
+ * validator saw.
  */
 function supportsNamedInstances(entry: SendProviderCatalogEntry): boolean {
 	if (entry.pluginId === undefined) return true;
-	return (entry.instanceEnvVars?.length ?? 0) > 0;
+	const instanceEnvVars = entry.instanceEnvVars ?? [];
+	return entry.requiredEnvVars.some((name) => instanceEnvVars.includes(name));
 }
 
 /**
