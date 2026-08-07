@@ -38,6 +38,7 @@ interface RenderedSendTransport {
 	readonly messageIdSource: string | undefined;
 	readonly deduplicatesOnIdempotencyKey: boolean;
 	readonly hasProviderFeedback: boolean;
+	readonly domainVerification: string | undefined;
 	readonly credentialFields: readonly PluginSendTransportCredentialField[];
 }
 
@@ -123,6 +124,15 @@ function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly Rendered
 				// which console ceremony to draw, and this tier's route is one generic
 				// `/webhooks/plugin/<pluginId>` surface with no per-kind panel.
 				hasProviderFeedback: transport.webhook !== undefined,
+				// DERIVED for the same reason and by the same rule (the seams plan's
+				// P3.2): a transport can prove a sending domain exactly when it
+				// contributes the identity module that does the proving. The word `api`
+				// is what the routing gate, the identity backfill and the alignment
+				// pre-flight all read, so a boolean-ish declaration beside the module
+				// could promise a proof no code exists to produce. `none` is left
+				// UNEMITTED rather than written out: it is the catalog's fail-closed
+				// default, so absence and the word mean the same thing.
+				domainVerification: transport.domainIdentity === undefined ? undefined : 'api',
 			};
 		})
 	);
@@ -173,6 +183,7 @@ function sendTransportCatalogFields(
 		['messageIdSource', jsonLiteral(transport.messageIdSource)],
 		['deduplicatesOnIdempotencyKey', trueLiteral(transport.deduplicatesOnIdempotencyKey)],
 		['hasProviderFeedback', trueLiteral(transport.hasProviderFeedback)],
+		['domainVerification', jsonLiteral(transport.domainVerification)],
 		['requiredCapability', "'send:transport'"],
 	];
 }

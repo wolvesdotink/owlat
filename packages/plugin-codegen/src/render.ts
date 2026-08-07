@@ -14,6 +14,10 @@ import {
 import { renderCronCatalog, renderCronModules } from './renderCron';
 import { renderSendTransportCatalog, renderSendTransportModules } from './renderSendTransport';
 import {
+	renderSendTransportDomainIdentityCatalog,
+	renderSendTransportDomainIdentityModules,
+} from './renderSendTransportDomainIdentity';
+import {
 	renderSendTransportWebhookCatalog,
 	renderSendTransportWebhookModules,
 } from './renderSendTransportWebhook';
@@ -33,6 +37,8 @@ export interface GeneratedPluginComposition {
 	readonly sendTransportModules: string;
 	readonly sendTransportWebhookCatalog: string;
 	readonly sendTransportWebhookModules: string;
+	readonly sendTransportDomainIdentityCatalog: string;
+	readonly sendTransportDomainIdentityModules: string;
 	readonly agentStepCatalog: string;
 	readonly agentStepModules: string;
 	readonly draftStrategyCatalog: string;
@@ -72,6 +78,10 @@ export const GENERATED_ARTIFACT_PATHS: Readonly<Record<keyof GeneratedPluginComp
 		sendTransportModules: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
 		sendTransportWebhookCatalog: 'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
 		sendTransportWebhookModules: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
+		sendTransportDomainIdentityCatalog:
+			'apps/api/convex/plugins/sendTransportDomainIdentityCatalog.generated.ts',
+		sendTransportDomainIdentityModules:
+			'apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts',
 		agentStepCatalog: 'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 		agentStepModules: 'apps/api/convex/plugins/agentStepModules.generated.ts',
 		draftStrategyCatalog: 'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
@@ -139,6 +149,8 @@ export function renderPluginComposition(
 		sendTransportModules: renderSendTransportModules(plugins),
 		sendTransportWebhookCatalog: renderSendTransportWebhookCatalog(plugins),
 		sendTransportWebhookModules: renderSendTransportWebhookModules(plugins),
+		sendTransportDomainIdentityCatalog: renderSendTransportDomainIdentityCatalog(plugins),
+		sendTransportDomainIdentityModules: renderSendTransportDomainIdentityModules(plugins),
 		agentStepCatalog: renderAgentStepCatalog(agentSteps),
 		agentStepModules: renderAgentStepModules(agentSteps),
 		draftStrategyCatalog: renderDraftStrategyCatalog(plugins),

@@ -774,6 +774,8 @@ import type * as plugins_llmAccounting from '../plugins/llmAccounting.js';
 import type * as plugins_llmRequest from '../plugins/llmRequest.js';
 import type * as plugins_sendTransportAuthorization from '../plugins/sendTransportAuthorization.js';
 import type * as plugins_sendTransportCatalog_generated from '../plugins/sendTransportCatalog.generated.js';
+import type * as plugins_sendTransportDomainIdentityCatalog_generated from '../plugins/sendTransportDomainIdentityCatalog.generated.js';
+import type * as plugins_sendTransportDomainIdentityModules_generated from '../plugins/sendTransportDomainIdentityModules.generated.js';
 import type * as plugins_sendTransportWebhookAuthorization from '../plugins/sendTransportWebhookAuthorization.js';
 import type * as plugins_sendTransportWebhookCatalog from '../plugins/sendTransportWebhookCatalog.js';
 import type * as plugins_sendTransportWebhookCatalog_generated from '../plugins/sendTransportWebhookCatalog.generated.js';
@@ -1711,6 +1713,8 @@ declare const fullApi: ApiFromModules<{
 	'plugins/llmRequest': typeof plugins_llmRequest;
 	'plugins/sendTransportAuthorization': typeof plugins_sendTransportAuthorization;
 	'plugins/sendTransportCatalog.generated': typeof plugins_sendTransportCatalog_generated;
+	'plugins/sendTransportDomainIdentityCatalog.generated': typeof plugins_sendTransportDomainIdentityCatalog_generated;
+	'plugins/sendTransportDomainIdentityModules.generated': typeof plugins_sendTransportDomainIdentityModules_generated;
 	'plugins/sendTransportWebhookAuthorization': typeof plugins_sendTransportWebhookAuthorization;
 	'plugins/sendTransportWebhookCatalog': typeof plugins_sendTransportWebhookCatalog;
 	'plugins/sendTransportWebhookCatalog.generated': typeof plugins_sendTransportWebhookCatalog_generated;

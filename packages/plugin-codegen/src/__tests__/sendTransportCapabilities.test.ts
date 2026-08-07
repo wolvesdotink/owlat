@@ -60,6 +60,7 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 			'messageIdSource',
 			'deduplicatesOnIdempotencyKey',
 			'hasProviderFeedback',
+			'domainVerification',
 		]) {
 			expect(catalog).not.toContain(field);
 		}
