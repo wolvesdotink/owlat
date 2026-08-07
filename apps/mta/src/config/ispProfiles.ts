@@ -11,7 +11,12 @@
 
 import type Redis from 'ioredis';
 import { isOutboundTlsMode, strictestOutboundTlsMode } from '@owlat/shared';
-import type { DestinationProviderKey, DestinationProviderProfile } from '../types.js';
+import {
+	destinationProviderForDomain,
+	isDestinationProviderKey,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
+import type { DestinationProviderProfile } from '../types.js';
 import { DESTINATION_PROVIDER_PROFILES } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -19,29 +24,37 @@ const PROFILE_PREFIX = 'mta:isp-profile:';
 const PROFILE_LIST_KEY = 'mta:isp-profiles';
 const MAX_RATE_PER_MINUTE = 1_000_000;
 const MAX_RECOVERY_FACTOR = 100;
-export const DESTINATION_PROVIDER_KEYS = [
-	'gmail',
-	'microsoft',
-	'yahoo',
-	'apple',
-	'other',
-] as const satisfies readonly DestinationProviderKey[];
 
-export function isDestinationProviderKey(value: string): value is DestinationProviderKey {
-	return DESTINATION_PROVIDER_KEYS.some((providerKey) => providerKey === value);
-}
-
-function canonicalProfileKey(value: string): string {
-	const key = value.toLowerCase();
-	if (key === 'gmail.com' || key === 'googlemail.com') return 'gmail';
-	if (key === 'outlook.com' || key === 'hotmail.com' || key === 'live.com' || key === 'msn.com') {
-		return 'microsoft';
-	}
-	if (key === 'yahoo.com' || key === 'aol.com' || key === 'ymail.com' || key === 'yahoo.co.uk') {
-		return 'yahoo';
-	}
-	if (key === 'icloud.com' || key === 'me.com' || key === 'mac.com') return 'apple';
-	return key;
+/**
+ * PINNED DIVERGENCE (D8) — profile-key selection is NOT the taxonomy.
+ *
+ * `destinationProviderForDomain` answers "which cell of the destination-provider
+ * taxonomy is this RECIPIENT DOMAIN in?", and every unrecognised domain is
+ * `other` by design: the cell axis is a fixed, bounded set that the ramp's
+ * matrix, the warming dimensions and the ISP metric labels are all keyed by.
+ *
+ * This function answers a different question — "which Redis row shapes the
+ * connection to this destination?" — and its input is a PROFILE KEY OR A RAW
+ * DOMAIN, because that is what its callers hold: `acquireSlot`, `recordSuccess`
+ * and `recordDefer` default `providerKey` to the `throttleKey` computed in
+ * `smtp/destinationProvider.ts`, which is deliberately the DOMAIN for operators
+ * outside the taxonomy ("known providers share a budget; unknown operators
+ * remain domain scoped"). Folding those into `other` would merge every unknown
+ * operator into one shaping row and silently retarget the Redis key each read
+ * and write uses — a live behaviour change, not a cleanup. It also has to accept
+ * a bare provider key (`getProfile(redis, 'gmail')` from the admin route and the
+ * sender), which is not a domain at all and which the shared classifier would
+ * correctly answer `other` for.
+ *
+ * So the two mappers stay, and the ALIAS TABLE — the part that could drift —
+ * does not: the domain→provider folding is delegated to the shared classifier,
+ * and the only thing left here is the unknown-input branch. The suite
+ * `__tests__/destinationTaxonomy.test.ts` pins exactly that: agreement on every
+ * domain the taxonomy names, and the domain-scoped passthrough everywhere else.
+ */
+export function canonicalProfileKey(value: string): string {
+	const provider = destinationProviderForDomain(value);
+	return provider === 'other' ? value.toLowerCase() : provider;
 }
 
 /**

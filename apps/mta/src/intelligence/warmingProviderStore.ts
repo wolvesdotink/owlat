@@ -17,7 +17,7 @@ import {
 	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
 	type DurableEffectIdentity,
 } from '../lib/effectCheckpoint.js';
-import { DESTINATION_PROVIDER_KEYS } from '../config/ispProfiles.js';
+import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import { logger } from '../monitoring/logger.js';
 import type { DestinationProviderKey, IpPoolType } from '../types.js';
 import {

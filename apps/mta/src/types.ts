@@ -3,6 +3,7 @@
  */
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
 // ============ Email Job Types ============
@@ -358,4 +359,15 @@ export interface BounceClassification {
 
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
-export type DestinationProviderKey = 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+/**
+ * The destination-provider taxonomy is DECLARED ONCE, in
+ * `@owlat/shared/deliverabilityRouting` (D8). This module used to spell the
+ * union out a second time, so a provider added to the shared taxonomy widened
+ * the ramp's cell axis on the Convex side while the MTA's own consumers — cell
+ * keys, warming dimensions, ISP metrics, profile shaping — kept the old five
+ * and never failed to compile. It is re-exported here rather than deleted so
+ * the MTA's existing importers keep one local `types.js` surface, the same
+ * derivation `config.ts` already uses for `DESTINATION_PROVIDER_PROFILES` and
+ * `BASE_WARMING_SCHEDULE`.
+ */
+export type { DestinationProviderKey };
