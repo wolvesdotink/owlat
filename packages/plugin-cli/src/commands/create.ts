@@ -9,6 +9,7 @@ import {
 	buildScaffold,
 	DEFAULT_SCAFFOLD_TEMPLATE,
 	parseScaffoldTemplate,
+	SCAFFOLD_TEMPLATE_DEFINITIONS,
 	type ScaffoldFiles,
 } from '../scaffold';
 
@@ -64,11 +65,10 @@ export async function runCreate(workspaceRoot: string, args: CreateArgs, io: Cli
 	await writeScaffold(targetDir, files, existing, displayDir);
 	io.log(`Scaffolded plugin ${id} (${packageName}) in ${displayDir}:`);
 	for (const path of sortedPaths(files)) io.log(`  + ${displayDir}/${path}`);
-	io.log(
-		template === 'send-provider'
-			? 'Fill in the TODOs in src/convex/, then run its tests. See /developer/plugin-send-providers.'
-			: 'Declare capabilities and contributions in src/manifest.ts, then run its tests.'
-	);
+	// LOOKED UP, NOT COMPARED: the hint is one field of the template's own record,
+	// beside the file set and the export map it belongs with, so a new template
+	// cannot ship printing another template's next step.
+	io.log(SCAFFOLD_TEMPLATE_DEFINITIONS[template].completionHint);
 }
 
 function parseId(input: string) {

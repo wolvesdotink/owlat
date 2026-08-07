@@ -2,21 +2,12 @@ import { join } from 'node:path';
 import { parsePluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { describe, expect, it } from 'vitest';
-import { toCamelCase } from '../names';
 import { buildScaffold } from '../scaffold';
 
 const root = '/workspace';
 const targetDir = join(root, 'examples', 'plugins', 'my-plugin');
 const id = parsePluginId('my-plugin');
 const packageName = '@owlat/plugin-my-plugin' as PluginPackageName;
-
-describe('toCamelCase', () => {
-	it('converts a kebab-case id to lowerCamelCase', () => {
-		expect(toCamelCase('deliverability-lab')).toBe('deliverabilityLab');
-		expect(toCamelCase('a-b-c')).toBe('aBC');
-		expect(toCamelCase('single')).toBe('single');
-	});
-});
 
 describe('buildScaffold', () => {
 	it('is deterministic for identical inputs', () => {
@@ -59,5 +50,18 @@ describe('buildScaffold', () => {
 		expect(buildScaffold(root, targetDir, id, packageName).get('src/index.ts')).toContain(
 			"export { myPluginPlugin } from './manifest';"
 		);
+	});
+
+	/**
+	 * AND AS THE PACKAGE'S DEFAULT EXPORT, which is the one codegen reads: the
+	 * generated composition writes `import bundledPluginManifest0 from '<package>'`,
+	 * so a scaffolded package that only exported its manifest by name would compose
+	 * into `{ packageName, manifest: undefined }` and fail at the host's validation
+	 * rather than at anything this generator can see.
+	 */
+	it('default-exports the manifest the generated composition imports', () => {
+		const files = buildScaffold(root, targetDir, id, packageName);
+		expect(files.get('src/manifest.ts')).toContain('export default myPluginPlugin;');
+		expect(files.get('src/index.ts')).toContain("export { default } from './manifest';");
 	});
 });

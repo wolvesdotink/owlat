@@ -1144,8 +1144,16 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 	});
 
 	it('lists exactly the files the scaffold writes', () => {
-		const scaffold = read('packages/plugin-cli/src/scaffold.ts');
-		const written = [...scaffold.matchAll(/files\.set\('([^']+)'/g)].map((match) => match[1]!);
+		// The DEFAULT template's output, which is what the authoring page draws: the
+		// package skeleton every template shares (`scaffold.ts`) plus the minimal
+		// template's own four files. They sit in two modules because each template's
+		// content now lives beside the others' — `scaffoldSendProvider.ts` holds the
+		// send-provider bundle and is deliberately not read here.
+		const written = ['scaffold', 'scaffoldMinimal'].flatMap((module) =>
+			[...read(`packages/plugin-cli/src/${module}.ts`).matchAll(/files\.set\('([^']+)'/g)].map(
+				(match) => match[1]!
+			)
+		);
 		expect(written.length).toBeGreaterThan(5);
 		// The authoring guide draws `src/` as a directory node, so its leaves are
 		// the scaffold paths with that prefix removed.
