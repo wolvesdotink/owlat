@@ -19,6 +19,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH,
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
@@ -195,6 +196,19 @@ describe('the DNS facts are bounded, deduplicated and trimmed', () => {
 				read: { dkimSelectors: [], spfMechanisms: [] },
 			});
 		}
+	});
+});
+
+describe('the freshness bound is one decision shared with the Mandrill tier', () => {
+	it('IS the Mandrill bound, not a second value that happens to match', () => {
+		// The two tiers renew their evidence the same way — one HTTP call a daily
+		// sweep repeats — so the argument written out on the shared constant is the
+		// argument for this one, and an incident that shortens one has no case for
+		// leaving the other. Pinned mechanically rather than in prose: shortening
+		// the shared constant silently halves how long a bundled plugin relay's
+		// proof licenses handing a customer's From domain to a third party, and the
+		// edit site is in another package.
+		expect(PLUGIN_RELAY_PROOF_MAX_AGE_MS).toBe(MANDRILL_RELAY_PROOF_MAX_AGE_MS);
 	});
 });
 
