@@ -7,6 +7,7 @@ import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
 import type { AuthContext } from '../server.js';
+import type { MtaSendRequest } from '@owlat/mta-protocol';
 import {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 	isDeliveryDomain,
@@ -36,46 +37,6 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
-interface SendRequest {
-	messageId: string;
-	workAttemptId?: string;
-	routingReentryToken?: string;
-	routingReentry?: EmailJob['routingReentry'];
-	to: string;
-	from: string;
-	subject: string;
-	html: string;
-	text?: string;
-	/** Postbox-only complete PGP/MIME bytes, base64-encoded. */
-	sealedMimeBase64?: string;
-	/** AMP4Email body — delivered as a `text/x-amp-html` alternative part. */
-	amp?: string;
-	replyTo?: string;
-	headers?: Record<string, string>;
-	ipPool: 'transactional' | 'campaign';
-	organizationId: string;
-	messageType?: 'campaign' | 'transactional' | 'automation';
-	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	/** Unvalidated JSON — read it through `readEngagementScore`, never raw. */
-	engagementScore?: unknown;
-	dkimDomain: string;
-	/**
-	 * Postbox-only: the allowed-from set for the originating mailbox.
-	 * Convex computes this at dispatch time (`resolveAllowedFromAddresses`)
-	 * and passes it in so the MTA can refuse forged-From requests without
-	 * a Convex round-trip. Lowercase canonical addresses.
-	 *
-	 * Shared-inbox send-as (a teammate replying under their own personal
-	 * identity) is covered automatically: Convex keys this set on the SENDING
-	 * mailbox, so the sanctioned cross-mailbox identity is already present here
-	 * and every other address stays blocked. No MTA-side special-casing needed.
-	 */
-	allowedFromAddresses?: string[];
-	/** Opaque lease token returned by POST /send/decision. */
-	routingLease?: string;
-	allowWarmupOverflow?: boolean;
-}
-
 /**
  * Create the send route handler
  */
@@ -95,9 +56,9 @@ export function createSendHandler(
 		}
 
 		// Parse and validate request
-		let body: SendRequest;
+		let body: MtaSendRequest;
 		try {
-			body = await c.req.json<SendRequest>();
+			body = await c.req.json<MtaSendRequest>();
 		} catch {
 			return c.json({ error: 'Invalid JSON body' }, 400);
 		}

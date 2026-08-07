@@ -15,6 +15,12 @@ import {
 	type GovernedMessageType,
 } from '@owlat/shared';
 import {
+	MTA_RELAY_ALLOWED_REASON,
+	mtaDeferReasonOrigin,
+	type MtaRoutingDecision,
+} from '@owlat/mta-protocol/routingDecision';
+import type { MtaSendRequestDraft, MtaSendResponse } from '@owlat/mta-protocol/send';
+import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
 	type DispatchExtrasInput,
@@ -37,68 +43,18 @@ const MTA_RETRY_DELAYS = [1000, 5000] as const;
 const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
 
-export type MtaRoutingDecision =
-	| { kind: 'mta'; leaseToken: string; isProviderProbe: boolean; isGlobalProbe: boolean }
-	| {
-			kind: 'relay';
-			reason:
-				| 'relay_allowed'
-				| 'provider_breaker'
-				| 'provider_probe_limit'
-				| 'provider_hysteresis'
-				| 'warmup_overflow';
-	  }
-	| {
-			kind: 'defer';
-			retryAfterMs: number;
-			/**
-			 * WHO DECIDED TO DEFER — the MTA's routing governance, or a fault on our
-			 * own side. Both shapes are `defer` to the caller (the message waits
-			 * either way), but only `governed` is a statement about whether this
-			 * sending identity may send. An unconfigured, unreachable, slow or
-			 * malformed decision endpoint is `local`, and so is an ANSWER that
-			 * reports our own infrastructure failing rather than the identity's
-			 * standing (`MTA_DEFER_REASON_ORIGIN`) — the receiver saw neither.
-			 * `delivery/deferralOutcome.ts` counts the first and skips the second, so
-			 * an outage on our side cannot halt a cell for a fortnight.
-			 */
-			origin: 'governed' | 'local';
-	  };
-
 /**
- * EVERY defer reason the MTA may answer, each paired with WHOSE FAULT IT IS.
- *
- * One table, two jobs, so the accept-list and the classification cannot drift
- * apart: a reason absent here is an answer we did not understand and falls
- * through to the unrecognised-body return, and a reason added here cannot be
- * added without naming an origin.
- *
- * `governed` is the MTA declining this SENDING IDENTITY — an open global safety
- * circuit, a probe budget, no warmed IP to send from. `lease_persistence` is
- * none of those: it is ANY REDIS FAILURE WHILE TAKING THE LEASE — reserving a
- * half-open probe, writing the lease record, whatever the one catch in
- * `apps/mta/src/routes/routingDecision.ts` covers — so it is our own storage
- * layer failing and no receiver ever refused the mail. Gate 2 halts a cell at
- * 25% of `governed` deferrals; a Redis outage on our own MTA must not be able to
- * spend that budget.
- *
- * Exported so the adapter's own suite can assert its case list covers every key
- * — the drift this table exists to stop is a reason added here and nowhere else.
+ * The wire contract lives in `@owlat/mta-protocol` (D7) — the decision union,
+ * the relay reasons, and the defer-reason/origin table the MTA's own handler
+ * now types its answers against. Re-exported here because this module is the
+ * seam every Convex caller reaches the MTA through, so `from '../mta'` keeps
+ * meaning what it always did; the DECLARATION is the package's, and the mirror
+ * that used to sit here is gone.
  */
-export const MTA_DEFER_REASON_ORIGIN = {
-	global_safety: 'governed',
-	global_probe: 'governed',
-	no_owned_ip: 'governed',
-	lease_persistence: 'local',
-} as const satisfies Record<string, 'governed' | 'local'>;
-
-type MtaDeferReason = keyof typeof MTA_DEFER_REASON_ORIGIN;
-
-function deferReasonOrigin(reason: unknown): 'governed' | 'local' | undefined {
-	if (typeof reason !== 'string') return undefined;
-	if (!Object.prototype.hasOwnProperty.call(MTA_DEFER_REASON_ORIGIN, reason)) return undefined;
-	return MTA_DEFER_REASON_ORIGIN[reason as MtaDeferReason];
-}
+export {
+	MTA_DEFER_REASON_ORIGIN,
+	type MtaRoutingDecision,
+} from '@owlat/mta-protocol/routingDecision';
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -183,9 +139,9 @@ export async function resolveMtaRoutingDecision(
 			Object.keys(result).length === 1 &&
 			input.candidateProvider === 'relay'
 		) {
-			return { kind: 'relay', reason: 'relay_allowed' };
+			return { kind: 'relay', reason: MTA_RELAY_ALLOWED_REASON };
 		}
-		const deferOrigin = deferReasonOrigin(result['reason']);
+		const deferOrigin = mtaDeferReasonOrigin(result['reason']);
 		if (
 			result['decision'] === 'defer' &&
 			Object.keys(result).length === 3 &&
@@ -307,7 +263,11 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 		const fromDomain = extractDomainOrNull(params.from) ?? '';
 
-		const body = {
+		// The intake wire, typed against its one declaration (D7). Every key here
+		// is a field the MTA's handler reads off `MtaSendRequest`; `JSON.stringify`
+		// drops the undefined ones exactly as it always has, so the bytes are
+		// unchanged and a field renamed on either side no longer compiles on both.
+		const body: MtaSendRequestDraft = {
 			messageId: extras?.messageId ?? crypto.randomUUID(),
 			workAttemptId: extras?.workAttemptId,
 			routingReentryToken: extras?.routingReentryToken,
@@ -371,13 +331,14 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				};
 			}
 
-			const result = (await response.json()) as { success: boolean; id?: string; error?: string };
+			const result = (await response.json()) as MtaSendResponse;
 
-			if (result.success && result.id) {
+			if ('success' in result && result.success && result.id) {
 				return { success: true, id: result.id };
 			}
 
-			const errorText = result.error ?? 'MTA returned unsuccessful response';
+			const errorText =
+				('error' in result ? result.error : undefined) ?? 'MTA returned unsuccessful response';
 			return {
 				success: false,
 				errorMessage: errorText,

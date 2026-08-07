@@ -2,6 +2,7 @@
  * Core types for the owlat-mta service
  */
 
+import type { MtaRoutingReentry } from '@owlat/mta-protocol';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
 // ============ Email Job Types ============
@@ -84,17 +85,12 @@ export interface EmailJob {
 	};
 	/** Opaque handle to server-side Convex state; contains no tenant content. */
 	routingReentryToken?: string;
-	/** Callback material whose canonical digest is authenticated by the token. */
-	routingReentry?: {
-		envelopeInput: unknown;
-		retryState: {
-			attempt: number;
-			startedAt: number;
-			idempotencyKey: string;
-			workAttemptId?: string;
-			acceptanceReconciliation?: boolean;
-		};
-	};
+	/**
+	 * Callback material whose canonical digest is authenticated by the token.
+	 * Carried verbatim from the intake wire, so it IS the wire's declaration
+	 * (`@owlat/mta-protocol`) rather than a structural copy of it.
+	 */
+	routingReentry?: MtaRoutingReentry;
 }
 
 export type IpPoolType = 'transactional' | 'campaign';
