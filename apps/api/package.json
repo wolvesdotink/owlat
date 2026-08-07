@@ -2,8 +2,8 @@
 	"name": "@owlat/api",
 	"version": "0.4.1",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"exports": {
 		".": {
@@ -54,6 +54,7 @@
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
+		"@owlat/mta-protocol": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
@@ -70,10 +71,10 @@
 		"unpdf": "^1.6.2"
 	},
 	"devDependencies": {
-		"@types/sanitize-html": "^2.13.0",
 		"@edge-runtime/vm": "^5.0.0",
 		"@faker-js/faker": "^10.3.0",
 		"@types/node": "catalog:",
+		"@types/sanitize-html": "^2.13.0",
 		"@vitest/coverage-v8": "catalog:",
 		"convex-test": "^0.0.54",
 		"typescript": "catalog:",

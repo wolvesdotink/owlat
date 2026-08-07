@@ -104,6 +104,21 @@
 		// The canonicalizer leaf publishes one barrel (`.` over src/canon.ts);
 		// declare it as entry alongside its vector suite.
 		"packages/mail-canon": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		// The Convex<->MTA wire contract. Its public surface is the barrel plus the
+		// four wire subpaths, and `wireFixtures.ts` — the frozen bytes both apps'
+		// suites pin against, which is why it is an exported subpath rather than a
+		// `__tests__` file neither app could import.
+		"packages/mta-protocol": {
+			"entry": [
+				"src/index.ts",
+				"src/send.ts",
+				"src/routingDecision.ts",
+				"src/webhookEvent.ts",
+				"src/ipReputation.ts",
+				"src/wireFixtures.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
