@@ -185,6 +185,33 @@ describe('TransportCredentialFields — a descriptor shape no shipped kind uses 
 		expect(values['ACME_REGION']).toBe('us');
 	});
 
+	it('announces its credential error on that picker, rather than nowhere at all', () => {
+		// The silent failure this closes: the error placement asked the field's
+		// KIND, and a `region-select` is error-bearing — but with options declared
+		// it is drawn by the select branch, which was passed no error. A provider
+		// whose whole form is one closed region set therefore submitted empty, was
+		// refused by `validateEmailStep`, and got a button that did nothing with no
+		// sentence saying why.
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: NEXT_KIND,
+				values: {} as TransportCredentialValues,
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+				error: 'A sending region is required.',
+			},
+			global: { stubs: wizardStubs },
+		});
+		const alerts = wrapper.findAll('[role="alert"]');
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]!.text()).toBe('A sending region is required.');
+		// Beside the picker it is about, not as a set-level paragraph: the set and
+		// the field are the same thing on a one-control form.
+		expect(alerts[0]!.element.parentElement?.querySelector('select')?.id).toBe(
+			'field-sending-region'
+		);
+	});
+
 	it('leaves a region-select with no declared set as the free-text input SES ships', () => {
 		// SES's region list changes when AWS adds a region, so its descriptor
 		// deliberately declares none — and the shipped form is a text box.
@@ -243,6 +270,19 @@ describe('TransportCredentialFields — the host-port composite', () => {
 		// The rest of the endpoint is untouched.
 		expect(wrapper.find('#field-server-host').exists()).toBe(true);
 		expect(wrapper.find('#field-port').exists()).toBe(true);
+		// …INCLUDING ITS WIDTH. The toggle is the second cell of a two-column row,
+		// so withholding it while keeping the grid halved the shipped step's
+		// full-width Port input on every viewport ≥ sm.
+		expect(wrapper.find('[data-testid="endpoint-secondary-row"]').classes()).not.toContain(
+			'sm:grid-cols-2'
+		);
+	});
+
+	it('keeps port and toggle in one two-column row where the toggle IS drawn', () => {
+		const { wrapper } = mountFields('smtp');
+		expect(wrapper.find('[data-testid="endpoint-secondary-row"]').classes()).toContain(
+			'sm:grid-cols-2'
+		);
 	});
 
 	it('asks the parent to change preset rather than changing it behind its back', async () => {

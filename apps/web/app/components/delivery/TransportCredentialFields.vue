@@ -35,9 +35,12 @@
  * kind, and it is about the credential SET ("Region, access key ID, and secret
  * access key are all required for SES"), not about one input. So:
  *
- *  - a form with ONE simple control binds it to that control, because there the
- *    set and the field are the same thing (Resend's and Mandrill's API key —
- *    exactly what those shipped blocks did);
+ *  - a form with ONE control that can speak for itself binds it to that control,
+ *    because there the set and the field are the same thing (Resend's and
+ *    Mandrill's API key — exactly what those shipped blocks did). "Can speak for
+ *    itself" is every kind drawn as a `UiInput` or a `UiSelect`, both of which
+ *    render an `error` of their own; see {@link ERROR_BEARING_KINDS} for the two
+ *    that cannot;
  *  - any other form renders it as a set-level `role="alert"` paragraph after the
  *    group, which is what the shipped SES and SMTP blocks did. Binding it to one
  *    input there would put "Port must be a whole number…" under "Server host" —
@@ -104,11 +107,24 @@ const emit = defineEmits<{ 'update:preset': [SmtpPreset] }>();
 const fields = computed(() => credentialFieldsFor(props.kind));
 
 /**
- * The field kinds this renderer draws as ONE input that can carry a message of
- * its own. A composite draws three controls; a select and a checkbox have no
- * error slot at all — binding to either would make the message disappear.
+ * The field kinds this renderer draws as ONE control that can carry a message of
+ * its own — every kind that ends up as a `UiInput` or a `UiSelect`, both of
+ * which render an `error` beneath themselves.
+ *
+ * `host-port` is out because the composite draws THREE controls, and `boolean`
+ * because the checkbox this file hand-rolls has no error slot at all: binding to
+ * either would make the message disappear. `region-select` is in whichever of
+ * its two drawings it takes, which is why the select branch is passed the error
+ * too — a provider N+1 whose whole form is one region-select with a declared
+ * option set would otherwise submit empty, be refused, and be told nothing.
  */
-const ERROR_BEARING_KINDS: readonly string[] = ['string', 'secret', 'number', 'region-select'];
+const ERROR_BEARING_KINDS: readonly string[] = [
+	'string',
+	'secret',
+	'number',
+	'select',
+	'region-select',
+];
 
 /**
  * Is this form ONE simple control? Then the credential set IS that field and its
@@ -221,7 +237,14 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 					:error="errorFor(field)"
 					@update:model-value="set(field.envVar, $event)"
 				/>
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<!-- Port and the implicit-TLS toggle share a row — but only while there
+				     ARE two cells. A surface that withholds the toggle (the wizard's
+				     step) would otherwise leave the port at half width on any viewport
+				     ≥ sm, where the shipped step drew it full width. -->
+				<div
+					data-testid="endpoint-secondary-row"
+					:class="endpointSecurityToggle ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : ''"
+				>
 					<UiInput
 						:model-value="textValue(field.portEnvVar)"
 						label="Port"
@@ -253,6 +276,7 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 				:model-value="textValue(field.envVar) || defaultValue(field)"
 				:label="field.label"
 				:options="[...declaredOptions(field)]"
+				:error="errorFor(field)"
 				@update:model-value="set(field.envVar, $event)"
 			/>
 
