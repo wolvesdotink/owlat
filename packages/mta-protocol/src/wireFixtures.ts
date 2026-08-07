@@ -62,7 +62,7 @@ export const WIRE_FIXTURE_NOW = 1_750_000_000_000;
  * not a thing the MTA ever emits, and `delivery/postmaster.ts` buckets by UTC
  * day, so a coherence check added there must find these bytes coherent.
  */
-export const WIRE_FIXTURE_DATE = '2025-06-15';
+export const WIRE_FIXTURE_DATE = new Date(WIRE_FIXTURE_NOW).toISOString().slice(0, 10);
 
 /**
  * A governed `/send` body, with every optional field the governed adapter can
