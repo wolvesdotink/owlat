@@ -74,6 +74,16 @@
 # of the two happens, a wave gate reading A1 literally will read as failed for a
 # criterion nothing in the plan can satisfy.
 #
+# AND 13 IS AN UNDERCOUNT BY TWO, deliberately and visibly. P1.2 introduced two
+# kind literals that this file CANNOT license, because the ratchet's own KNOWN
+# LIMIT (a named array plus a membership test, outside apps/api/convex) does not
+# see them and an entry that excuses nothing fails the gate: the answering sets
+# in `RelayDomainStatus.vue` and `apps/web/app/utils/providerFeedbackPanel.ts`.
+# Both exist because a UI gate cannot be more general than the per-vendor BACKEND
+# READ behind it, both are argued in their own family below, and both are retired
+# by a named backend change rather than by a UI edit. Read the 13 as "13 licensed
+# entries plus these two, all with owners".
+#
 # ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
 #
 # P1.1 re-attributed one family (`credentials-and-probes`, 6 entries) away from
@@ -212,10 +222,22 @@ apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 # rather than asserted against the catalog (an assertion that a label equals
 # `entry.label` agrees with any rename).
 #
-# ONE RENDERING DIFFERENCE, not a string: the variable names inside a
-# descriptor's `description` are typeset as `<code>`, which is what both
-# hand-written blocks did. Matched by SHAPE (`WORD_WORD`) in
-# `TransportCredentialFields.vue`, so no provider is named to get it.
+# TWO RENDERING DIFFERENCES, neither a string:
+#
+#   a. the variable names inside a descriptor's `description` are typeset as
+#      `<code>`, which is what both hand-written blocks did. Matched by SHAPE
+#      (`WORD_WORD`) in `TransportCredentialFields.vue`, so no provider is named
+#      to get it;
+#   b. the credential group's vertical rhythm is `space-y-4` for every kind on
+#      both surfaces. The shipped spellings disagreed with each other — the
+#      editor used `space-y-4` for SES and SMTP and `space-y-3` for Mandrill and
+#      the own arm, the wizard step `space-y-3` throughout — and one component
+#      has one answer. It is the editor's spelling for its two multi-field forms,
+#      i.e. the majority of the fields an operator actually fills in. What is NOT
+#      normalised away is layout that changes a control's WIDTH: the endpoint's
+#      port/TLS row only becomes a two-column grid when the toggle is drawn, so
+#      the wizard step (which withholds it) keeps its full-width Port input,
+#      pinned in `__tests__/TransportCredentialFields.test.ts`.
 
 
 # ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
@@ -239,9 +261,18 @@ apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to 
 
 # ── relay-identity-panel (owner: the relay-identity read, backend — no card yet) ──
 #
-# NO ENTRIES, because there is no kind literal left to license: what is recorded
-# here is the HALF OF P1.2'S CARD THAT NEEDS A BACKEND CHANGE, so the wave gate
-# can see a named owner instead of a bullet with no diff.
+# NO ENTRY THE RATCHET CAN LICENSE — WHICH IS NOT THE SAME AS NO KIND LITERAL.
+# Read the A1 count with this caveat: `RelayDomainStatus.vue` carries
+# `const ANSWERS_FOR_KINDS = ['ses'] as const` and asks `includes(kind)`, which
+# is a kind-identity check in exactly the shape `check-provider-identity.sh`
+# documents as its KNOWN LIMIT (a named array plus a membership test, outside
+# `apps/api/convex`, where the custody test cannot see it either). So the ratchet
+# does not count it and this file cannot license it; it is written out HERE
+# instead, argued below, with the backend change that retires it.
+#
+# What is otherwise recorded here is the HALF OF P1.2'S CARD THAT NEEDS A BACKEND
+# CHANGE, so the wave gate can see a named owner instead of a bullet with no
+# diff.
 #
 # `RelayDomainStatus.vue` is worded for SES throughout — "SES escape-hatch
 # domains", "SES status", the dedicated MAIL FROM copy — and that wording is
@@ -273,6 +304,33 @@ apps/web/app/pages/setup/email.vue  # the hosted wizard's own copy — MOVES to 
 # data behind it. `RelayDomainStatus.vue` therefore passes the kinds its query
 # can speak for (one, today), and that argument becomes the set the generic read
 # can prove when the query above lands.
+
+
+# ── feedback-panel-answering-sets (owner: the webhook registry, P2.1) ──
+#
+# NO ENTRY THE RATCHET CAN LICENSE, and — as above — one more site in its array
+# blind spot, recorded here so the A1 count is read with the caveat:
+# `apps/web/app/utils/providerFeedbackPanel.ts` holds
+# `PANEL_ANSWERS_FOR_KINDS = { 'sns-topic': ['ses'], 'signed-webhook':
+# ['mandrill'] }` and asks `includes(entry.kind)`.
+#
+# WHICH panel the delivery config page draws is a MECHANISM question, and P1.2
+# made it one: `providerFeedback.setupPanel` on the entry, replacing
+# `status.provider === 'ses'` / `=== 'mandrill'`. What P1.2 could NOT make a
+# declaration is the DATA each panel then reports, because both reads are
+# per-kind backend queries: `getMandrillFeedbackStatus` is a
+# `MANDRILL_WEBHOOK_KEY` presence check, and `getLastSesEventAt` reads SES's own
+# event table. A sixth kind declaring either panel would therefore have another
+# provider's key presence and another provider's last-event timestamp reported
+# under its own name — plausible, wrong, and green in every suite.
+#
+# So each panel names the kinds its read can answer for, and a kind outside the
+# set draws NO panel: a visible gap a provider author chases, rather than an
+# invisible lie. THE UNBLOCKING CHANGE is the same shape as the one above — one
+# read that answers "the ACTIVE transport's feedback health" (signing-key
+# presence, last event) instead of one read per vendor — after which both sets
+# become "every kind that declares this panel" and this block goes. It is step
+# 4's caveat in the providers doc.
 
 
 # ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
