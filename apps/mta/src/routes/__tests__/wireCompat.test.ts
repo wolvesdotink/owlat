@@ -33,6 +33,7 @@ import {
 	SEND_DEDUPLICATED_BYTES,
 	SEND_INTAKE_PENDING_BYTES,
 	SEND_LEASE_REQUIRED_BYTES,
+	SYSTEM_SEND_REQUEST_BYTES,
 	IP_REPUTATION_SNAPSHOT_BYTES,
 	WIRE_FIXTURE_NOW,
 } from '@owlat/mta-protocol/wireFixtures';
@@ -483,6 +484,106 @@ describe('postbox send intake', () => {
 		const stripped = JSON.parse(POSTBOX_SEND_REQUEST_BYTES) as Record<string, unknown>;
 		delete stripped['allowedFromAddresses'];
 		const { response, queue } = await postboxIntake(JSON.stringify(stripped));
+		expect(response.status).toBe(403);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+});
+
+// ─── POST /send/system ─────────────────────────────────────────────────────
+
+/**
+ * Drive the SHIPPED system intake with the frozen auth-mail body.
+ *
+ * This leg carries the FEWEST fields of the three — no routing material at all,
+ * which is exactly what its mode gate refuses (`!auth.isMasterKey ||
+ * organizationId !== 'system'`, then the lease/re-entry refusal). Pinned on the
+ * producer side alone the fixture proves nothing about this gate: tighten the
+ * required-field check here and every auth invite, password reset and
+ * double-opt-in mail would be refused at the intake with both suites still
+ * green. So the bytes go through the handler.
+ */
+async function systemIntake(body: string) {
+	const queue = {
+		add: vi.fn().mockResolvedValue({ id: 'sys-queue-1' }),
+		getJob: vi.fn().mockResolvedValue(null),
+	};
+	const redis = {
+		zcard: vi.fn().mockResolvedValue(0),
+		llen: vi.fn().mockResolvedValue(0),
+		get: vi.fn().mockResolvedValue(null),
+		hgetall: vi.fn().mockResolvedValue({}),
+		eval: vi.fn().mockResolvedValue(0),
+		set: vi.fn().mockResolvedValue('OK'),
+	} as unknown as Redis;
+	const app = new Hono();
+	app.use('/send/system', async (c, next) => {
+		c.set('auth', { isMasterKey: true });
+		await next();
+	});
+	app.post('/send/system', createSendHandler(queue as unknown as Queue<EmailJob>, redis, 'system'));
+	const response = await app.request('/send/system', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+	});
+	return { response, queue };
+}
+
+describe('system send intake', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+	});
+
+	it('accepts the frozen system request bytes and answers with the accepted bytes', async () => {
+		const { response, queue } = await systemIntake(SYSTEM_SEND_REQUEST_BYTES);
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe(
+			JSON.stringify({ success: true, id: 'system-fixture-1', workAttemptId: 'sys-queue-1' })
+		);
+		const job = queue.add.mock.calls[0]![0]!.data as EmailJob;
+		expect(job).toMatchObject({
+			messageId: 'system-fixture-1',
+			to: 'person@example.com',
+			subject: 'Reset your password',
+			html: '<p>reset</p>',
+			ipPool: 'transactional',
+			organizationId: 'system',
+			dkimDomain: 'mail.example.org',
+		});
+		// System mail is ungoverned by construction: no lease, no re-entry, no
+		// delivery domain. Its dedupe identity is the caller's messageId, which is
+		// what `buildSystemMailExtras` carries the idempotency key as.
+		expect(job.routingLease).toBeUndefined();
+		expect(job.routingReentry).toBeUndefined();
+		expect(job.deliveryDomain).toBeUndefined();
+		expect(job.intakeReceiptId).toBe('system-fixture-1');
+	});
+
+	it('refuses the frozen body presented under a per-org credential', async () => {
+		const queue = {
+			add: vi.fn().mockResolvedValue({ id: 'sys-queue-1' }),
+			getJob: vi.fn().mockResolvedValue(null),
+		};
+		const redis = {
+			zcard: vi.fn().mockResolvedValue(0),
+			llen: vi.fn().mockResolvedValue(0),
+			get: vi.fn().mockResolvedValue(null),
+			set: vi.fn().mockResolvedValue('OK'),
+		} as unknown as Redis;
+		const app = new Hono();
+		app.use('/send/system', async (c, next) => {
+			c.set('auth', { isMasterKey: false, orgCredential: { organizationId: 'system' } });
+			await next();
+		});
+		app.post(
+			'/send/system',
+			createSendHandler(queue as unknown as Queue<EmailJob>, redis, 'system')
+		);
+		const response = await app.request('/send/system', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: SYSTEM_SEND_REQUEST_BYTES,
+		});
 		expect(response.status).toBe(403);
 		expect(queue.add).not.toHaveBeenCalled();
 	});
