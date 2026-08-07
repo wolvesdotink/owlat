@@ -242,13 +242,43 @@ describe('the due-check sweep asks the registry for its dispatch arm', () => {
 		expect(scheduled).toEqual(['domains/pluginRelay:refreshIdentity']);
 	});
 
-	it('leaves a row whose kind nothing registered alone', async () => {
+	it('schedules nothing for a row whose kind nothing registered', async () => {
 		// A row can outlive its plugin (a composition that dropped the package).
-		// Skipping is the honest answer; there is nothing left to ask.
+		// There is nothing left to ask, so nothing is scheduled.
 		const t = convexTest(schema, modules);
 		await seedDueRow(t, 'plugin.gone.relay');
 
 		expect(await t.mutation(internal.domains.mandrillRelayMutations.scheduleDueChecks, {})).toBe(0);
+		const scheduled = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name)
+		);
+		expect(scheduled).toEqual([]);
+	});
+
+	it('takes an orphaned row OUT of the due set instead of re-paging it forever', async () => {
+		// `nextCheckDueAt` is the only thing that removes a row from the due index, so
+		// a row the sweep merely skipped stays due on every tick from then on — a
+		// dropped plugin's two thousand identities re-paged hourly, forever. The
+		// second sweep is the assertion that matters: it must find nothing due.
+		const t = convexTest(schema, modules);
+		await seedDueRow(t, 'plugin.gone.relay');
+
+		await t.mutation(internal.domains.mandrillRelayMutations.scheduleDueChecks, {});
+
+		const due = await t.run(async (ctx) =>
+			ctx.db
+				.query('sendingDomainRelayIdentities')
+				.withIndex('by_next_check_due', (q) => q.lte('nextCheckDueAt', Date.now()))
+				.collect()
+		);
+		expect(due).toEqual([]);
+
+		// And the row is still THERE, un-recorded: a composition that restores the
+		// plugin picks its identities back up, and nothing about the skipped tick may
+		// look like an observation — `lastCheckedAt` dates the proof.
+		const rows = await t.run(async (ctx) => ctx.db.query('sendingDomainRelayIdentities').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.lastCheckedAt).toBe(1_000);
 	});
 });
 
