@@ -51,10 +51,24 @@ const MAX_RECOVERY_FACTOR = 100;
  * and the only thing left here is the unknown-input branch. The suite
  * `__tests__/destinationTaxonomy.test.ts` pins exactly that: agreement on every
  * domain the taxonomy names, and the domain-scoped passthrough everywhere else.
+ *
+ * NORMALIZATION. Delegating also adopts the shared classifier's normalization —
+ * `trim` and a trailing-dot strip on top of the lowercase this used to do alone
+ * — so the fold path and the passthrough branch are normalized IDENTICALLY,
+ * once, at the top. Two consequences worth stating because they are the only
+ * inputs whose answer differs from the pre-D8 implementation, and both are
+ * unreachable from production: `'gmail.com.'` now folds to `gmail` instead of
+ * naming its own row, and `'example.com.'` now shares the `example.com` row
+ * instead of splitting one operator's shaping and throttle budget across two
+ * rows that each see half the traffic. Every shipped caller hands over either a
+ * `throttleKey` (already trimmed, lowercased, dot-stripped and IDNA-normalized
+ * by `smtp/destinationProvider.ts`) or a provider key the admin routes have
+ * already validated with `isDestinationProviderKey`.
  */
 export function canonicalProfileKey(value: string): string {
-	const provider = destinationProviderForDomain(value);
-	return provider === 'other' ? value.toLowerCase() : provider;
+	const normalized = value.trim().toLowerCase().replace(/\.$/, '');
+	const provider = destinationProviderForDomain(normalized);
+	return provider === 'other' ? normalized : provider;
 }
 
 /**
