@@ -10,10 +10,64 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { resendKeys, resendSendMock, smtpSendMock } = vi.hoisted(() => ({
+const { resendKeys, resendSendMock, smtpSendMock, pluginSendMock } = vi.hoisted(() => ({
 	resendKeys: [] as string[],
 	resendSendMock: vi.fn(),
 	smtpSendMock: vi.fn(),
+	pluginSendMock: vi.fn(),
+}));
+
+/**
+ * A BUNDLED PLUGIN TRANSPORT THAT DECLARES ITS OWN CONFIGURATION (the seams
+ * plan's P3.1).
+ *
+ * The point of adding it to THIS file: two transports of one kind must work the
+ * same way at either tier. The host resolves `PLUGIN_SENDBIRD_TOKEN` for the
+ * default instance and `PLUGIN_SENDBIRD_TOKEN__EU` for `#eu`, and hands each to
+ * the module under the base name — the plugin-tier equivalent of the per-kind
+ * config cache the SMTP case below proves is not shared.
+ */
+vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
+	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			localId: 'sendbird',
+			label: 'Sendbird',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			optionalEnvVars: Object.freeze(['PLUGIN_SENDBIRD_STREAM']),
+			instanceEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN', 'PLUGIN_SENDBIRD_STREAM']),
+			requiredCapability: 'send:transport',
+		}),
+	]),
+}));
+
+vi.mock('../../../plugins/sendTransportModules.generated', () => ({
+	BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: Object.freeze([
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: (_params: unknown, _extras: unknown, config: unknown) => pluginSendMock(config),
+			},
+		}),
+	]),
+}));
+
+vi.mock('../../../plugins/plugins.generated', () => ({
+	bundledPluginComposition: Object.freeze([
+		Object.freeze({
+			packageName: '@acme/mail-pack',
+			manifest: Object.freeze({
+				id: 'mail-pack',
+				version: '1.0.0',
+				capabilities: Object.freeze(['send:transport']),
+				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze([]) }),
+			}),
+		}),
+	]),
 }));
 
 vi.mock('resend', () => ({
@@ -68,7 +122,18 @@ beforeEach(() => {
 	smtpSendMock.mockReset();
 	smtpSendMock.mockResolvedValue(undefined);
 
-	vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'mta#secondary, smtp#backup ,resend#trial,mandrill#eu');
+	pluginSendMock.mockReset();
+	pluginSendMock.mockResolvedValue({ success: true, id: 'plugin-1' });
+
+	vi.stubEnv(
+		'SEND_TRANSPORT_INSTANCES',
+		'mta#secondary, smtp#backup ,resend#trial,mandrill#eu,plugin.mail-pack.sendbird#eu'
+	);
+
+	vi.stubEnv('PLUGIN_SENDBIRD_TOKEN', 'sendbird-primary-token');
+	vi.stubEnv('PLUGIN_SENDBIRD_STREAM', 'primary-stream');
+	vi.stubEnv('PLUGIN_SENDBIRD_TOKEN__EU', 'sendbird-eu-token');
+	vi.stubEnv('PLUGIN_SENDBIRD_STREAM__EU', 'eu-stream');
 
 	vi.stubEnv('MTA_API_URL', 'https://mta-primary.test');
 	vi.stubEnv('MTA_API_KEY', 'mta-primary-key');
@@ -113,6 +178,10 @@ describe('two transports of the same kind', () => {
 		expect(ids).toContain('resend#trial');
 		expect(ids).toContain('mandrill');
 		expect(ids).toContain('mandrill#eu');
+		// A plugin kind that declares its own configuration is listed exactly like a
+		// core one — no tier appears anywhere in this contract.
+		expect(ids).toContain('plugin.mail-pack.sendbird');
+		expect(ids).toContain('plugin.mail-pack.sendbird#eu');
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
@@ -224,5 +293,62 @@ describe('two transports of the same kind', () => {
 			'mandrill-primary-key',
 		]);
 		expect(bodies.map((body) => body.subaccount)).toEqual(['primary-sub', 'eu-sub', 'primary-sub']);
+	});
+
+	it('keeps two BUNDLED PLUGIN transports of one kind on their own credentials', async () => {
+		// The parity claim, end to end: the same interleaving that would expose a
+		// per-kind config cache in a core adapter. A plugin module reads what it was
+		// HANDED — under the base name, whichever instance it was — so a module
+		// written without knowing instances exist still cannot send the third message
+		// with the EU token.
+		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		await sendProviderDispatch(
+			fakeCtx(),
+			namedSendTransportId('plugin.mail-pack.sendbird', 'eu'),
+			params
+		);
+		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+
+		expect(pluginSendMock.mock.calls.map((call) => call[0])).toEqual([
+			{
+				instanceKey: null,
+				env: {
+					PLUGIN_SENDBIRD_TOKEN: 'sendbird-primary-token',
+					PLUGIN_SENDBIRD_STREAM: 'primary-stream',
+				},
+			},
+			{
+				instanceKey: 'eu',
+				env: { PLUGIN_SENDBIRD_TOKEN: 'sendbird-eu-token', PLUGIN_SENDBIRD_STREAM: 'eu-stream' },
+			},
+			{
+				instanceKey: null,
+				env: {
+					PLUGIN_SENDBIRD_TOKEN: 'sendbird-primary-token',
+					PLUGIN_SENDBIRD_STREAM: 'primary-stream',
+				},
+			},
+		]);
+	});
+
+	it('attributes each plugin instance to its own transport id and one shared kind', async () => {
+		// Health and measurement stay keyed by KIND (one row per kind, instances
+		// share it), while the dispatch result names the instance — the same split
+		// the core kinds above have.
+		const primary = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+		const eu = await sendProviderDispatch(
+			fakeCtx(),
+			namedSendTransportId('plugin.mail-pack.sendbird', 'eu'),
+			params
+		);
+
+		expect([primary, eu].map((dispatched) => dispatched.providerType)).toEqual([
+			'plugin.mail-pack.sendbird',
+			'plugin.mail-pack.sendbird',
+		]);
+		expect([primary, eu].map((dispatched) => dispatched.transportId)).toEqual([
+			'plugin.mail-pack.sendbird',
+			'plugin.mail-pack.sendbird#eu',
+		]);
 	});
 });

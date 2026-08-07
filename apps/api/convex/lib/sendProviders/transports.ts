@@ -27,13 +27,19 @@
  * configured" — silently borrowing another transport's credentials would be
  * both a routing and a security regression.
  *
- * Named instances are a CORE-KIND feature. A plugin-contributed kind's
- * configuration is resolved by the plugin host from the plugin's own declared
- * deployment-wide environment, which the `__<INSTANCEKEY>` suffix does not
- * reach; a named instance of such a kind would therefore resolve and then send
- * with the DEFAULT plugin instance's credentials. That is exactly the silent
- * credential borrow this module promises cannot happen, so it is rejected with
- * `instances_unsupported` instead.
+ * Named instances follow the CONFIGURATION, not the tier (the seams plan's D4 —
+ * "two relay tiers, one contract"). A kind can have them when it declares
+ * variables that are its own and instance-scoped: for a core kind that is every
+ * variable it declares, resolved inside the adapter through `transportEnv.ts`;
+ * for a plugin kind it is `instanceEnvVars`, which the host resolves under the
+ * same `__<INSTANCEKEY>` suffix and hands to the plugin's module.
+ *
+ * A plugin transport that declares NO configuration of its own is still refused
+ * `instances_unsupported`, and for the original reason: its module reads the
+ * plugin's deployment-wide environment, which no suffix reaches, so a named
+ * instance would resolve and then send with the DEFAULT instance's credentials.
+ * That is exactly the silent credential borrow this module promises cannot
+ * happen.
  *
  * Isolate-safe: no `'use node'` dependencies, so the routing/read seams can
  * import it.
@@ -252,9 +258,19 @@ function isNamedInstanceConfigured(record: SendTransportRecord): boolean {
 	return record.requiredEnvVars.every((name) => isEnvPresent(name));
 }
 
-/** Whether a kind supports named instances at all (see the module docblock). */
+/**
+ * Whether a kind supports named instances at all (see the module docblock).
+ *
+ * A CAPABILITY QUESTION, not a tier one: the answer is "does this kind have
+ * configuration of its own that an instance suffix reaches?". Core kinds always
+ * do. A plugin kind does exactly when it declared `instanceEnvVars`, which is
+ * also the list the host resolves and hands to its module — so a kind that can
+ * be addressed per instance is, by construction, a kind that is SENT per
+ * instance.
+ */
 function supportsNamedInstances(entry: SendProviderCatalogEntry): boolean {
-	return entry.pluginId === undefined;
+	if (entry.pluginId === undefined) return true;
+	return (entry.instanceEnvVars?.length ?? 0) > 0;
 }
 
 /**

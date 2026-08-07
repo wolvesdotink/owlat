@@ -104,10 +104,40 @@ for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly Genera
 	) {
 		throw new TypeError('Invalid bundled send transport registry');
 	}
-	hostedProviders.set(
+	const instanceEnvVars = catalogEntry.instanceEnvVars ?? [];
+	const hosted = createHostedSendProvider(
 		generated.kind,
-		createHostedSendProvider(generated.kind, catalogEntry.retryDelays, generated.module)
+		catalogEntry.retryDelays,
+		generated.module,
+		{
+			instanceEnvVars,
+			// THE INTERSECTION, not the gate. A plugin entry that declares no
+			// configuration of its own carries the PLUGIN's flag variables as its
+			// presence gate, and those are not this transport's to be handed — so a
+			// variable is required-for-a-send only if it is also instance-scoped.
+			requiredEnvVars: catalogEntry.requiredEnvVars.filter((name) =>
+				instanceEnvVars.includes(name)
+			),
+		}
 	);
+	// THE DEDUP CLAIM IS A PAIR, and this is the half a manifest cannot make on
+	// its own: the catalog says a repeat is safe, and the module's
+	// `buildSystemMailExtras` is what carries the key the repeat would be
+	// deduplicated on. Without it, `systemMailRetryDisposition` reports an
+	// ambiguous password reset as `safe_to_retry` while the key never reached the
+	// provider — and the "retry" is a second mail to a real person. Refused at
+	// module load, where it is a deployment that does not start rather than a
+	// wrong answer nobody attributes to a plugin. (This replaces the blanket
+	// refusal of the declaration itself, which stood only while the plugin tier
+	// had no extras contract at all.)
+	if (catalogEntry.deduplicatesOnIdempotencyKey === true && !hosted.buildSystemMailExtras) {
+		throw new TypeError(
+			`Bundled send transport '${generated.kind}' declares deduplicatesOnIdempotencyKey: true ` +
+				'but its module exports no buildSystemMailExtras, so the system/auth mail path cannot ' +
+				'hand it the key it would deduplicate on.'
+		);
+	}
+	hostedProviders.set(generated.kind, hosted);
 }
 if (
 	SEND_PROVIDER_CATALOG.some(
@@ -149,16 +179,41 @@ export function providerFor(
  * replaced, a `providerKind === 'mta' ? … : 'resend' ? …` chain inside
  * `delivery/governedDispatch.ts` that every new kind had to edit.
  *
- * A module with no builder — and every hosted (plugin) transport, which parses
- * its own extras from a data-only value the host hands it and takes nothing
- * from this boundary — yields the empty extras the governed path always sent.
+ * A module with no builder yields the empty extras the governed path always
+ * sent. That is now the only reason a kind gets none: since plugin-tier parity
+ * (the seams plan's P3.1) a hosted module may export the same builder, so this
+ * boundary asks BOTH tiers the same question and the `?? {}` — not a tier test —
+ * is what answers for a module that declines.
+ *
+ * The cast is the tier seam: a hosted builder's return value is the plugin's own
+ * extras shape, which is `unknown` to this app by construction (it is re-parsed
+ * at the adapter's `parseExtras` boundary before any send sees it), while
+ * `SendProviderExtras` is the union of the CORE kinds' shapes. Neither the
+ * dispatch helper nor the governed boundary reads inside the value.
  */
 export function buildDispatchExtrasFor(
 	kind: SendProviderKind,
 	input: DispatchExtrasInput
 ): SendProviderExtras {
-	if (!isCoreSendProviderKind(kind)) return {};
-	return providerFor(kind).buildDispatchExtras?.(input) ?? {};
+	return (extrasModuleFor(kind)?.buildDispatchExtras?.(input) ?? {}) as SendProviderExtras;
+}
+
+/**
+ * The module a kind's extras come from, or `null` for a kind this composition
+ * has none for.
+ *
+ * DELIBERATELY NOT `providerFor`, which throws: asking for extras is not
+ * dispatching. Every send resolves its transport first and fails closed there on
+ * an unknown kind, loudly and before any attempt, so a throw HERE could only ever
+ * fire on a path that is not sending — and the honest answer on such a path is
+ * the empty extras the governed boundary has always passed, not an exception
+ * raised inside somebody else's error handling.
+ */
+function extrasModuleFor(
+	kind: SendProviderKind
+): SendProviderModule<SendProviderKind> | HostedSendProviderModule | null {
+	if (isCoreSendProviderKind(kind)) return SEND_PROVIDERS[kind];
+	return hostedProviders.get(kind) ?? null;
 }
 
 /**
@@ -175,6 +230,5 @@ export function buildSystemMailExtrasFor(
 	kind: SendProviderKind,
 	input: SystemMailExtrasInput
 ): SendProviderExtras {
-	if (!isCoreSendProviderKind(kind)) return {};
-	return providerFor(kind).buildSystemMailExtras?.(input) ?? {};
+	return (extrasModuleFor(kind)?.buildSystemMailExtras?.(input) ?? {}) as SendProviderExtras;
 }

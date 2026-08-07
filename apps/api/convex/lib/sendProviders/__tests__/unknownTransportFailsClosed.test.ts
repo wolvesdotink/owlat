@@ -26,11 +26,18 @@ vi.mock('@owlat/smtp-client', () => ({
 	isSmtpError: () => false,
 }));
 
-// A bundled plugin transport, with the EMPTY `requiredEnvVars` a plugin catalog
-// entry legitimately has (its configuration lives in the plugin's own
-// deployment-wide environment, not in per-instance variables). That shape is
-// exactly what a vacuous "every required variable is present" check would wave
-// through, so it is the shape this file pins.
+// TWO bundled plugin transports, because the fail-closed rules differ by what
+// each DECLARES rather than by which tier it belongs to (the seams plan's P3.1).
+//
+//  - `postmark` declares EMPTY `requiredEnvVars` and no `instanceEnvVars` — the
+//    shape a plugin transport whose configuration lives in the plugin's own
+//    deployment-wide environment legitimately has. It is exactly what a vacuous
+//    "every required variable is present" check would wave through, and it is
+//    still refused named instances: a suffix reaches none of that configuration,
+//    so an instance of it could only ever send with the default's credentials.
+//  - `sendbird` declares its own instance-scoped variables, so the host resolves
+//    them per instance and hands them over — and named instances become as
+//    ordinary for it as they are for `smtp`.
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
 		Object.freeze({
@@ -42,6 +49,16 @@ vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 			requiredEnvVars: Object.freeze([]),
 			requiredCapability: 'send:transport',
 		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			localId: 'sendbird',
+			label: 'Sendbird',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			instanceEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			requiredCapability: 'send:transport',
+		}),
 	]),
 }));
 
@@ -49,6 +66,14 @@ vi.mock('../../../plugins/sendTransportModules.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: Object.freeze([
 		Object.freeze({
 			kind: 'plugin.mail-pack.postmark',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: () => pluginSendMock(),
+			},
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
 			pluginId: 'mail-pack',
 			module: {
 				parseExtras: (input: unknown) => input,
@@ -163,17 +188,57 @@ describe('resolution failure modes', () => {
 		});
 	});
 
-	it('rejects a NAMED instance of a plugin kind instead of borrowing the default plugin credentials', () => {
-		// Declaring it changes nothing: a plugin transport's configuration comes
-		// from the plugin's own deployment-wide environment, which no `__ALT`
-		// suffix reaches, so `plugin.mail-pack.postmark#alt` could only ever send
-		// with the DEFAULT instance's credentials. Two ids, one credential set is
-		// precisely the silent borrow this module forbids.
+	it('rejects a NAMED instance of a plugin kind that declares no configuration of its own', () => {
+		// Declaring it changes nothing: this transport's configuration comes from the
+		// plugin's own deployment-wide environment, which no `__ALT` suffix reaches,
+		// so `plugin.mail-pack.postmark#alt` could only ever send with the DEFAULT
+		// instance's credentials. Two ids, one credential set is precisely the silent
+		// borrow this module forbids.
 		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.postmark#alt');
 		_resetSendTransportCacheForTests();
 		expect(reasonFor('plugin.mail-pack.postmark#alt')).toBe('instances_unsupported');
 		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
 			'plugin.mail-pack.postmark#alt'
+		);
+	});
+
+	it('resolves a NAMED instance of a plugin kind that DOES declare its own configuration', () => {
+		// The parity the piece exists for (P3.1): the answer follows the declared
+		// configuration, not the tier. `PLUGIN_SENDBIRD_TOKEN__EU` is a variable the
+		// host resolves and hands to the module, so this id names a credential set of
+		// its own and is not borrowing anything.
+		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.sendbird#eu');
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN__EU', 'eu-token');
+		_resetSendTransportCacheForTests();
+
+		expect(resolveSendTransport('plugin.mail-pack.sendbird#eu')).toMatchObject({
+			kind: 'plugin.mail-pack.sendbird',
+			instanceKey: 'eu',
+			pluginId: 'mail-pack',
+			requiredEnvVars: ['PLUGIN_SENDBIRD_TOKEN__EU'],
+		});
+		expect(listSendTransports().map((transport) => transport.id)).toContain(
+			'plugin.mail-pack.sendbird#eu'
+		);
+	});
+
+	it.each([
+		['undeclared', 'unregistered_instance'],
+		['revoked', 'revoked'],
+	])('fails a plugin instance closed when it is %s', (state, reason) => {
+		vi.stubEnv(
+			'SEND_TRANSPORT_INSTANCES',
+			state === 'undeclared' ? '' : 'plugin.mail-pack.sendbird#eu'
+		);
+		// Revoked = declared, but its credential is gone. Neither state may fall
+		// through to the default instance's token.
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN__EU', state === 'undeclared' ? 'eu-token' : '');
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN', 'default-token');
+		_resetSendTransportCacheForTests();
+
+		expect(reasonFor('plugin.mail-pack.sendbird#eu')).toBe(reason);
+		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
+			'plugin.mail-pack.sendbird#eu'
 		);
 	});
 

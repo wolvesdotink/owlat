@@ -1,6 +1,6 @@
 /** Isolate-safe catalog for built-in and statically bundled send transports. */
 
-import type { PluginId } from '@owlat/plugin-kit';
+import { isPluginSendTransportEnvVar, type PluginId } from '@owlat/plugin-kit';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	acceptanceSemanticsOf,
@@ -115,16 +115,13 @@ const pluginCatalog =
  * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
  * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
  * entries are generated and reach the catalog through a cast, so the type says
- * nothing about them. Today they cannot carry either field at all — the plugin
- * codegen emits a fixed shape with no semantics — but the seams plan's P3.1
- * (contract parity — not the Mandrill plan's P3.1) gives the plugin
- * `sendTransport` contract the capability fields, and at that moment the
- * PREREQUISITES note on {@link AcceptanceSemantics} would be the only thing
- * standing between a manifest and a mislabelled measurement plane: a bundled
- * plugin declaring `idempotency-key` gets `bindMtaProviderIdentity` stamping
- * `providerType: 'mta'` onto its Sends, and one declaring `accepted` gets its
- * ambiguous outcomes replayed down an arm `withReconciliationSafety` defers
- * until the delivery deadline terminalizes them as definite failures.
+ * nothing about them. Since plugin-tier contract parity (the seams plan's P3.1 —
+ * not the Mandrill plan's P3.1) a manifest CAN declare capability fields, which
+ * is exactly when this stops being hypothetical: a bundled plugin declaring
+ * `idempotency-key` gets `bindMtaProviderIdentity` stamping `providerType: 'mta'`
+ * onto its Sends, and one declaring `accepted` gets its ambiguous outcomes
+ * replayed down an arm `withReconciliationSafety` defers until the delivery
+ * deadline terminalizes them as definite failures.
  *
  * A note is not a control. This is: composing a catalog with either declaration
  * on a plugin entry throws at module load — a boot/codegen failure the author of
@@ -135,8 +132,14 @@ const pluginCatalog =
  * pairing discussion on {@link CoreSendProviderCatalogEntry}). Only the values
  * whose prerequisites live outside the catalog are refused.
  *
- * That P3.1 relaxes this by generalizing the three sites in that note and
- * deleting the check — in that order, deliberately, in one change.
+ * PARITY DID NOT RELAX IT, and deliberately so: the prerequisites in that note
+ * are three BACKEND sites (`delivery/lastMileRouting.ts`,
+ * `delivery/sendLifecycle.ts`, `delivery/sendCompletion.ts`), not contract
+ * surface, so generalizing them is its own change with its own gates. What parity
+ * added is a second, earlier enforcement — `PluginSendTransportMessageIdSource`
+ * does not contain the word, so an author is told at `definePlugin` rather than
+ * at deployment boot. This stays as the artifact-level backstop of the same rule,
+ * for the same reason every other load-time guard here exists.
  */
 function assertPluginDispatchSemanticsAreGeneral(
 	entries: readonly GeneratedSendTransportCatalogEntry[]
@@ -157,39 +160,40 @@ function assertPluginDispatchSemanticsAreGeneral(
 }
 
 /**
- * THE THIRD DECLARATION WHOSE PREREQUISITE LIVES OUTSIDE THE CATALOG (P0.4).
+ * THE CONFIGURATION NAMESPACE, RE-ASSERTED (the seams plan's P3.1).
  *
- * `deduplicatesOnIdempotencyKey` is a promise with two halves: the catalog says
- * a repeat is safe, and the kind's `buildSystemMailExtras` carries the key the
- * repeat would be deduplicated on. The plugin tier can only make the first half
- * — its modules have no extras contract at all until the seams plan's P3.1, so
- * `buildSystemMailExtrasFor` returns the empty extras for every hosted kind.
+ * `instanceEnvVars` is the one plugin declaration whose VALUES the host reads and
+ * hands to third-party code, which is why the kit fences the names to the
+ * `PLUGIN_` namespace and refuses the `__` that separates an instance suffix. The
+ * manifest validator applies that rule at authoring time; this applies it again
+ * to the GENERATED ARTIFACT, because the artifact — not the manifest — is what
+ * this deployment actually runs, and a hand edit, a bad merge, a partial
+ * regeneration or a manifest validated by an older kit all end at an entry no
+ * validator ever saw. An entry naming `MTA_API_KEY` would otherwise be handed
+ * this deployment's own MTA credential.
  *
- * A bundled entry declaring `true` would therefore have
- * `systemMailRetryDisposition` report an ambiguous password reset as
- * `safe_to_retry` while the key never reached the provider — and the "retry"
- * would be a second mail to a real person. Refused at composition time, like the
- * custody pair above, so the manifest author sees a boot failure instead.
- *
- * P3.1 deletes this the moment plugin modules can build extras.
+ * The predicate is the kit's own, so the two enforcements cannot drift apart.
+ * `getPluginTransportEnv` fences the same namespace a third time at the read
+ * itself; that one is the backstop for a caller, this one is the backstop for an
+ * artifact, and a deployment mistake must stop the deployment.
  */
-function assertPluginIdempotencyClaimsAreDeliverable(
+function assertPluginInstanceEnvVarsAreNamespaced(
 	entries: readonly GeneratedSendTransportCatalogEntry[]
 ): void {
 	for (const entry of entries) {
-		if (entry.deduplicatesOnIdempotencyKey !== true) continue;
-		throw new TypeError(
-			`Bundled plugin send transport '${entry.kind}' declares deduplicatesOnIdempotencyKey: ` +
-				'true, but the plugin tier has no per-send extras contract yet, so the system/auth ' +
-				'mail path cannot hand it the key it would deduplicate on — an ambiguous send would ' +
-				'be reported safe to retry and re-mail the recipient. See buildSystemMailExtras in ' +
-				'lib/sendProviders/systemMailExtras.ts.'
-		);
+		for (const name of entry.instanceEnvVars ?? []) {
+			if (isPluginSendTransportEnvVar(name)) continue;
+			throw new TypeError(
+				`Bundled plugin send transport '${entry.kind}' declares the configuration variable ` +
+					`'${name}', which is outside the PLUGIN_ namespace a bundled transport may be ` +
+					'handed the value of.'
+			);
+		}
 	}
 }
 
 assertPluginDispatchSemanticsAreGeneral(pluginCatalog);
-assertPluginIdempotencyClaimsAreDeliverable(pluginCatalog);
+assertPluginInstanceEnvVarsAreNamespaced(pluginCatalog);
 
 export const SEND_PROVIDER_CATALOG: readonly SendProviderCatalogEntry[] = Object.freeze([
 	...CORE_SEND_PROVIDER_CATALOG_ENTRIES,

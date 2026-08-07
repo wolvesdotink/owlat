@@ -9,9 +9,62 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { resendSendMock, smtpSendMock } = vi.hoisted(() => ({
+const { resendSendMock, smtpSendMock, pluginSendMock } = vi.hoisted(() => ({
 	resendSendMock: vi.fn(),
 	smtpSendMock: vi.fn(),
+	pluginSendMock: vi.fn(),
+}));
+
+/**
+ * A BUNDLED PLUGIN TRANSPORT WITH A CREDENTIAL OF ITS OWN (the seams plan's
+ * P3.1) — the sharpest case in this file after Mandrill's body-borne key.
+ *
+ * The plugin tier is the one place a resolved credential VALUE leaves the host
+ * and enters third-party code, so "sealed config never leaves the adapter that
+ * resolved it" has to hold with a wider blast radius: the value must not reach
+ * the transport record, the dispatch result, the console, or any transport but
+ * the instance it was resolved for.
+ */
+vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
+	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			localId: 'sendbird',
+			label: 'Sendbird',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			instanceEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			requiredCapability: 'send:transport',
+		}),
+	]),
+}));
+
+vi.mock('../../../plugins/sendTransportModules.generated', () => ({
+	BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: Object.freeze([
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: (_params: unknown, _extras: unknown, config: unknown) => pluginSendMock(config),
+			},
+		}),
+	]),
+}));
+
+vi.mock('../../../plugins/plugins.generated', () => ({
+	bundledPluginComposition: Object.freeze([
+		Object.freeze({
+			packageName: '@acme/mail-pack',
+			manifest: Object.freeze({
+				id: 'mail-pack',
+				version: '1.0.0',
+				capabilities: Object.freeze(['send:transport']),
+				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze([]) }),
+			}),
+		}),
+	]),
 }));
 
 vi.mock('resend', () => ({
@@ -48,6 +101,9 @@ const SECRETS = [
 	// BODY (Mandrill convention), so it sits one `JSON.stringify` away from any
 	// error path that echoes what was sent.
 	'mandrill-super-secret',
+	// The plugin tier's credential, which is the only one the host hands to code
+	// it did not write.
+	'sendbird-super-secret',
 ];
 
 function expectNoSecret(text: string): void {
@@ -93,6 +149,10 @@ beforeEach(() => {
 	vi.stubEnv('SMTP_RELAY_USERNAME__BACKUP', 'backup-user');
 	vi.stubEnv('SMTP_RELAY_PASSWORD__BACKUP', 'backup-super-secret');
 	vi.stubEnv('MANDRILL_API_KEY', 'mandrill-super-secret');
+	vi.stubEnv('PLUGIN_SENDBIRD_TOKEN', 'sendbird-super-secret');
+
+	pluginSendMock.mockReset();
+	pluginSendMock.mockResolvedValue({ success: true, id: 'plugin-1' });
 });
 
 afterEach(() => {
@@ -168,6 +228,37 @@ describe('dispatch results and errors carry no sealed config', () => {
 		expectNoSecret(JSON.stringify(dispatched));
 	});
 
+	it('keeps a BUNDLED PLUGIN credential to the module it was resolved for', async () => {
+		// The host hands this value to third-party code by design (the seams plan's
+		// P3.1), which makes every OTHER surface the interesting one: the record the
+		// router holds, the result the Send row is written from, and the failure text.
+		const dispatched = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+
+		expect(dispatched.transportId).toBe('plugin.mail-pack.sendbird');
+		expectNoSecret(JSON.stringify(dispatched));
+		expectNoSecret(JSON.stringify(resolveSendTransport('plugin.mail-pack.sendbird')));
+		// It DID reach the module, under the base name — otherwise this test would
+		// pass on a transport that simply never got its credential.
+		expect(pluginSendMock.mock.calls[0]?.[0]).toEqual({
+			instanceKey: null,
+			env: { PLUGIN_SENDBIRD_TOKEN: 'sendbird-super-secret' },
+		});
+	});
+
+	it('keeps a plugin credential out of a FAILED dispatch, whatever the module threw', async () => {
+		// A plugin's throw is untrusted text that may quote its own configuration.
+		// The host answers with its own generic failure rather than the module's
+		// message, so nothing a plugin says can reach the Send row.
+		pluginSendMock.mockImplementation((config: { env: Record<string, string> }) => {
+			throw new Error(`upstream rejected ${JSON.stringify(config.env)}`);
+		});
+
+		const dispatched = await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
+
+		expect(dispatched.result.success).toBe(false);
+		expectNoSecret(JSON.stringify(dispatched));
+	});
+
 	it('names the variable, never the value, when a named instance is misconfigured', () => {
 		vi.stubEnv('SMTP_RELAY_PASSWORD__BACKUP', '');
 		_resetSendTransportCacheForTests();
@@ -207,6 +298,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 		await sendProviderDispatch(fakeCtx(), 'smtp', params);
 		await sendProviderDispatch(fakeCtx(), namedSendTransportId('smtp', 'backup'), params);
 		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		await sendProviderDispatch(fakeCtx(), 'plugin.mail-pack.sendbird', params);
 
 		expectNoSecret(written.join('\n'));
 	});

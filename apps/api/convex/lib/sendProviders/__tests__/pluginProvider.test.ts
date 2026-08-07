@@ -33,7 +33,11 @@ describe('bundled plugin send transport boundary', () => {
 		});
 		expect(parseExtras).toHaveBeenCalledWith('opaque');
 		expect(send).toHaveBeenCalledOnce();
-		expect(send).toHaveBeenCalledWith(params, { token: 'opaque' });
+		// The third argument is this instance's resolved configuration (the seams
+		// plan's P3.1). This transport declares none, so it is the empty record for
+		// the default instance — see `pluginCapabilityParity.test.ts` for the
+		// resolution rules a transport that declares variables gets.
+		expect(send).toHaveBeenCalledWith(params, { token: 'opaque' }, { instanceKey: null, env: {} });
 	});
 
 	it.each([

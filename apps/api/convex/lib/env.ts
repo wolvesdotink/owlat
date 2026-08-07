@@ -339,6 +339,38 @@ export function getSendTransportEnv(key: string): string | undefined {
 }
 
 /**
+ * `PLUGIN_`-prefixed — the namespace a bundled plugin's own variables live in.
+ *
+ * Covers the instance-suffixed form too (`PLUGIN_ACME_TOKEN__EU`), which is one
+ * more name inside the same namespace. Fencing the shape is what keeps this
+ * untyped read from being used — by a future caller, or by a hand-edited
+ * generated artifact — to hand a plugin a deployment credential that is not its
+ * own.
+ */
+const PLUGIN_TRANSPORT_ENV_KEY_PATTERN = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
+
+/**
+ * Read one bundled SEND TRANSPORT's declared configuration variable.
+ *
+ * Accepts an arbitrary key (not the typed `EnvKey` union) because the names are
+ * declared in plugin manifests, not in this deployment's fixed union, and a named
+ * instance reads them under a runtime-derived `__<INSTANCEKEY>` suffix. Reading
+ * through this module keeps the no-raw-`process.env` lint satisfied.
+ *
+ * The value IS handed to plugin code — that is the point: a transport that reads
+ * the environment itself would read the deployment-default instance's variables
+ * no matter which transport id the send was addressed to. So the namespace fence
+ * is the security boundary, and it is checked here as well as at manifest
+ * validation, because the host's caller is a generated artifact rather than a
+ * validated manifest. Returns `undefined` when unset, empty, or outside the
+ * namespace, so the caller fails closed.
+ */
+export function getPluginTransportEnv(key: string): string | undefined {
+	if (!PLUGIN_TRANSPORT_ENV_KEY_PATTERN.test(key)) return undefined;
+	return readNonEmptyEnv(key);
+}
+
+/**
  * Read a plugin-declared signing secret by the `secretEnvVar` name from a
  * plugin's inbound signature-verification contract. Accepts an arbitrary key
  * (not the typed `EnvKey` union) because plugin secret variable names are

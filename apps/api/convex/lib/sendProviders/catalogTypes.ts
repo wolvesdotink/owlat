@@ -58,4 +58,20 @@ export type SendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 	readonly kind: SendProviderKind;
 	readonly pluginId?: PluginId;
 	readonly requiredCapability?: 'send:transport';
+	/**
+	 * THE THIRD PLUGIN-TIER FIELD (the seams plan's P3.1): the variables this
+	 * transport's own configuration lives in, which the host resolves PER INSTANCE
+	 * and hands to the plugin's module.
+	 *
+	 * Core kinds do not carry it, and that is not an omission: every variable a
+	 * core entry declares is already instance-scoped, resolved inside the adapter
+	 * through `transportEnv.ts`. A plugin entry has to say so explicitly, because
+	 * its OTHER possible gate — the plugin's deployment-wide `flag.requiredEnvVars`
+	 * — is not instance-scoped at all, and a named instance resolved against it
+	 * would send with the DEFAULT instance's credentials.
+	 *
+	 * Absent or empty therefore means "this kind cannot have named instances",
+	 * which is what `transports.ts` reads it for.
+	 */
+	readonly instanceEnvVars?: readonly string[];
 };

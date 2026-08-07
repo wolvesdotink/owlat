@@ -11,14 +11,21 @@
  * this file and outside a manifest author's view. A prose note is not a control,
  * so `catalog.ts` refuses either declaration at composition time.
  *
- * Nothing can reach that guard today (the plugin codegen emits no semantics
- * fields at all), which is exactly why it needs a test: the whole api suite
- * would stay green if the check were deleted. These cases compose the catalog
- * against generated entries that DO carry the fields — the shape plan P3.1
- * makes possible — and assert the module refuses to load rather than shipping a
- * plugin whose sends are attributed to the own arm.
+ * Since plugin-tier contract parity (the seams plan's P3.1) a manifest CAN carry
+ * capability fields, and the kit's own unions already refuse these two words —
+ * so this is the artifact-level backstop of a rule an author now meets earlier.
+ * It still needs a test, and for the original reason: this repo bundles no
+ * plugin, so the whole api suite would stay green if the check were deleted.
+ * These cases compose the catalog against generated entries that DO carry the
+ * fields and assert the module refuses to load rather than shipping a plugin
+ * whose sends are attributed to the own arm.
+ *
+ * The file also covers the parity fields' OWN composition guard — the
+ * `PLUGIN_` namespace an `instanceEnvVars` name must live in, which is the one
+ * plugin declaration whose VALUE the host reads and hands to third-party code.
  */
 
+import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const GENERATED = '../../../plugins/sendTransportCatalog.generated';
@@ -80,46 +87,74 @@ describe('composing the catalog with a bundled plugin transport', () => {
 		);
 	});
 
-	it('refuses one that claims it DEDUPLICATES on our idempotency key', async () => {
-		// The third declaration whose prerequisite lives outside the catalog (the
-		// seams plan's P0.4). The plugin tier has no per-send extras contract until
-		// P3.1, so `buildSystemMailExtrasFor` returns the empty extras for every
-		// hosted kind — the key never reaches the provider. Crediting the claim
-		// would have `systemMailRetryDisposition` report an ambiguous password
-		// reset as safe to retry, and the "retry" would be a second mail.
+	it('refuses one whose configuration variable is outside the plugin namespace', async () => {
+		// `instanceEnvVars` is the one plugin declaration whose VALUES the host reads
+		// and hands to third-party code (the seams plan's P3.1), so the namespace is
+		// a security floor rather than a naming convention: an entry naming
+		// `MTA_API_KEY` would be handed this deployment's own MTA credential. The
+		// manifest validator enforces it at authoring time; this is the artifact's
+		// backstop, and the artifact is what actually runs.
 		await expect(
-			composeCatalogWith([entry({ deduplicatesOnIdempotencyKey: true })])
-		).rejects.toThrow(/deduplicatesOnIdempotencyKey: true[\s\S]*buildSystemMailExtras/);
+			composeCatalogWith([entry({ instanceEnvVars: Object.freeze(['MTA_API_KEY']) })])
+		).rejects.toThrow(/MTA_API_KEY[\s\S]*PLUGIN_ namespace/);
+		await expect(
+			composeCatalogWith([entry({ instanceEnvVars: Object.freeze(['PLUGIN_TOKEN__EU']) })])
+		).rejects.toThrow(/PLUGIN_ namespace/);
+	});
+
+	it('ADMITS the dedup claim, which the module half of the promise now backs', async () => {
+		// Until plugin-tier parity this was refused outright, because the tier had no
+		// per-send extras contract and the key could never reach the provider. It has
+		// one now, so the claim is legal HERE and its other half is checked where the
+		// modules are: `lib/sendProviders/index.ts` refuses to register a transport
+		// that declares it without exporting `buildSystemMailExtras` — pinned by
+		// `pluginCapabilityParity.test.ts`.
+		const admitted = (await composeCatalogWith([
+			entry({ deduplicatesOnIdempotencyKey: true }),
+		])) as { SEND_PROVIDER_KINDS: readonly string[] };
+
+		expect(admitted.SEND_PROVIDER_KINDS).toContain('plugin.mail-pack.hosted');
 	});
 
 	it('sends the manifest author to files that actually declare what the message names', async () => {
 		// A BOOT FAILURE IS A ONE-SHOT EXPLANATION. Whoever hits it is reading the
 		// string, not the codebase, so a pointer at the wrong file costs them the
 		// hunt the message exists to save — and asserting only that the identifier
-		// appears cannot tell a right path from a wrong one. `buildSystemMailExtras`
-		// in particular is declared in its OWN module rather than in `types.ts`
-		// (the file-size ratchet), which is exactly the kind of split a stale
-		// pointer survives.
-		const messages = await Promise.all(
-			[
-				entry({ kind: 'plugin.mail-pack.custodian', acceptanceSemantics: 'accepted' }),
-				entry({ deduplicatesOnIdempotencyKey: true }),
-			].map((candidate) =>
-				composeCatalogWith([candidate]).then(
+		// appears cannot tell a right path from a wrong one.
+		// SEQUENTIALLY, not `Promise.all`: `composeCatalogWith` resets and re-mocks
+		// ONE module registry, so overlapping compositions can both observe the last
+		// mock and quietly assert the same message twice.
+		const messages: string[] = [];
+		for (const candidate of [
+			entry({ kind: 'plugin.mail-pack.custodian', acceptanceSemantics: 'accepted' }),
+			entry({ kind: 'plugin.mail-pack.owner', messageIdSource: 'idempotency-key' }),
+		]) {
+			messages.push(
+				await composeCatalogWith([candidate]).then(
 					() => '',
 					(error: unknown) => (error as Error).message
 				)
-			)
-		);
+			);
+		}
 		const { readFileSync } = await import('node:fs');
 		const { dirname, resolve } = await import('node:path');
 		const { fileURLToPath } = await import('node:url');
-		const sendProviders = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+		// Repo-root relative, because a pointer may name either half of the catalog:
+		// the declaration vocabulary lives in `packages/shared`, the machinery that
+		// reads it in `apps/api/convex`.
+		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
 		for (const message of messages) {
-			const pointer =
-				/See (?:the PREREQUISITES note on )?(\w+) in lib\/sendProviders\/([\w/]+\.ts)/;
-			const [, symbol, path] = pointer.exec(message)!;
-			expect(readFileSync(resolve(sendProviders, path!), 'utf8')).toContain(symbol!);
+			const pointer = /See (?:the PREREQUISITES note on )?(\w+) in (\S+\.ts)/;
+			const [, symbol, path] = pointer.exec(message) ?? [];
+			expect({ message, symbol, path }).toMatchObject({
+				symbol: expect.any(String),
+				path: expect.any(String),
+			});
+			const onDisk = [resolve(repoRoot, path!), resolve(repoRoot, 'apps/api/convex', path!)].find(
+				(candidate) => existsSync(candidate)
+			);
+			expect({ path, onDisk }).toMatchObject({ onDisk: expect.any(String) });
+			expect(readFileSync(onDisk!, 'utf8')).toContain(symbol!);
 		}
 	});
 
