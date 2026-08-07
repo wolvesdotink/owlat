@@ -18,7 +18,8 @@
  * to hand over provably did not go out for a reason about the sending identity.
  * An answer FROM the MTA is not enough on its own; it has to be an answer ABOUT
  * the identity, which is why the adapter classifies per defer reason
- * (`lib/sendProviders/mta/index.ts`, `MTA_DEFER_REASON_ORIGIN`).
+ * (`MTA_DEFER_REASON_ORIGIN`, declared once in `@owlat/mta-protocol` —
+ * `packages/mta-protocol/src/routingDecision.ts` — and read by both ends).
  *
  * ONLY THE FIRST OF THOSE TWO SOURCES ENFORCES THAT RULE TODAY. The
  * `ROUTING_DEFERRED` branch in `governedDispatch.ts` hardcodes
