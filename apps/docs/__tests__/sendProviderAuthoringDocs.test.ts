@@ -129,14 +129,35 @@ describe('the send-provider guide states the capability vocabulary the kit enfor
 
 describe('the send-provider guide states the webhook security floor the host enforces', () => {
 	const inboundSignature = read('packages/plugin-kit/src/inboundSignature.ts');
+	const contributions = read('apps/docs/content/3.developer/42.plugin-contributions.md');
 	const webhook = section('## Webhook security expectations');
 
-	it('quotes the replay tolerance ceiling the kit enforces', () => {
+	/**
+	 * THE NORMATIVE VALUES ARE PINNED WHERE THEY ARE STATED, AND STATED ONCE.
+	 *
+	 * The tolerance ceiling, the secret's namespace fence and the field list are
+	 * Contribution Reference's — this page defers to it by link and explains WHY
+	 * each rule exists. That split is what keeps a number from being written twice
+	 * and moved once: the guide has no ceiling to go stale, and the page that does
+	 * carry it is held to the kit's constant here.
+	 */
+	it('defers the normative webhook contract to the reference page, by link', () => {
+		expect(webhook).toContain('/developer/plugin-contributions#feedback-webhook');
+		// The anchor github-slugger derives from that page's heading, so a rename
+		// fails here rather than shipping a link to nothing.
+		expect(contributions).toContain('### Feedback webhook');
+		// And the guide states no ceiling of its own to disagree with it.
+		expect(webhook).not.toMatch(/\b900\b/);
+	});
+
+	it('pins the replay tolerance ceiling the kit enforces to the page that states it', () => {
 		const ceiling = /PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS = (\d+);/.exec(
 			inboundSignature
 		)?.[1];
 		expect(ceiling, 'the kit no longer declares a replay tolerance ceiling').toBeTypeOf('string');
-		expect(webhook, `the ceiling is no longer ${ceiling}`).toContain(`At most ${ceiling}`);
+		expect(contributions, `the reference page's ceiling is no longer ${ceiling}`).toContain(
+			`≤ ${ceiling}`
+		);
 	});
 
 	it('quotes the signed string the host actually recomputes', () => {
@@ -146,9 +167,9 @@ describe('the send-provider guide states the webhook security floor the host enf
 		expect(webhook).toContain('`<timestamp>.<rawBody>`');
 	});
 
-	it('names the secret namespace fence and the route surface', () => {
+	it('names the secret namespace fence, on the page that declares the field', () => {
 		expect(/SECRET_ENV_VAR = \/\^PLUGIN_/.test(inboundSignature)).toBe(true);
-		expect(webhook).toContain('`PLUGIN_`-prefixed');
+		expect(contributions).toContain('PLUGIN_-prefixed');
 		expect(webhook).toContain('`POST /webhooks/plugin/<pluginId>`');
 	});
 
@@ -156,6 +177,31 @@ describe('the send-provider guide states the webhook security floor the host enf
 		// Both are validator refusals, not advice, so the page says "required".
 		expect(webhook).toContain('**`signature` is required.**');
 		expect(webhook).toContain('**`replay` provisions are required too.**');
+	});
+
+	/**
+	 * THE ORDER IS THE ROUTE'S, not a plausible-sounding one. The numbered list
+	 * tells an author which gate their delivery died at, so a list that put the
+	 * registration 404 before the rate limit would have them looking for a bucket
+	 * that was already spent. Derived from the route's own documented sequence.
+	 */
+	it('lists the gates in the order the route actually applies them', () => {
+		const route = read('apps/api/convex/webhooks/pluginFeedbackHttp.ts');
+		const sequence = route.slice(0, route.indexOf('WHY RETENTION PRECEDES PARSE'));
+		const order = ['rate limit', 'registration', 'size', 'signature', 'authorization', 'replay'];
+		let cursor = -1;
+		for (const gate of order) {
+			const at = sequence.indexOf(`${gate} `, cursor);
+			expect(at, `the route no longer documents a ${gate} gate in this order`).toBeGreaterThan(
+				cursor
+			);
+			cursor = at;
+		}
+		// And the guide's own list follows it: rate limit, then the 404.
+		const rateLimit = webhook.indexOf('rate-limit token');
+		const notFound = webhook.indexOf('404');
+		expect(rateLimit).toBeGreaterThan(-1);
+		expect(notFound).toBeGreaterThan(rateLimit);
 	});
 });
 
@@ -189,20 +235,35 @@ describe('the send-provider guide describes the scaffold it tells authors to run
 	});
 
 	/**
-	 * THE FILE TABLE, DERIVED. The generator is the authority on what an author
-	 * gets, so a half added to (or dropped from) the template must reach this page
-	 * before the page can claim to describe the scaffold's output. Both directions
-	 * are checked: nothing emitted may be missing from the table, and nothing in
-	 * the table may name a file the generator does not write.
+	 * THE FILE TABLE, DERIVED — AND THE SKELETON IT SITS ON TOP OF.
+	 *
+	 * The generator is the authority on what an author gets, so a half added to (or
+	 * dropped from) the template must reach this page before the page can claim to
+	 * describe the scaffold's output. Both directions are checked in both halves:
+	 * the TABLE is exactly the files the template contributes, and the sentence
+	 * above it names exactly the files `buildScaffold` writes at EVERY template.
+	 * Between them the section accounts for every file in a freshly scaffolded
+	 * directory — which is what a reader diffs it against. Splitting the assertion
+	 * this way rather than merging the two sets is what keeps the table about the
+	 * send-provider bundle while leaving nothing unexplained.
 	 */
-	it('lists exactly the files the send-provider template emits', () => {
+	it('lists exactly the files the send-provider template emits, on the skeleton it names', () => {
 		const emitted = [...template.matchAll(/files\.set\('([^']+)'/g)].map((hit) => hit[1]!);
 		expect(emitted.length).toBeGreaterThan(8);
 
-		const listed = tableRows(section('## What the scaffold gives you')).map((cells) =>
-			cells[0]!.replace(/`/g, '')
-		);
+		const scaffoldSection = section('## What the scaffold gives you');
+		const listed = tableRows(scaffoldSection).map((cells) => cells[0]!.replace(/`/g, ''));
 		expect(new Set(listed)).toEqual(new Set(emitted));
+
+		// `scaffold.ts` writes the package skeleton and nothing else — every
+		// template's own content now lives in its own module — so its `files.set`
+		// calls ARE the skeleton, and the prose has to name each of them.
+		const skeleton = [...scaffold.matchAll(/files\.set\('([^']+)'/g)].map((hit) => hit[1]!);
+		expect(skeleton.length).toBeGreaterThan(0);
+		for (const path of skeleton) {
+			expect(scaffoldSection, `the section does not account for ${path}`).toContain(`\`${path}\``);
+			expect(listed, `${path} is skeleton, not the template's own`).not.toContain(path);
+		}
 	});
 });
 
