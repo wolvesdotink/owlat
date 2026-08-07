@@ -43,14 +43,32 @@
  * `scripts/provider-identity-allowlist.txt`.
  */
 
+import type { FunctionReturnType } from 'convex/server';
+import type { api } from '@owlat/api';
 import {
 	coreSendProviderCatalogEntry,
 	domainVerificationOf,
 } from '@owlat/shared/sendProviderCatalog';
 
-/** The half of a relay-domain row this gate reads. */
+/** One row of the query's page, as the backend actually types it. */
+type RelayDomainRow = FunctionReturnType<
+	typeof api.providerRoutes.listDeliverabilityRelayDomains
+>['page'][number];
+
+/**
+ * The half of a relay-domain row this gate reads.
+ *
+ * `status` is the QUERY'S OWN union, not a `string`. The handler builds each
+ * value with `as const`, so the vocabulary is a compile-time fact — and this
+ * gate splits that vocabulary in two ({@link IDENTITY_BACKED_STATUSES}). Widened
+ * to `string`, a rename or a split on the backend would leave this list matching
+ * nothing: an operator who published SES identity DNS and then switched the
+ * escape hatch off would drop to question 2, find no configured relay, and lose
+ * the panel showing the records they must not delete — with nothing failing
+ * anywhere.
+ */
 export interface RelayIdentityRow {
-	readonly status: string;
+	readonly status: RelayDomainRow['status'];
 	readonly dnsRecords?: unknown;
 }
 
@@ -58,8 +76,17 @@ export interface RelayIdentityRow {
  * Statuses that can ONLY be produced by an existing identity row (the query
  * derives them from its `verifiedAt`), as opposed to the two it synthesises for
  * a domain with no identity at all.
+ *
+ * Typed against the query's union rather than `string[]`, so it is checked
+ * against its producer: the two synthesised values (`provisioning`,
+ * `awaiting_primary_verification`) may not appear here, but every name here has
+ * to be one the backend can still emit.
  */
-const IDENTITY_BACKED_STATUSES: readonly string[] = ['pending', 'verified', 'stale'];
+const IDENTITY_BACKED_STATUSES: readonly RelayIdentityRow['status'][] = [
+	'pending',
+	'verified',
+	'stale',
+];
 
 function isIdentityBacked(row: RelayIdentityRow): boolean {
 	return row.dnsRecords !== undefined || IDENTITY_BACKED_STATUSES.includes(row.status);
