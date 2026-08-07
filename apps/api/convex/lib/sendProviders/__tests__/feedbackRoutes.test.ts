@@ -11,7 +11,9 @@
  * in a different package from the declaration. The catalog suite pins the paths
  * as literals, which catches a change to the declaration; nothing caught a change
  * to the ROUTE. This suite is the cross-check between the two, walking the real
- * router rather than restating either side a third time.
+ * router rather than restating either side a third time — plus one assertion the
+ * router cannot answer, that each route is still WRITTEN OUT in `http.ts` rather
+ * than generated from a kind.
  *
  * It runs here rather than in `packages/shared` because only this package may
  * import the Convex router — the same reason `credentialFieldVocabulary` lives
@@ -21,6 +23,9 @@
  * route reaches THAT kind's adapter — is
  * `webhooks/__tests__/adapterRegistry.test.ts`.)
  */
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
@@ -72,6 +77,34 @@ describe('every declared feedback route is a route the backend registers', () =>
 		expect(unclaimed, 'these kinds have a webhook route but declare no providerFeedback').toEqual(
 			[]
 		);
+	});
+
+	/**
+	 * THE ROUTE IS WRITTEN OUT, NOT GENERATED.
+	 *
+	 * Every assertion above walks `getRoutes()`, and a router built by
+	 * `for (const kind of KINDS) http.route({ path: `/webhooks/${kind}`, … })`
+	 * satisfies all of them — while making every one of these URLs a function of a
+	 * kind's spelling. That is exactly the change this seam forbids: those URLs are
+	 * already pasted into provider consoles we do not own, so a rename would move
+	 * them, and a moved feedback URL is silent on our side and total on theirs.
+	 *
+	 * Only the SOURCE can say the difference, so this reads it. It lives here, in
+	 * the package whose change would break it, rather than only in the docs suite —
+	 * `scripts/ci-select-affected.sh` would not select `@owlat/docs` for an
+	 * apps/api-only pull request, and an invariant a PR cannot fail is not a gate.
+	 */
+	it('writes each feedback route out as a literal in http.ts', () => {
+		const source = readFileSync(
+			resolve(dirname(fileURLToPath(import.meta.url)), '../../../http.ts'),
+			'utf8'
+		);
+		for (const entry of declaring) {
+			expect(
+				source,
+				`http.ts stopped writing out ${entry.providerFeedback!.webhookPath}`
+			).toContain(`path: '${entry.providerFeedback!.webhookPath}'`);
+		}
 	});
 
 	it('declares the path a kind’s route actually has, not one derived from its name', () => {

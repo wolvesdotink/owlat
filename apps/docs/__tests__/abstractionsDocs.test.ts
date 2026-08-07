@@ -223,8 +223,14 @@ describe('docs/abstractions.md: the feedback adapter section matches the registr
 		// The section promises that each kind's route is written out rather than
 		// derived, because those URLs are already in provider consoles. Asserted
 		// against the router itself: every registered kind must have its own path
-		// literal, so a "tidy-up" that loops over the registry fails here as well as
-		// in the backend's own route suite.
+		// literal, so a "tidy-up" that loops over the registry fails here.
+		//
+		// This is the MIRROR, not the gate. The gate is
+		// `apps/api/convex/lib/sendProviders/__tests__/feedbackRoutes.test.ts`,
+		// which makes the same assertion inside the package that would break it —
+		// `scripts/ci-select-affected.sh` does not select `@owlat/docs` for an
+		// apps/api-only pull request, so this case alone would not fail one. What
+		// it uniquely owns is that the PAGE still states the rule it enumerates.
 		const http = read('apps/api/convex/http.ts');
 		for (const kind of kinds) {
 			expect(http, `http.ts stopped writing out /webhooks/${kind}`).toContain(
