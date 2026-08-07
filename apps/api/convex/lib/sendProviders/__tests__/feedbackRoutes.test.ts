@@ -15,7 +15,11 @@
  *
  * It runs here rather than in `packages/shared` because only this package may
  * import the Convex router — the same reason `credentialFieldVocabulary` lives
- * beside it. The generalised registry P2.1 builds needs exactly this guard.
+ * beside it. It is also what keeps the registry in `webhooks/adapters/` honest at
+ * the one seam its mapped types cannot reach: those prove a declaring kind has an
+ * adapter, this proves the declared PATH is a route. (The third leg — that the
+ * route reaches THAT kind's adapter — is
+ * `webhooks/__tests__/adapterRegistry.test.ts`.)
  */
 import { describe, expect, it } from 'vitest';
 import {

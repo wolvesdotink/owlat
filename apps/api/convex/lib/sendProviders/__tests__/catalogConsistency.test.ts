@@ -5,8 +5,7 @@
  * single is the set of things a declaration has to be JOINED to before it means
  * anything: a `requiredEnvVars` name is a promise that `lib/env.ts` can read that
  * variable and that the setup surfaces push it into the Convex function runtime;
- * a `kind` is a promise that an adapter exists; `hasProviderFeedback: true` is a
- * promise that the bounces have somewhere to land. Each of those joins lived in a
+ * a `kind` is a promise that an adapter exists. Each of those joins lived in a
  * different file, and until now each was kept by a human remembering to make it —
  * the N+1 checklist in §4 of the plan, executed by hand.
  *
@@ -18,23 +17,21 @@
  *   env var not in the push list   the operator sets it, `convex env set` never
  *                                  carries it, and the feature is simply off
  *   kind without an adapter        `providerFor` throws inside dispatch
- *   feedback without an adapter    the kind sends, and every bounce and
- *                                  complaint it generates is dropped on the
- *                                  floor — the arm looks CLEAN to the ramp
- *                                  controller precisely because its bad news
- *                                  has no route home
  *
  * None of those is observable from the catalog, from the adapter, or from any
  * one module's own suite: each is a fact about a PAIR. So this file asserts the
  * pairs, over the catalog rather than over a list of kinds somebody maintains —
  * a sixth provider is covered the day its entry lands.
  *
- * ONE PAIR IS NOT HERE: `providerFeedback.webhookPath` vs. the route the backend
- * registers. `feedbackRoutes.test.ts`, in this directory, already owns that join
- * and asserts it in both directions by walking the REAL router
- * (`http.getRoutes()`). A second copy here — however phrased — would be the
- * weaker of the two and would rot separately, so this file stops at "the adapter
- * exists and has the shape the router's handler needs".
+ * THE FEEDBACK JOINS ARE NOT HERE — all three of them, and §3 below says where
+ * each went and why each is stronger there. In short: `hasProviderFeedback: true`
+ * vs. an adapter is now a mapped type in `webhooks/adapters/index.ts` (a build
+ * failure, not a red test); `providerFeedback.webhookPath` vs. the route the
+ * backend registers is `feedbackRoutes.test.ts` in this directory, walking the
+ * REAL router (`http.getRoutes()`); and the adapter's runtime shape plus the
+ * route→adapter identity neither of those can see is
+ * `webhooks/__tests__/adapterRegistry.test.ts`. A second copy of any of them here
+ * would be the weaker statement and would rot separately.
  *
  * NEITHER IS THE FOURTH JOIN THIS PIECE OWNS — `setupProbe` vs. the validators
  * and surfaces that keep it — because none of its three halves can be asked from
@@ -73,8 +70,8 @@
  * `/webhooks/plugin/<pluginId>` once Wave 2's P2.2 ships. Holding the hosted
  * tier to the core tier's joins would fail a promise this wave has not made yet.
  * The adapter assertions below run over the COMPOSED catalog, because
- * `providerFor` must answer for both tiers today; the env and feedback ones run
- * over the core entries, and say so.
+ * `providerFor` must answer for both tiers today; the env ones run over the core
+ * entries, and say so.
  */
 
 import {
@@ -88,7 +85,7 @@ import {
 import { CONVEX_RUNTIME_ENV_KEYS } from '@owlat/shared/convexRuntimeEnv';
 import { describe, expect, it } from 'vitest';
 import type { EnvKey } from '../../env';
-import { SEND_PROVIDER_CATALOG, hasProviderFeedbackFor } from '../catalog';
+import { SEND_PROVIDER_CATALOG } from '../catalog';
 import { SEND_PROVIDERS, providerFor } from '../index';
 import type { SendProviderModule } from '../types';
 
@@ -258,78 +255,33 @@ describe('every catalog kind has an adapter', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Feedback — every kind that says it reports outcomes ships the ADAPTER that
-//    parses them. (The ROUTE those events arrive on is `feedbackRoutes.test.ts`'s
-//    join, against the real router.) Wave 2's P2.1 turns this into a mapped-type
-//    registry guard; until then it is this.
+// 3. Feedback — HANDED OVER. This section used to assert that every kind
+//    declaring `hasProviderFeedback: true` shipped the adapter that parses its
+//    events, by globbing `webhooks/adapters/<kind>.ts`. Its own note said what
+//    it was: a stand-in until Wave 2's P2.1 turned the join into a registry.
+//    P2.1 shipped, so the join now has a first-class home and this stand-in is
+//    retired rather than left to disagree with it.
+//
+//    WHERE IT WENT, and why each half is strictly stronger there:
+//
+//      declared ⇒ registered   `FeedbackReportingSendProviderKind` in
+//                              `webhooks/adapters/index.ts` — a mapped type, so
+//                              it is a BUILD failure naming the kind, not a red
+//                              test. It also pins each key to an adapter whose
+//                              `source` is that key, which the glob could only
+//                              check after loading the module it guessed at.
+//      registered ⇒ declared   `_RegisteredFeedbackAdaptersAreDeclared`, same
+//                              file, same build-time reach. The old converse
+//                              case asked whether a FILE existed for a silent
+//                              kind, which was never the failure: an adapter
+//                              module nothing imports has no route.
+//      adapter SHAPE, at runtime, and the route→adapter identity the types
+//                              cannot see: `webhooks/__tests__/adapterRegistry.test.ts`.
+//
+//    Keeping the glob alongside those would pin a FILE LAYOUT nothing else
+//    depends on — moving `ses.ts` to `ses/index.ts`, the shape
+//    `domains/providers/ses/` already uses, would fail here with the registry,
+//    the router and the new suite all green, and no reader could tell which
+//    file was the authority. It is this one for the ENV join, and
+//    `webhooks/adapters/` for the feedback join.
 // ---------------------------------------------------------------------------
-
-/**
- * The inbound adapters, by file stem.
- *
- * Globbed rather than imported by name: the point of the assertion is that a
- * kind's adapter EXISTS, and a static import list would be the same hand-kept
- * table the guard is replacing (and would not compile once it was wrong, which
- * is a worse failure than a named test).
- */
-const INBOUND_ADAPTER_LOADERS: Record<string, () => Promise<Record<string, unknown>>> =
-	Object.fromEntries(
-		Object.entries(import.meta.glob('../../../webhooks/adapters/*.ts')).map(([path, load]) => [
-			path.split('/').pop()!.replace(/\.ts$/, ''),
-			load as () => Promise<Record<string, unknown>>,
-		])
-	);
-
-/**
- * The two sides of the question, asked through the accessor the rest of the
- * backend reads — never off the raw field, so an entry that stopped declaring
- * the capability lands on the fail-closed side rather than on neither.
- */
-const FEEDBACK_KINDS = SEND_TRANSPORT_KINDS.filter((kind) => hasProviderFeedbackFor(kind));
-const SILENT_KINDS = SEND_TRANSPORT_KINDS.filter((kind) => !hasProviderFeedbackFor(kind));
-
-describe('every kind that declares provider feedback ships the adapter that parses it', () => {
-	it('finds the kinds on both sides of the question', () => {
-		// Neither list may be empty, or one of the two suites below would pass by
-		// having no subject at all. WHICH kinds declare feedback is pinned per kind
-		// by `packages/shared/src/__tests__/sendProviderCatalog.test.ts` and by
-		// `registry.test.ts`'s composed-catalog projection; restating the roster
-		// here would make a sixth kind a three-file literal edit for a fact this
-		// file does not own. What this file needs is only that both suites have
-		// subjects — and that the accessor partitions the kinds, so a kind cannot
-		// fall out of both by answering neither.
-		expect(FEEDBACK_KINDS.length).toBeGreaterThan(0);
-		expect(SILENT_KINDS.length).toBeGreaterThan(0);
-		expect([...FEEDBACK_KINDS, ...SILENT_KINDS].sort()).toEqual([...SEND_TRANSPORT_KINDS].sort());
-	});
-
-	it.each([...FEEDBACK_KINDS])('%s ships an inbound adapter', async (kind) => {
-		const load = INBOUND_ADAPTER_LOADERS[kind];
-		expect(
-			load,
-			`hasProviderFeedback: true promises somewhere for ${kind}'s bounces and complaints ` +
-				`to land, so webhooks/adapters/${kind}.ts must exist — without it the arm sends ` +
-				'and its bad news is dropped, which reads to the ramp controller as a CLEAN arm'
-		).toBeDefined();
-
-		const adapter = (await load!())[`${kind}Adapter`] as Record<string, unknown> | undefined;
-		expect(adapter, `webhooks/adapters/${kind}.ts must export ${kind}Adapter`).toBeDefined();
-		// The `InboundAdapter` / `InboundBatchAdapter` contract, at runtime: the
-		// registry P2.1 builds will key on exactly this shape.
-		expect(adapter!['source'], 'the adapter must identify itself by its catalog kind').toBe(kind);
-		expect(typeof adapter!['verifySignature']).toBe('function');
-		const single = typeof adapter!['parseEvent'] === 'function';
-		const batch = typeof adapter!['parseEvents'] === 'function';
-		expect(single !== batch, 'exactly one of parseEvent / parseEvents').toBe(true);
-	});
-
-	it.each([...SILENT_KINDS])(
-		'%s declares no feedback and ships no adapter to contradict it',
-		(kind) => {
-			// The converse, and it is not pedantry: an adapter with no declaration
-			// behind it is a route whose events never reach the measurement plane's
-			// confidence grading, because that reads `hasProviderFeedbackFor`.
-			expect(INBOUND_ADAPTER_LOADERS[kind]).toBeUndefined();
-		}
-	);
-});
