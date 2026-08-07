@@ -13,6 +13,7 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { mandrillProvider } from './providers/mandrill';
 import {
 	markMandrillIdentityFailed,
@@ -20,6 +21,7 @@ import {
 	upsertMandrillIdentity,
 } from './providers/mandrill/persistence';
 import { mandrillIdentityValidator } from './providers/mandrill/validators';
+import { pluginSendTransportDomainIdentityFor } from '../plugins/sendTransportDomainIdentityCatalog';
 
 /** How many identities one sweep tick reads. */
 const MANDRILL_SWEEP_PAGE_SIZE = 100;
@@ -81,8 +83,50 @@ export const recordCheckFailure = internalMutation({
  * Rows of another provider kind are skipped rather than filtered in the index:
  * the due index is deliberately kind-agnostic (it is a deployment-wide work
  * queue), and Mandrill is simply the first kind to use this table. The next
- * kind to want a sweep adds its own dispatch line here.
+ * kind to want a sweep adds its own dispatch line here — the seams plan's P3.2
+ * took that invitation up for the bundled plugin tier, whose dispatch arm is
+ * asked of the REGISTRY rather than written as a second kind literal, so every
+ * plugin transport that contributes a `domainIdentity` is on this sweep the day
+ * it composes.
+ *
+ * The sweep is still spelled here rather than moved to a neutral file. It is one
+ * cron entry with one registered name, and moving it would rename a scheduled
+ * function for a tidiness that buys nothing; the two dispatch arms below are
+ * where a reader looks anyway.
  */
+/**
+ * Schedule one due row's refresh, and say whether there was one to schedule.
+ *
+ * A row with no dispatch arm is skipped silently, and that is a real answer
+ * rather than a gap: `sendingDomainRelayIdentities` is written by whichever relay
+ * kinds a deployment configured, and a row can outlive its plugin (a composition
+ * that dropped the package) or predate a kind's sweep.
+ */
+async function scheduleRefresh(
+	ctx: MutationCtx,
+	delayMs: number,
+	providerKind: string,
+	domain: string
+): Promise<boolean> {
+	if (providerKind === 'mandrill') {
+		await ctx.scheduler.runAfter(delayMs, internal.domains.mandrillRelay.refreshIdentity, {
+			domain,
+		});
+		return true;
+	}
+	// ASKED OF THE REGISTRY, not of a second literal: the bundled plugin tier's
+	// kinds are decided by `plugins.config.ts` at composition time, so there is no
+	// list here to keep in step with one.
+	if (pluginSendTransportDomainIdentityFor(providerKind)) {
+		await ctx.scheduler.runAfter(delayMs, internal.domains.pluginRelay.refreshIdentity, {
+			kind: providerKind,
+			domain,
+		});
+		return true;
+	}
+	return false;
+}
+
 export const scheduleDueChecks = internalMutation({
 	args: { cursor: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<number> => {
@@ -94,13 +138,13 @@ export const scheduleDueChecks = internalMutation({
 
 		let scheduled = 0;
 		for (const identity of page.page) {
-			if (identity.providerKind !== 'mandrill') continue;
-			await ctx.scheduler.runAfter(
+			const isScheduled = await scheduleRefresh(
+				ctx,
 				scheduled * MANDRILL_SWEEP_STAGGER_MS,
-				internal.domains.mandrillRelay.refreshIdentity,
-				{ domain: identity.domain }
+				identity.providerKind,
+				identity.domain
 			);
-			scheduled += 1;
+			if (isScheduled) scheduled += 1;
 		}
 
 		if (!page.isDone) {
