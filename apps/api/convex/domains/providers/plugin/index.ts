@@ -30,7 +30,7 @@
 import { internal } from '../../../_generated/api';
 import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
 import { isFreshRelayProof, loadRelayIdentityForDomain } from '../relayIdentityProof';
-import { loadPluginRelayRow } from './persistence';
+import { loadRelayIdentityRow } from '../relayIdentityPersistence';
 import { PLUGIN_RELAY_PROOF_MAX_AGE_MS, readPluginProviderDetails } from './state';
 import type { HostedSendTransportDomainIdentityDefinition } from '../../../plugins/sendTransportDomainIdentityCatalog';
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
@@ -149,7 +149,7 @@ export function createHostedRelayIdentityProvider(
 		): Promise<void> {
 			if (!options.reprovision) {
 				const organizationId = await getSingletonOrganizationId(ctx);
-				if (await loadPluginRelayRow(ctx, organizationId, kind, domain.domain.toLowerCase())) {
+				if (await loadRelayIdentityRow(ctx, organizationId, kind, domain.domain.toLowerCase())) {
 					return;
 				}
 			}
