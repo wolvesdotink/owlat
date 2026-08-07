@@ -288,6 +288,7 @@
       "name": "@owlat/plugin-conformance",
       "version": "0.1.0",
       "devDependencies": {
+        "@owlat/api": "workspace:*",
         "@owlat/code-worker": "workspace:*",
         "@owlat/example-deliverability-lab": "workspace:*",
         "@owlat/example-escalation-guard": "workspace:*",
@@ -296,6 +297,7 @@
         "@owlat/plugin-codegen": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
+        "@owlat/shared": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "typescript": "catalog:",

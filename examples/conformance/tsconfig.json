@@ -40,6 +40,10 @@
 			"@owlat/api/plugins/inboundSignature": ["../../apps/api/convex/plugins/inboundSignature.ts"],
 			"@owlat/api/sendProviders/catalog": ["../../apps/api/convex/lib/sendProviders/catalog.ts"],
 			"@owlat/api/sendProviders/routing": ["../../apps/api/convex/lib/sendProviders/routing.ts"],
+			"@owlat/api/sendProviders/strategies": [
+				"../../apps/api/convex/lib/sendProviders/strategies/index.ts"
+			],
+			"@owlat/api/sendProviders/registry": ["../../apps/api/convex/lib/sendProviders/index.ts"],
 			"@owlat/api/sendProviders/fallbackEligibility": [
 				"../../apps/api/convex/lib/sendProviders/fallbackEligibility.ts"
 			],

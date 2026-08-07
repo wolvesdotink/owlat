@@ -55,6 +55,13 @@ export default defineConfig({
 			// Aliases rather than relative climbs, per
 			// `scripts/check-cross-package-imports.sh`: this is build wiring.
 			//
+			// THE ALIASES ARE NOT THE DEPENDENCY. `@owlat/api` and `@owlat/shared` are
+			// declared in this package's `devDependencies` as well, because Turborepo
+			// builds its `--affected` graph from package.json and CI selects PR test
+			// jobs from it: without the declaration, a PR that changes only
+			// `lib/sendProviders/routing.ts` would not select this workspace and the
+			// standing regression harness would replay a cached green.
+			//
 			// NO ALIAS MAY PREFIX ANOTHER. Vite matches a string `find` with
 			// `startsWith`, so a generated artifact aliased as
 			// `…/plugins/sendTransportWebhookCatalog.generated` would be captured by
@@ -112,6 +119,19 @@ export default defineConfig({
 			'@owlat/api/sendProviders/routing': resolve(
 				__dirname,
 				'../../apps/api/convex/lib/sendProviders/routing.ts'
+			),
+			// The strategy registry, so "under every strategy" is derived from the
+			// registry rather than from a list of four names in the suite.
+			'@owlat/api/sendProviders/strategies': resolve(
+				__dirname,
+				'../../apps/api/convex/lib/sendProviders/strategies/index.ts'
+			),
+			// The provider registry (`lib/sendProviders/index.ts`), for the governed
+			// boundary's extras seam. Named `registry` rather than `index` so no alias
+			// key prefixes another — see the note above.
+			'@owlat/api/sendProviders/registry': resolve(
+				__dirname,
+				'../../apps/api/convex/lib/sendProviders/index.ts'
 			),
 			'@owlat/api/sendProviders/fallbackEligibility': resolve(
 				__dirname,
