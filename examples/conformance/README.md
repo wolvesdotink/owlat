@@ -44,23 +44,53 @@ rather than three unrelated demos.
 - **`pluginProviderParity.test.ts`** — the PARITY PROOF (P3.3, acceptance
   criterion A4). Where the two suites above walk the authoring chain, this one
   starts at the generated artifacts and drives the **shipped** core modules with
-  them: `resolveRoute` under all four strategies, the deliverability fallback and
-  its per-domain proof gate, governed dispatch through the plugin's own send
-  module on a named instance's credentials, `armForTransport`, the return-path
-  fold (including the probe wire this tier is deliberately excluded from), the
-  feedback route's verify → parse → revalidate chain, the domain-identity split
-  between the plugin's observations and the host's derived status, and the
-  credential form in the vocabulary the web renderer draws — plus the one
-  obligation that is NOT met, pinned rather than skipped: `apps/web` resolves
-  every kind through a core-only catalog view, so a plugin transport's
-  descriptors never reach the renderer. Its subject is
+  them: `resolveRoute` under every strategy the registry declares, the
+  deliverability fallback and its per-domain proof gate, governed dispatch
+  through the plugin's own send module on a named instance's credentials (with
+  the capability recheck asserted and the extras seam driven end to end),
+  `armForTransport`, the return-path fold, the feedback route's verify → parse →
+  revalidate chain, the domain-identity split between the plugin's observations
+  and the host's derived status, and the credential form in the vocabulary the
+  web renderer draws. Its subject is
   [`src/fixtures/mockEsp/`](src/fixtures/mockEsp), a complete fixture bundle —
   manifest, send module, feedback webhook, domain identity — written as a
-  third-party author would write it. The last case asserts the headline claim:
+  third-party author would write it. The last block asserts the headline claim:
   no non-test file under `apps/` or `packages/` mentions the fixture, so all of
-  the above runs against code that has never heard of it. The ramp half of the
-  proof needs a database and lives at
-  `apps/api/convex/delivery/ramp/__tests__/pluginReferenceArm.test.ts`.
+  the above runs against code that has never heard of it, and the two test files
+  that ARE allowed to know are named and bound to the composed kind.
+
+  **Two of the card's obligations are not met as written, and neither is edited
+  around.**
+
+  1. _The credentials UI._ A real gap, and the reason the Wave-3 gate must not
+     record A4 as met on this suite alone. The plugin's half is complete; the
+     host's is not, because every `apps/web` surface resolves a kind through the
+     core-only `coreSendProviderCatalogEntry` while the composed catalog is an
+     `apps/api` artifact. Closing it is a P1.2 follow-up (a composed-catalog view
+     for `apps/web`), and until it lands the gap is pinned at the surface that
+     owes it, in
+     `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`.
+  2. _Return-path probes._ Superseded rather than missing: P3.1 made
+     `supportsCustomReturnPath: 'no'` the only value this tier may declare, so a
+     plugin kind is unprobeable by construction and the obligation is discharged
+     as "the fold reads the declaration and the sweep excludes the kind". The
+     price — a permanent `degraded` measurement quality for every plugin ESP — is
+     asserted rather than hidden.
+
+  The ramp half of the proof needs a database and lives at
+  `apps/api/convex/delivery/ramp/__tests__/pluginReferenceArm.test.ts`, which
+  also covers the one door the composed catalog is read at: saving a
+  `providerRoutes` row that names a plugin kind.
+
+  **What stays text-pinned.** The fixture is a module tree, not a workspace
+  package, so the three generated MODULE registries (which codegen emits as
+  `import` statements against a published specifier) are supplied directly rather
+  than resolved. `plugins.config.ts` is empty in this repository and none of the
+  three reference plugins contributes a `sendTransports` bucket, so the emitted
+  import statements for a send transport are pinned as text by
+  `packages/plugin-codegen/src/__tests__/render.test.ts` and by no suite as code.
+  The piece that closes that is P5.3 (the first real plugin provider, listed in
+  `plugins.config.ts` — the repo's first non-empty composition).
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
