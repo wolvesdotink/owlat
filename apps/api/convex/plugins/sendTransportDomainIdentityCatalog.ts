@@ -1,11 +1,13 @@
-import { isPluginSendTransportEnvVar, type PluginId } from '@owlat/plugin-kit';
+import type { PluginId } from '@owlat/plugin-kit';
 import { isSendProviderKind, sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
+import { assertPluginTransportEnvVarNamespace } from '../lib/sendProviders/pluginEnvNamespace';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_DOMAIN_IDENTITY_CATALOG } from './sendTransportDomainIdentityCatalog.generated';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_DOMAIN_IDENTITY_MODULES } from './sendTransportDomainIdentityModules.generated';
 import {
 	defineHostedContributionCatalog,
 	type HostedContributionDefinition,
 } from './hostedContributionCatalog';
+import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
  * Host view of a bundled send transport's SENDING-DOMAIN IDENTITY half (the
@@ -144,12 +146,10 @@ export function pluginSendTransportDomainIdentityDefinition(
 /**
  * Refuse an entry whose configuration this host could not resolve honestly.
  *
- * THE NAMESPACE IS THE SECURITY FLOOR, exactly as it is for the send half: the
- * host reads the value of every name in `instanceEnvVars` and hands it to
- * third-party code, so an artifact naming `MTA_API_KEY` or `AWS_SECRET_ACCESS_KEY`
- * would hand a plugin this deployment's own credential. The predicate is the
- * kit's own, so the rule the manifest validator enforces and the rule the host
- * re-asserts cannot drift apart.
+ * THE NAMESPACE IS THE SECURITY FLOOR, exactly as it is for the send half —
+ * asked of the same assertion (`lib/sendProviders/pluginEnvNamespace.ts`), so
+ * tightening the fence reaches both artifacts rather than whichever one its
+ * author was editing.
  *
  * AN EMPTY REQUIRED LIST IS REFUSED for the reason manifest validation gives:
  * the module would be called with an empty environment and every provider call
@@ -168,15 +168,11 @@ function assertResolvableConfiguration(
 				'configuration variable, so its module would call the provider unauthenticated.'
 		);
 	}
-	for (const name of definition.instanceEnvVars) {
-		if (isPluginSendTransportEnvVar(name)) continue;
-		throw new TypeError(
-			`Bundled send transport domain identity '${definition.kind}' declares the configuration ` +
-				`variable '${name}', which is outside the PLUGIN_ namespace a bundled transport may be ` +
-				'handed the value of. See isPluginSendTransportEnvVar in ' +
-				'packages/plugin-kit/src/sendTransport.ts.'
-		);
-	}
+	assertPluginTransportEnvVarNamespace(
+		'Bundled send transport domain identity',
+		definition.kind,
+		definition.instanceEnvVars
+	);
 	for (const name of definition.requiredEnvVars) {
 		if (definition.instanceEnvVars.includes(name)) continue;
 		throw new TypeError(
@@ -190,36 +186,16 @@ function assertResolvableConfiguration(
  * Accept only a plain object exposing exactly the two provider calls as data
  * properties.
  *
- * The same bar the other two halves set: a generated import that reached the
- * registry with a getter, a prototype, or a missing method is a failure that must
- * happen at module load — not one frame inside a scheduled identity call whose
- * only symptom is a domain that never verifies.
+ * The same bar the other two halves set, asked of the same helper: a generated
+ * import that reached the registry with a getter, a prototype, an extra key or a
+ * missing method is a failure that must happen at module load — not one frame
+ * inside a scheduled identity call whose only symptom is a domain that never
+ * verifies.
  */
 function parseHostedDomainIdentityModule(input: unknown): HostedSendTransportDomainIdentityModule {
-	if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-		throw new TypeError('Invalid bundled send transport domain identity module');
-	}
-	const prototype = Object.getPrototypeOf(input);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new TypeError('Invalid bundled send transport domain identity module');
-	}
-	const descriptors = Object.getOwnPropertyDescriptors(input);
-	const keys = Reflect.ownKeys(descriptors);
-	const registerDomain = descriptors['registerDomain'];
-	const checkDomain = descriptors['checkDomain'];
-	if (
-		keys.length !== 2 ||
-		!registerDomain?.enumerable ||
-		!checkDomain?.enumerable ||
-		!('value' in registerDomain) ||
-		!('value' in checkDomain) ||
-		typeof registerDomain.value !== 'function' ||
-		typeof checkDomain.value !== 'function'
-	) {
-		throw new TypeError('Invalid bundled send transport domain identity module');
-	}
-	return Object.freeze({
-		registerDomain: registerDomain.value as (domain: string, config: unknown) => Promise<unknown>,
-		checkDomain: checkDomain.value as (domain: string, config: unknown) => Promise<unknown>,
-	});
+	return readExactFunctionModule<HostedSendTransportDomainIdentityModule>(
+		input,
+		['registerDomain', 'checkDomain'],
+		'Invalid bundled send transport domain identity module'
+	);
 }

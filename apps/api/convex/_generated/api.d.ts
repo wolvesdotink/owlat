@@ -605,6 +605,7 @@ import type * as lib_sendProviders_index from '../lib/sendProviders/index.js';
 import type * as lib_sendProviders_mandrill_errors from '../lib/sendProviders/mandrill/errors.js';
 import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/mandrill/index.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
+import type * as lib_sendProviders_pluginEnvNamespace from '../lib/sendProviders/pluginEnvNamespace.js';
 import type * as lib_sendProviders_pluginProvider from '../lib/sendProviders/pluginProvider.js';
 import type * as lib_sendProviders_relayDomainVerification from '../lib/sendProviders/relayDomainVerification.js';
 import type * as lib_sendProviders_resend_index from '../lib/sendProviders/resend/index.js';
@@ -1555,6 +1556,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/mandrill/errors': typeof lib_sendProviders_mandrill_errors;
 	'lib/sendProviders/mandrill/index': typeof lib_sendProviders_mandrill_index;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;
+	'lib/sendProviders/pluginEnvNamespace': typeof lib_sendProviders_pluginEnvNamespace;
 	'lib/sendProviders/pluginProvider': typeof lib_sendProviders_pluginProvider;
 	'lib/sendProviders/relayDomainVerification': typeof lib_sendProviders_relayDomainVerification;
 	'lib/sendProviders/resend/index': typeof lib_sendProviders_resend_index;

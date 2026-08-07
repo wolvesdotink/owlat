@@ -3,7 +3,6 @@
 import {
 	PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
 	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
-	isPluginSendTransportEnvVar,
 	type PluginId,
 } from '@owlat/plugin-kit';
 import {
@@ -19,6 +18,7 @@ import {
 	tagsFeedbackProvenanceOf,
 } from '@owlat/shared';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG } from '../../plugins/sendTransportCatalog.generated';
+import { assertPluginTransportEnvVarNamespace } from './pluginEnvNamespace';
 import type {
 	AcceptanceSemantics,
 	DomainVerificationSupport,
@@ -273,15 +273,10 @@ function assertPluginConfigurationIsWithinContract(
 			// owns three names, and only the shared accessor knows that.
 			...credentialFields.flatMap((field) => credentialFieldEnvVars(field)),
 		];
-		for (const name of declared) {
-			if (isPluginSendTransportEnvVar(name)) continue;
-			throw new TypeError(
-				`Bundled plugin send transport '${entry.kind}' declares the configuration variable ` +
-					`'${name}', which is outside the PLUGIN_ namespace a bundled transport may be ` +
-					'handed the value of. See isPluginSendTransportEnvVar in ' +
-					'packages/plugin-kit/src/sendTransport.ts.'
-			);
-		}
+		// THE NAMESPACE IS THE SECURITY FLOOR, and it is stated once — in
+		// `./pluginEnvNamespace.ts`, shared with the sending-domain identity half's
+		// load-time guard, so tightening the fence reaches both artifacts.
+		assertPluginTransportEnvVarNamespace('Bundled plugin send transport', entry.kind, declared);
 	}
 }
 
