@@ -18,15 +18,42 @@ import {
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import type { TestConvex } from 'convex-test';
-import type { Doc } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type schema from '../../schema';
-import { createTestInstanceSettings } from '../../__tests__/factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	createTestInstanceSettings,
+} from '../../__tests__/factories';
+import { sumCounters } from '../../analytics/__tests__/transportOutcomesFixtures';
 import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../../analytics/transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
 import { MS_PER_DAY } from '../../lib/constants';
 
 /** The default share on the managed cell when a suite does not name one. */
 export const RAMP_FIXTURE_SHARE = 0.5;
+
+/**
+ * THE MANAGED CELL every fixture in this file writes and every suite reads.
+ *
+ * `seedRampCell` hard-codes the campaign × Gmail slice as the one cell the
+ * controller manages, so a suite spelling it again is spelling the fixture's own
+ * choice a second time — and the two would drift the day this file managed a
+ * different slice.
+ */
+export const RAMP_FIXTURE_CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
+export const RAMP_FIXTURE_CELL_KEY = deliverabilityCellKey(RAMP_FIXTURE_CELL);
+
+/**
+ * A burst big enough to breach every ratio ceiling the gates carry — the shape
+ * both reference-arm suites use to say "this arm had a terrible day".
+ */
+export const RAMP_FIXTURE_GATE_BREACHING_BURST = {
+	sent: 5_000,
+	counters: { delivered: 2_000, hardBounced: 2_500, complained: 400, deferred: 2_500 },
+} as const;
 
 /**
  * The convex-test runner PARAMETERIZED by this app's schema — DEFINED ONCE for
@@ -380,4 +407,77 @@ export async function readManagedCell(
 		async (ctx) => await ctx.db.query('deliverabilityRouteStates').collect()
 	);
 	return rows.find((row) => row.stream === 'campaign');
+}
+
+/** One hourly controller tick, through the real cron entry point. */
+export async function runRampControllerTick(t: Harness): Promise<void> {
+	await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
+}
+
+/** The tick's audited decision row for the managed cell. */
+export async function readMixDecision(t: Harness): Promise<Doc<'mixDecisions'> | undefined> {
+	const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+	return rows.find((row) => row.cell === RAMP_FIXTURE_CELL_KEY);
+}
+
+/** Every counter of one arm on the managed cell, summed across shards and days. */
+export async function armOutcomeTotals(
+	t: Harness,
+	arm: 'own' | 'reference'
+): Promise<typeof ZERO_TRANSPORT_OUTCOME_TOTALS> {
+	return await t.run(async (ctx) => {
+		const rows = await ctx.db.query('transportOutcomes').collect();
+		return sumCounters(rows.filter((row) => row.cell === RAMP_FIXTURE_CELL_KEY && row.arm === arm));
+	});
+}
+
+/**
+ * A SEND WITH ITS ASSIGNMENT ROW — the join the outcome recorder reads the arm
+ * and the cell off, and the only place a transport KIND enters the measurement
+ * plane.
+ *
+ * Shared rather than copied because the row is schema-coupled: `sendAssignments`
+ * already carries a `mixVersion`, and the next required column would have to be
+ * added to every hand-rolled copy or leave one suite failing on a validator error
+ * unrelated to what it tests. The org is a parameter for the same reason the rest
+ * of this file's are — each suite mocks `getSingletonOrganizationId` with its own
+ * tenant.
+ */
+export async function seedAssignedSend(
+	t: Harness,
+	args: {
+		readonly organizationId: string;
+		readonly providerMessageId: string;
+		readonly transport: string;
+		readonly arm: 'own' | 'reference';
+	}
+): Promise<Id<'emailSends'>> {
+	return await t.run(async (ctx) => {
+		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
+		const contact = createTestContact();
+		const contactId = await ctx.db.insert('contacts', contact);
+		const sendId = await ctx.db.insert(
+			'emailSends',
+			createTestEmailSend({
+				campaignId,
+				contactId,
+				contactEmail: contact.email ?? 'reference@example.com',
+				status: 'sent',
+				providerType: args.transport,
+				providerMessageId: args.providerMessageId,
+			})
+		);
+		await ctx.db.insert('sendAssignments', {
+			organizationId: args.organizationId,
+			sendId,
+			sendKind: 'campaign',
+			cell: RAMP_FIXTURE_CELL_KEY,
+			transport: args.transport,
+			arm: args.arm,
+			isCalibration: false,
+			mixVersion: 2,
+			assignedAt: Date.now(),
+		});
+		return sendId;
+	});
 }
