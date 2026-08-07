@@ -59,6 +59,13 @@
  * auditing P1.3 from here would otherwise read three joins and conclude the
  * fourth was dropped.
  *
+ * WHAT IS NOT A JOIN AT ALL stays with the declaration. Rules relating one part
+ * of an entry to another part of the SAME entry — a credential field's variables
+ * against that entry's `requiredEnvVars`/`optionalEnvVars`, for instance — need
+ * nothing from Convex, and `packages/shared/src/__tests__/sendProviderCatalog.test.ts`
+ * states each of them once, whole, in the package an author edits to declare a
+ * sixth provider.
+ *
  * SCOPE: THE CORE TIER, deliberately. A bundled plugin transport declares its
  * env keys in its manifest (the host asserts their presence — plan §4, the
  * plugin column of the N+1 checklist), carries its own executable module through
@@ -70,9 +77,6 @@
  * over the core entries, and say so.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	SEND_TRANSPORT_KINDS,
@@ -87,8 +91,6 @@ import type { EnvKey } from '../../env';
 import { SEND_PROVIDER_CATALOG, hasProviderFeedbackFor } from '../catalog';
 import { SEND_PROVIDERS, providerFor } from '../index';
 import type { SendProviderModule } from '../types';
-
-const convexRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
  * The core entries, as the shipped list — the only tier these joins bind.
@@ -137,32 +139,21 @@ type DeclaredEnvVar =
  *
  * The assignment is the assertion — a literal the union does not carry is not
  * assignable, and `tsc --noEmit -p convex/tsconfig.json` (which includes this
- * directory) fails naming it. The runtime half below asks the same question of
- * the parsed union so that `vitest` reports it too, with the kind and the field
- * that declared it; a type error on a 90-member union does not say which entry
- * was wrong.
+ * directory) fails NAMING THE OFFENDING LITERAL, which is all a runtime restating
+ * of the same question could add.
+ *
+ * There is no such restating, and that is deliberate: the runtime case below asks
+ * about `CONVEX_RUNTIME_ENV_KEYS`, and `apps/setup-cli/scripts/check-env-keys-sync.sh`
+ * holds that list EQUAL to `EnvKey` minus the `CONVEX_SITE_URL` built-in (not
+ * merely contained in it). So a name the catalog declares and `lib/env.ts` cannot
+ * read is caught twice over — here, by type, and there, by value — without this
+ * file parsing another module's source to find out. Reading the union out of
+ * `env.ts` with a regex would add a third copy of that script's extractor, and
+ * one that can only ever OVER-match: a block comment quoting an example name
+ * would silently enlarge the union and stop the check rejecting anything.
  */
 const _declaredEnvVarsAreReadableEnvKeys: EnvKey = null as unknown as DeclaredEnvVar;
 void _declaredEnvVarsAreReadableEnvKeys;
-
-/**
- * The `EnvKey` union, read out of its own declaration.
- *
- * A type is not a value, so the runtime half has to parse. The extraction is the
- * one `apps/setup-cli/scripts/check-env-keys-sync.sh` uses (comments stripped, then quoted
- * UPPER_SNAKE tokens between `export type EnvKey =` and its terminating `;`) —
- * and, like that script, it fails loudly rather than quietly matching nothing:
- * see the anchor assertion below.
- */
-const ENV_KEY_UNION: ReadonlySet<string> = (() => {
-	const source = readFileSync(resolve(convexRoot, 'lib/env.ts'), 'utf8').replace(/\/\/.*$/gm, '');
-	const start = source.indexOf('export type EnvKey =');
-	const end = source.indexOf(';', start);
-	if (start < 0 || end < 0) throw new Error('lib/env.ts no longer declares an EnvKey union');
-	return new Set(
-		[...source.slice(start, end).matchAll(/'([A-Z][A-Z0-9_]*)'/g)].map((match) => match[1]!)
-	);
-})();
 
 interface DeclaredVariable {
 	readonly kind: string;
@@ -188,100 +179,41 @@ const DECLARED_VARIABLES: readonly DeclaredVariable[] = CORE_ENTRIES.flatMap((en
 ]);
 
 describe('every env variable the catalog declares is one the deployment can carry', () => {
-	it('reads a real union out of lib/env.ts rather than matching nothing', () => {
-		// THE ANCHOR. A parse that lost its footing would return an empty set and
-		// make every subset assertion below pass vacuously. `CONVEX_RUNTIME_ENV_KEYS`
-		// is a runtime VALUE whose members are all `EnvKey`s (that is exactly what
-		// `apps/setup-cli/scripts/check-env-keys-sync.sh` enforces), so it is a ~90-name probe of the parse
-		// that costs nothing and is not a second copy of anything: this file never
-		// asserts the reverse inclusion, which is that script's whole job.
-		expect([...CONVEX_RUNTIME_ENV_KEYS].filter((key) => !ENV_KEY_UNION.has(key))).toEqual([]);
-	});
-
-	it('declares at least one variable per kind, so the checks below have subjects', () => {
+	it('declares at least one variable per kind, so the check below has subjects', () => {
+		// THE ANCHOR. `DECLARED_VARIABLES` is walked off the entries, so a catalog
+		// shape change that stopped producing names would leave the case below
+		// filtering an empty list and passing for every kind.
 		expect([...new Set(DECLARED_VARIABLES.map((variable) => variable.kind))].sort()).toEqual(
 			[...SEND_TRANSPORT_KINDS].sort()
 		);
 	});
 
 	it.each(CORE_ENTRIES.map((entry) => entry.kind))(
-		'%s names only variables lib/env.ts can read',
-		(kind) => {
-			const unreadable = DECLARED_VARIABLES.filter(
-				(variable) => variable.kind === kind && !ENV_KEY_UNION.has(variable.name)
-			);
-			expect(
-				unreadable.map((variable) => `${variable.field}: ${variable.name}`),
-				`add these to the EnvKey union in apps/api/convex/lib/env.ts — the ${kind} adapter ` +
-					'cannot read a variable that is not in it, so the kind would resolve as ' +
-					'configured and then fail on every send'
-			).toEqual([]);
-		}
-	);
-
-	it.each(CORE_ENTRIES.map((entry) => entry.kind))(
 		'%s names only variables the setup surfaces push into the function runtime',
 		(kind) => {
-			// The second half of the same promise, and the one whose failure is
-			// invisible: a self-hoster sets the variable in `.env`, the deployment's
-			// env store never receives it, `getOptional` returns undefined, and the
-			// transport is simply off with no error anywhere.
+			// The half of the promise whose failure is invisible: a self-hoster sets
+			// the variable in `.env`, the deployment's env store never receives it,
+			// `getOptional` returns undefined, and the transport is simply off with no
+			// error anywhere.
+			//
+			// It is also the runtime half of "lib/env.ts can read it", because
+			// `apps/setup-cli/scripts/check-env-keys-sync.sh` holds this list EQUAL to
+			// the `EnvKey` union minus the `CONVEX_SITE_URL` built-in. A name missing
+			// from both lists fails here; a name in `EnvKey` alone fails that script.
 			const runtime = new Set<string>(CONVEX_RUNTIME_ENV_KEYS);
 			const unpushed = DECLARED_VARIABLES.filter(
 				(variable) => variable.kind === kind && !runtime.has(variable.name)
 			);
 			expect(
 				unpushed.map((variable) => `${variable.field}: ${variable.name}`),
-				'add these to CONVEX_RUNTIME_ENV_KEYS in packages/shared/src/convexRuntimeEnv.ts — ' +
-					'a variable left out of the push list reaches the container but never the ' +
-					'Convex function sandbox, so the operator sets it and nothing happens'
+				'add these to CONVEX_RUNTIME_ENV_KEYS in packages/shared/src/convexRuntimeEnv.ts ' +
+					'AND to the EnvKey union in apps/api/convex/lib/env.ts (check-env-keys-sync.sh ' +
+					'keeps the two equal) — a variable left out of the push list reaches the ' +
+					'container but never the Convex function sandbox, so the operator sets it and ' +
+					'nothing happens'
 			).toEqual([]);
 		}
 	);
-
-	it('never puts an OPTIONAL form field on a variable the entry does not declare', () => {
-		// The join in the other direction: `requiredEnvVars ∪ optionalEnvVars` is
-		// what "this kind needs" MEANS — the presence gate that decides configured,
-		// the `.env` skeleton, the docs table. A credential field writing a variable
-		// outside it is an input the operator can fill in that no other surface
-		// knows exists.
-		//
-		// HALF OF THAT IS NOT THIS FILE'S. `packages/shared/src/__tests__/
-		// sendProviderCatalog.test.ts` ("describes every field in the declared
-		// vocabulary, and marks required on `envVar` only") already binds every
-		// `required: true` field to `requiredEnvVars` — in both directions — and
-		// binds a `host-port` field's port/secure variables to `optionalEnvVars`.
-		// Restating those here would express one rule in two packages, which is the
-		// duplication this plan exists to end. What that suite cannot say is where a
-		// NON-required field's variable belongs: it only asserts such a name is
-		// absent from `requiredEnvVars`, so one declared in neither list (today:
-		// mta's OUTBOUND_TLS_MODE) is the case that would still slip through.
-		const subjects = CORE_ENTRIES.flatMap((entry) =>
-			entry.credentialFields.filter((field) => field.required !== true)
-		);
-		// The anchor, as everywhere else here: with every field marked required this
-		// loop would describe nothing and pass. That day this branch has no subjects
-		// left and the whole rule belongs to the shared suite — delete it rather than
-		// keep a green test that asks nothing.
-		expect(subjects.length).toBeGreaterThan(0);
-
-		for (const entry of CORE_ENTRIES) {
-			const declared = new Set<string>([
-				...entry.requiredEnvVars,
-				...(entry.optionalEnvVars ?? []),
-			]);
-			const orphans = entry.credentialFields
-				.filter((field) => field.required !== true)
-				.flatMap((field) => credentialFieldEnvVars(field))
-				.filter((name) => !declared.has(name));
-			expect(
-				orphans,
-				`${entry.kind}: an optional credential field writes these, and no ` +
-					'`requiredEnvVars`/`optionalEnvVars` entry declares them — add them to ' +
-					'optionalEnvVars, or the form collects a value nothing else knows about'
-			).toEqual([]);
-		}
-	});
 });
 
 // ---------------------------------------------------------------------------
