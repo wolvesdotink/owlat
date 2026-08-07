@@ -29,6 +29,13 @@
  * pairs, over the catalog rather than over a list of kinds somebody maintains —
  * a sixth provider is covered the day its entry lands.
  *
+ * ONE PAIR IS NOT HERE: `providerFeedback.webhookPath` vs. the route the backend
+ * registers. `feedbackRoutes.test.ts`, in this directory, already owns that join
+ * and asserts it in both directions by walking the REAL router
+ * (`http.getRoutes()`). A second copy here — however phrased — would be the
+ * weaker of the two and would rot separately, so this file stops at "the adapter
+ * exists and has the shape the router's handler needs".
+ *
  * SCOPE: THE CORE TIER, deliberately. A bundled plugin transport declares its
  * env keys in its manifest (the host asserts their presence — plan §4, the
  * plugin column of the N+1 checklist), carries its own executable module through
@@ -119,7 +126,7 @@ void _declaredEnvVarsAreReadableEnvKeys;
  * The `EnvKey` union, read out of its own declaration.
  *
  * A type is not a value, so the runtime half has to parse. The extraction is the
- * one `scripts/check-env-keys-sync.sh` uses (comments stripped, then quoted
+ * one `apps/setup-cli/scripts/check-env-keys-sync.sh` uses (comments stripped, then quoted
  * UPPER_SNAKE tokens between `export type EnvKey =` and its terminating `;`) —
  * and, like that script, it fails loudly rather than quietly matching nothing:
  * see the anchor assertion below.
@@ -162,7 +169,7 @@ describe('every env variable the catalog declares is one the deployment can carr
 		// THE ANCHOR. A parse that lost its footing would return an empty set and
 		// make every subset assertion below pass vacuously. `CONVEX_RUNTIME_ENV_KEYS`
 		// is a runtime VALUE whose members are all `EnvKey`s (that is exactly what
-		// `check-env-keys-sync.sh` enforces), so it is a ~90-name probe of the parse
+		// `apps/setup-cli/scripts/check-env-keys-sync.sh` enforces), so it is a ~90-name probe of the parse
 		// that costs nothing and is not a second copy of anything: this file never
 		// asserts the reverse inclusion, which is that script's whole job.
 		expect([...CONVEX_RUNTIME_ENV_KEYS].filter((key) => !ENV_KEY_UNION.has(key))).toEqual([]);
@@ -270,9 +277,10 @@ describe('every catalog kind has an adapter', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Feedback — every kind that says it reports outcomes has somewhere to
-//    report them. Wave 2's P2.1 turns this into a mapped-type registry guard;
-//    until then it is this.
+// 3. Feedback — every kind that says it reports outcomes ships the ADAPTER that
+//    parses them. (The ROUTE those events arrive on is `feedbackRoutes.test.ts`'s
+//    join, against the real router.) Wave 2's P2.1 turns this into a mapped-type
+//    registry guard; until then it is this.
 // ---------------------------------------------------------------------------
 
 /**
@@ -291,19 +299,6 @@ const INBOUND_ADAPTER_LOADERS: Record<string, () => Promise<Record<string, unkno
 		])
 	);
 
-/** `POST /webhooks/…`-shaped route registrations, read out of `http.ts`. */
-const REGISTERED_ROUTES: readonly string[] = (() => {
-	const source = readFileSync(resolve(convexRoot, 'http.ts'), 'utf8');
-	const routes: string[] = [];
-	for (const match of source.matchAll(/http\.route\(\{([\s\S]*?)\}\);/g)) {
-		const block = match[1]!;
-		const path = /\bpath:\s*'([^']+)'/.exec(block)?.[1];
-		const method = /\bmethod:\s*'([^']+)'/.exec(block)?.[1];
-		if (path !== undefined && method !== undefined) routes.push(`${method} ${path}`);
-	}
-	return routes;
-})();
-
 /**
  * The two sides of the question, asked through the accessor the rest of the
  * backend reads — never off the raw field, so an entry that stopped declaring
@@ -312,18 +307,19 @@ const REGISTERED_ROUTES: readonly string[] = (() => {
 const FEEDBACK_KINDS = SEND_TRANSPORT_KINDS.filter((kind) => hasProviderFeedbackFor(kind));
 const SILENT_KINDS = SEND_TRANSPORT_KINDS.filter((kind) => !hasProviderFeedbackFor(kind));
 
-describe('every kind that declares provider feedback can receive it', () => {
-	it('parses real routes out of http.ts rather than matching nothing', () => {
-		// The same anchor discipline as the env parse: an expression that stopped
-		// matching would make the per-kind route assertions vacuous.
-		expect(REGISTERED_ROUTES.length).toBeGreaterThan(10);
-	});
-
+describe('every kind that declares provider feedback ships the adapter that parses it', () => {
 	it('finds the kinds on both sides of the question', () => {
 		// Neither list may be empty, or one of the two suites below would pass by
-		// having no subject at all.
-		expect([...FEEDBACK_KINDS]).toEqual(['mta', 'ses', 'resend', 'mandrill']);
-		expect([...SILENT_KINDS]).toEqual(['smtp']);
+		// having no subject at all. WHICH kinds declare feedback is pinned per kind
+		// by `packages/shared/src/__tests__/sendProviderCatalog.test.ts` and by
+		// `registry.test.ts`'s composed-catalog projection; restating the roster
+		// here would make a sixth kind a three-file literal edit for a fact this
+		// file does not own. What this file needs is only that both suites have
+		// subjects — and that the accessor partitions the kinds, so a kind cannot
+		// fall out of both by answering neither.
+		expect(FEEDBACK_KINDS.length).toBeGreaterThan(0);
+		expect(SILENT_KINDS.length).toBeGreaterThan(0);
+		expect([...FEEDBACK_KINDS, ...SILENT_KINDS].sort()).toEqual([...SEND_TRANSPORT_KINDS].sort());
 	});
 
 	it.each([...FEEDBACK_KINDS])('%s ships an inbound adapter', async (kind) => {
@@ -344,17 +340,6 @@ describe('every kind that declares provider feedback can receive it', () => {
 		const single = typeof adapter!['parseEvent'] === 'function';
 		const batch = typeof adapter!['parseEvents'] === 'function';
 		expect(single !== batch, 'exactly one of parseEvent / parseEvents').toBe(true);
-	});
-
-	it.each([...FEEDBACK_KINDS])('%s has its declared webhook path registered in http.ts', (kind) => {
-		// The catalog's `webhookPath` is the URL an operator has already pasted
-		// into a provider console, and the delivery page now DERIVES the endpoint
-		// it displays from it (P1.2). A declared path with no route serves that
-		// operator a 404 for every bounce.
-		const declared = CORE_ENTRIES.find((entry) => entry.kind === kind)?.providerFeedback
-			?.webhookPath;
-		expect(declared, `${kind} declares feedback without a channel`).toBeDefined();
-		expect(REGISTERED_ROUTES).toContain(`POST ${declared}`);
 	});
 
 	it.each([...SILENT_KINDS])(

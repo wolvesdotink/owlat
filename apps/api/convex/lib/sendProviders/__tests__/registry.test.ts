@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
 	providerFor,
 	isSendProviderKind,
-	SEND_PROVIDERS,
 	EmailErrorCode,
 	isRetryableErrorCode,
 	type SendProviderKind,
@@ -16,21 +15,15 @@ import { SEND_PROVIDER_CATALOG } from '../catalog';
 import { OWN_ARM_TRANSPORT_KIND } from '../strategies/adaptive_mix';
 
 describe('Send provider registry', () => {
-	it('providerFor returns the module for each kind', () => {
-		expect(providerFor('mta').kind).toBe('mta');
-		expect(providerFor('ses').kind).toBe('ses');
-		expect(providerFor('resend').kind).toBe('resend');
-		expect(providerFor('smtp').kind).toBe('smtp');
-		expect(providerFor('mandrill').kind).toBe('mandrill');
-	});
-
+	/**
+	 * Registry COMPLETENESS — "every catalog kind resolves to a module that names
+	 * itself", and "`SEND_PROVIDERS` has exactly the catalog's kinds" — is asserted
+	 * in `catalogConsistency.test.ts`, derived from the catalog rather than from a
+	 * five-kind literal restated here. What remains below is what this file owns:
+	 * the negative case, and the composed catalog's own values.
+	 */
 	it('providerFor throws on unknown kinds', () => {
 		expect(() => providerFor('postmark' as SendProviderKind)).toThrow(/Unknown send provider/);
-	});
-
-	it('SEND_PROVIDERS keys match the SendProviderKind union exactly', () => {
-		const keys = Object.keys(SEND_PROVIDERS).sort();
-		expect(keys).toEqual(['mandrill', 'mta', 'resend', 'ses', 'smtp']);
 	});
 
 	/**
