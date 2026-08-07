@@ -26,6 +26,9 @@ import {
 	DECISION_RELAY_ALLOWED_BYTES,
 	DECISION_RELAY_REASON_BYTES,
 	GOVERNED_SEND_REQUEST_BYTES,
+	POSTBOX_SEALED_SEND_REQUEST_BYTES,
+	POSTBOX_SEND_REQUEST_BYTES,
+	SEALED_MIME_BASE64,
 	SEND_ACCEPTED_BYTES,
 	SEND_DEDUPLICATED_BYTES,
 	SEND_INTAKE_PENDING_BYTES,
@@ -382,6 +385,105 @@ describe('send intake', () => {
 		const { response, queue } = await intake({ body: JSON.stringify(leaseless) });
 		expect(response.status).toBe(409);
 		expect(await response.text()).toBe(SEND_LEASE_REQUIRED_BYTES);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+});
+
+// ─── POST /send/postbox ────────────────────────────────────────────────────
+
+/**
+ * Drive the SHIPPED postbox intake with the frozen Postbox bodies.
+ *
+ * The three fields only this leg carries — `sealedMimeBase64`, `amp`,
+ * `allowedFromAddresses` — had no typed producer before D7 bound
+ * `mail/outbound.ts` and `mail/deliveryHooks.ts` to `MtaSendRequest`, and they
+ * fail QUIETLY: a dropped `sealedMimeBase64` ships the placeholder `html: ' '`
+ * body and loses the ciphertext, a dropped `amp` loses the alternative part,
+ * and a dropped `allowedFromAddresses` refuses every personal-mailbox send.
+ */
+async function postboxIntake(body: string) {
+	const queue = {
+		add: vi.fn().mockResolvedValue({ id: 'pb-queue-1' }),
+		getJob: vi.fn().mockResolvedValue(null),
+	};
+	const redis = {
+		zcard: vi.fn().mockResolvedValue(0),
+		llen: vi.fn().mockResolvedValue(0),
+		get: vi.fn().mockResolvedValue(null),
+		hgetall: vi.fn().mockResolvedValue({}),
+		eval: vi.fn().mockResolvedValue(0),
+		set: vi.fn().mockResolvedValue('OK'),
+	} as unknown as Redis;
+	const app = new Hono();
+	app.use('/send/postbox', async (c, next) => {
+		c.set('auth', { isMasterKey: true });
+		await next();
+	});
+	app.post(
+		'/send/postbox',
+		createSendHandler(queue as unknown as Queue<EmailJob>, redis, 'postbox')
+	);
+	const response = await app.request('/send/postbox', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+	});
+	return { response, queue };
+}
+
+describe('postbox send intake', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+	});
+
+	it('accepts the frozen unsealed postbox bytes and carries amp onto the job', async () => {
+		const { response, queue } = await postboxIntake(POSTBOX_SEND_REQUEST_BYTES);
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe(
+			JSON.stringify({ success: true, id: 'pb-fixture-1', workAttemptId: 'pb-queue-1' })
+		);
+		const job = queue.add.mock.calls[0]![0]!.data as EmailJob;
+		expect(job).toMatchObject({
+			messageId: 'pb-fixture-1',
+			to: 'recipient@example.com',
+			subject: 'Postbox wire fixture',
+			text: 'hi',
+			amp: '<html amp4email><body>hi</body></html>',
+			ipPool: 'transactional',
+			organizationId: 'postbox',
+			dkimDomain: 'mail.example.org',
+		});
+	});
+
+	it('accepts the frozen sealed postbox bytes and carries the ciphertext unchanged', async () => {
+		const { response, queue } = await postboxIntake(POSTBOX_SEALED_SEND_REQUEST_BYTES);
+		expect(response.status).toBe(200);
+		const job = queue.add.mock.calls[0]![0]!.data as EmailJob;
+		// Byte-for-byte: the MTA passes the PGP/MIME envelope through, and the
+		// structured half stays the placeholder the producer sent.
+		expect(job.sealedMimeBase64).toBe(SEALED_MIME_BASE64);
+		expect(job.subject).toBe('...');
+		expect(job.html).toBe(' ');
+	});
+
+	it('refuses a From outside the allowed set the producer computed', async () => {
+		const forged = JSON.parse(POSTBOX_SEND_REQUEST_BYTES) as Record<string, unknown>;
+		forged['from'] = 'Owlat <someone-else@mail.example.org>';
+		const { response, queue } = await postboxIntake(JSON.stringify(forged));
+		expect(response.status).toBe(403);
+		expect(await response.text()).toBe(
+			JSON.stringify({ error: 'From address not authorized for this mailbox' })
+		);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('refuses a body whose allowed-from set never arrived', async () => {
+		// The shape of the silent outage a renamed `allowedFromAddresses` would
+		// cause on every postbox producer at once: the field simply is not there.
+		const stripped = JSON.parse(POSTBOX_SEND_REQUEST_BYTES) as Record<string, unknown>;
+		delete stripped['allowedFromAddresses'];
+		const { response, queue } = await postboxIntake(JSON.stringify(stripped));
+		expect(response.status).toBe(403);
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 });

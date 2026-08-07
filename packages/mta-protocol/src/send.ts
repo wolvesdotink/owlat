@@ -7,10 +7,15 @@
  * the handler's `mode` parameter is what enforces that; so this is one
  * declaration with the per-mode rules stated on the fields.
  *
- * Until now it was declared twice and typed on neither side of the wire: a
- * private `interface SendRequest` in `apps/mta/src/routes/send.ts`, and an
- * inline object literal in `apps/api/convex/lib/sendProviders/mta/index.ts`
- * whose only contract with it was that both had been edited by the same hand.
+ * Until now it was typed on neither side of the wire: a private `interface
+ * SendRequest` in `apps/mta/src/routes/send.ts` faced FOUR unannotated object
+ * literals in Convex — the dispatch adapter
+ * (`lib/sendProviders/mta/index.ts`), the Postbox send (`mail/outbound.ts`) and
+ * the mailbox forward and vacation auto-reply (`mail/deliveryHooks.ts`) — whose
+ * only contract with it was that all five had been edited by the same hand. All
+ * five are bound to this declaration now, which matters most for the three
+ * fields only the Postbox producers set (`sealedMimeBase64`, `amp`,
+ * `allowedFromAddresses`): those had no typed producer at all.
  */
 
 import type {
@@ -115,6 +120,22 @@ export const MTA_SEND_ERROR_CODES = [
 ] as const;
 
 export type MtaSendErrorCode = (typeof MTA_SEND_ERROR_CODES)[number];
+
+const SEND_ERROR_CODES = new Set<string>(MTA_SEND_ERROR_CODES);
+
+/**
+ * Recognise one answered refusal code. A `Set`, so no inherited key matches.
+ *
+ * Like `isMtaRelayDecisionReason` in `./routingDecision`, this exists so the
+ * READER's list and the accept-list are the same list: the adapter narrows a
+ * refusal body
+ * through this before comparing against `INTAKE_PENDING`, so a code dropped
+ * from {@link MTA_SEND_ERROR_CODES} stops compiling at the comparison instead
+ * of quietly never matching again.
+ */
+export function isMtaSendErrorCode(code: unknown): code is MtaSendErrorCode {
+	return typeof code === 'string' && SEND_ERROR_CODES.has(code);
+}
 
 /**
  * The accepted answer. `id` is the caller's own `messageId` echoed back — the

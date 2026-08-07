@@ -10,9 +10,10 @@
  * pinned to, so the two ends cannot agree with themselves and disagree with each
  * other.
  *
- * All four conversations, from this end: the send adapter's request bytes, the
- * decision answers it resolves, the webhook events its ingress adapter parses,
- * and the ip-reputation snapshot its normalizer accepts.
+ * All four conversations, from this end: the send adapter's request bytes (plus
+ * the Postbox producers', which share that body and are the only writers of
+ * three of its fields), the decision answers it resolves, the webhook events its
+ * ingress adapter parses, and the ip-reputation snapshot its normalizer accepts.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +24,7 @@ import {
 	DECISION_RELAY_REASON_BYTES,
 	GOVERNED_SEND_REQUEST_BYTES,
 	IP_REPUTATION_SNAPSHOT_BYTES,
+	POSTBOX_SEND_REQUEST_BYTES,
 	SEND_ACCEPTED_BYTES,
 	SEND_DEDUPLICATED_BYTES,
 	SEND_INTAKE_PENDING_BYTES,
@@ -36,6 +38,7 @@ import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { EmailErrorCode } from '../types';
 import { resolveSendTransport } from '../transports';
 import { mtaAdapter } from '../../../webhooks/adapters/mta';
+import { forwardToTarget } from '../../../mail/deliveryHooks';
 
 const GOVERNED = JSON.parse(GOVERNED_SEND_REQUEST_BYTES) as MtaSendRequest;
 const SYSTEM = JSON.parse(SYSTEM_SEND_REQUEST_BYTES) as MtaSendRequest;
@@ -145,6 +148,28 @@ describe('Convex -> MTA send intake bytes', () => {
 		expect(attempt).toEqual({ success: true, id: 'send-fixture-1' });
 	});
 
+	it('reads a 2xx body that is a JSON scalar as a plain failure, not acceptance-unknown', async () => {
+		// A 200 whose body is a bare JSON scalar is legal JSON and nonsense as an
+		// answer. It must stay what it always was — a definite failure — because
+		// `acceptanceUnknown` sends a custody-taking transport into an acceptance
+		// RECONCILIATION replay rather than recording the attempt as failed. This
+		// is the exact shape the D7 narrowing could have moved: `'success' in
+		// result` throws on a primitive where `result.success` does not.
+		stubFetch(new Response('123', { status: 200 }));
+		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
+			to: 'recipient@example.com',
+			from: 'sender@mail.example.org',
+			subject: 'scalar',
+			html: '<p>scalar</p>',
+		});
+		expect(attempt).toEqual({
+			success: false,
+			errorMessage: 'MTA returned unsuccessful response',
+			errorCode: EmailErrorCode.UNKNOWN,
+		});
+		expect(attempt).not.toHaveProperty('acceptanceUnknown');
+	});
+
 	it('reads a pending intake reservation as acceptance-unknown, never as failure', async () => {
 		stubFetch(new Response(SEND_INTAKE_PENDING_BYTES, { status: 409 }));
 		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
@@ -160,6 +185,51 @@ describe('Convex -> MTA send intake bytes', () => {
 			retryAfterMs: 1_000,
 			acceptanceUnknown: true,
 		});
+	});
+});
+
+describe('Convex -> MTA postbox intake bytes', () => {
+	// The Postbox leg has three producers, none of them the send adapter:
+	// `mail/outbound.ts` and the forward + vacation reply in
+	// `mail/deliveryHooks.ts`. They are the only writers of `sealedMimeBase64`,
+	// `amp` and `allowedFromAddresses`, so before D7 bound them to
+	// `MtaSendRequest` those three fields had no typed producer anywhere. The
+	// forward is the one of the three that is exported and drivable, so it is
+	// what pins the CODE here; the other two are pinned by the type and by
+	// `apps/mta`'s postbox intake tests over the same frozen fixture.
+	const POSTBOX = JSON.parse(POSTBOX_SEND_REQUEST_BYTES) as MtaSendRequest;
+	const WIRE_KEYS = new Set(Object.keys(POSTBOX));
+
+	it('posts a forward whose every key is a field the frozen postbox body declares', async () => {
+		stubFetch(new Response('{}', { status: 200 }));
+		await forwardToTarget(
+			{ baseUrl: 'https://mta.test', apiKey: 'test-key' },
+			{
+				mailboxId: 'mailbox1',
+				mailboxAddress: 'me@owlat.test',
+				fromAddress: 'alice@external.example',
+				subject: 'Hello',
+				bodyText: 'plain body',
+				bodyHtml: '<p>hi</p>',
+			},
+			'forward-target@elsewhere.example'
+		);
+
+		expect(captured?.url).toBe('https://mta.test/send/postbox');
+		const body = JSON.parse(captured!.body) as Record<string, unknown>;
+		// `replyTo` is the one key the forward adds over the frozen body (it is
+		// what keeps the original sender reachable, RFC 7960); `amp` is the one it
+		// never sets. Everything else is key-for-key the same wire.
+		expect(
+			Object.keys(body)
+				.filter((key) => key !== 'replyTo')
+				.sort()
+		).toEqual([...WIRE_KEYS].filter((key) => key !== 'amp').sort());
+		// The field the MTA enforces From ownership with. A rename that reached
+		// only one end refuses every forward, every vacation reply and every
+		// personal-mailbox send with a 403.
+		expect(body['allowedFromAddresses']).toEqual(['me@owlat.test']);
+		expect(body['organizationId']).toBe('postbox');
 	});
 });
 
