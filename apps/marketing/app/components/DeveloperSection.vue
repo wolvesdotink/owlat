@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Renders inside <DarkSection> — the .lp-dark wrapper re-points the shared
+// color tokens, so text-text-* / border-border-* utilities resolve to the
+// white scales here.
 const { target, isVisible } = useScrollReveal();
 const activeTab = ref<'sdk' | 'curl'>('sdk');
 const copied = ref(false);
@@ -50,32 +53,22 @@ async function copyCode() {
 </script>
 
 <template>
-	<section
+	<div
 		id="developers"
 		ref="target"
-		class="px-8 max-md:px-6 py-28 max-md:py-20 border-t border-border-subtle"
+		class="px-12 max-md:px-6 py-20 max-md:py-14"
 		:class="{ visible: isVisible }"
 	>
-		<div
-			class="max-w-[1200px] mx-auto grid grid-cols-[5fr_7fr] gap-20 items-center max-lg:grid-cols-1 max-lg:gap-12"
-		>
+		<div class="grid grid-cols-[5fr_7fr] gap-16 items-center max-lg:grid-cols-1 max-lg:gap-12">
 			<!-- Left: Copy -->
 			<div>
-				<span
-					class="dev-el text-xs font-medium uppercase tracking-widest text-text-tertiary mb-4 block"
-					style="--i: 0"
-				>
-					Developers
-				</span>
-				<h2
-					class="dev-el text-[clamp(2rem,4.5vw,3.25rem)] font-semibold leading-[1.1] tracking-tight text-text-primary mb-4"
-					style="--i: 1"
-				>
+				<span class="dev-el lp-eyebrow mb-4" style="--i: 0">Developers</span>
+				<h2 class="dev-el lp-title mb-4" style="--i: 1">
 					Ship with the SDK,<br class="max-md:hidden" />
-					or stay in the dashboard
+					or stay in the <span class="lp-title-accent">dashboard</span>
 				</h2>
 				<p
-					class="dev-el text-base text-text-secondary leading-relaxed max-w-prose mb-8"
+					class="dev-el text-base text-text-secondary leading-relaxed max-w-[540px] mb-8"
 					style="--i: 2"
 				>
 					Send transactional emails, manage contacts, trigger automations, and track delivery with a
@@ -86,34 +79,72 @@ async function copyCode() {
 				<div class="dev-el flex gap-5" style="--i: 3">
 					<a
 						href="https://docs.owlat.app/api/sdk"
-						class="text-[0.8125rem] font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline hover:underline underline-offset-4"
+						class="group inline-flex items-center gap-1.5 text-caption font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline"
 					>
-						SDK Reference
+						<span>SDK Reference</span>
+						<svg
+							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
+							width="13"
+							height="13"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M5 12h14" />
+							<path d="m12 5 7 7-7 7" />
+						</svg>
 					</a>
 					<a
 						href="https://docs.owlat.app/api/"
-						class="text-[0.8125rem] font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline hover:underline underline-offset-4"
+						class="group inline-flex items-center gap-1.5 text-caption font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline"
 					>
-						API Docs
+						<span>API Docs</span>
+						<svg
+							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
+							width="13"
+							height="13"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M5 12h14" />
+							<path d="m12 5 7 7-7 7" />
+						</svg>
 					</a>
 				</div>
 			</div>
 
-			<!-- Right: Code window -->
+			<!-- Right: Terminal window -->
 			<div class="dev-code">
 				<div
-					class="code-window border border-border-subtle rounded-(--radius-card) overflow-hidden"
-					style="background: var(--surface-2); box-shadow: var(--shadow-2)"
+					class="rounded-2xl border border-border-subtle overflow-hidden"
+					style="background: rgba(255, 255, 255, 0.03)"
 				>
-					<!-- Header: tabs + copy -->
+					<!-- Header: dots + tabs + copy -->
 					<div class="flex items-center gap-1 px-3 py-2 border-b border-border-subtle">
+						<div class="flex items-center gap-1.5 pl-1 pr-3" aria-hidden="true">
+							<span
+								v-for="i in 3"
+								:key="i"
+								class="w-[7px] h-[7px] rounded-full"
+								style="background: rgba(255, 255, 255, 0.14)"
+							/>
+						</div>
 						<button
 							v-for="tab in ['sdk', 'curl'] as const"
 							:key="tab"
 							class="px-3 py-1.5 font-mono text-[0.625rem] font-medium tracking-[0.04em] uppercase cursor-pointer transition-colors duration-(--motion-fast) border-none rounded-md bg-transparent"
 							:class="
 								activeTab === tab
-									? 'text-text-primary bg-bg-surface'
+									? 'text-text-primary bg-white/10'
 									: 'text-text-tertiary hover:text-text-secondary'
 							"
 							@click="activeTab = tab"
@@ -121,7 +152,7 @@ async function copyCode() {
 							{{ tab === 'sdk' ? 'TypeScript SDK' : 'cURL' }}
 						</button>
 						<button
-							class="ml-auto flex items-center gap-1.5 px-2 py-1.5 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast) cursor-pointer border-none bg-transparent"
+							class="ml-auto flex items-center gap-1.5 px-2 py-1.5 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-white/10 transition-colors duration-(--motion-fast) cursor-pointer border-none bg-transparent"
 							:class="{ 'text-success!': copied }"
 							@click="copyCode"
 						>
@@ -135,6 +166,7 @@ async function copyCode() {
 								stroke-width="2"
 								stroke-linecap="round"
 								stroke-linejoin="round"
+								aria-hidden="true"
 							>
 								<rect x="9" y="9" width="13" height="13" rx="2" />
 								<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
@@ -149,6 +181,7 @@ async function copyCode() {
 								stroke-width="2.5"
 								stroke-linecap="round"
 								stroke-linejoin="round"
+								aria-hidden="true"
 							>
 								<path d="M20 6 9 17l-5-5" />
 							</svg>
@@ -202,7 +235,7 @@ async function copyCode() {
 				</div>
 			</div>
 		</div>
-	</section>
+	</div>
 </template>
 
 <style scoped>

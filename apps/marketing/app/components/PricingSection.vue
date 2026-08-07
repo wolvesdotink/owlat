@@ -34,20 +34,12 @@ const hostedFeatures = [
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12">
-				<span
-					class="price-el text-xs font-medium uppercase tracking-widest text-text-tertiary mb-4 block"
-					style="--i: 0"
-				>
-					Pricing
-				</span>
-				<h2
-					class="price-el text-[clamp(2rem,4.5vw,3.25rem)] font-semibold leading-[1.1] tracking-tight text-text-primary mb-4"
-					style="--i: 1"
-				>
-					Free forever. Your infrastructure.
+				<span class="price-el lp-eyebrow mb-4" style="--i: 0">Pricing</span>
+				<h2 class="price-el lp-title mb-4" style="--i: 1">
+					Free <span class="lp-title-accent">forever</span>. Your infrastructure.
 				</h2>
 				<p
-					class="price-el text-base text-text-secondary leading-relaxed max-w-prose"
+					class="price-el text-base text-text-secondary leading-relaxed max-w-[540px]"
 					style="--i: 2"
 				>
 					Open-source under Apache 2.0. Hosted cloud is coming later — self-host today and own your
@@ -56,17 +48,17 @@ const hostedFeatures = [
 			</div>
 
 			<!-- Self-host + Hosted cards -->
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-10">
-				<!-- Self-Host (highlighted via border only) -->
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+				<!-- Self-Host (featured: stronger border + black pill CTA) -->
 				<div class="price-card price-card-highlight" style="--i: 3">
-					<p class="text-xs text-text-tertiary mb-3">Available today</p>
-					<h3 class="text-lg font-[550] text-text-primary mb-1">Self-Host</h3>
+					<p class="text-caption text-text-tertiary mb-3">Available today</p>
+					<h3 class="text-lg font-medium tracking-[-0.01em] text-text-primary mb-1">Self-Host</h3>
 					<p class="text-caption text-text-tertiary mb-5">
 						Run on your own VPS. No limits. No billing.
 					</p>
 
 					<p class="mb-6">
-						<span class="text-4xl font-[550] text-text-primary tracking-tight">Free</span>
+						<span class="text-4xl font-medium text-text-primary tracking-tight">Free</span>
 						<span class="text-sm text-text-tertiary"> forever</span>
 					</p>
 
@@ -94,20 +86,37 @@ const hostedFeatures = [
 
 					<a
 						href="https://docs.owlat.app/developer/self-hosting"
-						class="btn btn-primary btn-sm w-full no-underline"
+						class="btn btn-primary btn-sm group w-full no-underline"
 					>
-						Start self-hosting →
+						<span>Start self-hosting</span>
+						<svg
+							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M5 12h14" />
+							<path d="m12 5 7 7-7 7" />
+						</svg>
 					</a>
 				</div>
 
 				<!-- Hosted Cloud (coming soon) -->
 				<div class="price-card" style="--i: 4">
-					<p class="text-xs text-text-tertiary mb-3">Coming soon</p>
-					<h3 class="text-lg font-[550] text-text-primary mb-1">Hosted Cloud</h3>
+					<p class="text-caption text-text-tertiary mb-3">Coming soon</p>
+					<h3 class="text-lg font-medium tracking-[-0.01em] text-text-primary mb-1">
+						Hosted Cloud
+					</h3>
 					<p class="text-caption text-text-tertiary mb-5">We run it for you. Launch in Q3.</p>
 
 					<p class="mb-6">
-						<span class="text-4xl font-[550] text-text-secondary tracking-tight">€—</span>
+						<span class="text-4xl font-medium text-text-secondary tracking-tight">€—</span>
 						<span class="text-sm text-text-tertiary"> /mo</span>
 					</p>
 
@@ -133,7 +142,7 @@ const hostedFeatures = [
 						</li>
 					</ul>
 
-					<a href="/waitlist" class="btn btn-secondary btn-sm w-full no-underline">
+					<a href="/waitlist" class="btn btn-hairline btn-sm w-full no-underline">
 						Join waitlist
 					</a>
 				</div>
@@ -141,7 +150,9 @@ const hostedFeatures = [
 
 			<!-- Resource requirements -->
 			<div class="price-card" style="--i: 5">
-				<h3 class="text-base font-[550] text-text-primary mb-1">Resource requirements</h3>
+				<h3 class="text-base font-medium tracking-[-0.01em] text-text-primary mb-1">
+					Resource requirements
+				</h3>
 				<p class="text-caption text-text-tertiary mb-5">What your VPS needs to run Owlat.</p>
 				<div class="rounded-(--radius-card) border border-border-subtle overflow-x-auto">
 					<table class="w-full text-caption">
@@ -182,18 +193,28 @@ const hostedFeatures = [
 .price-card {
 	opacity: 0;
 	transform: translateY(8px);
-	background: var(--surface-2);
+	background: var(--surface-3);
 	border: 1px solid var(--color-border-subtle);
 	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-2);
-	padding: 1.75rem;
+	box-shadow: var(--shadow-1);
+	padding: 2rem;
 	transition:
 		opacity var(--motion-moderate) var(--ease-spring),
-		transform var(--motion-moderate) var(--ease-spring);
+		transform var(--motion-moderate) var(--ease-spring),
+		border-color var(--motion-fast) var(--ease-spring),
+		box-shadow var(--motion-fast) var(--ease-spring);
 	transition-delay: calc(var(--i, 0) * 0.05s);
 }
 
-.price-card-highlight {
+.price-card:hover {
+	border-color: var(--color-border-default);
+	box-shadow: var(--shadow-3);
+	transition-delay: 0s;
+}
+
+/* Featured tier: slightly stronger hairline */
+.price-card-highlight,
+.price-card-highlight:hover {
 	border-color: var(--color-border-strong);
 }
 

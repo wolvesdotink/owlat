@@ -93,19 +93,21 @@ const footerLinks = {
 				</div>
 			</div>
 
-			<!-- Bottom bar -->
+			<!-- Meta row -->
 			<div
 				class="flex items-center justify-between pt-10 mt-12 border-t border-border-subtle max-sm:flex-col max-sm:gap-4"
 			>
-				<p class="text-2xs text-text-disabled">
-					&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights
-					reserved.
+				<p class="text-caption text-text-tertiary">
+					&copy; {{ new Date().getFullYear() }}
+					<a
+						href="https://wolves.ink"
+						class="text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
+						>Wolves</a
+					>. All rights reserved.
 				</p>
-				<UiThemeToggle
-					class="theme-toggle flex items-center gap-2 text-2xs text-text-disabled hover:text-text-tertiary transition-colors duration-(--motion-fast) cursor-pointer bg-transparent border-none p-0"
-				>
-					<span>Theme</span>
-				</UiThemeToggle>
+				<p class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary">
+					Open source · Apache 2.0
+				</p>
 			</div>
 		</div>
 	</footer>

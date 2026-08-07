@@ -1,170 +1,149 @@
 <script setup lang="ts">
-const visible = ref(false);
-
-onMounted(() => {
-	requestAnimationFrame(() => {
-		visible.value = true;
-	});
-});
-
-// Copy-paste install command
-const installCommand = 'curl -fsSL https://get.owlat.app | bash';
-const copied = ref(false);
-async function copyInstall() {
-	try {
-		await navigator.clipboard.writeText(installCommand);
-		copied.value = true;
-		setTimeout(() => {
-			copied.value = false;
-		}, 2000);
-	} catch {
-		// Clipboard unavailable — silently ignore
-	}
-}
+// Standards Owlat implements: SMTP/DKIM/SPF/DMARC/IMAP (README),
+// ARC (packages/mail-auth), MTA-STS / TLS-RPT / DANE (packages/shared,
+// packages/smtp-client).
+const standards = ['SMTP', 'DKIM', 'SPF', 'DMARC', 'ARC', 'MTA-STS', 'TLS-RPT', 'DANE', 'IMAP'];
 </script>
 
 <template>
-	<section class="hero relative border-b border-border-subtle" :class="{ visible }">
+	<section class="relative min-h-[100dvh] flex items-center justify-center overflow-hidden">
+		<!-- Background layers -->
+		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
+		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
+		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
+			<div class="lp-aurora lp-aurora-gold" />
+			<div class="lp-aurora lp-aurora-rose" />
+			<div class="lp-aurora lp-aurora-core" />
+		</div>
 		<div
-			class="hero-reveal w-full max-w-[1200px] mx-auto px-8 max-md:px-6 py-24 md:py-32 grid grid-cols-[1fr_420px] gap-20 items-center max-lg:grid-cols-1 max-lg:gap-14"
+			class="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-bg-base to-transparent"
+			aria-hidden="true"
+		/>
+		<div
+			class="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-bg-base to-transparent"
+			aria-hidden="true"
+		/>
+
+		<!-- Content -->
+		<div
+			class="relative w-full max-w-[880px] mx-auto px-8 max-md:px-6 pt-36 pb-24 flex flex-col items-center text-center"
 		>
-			<!-- Left: Copy -->
-			<div>
-				<!-- Heading -->
-				<h1
-					class="text-[clamp(2.5rem,5.5vw,3.75rem)] font-semibold tracking-tight leading-[1.08] text-text-primary"
+			<!-- Announcement chip — README: "Hosted cloud is on the roadmap — join the waitlist." -->
+			<a
+				href="/waitlist"
+				class="lp-hero-in group inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface-3/70 backdrop-blur-sm px-4 py-2 text-caption text-text-secondary no-underline transition-colors duration-(--motion-fast) hover:border-border-default hover:text-text-primary"
+				style="--i: 0"
+			>
+				<span class="w-1.5 h-1.5 rounded-full bg-brand" aria-hidden="true" />
+				<span>Hosted Cloud coming soon</span>
+				<span class="text-text-disabled" aria-hidden="true">·</span>
+				<span class="inline-flex items-center gap-1 font-medium text-text-primary">
+					Join the waitlist
+					<svg
+						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[2px]"
+						width="12"
+						height="12"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M5 12h14" />
+						<path d="m12 5 7 7-7 7" />
+					</svg>
+				</span>
+			</a>
+
+			<!-- Headline -->
+			<h1
+				class="lp-hero-in mt-9 text-[clamp(2.75rem,6.5vw,4.75rem)] font-medium tracking-[-0.02em] leading-[1.04] text-text-primary"
+				style="--i: 1"
+			>
+				Send better email.
+				<span class="block lp-title-accent lp-warm-gradient pb-1">Own the whole stack.</span>
+			</h1>
+
+			<!-- Sub -->
+			<p
+				class="lp-hero-in mt-6 text-md md:text-lg text-text-secondary leading-[1.65] max-w-[540px]"
+				style="--i: 2"
+			>
+				Owlat is an open-source, self-hosted email platform. Campaigns, automations, transactional
+				sends, and audience ops — with its own MTA and deliverability tooling built in.
+			</p>
+
+			<!-- CTAs -->
+			<div class="lp-hero-in mt-10 flex items-center justify-center gap-3 flex-wrap" style="--i: 3">
+				<a href="/waitlist" class="btn btn-primary group px-6 no-underline">
+					<span>Get started</span>
+					<svg
+						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
+						width="15"
+						height="15"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M5 12h14" />
+						<path d="m12 5 7 7-7 7" />
+					</svg>
+				</a>
+				<a
+					href="https://docs.owlat.app/developer/self-hosting"
+					class="btn btn-hairline group px-6 no-underline"
 				>
-					Send better emails.
-					<span class="block">Build faster.</span>
-				</h1>
-
-				<!-- Tagline -->
-				<p class="mt-6 text-md text-text-secondary leading-[1.75] max-w-prose">
-					Owlat is open-source and self-hosted. Design emails visually, manage audiences, run
-					campaigns with A/B testing, and send transactional emails via API — all from one platform.
-				</p>
-
-				<!-- Actions: primary CTA + install one-liner -->
-				<div class="mt-10 flex items-center gap-3.5 flex-wrap">
-					<a
-						href="https://docs.owlat.app/developer/self-hosting"
-						class="btn btn-primary px-6 text-md no-underline"
+					<span>Self-host</span>
+					<svg
+						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
+						width="15"
+						height="15"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
 					>
-						Self-host in 5 minutes
-					</a>
-					<div
-						class="inline-flex items-center gap-3 max-w-[420px] rounded-lg bg-surface-2 border border-border-subtle pl-4 pr-2 py-2 font-mono text-caption"
-					>
-						<span class="text-text-tertiary shrink-0 select-none" aria-hidden="true">$</span>
-						<code
-							class="text-text-primary flex-1 overflow-x-auto whitespace-nowrap scrollbar-none"
-							>{{ installCommand }}</code
-						>
-						<button
-							type="button"
-							class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-2xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-brand ui-press"
-							:aria-label="copied ? 'Copied' : 'Copy install command'"
-							@click="copyInstall"
-						>
-							<svg
-								v-if="!copied"
-								width="12"
-								height="12"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							>
-								<rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-								<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-							</svg>
-							<svg
-								v-else
-								width="12"
-								height="12"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="text-success"
-							>
-								<path d="M20 6 9 17l-5-5" />
-							</svg>
-							<span>{{ copied ? 'Copied' : 'Copy' }}</span>
-						</button>
-					</div>
-				</div>
-
-				<p class="text-xs text-text-tertiary mt-4">
-					<a
-						href="/waitlist"
-						class="text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) underline decoration-dotted underline-offset-[3px]"
-					>
-						Prefer a managed service? Join the hosted waitlist →
-					</a>
-				</p>
+						<path d="M5 12h14" />
+						<path d="m12 5 7 7-7 7" />
+					</svg>
+				</a>
 			</div>
 
-			<!-- Right: Email builder mockup (calm static frame) -->
-			<div class="max-lg:flex max-lg:justify-center">
-				<div
-					class="w-full max-w-[420px] max-md:max-w-full rounded-(--radius-card) overflow-hidden bg-surface-2 border border-border-subtle shadow-(--shadow-2)"
+			<!-- Standards ticker -->
+			<div class="lp-hero-in mt-20 w-full max-w-[620px]" style="--i: 4">
+				<p
+					class="font-mono text-2xs font-medium uppercase tracking-[0.18em] text-text-tertiary mb-5"
 				>
-					<!-- Window chrome -->
-					<div class="flex items-center gap-2 px-4 py-3.5 border-b border-border-subtle">
-						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
-						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
-						<span class="w-[7px] h-[7px] rounded-full bg-border-strong" />
-						<span
-							class="ml-auto font-mono text-2xs font-medium uppercase tracking-[0.06em] text-text-tertiary"
-							>Email Builder</span
-						>
-					</div>
-					<!-- Mock email content (static) -->
-					<div class="p-5 space-y-3">
-						<!-- Header block -->
-						<div class="rounded-xl border border-border-subtle p-4 bg-surface-3">
-							<div class="flex items-center gap-2 mb-3">
-								<div class="w-6 h-6 rounded-full bg-brand/20" />
-								<div class="h-2 w-20 rounded-full bg-text-tertiary/20" />
-							</div>
-							<div class="h-[7px] w-3/4 rounded-full bg-text-tertiary/10 mb-1.5" />
-							<div class="h-[7px] w-full rounded-full bg-text-tertiary/8 mb-1.5" />
-							<div class="h-[7px] w-2/3 rounded-full bg-text-tertiary/8" />
-						</div>
-						<!-- Image placeholder -->
-						<div
-							class="rounded-xl border border-border-subtle h-24 flex items-center justify-center bg-surface-3"
-						>
-							<svg
-								width="28"
-								height="28"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"
-								class="text-text-disabled"
+					Built on open standards
+				</p>
+				<div class="lp-marquee">
+					<div class="lp-marquee-track">
+						<div class="lp-marquee-half">
+							<span
+								v-for="std in standards"
+								:key="std"
+								class="font-mono text-caption font-medium text-text-primary/50 whitespace-nowrap"
 							>
-								<rect x="3" y="3" width="18" height="18" rx="2" />
-								<circle cx="8.5" cy="8.5" r="1.5" />
-								<path d="m21 15-5-5L5 21" />
-							</svg>
+								{{ std }}
+							</span>
 						</div>
-						<!-- Button block -->
-						<div class="flex justify-center py-1.5">
-							<div class="px-8 py-2.5 rounded-lg text-xs font-semibold bg-brand text-text-inverse">
-								Call to Action
-							</div>
-						</div>
-						<!-- Divider -->
-						<div class="border-t border-border-subtle" />
-						<!-- Social row -->
-						<div class="flex justify-center gap-2.5 py-0.5">
-							<div v-for="i in 3" :key="i" class="w-6 h-6 rounded-full bg-text-tertiary/12" />
+						<div class="lp-marquee-half" aria-hidden="true">
+							<span
+								v-for="std in standards"
+								:key="std"
+								class="font-mono text-caption font-medium text-text-primary/50 whitespace-nowrap"
+							>
+								{{ std }}
+							</span>
 						</div>
 					</div>
 				</div>
@@ -172,21 +151,3 @@ async function copyInstall() {
 		</div>
 	</section>
 </template>
-
-<style scoped>
-/* Single entrance reveal — opacity + small translateY only. The global
- * prefers-reduced-motion floor in packages/ui base.css collapses the
- * transition duration, so this renders instantly for reduced-motion users. */
-.hero-reveal {
-	opacity: 0;
-	transform: translateY(8px);
-	transition:
-		opacity var(--motion-moderate) var(--ease-spring),
-		transform var(--motion-moderate) var(--ease-spring);
-}
-
-.visible .hero-reveal {
-	opacity: 1;
-	transform: none;
-}
-</style>

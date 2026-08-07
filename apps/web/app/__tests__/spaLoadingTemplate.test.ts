@@ -78,8 +78,14 @@ describe('SPA loading template — self-contained', () => {
 });
 
 describe('SPA loading template — themes and motion', () => {
-	it('resolves both themes via prefers-color-scheme', () => {
-		expect(template).toContain('@media (prefers-color-scheme: light)');
+	it('resolves both themes via prefers-color-scheme (light default, dark override)', () => {
+		expect(template).toContain('@media (prefers-color-scheme: dark)');
+		// Light-first: the default block carries the light values, so the light
+		// tokens must appear BEFORE the dark media query, not inside one.
+		const darkQueryAt = template.indexOf('@media (prefers-color-scheme: dark)');
+		const lightBgAt = template.indexOf('/* --surface-1 (light) */');
+		expect(lightBgAt).toBeGreaterThan(-1);
+		expect(lightBgAt).toBeLessThan(darkQueryAt);
 	});
 
 	it('honors reduced motion', () => {
@@ -91,7 +97,7 @@ describe('SPA loading template — FF token parity', () => {
 	const rows = mirroredDeclarations();
 
 	it('mirrors a value for each theme', () => {
-		// dark defaults + light overrides = 3 tokens × 2 themes.
+		// light defaults + dark overrides = 3 tokens × 2 themes.
 		expect(rows.filter((r) => r.theme === 'dark')).toHaveLength(3);
 		expect(rows.filter((r) => r.theme === 'light')).toHaveLength(3);
 	});

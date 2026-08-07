@@ -28,14 +28,14 @@ const statusMessage = computed(() => {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col">
+	<div class="min-h-screen bg-bg-base flex flex-col">
 		<nav class="flex items-center justify-between px-6 py-4 lg:px-12">
 			<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
 		</nav>
 
 		<main class="flex-1 flex flex-col items-center justify-center px-6 text-center">
-			<p class="text-7xl font-display text-brand mb-4">{{ error.statusCode }}</p>
-			<h1 class="text-2xl font-semibold text-text-primary mb-3">
+			<p class="text-7xl font-display italic text-brand mb-4">{{ error.statusCode }}</p>
+			<h1 class="text-2xl font-medium tracking-tight text-text-primary mb-3">
 				{{ error.statusCode === 404 ? 'Page Not Found' : 'Something Went Wrong' }}
 			</h1>
 			<p class="text-text-secondary mb-8 max-w-md">
