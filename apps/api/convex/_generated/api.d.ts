@@ -417,6 +417,7 @@ import type * as domains_providers_plugin_state from '../domains/providers/plugi
 import type * as domains_providers_registerAction from '../domains/providers/registerAction.js';
 import type * as domains_providers_relayIdentityPersistence from '../domains/providers/relayIdentityPersistence.js';
 import type * as domains_providers_relayIdentityProof from '../domains/providers/relayIdentityProof.js';
+import type * as domains_providers_relayIdentityProviderDetails from '../domains/providers/relayIdentityProviderDetails.js';
 import type * as domains_providers_relayIdentityTypes from '../domains/providers/relayIdentityTypes.js';
 import type * as domains_providers_relaySurface from '../domains/providers/relaySurface.js';
 import type * as domains_providers_ses_index from '../domains/providers/ses/index.js';
@@ -1369,6 +1370,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/registerAction': typeof domains_providers_registerAction;
 	'domains/providers/relayIdentityPersistence': typeof domains_providers_relayIdentityPersistence;
 	'domains/providers/relayIdentityProof': typeof domains_providers_relayIdentityProof;
+	'domains/providers/relayIdentityProviderDetails': typeof domains_providers_relayIdentityProviderDetails;
 	'domains/providers/relayIdentityTypes': typeof domains_providers_relayIdentityTypes;
 	'domains/providers/relaySurface': typeof domains_providers_relaySurface;
 	'domains/providers/ses/index': typeof domains_providers_ses_index;

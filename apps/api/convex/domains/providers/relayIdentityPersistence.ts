@@ -17,7 +17,9 @@
  * rather than about the row: the cadence (`nextCheckDueAt`, computed by the
  * caller from its own interval table) and the shape of its `providerDetails`
  * blob (built by the caller, since it is the one versioned per-provider payload
- * the table deliberately keeps opaque).
+ * the table deliberately keeps opaque). READING that blob back is shared all the
+ * same — `./relayIdentityProviderDetails.ts`, a leaf both this file's callers and
+ * the deliberately Convex-free `./plugin/state.ts` can import.
  */
 
 import { CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION } from '../../lib/constants';
@@ -182,20 +184,4 @@ export async function scheduleRelayIdentityRetry(
 		nextCheckDueAt: params.nextCheckDueAt,
 		updatedAt: params.now,
 	});
-}
-
-/**
- * Best-effort read of a stored blob, for an adapter merging a failure reason
- * into what it already holds; `{}` on anything odd.
- */
-export function parseStoredProviderDetails(raw: string | undefined): Record<string, unknown> {
-	if (raw === undefined) return {};
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
-	} catch {
-		return {};
-	}
 }

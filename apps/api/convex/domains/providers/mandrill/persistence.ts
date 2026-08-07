@@ -20,10 +20,10 @@
 import {
 	loadRelayIdentityRow,
 	markRelayIdentityFailed,
-	parseStoredProviderDetails,
 	scheduleRelayIdentityRetry,
 	upsertRelayIdentityRow,
 } from '../relayIdentityPersistence';
+import { parseStoredProviderDetails } from '../relayIdentityProviderDetails';
 import {
 	MANDRILL_UNAVAILABLE_RETRY_MS,
 	buildMandrillProviderDetails,

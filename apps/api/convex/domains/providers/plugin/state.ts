@@ -21,6 +21,7 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { parseStoredProviderDetails } from '../relayIdentityProviderDetails';
 import type { RelayIdentityStatus } from '../types';
 
 /**
@@ -224,22 +225,28 @@ export function buildFailedPluginProviderDetails(
 	};
 }
 
-/** The DNS facts a stored blob holds, or empty when it holds none we can read. */
+/**
+ * The DNS facts a stored blob holds, or empty when it holds none we can read.
+ *
+ * WHAT COUNTS AS A READABLE BLOB is not this tier's call — it is the table's,
+ * and `../relayIdentityProviderDetails.ts` is where it is made for every kind
+ * that keeps rows there. A second hand-rolled try/catch here would mean the day
+ * that read is hardened (an oversized payload, a `kind` disagreeing with the
+ * row's `providerKind`), the failure-path write would refuse a blob this read
+ * still handed to the alignment pre-flight — from one row.
+ *
+ * What IS this tier's call, and stays: which fields it picks out, and that they
+ * come back through {@link parseDnsFacts} bounded, because the values inside a
+ * plugin's blob were a third party's before they were the row's.
+ */
 export function readPluginProviderDetails(raw: string | undefined): {
 	readonly dkimSelectors: readonly string[];
 	readonly spfMechanisms: readonly string[];
 } {
-	if (raw === undefined) return { dkimSelectors: [], spfMechanisms: [] };
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return { dkimSelectors: [], spfMechanisms: [] };
-	}
-	if (!isRecord(parsed)) return { dkimSelectors: [], spfMechanisms: [] };
+	const stored = parseStoredProviderDetails(raw);
 	return {
-		dkimSelectors: parseDnsFacts(parsed['dkimSelectors']),
-		spfMechanisms: parseDnsFacts(parsed['spfMechanisms']),
+		dkimSelectors: parseDnsFacts(stored['dkimSelectors']),
+		spfMechanisms: parseDnsFacts(stored['spfMechanisms']),
 	};
 }
 
