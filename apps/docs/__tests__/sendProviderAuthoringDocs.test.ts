@@ -236,4 +236,64 @@ describe('the send-provider guide carries the two-tier provider checklist', () =
 		expect(checklist).toContain('**Nothing else**');
 		expect(checklist).toContain('lint:providers');
 	});
+
+	/**
+	 * THE OTHER CHECKLIST, BOUND TO THIS ONE.
+	 *
+	 * `/developer/providers` carries the canonical CORE-tier list — the exact file
+	 * paths, the compile-time guards, and one step this page's two-tier summary does
+	 * not have. Two hand-maintained checklists that disagree are worse than one that
+	 * is merely terse: a reader who follows this page and concludes a UI edit means
+	 * the contract is broken files a contract bug, while the other page tells them
+	 * to write the row.
+	 *
+	 * So the relationship is asserted rather than trusted: this page's steps are
+	 * exactly the REQUIRED steps of the canonical list, and every step the canonical
+	 * list marks optional is named here as optional rather than denied. P5.2
+	 * restructures `15.providers.md` around this very table; until it does, a
+	 * divergence fails here instead of shipping.
+	 */
+	describe('and defers to the canonical core-tier list rather than contradicting it', () => {
+		const core = read('apps/docs/content/3.developer/15.providers.md');
+		const heading = '### Send (email) — the provider-N+1 checklist';
+		const coreChecklist = (() => {
+			const start = core.indexOf(`${heading}\n`);
+			expect(start, 'the core providers page no longer carries the N+1 checklist').toBeGreaterThan(
+				-1
+			);
+			const rest = core.slice(start + heading.length);
+			const next = rest.search(/\n#{1,3} /);
+			return next === -1 ? rest : rest.slice(0, next);
+		})();
+		/** `| # | Artifact | File(s) | Required? |` — the last cell decides the split. */
+		const coreRows = tableRows(coreChecklist);
+		const optional = coreRows.filter((cells) => /optional/i.test(cells[3] ?? ''));
+		const required = coreRows.filter((cells) => !/optional/i.test(cells[3] ?? ''));
+
+		it('links to it as the canonical list, at an anchor that page still has', () => {
+			// The anchor github-slugger derives from the heading above, so a renamed
+			// heading fails here rather than shipping a link to nothing.
+			expect(checklist).toContain('/developer/providers#send-email--the-provider-n1-checklist');
+		});
+
+		it('carries exactly the steps the canonical list marks required', () => {
+			expect(required.length).toBeGreaterThan(4);
+			expect(tableRows(checklist)).toHaveLength(required.length);
+		});
+
+		it('names every optional core step as optional rather than denying it', () => {
+			// The sentence under this page's table used to read "no UI edit belongs on
+			// that list at either tier", which the canonical list's step 7 contradicts
+			// outright. A step the other page calls optional has to be described here
+			// as optional — by its number, so a renumbering is caught too.
+			expect(optional.length).toBeGreaterThan(0);
+			for (const cells of optional) {
+				expect(checklist, `core step ${cells[0]} is optional and unmentioned here`).toContain(
+					`step ${cells[0]} on the canonical list`
+				);
+			}
+			expect(checklist).toContain('**optionally**');
+			expect(checklist).not.toContain('UI or setup-wizard edit belongs');
+		});
+	});
 });

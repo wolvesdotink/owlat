@@ -348,10 +348,19 @@ export const importProvider: PluginImportProviderModule = {
 };
 // #endregion import-provider-module
 
-// The send-provider authoring guide's centrepiece: ONE manifest declaring all
-// three executable halves of a bundle. It grows the same file, so it imports
-// only the capability constant it adds — `definePlugin` is already in scope from
-// the minimal manifest above, exactly as the guide's prose says.
+/*
+ * The send-provider authoring guide's centrepiece: ONE manifest declaring all
+ * three executable halves of a bundle. It grows the same file, so it imports only
+ * the capability constant it adds — `definePlugin` is already in scope from the
+ * minimal manifest above, and the guide says so in the sentence above its fence.
+ *
+ * EVERY NAME HERE IS THE ONE THE SCAFFOLD EMITS for this plugin id
+ * (`owlat plugins create acme-relay --template send-provider`): the variable
+ * names, the two signature headers and the credential keys. A reader diffing the
+ * page against their scaffolded package is the most common way this sample is
+ * read, and a sample that named variables no scaffolded bundle has would make
+ * that diff noise. `scaffoldedProviderConformance.test.ts` binds the two.
+ */
 // #region send-provider-manifest
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
 
@@ -362,7 +371,10 @@ export const acmeRelayPlugin = definePlugin({
 	// Deployment-wide: the plugin is off until both are set. The signing secret
 	// belongs HERE and not on the transport — without it the feedback route can
 	// verify nothing and answers every delivery 503.
-	flag: { default: false, requiredEnvVars: ['ACME_RELAY_ENABLED', 'PLUGIN_ACME_WEBHOOK_SECRET'] },
+	flag: {
+		default: false,
+		requiredEnvVars: ['ACME_RELAY_ENABLED', 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET'],
+	},
 	contributes: {
 		sendTransports: [
 			{
@@ -371,17 +383,17 @@ export const acmeRelayPlugin = definePlugin({
 				module: { exportPath: './convex/transport' },
 				retryDelays: [1_000, 5_000],
 				// THIS TRANSPORT's own configuration: resolved per named instance
-				// (`PLUGIN_ACME_TOKEN__EU` for `plugin.acme-relay.relay#eu`) and handed
-				// to `send` keyed by the base name.
-				requiredEnvVars: ['PLUGIN_ACME_TOKEN'],
-				optionalEnvVars: ['PLUGIN_ACME_REGION'],
+				// (`PLUGIN_ACME_RELAY_API_KEY__EU` for `plugin.acme-relay.relay#eu`) and
+				// handed to `send` keyed by the base name.
+				requiredEnvVars: ['PLUGIN_ACME_RELAY_API_KEY'],
+				optionalEnvVars: ['PLUGIN_ACME_RELAY_REGION'],
 				credentialFields: [
 					{
 						kind: 'secret',
-						key: 'token',
-						label: 'API token',
+						key: 'apiKey',
+						label: 'API key',
 						required: true,
-						envVar: 'PLUGIN_ACME_TOKEN',
+						envVar: 'PLUGIN_ACME_RELAY_API_KEY',
 					},
 					{
 						kind: 'select',
@@ -392,7 +404,7 @@ export const acmeRelayPlugin = definePlugin({
 							{ value: 'us', label: 'United States' },
 						],
 						default: 'eu',
-						envVar: 'PLUGIN_ACME_REGION',
+						envVar: 'PLUGIN_ACME_RELAY_REGION',
 					},
 				],
 				// `no` is the only value this tier may declare.
@@ -403,13 +415,13 @@ export const acmeRelayPlugin = definePlugin({
 				webhook: {
 					module: { exportPath: './convex/webhook' },
 					signature: {
-						header: 'x-acme-signature',
+						header: 'x-acme-relay-signature',
 						algorithm: 'hmac-sha256',
 						encoding: 'hex',
-						secretEnvVar: 'PLUGIN_ACME_WEBHOOK_SECRET',
+						secretEnvVar: 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET',
 						// REQUIRED: without replay provisions a captured request verifies
 						// forever. The host signs `<timestamp>.<rawBody>`.
-						replay: { timestampHeader: 'x-acme-timestamp', toleranceSeconds: 300 },
+						replay: { timestampHeader: 'x-acme-relay-timestamp', toleranceSeconds: 300 },
 					},
 				},
 				// Declaring an identity IS `domainVerification: 'api'` for this kind.
