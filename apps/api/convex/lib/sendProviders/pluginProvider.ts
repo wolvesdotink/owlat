@@ -9,7 +9,6 @@ import {
 	type PluginSendTransportModule,
 	type PluginSendTransportParams,
 } from '@owlat/plugin-kit';
-import { getPluginTransportEnv } from '../env';
 import type {
 	DispatchExtrasInput,
 	EmailSendAttempt,
@@ -19,7 +18,8 @@ import type {
 } from './types';
 import { EmailErrorCode } from './types';
 import { readExactDataObject as readExactHostedDataObject } from '../../plugins/hostedModuleSnapshot';
-import { sendTransportEnvName, type SendTransportRecord } from './transports';
+import { resolvePluginTransportConfig } from './pluginTransportConfig';
+import type { SendTransportRecord } from './transports';
 
 /**
  * The hosted (plugin) send surface. It extends {@link ReturnPathProbeCapableModule}
@@ -177,25 +177,18 @@ export function createHostedSendProvider(
  * Resolve this instance's configuration, or `null` when a required variable is
  * absent.
  *
- * Keyed by the BASE name whatever the instance, so a module reads
- * `env['PLUGIN_ACME_TOKEN']` for every transport id it is sent through — the same
- * property `transportEnv.ts` gives a core adapter, which reads its typed `EnvKey`
- * and never spells the suffix either.
+ * The resolution itself is `pluginTransportConfig.resolvePluginTransportConfig`,
+ * shared with the sending-domain identity half — the two tiers hand the SAME
+ * `PluginSendTransportConfig` shape to the same third-party module, so a
+ * refinement to how it is built has to reach both. All this adds is the
+ * transport's instance.
  */
 function resolveHostedConfig(
 	transport: SendTransportRecord,
 	instanceEnvVars: readonly string[],
 	requiredEnvVars: readonly string[]
 ): PluginSendTransportConfig | null {
-	const env: Record<string, string> = {};
-	for (const name of instanceEnvVars) {
-		const value = getPluginTransportEnv(sendTransportEnvName(name, transport.instanceKey));
-		if (value !== undefined) env[name] = value;
-	}
-	for (const name of requiredEnvVars) {
-		if (env[name] === undefined) return null;
-	}
-	return Object.freeze({ instanceKey: transport.instanceKey, env: Object.freeze(env) });
+	return resolvePluginTransportConfig(transport.instanceKey, instanceEnvVars, requiredEnvVars);
 }
 
 /**

@@ -29,7 +29,7 @@
  */
 
 import { v } from 'convex/values';
-import { getPluginTransportEnv } from '../lib/env';
+import { resolvePluginTransportConfig } from '../lib/sendProviders/pluginTransportConfig';
 import { logError } from '../lib/runtimeLog';
 import { parsePluginRelayResult, type PluginRelayCallOutcome } from './providers/plugin/state';
 import { pluginSendTransportDomainIdentityFor } from '../plugins/sendTransportDomainIdentityCatalog';
@@ -117,7 +117,17 @@ async function runIdentityCall(
 		return 'denied';
 	}
 
-	const config = resolveIdentityConfig(definition.instanceEnvVars, definition.requiredEnvVars);
+	// THE DEPLOYMENT-DEFAULT INSTANCE (`null`) — see the file header for why the
+	// relay path has no named-instance identity to resolve. The resolution itself is
+	// the send half's, shared: both tiers hand the same `PluginSendTransportConfig`
+	// to the same third-party module, and only the transport's OWN declared
+	// variables are read (the plugin's deployment-wide flag variables are the
+	// plugin's, not this transport's to be handed).
+	const config = resolvePluginTransportConfig(
+		null,
+		definition.instanceEnvVars,
+		definition.requiredEnvVars
+	);
 	if (!config) {
 		// A credential this deployment does not have. Reported as the provider
 		// rejecting it, which is the same operator action ("set the variable") and
@@ -173,31 +183,6 @@ async function callModule(
 		logError(`[pluginRelayIdentity] ${kind} identity call threw for ${domain}:`, error);
 		return { outcome: 'unavailable', error: 'identity module threw' };
 	}
-}
-
-/**
- * This transport's configuration for the deployment-default instance, or `null`
- * when a required variable is unset.
- *
- * Keyed by the BASE name, which is the whole contract the module reads against
- * (`PluginSendTransportConfig`). Only the transport's OWN declared variables are
- * resolved — the plugin's deployment-wide flag variables are the plugin's, and
- * the load-time guard in `plugins/sendTransportDomainIdentityCatalog.ts` has
- * already fenced every name here into the `PLUGIN_` namespace.
- */
-function resolveIdentityConfig(
-	instanceEnvVars: readonly string[],
-	requiredEnvVars: readonly string[]
-): { readonly instanceKey: null; readonly env: Readonly<Record<string, string>> } | null {
-	const env: Record<string, string> = {};
-	for (const name of instanceEnvVars) {
-		const value = getPluginTransportEnv(name);
-		if (value !== undefined) env[name] = value;
-	}
-	for (const name of requiredEnvVars) {
-		if (env[name] === undefined) return null;
-	}
-	return Object.freeze({ instanceKey: null, env: Object.freeze(env) });
 }
 
 async function recordFailure(
