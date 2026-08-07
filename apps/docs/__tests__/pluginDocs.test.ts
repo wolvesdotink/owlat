@@ -864,7 +864,11 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		// number and configured the provider to chunk. Derived from the
 		// declaration, so adding a third bound fails until the table names it.
 		expectDocumentedLimits({
-			sources: [read('packages/plugin-kit/src/sendTransport.ts')],
+			// The feedback plane is its own kit module (`sendTransportFeedback.ts`) —
+			// the event vocabulary, these two bounds and the parse-only module
+			// contract — split from the send contract when the transport definition
+			// grew its capability fields.
+			sources: [read('packages/plugin-kit/src/sendTransportFeedback.ts')],
 			declaredPattern: /^export const (PLUGIN_WEBHOOK_MAX_\w+) = /gm,
 			section: section(docs.contributions, '### Feedback webhook'),
 			proseFailure: 'has no table row',

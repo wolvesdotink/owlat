@@ -87,6 +87,21 @@ describe('a declared capability reaches the host unchanged', () => {
 			{
 				requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
 				optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'],
+				credentialFields: [
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'Server token',
+						required: true,
+						envVar: 'PLUGIN_POSTMARK_TOKEN',
+					},
+					{
+						kind: 'string',
+						key: 'stream',
+						label: 'Message stream',
+						envVar: 'PLUGIN_POSTMARK_STREAM',
+					},
+				],
 				supportsCustomReturnPath: 'yes',
 				messageIdSource: 'composed',
 				deduplicatesOnIdempotencyKey: true,
@@ -118,6 +133,24 @@ describe('a declared capability reaches the host unchanged', () => {
 			// Required and optional together: what the host resolves per instance and
 			// hands to the module, and what a named instance reads under its suffix.
 			instanceEnvVars: ['PLUGIN_POSTMARK_TOKEN', 'PLUGIN_POSTMARK_STREAM'],
+			// The credential FORM (D5), carried through as declared. Every `envVar`
+			// was joined to one of the two lists above at manifest validation, so a
+			// renderer reading this entry cannot ask for a variable no send reads.
+			credentialFields: [
+				{
+					kind: 'secret',
+					key: 'token',
+					label: 'Server token',
+					required: true,
+					envVar: 'PLUGIN_POSTMARK_TOKEN',
+				},
+				{
+					kind: 'string',
+					key: 'stream',
+					label: 'Message stream',
+					envVar: 'PLUGIN_POSTMARK_STREAM',
+				},
+			],
 			supportsCustomReturnPath: 'yes',
 			messageIdSource: 'composed',
 			deduplicatesOnIdempotencyKey: true,
@@ -162,6 +195,43 @@ describe('a declaration the host could not honour never becomes an artifact', ()
 			'a message id the host would have to pre-bind',
 			{ messageIdSource: 'idempotency-key' },
 			'$.contributes.sendTransports[0].messageIdSource',
+		],
+		[
+			'a configuration with nothing required, which no instance could resolve',
+			{ optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'] },
+			'$.contributes.sendTransports[0].optionalEnvVars',
+		],
+		[
+			'a credential field naming a variable the transport never declared',
+			{
+				requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+				credentialFields: [
+					{
+						kind: 'secret',
+						key: 'token',
+						label: 'Server token',
+						required: true,
+						envVar: 'PLUGIN_POSTMARK_ELSEWHERE',
+					},
+				],
+			},
+			'$.contributes.sendTransports[0].credentialFields[0].envVar',
+		],
+		[
+			'a credential composite this tier does not offer',
+			{
+				requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+				credentialFields: [
+					{
+						kind: 'host-port',
+						key: 'endpoint',
+						label: 'Endpoint',
+						required: true,
+						envVar: 'PLUGIN_POSTMARK_TOKEN',
+					},
+				],
+			},
+			'$.contributes.sendTransports[0].credentialFields[0].kind',
 		],
 	])('refuses %s', (_label, transport, path) => {
 		expect(issuePaths(transport)).toContain(path);

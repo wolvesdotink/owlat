@@ -78,7 +78,8 @@ reference](../apps/docs/content/3.developer/42.plugin-contributions.md).
 
 Since the seams plan's P3.1 that contribution declares the SAME capability
 vocabulary a core entry does — `supportsCustomReturnPath`, `messageIdSource`,
-`deduplicatesOnIdempotencyKey`, the variables its configuration lives in — and
+`deduplicatesOnIdempotencyKey`, the variables its configuration lives in and the
+`credentialFields` descriptors that describe how to ask for them — and
 its module may build per-send extras on both the governed and the system-mail
 paths, so the capability accessors answer for a plugin kind exactly as they do
 for a core one. Two things are still declared differently, on purpose:
@@ -87,9 +88,11 @@ for a core one. Two things are still declared differently, on purpose:
 prerequisites live in backend code — `acceptanceSemantics: 'accepted'`,
 `messageIdSource: 'idempotency-key'`, `domainVerification: 'api'` — are not in
 this tier's unions at all. A declared configuration variable is `PLUGIN_`-
-prefixed and may not contain `__`: it is the one plugin declaration whose VALUE
-the host resolves and hands to third-party code, and the suffix is what
-separates one named instance's credential from another's.
+prefixed and may not contain `__`: the prefix fences the plugin namespace off
+from the host's own deployment credentials (it does not partition it between
+plugins), and the suffix is what separates one named instance's credential from
+another's. A `credentialFields` descriptor is DESCRIPTIVE — no surface renders a
+plugin's form yet; that is the plan's P3.3.
 
 Speculative single-implementation seams (auth, storage, analytics,
 notifications, vector stores) have been **deleted**, per the project's
