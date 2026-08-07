@@ -296,8 +296,24 @@ bun run --cwd <path-to-this-package> lint
 bun run --cwd <path-to-this-package> test
 \`\`\`
 
-To bundle this provider into a deployment, publish it and add its package name to
-the workspace \`plugins.config.ts\` with \`owlat plugins add ${packageName}\`, then
+## Publishing it as your own package
+
+\`create\` scaffolded this INSIDE an Owlat checkout, so the package is \`private\`
+and wired to that checkout: \`workspace:*\` and \`catalog:\` specifiers, a
+\`tsconfig.json\` that extends the repository's base config, and a \`lint\` script
+pointing at its oxlint config. Publishing without undoing that would ship a
+package nobody can install, so it is one step of moving out rather than a step on
+its own:
+
+1. move this directory out of the Owlat checkout;
+2. delete \`"private": true\` from \`package.json\`;
+3. replace the \`workspace:*\` and \`catalog:\` specifiers with real version ranges,
+   and point \`tsconfig.json\`, \`vitest.config.ts\` and the \`lint\` script at your own
+   configuration;
+4. publish it.
+
+To then bundle this provider into a deployment, add its package name to that
+deployment's \`plugins.config.ts\` with \`owlat plugins add ${packageName}\` and
 regenerate the composition with \`owlat plugins codegen\`.
 `;
 }

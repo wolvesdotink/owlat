@@ -182,16 +182,34 @@ describe('the send-provider template', () => {
 	});
 
 	/**
-	 * THE TEMPLATE'S PACKAGE IS PUBLISHABLE, because its own README's last
-	 * instruction is to publish it. The minimal template keeps `private: true` — it
-	 * scaffolds into `examples/plugins/` by default, where that is the right answer.
+	 * PRIVATE AT BOTH TEMPLATES, because `create` cannot emit anywhere else:
+	 * `resolveTargetDir` refuses a directory outside the workspace and the default
+	 * is `examples/plugins/<id>`, so what the generator writes is always a workspace
+	 * member — one `release:cut` would version and `changeset publish` would publish
+	 * beside the real packages. `private` is what stops that, and the emitted
+	 * manifest is workspace-bound anyway (`workspace:*`, `catalog:`), so publishing
+	 * is the last step of MOVING OUT rather than a step on its own.
+	 *
+	 * The emitted README is what carries that, so it is read here: a template that
+	 * dropped `private` without teaching the move-out would ship the accident, and
+	 * one that kept `private` without documenting the removal would leave an author
+	 * with a package npm refuses and no sentence explaining why.
 	 */
-	it('emits a package a third party can actually publish', () => {
-		expect(JSON.parse(file('package.json'))).not.toHaveProperty('private');
-		expect(
-			JSON.parse(buildScaffold(root, targetDir, id, packageName).get('package.json')!)
-		).toEqual(expect.objectContaining({ private: true }));
-		expect(file('README.md')).toContain('publish it');
+	it('emits a private package and tells its author how to publish one', () => {
+		for (const manifest of [
+			file('package.json'),
+			buildScaffold(root, targetDir, id, packageName).get('package.json')!,
+		]) {
+			expect(JSON.parse(manifest)).toEqual(expect.objectContaining({ private: true }));
+		}
+		const readme = file('README.md');
+		expect(readme).toContain('delete `"private": true`');
+		expect(readme).toContain('`workspace:*`');
+		// The manifest really does carry what the README says to replace, so the
+		// instruction cannot go stale against the file it describes.
+		const manifest = JSON.parse(file('package.json')) as Record<string, Record<string, string>>;
+		expect(Object.values(manifest['dependencies'] ?? {})).toContain('workspace:*');
+		expect(Object.values(manifest['devDependencies'] ?? {})).toContain('catalog:');
 	});
 
 	/**

@@ -66,11 +66,7 @@ export function buildScaffold(
 	const moduleExports = template === 'send-provider' ? SEND_PROVIDER_MODULE_EXPORTS : {};
 	const files = new Map<string, string>();
 
-	const manifestJson = JSON.stringify(
-		packageJson(packageName, toRoot, moduleExports, template === 'send-provider'),
-		null,
-		'\t'
-	);
+	const manifestJson = JSON.stringify(packageJson(packageName, toRoot, moduleExports), null, '\t');
 
 	files.set('package.json', `${manifestJson}\n`);
 	files.set('tsconfig.json', `${JSON.stringify(tsconfig(toRoot), null, '\t')}\n`);
@@ -96,19 +92,24 @@ export function buildScaffold(
 function packageJson(
 	packageName: PluginPackageName,
 	toRoot: string,
-	moduleExports: Readonly<Record<string, string>>,
-	isPublishable: boolean
+	moduleExports: Readonly<Record<string, string>>
 ): Record<string, unknown> {
 	return {
 		name: packageName,
 		version: '0.0.0',
-		// PUBLISHABILITY IS A TEMPLATE DECISION. The minimal skeleton scaffolds into
-		// `examples/plugins/` by default — a workspace package nobody publishes, and
-		// `private` is what keeps an accidental `npm publish` from shipping it. A
-		// send provider is the opposite case: the whole point of the tier is a bundle
-		// that leaves this repository, and its own README's last instruction is to
-		// publish it, which `private: true` refuses.
-		...(isPublishable ? {} : { private: true }),
+		// PRIVATE AT EVERY TEMPLATE, because every template scaffolds INTO THIS
+		// WORKSPACE: `create` defaults to `examples/plugins/<id>` and `resolveTargetDir`
+		// refuses a directory outside the repository, so what the generator writes is
+		// always a workspace member. A non-private one would be rewritten by
+		// `release:cut` and published by `changeset publish` alongside the real
+		// packages — a half-finished scaffold on npm under the workspace scope.
+		//
+		// It is also the honest state of the artifact: the manifest below carries
+		// `workspace:*` and `catalog:` specifiers, and the tsconfig and lint script
+		// reach back into this checkout by relative path. Publishing is the last step
+		// of MOVING THE PACKAGE OUT, and the emitted README says so at the line that
+		// tells an author to publish.
+		private: true,
 		type: 'module',
 		exports: { '.': './src/index.ts', ...moduleExports },
 		scripts: {
