@@ -15,7 +15,49 @@
 			"@owlat/example-escalation-guard": ["../plugins/escalation-guard/src/index.ts"],
 			"@owlat/code-worker/jobs/seedTest": ["../../apps/code-worker/src/jobs/seedTest.ts"],
 			"@owlat/code-worker/pluginTaskRunner": ["../../apps/code-worker/src/pluginTaskRunner.ts"],
-			"@owlat/example-slack-approvals": ["../plugins/slack-approvals/src/index.ts"]
+			"@owlat/example-slack-approvals": ["../plugins/slack-approvals/src/index.ts"],
+			"@owlat/api/generated/sendTransportCatalog": [
+				"../../apps/api/convex/plugins/sendTransportCatalog.generated.ts"
+			],
+			"@owlat/api/generated/sendTransportWebhookCatalog": [
+				"../../apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts"
+			],
+			"@owlat/api/generated/sendTransportWebhookModules": [
+				"../../apps/api/convex/plugins/sendTransportWebhookModules.generated.ts"
+			],
+			"@owlat/api/generated/sendTransportDomainIdentityCatalog": [
+				"../../apps/api/convex/plugins/sendTransportDomainIdentityCatalog.generated.ts"
+			],
+			"@owlat/api/generated/sendTransportDomainIdentityModules": [
+				"../../apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts"
+			],
+			"@owlat/api/plugins/sendTransportWebhookCatalog": [
+				"../../apps/api/convex/plugins/sendTransportWebhookCatalog.ts"
+			],
+			"@owlat/api/plugins/sendTransportDomainIdentityCatalog": [
+				"../../apps/api/convex/plugins/sendTransportDomainIdentityCatalog.ts"
+			],
+			"@owlat/api/plugins/inboundSignature": ["../../apps/api/convex/plugins/inboundSignature.ts"],
+			"@owlat/api/sendProviders/catalog": ["../../apps/api/convex/lib/sendProviders/catalog.ts"],
+			"@owlat/api/sendProviders/routing": ["../../apps/api/convex/lib/sendProviders/routing.ts"],
+			"@owlat/api/sendProviders/fallbackEligibility": [
+				"../../apps/api/convex/lib/sendProviders/fallbackEligibility.ts"
+			],
+			"@owlat/api/sendProviders/returnPathCapability": [
+				"../../apps/api/convex/lib/sendProviders/returnPathCapability.ts"
+			],
+			"@owlat/api/delivery/sendAssignments": ["../../apps/api/convex/delivery/sendAssignments.ts"],
+			"@owlat/api/domains/pluginRelayState": [
+				"../../apps/api/convex/domains/providers/plugin/state.ts"
+			],
+			"@owlat/api/webhooks/pluginFeedbackEvents": [
+				"../../apps/api/convex/webhooks/pluginFeedbackEvents.ts"
+			],
+			"@owlat/api/generated/sendTransportModules": [
+				"../../apps/api/convex/plugins/sendTransportModules.generated.ts"
+			],
+			"@owlat/api/generated/plugins": ["../../apps/api/convex/plugins/plugins.generated.ts"],
+			"@owlat/api/sendProviders/dispatch": ["../../apps/api/convex/lib/sendProviders/dispatch.ts"]
 		}
 	},
 	"include": ["src/**/*.ts"],
