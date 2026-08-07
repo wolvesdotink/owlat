@@ -11,6 +11,7 @@
  */
 
 import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
+import type { MtaRoutingReentry } from '@owlat/mta-protocol/send';
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
 import type { SystemMailExtrasCapableModule } from './systemMailExtras';
@@ -104,10 +105,21 @@ export interface MtaExtras {
 	workAttemptId?: string;
 	/** Opaque Convex-issued server-side re-entry snapshot handle. */
 	routingReentryToken?: string;
-	/** Callback material whose canonical digest is authenticated by the token. */
-	routingReentry?: {
-		envelopeInput: unknown;
-		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	/**
+	 * Callback material whose canonical digest is authenticated by the token.
+	 *
+	 * The wire's own declaration ({@link MtaRoutingReentry}, D7) with ONE field
+	 * narrowed: `retryState` is exactly {@link DispatchReentryRetryState}, the
+	 * three fields the digest is computed over. The wire type permits two more
+	 * (`workAttemptId`, `acceptanceReconciliation`) because the `routing.reentry`
+	 * webhook echoes back whatever it was sent, but `reentryRetryState()` in
+	 * `delivery/governedDispatch.ts` deliberately drops both from the MTA-facing
+	 * copy — a successor must mint its own work identity. Stating the narrowing
+	 * here keeps both facts, and keeps the digest field set named in exactly one
+	 * place instead of restated inline.
+	 */
+	routingReentry?: Omit<MtaRoutingReentry, 'retryState'> & {
+		retryState: DispatchReentryRetryState;
 	};
 	/** IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). */
 	ipPool?: MtaIpPool;
