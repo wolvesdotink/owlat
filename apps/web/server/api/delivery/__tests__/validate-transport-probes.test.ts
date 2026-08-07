@@ -104,6 +104,10 @@ const UNPROBED_ENTRIES = CORE_SEND_PROVIDER_CATALOG_ENTRIES.filter(
 
 beforeEach(() => {
 	probeCalls.length = 0;
+	// Reset like the sibling `apply-transport.test.ts` does: a case added later
+	// that forgets to set `body` must hit the endpoint's `provider is required.`
+	// 400, not inherit the previous test's request and pass for the wrong reason.
+	body = undefined;
 	requireOrgAdminMock.mockReset().mockResolvedValue(undefined);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	vi.stubGlobal(
@@ -118,9 +122,18 @@ beforeEach(() => {
 describe('the live-check endpoint takes exactly the kinds the catalog says can be checked', () => {
 	it('finds kinds on both sides of the question', () => {
 		// Neither suite below may run empty: with no probes declared, "every probe
-		// reaches its validator" would pass by describing nothing.
-		expect(PROBE_ENTRIES.map((entry) => entry.kind)).toEqual(['resend', 'smtp']);
-		expect(UNPROBED_ENTRIES.map((entry) => entry.kind)).toEqual(['mta', 'ses', 'mandrill']);
+		// reaches its validator" would pass by describing nothing. WHICH kinds
+		// declare a probe is a product decision already pinned, per kind and as a
+		// literal, by `packages/shared/src/__tests__/sendProviderCatalog.test.ts`
+		// ("names a real validator on every setup probe, and only where one
+		// exists"); restating the roster here would make a sixth kind's descriptor
+		// a multi-file literal edit for a fact this file does not own. So: both
+		// sides non-empty, and together they account for every catalog entry.
+		expect(PROBE_ENTRIES.length).toBeGreaterThan(0);
+		expect(UNPROBED_ENTRIES.length).toBeGreaterThan(0);
+		expect([...PROBE_ENTRIES, ...UNPROBED_ENTRIES].map((entry) => entry.kind).sort()).toEqual(
+			CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind).sort()
+		);
 	});
 
 	it('knows what each declared probe has to send', () => {
@@ -145,8 +158,26 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 			// green handshake for a credential nobody checked.
 			expect(probeCalls).toEqual([validator]);
 			expect(result.ok).toBe(true);
+			// The gate is mocked so this suite makes no network call, which would
+			// also make DELETING `await requireOrgAdmin(event)` invisible here — on
+			// an endpoint that opens a live SMTP connection to a caller-supplied
+			// host:port and spends a caller-supplied Resend key. So assert it ran.
+			expect(requireOrgAdminMock).toHaveBeenCalledTimes(1);
 		}
 	);
+
+	it('runs the admin gate BEFORE any validator, and a refusal reaches no probe', async () => {
+		requireOrgAdminMock
+			.mockReset()
+			.mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403 }));
+		const entry = PROBE_ENTRIES[0]!;
+		body = { provider: entry.kind, ...PROBE_BODIES[entry.setupProbe!.validator] };
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 403 });
+		// The ordering is the point: a gate that ran AFTER the validator would let
+		// an unauthenticated caller reach the outbound connection anyway.
+		expect(probeCalls).toEqual([]);
+	});
 
 	it.each(UNPROBED_ENTRIES.map((entry) => entry.kind))(
 		'%s declares no probe and the endpoint refuses to pretend it has one',
@@ -154,8 +185,19 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 			// The converse. SES, Mandrill and our own MTA have no cheap pre-apply
 			// check; their proof is the live send test after applying. An endpoint
 			// that quietly accepted them would report a result no validator produced.
+			//
+			// The MESSAGE, not just the 400: this endpoint answers 400 from four
+			// paths (missing `provider`, missing smtp fields, non-numeric port, and
+			// the deliberate refusal). Matching only the status would keep this green
+			// if a later per-kind branch rejected the same body for its own reasons —
+			// i.e. exactly when the endpoint HAD grown a probe the catalog denies.
 			body = { provider: kind, apiKey: 'irrelevant' };
-			await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
+			await expect(callRoute()).rejects.toMatchObject({
+				statusCode: 400,
+				message: expect.stringContaining(
+					'Only Resend and SMTP relays can be tested before applying'
+				),
+			});
 			expect(probeCalls).toEqual([]);
 		}
 	);
