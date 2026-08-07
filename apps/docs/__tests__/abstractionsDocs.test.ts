@@ -135,7 +135,12 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		expect(section).toContain('RelayIdentityProviderModule');
 		const registry = read('apps/api/convex/domains/providers/index.ts');
 		expect(registry).toContain('export function relayIdentityProviderFor');
-		expect(read('apps/api/convex/domains/providers/types.ts')).toContain(
+		expect(read('apps/api/convex/domains/providers/relayIdentityTypes.ts')).toContain(
+			'export interface RelayIdentityProviderModule'
+		);
+		// And it is NOT on the primary contract: the two questions live in two files
+		// so that widening one cannot be done by editing the other.
+		expect(read('apps/api/convex/domains/providers/types.ts')).not.toContain(
 			'export interface RelayIdentityProviderModule'
 		);
 

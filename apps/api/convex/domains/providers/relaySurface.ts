@@ -8,11 +8,8 @@
  * registry, where the failing case cannot be constructed at all.
  */
 
-import type {
-	RelayIdentityProviderModule,
-	SendingDomainProviderKind,
-	SendingDomainProviderModule,
-} from './types';
+import type { RelayIdentityProviderModule } from './relayIdentityTypes';
+import type { SendingDomainProviderKind, SendingDomainProviderModule } from './types';
 
 /**
  * This adapter's relay surface, or `null` when it has none.

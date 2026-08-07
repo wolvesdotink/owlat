@@ -43,18 +43,18 @@ import {
 	pluginSendTransportDomainIdentityKinds,
 } from '../../plugins/sendTransportDomainIdentityCatalog';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
+import type { RelayIdentityProviderModule } from './relayIdentityTypes';
 import type {
-	RelayIdentityProviderModule,
 	RelayProvingProviderModule,
 	SendingDomainProviderKind,
 	SendingDomainProviderModule,
 } from './types';
 
+export type { RelayIdentityProviderModule } from './relayIdentityTypes';
 export type {
 	SendingDomainProviderKind,
 	SendingDomainIdentityRegistry,
 	SendingDomainProviderModule,
-	RelayIdentityProviderModule,
 	RelayProvingProviderModule,
 	ProviderIdentity,
 	ProviderIdentityFor,

@@ -36,7 +36,10 @@ import type { HostedSendTransportDomainIdentityDefinition } from '../../../plugi
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
 import type { Doc } from '../../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../../_generated/server';
-import type { EnsureRelayIdentityOptions, RelayIdentityProviderModule } from '../types';
+import type {
+	EnsureRelayIdentityOptions,
+	RelayIdentityProviderModule,
+} from '../relayIdentityTypes';
 
 /**
  * THE PROOF, asked of the shared rule with this tier's bound.

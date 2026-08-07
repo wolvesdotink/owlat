@@ -33,7 +33,7 @@ import {
 	OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	relayIdentityProviderFor,
 } from '../../domains/providers';
-import type { EnsureRelayIdentityOptions } from '../../domains/providers/types';
+import type { EnsureRelayIdentityOptions } from '../../domains/providers/relayIdentityTypes';
 import { isSendProviderKind } from './types';
 import { isSendProviderReady } from './capability';
 import type { Doc } from '../../_generated/dataModel';

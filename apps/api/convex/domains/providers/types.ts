@@ -11,6 +11,10 @@
  * now walk the registry through
  * {@link SendingDomainProviderModule.ensureRelayIdentity}.
  *
+ * THE PRIMARY CONTRACT ONLY. The smaller "can this RELAY kind prove a domain?"
+ * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
+ * that file's header says why the two are not one type.
+ *
  * PLAN NUMBERS: every D-/P-number in this file names its plan, because more
  * than one plan's numbering reaches this seam — the Mandrill provider plan's
  * for the registry and the relay seams, the seams plan's for P0.3/P0.4, and
@@ -32,6 +36,7 @@ import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignmen
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
+import type { EnsureRelayIdentityOptions } from './relayIdentityTypes';
 
 // ─── Per-provider identity shapes ──────────────────────────────────────────
 
@@ -147,38 +152,6 @@ export type ProviderCheckResult = {
 export type ProviderVerificationStatusFields = {
 	/** SES's `verificationStatus`, spelled as the persisted field has always held it. */
 	readonly sesStatus?: string;
-};
-
-/**
- * WHY the caller is asking for a relay identity — the one thing the two
- * provisioning halves do NOT agree on.
- *
- * They agree on everything else (which relays, which domains, schedule-never-
- * call), which is why they share one implementation since P0.4. They do not
- * agree on what "ensure" means when a sibling row already exists:
- *
- *  - the CATCH-UP DRAIN (`providerRoutes.provisionDeliverabilityRelayBatch`)
- *    walks every verified domain on every page and must be cheap and
- *    convergent: a domain that already has a row is done, and re-registering it
- *    would re-issue a provider call per domain per drain. `reprovision: false`.
- *  - the FORWARD PATH (`domains/lifecycle.ts`'s
- *    `provision_relay_identity_if_enabled`) fires on a real `→ verified` edge,
- *    which an operator can only reach by taking the domain out of `verified`
- *    and putting it back. That deliberate act is the ONLY repair lever for an
- *    identity deleted or disabled at the provider while our sibling row
- *    survived — nothing in the stored state distinguishes that from "waiting
- *    for the CNAMEs", so the drain cannot detect it and no other surface
- *    re-registers. It shipped unconditional and it stays unconditional:
- *    `reprovision: true`.
- *
- * Required rather than optional, and a named field rather than a bare boolean,
- * because the failure it prevents is silent in both directions — a drain that
- * re-provisions hammers the provider, a forward path that does not quietly
- * removes the repair lever, and neither shows up in a test that only checks
- * that a row exists afterwards.
- */
-export type EnsureRelayIdentityOptions = {
-	readonly reprovision: boolean;
 };
 
 // ─── Adapter interface ─────────────────────────────────────────────────────
@@ -447,67 +420,3 @@ export type RelayProvingProviderModule<K extends SendingDomainProviderKind> =
 				'relayDomainVerified' | 'ensureRelayIdentity' | 'describeReferenceArm'
 			>
 		>;
-
-/**
- * THE RELAY SURFACE ALONE — the three seams above, with none of the
- * primary-provider lifecycle, and keyed by a `string` rather than by a member of
- * {@link SendingDomainProviderKind}.
- *
- * WHY IT EXISTS (the seams plan's P3.2). A bundled plugin transport can now
- * contribute a sending-domain identity, and its kind is `plugin.<id>.<local>` —
- * a value no static union can hold, since the set is decided by
- * `plugins.config.ts` at composition time. But that is only half the reason; the
- * other half is that a plugin relay answers a genuinely SMALLER question than a
- * core adapter does.
- *
- * TWO QUESTIONS, NOT ONE, and conflating them is what this type prevents:
- *
- *  - "is this a PRIMARY sending-domain provider kind?" — the one a `domains` row
- *    records in `providerType`, whose adapter registers the domain, writes the
- *    sibling identity, publishes the DNS bundle and handles the return path.
- *    That is {@link SendingDomainProviderModule} and
- *    `isSendingDomainProviderKind`, and it stays a closed core union: widening it
- *    would make `EMAIL_PROVIDER=plugin.acme.postmark` produce domains whose whole
- *    lifecycle runs through third-party code.
- *  - "can this RELAY kind prove a domain?" — asked by the routing gate, the
- *    identity backfill and the alignment pre-flight, about a relay that COEXISTS
- *    on a domain our own MTA hosts. That is this type, and it is open.
- *
- * Every core adapter that implements all three (`RelayProvingProviderModule`) is
- * structurally one of these already, which is why the composed registry in
- * `./index.ts` holds core and plugin entries side by side with no adaptation.
- */
-export interface RelayIdentityProviderModule {
-	readonly kind: string;
-	relayDomainVerified(
-		ctx: QueryCtx | MutationCtx,
-		domainName: string,
-		now: number
-	): Promise<boolean>;
-	describeReferenceArm(
-		ctx: QueryCtx | MutationCtx,
-		domain: Doc<'domains'>,
-		now: number
-	): Promise<ReferenceAlignmentArm | null>;
-	ensureRelayIdentity(
-		ctx: MutationCtx,
-		domain: Doc<'domains'>,
-		options: EnsureRelayIdentityOptions
-	): Promise<void>;
-	/**
-	 * OPTIONAL where the three above are required, and for the reason spelled out
-	 * on {@link SendingDomainProviderModule.scheduleRelayIdentityRefresh}: proving
-	 * a domain and keeping rows in the shared `sendingDomainRelayIdentities` table
-	 * are different facts, and SES has the first without the second.
-	 *
-	 * This is what makes the due-check sweep the TABLE's dispatch rather than a
-	 * chain of kind literals: it asks the registry for the arm and schedules
-	 * whatever it gets back, so a bundled plugin transport joins the sweep on the
-	 * day it composes and a third kind adds no line to it.
-	 */
-	scheduleRelayIdentityRefresh?(
-		ctx: MutationCtx,
-		delayMs: number,
-		domainName: string
-	): Promise<void>;
-}
