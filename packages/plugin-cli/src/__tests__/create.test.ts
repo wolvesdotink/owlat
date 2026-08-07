@@ -116,6 +116,44 @@ describe('runCreate', () => {
 		await expect(stat(join(root, 'leaked'))).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 
+	/**
+	 * THE TEMPLATE FLAG, THROUGH THE COMMAND — the plumbing between the invocation
+	 * the authoring guide prints and the generator its conformance gate drives.
+	 * `scaffoldSendProvider.test.ts` owns what the template EMITS and the
+	 * conformance gate owns that the emitted bundle WORKS; both call `buildScaffold`
+	 * directly, so without these two cases nothing executes `--template` end to end.
+	 */
+	it('writes the whole send-provider bundle and points at its guide', async () => {
+		const root = await createCliWorkspace();
+		const { io, lines } = captureIo();
+		await runCreate(
+			root,
+			{ idInput: 'my-plugin', name: '@acme/owlat-relay', template: 'send-provider', dryRun: false },
+			io
+		);
+
+		expect((await readdir(join(root, scaffoldDir, 'src', 'convex'))).sort()).toEqual([
+			'domainIdentity.ts',
+			'transport.ts',
+			'webhook.ts',
+		]);
+		// The completion hint is template-specific: an author who just scaffolded a
+		// provider is sent to the page that documents the contract, not to the
+		// generic "declare contributions in src/manifest.ts".
+		expect(lines.some((line) => line.includes('/developer/plugin-send-providers'))).toBe(true);
+	});
+
+	it('rejects an unknown template before it creates anything', async () => {
+		const root = await createCliWorkspace();
+		const { io } = captureIo();
+		await expect(
+			runCreate(root, { idInput: 'my-plugin', template: 'sendprovider', dryRun: false }, io)
+		).rejects.toThrow(PluginCliError);
+		// Parsed BEFORE the target directory is touched: a typo must not leave a
+		// directory behind for the retry to trip over.
+		await expect(readdir(join(root, scaffoldDir))).rejects.toMatchObject({ code: 'ENOENT' });
+	});
+
 	it('refuses a target directory that escapes the workspace', async () => {
 		const root = await createCliWorkspace();
 		const { io } = captureIo();

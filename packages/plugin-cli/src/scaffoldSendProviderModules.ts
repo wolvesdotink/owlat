@@ -62,7 +62,13 @@ function failureFor(status: number): PluginSendAttempt {
 	if (status === 401 || status === 403) return { success: false, code: 'authentication_failed' };
 	if (status === 422) return { success: false, code: 'invalid_recipient' };
 	if (status === 429) return { success: false, code: 'rate_limited' };
+	// Transient by definition, and both are 4xx: a request that timed out and one
+	// refused for arriving too early are the retryable half of the client range.
+	if (status === 408 || status === 425) return { success: false, code: 'temporary_failure' };
 	if (status >= 500) return { success: false, code: 'temporary_failure' };
+	// TODO: any other status your provider uses for a TRANSIENT condition belongs
+	// above this line. What falls through here is terminal — the host will not try
+	// it again.
 	return { success: false, code: 'content_rejected' };
 }
 
@@ -180,10 +186,29 @@ function readString(value: unknown): string | undefined {
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** TODO: map your provider's event kinds onto the four facts Owlat records. */
-function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEvent | null {
+/**
+ * The event's time, in EPOCH MILLISECONDS.
+ *
+ * TODO: convert your provider's timestamp here. The host refuses any value
+ * outside [now − 1 year, now + 1 day] and fails the WHOLE batch when it does, so
+ * a provider that reports epoch SECONDS (many do) needs \`* 1_000\` on this line —
+ * a package whose own suite is green and whose every delivery is refused in
+ * production is the failure this line exists to prevent.
+ *
+ * READ ONLY FOR KINDS THIS MODULE CONSUMES, which is why it is a function rather
+ * than a line at the top of \`toFeedbackEvent\`: an engagement event Owlat ignores
+ * may name its time field differently or omit it, and a throw there would 400 the
+ * whole batch — taking the delivery and bounce events beside it down, and leaving
+ * the provider redelivering the body forever.
+ */
+function readAt(raw: ${names.pascal}WireEvent): number {
 	const at = typeof raw.timestamp === 'number' ? raw.timestamp : Number.NaN;
 	if (!Number.isFinite(at)) throw new TypeError('${names.id}: event carries no timestamp');
+	return at;
+}
+
+/** TODO: map your provider's event kinds onto the four facts Owlat records. */
+function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEvent | null {
 	const id = readString(raw.message_id);
 	const recipient = readString(raw.recipient);
 	const reason = readString(raw.reason);
@@ -193,7 +218,7 @@ function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEv
 			return {
 				kind: 'delivered',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				...(recipient === undefined ? {} : { recipient }),
 			};
 		case 'hard_bounce':
@@ -202,16 +227,22 @@ function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEv
 			return {
 				kind: 'bounced',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				bounceType: raw.type === 'hard_bounce' ? 'hard' : 'soft',
 				...(reason === undefined ? {} : { bounceMessage: reason }),
 			};
 		case 'complaint':
 			// The one report that may legitimately arrive redacted (RFC 5965 §3.2),
-			// so it is allowed to name only the address.
+			// so it is allowed to name only the address — but not NEITHER: a report
+			// naming no message and no recipient is a fact about nobody, and the host
+			// refuses the whole batch for it. Say so here, where the wire shape is
+			// understood, rather than letting a host-side message describe it.
+			if (id === undefined && recipient === undefined) {
+				throw new TypeError('${names.id}: complaint names neither a message id nor a recipient');
+			}
 			return {
 				kind: 'complained',
-				at,
+				at: readAt(raw),
 				...(id === undefined ? {} : { providerMessageId: id }),
 				...(recipient === undefined ? {} : { recipient }),
 			};
@@ -220,12 +251,14 @@ function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEv
 			return {
 				kind: 'deferred',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				...(reason === undefined ? {} : { reason }),
 			};
 		default:
 			// An event kind this integration does not consume. Acknowledged, not
-			// refused.
+			// refused — and reached before anything about the event is validated, so
+			// an engagement event that carries no usable timestamp still leaves
+			// through the empty array rather than 400-ing the batch it arrived in.
 			return null;
 	}
 }

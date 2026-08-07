@@ -108,6 +108,13 @@ describe('${names.id} send', () => {
 			success: false,
 			code: 'rate_limited',
 		});
+		// The other retryable 4xx: a timed-out request is transient, and reading it
+		// as terminal drops a message a retry would have delivered.
+		stubFetch({ ok: false, status: 408 });
+		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
+			success: false,
+			code: 'temporary_failure',
+		});
 		stubFetch({ ok: false, status: 400 });
 		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
 			success: false,
@@ -127,6 +134,7 @@ export function webhookTestSource(names: SendProviderNames): string {
 	return `import { describe, expect, it } from 'vitest';
 import { ${names.camel}Webhook } from '../convex/webhook';
 
+/** The wire timestamp. Epoch MILLISECONDS is what the host accepts. */
 const at = Date.now();
 
 describe('${names.id} feedback parsing', () => {
@@ -147,19 +155,35 @@ describe('${names.id} feedback parsing', () => {
 			'complained',
 			'deferred',
 		]);
+		// THE UNITS, PINNED. The host bounds \`at\` against the wall clock in epoch
+		// MILLISECONDS and fails the whole batch outside that window, so a provider
+		// reporting seconds must be converted in \`readAt\` — and this case is what
+		// tells you, rather than a 400 on every delivery once the endpoint is live.
+		expect(events.map((event) => event.at)).toEqual([at, at, at, at]);
+		for (const event of events) expect(Math.abs(event.at - Date.now())).toBeLessThan(60_000);
 	});
 
 	it('acknowledges a console ping and an event kind it does not consume', () => {
 		expect(${names.camel}Webhook.parseEvents(JSON.stringify({}))).toEqual([]);
+		// NO TIMESTAMP ON THE UNCONSUMED EVENT, deliberately: an engagement event
+		// Owlat ignores routinely names its time field differently or omits it, and
+		// this batch must still be acknowledged rather than 400-ed and redelivered
+		// forever.
 		expect(
-			${names.camel}Webhook.parseEvents(
-				JSON.stringify({ events: [{ type: 'opened', message_id: 'm5', timestamp: at }] })
-			)
+			${names.camel}Webhook.parseEvents(JSON.stringify({ events: [{ type: 'opened', message_id: 'm5' }] }))
 		).toEqual([]);
 	});
 
 	it('throws on a body it cannot read', () => {
 		expect(() => ${names.camel}Webhook.parseEvents('not json')).toThrow(TypeError);
+	});
+
+	it('refuses a complaint that names neither a message nor a recipient', () => {
+		// The host refuses it too, for the whole batch — this says so in the module's
+		// own words, at the boundary that understands the wire shape.
+		expect(() =>
+			${names.camel}Webhook.parseEvents(JSON.stringify({ events: [{ type: 'complaint', timestamp: at }] }))
+		).toThrow(TypeError);
 	});
 });
 `;

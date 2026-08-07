@@ -2,12 +2,17 @@ import { relative } from 'node:path';
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { PluginCliError } from './errors';
+import { toCamelCase } from './names';
 import { toPosix } from './paths';
 import {
 	SEND_PROVIDER_MODULE_EXPORTS,
 	sendProviderFiles,
 	sendProviderNames,
 } from './scaffoldSendProvider';
+
+// Re-exported from its own module so the send-provider template can derive the
+// same identifier without importing this one (which imports it).
+export { toCamelCase } from './names';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
@@ -65,7 +70,11 @@ export function buildScaffold(
 	const moduleExports = template === 'send-provider' ? SEND_PROVIDER_MODULE_EXPORTS : {};
 	const files = new Map<string, string>();
 
-	const manifestJson = JSON.stringify(packageJson(packageName, toRoot, moduleExports), null, '\t');
+	const manifestJson = JSON.stringify(
+		packageJson(packageName, toRoot, moduleExports, template === 'send-provider'),
+		null,
+		'\t'
+	);
 
 	files.set('package.json', `${manifestJson}\n`);
 	files.set('tsconfig.json', `${JSON.stringify(tsconfig(toRoot), null, '\t')}\n`);
@@ -74,10 +83,7 @@ export function buildScaffold(
 	// The three files above are the package's build wiring and are identical at
 	// every template; everything below is the template's own content.
 	if (template === 'send-provider') {
-		for (const [path, content] of sendProviderFiles(
-			sendProviderNames(id, toCamelCase(id)),
-			packageName
-		)) {
+		for (const [path, content] of sendProviderFiles(sendProviderNames(id), packageName)) {
 			files.set(path, content);
 		}
 		return files;
@@ -91,20 +97,22 @@ export function buildScaffold(
 	return files;
 }
 
-/** Derive a lowerCamelCase identifier from a validated kebab-case plugin id. */
-export function toCamelCase(id: string): string {
-	return id.replace(/-([a-z0-9])/g, (_, char: string) => char.toUpperCase());
-}
-
 function packageJson(
 	packageName: PluginPackageName,
 	toRoot: string,
-	moduleExports: Readonly<Record<string, string>>
+	moduleExports: Readonly<Record<string, string>>,
+	isPublishable: boolean
 ): Record<string, unknown> {
 	return {
 		name: packageName,
 		version: '0.0.0',
-		private: true,
+		// PUBLISHABILITY IS A TEMPLATE DECISION. The minimal skeleton scaffolds into
+		// `examples/plugins/` by default — a workspace package nobody publishes, and
+		// `private` is what keeps an accidental `npm publish` from shipping it. A
+		// send provider is the opposite case: the whole point of the tier is a bundle
+		// that leaves this repository, and its own README's last instruction is to
+		// publish it, which `private: true` refuses.
+		...(isPublishable ? {} : { private: true }),
 		type: 'module',
 		exports: { '.': './src/index.ts', ...moduleExports },
 		scripts: {

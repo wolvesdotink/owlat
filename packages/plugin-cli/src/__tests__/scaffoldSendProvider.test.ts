@@ -16,9 +16,14 @@
  */
 
 import { join } from 'node:path';
-import { isPluginSendTransportEnvVar, parsePluginId } from '@owlat/plugin-kit';
+import {
+	isPluginSendTransportEnvVar,
+	parsePluginId,
+	PLUGIN_SEND_TRANSPORT_CAPABILITY,
+} from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
 import { describe, expect, it } from 'vitest';
+import { toCamelCase } from '../names';
 import { buildScaffold, parseScaffoldTemplate, SCAFFOLD_TEMPLATES } from '../scaffold';
 import { PluginCliError } from '../errors';
 import {
@@ -131,7 +136,7 @@ describe('the send-provider template', () => {
 	 * failed it would produce a package that cannot be validated at all.
 	 */
 	it("generates transport variables the kit's own fence accepts", () => {
-		const env = sendProviderEnvVars(sendProviderNames(id, 'acmeRelay'));
+		const env = sendProviderEnvVars(sendProviderNames(id));
 		for (const name of [env.apiKey, env.region, env.webhookSecret]) {
 			expect(isPluginSendTransportEnvVar(name), `${name} is not a legal transport variable`).toBe(
 				true
@@ -152,7 +157,7 @@ describe('the send-provider template', () => {
 		'generates legal variables for the id %s',
 		(candidate) => {
 			const parsed = parsePluginId(candidate);
-			const env = sendProviderEnvVars(sendProviderNames(parsed, 'ignored'));
+			const env = sendProviderEnvVars(sendProviderNames(parsed));
 			for (const name of [env.apiKey, env.region, env.webhookSecret]) {
 				expect(isPluginSendTransportEnvVar(name), `${name} rejected for id ${candidate}`).toBe(
 					true
@@ -160,6 +165,47 @@ describe('the send-provider template', () => {
 			}
 		}
 	);
+
+	/**
+	 * EVERY IDENTIFIER FROM THE ONE INPUT. The emitted manifest exports
+	 * `<camel>Plugin` and the emitted `index.ts` re-exports it by name, so a second
+	 * source for the camel-case form is a package that does not compile. The
+	 * derivation is asserted through the shipped `toCamelCase` rather than against a
+	 * spelled expectation, and the join is read off the two emitted files.
+	 */
+	it('derives every identifier from the plugin id alone', () => {
+		const names = sendProviderNames(id);
+		expect(names.camel).toBe(toCamelCase(id));
+		expect(names.pascal).toBe('AcmeRelay');
+		expect(file('src/manifest.ts')).toContain(`export const ${names.camel}Plugin = definePlugin({`);
+		expect(file('src/index.ts')).toBe(`export { ${names.camel}Plugin } from './manifest';\n`);
+	});
+
+	/**
+	 * THE TEMPLATE'S PACKAGE IS PUBLISHABLE, because its own README's last
+	 * instruction is to publish it. The minimal template keeps `private: true` — it
+	 * scaffolds into `examples/plugins/` by default, where that is the right answer.
+	 */
+	it('emits a package a third party can actually publish', () => {
+		expect(JSON.parse(file('package.json'))).not.toHaveProperty('private');
+		expect(
+			JSON.parse(buildScaffold(root, targetDir, id, packageName).get('package.json')!)
+		).toEqual(expect.objectContaining({ private: true }));
+		expect(file('README.md')).toContain('publish it');
+	});
+
+	/**
+	 * THE CAPABILITY, THROUGH THE KIT'S OWN CONSTANT rather than the string. It is
+	 * what the guide's sample shows, and a scaffolded manifest that spelled the
+	 * literal would teach an author to hand-write a value the kit already exports.
+	 */
+	it('declares its capability through the exported constant', () => {
+		expect(file('src/manifest.ts')).toContain(
+			'import { definePlugin, PLUGIN_SEND_TRANSPORT_CAPABILITY }'
+		);
+		expect(file('src/manifest.ts')).toContain('capabilities: [PLUGIN_SEND_TRANSPORT_CAPABILITY]');
+		expect(PLUGIN_SEND_TRANSPORT_CAPABILITY).toBe('send:transport');
+	});
 
 	it('reads its credentials from the instance configuration, never process.env', () => {
 		// The rule that makes named instances mean anything: an environment read in

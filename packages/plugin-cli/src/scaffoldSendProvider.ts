@@ -39,6 +39,7 @@
 
 import { parsePluginLocalId, pluginNamespacedKind, type PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import { toCamelCase } from './names';
 import {
 	domainIdentitySource,
 	transportSource,
@@ -91,7 +92,15 @@ export interface SendProviderNames {
 /** The local id every scaffolded bundle's single transport is given. */
 export const SCAFFOLD_TRANSPORT_LOCAL_ID = 'relay';
 
-export function sendProviderNames(id: PluginId, camel: string): SendProviderNames {
+/**
+ * Every name a bundle is generated around, from the ONE input they all derive
+ * from. The camel-case form is computed here rather than accepted as an argument:
+ * a caller that passed a stale one would emit a manifest exporting `xPlugin` and
+ * an `index.ts` re-exporting `yPlugin` — a package that does not compile, from a
+ * generator whose determinism test still passes.
+ */
+export function sendProviderNames(id: PluginId): SendProviderNames {
+	const camel = toCamelCase(id);
 	return {
 		id,
 		screaming: id.replace(/-/g, '_').toUpperCase(),
@@ -225,7 +234,7 @@ function manifestSource(names: SendProviderNames): string {
  * Delete a half and the promise the host reads disappears with it.
  */
 
-import { definePlugin } from '@owlat/plugin-kit';
+import { definePlugin, PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
 import {
 ${importedEnvNames(env)}
 } from './envNames';
@@ -243,7 +252,7 @@ export const ${names.screaming}_TOLERANCE_SECONDS = 300;
 export const ${names.camel}Plugin = definePlugin({
 	id: '${names.id}',
 	version: '0.0.0',
-	capabilities: ['send:transport'],
+	capabilities: [PLUGIN_SEND_TRANSPORT_CAPABILITY],
 	/**
 	 * THE ENABLEMENT GATE, and it carries the WEBHOOK SECRET rather than the send
 	 * credential. The two lists answer different questions: the transport's
