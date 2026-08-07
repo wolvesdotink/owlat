@@ -19,12 +19,21 @@ rather than three unrelated demos.
   needs, an LLM budget exactly when `llm:invoke` is requested, grants that can
   only narrow, and nav items that target real core sidebar sections.
 - **`dispatchReachability.test.ts`** — the honesty gate on the contribution
-  buckets. Each capability-enforced bucket is classed `wired` or `declared` in
-  the kernel's requirement table; this suite names the one symbol a host path has
-  to reach for the bucket to run, then asserts a `wired` bucket has a production
-  consumer and a `declared` bucket has none. Wiring a declared bucket, or
+  buckets. Each capability-enforced MODULE EXPORT is classed `wired` or
+  `declared` in the kernel's requirement table; this suite names the one symbol a
+  host path has to reach for that export to run, then asserts a `wired` one has a
+  production consumer and a `declared` one has none. Wiring a declared export, or
   deleting the last consumer of a wired one, turns it red until the table and the
-  Contribution Reference agree with the code.
+  Contribution Reference agree with the code. Most buckets carry one module; a
+  bucket that carries two (`sendTransports`, whose contributions may declare a
+  feedback `webhook`) is asked about each separately.
+- **`pluginWebhookSeam.test.ts`** — the send-transport feedback webhook (D6) from
+  manifest to generated artifact: the declared signature contract, its replay
+  provisions and the opt-in raw-payload flag reach the host unchanged; the parse
+  half is imported into the isolate runtime while the send half stays in Node;
+  and a webhook the host could not verify — no signature contract, no replay
+  provisions, an unbounded tolerance, a secret outside the plugin namespace — is
+  refused at validation, so it never becomes an artifact at all.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
