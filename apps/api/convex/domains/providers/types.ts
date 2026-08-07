@@ -413,3 +413,51 @@ export type RelayProvingProviderModule<K extends SendingDomainProviderKind> =
 				'relayDomainVerified' | 'ensureRelayIdentity' | 'describeReferenceArm'
 			>
 		>;
+
+/**
+ * THE RELAY SURFACE ALONE — the three seams above, with none of the
+ * primary-provider lifecycle, and keyed by a `string` rather than by a member of
+ * {@link SendingDomainProviderKind}.
+ *
+ * WHY IT EXISTS (the seams plan's P3.2). A bundled plugin transport can now
+ * contribute a sending-domain identity, and its kind is `plugin.<id>.<local>` —
+ * a value no static union can hold, since the set is decided by
+ * `plugins.config.ts` at composition time. But that is only half the reason; the
+ * other half is that a plugin relay answers a genuinely SMALLER question than a
+ * core adapter does.
+ *
+ * TWO QUESTIONS, NOT ONE, and conflating them is what this type prevents:
+ *
+ *  - "is this a PRIMARY sending-domain provider kind?" — the one a `domains` row
+ *    records in `providerType`, whose adapter registers the domain, writes the
+ *    sibling identity, publishes the DNS bundle and handles the return path.
+ *    That is {@link SendingDomainProviderModule} and
+ *    `isSendingDomainProviderKind`, and it stays a closed core union: widening it
+ *    would make `EMAIL_PROVIDER=plugin.acme.postmark` produce domains whose whole
+ *    lifecycle runs through third-party code.
+ *  - "can this RELAY kind prove a domain?" — asked by the routing gate, the
+ *    identity backfill and the alignment pre-flight, about a relay that COEXISTS
+ *    on a domain our own MTA hosts. That is this type, and it is open.
+ *
+ * Every core adapter that implements all three (`RelayProvingProviderModule`) is
+ * structurally one of these already, which is why the composed registry in
+ * `./index.ts` holds core and plugin entries side by side with no adaptation.
+ */
+export interface RelayIdentityProviderModule {
+	readonly kind: string;
+	relayDomainVerified(
+		ctx: QueryCtx | MutationCtx,
+		domainName: string,
+		now: number
+	): Promise<boolean>;
+	describeReferenceArm(
+		ctx: QueryCtx | MutationCtx,
+		domain: Doc<'domains'>,
+		now: number
+	): Promise<ReferenceAlignmentArm | null>;
+	ensureRelayIdentity(
+		ctx: MutationCtx,
+		domain: Doc<'domains'>,
+		options: EnsureRelayIdentityOptions
+	): Promise<void>;
+}

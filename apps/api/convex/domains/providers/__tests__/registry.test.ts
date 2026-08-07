@@ -27,6 +27,7 @@ import {
 	SENDING_DOMAIN_PROVIDERS,
 	isSendingDomainProviderKind,
 	providerFor,
+	relayIdentityProviderFor,
 	type RelayProvingProviderModule,
 	type SendingDomainProviderKind,
 } from '../index';
@@ -136,11 +137,20 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 	 * BUILD, naming the kind — but it only sees CORE kinds' literal types
 	 * (`ApiVerifiedSendProviderKind` is an `Extract` over the core catalog
 	 * literal), so this walks the whole composed catalog including anything a
-	 * bundled plugin contributes. A bundled plugin transport whose generated
-	 * entry declared `api` compiles clean through both type guards; this case is
-	 * the only thing that catches it, so it asserts the PROPERTY per kind rather
-	 * than short-circuiting on a hardcoded set — a plugin kind must fail here
+	 * bundled plugin contributes. It asserts the PROPERTY per kind rather than
+	 * short-circuiting on a hardcoded set: a kind with no provider must fail here
 	 * naming itself, not fail an equality against `['ses', 'mandrill']`.
+	 *
+	 * THE REGISTRATION IT ASKS ABOUT IS THE RELAY ONE (the seams plan's P3.2), and
+	 * that is a widening of this case rather than a weakening. `domainVerification`
+	 * promises a relay can PROVE a domain, which is
+	 * {@link relayIdentityProviderFor} — the composed registry, holding every core
+	 * adapter that implements the three relay seams plus every bundled plugin
+	 * transport that contributed a `domainIdentity`. It answers identically to
+	 * `isSendingDomainProviderKind` for `ses` and `mandrill`, and unlike it, it
+	 * gives a plugin kind the answer the promise actually refers to: the primary
+	 * guard governs `domains.providerType`, which stays closed to the core union
+	 * on purpose.
 	 */
 	it('every kind declaring domainVerification: api has a registered provider', () => {
 		const apiVerified = SEND_PROVIDER_CATALOG.filter(
@@ -162,7 +172,7 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 		// tier did not need to lose anything for it.
 		expect(apiVerified.filter(isCoreSendProviderKind)).toEqual(['ses', 'mandrill']);
 		for (const kind of apiVerified) {
-			expect({ kind, registered: isSendingDomainProviderKind(kind) }).toEqual({
+			expect({ kind, registered: relayIdentityProviderFor(kind) !== undefined }).toEqual({
 				kind,
 				registered: true,
 			});

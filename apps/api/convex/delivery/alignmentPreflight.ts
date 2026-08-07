@@ -38,7 +38,7 @@ import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { isSendingDomainProviderKind, providerFor } from '../domains/providers';
+import { relayIdentityProviderFor } from '../domains/providers';
 import { parsePoolIps } from '../domains/spf';
 import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
 import { configuredRelayKinds } from './relayConfiguration';
@@ -130,9 +130,9 @@ async function referenceFor(
 ): Promise<ReferenceArmInput> {
 	if (relayKinds.length === 0) return { kind: 'none' };
 	const kind = relayKinds.length === 1 ? relayKinds[0] : undefined;
-	if (kind !== undefined && isSendingDomainProviderKind(kind)) {
-		const provider = providerFor(kind);
-		const arm = await provider.describeReferenceArm?.(ctx, domain, now);
+	const provider = relayIdentityProviderFor(kind);
+	if (provider) {
+		const arm = await provider.describeReferenceArm(ctx, domain, now);
 		if (arm) return { kind: 'arm', arm };
 	}
 	return { kind: 'unknown', detail: undescribableRelayDetail(domain.domain, relayKinds) };

@@ -48,7 +48,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 const MOCK_RELAY_KIND = 'mock-relay';
 
 /**
- * A second mock kind that registers an adapter with NO `ensureRelayIdentity` —
+ * A second mock kind that is a configured relay with NO relay-identity provider —
  * the honest shape of a `domainVerification: 'none'` relay (our own MTA, Resend,
  * a bring-your-own SMTP relay), which has no identity API to register at. The
  * walk must do nothing at all for it rather than fall back to some other kind's
@@ -60,26 +60,26 @@ const { ensureMockRelayIdentity } = vi.hoisted(() => ({
 	ensureMockRelayIdentity: vi.fn(async () => {}),
 }));
 
+// The seam the walk asks is `relayIdentityProviderFor` — the COMPOSED
+// relay-identity registry (the seams plan's P3.2), which answers for core
+// adapters and for bundled plugin transports alike. Overriding it here is the
+// same interception this suite has always made, at the accessor the walk now
+// uses: `MOCK_RELAY_KIND` resolves to a provider, `MOCK_IDENTITYLESS_KIND`
+// resolves to nothing at all (which is what a relay with no identity API looks
+// like to the registry — it is filtered out, not registered with a hole).
 vi.mock('../providers', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../providers')>();
 	const mockRelayProvider = {
 		kind: MOCK_RELAY_KIND,
 		ensureRelayIdentity: ensureMockRelayIdentity,
 	};
-	const identitylessProvider = { kind: MOCK_IDENTITYLESS_KIND };
-	const overrides: Record<string, unknown> = {
-		[MOCK_RELAY_KIND]: mockRelayProvider,
-		[MOCK_IDENTITYLESS_KIND]: identitylessProvider,
-	};
+	const overrides: Record<string, unknown> = { [MOCK_RELAY_KIND]: mockRelayProvider };
 	return {
 		...actual,
-		isSendingDomainProviderKind: (kind: string | undefined | null) =>
-			(typeof kind === 'string' && Object.prototype.hasOwnProperty.call(overrides, kind)) ||
-			actual.isSendingDomainProviderKind(kind),
-		providerFor: (kind: string) =>
-			Object.prototype.hasOwnProperty.call(overrides, kind)
+		relayIdentityProviderFor: (kind: string | undefined | null) =>
+			typeof kind === 'string' && Object.prototype.hasOwnProperty.call(overrides, kind)
 				? overrides[kind]
-				: actual.providerFor(kind as Parameters<typeof actual.providerFor>[0]),
+				: actual.relayIdentityProviderFor(kind),
 	};
 });
 
@@ -148,8 +148,8 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 		// THE DIFFERENTIAL CASE. `mock-relay` is not `ses` and not `mandrill`, so
 		// the shipped if-chain matched nothing and this expectation was
 		// unsatisfiable by it. It passes only because the effect resolves the
-		// configured relay kind through `providerFor` and asks THAT module for its
-		// backfill.
+		// configured relay kind through the relay-identity registry and asks THAT
+		// module for its backfill.
 		const t = convexTest(schema, modules);
 		await seedRoute(t, MOCK_RELAY_KIND);
 		const domainId = await seedPendingDomain(t, 'mta');
@@ -191,8 +191,8 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 	it('ignores a stored relay kind no adapter is registered for', async () => {
 		// `deliverabilityFallback.relayProviderType` is a plain string on the row:
 		// a route written by a newer deployment (or naming a retired kind) reaches
-		// the walk as an unknown, and `providerFor` throws on those. Fail closed by
-		// skipping, never by rolling back the domain's → verified transition.
+		// the walk as an unknown, and the registry answers `undefined`. Fail closed
+		// by skipping, never by rolling back the domain's → verified transition.
 		const t = convexTest(schema, modules);
 		await seedRoute(t, 'postmark');
 		const domainId = await seedPendingDomain(t, 'mta');

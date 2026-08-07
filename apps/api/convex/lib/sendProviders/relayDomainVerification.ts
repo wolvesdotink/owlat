@@ -18,19 +18,23 @@
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { isSendingDomainProviderKind, providerFor } from '../../domains/providers';
+import { relayIdentityProviderFor } from '../../domains/providers';
 
 /**
  * True iff `domainName` carries a fresh, complete verification proof for the
  * configured relay provider.
  *
- * Fails closed in both directions it can: a relay kind with no registered
- * sending-domain provider, and a registered provider that offers no
- * relay-verification implementation, are both UNVERIFIABLE — which is the
- * honest posture for a transport with no identity API (`smtp`, `resend`) and
- * for our own MTA, which is never a fallback relay. Neither is an error: an
- * unverifiable relay simply never gets handed the domain, and the routing gate
+ * Fails closed on the one thing it can be asked: a relay kind with no registered
+ * relay-identity provider is UNVERIFIABLE — the honest posture for a transport
+ * with no identity API (`smtp`, `resend`), for our own MTA (never a fallback
+ * relay), and for a retired kind a stored route still names. It is not an error:
+ * an unverifiable relay simply never gets handed the domain, and the routing gate
  * turns that into an actionable `DeliverabilityRouteError`.
+ *
+ * THE REGISTRY IS THE COMPOSED ONE (the seams plan's P3.2), so a bundled plugin
+ * transport that contributed a `domainIdentity` answers here exactly as `ses` and
+ * `mandrill` do — same call, same fail-closed default, no branch on tier. This
+ * file has named no provider since P0.3 and it still names none.
  */
 export async function relayDomainVerified(
 	ctx: QueryCtx | MutationCtx,
@@ -38,8 +42,7 @@ export async function relayDomainVerified(
 	relayProviderType: string,
 	now: number
 ): Promise<boolean> {
-	if (!isSendingDomainProviderKind(relayProviderType)) return false;
-	const provider = providerFor(relayProviderType);
-	if (!provider.relayDomainVerified) return false;
+	const provider = relayIdentityProviderFor(relayProviderType);
+	if (!provider) return false;
 	return await provider.relayDomainVerified(ctx, domainName, now);
 }

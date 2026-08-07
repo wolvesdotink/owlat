@@ -31,13 +31,9 @@
 import { logError } from '../runtimeLog';
 import {
 	OWN_SENDING_DOMAIN_PROVIDER_KIND,
-	isSendingDomainProviderKind,
-	providerFor,
+	relayIdentityProviderFor,
 } from '../../domains/providers';
-import type {
-	EnsureRelayIdentityOptions,
-	SendingDomainProviderKind,
-} from '../../domains/providers/types';
+import type { EnsureRelayIdentityOptions } from '../../domains/providers/types';
 import { isSendProviderKind } from './types';
 import { isSendProviderReady } from './capability';
 import type { Doc } from '../../_generated/dataModel';
@@ -123,7 +119,7 @@ export async function readyFallbackRelayKinds(ctx: QueryCtx | MutationCtx): Prom
  * relay refusing this From domain when the breaker opens) names neither.
  */
 export type RelayIdentityBackfill = {
-	readonly kind: SendingDomainProviderKind;
+	readonly kind: string;
 	readonly ensureRelayIdentity: (
 		ctx: MutationCtx,
 		domain: Doc<'domains'>,
@@ -135,32 +131,32 @@ export type RelayIdentityBackfill = {
 export type RelayIdentityBackfillOutcome = {
 	readonly attempted: number;
 	/** The kinds whose `ensureRelayIdentity` threw, deduplicated. */
-	readonly failedKinds: readonly SendingDomainProviderKind[];
+	readonly failedKinds: readonly string[];
 };
 
 /**
  * The registered backfills for `relayKinds` — the "ask the kind, don't name it"
  * half of the pair.
  *
- * A kind with no registered sending-domain provider (a plugin transport, a
- * retired kind a stored route still names) and a kind whose provider has no
- * identity API to register at (`domainVerification: 'none'` — our own MTA,
- * Resend, a bring-your-own SMTP relay) both drop out here, which is the same
- * "nothing to backfill" the hand-written if-chain achieved by not listing them.
+ * A kind with no registered relay-identity provider drops out here — a retired
+ * kind a stored route still names, and a kind with no identity API to register at
+ * (`domainVerification: 'none'` — our own MTA, Resend, a bring-your-own SMTP
+ * relay) — which is the same "nothing to backfill" the hand-written if-chain
+ * achieved by not listing them.
+ *
+ * A BUNDLED PLUGIN TRANSPORT NO LONGER DOES (the seams plan's P3.2): the registry
+ * is the composed one, so a plugin kind that contributed a `domainIdentity` gets
+ * its backfill through this loop exactly as `ses` and `mandrill` do. That was the
+ * missing half of the promise — its `relayDomainVerified` reads a row, and
+ * without this nothing would ever write one.
  */
 export function relayIdentityBackfills(
 	relayKinds: readonly string[]
 ): readonly RelayIdentityBackfill[] {
-	return relayKinds
-		.filter((kind) => isSendingDomainProviderKind(kind))
-		.map((kind) => ({ kind, provider: providerFor(kind) }))
-		.map(({ kind, provider }) => ({
-			kind,
-			ensureRelayIdentity: provider.ensureRelayIdentity?.bind(provider),
-		}))
-		.filter(
-			(backfill): backfill is RelayIdentityBackfill => backfill.ensureRelayIdentity !== undefined
-		);
+	return relayKinds.flatMap((kind) => {
+		const provider = relayIdentityProviderFor(kind);
+		return provider ? [{ kind, ensureRelayIdentity: provider.ensureRelayIdentity }] : [];
+	});
 }
 
 /**
@@ -216,7 +212,7 @@ export async function ensureRelayIdentities(
 	if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) {
 		return { attempted: 0, failedKinds: [] };
 	}
-	const failedKinds: SendingDomainProviderKind[] = [];
+	const failedKinds: string[] = [];
 	for (const { kind, ensureRelayIdentity } of backfills) {
 		try {
 			await ensureRelayIdentity(ctx, domain, options);
