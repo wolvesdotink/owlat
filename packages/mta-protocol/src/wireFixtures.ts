@@ -51,7 +51,14 @@ import type { ValidatedMtaWebhookEvent } from './webhookEventShape';
  */
 export const WIRE_FIXTURE_NOW = 1_750_000_000_000;
 
-/** The UTC day {@link WIRE_FIXTURE_NOW} falls on — the snapshot's `date`. */
+/**
+ * The UTC day {@link WIRE_FIXTURE_NOW} falls on, and the `date` of every
+ * fixture that carries one — the IP-reputation snapshot and both Postmaster
+ * events. Derived rather than written out so no fixture can state an impossible
+ * event: a daily observation stamped with a `timestamp` on a different day is
+ * not a thing the MTA ever emits, and `delivery/postmaster.ts` buckets by UTC
+ * day, so a coherence check added there must find these bytes coherent.
+ */
 export const WIRE_FIXTURE_DATE = '2025-06-15';
 
 /**
@@ -301,7 +308,7 @@ export const WEBHOOK_EVENT_BYTES = {
 	'postmaster.stats': JSON.stringify({
 		event: 'postmaster.stats',
 		domain: 'mail.example.org',
-		date: '2026-08-06',
+		date: WIRE_FIXTURE_DATE,
 		userReportedSpamRatio: 0.001,
 		spfSuccessRatio: 1,
 		deliveryErrors: [{ category: 'RATE_LIMIT_EXCEEDED', ratio: 0.02 }],
@@ -310,7 +317,7 @@ export const WEBHOOK_EVENT_BYTES = {
 	'postmaster.compliance': JSON.stringify({
 		event: 'postmaster.compliance',
 		domain: 'mail.example.org',
-		date: '2026-08-06',
+		date: WIRE_FIXTURE_DATE,
 		checks: [{ name: 'SPF_ALIGNMENT', state: 'passing' }],
 		timestamp: WIRE_FIXTURE_NOW,
 	} satisfies ValidatedMtaWebhookEvent),
