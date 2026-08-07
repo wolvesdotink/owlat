@@ -264,9 +264,10 @@ function isDeliveryErrorBreakdown(value: unknown): boolean {
 
 /**
  * Bounded Compliance Status checks with enum-shaped names. An EMPTY list is
- * well-formed here: `checks` rides on {@link EventBase} for every event kind,
- * so it is bounded at the top level for all of them and only the
- * `postmaster.compliance` case additionally requires a non-empty verdict.
+ * well-formed here: `checks` is declared on {@link MtaWebhookEventFields} (this
+ * module re-exports it), so every event kind carries it and it is bounded at
+ * the top level for all of them — only the `postmaster.compliance` case
+ * additionally requires a non-empty verdict.
  */
 function isComplianceChecks(value: unknown): boolean {
 	return (
