@@ -82,26 +82,36 @@ vocabulary a core entry does — `supportsCustomReturnPath`, `messageIdSource`,
 `credentialFields` descriptors that describe how to ask for them — and
 its module may build per-send extras on both the governed and the system-mail
 paths, so the capability accessors answer for a plugin kind exactly as they do
-for a core one. Two things are still declared differently, on purpose:
+for a core one. Three things are still declared differently, on purpose:
 `hasProviderFeedback` is DERIVED from whether the contribution carries a
-`webhook` (one fact, not two fields that could disagree), and the values whose
+`webhook` (one fact, not two fields that could disagree); the values whose
 prerequisites live in backend code — `acceptanceSemantics: 'accepted'`,
 `messageIdSource: 'idempotency-key'`, `domainVerification: 'api'` — are not in
-this tier's unions at all. A declared configuration variable is `PLUGIN_`-
-prefixed and may not contain `__`: the prefix fences the plugin namespace off
-from the host's own deployment credentials (it does not partition it between
-plugins), and the suffix is what separates one named instance's credential from
-another's. Both halves of that rule are ONE predicate,
-`isPluginSendTransportEnvVar`, which composes onto `isPluginSecretEnvVar` — the
-single statement of the `PLUGIN_` namespace, shared with settings `secret` fields
-and webhook signing keys — rather than restating it. A `credentialFields`
+this tier's unions at all; and `supportsCustomReturnPath` narrows to `no`,
+because both other values claim that our own bounce processor can attribute this
+transport's bounces and the envelope sender that would make that true carries a
+VERP local part the HOST signs. A claim graded `supported` on an arm whose
+bounces land at the provider is a measurement bias with no symptom, so the kit,
+the manifest validator and the catalog composition each refuse the word. A
+declared configuration variable is `PLUGIN_`-prefixed and may not contain `__`:
+the prefix fences the plugin namespace off from the host's own deployment
+credentials (it does not partition it between plugins), and the suffix is what
+separates one named instance's credential from another's. Both halves of that
+rule are ONE predicate, `isPluginSendTransportEnvVar`, which composes onto
+`isPluginSecretEnvVar` — the single statement of the `PLUGIN_` namespace, shared
+with settings `secret` fields, webhook signing keys and the host's own read fence
+(`getPluginTransportEnv` in `apps/api/convex/lib/env.ts`, which delegates to it
+rather than keeping a copy) — rather than restating it. A `credentialFields`
 descriptor is DESCRIPTIVE (no surface renders a plugin's form yet; that is the
 plan's P3.3) and is validated by the same field-descriptor validator the
 platform's `settingsSchema` uses, so "the settings five" is a shared
 implementation and not a shared sentence. What makes a plugin kind CONFIGURED is
 the union of the contributing plugin's `flag.requiredEnvVars` and the transport's
 own — the same two facts the authoritative dispatch path checks — while only the
-transport's own take an instance suffix.
+transport's own take an instance suffix. The two lists may not name the same
+variable: one of them takes the suffix and the other does not, so an overlap
+would grade a named instance configured on the suffixed copy while the
+deployment-wide switch went unchecked.
 
 Speculative single-implementation seams (auth, storage, analytics,
 notifications, vector stores) have been **deleted**, per the project's
