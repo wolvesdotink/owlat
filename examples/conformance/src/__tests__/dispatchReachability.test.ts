@@ -33,7 +33,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PLUGIN_CONTRIBUTION_MODULE_EXPORTS } from '@owlat/plugin-kit';
+import {
+	PLUGIN_CONTRIBUTION_MODULE_EXPORTS,
+	PLUGIN_LIVE_CONTRIBUTION_KINDS,
+	pluginContributionModules,
+	type PluginManifest,
+} from '@owlat/plugin-kit';
 import { REPOSITORY_ROOT } from '../repository';
 
 interface DispatchSeam {
@@ -174,7 +179,64 @@ const UNDISPATCHED = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter(
 	(moduleExport) => moduleExport.dispatch === 'declared'
 );
 
+/**
+ * A manifest that carries every executable half the platform knows about: one
+ * contribution per capability-enforced bucket, each with its own `module`, plus
+ * every NESTED module descriptor a contribution may declare — today only the
+ * send transport's feedback `webhook`.
+ *
+ * Hand-maintained on purpose, and the one hand-maintained thing the case below
+ * needs: `pluginContributionModules` walks nested fields structurally, so it
+ * would happily discover a second half nobody declared in the kernel's table.
+ * Adding one to the manifest types therefore means adding it here, where the
+ * assertion turns it into a required table row.
+ */
+const MAXIMAL_NESTED_MODULES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+	sendTransports: ['webhook'],
+});
+
+function maximalManifest(): PluginManifest {
+	const contributes: Record<string, unknown[]> = {};
+	for (const bucket of PLUGIN_LIVE_CONTRIBUTION_KINDS) {
+		const nested = MAXIMAL_NESTED_MODULES[bucket] ?? [];
+		contributes[bucket] = [
+			{
+				id: 'fixture',
+				module: { exportPath: `./${bucket}` },
+				...Object.fromEntries(
+					nested.map((field) => [field, { module: { exportPath: `./${bucket}-${field}` } }])
+				),
+			},
+		];
+	}
+	// Cast rather than validated: this fixture is deliberately WIDER than any
+	// manifest a real plugin could ship (every bucket at once, capabilities it
+	// does not hold), and `pluginContributionModules` is a structural walk that
+	// runs before validation anyway — which is exactly why its output needs a
+	// declaration to be checked against.
+	return {
+		id: 'fixture',
+		version: '1.0.0',
+		capabilities: [],
+		contributes,
+	} as unknown as PluginManifest;
+}
+
 describe('contribution dispatch reachability', () => {
+	it('declares every module export the composition walker can find', () => {
+		// The other direction of the same honesty: the table above says which
+		// executable halves exist, and this asserts that a manifest carrying all of
+		// them yields exactly those (bucket, role) pairs — so a second half wired
+		// into codegen and a host path, but never given a row, has nowhere to hide.
+		const found = pluginContributionModules(maximalManifest()).map(
+			(reference) => `${reference.bucket}.${reference.role ?? 'module'}`
+		);
+		const declared = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.map(
+			(moduleExport) => `${moduleExport.bucket}.${moduleExport.role}`
+		);
+		expect([...found].sort()).toEqual([...declared].sort());
+	});
+
 	it('names a dispatch seam for every capability-enforced module export', () => {
 		expect(PLUGIN_CONTRIBUTION_MODULE_EXPORTS.map(seamKey).sort()).toEqual(
 			Object.keys(SEAMS).sort()

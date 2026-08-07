@@ -257,6 +257,15 @@ as its outbound sends; and raw-payload retention is OPT-IN per adapter rather
 than the pipeline default. The adversarial suite is
 `webhooks/__tests__/pluginFeedbackRoute.test.ts`.
 
+**The capability declaration has not caught up.** The route delivers the events,
+but a bundled plugin's catalog entry still carries no `hasProviderFeedback`
+field, so `hasProviderFeedbackFor('plugin.…')` reads the whole plugin tier as
+feedback-less (fail-closed, per that function's docstring). Its two consumers
+act on that today: the measurement grading does not widen a bounce tolerance for
+a plugin arm, and `governedDispatch` still terminalizes an ambiguous-acceptance
+send on one rather than waiting for feedback that does now arrive. Declaring it
+is P3.1's parity work, not this seam's.
+
 ### Inbound channel adapters
 
 `@owlat/channels` (`packages/channels/src/inboundRegistry.ts`) — registry

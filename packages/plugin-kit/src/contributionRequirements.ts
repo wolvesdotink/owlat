@@ -153,8 +153,17 @@ export interface ContributionModuleExport {
  * A bucket that declares no `moduleExports` contributes one pair for its own
  * `module` at the bucket's dispatch class, so the reachability gate can iterate
  * ONE list and never has to decide whether a missing field means "one module" or
- * "none". Wiring a second module export without moving its row here fails that
- * gate, which is the point.
+ * "none".
+ *
+ * THIS TABLE IS THE DECLARATION, not the discovery. Two conformance cases check
+ * it rather than trusting it: `dispatchReachability.test.ts` pins one named
+ * dispatch seam per row and asserts each row's `dispatch` class against the real
+ * host tree, and the same suite walks a manifest exercising every bucket and
+ * every nested module descriptor through `pluginContributionModules`, requiring
+ * the (bucket, role) pairs it finds to be exactly these rows. What neither can
+ * see is a nested descriptor the manifest types allow that no fixture exercises,
+ * so ADDING a second executable half to a contribution means adding its row here
+ * and its shape to that fixture — the same one edit, two files.
  */
 export const PLUGIN_CONTRIBUTION_MODULE_EXPORTS: readonly (ContributionModuleExport & {
 	readonly bucket: PluginContributionKind;
