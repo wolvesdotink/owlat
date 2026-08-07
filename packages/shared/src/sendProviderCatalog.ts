@@ -206,9 +206,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		hasProviderFeedback: true,
 		// Mandrill's ceremony, but NO `setupPanel`: the shipped delivery page has
 		// never drawn one for Resend, and the key-presence read a panel reports is
-		// still a per-kind backend query (`getMandrillFeedbackStatus`) rather than
-		// one that answers for whichever signed kind is active — open work no plan
-		// piece owns. The gap is declared rather than absent.
+		// still a per-kind backend query (`getMandrillFeedbackStatus`), not one for
+		// whichever signed kind is active. The gap is declared rather than absent.
 		providerFeedback: {
 			webhookPath: '/webhooks/resend',
 			signingKeyEnvVar: 'RESEND_WEBHOOK_SECRET',
