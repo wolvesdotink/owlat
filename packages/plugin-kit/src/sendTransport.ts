@@ -174,6 +174,24 @@ export type PluginWebhookFeedbackEvent =
 	  };
 
 /**
+ * Largest request body the feedback route reads, in BYTES of UTF-8 (not string
+ * length). Over it, the provider is answered `413` before the module is called.
+ */
+export const PLUGIN_WEBHOOK_MAX_BODY_BYTES = 1_048_576;
+
+/**
+ * Largest batch one delivery may carry, as a count of returned events.
+ *
+ * Sized to what fits in {@link PLUGIN_WEBHOOK_MAX_BODY_BYTES} at the ~200 bytes
+ * of JSON a feedback record costs, so the two limits bind at about the same
+ * place. Declared here, in the contract an author reads, because an over-limit
+ * batch is answered `413` and REDELIVERED IDENTICALLY by the provider until it
+ * gives up: the feedback in it is lost, not delayed, and the fix (ask the
+ * provider to chunk) is only available to an author who knows the number.
+ */
+export const PLUGIN_WEBHOOK_MAX_BATCH_EVENTS = 5_000;
+
+/**
  * The webhook half of a bundled send transport: PARSE ONLY.
  *
  * There is no `verifySignature` here, and its absence is the contract. The host
@@ -186,6 +204,13 @@ export type PluginWebhookFeedbackEvent =
  * Return the empty array for a batch that carries nothing Owlat acts on — that
  * is how a provider's verification ping and its unconsumed event kinds are
  * acknowledged. Throwing is answered 400 without dispatching anything.
+ *
+ * TWO LIMITS BOUND WHAT ONE DELIVERY MAY CARRY, and both are the provider's to
+ * respect, not yours to work around: {@link PLUGIN_WEBHOOK_MAX_BODY_BYTES} on
+ * the request body, and {@link PLUGIN_WEBHOOK_MAX_BATCH_EVENTS} on the events
+ * you return. Either is answered `413` — never a partial application — and the
+ * provider will redeliver the same oversized delivery, so configure it to chunk
+ * rather than expecting Owlat to split what it refused.
  *
  * This module runs inside the HTTP router's isolate, so it must not import Node
  * builtins; parsing a JSON or form body needs none.

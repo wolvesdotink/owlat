@@ -857,6 +857,30 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		});
 	});
 
+	it('documents both feedback-webhook delivery limits', () => {
+		// These two are the only host bounds a plugin author cannot discover from a
+		// failure: an over-limit delivery is answered 413 and redelivered
+		// identically, so the feedback in it is lost unless the author knew the
+		// number and configured the provider to chunk. Derived from the
+		// declaration, so adding a third bound fails until the table names it.
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/sendTransport.ts')],
+			declaredPattern: /^export const (PLUGIN_WEBHOOK_MAX_\w+) = /gm,
+			section: section(docs.contributions, '### Feedback webhook'),
+			proseFailure: 'has no table row',
+			rendered: {
+				PLUGIN_WEBHOOK_MAX_BODY_BYTES: {
+					literal: '1_048_576',
+					prose: '| Request body (`PLUGIN_WEBHOOK_MAX_BODY_BYTES`) | 1 048 576 bytes of UTF-8 |',
+				},
+				PLUGIN_WEBHOOK_MAX_BATCH_EVENTS: {
+					literal: '5_000',
+					prose: '| Events returned per delivery (`PLUGIN_WEBHOOK_MAX_BATCH_EVENTS`) | 5 000 |',
+				},
+			},
+		});
+	});
+
 	it('documents the plugin-id length ceiling on both pages that state it', () => {
 		const pluginId = read('packages/plugin-kit/src/pluginId.ts');
 		const declaredPattern = /^const (MAX_PLUGIN_ID_LENGTH) = /gm;
