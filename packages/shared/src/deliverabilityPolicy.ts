@@ -52,22 +52,45 @@ export interface DestinationProviderProfile {
 }
 
 /**
+ * The rows the checked-in shaping table is total over: every NAMED cell of the
+ * destination taxonomy, plus the generic row every other destination reads.
+ *
+ * `other` is deliberately absent. It is the taxonomy's UNNAMED cell, and
+ * `__default__` is the row that shapes it: `canonicalProfileKey` leaves an
+ * operator outside the taxonomy on its OWN domain key, so `getProfile` finds no
+ * checked-in entry and falls through to `mta:isp-profile:__default__` — the
+ * Redis row seeded from this table's `__default__` values. Giving `other` a row
+ * here would produce `mta:isp-profile:other`, which that read path never
+ * consults, so it would shape nothing while looking like it shaped everything
+ * unnamed.
+ */
+type CheckedInProfileKey = Exclude<DestinationProviderKey, 'other'> | '__default__';
+
+/**
  * Checked-in startup defaults; runtime operator overrides remain authoritative.
  *
- * TOTAL OVER THE TAXONOMY (D8). The `satisfies` below is the build failure a
- * sixth destination provider has to hit: add a key to
- * `DESTINATION_PROVIDER_KEYS` and this declaration stops compiling until that
- * provider gets a considered shaping row, instead of silently falling through
- * to `__default__` (30/min, opportunistic TLS) everywhere `getProfile` reads.
+ * TOTAL OVER THE TAXONOMY (D8), in BOTH directions. The explicit type argument
+ * on `Object.freeze` is what makes the object literal below checked against
+ * `CheckedInProfileKey` while it is still fresh, so a MISSING row and a STALE
+ * row are each a build failure: add a key to `DESTINATION_PROVIDER_KEYS` and
+ * this stops compiling until that provider gets a considered shaping row
+ * (instead of silently falling through to `__default__`, 30/min, opportunistic
+ * TLS, everywhere `getProfile` reads); remove or rename one and its orphaned
+ * row stops compiling too (instead of being HSETNX-ed into Redis by
+ * `seedProfiles` every boot forever). A trailing `satisfies` would only catch
+ * the first: freshness — and with it excess-property checking — is lost through
+ * the `Object.freeze` call.
  *
- * It is a `satisfies` and not the exported type because the EXPORTED shape must
- * stay string-keyed: `config/ispProfiles.ts` looks profiles up by
- * `canonicalProfileKey`, which is deliberately a raw DOMAIN for operators
- * outside the taxonomy (the pinned divergence documented there), and the docs
- * table iterates the object's own entries. Both are legitimate string reads of
- * a table whose membership is nonetheless exhaustively checked here.
+ * The EXPORTED alias below is string-keyed on purpose: `config/ispProfiles.ts`
+ * looks profiles up by `canonicalProfileKey`, which is deliberately a raw
+ * DOMAIN for operators outside the taxonomy (the pinned divergence documented
+ * there), and the docs table iterates the object's own entries. Both are
+ * legitimate string reads of a table whose membership is nonetheless
+ * exhaustively checked here.
  */
-const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze({
+const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze<
+	Readonly<Record<CheckedInProfileKey, Readonly<DestinationProviderProfile>>>
+>({
 	gmail: Object.freeze({
 		defaultRate: 100,
 		ceiling: 300,
@@ -118,17 +141,7 @@ const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze({
 		maxConnections: 3,
 		maxDeliveriesPerConnection: 100,
 	}),
-}) satisfies Readonly<
-	Record<
-		// `other` is deliberately absent: it is the taxonomy's UNNAMED cell, and
-		// `__default__` is its row — `getProfile` finds no checked-in entry for it
-		// and falls through to the generic default, which an operator can override
-		// once for every unnamed operator at the same time. Giving `other` a row of
-		// its own would take that override away from it.
-		Exclude<DestinationProviderKey, 'other'> | '__default__',
-		Readonly<DestinationProviderProfile>
-	>
->;
+});
 
 export const DESTINATION_PROVIDER_PROFILES: Readonly<
 	Record<string, Readonly<DestinationProviderProfile>>
