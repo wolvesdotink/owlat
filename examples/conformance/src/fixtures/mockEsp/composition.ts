@@ -19,9 +19,17 @@
  * not installed (deliberately — see the manifest's header). The suite supplies
  * the fixture's real module objects in their place, which is the same shape the
  * generated registry holds and the same one every core-side plugin suite mocks.
+ *
+ * SO ONE THING HERE STAYS PINNED AS TEXT rather than as code, and it is named
+ * rather than implied: nothing in this repository resolves a real send-transport
+ * module import, because `plugins.config.ts` is empty and none of the three
+ * reference plugins contributes a `sendTransports` bucket. The emitted import
+ * statements are asserted by `plugin-codegen`'s own render suite and by no suite
+ * as executable code. P5.3 — the first real plugin provider, listed in
+ * `plugins.config.ts` — is the piece that closes it. See this package's README.
  */
 
-import { composeBundledPlugins } from '@owlat/plugin-host';
+import { composeBundledPlugins, type BundledPlugin } from '@owlat/plugin-host';
 import { renderPluginComposition } from '@owlat/plugin-codegen';
 import { validatePluginManifest } from '@owlat/plugin-kit';
 import { MOCK_ESP_PACKAGE_NAME, mockEspPlugin } from './manifest';
@@ -30,6 +38,15 @@ import { MOCK_ESP_PACKAGE_NAME, mockEspPlugin } from './manifest';
 export type GeneratedEntries = readonly Record<string, unknown>[];
 
 export interface MockEspComposition {
+	/**
+	 * `bundledPluginComposition` — the ROSTER the generated `plugins.generated.ts`
+	 * holds, which is literally `composeBundledPlugins([...])` over the manifest
+	 * (`plugin-codegen/src/render.ts`). Exposed rather than restated at the mock:
+	 * a hand-written roster would keep declaring a flag requirement the manifest
+	 * had dropped, and the authorization path that reads it would keep passing for
+	 * a reason the bundle no longer carries.
+	 */
+	readonly roster: readonly BundledPlugin[];
 	/** `BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG` as codegen would emit it. */
 	readonly sendTransports: GeneratedEntries;
 	/** `BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG`. */
@@ -93,10 +110,12 @@ function composeMockEsp(): MockEspComposition {
 				.join('; ')}`
 		);
 	}
-	const rendered = renderPluginComposition(
-		composeBundledPlugins([{ packageName: MOCK_ESP_PACKAGE_NAME, manifest: validated.manifest }])
-	);
+	const roster = composeBundledPlugins([
+		{ packageName: MOCK_ESP_PACKAGE_NAME, manifest: validated.manifest },
+	]);
+	const rendered = renderPluginComposition(roster);
 	return {
+		roster,
 		sendTransports: evaluateCatalog(
 			rendered.sendTransportCatalog,
 			'BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG'
