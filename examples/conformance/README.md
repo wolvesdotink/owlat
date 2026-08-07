@@ -34,6 +34,13 @@ rather than three unrelated demos.
   and a webhook the host could not verify — no signature contract, no replay
   provisions, an unbounded tolerance, a secret outside the plugin namespace — is
   refused at validation, so it never becomes an artifact at all.
+- **`pluginTransportParity.test.ts`** — the send transport's CAPABILITY contract
+  (D4) over the same chain: the configuration variables, the capability fields
+  and the derived `hasProviderFeedback` reach the generated catalog exactly as
+  declared, a transport written against the older contract composes unchanged,
+  and a declaration the host could not honour — a credential outside the plugin
+  namespace, a base name that would alias an instance suffix, a capability value
+  whose prerequisites live in host code — is refused at validation.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
