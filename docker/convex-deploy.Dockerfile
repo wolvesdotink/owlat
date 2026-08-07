@@ -64,6 +64,7 @@ COPY apps/api/ apps/api/
 # check above and uses its verified generated backend module.
 COPY --from=composition-check /app/apps/api/convex/plugins/plugins.generated.ts apps/api/convex/plugins/plugins.generated.ts
 COPY packages/shared/ packages/shared/
+COPY packages/mta-protocol/ packages/mta-protocol/
 COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/channels/ packages/channels/
@@ -74,7 +75,7 @@ COPY packages/plugin-codegen/scripts/convexBundleSmoke.ts packages/plugin-codege
 
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
-RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/plugin-kit'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/plugin-kit', '@owlat/mta-protocol'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
 RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 
 # Version metadata — injected by CI on release
