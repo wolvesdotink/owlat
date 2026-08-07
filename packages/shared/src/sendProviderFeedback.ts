@@ -70,7 +70,8 @@ export interface SendProviderFeedbackChannel {
 	 * installer writes, so there is nothing to show), and a channel whose console
 	 * setup this app does not surface yet (Resend's signed webhook — the shipped
 	 * delivery page has never had a panel for it, and the key-presence read that
-	 * a panel needs is per-kind backend work, the seams plan's P2.1).
+	 * a panel needs is per-kind backend work no plan piece owns yet: the feedback
+	 * registry made the ROUTES general, not the STATUS READS behind the panels).
 	 */
 	readonly setupPanel?: SendProviderFeedbackSetupPanel;
 }

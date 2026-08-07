@@ -52,7 +52,8 @@ const feedbackWebhookUrl = computed(() =>
 // MECHANISM (`setupPanel: 'sns-topic'`). That mismatch is not left to be noticed
 // — `providerFeedbackPanel` holds each panel's answering set, so a second
 // `sns-topic` kind gets NO panel rather than SES's timestamp under its name, and
-// generalising the read (the seams plan's P2.1) is what opens the set.
+// generalising the read is what opens the set. Still open, and owned by no plan
+// piece: the feedback-adapter registry generalised the ROUTES, not this query.
 const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
 	feedbackPanel.value === 'sns-topic' ? {} : undefined
 );
@@ -69,8 +70,9 @@ const lastSesEventLabel = computed(() => {
 // STILL A PER-KIND QUERY: the backend has one key-presence read per signed kind
 // rather than one that answers for whichever kind is active. As above, the
 // panel's answering set in `providerFeedbackPanel` is what keeps a second signed
-// kind from being shown MANDRILL_WEBHOOK_KEY's presence as its own; generalising
-// the read is the webhook-registry piece's (the seams plan's P2.1).
+// kind from being shown MANDRILL_WEBHOOK_KEY's presence as its own. Generalising
+// the read is still open work, unowned by any plan piece — see the note on
+// `PANEL_ANSWERS_FOR_KINDS`.
 const { data: mandrillFeedback } = useOrganizationQuery(
 	api.delivery.status.getMandrillFeedbackStatus,
 	() => (feedbackPanel.value === 'signed-webhook' ? {} : undefined)
