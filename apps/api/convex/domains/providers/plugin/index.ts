@@ -29,6 +29,7 @@
 
 import { internal } from '../../../_generated/api';
 import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
+import { isFreshRelayProof, loadRelayIdentityForDomain } from '../relayIdentityProof';
 import { loadPluginRelayRow } from './persistence';
 import { PLUGIN_RELAY_PROOF_MAX_AGE_MS, readPluginProviderDetails } from './state';
 import type { HostedSendTransportDomainIdentityDefinition } from '../../../plugins/sendTransportDomainIdentityCatalog';
@@ -38,51 +39,24 @@ import type { MutationCtx, QueryCtx } from '../../../_generated/server';
 import type { EnsureRelayIdentityOptions, RelayIdentityProviderModule } from '../types';
 
 /**
- * The identity row for one (domain, plugin kind), or null.
+ * THE PROOF, asked of the shared rule with this tier's bound.
  *
- * ONE indexed point read on `by_domain_provider`. Not org-leading, and that is a
- * property of the index rather than of this call — see the rationale on the index
- * itself in `schema/relayIdentities.ts`: the enqueue transaction has no session,
- * and resolving the deployment's singleton org would cost the `ctx.runQuery` this
- * path bans.
+ * `isFreshRelayProof` is where the five conditions are stated, and it is shared
+ * with Mandrill on purpose: both tiers write the same table, and a revision to
+ * what counts as proven that landed in only one of them would license a From
+ * domain at one relay that the other would refuse, with both suites green. What
+ * this tier keeps is {@link PLUGIN_RELAY_PROOF_MAX_AGE_MS}, which a plugin
+ * cannot declare, widen, or see.
  */
-async function loadIdentity(
+async function isProvenDomain(
 	ctx: QueryCtx | MutationCtx,
 	kind: string,
-	domainName: string
+	domainName: string,
+	now: number
 ): Promise<Doc<'sendingDomainRelayIdentities'> | null> {
-	return await ctx.db
-		.query('sendingDomainRelayIdentities')
-		.withIndex('by_domain_provider', (q) =>
-			q.eq('domain', domainName.toLowerCase()).eq('providerKind', kind)
-		)
-		.first();
-}
-
-/**
- * THE PROOF RULE, stated once — the read that licenses handing a customer's From
- * domain to a third party.
- *
- * `status === 'verified'` already implies the two record verdicts (the status is
- * derived from them in `./state.ts`), and they are re-asserted here anyway: the
- * status is a DERIVED column, and a row patched by a future writer that forgot
- * one of them should fail closed rather than relay.
- *
- * Age is measured from `lastCheckedAt`, which the writer advances ONLY on a call
- * that produced a verdict — a provider outage cannot extend the life of a proof
- * by being unable to re-confirm it. A negative age (a row dated in the future,
- * which only a clock problem or a hand edit produces) is refused for the same
- * reason: it would otherwise be permanently fresh.
- */
-function isProvenIdentity(identity: Doc<'sendingDomainRelayIdentities'>, now: number): boolean {
-	const age = now - identity.lastCheckedAt;
-	return (
-		identity.status === 'verified' &&
-		identity.spf?.isValid === true &&
-		identity.dkim?.isValid === true &&
-		age >= 0 &&
-		age <= PLUGIN_RELAY_PROOF_MAX_AGE_MS
-	);
+	const identity = await loadRelayIdentityForDomain(ctx, kind, domainName);
+	if (!identity || !isFreshRelayProof(identity, now, PLUGIN_RELAY_PROOF_MAX_AGE_MS)) return null;
+	return identity;
 }
 
 /**
@@ -104,15 +78,14 @@ export function createHostedRelayIdentityProvider(
 		 * True iff `domainName` carries a fresh, complete proof at this relay: an
 		 * identity the provider itself reported verified, with BOTH published records
 		 * valid, observed no longer ago than {@link PLUGIN_RELAY_PROOF_MAX_AGE_MS} —
-		 * see {@link isProvenIdentity}, which is where that rule is stated.
+		 * see {@link isProvenDomain}, which is where that rule is asked.
 		 */
 		async relayDomainVerified(
 			ctx: QueryCtx | MutationCtx,
 			domainName: string,
 			now: number
 		): Promise<boolean> {
-			const identity = await loadIdentity(ctx, kind, domainName);
-			return identity !== null && isProvenIdentity(identity, now);
+			return (await isProvenDomain(ctx, kind, domainName, now)) !== null;
 		},
 
 		/**
@@ -139,8 +112,8 @@ export function createHostedRelayIdentityProvider(
 			domain: Doc<'domains'>,
 			now: number
 		): Promise<ReferenceAlignmentArm | null> {
-			const identity = await loadIdentity(ctx, kind, domain.domain);
-			if (!identity || !isProvenIdentity(identity, now)) return null;
+			const identity = await isProvenDomain(ctx, kind, domain.domain, now);
+			if (!identity) return null;
 			const dns = readPluginProviderDetails(identity.providerDetails);
 			if (dns.dkimSelectors.length === 0) return null;
 			return {
@@ -183,6 +156,27 @@ export function createHostedRelayIdentityProvider(
 			await ctx.scheduler.runAfter(0, internal.domains.pluginRelay.provision, {
 				kind,
 				domain: domain.domain,
+			});
+		},
+
+		/**
+		 * The due-check sweep's dispatch arm: re-ask this provider about one domain
+		 * whose row `by_next_check_due` says is due.
+		 *
+		 * DECLARED BY THE KINDS THAT KEEP ROWS IN THE SHARED TABLE, which is why it
+		 * is optional on the module and absent from SES (whose identities live in
+		 * the frozen sibling table and are refreshed by their own path). The sweep
+		 * asks the registry for it rather than branching on the kind, so a bundled
+		 * plugin transport is on the sweep the day it composes.
+		 */
+		async scheduleRelayIdentityRefresh(
+			ctx: MutationCtx,
+			delayMs: number,
+			domainName: string
+		): Promise<void> {
+			await ctx.scheduler.runAfter(delayMs, internal.domains.pluginRelay.refreshIdentity, {
+				kind,
+				domain: domainName,
 			});
 		},
 	});

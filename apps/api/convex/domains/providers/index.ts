@@ -36,6 +36,7 @@
 import { mandrillProvider } from './mandrill';
 import { mtaProvider } from './mta';
 import { createHostedRelayIdentityProvider } from './plugin';
+import { toRelayIdentityProvider } from './relaySurface';
 import { sesProvider } from './ses';
 import {
 	pluginSendTransportDomainIdentityFor,
@@ -235,7 +236,9 @@ export function providerFor<K extends SendingDomainProviderKind>(
  * check for themselves (`provider.relayDomainVerified ? … : false`). So the core
  * half of this map is byte-for-byte the set those callers already reached, and
  * our own MTA — registered above, implementing none of the three — is correctly
- * absent from it.
+ * absent from it. A HALF-IMPLEMENTED adapter throws instead of being dropped
+ * quietly; see {@link toRelayIdentityProvider} for why silence there is the
+ * dangerous direction.
  *
  * PLUGIN MEMBERSHIP IS THE CATALOG'S: one entry per bundled transport that
  * declared a `domainIdentity`, which is the same declaration that derives its
@@ -249,18 +252,8 @@ function coreRelayIdentityProviders(): readonly RelayIdentityProviderModule[] {
 	const providers: RelayIdentityProviderModule[] = [];
 	for (const kind of Object.keys(SENDING_DOMAIN_PROVIDERS) as SendingDomainProviderKind[]) {
 		const provider: SendingDomainProviderModule<SendingDomainProviderKind> = providerFor(kind);
-		const { relayDomainVerified, describeReferenceArm, ensureRelayIdentity } = provider;
-		if (!relayDomainVerified || !describeReferenceArm || !ensureRelayIdentity) continue;
-		// Bound to the adapter they came off, so a future implementation that reads
-		// `this` keeps working rather than failing one frame into an enqueue read.
-		providers.push(
-			Object.freeze({
-				kind,
-				relayDomainVerified: relayDomainVerified.bind(provider),
-				describeReferenceArm: describeReferenceArm.bind(provider),
-				ensureRelayIdentity: ensureRelayIdentity.bind(provider),
-			})
-		);
+		const relay = toRelayIdentityProvider(kind, provider);
+		if (relay) providers.push(relay);
 	}
 	return providers;
 }

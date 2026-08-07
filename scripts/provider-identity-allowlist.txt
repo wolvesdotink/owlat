@@ -74,6 +74,14 @@
 # of the two happens, a wave gate reading A1 literally will read as failed for a
 # criterion nothing in the plan can satisfy.
 #
+# WAVE 3 THEN CLEARED ONE, FROM A FAMILY WITH NO OWNING CARD, leaving 12. P3.2
+# (plugin domain identity) is the second kind the `adapter-adjacent` family below
+# predicted, and rather than adding a second literal to the due-check sweep it
+# made the sweep ask the relay-identity registry which arm to schedule — so
+# mandrillRelayMutations.ts has no kind literal left. That is what a debt line
+# being paid looks like: the entry goes, and the family's prose says which
+# prediction fired and what is still standing.
+#
 # AND 13 IS AN UNDERCOUNT BY TWO, deliberately and visibly. P1.2 introduced two
 # kind literals that this file CANNOT license, because the ratchet's own KNOWN
 # LIMIT (a named array plus a membership test, outside apps/api/convex) does not
@@ -133,14 +141,25 @@ apps/api/convex/delivery/checklistDomainValidators.ts  # restates it as a checkl
 
 # ── adapter-adjacent (owner: no piece in this plan — one kind's scheduled work moving beside it) ──
 #
-# Mandrill adapter code that cannot sit in domains/providers/mandrill/: these are
-# a scheduled action and its mutation, so the module path IS the Convex function
-# path. Both literals ask "is this row/domain mine?" of the deliberately
-# kind-agnostic sendingDomainRelayIdentities table; when a second kind wants the
-# same sweep, that question becomes the table's own dispatch.
+# Mandrill adapter code that cannot sit in domains/providers/mandrill/: this is a
+# scheduled action, so the module path IS the Convex function path. Its literals
+# ask "is this domain mine?" of the deliberately kind-agnostic
+# sendingDomainRelayIdentities table.
+#
+# THE PREDICTION IN THIS HEADER FIRED, AND WAS PAID. It used to read "when a
+# second kind wants the same sweep, that question becomes the table's own
+# dispatch", and license the mutation half (mandrillRelayMutations.ts) as well.
+# The seams plan's P3.2 brought the second kind — the bundled plugin tier — and
+# the due-check sweep now asks the relay-identity registry for the arm that
+# re-asks a row's provider (`scheduleRelayIdentityRefresh`) instead of comparing
+# the kind, so that entry is gone and a third kind adds no line to it. What is
+# left is one file and one question: the sweep's MUTATION half still lives in a
+# Mandrill-named module, which is a name rather than a coupling (nothing in it
+# knows a provider), and moving it would rename a cron'd scheduled function.
+# The remaining entry below is the ACTION half, whose literals are Mandrill's own
+# provisioning path.
 
 apps/api/convex/domains/mandrillRelay.ts  # the scheduled provisioning sweep
-apps/api/convex/domains/mandrillRelayMutations.ts  # its mutation half
 
 
 # ── provider-shaped-ui — CLEARED by P1.2 (the UI renders descriptors, D5) ─────

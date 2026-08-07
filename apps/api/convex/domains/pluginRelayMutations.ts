@@ -22,8 +22,12 @@ import {
 	schedulePluginRelayRetry,
 	upsertPluginRelayIdentity,
 } from './providers/plugin/persistence';
+import {
+	PLUGIN_DENIED_RETRY_MS,
+	PLUGIN_UNAVAILABLE_RETRY_MS,
+	type PluginRelayObservation,
+} from './providers/plugin/state';
 import { internalMutation } from '../_generated/server';
-import type { PluginRelayObservation } from './providers/plugin/state';
 
 const recordVerdictValidator = v.object({
 	isValid: v.boolean(),
@@ -91,6 +95,32 @@ export const recordCheckFailure = internalMutation({
 			await markPluginRelayIdentityFailed(ctx, args.kind, args.domain, args.error, now);
 			return;
 		}
-		await schedulePluginRelayRetry(ctx, args.kind, args.domain, now);
+		await schedulePluginRelayRetry(ctx, args.kind, args.domain, now, PLUGIN_UNAVAILABLE_RETRY_MS);
+	},
+});
+
+/**
+ * Move the retry for a call the host REFUSED TO MAKE — the plugin's flag is off,
+ * its `send:transport` grant was revoked, or a variable its flag requires is
+ * unset.
+ *
+ * WITHOUT THIS THE SWEEP NEVER STOPS. `nextCheckDueAt` is what takes a row out of
+ * the due set, so a denial that wrote nothing would leave every row of a disabled
+ * plugin permanently due: one scheduled action and one `access_denied` audit row
+ * per row per tick, for as long as the operator leaves the plugin off — which is
+ * a state they deliberately chose. Every other non-answer on this path already
+ * moves the retry and only the retry; this is the one that was missing.
+ *
+ * IT IS STILL NOT EVIDENCE. It routes to the same write as an outage, so
+ * `lastCheckedAt`, the verdicts and the status are untouched and the proof ages
+ * out exactly on schedule. A revoked grant must not be able to keep a stale proof
+ * alive, and must not be able to condemn a credential nobody rejected. The delay
+ * is the slower {@link PLUGIN_DENIED_RETRY_MS} because a denial is a decision
+ * rather than an outage.
+ */
+export const deferDeniedCheck = internalMutation({
+	args: { kind: v.string(), domain: v.string() },
+	handler: async (ctx, args) => {
+		await schedulePluginRelayRetry(ctx, args.kind, args.domain, Date.now(), PLUGIN_DENIED_RETRY_MS);
 	},
 });

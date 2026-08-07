@@ -252,6 +252,17 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	verificationStatusFields?(check: ProviderCheckResult): ProviderVerificationStatusFields;
 
 	// ── Relay-domain verification (runs inside queries/mutations) ─────────
+	//
+	// THE NEXT THREE ARE ALL-OR-NOTHING. Each is optional because most kinds
+	// answer none of them, but the relay-identity registry
+	// (`relayIdentityProviderFor` in ./index.ts) is composed from adapters that
+	// implement ALL THREE, and one implementing a subset would be dropped from it
+	// entirely: registered, compiling clean, and silently never backfilled, with
+	// the only symptom a relay refusing From domains once the deliverability
+	// fallback opened. So a partial implementation THROWS at composition time
+	// rather than registering half a relay. The three are one promise, not three —
+	// a proof nothing provisions is always false, a backfill nothing reads is dead
+	// work, and an arm without a proof describes DNS the router may not use.
 
 	/**
 	 * Does this provider hold a fresh, complete proof that `domainName` may be
@@ -357,6 +368,29 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 		options: EnsureRelayIdentityOptions
 	): Promise<void>;
 
+	/**
+	 * The due-check sweep's dispatch arm: re-ask this provider about ONE domain
+	 * whose `sendingDomainRelayIdentities` row is due for a re-check, by
+	 * scheduling the action that makes the call.
+	 *
+	 * SEPARATE FROM THE THREE ABOVE, and separately optional, because it asks a
+	 * different question: not "can this kind prove a domain?" but "does this kind
+	 * keep its rows in the SHARED table, whose deployment-wide due index is what
+	 * the sweep walks?". SES proves domains and is absent here — its identities
+	 * live in the frozen `sendingDomainSesIdentities` sibling with a refresh path
+	 * of their own.
+	 *
+	 * Implementations SCHEDULE rather than call: the sweep is a mutation walking a
+	 * page of due rows, and a provider conversation cannot happen inside it. The
+	 * delay is the sweep's stagger, so one tick does not fire a page of provider
+	 * calls at once.
+	 */
+	scheduleRelayIdentityRefresh?(
+		ctx: MutationCtx,
+		delayMs: number,
+		domainName: string
+	): Promise<void>;
+
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 
 	/**
@@ -459,5 +493,21 @@ export interface RelayIdentityProviderModule {
 		ctx: MutationCtx,
 		domain: Doc<'domains'>,
 		options: EnsureRelayIdentityOptions
+	): Promise<void>;
+	/**
+	 * OPTIONAL where the three above are required, and for the reason spelled out
+	 * on {@link SendingDomainProviderModule.scheduleRelayIdentityRefresh}: proving
+	 * a domain and keeping rows in the shared `sendingDomainRelayIdentities` table
+	 * are different facts, and SES has the first without the second.
+	 *
+	 * This is what makes the due-check sweep the TABLE's dispatch rather than a
+	 * chain of kind literals: it asks the registry for the arm and schedules
+	 * whatever it gets back, so a bundled plugin transport joins the sweep on the
+	 * day it composes and a third kind adds no line to it.
+	 */
+	scheduleRelayIdentityRefresh?(
+		ctx: MutationCtx,
+		delayMs: number,
+		domainName: string
 	): Promise<void>;
 }

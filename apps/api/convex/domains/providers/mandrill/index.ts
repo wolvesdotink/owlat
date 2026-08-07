@@ -143,6 +143,21 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	},
 
 	/**
+	 * The due-check sweep's dispatch arm for this kind — re-ask Mandrill about one
+	 * domain whose row `by_next_check_due` says is due.
+	 *
+	 * Registered rather than branched on: the sweep walks a table shared by every
+	 * relay kind after SES, and it asks the registry which action to schedule. That
+	 * is what stops the second kind to want the sweep (the bundled plugin tier)
+	 * from being a second `providerKind === '…'` line in it.
+	 */
+	async scheduleRelayIdentityRefresh(ctx, delayMs, domainName) {
+		await ctx.scheduler.runAfter(delayMs, internal.domains.mandrillRelay.refreshIdentity, {
+			domain: domainName,
+		});
+	},
+
+	/**
 	 * Persist the identity the lifecycle just registered. The `domainId` is
 	 * resolved to the domain NAME the generic table keys on; a domain row that
 	 * vanished mid-flight writes nothing rather than an orphan keyed on ''.

@@ -30,7 +30,9 @@ import {
 	relayIdentityProviderFor,
 	type RelayProvingProviderModule,
 	type SendingDomainProviderKind,
+	type SendingDomainProviderModule,
 } from '../index';
+import { toRelayIdentityProvider } from '../relaySurface';
 import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
 	SEND_PROVIDER_CATALOG,
@@ -257,6 +259,64 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 			}
 		}
 	);
+
+	/**
+	 * THE ALL-OR-NOTHING RULE FOR THE THREE SEAMS, at the seam that enforces it.
+	 *
+	 * Core membership of the relay-identity registry is STRUCTURAL — an adapter
+	 * joins iff it implements all three — which quietly narrows what a partial
+	 * adapter can reach: before the registry, each caller asked its own question
+	 * (`relayIdentityBackfills` needed only `ensureRelayIdentity`). The type-level
+	 * guard does not close that gap, because `RelayProvingProviderModule` is only
+	 * required for kinds whose catalog entry says `domainVerification: 'api'`; a
+	 * kind declaring `none` that implemented one seam would compile clean and then
+	 * silently never be backfilled, surfacing as a relay refusing From domains once
+	 * the deliverability fallback opened.
+	 *
+	 * So the composition REFUSES it instead of dropping it. These cases are why
+	 * `toRelayIdentityProvider` is its own function: the failing shape cannot be
+	 * constructed through the module-scope registry at all.
+	 */
+	describe('toRelayIdentityProvider', () => {
+		const seam = async (): Promise<never> => {
+			throw new Error('not called');
+		};
+		const base = {
+			kind: 'mta',
+		} as unknown as SendingDomainProviderModule<SendingDomainProviderKind>;
+
+		it('answers null for an adapter that implements none of the three', () => {
+			// Our own MTA: never a fallback relay, verified on the ordinary DNS path.
+			// Absence is an honest answer, not a gap.
+			expect(toRelayIdentityProvider('mta', base)).toBeNull();
+			expect(relayIdentityProviderFor('mta')).toBeUndefined();
+		});
+
+		it.each([['relayDomainVerified'], ['describeReferenceArm'], ['ensureRelayIdentity']] as const)(
+			'refuses an adapter that implements only %s',
+			(method) => {
+				const partial = {
+					...base,
+					[method]: seam,
+				} as SendingDomainProviderModule<SendingDomainProviderKind>;
+				// Naming the kind AND the count: the message is read by whoever added the
+				// adapter, at deploy time, with no other signal that anything is wrong.
+				expect(() => toRelayIdentityProvider('mta', partial)).toThrow(
+					/'mta' implements 1 of the three relay seams/
+				);
+			}
+		);
+
+		it('carries the optional sweep arm only for the kinds that declare it', () => {
+			// A fourth, separately optional seam, and the distinction is real: it says
+			// "this kind keeps its rows in the shared table", which SES proves domains
+			// without doing (its identities live in the frozen sibling).
+			expect(typeof relayIdentityProviderFor('mandrill')?.scheduleRelayIdentityRefresh).toBe(
+				'function'
+			);
+			expect(relayIdentityProviderFor('ses')?.scheduleRelayIdentityRefresh).toBeUndefined();
+		});
+	});
 
 	/**
 	 * THE COMPILE-TIME HALF, pinned from both sides.

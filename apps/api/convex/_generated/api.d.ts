@@ -415,6 +415,9 @@ import type * as domains_providers_plugin_index from '../domains/providers/plugi
 import type * as domains_providers_plugin_persistence from '../domains/providers/plugin/persistence.js';
 import type * as domains_providers_plugin_state from '../domains/providers/plugin/state.js';
 import type * as domains_providers_registerAction from '../domains/providers/registerAction.js';
+import type * as domains_providers_relayIdentityPersistence from '../domains/providers/relayIdentityPersistence.js';
+import type * as domains_providers_relayIdentityProof from '../domains/providers/relayIdentityProof.js';
+import type * as domains_providers_relaySurface from '../domains/providers/relaySurface.js';
 import type * as domains_providers_ses_index from '../domains/providers/ses/index.js';
 import type * as domains_providers_ses_mailFrom from '../domains/providers/ses/mailFrom.js';
 import type * as domains_providers_ses_referenceArm from '../domains/providers/ses/referenceArm.js';
@@ -1361,6 +1364,9 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/plugin/persistence': typeof domains_providers_plugin_persistence;
 	'domains/providers/plugin/state': typeof domains_providers_plugin_state;
 	'domains/providers/registerAction': typeof domains_providers_registerAction;
+	'domains/providers/relayIdentityPersistence': typeof domains_providers_relayIdentityPersistence;
+	'domains/providers/relayIdentityProof': typeof domains_providers_relayIdentityProof;
+	'domains/providers/relaySurface': typeof domains_providers_relaySurface;
 	'domains/providers/ses/index': typeof domains_providers_ses_index;
 	'domains/providers/ses/mailFrom': typeof domains_providers_ses_mailFrom;
 	'domains/providers/ses/referenceArm': typeof domains_providers_ses_referenceArm;

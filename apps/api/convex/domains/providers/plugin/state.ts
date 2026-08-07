@@ -20,6 +20,7 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
+import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import type { RelayIdentityStatus } from '../types';
 
 /**
@@ -32,11 +33,19 @@ import type { RelayIdentityStatus } from '../types';
  * ago", so the only thing that ever retires a stale proof is its age. A
  * declarable window would be a declarable weakening of exactly that.
  *
- * Seven days, matching `MANDRILL_RELAY_PROOF_MAX_AGE_MS` — the re-check cadence
- * below keeps a live proof far inside it, so the bound only ever bites when the
- * sweep has been unable to confirm for a week.
+ * DEFINED AS `MANDRILL_RELAY_PROOF_MAX_AGE_MS` rather than as a second seven
+ * days that a comment claims matches it: this tier's evidence is renewed the
+ * same way Mandrill's is (one HTTP call a daily sweep repeats), so the argument
+ * for that bound — written out where the constant lives — is the argument for
+ * this one, and a future incident that shortens one has no case for leaving the
+ * other. It stays a NAMED constant of this tier because the readers here are
+ * about the plugin proof, and because a tier that ever earns a different bound
+ * changes this line rather than every call site.
+ *
+ * The re-check cadence below keeps a live proof far inside it, so the bound only
+ * ever bites when the sweep has been unable to confirm for a week.
  */
-export const PLUGIN_RELAY_PROOF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const PLUGIN_RELAY_PROOF_MAX_AGE_MS = MANDRILL_RELAY_PROOF_MAX_AGE_MS;
 
 /**
  * The re-check cadence, by the state we last observed — the same shape and the
@@ -61,6 +70,22 @@ export const PLUGIN_CHECK_INTERVAL_MS = {
  * to wait for, only an outage to ride out.
  */
 export const PLUGIN_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
+
+/**
+ * Retry delay after a call the host REFUSED TO MAKE because the contribution is
+ * not authorized right now — the plugin's flag is off, its `send:transport`
+ * grant was revoked, or a variable its flag requires is unset.
+ *
+ * ITS OWN CONSTANT, AND DELIBERATELY THE SLOWEST ONE. A denial is not an
+ * outage: it is a steady state an operator chose, and it clears only when they
+ * choose otherwise. Riding it out at the unavailable cadence would schedule an
+ * action and write an `access_denied` audit row every fifteen minutes, per
+ * domain, indefinitely — an operator who turned a relay off would watch their
+ * audit log fill with the consequence of having done so. The `failed` cadence is
+ * the right neighbour: both mean "someone has to change something", and asking
+ * again is only ever how we notice that they did.
+ */
+export const PLUGIN_DENIED_RETRY_MS = PLUGIN_CHECK_INTERVAL_MS.failed;
 
 /** One record verdict, as the host keeps it. */
 export type PluginRecordVerdict = {
@@ -112,7 +137,12 @@ export function parsePluginRelayResult(input: unknown): PluginRelayCallOutcome {
 	const outcome = input['outcome'];
 	if (outcome === 'auth_failed' || outcome === 'unavailable') {
 		const error = boundedText(input['error']) ?? 'no detail reported';
-		return outcome === 'auth_failed' ? { outcome, error } : { outcome, error };
+		// The literals are written out rather than passed through as `outcome`: the
+		// union does not distribute over a widened `'auth_failed' | 'unavailable'`,
+		// so an object built from the variable is assignable to neither member.
+		return outcome === 'auth_failed'
+			? { outcome: 'auth_failed', error }
+			: { outcome: 'unavailable', error };
 	}
 	if (outcome !== 'ok') return unavailable('identity module returned an unknown outcome');
 	const state = input['state'];
@@ -163,6 +193,34 @@ export function buildPluginProviderDetails(
 		kind: 'plugin',
 		dkimSelectors: observation.dkimSelectors,
 		spfMechanisms: observation.spfMechanisms,
+	};
+}
+
+/**
+ * The blob a FAILED call stores: what the last successful observation recorded,
+ * plus the reason this one could not produce a verdict.
+ *
+ * TYPED, and that is the whole point of it existing beside
+ * {@link buildPluginProviderDetails} rather than being an object literal at the
+ * write site. `lastError` is declared on {@link PluginRelayProviderDetails} and
+ * read by nothing else, so a literal writer would keep emitting the old key
+ * after a rename with nothing to catch it — and the operator-facing reason a
+ * credential was rejected would quietly stop being stored.
+ *
+ * The DNS facts are CARRIED FORWARD deliberately: they describe what the
+ * provider signs this domain under, which a rejected key says nothing about, and
+ * the alignment pre-flight still needs them to describe the second arm.
+ */
+export function buildFailedPluginProviderDetails(
+	stored: string | undefined,
+	error: string
+): PluginRelayProviderDetails {
+	const previous = readPluginProviderDetails(stored);
+	return {
+		kind: 'plugin',
+		dkimSelectors: previous.dkimSelectors,
+		spfMechanisms: previous.spfMechanisms,
+		lastError: error,
 	};
 }
 

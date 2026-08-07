@@ -10,7 +10,9 @@
  *  - the row is written under `providerKind: 'plugin.<id>.<local>'`, in the
  *    generic table, with no schema change and no column of its own;
  *  - a revoked grant makes no provider call at all — turning a plugin off has to
- *    stop it spending this deployment's credential at a third party;
+ *    stop it spending this deployment's credential at a third party — while still
+ *    moving the retry, or the hourly sweep would re-ask a disabled plugin's rows
+ *    forever;
  *  - an unset credential, a module that throws, and a provider outage each write
  *    NOTHING that could be mistaken for evidence: `lastCheckedAt` is what the
  *    proof's age is measured from, so a failure path that advanced it would keep
@@ -102,7 +104,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 const schema = (await import('../../schema')).default;
 const { modules } = await import('../../__tests__/testModules');
 const { internal } = await import('../../_generated/api');
-const { PLUGIN_CHECK_INTERVAL_MS, PLUGIN_UNAVAILABLE_RETRY_MS } =
+const { PLUGIN_CHECK_INTERVAL_MS, PLUGIN_DENIED_RETRY_MS, PLUGIN_UNAVAILABLE_RETRY_MS } =
 	await import('../providers/plugin/state');
 
 type TestConvex = ReturnType<typeof convexTest>;
@@ -265,6 +267,46 @@ describe('every failure path refuses to look like evidence', () => {
 		expect(await rows(t)).toEqual([]);
 	});
 
+	it('takes a denied row OUT of the due set instead of re-asking it forever', async () => {
+		// THE SWEEP HAS TO TERMINATE. `nextCheckDueAt` is the only thing that takes
+		// a row out of `by_next_check_due`, so a denial that wrote nothing would
+		// leave every row of a disabled plugin permanently due: one scheduled action
+		// and one `access_denied` audit row per row, every tick, for as long as the
+		// operator leaves the plugin off — a state they deliberately chose.
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		const before = (await rows(t))[0]!;
+
+		authorizeMock.mockResolvedValue(false);
+		const result = await t.action(internal.domains.pluginRelay.refreshIdentity, {
+			kind: KIND,
+			domain: DOMAIN,
+		});
+
+		expect(result).toEqual({ outcome: 'denied' });
+		expect(checkDomainMock).not.toHaveBeenCalled();
+		const after = (await rows(t))[0]!;
+		expect(after.nextCheckDueAt).toBeGreaterThan(Date.now());
+		expect(after.nextCheckDueAt).toBeLessThanOrEqual(Date.now() + PLUGIN_DENIED_RETRY_MS);
+		// AND IT IS STILL NOT EVIDENCE. A revoked grant is not a check: it may not
+		// refresh the proof's age, may not touch the verdicts, and may not condemn a
+		// credential nobody rejected.
+		expect({
+			status: after.status,
+			spf: after.spf,
+			dkim: after.dkim,
+			lastCheckedAt: after.lastCheckedAt,
+			providerDetails: after.providerDetails,
+		}).toEqual({
+			status: 'verified',
+			spf: before.spf,
+			dkim: before.dkim,
+			lastCheckedAt: before.lastCheckedAt,
+			providerDetails: before.providerDetails,
+		});
+	});
+
 	it('makes no provider call when a required credential is unset', async () => {
 		const t = convexTest(schema, modules);
 		vi.stubEnv('PLUGIN_POSTMARK_TOKEN', '');
@@ -330,7 +372,15 @@ describe('every failure path refuses to look like evidence', () => {
 			dkim: before.dkim,
 		});
 		expect(after.lastCheckedAt).toBe(before.lastCheckedAt);
-		expect(JSON.parse(after.providerDetails!)).toMatchObject({ lastError: 'invalid token' });
+		// The reason is stored, and the DNS facts the last real observation recorded
+		// survive it: a rejected key says nothing about what the provider signs this
+		// domain under, and the alignment pre-flight still needs them.
+		expect(JSON.parse(after.providerDetails!)).toEqual({
+			kind: 'plugin',
+			dkimSelectors: ['pm-bounces'],
+			spfMechanisms: ['include:spf.postmarkapp.example'],
+			lastError: 'invalid token',
+		});
 	});
 
 	it('reads an unparsable module answer as an outage', async () => {

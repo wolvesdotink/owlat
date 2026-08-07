@@ -25,11 +25,14 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
 import {
+	buildFailedPluginProviderDetails,
 	buildPluginProviderDetails,
 	nextPluginCheckDueAt,
 	parsePluginRelayResult,
 	PLUGIN_CHECK_INTERVAL_MS,
+	PLUGIN_DENIED_RETRY_MS,
 	PLUGIN_RELAY_PROOF_MAX_AGE_MS,
+	PLUGIN_UNAVAILABLE_RETRY_MS,
 	readPluginProviderDetails,
 } from '../state';
 
@@ -207,5 +210,44 @@ describe('the re-check cadence keeps a live proof inside the freshness bound', (
 		// Re-asking hard would hammer a provider's auth surface with a key it has
 		// rejected; the fix is an operator action, not a retry.
 		expect(PLUGIN_CHECK_INTERVAL_MS.failed).toBeGreaterThan(PLUGIN_CHECK_INTERVAL_MS.pending_dns);
+	});
+
+	it('waits out a denial far longer than an outage', () => {
+		// A denial is a decision, not a moment: the plugin is off, or its grant is
+		// revoked, and it clears when an operator says so. Riding that out at the
+		// outage cadence would schedule an action and write an audit row every
+		// fifteen minutes per domain for as long as the operator leaves it off.
+		expect(PLUGIN_DENIED_RETRY_MS).toBeGreaterThan(PLUGIN_UNAVAILABLE_RETRY_MS);
+	});
+});
+
+describe('a failure blob carries its reason without discarding the DNS facts', () => {
+	it('keeps what the last observation recorded, and adds the reason', () => {
+		// The selectors describe what the provider signs this domain under, which a
+		// rejected credential says nothing about — and the alignment pre-flight still
+		// resolves them to describe the second arm.
+		const observation = parsePluginRelayResult(ok());
+		const stored = JSON.stringify(
+			buildPluginProviderDetails(
+				(observation as { observation: Parameters<typeof buildPluginProviderDetails>[0] })
+					.observation
+			)
+		);
+
+		expect(buildFailedPluginProviderDetails(stored, 'invalid token')).toEqual({
+			kind: 'plugin',
+			dkimSelectors: ['pm-bounces'],
+			spfMechanisms: ['include:spf.example.net'],
+			lastError: 'invalid token',
+		});
+	});
+
+	it('is still a complete, typed blob when there was nothing stored to keep', () => {
+		expect(buildFailedPluginProviderDetails(undefined, 'no key')).toEqual({
+			kind: 'plugin',
+			dkimSelectors: [],
+			spfMechanisms: [],
+			lastError: 'no key',
+		});
 	});
 });

@@ -78,6 +78,12 @@ export const refreshIdentity = internalAction({
  * none of them may look like a verdict: the row's `lastCheckedAt` is what the
  * relay proof's age is measured from, so a path that refreshed it without an
  * observation would keep a stale proof alive by failing.
+ *
+ * AND EVERY GATE THAT CAN BE REACHED FROM THE SWEEP WRITES THAT RETRY. A gate
+ * that returned without moving `nextCheckDueAt` would leave the row permanently
+ * due, and the hourly sweep would re-schedule it forever. The one exception is an
+ * unregistered kind, which the sweep cannot reach: it has no dispatch arm in the
+ * registry, so its rows are skipped before anything is scheduled.
  */
 async function runIdentityCall(
 	ctx: ActionCtx,
@@ -100,7 +106,16 @@ async function runIdentityCall(
 		internal.plugins.sendTransportDomainIdentityAuthorization.authorizeIdentityCall,
 		{ pluginId: definition.pluginId, transportKind: kind }
 	);
-	if (!isAuthorized) return 'denied';
+	if (!isAuthorized) {
+		// THE RETRY STILL MOVES, or the sweep never stops: `nextCheckDueAt` is what
+		// takes a row out of the due set, and a plugin left disabled is a steady
+		// state rather than a moment. Nothing else is written — see the mutation.
+		await ctx.runMutation(internal.domains.pluginRelayMutations.deferDeniedCheck, {
+			kind,
+			domain,
+		});
+		return 'denied';
+	}
 
 	const config = resolveIdentityConfig(definition.instanceEnvVars, definition.requiredEnvVars);
 	if (!config) {

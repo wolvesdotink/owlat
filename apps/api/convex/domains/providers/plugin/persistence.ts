@@ -1,24 +1,33 @@
 /**
- * The plugin relay identity row — every write of it, in one place.
+ * The plugin relay identity row — this tier's three writes, each one a call to
+ * the shared write rules with the two things a tier owns filled in.
  *
- * The same file, for the same reason, as `../mandrill/persistence.ts`: the WRITE
- * RULES (what a failed call may overwrite, and what it may not) are pinned in one
- * readable place rather than spread across an adapter method and a mutation
- * handler. One difference from Mandrill's, and it is the whole tier's difference:
- * every function here takes the PROVIDER KIND, because there is one
- * implementation for every bundled plugin identity rather than one per provider.
+ * THE RULES THEMSELVES LIVE IN `../relayIdentityPersistence.ts` (what a failed
+ * call may overwrite, what an outage may not, why `lastCheckedAt` dates the
+ * evidence rather than the write), because Mandrill obeys exactly the same ones
+ * against exactly the same table and a second copy of them is a second copy that
+ * can drift. What is stated HERE is only what is true of this tier: its cadence
+ * table and its `providerDetails` blob.
+ *
+ * One difference from every core adapter, and it is the whole tier's difference:
+ * every function takes the PROVIDER KIND, because there is one implementation
+ * for every bundled plugin identity rather than one per provider.
  *
  * Rows live in the generic `sendingDomainRelayIdentities` table under
  * `providerKind: 'plugin.<id>.<local>'` — a plain string field, additive, no
  * schema change (D10: rows, not columns).
  */
 
-import { CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION } from '../../../lib/constants';
-import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
 import {
+	loadRelayIdentityRow,
+	markRelayIdentityFailed,
+	scheduleRelayIdentityRetry,
+	upsertRelayIdentityRow,
+} from '../relayIdentityPersistence';
+import {
+	buildFailedPluginProviderDetails,
 	buildPluginProviderDetails,
 	nextPluginCheckDueAt,
-	PLUGIN_UNAVAILABLE_RETRY_MS,
 	type PluginRelayObservation,
 } from './state';
 import type { Doc } from '../../../_generated/dataModel';
@@ -27,10 +36,10 @@ import type { MutationCtx } from '../../../_generated/server';
 /**
  * The row for one (organization, domain, plugin kind).
  *
- * Keyed by domain NAME rather than by `domainId`, because that is how the generic
- * table is keyed: a relay identity can exist for a domain whose primary `domains`
- * row belongs to another provider entirely, and the enqueue-path proof looks it
- * up by envelope From domain with no id in hand.
+ * Keyed by domain NAME rather than by `domainId`, because that is how the
+ * generic table is keyed: a relay identity can exist for a domain whose primary
+ * `domains` row belongs to another provider entirely, and the enqueue-path proof
+ * looks it up by envelope From domain with no id in hand.
  */
 export async function loadPluginRelayRow(
 	ctx: MutationCtx,
@@ -38,24 +47,10 @@ export async function loadPluginRelayRow(
 	kind: string,
 	domain: string
 ): Promise<Doc<'sendingDomainRelayIdentities'> | null> {
-	return await ctx.db
-		.query('sendingDomainRelayIdentities')
-		.withIndex('by_org_domain_provider', (q) =>
-			q.eq('organizationId', organizationId).eq('domain', domain).eq('providerKind', kind)
-		)
-		.first();
+	return await loadRelayIdentityRow(ctx, organizationId, kind, domain);
 }
 
-/**
- * Upsert one OBSERVED identity. Application-enforces the one-row-per
- * (org, domain, kind) invariant, exactly as every other writer of this table does
- * for its own key.
- *
- * `lastCheckedAt` comes from the time the OBSERVATION was made, not from the
- * write: it dates the EVIDENCE, and the relay proof's freshness bound reads it.
- * Stamping the write time would let a row written long after the call it
- * describes look fresher than the fact it holds.
- */
+/** Upsert one OBSERVED identity, under this tier's cadence and blob. */
 export async function upsertPluginRelayIdentity(
 	ctx: MutationCtx,
 	kind: string,
@@ -63,46 +58,25 @@ export async function upsertPluginRelayIdentity(
 	observation: PluginRelayObservation,
 	checkedAt: number
 ): Promise<void> {
-	const organizationId = await getSingletonOrganizationId(ctx);
-	const domain = domainName.toLowerCase();
-	const existing = await loadPluginRelayRow(ctx, organizationId, kind, domain);
-	const now = Date.now();
-	const fields = {
+	await upsertRelayIdentityRow(ctx, {
+		kind,
+		domain: domainName,
 		status: observation.status,
 		spf: observation.spf,
 		dkim: observation.dkim,
 		providerDetails: JSON.stringify(buildPluginProviderDetails(observation)),
-		providerDetailsVersion: CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION,
-		lastCheckedAt: checkedAt,
+		checkedAt,
 		nextCheckDueAt: nextPluginCheckDueAt(observation.status, checkedAt),
-		updatedAt: now,
-	};
-	if (existing) {
-		await ctx.db.patch(existing._id, fields);
-		return;
-	}
-	await ctx.db.insert('sendingDomainRelayIdentities', {
-		organizationId,
-		domain,
-		providerKind: kind,
-		...fields,
-		createdAt: now,
 	});
 }
 
 /**
  * A credential the provider rejected (or one this deployment does not have).
  *
- * `failed` is written, and the SPF/DKIM verdicts are left EXACTLY as they were: a
- * bad API key is not evidence that the operator's DNS stopped being valid, and
- * overwriting the verdicts would make the domain screen tell them to republish
- * records that are fine. `lastCheckedAt` is not advanced either — nothing was
- * checked — so the relay proof ages out on schedule instead of being kept alive
- * by failures.
- *
- * No row of its own is created when none exists: a deployment with no identity at
- * this relay and a bad key has nothing to say about a domain, and inventing a
- * `failed` row would put a red state on a domain nobody ever connected.
+ * The reason is merged into a TYPED blob rather than an object literal, so
+ * `lastError` has one declaration and one writer — renaming the field on
+ * `PluginRelayProviderDetails` then breaks the write instead of silently leaving
+ * it emitting the old key.
  */
 export async function markPluginRelayIdentityFailed(
 	ctx: MutationCtx,
@@ -111,51 +85,36 @@ export async function markPluginRelayIdentityFailed(
 	error: string,
 	now: number
 ): Promise<void> {
-	const organizationId = await getSingletonOrganizationId(ctx);
-	const existing = await loadPluginRelayRow(ctx, organizationId, kind, domainName.toLowerCase());
-	if (!existing) return;
-	await ctx.db.patch(existing._id, {
-		status: 'failed',
-		providerDetails: JSON.stringify({
-			...(existing.providerDetails ? safeParse(existing.providerDetails) : {}),
-			kind: 'plugin',
-			lastError: error,
-		}),
-		providerDetailsVersion: CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION,
+	await markRelayIdentityFailed(ctx, {
+		kind,
+		domain: domainName,
+		now,
 		nextCheckDueAt: nextPluginCheckDueAt('failed', now),
-		updatedAt: now,
+		buildProviderDetails: (stored) =>
+			JSON.stringify(buildFailedPluginProviderDetails(stored, error)),
 	});
 }
 
 /**
- * The provider did not answer (or the module threw). The identity is left
- * UNTOUCHED except for when to ask again — an outage is evidence of nothing, and
- * in particular it must not refresh `lastCheckedAt`, or a long enough outage
- * would keep a stale proof alive forever by never being able to confirm it.
+ * The call produced no answer — an outage, a module that threw, a shape we could
+ * not read, or a contribution that is no longer authorized to be called at all.
+ *
+ * `retryDelayMs` is the CALLER's because the non-answers differ in how long they
+ * are worth waiting out: an outage is transient (`PLUGIN_UNAVAILABLE_RETRY_MS`),
+ * a revoked grant is a state an operator chose and will not leave on its own
+ * (`PLUGIN_DENIED_RETRY_MS`). Neither writes anything but the retry.
  */
 export async function schedulePluginRelayRetry(
 	ctx: MutationCtx,
 	kind: string,
 	domainName: string,
-	now: number
+	now: number,
+	retryDelayMs: number
 ): Promise<void> {
-	const organizationId = await getSingletonOrganizationId(ctx);
-	const existing = await loadPluginRelayRow(ctx, organizationId, kind, domainName.toLowerCase());
-	if (!existing) return;
-	await ctx.db.patch(existing._id, {
-		nextCheckDueAt: now + PLUGIN_UNAVAILABLE_RETRY_MS,
-		updatedAt: now,
+	await scheduleRelayIdentityRetry(ctx, {
+		kind,
+		domain: domainName,
+		now,
+		nextCheckDueAt: now + retryDelayMs,
 	});
-}
-
-/** Best-effort read of a stored blob for the merge above; `{}` on anything odd. */
-function safeParse(raw: string): Record<string, unknown> {
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
-	} catch {
-		return {};
-	}
 }
