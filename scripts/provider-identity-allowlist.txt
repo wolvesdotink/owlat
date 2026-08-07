@@ -54,11 +54,13 @@
 # them would trip the stale-entry check and turn the gate red). And FOUR of the
 # families below carry no owning card in this plan: `return-path` (2 entries,
 # waiting on the capability reaching SendingDomainProviderModule),
-# `adapter-adjacent` (2 entries, waiting on the relay-identity sweep becoming the
-# table's own dispatch), `provider-shaped-ui-followup` (4 entries, waiting on the
-# wizard-descriptor follow-up after P1.2) and `credentials-and-probes` (6
-# entries, the CLI/endpoint half of the descriptor rollout — see that family's
-# own header for why P1.1 was the wrong owner for it).
+# `adapter-adjacent` (1 entry, the Mandrill provisioning action's own literals —
+# the sweep prediction fired in P3.2, see below), `provider-shaped-ui-followup`
+# (3 entries, waiting on the wizard-descriptor follow-up after P1.2 — this said
+# 4 until P1.2 took `TransportCredentialsStep.vue` out of it) and
+# `credentials-and-probes` (6 entries, the CLI/endpoint half of the descriptor
+# rollout — see that family's own header for why P1.1 was the wrong owner for
+# it). 2 + 1 + 3 + 6 = 12, which is what the ratchet reports.
 #
 # THE ARITHMETIC, kept current because a prediction nobody updates is worse than
 # none. P0.5 opened this file at 26. P1.1 cleared 8 — the whole
@@ -82,14 +84,14 @@
 # being paid looks like: the entry goes, and the family's prose says which
 # prediction fired and what is still standing.
 #
-# AND 13 IS AN UNDERCOUNT BY TWO, deliberately and visibly. P1.2 introduced two
+# AND 12 IS AN UNDERCOUNT BY TWO, deliberately and visibly. P1.2 introduced two
 # kind literals that this file CANNOT license, because the ratchet's own KNOWN
 # LIMIT (a named array plus a membership test, outside apps/api/convex) does not
 # see them and an entry that excuses nothing fails the gate: the answering sets
 # in `RelayDomainStatus.vue` and `apps/web/app/utils/providerFeedbackPanel.ts`.
 # Both exist because a UI gate cannot be more general than the per-vendor BACKEND
 # READ behind it, both are argued in their own family below, and both are retired
-# by a named backend change rather than by a UI edit. Read the 13 as "13 licensed
+# by a named backend change rather than by a UI edit. Read the 12 as "12 licensed
 # entries plus these two, all with owners".
 #
 # ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
@@ -99,8 +101,10 @@
 # covers the CLI prompts, the config writer, the two validate endpoints or
 # setupValidators.ts. That is an honest correction, but it is also a PLAN-LEVEL
 # ownership change made inside a build piece, and its arithmetic consequence is
-# above: Wave 1 now ends at 14 allowlisted entries rather than the 8 P0.5
-# predicted. The ask is one of two things, at the gate rather than at A1:
+# above: Wave 1 ended at 13 allowlisted entries rather than the 8 P0.5 predicted
+# (P1.1 wrote 14 here, before its own follow-up family lost
+# `TransportCredentialsStep.vue` to P1.2). The ask is one of two things, at the
+# gate rather than at A1:
 #
 #   (a) give those 6 a card in Wave 2 — "the descriptor rollout outside
 #       apps/web" — which is the smaller of the two changes and keeps A1 as
