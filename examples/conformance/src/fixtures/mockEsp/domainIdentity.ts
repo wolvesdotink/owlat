@@ -33,8 +33,13 @@ export const MOCK_ESP_SPF_MECHANISM = 'include:spf.mock-esp.example';
 /** Domains the fixture provider has been asked to register, in call order. */
 const REGISTERED: string[] = [];
 
+/**
+ * A SNAPSHOT of them, for the reason the send half's `mockEspAttempts` returns
+ * one: `readonly` stops a caller mutating the log, not the log mutating under a
+ * caller, and a before/after comparison against the live array can never fail.
+ */
 export function mockEspRegisteredDomains(): readonly string[] {
-	return REGISTERED;
+	return [...REGISTERED];
 }
 
 export function resetMockEspRegisteredDomains(): void {

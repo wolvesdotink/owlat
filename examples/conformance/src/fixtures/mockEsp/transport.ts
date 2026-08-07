@@ -41,9 +41,18 @@ export interface MockEspAttempt {
 
 const ATTEMPTS: MockEspAttempt[] = [];
 
-/** Every attempt this fixture has made, oldest first. */
+/**
+ * Every attempt this fixture has made, oldest first — a SNAPSHOT, never the live
+ * array.
+ *
+ * `readonly` stops a caller mutating the log; it does not stop the log mutating
+ * under a caller. A case written in the natural before/after shape (`const before
+ * = mockEspAttempts()`, dispatch, compare) would otherwise be comparing one array
+ * to itself and could never fail. This fixture is the reference an author copies,
+ * so the reader hands back a copy.
+ */
 export function mockEspAttempts(): readonly MockEspAttempt[] {
-	return ATTEMPTS;
+	return [...ATTEMPTS];
 }
 
 /** Forget the recorded attempts (per-case isolation). */
