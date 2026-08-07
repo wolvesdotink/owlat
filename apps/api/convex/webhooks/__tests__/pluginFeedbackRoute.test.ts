@@ -171,6 +171,8 @@ interface ContextOptions {
 	readonly isAuthorized?: boolean;
 	readonly isClaimable?: boolean;
 	readonly isStorable?: boolean;
+	/** Whether `ctx.scheduler.runAfter` succeeds — the audit row's own failure. */
+	readonly isSchedulable?: boolean;
 }
 
 function fakeContext(options: ContextOptions = {}) {
@@ -196,6 +198,7 @@ function fakeContext(options: ContextOptions = {}) {
 		}),
 		scheduler: {
 			runAfter: vi.fn(async (_ms: number, reference: unknown, args: Record<string, unknown>) => {
+				if (options.isSchedulable === false) throw new Error('scheduler unavailable');
 				scheduled.push({ name: getFunctionName(reference as never), args });
 			}),
 		},
@@ -725,6 +728,23 @@ describe('an authentic, authorized delivery', () => {
 		await handler(ctx, webhookRequest());
 
 		expect(scheduled[0]?.args).toMatchObject({ outcome: 'failed' });
+	});
+
+	it('answers 200 when the AUDIT ROW could not even be scheduled', async () => {
+		// The audit row is scheduled rather than awaited precisely so that its
+		// failure cannot turn an applied delivery into a non-2xx the provider
+		// retries — and scheduling is itself an operation that can fail. Letting
+		// that rejection escape would undo the guarantee it exists to provide: the
+		// events are already dispatched by then, so the catch would release the
+		// replay claim and answer 400, and the provider's redelivery would find an
+		// unclaimed digest and be applied a second time.
+		const { ctx, calls } = fakeContext({ isSchedulable: false });
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+		// The claim stays taken: the delivery DID happen.
+		expect(calls.filter((name) => name.includes('pluginFeedbackDeliveries:release'))).toEqual([]);
 	});
 
 	it('does NOT retain the raw payload unless the adapter opted in', async () => {

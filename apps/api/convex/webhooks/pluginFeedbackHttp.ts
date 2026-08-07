@@ -322,6 +322,15 @@ async function applyDelivery(
  * awaited inline for the same reason the send path schedules its outcome: an
  * audit-write failure must not turn an applied delivery into a 500 the provider
  * retries.
+ *
+ * WHICH IS WHY IT NEVER THROWS, exactly as `storeRawPayload` never throws.
+ * Scheduling can itself fail (an unavailable scheduler, a scheduling limit), and
+ * the `'completed'` call happens AFTER the events are already in the delivery
+ * record: letting that rejection escape would land in `deliver`'s catch, release
+ * the replay claim and answer 400 — so the provider would redeliver bytes we had
+ * applied, against a claim we had just given back, and apply them twice. The
+ * guarantee this function's scheduling exists to provide would be undone by its
+ * own failure. A row we could not even schedule is logged and nothing else.
  */
 async function recordOutcome(
 	ctx: ActionCtx,
@@ -329,11 +338,15 @@ async function recordOutcome(
 	transportKind: string,
 	outcome: 'completed' | 'failed'
 ): Promise<void> {
-	await ctx.scheduler.runAfter(
-		0,
-		internal.plugins.sendTransportWebhookAuthorization.recordOutcome,
-		{ pluginId, transportKind, outcome }
-	);
+	try {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.plugins.sendTransportWebhookAuthorization.recordOutcome,
+			{ pluginId, transportKind, outcome }
+		);
+	} catch (error) {
+		logError(`[${transportKind} Webhook] Failed to schedule the ${outcome} audit row:`, error);
+	}
 }
 
 async function releaseClaim(ctx: ActionCtx, deliveryDigest: string): Promise<void> {
