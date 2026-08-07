@@ -117,8 +117,24 @@ export interface PluginDomainIdentityState {
 	readonly dkimSelectors: readonly string[];
 	/**
 	 * The SPF mechanisms the domain must authorise for this provider (e.g.
-	 * `include:spf.example.net`), same reasoning and same consumer as
-	 * {@link dkimSelectors}.
+	 * `include:spf.example.net`). Carried on the STATE for the same reason as
+	 * {@link dkimSelectors} — a provider with one shared include and one that
+	 * mints a per-domain sending subdomain are both real.
+	 *
+	 * AN EMPTY LIST DOES NOT HOLD THE RAMP HERE, and that is the one place this
+	 * field differs from {@link dkimSelectors}. The pre-flight merges the own
+	 * MTA's mechanisms with this list into a single required set and asks whether
+	 * one published SPF record authorizes all of it; contributing nothing simply
+	 * means "this relay needs no SPF authorization on the customer's From domain",
+	 * and the check can pass on a record that does not name you. That is the right
+	 * answer for a provider that relays under its own envelope domain — and the
+	 * WRONG one if your provider does need an include you could not read out of
+	 * its API, because the operator would be told SPF is aligned for an arm the
+	 * record does not authorize. Return the mechanisms whenever you know them, and
+	 * prefer a hard-coded constant for a shared include over an empty list.
+	 *
+	 * (The DKIM half is what holds: no selector means no `verified` status and no
+	 * reference arm at all, so the ramp is held for the domain regardless.)
 	 */
 	readonly spfMechanisms: readonly string[];
 }

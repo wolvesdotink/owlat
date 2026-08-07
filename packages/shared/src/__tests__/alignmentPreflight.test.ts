@@ -109,3 +109,41 @@ describe('a relay we cannot describe HOLDS, and is never called single arm', () 
 		expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_UNKNOWN_RETRY_MS);
 	});
 });
+
+/**
+ * THE ASYMMETRY BETWEEN THE TWO DNS FACTS AN ARM CARRIES, pinned because a
+ * plugin author is now the one supplying them (the seams plan's P3.2) and the
+ * kit's own docs said, wrongly, that the two behave alike.
+ *
+ * An arm that names no DKIM selector is held elsewhere and hard: the plugin tier
+ * refuses `verified` without one and `describeReferenceArm` returns null, so the
+ * reference never reaches here as an arm at all. An arm that names no SPF
+ * MECHANISM is a different statement — "nothing of mine needs authorizing on this
+ * From domain" — and a legitimate one for a relay sending under its own envelope
+ * domain, which is why the merged requirement is simply the own arm's and the
+ * check can still pass.
+ *
+ * Asserted in both directions rather than assumed, so that whoever changes it has
+ * to change the sentence the kit and the plugin-contribution page now tell
+ * authors: a documented guarantee is only as good as the case holding it.
+ */
+describe('a reference arm that needs no SPF authorization', () => {
+	it('drops its own requirement without holding or failing the check', () => {
+		const result = evaluateAlignmentPreflight(
+			alignedInput({ reference: { kind: 'arm', arm: relayArm({ spfMechanisms: [] }) } })
+		);
+		expect(check(result, 'spf').status).toBe('pass');
+		expect(result.verdict).toBe('aligned');
+	});
+
+	it('still fails when the record does not authorize the OWN arm', () => {
+		const baseline = alignedInput();
+		const result = evaluateAlignmentPreflight(
+			alignedInput({
+				reference: { kind: 'arm', arm: relayArm({ spfMechanisms: [] }) },
+				dns: { ...baseline.dns, fromDomainTxt: { state: 'found', records: ['v=spf1 ~all'] } },
+			})
+		);
+		expect(check(result, 'spf').status).toBe('fail');
+	});
+});
