@@ -8,6 +8,7 @@ import {
 	validateDescriptorSafeArray,
 	validateKnownFields,
 } from './manifestValue';
+import { isPluginSendTransportEnvVar, PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
 import { isSafeStaticExportPath } from './staticExportPath';
 
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
@@ -41,13 +42,26 @@ export function validateSendTransportContributions(
 		validateKnownFields(
 			item.value,
 			path,
-			new Set(['id', 'label', 'module', 'retryDelays', 'webhook']),
+			new Set([
+				'id',
+				'label',
+				'module',
+				'retryDelays',
+				'requiredEnvVars',
+				'optionalEnvVars',
+				'supportsCustomReturnPath',
+				'messageIdSource',
+				'deduplicatesOnIdempotencyKey',
+				'webhook',
+			]),
 			issues
 		);
 		validateId(item.value, path, seenIds, issues);
 		validateLabel(item.value, path, issues);
 		validateModule(item.value, path, issues);
 		validateRetryDelays(item.value, path, issues);
+		validateConfigEnvVars(item.value, path, issues);
+		validateCapabilities(item.value, path, issues);
 		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
 				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
@@ -198,6 +212,111 @@ function validateWebhook(
 		addManifestIssue(issues, 'invalid_type', `${webhookPath}.storeRawPayload`, 'must be a boolean');
 	}
 	return true;
+}
+
+/**
+ * The transport's OWN configuration variables (the seams plan's P3.1).
+ *
+ * Both lists are validated as ONE namespace: a name may appear in exactly one of
+ * them, because a variable cannot be both the presence gate and a refinement the
+ * deployment may skip, and the host resolves the two lists into one record.
+ *
+ * The naming rule is {@link isPluginSendTransportEnvVar} — the kit's own
+ * predicate, so the rule the validator enforces and the rule the host re-asserts
+ * on the generated artifact cannot drift apart.
+ */
+function validateConfigEnvVars(
+	transport: Record<string, unknown>,
+	path: string,
+	issues: PluginManifestIssue[]
+): void {
+	const declared = new Set<string>();
+	let total = 0;
+	for (const field of ['requiredEnvVars', 'optionalEnvVars'] as const) {
+		const property = readDataProperty(transport, field, issues, false, path);
+		if (property.kind !== 'value') continue;
+		const items = validateDescriptorSafeArray(property.value, `${path}.${field}`, issues);
+		if (!items) continue;
+		total += items.length;
+		for (const [index, item] of items.entries()) {
+			if (item.kind !== 'value') continue;
+			const itemPath = `${path}.${field}[${index}]`;
+			if (!isPluginSendTransportEnvVar(item.value)) {
+				addManifestIssue(
+					issues,
+					'invalid_format',
+					itemPath,
+					'must be a PLUGIN_-prefixed uppercase environment variable name without "__"'
+				);
+				continue;
+			}
+			if (declared.has(item.value)) {
+				addManifestIssue(
+					issues,
+					'duplicate',
+					itemPath,
+					`duplicates environment variable ${item.value}`
+				);
+				continue;
+			}
+			declared.add(item.value);
+		}
+	}
+	if (total > PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS) {
+		addManifestIssue(
+			issues,
+			'too_many_items',
+			path,
+			`must declare at most ${PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS} configuration variables`
+		);
+	}
+}
+
+/** The declared capability fields — each optional, each with a fail-closed default. */
+function validateCapabilities(
+	transport: Record<string, unknown>,
+	path: string,
+	issues: PluginManifestIssue[]
+): void {
+	validateEnumField(transport, path, 'supportsCustomReturnPath', ['yes', 'no'], issues);
+	validateEnumField(transport, path, 'messageIdSource', ['provider', 'composed'], issues);
+	const dedup = readDataProperty(transport, 'deduplicatesOnIdempotencyKey', issues, false, path);
+	if (dedup.kind === 'value' && typeof dedup.value !== 'boolean') {
+		addManifestIssue(
+			issues,
+			'invalid_type',
+			`${path}.deduplicatesOnIdempotencyKey`,
+			'must be a boolean'
+		);
+	}
+}
+
+/**
+ * A closed-set field.
+ *
+ * The message NAMES the accepted values rather than describing them, because the
+ * two words this tier refuses (`probe` on the return path, `idempotency-key` as
+ * the id source) are words the CORE catalog accepts — an author reading the core
+ * vocabulary and writing one of them needs to be told which set they are in, not
+ * that their string was malformed.
+ */
+function validateEnumField(
+	transport: Record<string, unknown>,
+	path: string,
+	field: string,
+	accepted: readonly string[],
+	issues: PluginManifestIssue[]
+): void {
+	const property = readDataProperty(transport, field, issues, false, path);
+	if (property.kind !== 'value') return;
+	if (typeof property.value !== 'string' || !accepted.includes(property.value)) {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			`${path}.${field}`,
+			`must be one of ${accepted.join(', ')}`
+		);
+	}
 }
 
 function validateRetryDelays(

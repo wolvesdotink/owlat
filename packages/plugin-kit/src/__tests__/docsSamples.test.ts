@@ -430,9 +430,13 @@ describe('docs samples: modules behave as the chapter describes', () => {
 		try {
 			globalThis.fetch = (async () =>
 				new Response(null, { status: 429 })) as unknown as typeof fetch;
+			// The sample declares no configuration variables of its own, so the host
+			// resolves the empty record for it — the shape every default instance of
+			// a transport that keeps its endpoint in extras receives.
 			const attempt = await transport.send(
 				{ to: 'b@x', from: 'a@x', subject: 's', html: '<p></p>' },
-				{ endpoint: 'https://relay.example' }
+				{ endpoint: 'https://relay.example' },
+				{ instanceKey: null, env: {} }
 			);
 			expect(attempt.success).toBe(false);
 			if (!attempt.success) expect(PLUGIN_SEND_FAILURE_CODES).toContain(attempt.code);

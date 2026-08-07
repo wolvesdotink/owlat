@@ -186,8 +186,11 @@ export {
 } from './inboundSignature';
 export type { PluginReplayBoundSignatureContract } from './inboundSignature';
 export {
+	isPluginSendTransportEnvVar,
 	PLUGIN_SEND_FAILURE_CODES,
 	PLUGIN_SEND_TRANSPORT_CAPABILITY,
+	PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH,
+	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
 	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
 	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
 	PLUGIN_WEBHOOK_MAX_BODY_BYTES,
@@ -195,10 +198,15 @@ export {
 export type {
 	PluginSendAttachment,
 	PluginSendAttempt,
+	PluginSendDispatchContext,
 	PluginSendFailureCode,
+	PluginSendSystemMailContext,
 	PluginSendTransportCapability,
+	PluginSendTransportConfig,
+	PluginSendTransportCustomReturnPathSupport,
 	PluginSendTransportDefinition,
 	PluginSendTransportKind,
+	PluginSendTransportMessageIdSource,
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 	PluginSendTransportWebhookDefinition,

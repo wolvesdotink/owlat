@@ -1,5 +1,6 @@
 import { isPluginContributionKind } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
+import { PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
 import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchema';
 
 // Manifests are static declarations: these limits leave ample composition room
@@ -78,6 +79,19 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 				}
 				if (field === 'retryDelays') {
 					return snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues);
+				}
+				// A send transport's own configuration variables (the seams plan's
+				// P3.1). Snapshotted for the same reason as everything else here: the
+				// validator checks these names and the composer later hands the host
+				// the values behind them, so a live array could pass validation and
+				// then name a different variable.
+				if (field === 'requiredEnvVars' || field === 'optionalEnvVars') {
+					return snapshotArray(
+						fieldValue,
+						`${path}[${index}].${field}`,
+						PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
+						issues
+					);
 				}
 				if (field === 'lifecycleEdges') {
 					return snapshotArray(fieldValue, `${path}[${index}].lifecycleEdges`, 12, issues, (edge) =>
