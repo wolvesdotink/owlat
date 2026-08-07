@@ -25,6 +25,7 @@ import {
 	tagsFeedbackProvenanceOf,
 	type CoreSendProviderCatalogEntry,
 	type OwnSendProviderKind,
+	type SendProviderCredentialField,
 } from '../sendProviderCatalog';
 import * as setupValidators from '../setupValidators';
 import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
@@ -250,6 +251,48 @@ describe('PROVIDER_ENV_KEYS is derived from the credential fields', () => {
 					}
 				}
 			}
+		}
+	});
+
+	it('declares every variable a NON-required field writes, in one list or the other', () => {
+		// The rest of the rule above, and the half nothing else states.
+		//
+		// `requiredEnvVars ∪ optionalEnvVars` is what "this kind needs" MEANS — the
+		// presence gate that decides configured, the `.env` skeleton, the docs
+		// table. A credential field writing a variable outside both lists is an
+		// input the operator can fill in that no other surface knows exists.
+		//
+		// A `required: true` field is bound to `requiredEnvVars` in both directions
+		// above, and a `host-port` field's port/secure variables to
+		// `optionalEnvVars`. A NON-required field is only asserted ABSENT from
+		// `requiredEnvVars`, so where its variable does belong was unpinned. The
+		// only such field today is mta's `outboundTlsMode` → OUTBOUND_TLS_MODE,
+		// which that entry does declare in `optionalEnvVars`; a future one declared
+		// in neither list is what this catches.
+		const isOptional = (field: SendProviderCredentialField): boolean => field.required !== true;
+		const optionalFields = ENTRIES.map(
+			(entry) => [entry, entry.credentialFields.filter(isOptional)] as const
+		);
+		// The anchor, off the SAME predicate the loop reads rather than a second
+		// spelling of it: with every field marked required this rule would describe
+		// nothing and pass. That day it has no subjects left — delete it rather than
+		// keep a green test that asks nothing.
+		expect(optionalFields.flatMap(([, fields]) => fields).length).toBeGreaterThan(0);
+
+		for (const [entry, fields] of optionalFields) {
+			const declared = new Set<string>([
+				...entry.requiredEnvVars,
+				...(entry.optionalEnvVars ?? []),
+			]);
+			const orphans = fields
+				.flatMap((field) => credentialFieldEnvVars(field))
+				.filter((name) => !declared.has(name));
+			expect(
+				orphans,
+				`${entry.kind}: an optional credential field writes these, and no ` +
+					'`requiredEnvVars`/`optionalEnvVars` entry declares them — add them to ' +
+					'optionalEnvVars, or the form collects a value nothing else knows about'
+			).toEqual([]);
 		}
 	});
 
