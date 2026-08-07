@@ -83,6 +83,11 @@ Runtime imports inside the package take `@owlat/shared`'s SUBPATHS, never its
 barrel: the barrel re-exports modules that pull `tldts` (~1MB of public-suffix
 data), and the Convex bundle would carry it for the sake of one guard.
 
+So read D7's "zero-dependency leaf" as "leaf": apps import this package,
+`packages/` does not, and it depends on `@owlat/shared` alone. That is the
+accepted trade, not drift — a manifest with a second dependency, or any
+`packages/` importer, is still a review failure and a lint failure.
+
 ### Frozen bytes, in one place both apps read
 
 The named risk of this extraction is that TypeScript narrowing silently
