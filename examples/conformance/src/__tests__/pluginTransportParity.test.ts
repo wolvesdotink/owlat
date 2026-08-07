@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { composeBundledPlugins } from '@owlat/plugin-host';
 import { renderPluginComposition } from '@owlat/plugin-codegen';
 import { validatePluginManifest } from '@owlat/plugin-kit';
+import { evaluateGeneratedArtifact } from '../generatedArtifact';
 
 const PACKAGE_NAME = '@acme/postmark-pack';
 
@@ -60,17 +61,10 @@ function catalogEntryFor(
 	const rendered = renderPluginComposition(
 		composeBundledPlugins([{ packageName: PACKAGE_NAME, manifest: result.manifest }])
 	);
-	const source = rendered.sendTransportCatalog;
-	const body = source.slice(source.indexOf('export const BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG ='));
-	const literal = body
-		.slice(body.indexOf('=') + 1)
-		.trim()
-		.replace(/;\s*$/, '')
-		.replace(/\s+as const\b/g, '');
-	if (/\bimport\b|\brequire\b|=>/.test(literal)) {
-		throw new Error('the send transport catalog is no longer a data-only artifact');
-	}
-	const [entry] = new Function(`return ${literal};`)() as readonly Record<string, unknown>[];
+	const [entry] = evaluateGeneratedArtifact(
+		rendered.sendTransportCatalog,
+		'BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG'
+	) as readonly Record<string, unknown>[];
 	if (!entry) throw new Error('expected one catalogued transport');
 	return entry;
 }

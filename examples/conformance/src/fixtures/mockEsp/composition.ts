@@ -10,9 +10,11 @@
  * plugin's DECLARATION reaches routing, ramp and the UI unaltered.
  *
  * The catalogs are EVALUATED rather than pattern-matched, for the reason the
- * sibling suites give: each is data-only by construction (the guard below fails
- * loudly if that ever stops being true), so reading it back asserts the values
- * the host loads instead of the text a grep matched.
+ * sibling suites give: each is data-only by construction, so reading it back
+ * asserts the values the host loads instead of the text a grep matched. The
+ * reading itself — and the guard that fails loudly if an artifact ever stops
+ * being data-only — is `../../generatedArtifact`, shared with the two sibling
+ * suites that need the same thing.
  *
  * THE MODULE REGISTRIES ARE NOT EVALUATED, and cannot be: codegen emits import
  * statements against the published package specifier `@acme/mock-esp`, which is
@@ -32,6 +34,7 @@
 import { composeBundledPlugins, type BundledPlugin } from '@owlat/plugin-host';
 import { renderPluginComposition } from '@owlat/plugin-codegen';
 import { validatePluginManifest } from '@owlat/plugin-kit';
+import { evaluateGeneratedArtifact } from '../../generatedArtifact';
 import { MOCK_ESP_PACKAGE_NAME, mockEspPlugin } from './manifest';
 
 /** One evaluated generated catalog, as an array of plain entries. */
@@ -55,26 +58,9 @@ export interface MockEspComposition {
 	readonly domainIdentities: GeneratedEntries;
 }
 
-/**
- * Evaluate one generated data-only artifact.
- *
- * The `import`/`require`/arrow guard is the artifact's data-only claim, asserted
- * rather than assumed: an artifact that grew an executable half would otherwise
- * be silently truncated by this reader.
- */
+/** One evaluated catalog, through the package's single artifact reader. */
 function evaluateCatalog(source: string, constName: string): GeneratedEntries {
-	const marker = `export const ${constName} =`;
-	const at = source.indexOf(marker);
-	if (at < 0) throw new Error(`generated artifact does not declare ${constName}`);
-	const body = source.slice(at + marker.length);
-	const literal = body
-		.trim()
-		.replace(/;[\s\S]*$/, '')
-		.replace(/\s+as const\b/g, '');
-	if (/\bimport\b|\brequire\b|=>/.test(literal)) {
-		throw new Error(`${constName} is no longer a data-only artifact`);
-	}
-	return new Function(`return ${literal};`)() as GeneratedEntries;
+	return evaluateGeneratedArtifact(source, constName) as GeneratedEntries;
 }
 
 let cached: MockEspComposition | undefined;

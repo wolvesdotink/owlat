@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { composeBundledPlugins } from '@owlat/plugin-host';
 import { renderPluginComposition } from '@owlat/plugin-codegen';
 import { validatePluginManifest } from '@owlat/plugin-kit';
+import { evaluateGeneratedArtifact } from '../generatedArtifact';
 
 const PACKAGE_NAME = '@acme/postmark-pack';
 
@@ -71,25 +72,6 @@ function render(webhook: unknown) {
 	);
 }
 
-/**
- * Read a generated `export const NAME = <literal>;` artifact back as its value.
- * Throws if the artifact ever stops being data-only, which is itself the thing
- * worth failing on: an artifact carrying identifiers is one that can do work.
- */
-function evaluateArtifact(source: string, name: string): unknown {
-	const body = source.slice(source.indexOf(`export const ${name} =`));
-	const literal = body
-		.slice(body.indexOf('=') + 1)
-		.trim()
-		.replace(/;\s*$/, '')
-		// The only TypeScript in the artifact, and only ever on a literal.
-		.replace(/\s+as const\b/g, '');
-	if (/\bimport\b|\brequire\b|=>/.test(literal)) {
-		throw new Error(`${name} is no longer a data-only artifact`);
-	}
-	return new Function(`return ${literal};`)() as unknown;
-}
-
 describe('the declared contract survives composition unchanged', () => {
 	const rendered = render({
 		module: { exportPath: './convex/webhook' },
@@ -98,7 +80,7 @@ describe('the declared contract survives composition unchanged', () => {
 	});
 
 	it('reaches the host as data the route can verify against', () => {
-		const catalog = evaluateArtifact(
+		const catalog = evaluateGeneratedArtifact(
 			rendered.sendTransportWebhookCatalog,
 			'BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG'
 		) as readonly Record<string, unknown>[];
@@ -156,7 +138,7 @@ describe('a transport WITHOUT a webhook', () => {
 
 	it('produces empty feedback artifacts while still producing a transport', () => {
 		expect(
-			evaluateArtifact(
+			evaluateGeneratedArtifact(
 				rendered.sendTransportWebhookCatalog,
 				'BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG'
 			)

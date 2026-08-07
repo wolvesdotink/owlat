@@ -50,10 +50,16 @@ export default defineConfig({
 			//
 			// `pluginProviderParity.test.ts` drives the SHIPPED routing, dispatch,
 			// ramp-attribution, return-path and credential-form modules against a
-			// fixture plugin ESP, so it has to reach into `apps/api` and `apps/web`
-			// exactly as the replay suite already reaches into `apps/code-worker`.
-			// Aliases rather than relative climbs, per
-			// `scripts/check-cross-package-imports.sh`: this is build wiring.
+			// fixture plugin ESP, so it has to reach into `apps/api` exactly as the
+			// replay suite already reaches into `apps/code-worker`. Aliases rather than
+			// relative climbs, per `scripts/check-cross-package-imports.sh`: this is
+			// build wiring.
+			//
+			// THERE IS NO `apps/web` ALIAS, and that is a choice rather than an
+			// omission: the web half of the proof needs Nuxt's auto-imports, which do
+			// not resolve under this config, so it is pinned in `apps/web`'s own suite
+			// (`app/composables/__tests__/pluginTransportCredentialGap.test.ts`). What
+			// this suite reads of the UI vocabulary it reads from `@owlat/shared`.
 			//
 			// THE ALIASES ARE NOT THE DEPENDENCY. `@owlat/api` and `@owlat/shared` are
 			// declared in this package's `devDependencies` as well, because Turborepo

@@ -35,6 +35,12 @@ import {
 	parsePluginLocalId,
 	pluginNamespacedKind,
 } from '@owlat/plugin-kit';
+import {
+	MOCK_ESP_ENABLED_ENV,
+	MOCK_ESP_REGION_ENV,
+	MOCK_ESP_TOKEN_ENV,
+	MOCK_ESP_WEBHOOK_SECRET_ENV,
+} from './envNames';
 
 /** The package a third-party author would publish this bundle as. */
 export const MOCK_ESP_PACKAGE_NAME = '@acme/mock-esp';
@@ -56,17 +62,11 @@ export const MOCK_ESP_LOCAL_ID = parsePluginLocalId('relay');
  */
 export const MOCK_ESP_KIND: string = pluginNamespacedKind(MOCK_ESP_PLUGIN_ID, MOCK_ESP_LOCAL_ID);
 
-/** The transport's own credential — resolved per instance and handed to `send`. */
-export const MOCK_ESP_TOKEN_ENV = 'PLUGIN_MOCK_ESP_TOKEN';
-
-/** An optional refinement, so the fixture exercises a non-required descriptor. */
-export const MOCK_ESP_REGION_ENV = 'PLUGIN_MOCK_ESP_REGION';
-
-/** The host-verified webhook signing secret. Never seen by plugin code. */
-export const MOCK_ESP_WEBHOOK_SECRET_ENV = 'PLUGIN_MOCK_ESP_WEBHOOK_SECRET';
-
-/** The plugin's deployment-wide enablement switch, distinct from the credential. */
-export const MOCK_ESP_ENABLED_ENV = 'MOCK_ESP_ENABLED';
+/*
+ * The four environment variable names live in `./envNames`, imported above —
+ * the ONE declaration both this manifest and the bundle's executable halves
+ * read. See that module for why.
+ */
 
 /** Signature headers the fixture's provider is imagined to send. */
 export const MOCK_ESP_SIGNATURE_HEADER = 'x-mock-esp-signature';
@@ -109,7 +109,13 @@ export const mockEspPlugin = definePlugin({
 						kind: 'secret',
 						key: 'token',
 						label: 'API token',
-						description: `Issued in the Mock ESP console. Written to ${MOCK_ESP_TOKEN_ENV}.`,
+						// THE SEMICOLON IS DELIBERATE. Real provider copy contains them, and
+						// the generated catalog carries this string verbatim — so the
+						// package's artifact reader (`src/generatedArtifact.ts`) is exercised
+						// against a literal it must not truncate. A reader that cut the
+						// source at the first `;` would take the whole parity suite down
+						// with an opaque `SyntaxError`; this keeps that a caught mistake.
+						description: `Issued in the Mock ESP console; written to ${MOCK_ESP_TOKEN_ENV}.`,
 						required: true,
 						envVar: MOCK_ESP_TOKEN_ENV,
 					},

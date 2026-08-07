@@ -21,6 +21,8 @@ import type {
 	PluginSendTransportConfig,
 	PluginSendTransportDomainIdentityModule,
 } from '@owlat/plugin-kit';
+// The name the MANIFEST declares, read from the one module that declares it.
+import { MOCK_ESP_TOKEN_ENV } from './envNames';
 
 /** The selector this fixture's provider signs every registered domain under. */
 export const MOCK_ESP_DKIM_SELECTOR = 'mockesp';
@@ -79,7 +81,7 @@ export const mockEspDomainIdentity: PluginSendTransportDomainIdentityModule = {
 		// Credentials come from the instance configuration, never the environment:
 		// an environment read would resolve the deployment-default instance's token
 		// whichever instance the caller meant.
-		if (!config.env['PLUGIN_MOCK_ESP_TOKEN']) {
+		if (!config.env[MOCK_ESP_TOKEN_ENV]) {
 			return { outcome: 'auth_failed', error: 'no API token for this instance' };
 		}
 		REGISTERED.push(domain);
@@ -90,7 +92,7 @@ export const mockEspDomainIdentity: PluginSendTransportDomainIdentityModule = {
 		domain: string,
 		config: PluginSendTransportConfig
 	): Promise<PluginDomainIdentityResult> {
-		if (!config.env['PLUGIN_MOCK_ESP_TOKEN']) {
+		if (!config.env[MOCK_ESP_TOKEN_ENV]) {
 			return { outcome: 'auth_failed', error: 'no API token for this instance' };
 		}
 		return observe(domain);

@@ -32,9 +32,12 @@
  *      artifact. The gap is pinned AT THE WEB SURFACE, in
  *      `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`,
  *      so any shape of closure — a fallback inside `credentialFieldsFor` or a new
- *      composed view feeding it — turns that suite red. Closing it is a P1.2
- *      follow-up piece (a composed-catalog view for `apps/web`), not an edit this
- *      proof may make, and the wave gate must not record A4 as met until it lands.
+ *      composed view feeding it — turns that suite red. Closing it needs a card
+ *      of its own (a composed-catalog view for `apps/web`; P1.2, the piece that
+ *      would have owned it, has shipped), not an edit this proof may make. The
+ *      report that says so where the wave gate looks — the asymmetry, the four
+ *      blocked call sites, the owning card, and the line "A4 is not met until
+ *      this lands" — is `.pipeline/P3.3_CREDENTIALS_UI_GAP.md`.
  *
  *   2. RETURN-PATH PROBES (plan §5's P3.3 obligation list) — SUPERSEDED, not a
  *      gap. P3.1 gave this tier `supportsCustomReturnPath: 'no'` as its only
@@ -75,20 +78,24 @@ import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REPOSITORY_ROOT } from '../repository';
 import {
-	MOCK_ESP_ENABLED_ENV,
 	MOCK_ESP_KIND,
 	MOCK_ESP_PACKAGE_NAME,
 	MOCK_ESP_PLUGIN_ID,
-	MOCK_ESP_REGION_ENV,
 	MOCK_ESP_SIGNATURE_HEADER,
 	MOCK_ESP_TIMESTAMP_HEADER,
-	MOCK_ESP_TOKEN_ENV,
 	MOCK_ESP_TOLERANCE_SECONDS,
-	MOCK_ESP_WEBHOOK_SECRET_ENV,
 } from '../fixtures/mockEsp/manifest';
+// The four variable names, from the module that declares them for the whole
+// bundle — the same import the fixture's own send and identity halves make.
+import {
+	MOCK_ESP_ENABLED_ENV,
+	MOCK_ESP_REGION_ENV,
+	MOCK_ESP_TOKEN_ENV,
+	MOCK_ESP_WEBHOOK_SECRET_ENV,
+} from '../fixtures/mockEsp/envNames';
 import {
 	MOCK_ESP_DKIM_SELECTOR,
 	MOCK_ESP_SPF_MECHANISM,
@@ -225,9 +232,16 @@ const CONFIGURED: Readonly<Record<string, string>> = Object.freeze({
 	[MOCK_ESP_TOKEN_ENV]: 'tok-live',
 });
 
-/** The readiness predicate `resolveRoute` is given: env presence, as shipped. */
-const configured = (kind: SendProviderKind): boolean =>
-	kind === KIND || kind === OWN || kind === 'ses';
+/**
+ * The readiness predicate `resolveRoute` is given: env presence, as shipped.
+ *
+ * Exactly the two kinds this suite's routes name, and no third. A predicate that
+ * answered for a core kind no case routes to would read as if the proof
+ * exercised a mixed pool — and it would quietly change what "unroutable" means,
+ * because a rejected route falls through to `EMAIL_PROVIDER` (see the routing
+ * block's stub).
+ */
+const configured = (kind: SendProviderKind): boolean => kind === KIND || kind === OWN;
 
 function route(overrides: Partial<ProviderRouteConfig>): ProviderRouteConfig {
 	return {
@@ -295,10 +309,29 @@ const CONTEXT_FREE_STRATEGIES = Object.keys(SEND_ROUTE_STRATEGIES).filter(
 ) as readonly ProviderRouteConfig['strategy'][];
 
 describe('it appears in routes, under every declared strategy', () => {
-	// The registry's four, minus the mix: `single` and `priority_failover` are
-	// deterministic over one enabled arm; `workload_split` draws, so it gets the
-	// whole route to itself, which is the shipped degenerate case rather than a
-	// stubbed random.
+	/**
+	 * THE AMBIENT ENVIRONMENT IS NOT AN INPUT TO THIS BLOCK.
+	 *
+	 * A route that resolves to nothing falls through to `fallback()`, which reads
+	 * the deployment's `EMAIL_PROVIDER` — a real variable for this repository. A
+	 * developer or CI runner with one exported would otherwise turn "the plugin is
+	 * filtered out" into "the single-transport env answered instead", failing for a
+	 * reason that has nothing to do with the plugin tier. The ramp half stubs it
+	 * for the same reason.
+	 */
+	beforeEach(() => {
+		vi.stubEnv('EMAIL_PROVIDER', '');
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	// The registry's four, minus the mix and minus the draw: `single` and
+	// `priority_failover` are deterministic over one enabled arm. `workload_split`
+	// resolves here too (a one-entry pool is a degenerate draw), and then gets its
+	// own case below over a MIXED pool, which is the shape that can actually tell
+	// participation from "the only entry came back".
 	it.each(CONTEXT_FREE_STRATEGIES.map((strategy) => [strategy] as const))(
 		'resolves the plugin transport under %s',
 		(strategy) => {
@@ -308,6 +341,43 @@ describe('it appears in routes, under every declared strategy', () => {
 			});
 		}
 	);
+
+	/**
+	 * THE DRAW, OVER A MIXED POOL — the one strategy where a single-entry route
+	 * proves nothing. `workloadSplitStrategy.select` is a weighted pick over the
+	 * ENABLED pool, so with one entry it returns that entry whatever the weighting
+	 * and filtering do; the plugin arm has to be shown coming out of a pool that
+	 * also holds the own MTA.
+	 *
+	 * Deterministic by pinning the draw at each end of the range rather than by
+	 * weighting, so BOTH arms are shown to be reachable: the strategy walks the
+	 * pool in route order subtracting each weight, so the bottom of the range is
+	 * the first entry and the top is the last. A filter that dropped the plugin
+	 * kind from the pool would return the own MTA for both.
+	 */
+	it.each([
+		[0, OWN],
+		[0.99, KIND],
+	])('draws %s of a mixed workload_split pool as %s', (draw, expected) => {
+		const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
+		try {
+			expect(
+				resolveRoute(
+					route({
+						strategy: 'workload_split',
+						providers: [
+							{ providerType: OWN, isEnabled: true },
+							{ providerType: KIND, isEnabled: true },
+						],
+					}),
+					[],
+					configured
+				)
+			).toMatchObject({ providerType: expected, source: 'org_config' });
+		} finally {
+			random.mockRestore();
+		}
+	});
 
 	// THE MIX, and the one that matters most: `adaptive_mix` splits a cell
 	// between the own MTA and a REFERENCE arm, and the plugin transport is that
@@ -687,31 +757,28 @@ describe('its feedback arrives on the plugin webhook route', () => {
 		vi.unstubAllEnvs();
 	});
 
-	function sign(
-		body: string,
-		timestamp: string,
-		secret = CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!
-	) {
-		return createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
-	}
-
 	/**
-	 * One inbound delivery, signed correctly unless an override says otherwise.
+	 * ONE INBOUND DELIVERY, ALWAYS THE HAPPY PATH — the provider's own bytes, the
+	 * declared HMAC over `<timestamp>.<body>`, a timestamp inside the declared
+	 * window.
 	 *
-	 * `signedBody` is what the HMAC was computed over and `rawBody` is what
-	 * arrived: equal on the happy path, and different exactly when a case means to
-	 * model a body rewritten after signing.
+	 * There is no knob for a tampered body, a forged signature or a stale
+	 * timestamp, and there deliberately is not: every negative belongs to
+	 * `verifyPluginReplayBoundSignature`'s own contract and is owned exhaustively
+	 * by the two shipped suites named at the end of this block. A builder carrying
+	 * overrides no case uses would advertise a capability this block does not have.
 	 */
-	function delivery(overrides: Partial<Record<'rawBody' | 'signature' | 'timestamp', string>>) {
+	function delivery() {
 		const surface = pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID);
 		if (!surface) throw new Error('the fixture webhook is not registered');
-		const timestamp = overrides.timestamp ?? String(Math.floor(NOW / 1000));
+		const timestamp = String(Math.floor(NOW / 1000));
+		const secret = CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!;
 		return {
 			contract: surface.definition.signature,
 			pluginId: MOCK_ESP_PLUGIN_ID,
 			transportKind: MOCK_ESP_KIND,
-			rawBody: overrides.rawBody ?? BODY,
-			signature: overrides.signature ?? sign(BODY, timestamp),
+			rawBody: BODY,
+			signature: createHmac('sha256', secret).update(`${timestamp}.${BODY}`).digest('hex'),
 			timestamp,
 			nowMs: NOW,
 		};
@@ -761,7 +828,7 @@ describe('its feedback arrives on the plugin webhook route', () => {
 		vi.stubEnv(MOCK_ESP_WEBHOOK_SECRET_ENV, CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!);
 		const surface = pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID);
 		if (!surface) throw new Error('the fixture webhook is not registered');
-		const verified = await verifyPluginReplayBoundSignature(delivery({}));
+		const verified = await verifyPluginReplayBoundSignature(delivery());
 		expect(verified.ok).toBe(true);
 
 		const events = parsePluginFeedbackEvents(surface.module.parseEvents(BODY), MOCK_ESP_KIND);
@@ -1021,19 +1088,27 @@ describe('none of it required a core edit', () => {
 	 * rather than leaving a ramp suite grading a kind nothing composes and a web
 	 * pin guarding a kind no renderer will ever be asked for.
 	 *
-	 * The ramp fixture additionally restates the composed entry's credential
+	 * The ramp fixture additionally restates the composed entry's configuration
 	 * variables, so those are bound too — a renderer that stopped folding the
-	 * flag's `requiredEnvVars` into the entry moves this list.
+	 * flag's `requiredEnvVars` into the entry, or that stopped composing
+	 * `instanceEnvVars` from the required and optional lists, moves one of these
+	 * lists. Those two are the whole of what the ramp fixture's narrowed entry
+	 * carries as data, so nothing in it is unbound.
 	 */
 	it.each([[RAMP_FIXTURE], [WEB_GAP_PIN]])('binds %s to the composed kind', (path) => {
 		const source = readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8');
 		expect(source).toContain(MOCK_ESP_KIND);
 	});
 
-	it('binds the ramp fixture to the composed credential variables', () => {
+	it('binds the ramp fixture to the composed configuration variables', () => {
 		const source = readFileSync(resolve(REPOSITORY_ROOT, RAMP_FIXTURE), 'utf8');
 		const entry = mockEspComposition().sendTransports[0]!;
-		for (const envVar of entry['requiredEnvVars'] as readonly string[]) {
+		const declared = [
+			...(entry['requiredEnvVars'] as readonly string[]),
+			...(entry['instanceEnvVars'] as readonly string[]),
+		];
+		expect(declared.length).toBeGreaterThan(0);
+		for (const envVar of declared) {
 			expect(source, `the ramp fixture no longer names ${envVar}`).toContain(envVar);
 		}
 	});

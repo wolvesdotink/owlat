@@ -20,6 +20,10 @@ import type {
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 } from '@owlat/plugin-kit';
+// The names the MANIFEST declares, read from the one module that declares them:
+// a literal here would go on being read after a rename, as a credential the host
+// never populates.
+import { MOCK_ESP_REGION_ENV, MOCK_ESP_TOKEN_ENV } from './envNames';
 
 /** The transport's own extras: a tag the provider would echo on its events. */
 export interface MockEspExtras {
@@ -67,12 +71,12 @@ export const mockEspTransport: PluginSendTransportModule<MockEspExtras> = {
 		extras: MockEspExtras,
 		config: PluginSendTransportConfig
 	): Promise<PluginSendAttempt> {
-		const token = config.env['PLUGIN_MOCK_ESP_TOKEN'];
+		const token = config.env[MOCK_ESP_TOKEN_ENV];
 		ATTEMPTS.push({
 			to: params.to,
 			instanceKey: config.instanceKey,
 			token,
-			region: config.env['PLUGIN_MOCK_ESP_REGION'],
+			region: config.env[MOCK_ESP_REGION_ENV],
 			extras,
 		});
 		// The host fails the attempt before `send` runs when a REQUIRED variable is
