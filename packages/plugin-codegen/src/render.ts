@@ -318,21 +318,72 @@ interface RenderedSendTransport {
 	readonly exportPath: string;
 	readonly retryDelays: readonly number[];
 	readonly requiredEnvVars: readonly string[];
+	readonly optionalEnvVars: readonly string[];
+	/**
+	 * The transport's OWN variables, required and optional together — the ones the
+	 * host resolves PER INSTANCE and hands to the module. Empty for a transport
+	 * that declares none, which is what tells the transport resolver that this kind
+	 * cannot have named instances.
+	 */
+	readonly instanceEnvVars: readonly string[];
+	readonly supportsCustomReturnPath: string | undefined;
+	readonly messageIdSource: string | undefined;
+	readonly deduplicatesOnIdempotencyKey: boolean;
+	readonly hasProviderFeedback: boolean;
 }
 
+/**
+ * THE PRESENCE GATE OF A BUNDLED TRANSPORT (the seams plan's P3.1).
+ *
+ * A transport that declares its own configuration is gated on THAT: those
+ * variables are what its module actually sends with, resolved per instance. One
+ * that declares none keeps the shipped rule — the plugin's own
+ * `flag.requiredEnvVars`, the only thing this artifact ever had to go on — so a
+ * manifest written against the older contract composes byte-identically.
+ *
+ * The two lists are never merged. A flag variable gates whether the PLUGIN may
+ * run at all and is checked unsuffixed by the host's authorization path; adding
+ * it here would demand a `__<INSTANCEKEY>` copy of a deployment-wide switch
+ * before any named instance of the transport could resolve.
+ */
 function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly RenderedSendTransport[] {
 	return plugins.flatMap((plugin) =>
-		(plugin.manifest.contributes?.sendTransports ?? []).map((transport) => ({
-			packageName: parsePluginPackageName(plugin.packageName),
-			pluginId: parsePluginId(plugin.manifest.id),
-			localId: transport.id,
-			kind: pluginNamespacedKind(plugin.manifest.id, transport.id),
-			label: transport.label,
-			exportPath: transport.module.exportPath,
-			retryDelays: transport.retryDelays,
-			requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
-		}))
+		(plugin.manifest.contributes?.sendTransports ?? []).map((transport) => {
+			const declaredRequired = transport.requiredEnvVars ?? [];
+			const declaredOptional = transport.optionalEnvVars ?? [];
+			const instanceEnvVars = [...declaredRequired, ...declaredOptional];
+			return {
+				packageName: parsePluginPackageName(plugin.packageName),
+				pluginId: parsePluginId(plugin.manifest.id),
+				localId: transport.id,
+				kind: pluginNamespacedKind(plugin.manifest.id, transport.id),
+				label: transport.label,
+				exportPath: transport.module.exportPath,
+				retryDelays: transport.retryDelays,
+				requiredEnvVars:
+					instanceEnvVars.length > 0
+						? declaredRequired
+						: (plugin.manifest.flag?.requiredEnvVars ?? []),
+				optionalEnvVars: declaredOptional,
+				instanceEnvVars,
+				supportsCustomReturnPath: transport.supportsCustomReturnPath,
+				messageIdSource: transport.messageIdSource,
+				deduplicatesOnIdempotencyKey: transport.deduplicatesOnIdempotencyKey === true,
+				// DERIVED, never declared: a transport reports feedback exactly when it
+				// contributes a webhook to parse it with. Two fields could disagree; one
+				// fact stated once cannot. The catalog's `providerFeedback` DESCRIPTOR
+				// is deliberately not emitted alongside it — it tells the delivery page
+				// which console ceremony to draw, and this tier's route is one generic
+				// `/webhooks/plugin/<pluginId>` surface with no per-kind panel.
+				hasProviderFeedback: transport.webhook !== undefined,
+			};
+		})
 	);
+}
+
+/** A catalog field emitted only when the manifest declared it. */
+function optionalCatalogField(name: string, literal: string | undefined): string {
+	return literal === undefined ? '' : `\n\t\t${name}: ${literal},`;
 }
 
 function renderSendTransportCatalog(plugins: readonly BundledPlugin[]): string {
@@ -344,7 +395,30 @@ function renderSendTransportCatalog(plugins: readonly BundledPlugin[]): string {
 \t\tlocalId: ${JSON.stringify(transport.localId)},
 \t\tlabel: ${JSON.stringify(transport.label)},
 \t\tretryDelays: Object.freeze(${JSON.stringify(transport.retryDelays)}),
-\t\trequiredEnvVars: Object.freeze(${JSON.stringify(transport.requiredEnvVars)}),
+\t\trequiredEnvVars: Object.freeze(${JSON.stringify(transport.requiredEnvVars)}),${optionalCatalogField(
+				'optionalEnvVars',
+				transport.optionalEnvVars.length > 0
+					? `Object.freeze(${JSON.stringify(transport.optionalEnvVars)})`
+					: undefined
+			)}${optionalCatalogField(
+				'instanceEnvVars',
+				transport.instanceEnvVars.length > 0
+					? `Object.freeze(${JSON.stringify(transport.instanceEnvVars)})`
+					: undefined
+			)}${optionalCatalogField(
+				'supportsCustomReturnPath',
+				transport.supportsCustomReturnPath === undefined
+					? undefined
+					: JSON.stringify(transport.supportsCustomReturnPath)
+			)}${optionalCatalogField(
+				'messageIdSource',
+				transport.messageIdSource === undefined
+					? undefined
+					: JSON.stringify(transport.messageIdSource)
+			)}${optionalCatalogField(
+				'deduplicatesOnIdempotencyKey',
+				transport.deduplicatesOnIdempotencyKey ? 'true' : undefined
+			)}${optionalCatalogField('hasProviderFeedback', transport.hasProviderFeedback ? 'true' : undefined)}
 \t\trequiredCapability: 'send:transport',
 \t}),`
 		)
