@@ -1,8 +1,8 @@
 /**
  * Shared HMAC + constant-time-comparison primitives used by Inbound adapters
  * and channel webhook handlers. Consolidates the three near-identical copies
- * of `constantTimeEqual` and the inline HMAC helpers that lived in
- * resendWebhook.ts, mtaWebhook.ts, and webhooks/channels.ts.
+ * of `constantTimeEqual` and the inline HMAC helpers that lived in the
+ * per-provider webhook entry points and in webhooks/channels.ts.
  *
  * Uses Web Crypto so this module is V8-runtime-safe — no 'use node'.
  */

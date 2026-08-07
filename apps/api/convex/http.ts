@@ -22,10 +22,10 @@ import {
 } from './delivery/unsubscribeHttp';
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
-import { handleResendWebhook } from './resendWebhook';
-import { handleMandrillWebhook, handleMandrillPing } from './mandrillWebhook';
-import { handleMtaWebhook } from './mtaWebhook';
-import { handleSesWebhook } from './sesWebhook';
+import {
+	providerFeedbackWebhook,
+	webhookUrlValidationProbe,
+} from './webhooks/providerFeedbackHttp';
 import { handleMailWebhook } from './mail/webhook';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { handleVerifyCredential } from './mail/authHttp';
@@ -247,12 +247,18 @@ http.route({
 });
 
 // ============ EMAIL PROVIDER WEBHOOK ENDPOINTS ============
+//
+// One handler, one adapter registry (webhooks/adapters/index.ts), and one route
+// per kind WRITTEN OUT — no loop over the registry and no path built from a
+// kind. These URLs live in provider consoles we do not own, so a route that can
+// move itself is a feedback stream that can stop without a symptom. Adding a
+// provider adds a block here; nothing here ever changes for one that exists.
 
 // POST /webhooks/resend - Handle Resend webhook events (bounce, complaint)
 http.route({
 	path: '/webhooks/resend',
 	method: 'POST',
-	handler: handleResendWebhook,
+	handler: providerFeedbackWebhook('resend'),
 });
 
 // POST /webhooks/mandrill - Mailchimp Transactional feedback batch
@@ -260,7 +266,7 @@ http.route({
 http.route({
 	path: '/webhooks/mandrill',
 	method: 'POST',
-	handler: handleMandrillWebhook,
+	handler: providerFeedbackWebhook('mandrill'),
 });
 
 // GET /webhooks/mandrill - Mandrill's unsigned URL-validation probe. Convex
@@ -268,21 +274,21 @@ http.route({
 http.route({
 	path: '/webhooks/mandrill',
 	method: 'GET',
-	handler: handleMandrillPing,
+	handler: webhookUrlValidationProbe,
 });
 
 // POST /webhooks/mta - Handle custom MTA webhook events (bounce, complaint, IP events)
 http.route({
 	path: '/webhooks/mta',
 	method: 'POST',
-	handler: handleMtaWebhook,
+	handler: providerFeedbackWebhook('mta'),
 });
 
 // POST /webhooks/ses - Handle AWS SES feedback via SNS (bounce, complaint, delivery)
 http.route({
 	path: '/webhooks/ses',
 	method: 'POST',
-	handler: handleSesWebhook,
+	handler: providerFeedbackWebhook('ses'),
 });
 
 // POST /webhooks/mta-mailbox - Personal-mail (Postbox) inbound delivery from MTA
