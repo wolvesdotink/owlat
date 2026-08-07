@@ -7,9 +7,23 @@
  * rules (ids, modules, retry delays, capabilities, the webhook) read better
  * without them in between.
  *
- * The types being validated live in `./sendTransportCredentials`.
+ * The types being validated live in `./sendTransportCredentials`. The five kinds'
+ * SHARED rules — key, label, description, `required`, numeric range, select
+ * options — live in `./fieldDescriptorManifest`, because they are the platform's
+ * `settingsSchema` five and "validated the same way" has to be true of the code
+ * and not only of the sentence.
  */
 
+import {
+	MAX_FIELD_DESCRIPTION_LENGTH,
+	MAX_FIELD_LABEL_LENGTH,
+	readDescriptorRequired,
+	validateDescriptorBooleanDefault,
+	validateDescriptorKey,
+	validateDescriptorNumberField,
+	validateDescriptorSelectField,
+	validateDescriptorText,
+} from './fieldDescriptorManifest';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
 	isRecord,
@@ -25,25 +39,26 @@ import {
 // TYPE-ONLY: the module that owns the configuration lists calls into this one,
 // so a value import back would close a runtime cycle.
 import type { ConfigEnvVarField, DeclaredConfigEnvVars } from './sendTransportManifest';
-import { MAX_SETTINGS_OPTIONS, RESERVED_FIELD_KEYS } from './settingsSchema';
-
-const MAX_LABEL_LENGTH = 80;
 
 /**
  * The credential FORM (D5): descriptors, joined to the configuration above.
  *
- * The join is the rule worth enforcing here. Everything else is shape — the
- * field vocabulary is the platform's `settingsSchema` five, validated the same
- * way — but `envVar` is a promise about ANOTHER declaration in the same
- * contribution: a `required: true` field names a variable that gates the
- * transport, any other field names one that refines it. Break the join and the
- * rendered form asks for a variable no send reads, or omits the one that decides
- * whether the transport is configured at all; neither is visible to the operator
- * filling it in.
+ * The join is the rule this module owns. The rest of a field is the platform's
+ * `settingsSchema` vocabulary, validated through the same functions it is — but
+ * `envVar` is a promise about ANOTHER declaration in the same contribution: a
+ * `required: true` field names a variable that gates the transport, any other
+ * field names one that refines it. Break the join and the rendered form asks for
+ * a variable no send reads, or omits the one that decides whether the transport
+ * is configured at all; neither is visible to the operator filling it in.
  *
  * It also means the namespace rule needs no restating: every accepted `envVar`
  * has already passed {@link isPluginSendTransportEnvVar} as a member of one of
  * the two lists.
+ *
+ * ONE VARIABLE, ONE FIELD. `envVar` is deduplicated across the form as well as
+ * `key`, because the mirror of "a field no send reads" is two fields writing one
+ * variable: a setup surface renders both, and whichever is applied last silently
+ * discards the other entry.
  */
 export function validateCredentialFields(
 	transport: Record<string, unknown>,
@@ -65,11 +80,17 @@ export function validateCredentialFields(
 		);
 		return;
 	}
-	const seenKeys = new Set<string>();
+	const seen: CredentialFormIdentities = { keys: new Set(), envVars: new Set() };
 	for (const [index, item] of items.entries()) {
 		if (item.kind !== 'value') continue;
-		validateCredentialField(item.value, `${fieldsPath}[${index}]`, seenKeys, declared, issues);
+		validateCredentialField(item.value, `${fieldsPath}[${index}]`, seen, declared, issues);
 	}
+}
+
+/** What must be unique across one transport's form: the id, and the write target. */
+interface CredentialFormIdentities {
+	readonly keys: Set<string>;
+	readonly envVars: Set<string>;
 }
 
 const CREDENTIAL_FIELD_COMMON = new Set([
@@ -90,14 +111,11 @@ const CREDENTIAL_FIELD_KIND_EXTRA: Record<
 	boolean: ['default'],
 	select: ['options', 'default'],
 };
-const CREDENTIAL_FIELD_KEY = /^[a-zA-Z][a-zA-Z0-9]*$/;
-const MAX_CREDENTIAL_KEY_LENGTH = 64;
-const MAX_CREDENTIAL_DESCRIPTION_LENGTH = 280;
 
 function validateCredentialField(
 	value: unknown,
 	path: string,
-	seenKeys: Set<string>,
+	seen: CredentialFormIdentities,
 	declared: DeclaredConfigEnvVars,
 	issues: PluginManifestIssue[]
 ): void {
@@ -126,101 +144,55 @@ function validateCredentialField(
 		new Set([...CREDENTIAL_FIELD_COMMON, ...CREDENTIAL_FIELD_KIND_EXTRA[fieldKind]]),
 		issues
 	);
-	validateCredentialKey(value, path, seenKeys, issues);
-	validateCredentialText(value, 'label', path, MAX_LABEL_LENGTH, true, issues);
-	validateCredentialText(
-		value,
-		'description',
-		path,
-		MAX_CREDENTIAL_DESCRIPTION_LENGTH,
-		false,
-		issues
-	);
-	const required = readCredentialRequired(value, path, issues);
-	validateCredentialEnvVar(value, path, required, declared, issues);
+	validateDescriptorKey(value, path, seen.keys, issues);
+	validateDescriptorText(value, 'label', path, MAX_FIELD_LABEL_LENGTH, true, issues);
+	validateDescriptorText(value, 'description', path, MAX_FIELD_DESCRIPTION_LENGTH, false, issues);
+	const required = readDescriptorRequired(value, path, issues);
+	validateCredentialEnvVar(value, path, required, declared, seen.envVars, issues);
 	validateCredentialKindFields(fieldKind, value, path, issues);
 }
 
-function validateCredentialKey(
-	field: Record<string, unknown>,
-	path: string,
-	seenKeys: Set<string>,
-	issues: PluginManifestIssue[]
-): void {
-	const key = readDataProperty(field, 'key', issues, true, path);
-	if (key.kind !== 'value') return;
-	if (
-		typeof key.value !== 'string' ||
-		key.value.length > MAX_CREDENTIAL_KEY_LENGTH ||
-		!CREDENTIAL_FIELD_KEY.test(key.value) ||
-		RESERVED_FIELD_KEYS.has(key.value)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.key`,
-			'must be a non-reserved alphanumeric identifier of at most 64 characters'
-		);
-		return;
-	}
-	if (seenKeys.has(key.value)) {
-		addManifestIssue(issues, 'duplicate', `${path}.key`, `duplicates field ${key.value}`);
-		return;
-	}
-	seenKeys.add(key.value);
-}
-
-function validateCredentialText(
-	field: Record<string, unknown>,
-	name: string,
-	path: string,
-	maxLength: number,
-	required: boolean,
-	issues: PluginManifestIssue[]
-): void {
-	const property = readDataProperty(field, name, issues, required, path);
-	if (property.kind !== 'value') return;
-	if (
-		typeof property.value !== 'string' ||
-		property.value.trim() !== property.value ||
-		property.value.length < 1 ||
-		property.value.length > maxLength
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.${name}`,
-			`must be a trimmed string of at most ${maxLength} characters`
-		);
-	}
-}
-
-/** `true` only when the manifest said so in a well-formed way. */
-function readCredentialRequired(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): boolean {
-	const property = readDataProperty(field, 'required', issues, false, path);
-	if (property.kind !== 'value') return false;
-	if (typeof property.value !== 'boolean') {
-		addManifestIssue(issues, 'invalid_type', `${path}.required`, 'must be a boolean');
-		return false;
-	}
-	return property.value;
-}
-
+/**
+ * The join, plus the uniqueness of the write target.
+ *
+ * `required` ARRIVES TRI-STATE and a `null` suppresses the join. Reading a
+ * malformed `required` as `false` would report a second issue — "envVar must name
+ * one of this transport's optionalEnvVars" — about a variable that may already be
+ * in `requiredEnvVars`, so an author who followed it would move a correct
+ * declaration into the wrong list. The one issue they can act on is the boolean.
+ */
 function validateCredentialEnvVar(
 	field: Record<string, unknown>,
 	path: string,
-	required: boolean,
+	required: boolean | null,
 	declared: DeclaredConfigEnvVars,
+	seenEnvVars: Set<string>,
 	issues: PluginManifestIssue[]
 ): void {
 	const envVar = readDataProperty(field, 'envVar', issues, true, path);
 	if (envVar.kind !== 'value') return;
+	if (typeof envVar.value !== 'string') {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			`${path}.envVar`,
+			"must be a string naming one of this transport's declared variables"
+		);
+		return;
+	}
+	if (seenEnvVars.has(envVar.value)) {
+		addManifestIssue(
+			issues,
+			'duplicate',
+			`${path}.envVar`,
+			`duplicates the variable ${envVar.value}, which another field already writes`
+		);
+		return;
+	}
+	seenEnvVars.add(envVar.value);
+	if (required === null) return;
 	const list: ConfigEnvVarField = required ? 'requiredEnvVars' : 'optionalEnvVars';
-	if (typeof envVar.value !== 'string' || !declared[list].has(envVar.value)) {
+	if (!declared[list].has(envVar.value)) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
@@ -230,67 +202,39 @@ function validateCredentialEnvVar(
 	}
 }
 
+/**
+ * The per-kind extras. Three of the five are the settings vocabulary's own
+ * validators verbatim — a `number`'s range and a `select`'s options carry
+ * coherence rules (`min <= max`, a default inside the range, no duplicate option
+ * value, a default that names a declared option) that an operator-facing form has
+ * to satisfy whichever bucket declared it.
+ *
+ * WHAT IS THIS VOCABULARY'S OWN: `placeholder`, which a settings field has no
+ * concept of, and a `string` default bounded like a label rather than like a body
+ * of text — this is a deployment variable's value, not free-form prose.
+ */
 function validateCredentialKindFields(
 	fieldKind: PluginSendTransportCredentialFieldKind,
 	field: Record<string, unknown>,
 	path: string,
 	issues: PluginManifestIssue[]
 ): void {
-	if (fieldKind === 'string' || fieldKind === 'secret') {
-		validateCredentialText(field, 'placeholder', path, MAX_LABEL_LENGTH, false, issues);
-		if (fieldKind === 'string') {
-			validateCredentialText(field, 'default', path, MAX_LABEL_LENGTH, false, issues);
-		}
-		return;
-	}
-	if (fieldKind === 'number') {
-		for (const name of ['default', 'min', 'max'] as const) {
-			const property = readDataProperty(field, name, issues, false, path);
-			if (property.kind !== 'value') continue;
-			if (typeof property.value !== 'number' || !Number.isFinite(property.value)) {
-				addManifestIssue(issues, 'invalid_type', `${path}.${name}`, 'must be a finite number');
-			}
-		}
-		return;
-	}
-	if (fieldKind === 'boolean') {
-		const property = readDataProperty(field, 'default', issues, false, path);
-		if (property.kind === 'value' && typeof property.value !== 'boolean') {
-			addManifestIssue(issues, 'invalid_type', `${path}.default`, 'must be a boolean');
-		}
-		return;
-	}
-	validateCredentialOptions(field, path, issues);
-	validateCredentialText(field, 'default', path, MAX_LABEL_LENGTH, false, issues);
-}
-
-function validateCredentialOptions(
-	field: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const options = readDataProperty(field, 'options', issues, true, path);
-	if (options.kind !== 'value') return;
-	const items = validateDescriptorSafeArray(options.value, `${path}.options`, issues);
-	if (!items) return;
-	if (items.length < 1 || items.length > MAX_SETTINGS_OPTIONS) {
-		addManifestIssue(
-			issues,
-			'too_many_items',
-			`${path}.options`,
-			`must contain between 1 and ${MAX_SETTINGS_OPTIONS} options`
-		);
-		return;
-	}
-	for (const [index, item] of items.entries()) {
-		if (item.kind !== 'value') continue;
-		const optionPath = `${path}.options[${index}]`;
-		if (!isRecord(item.value)) {
-			addManifestIssue(issues, 'invalid_type', optionPath, 'must be a plain object');
-			continue;
-		}
-		validateKnownFields(item.value, optionPath, new Set(['value', 'label']), issues);
-		validateCredentialText(item.value, 'value', optionPath, MAX_LABEL_LENGTH, true, issues);
-		validateCredentialText(item.value, 'label', optionPath, MAX_LABEL_LENGTH, true, issues);
+	switch (fieldKind) {
+		case 'secret':
+			validateDescriptorText(field, 'placeholder', path, MAX_FIELD_LABEL_LENGTH, false, issues);
+			return;
+		case 'string':
+			validateDescriptorText(field, 'placeholder', path, MAX_FIELD_LABEL_LENGTH, false, issues);
+			validateDescriptorText(field, 'default', path, MAX_FIELD_LABEL_LENGTH, false, issues);
+			return;
+		case 'number':
+			validateDescriptorNumberField(field, path, issues);
+			return;
+		case 'boolean':
+			validateDescriptorBooleanDefault(field, path, issues);
+			return;
+		case 'select':
+			validateDescriptorSelectField(field, path, issues);
+			return;
 	}
 }
