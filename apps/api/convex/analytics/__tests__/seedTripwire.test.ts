@@ -16,11 +16,12 @@ import {
 	type SeedProviderRollup,
 	type SeedTransportArm,
 } from '@owlat/shared/seedPlacement';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 const NO_CORROBORATION = { deferralGateBreached: false, bounceGateBreached: false };
 
 function observations(
-	provider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other',
+	provider: DestinationProviderKey,
 	placements: SeedPlacement[],
 	arm: SeedTransportArm = 'own'
 ): SeedObservation[] {
