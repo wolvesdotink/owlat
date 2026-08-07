@@ -11,7 +11,7 @@ import type { DeliveryDomain } from '@owlat/shared';
 import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────

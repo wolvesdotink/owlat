@@ -21,7 +21,7 @@ vi.mock('../logger.js', () => ({
 }));
 
 import { notifyPostmasterConvex } from '../../webhooks/convexNotifier.js';
-import { POSTMASTER_MAX_COMPLIANCE_CHECKS } from '@owlat/shared/mtaWebhookEvent';
+import { POSTMASTER_MAX_COMPLIANCE_CHECKS } from '@owlat/mta-protocol/webhookEvent';
 import {
 	POSTMASTER_RATIO_METRICS,
 	normalizeDomainStat,

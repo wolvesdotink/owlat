@@ -7,7 +7,7 @@ import {
 	POSTMASTER_TOKEN,
 	type PostmasterComplianceCheck,
 	type PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';

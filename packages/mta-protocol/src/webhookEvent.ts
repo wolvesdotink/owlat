@@ -1,220 +1,27 @@
-/** Exhaustive runtime contract shared by the MTA durable outbox and Convex ingress. */
-
-import { isDestinationProviderKey, type DestinationProviderKey } from './deliverabilityRouting';
-import { parseIpAddress } from './ipAddress';
-import { isDeliveryDomain, type DeliveryDomain } from './routingDispatch';
-import { isDeliverabilityProbeTokenFormat } from './deliverabilityProbeFormat';
-
-export const MTA_WEBHOOK_EVENT_TYPES = [
-	'sent',
-	'bounced',
-	'failed',
-	'complained',
-	'org.circuit_breaker',
-	'campaign.complaint_rate',
-	'ip.blocklisted',
-	'ip.delisted',
-	'ip.warming_complete',
-	'all_ips_blocked',
-	'postmaster.authorize_domain',
-	'postmaster.stats',
-	'postmaster.compliance',
-	'dkim.rotated',
-	'inbound.received',
-	'routing.reentry',
-	'inbound.mailbox.received',
-	'ip.readiness_regressed',
-	'deliverability.probe_observed',
-] as const;
-
-export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
-
-// ─── Google Postmaster Tools contract ──────────────────────────────────────
-// One definition of the shapes and of the sanitization bounds, imported by the
-// MTA collector and by the Convex ingest. Each end still re-VALIDATES at its
-// own trust boundary; what must never drift is the numbers it validates
-// against — a collector that kept more checks than this guard accepts would
-// have the whole event rejected and the day's verdict silently lost.
-
-/** One Compliance Status check as Google reports it, normalized. */
-export interface PostmasterComplianceCheck {
-	name: string;
-	state: 'passing' | 'failing' | 'unknown';
-}
-
-/** One delivery-error category's share of a domain's traffic for a day. */
-export interface PostmasterDeliveryError {
-	category: string;
-	ratio: number;
-}
-
 /**
- * The only shape a Postmaster check name or delivery-error category may take.
- * Both are stored and rendered verbatim, so anything else is DROPPED rather
- * than escaped.
+ * The MTA -> Convex webhook event INGRESS GUARD.
+ *
+ * Split from `webhookEventShape.ts` (CONVENTIONS.md — split a file rather than
+ * growing it past ~500 LOC) along the seam the module already had: the shape
+ * half is a declaration both ends read, this half is the exhaustive runtime
+ * contract Convex's ingress proves an arriving event against. The shape is
+ * re-exported so `@owlat/mta-protocol/webhookEvent` remains one import site.
  */
-export const POSTMASTER_TOKEN = /^[A-Z0-9_]{1,64}$/;
-/** Upper bound on the Compliance Status checks carried for one domain/day. */
-export const POSTMASTER_MAX_COMPLIANCE_CHECKS = 32;
-/** Upper bound on the delivery-error categories carried for one domain/day. */
-export const POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES = 24;
 
-interface EventBase<K extends MtaWebhookEventType> {
-	event: K;
-	timestamp: number;
-	eventId?: string;
-	messageId?: string;
-	recipient?: string;
-	organizationId?: string;
-	deliveryDomain?: DeliveryDomain;
-	destinationProvider?: DestinationProviderKey;
-	primarySendingDomain?: string;
-	remoteMessageId?: string;
-	severity?: 'info' | 'warning' | 'critical';
-	message?: string;
-	errorCode?: string;
-	ip?: string;
-	blocklists?: string[];
-	bounceRate?: number;
-	domain?: string;
-	selector?: string;
-	dnsRecord?: string;
-	phase?: 'pending' | 'activated';
-	campaignId?: string;
-	complaintRate?: number;
-	date?: string;
-	userReportedSpamRatio?: number;
-	spfSuccessRatio?: number;
-	dkimSuccessRatio?: number;
-	dmarcSuccessRatio?: number;
-	deliveryErrorRatio?: number;
-	deliveryErrors?: PostmasterDeliveryError[];
-	checks?: PostmasterComplianceCheck[];
-	inboundPayload?: object;
-	mailboxPayload?: object;
-	routingReentryToken?: string;
-	workAttemptId?: string;
-	routingReentry?: object;
-	routingReentryReason?:
-		| 'routing_lease_stale'
-		| 'circuit_breaker_changed'
-		| 'warming_capacity_changed';
-	readinessCheck?: 'fcrdns' | 'spf';
-	readinessReason?: string;
-	eligibilityGeneration?: number;
-	probeToken?: string;
-	spfResult?: string;
-	dkimResult?: string;
-	dmarcResult?: string;
-	tlsVersion?: string;
-	ptr?: string;
-}
+export * from './webhookEventShape';
 
-export type SharedMtaWebhookEvent =
-	| (EventBase<'sent'> & { messageId: string })
-	| (EventBase<'bounced'> & {
-			messageId?: string;
-			recipient?: string;
-			bounceType?: 'hard' | 'soft';
-	  })
-	| (EventBase<'failed'> & { messageId: string; message?: string; errorCode?: string })
-	| (EventBase<'complained'> & {
-			messageId?: string;
-			recipient?: string;
-			message?: string;
-			/**
-			 * RFC 5965 `Reported-Domain` from the ARF report — OUR sending/DKIM domain
-			 * the complaint was filed against. Optional: many ISPs omit it. FBL-only,
-			 * so it lives on this variant rather than on every event shape.
-			 */
-			reportedDomain?: string;
-			/**
-			 * The feedback-loop source ISP the MTA's ARF processor resolved. Typed as
-			 * the shipped destination-provider union rather than a free string, so a
-			 * consumer comparing it to `'yahoo'` is comparing against a checked
-			 * constant. An ISP outside the union is simply not forwarded.
-			 */
-			sourceIsp?: DestinationProviderKey;
-	  })
-	| (EventBase<'org.circuit_breaker'> & {
-			organizationId: string;
-			bounceRate: number;
-			message: string;
-	  })
-	| (EventBase<'campaign.complaint_rate'> & {
-			eventId: string;
-			campaignId: string;
-			complaintRate: number;
-			message: string;
-	  })
-	| (EventBase<'ip.blocklisted'> & { ip: string; message: string; blocklists?: string[] })
-	| (EventBase<'ip.delisted'> & { ip: string; message: string })
-	| (EventBase<'ip.warming_complete'> & { ip: string; message: string })
-	| (EventBase<'all_ips_blocked'> & { message: string })
-	| (EventBase<'postmaster.authorize_domain'> & { domain: string })
-	| (EventBase<'postmaster.stats'> & {
-			domain: string;
-			date: string;
-			userReportedSpamRatio: number;
-			spfSuccessRatio?: number;
-			dkimSuccessRatio?: number;
-			dmarcSuccessRatio?: number;
-			deliveryErrorRatio?: number;
-			deliveryErrors?: PostmasterDeliveryError[];
-	  })
-	| (EventBase<'postmaster.compliance'> & {
-			domain: string;
-			date: string;
-			checks: PostmasterComplianceCheck[];
-	  })
-	| (EventBase<'dkim.rotated'> & {
-			domain: string;
-			selector: string;
-			dnsRecord: string;
-			phase: 'pending' | 'activated';
-	  })
-	| (EventBase<'inbound.received'> & { organizationId: string; inboundPayload: object })
-	| (EventBase<'routing.reentry'> & {
-			messageId: string;
-			routingReentryToken: string;
-			workAttemptId: string;
-			routingReentry: object;
-			routingReentryReason:
-				| 'routing_lease_stale'
-				| 'circuit_breaker_changed'
-				| 'warming_capacity_changed';
-	  })
-	| (EventBase<'inbound.mailbox.received'> & {
-			organizationId: string;
-			mailboxPayload: object;
-	  })
-	| (EventBase<'ip.readiness_regressed'> & {
-			eventId: string;
-			ip: string;
-			readinessCheck: 'fcrdns' | 'spf';
-			readinessReason: string;
-			eligibilityGeneration: number;
-			message: string;
-	  })
-	| (EventBase<'deliverability.probe_observed'> & {
-			eventId: string;
-			probeToken: string;
-			spfResult: string;
-			dkimResult: string;
-			dmarcResult: string;
-			ip: string;
-			tlsVersion: string;
-			ptr: string;
-			selector?: string;
-	  });
-
-/**
- * The ingress bound on every human-readable `message` field. Convex rejects the
- * WHOLE event when it is exceeded, so producers that must not be dropped (the
- * DNSBL halt alert) build their message to fit against this exact number rather
- * than a duplicated literal.
- */
-export const MTA_WEBHOOK_MESSAGE_MAX_LENGTH = 512;
+import {
+	MTA_WEBHOOK_EVENT_TYPES,
+	MTA_WEBHOOK_MESSAGE_MAX_LENGTH,
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
+	POSTMASTER_TOKEN,
+	type MtaWebhookEvent,
+	type MtaWebhookEventType,
+} from './webhookEventShape';
+import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { isDeliveryDomain, parseIpAddress } from '@owlat/shared';
+import { isDeliverabilityProbeTokenFormat } from '@owlat/shared/deliverabilityProbeFormat';
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -237,7 +44,7 @@ export function isMtaWebhookEventType(value: unknown): value is MtaWebhookEventT
 }
 
 /** Validate the event-specific required fields plus every known optional field. */
-export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEvent {
+export function isMtaWebhookEvent(value: unknown): value is MtaWebhookEvent {
 	if (!isRecord(value) || !isMtaWebhookEventType(value['event']) || !finite(value['timestamp'])) {
 		return false;
 	}

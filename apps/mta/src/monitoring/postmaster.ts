@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { PostmasterDeliveryError } from '@owlat/shared/mtaWebhookEvent';
+import type { PostmasterDeliveryError } from '@owlat/mta-protocol/webhookEvent';
 import type { GooglePostmasterStatsEvent } from '../types.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {

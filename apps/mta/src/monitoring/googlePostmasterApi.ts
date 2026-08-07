@@ -6,7 +6,7 @@ import {
 	POSTMASTER_MAX_COMPLIANCE_CHECKS,
 	POSTMASTER_TOKEN,
 	type PostmasterComplianceCheck,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import type { GooglePostmasterStatsEvent } from '../types.js';
 
 const TOKEN_KEY = 'mta:postmaster:oauth-access-token';

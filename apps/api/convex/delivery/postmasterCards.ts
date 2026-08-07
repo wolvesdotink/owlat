@@ -14,7 +14,7 @@
 import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 
 export type { PostmasterComplianceCheck, PostmasterDeliveryError };
 

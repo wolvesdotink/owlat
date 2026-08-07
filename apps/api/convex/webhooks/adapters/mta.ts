@@ -28,7 +28,7 @@ import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import { type InboundEvent, postmasterStatsMetrics } from '../types';
-import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

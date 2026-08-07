@@ -15,7 +15,7 @@ import { logger } from '../monitoring/logger.js';
 import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.js';
 import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 import { STORE_LUA } from './dlqStoreScript.js';
-import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 
 export {
 	classifyWebhookHttpFailure,

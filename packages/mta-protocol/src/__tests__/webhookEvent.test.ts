@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isMtaWebhookEvent } from '../mtaWebhookEvent.js';
-import { createDeliverabilityProbeToken } from '../deliverabilityProbeToken';
+import { isMtaWebhookEvent } from '../webhookEvent';
+import { createDeliverabilityProbeToken } from '@owlat/shared/deliverabilityProbeToken';
 
 describe('MTA webhook event runtime contract', () => {
 	it('accepts only confirmed canonical IPv6 readiness regressions', () => {
