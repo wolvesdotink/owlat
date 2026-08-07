@@ -94,7 +94,13 @@ export interface SendTransportRecord {
 	readonly instanceKey: string | null;
 	readonly label: string;
 	readonly retryDelays: readonly number[];
-	/** Instance-resolved names of the variables this transport's config lives in. */
+	/**
+	 * The names whose presence makes THIS instance configured, resolved for it.
+	 *
+	 * Instance-scoped variables carry the `__<INSTANCEKEY>` suffix; a plugin
+	 * entry's deployment-wide flag variables do not, because a flag gates whether
+	 * the PLUGIN may run at all and no suffix reaches it (see `buildRecord`).
+	 */
 	readonly requiredEnvVars: readonly string[];
 	readonly pluginId?: PluginId;
 }
@@ -222,6 +228,30 @@ function declaredInstances(): readonly SendTransportInstanceDeclaration[] {
 	return cachedDeclarations;
 }
 
+/**
+ * ONLY AN INSTANCE-SCOPED NAME TAKES THE SUFFIX.
+ *
+ * A core entry declares nothing else — every variable it has is its own, read
+ * inside the adapter through `transportEnv.ts` — so `instanceEnvVars` is absent
+ * and the whole list is suffixed, exactly as before. A plugin entry's presence
+ * gate is the UNION of the contributing plugin's deployment-wide
+ * `flag.requiredEnvVars` and the transport's own configuration; a flag is a
+ * deployment-wide switch the host's authorization path checks unsuffixed, so
+ * demanding a `__<INSTANCEKEY>` copy of it before a named instance could resolve
+ * would make every second instance of a plugin transport permanently `revoked`.
+ */
+function instanceResolvedRequiredEnvVars(
+	entry: SendProviderCatalogEntry,
+	instanceKey: string | null
+): readonly string[] {
+	const instanceEnvVars = entry.instanceEnvVars;
+	return entry.requiredEnvVars.map((name) =>
+		instanceEnvVars === undefined || instanceEnvVars.includes(name)
+			? sendTransportEnvName(name, instanceKey)
+			: name
+	);
+}
+
 function buildRecord(
 	entry: SendProviderCatalogEntry,
 	instanceKey: string | null
@@ -235,9 +265,7 @@ function buildRecord(
 		instanceKey,
 		label: instanceKey === null ? entry.label : `${entry.label} (${instanceKey})`,
 		retryDelays: entry.retryDelays,
-		requiredEnvVars: Object.freeze(
-			entry.requiredEnvVars.map((name) => sendTransportEnvName(name, instanceKey))
-		),
+		requiredEnvVars: Object.freeze(instanceResolvedRequiredEnvVars(entry, instanceKey)),
 		...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
 	});
 }

@@ -52,8 +52,9 @@ export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
  * `required` is a SUBSET of `instance`, computed by the composer as the
  * intersection of the entry's presence gate with its instance-scoped variables.
  * Stating it that way rather than reading the gate directly is deliberate: a
- * plugin entry that declares no configuration of its own carries the PLUGIN's
- * flag variables as its gate, and those are not this transport's to be handed.
+ * plugin entry's gate is a UNION that also carries the contributing PLUGIN's
+ * deployment-wide flag variables, and those are the plugin's, not this
+ * transport's to be handed.
  */
 export interface HostedSendTransportConfigSpec {
 	readonly instanceEnvVars: readonly string[];

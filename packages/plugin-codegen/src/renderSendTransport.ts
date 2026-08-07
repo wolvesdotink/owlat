@@ -44,27 +44,36 @@ interface RenderedSendTransport {
 /**
  * THE PRESENCE GATE OF A BUNDLED TRANSPORT (the seams plan's P3.1).
  *
- * A transport that declares REQUIRED configuration of its own is gated on THAT:
- * those variables are what its module actually sends with, resolved per
- * instance. One that declares none keeps the shipped rule — the plugin's own
- * `flag.requiredEnvVars`, the only thing this artifact ever had to go on — so a
+ * IT IS THE UNION, and it has to be. `providerKindConfigured` is exactly
+ * `requiredEnvVars.every(isEnvPresent)`, and it feeds `configuredSendProviderKinds`
+ * — the env-only readiness the campaign cell seam records an assignment row
+ * against. A transport whose own `PLUGIN_ACME_TOKEN` is set inside a plugin whose
+ * `ACME_PACK_ENABLED` never was is not configured in any sense an operator would
+ * recognise: the authoritative dispatch path refuses it on the flag, permanently,
+ * so gating on the transport's own list alone would produce a mis-assignment that
+ * never resolves rather than the transient staleness that seam documents.
+ *
+ * A transport that declares NO configuration of its own therefore keeps exactly
+ * the shipped rule (the union is just the plugin's `flag.requiredEnvVars`) and a
  * manifest written against the older contract composes byte-identically.
  *
- * THE CHOICE IS MADE ON THE REQUIRED LIST ALONE, not on "declared anything".
- * An optional-only declaration is refused at manifest validation, so a manifest
- * this codegen ever sees has both or neither — but the artifact is what runs, and
- * an entry whose `requiredEnvVars` rendered as `[]` would be reported CONFIGURED
- * by `providerKindConfigured` (every member of an empty list is present) with
- * the plugin's own flag variable unset. That is a measurable arm the authoritative
- * dispatch then refuses, which is worse than not offering the transport at all.
- * For the same reason such an entry gets no `instanceEnvVars`: a kind whose
- * requirement list is empty cannot answer whether a named instance is configured,
- * so `instances_unsupported` is the honest refusal.
+ * THE TWO HALVES STAY DISTINGUISHABLE, which is what `instanceEnvVars` is for. A
+ * flag variable gates whether the PLUGIN may run at all and is checked unsuffixed
+ * by the host's authorization path; only an instance-scoped variable gets a
+ * `__<INSTANCEKEY>` copy, and `transports.ts` suffixes exactly the names that
+ * appear in `instanceEnvVars` for that reason. The host hands a module the
+ * intersection, never the flag variables — those are the plugin's, not this
+ * transport's.
  *
- * The two lists are never merged. A flag variable gates whether the PLUGIN may
- * run at all and is checked unsuffixed by the host's authorization path; adding
- * it here would demand a `__<INSTANCEKEY>` copy of a deployment-wide switch
- * before any named instance of the transport could resolve.
+ * WHETHER A KIND IS INSTANCE-SCOPED IS DECIDED ON THE REQUIRED LIST ALONE, not on
+ * "declared anything". An optional-only declaration is refused at manifest
+ * validation, so a manifest this codegen ever sees has both or neither — but the
+ * artifact is what runs, and an entry whose `requiredEnvVars` rendered as `[]`
+ * would be reported CONFIGURED by `providerKindConfigured` (every member of an
+ * empty list is present). For the same reason such an entry gets no
+ * `instanceEnvVars`: a kind whose requirement list is empty cannot answer whether
+ * a named instance is configured, so `instances_unsupported` is the honest
+ * refusal.
  */
 function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly RenderedSendTransport[] {
 	return plugins.flatMap((plugin) =>
@@ -73,6 +82,7 @@ function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly Rendered
 			const isInstanceScoped = declaredRequired.length > 0;
 			const declaredOptional = isInstanceScoped ? (transport.optionalEnvVars ?? []) : [];
 			const instanceEnvVars = isInstanceScoped ? [...declaredRequired, ...declaredOptional] : [];
+			const flagEnvVars = plugin.manifest.flag?.requiredEnvVars ?? [];
 			return {
 				packageName: parsePluginPackageName(plugin.packageName),
 				pluginId: parsePluginId(plugin.manifest.id),
@@ -81,9 +91,13 @@ function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly Rendered
 				label: transport.label,
 				exportPath: transport.module.exportPath,
 				retryDelays: transport.retryDelays,
-				requiredEnvVars: isInstanceScoped
-					? declaredRequired
-					: (plugin.manifest.flag?.requiredEnvVars ?? []),
+				// Flag variables FIRST and deduplicated: the order is what a setup
+				// surface lists, and "enable the plugin, then give the transport its
+				// credential" is the order an operator does it in.
+				requiredEnvVars: [
+					...flagEnvVars,
+					...declaredRequired.filter((name) => !flagEnvVars.includes(name)),
+				],
 				optionalEnvVars: declaredOptional,
 				instanceEnvVars,
 				// The FORM, carried through untouched: every descriptor's `envVar` was

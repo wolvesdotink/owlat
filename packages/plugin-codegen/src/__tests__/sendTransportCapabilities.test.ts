@@ -7,9 +7,10 @@
  *
  *  1. A manifest that declares NOTHING new renders byte-identically to what the
  *     older contract emitted — the whole reason every field is optional.
- *  2. A transport that declares its own configuration is gated on THAT, not on
- *     the plugin's flag variables, and its variables travel as `instanceEnvVars`
- *     so the transport resolver can offer it named instances.
+ *  2. A transport that declares its own configuration is gated on the UNION of
+ *     that and the plugin's flag variables, while only its OWN travel as
+ *     `instanceEnvVars` — which is what the transport resolver suffixes, so a
+ *     deployment-wide switch never needs a `__<INSTANCEKEY>` copy of itself.
  *  3. `hasProviderFeedback` is DERIVED from the webhook declaration. A manifest
  *     cannot claim feedback it has no parser for, and cannot forget to claim
  *     feedback it does have.
@@ -64,23 +65,30 @@ describe('bundled send transport capabilities in the generated catalog', () => {
 		}
 	});
 
-	it('gates a transport that declares its own configuration on ITS variables', () => {
+	it('gates a transport that declares its own configuration on the UNION', () => {
 		const catalog = compose({
 			requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
 			optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'],
 		});
 
-		expect(catalog).toContain('requiredEnvVars: Object.freeze(["PLUGIN_POSTMARK_TOKEN"])');
+		// THE GATE IS BOTH LISTS. `providerKindConfigured` is exactly
+		// `requiredEnvVars.every(isEnvPresent)`, and a transport whose own token is
+		// set inside a plugin nobody enabled is refused by the authoritative dispatch
+		// path forever — so reporting it configured is a permanent mis-assignment on
+		// the campaign cell seam's measurement row, not a transient one.
+		expect(catalog).toContain(
+			'requiredEnvVars: Object.freeze(["MAIL_PACK_ENABLED","PLUGIN_POSTMARK_TOKEN"])'
+		);
 		expect(catalog).toContain('optionalEnvVars: Object.freeze(["PLUGIN_POSTMARK_STREAM"])');
-		// Required and optional together: both are resolved per instance and handed
-		// to the module, and both are what a named instance reads under its suffix.
+		// THE SUFFIXABLE HALF IS STILL ONLY THE TRANSPORT'S OWN. Required and
+		// optional together: both are resolved per instance and handed to the module,
+		// and both are what a named instance reads under its suffix. The flag variable
+		// is a deployment-wide switch the host's authorization path checks unsuffixed,
+		// and `transports.ts` suffixes exactly what is listed here — so it never
+		// demands a `__<INSTANCEKEY>` copy of itself.
 		expect(catalog).toContain(
 			'instanceEnvVars: Object.freeze(["PLUGIN_POSTMARK_TOKEN","PLUGIN_POSTMARK_STREAM"])'
 		);
-		// The plugin's flag variable gates the PLUGIN, unsuffixed, on the host's
-		// authorization path. Folding it in here would demand a `__<INSTANCEKEY>`
-		// copy of a deployment-wide switch before any named instance could resolve.
-		expect(catalog).not.toContain('MAIL_PACK_ENABLED');
 	});
 
 	it('refuses a transport whose only declaration is optional, before rendering anything', () => {

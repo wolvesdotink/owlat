@@ -66,9 +66,12 @@ export type SendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 	 * Core kinds do not carry it, and that is not an omission: every variable a
 	 * core entry declares is already instance-scoped, resolved inside the adapter
 	 * through `transportEnv.ts`. A plugin entry has to say so explicitly, because
-	 * its OTHER possible gate — the plugin's deployment-wide `flag.requiredEnvVars`
-	 * — is not instance-scoped at all, and a named instance resolved against it
-	 * would send with the DEFAULT instance's credentials.
+	 * its `requiredEnvVars` is a UNION — the contributing plugin's deployment-wide
+	 * `flag.requiredEnvVars`, which gates whether the plugin may run at all and is
+	 * not instance-scoped in any sense, plus whatever configuration the transport
+	 * declared for itself. This field is the second half, and a named instance
+	 * resolved against the first would send with the DEFAULT instance's
+	 * credentials.
 	 *
 	 * Absent or empty therefore means "this kind cannot have named instances",
 	 * which is what `transports.ts` reads it for.

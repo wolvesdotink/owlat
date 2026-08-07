@@ -115,9 +115,9 @@ for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly Genera
 		generated.module,
 		{
 			instanceEnvVars,
-			// THE INTERSECTION, not the gate. A plugin entry that declares no
-			// configuration of its own carries the PLUGIN's flag variables as its
-			// presence gate, and those are not this transport's to be handed — so a
+			// THE INTERSECTION, not the gate. A plugin entry's presence gate is a
+			// UNION that also carries the contributing PLUGIN's deployment-wide flag
+			// variables, and those are not this transport's to be handed — so a
 			// variable is required-for-a-send only if it is also instance-scoped.
 			requiredEnvVars: catalogEntry.requiredEnvVars.filter((name) =>
 				instanceEnvVars.includes(name)

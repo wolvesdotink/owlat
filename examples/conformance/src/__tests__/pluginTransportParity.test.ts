@@ -127,8 +127,14 @@ describe('a declared capability reaches the host unchanged', () => {
 			localId: 'postmark',
 			label: 'Postmark',
 			retryDelays: [1_000],
-			// The transport's OWN gate, not the plugin's flag list.
-			requiredEnvVars: ['PLUGIN_POSTMARK_TOKEN'],
+			// THE UNION: the plugin's flag list (which the authoritative dispatch path
+			// checks forever, so a transport inside a disabled plugin must never be
+			// reported configured) plus the transport's own gate.
+			requiredEnvVars: [
+				'POSTMARK_PACK_ENABLED',
+				'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+				'PLUGIN_POSTMARK_TOKEN',
+			],
 			optionalEnvVars: ['PLUGIN_POSTMARK_STREAM'],
 			// Required and optional together: what the host resolves per instance and
 			// hands to the module, and what a named instance reads under its suffix.
