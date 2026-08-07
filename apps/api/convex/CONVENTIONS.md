@@ -327,10 +327,16 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   re-validated field by field, with `providerType` stamped from the registry.
   Reauthorize (flag, grant, env, singleton scope) on EVERY delivery — an
   operator disabling a plugin must stop its inbound events as surely as its
-  outbound sends — and audit under `transport.feedback`, never `transport.send`.
-  Raw-payload retention is opt-in per adapter. The route reads an unknown plugin
-  id as 404 before it reads a byte, and never lets an unauthenticated caller
-  write an audit row.
+  outbound sends — and audit under `transport.feedback`, never `transport.send`,
+  on refusal as well as on success: a plugin whose parse half is wrong against
+  its provider drops all of its feedback, and an empty audit log is the one way
+  an operator cannot find out. Raw-payload retention is opt-in per adapter. Body
+  size and batch size are bounded by limits the kit publishes to plugin authors
+  (`PLUGIN_WEBHOOK_MAX_BODY_BYTES`, `PLUGIN_WEBHOOK_MAX_BATCH_EVENTS`) and both
+  are answered `413`, because an over-limit delivery is redelivered identically
+  until the provider gives up. The route reads an unknown plugin id as 404
+  before it reads a byte, and never lets an unauthenticated caller write an
+  audit row.
 - Plugin import providers resolve through the host and call `authorizeStart`
   before a run opens; the paged fetch continues only while flag, grant, env, and
   singleton scope hold. A provider's inbound signature contract is mandatory and

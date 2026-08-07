@@ -15,7 +15,10 @@
  *   2. registration       — an id no bundled webhook claims is 404, before I/O
  *   3. rate limit         — per plugin id; every unknown id shares one bucket, so
  *                           guessing ids cannot mint buckets
- *   4. size               — a body larger than the cap is refused unread
+ *   4. size               — a body over the cap is refused on its DECLARED length
+ *                           when it has one, and on its actual byte length
+ *                           otherwise (a chunked caller declares nothing, so that
+ *                           body is buffered before it can be measured)
  *   5. signature          — host-verified HMAC over `<timestamp>.<body>`, plus
  *                           the timestamp freshness the contract declares
  *   6. authorization      — flag, operator grant, env and singleton scope,
@@ -41,6 +44,7 @@
  * not own.
  */
 
+import { PLUGIN_WEBHOOK_MAX_BODY_BYTES } from '@owlat/plugin-kit';
 import { internal } from '../_generated/api';
 import { httpAction, type ActionCtx } from '../_generated/server';
 import { logError } from '../lib/runtimeLog';
@@ -50,24 +54,36 @@ import {
 } from '../plugins/sendTransportWebhookCatalog';
 import { verifyPluginReplayBoundSignature } from '../plugins/inboundSignature';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
-import { dispatchInboundEvent } from './dispatcher';
-import { parsePluginFeedbackEvents } from './pluginFeedbackEvents';
+import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
+import {
+	PluginFeedbackBatchTooLargeError,
+	parsePluginFeedbackEvents,
+} from './pluginFeedbackEvents';
 
 /** The route prefix. One segment follows it: the plugin id, and nothing else. */
 export const PLUGIN_FEEDBACK_PATH_PREFIX = '/webhooks/plugin/';
 
 /**
- * Largest accepted body. Generous for a feedback batch and far below the
- * runtime's own limit, so an oversized post is refused by us, with a code the
- * provider can act on, rather than by the platform.
+ * Largest accepted body, in BYTES of UTF-8 — not in string length, which counts
+ * UTF-16 units and would let a body of three-byte characters run to three times
+ * the documented cap. Generous for a feedback batch and far below the runtime's
+ * own limit, so an oversized post is refused by us, with a code the provider can
+ * act on, rather than by the platform. Declared in the kit beside the per-batch
+ * event cap, because both are terms a plugin author writes against.
  */
-const MAX_BODY_BYTES = 1_048_576;
+const MAX_BODY_BYTES = PLUGIN_WEBHOOK_MAX_BODY_BYTES;
 
-function jsonResponse(status: number, body: Record<string, unknown>): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'Content-Type': 'application/json' },
-	});
+/**
+ * Whether the read body exceeds the cap.
+ *
+ * The cheap test first: a UTF-8 encoding is never SHORTER than the string's
+ * UTF-16 length, so a string longer than the cap is over it without encoding
+ * anything. Only a string that could still fit is encoded, which bounds the
+ * measurement's own cost.
+ */
+function exceedsBodyCap(rawBody: string): boolean {
+	if (rawBody.length > MAX_BODY_BYTES) return true;
+	return new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES;
 }
 
 /**
@@ -137,7 +153,7 @@ export const pluginFeedbackWebhook = httpAction(async (ctx, request) => {
 	} catch {
 		return jsonResponse(400, { error: 'Failed to read request body' });
 	}
-	if (rawBody.length > MAX_BODY_BYTES) {
+	if (exceedsBodyCap(rawBody)) {
 		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
@@ -199,17 +215,30 @@ async function deliver(
 		// happen, and the provider's retry must not be mistaken for an attack.
 		await releaseClaim(ctx, verification.deliveryDigest);
 		logError(`[${definition.kind} Webhook] Failed to apply delivery:`, error);
-		return jsonResponse(error instanceof DeliveryDispatchError ? 500 : 400, {
-			error:
-				error instanceof DeliveryDispatchError
-					? 'Failed to process event'
-					: 'Invalid event payload',
-		});
+		// AUDITED WHATEVER WENT WRONG. An authenticated, authorized delivery that
+		// we then refused is exactly the case an operator opens the Audit Log to
+		// explain ("why are no bounces arriving?"), and a plugin whose parse half
+		// is wrong against its provider's real payloads drops 100% of its feedback
+		// on this path. A row here is the only place that becomes visible.
+		await recordOutcome(ctx, pluginId, definition.kind, 'failed');
+		return jsonResponse(...deliveryFailureResponse(error));
 	}
 }
 
-/** Raised where a failure is OURS (dispatch), not the payload's. */
-class DeliveryDispatchError extends Error {}
+/**
+ * How a refused delivery reads from the provider's own delivery log.
+ *
+ * Three distinguishable answers, because the operator's fix differs: 500 when
+ * the failure is OURS and a redelivery may work, 413 with the limit when the
+ * batch was well formed but bigger than we accept (chunk it), 400 when the
+ * payload itself is not something we can apply.
+ */
+function deliveryFailureResponse(error: unknown): [number, Record<string, unknown>] {
+	if (error instanceof InboundBatchDispatchError)
+		return [500, { error: 'Failed to process event' }];
+	if (error instanceof PluginFeedbackBatchTooLargeError) return [413, { error: error.message }];
+	return [400, { error: 'Invalid event payload' }];
+}
 
 async function applyDelivery(
 	ctx: ActionCtx,
@@ -221,7 +250,8 @@ async function applyDelivery(
 	const { definition } = webhook;
 	// (8) The plugin's output is untrusted input, exactly as a send attempt's
 	// result is: the host re-validates every field and refuses anything it cannot
-	// attribute. A throw here is a 400 — the payload's fault, not ours.
+	// attribute. A throw here is the payload's fault, not ours — 400, or 413 with
+	// the limit named when the batch was merely bigger than we accept.
 	const events = parsePluginFeedbackEvents(parsed, definition.kind);
 
 	// (9) RETENTION IS OPT-IN. A third party's payload can carry recipient
@@ -233,20 +263,18 @@ async function applyDelivery(
 				source: definition.kind,
 				rawPayload: rawBody,
 			});
-		} catch {
-			// Audit storage never fails a webhook.
+		} catch (error) {
+			// Audit storage never fails a webhook — but it says so, because a
+			// deployment that opted into retention and is silently keeping nothing
+			// only discovers it during the dispute the payloads were kept for.
+			logError(`[${definition.kind} Webhook] Failed to store raw payload:`, error);
 		}
 	}
 
-	// (10) In order and sequentially, like the core pipeline: a batch is as often
-	// one message's timeline as a fan of unrelated ones, and each dispatch reads
-	// the state the previous one left.
-	try {
-		for (const event of events) await dispatchInboundEvent(ctx, event);
-	} catch (error) {
-		await recordOutcome(ctx, pluginId, definition.kind, 'failed');
-		throw new DeliveryDispatchError(error instanceof Error ? error.message : 'dispatch failed');
-	}
+	// (10) In order, sequentially, whole batch fails together — the same rule the
+	// core pipeline dispatches by, shared rather than restated (`./inboundHttp`).
+	// A throw propagates to `deliver`, which releases the claim and audits.
+	await dispatchEventsInOrder(ctx, events);
 	await recordOutcome(ctx, pluginId, definition.kind, 'completed');
 	return jsonResponse(200, { success: true, processed: events.length });
 }

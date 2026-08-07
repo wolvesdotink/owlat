@@ -18,11 +18,23 @@
  * graded against another's arm.
  */
 
-import { PLUGIN_WEBHOOK_FEEDBACK_KINDS, type PluginWebhookFeedbackKind } from '@owlat/plugin-kit';
+import {
+	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
+	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
+	type PluginWebhookFeedbackKind,
+} from '@owlat/plugin-kit';
 import type { InboundEvent } from './types';
 
-/** Largest batch one delivery may carry. */
-const MAX_EVENTS = 500;
+/**
+ * Largest batch one delivery may carry.
+ *
+ * DECLARED IN THE KIT, not here: it is a term of the contract a plugin author
+ * writes against, and one an author cannot honour without knowing the number —
+ * an over-limit batch is feedback that never arrives (the provider redelivers
+ * the same oversized body), not backpressure. The host re-states nothing; it
+ * enforces what the contract published.
+ */
+export const MAX_PLUGIN_FEEDBACK_EVENTS = PLUGIN_WEBHOOK_MAX_BATCH_EVENTS;
 /** Longest accepted provider-supplied string (ids, addresses, free text). */
 const MAX_TEXT_LENGTH = 998;
 
@@ -31,9 +43,21 @@ const FEEDBACK_KINDS = new Set<string>(PLUGIN_WEBHOOK_FEEDBACK_KINDS);
 export class PluginFeedbackEventError extends TypeError {}
 
 /**
+ * A well-formed batch that is simply too big.
+ *
+ * Split from its parent so the route can answer it 413 with the limit in the
+ * message instead of the generic 400 "Invalid event payload": from the
+ * provider's own delivery log, an over-limit batch and a malformed body are
+ * otherwise the same event, and the operator's fix (chunk the batch) is
+ * undiscoverable.
+ */
+export class PluginFeedbackBatchTooLargeError extends PluginFeedbackEventError {}
+
+/**
  * Convert a plugin module's return value into inbound events, or throw.
  *
- * The caller answers a throw with 400 and releases its replay claim, so a
+ * The caller answers a throw with 400 (413 for {@link
+ * PluginFeedbackBatchTooLargeError}) and releases its replay claim, so a
  * rejected batch is a delivery the provider may retry — never one silently
  * accepted with fewer events than it carried.
  */
@@ -44,8 +68,10 @@ export function parsePluginFeedbackEvents(
 	if (!Array.isArray(parsed)) {
 		throw new PluginFeedbackEventError('Plugin webhook module did not return an event array');
 	}
-	if (parsed.length > MAX_EVENTS) {
-		throw new PluginFeedbackEventError('Plugin webhook batch is too large');
+	if (parsed.length > MAX_PLUGIN_FEEDBACK_EVENTS) {
+		throw new PluginFeedbackBatchTooLargeError(
+			`Batch too large: at most ${MAX_PLUGIN_FEEDBACK_EVENTS} events`
+		);
 	}
 	return Object.freeze(parsed.map((event) => parseEvent(event, transportKind)));
 }

@@ -15,13 +15,14 @@
  *   unset signing secret  → 503, never a pass
  *   replayed delivery     → 409, dispatched exactly once
  *   revoked grant / off   → 403, and the claim is never taken
- *   oversized body        → 413 unread
- *   dishonest parse output→ 400, whole batch refused, claim released
+ *   oversized body        → 413 on the declared length, or on the real bytes
+ *   dishonest parse output→ 400, whole batch refused, claim released, audited
+ *   an over-limit batch   → 413 naming the limit, so the operator can chunk
  *
- * plus the two positive properties the negatives would be meaningless without:
- * a correctly signed, authorized delivery IS dispatched with the host's own
- * provider attribution, and raw retention happens only where the adapter asked
- * for it.
+ * plus the positive properties the negatives would be meaningless without: a
+ * correctly signed, authorized delivery IS dispatched with the host's own
+ * provider attribution, and raw retention happens exactly where the adapter
+ * asked for it — both branches of that opt-in, since the write is a silent one.
  *
  * The dispatcher is mocked deliberately — it has its own suites, and what is
  * under test here is the gate sequence, not what an inbound event does after it
@@ -46,6 +47,17 @@ const fixture = vi.hoisted(() => {
 		signatureHeader: 'x-postmark-signature',
 		timestampHeader: 'x-postmark-timestamp',
 		toleranceSeconds: 300,
+		// A SECOND bundled plugin, identical but for the one flag under test:
+		// `storeRawPayload` is baked into the composed catalog, so the opt-in's
+		// other branch can only be reached by a second adapter that asked for it.
+		retention: {
+			parseEvents: vi.fn(),
+			kind: 'plugin.keep-pack.audit',
+			pluginId: 'keep-pack',
+			localId: 'audit',
+			secretEnv: 'PLUGIN_KEEP_WEBHOOK_SECRET',
+			secret: 'the-other-signing-secret',
+		},
 	};
 });
 
@@ -67,6 +79,15 @@ vi.mock('../../plugins/sendTransportCatalog.generated', () => ({
 			pluginId: fixture.pluginId,
 			localId: 'postmark',
 			label: 'Postmark',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze([]),
+			requiredCapability: 'send:transport',
+		}),
+		Object.freeze({
+			kind: fixture.retention.kind,
+			pluginId: fixture.retention.pluginId,
+			localId: fixture.retention.localId,
+			label: 'Keep',
 			retryDelays: Object.freeze([0]),
 			requiredEnvVars: Object.freeze([]),
 			requiredCapability: 'send:transport',
@@ -93,6 +114,25 @@ vi.mock('../../plugins/sendTransportWebhookCatalog.generated', () => ({
 			storeRawPayload: false,
 			requiredCapability: 'send:transport',
 		}),
+		Object.freeze({
+			kind: fixture.retention.kind,
+			pluginId: fixture.retention.pluginId,
+			localId: fixture.retention.localId,
+			signature: Object.freeze({
+				header: fixture.signatureHeader,
+				algorithm: 'hmac-sha256',
+				encoding: 'hex',
+				// Its own variable: the host refuses two bundled webhooks that share
+				// one, because a body signed for either would verify at both routes.
+				secretEnvVar: fixture.retention.secretEnv,
+				replay: Object.freeze({
+					timestampHeader: fixture.timestampHeader,
+					toleranceSeconds: fixture.toleranceSeconds,
+				}),
+			}),
+			storeRawPayload: true,
+			requiredCapability: 'send:transport',
+		}),
 	]),
 }));
 
@@ -103,6 +143,11 @@ vi.mock('../../plugins/sendTransportWebhookModules.generated', () => ({
 			pluginId: fixture.pluginId,
 			module: { parseEvents: (raw: string) => fixture.parseEvents(raw) as unknown },
 		}),
+		Object.freeze({
+			kind: fixture.retention.kind,
+			pluginId: fixture.retention.pluginId,
+			module: { parseEvents: (raw: string) => fixture.retention.parseEvents(raw) as unknown },
+		}),
 	]),
 }));
 
@@ -111,6 +156,7 @@ vi.mock('../dispatcher', () => ({
 }));
 
 import { pluginFeedbackWebhook } from '../pluginFeedbackHttp';
+import { MAX_PLUGIN_FEEDBACK_EVENTS } from '../pluginFeedbackEvents';
 
 type HttpHandler = (ctx: unknown, request: Request) => Promise<Response>;
 const handler = (pluginFeedbackWebhook as unknown as { _handler: HttpHandler })._handler;
@@ -119,6 +165,7 @@ interface ContextOptions {
 	readonly isRateLimited?: boolean;
 	readonly isAuthorized?: boolean;
 	readonly isClaimable?: boolean;
+	readonly isStorable?: boolean;
 }
 
 function fakeContext(options: ContextOptions = {}) {
@@ -136,6 +183,7 @@ function fakeContext(options: ContextOptions = {}) {
 			if (name.includes('pluginFeedbackDeliveries:claim')) return options.isClaimable !== false;
 			if (name.includes('pluginFeedbackDeliveries:release')) return undefined;
 			if (name.includes('payloads:store')) {
+				if (options.isStorable === false) throw new Error('audit store unavailable');
 				stored.push(args);
 				return undefined;
 			}
@@ -163,6 +211,8 @@ interface RequestOptions {
 	readonly signature?: string | null;
 	readonly method?: string;
 	readonly headers?: Record<string, string>;
+	/** The signing secret to use; the addressed plugin's own by default. */
+	readonly secret?: string;
 }
 
 function webhookRequest(options: RequestOptions = {}): Request {
@@ -176,7 +226,7 @@ function webhookRequest(options: RequestOptions = {}): Request {
 	if (timestamp !== null) headers[TIMESTAMP_HEADER] = timestamp;
 	const signature =
 		options.signature === undefined
-			? sign(body, Number(timestamp ?? timestampSeconds))
+			? sign(body, Number(timestamp ?? timestampSeconds), options.secret ?? SECRET)
 			: options.signature;
 	if (signature !== null) headers[SIGNATURE_HEADER] = signature;
 	return new Request(
@@ -205,7 +255,9 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	vi.unstubAllEnvs();
 	vi.stubEnv(SECRET_ENV, SECRET);
+	vi.stubEnv(mocks.retention.secretEnv, mocks.retention.secret);
 	mocks.parseEvents.mockImplementation(() => bounceEvents());
+	mocks.retention.parseEvents.mockImplementation(() => bounceEvents());
 	mocks.dispatch.mockImplementation(async () => undefined);
 });
 
@@ -423,7 +475,6 @@ describe('a plugin module that returns something dishonest', () => {
 		['a complaint naming nobody', [{ kind: 'complained', at: Date.now() }]],
 		['a timestamp from the far future', [{ ...BOUNCE, at: Date.now() + 31_536_000_000 }]],
 		['an oversized id', [{ ...BOUNCE, at: Date.now(), providerMessageId: 'x'.repeat(2_000) }]],
-		['a batch beyond the cap', Array.from({ length: 501 }, () => ({ ...BOUNCE, at: Date.now() }))],
 	] as const)('is refused with 400 and dispatches nothing: %s', async (_label, parsed) => {
 		mocks.parseEvents.mockImplementationOnce(() => parsed);
 		const { ctx, calls } = fakeContext();
@@ -434,6 +485,59 @@ describe('a plugin module that returns something dishonest', () => {
 		// provider redelivers, so the claim goes back too.
 		expect(mocks.dispatch).not.toHaveBeenCalled();
 		expect(calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(true);
+	});
+
+	it('audits a refusal, so an operator can see the feedback that never landed', async () => {
+		// The failure mode this covers is total: a parse half that is wrong against
+		// its provider's real payloads drops 100% of a transport's feedback. Without
+		// a row, the Audit Log an operator opens to ask "why are no bounces
+		// arriving?" is simply empty.
+		mocks.parseEvents.mockImplementationOnce(() => [{ kind: 'combusted', at: Date.now() }]);
+		const { ctx, scheduled } = fakeContext();
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(400);
+		expect(scheduled).toEqual([
+			{
+				name: expect.stringContaining('sendTransportWebhookAuthorization:recordOutcome'),
+				args: { pluginId: PLUGIN_ID, transportKind: KIND, outcome: 'failed' },
+			},
+		]);
+	});
+
+	it('answers an over-limit batch 413, naming the limit', async () => {
+		// Distinguishable from a malformed body ON PURPOSE: from the provider's
+		// delivery log both are "our webhook is failing", but only one is fixed by
+		// chunking, and the limit is documented so an author can size their batches.
+		mocks.parseEvents.mockImplementationOnce(() =>
+			Array.from({ length: MAX_PLUGIN_FEEDBACK_EVENTS + 1 }, () => ({
+				...BOUNCE,
+				at: Date.now(),
+			}))
+		);
+		const { ctx, calls } = fakeContext();
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(413);
+		expect(await response.json()).toEqual({
+			error: `Batch too large: at most ${MAX_PLUGIN_FEEDBACK_EVENTS} events`,
+		});
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+		// Still a delivery that did not happen: the claim goes back, so a chunked
+		// redelivery of the same events is not read as a replay.
+		expect(calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(true);
+	});
+
+	it('accepts a batch AT the limit', async () => {
+		// The cap is sized to what a real ESP posts inside the body limit, so the
+		// boundary must be usable rather than nominally documented.
+		mocks.parseEvents.mockImplementationOnce(() =>
+			Array.from({ length: MAX_PLUGIN_FEEDBACK_EVENTS }, () => ({ ...BOUNCE, at: Date.now() }))
+		);
+		const response = await handler(fakeContext().ctx, webhookRequest());
+
+		expect(response.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(MAX_PLUGIN_FEEDBACK_EVENTS);
 	});
 
 	it('refuses a batch whose LAST event is malformed, having dispatched none of it', async () => {
@@ -499,6 +603,30 @@ describe('an oversized body', () => {
 			webhookRequest({ body, timestamp: String(timestamp), signature: sign(body, timestamp) })
 		);
 		expect(response.status).toBe(413);
+	});
+
+	it('measures BYTES, not UTF-16 units', async () => {
+		// A body of three-byte characters is a third of the cap by `String.length`
+		// and three times it on the wire. Measured wrong, the documented 1 MiB
+		// ceiling would be a 3 MiB one for any non-Latin payload.
+		const body = '漢'.repeat(400_000);
+		expect(body.length).toBeLessThan(1_048_576);
+		const timestamp = Math.floor(Date.now() / 1000);
+		const response = await handler(
+			fakeContext().ctx,
+			webhookRequest({ body, timestamp: String(timestamp), signature: sign(body, timestamp) })
+		);
+		expect(response.status).toBe(413);
+	});
+
+	it('still accepts a multi-byte body that fits', async () => {
+		const body = '漢'.repeat(1_000);
+		const timestamp = Math.floor(Date.now() / 1000);
+		const response = await handler(
+			fakeContext().ctx,
+			webhookRequest({ body, timestamp: String(timestamp), signature: sign(body, timestamp) })
+		);
+		expect(response.status).toBe(200);
 	});
 });
 
@@ -567,5 +695,35 @@ describe('an authentic, authorized delivery', () => {
 		const { ctx, stored } = fakeContext();
 		await handler(ctx, webhookRequest());
 		expect(stored).toEqual([]);
+	});
+
+	it('DOES retain it for the adapter that asked, under its own source', async () => {
+		// The other branch of the same opt-in, and the only write on this route that
+		// persists third-party payload content. Its failure is silent by design (an
+		// audit write never fails a webhook), so nothing but a positive case pins
+		// the mutation reference or its argument shape — and a deployment that
+		// opted in and is keeping nothing finds out during a dispute.
+		const { ctx, stored } = fakeContext();
+		const response = await handler(
+			ctx,
+			webhookRequest({
+				pluginId: mocks.retention.pluginId,
+				secret: mocks.retention.secret,
+			})
+		);
+
+		expect(response.status).toBe(200);
+		expect(stored).toEqual([{ source: mocks.retention.kind, rawPayload: BODY }]);
+	});
+
+	it('answers 200 even when retention fails', async () => {
+		const { ctx } = fakeContext({ isStorable: false });
+		const response = await handler(
+			ctx,
+			webhookRequest({ pluginId: mocks.retention.pluginId, secret: mocks.retention.secret })
+		);
+
+		expect(response.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
 	});
 });
