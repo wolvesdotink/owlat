@@ -36,6 +36,29 @@
  * weaker of the two and would rot separately, so this file stops at "the adapter
  * exists and has the shape the router's handler needs".
  *
+ * NEITHER IS THE FOURTH JOIN THIS PIECE OWNS — `setupProbe` vs. the validators
+ * and surfaces that keep it — because none of its three halves can be asked from
+ * a Convex module. They are, and each says which side it binds:
+ *
+ *   packages/shared/src/__tests__/sendProviderCatalog.test.ts
+ *     ("names a real validator on every setup probe, and only where one exists")
+ *     descriptor → `setupValidators.ts`: the named validator resolves to a
+ *     callable export, so a typo or a rename cannot ship. It lives beside the
+ *     declaration because that is the package holding both.
+ *   apps/web/server/api/delivery/__tests__/validate-transport-probes.test.ts
+ *     descriptor → the SHIPPED endpoint: every declared probe reaches the
+ *     validator its descriptor names, and every kind without one is refused
+ *     rather than quietly accepted.
+ *   apps/web/app/composables/__tests__/relayCredentialDraft.test.ts
+ *     ("offers a live check for %s only when its entry declares a setup probe")
+ *     descriptor → the BROWSER: `canValidateLive` — and therefore the editor's
+ *     test button — is true exactly for the kinds that declare a probe.
+ *
+ * Nothing in `apps/api` may import a Nitro route or a Vue composable, so this
+ * file cannot restate any of the three. It names them instead, because a reader
+ * auditing P1.3 from here would otherwise read three joins and conclude the
+ * fourth was dropped.
+ *
  * SCOPE: THE CORE TIER, deliberately. A bundled plugin transport declares its
  * env keys in its manifest (the host asserts their presence — plan §4, the
  * plugin column of the N+1 checklist), carries its own executable module through
@@ -216,21 +239,47 @@ describe('every env variable the catalog declares is one the deployment can carr
 		}
 	);
 
-	it('never puts a form field on a variable the entry does not declare', () => {
+	it('never puts an OPTIONAL form field on a variable the entry does not declare', () => {
 		// The join in the other direction: `requiredEnvVars ∪ optionalEnvVars` is
 		// what "this kind needs" MEANS — the presence gate that decides configured,
 		// the `.env` skeleton, the docs table. A credential field writing a variable
 		// outside it is an input the operator can fill in that no other surface
 		// knows exists.
+		//
+		// HALF OF THAT IS NOT THIS FILE'S. `packages/shared/src/__tests__/
+		// sendProviderCatalog.test.ts` ("describes every field in the declared
+		// vocabulary, and marks required on `envVar` only") already binds every
+		// `required: true` field to `requiredEnvVars` — in both directions — and
+		// binds a `host-port` field's port/secure variables to `optionalEnvVars`.
+		// Restating those here would express one rule in two packages, which is the
+		// duplication this plan exists to end. What that suite cannot say is where a
+		// NON-required field's variable belongs: it only asserts such a name is
+		// absent from `requiredEnvVars`, so one declared in neither list (today:
+		// mta's OUTBOUND_TLS_MODE) is the case that would still slip through.
+		const subjects = CORE_ENTRIES.flatMap((entry) =>
+			entry.credentialFields.filter((field) => field.required !== true)
+		);
+		// The anchor, as everywhere else here: with every field marked required this
+		// loop would describe nothing and pass. That day this branch has no subjects
+		// left and the whole rule belongs to the shared suite — delete it rather than
+		// keep a green test that asks nothing.
+		expect(subjects.length).toBeGreaterThan(0);
+
 		for (const entry of CORE_ENTRIES) {
 			const declared = new Set<string>([
 				...entry.requiredEnvVars,
 				...(entry.optionalEnvVars ?? []),
 			]);
 			const orphans = entry.credentialFields
+				.filter((field) => field.required !== true)
 				.flatMap((field) => credentialFieldEnvVars(field))
 				.filter((name) => !declared.has(name));
-			expect(orphans, entry.kind).toEqual([]);
+			expect(
+				orphans,
+				`${entry.kind}: an optional credential field writes these, and no ` +
+					'`requiredEnvVars`/`optionalEnvVars` entry declares them — add them to ' +
+					'optionalEnvVars, or the form collects a value nothing else knows about'
+			).toEqual([]);
 		}
 	});
 });

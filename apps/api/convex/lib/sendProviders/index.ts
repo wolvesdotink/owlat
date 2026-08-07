@@ -4,12 +4,20 @@
  * Send provider adapter (module) — registry + dispatch.
  *
  * Per ADR-0020. Mirrors `convex/domains/providers/index.ts` (ADR-0018) shape.
- * Adding another send provider is a one-folder change:
- *   1. Create `convex/lib/sendProviders/<kind>/index.ts` with the adapter.
- *   2. Add the literal to `SendProviderKind` in `types.ts`.
+ * Adding another core send provider:
+ *   1. Declare the entry in `packages/shared/src/sendProviderCatalog.ts`. That
+ *      is where the kind literal lives: `CoreSendProviderKind` is read off those
+ *      entries in `./catalogTypes` and reaches the rest of the backend through
+ *      `./catalog` and `./types`, which only re-export it.
+ *   2. Create `convex/lib/sendProviders/<kind>/index.ts` with the adapter.
  *   3. Add one entry to `SEND_PROVIDERS` below.
  *
- * The compile-time `satisfies` check on the registry catches missing methods.
+ * Step 1 without step 3 does not compile: the mapped-type annotation on
+ * `_typecheck` below keys the registry by the catalog's kind union, so a missing
+ * adapter is a build error and a malformed one names the method it lacks.
+ * `__tests__/catalogConsistency.test.ts` restates that guard against the union
+ * imported straight from `@owlat/shared`, so the chain cannot quietly be rebuilt
+ * on a union local to this app.
  * The **Send dispatch (helper)** in `./dispatch.ts` never branches on `kind`.
  */
 
