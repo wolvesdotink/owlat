@@ -21,6 +21,20 @@
  *   domain identity        the plugin's observations → the host's derived status
  *   credentials UI         the form, in the vocabulary the renderer draws
  *
+ * MOST OF THAT LIST IS NOT WRITTEN OUT BELOW, and that is the point. Those rules
+ * are the HOST's, not this fixture's, and P3.4's scaffold gate has to hold a
+ * second subject to exactly the same ones — so they live once, in
+ * `../sendProviderConformance.ts`, and both suites run that body against their
+ * own composed artifact. A second copy would be a second place to edit when
+ * `resolveRoute` grows an argument, and a copy that is only edited in one place
+ * silently stops measuring what it claims to.
+ *
+ * WHAT REMAINS HERE IS THE FIXTURE'S OWN: the recorded attempt log the dispatch
+ * cases read (the scaffolded subject has a stubbed `fetch` instead), the exact
+ * wire values its manifest declares, the author-prose round trip, the web-gap
+ * finding, and the bindings to the two hand-written copies of this fixture that
+ * live in other packages.
+ *
  * TWO OF THE CARD'S OBLIGATIONS ARE NOT MET AS WRITTEN, and finding that is this
  * piece's job rather than a shortfall of it. Neither is edited around here.
  *
@@ -47,8 +61,9 @@
  *      form the shipped contract allows: the fold READS the declaration, and the
  *      probe sweep excludes the kind. A4 (§8) does not list probes, which is the
  *      reading this suite follows; §5's line predates P3.1. The cost is recorded
- *      rather than hidden — the next case down asserts the permanent `degraded`
- *      measurement quality that follows from it.
+ *      rather than hidden — the shared body's "is never probed, and grades
+ *      degraded from its declaration alone" asserts the permanent `degraded`
+ *      measurement quality that follows from it, for both subjects.
  *
  * ZERO CORE EDITS IS ITSELF AN ASSERTION here, not a claim in a commit message:
  * the last case fails if any non-test file under `apps/` or `packages/` learns
@@ -74,12 +89,10 @@
  * the entry's and the roster's — to the value this composition actually produces.
  */
 
-import { execFileSync } from 'node:child_process';
-import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { REPOSITORY_ROOT } from '../repository';
+import { REPOSITORY_ROOT, repositoryFilesMentioning } from '../repository';
 import {
 	MOCK_ESP_KIND,
 	MOCK_ESP_PACKAGE_NAME,
@@ -185,49 +198,20 @@ vi.mock('@owlat/api/generated/sendTransportDomainIdentityModules', async () => {
 	};
 });
 
-import {
-	isProbeDecidedReturnPathKind,
-	isSendProviderKind,
-	sendProviderCatalogEntry,
-	type SendProviderKind,
-} from '@owlat/api/sendProviders/catalog';
-import {
-	DeliverabilityRouteError,
-	resolveRoute,
-	type ProviderRouteConfig,
-} from '@owlat/api/sendProviders/routing';
-import { SEND_ROUTE_STRATEGIES } from '@owlat/api/sendProviders/strategies';
+import { type SendProviderKind } from '@owlat/api/sendProviders/catalog';
 // The host's own failure vocabulary, so the two fail-closed dispatch cases can
 // name the code they mean rather than a string that would survive a rename.
 import { EmailErrorCode } from '@owlat/api/sendProviders/types';
 import { buildDispatchExtrasFor } from '@owlat/api/sendProviders/registry';
-import {
-	isFallbackRelayEligible,
-	routeCarriesEnabledRelay,
-} from '@owlat/api/sendProviders/fallbackEligibility';
-import {
-	BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK,
-	BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK,
-	measurementQualityOf,
-	resolveReturnPathCapability,
-	widenBounceTolerance,
-} from '@owlat/api/sendProviders/returnPathCapability';
-import { armForTransport } from '@owlat/api/delivery/sendAssignments';
 import { sendProviderDispatch } from '@owlat/api/sendProviders/dispatch';
 import { pluginSendTransportWebhookFor } from '@owlat/api/plugins/sendTransportWebhookCatalog';
 import { pluginSendTransportDomainIdentityFor } from '@owlat/api/plugins/sendTransportDomainIdentityCatalog';
-import { verifyPluginReplayBoundSignature } from '@owlat/api/plugins/inboundSignature';
-import { parsePluginFeedbackEvents } from '@owlat/api/webhooks/pluginFeedbackEvents';
 import { parsePluginRelayResult } from '@owlat/api/domains/pluginRelayState';
-import {
-	coreSendProviderCatalogEntry,
-	OWN_SEND_PROVIDER_KIND,
-	SEND_PROVIDER_CREDENTIAL_FIELD_KINDS,
-} from '@owlat/shared/sendProviderCatalog';
+import { coreSendProviderCatalogEntry } from '@owlat/shared/sendProviderCatalog';
+import { describeSendProviderConformance } from '../sendProviderConformance';
 import { mockEspComposition } from '../fixtures/mockEsp/composition';
 
 const KIND = MOCK_ESP_KIND as SendProviderKind;
-const OWN = OWN_SEND_PROVIDER_KIND as SendProviderKind;
 
 /** Everything the fixture's credentials would be set to on a real deployment. */
 const CONFIGURED: Readonly<Record<string, string>> = Object.freeze({
@@ -237,34 +221,76 @@ const CONFIGURED: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
- * The readiness predicate `resolveRoute` is given: env presence, as shipped.
+ * The fixture's wire shape for one signed delivery.
  *
- * Exactly the two kinds this suite's routes name, and no third. A predicate that
- * answered for a core kind no case routes to would read as if the proof
- * exercised a mixed pool — and it would quietly change what "unroutable" means,
- * because a rejected route falls through to `EMAIL_PROVIDER` (see the routing
- * block's stub).
+ * RELATIVE to the run, because the host bounds an event's timestamp against the
+ * wall clock (a year back, a day forward) before it will record it — a fixed
+ * epoch would have this suite start failing on a date rather than on a
+ * regression. The last event is a kind this integration does not consume, and it
+ * carries no timestamp: it must be acknowledged rather than 400-ed, which would
+ * make the provider redeliver the whole batch forever.
  */
-const configured = (kind: SendProviderKind): boolean => kind === KIND || kind === OWN;
+const NOW = Date.now();
+const FEEDBACK_BODY = JSON.stringify({
+	events: [
+		{ type: 'accepted', id: 'msg-1', ts: NOW - 4, email: 'a@example.com' },
+		{ type: 'hard_bounce', id: 'msg-2', ts: NOW - 3, detail: '550 no such user' },
+		{ type: 'spam_report', ts: NOW - 2, email: 'c@example.com' },
+		{ type: 'deferral', id: 'msg-4', ts: NOW - 1, detail: '451 try later' },
+		{ type: 'opened', id: 'msg-5' },
+	],
+});
 
-function route(overrides: Partial<ProviderRouteConfig>): ProviderRouteConfig {
-	return {
-		strategy: 'single',
-		providers: [{ providerType: KIND, isEnabled: true }],
-		...overrides,
-	};
-}
+/**
+ * THE HOST'S RULES, RUN AGAINST THE FIXTURE'S COMPOSED ARTIFACT.
+ *
+ * Routing under every declared strategy, the fallback arm and its per-domain
+ * proof gate, arm attribution, the return-path fold, the feedback route's
+ * registration and re-validation, the derived domain status and the credential
+ * vocabulary all live in `../sendProviderConformance.ts` and are run identically
+ * against P3.4's scaffolded bundle. Everything below this call is what only THIS
+ * fixture can be asked.
+ *
+ * The identity scenarios are the fixture's imagined provider rule, stated in one
+ * place: a registered domain is fully observed, `pending.*` has not published its
+ * DKIM, and an instance with no token is refused.
+ */
+describeSendProviderConformance({
+	kind: KIND,
+	pluginId: MOCK_ESP_PLUGIN_ID,
+	entry: mockEspComposition().sendTransports[0]! as Record<string, unknown>,
+	instanceRequiredEnv: [MOCK_ESP_TOKEN_ENV],
+	instanceOptionalEnv: [MOCK_ESP_REGION_ENV],
+	flagRequiredEnv: [MOCK_ESP_ENABLED_ENV, MOCK_ESP_WEBHOOK_SECRET_ENV],
+	signature: {
+		header: MOCK_ESP_SIGNATURE_HEADER,
+		algorithm: 'hmac-sha256',
+		encoding: 'hex',
+		secretEnvVar: MOCK_ESP_WEBHOOK_SECRET_ENV,
+		replay: {
+			timestampHeader: MOCK_ESP_TIMESTAMP_HEADER,
+			toleranceSeconds: MOCK_ESP_TOLERANCE_SECONDS,
+		},
+	},
+	webhookSecretValue: CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!,
+	feedbackBatch: {
+		body: FEEDBACK_BODY,
+		kinds: ['email.delivered', 'email.bounced', 'email.complained', 'email.deferred'],
+	},
+	domainScenarios: {
+		verified: () => ({
+			domain: 'sender.example.com',
+			config: { instanceKey: null, env: { [MOCK_ESP_TOKEN_ENV]: 'tok-live' } },
+		}),
+		unverified: () => ({
+			domain: 'pending.example.com',
+			config: { instanceKey: null, env: { [MOCK_ESP_TOKEN_ENV]: 'tok-live' } },
+		}),
+		authFailed: () => ({ domain: 'sender.example.com', config: { instanceKey: 'eu', env: {} } }),
+	},
+});
 
-describe('the bundle composes into the entry the core catalog serves', () => {
-	// The join every case below stands on: the composed catalog is what
-	// `sendProviderCatalogEntry` answers from, so if the fixture did not land in
-	// it, every "the plugin kind is routable" assertion would be about a kind the
-	// catalog invented.
-	it('serves the fixture as a first-class catalog entry', () => {
-		expect(isSendProviderKind(MOCK_ESP_KIND)).toBe(true);
-		expect(sendProviderCatalogEntry(KIND)).toEqual(mockEspComposition().sendTransports[0]);
-	});
-
+describe('the bundle composes to the exact kind two other packages spell', () => {
 	// THE LITERAL, spelled once. The fixture BUILDS its kind through the grammar's
 	// single builder (the rule `namespacedKindGrammar.test.ts` owns), so nothing
 	// here re-checks the grammar — what this pins is the resulting string, because
@@ -274,210 +300,6 @@ describe('the bundle composes into the entry the core catalog serves', () => {
 	// than leaving those two measuring a kind nothing composes.
 	it('composes to the exact kind the two out-of-package fixtures spell', () => {
 		expect(MOCK_ESP_KIND).toBe('plugin.mock-esp.relay');
-	});
-
-	// DERIVED, not declared. The manifest says `webhook` and `domainIdentity`; the
-	// two capability words the rest of the host reads are computed from them, so a
-	// bundle cannot promise feedback it has no parser for or an identity API it
-	// never ships.
-	it('derives the two capability words from the halves that implement them', () => {
-		const entry = sendProviderCatalogEntry(KIND) as unknown as Record<string, unknown>;
-		expect(entry['hasProviderFeedback']).toBe(true);
-		expect(entry['domainVerification']).toBe('api');
-	});
-
-	// The tier boundary, asserted rather than assumed: a third-party transport may
-	// not claim envelope-sender control (the VERP local part is signed with a
-	// deployment secret it is never handed) nor pre-dispatch message-id custody.
-	it('carries only the capability values this tier may declare', () => {
-		const entry = sendProviderCatalogEntry(KIND) as unknown as Record<string, unknown>;
-		expect(entry['supportsCustomReturnPath']).toBe('no');
-		expect(entry['messageIdSource']).toBe('provider');
-		expect(entry['acceptanceSemantics']).toBeUndefined();
-	});
-});
-
-/**
- * EVERY strategy the registry declares, derived — never a list of four names.
- *
- * `adaptive_mix` is the one that needs a mix context to resolve at all, so it is
- * split out and driven by its own case below; the rest resolve from the route
- * alone. Deriving is what makes "under ALL strategies" survive the fifth: the
- * registry's own comment anticipates `least_loaded` / `geo_aware`, and a fifth
- * member would otherwise land with this suite green and still captioned "all
- * four" — the one suite whose job is to prove a plugin kind is routable
- * EVERYWHERE quietly stopping at four.
- */
-const CONTEXT_FREE_STRATEGIES = Object.keys(SEND_ROUTE_STRATEGIES).filter(
-	(strategy) => strategy !== 'adaptive_mix'
-) as readonly ProviderRouteConfig['strategy'][];
-
-describe('it appears in routes, under every declared strategy', () => {
-	/**
-	 * THE AMBIENT ENVIRONMENT IS NOT AN INPUT TO THIS BLOCK.
-	 *
-	 * A route that resolves to nothing falls through to `fallback()`, which reads
-	 * the deployment's `EMAIL_PROVIDER` — a real variable for this repository. A
-	 * developer or CI runner with one exported would otherwise turn "the plugin is
-	 * filtered out" into "the single-transport env answered instead", failing for a
-	 * reason that has nothing to do with the plugin tier. The ramp half stubs it
-	 * for the same reason.
-	 */
-	beforeEach(() => {
-		vi.stubEnv('EMAIL_PROVIDER', '');
-	});
-
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	// The registry's four, minus the mix and minus the draw: `single` and
-	// `priority_failover` are deterministic over one enabled arm. `workload_split`
-	// resolves here too (a one-entry pool is a degenerate draw), and then gets its
-	// own case below over a MIXED pool, which is the shape that can actually tell
-	// participation from "the only entry came back".
-	it.each(CONTEXT_FREE_STRATEGIES.map((strategy) => [strategy] as const))(
-		'resolves the plugin transport under %s',
-		(strategy) => {
-			expect(resolveRoute(route({ strategy }), [], configured)).toMatchObject({
-				providerType: KIND,
-				source: 'org_config',
-			});
-		}
-	);
-
-	/**
-	 * THE DRAW, OVER A MIXED POOL — the one strategy where a single-entry route
-	 * proves nothing. `workloadSplitStrategy.select` is a weighted pick over the
-	 * ENABLED pool, so with one entry it returns that entry whatever the weighting
-	 * and filtering do; the plugin arm has to be shown coming out of a pool that
-	 * also holds the own MTA.
-	 *
-	 * Deterministic by pinning the draw at each end of the range rather than by
-	 * weighting, so BOTH arms are shown to be reachable: the strategy walks the
-	 * pool in route order subtracting each weight, so the bottom of the range is
-	 * the first entry and the top is the last. A filter that dropped the plugin
-	 * kind from the pool would return the own MTA for both.
-	 */
-	it.each([
-		[0, OWN],
-		[0.99, KIND],
-	])('draws %s of a mixed workload_split pool as %s', (draw, expected) => {
-		const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
-		try {
-			expect(
-				resolveRoute(
-					route({
-						strategy: 'workload_split',
-						providers: [
-							{ providerType: OWN, isEnabled: true },
-							{ providerType: KIND, isEnabled: true },
-						],
-					}),
-					[],
-					configured
-				)
-			).toMatchObject({ providerType: expected, source: 'org_config' });
-		} finally {
-			random.mockRestore();
-		}
-	});
-
-	// THE MIX, and the one that matters most: `adaptive_mix` splits a cell
-	// between the own MTA and a REFERENCE arm, and the plugin transport is that
-	// arm on the same terms SES is. Both degenerate shares are driven so the case
-	// cannot pass by the mix simply ignoring the share.
-	it.each([
-		[0, KIND],
-		[1, OWN],
-	])('sends share %s of an adaptive_mix cell to %s', (ownShare, expected) => {
-		const resolved = resolveRoute(
-			route({
-				strategy: 'adaptive_mix',
-				providers: [
-					{ providerType: OWN, isEnabled: true },
-					{ providerType: KIND, isEnabled: true },
-				],
-			}),
-			[],
-			configured,
-			undefined,
-			{ kind: 'decide', input: { cell: { ownShare }, recipient: { contactId: 'contact-1' } } }
-		);
-		expect(resolved).toMatchObject({ providerType: expected });
-	});
-
-	// A transport whose credentials are unset is not routable, whatever the row
-	// says — the same fail-closed readiness filter every core kind passes through.
-	it('is filtered out of the route when its credentials are unset', () => {
-		expect(resolveRoute(route({}), [], (kind) => kind !== KIND)).toBeNull();
-	});
-});
-
-describe('it is fallback-eligible on the capability path (P0.2)', () => {
-	it('may serve as the deliverability fallback relay', () => {
-		expect(isFallbackRelayEligible(MOCK_ESP_KIND, configured)).toBe(true);
-	});
-
-	// The two halves of the gate, each pinned on its own: eligibility is a
-	// CAPABILITY question (is it a known transport that is not our own MTA), and
-	// configured-ness is injected by the caller.
-	it('fails closed when the deployment has no credentials for it', () => {
-		expect(isFallbackRelayEligible(MOCK_ESP_KIND, () => false)).toBe(false);
-	});
-
-	// THE PROOF OBLIGATION: the shipped fallback arm actually hands the send to the
-	// plugin transport, with the reason the route asked for.
-	it('takes over a blocklisted cell from the own MTA', () => {
-		const config = route({
-			strategy: 'single',
-			providers: [
-				{ providerType: OWN, isEnabled: true },
-				{ providerType: KIND, isEnabled: true },
-			],
-			deliverabilityFallback: {
-				isEnabled: true,
-				relayProviderType: MOCK_ESP_KIND,
-				isWarmupOverflowEnabled: false,
-			},
-		});
-		expect(routeCarriesEnabledRelay(config.providers, MOCK_ESP_KIND)).toBe(true);
-		expect(
-			resolveRoute(config, [], configured, {
-				activeReasons: ['dnsbl_listed'],
-				isWarmupOverflow: false,
-				isRelayDomainVerified: true,
-			})
-		).toEqual({
-			providerType: KIND,
-			source: 'deliverability_fallback',
-			deliverabilityReason: 'dnsbl_listed',
-		});
-	});
-
-	// And it is held to the SAME per-domain proof gate a core relay is: eligible is
-	// not sufficient. An unverified sending domain refuses the relay rather than
-	// quietly handing a third party a From domain it cannot prove.
-	it('is still refused for a sending domain it has not proven', () => {
-		expect(() =>
-			resolveRoute(
-				route({
-					strategy: 'single',
-					providers: [
-						{ providerType: OWN, isEnabled: true },
-						{ providerType: KIND, isEnabled: true },
-					],
-					deliverabilityFallback: {
-						isEnabled: true,
-						relayProviderType: MOCK_ESP_KIND,
-						isWarmupOverflowEnabled: false,
-					},
-				}),
-				[],
-				configured,
-				{ activeReasons: ['dnsbl_listed'], isWarmupOverflow: false, isRelayDomainVerified: false }
-			)
-		).toThrow(DeliverabilityRouteError);
 	});
 });
 
@@ -705,139 +527,26 @@ describe('a send actually goes out through the plugin module', () => {
 	});
 });
 
-describe('it is a reference arm in the measurement plane', () => {
-	// Attribution is decided once, at assignment time, by asking only whether the
-	// transport is our own MTA. A plugin kind is `reference` for exactly the reason
-	// SES is — and the ramp fixture case in `apps/api` proves the same rule holds
-	// through the real outcome writers and the real controller tick.
-	it('files sends on the reference arm, and the own MTA on the own arm', () => {
-		expect(armForTransport(KIND)).toBe('reference');
-		expect(armForTransport(OWN)).toBe('own');
-	});
-});
-
-describe('the return-path plane grades it, and the probe wire stays closed', () => {
-	/**
-	 * THE CARD'S "gets return-path probes" OBLIGATION, DISCHARGED IN THE NEGATIVE —
-	 * and the disagreement that forces it, stated rather than smoothed over.
+describe('its feedback route carries the contract this manifest declared', () => {
+	/*
+	 * THE CHAIN IS NOT HERE. Host verification → plugin parse → host revalidation,
+	 * the registration by plugin id and the `__proto__` probe are the HOST's rules
+	 * and live in `../sendProviderConformance.ts`, which runs them over the batch
+	 * this file declares above (`FEEDBACK_BODY`) and over the scaffolded subject's.
 	 *
-	 * Plan §5's P3.3 line says a plugin transport "gets return-path probes"; A4
-	 * (§8), the criterion the wave gate reads, does not mention probes. P3.1
-	 * settled it in between: `supportsCustomReturnPath: 'no'` is the ONLY value
-	 * plugin-kit lets this tier declare, because the VERP local part a probe
-	 * measures is signed with a deployment secret a third-party module is never
-	 * handed — a probe would spend a real bounce on the operator's ESP account to
-	 * learn what the declaration already says. So the obligation is met in the only
-	 * form the shipped contract has: the fold READS the declaration (the next case)
-	 * and the sweep excludes the kind (this one).
+	 * The verifier's negatives are not here either, and never were: tampered body,
+	 * forged signature, replay outside the window, a tolerance beyond the kit's
+	 * ceiling and the 503 an unset secret answers are
+	 * `verifyPluginReplayBoundSignature`'s own contract, owned exhaustively by
+	 * `apps/api/convex/plugins/__tests__/inboundSignature.test.ts` at the verifier
+	 * and `apps/api/convex/webhooks/__tests__/pluginFeedbackRoute.test.ts` at the
+	 * route.
 	 *
-	 * That is a decision with a price, and the third case prices it: a plugin ESP
-	 * whose real product does support a custom return path is still graded
-	 * `degraded` forever. Reopening it means widening the kit's union, which is a
-	 * P3.1 change and a piece of its own — not something this proof may edit
-	 * around.
+	 * What is left is the one thing only this fixture can be asked: that the exact
+	 * contract its manifest wrote survived codegen unaltered. The shared body checks
+	 * the SHAPE (an HMAC family, a bounded replay window); this checks the VALUES.
 	 */
-	it('is never selected for a return-path probe', () => {
-		expect(isProbeDecidedReturnPathKind(KIND)).toBe(false);
-	});
-
-	// The declaration is nonetheless READ, by the same fold every core kind goes
-	// through, and it produces the honest posture: no envelope-sender control, so
-	// the cell's bounce comparison is degraded rather than pretended comparable.
-	it('resolves to an unsupported, degraded posture from its declaration alone', () => {
-		const resolved = resolveReturnPathCapability(KIND, null, Date.now());
-		expect(resolved).toMatchObject({
-			capability: 'unsupported',
-			declared: 'no',
-			reason: 'declared_unsupported',
-			probeStatus: 'never_probed',
-		});
-		expect(measurementQualityOf(resolved)).toBe('degraded');
-	});
-
-	// THE BUNDLE'S COHERENCE, visible in the controller's arithmetic: because this
-	// provider ships a feedback webhook, its bounces are real data with different
-	// coverage and the gate widens modestly — not the hard widening reserved for an
-	// arm with no feedback at all. A bundle that dropped its webhook would move
-	// this number, which is the point of asserting it.
-	it('widens the bounce gate as a provider-feedback arm, not a silent one', () => {
-		const resolved = resolveReturnPathCapability(KIND, null, Date.now());
-		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK);
-		expect(resolved.bounceToleranceMultiplier).not.toBe(BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK);
-		expect(widenBounceTolerance(0.02, resolved)).toBeCloseTo(
-			0.02 * BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK
-		);
-	});
-});
-
-describe('its feedback arrives on the plugin webhook route', () => {
-	// RELATIVE to the run, because the host bounds an event's timestamp against
-	// the wall clock (a year back, a day forward) before it will record it — a
-	// fixed epoch would have this suite start failing on a date rather than on a
-	// regression.
-	const NOW = Date.now();
-	const BODY = JSON.stringify({
-		events: [
-			{ type: 'accepted', id: 'msg-1', ts: NOW - 4, email: 'a@example.com' },
-			{ type: 'hard_bounce', id: 'msg-2', ts: NOW - 3, detail: '550 no such user' },
-			{ type: 'spam_report', ts: NOW - 2, email: 'c@example.com' },
-			{ type: 'deferral', id: 'msg-4', ts: NOW - 1, detail: '451 try later' },
-			// An event kind this integration does not consume: acknowledged, never a
-			// 400, or the provider would redeliver it forever.
-			{ type: 'opened', id: 'msg-5', ts: NOW },
-		],
-	});
-
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	/**
-	 * ONE INBOUND DELIVERY, ALWAYS THE HAPPY PATH — the provider's own bytes, the
-	 * declared HMAC over `<timestamp>.<body>`, a timestamp inside the declared
-	 * window.
-	 *
-	 * There is no knob for a tampered body, a forged signature or a stale
-	 * timestamp, and there deliberately is not: every negative belongs to
-	 * `verifyPluginReplayBoundSignature`'s own contract and is owned exhaustively
-	 * by the two shipped suites named at the end of this block. A builder carrying
-	 * overrides no case uses would advertise a capability this block does not have.
-	 */
-	function delivery() {
-		const surface = pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID);
-		if (!surface) throw new Error('the fixture webhook is not registered');
-		const timestamp = String(Math.floor(NOW / 1000));
-		const secret = CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!;
-		return {
-			contract: surface.definition.signature,
-			pluginId: MOCK_ESP_PLUGIN_ID,
-			transportKind: MOCK_ESP_KIND,
-			rawBody: BODY,
-			signature: createHmac('sha256', secret).update(`${timestamp}.${BODY}`).digest('hex'),
-			timestamp,
-			nowMs: NOW,
-		};
-	}
-
-	// The route is keyed by PLUGIN ID and resolves before a byte of the body is
-	// read; an unknown id is the 404 that keeps unverified traffic away from
-	// signature verification entirely.
-	it('registers exactly this plugin id, and nothing else', () => {
-		expect(pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID)?.definition).toMatchObject({
-			kind: MOCK_ESP_KIND,
-			pluginId: MOCK_ESP_PLUGIN_ID,
-			storeRawPayload: false,
-		});
-		expect(pluginSendTransportWebhookFor('someone-else')).toBeUndefined();
-		// Map-backed, so a prototype key resolves to nothing rather than to an
-		// inherited member being called as an adapter.
-		expect(pluginSendTransportWebhookFor('__proto__')).toBeUndefined();
-	});
-
-	// The contract the HOST verifies with — headers, HMAC family, encoding, secret
-	// variable and the bounded replay window — is the manifest's, carried through
-	// codegen unaltered. The plugin never sees any of it.
-	it('verifies with the declared contract', () => {
+	it('verifies with the declared contract, value for value', () => {
 		expect(pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID)?.definition.signature).toEqual({
 			header: MOCK_ESP_SIGNATURE_HEADER,
 			algorithm: 'hmac-sha256',
@@ -849,68 +558,21 @@ describe('its feedback arrives on the plugin webhook route', () => {
 			},
 		});
 	});
-
-	// THE HAPPY PATH, all three links: the host proves authenticity, the plugin
-	// turns verified bytes into feedback facts, and the host re-validates that
-	// output and stamps the transport kind itself — so a plugin cannot attribute a
-	// bounce to somebody else's arm.
-	//
-	// THROUGH THE LOOKUP, not through the fixture import. The route resolves a
-	// module by plugin id and then calls it; calling `mockEspWebhook` directly here
-	// would leave a registry that returned SOMEBODY ELSE's parser for this id
-	// perfectly green, which is the one join this block exists to prove.
-	it('verifies, parses and revalidates a signed batch into four feedback facts', async () => {
-		vi.stubEnv(MOCK_ESP_WEBHOOK_SECRET_ENV, CONFIGURED[MOCK_ESP_WEBHOOK_SECRET_ENV]!);
-		const surface = pluginSendTransportWebhookFor(MOCK_ESP_PLUGIN_ID);
-		if (!surface) throw new Error('the fixture webhook is not registered');
-		const verified = await verifyPluginReplayBoundSignature(delivery());
-		expect(verified.ok).toBe(true);
-
-		// The kind is taken from the RESOLVED REGISTRATION, not from a constant: the
-		// host stamps whatever the route's definition carries, so passing
-		// `MOCK_ESP_KIND` here would reduce the assertion below to "the function
-		// stamps what I gave it" and a registry that answered this plugin id with
-		// another plugin's definition would stay green.
-		const events = parsePluginFeedbackEvents(
-			surface.module.parseEvents(BODY),
-			surface.definition.kind
-		);
-		expect(events.map((event) => event.kind)).toEqual([
-			'email.delivered',
-			'email.bounced',
-			'email.complained',
-			'email.deferred',
-		]);
-		// The arm every one of them is graded against is stamped by the HOST from the
-		// route's registration, never taken from the plugin's output.
-		expect(
-			events.every(
-				(event) =>
-					'providerType' in event &&
-					(event as { readonly providerType?: string }).providerType === MOCK_ESP_KIND
-			)
-		).toBe(true);
-	});
-
-	/*
-	 * THE VERIFIER'S NEGATIVES ARE NOT RESTATED HERE, deliberately.
-	 *
-	 * Tampered body, forged signature, replay outside the window, malformed or
-	 * rewritten timestamp, a tolerance beyond the kit's ceiling and the 503 an
-	 * unset secret answers are `verifyPluginReplayBoundSignature`'s own contract,
-	 * and two shipped suites already own it exhaustively:
-	 * `apps/api/convex/plugins/__tests__/inboundSignature.test.ts` at the verifier
-	 * and `apps/api/convex/webhooks/__tests__/pluginFeedbackRoute.test.ts` at the
-	 * route. A third copy would not add a case; it would add a third file to edit
-	 * when the contract moves, and a third chance for the copies to disagree —
-	 * which is the duplication class this whole plan exists to remove. What is
-	 * fixture-specific, and therefore lives here, is the registration by plugin id,
-	 * the declared contract surviving codegen, and the verify → parse → revalidate
-	 * chain above.
-	 */
 });
 
-describe('it proves a sending domain through its identity module', () => {
+describe("its identity module reports this provider's own observations", () => {
+	/*
+	 * THE HOST'S HALF IS NOT HERE. That the registry is keyed by NAMESPACED KIND,
+	 * that the host derives `verified` from observations, that a rejected credential
+	 * is `auth_failed` rather than an outage and that an unrecognised shape is
+	 * `unavailable` are the host's rules, run over this fixture and over the
+	 * scaffolded one by `../sendProviderConformance.ts`.
+	 *
+	 * What only this fixture can be asked is what its imagined provider SEES — the
+	 * selector and mechanism it signs under, the `pending_dns` state a domain
+	 * registered but not published sits in, and that `registerDomain` is the half
+	 * that actually WRITES.
+	 */
 	const config = { instanceKey: null, env: { [MOCK_ESP_TOKEN_ENV]: 'tok-live' } };
 
 	// The registration log is module state, cleared by a hook for the reason the
@@ -920,34 +582,14 @@ describe('it proves a sending domain through its identity module', () => {
 		resetMockEspRegisteredDomains();
 	});
 
-	/**
-	 * THE MODULE THE HOST WOULD CALL, resolved the way the host resolves it — by
-	 * NAMESPACED KIND, which is how this registry is keyed (the feedback one is
-	 * keyed by plugin id, because its route surface is).
-	 *
-	 * Calling the imported fixture object directly would leave a registry that
-	 * keyed identities by `pluginId` — or that returned another plugin's module for
-	 * a colliding key — perfectly green while the host asked the wrong third party
-	 * whether this domain is proven.
-	 */
+	/** Resolved the way the host resolves it, not through the fixture import. */
 	function identityModule() {
 		const surface = pluginSendTransportDomainIdentityFor(MOCK_ESP_KIND);
 		if (!surface) throw new Error('the fixture domain identity is not registered');
 		return surface.module;
 	}
 
-	it('is registered as a sending-domain identity provider for its own kind', () => {
-		expect(pluginSendTransportDomainIdentityFor(MOCK_ESP_KIND)?.definition).toMatchObject({
-			kind: MOCK_ESP_KIND,
-			pluginId: MOCK_ESP_PLUGIN_ID,
-			requiredEnvVars: [MOCK_ESP_TOKEN_ENV],
-		});
-	});
-
-	// THE SPLIT: the plugin returns observations, the HOST derives the status. The
-	// module has no `status` field to return, which is what makes "verified" mean
-	// the same thing at every relay tier.
-	it('derives verified from the observations the module reported', async () => {
+	it('reports the selector and mechanism it signs under, and WRITES on register', async () => {
 		const outcome = parsePluginRelayResult(
 			await identityModule().registerDomain('sender.example.com', config)
 		);
@@ -965,32 +607,15 @@ describe('it proves a sending domain through its identity module', () => {
 		expect(mockEspRegisteredDomains()).toEqual(['sender.example.com']);
 	});
 
+	// The two NOT-verified states the host distinguishes, which need a provider that
+	// can report both: a domain it knows about whose DNS is not published yet, and
+	// one it has never heard of.
 	it.each([
 		['pending.example.com', 'pending_dns'],
 		['unknown.example.com', 'unverified'],
 	])('derives %s as %s', async (domain, status) => {
 		const outcome = parsePluginRelayResult(await identityModule().checkDomain(domain, config));
 		expect(outcome.outcome === 'ok' ? outcome.observation.status : null).toBe(status);
-	});
-
-	// A credential the provider rejected is TERMINAL and says so — distinguishable
-	// from an outage, because the host's write rules differ: only this one condemns
-	// a credential, and neither refreshes the proof's age.
-	it('reports a rejected credential as auth_failed, not as an outage', async () => {
-		const outcome = parsePluginRelayResult(
-			await identityModule().checkDomain('sender.example.com', {
-				instanceKey: 'eu',
-				env: {},
-			})
-		);
-		expect(outcome.outcome).toBe('auth_failed');
-	});
-
-	// Untrusted output is untrusted output: a shape the host does not recognise is
-	// `unavailable` — evidence of nothing — never a verdict that could mark a
-	// domain unverified while refreshing the freshness clock.
-	it('reads a malformed module answer as unavailable', () => {
-		expect(parsePluginRelayResult({ outcome: 'ok' }).outcome).toBe('unavailable');
 	});
 });
 
@@ -1020,28 +645,13 @@ describe('its credentials form is a descriptor set the UI vocabulary can draw', 
 	 * values the renderer would draw are in the vocabulary it can draw.
 	 */
 
-	it('declares its form in the shared field vocabulary', () => {
+	// THE VOCABULARY MEMBERSHIP AND THE REQUIRED/OPTIONAL JOIN ARE THE HOST'S, and
+	// live in `../sendProviderConformance.ts`. What is this fixture's is WHICH two
+	// drawings it exercises: the masked one and a closed set, so both branches a
+	// renderer has are covered by at least one subject.
+	it('exercises both drawings the renderer has', () => {
 		expect(fields).toBeDefined();
-		for (const field of fields ?? []) {
-			expect(SEND_PROVIDER_CREDENTIAL_FIELD_KINDS).toContain(field['kind']);
-		}
-		// Both drawings the fixture exercises: the masked one and a closed set.
 		expect((fields ?? []).map((field) => field['kind'])).toEqual(['secret', 'select']);
-	});
-
-	// THE JOIN THAT MAKES A FORM HONEST: every variable the form writes is one the
-	// transport declared, and the required/optional split matches the field's own
-	// `required`. A form asking for a variable no send reads, or omitting one that
-	// gates the transport, is refused at manifest validation — this asserts the
-	// property survives composition into the entry a renderer actually reads.
-	it('asks only for variables this transport reads, in the right list', () => {
-		const entry = mockEspComposition().sendTransports[0]!;
-		const required = new Set(entry['requiredEnvVars'] as readonly string[]);
-		const optional = new Set(entry['optionalEnvVars'] as readonly string[]);
-		for (const field of fields ?? []) {
-			const envVar = field['envVar'] as string;
-			expect(field['required'] === true ? required.has(envVar) : optional.has(envVar)).toBe(true);
-		}
 	});
 
 	/**
@@ -1107,7 +717,10 @@ describe('its credentials form is a descriptor set the UI vocabulary can draw', 
 	 * it, which is the fact this package can see.
 	 */
 	it('is composed for the backend and invisible to the shared, core-only view', () => {
-		expect(sendProviderCatalogEntry(KIND)).toBeDefined();
+		// The composed half is asserted by the shared body ("is served by the shipped
+		// catalog as the entry composition produced"); what this adds is the other
+		// side of the asymmetry — the core-only view every `apps/web` surface reaches
+		// for does not answer for this kind.
 		expect(coreSendProviderCatalogEntry(MOCK_ESP_KIND)).toBeUndefined();
 	});
 });
@@ -1126,24 +739,11 @@ describe('none of it required a core edit', () => {
 	const WEB_GAP_PIN = 'apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts';
 
 	it('leaves every non-test file under apps/ and packages/ ignorant of the fixture', () => {
-		const hits = execFileSync(
-			'git',
-			[
-				'grep',
-				'-lI',
-				'--untracked',
-				'-e',
-				MOCK_ESP_PLUGIN_ID,
-				'-e',
-				MOCK_ESP_PACKAGE_NAME,
-				'--',
-				'apps',
-				'packages',
-			],
-			{ cwd: REPOSITORY_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-		)
-			.split('\n')
-			.filter((line) => line.length > 0);
+		// The search itself lives in `../repository`, because the scaffold gate makes
+		// the same claim about its own subject with the same flags and the same
+		// treatment of the empty result — and a change to either that landed in one
+		// copy would leave the other measuring something else.
+		const hits = repositoryFilesMentioning([MOCK_ESP_PLUGIN_ID, MOCK_ESP_PACKAGE_NAME]);
 
 		expect(hits.filter((path) => !path.includes('/__tests__/'))).toEqual([]);
 		// And the two test files that ARE allowed to know.

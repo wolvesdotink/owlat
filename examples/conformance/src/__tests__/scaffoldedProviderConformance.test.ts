@@ -12,24 +12,19 @@
  * composes it through the real host and renderer. No file is edited in between,
  * and the last block asserts that mechanically.
  *
- * WHY THIS IS NOT THE SAME SUITE AS THE PARITY PROOF, run twice. That suite is
- * bound to its fixture's wire shapes, its recorded-attempt log and its declared
- * env-var names, all of which are the FIXTURE's choices. What is asserted here is
- * only what the TEMPLATE must be true of, and every subject-specific value —
- * the kind, the variable names, the webhook secret, the credential fields — is
- * read off the composed artifact rather than spelled, so a template that renames
- * anything is still measured against what it now declares.
- *
- * WHAT IT DOES NOT RE-PROVE. The negative half of signature verification
- * (tampered body, forged signature, stale timestamp, unset secret), the
- * per-adapter route behaviour, and the ramp controller's tick are owned
- * exhaustively by the shipped suites named in `pluginProviderParity.test.ts`'s
- * feedback block and by that file's `apps/api` ramp half. A second copy here
- * would add no case and one more place to edit.
+ * THE HOST'S RULES ARE NOT RESTATED HERE. Routability under every strategy, the
+ * fallback arm and its per-domain proof gate, arm attribution, the return-path
+ * fold, the feedback route's registration and re-validation, the derived domain
+ * status and the credential vocabulary are one body —
+ * `describeSendProviderConformance` — run against BOTH subjects, because they are
+ * the host's rules rather than either subject's. What is written out below it is
+ * only what is specific to THIS subject: the emitted send module driven through
+ * governed dispatch (a stubbed `fetch` is its "network"; the fixture ESP has a
+ * recorded attempt log instead), the generator's byte-for-byte output, and the
+ * bindings to the authoring guide.
  */
 
-import { createHmac } from 'node:crypto';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 // ── The composition, in the four places a host reads it ─────────────────────
 //
@@ -91,35 +86,14 @@ vi.mock('@owlat/api/generated/sendTransportDomainIdentityModules', async () => {
 	};
 });
 
-import {
-	isProbeDecidedReturnPathKind,
-	isSendProviderKind,
-	sendProviderCatalogEntry,
-	type SendProviderKind,
-} from '@owlat/api/sendProviders/catalog';
-import {
-	DeliverabilityRouteError,
-	resolveRoute,
-	type ProviderRouteConfig,
-} from '@owlat/api/sendProviders/routing';
-import { SEND_ROUTE_STRATEGIES } from '@owlat/api/sendProviders/strategies';
+import { type SendProviderKind } from '@owlat/api/sendProviders/catalog';
 import { EmailErrorCode } from '@owlat/api/sendProviders/types';
-import { isFallbackRelayEligible } from '@owlat/api/sendProviders/fallbackEligibility';
-import {
-	measurementQualityOf,
-	resolveReturnPathCapability,
-} from '@owlat/api/sendProviders/returnPathCapability';
-import { armForTransport } from '@owlat/api/delivery/sendAssignments';
 import { sendProviderDispatch } from '@owlat/api/sendProviders/dispatch';
-import { pluginSendTransportWebhookFor } from '@owlat/api/plugins/sendTransportWebhookCatalog';
-import { pluginSendTransportDomainIdentityFor } from '@owlat/api/plugins/sendTransportDomainIdentityCatalog';
-import { verifyPluginReplayBoundSignature } from '@owlat/api/plugins/inboundSignature';
-import { parsePluginFeedbackEvents } from '@owlat/api/webhooks/pluginFeedbackEvents';
-import { parsePluginRelayResult } from '@owlat/api/domains/pluginRelayState';
 import {
-	OWN_SEND_PROVIDER_KIND,
-	SEND_PROVIDER_CREDENTIAL_FIELD_KINDS,
-} from '@owlat/shared/sendProviderCatalog';
+	describeSendProviderConformance,
+	type ConformanceSignatureContract,
+} from '../sendProviderConformance';
+import { repositoryFilesMentioning } from '../repository';
 import {
 	cleanupScaffoldedBundle,
 	SCAFFOLDED_PACKAGE_NAME,
@@ -141,7 +115,6 @@ const entry = bundle.sendTransports[0]!;
 const webhookEntry = bundle.webhooks[0]!;
 
 const KIND = entry['kind'] as SendProviderKind;
-const OWN = OWN_SEND_PROVIDER_KIND as SendProviderKind;
 
 /**
  * EVERY VARIABLE NAME IS READ OFF THE COMPOSED BUNDLE, never spelled. The
@@ -171,16 +144,9 @@ const INSTANCE_REQUIRED_ENV = contribution['requiredEnvVars'] as readonly string
 const INSTANCE_OPTIONAL_ENV = contribution['optionalEnvVars'] as readonly string[];
 /** The plugin's deployment-wide gate, as the composed roster carries it. */
 const FLAG_ENV = manifest['flag'] as { readonly requiredEnvVars: readonly string[] };
-/** The composed presence list: the fold of both scopes. */
-const ENTRY_REQUIRED_ENV = entry['requiredEnvVars'] as readonly string[];
 
-const SIGNATURE = webhookEntry['signature'] as {
-	readonly header: string;
-	readonly algorithm: string;
-	readonly encoding: string;
-	readonly secretEnvVar: string;
-	readonly replay: { readonly timestampHeader: string; readonly toleranceSeconds: number };
-};
+const SIGNATURE = webhookEntry['signature'] as ConformanceSignatureContract;
+const WEBHOOK_SECRET = 'whsec-scaffolded';
 
 /** The transport's own credential — the value a send must go out on. */
 const DEFAULT_CREDENTIAL = 'default-instance-key';
@@ -188,188 +154,105 @@ const DEFAULT_CREDENTIAL = 'default-instance-key';
 /** Everything a real deployment would set for this bundle. */
 const CONFIGURED: Readonly<Record<string, string>> = Object.freeze({
 	...Object.fromEntries(FLAG_ENV.requiredEnvVars.map((name) => [name, 'set'])),
-	[SIGNATURE.secretEnvVar]: 'whsec-scaffolded',
+	[SIGNATURE.secretEnvVar]: WEBHOOK_SECRET,
 	...Object.fromEntries(INSTANCE_REQUIRED_ENV.map((name) => [name, DEFAULT_CREDENTIAL])),
 });
 
-const configured = (kind: SendProviderKind): boolean => kind === KIND || kind === OWN;
+/** The instance configuration the identity module is handed, as the host builds it. */
+const IDENTITY_CONFIG = {
+	instanceKey: null,
+	env: Object.fromEntries(INSTANCE_REQUIRED_ENV.map((name) => [name, DEFAULT_CREDENTIAL])),
+};
 
-function route(overrides: Partial<ProviderRouteConfig>): ProviderRouteConfig {
-	return {
-		strategy: 'single',
-		providers: [{ providerType: KIND, isEnabled: true }],
-		...overrides,
-	};
+/** Make the emitted modules' one network call answer a given way. */
+function stubFetch(response: Partial<Response> & { readonly json?: () => Promise<unknown> }) {
+	const fetchMock = vi.fn(async (_url: unknown, _init?: unknown) => response as Response);
+	vi.stubGlobal('fetch', fetchMock);
+	return fetchMock;
 }
+
+const NOW = Date.now();
 
 afterAll(async () => {
 	await cleanupScaffoldedBundle();
 });
 
-describe('the emitted bundle composes into a first-class catalog entry', () => {
-	it('validates, composes and is served by the shipped catalog', () => {
-		// The fixture throws if the emitted manifest fails validation, so reaching
-		// this line is already half the claim; the other half is that the composed
-		// entry is what the core catalog answers with.
-		expect(isSendProviderKind(KIND)).toBe(true);
-		expect(sendProviderCatalogEntry(KIND)).toEqual(entry);
-	});
+/**
+ * THE HOST'S RULES, RUN AGAINST THE GENERATOR'S OUTPUT.
+ *
+ * Every subject-specific value handed over is read off the composed artifact
+ * rather than spelled, so a template that renames anything is still measured
+ * against what it now declares. The wire shapes below are written from the
+ * emitted webhook module's own declared event kinds; an author who renames
+ * `hard_bounce` renames it in one place and this follows.
+ *
+ * THE UNCONSUMED EVENT CARRIES NO TIMESTAMP, deliberately. Engagement events
+ * Owlat does not act on routinely name their time field differently or omit it,
+ * and a module that validated the timestamp before deciding the kind would 400
+ * the whole batch — taking the four facts beside it down and leaving the provider
+ * redelivering forever.
+ */
+describeSendProviderConformance({
+	kind: KIND,
+	pluginId: SCAFFOLDED_PLUGIN_ID,
+	entry,
+	instanceRequiredEnv: INSTANCE_REQUIRED_ENV,
+	instanceOptionalEnv: INSTANCE_OPTIONAL_ENV,
+	flagRequiredEnv: FLAG_ENV.requiredEnvVars,
+	signature: SIGNATURE,
+	webhookSecretValue: WEBHOOK_SECRET,
+	feedbackBatch: {
+		body: JSON.stringify({
+			events: [
+				{ type: 'delivered', message_id: 'm1', timestamp: NOW - 4, recipient: 'a@example.com' },
+				{ type: 'hard_bounce', message_id: 'm2', timestamp: NOW - 3, reason: '550 no such user' },
+				{ type: 'complaint', timestamp: NOW - 2, recipient: 'c@example.com' },
+				{ type: 'deferred', message_id: 'm4', timestamp: NOW - 1, reason: '451 try later' },
+				{ type: 'opened', message_id: 'm5' },
+			],
+		}),
+		kinds: ['email.delivered', 'email.bounced', 'email.complained', 'email.deferred'],
+	},
+	domainScenarios: {
+		verified: () => {
+			stubFetch({
+				ok: true,
+				status: 200,
+				json: async () => ({ verified: true, spf_valid: true, dkim_valid: true }),
+			});
+			return { domain: 'sender.example.com', config: IDENTITY_CONFIG };
+		},
+		// The provider confirms ownership but the customer's DKIM record is not
+		// published: observations the host must NOT derive `verified` from.
+		unverified: () => {
+			stubFetch({
+				ok: true,
+				status: 200,
+				json: async () => ({ verified: true, spf_valid: true, dkim_valid: false }),
+			});
+			return { domain: 'pending.example.com', config: IDENTITY_CONFIG };
+		},
+		authFailed: () => {
+			stubFetch({ ok: false, status: 401 });
+			return { domain: 'a.example.com', config: IDENTITY_CONFIG };
+		},
+	},
+});
 
+describe('the emitted bundle composes to the kind its two identifiers imply', () => {
+	// The generator builds this string through the grammar's one builder, and the
+	// authoring guide's `create` command is what produces the two identifiers it is
+	// built from — so a template that changed either has to fail here.
 	it('composes to the kind the plugin id and the transport local id imply', () => {
 		expect(KIND).toBe(`plugin.${SCAFFOLDED_PLUGIN_ID}.relay`);
 		expect(entry['pluginId']).toBe(SCAFFOLDED_PLUGIN_ID);
 	});
 
-	/**
-	 * THE TEMPLATE'S CENTRAL EDITING HAZARD, pinned. `hasProviderFeedback` and
-	 * `domainVerification` are DERIVED from the presence of the webhook and the
-	 * domain-identity halves — an author who deletes a half they do not need must
-	 * lose the promise with it, and an author who keeps both must get both. A
-	 * template that emitted the words as fields could disagree with its own files.
-	 */
-	it('derives both capability words from the halves it emitted', () => {
-		expect(entry['hasProviderFeedback']).toBe(true);
-		expect(entry['domainVerification']).toBe('api');
-	});
-
-	it('declares only capability values this tier may hold', () => {
-		expect(entry['supportsCustomReturnPath']).toBe('no');
+	// The template's own capability choice, which the tier permits either way and
+	// the shared body therefore does not pin: the emitted send returns the
+	// provider's id, and every feedback event is joined on it.
+	it('declares the message-id source the emitted send module actually returns', () => {
 		expect(entry['messageIdSource']).toBe('provider');
-		// Custody of an in-flight message is the own MTA's; a third party may not
-		// claim it, and the template must not teach an author to try.
-		expect(entry['acceptanceSemantics']).toBeUndefined();
-		// The dedup promise needs `buildSystemMailExtras` to carry the key; the
-		// template declares the honest `false`, which composition folds to absent.
-		expect(entry['deduplicatesOnIdempotencyKey']).not.toBe(true);
-	});
-
-	it('declares a per-instance credential, which is what makes instances resolvable', () => {
-		// A transport that declared none would keep working on the default instance
-		// and be refused `instances_unsupported` for every named one — the template
-		// must not scaffold that shape.
-		expect(INSTANCE_REQUIRED_ENV.length).toBeGreaterThan(0);
-		expect(entry['instanceEnvVars']).toEqual([...INSTANCE_REQUIRED_ENV, ...INSTANCE_OPTIONAL_ENV]);
-	});
-
-	it('folds both scopes into the presence list the host asks about', () => {
-		for (const name of [...FLAG_ENV.requiredEnvVars, ...INSTANCE_REQUIRED_ENV]) {
-			expect(ENTRY_REQUIRED_ENV, `${name} is not in the composed presence list`).toContain(name);
-		}
-	});
-
-	/**
-	 * The two scopes the manifest validator refuses to let overlap: the plugin's
-	 * deployment-wide gate is read unsuffixed, the transport's configuration is
-	 * read per instance. A template that put the API key in the flag would produce
-	 * a transport with no per-instance credential at all.
-	 */
-	it('keeps the plugin gate and the transport credential in separate scopes', () => {
-		expect(FLAG_ENV.requiredEnvVars).toContain(SIGNATURE.secretEnvVar);
-		for (const name of [...INSTANCE_REQUIRED_ENV, ...INSTANCE_OPTIONAL_ENV]) {
-			expect(FLAG_ENV.requiredEnvVars, `${name} is both a gate and a credential`).not.toContain(
-				name
-			);
-		}
-	});
-});
-
-/** Every strategy the registry declares, derived — never a list of four names. */
-const CONTEXT_FREE_STRATEGIES = Object.keys(SEND_ROUTE_STRATEGIES).filter(
-	(strategy) => strategy !== 'adaptive_mix'
-) as readonly ProviderRouteConfig['strategy'][];
-
-describe('it is routable, under every declared strategy', () => {
-	// A route resolving to nothing falls through to the deployment's
-	// `EMAIL_PROVIDER`, which is a real variable for this repository.
-	beforeEach(() => {
-		vi.stubEnv('EMAIL_PROVIDER', '');
-	});
-
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	it.each(CONTEXT_FREE_STRATEGIES.map((strategy) => [strategy] as const))(
-		'resolves the scaffolded transport under %s',
-		(strategy) => {
-			expect(resolveRoute(route({ strategy }), [], configured)).toMatchObject({
-				providerType: KIND,
-				source: 'org_config',
-			});
-		}
-	);
-
-	// THE MIX: the scaffolded transport is the reference arm on the same terms a
-	// core relay is. Both degenerate shares are driven so the case cannot pass by
-	// the mix ignoring the share.
-	it.each([
-		[0, KIND],
-		[1, OWN],
-	])('sends share %s of an adaptive_mix cell to %s', (ownShare, expected) => {
-		expect(
-			resolveRoute(
-				route({
-					strategy: 'adaptive_mix',
-					providers: [
-						{ providerType: OWN, isEnabled: true },
-						{ providerType: KIND, isEnabled: true },
-					],
-				}),
-				[],
-				configured,
-				undefined,
-				{ kind: 'decide', input: { cell: { ownShare }, recipient: { contactId: 'contact-1' } } }
-			)
-		).toMatchObject({ providerType: expected });
-	});
-
-	it('is filtered out of the route when its credentials are unset', () => {
-		expect(resolveRoute(route({}), [], (kind) => kind !== KIND)).toBeNull();
-	});
-});
-
-describe('it is fallback-eligible, and still held to the per-domain proof gate', () => {
-	function fallbackRoute(): ProviderRouteConfig {
-		return route({
-			providers: [
-				{ providerType: OWN, isEnabled: true },
-				{ providerType: KIND, isEnabled: true },
-			],
-			deliverabilityFallback: {
-				isEnabled: true,
-				relayProviderType: KIND,
-				isWarmupOverflowEnabled: false,
-			},
-		});
-	}
-
-	it('may serve as the deliverability fallback relay', () => {
-		expect(isFallbackRelayEligible(KIND, configured)).toBe(true);
-		expect(isFallbackRelayEligible(KIND, () => false)).toBe(false);
-	});
-
-	it('takes over a blocklisted cell from the own MTA', () => {
-		expect(
-			resolveRoute(fallbackRoute(), [], configured, {
-				activeReasons: ['dnsbl_listed'],
-				isWarmupOverflow: false,
-				isRelayDomainVerified: true,
-			})
-		).toEqual({
-			providerType: KIND,
-			source: 'deliverability_fallback',
-			deliverabilityReason: 'dnsbl_listed',
-		});
-	});
-
-	it('is refused for a sending domain it has not proven', () => {
-		expect(() =>
-			resolveRoute(fallbackRoute(), [], configured, {
-				activeReasons: ['dnsbl_listed'],
-				isWarmupOverflow: false,
-				isRelayDomainVerified: false,
-			})
-		).toThrow(DeliverabilityRouteError);
 	});
 });
 
@@ -380,17 +263,6 @@ describe('a send actually goes out through the emitted send module', () => {
 			runMutation: vi.fn(async () => isAuthorized),
 			scheduler: { runAfter: vi.fn(async () => undefined) },
 		};
-	}
-
-	/**
-	 * The emitted module's "network". It performs ONE `fetch` and maps the outcome
-	 * onto the kit's typed vocabulary, so stubbing the global is what lets this
-	 * gate drive the real module rather than a fixture written to be drivable.
-	 */
-	function stubFetch(response: Partial<Response> & { readonly json?: () => Promise<unknown> }) {
-		const fetchMock = vi.fn(async (_url: unknown, _init?: unknown) => response as Response);
-		vi.stubGlobal('fetch', fetchMock);
-		return fetchMock;
 	}
 
 	const message = {
@@ -412,7 +284,7 @@ describe('a send actually goes out through the emitted send module', () => {
 	 *
 	 * The send is addressed to `#eu`, so the emitted module must be handed the
 	 * `__EU`-suffixed credential keyed by its BASE name. The assertion reads the
-	 * value back off the REQUEST the module made.
+	 * value back off the REQUEST the module made — this subject's "attempt log".
 	 */
 	it("sends on the addressed instance's own credentials", async () => {
 		vi.stubEnv('SEND_TRANSPORT_INSTANCES', `${KIND}#eu`);
@@ -460,7 +332,7 @@ describe('a send actually goes out through the emitted send module', () => {
 	 */
 	it('never calls the module when a required credential is unset', async () => {
 		for (const name of FLAG_ENV.requiredEnvVars) vi.stubEnv(name, 'set');
-		vi.stubEnv(SIGNATURE.secretEnvVar, 'whsec-scaffolded');
+		vi.stubEnv(SIGNATURE.secretEnvVar, WEBHOOK_SECRET);
 		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'nope' }) });
 
 		const result = await sendProviderDispatch(fakeContext() as never, KIND, message);
@@ -489,12 +361,15 @@ describe('a send actually goes out through the emitted send module', () => {
 	 * THE RETRY SEMANTICS THE TEMPLATE SHIPS. This is the part of a provider
 	 * integration that is the same for every vendor and the part an author is most
 	 * likely to get wrong, so the emitted mapping is pinned at the GOVERNED
-	 * boundary: a 429 must come back retryable and a 400 must not.
+	 * boundary: a 429 and a 408 must come back retryable and a 400 must not.
 	 */
 	it.each([
 		// A rate limit is retryable, so the loop spends the entry's whole
 		// `retryDelays` budget: one attempt per delay plus the first.
 		[429, EmailErrorCode.RATE_LIMIT, (entry['retryDelays'] as readonly number[]).length + 1],
+		// The other retryable 4xx, and the one a hand-written mapping usually files
+		// as terminal: a request that timed out may well succeed on the retry.
+		[408, EmailErrorCode.SERVER_ERROR, (entry['retryDelays'] as readonly number[]).length + 1],
 		// A rejection is terminal: retrying it would burn the budget on a send that
 		// can never succeed.
 		[400, EmailErrorCode.CONTENT_REJECTED, 1],
@@ -506,226 +381,6 @@ describe('a send actually goes out through the emitted send module', () => {
 
 		expect(result.result).toMatchObject({ success: false, errorCode });
 		expect(result.attempts).toBe(attempts);
-	});
-});
-
-describe('it is a reference arm and its return-path posture is honest', () => {
-	it('files sends on the reference arm, and the own MTA on the own arm', () => {
-		expect(armForTransport(KIND)).toBe('reference');
-		expect(armForTransport(OWN)).toBe('own');
-	});
-
-	it('is never probed, and grades degraded from its declaration alone', () => {
-		expect(isProbeDecidedReturnPathKind(KIND)).toBe(false);
-		const resolved = resolveReturnPathCapability(KIND, null, Date.now());
-		expect(resolved).toMatchObject({
-			capability: 'unsupported',
-			declared: 'no',
-			reason: 'declared_unsupported',
-		});
-		expect(measurementQualityOf(resolved)).toBe('degraded');
-	});
-});
-
-describe('its feedback arrives on the plugin webhook route', () => {
-	const NOW = Date.now();
-	/**
-	 * The wire shape the EMITTED webhook module parses, written from its own
-	 * declared event kinds rather than from a copy: an author who renames
-	 * `hard_bounce` renames it in one place and this body follows.
-	 */
-	const BODY = JSON.stringify({
-		events: [
-			{ type: 'delivered', message_id: 'm1', timestamp: NOW - 4, recipient: 'a@example.com' },
-			{ type: 'hard_bounce', message_id: 'm2', timestamp: NOW - 3, reason: '550 no such user' },
-			{ type: 'complaint', timestamp: NOW - 2, recipient: 'c@example.com' },
-			{ type: 'deferred', message_id: 'm4', timestamp: NOW - 1, reason: '451 try later' },
-			{ type: 'opened', message_id: 'm5', timestamp: NOW },
-		],
-	});
-
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	it('registers exactly this plugin id, and nothing else', () => {
-		expect(pluginSendTransportWebhookFor(SCAFFOLDED_PLUGIN_ID)?.definition).toMatchObject({
-			kind: KIND,
-			pluginId: SCAFFOLDED_PLUGIN_ID,
-			storeRawPayload: false,
-		});
-		expect(pluginSendTransportWebhookFor('someone-else')).toBeUndefined();
-		expect(pluginSendTransportWebhookFor('__proto__')).toBeUndefined();
-	});
-
-	/**
-	 * THE REPLAY PROVISIONS THE HOST REQUIRES, carried from the emitted manifest
-	 * through codegen. A template that shipped a body-only HMAC would scaffold a
-	 * package that fails validation; one that shipped an unbounded tolerance would
-	 * scaffold an endpoint a captured request verifies against forever.
-	 */
-	it('carries a bounded, replay-bound signature contract', () => {
-		expect(SIGNATURE.algorithm).toBe('hmac-sha256');
-		expect(SIGNATURE.replay.timestampHeader.length).toBeGreaterThan(0);
-		expect(SIGNATURE.replay.toleranceSeconds).toBeGreaterThan(0);
-		expect(SIGNATURE.replay.toleranceSeconds).toBeLessThanOrEqual(900);
-	});
-
-	// The whole chain: the host proves authenticity, the emitted module turns
-	// verified bytes into feedback facts, and the host re-validates that output and
-	// stamps the transport kind itself.
-	it('verifies, parses and revalidates a signed batch into four feedback facts', async () => {
-		vi.stubEnv(SIGNATURE.secretEnvVar, CONFIGURED[SIGNATURE.secretEnvVar]!);
-		const surface = pluginSendTransportWebhookFor(SCAFFOLDED_PLUGIN_ID);
-		if (!surface) throw new Error('the scaffolded webhook is not registered');
-
-		const timestamp = String(Math.floor(NOW / 1000));
-		const verified = await verifyPluginReplayBoundSignature({
-			contract: surface.definition.signature,
-			pluginId: SCAFFOLDED_PLUGIN_ID,
-			transportKind: KIND,
-			rawBody: BODY,
-			signature: createHmac('sha256', CONFIGURED[SIGNATURE.secretEnvVar]!)
-				.update(`${timestamp}.${BODY}`)
-				.digest('hex'),
-			timestamp,
-			nowMs: NOW,
-		});
-		expect(verified.ok).toBe(true);
-
-		const events = parsePluginFeedbackEvents(
-			surface.module.parseEvents(BODY),
-			surface.definition.kind
-		);
-		expect(events.map((event) => event.kind)).toEqual([
-			'email.delivered',
-			'email.bounced',
-			'email.complained',
-			'email.deferred',
-		]);
-		expect(
-			events.every(
-				(event) =>
-					'providerType' in event &&
-					(event as { readonly providerType?: string }).providerType === KIND
-			)
-		).toBe(true);
-	});
-});
-
-describe('it proves a sending domain through the emitted identity module', () => {
-	const config = {
-		instanceKey: null,
-		env: Object.fromEntries(INSTANCE_REQUIRED_ENV.map((name) => [name, DEFAULT_CREDENTIAL])),
-	};
-
-	function identityModule() {
-		const surface = pluginSendTransportDomainIdentityFor(KIND);
-		if (!surface) throw new Error('the scaffolded domain identity is not registered');
-		return surface.module;
-	}
-
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	it('is registered as a sending-domain identity provider for its own kind', () => {
-		expect(pluginSendTransportDomainIdentityFor(KIND)?.definition).toMatchObject({
-			kind: KIND,
-			pluginId: SCAFFOLDED_PLUGIN_ID,
-			requiredEnvVars: INSTANCE_REQUIRED_ENV,
-		});
-	});
-
-	// THE SPLIT: the module reports observations, the HOST derives the status.
-	it('derives verified from the observations the module reported', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({
-				ok: true,
-				status: 200,
-				json: async () => ({ verified: true, spf_valid: true, dkim_valid: true }),
-			}))
-		);
-		const outcome = parsePluginRelayResult(
-			await identityModule().registerDomain('sender.example.com', config)
-		);
-		expect(outcome.outcome).toBe('ok');
-		expect(outcome.outcome === 'ok' ? outcome.observation.status : null).toBe('verified');
-		// A selector list is what the ramp's alignment pre-flight resolves; an empty
-		// one would hold every domain at s=0, so the template must ship a real one.
-		expect(outcome.outcome === 'ok' ? outcome.observation.dkimSelectors.length : 0).toBeGreaterThan(
-			0
-		);
-	});
-
-	it('reports a domain whose DNS is not published as unverified, never verified', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({
-				ok: true,
-				status: 200,
-				json: async () => ({ verified: true, spf_valid: true, dkim_valid: false }),
-			}))
-		);
-		const outcome = parsePluginRelayResult(
-			await identityModule().checkDomain('pending.example.com', config)
-		);
-		expect(outcome.outcome === 'ok' ? outcome.observation.status : null).not.toBe('verified');
-	});
-
-	it('distinguishes a rejected credential from an outage', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({ ok: false, status: 401 }))
-		);
-		expect(
-			parsePluginRelayResult(await identityModule().checkDomain('a.example.com', config)).outcome
-		).toBe('auth_failed');
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => ({ ok: false, status: 503 }))
-		);
-		expect(
-			parsePluginRelayResult(await identityModule().checkDomain('a.example.com', config)).outcome
-		).toBe('unavailable');
-	});
-});
-
-describe('its credential form is one the shared UI vocabulary can draw', () => {
-	const fields = entry['credentialFields'] as readonly Record<string, unknown>[];
-
-	it('declares its form in the shared field vocabulary', () => {
-		expect(fields.length).toBeGreaterThan(0);
-		for (const field of fields) {
-			expect(SEND_PROVIDER_CREDENTIAL_FIELD_KINDS).toContain(field['kind']);
-		}
-	});
-
-	/**
-	 * THE JOIN THAT MAKES A FORM HONEST: every variable the form writes is one the
-	 * transport reads, in the list matching the field's own `required`. A form
-	 * asking for a variable no send reads is an operator filling in nothing; one
-	 * omitting a gating variable is a transport that stays unconfigured behind a
-	 * complete-looking form.
-	 */
-	it('asks only for variables this transport reads, in the matching list', () => {
-		const required = new Set(INSTANCE_REQUIRED_ENV);
-		const optional = new Set(INSTANCE_OPTIONAL_ENV);
-		for (const field of fields) {
-			const envVar = field['envVar'] as string;
-			expect(field['required'] === true ? required.has(envVar) : optional.has(envVar)).toBe(true);
-		}
-		// Every required variable is askable, or an operator cannot configure the
-		// transport from the form at all.
-		for (const name of INSTANCE_REQUIRED_ENV) {
-			expect(fields.some((field) => field['envVar'] === name)).toBe(true);
-		}
-	});
-
-	it('marks the credential itself write-only', () => {
-		const secret = fields.find((field) => field['envVar'] === INSTANCE_REQUIRED_ENV[0]);
-		expect(secret).toMatchObject({ kind: 'secret', required: true });
 	});
 });
 
@@ -754,10 +409,7 @@ describe('none of it required an edit', () => {
 	 * hit under `apps/` or `packages/` would mean a core module had been taught
 	 * about it — the one thing D4's policy forbids.
 	 *
-	 * ONE TEST FILE IS EXEMPT AND NAMED: the generator's own suite scaffolds under
-	 * the same identity, which is deliberate — it is the same fixture, and binding
-	 * the two means renaming it in one place fails in the other rather than leaving
-	 * a generator suite and a conformance gate measuring different packages.
+	 * TWO TEST FILES ARE EXEMPT AND NAMED, each for its own reason.
 	 */
 	const ALLOWED_TEST_FILES = [
 		// The generator's own suite scaffolds under the same identity — the same
@@ -777,38 +429,13 @@ describe('none of it required an edit', () => {
 	 * between the two is asserted in its own case below rather than being lost in
 	 * an exemption list.
 	 */
-	const PROSE = ':(exclude)*.md';
+	const PROSE = '*.md';
 
-	it('leaves every non-test source file under apps/ and packages/ ignorant of it', async () => {
-		const { execFileSync } = await import('node:child_process');
-		const { REPOSITORY_ROOT } = await import('../repository');
-		// `git grep` exits 1 when it matches nothing, which is the EXPECTED outcome
-		// here — so the empty result is read off the exit status rather than thrown.
-		// Anything else (a bad pathspec, no repository) still propagates.
-		let hits: string[] = [];
-		try {
-			hits = execFileSync(
-				'git',
-				[
-					'grep',
-					'-lI',
-					'--untracked',
-					'-e',
-					SCAFFOLDED_PACKAGE_NAME,
-					'-e',
-					`plugin.${SCAFFOLDED_PLUGIN_ID}.relay`,
-					'--',
-					'apps',
-					'packages',
-					PROSE,
-				],
-				{ cwd: REPOSITORY_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-			)
-				.split('\n')
-				.filter((line) => line.length > 0);
-		} catch (error) {
-			if ((error as { status?: number }).status !== 1) throw error;
-		}
+	it('leaves every non-test source file under apps/ and packages/ ignorant of it', () => {
+		const hits = repositoryFilesMentioning(
+			[SCAFFOLDED_PACKAGE_NAME, `plugin.${SCAFFOLDED_PLUGIN_ID}.relay`],
+			{ exclude: [PROSE] }
+		);
 		expect(hits.filter((path) => !path.includes('/__tests__/'))).toEqual([]);
 		expect([...hits].sort()).toEqual(ALLOWED_TEST_FILES);
 	});
@@ -823,17 +450,44 @@ describe('none of it required an edit', () => {
 	 * fails rather than shipping a command nothing has exercised.
 	 */
 	it('is the identity the authoring guide tells an author to scaffold', async () => {
-		const { readFileSync } = await import('node:fs');
-		const { resolve } = await import('node:path');
-		const { REPOSITORY_ROOT } = await import('../repository');
-		const guide = readFileSync(
-			resolve(REPOSITORY_ROOT, 'apps/docs/content/3.developer/49.plugin-send-providers.md'),
-			'utf8'
+		const { readRepositoryFile } = await import('../repository');
+		const guide = await readRepositoryFile(
+			'apps/docs/content/3.developer/49.plugin-send-providers.md'
 		);
 		const command = /owlat plugins create ([\w-]+) --name (\S+) --template (\S+)/.exec(guide);
 		expect(command, 'the guide no longer prints a create invocation').not.toBeNull();
 		expect(command![1]).toBe(SCAFFOLDED_PLUGIN_ID);
 		expect(command![2]).toBe(SCAFFOLDED_PACKAGE_NAME);
 		expect(command![3]).toBe('send-provider');
+	});
+
+	/**
+	 * AND THE SAMPLE THE GUIDE SHOWS IS THE BUNDLE THE COMMAND EMITS.
+	 *
+	 * The page's centrepiece manifest is the one thing a reader diffs against their
+	 * freshly scaffolded package, so every name it declares must be a name this
+	 * bundle actually has. The sample lives in `docsSamples.test.ts` (it is
+	 * compiled and executed there) and the guide quotes it verbatim, which is why
+	 * the assertion reads the compiled source rather than the page.
+	 */
+	it('shows a manifest sample declaring the variables this bundle composes', async () => {
+		const { readRepositoryFile } = await import('../repository');
+		const sample = await readRepositoryFile(
+			'packages/plugin-kit/src/__tests__/docsSamples.test.ts'
+		);
+		const region = sample.slice(
+			sample.indexOf('// #region send-provider-manifest'),
+			sample.indexOf('// #endregion send-provider-manifest')
+		);
+		expect(region.length).toBeGreaterThan(0);
+		for (const name of [
+			...INSTANCE_REQUIRED_ENV,
+			...INSTANCE_OPTIONAL_ENV,
+			...FLAG_ENV.requiredEnvVars,
+		]) {
+			expect(region, `the guide's sample no longer declares ${name}`).toContain(`'${name}'`);
+		}
+		expect(region).toContain(`'${SIGNATURE.header}'`);
+		expect(region).toContain(`'${SIGNATURE.replay.timestampHeader}'`);
 	});
 });

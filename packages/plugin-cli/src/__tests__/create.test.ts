@@ -126,11 +126,7 @@ describe('runCreate', () => {
 	it('writes the whole send-provider bundle and points at its guide', async () => {
 		const root = await createCliWorkspace();
 		const { io, lines } = captureIo();
-		await runCreate(
-			root,
-			{ idInput: 'my-plugin', name: '@acme/owlat-relay', template: 'send-provider', dryRun: false },
-			io
-		);
+		await runCreate(root, { idInput: 'my-plugin', template: 'send-provider', dryRun: false }, io);
 
 		expect((await readdir(join(root, scaffoldDir, 'src', 'convex'))).sort()).toEqual([
 			'domainIdentity.ts',

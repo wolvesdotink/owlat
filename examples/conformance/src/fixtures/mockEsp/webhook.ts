@@ -33,9 +33,23 @@ function readString(value: unknown): string | undefined {
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | null {
+/**
+ * The event's time, in epoch milliseconds — READ ONLY FOR KINDS THIS MODULE
+ * CONSUMES.
+ *
+ * A function rather than a line at the top of `toFeedbackEvent`, because an
+ * engagement event this integration ignores may name its time field differently
+ * or omit it: validating above the kind switch would throw on one, 400 the whole
+ * batch, take the delivery and bounce events beside it down and leave the
+ * provider redelivering forever.
+ */
+function readAt(raw: MockEspWireEvent): number {
 	const at = typeof raw.ts === 'number' ? raw.ts : Number.NaN;
 	if (!Number.isFinite(at)) throw new TypeError('mock-esp: event carries no timestamp');
+	return at;
+}
+
+function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | null {
 	const id = readString(raw.id);
 	switch (raw.type) {
 		case 'accepted':
@@ -43,7 +57,7 @@ function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | nu
 			return {
 				kind: 'delivered',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				...(readString(raw.email) === undefined ? {} : { recipient: readString(raw.email)! }),
 			};
 		case 'hard_bounce':
@@ -52,7 +66,7 @@ function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | nu
 			return {
 				kind: 'bounced',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				bounceType: raw.type === 'hard_bounce' ? 'hard' : 'soft',
 				...(readString(raw.detail) === undefined ? {} : { bounceMessage: readString(raw.detail)! }),
 			};
@@ -61,7 +75,7 @@ function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | nu
 			// it is allowed to name only the address.
 			return {
 				kind: 'complained',
-				at,
+				at: readAt(raw),
 				...(id === undefined ? {} : { providerMessageId: id }),
 				...(readString(raw.email) === undefined ? {} : { recipient: readString(raw.email)! }),
 			};
@@ -70,7 +84,7 @@ function toFeedbackEvent(raw: MockEspWireEvent): PluginWebhookFeedbackEvent | nu
 			return {
 				kind: 'deferred',
 				providerMessageId: id,
-				at,
+				at: readAt(raw),
 				...(readString(raw.detail) === undefined ? {} : { reason: readString(raw.detail)! }),
 			};
 		default:
