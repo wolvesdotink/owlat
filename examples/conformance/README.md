@@ -41,6 +41,26 @@ rather than three unrelated demos.
   and a declaration the host could not honour — a credential outside the plugin
   namespace, a base name that would alias an instance suffix, a capability value
   whose prerequisites live in host code — is refused at validation.
+- **`pluginProviderParity.test.ts`** — the PARITY PROOF (P3.3, acceptance
+  criterion A4). Where the two suites above walk the authoring chain, this one
+  starts at the generated artifacts and drives the **shipped** core modules with
+  them: `resolveRoute` under all four strategies, the deliverability fallback and
+  its per-domain proof gate, governed dispatch through the plugin's own send
+  module on a named instance's credentials, `armForTransport`, the return-path
+  fold (including the probe wire this tier is deliberately excluded from), the
+  feedback route's verify → parse → revalidate chain, the domain-identity split
+  between the plugin's observations and the host's derived status, and the
+  credential form in the vocabulary the web renderer draws — plus the one
+  obligation that is NOT met, pinned rather than skipped: `apps/web` resolves
+  every kind through a core-only catalog view, so a plugin transport's
+  descriptors never reach the renderer. Its subject is
+  [`src/fixtures/mockEsp/`](src/fixtures/mockEsp), a complete fixture bundle —
+  manifest, send module, feedback webhook, domain identity — written as a
+  third-party author would write it. The last case asserts the headline claim:
+  no non-test file under `apps/` or `packages/` mentions the fixture, so all of
+  the above runs against code that has never heard of it. The ramp half of the
+  proof needs a database and lives at
+  `apps/api/convex/delivery/ramp/__tests__/pluginReferenceArm.test.ts`.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
