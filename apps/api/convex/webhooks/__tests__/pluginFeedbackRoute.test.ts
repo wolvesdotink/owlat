@@ -13,16 +13,21 @@
  *   forged signature      → 401, no dispatch, no audit row, no claim
  *   missing/stale/future timestamp → 401 (a captured request cannot be parked)
  *   unset signing secret  → 503, never a pass
- *   replayed delivery     → 409, dispatched exactly once
+ *   replayed delivery     → applied exactly once (answered 200 `duplicate`, so a
+ *                           provider's lost-ack redelivery is not counted against
+ *                           the endpoint and does not get the webhook disabled)
  *   revoked grant / off   → 403, and the claim is never taken
  *   oversized body        → 413 on the declared length, or on the real bytes
  *   dishonest parse output→ 400, whole batch refused, claim released, audited
+ *   an id in a namespace Owlat reserves for its own messages → 400
  *   an over-limit batch   → 413 naming the limit, so the operator can chunk
  *
  * plus the positive properties the negatives would be meaningless without: a
  * correctly signed, authorized delivery IS dispatched with the host's own
  * provider attribution, and raw retention happens exactly where the adapter
- * asked for it — both branches of that opt-in, since the write is a silent one.
+ * asked for it — both branches of that opt-in, since the write is a silent one,
+ * and on the failed parse as well as the successful one, since the failed
+ * delivery is the one whose bytes an operator actually needs.
  *
  * The dispatcher is mocked deliberately — it has its own suites, and what is
  * under test here is the gate sequence, not what an inbound event does after it
@@ -390,16 +395,22 @@ describe('a caller replaying a request that was once authentic', () => {
 		expect(mocks.dispatch).not.toHaveBeenCalled();
 	});
 
-	it('is refused with 409 when the delivery digest was already claimed', async () => {
+	it('applies nothing the second time, and says so with a 200', async () => {
 		const { ctx, calls } = fakeContext({ isClaimable: false });
 		const response = await handler(ctx, webhookRequest());
 
-		expect(response.status).toBe(409);
 		// The whole point: a request that verifies perfectly still applies nothing
 		// the second time.
 		expect(mocks.parseEvents).not.toHaveBeenCalled();
 		expect(mocks.dispatch).not.toHaveBeenCalled();
 		expect(calls.some((name) => name.includes('claim'))).toBe(true);
+		// And it is answered 2xx, because the overwhelmingly common cause is not an
+		// attacker: it is our own acknowledgement getting lost and the provider
+		// re-posting the identical signed bytes. Providers deactivate an endpoint
+		// after a run of non-2xx answers, so a 409 here could cost the operator the
+		// entire feedback channel for a delivery where nothing went wrong.
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ success: true, duplicate: true });
 	});
 
 	it('claims a digest derived from the signature, so identical bytes collide', async () => {
@@ -549,6 +560,33 @@ describe('a plugin module that returns something dishonest', () => {
 
 		expect(response.status).toBe(400);
 		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['a Postbox dispatch', 'pb-42'],
+		['a return-path capability probe', 'rp-probe.abc'],
+	] as const)('cannot claim an id Owlat reserved for its own: %s', async (_label, id) => {
+		// `providerType` is stamped by the host, but the ID chooses the LANE the
+		// dispatcher routes into. An ESP that named `pb-…` would steer a plugin's
+		// bounce into the Postbox personal-mail lifecycle, and `rp-probe.…` into the
+		// evidence a relay's return-path capability is graded on — neither of which
+		// this transport sent.
+		mocks.parseEvents.mockImplementationOnce(() => [
+			{ ...BOUNCE, at: Date.now(), providerMessageId: id },
+		]);
+		const response = await handler(fakeContext().ctx, webhookRequest());
+
+		expect(response.status).toBe(400);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('cannot claim a reserved id on a complaint either', async () => {
+		// The one event whose message id is optional still goes through the same
+		// namespace check — otherwise it would be the way around it.
+		mocks.parseEvents.mockImplementationOnce(() => [
+			{ kind: 'complained', at: Date.now(), providerMessageId: 'pb-42' },
+		]);
+		expect((await handler(fakeContext().ctx, webhookRequest())).status).toBe(400);
 	});
 
 	it('refuses an event carried on the prototype rather than the object', async () => {
@@ -714,6 +752,44 @@ describe('an authentic, authorized delivery', () => {
 
 		expect(response.status).toBe(200);
 		expect(stored).toEqual([{ source: mocks.retention.kind, rawPayload: BODY }]);
+	});
+
+	it('retains the payload of a delivery the plugin module could NOT parse', async () => {
+		// The ordering this pins is the whole value of the opt-in. A plugin whose
+		// parse half has drifted from its provider's real payloads drops 100% of
+		// that transport's feedback, and if retention ran only after a successful
+		// parse the deployment would hold zero bytes about exactly that outage —
+		// neither the operator nor the plugin author could see what broke.
+		mocks.retention.parseEvents.mockImplementationOnce(() => {
+			throw new Error('unparseable');
+		});
+		const { ctx, stored } = fakeContext();
+		const response = await handler(
+			ctx,
+			webhookRequest({ pluginId: mocks.retention.pluginId, secret: mocks.retention.secret })
+		);
+
+		expect(response.status).toBe(400);
+		expect(stored).toEqual([{ source: mocks.retention.kind, rawPayload: BODY }]);
+	});
+
+	it('retains nothing for a delivery no gate let through', async () => {
+		// The other side of that ordering: retention sits AFTER authenticity,
+		// authorization and the replay claim, so a stranger still cannot make this
+		// deployment store bytes of their choosing.
+		const { ctx, stored } = fakeContext({ isAuthorized: false });
+		await handler(
+			ctx,
+			webhookRequest({ pluginId: mocks.retention.pluginId, secret: mocks.retention.secret })
+		);
+		expect(stored).toEqual([]);
+
+		const forged = fakeContext();
+		await handler(
+			forged.ctx,
+			webhookRequest({ pluginId: mocks.retention.pluginId, signature: 'f'.repeat(64) })
+		);
+		expect(forged.stored).toEqual([]);
 	});
 
 	it('answers 200 even when retention fails', async () => {

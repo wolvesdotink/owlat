@@ -8,13 +8,18 @@
  * internet-facing by design, because the caller is a third-party ESP that will
  * never hold an Owlat session. Everything below is therefore written as a
  * sequence of gates that each fail CLOSED, in an order chosen so that the
- * cheapest and most conclusive checks run first and nothing writes to the
- * database on behalf of a caller who has not proved possession of the secret:
+ * cheapest and most conclusive checks run first and NOTHING BUT A RATE-LIMIT
+ * TOKEN is spent on behalf of a caller who has not proved possession of the
+ * secret — no audit row, no delivery claim, no retained payload:
  *
  *   1. method + path      — POST only; exactly one path segment after the prefix
- *   2. registration       — an id no bundled webhook claims is 404, before I/O
- *   3. rate limit         — per plugin id; every unknown id shares one bucket, so
- *                           guessing ids cannot mint buckets
+ *   2. rate limit         — per plugin id; every unknown id shares one bucket, so
+ *                           guessing ids cannot mint buckets. First because a
+ *                           limiter that does not record cannot limit, which is
+ *                           why the core pipeline spends its token first too —
+ *                           and it is the one write an unproven caller causes.
+ *   3. registration       — an id no bundled webhook claims is 404, before the
+ *                           body is read: no signature oracle, no parse, no row
  *   4. size               — a body over the cap is refused on its DECLARED length
  *                           when it has one, and on its actual byte length
  *                           otherwise (a chunked caller declares nothing, so that
@@ -24,10 +29,20 @@
  *   6. authorization      — flag, operator grant, env and singleton scope,
  *                           rechecked now (`sendTransportWebhookAuthorization`)
  *   7. replay             — the delivery digest is claimed, or this is a repeat
- *   8. parse              — the plugin's parse-only module, its output revalidated
+ *   8. retention          — raw payload stored only if the adapter opted in, and
+ *                           stored BEFORE the plugin's module runs (see below)
+ *   9. parse              — the plugin's parse-only module, its output revalidated
  *                           by the host before anything is trusted
- *   9. retention          — raw payload stored only if the adapter opted in
  *  10. dispatch           — the same inbound plane the core adapters feed
+ *
+ * WHY RETENTION PRECEDES PARSE. Verify → store → parse is the core pipeline's own
+ * order, and for the same reason: the delivery an operator most needs the bytes
+ * of is the one that FAILED to parse. A plugin whose parse half has drifted from
+ * its provider's real payloads drops 100% of that transport's feedback, and a
+ * retention that ran only after a successful parse would keep nothing at all
+ * about exactly that outage. Nothing security-related argues for the later
+ * placement — by this point the body is signature-verified, fresh, claimed and
+ * authorized.
  *
  * WHY NOT `runInboundPipeline`. The shared pipeline's shape is
  * verify → audit → parse → dispatch with a per-adapter verifier. Here the
@@ -209,11 +224,30 @@ async function deliver(
 		expiresAt: verification.expiresAtMs,
 	});
 	if (!claimed) {
-		return jsonResponse(409, { error: 'Duplicate webhook delivery' });
+		// 200, NOT 409. Nothing is wrong on either side: our acknowledgement was
+		// lost and the provider re-posted the identical signed bytes (Mailgun and
+		// Postmark re-send the original payload rather than re-signing it). The
+		// claim already guarantees nothing is applied twice, so the state is right
+		// either way — but a 4xx here is counted as an endpoint failure, and
+		// providers deactivate on a run of those (Postmark after 10 consecutive
+		// non-2xx, Mailgun after days of them). Answering a correct redelivery in a
+		// way that can cost the operator the whole feedback channel is a worse
+		// outcome than any information the status code carried. `duplicate: true`
+		// says what happened, mirroring the core pipeline's `ignored: true`.
+		return jsonResponse(200, { success: true, duplicate: true });
+	}
+
+	// (8) RETENTION IS OPT-IN, and it happens BEFORE the plugin's module runs: a
+	// body that fails to parse is precisely the one whose bytes are worth having.
+	// A third party's payload can carry recipient content this deployment never
+	// asked to keep, so a plugin adapter must ask for raw storage rather than
+	// inherit it from the core providers' default.
+	if (definition.storeRawPayload) {
+		await storeRawPayload(ctx, definition.kind, rawBody);
 	}
 
 	try {
-		return await applyDelivery(ctx, pluginId, webhook, rawBody, module.parseEvents(rawBody));
+		return await applyDelivery(ctx, pluginId, webhook, module.parseEvents(rawBody));
 	} catch (error) {
 		// The claim goes back: a body we could not apply is a delivery that did not
 		// happen, and the provider's retry must not be mistaken for an attack.
@@ -244,36 +278,36 @@ function deliveryFailureResponse(error: unknown): [number, Record<string, unknow
 	return [400, { error: 'Invalid event payload' }];
 }
 
+/**
+ * Keep the verified body, for the adapters that asked to.
+ *
+ * Never fails the delivery — but it SAYS so when it could not write, because a
+ * deployment that opted into retention and is silently keeping nothing only
+ * discovers it during the dispute the payloads were kept for.
+ */
+async function storeRawPayload(ctx: ActionCtx, kind: string, rawBody: string): Promise<void> {
+	try {
+		await ctx.runMutation(internal.webhooks.payloads.store, {
+			source: kind,
+			rawPayload: rawBody,
+		});
+	} catch (error) {
+		logError(`[${kind} Webhook] Failed to store raw payload:`, error);
+	}
+}
+
 async function applyDelivery(
 	ctx: ActionCtx,
 	pluginId: string,
 	webhook: HostedSendTransportWebhook,
-	rawBody: string,
 	parsed: unknown
 ): Promise<Response> {
 	const { definition } = webhook;
-	// (8) The plugin's output is untrusted input, exactly as a send attempt's
+	// (9) The plugin's output is untrusted input, exactly as a send attempt's
 	// result is: the host re-validates every field and refuses anything it cannot
 	// attribute. A throw here is the payload's fault, not ours — 400, or 413 with
 	// the limit named when the batch was merely bigger than we accept.
 	const events = parsePluginFeedbackEvents(parsed, definition.kind);
-
-	// (9) RETENTION IS OPT-IN. A third party's payload can carry recipient
-	// content this deployment never asked to keep, so a plugin adapter must ask
-	// for raw storage rather than inherit it from the core providers' default.
-	if (definition.storeRawPayload) {
-		try {
-			await ctx.runMutation(internal.webhooks.payloads.store, {
-				source: definition.kind,
-				rawPayload: rawBody,
-			});
-		} catch (error) {
-			// Audit storage never fails a webhook — but it says so, because a
-			// deployment that opted into retention and is silently keeping nothing
-			// only discovers it during the dispute the payloads were kept for.
-			logError(`[${definition.kind} Webhook] Failed to store raw payload:`, error);
-		}
-	}
 
 	// (10) In order, sequentially, whole batch fails together — the same rule the
 	// core pipeline dispatches by, shared rather than restated (`./inboundHttp`).
