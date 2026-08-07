@@ -47,3 +47,37 @@ if [ -n "$hits" ]; then
 fi
 
 echo "ok:   no relative imports crossing package boundaries (use @owlat/* specifiers)"
+
+# ── The one-way edge: @owlat/shared must never import @owlat/mta-protocol ──
+#
+# D7's wire package is a LEAF. It depends on `@owlat/shared` because the wire is
+# stated in terms of the shared vocabularies (DeliveryDomain, the
+# destination-provider taxonomy, the readiness verdicts), and re-declaring any of
+# them to buy literal zero-dependency status would trade one duplication for a
+# worse one. That trade is only safe while the edge runs ONE WAY: the reverse
+# import would make a package cycle that `bun install`, knip, tsc and
+# check-build-graph.ts all accept in silence, so the invariant is checked here.
+cycle=""
+if node -e 'const m = require("./packages/shared/package.json"); const deps = { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies }; process.exit("@owlat/mta-protocol" in deps ? 1 : 0)'; then
+	:
+else
+	cycle="packages/shared/package.json declares a dependency on @owlat/mta-protocol"$'\n'
+fi
+
+while IFS= read -r f; do
+	[ -f "$f" ] || continue
+	if grep -qIE "['\"]@owlat/mta-protocol(/|['\"])" "$f" 2>/dev/null; then
+		cycle="$cycle$f imports @owlat/mta-protocol"$'\n'
+	fi
+done < <(git ls-files -- 'packages/shared/*.ts' 'packages/shared/*.js' 'packages/shared/*.mjs')
+
+if [ -n "$cycle" ]; then
+	echo ""
+	echo "FAIL: @owlat/shared must never depend on @owlat/mta-protocol (D7's one-way edge)."
+	echo "The wire package is a leaf: apps import it, packages/ does not."
+	echo ""
+	printf '%s' "$cycle" | sed 's#^#  #'
+	exit 1
+fi
+
+echo "ok:   @owlat/shared does not depend on @owlat/mta-protocol (D7 one-way edge)"
