@@ -129,6 +129,25 @@ describe('${names.id} send', () => {
 		expect(transport.parseExtras(undefined)).toEqual({});
 		expect(() => transport.parseExtras({ campaignTag: 7 })).toThrow(TypeError);
 	});
+
+	/**
+	 * THE ROUND TRIP, WHICH IS THE ONLY THING THAT MAKES EXTRAS ARRIVE. What
+	 * \`buildDispatchExtras\` returns is re-validated through this same module's
+	 * \`parseExtras\` before \`send\` is handed it, and \`parseExtras\` DROPS what it
+	 * does not recognise rather than throwing — so a key the two halves spell
+	 * differently loses the extras on every governed send with both halves' own
+	 * assertions still green. Join them here, at the boundary that decides it.
+	 */
+	it('builds extras its own parser accepts', () => {
+		const context = {
+			idempotencyKey: 'send-1',
+			messageType: 'campaign',
+			deliveryDomain: 'mail.example.com',
+		};
+		expect(transport.parseExtras(transport.buildDispatchExtras?.(context))).toEqual({
+			campaignTag: context.messageType,
+		});
+	});
 });
 `;
 }
