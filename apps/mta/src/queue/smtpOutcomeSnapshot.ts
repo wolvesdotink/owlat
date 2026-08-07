@@ -7,6 +7,7 @@
  * written belong together and apart from the journal's Redis protocol.
  */
 
+import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { CtxWithProviderPressure } from '../dispatch/types.js';
 import { isUtcDateKey, utcDateKey } from '../intelligence/warmingKeys.js';
 
@@ -97,7 +98,9 @@ export function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot 
 	const route = destination as Record<string, unknown>;
 	return (
 		typeof route['recipientDomain'] === 'string' &&
-		['gmail', 'microsoft', 'yahoo', 'apple', 'other'].includes(String(route['providerKey'])) &&
+		// The taxonomy's own guard (D8), not a third copy of the key list: a copy
+		// here would reject a sixth destination provider's replays as corrupt.
+		isDestinationProviderKey(route['providerKey']) &&
 		typeof route['throttleKey'] === 'string' &&
 		typeof route['daneDiscoveryAuthenticated'] === 'boolean' &&
 		isMxSnapshot(route['mx']) &&

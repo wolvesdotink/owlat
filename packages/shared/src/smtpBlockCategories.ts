@@ -26,6 +26,8 @@
  * carries the real response shapes both sides' tests pin themselves to.
  */
 
+import type { DestinationProviderKey } from './deliverabilityRouting';
+
 /**
  * Every category the shipped classifier can return. The MTA's classifier
  * re-exports this type rather than declaring its own copy.
@@ -131,7 +133,7 @@ export interface SmtpBlockMessageSample {
 	readonly smtpCode: number;
 	readonly response: string;
 	readonly enhancedCode?: string;
-	readonly provider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+	readonly provider: DestinationProviderKey;
 	readonly category: SmtpFailureCategory;
 	/** Whether this sample is a BLOCK (a ramp hard stop) or mere rate pressure. */
 	readonly isBlock: boolean;
