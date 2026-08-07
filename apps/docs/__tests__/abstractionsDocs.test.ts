@@ -70,13 +70,17 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 	});
 });
 
-/** The `### Sending-domain identity providers` section, heading to next heading. */
-function sendingDomainSection(): string {
-	const heading = '### Sending-domain identity providers';
+/** A `### `-level section of the page, heading to next heading. */
+function pageSection(heading: string): string {
 	const start = abstractions.indexOf(heading);
-	expect(start, 'the sending-domain provider section is gone').toBeGreaterThan(-1);
+	expect(start, `the ${heading} section is gone`).toBeGreaterThan(-1);
 	const end = abstractions.indexOf('\n### ', start + 1);
 	return abstractions.slice(start, end === -1 ? undefined : end);
+}
+
+/** The `### Sending-domain identity providers` section, heading to next heading. */
+function sendingDomainSection(): string {
+	return pageSection('### Sending-domain identity providers');
 }
 
 /**
@@ -174,5 +178,58 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 		expect(row, 'the EmailProvider row is gone — drop this case with it').toBeDefined();
 		expect(row).toContain('superseded');
 		expect(row).toContain('domains/providers/');
+	});
+});
+
+/**
+ * The feedback plane is the third provider seam on the page, and the newest
+ * (the seams plan's P2.1 replaced four hand-wired `httpAction` files with this
+ * registry). Same treatment as the two seams above — the kinds are read from the
+ * registry, so an adapter that never reaches the docs fails here rather than
+ * being discovered by the next person who trusts the page.
+ */
+describe('docs/abstractions.md: the feedback adapter section matches the registry', () => {
+	const kinds = registryKeys(
+		'apps/api/convex/webhooks/adapters/index.ts',
+		'export const PROVIDER_FEEDBACK_ADAPTERS = {'
+	);
+	const feedbackSection = pageSection('### Provider feedback (webhook) adapters');
+
+	// `registryKeys` owns the non-vacuity assertion; this case owns membership.
+	// `mandrill` is the kind whose arrival is what made a fourth copy of the same
+	// two-line entry point untenable.
+	it('parses the mandrill adapter out of the registry', () => {
+		expect(kinds).toContain('mandrill');
+	});
+
+	it('lists exactly the feedback adapters the registry ships', () => {
+		const enumeration = /one adapter file per kind \(([^)]+)\)/.exec(feedbackSection);
+		expect(enumeration, 'the section no longer enumerates the adapter files').not.toBeNull();
+		const listed = [...enumeration![1]!.matchAll(/`([^`]+)`/g)].map((match) => match[1]!);
+		expect(listed.sort()).toEqual([...kinds].sort());
+	});
+
+	it('names the capability that decides which kinds must ship an adapter', () => {
+		// The page's claim is that the obligation is DECLARED and compile-enforced;
+		// this is the name a reader has to be able to grep for, and the file that
+		// has to still contain it.
+		expect(feedbackSection).toContain('FeedbackReportingSendProviderKind');
+		const catalog = 'apps/api/convex/lib/sendProviders/catalog.ts';
+		expect(existsSync(resolve(repoRoot, catalog))).toBe(true);
+		expect(read(catalog)).toContain('export type FeedbackReportingSendProviderKind');
+	});
+
+	it('keeps the static-route claim honest against http.ts', () => {
+		// The section promises that each kind's route is written out rather than
+		// derived, because those URLs are already in provider consoles. Asserted
+		// against the router itself: every registered kind must have its own path
+		// literal, so a "tidy-up" that loops over the registry fails here as well as
+		// in the backend's own route suite.
+		const http = read('apps/api/convex/http.ts');
+		for (const kind of kinds) {
+			expect(http, `http.ts stopped writing out /webhooks/${kind}`).toContain(
+				`path: '/webhooks/${kind}'`
+			);
+		}
 	});
 });

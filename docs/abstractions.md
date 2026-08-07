@@ -193,13 +193,48 @@ identity shapes differ. So the pair is carried into P1.2 as an added input, not
 as work someone already signed up for; the query's own docblock says so at
 length and is the home for that statement.
 
+### Provider feedback (webhook) adapters
+
+`AnyInboundAdapter` (`apps/api/convex/webhooks/adapters/`) — the third provider
+seam: where a send transport's own bounces, complaints and deliveries come back
+to us. A registry keyed by send-provider kind, one adapter file per kind (`mta`,
+`ses`, `resend`, `mandrill`), each owning exactly two things — verifying that
+provider's signature and translating its payload into the canonical
+`InboundEvent`. Everything else (rate limiting per source, raw-payload audit,
+ordered dispatch, the HTTP response) is `webhooks/pipeline.ts` and is shared.
+
+Which kinds must be here is declared, not assumed: `hasProviderFeedback: true`
+in the catalog is the promise, and `FeedbackReportingSendProviderKind` turns it
+into a compile error in `webhooks/adapters/index.ts` when the adapter is
+missing — in both directions, so an adapter registered for a kind the catalog
+calls silent fails too. The registry key must equal the adapter's own `source`,
+which is the rate-limit bucket and the audit label, so keying and sourcing
+cannot drift apart. The `channels.ts` adapters in the same folder (`twilio`,
+`meta`, `generic`) are inbound SMS/WhatsApp/webhook channels, not send
+transports; they have no catalog entry, no kind and no place in this registry.
+
+The **routes stay static and per kind**: `http.ts` registers
+`POST /webhooks/<kind>` one literal at a time, and `providerFeedbackWebhook(kind)`
+is only the handler they share. A route derived from the registry would be a URL
+that can move itself, and these URLs are already pasted into provider consoles we
+do not own — a moved webhook URL is silent on our side and total on theirs. The
+declared side of the pair is the catalog's `providerFeedback.webhookPath` (what
+the delivery page tells an operator to paste); the two are cross-checked against
+the real router by `lib/sendProviders/__tests__/feedbackRoutes.test.ts`.
+
+A bundled plugin transport's feedback does **not** arrive here. It gets its own
+route surface keyed by plugin id — the seams plan's P2.2 — and until that lands,
+the plugin tier's fail-closed reading (`hasProviderFeedbackOf` ⇒ `false`) is what
+covers it.
+
 ### Inbound channel adapters
 
 `@owlat/channels` (`packages/channels/src/inboundRegistry.ts`) — registry
 mapping vendor name (`mta`, `resend`, `ses`, `postmark`, `mailgun`) to an
 adapter that normalizes the webhook payload into a canonical
-`InboundEmailMessage`. Used by `mtaWebhook.ts` and any future inbound source
-via `getInboundChannelAdapter(source)`.
+`InboundEmailMessage`. Used by the MTA feedback adapter (for
+`inbound.received`) and any future inbound source via
+`getInboundChannelAdapter(source)`.
 
 ---
 
