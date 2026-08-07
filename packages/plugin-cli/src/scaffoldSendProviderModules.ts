@@ -15,10 +15,10 @@
  */
 
 import type { SendProviderNames } from './scaffoldSendProvider';
-import { sendProviderEnvVars } from './scaffoldSendProvider';
+import { SEND_PROVIDER_ENV_CONSTANTS } from './scaffoldSendProvider';
 
 export function transportSource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `/**
  * ${names.id} — the SEND half of the bundle.
  *
@@ -42,13 +42,13 @@ import type {
 	PluginSendTransportParams,
 } from '@owlat/plugin-kit';
 // The names the MANIFEST declares, from the one module that declares them.
-import { ${env.apiKey}_ENV, ${env.region}_ENV } from '../envNames';
+import { ${c.apiKey}, ${c.region} } from '../envNames';
 
 /** TODO: your provider's send endpoint. */
 const SEND_ENDPOINT = 'https://api.${names.id}.example/v1/messages';
 
 /** This transport's own extras — whatever your API accepts per message. */
-export interface ${names.pascal}Extras {
+export interface Extras {
 	readonly campaignTag?: string;
 }
 
@@ -72,28 +72,32 @@ function failureFor(status: number): PluginSendAttempt {
 	return { success: false, code: 'content_rejected' };
 }
 
-export const ${names.camel}Transport: PluginSendTransportModule<${names.pascal}Extras> = {
+export const ${names.camel}Transport: PluginSendTransportModule<Extras> = {
 	/**
 	 * THE SOLE UNKNOWN-INPUT BOUNDARY. Anything that is not this transport's own
 	 * extras shape is REFUSED rather than coerced — including the host's
 	 * re-validation of what \`buildDispatchExtras\` returned, which passes back
 	 * through here before \`send\` is handed it.
 	 */
-	parseExtras(input: unknown): ${names.pascal}Extras {
+	parseExtras(input: unknown): Extras {
 		if (input === undefined || input === null) return {};
-		if (typeof input !== 'object') throw new TypeError('${names.id}: extras must be an object');
+		if (typeof input !== 'object') {
+			throw new TypeError('${names.id}: extras must be an object');
+		}
 		const tag = (input as Record<string, unknown>)['campaignTag'];
 		if (tag === undefined) return {};
-		if (typeof tag !== 'string') throw new TypeError('${names.id}: campaignTag must be a string');
+		if (typeof tag !== 'string') {
+			throw new TypeError('${names.id}: campaignTag must be a string');
+		}
 		return { campaignTag: tag };
 	},
 
 	async send(
 		params: PluginSendTransportParams,
-		extras: ${names.pascal}Extras,
+		extras: Extras,
 		config: PluginSendTransportConfig
 	): Promise<PluginSendAttempt> {
-		const apiKey = config.env[${env.apiKey}_ENV];
+		const apiKey = config.env[${c.apiKey}];
 		// The host fails the attempt before \`send\` runs when a REQUIRED variable is
 		// unset, so this is defence in depth rather than the gate.
 		if (!apiKey) return { success: false, code: 'authentication_failed' };
@@ -116,7 +120,7 @@ export const ${names.camel}Transport: PluginSendTransportModule<${names.pascal}E
 					text: params.text,
 					reply_to: params.replyTo,
 					headers: params.headers,
-					region: config.env[${env.region}_ENV],
+					region: config.env[${c.region}],
 					tag: extras.campaignTag,
 				}),
 			});
@@ -174,7 +178,7 @@ import type {
 } from '@owlat/plugin-kit';
 
 /** TODO: your provider's event shape. */
-interface ${names.pascal}WireEvent {
+interface WireEvent {
 	readonly type?: unknown;
 	readonly message_id?: unknown;
 	readonly timestamp?: unknown;
@@ -201,14 +205,16 @@ function readString(value: unknown): string | undefined {
  * whole batch — taking the delivery and bounce events beside it down, and leaving
  * the provider redelivering the body forever.
  */
-function readAt(raw: ${names.pascal}WireEvent): number {
+function readAt(raw: WireEvent): number {
 	const at = typeof raw.timestamp === 'number' ? raw.timestamp : Number.NaN;
-	if (!Number.isFinite(at)) throw new TypeError('${names.id}: event carries no timestamp');
+	if (!Number.isFinite(at)) {
+		throw new TypeError('${names.id}: event carries no timestamp');
+	}
 	return at;
 }
 
 /** TODO: map your provider's event kinds onto the four facts Owlat records. */
-function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEvent | null {
+function toFeedbackEvent(raw: WireEvent): PluginWebhookFeedbackEvent | null {
 	const id = readString(raw.message_id);
 	const recipient = readString(raw.recipient);
 	const reason = readString(raw.reason);
@@ -238,7 +244,7 @@ function toFeedbackEvent(raw: ${names.pascal}WireEvent): PluginWebhookFeedbackEv
 			// refuses the whole batch for it. Say so here, where the wire shape is
 			// understood, rather than letting a host-side message describe it.
 			if (id === undefined && recipient === undefined) {
-				throw new TypeError('${names.id}: complaint names neither a message id nor a recipient');
+				throw new TypeError('${names.id}: complaint names no message or recipient');
 			}
 			return {
 				kind: 'complained',
@@ -277,9 +283,11 @@ export const ${names.camel}Webhook: PluginSendTransportWebhookModule = {
 		const events = (parsed as Record<string, unknown>)['events'];
 		// The console's unsigned "is this endpoint alive?" ping carries no events.
 		if (events === undefined) return [];
-		if (!Array.isArray(events)) throw new TypeError('${names.id}: events is not an array');
+		if (!Array.isArray(events)) {
+			throw new TypeError('${names.id}: events is not an array');
+		}
 		const out: PluginWebhookFeedbackEvent[] = [];
-		for (const raw of events as readonly ${names.pascal}WireEvent[]) {
+		for (const raw of events as readonly WireEvent[]) {
 			if (typeof raw !== 'object' || raw === null) {
 				throw new TypeError('${names.id}: event is not an object');
 			}
@@ -293,7 +301,7 @@ export const ${names.camel}Webhook: PluginSendTransportWebhookModule = {
 }
 
 export function domainIdentitySource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `/**
  * ${names.id} — the SENDING-DOMAIN IDENTITY half of the bundle.
  *
@@ -318,7 +326,7 @@ import type {
 	PluginSendTransportConfig,
 	PluginSendTransportDomainIdentityModule,
 } from '@owlat/plugin-kit';
-import { ${env.apiKey}_ENV } from '../envNames';
+import { ${c.apiKey} } from '../envNames';
 
 /** TODO: your provider's sending-domain endpoint. */
 const IDENTITY_ENDPOINT = 'https://api.${names.id}.example/v1/domains';
@@ -330,7 +338,7 @@ const DKIM_SELECTORS = ['${names.id.replace(/-/g, '')}'] as const;
 const SPF_MECHANISMS = ['include:spf.${names.id}.example'] as const;
 
 /** TODO: your provider's domain response shape. */
-interface ${names.pascal}DomainResponse {
+interface DomainResponse {
 	readonly verified?: unknown;
 	readonly spf_valid?: unknown;
 	readonly dkim_valid?: unknown;
@@ -342,7 +350,7 @@ async function call(
 	domain: string,
 	config: PluginSendTransportConfig
 ): Promise<PluginDomainIdentityResult> {
-	const apiKey = config.env[${env.apiKey}_ENV];
+	const apiKey = config.env[${c.apiKey}];
 	if (!apiKey) return { outcome: 'auth_failed', error: 'no API key for this instance' };
 
 	let response: Response;
@@ -361,7 +369,7 @@ async function call(
 		return { outcome: 'unavailable', error: \`provider answered \${response.status}\` };
 	}
 
-	const body = (await response.json()) as ${names.pascal}DomainResponse;
+	const body = (await response.json()) as DomainResponse;
 	return {
 		outcome: 'ok',
 		state: {

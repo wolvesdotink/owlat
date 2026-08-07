@@ -29,6 +29,16 @@
  * `examples/conformance` drives the whole emitted bundle through the shipped
  * routing, dispatch, feedback and identity modules unmodified.
  *
+ * ALREADY FORMATTED. The emitted TypeScript is written oxfmt-clean at the
+ * repository's 100-column width — see `SCAFFOLD_FORMATTED_ID_MAX_LENGTH` for how
+ * far that is guaranteed, and `__tests__/scaffoldSendProvider.test.ts` for the
+ * real `oxfmt --check` that holds it. It is why the emitted code names its own
+ * types and environment constants for their ROLE (`Extras`, `API_KEY_ENV`) rather
+ * than deriving them from the plugin id: an identifier that grew with the id
+ * would push the lines mentioning it over the width, and `create` scaffolds INTO
+ * this workspace, where the format gate collects untracked files and the first
+ * thing an author runs is `bun run lint`.
+ *
  * DETERMINISM. Every string below is a pure function of the plugin id and the
  * package name — no clock, no randomness — which is what
  * `__tests__/scaffoldSendProvider.test.ts` pins, for the reason the minimal
@@ -70,8 +80,6 @@ export interface SendProviderNames {
 	readonly screaming: string;
 	/** `acme-relay` ⇒ `acmeRelay`. */
 	readonly camel: string;
-	/** `acme-relay` ⇒ `AcmeRelay`. */
-	readonly pascal: string;
 	/** `acme-relay` ⇒ `Acme Relay`, the operator-facing transport label. */
 	readonly label: string;
 	/** The transport's local id; the composed kind is `<this>`'s namespaced form. */
@@ -93,6 +101,21 @@ export interface SendProviderNames {
 export const SCAFFOLD_TRANSPORT_LOCAL_ID = 'relay';
 
 /**
+ * The longest plugin id whose emitted bundle is guaranteed oxfmt-clean.
+ *
+ * Three things in the emitted source still carry the id — the module export
+ * names, the endpoint literals and the error messages — so the width cannot be
+ * made id-independent outright, only pushed far past every plausible provider
+ * name (`sendgrid`, `elastic-email`, `my-longer-provider`). `parsePluginId`
+ * accepts up to 64 characters; beyond the bound below the emitted files are still
+ * correct, still compile and still pass their own suite — the author's formatter
+ * simply rewraps two or three lines on first run. The bound is a TESTED claim
+ * rather than an estimate: the generator's suite runs the repository's real
+ * `oxfmt --check` over the output at exactly this length.
+ */
+export const SCAFFOLD_FORMATTED_ID_MAX_LENGTH = 24;
+
+/**
  * Every name a bundle is generated around, from the ONE input they all derive
  * from. The camel-case form is computed here rather than accepted as an argument:
  * a caller that passed a stale one would emit a manifest exporting `xPlugin` and
@@ -105,7 +128,6 @@ export function sendProviderNames(id: PluginId): SendProviderNames {
 		id,
 		screaming: id.replace(/-/g, '_').toUpperCase(),
 		camel,
-		pascal: camel.charAt(0).toUpperCase() + camel.slice(1),
 		label: id
 			.split('-')
 			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -140,6 +162,24 @@ export function sendProviderEnvVars(names: SendProviderNames): {
 	};
 }
 
+/**
+ * The IDENTIFIERS the emitted `src/envNames.ts` binds those four names to, which
+ * every other emitted file imports.
+ *
+ * ROLE, NOT VALUE — and the four are the same in every scaffolded package rather
+ * than derived from the plugin id. A bundle holds exactly one provider, so
+ * `API_KEY_ENV` is unambiguous inside it, and an identifier that grew with the id
+ * would push the lines that mention it past the repository formatter's 100-column
+ * width for every id longer than a short one. `create` scaffolds INTO this
+ * workspace, where the first thing an author runs after it is `bun run lint`.
+ */
+export const SEND_PROVIDER_ENV_CONSTANTS = Object.freeze({
+	apiKey: 'API_KEY_ENV',
+	region: 'REGION_ENV',
+	webhookSecret: 'WEBHOOK_SECRET_ENV',
+	enabled: 'ENABLED_ENV',
+} as const);
+
 /** The package export paths the manifest names, and the sources behind them. */
 export const SEND_PROVIDER_MODULE_EXPORTS: Readonly<Record<string, string>> = Object.freeze({
 	'./convex/transport': './src/convex/transport.ts',
@@ -169,6 +209,7 @@ export function sendProviderFiles(
 
 function envNamesSource(names: SendProviderNames): string {
 	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `/**
  * ${names.id} — the bundle's ENVIRONMENT VARIABLE NAMES, declared once.
  *
@@ -184,42 +225,28 @@ function envNamesSource(names: SendProviderNames): string {
  * nothing with a runtime — so the isolate-safe halves (\`convex/webhook.ts\`,
  * \`convex/domainIdentity.ts\`) can read it without dragging anything into the
  * HTTP router's module graph.
+ *
+ * THE CONSTANTS ARE NAMED FOR THEIR ROLE and the VALUES carry the namespace: this
+ * package holds one provider, so \`${c.apiKey}\` can only mean one variable inside
+ * it, and renaming the plugin changes the four strings below and nothing else.
  */
 
 /** The transport's own credential — resolved per instance and handed to \`send\`. */
-export const ${env.apiKey}_ENV = '${env.apiKey}';
+export const ${c.apiKey} = '${env.apiKey}';
 
 /** An optional refinement: present only when this deployment set it. */
-export const ${env.region}_ENV = '${env.region}';
+export const ${c.region} = '${env.region}';
 
 /** The host-verified webhook signing secret. Plugin code never sees its value. */
-export const ${env.webhookSecret}_ENV = '${env.webhookSecret}';
+export const ${c.webhookSecret} = '${env.webhookSecret}';
 
 /** The plugin's deployment-wide enablement switch, distinct from the credential. */
-export const ${env.enabled}_ENV = '${env.enabled}';
+export const ${c.enabled} = '${env.enabled}';
 `;
 }
 
-/**
- * The four environment-name constants an emitted manifest imports, one per line
- * and SORTED BY THE NAME AS EMITTED.
- *
- * Sorted at generation time rather than written in a fixed order, because the
- * names are derived from the plugin id: the plugin-wide switch has no `PLUGIN_`
- * prefix, so whether it sorts before or after the transport's own variables
- * depends on the id. An unsorted import block is what a formatter or a reviewer
- * would fix by hand in every scaffolded package.
- */
-function importedEnvNames(env: ReturnType<typeof sendProviderEnvVars>): string {
-	return [env.apiKey, env.enabled, env.region, env.webhookSecret]
-		.map((name) => `${name}_ENV`)
-		.sort()
-		.map((name) => `\t${name},`)
-		.join('\n');
-}
-
 function manifestSource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `/**
  * ${names.id} — the send-provider manifest: ONE data-only declaration naming
  * every capability this plugin may exercise and all three executable halves of
@@ -235,19 +262,17 @@ function manifestSource(names: SendProviderNames): string {
  */
 
 import { definePlugin, PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
-import {
-${importedEnvNames(env)}
-} from './envNames';
+import { ${c.apiKey}, ${c.enabled}, ${c.region}, ${c.webhookSecret} } from './envNames';
 
 /** The transport's local id; the composed kind is \`${names.kind}\`. */
-export const ${names.screaming}_TRANSPORT_ID = '${names.localId}';
+export const TRANSPORT_ID = '${names.localId}';
 
 /** TODO: the headers your provider signs its webhook deliveries with. */
-export const ${names.screaming}_SIGNATURE_HEADER = 'x-${names.id}-signature';
-export const ${names.screaming}_TIMESTAMP_HEADER = 'x-${names.id}-timestamp';
+export const SIGNATURE_HEADER = 'x-${names.id}-signature';
+export const TIMESTAMP_HEADER = 'x-${names.id}-timestamp';
 
 /** The declared replay window, in seconds. The host clamps it again at ≤ 900. */
-export const ${names.screaming}_TOLERANCE_SECONDS = 300;
+export const TOLERANCE_SECONDS = 300;
 
 export const ${names.camel}Plugin = definePlugin({
 	id: '${names.id}',
@@ -264,18 +289,18 @@ export const ${names.camel}Plugin = definePlugin({
 	 */
 	flag: {
 		default: false,
-		requiredEnvVars: [${env.enabled}_ENV, ${env.webhookSecret}_ENV],
+		requiredEnvVars: [${c.enabled}, ${c.webhookSecret}],
 	},
 	contributes: {
 		sendTransports: [
 			{
-				id: ${names.screaming}_TRANSPORT_ID,
+				id: TRANSPORT_ID,
 				label: '${names.label}',
 				module: { exportPath: './convex/transport' },
 				/** Host-owned delays after a retryable failure; at most three. */
 				retryDelays: [1_000, 5_000],
-				requiredEnvVars: [${env.apiKey}_ENV],
-				optionalEnvVars: [${env.region}_ENV],
+				requiredEnvVars: [${c.apiKey}],
+				optionalEnvVars: [${c.region}],
 				credentialFields: [
 					{
 						kind: 'secret',
@@ -283,7 +308,7 @@ export const ${names.camel}Plugin = definePlugin({
 						label: 'API key',
 						description: 'TODO: where an operator finds this in your provider console.',
 						required: true,
-						envVar: ${env.apiKey}_ENV,
+						envVar: ${c.apiKey},
 					},
 					{
 						kind: 'select',
@@ -295,7 +320,7 @@ export const ${names.camel}Plugin = definePlugin({
 							{ value: 'us', label: 'United States' },
 						],
 						default: 'eu',
-						envVar: ${env.region}_ENV,
+						envVar: ${c.region},
 					},
 				],
 				/**
@@ -324,13 +349,13 @@ export const ${names.camel}Plugin = definePlugin({
 					 * means a captured request verifies forever.
 					 */
 					signature: {
-						header: ${names.screaming}_SIGNATURE_HEADER,
+						header: SIGNATURE_HEADER,
 						algorithm: 'hmac-sha256',
 						encoding: 'hex',
-						secretEnvVar: ${env.webhookSecret}_ENV,
+						secretEnvVar: ${c.webhookSecret},
 						replay: {
-							timestampHeader: ${names.screaming}_TIMESTAMP_HEADER,
-							toleranceSeconds: ${names.screaming}_TOLERANCE_SECONDS,
+							timestampHeader: TIMESTAMP_HEADER,
+							toleranceSeconds: TOLERANCE_SECONDS,
 						},
 					},
 				},

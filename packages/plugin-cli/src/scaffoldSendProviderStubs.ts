@@ -8,26 +8,35 @@
  * webhook's four feedback facts, and the identity module's three distinguishable
  * outcomes. A template whose stubs asserted only that the module was defined
  * would teach an author to test the wrong thing.
+ *
+ * EVERY EMITTED SUITE IMPORTS ITS SUBJECT UNDER A SHORT LOCAL ALIAS
+ * (`acmeRelayTransport as transport`). The exported names are derived from the
+ * plugin id and are the package's real surface, but a body that repeated them
+ * would be a body whose line widths grew with the id — and `create` scaffolds
+ * into this workspace, where an author's first `bun run lint` runs the repository
+ * formatter over what was just written. `scaffoldSendProvider.test.ts` runs the
+ * real `oxfmt --check` over this generator's output to keep that true.
  */
 
 import type { PluginPackageName } from '@owlat/plugin-host';
 import type { SendProviderNames } from './scaffoldSendProvider';
-import { sendProviderEnvVars } from './scaffoldSendProvider';
+import { SEND_PROVIDER_ENV_CONSTANTS, sendProviderEnvVars } from './scaffoldSendProvider';
 
 export function manifestTestSource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `import { parsePluginManifest } from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
-import { ${names.camel}Plugin } from '../manifest';
-import { ${env.apiKey}_ENV, ${env.webhookSecret}_ENV } from '../envNames';
+import { ${names.camel}Plugin as plugin } from '../manifest';
+import { ${c.apiKey}, ${c.webhookSecret} } from '../envNames';
+
+const transport = plugin.contributes.sendTransports[0];
 
 describe('${names.id} manifest', () => {
 	it('is a valid plugin manifest declaring the ${names.id} id', () => {
-		expect(parsePluginManifest(${names.camel}Plugin).id).toBe('${names.id}');
+		expect(parsePluginManifest(plugin).id).toBe('${names.id}');
 	});
 
 	it('declares all three halves of the send-provider bundle', () => {
-		const transport = ${names.camel}Plugin.contributes.sendTransports[0];
 		expect(transport.module.exportPath).toBe('./convex/transport');
 		// Declaring these two IS the catalog's hasProviderFeedback / 'api'
 		// domainVerification for this kind, so dropping one drops a promise.
@@ -38,14 +47,11 @@ describe('${names.id} manifest', () => {
 	it('keeps the plugin gate and the transport credential in separate scopes', () => {
 		// The signing secret gates the whole plugin (an unset one refuses every
 		// delivery); the API key is the transport's own per-instance credential.
-		expect(${names.camel}Plugin.flag.requiredEnvVars).toContain(${env.webhookSecret}_ENV);
-		expect(${names.camel}Plugin.contributes.sendTransports[0].requiredEnvVars).toEqual([
-			${env.apiKey}_ENV,
-		]);
+		expect(plugin.flag.requiredEnvVars).toContain(${c.webhookSecret});
+		expect(transport.requiredEnvVars).toEqual([${c.apiKey}]);
 	});
 
 	it('asks only for variables this transport reads, in the matching list', () => {
-		const transport = ${names.camel}Plugin.contributes.sendTransports[0];
 		const required = new Set<string>(transport.requiredEnvVars);
 		const optional = new Set<string>(transport.optionalEnvVars);
 		for (const field of transport.credentialFields) {
@@ -60,13 +66,13 @@ describe('${names.id} manifest', () => {
 }
 
 export function transportTestSource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ${names.camel}Transport } from '../convex/transport';
-import { ${env.apiKey}_ENV } from '../envNames';
+import { ${names.camel}Transport as transport } from '../convex/transport';
+import { ${c.apiKey} } from '../envNames';
 
 /** The instance-resolved configuration the host hands \`send\`. */
-const config = { instanceKey: null, env: { [${env.apiKey}_ENV]: 'test-key' } };
+const config = { instanceKey: null, env: { [${c.apiKey}]: 'test-key' } };
 
 const message = {
 	to: 'recipient@example.com',
@@ -91,10 +97,7 @@ afterEach(() => {
 describe('${names.id} send', () => {
 	it('reads its credential from the instance configuration, never the environment', async () => {
 		const fetchMock = stubFetch({ ok: true, status: 200, json: async () => ({ id: 'msg-1' }) });
-		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
-			success: true,
-			id: 'msg-1',
-		});
+		expect(await transport.send(message, {}, config)).toEqual({ success: true, id: 'msg-1' });
 		const [, init] = fetchMock.mock.calls[0] ?? [];
 		const headers = (init as RequestInit | undefined)?.headers as
 			| Record<string, string>
@@ -104,27 +107,27 @@ describe('${names.id} send', () => {
 
 	it('reports a rate limit as retryable and a rejection as terminal', async () => {
 		stubFetch({ ok: false, status: 429 });
-		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
+		expect(await transport.send(message, {}, config)).toEqual({
 			success: false,
 			code: 'rate_limited',
 		});
 		// The other retryable 4xx: a timed-out request is transient, and reading it
 		// as terminal drops a message a retry would have delivered.
 		stubFetch({ ok: false, status: 408 });
-		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
+		expect(await transport.send(message, {}, config)).toEqual({
 			success: false,
 			code: 'temporary_failure',
 		});
 		stubFetch({ ok: false, status: 400 });
-		expect(await ${names.camel}Transport.send(message, {}, config)).toEqual({
+		expect(await transport.send(message, {}, config)).toEqual({
 			success: false,
 			code: 'content_rejected',
 		});
 	});
 
 	it('refuses extras it does not recognise rather than coercing them', () => {
-		expect(${names.camel}Transport.parseExtras(undefined)).toEqual({});
-		expect(() => ${names.camel}Transport.parseExtras({ campaignTag: 7 })).toThrow(TypeError);
+		expect(transport.parseExtras(undefined)).toEqual({});
+		expect(() => transport.parseExtras({ campaignTag: 7 })).toThrow(TypeError);
 	});
 });
 `;
@@ -132,14 +135,14 @@ describe('${names.id} send', () => {
 
 export function webhookTestSource(names: SendProviderNames): string {
 	return `import { describe, expect, it } from 'vitest';
-import { ${names.camel}Webhook } from '../convex/webhook';
+import { ${names.camel}Webhook as webhook } from '../convex/webhook';
 
 /** The wire timestamp. Epoch MILLISECONDS is what the host accepts. */
 const at = Date.now();
 
 describe('${names.id} feedback parsing', () => {
 	it('turns the provider wire shape into the four feedback facts', () => {
-		const events = ${names.camel}Webhook.parseEvents(
+		const events = webhook.parseEvents(
 			JSON.stringify({
 				events: [
 					{ type: 'delivered', message_id: 'm1', timestamp: at, recipient: 'a@example.com' },
@@ -164,38 +167,36 @@ describe('${names.id} feedback parsing', () => {
 	});
 
 	it('acknowledges a console ping and an event kind it does not consume', () => {
-		expect(${names.camel}Webhook.parseEvents(JSON.stringify({}))).toEqual([]);
+		expect(webhook.parseEvents(JSON.stringify({}))).toEqual([]);
 		// NO TIMESTAMP ON THE UNCONSUMED EVENT, deliberately: an engagement event
 		// Owlat ignores routinely names its time field differently or omits it, and
 		// this batch must still be acknowledged rather than 400-ed and redelivered
 		// forever.
-		expect(
-			${names.camel}Webhook.parseEvents(JSON.stringify({ events: [{ type: 'opened', message_id: 'm5' }] }))
-		).toEqual([]);
+		const ignored = JSON.stringify({ events: [{ type: 'opened', message_id: 'm5' }] });
+		expect(webhook.parseEvents(ignored)).toEqual([]);
 	});
 
 	it('throws on a body it cannot read', () => {
-		expect(() => ${names.camel}Webhook.parseEvents('not json')).toThrow(TypeError);
+		expect(() => webhook.parseEvents('not json')).toThrow(TypeError);
 	});
 
 	it('refuses a complaint that names neither a message nor a recipient', () => {
 		// The host refuses it too, for the whole batch — this says so in the module's
 		// own words, at the boundary that understands the wire shape.
-		expect(() =>
-			${names.camel}Webhook.parseEvents(JSON.stringify({ events: [{ type: 'complaint', timestamp: at }] }))
-		).toThrow(TypeError);
+		const anonymous = JSON.stringify({ events: [{ type: 'complaint', timestamp: at }] });
+		expect(() => webhook.parseEvents(anonymous)).toThrow(TypeError);
 	});
 });
 `;
 }
 
 export function domainIdentityTestSource(names: SendProviderNames): string {
-	const env = sendProviderEnvVars(names);
+	const c = SEND_PROVIDER_ENV_CONSTANTS;
 	return `import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ${names.camel}DomainIdentity } from '../convex/domainIdentity';
-import { ${env.apiKey}_ENV } from '../envNames';
+import { ${names.camel}DomainIdentity as identity } from '../convex/domainIdentity';
+import { ${c.apiKey} } from '../envNames';
 
-const config = { instanceKey: null, env: { [${env.apiKey}_ENV]: 'test-key' } };
+const config = { instanceKey: null, env: { [${c.apiKey}]: 'test-key' } };
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -211,7 +212,7 @@ describe('${names.id} sending-domain identity', () => {
 				json: async () => ({ verified: true, spf_valid: true, dkim_valid: true }),
 			}))
 		);
-		const result = await ${names.camel}DomainIdentity.checkDomain('sender.example.com', config);
+		const result = await identity.checkDomain('sender.example.com', config);
 		expect(result.outcome).toBe('ok');
 		expect(result.outcome === 'ok' && result.state.isOwnershipVerified).toBe(true);
 		// There is no \`status\` to return: the host derives it.
@@ -223,23 +224,17 @@ describe('${names.id} sending-domain identity', () => {
 			'fetch',
 			vi.fn(async () => ({ ok: false, status: 401 }))
 		);
-		expect((await ${names.camel}DomainIdentity.checkDomain('a.example.com', config)).outcome).toBe(
-			'auth_failed'
-		);
+		expect((await identity.checkDomain('a.example.com', config)).outcome).toBe('auth_failed');
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => ({ ok: false, status: 503 }))
 		);
-		expect((await ${names.camel}DomainIdentity.checkDomain('a.example.com', config)).outcome).toBe(
-			'unavailable'
-		);
+		expect((await identity.checkDomain('a.example.com', config)).outcome).toBe('unavailable');
 	});
 
 	it('fails closed when this instance has no credential', async () => {
-		expect(
-			(await ${names.camel}DomainIdentity.checkDomain('a.example.com', { instanceKey: 'eu', env: {} }))
-				.outcome
-		).toBe('auth_failed');
+		const unconfigured = { instanceKey: 'eu', env: {} };
+		expect((await identity.checkDomain('a.example.com', unconfigured)).outcome).toBe('auth_failed');
 	});
 });
 `;

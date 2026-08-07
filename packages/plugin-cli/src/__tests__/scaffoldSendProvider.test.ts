@@ -15,7 +15,12 @@
  * dispatch, the feedback route and the identity registry — unmodified.
  */
 
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
 	isPluginSendTransportEnvVar,
 	parsePluginId,
@@ -27,6 +32,8 @@ import { toCamelCase } from '../names';
 import { buildScaffold, parseScaffoldTemplate, SCAFFOLD_TEMPLATES } from '../scaffold';
 import { PluginCliError } from '../errors';
 import {
+	SCAFFOLD_FORMATTED_ID_MAX_LENGTH,
+	SEND_PROVIDER_ENV_CONSTANTS,
 	SEND_PROVIDER_MODULE_EXPORTS,
 	sendProviderEnvVars,
 	sendProviderNames,
@@ -144,8 +151,37 @@ describe('the send-provider template', () => {
 		}
 		// The enablement switch is the PLUGIN's, not the transport's: it is read
 		// unsuffixed and the validator refuses it in the transport's own lists.
-		expect(file('src/manifest.ts')).toContain(`${env.enabled}_ENV,`);
+		expect(file('src/manifest.ts')).toContain(`${SEND_PROVIDER_ENV_CONSTANTS.enabled},`);
 		expect(file('src/envNames.ts')).toContain(`'${env.enabled}'`);
+	});
+
+	/**
+	 * THE NAMESPACE LIVES IN THE VALUE, THE ROLE IN THE IDENTIFIER — and the two
+	 * halves of that split are joined here.
+	 *
+	 * The emitted constants are named for what they are (`API_KEY_ENV`) so no line
+	 * width grows with the plugin id, which only works while `envNames.ts` binds
+	 * each of those identifiers to the id-derived variable name the manifest
+	 * validator and the host actually resolve. A generator that renamed one side
+	 * would emit a package that does not compile, or — worse — one that compiles
+	 * against a variable no deployment sets.
+	 */
+	it('binds each role-named constant to the namespaced variable it stands for', () => {
+		const env = sendProviderEnvVars(sendProviderNames(id));
+		const envNames = file('src/envNames.ts');
+		for (const role of ['apiKey', 'region', 'webhookSecret', 'enabled'] as const) {
+			expect(envNames).toContain(
+				`export const ${SEND_PROVIDER_ENV_CONSTANTS[role]} = '${env[role]}';`
+			);
+		}
+		// And every module that reads one imports it from there rather than spelling
+		// the string — the rename that would otherwise fail silently.
+		for (const path of ['src/manifest.ts', 'src/convex/transport.ts']) {
+			expect(file(path), `${path} spells a variable name instead of importing it`).not.toContain(
+				`'${env.apiKey}'`
+			);
+			expect(file(path)).toContain(SEND_PROVIDER_ENV_CONSTANTS.apiKey);
+		}
 	});
 
 	/**
@@ -176,7 +212,6 @@ describe('the send-provider template', () => {
 	it('derives every identifier from the plugin id alone', () => {
 		const names = sendProviderNames(id);
 		expect(names.camel).toBe(toCamelCase(id));
-		expect(names.pascal).toBe('AcmeRelay');
 		expect(file('src/manifest.ts')).toContain(`export const ${names.camel}Plugin = definePlugin({`);
 		expect(file('src/index.ts')).toBe(`export { ${names.camel}Plugin } from './manifest';\n`);
 	});
@@ -210,6 +245,67 @@ describe('the send-provider template', () => {
 		const manifest = JSON.parse(file('package.json')) as Record<string, Record<string, string>>;
 		expect(Object.values(manifest['dependencies'] ?? {})).toContain('workspace:*');
 		expect(Object.values(manifest['devDependencies'] ?? {})).toContain('catalog:');
+	});
+
+	/**
+	 * ALREADY FORMATTED, PROVED WITH THE REPOSITORY'S OWN FORMATTER.
+	 *
+	 * `create` scaffolds INTO this workspace (`resolveTargetDir` allows nothing
+	 * else), and `scripts/check-format.sh` collects untracked files — so an emitted
+	 * bundle that is not oxfmt-clean fails `bun run lint` for an author who has not
+	 * yet typed a character. Asserting it with the real binary rather than a line
+	 * counter is what makes it a claim about the gate rather than about widths: the
+	 * checked config, the checked width, the checked quote and tab rules.
+	 *
+	 * THE LONG ID IS THE POINT of the second case. Every emitted identifier that
+	 * could grow with the plugin id was deliberately named for its role instead, and
+	 * a template edit that reintroduced an id-derived one would pass at `acme-relay`
+	 * and fail here.
+	 */
+	describe('is oxfmt-clean as emitted', () => {
+		const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+		const oxfmt = join(repositoryRoot, 'node_modules', '.bin', 'oxfmt');
+
+		it.each([
+			['acme-relay', 'the id the authoring guide tells an author to scaffold'],
+			['a'.repeat(SCAFFOLD_FORMATTED_ID_MAX_LENGTH), 'the longest id the bound covers'],
+		])('emits formatted TypeScript for %s (%s)', async (candidate) => {
+			expect(existsSync(oxfmt), `${oxfmt} is missing; run bun install`).toBe(true);
+			const parsed = parsePluginId(candidate);
+			// Generated for the DEFAULT target directory, because the paths that
+			// position depends on (`tsconfig.json`'s `extends`, the vitest alias) are
+			// themselves lines the formatter measures.
+			const files = buildScaffold(
+				repositoryRoot,
+				join(repositoryRoot, 'examples', 'plugins', parsed),
+				parsed,
+				packageName,
+				'send-provider'
+			);
+			const directory = await mkdtemp(join(tmpdir(), 'owlat-scaffold-format-'));
+			try {
+				const written: string[] = [];
+				for (const [path, content] of files) {
+					if (!path.endsWith('.ts')) continue;
+					const absolute = join(directory, ...path.split('/'));
+					await mkdir(dirname(absolute), { recursive: true });
+					await writeFile(absolute, content, 'utf8');
+					written.push(absolute);
+				}
+				expect(written.length).toBeGreaterThan(8);
+				const result = spawnSync(
+					oxfmt,
+					['--config', join(repositoryRoot, 'oxfmtrc.json'), '--check', ...written],
+					{ encoding: 'utf8' }
+				);
+				expect(
+					result.status,
+					`${result.stdout ?? ''}${result.stderr ?? ''}`.replaceAll(directory, '<scaffold>')
+				).toBe(0);
+			} finally {
+				await rm(directory, { recursive: true, force: true });
+			}
+		});
 	});
 
 	/**
