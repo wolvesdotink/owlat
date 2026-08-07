@@ -912,6 +912,7 @@ import type * as webhooks_events_test_index from '../webhooks/events/test/index.
 import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/events/topicUnsubscribed/index.js';
 import type * as webhooks_fanout from '../webhooks/fanout.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
+import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
 import type * as webhooks_mandrillRejectSuppression from '../webhooks/mandrillRejectSuppression.js';
 import type * as webhooks_payloads from '../webhooks/payloads.js';
 import type * as webhooks_pipeline from '../webhooks/pipeline.js';
@@ -1847,6 +1848,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events/topicUnsubscribed/index': typeof webhooks_events_topicUnsubscribed_index;
 	'webhooks/fanout': typeof webhooks_fanout;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;
+	'webhooks/inboundHttp': typeof webhooks_inboundHttp;
 	'webhooks/mandrillRejectSuppression': typeof webhooks_mandrillRejectSuppression;
 	'webhooks/payloads': typeof webhooks_payloads;
 	'webhooks/pipeline': typeof webhooks_pipeline;

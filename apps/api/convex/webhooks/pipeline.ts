@@ -15,7 +15,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { logError } from '../lib/runtimeLog';
-import { dispatchInboundEvent } from './dispatcher';
+import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { InboundEvent } from './types';
 
 /**
@@ -99,13 +99,6 @@ export type AnyInboundAdapter<S extends string = string> =
 	| InboundAdapter<S>
 	| InboundBatchAdapter<S>;
 
-function jsonResponse(status: number, body: Record<string, unknown>): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'Content-Type': 'application/json' },
-	});
-}
-
 export async function runInboundPipeline(
 	ctx: ActionCtx,
 	request: Request,
@@ -173,26 +166,21 @@ export async function runInboundPipeline(
 		return jsonResponse(200, { success: true, ignored: true });
 	}
 
-	// IN ORDER, AND SEQUENTIALLY. A provider batch is a timeline for a single
-	// message as often as it is a fan of unrelated ones (`deferral` then
-	// `hard_bounce` on the same id), and the Send lifecycle's legal-edge graph
-	// reads the state the previous event left behind. Dispatching concurrently
-	// would race two transitions on one row for no latency we need.
-	//
-	// A FAILURE FAILS THE WHOLE BATCH, deliberately: the provider redelivers it,
-	// and every downstream reducer is idempotent per transition (a repeat is
-	// `duplicate` / `terminal`, never a second effect), so replaying the already
-	// applied prefix costs nothing and losing the unapplied tail would cost a
-	// suppression.
+	// In order, sequentially, and the whole batch fails together — the rule and
+	// its rationale live in `./inboundHttp.ts`, because the plugin feedback route
+	// grades the same Send lifecycle and must not drift from it.
 	let event = events[0]!;
 	let dispatchResult: unknown;
 	try {
-		for (const next of events) {
-			event = next;
-			dispatchResult = await dispatchInboundEvent(ctx, next, { returnResult: true });
-		}
+		const outcome = await dispatchEventsInOrder(ctx, events);
+		event = outcome.event ?? event;
+		dispatchResult = outcome.result;
 	} catch (err) {
-		logError(`[${adapter.source} Webhook] Dispatcher error for ${event.kind}:`, err);
+		if (err instanceof InboundBatchDispatchError) {
+			logError(`[${adapter.source} Webhook] Dispatcher error for ${err.event.kind}:`, err.reason);
+		} else {
+			logError(`[${adapter.source} Webhook] Dispatcher error for ${event.kind}:`, err);
+		}
 		return jsonResponse(500, { error: 'Failed to process event' });
 	}
 
