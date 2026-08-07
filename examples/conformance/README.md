@@ -113,9 +113,15 @@ rather than three unrelated demos.
   the return-path fold, the feedback route's verify → parse → revalidate chain,
   the domain-identity split and the credential form. Nothing subject-specific is
   spelled: the kind, the variable names, the signature contract and the fields
-  are all read off the composed artifact. The last block reads every materialised
-  file back off disk and compares it byte for byte with what the generator
-  emitted, so a fixture that patched a `TODO` to make a case pass fails there.
+  are all read off the composed artifact. It also runs the four emitted
+  `src/__tests__` files themselves, in a child process through the package's own
+  emitted `vitest.config.ts` — the first thing a real author runs, and otherwise
+  the one part of the template nothing keeps green. That is why the bundle
+  materialises under the git-ignored `examples/conformance/.scaffolded/` rather
+  than `/tmp`: a package outside the checkout cannot resolve `vitest` at all. The
+  last block reads every materialised file back off disk and compares it byte for
+  byte with what the generator emitted, so a fixture that patched a `TODO` to
+  make a case pass fails there.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and

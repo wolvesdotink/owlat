@@ -384,6 +384,79 @@ describe('a send actually goes out through the emitted send module', () => {
 	});
 });
 
+/**
+ * THE STUBS THE TEMPLATE SHIPS, RUN AS SHIPPED.
+ *
+ * Everything above drives the emitted MODULES. The emitted `src/__tests__` are
+ * the other half of what an author receives — the first thing they run, and the
+ * files that tell them what each half is supposed to hold — and nothing else in
+ * this repository executes them: a renamed export or a changed `send` signature
+ * would leave four stale suites behind, with the generator's own tests, this gate
+ * and the emitted modules all green. So they are run here, in a child process,
+ * through the package's own emitted `vitest.config.ts`, exactly as `bun run test`
+ * inside a freshly scaffolded package would.
+ */
+describe("the emitted package's own suite passes as emitted", () => {
+	/** Every test file the generator wrote, so "all of them ran" is derived. */
+	const emittedSuites = [...bundle.files.keys()].filter((path) => path.endsWith('.test.ts'));
+
+	it('runs every emitted test file green, unmodified', async () => {
+		const { spawnSync } = await import('node:child_process');
+		const { REPOSITORY_ROOT } = await import('../repository');
+		const { readFile, rm } = await import('node:fs/promises');
+		const { join, relative, sep } = await import('node:path');
+		const { tmpdir } = await import('node:os');
+
+		expect(emittedSuites.length).toBeGreaterThan(3);
+		const report = join(tmpdir(), `owlat-scaffolded-suite-${process.pid}.json`);
+		// The child must not inherit this run's Vitest wiring, or it reports into
+		// the parent's pool instead of running its own.
+		const env = Object.fromEntries(
+			Object.entries(process.env).filter(([key]) => !key.startsWith('VITEST'))
+		);
+		const result = spawnSync(
+			process.execPath,
+			[
+				join(REPOSITORY_ROOT, 'node_modules', 'vitest', 'vitest.mjs'),
+				'run',
+				// TWO REPORTERS ON PURPOSE. The JSON one is what this suite reads back;
+				// the default one is what a HUMAN reads, because the assertion below
+				// prints the child's stdout — and a failing stub whose name never
+				// reached the parent would be reported as "the emitted suite failed"
+				// and nothing more.
+				'--reporter=default',
+				'--reporter=json',
+				`--outputFile.json=${report}`,
+			],
+			{ cwd: bundle.directory, encoding: 'utf8', env }
+		);
+
+		try {
+			expect(
+				result.status,
+				`${result.stdout ?? ''}${result.stderr ?? ''}`.replaceAll(bundle.directory, '<scaffold>')
+			).toBe(0);
+			// The exit status alone would also be 0 for a run that collected nothing,
+			// so the report is read back and the FILES are compared: every emitted
+			// suite ran (a stub the config's include glob missed would be silently
+			// absent), every case in them passed, none failed.
+			const summary = JSON.parse(await readFile(report, 'utf8')) as {
+				readonly testResults: readonly { readonly name: string }[];
+				readonly numPassedTests: number;
+				readonly numFailedTests: number;
+			};
+			const ran = summary.testResults
+				.map((file) => relative(bundle.directory, file.name).split(sep).join('/'))
+				.sort();
+			expect(ran).toEqual([...emittedSuites].sort());
+			expect(summary.numFailedTests).toBe(0);
+			expect(summary.numPassedTests).toBeGreaterThan(0);
+		} finally {
+			await rm(report, { force: true });
+		}
+	});
+});
+
 describe('none of it required an edit', () => {
 	/**
 	 * THE HEADLINE CLAIM, ASSERTED. Everything above ran against files this suite

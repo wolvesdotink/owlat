@@ -18,12 +18,21 @@
  * real bundle travels: generator → file → module → manifest validation →
  * composition → codegen → artifact.
  *
- * WHY A TEMPORARY DIRECTORY RATHER THAN A CHECKED-IN COPY. A checked-in copy is a
+ * WHY A THROWAWAY DIRECTORY RATHER THAN A CHECKED-IN COPY. A checked-in copy is a
  * copy: it would keep passing after the generator that is supposed to produce it
  * changed, which is precisely the drift this gate exists to catch. Writing the
  * files also exercises the one thing an in-memory map cannot — that the emitted
  * TypeScript PARSES and its imports RESOLVE, which is the first thing an author
  * finds out and the last thing a string comparison would notice.
+ *
+ * WHY THAT DIRECTORY IS INSIDE THE REPOSITORY AND NOT `os.tmpdir()`. The suite
+ * also runs the emitted package's OWN four test files, through the emitted
+ * `vitest.config.ts`, exactly as an author's first `bun run test` would — and a
+ * package under `/tmp` cannot resolve `vitest` or `vitest/config` at all, because
+ * Node resolves a bare specifier by walking up from the importing file and there
+ * is no `node_modules` above `/tmp`. Under `examples/conformance/` the emitted
+ * package sits where a scaffolded one really sits, so what this gate runs is what
+ * an author runs. The directory is git-ignored and removed in `afterAll`.
  *
  * THE MODULE REGISTRIES ARE NOT EVALUATED, for the reason the Mock ESP fixture's
  * composition module gives: codegen emits import statements against a published
@@ -33,8 +42,7 @@
  * a silent substitution.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { buildScaffold, type ScaffoldFiles } from '@owlat/plugin-cli/scaffold';
 import { renderPluginComposition } from '@owlat/plugin-codegen';
@@ -56,8 +64,9 @@ export const SCAFFOLDED_PLUGIN_ID = parsePluginId('acme-relay');
  * The package a third-party author would publish this bundle as.
  *
  * Deliberately NOT the `@owlat/plugin-<id>` default: the template's job is to
- * start a package that leaves this repository, and a scoped stranger's name is
- * what proves nothing in the generator assumes the workspace scope.
+ * start a package that eventually leaves this repository, and a scoped
+ * stranger's name is what proves nothing in the generator assumes the workspace
+ * scope.
  */
 export const SCAFFOLDED_PACKAGE_NAME = '@acme/owlat-relay';
 
@@ -98,6 +107,13 @@ export function scaffoldedBundle(): Promise<ScaffoldedBundle> {
 	return pending;
 }
 
+/**
+ * Where scaffolded bundles are materialised: inside this package, git-ignored,
+ * one `mkdtemp` directory per run. See this module's header for why it is not
+ * `os.tmpdir()`.
+ */
+const SCAFFOLD_ROOT = join(REPOSITORY_ROOT, 'examples', 'conformance', '.scaffolded');
+
 /** Remove the directory this fixture wrote, if it wrote one. */
 export async function cleanupScaffoldedBundle(): Promise<void> {
 	const created = pending;
@@ -107,10 +123,16 @@ export async function cleanupScaffoldedBundle(): Promise<void> {
 		(bundle) => rm(bundle.directory, { recursive: true, force: true }),
 		() => undefined
 	);
+	// And the shared parent, once it holds nothing: `rmdir` refuses a non-empty
+	// directory, which is exactly the concurrency check wanted here — a second
+	// worker's bundle keeps it. Any other failure is swallowed with it; this is
+	// tidying, and a suite that passed must not fail for a leftover directory.
+	await rmdir(SCAFFOLD_ROOT).catch(() => undefined);
 }
 
 async function materialize(): Promise<ScaffoldedBundle> {
-	const directory = await mkdtemp(join(tmpdir(), 'owlat-scaffolded-provider-'));
+	await mkdir(SCAFFOLD_ROOT, { recursive: true });
+	const directory = await mkdtemp(join(SCAFFOLD_ROOT, 'provider-'));
 	// The workspace root is the REAL one: the emitted tsconfig and lint script
 	// point at it by relative path, and a fake root would emit paths that resolve
 	// nowhere — a difference between what this gate drives and what an author gets.
