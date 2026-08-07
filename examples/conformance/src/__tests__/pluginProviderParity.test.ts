@@ -34,10 +34,10 @@
  *      so any shape of closure — a fallback inside `credentialFieldsFor` or a new
  *      composed view feeding it — turns that suite red. Closing it needs a card
  *      of its own (a composed-catalog view for `apps/web`; P1.2, the piece that
- *      would have owned it, has shipped), not an edit this proof may make. The
- *      report that says so where the wave gate looks — the asymmetry, the four
- *      blocked call sites, the owning card, and the line "A4 is not met until
- *      this lands" — is `.pipeline/P3.3_CREDENTIALS_UI_GAP.md`.
+ *      would have owned it, has shipped), not an edit this proof may make. That
+ *      suite's header carries the whole account — the asymmetry, the four blocked
+ *      call sites, the owning card and the line "A4 is not met until this lands" —
+ *      so nothing outside the repository has to be fetched to read it.
  *
  *   2. RETURN-PATH PROBES (plan §5's P3.3 obligation list) — SUPERSEDED, not a
  *      gap. P3.1 gave this tier `supportsCustomReturnPath: 'no'` as its only
@@ -70,8 +70,8 @@
  * real cron, the real outcome writers and the real controller, which need a
  * Convex database. That is
  * `apps/api/convex/delivery/ramp/__tests__/pluginReferenceArm.test.ts`, and the
- * last block reads that file back to pin it to the kind and the credential
- * variables this composition actually produces.
+ * last block reads that file back to pin every datum of its hand-written copies —
+ * the entry's and the roster's — to the value this composition actually produces.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -87,6 +87,7 @@ import {
 	MOCK_ESP_SIGNATURE_HEADER,
 	MOCK_ESP_TIMESTAMP_HEADER,
 	MOCK_ESP_TOLERANCE_SECONDS,
+	mockEspPlugin,
 } from '../fixtures/mockEsp/manifest';
 // The four variable names, from the module that declares them for the whole
 // bundle — the same import the fixture's own send and identity halves make.
@@ -196,6 +197,9 @@ import {
 	type ProviderRouteConfig,
 } from '@owlat/api/sendProviders/routing';
 import { SEND_ROUTE_STRATEGIES } from '@owlat/api/sendProviders/strategies';
+// The host's own failure vocabulary, so the two fail-closed dispatch cases can
+// name the code they mean rather than a string that would survive a rename.
+import { EmailErrorCode } from '@owlat/api/sendProviders/types';
 import { buildDispatchExtrasFor } from '@owlat/api/sendProviders/registry';
 import {
 	isFallbackRelayEligible,
@@ -508,6 +512,14 @@ describe('a send actually goes out through the plugin module', () => {
 		});
 	}
 
+	// The fixture's attempt log is module state, so it is cleared by a HOOK rather
+	// than by a line each case has to remember: a case added below without that line
+	// would read the previous case's attempt and fail — or, under `toMatchObject`,
+	// pass — for a reason unrelated to what it tests.
+	beforeEach(() => {
+		resetMockEspAttempts();
+	});
+
 	afterEach(() => {
 		vi.unstubAllEnvs();
 	});
@@ -519,7 +531,6 @@ describe('a send actually goes out through the plugin module', () => {
 	// token here would be the silent credential borrow instance resolution exists
 	// to prevent.
 	it("resolves the addressed instance's own credentials and hands over nothing else", async () => {
-		resetMockEspAttempts();
 		vi.stubEnv('SEND_TRANSPORT_INSTANCES', `${MOCK_ESP_KIND}#eu`);
 		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
 		vi.stubEnv(`${MOCK_ESP_TOKEN_ENV}__EU`, 'tok-eu');
@@ -565,7 +576,6 @@ describe('a send actually goes out through the plugin module', () => {
 	// The default instance is the same path with no suffix, and it proves the
 	// suffix above was doing something rather than being the only value present.
 	it('resolves the deployment-default instance for the bare kind', async () => {
-		resetMockEspAttempts();
 		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
 		vi.stubEnv(`${MOCK_ESP_TOKEN_ENV}__EU`, 'tok-eu');
 
@@ -579,11 +589,32 @@ describe('a send actually goes out through the plugin module', () => {
 		expect(mockEspAttempts()).toMatchObject([{ instanceKey: null, token: 'tok-live' }]);
 	});
 
+	/*
+	 * THE TWO FAIL-CLOSED CASES BELOW ARE NOT COPIES, and the reason is worth
+	 * writing down because both rules do have a shipped home.
+	 * `pluginCapabilityParity.test.ts` ("fails the attempt CLOSED when a required
+	 * variable is missing, without calling the module") and
+	 * `pluginDispatch.integration.test.ts` ("does not invoke plugin code when the
+	 * last-moment authorization is denied") own the rules — but both drive
+	 * `createHostedSendProvider` over a HAND-BUILT `SendTransportRecord`. What the
+	 * two cases here add is the half those bypass: the COMPOSED catalog resolving
+	 * the kind, the `SEND_TRANSPORT_INSTANCES` registry resolving the transport id,
+	 * and `sendProviderDispatch` in front of both. A composition that stopped
+	 * folding the flag's variables into the entry, or an instance resolver that
+	 * read the deployment default, keeps those two suites green and fails here.
+	 *
+	 * The ERROR CODE is asserted for the same reason: `success: false` with no
+	 * attempt recorded is also what a THROW looks like — `runAttempt` catches
+	 * everything and answers `UNKNOWN` — so a refactor that made either refusal
+	 * throw would leave a bare `success: false` assertion green while the
+	 * operator-facing failure stopped being attributable to credentials or to the
+	 * grant.
+	 */
+
 	// FAIL CLOSED BEFORE THE MODULE RUNS: a required variable this instance never
 	// set is an authentication failure the host reports, not a call into
 	// third-party code with an empty credential.
 	it('never calls the module when a required credential is unset', async () => {
-		resetMockEspAttempts();
 		vi.stubEnv(MOCK_ESP_ENABLED_ENV, 'true');
 		vi.stubEnv(MOCK_ESP_WEBHOOK_SECRET_ENV, 'whsec-mock-esp');
 
@@ -594,7 +625,10 @@ describe('a send actually goes out through the plugin module', () => {
 			html: '<p>Parity</p>',
 		});
 
-		expect(result.result.success).toBe(false);
+		expect(result.result).toMatchObject({
+			success: false,
+			errorCode: EmailErrorCode.AUTH_FAILED,
+		});
 		expect(mockEspAttempts()).toEqual([]);
 	});
 
@@ -603,7 +637,6 @@ describe('a send actually goes out through the plugin module', () => {
 	// the attempt being made; the recheck is what notices, and it notices BEFORE
 	// the send rather than after a message has left.
 	it('never calls the module when the capability grant is refused', async () => {
-		resetMockEspAttempts();
 		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
 
 		const context = fakeContext(false);
@@ -615,7 +648,10 @@ describe('a send actually goes out through the plugin module', () => {
 		});
 
 		expectAuthorizedOnce(context);
-		expect(result.result.success).toBe(false);
+		expect(result.result).toMatchObject({
+			success: false,
+			errorCode: EmailErrorCode.AUTH_FAILED,
+		});
 		expect(mockEspAttempts()).toEqual([]);
 	});
 
@@ -636,7 +672,6 @@ describe('a send actually goes out through the plugin module', () => {
 	 * file green — the bundle would simply lose a declared half in silence.
 	 */
 	it("carries the plugin's own extras from the governed boundary into its send", async () => {
-		resetMockEspAttempts();
 		for (const [key, value] of Object.entries(CONFIGURED)) vi.stubEnv(key, value);
 
 		const extras = buildDispatchExtrasFor(KIND, {
@@ -831,7 +866,15 @@ describe('its feedback arrives on the plugin webhook route', () => {
 		const verified = await verifyPluginReplayBoundSignature(delivery());
 		expect(verified.ok).toBe(true);
 
-		const events = parsePluginFeedbackEvents(surface.module.parseEvents(BODY), MOCK_ESP_KIND);
+		// The kind is taken from the RESOLVED REGISTRATION, not from a constant: the
+		// host stamps whatever the route's definition carries, so passing
+		// `MOCK_ESP_KIND` here would reduce the assertion below to "the function
+		// stamps what I gave it" and a registry that answered this plugin id with
+		// another plugin's definition would stay green.
+		const events = parsePluginFeedbackEvents(
+			surface.module.parseEvents(BODY),
+			surface.definition.kind
+		);
 		expect(events.map((event) => event.kind)).toEqual([
 			'email.delivered',
 			'email.bounced',
@@ -870,6 +913,13 @@ describe('its feedback arrives on the plugin webhook route', () => {
 describe('it proves a sending domain through its identity module', () => {
 	const config = { instanceKey: null, env: { [MOCK_ESP_TOKEN_ENV]: 'tok-live' } };
 
+	// The registration log is module state, cleared by a hook for the reason the
+	// dispatch block's is: a later case that read it without remembering the line
+	// would be asserting against an earlier case's registration.
+	beforeEach(() => {
+		resetMockEspRegisteredDomains();
+	});
+
 	/**
 	 * THE MODULE THE HOST WOULD CALL, resolved the way the host resolves it — by
 	 * NAMESPACED KIND, which is how this registry is keyed (the feedback one is
@@ -898,7 +948,6 @@ describe('it proves a sending domain through its identity module', () => {
 	// module has no `status` field to return, which is what makes "verified" mean
 	// the same thing at every relay tier.
 	it('derives verified from the observations the module reported', async () => {
-		resetMockEspRegisteredDomains();
 		const outcome = parsePluginRelayResult(
 			await identityModule().registerDomain('sender.example.com', config)
 		);
@@ -995,6 +1044,30 @@ describe('its credentials form is a descriptor set the UI vocabulary can draw', 
 		}
 	});
 
+	/**
+	 * THE AUTHOR'S PROSE, VERBATIM — the half of a form a renderer shows and no
+	 * other case reads.
+	 *
+	 * It is also the only assertion that can catch this package's artifact reader
+	 * looking INSIDE a string value. The manifest's two descriptions deliberately
+	 * contain the semicolon a reader must not truncate at, the words `import` and
+	 * `require` its data-only guard scans for, and the ` as const` it strips as the
+	 * artifact's one piece of TypeScript. A reader that read code and prose alike
+	 * would either refuse this bundle outright or hand back a description the
+	 * manifest never wrote — and every other case here would still pass.
+	 */
+	it("carries the author's labels and descriptions into the entry unaltered", () => {
+		const declared = mockEspPlugin.contributes.sendTransports[0].credentialFields;
+		expect((fields ?? []).map((field) => [field['label'], field['description']])).toEqual(
+			declared.map((field) => [field.label, field.description])
+		);
+		// The characters that make this case worth having, named rather than implied.
+		expect(declared[0].description).toContain(';');
+		expect(declared[0].description).toMatch(/\bimport\b/);
+		expect(declared[0].description).toMatch(/\brequire\b/);
+		expect(declared[1].description).toMatch(/\s+as const\b/);
+	});
+
 	// The renderer keys its form state by ENV VARIABLE and never renders a `secret`
 	// back, so the descriptor is what tells a surface which value is write-only.
 	it('marks its API token as a secret field, and its region as a closed set', () => {
@@ -1088,21 +1161,51 @@ describe('none of it required a core edit', () => {
 	 * rather than leaving a ramp suite grading a kind nothing composes and a web
 	 * pin guarding a kind no renderer will ever be asked for.
 	 *
-	 * The ramp fixture additionally restates the composed entry's configuration
-	 * variables, so those are bound too — a renderer that stopped folding the
-	 * flag's `requiredEnvVars` into the entry, or that stopped composing
-	 * `instanceEnvVars` from the required and optional lists, moves one of these
-	 * lists. Those two are the whole of what the ramp fixture's narrowed entry
-	 * carries as data, so nothing in it is unbound.
+	 * The ramp fixture restates MORE than the kind — it hand-writes a narrowed copy
+	 * of the composed entry and of the roster — and the two cases below bind every
+	 * datum in that copy rather than a chosen subset of it, so "the mock is what
+	 * composition produces" is checked rather than asserted in a comment.
 	 */
 	it.each([[RAMP_FIXTURE], [WEB_GAP_PIN]])('binds %s to the composed kind', (path) => {
 		const source = readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8');
 		expect(source).toContain(MOCK_ESP_KIND);
 	});
 
-	it('binds the ramp fixture to the composed configuration variables', () => {
+	/**
+	 * A composed value, as a source-text pattern tolerant of the formatter.
+	 *
+	 * The property name is anchored at its start (`id` must not be satisfied by a
+	 * `pluginId` elsewhere in the file) and the value is escaped, because a composed
+	 * kind carries dots.
+	 */
+	function spelled(property: string, value: string): RegExp {
+		return new RegExp(
+			`(?<![$\\w])${property}:\\s*'${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`
+		);
+	}
+
+	/**
+	 * EVERY DATUM THE RAMP FIXTURE'S NARROWED ENTRY CARRIES, bound to the value
+	 * composition actually produces.
+	 *
+	 * The configuration lists are the obvious half: a renderer that stopped folding
+	 * the flag's `requiredEnvVars` into the entry, or that stopped composing
+	 * `instanceEnvVars` from the required and optional lists, moves one of them. The
+	 * CAPABILITY half matters just as much and is easier to miss — the mock's
+	 * `supportsCustomReturnPath` and `messageIdSource` exist to satisfy the load-time
+	 * guards `lib/sendProviders/catalog.ts` runs on import
+	 * (`assertPluginReturnPathClaimsAreHonest`, `assertPluginDispatchSemanticsAreGeneral`),
+	 * so an unbound copy would go on satisfying them with a value the bundle no
+	 * longer declares while both suites stayed green.
+	 *
+	 * The credential fields are checked as a UNIT rather than as loose strings: the
+	 * envVar alone is already carried by `instanceEnvVars`, and what the guards read
+	 * is the pairing — this field, of this kind, required or not.
+	 */
+	it("binds the ramp fixture to every value of the composed entry's narrowed copy", () => {
 		const source = readFileSync(resolve(REPOSITORY_ROOT, RAMP_FIXTURE), 'utf8');
 		const entry = mockEspComposition().sendTransports[0]!;
+
 		const declared = [
 			...(entry['requiredEnvVars'] as readonly string[]),
 			...(entry['instanceEnvVars'] as readonly string[]),
@@ -1110,6 +1213,58 @@ describe('none of it required a core edit', () => {
 		expect(declared.length).toBeGreaterThan(0);
 		for (const envVar of declared) {
 			expect(source, `the ramp fixture no longer names ${envVar}`).toContain(envVar);
+		}
+
+		for (const property of ['pluginId', 'supportsCustomReturnPath', 'messageIdSource'] as const) {
+			const value = entry[property] as string;
+			expect(value, `the composition no longer carries ${property}`).toBeTypeOf('string');
+			expect(source, `the ramp fixture no longer spells ${property}: '${value}'`).toMatch(
+				spelled(property, value)
+			);
+		}
+
+		const fields = entry['credentialFields'] as readonly Record<string, unknown>[];
+		expect(fields.length).toBeGreaterThan(0);
+		for (const field of fields) {
+			const envVar = field['envVar'] as string;
+			// The one object literal in the ramp fixture that names this variable —
+			// brace-bounded, so `kind` and `required` below are read off THIS field
+			// rather than off whichever one happened to be nearest in the text.
+			const literal = source.match(new RegExp(`\\{[^{}]*envVar:\\s*'${envVar}'[^{}]*\\}`));
+			expect(literal, `the ramp fixture has no credential field for ${envVar}`).not.toBeNull();
+			expect(literal![0], `${envVar} is no longer a ${field['kind'] as string} field`).toMatch(
+				spelled('kind', field['kind'] as string)
+			);
+			// Required-ness both ways: a field the bundle does not require must not be
+			// spelled required in the copy either.
+			expect(/required:\s*true/.test(literal![0]), `${envVar} required-ness drifted`).toBe(
+				field['required'] === true
+			);
+		}
+	});
+
+	/**
+	 * AND THE ROSTER'S NARROWED COPY — the second mocked artifact, which the
+	 * operator's door reads to resolve the plugin's flag and capability grant.
+	 *
+	 * Same argument, different artifact: a manifest that dropped `send:transport`,
+	 * renamed the package or moved a variable out of the flag's list would leave the
+	 * ramp suite granting and configuring something the bundle no longer declares.
+	 */
+	it("binds the ramp fixture to the composed roster's narrowed copy", () => {
+		const source = readFileSync(resolve(REPOSITORY_ROOT, RAMP_FIXTURE), 'utf8');
+		const plugin = mockEspComposition().roster[0]! as unknown as Record<string, unknown>;
+		const manifest = plugin['manifest'] as Record<string, unknown>;
+		const flag = manifest['flag'] as Record<string, unknown>;
+
+		expect(source).toContain(plugin['packageName'] as string);
+		expect(source).toMatch(spelled('id', manifest['id'] as string));
+		expect(source).toMatch(spelled('version', manifest['version'] as string));
+		for (const capability of manifest['capabilities'] as readonly string[]) {
+			expect(source, `the ramp fixture no longer grants ${capability}`).toContain(capability);
+		}
+		for (const envVar of flag['requiredEnvVars'] as readonly string[]) {
+			expect(source, `the ramp fixture no longer names the flag's ${envVar}`).toContain(envVar);
 		}
 	});
 });

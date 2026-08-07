@@ -122,6 +122,13 @@ export default defineConfig({
 				__dirname,
 				'../../apps/api/convex/lib/sendProviders/catalog.ts'
 			),
+			// The adapter vocabulary, for the typed `EmailErrorCode` the fail-closed
+			// dispatch cases assert: `success: false` alone cannot tell a host refusal
+			// from a swallowed throw.
+			'@owlat/api/sendProviders/types': resolve(
+				__dirname,
+				'../../apps/api/convex/lib/sendProviders/types.ts'
+			),
 			'@owlat/api/sendProviders/routing': resolve(
 				__dirname,
 				'../../apps/api/convex/lib/sendProviders/routing.ts'

@@ -61,7 +61,8 @@
 				"../../apps/api/convex/plugins/sendTransportModules.generated.ts"
 			],
 			"@owlat/api/generated/plugins": ["../../apps/api/convex/plugins/plugins.generated.ts"],
-			"@owlat/api/sendProviders/dispatch": ["../../apps/api/convex/lib/sendProviders/dispatch.ts"]
+			"@owlat/api/sendProviders/dispatch": ["../../apps/api/convex/lib/sendProviders/dispatch.ts"],
+			"@owlat/api/sendProviders/types": ["../../apps/api/convex/lib/sendProviders/types.ts"]
 		}
 	},
 	"include": ["src/**/*.ts"],
