@@ -29,8 +29,17 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
  * Not a real mailbox provider — deliberately absent from the shipped taxonomy.
  * Hoisted so the mock factory, which vitest lifts above every other statement,
  * can name it.
+ *
+ * `shipped` is the UNMOCKED list, captured by that same factory. Every
+ * expectation about the widened list is derived from it, so the day a real sixth
+ * provider joins `DESTINATION_PROVIDER_KEYS` — the exact change D8 exists to
+ * make safe — this file keeps asserting "the shipped taxonomy plus one" instead
+ * of failing on a stale literal.
  */
-const { SIXTH } = vi.hoisted(() => ({ SIXTH: 'proton' }));
+const { SIXTH, shipped } = vi.hoisted(() => ({
+	SIXTH: 'proton',
+	shipped: {} as { keys?: readonly string[] },
+}));
 
 vi.mock('../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -38,6 +47,7 @@ vi.mock('../monitoring/logger.js', () => ({
 
 vi.mock('@owlat/shared/deliverabilityRouting', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@owlat/shared/deliverabilityRouting')>();
+	shipped.keys = actual.DESTINATION_PROVIDER_KEYS;
 	return {
 		...actual,
 		DESTINATION_PROVIDER_KEYS: [...actual.DESTINATION_PROVIDER_KEYS, SIXTH],
@@ -57,7 +67,7 @@ const IP = '10.0.0.9';
 const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);
 const UTC_DATE = '2026-08-08';
 const DEFERS = 6;
-/** The mock only pays for itself if the sixth key is genuinely new. */
+/** The widened list types as the shipped union; the sixth key is new to it. */
 const sixth = SIXTH as DestinationProviderKey;
 
 let redis: RealRedis;
@@ -72,8 +82,18 @@ afterEach(() => {
 });
 
 it('is a widened taxonomy, not the shipped one', () => {
+	const shippedKeys = shipped.keys;
+	if (shippedKeys === undefined) throw new Error('the module mock never ran');
+	// The fixture's own precondition: `SIXTH` has to be a key the taxonomy does
+	// NOT already declare. If a real `proton` ever ships, the mock would produce a
+	// DUPLICATE rather than a widening, and the consumer assertions below would
+	// start failing for a reason that has nothing to do with the regression they
+	// guard. This says so directly.
+	expect(shippedKeys, 'pick a different SIXTH — the taxonomy now ships this one').not.toContain(
+		SIXTH
+	);
 	expect(DESTINATION_PROVIDER_KEYS).toContain(SIXTH);
-	expect(DESTINATION_PROVIDER_KEYS).toHaveLength(6);
+	expect(DESTINATION_PROVIDER_KEYS).toHaveLength(shippedKeys.length + 1);
 });
 
 describe('a provider added to the ONE declaration reaches every enumerating consumer', () => {
