@@ -525,7 +525,13 @@ describe('the module stays data only — it ships to the browser', () => {
  * each one by hand), and the PANEL is what the shipped page draws.
  */
 describe('the feedback channel each transport declares', () => {
-	it('declares a channel exactly where there is feedback to receive', () => {
+	it('reads the pair back through the accessor the rest of the repo uses', () => {
+		// The PAIRING itself is a type now (`SendProviderFeedbackDeclaration`): a
+		// core entry cannot declare `hasProviderFeedback: true` without a channel or
+		// a channel without the boolean, so this can no longer catch a drifting
+		// entry. What it still catches is the ACCESSOR drifting from the field —
+		// every consumer outside this package grades measurement confidence on
+		// `hasProviderFeedbackOf`, never on the raw property.
 		for (const entry of ENTRIES) {
 			expect([entry.kind, hasProviderFeedbackOf(entry)]).toEqual([
 				entry.kind,

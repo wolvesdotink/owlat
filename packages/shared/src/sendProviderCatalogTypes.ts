@@ -333,6 +333,11 @@ export interface SendProviderCatalogEntryShape {
 	 * Does this transport report bounces/complaints back to us out of band
 	 * (webhook / SNS)? Only used to grade MEASUREMENT confidence when we cannot
 	 * stamp our own return path — it never gates a send.
+	 *
+	 * A PAIR with {@link SendProviderCatalogEntryShape.providerFeedback}, not two
+	 * independent facts — see {@link CoreSendProviderCatalogEntry}, which is where
+	 * the pairing is enforced. Both stay optional and independent HERE because a
+	 * generated plugin entry declares neither and must still satisfy this shape.
 	 */
 	readonly hasProviderFeedback?: boolean;
 	/**
@@ -449,4 +454,47 @@ export type CoreSendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 				readonly acceptanceSemantics: 'unknown-on-timeout';
 				readonly messageIdSource: 'provider' | 'composed';
 		  }
-	);
+	) &
+	SendProviderFeedbackDeclaration;
+
+/**
+ * THE SECOND PAIR a core entry declares as one decision: is there feedback, and
+ * where does it arrive?
+ *
+ * `hasProviderFeedback` and `providerFeedback` are two halves of one fact, and
+ * side by side as independent optional fields they were kept in agreement only
+ * by a test in another package. Both omissions are silent and both are bad: an
+ * author who follows the N+1 checklist to `providerFeedback` and forgets the
+ * boolean gets a transport whose measurement confidence is graded as if it
+ * reported nothing; one who sets the boolean and declares no channel gets a kind
+ * with feedback and no panel, no endpoint and no route — the exact gap the
+ * descriptor was added to close.
+ *
+ * So the two are a union, exactly like the custody pair above:
+ *
+ *  - `true` ⇒ a channel, because "we receive feedback" that names no route is a
+ *    claim with nothing behind it. The route also has to EXIST — that half is
+ *    `lib/sendProviders/__tests__/feedbackRoutes.test.ts`, which walks the real
+ *    `httpRouter`, because a path is not checkable from this package.
+ *  - a channel ⇒ `true`, because a declared webhook path IS out-of-band feedback
+ *    arriving; the grading and the panel then agree by construction.
+ *
+ * `false` takes `providerFeedback?: never`, so the two cannot be written in
+ * disagreement in either direction. Absent-on-`false` rather than forbidden
+ * outright keeps `smtp`'s explicit `hasProviderFeedback: false` legal, which is
+ * the honest declaration for a bring-your-own relay.
+ *
+ * NOT on {@link SendProviderCatalogEntryShape}: a bundled plugin entry is
+ * generated from a manifest that declares neither field, and widening this rule
+ * to the shared shape would make every such entry unassignable. Their
+ * fail-closed reading (`hasProviderFeedbackOf` ⇒ `false`) is what covers them.
+ */
+export type SendProviderFeedbackDeclaration =
+	| {
+			readonly hasProviderFeedback: true;
+			readonly providerFeedback: SendProviderFeedbackChannel;
+	  }
+	| {
+			readonly hasProviderFeedback: false;
+			readonly providerFeedback?: never;
+	  };
