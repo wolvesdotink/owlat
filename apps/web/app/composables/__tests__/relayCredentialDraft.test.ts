@@ -67,11 +67,31 @@ describe('the transport picker', () => {
 		}
 	});
 
-	it('gives every option an icon and a sentence, so none renders as a bare row', () => {
+	it('gives every option an icon, so none renders as an unlabelled row', () => {
+		// THE ICON IS THE ONLY GUARANTEE, deliberately. `pickerOption` falls back to
+		// the catalog's label and a neutral `lucide:send`, but its hint falls back to
+		// `''` — and the providers page states that as a promise: step 7 is "not
+		// enforced… nothing breaks". A sixth core kind with no `TRANSPORT_PICKER_COPY`
+		// row must therefore be able to ship WITHOUT a red suite in `apps/web`, a
+		// package its bundle has no business touching (acceptance criterion A3).
+		// Asserting a non-empty hint here was that build break, one file over.
 		for (const option of TRANSPORT_EDITOR_PROVIDER_OPTIONS) {
 			expect(option.icon).not.toBe('');
-			expect(option.hint).not.toBe('');
+			expect(typeof option.hint).toBe('string');
 		}
+	});
+
+	it('shows the sentences the shipped editor showed, to the letter', () => {
+		// The four incumbents plus the own arm DO have copy, and it is
+		// operator-facing: pinned as literals for the same reason the labels above
+		// are, since a hint read off the table agrees with any rewrite of it.
+		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => option.hint)).toEqual([
+			'Full control, no third party. Needs port 25 open and a clean sending IP.',
+			'Managed deliverability, cheap at scale. Needs an AWS account.',
+			'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
+			'Managed API with a generous free tier.',
+			'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
+		]);
 	});
 });
 
