@@ -47,14 +47,12 @@ const feedbackWebhookUrl = computed(() =>
 // Live "last event received" — enabled only for the SNS panel so we don't poll
 // otherwise.
 //
-// STILL A PER-KIND QUERY, and knowingly so, exactly like the signed-webhook read
-// below: `getLastSesEventAt` reads SES's own event table, while the gate above it
-// is now a MECHANISM (`setupPanel: 'sns-topic'`). Only SES declares that panel
-// today, so the pair is correct — but a second SNS kind would render this card's
-// "Last event received" from SES's table under ITS name, reporting another
-// provider's feedback health as its own. Generalising the read to "the active
-// transport's last feedback event" is the webhook-registry piece's (the seams
-// plan's P2.1), which is where a second `sns-topic` kind must land it.
+// STILL A PER-KIND QUERY, exactly like the signed-webhook read below:
+// `getLastSesEventAt` reads SES's own event table, while the gate above it is a
+// MECHANISM (`setupPanel: 'sns-topic'`). That mismatch is not left to be noticed
+// — `providerFeedbackPanel` holds each panel's answering set, so a second
+// `sns-topic` kind gets NO panel rather than SES's timestamp under its name, and
+// generalising the read (the seams plan's P2.1) is what opens the set.
 const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
 	feedbackPanel.value === 'sns-topic' ? {} : undefined
 );
@@ -68,11 +66,11 @@ const lastSesEventLabel = computed(() => {
 // what the transport needs to SEND, `getStatus.requiredEnv` cannot answer
 // whether it is present.
 //
-// STILL A PER-KIND QUERY, and knowingly so: the backend has one key-presence
-// read per signed kind rather than one that answers for whichever kind is
-// active. Only Mandrill declares `setupPanel: 'signed-webhook'` today, so the
-// pair is correct — and generalising the read is the webhook-registry piece's
-// (the seams plan's P2.1), which is where a second signed kind must land it.
+// STILL A PER-KIND QUERY: the backend has one key-presence read per signed kind
+// rather than one that answers for whichever kind is active. As above, the
+// panel's answering set in `providerFeedbackPanel` is what keeps a second signed
+// kind from being shown MANDRILL_WEBHOOK_KEY's presence as its own; generalising
+// the read is the webhook-registry piece's (the seams plan's P2.1).
 const { data: mandrillFeedback } = useOrganizationQuery(
 	api.delivery.status.getMandrillFeedbackStatus,
 	() => (feedbackPanel.value === 'signed-webhook' ? {} : undefined)

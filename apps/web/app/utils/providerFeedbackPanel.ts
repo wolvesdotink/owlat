@@ -10,6 +10,10 @@
  * all, and `providerFeedback` says where it arrives and what wiring it up asks
  * of the operator.
  *
+ * WHAT IS NOT YET A DECLARATION is the DATA each panel then renders — a key
+ * presence, a last-event timestamp — which still comes from a per-kind backend
+ * query. {@link PANEL_ANSWERS_FOR_KINDS} keeps the gate from outrunning it.
+ *
  * PURE, and in `~/utils` rather than inline in the page, because this is the one
  * behaviour change P1.2 makes to a shipped dashboard: a mistyped path or a
  * missing declaration would make a live panel (and its polling query) appear or
@@ -27,22 +31,54 @@ import {
 export type { SendProviderFeedbackSetupPanel };
 
 /**
+ * THE KINDS EACH PANEL'S BACKEND READ CAN ACTUALLY SPEAK FOR — the same
+ * discipline `RelayDomainStatus.vue`'s `ANSWERS_FOR_KINDS` carries, and here for
+ * the same reason: a gate cannot be more general than the data behind it.
+ *
+ * The PANEL is chosen by mechanism, which is the D5 half of this work. But each
+ * panel then renders numbers that come from a PER-KIND query:
+ * `getMandrillFeedbackStatus` is a `MANDRILL_WEBHOOK_KEY` presence read, and
+ * `getLastSesEventAt` reads SES's own event table. A sixth kind declaring
+ * `setupPanel: 'signed-webhook'` would therefore be shown Mandrill's key
+ * presence and Mandrill's last-event timestamp under its own name — a green
+ * build, a green suite, and an operator told their webhook is wired when nothing
+ * of theirs was ever read.
+ *
+ * So a kind outside its panel's set draws NO panel rather than another
+ * provider's numbers. That is a deliberately visible gap: a provider author who
+ * declares the panel and gets nothing on screen goes looking, where one who gets
+ * a plausible wrong card does not. Both sets collapse to "every kind that
+ * declares this panel" when the reads are generalised to the active transport —
+ * the webhook-registry piece's work (the seams plan's P2.1), which is where a
+ * second kind of either mechanism must land it.
+ */
+const PANEL_ANSWERS_FOR_KINDS: Readonly<Record<SendProviderFeedbackSetupPanel, readonly string[]>> =
+	{
+		'sns-topic': ['ses'],
+		'signed-webhook': ['mandrill'],
+	};
+
+/**
  * The setup panel this transport's feedback channel needs, or `undefined` when
  * there is none to draw.
  *
- * THREE WAYS TO GET `undefined`, all of them correct: the kind has no feedback
- * at all (a bring-your-own SMTP relay), the kind's channel needs nothing from
- * the operator (our own MTA, which we wire ourselves), or its ceremony has no
- * panel in this app yet (Resend — see the entry). `hasProviderFeedback` is
- * checked as well as the descriptor so a channel declared beside a transport
- * that reports nothing can never put a "wire up your feedback" card on screen.
+ * FOUR WAYS TO GET `undefined`, all of them correct: the kind has no feedback at
+ * all (a bring-your-own SMTP relay), the kind's channel needs nothing from the
+ * operator (our own MTA, which we wire ourselves), its ceremony has no panel in
+ * this app yet (Resend — see the entry), or the panel it declares is one whose
+ * backend read cannot yet speak for this kind (see
+ * {@link PANEL_ANSWERS_FOR_KINDS}). `hasProviderFeedback` is checked as well as
+ * the descriptor so a channel declared beside a transport that reports nothing
+ * can never put a "wire up your feedback" card on screen.
  */
 export function providerFeedbackPanel(
 	kind: string | null | undefined
 ): SendProviderFeedbackSetupPanel | undefined {
 	const entry = coreSendProviderCatalogEntry(kind ?? undefined);
 	if (entry === undefined || !hasProviderFeedbackOf(entry)) return undefined;
-	return entry.providerFeedback?.setupPanel;
+	const panel = entry.providerFeedback?.setupPanel;
+	if (panel === undefined) return undefined;
+	return PANEL_ANSWERS_FOR_KINDS[panel].includes(entry.kind) ? panel : undefined;
 }
 
 /**

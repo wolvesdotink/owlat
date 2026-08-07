@@ -14,7 +14,7 @@
  * registered by hand in `apps/api/convex/http.ts`. A rename on either side has
  * to break this test rather than silently hand out a 404.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
 import { providerFeedbackPanel, providerFeedbackWebhookUrl } from '../providerFeedbackPanel';
 
@@ -61,5 +61,69 @@ describe('the delivery page picks its feedback panel from the catalog', () => {
 
 	it('joins a site URL with a trailing slash without doubling it', () => {
 		expect(providerFeedbackWebhookUrl('ses', `${SITE}/`)).toBe(`${SITE}/webhooks/ses`);
+	});
+});
+
+/**
+ * THE ANSWERING SET — a panel is chosen by mechanism, but the numbers inside it
+ * still come from a per-kind backend read.
+ *
+ * The failure this pins is silent and plausible-looking: a sixth kind declaring
+ * `setupPanel: 'signed-webhook'` would render `getMandrillFeedbackStatus`'s key
+ * presence and last-event timestamp under its own name, telling an operator
+ * their webhook is wired when nothing of theirs was ever read. The whole suite
+ * stays green, because the shipped catalog has exactly one kind per mechanism —
+ * which is why the kind under test has to be injected.
+ */
+describe('a panel whose backend read cannot speak for the kind', () => {
+	const entry = (kind: string, setupPanel: string) => ({
+		kind,
+		label: kind,
+		retryDelays: [],
+		requiredEnvVars: [],
+		hasProviderFeedback: true,
+		providerFeedback: { webhookPath: `/webhooks/${kind}`, setupPanel },
+	});
+
+	async function askAbout(
+		kind: string,
+		setupPanel: string
+	): Promise<{ panel: string | undefined; url: string }> {
+		vi.resetModules();
+		vi.doMock('@owlat/shared/sendProviderCatalog', async (importOriginal) => {
+			const actual = await importOriginal<typeof import('@owlat/shared/sendProviderCatalog')>();
+			return {
+				...actual,
+				coreSendProviderCatalogEntry: (asked: string | undefined) =>
+					asked === kind ? entry(kind, setupPanel) : actual.coreSendProviderCatalogEntry(asked),
+			};
+		});
+		const module = await import('../providerFeedbackPanel');
+		const answer = {
+			panel: module.providerFeedbackPanel(kind) as string | undefined,
+			url: module.providerFeedbackWebhookUrl(kind, SITE),
+		};
+		vi.doUnmock('@owlat/shared/sendProviderCatalog');
+		vi.resetModules();
+		return answer;
+	}
+
+	it('draws no panel for a second signed-webhook kind, rather than Mandrill’s', async () => {
+		const { panel, url } = await askAbout('acme-post', 'signed-webhook');
+		// The endpoint proves the injected entry IS being read — the panel is
+		// withheld by the answering set, not by the kind being unknown.
+		expect(url).toBe(`${SITE}/webhooks/acme-post`);
+		expect(panel).toBeUndefined();
+	});
+
+	it('draws no panel for a second sns-topic kind, rather than SES’s timestamp', async () => {
+		const { panel, url } = await askAbout('acme-cloud', 'sns-topic');
+		expect(url).toBe(`${SITE}/webhooks/acme-cloud`);
+		expect(panel).toBeUndefined();
+	});
+
+	it('still draws the shipped panels, so the guard is a set and not an off switch', () => {
+		expect(providerFeedbackPanel('ses')).toBe('sns-topic');
+		expect(providerFeedbackPanel('mandrill')).toBe('signed-webhook');
 	});
 });
