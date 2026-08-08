@@ -414,6 +414,23 @@ const DISPATCH: DispatchTable = {
 			}
 		}
 	},
+	'internal.smtp_classified': async (ctx, e) => {
+		// MEASUREMENT ONLY. No lifecycle transition, no suppression, no reputation
+		// bump — the receiver's verdict on one response becomes a counter and
+		// nothing else (issue #501). The terminal bounce that a non-retryable
+		// refusal ALSO produces arrives as its own `bounced` event and moves the
+		// send status there; keeping the two apart is what lets the retryable half
+		// report the same fact without inventing a bounce for a message still in
+		// flight.
+		return await ctx.runMutation(
+			internal.analytics.smtpResponseCategories.recordClassifiedResponse,
+			{
+				providerMessageId: e.providerMessageId,
+				category: e.category,
+				observedAt: e.observedAt,
+			}
+		);
+	},
 	'internal.ip_readiness_regressed': async (ctx, e) => {
 		return await ctx.runMutation(internal.delivery.ipReadinessAlerts.recordRegression, {
 			eventId: e.eventId,

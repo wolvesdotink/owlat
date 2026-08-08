@@ -5,14 +5,13 @@ import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow, SEED_PLACEMENT_WINDOW_MS } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
-import { evaluateSeedPlacementGate, SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
+import { SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';
-const NO_CORROBORATION = { deferralGateBreached: false, bounceGateBreached: false };
 
 /**
  * (f) THE D2 PROOF — a fresh install with zero seed mailboxes.
@@ -43,48 +42,9 @@ describe('zero seed mailboxes is a supported configuration', () => {
 		expect(accounts).toEqual([]);
 	});
 
-	it('gate 5 returns insufficient_data — the controller HOLDS', async () => {
-		const t = convexTest(schema, modules);
-		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
-		const gate = evaluateSeedPlacementGate({
-			rollups: summary.rollups,
-			corroboration: NO_CORROBORATION,
-		});
-		expect(gate.verdict).toBe('insufficient_data');
-		expect(gate.reason).toBe('no_seed_mailboxes_connected');
-		expect(gate.confidence).toBe('none');
-		expect(gate.failedProviders).toEqual([]);
-		expect(gate.suspectProviders).toEqual([]);
-	});
-
-	it('cannot reach a fail verdict with no seeds, however bad the other gates look', async () => {
-		const t = convexTest(schema, modules);
-		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
-		const gate = evaluateSeedPlacementGate({
-			rollups: summary.rollups,
-			corroboration: { deferralGateBreached: true, bounceGateBreached: true },
-		});
-		expect(gate.verdict).toBe('insufficient_data');
-	});
-
-	// The two SHIPPED surfaces of this module, driven end to end. Asserting the
-	// verdict against the pure evaluator alone leaves the query's corroboration
-	// plumbing and its `seedAccountCount` field unpinned.
-	it('answers insufficient_data through the shipped getGateVerdict query', async () => {
-		const t = convexTest(schema, modules);
-		const verdict = await t.query(internal.analytics.seedPlacement.getGateVerdict, {
-			organizationId: ORG,
-			now: NOW,
-			...NO_CORROBORATION,
-		});
-		expect(verdict.verdict).toBe('insufficient_data');
-		expect(verdict.reason).toBe('no_seed_mailboxes_connected');
-		expect(verdict.confidence).toBe('none');
-		expect(verdict.failedProviders).toEqual([]);
-		expect(verdict.suspectProviders).toEqual([]);
-		expect(verdict.seedAccountCount).toBe(0);
-	});
-
+	// The module's ONE shipped query, driven end to end. Its gate-verdict sibling
+	// was a parallel route to the ramp's corroboration rule and is gone (#504);
+	// what survives here is the roll-up a screen reads.
 	it('answers an empty summary through the shipped getSeedPlacementSummary query', async () => {
 		const t = convexTest(schema, modules);
 		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
@@ -212,12 +172,16 @@ describe('absence is never load-bearing', () => {
 });
 
 /**
- * The other end of the same query: with seeds connected and a corroborated
- * provider-wide collapse, `getGateVerdict` must reach `fail` and name the
- * provider — so the corroboration arguments are proven to be wired through,
- * not merely accepted.
+ * The other end of the same query: with seeds connected and every probe in the
+ * spam folder, the shipped summary must REPORT the provider-wide collapse as a
+ * status — so the ledger→roll-up wiring is proven end to end.
+ *
+ * It stops there, deliberately. What the controller may DO about a collapse is
+ * the ramp's (`delivery/ramp/seedGate.ts` plus `CORROBORATION_REQUIRED_RAMP_GATES`,
+ * covered by the ramp gate suites); this module reports and does not decide, and
+ * the query that decided here was #504's parallel route.
  */
-describe('the shipped gate query acts on a corroborated collapse', () => {
+describe('the shipped summary reports a provider-wide collapse', () => {
 	const SEEDS = 4;
 
 	async function connectSeedsWithSpamProbes(t: TestConvex<typeof schema>): Promise<void> {
@@ -276,35 +240,37 @@ describe('the shipped gate query acts on a corroborated collapse', () => {
 		});
 	}
 
-	it('holds the collapse as SUSPECT while no other gate agrees', async () => {
+	it('names the provider and grades the reading', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeedsWithSpamProbes(t);
-		const verdict = await t.query(internal.analytics.seedPlacement.getGateVerdict, {
+		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
 			organizationId: ORG,
 			now: NOW,
-			...NO_CORROBORATION,
 		});
-		// HOLD, not pass: an uncorroborated collapse may not pull the share down,
-		// and it may not count towards the clean streak that pushes it up either.
-		expect(verdict.verdict).toBe('insufficient_data');
-		expect(verdict.failedProviders).toEqual([]);
-		expect(verdict.suspectProviders).toEqual(['gmail']);
-		expect(verdict.seedAccountCount).toBe(SEEDS);
+		expect(summary.rollups).toHaveLength(1);
+		expect(summary.rollups[0]).toMatchObject({
+			provider: 'gmail',
+			status: 'collapse_suspected',
+			sampleSize: SEEDS,
+			confidence: SEED_GATE_CONFIDENCE,
+		});
+		expect(summary.seedAccountCount).toBe(SEEDS);
+		// D14 — connected seeds are the reading's own grade, and there is nothing
+		// left to advise: the hint is the ABSENCE of seeds, not a bad result.
+		expect(summary.placementConfidence).toBe(SEED_GATE_CONFIDENCE);
+		expect(summary.placementImprovement).toBe('none');
 	});
 
-	it('fails and names the provider once the deferral gate corroborates it', async () => {
+	it('reports a STATUS and never a placement number (D17)', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeedsWithSpamProbes(t);
-		const verdict = await t.query(internal.analytics.seedPlacement.getGateVerdict, {
+		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
 			organizationId: ORG,
 			now: NOW,
-			deferralGateBreached: true,
-			bounceGateBreached: false,
 		});
-		expect(verdict.verdict).toBe('fail');
-		expect(verdict.failedProviders).toEqual(['gmail']);
-		expect(verdict.confidence).toBe(SEED_GATE_CONFIDENCE);
-		// D17 — a STATUS, never a number: no rate leaks out of the shipped query.
-		expect(verdict).not.toHaveProperty('placementRate');
+		for (const rollup of summary.rollups) {
+			expect(rollup).not.toHaveProperty('placementRate');
+			expect(rollup).not.toHaveProperty('reachedShare');
+		}
 	});
 });

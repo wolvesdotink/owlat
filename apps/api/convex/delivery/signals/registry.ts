@@ -17,12 +17,10 @@
  *
  * WHO READS WHAT, TODAY. An inventory is not a claim that everything in it is
  * wired: `google_postmaster` is the one feed read through `collect()` in
- * production (`../postmaster.ts`'s `getPostmasterStatus`); `snds` and
- * `yahoo_cfl` are declared, tested and unconsumed through this contract —
- * `evaluateSndsGate` is a complete verdict no decision path folds (see
- * `./snds.ts`), and the Yahoo stand-in is read directly, as
+ * production (`../postmaster.ts`'s `getPostmasterStatus`); `yahoo_cfl` is
+ * declared, tested and unconsumed through this contract — the Yahoo stand-in is read directly, as
  * `yahooComplaintSubstitution`, by `../../domains/yahooCfl.ts`. Wiring either
- * into a decision path would change what the ramp does and is its own piece.
+ * feed into a decision path would change what the ramp does and is its own piece.
  * That is also what their `kind: 'advisory'` says out loud.
  *
  * WHAT IS DELIBERATELY NOT HERE. The shipped relay-fallback triggers
@@ -38,7 +36,6 @@
 
 import { GOOGLE_POSTMASTER_SIGNAL_SOURCE } from './postmaster';
 import { RAMP_GATE_SIGNALS } from './rampGateSources';
-import { SNDS_SIGNAL_SOURCE } from './snds';
 import type { SignalSourceDeclaration, SignalSourceKey } from './types';
 import { YAHOO_CFL_SIGNAL_SOURCE } from './yahooCfl';
 
@@ -54,7 +51,6 @@ import { YAHOO_CFL_SIGNAL_SOURCE } from './yahooCfl';
  */
 export const SIGNAL_SOURCES: Readonly<Record<SignalSourceKey, SignalSourceDeclaration>> = {
 	...RAMP_GATE_SIGNALS,
-	snds: SNDS_SIGNAL_SOURCE,
 	yahoo_cfl: YAHOO_CFL_SIGNAL_SOURCE,
 	google_postmaster: GOOGLE_POSTMASTER_SIGNAL_SOURCE,
 };

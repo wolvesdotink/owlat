@@ -314,6 +314,18 @@ export enum EmailErrorCode {
 	SMTPUTF8_UNSUPPORTED = 'SMTPUTF8_UNSUPPORTED',
 	/** A last-mile safety lease changed; reschedule with a fresh decision. */
 	ROUTING_DEFERRED = 'ROUTING_DEFERRED',
+	/**
+	 * The MTA could not READ the routing lease it had granted — a truncated or
+	 * corrupt record in its own store, not a lease that aged out or stopped
+	 * binding. Reschedules exactly like `ROUTING_DEFERRED`; it is a separate code
+	 * because it is a separate CLAIM. `ROUTING_DEFERRED` says the MTA declined
+	 * this sending identity, and gate 2 halts a cell at 25% of those; this one
+	 * says our own storage failed with no receiver involved, so
+	 * `delivery/governedDispatch.ts` marks its deferral `local` and the gate does
+	 * not count it (issue #505). The wire code is
+	 * `ROUTING_LEASE_UNREADABLE_CODE` in `@owlat/shared`.
+	 */
+	ROUTING_LEASE_UNREADABLE = 'ROUTING_LEASE_UNREADABLE',
 	/** Unknown error */
 	UNKNOWN = 'UNKNOWN',
 }

@@ -23,6 +23,14 @@ describe('MTA webhook event runtime contract', () => {
 		expect(isMtaWebhookEvent({ event: 'sent', messageId: 'message-1', timestamp: 1 })).toBe(true);
 		expect(
 			isMtaWebhookEvent({
+				event: 'smtp.classified',
+				messageId: 'message-1',
+				smtpCategory: 'greylisted',
+				timestamp: 1,
+			})
+		).toBe(true);
+		expect(
+			isMtaWebhookEvent({
 				event: 'campaign.complaint_rate',
 				eventId: `effect:v1:${'a'.repeat(64)}`,
 				campaignId: 'a'.repeat(32),
@@ -56,6 +64,14 @@ describe('MTA webhook event runtime contract', () => {
 	it.each([
 		{ event: 'sent', timestamp: 1 },
 		{ event: 'bounced', timestamp: 1 },
+		{ event: 'smtp.classified', messageId: 'message-1', timestamp: 1 },
+		{
+			event: 'smtp.classified',
+			messageId: 'message-1',
+			smtpCategory: 'unknown-category',
+			timestamp: 1,
+		},
+		{ event: 'smtp.classified', smtpCategory: 'greylisted', timestamp: 1 },
 		{ event: 'campaign.complaint_rate', eventId: 'short', timestamp: 1 },
 		{
 			event: 'campaign.complaint_rate',

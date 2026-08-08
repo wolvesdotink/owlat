@@ -21,9 +21,7 @@ import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
-import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
-import { canSend, canSendScope } from '../intelligence/circuitBreaker.js';
-import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
+import { revalidateRoutingLease } from './sendRoutingLease.js';
 import {
 	INTAKE_RESERVATION_LEASE_MS,
 	hasAcceptedIntakeReceipt,
@@ -220,76 +218,26 @@ export function createSendHandler(
 
 		let routingLease: EmailJob['routingLease'];
 		if (mode === 'governed' && body.routingLease) {
-			const lease = await readRoutingLease(redis, body.routingLease);
-			if (
-				!isRoutingLeaseBoundTo(lease, {
-					messageId: body.messageId,
-					workAttemptId: body.workAttemptId!,
-					routingReentryToken: body.routingReentryToken!,
-					startedAt: body.routingReentry!.retryState.startedAt,
-					deliveryDomain: body.deliveryDomain!,
-					organizationId: body.organizationId,
-					recipient: body.to,
-					from: body.from,
-					messageType: body.messageType!,
-					candidateProvider: 'mta',
-					ipPool: body.ipPool,
-					allowWarmupOverflow: body.allowWarmupOverflow === true,
-				})
-			) {
-				return refuse(
-					c,
-					{ error: 'Routing decision expired; resolve again', code: 'ROUTING_DECISION_EXPIRED' },
-					409
-				);
+			// Every rejection here is a 409 the caller turns into a deferral, and the
+			// CODE is what says whose fault it was — see `revalidateRoutingLease`.
+			const revalidated = await revalidateRoutingLease(redis, body.routingLease, {
+				messageId: body.messageId,
+				workAttemptId: body.workAttemptId!,
+				routingReentryToken: body.routingReentryToken!,
+				startedAt: body.routingReentry!.retryState.startedAt,
+				deliveryDomain: body.deliveryDomain!,
+				organizationId: body.organizationId,
+				recipient: body.to,
+				from: body.from,
+				messageType: body.messageType!,
+				candidateProvider: 'mta',
+				ipPool: body.ipPool,
+				allowWarmupOverflow: body.allowWarmupOverflow === true,
+			});
+			if (!revalidated.ok) {
+				return c.json({ error: revalidated.error, code: revalidated.code }, 409);
 			}
-			const global = await canSend(redis, body.organizationId);
-			if (!global.allowed || global.generation !== lease.globalBreakerGeneration) {
-				return refuse(
-					c,
-					{ error: 'Delivery temporarily deferred by safety policy', code: 'GLOBAL_SAFETY_DEFER' },
-					409
-				);
-			}
-			const provider = await canSendScope(redis, body.organizationId, lease.destinationProvider);
-			if (!provider.allowed || provider.generation !== lease.providerBreakerGeneration) {
-				return refuse(
-					c,
-					{
-						error: 'Destination provider route changed; resolve again',
-						code: 'ROUTING_DECISION_CHANGED',
-					},
-					409
-				);
-			}
-			if (
-				lease.ip &&
-				lease.eligibilityGeneration !== undefined &&
-				!(await isIpEligibilityLeaseValid(redis, {
-					ip: lease.ip,
-					eligibilityGeneration: lease.eligibilityGeneration,
-				}))
-			) {
-				return refuse(
-					c,
-					{
-						error: 'Owned IP eligibility changed; resolve again',
-						code: 'ROUTING_DECISION_CHANGED',
-					},
-					409
-				);
-			}
-			routingLease = {
-				token: lease.token,
-				destinationProvider: lease.destinationProvider,
-				probe: lease.probe,
-				globalProbe: lease.globalProbe,
-				ip: lease.ip,
-				eligibilityGeneration: lease.eligibilityGeneration,
-				globalBreakerGeneration: lease.globalBreakerGeneration,
-				providerBreakerGeneration: lease.providerBreakerGeneration,
-				warmingReservation: lease.warmingReservation,
-			};
+			routingLease = revalidated.routingLease;
 		}
 
 		if (body.sealedMimeBase64) {

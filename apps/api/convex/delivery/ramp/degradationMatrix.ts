@@ -60,17 +60,32 @@ export type RampIntegrationPresence = Readonly<Record<RampIntegrationId, boolean
 
 /**
  * The signal a substitution runs on. Named rather than described, because the
- * dashboard renders these and the audit row records them: "the microsoft cell is
- * running on its own outcome counters" is a fact the table produced.
+ * CONTROLLER branches on these: `./degradation.ts` folds them into which
+ * actuator a cell drives (`pace_actuator`), which evaluator judges it
+ * (`trailing_baseline_engagement`) and which complaint line applies
+ * (`unsubscribe_rate_proxy`). A prose sentence could not be asked any of that.
  *
- * A SOURCE HAS TO BE SOMETHING A DEPLOYMENT ACTUALLY RUNS ON. `smtp_classification`
- * was in this list and named by the Microsoft entry below; the classifier that
- * produces those categories runs in the MTA and nothing carries its per-category
- * counts into Convex, so the gate clause it would feed has a reader and no
- * producer (issue #501). A source nobody supplies is a sentence the operator is
- * told and a row the audit trail keeps about a signal that never ran, which is
- * the defect this wave exists to repair — so the name lands here again with its
- * supplier, not before it.
+ * NOT RENDERED, AND NOT IN THE AUDIT ROW — this comment said both until issue
+ * #515 was read to the end. The audit row records the absent INTEGRATION IDS
+ * (`rampControllerInputs.ts`'s `absentIntegrations`), not the sources; the
+ * operator sentence names the capping integration's `label`
+ * (`controllerNarrative.ts`); and no screen reads a source name at all. The
+ * distinction matters for the reason this whole table exists: a source that only
+ * the fold consumes is wrong in the controller's behaviour if it is wrong, which
+ * is a stronger reason for care than "an operator would read it", not a weaker
+ * one.
+ *
+ * A SOURCE HAS TO BE SOMETHING EVERY CELL IT IS CLAIMED FOR ACTUALLY RUNS ON.
+ * `smtp_classification` was in this list and named by the Microsoft entry below.
+ * Its producer now exists — issue #501 wired the MTA's categories into
+ * `analytics/smtpResponseCategories.ts` — but the name still does not belong
+ * here, and for a second reason the first one hid: the clause that reads those
+ * counts (`evaluateSmtpBlockMessages`) is on the STANDALONE evaluator alone,
+ * while every entry in this table applies to relay-equipped deployments too. A
+ * source this table names is folded into the controller's behaviour for every
+ * cell the entry covers, so naming it would judge a relay-equipped Microsoft
+ * cell by a clause its evaluator never runs. Making the entry conditional on
+ * the evaluator is a change to the table's shape, not a line in this list.
  */
 export const RAMP_SUBSTITUTE_SOURCES = [
 	/** The warming-pace multiplier stands in for the share actuator (D3). */
@@ -124,17 +139,34 @@ export interface RampSubstitutionEntry {
 	 * not exceed the day-14 cap and the UI says why.
 	 */
 	readonly paceCeilingDay?: number;
-	/** What this cell's measurement is worth while the integration is absent. */
+	/**
+	 * What this cell's measurement is worth while the integration is absent.
+	 * Folded to the weakest applicable entry by `./degradation.ts` and returned as
+	 * `RampDegradation.confidence`.
+	 */
 	readonly confidence: RampGateConfidence;
-	/** The confidence sentence. One home for the copy (D14). */
+	/**
+	 * The confidence sentence. One home for the copy (D14).
+	 *
+	 * NOTHING RENDERS IT TODAY, said here because this is the field a later change
+	 * would ask "how much care does this deserve?" about. Its only consumer was
+	 * `rampCellConfidence`, a projection no screen ever called, removed under D20
+	 * (issue #515); the delivery dashboard grades a cell through
+	 * `dashboardConfidence` instead and the copy for THAT lives in
+	 * `apps/web/app/utils/deliverabilityMeasurement.ts`. So this sentence is
+	 * currently the table documenting its own substitution, and a screen that
+	 * starts rendering it is what makes it operator copy — at which point the
+	 * caveat under `microsoft_snds`'s `substitutes` below stops being latent.
+	 */
 	readonly confidenceNote: string;
 	/**
 	 * The CONCRETE affordance: which integration to connect and what it buys.
-	 * An offer, never a warning and never a nag (D2).
+	 * An offer, never a warning and never a nag (D2). Unrendered today, exactly as
+	 * `confidenceNote` above is and for the same reason.
 	 */
 	readonly improvement: string;
 	/**
-	 * WHETHER THIS DEPLOYMENT CAN ACT ON THE OFFER AT ALL.
+	 * WHETHER THIS DEPLOYMENT COULD ACT ON THE OFFER AT ALL.
 	 *
 	 * `false` for an integration Owlat does not implement: its absence costs
 	 * nothing and there is no button to press, so surfacing its note and its offer
@@ -142,6 +174,8 @@ export interface RampSubstitutionEntry {
 	 * what D2 forbids. The entry still exists (the table is the plan's table, and
 	 * the absence has a stated, non-alarming answer); it simply contributes no
 	 * copy. Every entry an operator CAN act on carries `true`.
+	 *
+	 * A RULE FOR A RENDERER, and there is none right now (see `confidenceNote`).
 	 */
 	readonly offersImprovement: boolean;
 	/** Always false, as a FIELD so a fixture asserts D2 rather than assuming it. */
@@ -200,25 +234,35 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		// sends.
 		//
 		// NOT `smtp_classification`, which this entry claimed until issue #501 was
-		// read to the end. Microsoft IS unusually explicit in its 5xx text and the
-		// MTA does classify it — but that classification never leaves the MTA: no
-		// row carries per-category counts per (cell, arm) into Convex, so the gate
-		// clause that would consume them (`evaluateSmtpBlockMessages`) has a reader
-		// and no producer. Naming it here put a signal no deployment runs on the
-		// cell's confidence note and in every audit row for that cell. The name
-		// comes back when the telemetry surface does.
+		// read to the end. Microsoft IS unusually explicit in its 5xx text, the MTA
+		// does classify it, and since #501 those per-category counts DO reach Convex
+		// per (cell, arm). What still disqualifies the name is SCOPE: the clause
+		// that consumes them (`evaluateSmtpBlockMessages`) runs on the standalone
+		// evaluator only, and this entry covers relay-equipped deployments too,
+		// whose gate 2 is the deferral rate alone. Naming it here would fold into
+		// the controller's behaviour, for every cell this entry covers, a signal
+		// half of them never consult. The name comes back when the table can
+		// express the condition.
 		//
 		// `seed_placement` IS CONDITIONAL, exactly as it is on the Gmail entry
-		// above, and the table cannot express the condition because the fold unions
-		// substitutes rather than retracting them. Two things narrow it: every probe
-		// the shadow copy writes is a CAMPAIGN probe (`analytics/
-		// seedPlacementSweeps.ts`, issue #500), so the transactional and automation
-		// Microsoft cells have no placement evidence and gate 5 holds on them; and a
-		// deployment with no seed mailboxes at all has none anywhere. Neither is a
-		// signal claimed for a cell that never runs it, because the `seed_mailboxes`
-		// entry below is present in exactly those deployments and says so in its own
-		// note ("nothing is currently observing where this mail lands") — the
-		// operator reads BOTH notes, and the narrower one is the one that answers.
+		// above, and the table cannot express the condition because `scope` takes a
+		// PROVIDER and not a stream (see `entryAppliesToProvider`) while the fold
+		// unions substitutes rather than retracting them. Two things narrow it:
+		//
+		//   - a deployment with no seed mailboxes has no placement evidence
+		//     anywhere. That one is answered elsewhere in the table: the
+		//     `seed_mailboxes` entry below is absent in exactly those deployments
+		//     and says so ("nothing is currently observing where this mail lands").
+		//   - every probe the shadow copy writes is a CAMPAIGN probe
+		//     (`seedPlacementProbes.stream` is `v.literal('campaign')`, issue #500),
+		//     so on a deployment that HAS seed mailboxes the microsoft TRANSACTIONAL
+		//     and AUTOMATION cells still have no placement evidence, gate 5 holds on
+		//     them for ever, and NOTHING ELSE IN THIS TABLE SAYS SO. That claim is
+		//     wrong for those two cells and stating it here is the whole of the
+		//     mitigation available at this layer: the fix is either per-stream
+		//     probes (#500) or a stream-aware scope, and neither belongs in a
+		//     comment. It is latent while nothing renders `confidenceNote` — see the
+		//     field's own note — and stops being latent the day something does.
 		substitutes: ['own_bounce_deferral_complaint', 'seed_placement'],
 		dwellMultiplier: 2,
 		ceilingPhaseDelta: -1,
@@ -311,7 +355,17 @@ export function rampSubstitutionEntry(integration: RampIntegrationId): RampSubst
 	return entry;
 }
 
-/** Whether an entry governs a given destination-provider cell. */
+/**
+ * Whether an entry governs a given destination-provider cell.
+ *
+ * PROVIDER-ONLY, AND A CELL IS (STREAM, PROVIDER). The plan scopes every
+ * substitution by destination provider, so this is faithful to the table — but it
+ * means an entry's `substitutes` are claimed for all three of a provider's
+ * streams, and one of them (`seed_placement`) is only ever supplied for the
+ * CAMPAIGN stream, because that is the only stream the shadow copy probes
+ * (issue #500). The consequence is written out on the `microsoft_snds` entry
+ * above rather than left for a reader to derive from this signature.
+ */
 export function entryAppliesToProvider(
 	entry: RampSubstitutionEntry,
 	provider: DestinationProviderKey

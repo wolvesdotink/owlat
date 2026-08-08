@@ -12,6 +12,7 @@ import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
 } from '@owlat/mta-protocol/webhookEvent';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
@@ -198,6 +199,19 @@ export type InboundEvent =
 			blocklists?: string[];
 			severity?: 'info' | 'warning' | 'critical';
 			message?: string;
+	  }
+	/**
+	 * ONE classified 4xx/5xx response, for MEASUREMENT ONLY. It moves no send
+	 * status, suppresses nobody and penalises no reputation — the dispatcher routes
+	 * it to a counter and stops there (issue #501). The cell and the arm are NOT on
+	 * the wire: the MTA knows neither, so they are resolved from the send's
+	 * `sendAssignments` row by the same join every other transport outcome uses.
+	 */
+	| {
+			kind: 'internal.smtp_classified';
+			providerMessageId: string;
+			category: SmtpFailureCategory;
+			observedAt: number;
 	  }
 	| {
 			kind: 'internal.ip_readiness_regressed';

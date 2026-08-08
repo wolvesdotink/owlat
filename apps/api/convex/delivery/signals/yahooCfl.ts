@@ -324,8 +324,8 @@ const NOTHING_CONFIGURED = yahooComplaintSubstitution({
  * the one misreading this module was split out to prevent — Yahoo does not serve
  * RFC 9477 CFBL-Address.
  *
- * ADVISORY, for the reason `./snds` is: `kind` says what a reading may do, and
- * this one moves nothing on its own. The complaint gate that DOES move the share
+ * ADVISORY because `kind` says what a reading may do, and this one moves nothing
+ * on its own. The complaint gate that DOES move the share
  * is the ramp's own `complaint_rate` source, which measures the cell's counters;
  * this feed names which signal those counters are standing on and at what
  * confidence.

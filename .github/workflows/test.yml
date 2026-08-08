@@ -106,7 +106,7 @@ jobs:
         # Pinned to a commit SHA (not a mutable tag): this third-party action sits
         # in the trust path for test results — a poisoned turbo cache replays
         # "green" without running anything.
-        uses: rharkor/caching-for-turbo@75f8ebf4a43d2c60b23bc2a27082cfea94ffdad9 # v2.5.0
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
 
       - name: Run tests with coverage
         run: bunx turbo run test:coverage --filter=${{ matrix.package }}
@@ -319,7 +319,7 @@ jobs:
         # Pinned to a commit SHA (not a mutable tag): this third-party action sits
         # in the trust path for test results — a poisoned turbo cache replays
         # "green" without running anything.
-        uses: rharkor/caching-for-turbo@75f8ebf4a43d2c60b23bc2a27082cfea94ffdad9 # v2.5.0
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
 
       - name: Verify plugin codegen from clean artifacts
         run: bun run plugins:test-clean

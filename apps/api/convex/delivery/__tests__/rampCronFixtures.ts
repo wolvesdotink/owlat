@@ -336,6 +336,29 @@ export async function connectTwoRelays(t: Harness): Promise<void> {
 }
 
 /**
+ * TWO RELAY KINDS ACROSS THE TWO SURFACES — campaign through a `providerRoutes`
+ * SES entry, and the instance default through `EMAIL_PROVIDER=resend`.
+ *
+ * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION (#513), and the reason it is a
+ * separate fixture from {@link connectTwoRelays}. Both are two-kind
+ * configurations that leave `referenceRelayTransportId` with no single arm to
+ * name — but this one has a relay in the ENV, so applying `EMAIL_PROVIDER=mta`
+ * from the transport editor genuinely disconnects an arm cells are still leaning
+ * on. With two `providerRoutes` relays and no env one, the same apply resolves
+ * to `mta` and removes nothing, so a skipped confirmation phrase is harmless
+ * there. Pins about the removal guard belong on this shape.
+ *
+ * THE ENV HALF IS A STUB THE SUITE MUST UNDO. `vi.stubEnv` outlives the test
+ * that set it, and this repo's api config does not set `unstubEnvs`, so a suite
+ * using this fixture needs an `afterEach(() => vi.unstubAllEnvs())` — otherwise
+ * every later case in the file silently becomes a relay deployment.
+ */
+export async function connectRelaysAcrossEnvAndRoutes(t: Harness): Promise<void> {
+	await connectRelay(t);
+	vi.stubEnv('EMAIL_PROVIDER', 'resend');
+}
+
+/**
  * THE MANAGED CELL'S OUTCOME ROWS for one arm, in today's UTC bucket.
  *
  * WHY EVERY CRON SUITE NEEDS THIS NOW. The substitution table (P3-8) chooses the

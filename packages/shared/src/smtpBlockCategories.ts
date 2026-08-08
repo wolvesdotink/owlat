@@ -12,13 +12,15 @@
  * the MTA would keep classifying `content_rejected` while the gate quietly
  * stopped recognising it, and the hard stop would simply never fire again.
  *
- * THE CONTRACT IS AGREED; THE WIRE BETWEEN ITS TWO HALVES IS NOT (issue #501).
- * The MTA classifies, and the ramp's block clause consumes — but no row carries
- * the per-category counts from one deployable to the other per (cell, arm), so
- * the clause is dormant in every shipped deployment and the ramp's fast signal
- * is the deferral RATE alone. Both suites still pin themselves to the samples
- * below, which is what keeps the halves from drifting apart while the transport
- * telemetry that joins them is built.
+ * THE CONTRACT IS AGREED AND THE WIRE BETWEEN ITS TWO HALVES IS BUILT (issue
+ * #501). The MTA classifies and puts the category on an `smtp.classified`
+ * webhook as a TYPED field; Convex counts it per (cell, arm, UTC day) in
+ * `analytics/smtpResponseCategories.ts` and the block clause divides. The
+ * category NEVER travels as prose — a consumer re-parsing a sentence would be a
+ * second classifier, free to disagree with this one, which is the drift this
+ * module exists to prevent. Both suites pin themselves to the samples below,
+ * which is what keeps the two halves from drifting apart now that they are
+ * joined.
  *
  * PURE DATA. No regexes, no classification, no I/O: the pattern matching stays in
  * the MTA where the SMTP session is. This module only names the categories, says

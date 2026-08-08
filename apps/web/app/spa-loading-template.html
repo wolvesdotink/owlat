@@ -35,12 +35,12 @@
 
 <style>
 	/* FF token mirror — no stylesheet is loaded this early, so these redeclare the
-	   canonical values from packages/ui/assets/css. Dark is the default (the
-	   color-mode fallback); prefers-color-scheme: light overrides below. */
+	   canonical values from packages/ui/assets/css. Light is the default (the
+	   color-mode fallback); prefers-color-scheme: dark overrides below. */
 	.owlat-spa {
-		--spa-bg: #171717; /* --surface-1 (dark) */
-		--spa-brand: #c4785a; /* --color-brand (dark) */
-		--spa-ink: #ededed; /* --color-text-primary (dark) */
+		--spa-bg: #fafafa; /* --surface-1 (light) */
+		--spa-brand: #b86b4d; /* --color-brand (light) */
+		--spa-ink: #171717; /* --color-text-primary (light) */
 
 		position: fixed;
 		inset: 0;
@@ -51,11 +51,11 @@
 		color: var(--spa-ink);
 	}
 
-	@media (prefers-color-scheme: light) {
+	@media (prefers-color-scheme: dark) {
 		.owlat-spa {
-			--spa-bg: #fafafa; /* --surface-1 (light) */
-			--spa-brand: #b86b4d; /* --color-brand (light) */
-			--spa-ink: #171717; /* --color-text-primary (light) */
+			--spa-bg: #171717; /* --surface-1 (dark) */
+			--spa-brand: #c4785a; /* --color-brand (dark) */
+			--spa-ink: #ededed; /* --color-text-primary (dark) */
 		}
 	}
 

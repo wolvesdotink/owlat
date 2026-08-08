@@ -51,7 +51,7 @@ const roles = [
 
 .rt-role {
 	border: 1px solid var(--color-border-subtle);
-	border-radius: 10px;
+	border-radius: 12px;
 	padding: 14px 16px;
 	background: var(--surface-2);
 	box-shadow: var(--shadow-1);

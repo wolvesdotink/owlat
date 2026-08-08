@@ -20,12 +20,14 @@
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared/routingDispatch';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
 	'bounced',
 	'failed',
 	'complained',
+	'smtp.classified',
 	'org.circuit_breaker',
 	'campaign.complaint_rate',
 	'ip.blocklisted',
@@ -164,6 +166,8 @@ export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhook
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	/** Classifier verdict for one `smtp.classified` receiver response. */
+	smtpCategory?: SmtpFailureCategory;
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
 	eligibilityGeneration?: number;
@@ -217,6 +221,10 @@ export type ValidatedMtaWebhookEvent =
 			bounceType?: 'hard' | 'soft';
 	  })
 	| (EventBase<'failed'> & { messageId: string; message?: string; errorCode?: string })
+	| (EventBase<'smtp.classified'> & {
+			messageId: string;
+			smtpCategory: SmtpFailureCategory;
+	  })
 	| (EventBase<'complained'> & {
 			messageId?: string;
 			recipient?: string;

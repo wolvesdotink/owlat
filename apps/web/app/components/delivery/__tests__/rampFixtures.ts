@@ -89,6 +89,10 @@ export function independenceSummary(
 	return {
 		generatedAt: NOW,
 		referenceTransportId: 'ses',
+		// The same two facts the controls fixture above carries, and the same
+		// reason: the screen's variant is decided by whether a relay EXISTS, so a
+		// standalone override has to unset this and not merely the id (#513).
+		isRelayConfigured: true,
 		ownShare: 0.42,
 		series: risingSeries(),
 		projection: { kind: 'projected', at: NOW + 30 * DAY_MS, dailyGainPp: 1.4 },

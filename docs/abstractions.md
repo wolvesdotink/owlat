@@ -375,7 +375,6 @@ compile either.
 | `complaint_rate`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 3)            |
 | `engagement_ratio`  | `outcome`        | `omit`       | `signals/rampGateSources.ts` (ramp gate 4)            |
 | `seed_placement`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 5)            |
-| `snds`              | `advisory`       | `substitute` | `signals/snds.ts` (Microsoft SNDS)                    |
 | `yahoo_cfl`         | `advisory`       | `substitute` | `signals/yahooCfl.ts` (Yahoo Complaint Feedback Loop) |
 | `google_postmaster` | `advisory`       | `omit`       | `signals/postmaster.ts` (Google Postmaster Tools)     |
 
@@ -383,7 +382,7 @@ compile either.
 `packages/shared/src/deliverabilityRouting.ts` gives the three families:
 infrastructure flips the shipped relay fallback, outcome moves the ramp
 controller's share, advisory is recorded and readable and moves nothing on its
-own. It is not a taxonomy of how the evidence was gathered — the three provider
+own. It is not a taxonomy of how the evidence was gathered — the two provider
 feeds are advisory because no decision path consults them today, not because a
 complaint band is advice. Wiring one into a gate changes what the ramp does and
 is its own piece. The five ramp keys are pinned against the shared classifier by
@@ -397,7 +396,7 @@ registry suite drives each source with its evidence removed to check that what i
 declared is what it does — `substitute` hands back the stand-in it names,
 `hold` still answers `insufficient_data`, `omit` contributes nothing at all.
 The substitution sentences are READ from the substitution the cell actually
-applies (`SNDS_ABSENT_SUBSTITUTION`, `yahooComplaintSubstitution`), never
+applies (`yahooComplaintSubstitution`), never
 restated here or in the registry, and a stand-in is NAMED in the one
 `RAMP_SUBSTITUTE_SOURCES` vocabulary the degradation table and the dashboard use.
 
@@ -431,7 +430,7 @@ the seam, and opening it is a one-piece follow-up on the day someone wants it.
 
 The durable halves stay outside this directory, because their Convex function
 paths are addressed by pollers, crons, the webhook dispatcher and the delivery
-screens: `delivery/snds.ts` (ingest, retention, the bounded gate read) and
+screens: `delivery/snds.ts` (ingest and retention) and
 `delivery/postmaster.ts` (the two ingest mutations, the sweep, and
 `getPostmasterStatus`, which now reads its cards through the registered source
 rather than calling the derivation around it — `connected` is deliberately left
@@ -448,11 +447,11 @@ through. One consumer: the sibling `channels/outbound.ts` action, which decrypts
 those credentials and builds an adapter per dispatch, per delivery-status poll
 and per health probe.
 
-| Adapter           | Outbound provider                       | Delivery status        | Health probe            |
-| ----------------- | --------------------------------------- | ---------------------- | ----------------------- |
-| `SmsAdapter`      | Twilio REST `Messages.json`             | Twilio message lookup  | Twilio account fetch    |
-| `WhatsAppAdapter` | Meta Cloud API `/{phoneNumberId}/messages` | webhook-driven      | Meta graph fetch        |
-| `WebhookAdapter`  | HTTP POST to the configured endpoint    | none (`sent`)          | config presence only    |
+| Adapter           | Outbound provider                          | Delivery status       | Health probe         |
+| ----------------- | ------------------------------------------ | --------------------- | -------------------- |
+| `SmsAdapter`      | Twilio REST `Messages.json`                | Twilio message lookup | Twilio account fetch |
+| `WhatsAppAdapter` | Meta Cloud API `/{phoneNumberId}/messages` | webhook-driven        | Meta graph fetch     |
+| `WebhookAdapter`  | HTTP POST to the configured endpoint       | none (`sent`)         | config presence only |
 
 Not adapters here, on purpose. **Email** is the send-provider seam above —
 `sendEmail` on a catalog kind, not a channel. **Chat** is native: the mutation
@@ -498,13 +497,13 @@ else — the stub outbound `ChannelAdapter` classes that used to live beside it
 were deleted by the D10 honesty pass, and the three real ones moved to
 `apps/api/convex/channels/adapters/` (the section above).
 
-| `InboundSource` key | Adapter                                                      |
-| ------------------- | ------------------------------------------------------------ |
-| `mta`               | `MtaInboundAdapter` — the `inbound.received` event envelope   |
-| `resend`            | `ResendInboundAdapter` — flat inbound-mail payload            |
-| `ses`               | declared, **not registered** — lookup throws                  |
-| `postmark`          | declared, **not registered** — lookup throws                  |
-| `mailgun`           | declared, **not registered** — lookup throws                  |
+| `InboundSource` key | Adapter                                                     |
+| ------------------- | ----------------------------------------------------------- |
+| `mta`               | `MtaInboundAdapter` — the `inbound.received` event envelope |
+| `resend`            | `ResendInboundAdapter` — flat inbound-mail payload          |
+| `ses`               | declared, **not registered** — lookup throws                |
+| `postmark`          | declared, **not registered** — lookup throws                |
+| `mailgun`           | declared, **not registered** — lookup throws                |
 
 The last three are keys in the `InboundSource` union with no adapter behind
 them, on purpose: `getInboundChannelAdapter` throws a named error for them, so a
@@ -516,7 +515,7 @@ instead of silently parsing nothing. Consumers reach an adapter through
 file needs editing for it.
 
 Not to be confused with `webhooks/adapters/` in apps/api, which verifies and
-parses *channel* (SMS/WhatsApp/generic) webhooks — a different seam with a
+parses _channel_ (SMS/WhatsApp/generic) webhooks — a different seam with a
 different job. This registry only ever sees mail.
 
 ---

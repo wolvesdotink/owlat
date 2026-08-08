@@ -407,7 +407,6 @@ describe('docs/abstractions.md: the signal-source section matches the registry',
 	const declared = new Map<string, DeclaredSignalSource>(
 		[
 			'apps/api/convex/delivery/signals/rampGateSources.ts',
-			'apps/api/convex/delivery/signals/snds.ts',
 			'apps/api/convex/delivery/signals/yahooCfl.ts',
 			'apps/api/convex/delivery/signals/postmaster.ts',
 		].flatMap((path) => declaredSignalSources(path).map((source) => [source.key, source] as const))
@@ -423,9 +422,9 @@ describe('docs/abstractions.md: the signal-source section matches the registry',
 
 	it('parses the registered sources out of the registry', () => {
 		expect(keys.length, 'no keys parsed out of SIGNAL_SOURCES').toBeGreaterThan(1);
-		// The three provider feeds are the reason the seam declares absence at all,
+		// The provider feeds are the reason the seam declares absence at all,
 		// and the ramp's own measurements are the other half of the inventory.
-		expect(keys).toEqual(expect.arrayContaining(['snds', 'yahoo_cfl', 'google_postmaster']));
+		expect(keys).toEqual(expect.arrayContaining(['yahoo_cfl', 'google_postmaster']));
 		expect(keys).toEqual(expect.arrayContaining(['bounce_rate', 'seed_placement']));
 		// Registered once, listed once: a key both spread in and named again would
 		// silently double a row's worth of expectation.

@@ -292,6 +292,49 @@ describe('dispatchGovernedEmail', () => {
 		});
 	});
 
+	// ISSUE #505. Same 409 status, same wait, same bounded re-entry — and the
+	// opposite claim: the MTA could not read back a lease record it wrote, so no
+	// receiver refused anything and nothing was decided about this identity.
+	// Marking it `governed` let a lease-store outage spend gate 2's 10% ceiling
+	// and walk a cell towards its 25% halt.
+	it('defers an unreadable-lease answer as our own fault, not the identity’s', async () => {
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		const startedAt = Date.now() - 100;
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: null,
+			organizationId: 'org-1',
+			routingLease: 'lease-3',
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: {
+				success: false,
+				errorCode: 'ROUTING_LEASE_UNREADABLE',
+				errorMessage: 'Routing lease could not be read; resolve again',
+				retryAfterMs: 5_000,
+			},
+			providerType: 'mta',
+			latencyMs: 3,
+			attempts: 1,
+		});
+
+		expect(
+			await dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				retryState: { attempt: 2, startedAt, idempotencyKey: 'send_original' },
+			})
+		).toMatchObject({
+			success: false,
+			deferred: true,
+			retryAfterMs: 5_000,
+			deferralOrigin: 'local',
+			retryState: { attempt: 3, startedAt, idempotencyKey: 'send_original' },
+		});
+	});
+
 	it('replays a request-never-arrived ambiguity with the same MTA-only work identity', async () => {
 		runMutation
 			.mockResolvedValueOnce({ token: 'reentry-token-1', expiresAt: Date.now() })

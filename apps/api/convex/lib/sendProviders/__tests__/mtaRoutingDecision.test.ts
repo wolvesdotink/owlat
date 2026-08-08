@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailErrorCode } from '../types';
 import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { MTA_DEFER_REASON_ORIGIN } from '@owlat/mta-protocol/routingDecision';
-import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import { ROUTING_LEASE_TOKEN_MAX_LENGTH, ROUTING_LEASE_UNREADABLE_CODE } from '@owlat/shared';
 import { resolveSendTransport } from '../transports';
 
 const MTA_TRANSPORT = resolveSendTransport('mta');
@@ -170,4 +170,20 @@ describe('MTA routing decision client', () => {
 			);
 		}
 	);
+
+	// ISSUE #505: the intake 409 that is NOT governance. A lease the MTA could not
+	// read back is its own store failing, so it must arrive as its own code and
+	// not be folded into the `ROUTING_DECISION_` prefix match above — that bucket
+	// is the one gate 2 halts a cell over.
+	it('carries an unreadable-lease 409 through as its own code', () => {
+		expect(
+			mtaSendProvider.categorizeError(
+				JSON.stringify({
+					error: 'Routing lease could not be read; resolve again',
+					code: ROUTING_LEASE_UNREADABLE_CODE,
+				}),
+				409
+			)
+		).toBe(EmailErrorCode.ROUTING_LEASE_UNREADABLE);
+	});
 });

@@ -26,13 +26,13 @@
  *     carries `isBlocking: false` by TYPE, so a source that blocked on its own
  *     absence could not be declared at all.
  *
- * WHY ABSENCE IS A FIELD AND NOT A DOCSTRING. Two of the three provider feeds
- * already encoded exactly this invariant one module at a time
- * (`SNDS_ABSENT_SUBSTITUTION.isBlocking`, `YahooComplaintSubstitution.isBlocking`,
- * both "encoded as a field rather than left implicit so the D2 invariant is
- * asserted by a test rather than assumed by a reader"). This is that idea with
- * one home: the registry test walks every source and asks it, so a source added
- * next year answers the question whether or not its author read the plan.
+ * WHY ABSENCE IS A FIELD AND NOT A DOCSTRING. The Yahoo provider feed already
+ * encoded exactly this invariant one module at a time
+ * (`YahooComplaintSubstitution.isBlocking`, "encoded as a field rather than
+ * left implicit so the D2 invariant is asserted by a test rather than assumed
+ * by a reader"). This is that idea with one home: the registry test walks every
+ * source and asks it, so a source added next year answers the question whether
+ * or not its author read the plan.
  *
  * NO PLUGIN BUCKET. Third-party signal sources are deliberately deferred — the
  * registry is the seam; opening it to plugins is its own piece, on the day
@@ -86,7 +86,7 @@ export type RampGateSignalKey = (typeof RAMP_GATE_SIGNAL_KEYS)[number];
  * moves neither (see each source's `kind`). Keeping them in a separate union
  * means widening this one can never widen what routing acts on.
  */
-export const PROVIDER_FEED_SIGNAL_KEYS = ['snds', 'yahoo_cfl', 'google_postmaster'] as const;
+export const PROVIDER_FEED_SIGNAL_KEYS = ['yahoo_cfl', 'google_postmaster'] as const;
 export type ProviderFeedSignalKey = (typeof PROVIDER_FEED_SIGNAL_KEYS)[number];
 
 export type SignalSourceKey = RampGateSignalKey | ProviderFeedSignalKey;

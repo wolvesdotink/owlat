@@ -8,7 +8,11 @@
  * code derived from the HTTP response.
  */
 
-import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import {
+	extractDomainOrNull,
+	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	ROUTING_LEASE_UNREADABLE_CODE,
+} from '@owlat/shared';
 import {
 	MTA_RELAY_ALLOWED_REASON,
 	isMtaRelayDecisionReason,
@@ -366,6 +370,12 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
+		// The unreadable code is a narrower routing deferral whose origin must not be
+		// folded into the receiver-governance bucket counted by gate 2 (issue #505).
+		if (httpStatus === 409 && message.includes(ROUTING_LEASE_UNREADABLE_CODE)) {
+			return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
+		}
+
 		// Substring-matched on the free-text 409 body on purpose, and NOT compared
 		// against `MTA_SEND_ERROR_CODES`: this must classify any `ROUTING_DECISION_*`
 		// refusal, including one a newer MTA build knows and this reader does not.

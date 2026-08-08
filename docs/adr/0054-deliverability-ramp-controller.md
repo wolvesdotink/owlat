@@ -1,12 +1,10 @@
-# ADR-0054: The deliverability ramp controller — one AIMD controller, two actuators, a substitution table instead of a degraded code path
+# The deliverability ramp controller — one AIMD controller, two actuators, a substitution table instead of a degraded code path
 
 **Status:** accepted (shipped — see Execution)
 
 > Filed as ADR-0043 in issue #485; `0043`–`0053` were already taken when it was
 > written, and this repo's rule is one document per number (see the note at the
-> top of [ADR-0043](./0043-execution-plan.md)), so it lands at **ADR-0054** —
-> which is the spelling every citation of it uses, and the spelling
-> `grep -n ADR-0054` has to find here for the number to name one document. The
+> top of [ADR-0043](./0043-execution-plan.md)), so it lands at **0054**. The
 > content is unchanged.
 
 ## Context
@@ -30,7 +28,7 @@ shape is [ADR-0007](./0007-mta-dispatch-modules.md)'s. Nothing about the
 But the controller's **decision architecture** is not a shape borrowed from
 anywhere, and it was recorded only in the plan document and in the PR body —
 neither of which is a durable artefact a reader of the repository will find.
-Six decisions in particular are load-bearing, are non-obvious, and would each
+Five decisions in particular are load-bearing, are non-obvious, and would each
 be individually "improved" away by a well-meaning refactor:
 
 1. There is **one** controller driving **two** actuators, not two controllers.
@@ -43,9 +41,6 @@ be individually "improved" away by a well-meaning refactor:
 5. The decision core is **pure**, and the absence of a third-party account is
    **additive-only**: it lowers confidence and slows the ramp, and does nothing
    else.
-6. The measurement plane records **what was decided**, before dispatch, and is
-   keyed by **arm** and never by provider — the two things about it that are
-   *not* borrowed from ADR-0042.
 
 Every one of them is already fixture-pinned. This ADR is the durable write-up
 of a decision already made, so that the fixtures have something to point at.
@@ -240,8 +235,8 @@ One deliberate refinement of "insufficient data holds": an **optional** gate's
 still count in full). Optionality is a fixed property of the gate id
 (`OPTIONAL_RAMP_GATES`), consulted by the aggregator rather than trusted off a
 flag on the result, so a caller-supplied gate result cannot remove itself from
-the holding logic by mislabelling itself. That is decision 7 in one line: no
-absent external account may hold the ramp.
+the holding logic by mislabelling itself. That is rule 6 in one line: no absent
+external account may hold the ramp.
 
 Relatedly, a `fail` from a **tripwire** gate (`CORROBORATION_REQUIRED_RAMP_GATES`
 — seed placement, which is 5–10 mailboxes) is flagged `requiresCorroboration`
@@ -318,59 +313,6 @@ Two rows are worth calling out as boundary cases of "additive only":
   would be a permanent, unactionable nag on every cell for ever, which is the
   exact thing this rule forbids.
 
-### 8. The measurement plane records the DECISION, and is keyed by arm
-
-The Context above says the plane's *shape* is borrowed — sharded writes, summed
-reads, ADR-0042. Two things about it are not, and both are the kind a tidying
-refactor removes because the cheaper-looking alternative appears equivalent.
-
-**`sendAssignments` is written inside the enqueue transaction, before dispatch.**
-The obvious simplification is to derive the same table after the fact from
-`sends.providerType`, which every send already carries: one fewer write, one
-fewer table, no new retention sweep. It is not equivalent, for three reasons.
-
-- `providerType` records **what happened**, and the controller's question is
-  **what we decided, and for whom**. Health-driven failover is re-resolved at
-  dispatch, so a recipient the mix assigned to the own arm whose send then went
-  out through the reference relay is a *reference* row in the post-hoc reading
-  and stays an *own* row here. That is deliberate and it is the analysis the
-  controller needs: the ramp is scored on the effect of its own decision,
-  failovers included, because the alternative quietly moves every bad own-arm
-  outcome out of the own arm and lets a cell advance on evidence it did not
-  produce.
-- The mix version and the cell are inputs to a decision that no longer exists
-  once the send has left. Reconstructing the cell post-hoc means re-deriving the
-  recipient's destination provider from an address that may since have been
-  suppressed, and re-deriving the mix version from a config that may since have
-  moved. Both are lossy in the direction that flatters the ramp.
-- Assignment is a random draw against `s`. A draw that is not durably recorded
-  at the moment it is made is not a measurement — nothing later can distinguish
-  "we assigned 20% and 20% arrived" from "we assigned 50% and half failed over".
-
-Writing it in the enqueue transaction is what makes the row and the decision the
-same event. Denormalising `organizationId` onto the row is part of the same
-decision rather than a convenience: a cell-keyed controller read that can cross
-tenants is a security defect, so those reads lead with the organization instead
-of recovering tenant scope through another table.
-
-**The plane is keyed by ARM, never by provider kind or instance.** Both tables
-carry `own | reference` and stop there — `sendAssignments` also records the
-transport kind, for auditing, but nothing in the controller reads it. Two
-configured SES instances are one arm; a deployment that swaps SES for Mandrill
-mid-ramp does not partition its own history.
-
-This is what keeps adding a provider a **rows** change and never a **columns**
-change. A plane keyed by kind would need a schema decision, a migration and a
-controller change per provider, and the "which of these am I comparing against"
-question would have no answer once a deployment ran two relays. It also keeps
-the controller from ever learning a provider's name, which is the same rule
-ADR-0055 enforces on the send path — one identity question exists in this
-system, `own` vs. not-own, and this is where it is asked.
-
-The cost is real and accepted: the plane cannot answer "how did Resend do versus
-SES". That is a reporting question, and the table that answers it is a different
-table from the one that drives an actuator.
-
 ## Considered options
 
 ### Two controllers, or one controller with two actuators
@@ -422,20 +364,6 @@ table from the one that drives an actuator.
    a mock only proves the paths a test happened to walk, whereas the source grep
    holds for every path including the ones nobody wrote a test for.
 
-### The measurement plane's grain
-
-1. **A pre-dispatch assignment row, keyed by arm** *(chosen)*. The decision and
-   the record are one transaction, and a provider is rows rather than columns.
-2. **Derive the plane from `sends.providerType` after the fact.** Rejected: it
-   answers "what happened", not "what we decided", and it re-derives the cell
-   and the mix version from state that has since moved. Cheaper, and measuring
-   something else.
-3. **Key the plane by provider kind (or by transport instance).** Rejected: it
-   makes every added provider a schema change, splits a deployment's history
-   when it swaps relays, and gives the controller a provider's name — which is
-   the identity coupling ADR-0055 removes from the send path. Per-provider
-   reporting is a separate table for a separate question.
-
 ## Consequences
 
 - **The constants are a safety surface, not a config surface.** Anyone changing
@@ -457,14 +385,6 @@ table from the one that drives an actuator.
   `'all'` rather than a hand-typed provider list.
 - **Adding an integration is a table row**, plus a presence reader. No rung
   changes.
-- **Adding a send provider does not touch the measurement plane either.** Both
-  tables are arm-keyed, so a new transport is rows, not a column, a migration or
-  a controller change. The price is that the plane cannot rank providers against
-  each other; that is a reporting question and belongs to a different table.
-- **The assignment write is on the enqueue path**, so it is bounded and
-  defensive by obligation: O(N) narrow writes for N recipients, no unbounded
-  read, and every failure to classify degrades to "no row" rather than to a
-  failed send.
 - **The dashboard and the controller cannot disagree.** Gates return the numbers
   that produced the verdict, not booleans, and the confidence copy is derived
   from the same table entries the controller folded.

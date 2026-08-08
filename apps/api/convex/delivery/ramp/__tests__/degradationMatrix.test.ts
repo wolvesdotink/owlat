@@ -23,7 +23,6 @@ import {
 	type RampIntegrationId,
 	type RampSubstituteSource,
 } from '../degradationMatrix';
-import { SNDS_ABSENT_SUBSTITUTION } from '../../signals/snds';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
@@ -88,9 +87,9 @@ const CASES: readonly MatrixCase[] = [
 		// microsoft cell plus seeds at Outlook; DWELL x2 AND the microsoft cell
 		// ceiling capped ONE PHASE LOWER.
 		//
-		// NOT `smtp_classification` (issue #501): the classifier runs in the MTA and
-		// nothing carries its per-category counts into Convex, so a cell claiming to
-		// run on it was claiming a signal no deployment supplies.
+		// NOT `smtp_classification` (issue #501): the counts reach Convex now, but
+		// the clause that reads them is on the standalone evaluator alone, and this
+		// entry covers relay-equipped deployments whose gate 2 never consults it.
 		integration: 'microsoft_snds',
 		provider: 'microsoft',
 		outOfScopeProvider: 'gmail',
@@ -151,24 +150,33 @@ const CASES: readonly MatrixCase[] = [
 ];
 
 /**
- * THE SIGNALS WITH NO PRODUCER, each with the reason it has none — the shape
- * `gateInputWiring.test.ts` keeps its `KNOWN_UNSUPPLIED` gaps in, applied to the
- * substitution vocabulary. A NAMED LIST rather than one hard-coded string
- * search, so the next unsupplied signal is covered by adding a line here instead
+ * THE SIGNALS THIS TABLE MAY NOT CLAIM, each with the reason it may not — the
+ * shape `gateInputWiring.test.ts` keeps its `KNOWN_UNSUPPLIED` gaps in, applied
+ * to the substitution vocabulary. A NAMED LIST rather than one hard-coded string
+ * search, so the next unclaimable signal is covered by adding a line here instead
  * of by somebody remembering to write a second assertion.
  *
- * `smtp_classification` (issue #501) — the per-ISP block-message classifier runs
- * in the MTA and nothing carries its per-category counts into Convex per (cell,
- * arm), so `RampGateEvaluationInput.smtpBlocks` is never set and gate 2 is the
- * deferral RATE alone. The gate clause is still implemented and still pinned
- * (`smtpBlockMessage.test.ts`); what may not come back before the telemetry does
- * is the CLAIM, in a name or in prose, that a cell is measured by it.
+ * `smtp_classification` — the per-ISP block-message signal. It began here as a
+ * signal with NO PRODUCER (issue #501): the classifier ran in the MTA and nothing
+ * carried its per-category counts into Convex, so `smtpBlocks` was never set. It
+ * has one now, and the reason it still may not be named is a narrower one that
+ * the missing producer was hiding: the clause that consumes those counts
+ * (`evaluateSmtpBlockMessages`) belongs to the STANDALONE evaluator alone, while
+ * every entry in this table applies to relay-equipped deployments too. Naming it
+ * would tell a relay-equipped operator their cell is measured by something its
+ * evaluator never consults — the same defect as before, for a different reason,
+ * on a smaller share of deployments.
+ *
+ * The gate clause is implemented, reached (`delivery/__tests__/smtpBlockWiring.test.ts`)
+ * and pinned (`smtpBlockMessage.test.ts`). What may not come back until the table
+ * can express the condition is the CLAIM, in a name or in prose, that every cell
+ * this table covers is measured by it.
  *
  * `prose` is the second half of each entry because the table is rendered, not
  * just read: a confidence note can promise the signal to an operator without the
  * source name appearing anywhere.
  */
-const SOURCES_WITHOUT_A_PRODUCER: readonly { source: string; prose: RegExp }[] = [
+const SOURCES_THE_TABLE_MAY_NOT_CLAIM: readonly { source: string; prose: RegExp }[] = [
 	{
 		source: 'smtp_classification',
 		prose: /SMTP reply|SMTP classification|block message/i,
@@ -176,15 +184,21 @@ const SOURCES_WITHOUT_A_PRODUCER: readonly { source: string; prose: RegExp }[] =
 ];
 
 /**
- * EVERY NAMED SIGNAL IS A SIGNAL SOMETHING RUNS ON (issue #501).
+ * EVERY NAMED SIGNAL IS A SIGNAL EVERY CELL IT IS NAMED FOR RUNS ON (issue #501).
  *
- * The table is what the dashboard renders and what the audit row records, so a
- * source in the vocabulary that no entry claims is a name waiting to be pasted
- * onto a cell — and a source an entry claims that nothing supplies is worse: it
- * tells an operator their cell is measured by something that never executes.
- * `smtp_classification` was exactly that for the Microsoft cell. It comes back
- * when the MTA -> Convex transport telemetry does, and this suite is what makes
- * "when" a build failure rather than a memory.
+ * The table is what the CONTROLLER runs on — `resolveRampDegradation` folds
+ * `substitutes` into which actuator a cell drives, which evaluator judges it and
+ * which complaint line applies, and the audit row records the absent
+ * INTEGRATIONS behind those constants. So a source in the vocabulary that no
+ * entry claims is a name waiting to be pasted onto a cell — and a source an
+ * entry claims that a cell it covers never consults is worse: it tells the
+ * controller (and, the day a screen renders the copy, an operator) that a cell
+ * is measured by something that never executes for it. `smtp_classification`
+ * was exactly that for the Microsoft cell, first because it had no producer at
+ * all and now because its one consumer is the standalone evaluator while the
+ * `microsoft_snds` row covers relay-equipped cells too. It comes back when the
+ * table can express that condition, and this suite is what makes "when" a
+ * build failure rather than a memory.
  */
 describe('the substitution table names only signals that run', () => {
 	it('leaves no source in the vocabulary unclaimed by an entry', () => {
@@ -205,8 +219,8 @@ describe('the substitution table names only signals that run', () => {
 		// The control. An empty `offered` would pass every exclusion below without
 		// reading a single entry, which is the way this guard would rot.
 		expect(offered.length).toBeGreaterThan(0);
-		expect(SOURCES_WITHOUT_A_PRODUCER.length).toBeGreaterThan(0);
-		for (const { source, prose } of SOURCES_WITHOUT_A_PRODUCER) {
+		expect(SOURCES_THE_TABLE_MAY_NOT_CLAIM.length).toBeGreaterThan(0);
+		for (const { source, prose } of SOURCES_THE_TABLE_MAY_NOT_CLAIM) {
 			expect(vocabulary).not.toContain(source);
 			expect(offered).not.toContain(source);
 			for (const entry of table) expect(entry.confidenceNote).not.toMatch(prose);
@@ -223,29 +237,6 @@ describe('the substitution table names only signals that run', () => {
 		// constant, and a quieter ramp would be a different change hiding in a doc fix.
 		expect(degradation.dwellMultiplier).toBe(2);
 		expect(degradedCeilingCap(degradation)).toBe(0.8);
-	});
-
-	it('says the same thing on the SNDS gate as in the table — in the same words', () => {
-		// Two entries describing one cell: the P3-8 table and the gate input's own
-		// substitution shape, rendered on different screens. WHAT THESE GUARD IS THE
-		// DERIVATION, not a live drift — `signals/snds.ts` now builds its note as a
-		// template over the table's, so while that holds the comparison below cannot
-		// fail. Re-literalising the sentence is the regression that already happened
-		// once (the table named seed placement beside the cell's own rates; this
-		// file's copy stopped at the rates), and it fails here the moment someone
-		// types the sentence out again. The source-name check alone never could: the
-		// gate's single name is trivially one of the table's list.
-		const entry = RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds');
-		expect(entry?.substitutes).toContain(SNDS_ABSENT_SUBSTITUTION.source);
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.startsWith(entry?.confidenceNote ?? '#')).toBe(
-			true
-		);
-		// The one clause the gate row adds, because the table keeps it in a separate
-		// `improvement` field the gate row has nowhere to render.
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.slice(entry?.confidenceNote.length ?? 0)).toBe(
-			' Connecting SNDS would measure this IP’s complaint band directly.'
-		);
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote).not.toMatch(/SMTP reply/i);
 	});
 });
 

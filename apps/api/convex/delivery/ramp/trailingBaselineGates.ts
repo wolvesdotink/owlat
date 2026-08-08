@@ -16,13 +16,12 @@
  *                  (VERP + DSN parsing) and never depended on a third party.
  *   2 DEFERRAL/4xx UNCHANGED, and PROMOTED TO PRIMARY. Confidence HIGH.
  *                  The plan also specifies per-ISP BLOCK-MESSAGE detection from
- *                  the shipped SMTP classifier as a HARD STOP beside it. That
- *                  clause is IMPLEMENTED AND DORMANT — see
- *                  `evaluateSmtpBlockMessages` — because no deployment can
- *                  supply the observation it reads (issue #501). Until one can,
- *                  the DEFERRAL RATE is the whole of gate 2, and the module that
- *                  claimed otherwise was describing a halt no deployment could
- *                  reach.
+ *                  the shipped SMTP classifier as a HARD STOP beside it — see
+ *                  `evaluateSmtpBlockMessages`, which OUTRANKS the rate: what a
+ *                  receiver says it is refusing does not get better by sending
+ *                  less, so it halts rather than decreasing (issue #501). A cell
+ *                  with no classified response in the window falls through to
+ *                  the rate alone.
  *   3 COMPLAINT    CFBL reports where a feedback loop exists; OTHERWISE the
  *                  one-click UNSUBSCRIBE rate at or above 3x the cell's trailing
  *                  baseline, treated as a complaint-equivalent breach.
@@ -253,10 +252,9 @@ function blockRate(observation: SmtpBlockObservation): number | null {
  *
  * Unchanged in its arithmetic — the 4xx ceiling and the halt line are the shipped
  * ones, because they never depended on a third party in the first place — and
- * extended with what the responses SAY rather than only how many there were,
- * FOR A DEPLOYMENT THAT CAN SAY IT. None can yet: `input.smtpBlocks` has no
- * production supplier (issue #501), so today this function is the deferral rate
- * and nothing else.
+ * extended with what the responses SAY rather than only how many there were.
+ * `input.smtpBlocks` is supplied by both production readers (issue #501); a cell
+ * whose window carries no classified response falls through to the rate alone.
  *
  * A BLOCK IS NOT A DEFERRAL RATE. Throttling and blocking both arrive as 4xx and
  * both land in the deferral counter, but they mean opposite things about what to
@@ -286,32 +284,32 @@ export function evaluateStandaloneDeferralGate(input: RampGateEvaluationInput): 
  * and turning a quiet block detector into a hold would freeze every cell that has
  * nothing wrong with it.
  *
- * DORMANT IN EVERY SHIPPED DEPLOYMENT, and said here rather than left to be
- * discovered (issue #501). The classification is the MTA's, and NEITHER of its
- * two 4xx paths carries per-category counts into Convex per (cell, arm): a
- * RETRYABLE 4xx emits no `notify_convex` event at all — it is retried
- * internally and surfaces only as a per-IP warming aggregate that names no cell
- * — and a NON-RETRYABLE one (`policy_rejected` / `content_rejected`, reduced in
- * `apps/mta/src/dispatch/outcome.ts`) arrives as a `bounced` event whose
- * category survives only inside a prose `message` string. So `loadCellInput`
- * has nothing to read and passes no observation, and the first branch below is
- * the one every tick takes.
+ * LIVE SINCE ISSUE #501 CLOSED, and BOTH of the MTA's 4xx paths are why. The
+ * classification is the MTA's (`apps/mta/src/dispatch/outcome.ts`) and each
+ * branch now reports its verdict as a TYPED category on an `smtp.classified`
+ * webhook — the RETRYABLE one, which used to emit no `notify_convex` event at
+ * all and which supplies this clause's DENOMINATOR, and the NON-RETRYABLE one,
+ * which also produces a bounce and supplies the NUMERATOR. Wiring only the
+ * second would have delivered refusals over a denominator made of refusals: a
+ * 100% block rate on the first one any cell ever collected.
  *
- * THE WEBHOOK IS WHERE THIS CLOSES, and the second path is named above because
- * it is the one to extend: the category has to travel as a TYPED field and land
- * in a per-(cell, arm, day) counter. Re-parsing the sentence would be a second
- * classifier disagreeing with the MTA's, which is what the shared vocabulary
- * exists to prevent.
+ * The category travels as a field and is never re-parsed out of the bounce's
+ * prose `message`: a second classifier is free to disagree with the first, which
+ * is what `@owlat/shared/smtpBlockCategories` exists to prevent.
  *
- * KEPT, NOT DELETED, and that is a judgement rather than an oversight: the
+ * `analytics/smtpResponseCategories.ts` receives it into a per-(org, cell, arm,
+ * day) sharded counter, and BOTH readers of this evaluator summarize it over
+ * their own window — `loadCellInput` over the controller's 24 hours,
+ * `deliverabilityDashboard` over the screen's seven days.
+ *
+ * ABSENCE IS STILL THE FIRST BRANCH BELOW, and it is not a defect. A cell whose
+ * window contains no classified response at all gets `null` — not a zeroed
+ * observation, which would read as "we measured, and nobody refused us" — so the
+ * clause yields no verdict and the deferral rate decides on its own. The
  * arithmetic, the sample floor, the freshness rule and the block-versus-pressure
- * split are pinned by `__tests__/smtpBlockMessage.test.ts` against the SHARED
- * fixture the MTA's own suite classifies, so the contract stays alive and
- * verified while the transport surface that would feed it is built. What is NOT
- * kept is any claim that it is running: the substitution table no longer names
- * SMTP classification as a signal a cell runs on, and the wiring guard
- * (`__tests__/gateInputWiring.test.ts`) asserts the absence exactly, so wiring it
- * fails a suite until the tracked line is deleted.
+ * split stay pinned by `__tests__/smtpBlockMessage.test.ts` against the SHARED
+ * fixture the MTA's own suite classifies; that the clause is REACHED from a real
+ * deployment's rows is pinned by `delivery/__tests__/smtpBlockWiring.test.ts`.
  */
 export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampGateResult | null {
 	const observation = input.smtpBlocks;

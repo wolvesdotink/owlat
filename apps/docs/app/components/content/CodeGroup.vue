@@ -60,7 +60,7 @@ onMounted(() => {
 .code-group {
 	margin: 1.5rem 0;
 	border: 1px solid var(--color-border-subtle);
-	border-radius: 10px;
+	border-radius: 12px;
 	overflow: hidden;
 }
 

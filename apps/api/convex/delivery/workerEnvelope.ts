@@ -71,6 +71,19 @@ export const envelopeInputValidator = v.union(
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
 		engagementScore: v.optional(v.number()),
+		// Deliverability SEED PROBE marker, exactly as on the campaign variant
+		// above and for exactly the same reason: the `transactional` and
+		// `automation` cells are measured by a SCHEDULED probe
+		// (`delivery/seedScheduledProbe.ts`) rather than by a shadow of a real
+		// send, because there is no per-recipient transaction to clone from. Same
+		// opaque id, same `X-Owlat-Seed-Probe` header, same ledger row.
+		//
+		// `sendId` is what makes a transactional send countable, and a probe never
+		// carries one — the probe ledger row is its ONLY durable record (D18). It
+		// is still a durable reference, which is what the governed boundary needs:
+		// `seedProbeRef` takes `sendId`'s place there, and nowhere else.
+		seedProbeId: v.optional(v.string()),
+		seedProbeRef: v.optional(v.id('seedPlacementProbes')),
 	})
 );
 
@@ -100,12 +113,19 @@ export function normalizeEngagementScore(score: number | undefined): number | un
 }
 
 /**
- * True when this envelope is a seed shadow copy — the SINGLE predicate for
- * "this is a placement probe, not a subscriber's mail". A shadow copy must
- * never be countable, and a countable Send must never carry the probe header;
- * that invariant is asserted on the composition path by
+ * True when this envelope is a seed PROBE — the SINGLE predicate for "this is a
+ * placement probe, not a real recipient's mail". A probe must never be
+ * countable, and a countable Send must never carry the probe header; that
+ * invariant is asserted on the composition path by
  * `delivery/worker.ts#assertSeedShadowExclusion`, which narrows THROUGH this
  * predicate rather than restating the shape.
+ *
+ * KIND-AGNOSTIC ON PURPOSE. It was campaign-only while the campaign shadow copy
+ * was the only producer; the scheduled probe measures the `transactional` and
+ * `automation` cells through the transactional envelope, and a predicate that
+ * still asked `kind === 'campaign'` would silently exclude exactly the probes
+ * whose exclusion matters most — the ones riding the envelope that carries a
+ * countable `sendId` field.
  *
  * Lives beside the envelope type (not in `delivery/seedShadowCopy.ts`) so the
  * `'use node'` worker can import it without pulling the probe ledger's Convex
@@ -113,8 +133,8 @@ export function normalizeEngagementScore(score: number | undefined): number | un
  */
 export function isSeedShadowEnvelope(
 	envelope: WorkerEnvelopeInput
-): envelope is Extract<WorkerEnvelopeInput, { kind: 'campaign' }> & { seedProbeId: string } {
-	return envelope.kind === 'campaign' && envelope.seedProbeId !== undefined;
+): envelope is WorkerEnvelopeInput & { seedProbeId: string } {
+	return envelope.seedProbeId !== undefined;
 }
 
 export const retryStateValidator = v.object({

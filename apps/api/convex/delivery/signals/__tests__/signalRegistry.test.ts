@@ -39,7 +39,6 @@ import {
 	type RampGateSignalSource,
 } from '../rampGateSources';
 import { allSignalSources, SIGNAL_SOURCES } from '../registry';
-import { buildSndsGateInput, SNDS_ABSENT_SUBSTITUTION, SNDS_SIGNAL_SOURCE } from '../snds';
 import {
 	PROVIDER_FEED_SIGNAL_KEYS,
 	RAMP_GATE_SIGNAL_KEYS,
@@ -110,16 +109,6 @@ const NO_SIGNAL: Readonly<Record<SignalSourceKey, () => SignalCollection<unknown
 	complaint_rate: () => rampProbe(RAMP_GATE_SIGNALS.complaint_rate),
 	engagement_ratio: () => rampProbe(RAMP_GATE_SIGNALS.engagement_ratio),
 	seed_placement: () => rampProbe(RAMP_GATE_SIGNALS.seed_placement),
-	snds: () =>
-		SNDS_SIGNAL_SOURCE.collect(
-			buildSndsGateInput({
-				enrolled: false,
-				windowDays: 7,
-				observations: [],
-				truncated: false,
-				attributed: false,
-			})
-		),
 	yahoo_cfl: () =>
 		YAHOO_CFL_SIGNAL_SOURCE.collect({ enrollmentState: 'not_started', hasCfblAddress: false }),
 	google_postmaster: () => GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(NO_POSTMASTER_DATA),
@@ -218,30 +207,6 @@ describe('a kind is the shared vocabulary, not a local opinion', () => {
 });
 
 describe('the substituted sentence is read, never restated', () => {
-	it('the Microsoft absence is the substitution table entry', () => {
-		expect(SNDS_SIGNAL_SOURCE.absence).toEqual({
-			behaviour: 'substitute',
-			substitutes: SNDS_ABSENT_SUBSTITUTION.source,
-			note: SNDS_ABSENT_SUBSTITUTION.confidenceNote,
-			isBlocking: false,
-		});
-	});
-
-	it('an enrolled-but-silent feed is the same absence as no enrollment at all', () => {
-		const silent = SNDS_SIGNAL_SOURCE.collect(
-			buildSndsGateInput({
-				enrolled: true,
-				windowDays: 7,
-				observations: [],
-				truncated: false,
-				attributed: true,
-			})
-		);
-		expect(silent.available).toBe(false);
-		if (silent.available) return;
-		expect(silent.absence).toEqual(SNDS_SIGNAL_SOURCE.absence);
-	});
-
 	it('the yahoo absence names the stand-in that is actually live', () => {
 		const proxy = yahooComplaintSubstitution({
 			enrollmentState: 'not_started',

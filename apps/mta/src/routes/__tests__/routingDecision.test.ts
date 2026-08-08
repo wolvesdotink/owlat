@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { isRoutingLeaseBoundTo, type RoutingLeaseRecord } from '../routingDecision.js';
+import { describe, expect, it, vi } from 'vitest';
+import type Redis from 'ioredis';
+import {
+	isRoutingLeaseBoundTo,
+	readRoutingLease,
+	type RoutingLeaseRecord,
+} from '../routingDecision.js';
 
 function lease(overrides: Partial<RoutingLeaseRecord> = {}): RoutingLeaseRecord {
 	return {
@@ -106,5 +111,52 @@ describe('routing decision lease binding', () => {
 				10_001
 			)
 		).toBe(false);
+	});
+});
+
+/**
+ * The three answers a lease read may give (issue #505). `readRoutingLease` used
+ * to collapse all of them into `null`, which made "our Redis lost the record"
+ * indistinguishable from "the decision is stale" one layer up — and only the
+ * second of those is evidence about the sending identity.
+ */
+describe('routing lease reads', () => {
+	function redisReturning(value: string | null): Redis {
+		return { get: vi.fn().mockResolvedValue(value) } as unknown as Redis;
+	}
+
+	it('returns the record while it is still current', async () => {
+		const record = lease({ expiresAt: Date.now() + 60_000 });
+		expect(await readRoutingLease(redisReturning(JSON.stringify(record)), 'lease-1')).toEqual({
+			status: 'ok',
+			lease: record,
+		});
+	});
+
+	it('reports a readable record past its own deadline as expired', async () => {
+		const stored = JSON.stringify(lease({ expiresAt: Date.now() - 1 }));
+		expect(await readRoutingLease(redisReturning(stored), 'lease-1')).toEqual({
+			status: 'expired',
+		});
+	});
+
+	// A missing key is the 15-minute TTL elapsing in the ordinary case and an
+	// eviction/flush/empty-replica failover in the rare one, and a `GET` cannot
+	// tell them apart. `absent` keeps the stale-decision reading rather than
+	// claiming a storage fault it cannot prove.
+	it('reports a key Redis no longer has as absent, not as a storage fault', async () => {
+		expect(await readRoutingLease(redisReturning(null), 'lease-1')).toEqual({ status: 'absent' });
+	});
+
+	it.each([
+		['a truncated value', '{"token":"lease-1","messa'],
+		['a value that is not an object', '42'],
+		['an array', '[]'],
+		['a record naming another token', JSON.stringify(lease({ token: 'lease-2' }))],
+		['a record with no usable deadline', JSON.stringify(lease({ expiresAt: Number.NaN }))],
+	])('reports %s as unreadable', async (_label, stored) => {
+		expect(await readRoutingLease(redisReturning(stored), 'lease-1')).toEqual({
+			status: 'unreadable',
+		});
 	});
 });
