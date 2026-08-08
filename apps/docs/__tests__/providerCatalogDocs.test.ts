@@ -98,9 +98,18 @@ const PROVIDER_WORDS: ReadonlySet<string> = new Set(
  * nothing but provider words ("for the MTA", "for SES") is no condition at all.
  * A clause that names a PURPOSE keeps its exemption even when a provider's name
  * is in it — "Required for SES event publishing" says what for.
+ *
+ * `by` is in the alternation for the sentence `MTA_WEBHOOK_SECRET` genuinely
+ * needs: it is outside the Convex presence gate and mandatory to `apps/mta`,
+ * which reads it through `requiredEnv` and refuses to boot without it. "Required
+ * BY the MTA service at startup" is that truth, and the clause is judged like any
+ * other — "by SES." is still nothing but a provider name and still fails. What is
+ * deliberately NOT here is `when` / `if`: "Required when using MTA" is the exact
+ * phrasing this gate was written against, and its clause ("using MTA") carries a
+ * non-provider word, so admitting the preposition would re-admit the sentence.
  */
 function unconditionalRequirement(text: string): boolean {
-	for (const hit of text.matchAll(/\brequired\b(?:\s+(to|for|whenever)\b([^.|]*))?/gi)) {
+	for (const hit of text.matchAll(/\brequired\b(?:\s+(to|for|by|whenever)\b([^.|]*))?/gi)) {
 		if (!hit[1]) return true;
 		const words = (hit[2] ?? '')
 			.toLowerCase()
@@ -206,10 +215,32 @@ function kindsMissingFromEnvReference(kinds: readonly string[]): string[] {
 	return kinds.filter((kind) => !documented.has(`\`${kind}\``));
 }
 
-function kindsMissingFromProvidersPage(kinds: readonly string[]): string[] {
+/**
+ * The kinds the "Supported kinds:" line LISTS — the comma-separated run of
+ * backticked tokens at its head, not every backticked token on it.
+ *
+ * The line is no longer only a list: it goes on to explain, in prose, why the
+ * relay picker's order differs. Matching the whole line worked by luck — every
+ * identifier the prose names happens to carry an uppercase letter or a dot — and
+ * the first all-lowercase one added (`own`, `core`, `tier`) would have failed the
+ * ORDER assertion below with "kinds out of order", pointing a reader at the
+ * catalog when nobody had touched it. Reading the list as a list is the same
+ * discipline `columnIndex` applies one file over.
+ */
+function supportedKinds(line: string): string[] {
+	const list = /^\*\*Supported kinds:\*\*((?:\s*`[a-z][a-z0-9]*`,?)+)/.exec(line);
+	expect(list, `the supported-kinds line opens with no list of kinds: ${line}`).not.toBeNull();
+	return [...list![1]!.matchAll(/`([a-z][a-z0-9]*)`/g)].map((hit) => hit[1]!);
+}
+
+function supportedKindsLine(): string {
 	const line = providers.split('\n').find((text) => text.startsWith('**Supported kinds:**'));
 	expect(line, 'the providers page no longer lists the supported kinds').toBeDefined();
-	const listed = new Set([...line!.matchAll(/`([a-z][a-z0-9]*)`/g)].map((hit) => hit[1]!));
+	return line!;
+}
+
+function kindsMissingFromProvidersPage(kinds: readonly string[]): string[] {
+	const listed = new Set(supportedKinds(supportedKindsLine()));
 	return kinds.filter((kind) => !listed.has(kind));
 }
 
@@ -222,12 +253,14 @@ describe('the environment-variables reference documents every provider the catal
 		// comparing this table against the providers page sees one sequence.
 		//
 		// The relay picker is the one deliberate exception, and this suite does not
-		// ask it to agree: `TRANSPORT_PICKER_COPY`
-		// (`apps/web/app/composables/useRelayCredentialDraft.ts`) leads with the
-		// four incumbents in the order the shipped screens have always shown them
-		// and appends the rest in catalog order, because re-sorting a shipped form
-		// is a user-visible change. A test that demanded catalog order there would
-		// be asking for exactly that change.
+		// ask it to agree: `pickerOrderedKinds()`
+		// (`apps/web/app/composables/useRelayCredentialDraft.ts`) orders the kinds
+		// carrying a `TRANSPORT_PICKER_COPY` row by that table — the order the
+		// shipped screens have always shown them in — and appends only the kinds
+		// with no row in catalog order. The copy table has a row for every kind
+		// today, so it decides the whole sequence. Re-sorting a shipped form is a
+		// user-visible change, and a test demanding catalog order there would be
+		// asking for exactly that change.
 		expect(providerSelectionRows.map((cells) => cells[KIND])).toEqual(
 			entries.map((entry) => `\`${entry.kind}\``)
 		);
@@ -295,8 +328,14 @@ describe('the environment-variables reference documents every provider the catal
 		// the first version of this predicate left open.
 		expect(unconditionalRequirement('| `X` | Required for the MTA. |')).toBe(true);
 		expect(unconditionalRequirement('| `X` | Required for SES. |')).toBe(true);
+		expect(unconditionalRequirement('| `X` | Required by SES. |')).toBe(true);
 		expect(unconditionalRequirement('| `X` | Required to enable the feedback loop. |')).toBe(false);
 		expect(unconditionalRequirement('| `X` | Required for delivery event tracking. |')).toBe(false);
+		// The sentence a variable outside the send gate but inside another
+		// service's own contract has to be allowed to make.
+		expect(unconditionalRequirement('| `X` | Required by the MTA process at startup. |')).toBe(
+			false
+		);
 		// A purpose stays a purpose when a provider's name is inside it.
 		expect(unconditionalRequirement('| `X` | Required for SES event publishing. |')).toBe(false);
 		expect(unconditionalRequirement('| `X` | Optional. Recommended with feedback. |')).toBe(false);
@@ -529,10 +568,16 @@ describe('no page in the docs still advertises a default or a short kind list', 
 describe('the providers page documents every provider the catalog declares', () => {
 	it('lists every catalog kind as a supported kind, in the catalog order', () => {
 		expect(kindsMissingFromProvidersPage(entries.map((entry) => entry.kind))).toEqual([]);
-		const line = providers.split('\n').find((text) => text.startsWith('**Supported kinds:**'))!;
-		expect([...line.matchAll(/`([a-z][a-z0-9]*)`/g)].map((hit) => hit[1]!)).toEqual(
-			entries.map((entry) => entry.kind)
-		);
+		expect(supportedKinds(supportedKindsLine())).toEqual(entries.map((entry) => entry.kind));
+	});
+
+	it('reads the list and not the prose that follows it', () => {
+		// The false failure this rules out: an all-lowercase backticked word in the
+		// sentence after the list, read as a sixth kind in the wrong position.
+		expect(supportedKinds('**Supported kinds:** `mta`, `ses` — `own` is the `mta` tier.')).toEqual([
+			'mta',
+			'ses',
+		]);
 	});
 });
 
