@@ -22,6 +22,7 @@ Section (already means something specific in MJML/email templating), Element.
 **Block module**:
 A Block's full surface, physically split into two halves because one runs in
 Node/CLI and the other imports Vue components:
+
 - **Renderer half** — `packages/email-renderer/src/blocks/<type>/index.ts`
   exporting a `BlockModule<T>`: HTML render, plaintext render, AMP render,
   validators, default factory, placement metadata, compatibility data
@@ -41,9 +42,9 @@ _Avoid_: Block renderer (that names one function inside the renderer half,
 not the whole thing).
 
 **Placement**:
-Where a Block sits in the email tree. Currently *root* (top-level), *column*
-(inside a `columns` block), *container* (inside a `container` block), and
-*hero* (inside a `hero` block). A Block declares which placements it allows.
+Where a Block sits in the email tree. Currently _root_ (top-level), _column_
+(inside a `columns` block), _container_ (inside a `container` block), and
+_hero_ (inside a `hero` block). A Block declares which placements it allows.
 _Avoid_: Slot, position, location.
 
 **Allotted width**:
@@ -86,7 +87,7 @@ A person Owlat knows about. Stored in `contacts` with optional `email`,
 Identity — what Owlat uses to recognize them — lives in sibling
 `contactIdentities` rows; one Contact has 1..N **Contact identities**.
 `contacts.email` is denormalized from the primary email-channel identity
-when one exists; it is *optional* because Contacts can arrive via
+when one exists; it is _optional_ because Contacts can arrive via
 phone/SMS/WhatsApp/generic with no email signal at all. Soft-delete sets
 `deletedAt`; the daily cleanup cron hard-deletes after the 30-day
 retention window and cascades to children. All list/lookup queries
@@ -99,13 +100,13 @@ One row in `contactIdentities`. The `(channel, identifier)` pair Owlat
 uses to recognize someone — `('email', 'foo@bar.com')`,
 `('phone', '+15551234')`, `('whatsapp', '+15551234')`,
 `('generic', shared-secret-payload-id)`. Uniqueness is
-*application-enforced*: at most one row exists per `(channel,
-identifier)` pair among *live* Contacts. The **Contact resolution
+_application-enforced_: at most one row exists per `(channel,
+identifier)` pair among _live_ Contacts. The **Contact resolution
 (module)** enforces it at Contact-create time; `addIdentity` enforces
 it at secondary-link time. Soft-deleting a Contact hard-deletes its
 identities (cascade) so the identifier is reclaimable on day 1 — the
 next inbound signal for the same `(channel, identifier)` creates a new
-Contact, not a re-link. The schema does *not* enforce uniqueness; the
+Contact, not a re-link. The schema does _not_ enforce uniqueness; the
 invariant is application code's responsibility.
 _Avoid_: Identifier alone (means the literal string, not the row),
 Channel alone (the kind, not the row), Identity unqualified (collides
@@ -115,6 +116,7 @@ with auth/SSO identity).
 The module at `convex/contacts/resolution.ts` that owns find-or-create
 of a Contact from a `{ channel, identifier, source, contactFields? }`
 signal. Single entry point dispatched by `mode`:
+
 - `strict` — match on identifier → throw `AlreadyExists`. Create
   otherwise. Used by HTTP `POST /contacts`.
 - `upsert` — match → return matched contactId with no field update.
@@ -138,7 +140,7 @@ initial write on create (so the field is always populated; the
 skip-soft-deleted invariant (soft-deleted matches are ignored;
 identity cascade at soft-delete time guarantees no `(channel,
 identifier)` collision can block create).
-The module does *not* own: activity logging, conversation thread
+The module does _not_ own: activity logging, conversation thread
 resolution, or any downstream effect — the created-effect trio (count,
 `contact_created` trigger, `created` activity) lives in the **Contact
 creation (module)** that wraps this one. Replaces the open-coded
@@ -166,7 +168,7 @@ trigger (`fireContactCreatedTrigger`), and one `created` **Contact
 activity** with `metadata.source` taken from the signal's `source`.
 Returns the same `{ contactId, action }` resolution returns, so callers
 that branch on `action` are unaffected. The single entry point
-`createContact(ctx, signal)` is used by every *single*-Contact create
+`createContact(ctx, signal)` is used by every _single_-Contact create
 path: the strict-mode HTTP/session/internal mutations
 (`contacts/contacts.ts:create` + `createForTeam`,
 `contacts/organization.ts:createForOrganization` +
@@ -177,12 +179,12 @@ path: the strict-mode HTTP/session/internal mutations
 `automations/triggers.ts:sendEvent`). Callers keep
 their own domain effects layered on top (inbox still writes its
 `inbound_received` activity; the form still writes its submission row) —
-this module owns *only* the trio. It is created-effects only: its
+this module owns _only_ the trio. It is created-effects only: its
 callers run `strict`/`upsert`, which never yield `action: 'updated'`;
 the `merge`/`updated` case belongs to the **Contact import (module)**,
 which is exempt and calls `resolveContact` directly (one batched
 `incrementContactCount(imported)` plus its own per-row composition,
-ADR-0019). Keeping the trio in a layer *above* the still-effect-free
+ADR-0019). Keeping the trio in a layer _above_ the still-effect-free
 resolution primitive — not inside it — is what lets import's batched
 count and the single-create trio coexist without double-counting.
 Single-create goes through Contact creation; only import calls
@@ -211,6 +213,7 @@ by the DOI lifecycle reducer. `doiAttestedSource` is populated only
 on the admin-attest path (a free-form source label such as
 `'mailchimp' | 'klaviyo' | 'stripe' | 'csv_admin'`); the token-keyed
 confirm path leaves it undefined. Legal edges:
+
 - `not_required → pending` (a DOI-required topic subscription requests
   confirmation; sends one confirmation email per pending window)
 - `pending → pending` (already pending — idempotent `recorded`, no
@@ -236,6 +239,7 @@ typed `TransitionInput` discriminated by `to`, a `LEGAL_EDGES` graph,
 a private reducer per kind returning `{ patch, effects, applied }`,
 and a `TransitionOutcome` reporting `ok | reason` for duplicate /
 illegal / kind-mismatched attempts. Two entry points:
+
 - `transition({ contactId, input })` — direct path; used by admin /
   internal callers, the form-confirmation HTTP handler after it has
   resolved the contact via the unified token, and the
@@ -248,12 +252,13 @@ illegal / kind-mismatched attempts. Two entry points:
   `contacts.by_doi_confirmation_token`. Symmetric to Send lifecycle's
   `transitionByProviderMessageId`. Under the unified token namespace
   (one token per pending confirmation), `formSubmissions.confirmationToken`
-  and `contacts.doiConfirmationToken` are *the same string* — the
+  and `contacts.doiConfirmationToken` are _the same string_ — the
   form-confirm endpoint looks up the form submission by token, calls
   `transitionByConfirmationToken` with that same token, then patches
   `formSubmissions.status: 'success'` separately.
 
 Effects:
+
 - `send_confirmation_email` — fires on `to: 'pending'` from
   `not_required`, schedules `internal.confirmationEmail.send` with
   the freshly generated token. Skipped (no effect emitted) when
@@ -268,16 +273,16 @@ Effects:
   with `activityType: 'topic_confirmed'`. Closes the silent drift
   bug where none of the four pre-deepening paths wrote this row.
 - `contact_activity({ literal: 'doi_attested', metadata: {
-  attestSource } })` — fires only on the admin-attest path
+attestSource } })` — fires only on the admin-attest path
   (`to: 'confirmed'` with `source: 'admin_attest'`). One row, not
   per-topic — at attest time the contact typically has no
   DOI-required memberships yet (the **Contact import (module)** runs
-  attestation *before* `subscribeMany`), so the per-topic
+  attestation _before_ `subscribeMany`), so the per-topic
   `topic_confirmed` fan-out is a no-op in that ordering. The
   `'doi_attested'` literal records the attestation itself on the
   contact's timeline.
 - `audit_log({ action: 'doi.admin_attested', contactId, details: {
-  attestSource } })` — fires only on the admin-attest path. The
+attestSource } })` — fires only on the admin-attest path. The
   audit action is new in `auditActions/catalog.ts`. The
   token-keyed confirm path emits its own audit action through the
   existing effect surface.
@@ -314,6 +319,7 @@ event**), Timeline entry (names the surface, not the row).
 **Contact engagement score (module)**:
 The 0-100, recency-weighted measure of how engaged a Contact is with our
 mail, split into a PURE core and a thin Convex shell:
+
 - `convex/analytics/engagementScore.ts` — the pure core. One
   exponentially-decayed accumulator over the **Contact activity**
   timeline (clicks outweigh opens, replies outweigh clicks, soft bounces
@@ -348,6 +354,7 @@ score (ambiguous with lead scoring).
 One activity literal's full surface, physically split into two halves
 keyed by literal — same shape as Block module, Step module, Condition
 module:
+
 - **Writer half** — `apps/api/convex/contactActivities/<literal>/index.ts`
   exporting a `ContactActivityModule<L>`: the per-literal Convex
   `metadataSchema` enforced at write time. No `build` layer (the
@@ -355,14 +362,14 @@ module:
   field-copies in every case — schema-as-contract is enough).
 - **Display half** — `apps/web/app/composables/contactActivities/<literal>/index.ts`
   exporting a `ContactActivityEditorModule<L>`: `displayConfig:
-  { icon, label, color }` plus `formatDescription(metadata) → string`
+{ icon, label, color }` plus `formatDescription(metadata) → string`
   for the activity-timeline UI.
 
 Both halves are keyed by literal and dispatched by typed registries —
 server-side `ACTIVITY_MODULES` map in `contactActivities/writer.ts`,
 FE `ACTIVITY_EDITOR_MODULES` map in
 `apps/web/app/composables/contactActivities/index.ts`. Adding a new
-literal means adding both halves *and* an entry to
+literal means adding both halves _and_ an entry to
 `CONTACT_ACTIVITY_TYPE_LITERALS` in `contactActivities/catalog.ts` —
 missing either half is a compile error.
 
@@ -414,6 +421,7 @@ at `contacts/activities.ts:90-192`, deleted outright (zero callers
 confirmed by grep — they were defined but never wired up).
 
 Closes drift bugs:
+
 - Missing `inbound_received` / `inbound_replied` literals in
   `contacts/activities.ts:198-213` `getRecent` filter union (replaced
   by `contactActivityTypeValidator` from the catalog).
@@ -432,7 +440,7 @@ Closes drift bugs:
   but that would have offered a "second writer" if any caller had
   picked them up.
 
-The module does *not* own: auth (lifecycle effects skip auth; if a
+The module does _not_ own: auth (lifecycle effects skip auth; if a
 public mutation ever ships it owns its own auth shell), audit logs
 (separate concern owned by `recordAuditLog`), the conversation-thread
 or inbox-state side effects (those are **Inbox processing lifecycle
@@ -458,11 +466,12 @@ row's status is the `action` returned by the **Contact resolution
 (module)**, and no status machine is owned at the import level.
 
 Single entry point:
+
 - `importBatch({ rows, source, handleDuplicates, topicAssignments?,
-  doiAttest?, siteUrl? })` — internal mutation. Returns
+doiAttest?, siteUrl? })` — internal mutation. Returns
   `{ imported, updated, skipped, failed, errors, addedToTopics,
-  propertiesSet, propertiesAutoRegistered, propertiesSkipped,
-  activitiesRecorded }`.
+propertiesSet, propertiesAutoRegistered, propertiesSkipped,
+activitiesRecorded }`.
 
 Row shape:
 `{ email, firstName?, lastName?, language?, properties?:
@@ -472,6 +481,7 @@ property-key policy (below) and surfaces in
 `doiAttest.attestSource` defaults for integration paths.
 
 Per-row order of operations (the ordering is load-bearing):
+
 1. Lowercase + trim + validate email; on failure record one
    `errors[]` entry and continue.
 2. **Contact resolution (module)** with `mode` derived from
@@ -481,12 +491,13 @@ Per-row order of operations (the ordering is load-bearing):
    `'created'`; `'property_updated'` when property values were
    written against an existing contact.
 5. When `doiAttest` is set: **DOI lifecycle (module)** `transition({
-   to: 'confirmed', source: 'admin_attest', attestSource:
-   doiAttest.attestSource })`. Must precede step 6 so DOI-required
+to: 'confirmed', source: 'admin_attest', attestSource:
+doiAttest.attestSource })`. Must precede step 6 so DOI-required
    topic memberships activate immediately rather than triggering a
    confirmation email.
 
 After the row loop:
+
 - Per-topic `subscribeMany` coalescing through the **Topic
   subscription (module)** (one mutation call per topic regardless of
   contact count).
@@ -494,10 +505,11 @@ After the row loop:
   drift bug where Mailchimp/Stripe imports skipped the cached count).
 
 Property-key policy (gated by `source`):
+
 - `'csv' | 'api'` (operator-driven): unknown keys → skip the write,
   surface one batch-level summary line in `errors[]` (e.g.
   `"Property 'COMPANY' is not registered; values dropped for 5
-  rows."`), increment `propertiesSkipped`. The contact otherwise
+rows."`), increment `propertiesSkipped`. The contact otherwise
   imports normally.
 - `'mailchimp' | 'stripe'` (integration-driven): unknown keys →
   insert a `contactProperties` row with `autoRegistered: true`,
@@ -507,6 +519,7 @@ Property-key policy (gated by `source`):
   surface an "auto-registered" badge from these companion fields.
 
 Three thin shells dispatch to this entry:
+
 - `contacts/contacts.ts:importBatch` — session + `contacts:manage`
   permission; web UI CSV upload; passes `source: 'csv'`. The
   `contactListAssignments` (per-row) and `topicId` (single) inputs
@@ -531,6 +544,7 @@ Replaces the three open-coded batch import loops in
 `contacts/internal.ts:importBatchInternal:15-118`.
 
 Closes drift bugs:
+
 - Silently-skipped `incrementContactCount` on Mailchimp/Stripe paths
   (cached count was wrong after every integration sync).
 - Missing `topicId` parameter on the public HTTP API import.
@@ -546,7 +560,7 @@ Closes drift bugs:
   shape between web UI and API, consolidated under one
   `topicAssignments` discriminator.
 
-The module does *not* own: the per-source payload normalization
+The module does _not_ own: the per-source payload normalization
 (Mailchimp `merge_fields` flattening, Stripe `metadata` mapping, CSV
 column-to-row mapping all live in their respective adapter files),
 the DOI confirmation email send (DOI lifecycle's
@@ -602,6 +616,7 @@ deployment configuration. Dispatched by the registry at
 **Channel inbound adapter** shape (ADR-0005) — one TypeScript
 interface, N concrete implementations, registry-driven dispatch.
 Exports an `IntegrationImportProviderModule<K>` with:
+
 - `kind: K` — the provider literal.
 - `defaultDoiAttest?: AttestSource` — per-provider default DOI
   attestation passed to **Contact import (module)** when this
@@ -613,7 +628,7 @@ Exports an `IntegrationImportProviderModule<K>` with:
   **Integration import walker**'s `startIntegrationImport`
   mutation calls this before scheduling the first page.
 - `fetchPage({ config, cursor }) → { rows, nextCursor | null,
-  totalEstimate? }` — provider API call. Cursor is opaque
+totalEstimate? }` — provider API call. Cursor is opaque
   (`''` = first page); adapter interprets internally (Mailchimp
   parses to numeric offset; Stripe uses as `starting_after`).
   Throws `RetryableProviderError` on 429 / network blip (walker
@@ -631,7 +646,7 @@ methods. The walker never branches on `provider` — provider
 variation lives entirely behind this seam.
 _Avoid_: Integration adapter alone (drops "provider" and
 "module"), Integration provider (module) (drops "adapter" — per
-LANGUAGE.md "adapter" carries the *role* of "a concrete thing
+LANGUAGE.md "adapter" carries the _role_ of "a concrete thing
 satisfying an interface at a seam"), Contact source adapter
 (module) (the source discriminator on **Contact import** includes
 `'csv' | 'api'` which don't get adapters; using the same word
@@ -643,6 +658,7 @@ integration would awkwardly fit).
 The action at `convex/integrationImports/walker.ts` that owns
 the page-by-page execution of one **Integration import** run.
 Responsibilities the per-provider adapter doesn't carry:
+
 - Retries with backoff (`RetryableProviderError` → retry up to N
   with linear backoff; any other thrown `Error` → fail the
   import immediately).
@@ -661,8 +677,9 @@ Responsibilities the per-provider adapter doesn't carry:
   next scheduled hop sees it and bails without another fetch.
 
 Two entry points:
+
 - `startIntegrationImport({ provider, config, handleDuplicates,
-  topicId? })` — public mutation. Validates the provider's
+topicId? })` — public mutation. Validates the provider's
   config via `providerFor(provider).validateConfig(config)`,
   validates the optional `topicId`, refuses if any
   `integrationImports` row is `'running'`, inserts the row, and
@@ -671,7 +688,7 @@ Two entry points:
   (`IntegrationProviderConfig`); a new provider adds one
   branch to the validator.
 - `processIntegrationPage({ importId, provider, config, cursor
-  })` — internal action. Status-check → adapter.fetchPage with
+})` — internal action. Status-check → adapter.fetchPage with
   retry → `importBatch` → progress patch → schedule next or
   complete.
 
@@ -682,6 +699,7 @@ never branches on `provider` — every per-provider concern lives
 behind the adapter seam.
 
 Closes drift bugs:
+
 - Duplicated retry / backoff plumbing across `processMailchimpPage`
   and `processStripePage` (~100 LOC × 2 today, ~30 LOC × 1
   post-deepening in the walker).
@@ -698,7 +716,7 @@ Closes drift bugs:
   each mutation by convention only) — under the walker the
   check lives once, behind the only public start entry.
 
-The walker does *not* own: per-shell auth (the public
+The walker does _not_ own: per-shell auth (the public
 `startIntegrationImport` keeps its `getMutationContext` +
 `requirePermission('imports:manage')` auth shell from the
 pre-deepening mutations), the `integrationImports` row schema
@@ -744,9 +762,10 @@ _Avoid_: Subscription alone (overloaded with email-subscription and
 DOI), Member alone (the Contact is the member, not the row).
 
 **Topic subscription (module)**:
-The module at `convex/topics/subscription.ts` that owns *all* writes to
-`contactTopics` and *all* maintenance of `topics.cachedMemberCount`.
+The module at `convex/topics/subscription.ts` that owns _all_ writes to
+`contactTopics` and _all_ maintenance of `topics.cachedMemberCount`.
 Five entry points covering the three usage shapes that exist in code:
+
 - `subscribe({ topicId, contactId, source, skipDoi?, siteUrl? })` —
   one topic, one contact. Single-membership op.
 - `subscribeMany({ topicId, contactIds, source, skipDoi?, siteUrl? })`
@@ -769,18 +788,20 @@ The module's source→effects map is the one place where "which side
 effects fire for which trigger" lives.
 
 Subscribe effects:
+
 - `insert_membership` — fires unless `already_member`. Patches the
   membership row plus the `cachedMemberCount` increment.
 - `fire_topic_subscribed_trigger` — fires when DOI is not in the way:
   `skipDoi || !topic.requireDoubleOptIn || contact.doiStatus ===
-  'confirmed'`. Routes through `automations.triggers.fireTopicSubscribedTrigger`.
+'confirmed'`. Routes through `automations.triggers.fireTopicSubscribedTrigger`.
 - `request_doi` — fires when DOI is required and the contact is not yet
   `confirmed`. Calls the **DOI lifecycle (module)** `transition({ to:
-  'pending', token, ttlMs, siteUrl })`. The lifecycle's own
+'pending', token, ttlMs, siteUrl })`. The lifecycle's own
   `fire_topic_subscribed_triggers` effect handles the trigger fanout at
   confirm time — the subscription module does not double-fire.
 
 Unsubscribe effects:
+
 - `delete_membership` — fires unless `not_member`. Patches the
   `cachedMemberCount` decrement.
 - `contact_activity_topic_unsubscribed` — fires on every successful
@@ -788,28 +809,29 @@ Unsubscribe effects:
   admin-remove paths wrote no activity row.
 - `patch_contact_updated_at` — fires on every successful unsubscribe.
 - `clear_form_submission_confirmations` — fires on `source:
-  'public_email_link' | 'preferences_page'`. Clears
+'public_email_link' | 'preferences_page'`. Clears
   `formSubmissions.confirmedAt` for every form submission the Contact
   has confirmed, forcing re-confirmation on next resubscribe.
 - `increment_campaign_unsubscribed_stats` — fires on `source:
-  'public_email_link'`. Increments `campaigns.statsUnsubscribed` on
+'public_email_link'`. Increments `campaigns.statsUnsubscribed` on
   the most-recent `emailSends` row for the Contact.
 - `fire_topic_unsubscribed_webhook` — fires on `source:
-  'public_email_link' | 'preferences_page'`. Schedules
+'public_email_link' | 'preferences_page'`. Schedules
   `webhooks/scheduleFanout` for the `topic.unsubscribed` **Webhook event**
   with the array of removed topics (`unsubscribeAllForContact` aggregates;
   `unsubscribe` / `unsubscribeMany` emit one webhook per call with the
   one-or-many topics in scope).
 
 Invariants:
+
 - Refuses to subscribe a soft-deleted Contact (`deletedAt !== undefined`)
   — returns `{ ok: false, reason: 'contact_soft_deleted' }`. Mirrors the
   **Contact resolution (module)**'s skip-soft-deleted invariant.
 - Already-member subscribe is a no-op returning `{ action:
-  'already_member' }` — does not re-fire triggers, does not re-patch
+'already_member' }` — does not re-fire triggers, does not re-patch
   counts, does not re-request DOI.
 - Already-non-member unsubscribe is a no-op returning `{ action:
-  'not_member' }` — does not write an activity row, does not fire the
+'not_member' }` — does not write an activity row, does not fire the
   webhook, does not decrement the count.
 - `subscribe` / `subscribeMany` return `{ action, doiToken? }` per
   inserted membership; `doiToken` is populated when the `request_doi`
@@ -819,6 +841,7 @@ Invariants:
   without a re-read of the contact.
 
 Replaces the open-coded membership writes in:
+
 - `topics/topics.ts:addContact:280-331` (single-add public mutation)
 - `topics/bulk.ts:addContacts:34-95` (bulk-add public mutation)
 - `contacts/internal.ts:importBatchInternal:81-117` (batch import — gains
@@ -841,7 +864,7 @@ single-add ("we already DOI-confirmed; don't ask again") and bulk-add
 ("admin authoritative; treat as subscribed") — under this module the
 flag means "admin authoritative" uniformly.
 
-The module does *not* own: auth (public mutations stay as auth-bearing
+The module does _not_ own: auth (public mutations stay as auth-bearing
 shells), the DOI confirmation token write (DOI lifecycle), the
 `topic_subscribed` automation trigger when DOI is pending (DOI lifecycle's
 `fire_topic_subscribed_triggers` effect handles it at confirm time), the
@@ -874,24 +897,27 @@ to a classified `formSubmissions` row. Mirrors the **Contact resolution
 result, plus one small companion entry for the only real post-create
 transition. Not a lifecycle in the **Outbound lifecycle** sense — most
 rows land directly in a terminal state at create time, so the legal-edges
-+ reducer bookkeeping doesn't pay its keep here. Two entry points:
-- `submit({ formEndpointId, submissionData, ipAddress?, userAgent? })`
+
+- reducer bookkeeping doesn't pay its keep here. Two entry points:
+
+* `submit({ formEndpointId, submissionData, ipAddress?, userAgent? })`
   — loads the form, runs honeypot + field validation, routes through the
   **Contact resolution (module)** (`upsert` mode) for find-or-create,
   then through the **Topic subscription (module)** `subscribe()` when
   `form.topicId` is set, then writes one `formSubmissions` row. Returns
   `{ ok: true, submissionId, action, contactId? }` where `action ∈
-  'spam' | 'invalid' | 'duplicate' | 'pending_confirmation' | 'success'`,
+'spam' | 'invalid' | 'duplicate' | 'pending_confirmation' | 'success'`,
   or `{ ok: false, reason: 'form_not_found' | 'form_inactive' }` for
   pre-classification gates.
-- `markConfirmedByToken({ token })` — patches the single
+* `markConfirmedByToken({ token })` — patches the single
   `pending_confirmation → success` transition. Called by the form-confirm
   HTTP handler after `doiLifecycle.transitionByConfirmationToken` commits.
   Idempotent on re-confirm. Returns `{ ok: true, submissionId }` or
   `{ ok: false, reason: 'no_submission_for_token' | 'already_confirmed'
-  | 'invalid_state' }`.
+| 'invalid_state' }`.
 
 Classification rules inside `submit`:
+
 - Honeypot field set → `spam` (row written, no Contact resolved, no
   subscribe).
 - Required field missing, oversized, or email-shaped value invalid →
@@ -928,7 +954,7 @@ re-read for the DOI token (closed by the small return-shape bump on
 **Topic subscription (module)**'s `subscribe()` — see its Invariants
 section).
 
-The module does *not* own: the HTTP shell (CORS, rate-limit, URL
+The module does _not_ own: the HTTP shell (CORS, rate-limit, URL
 parsing, body parsing — the **Public token endpoint (module)** wraps
 the `submitForm` httpAction in `forms/apiHttp.ts`; the multipart body
 parser stays local because it's the only site needing it), the
@@ -970,6 +996,7 @@ Sender domain (legacy phrasing), From domain (names a config field).
 **Sending domain status**:
 The current state of a Sending domain at `domains.status`:
 `registering | pending | verified | failed`. Legal edges:
+
 - `(insert) → registering` (`Sending domain lifecycle (module)`'s
   `create()` entry)
 - `registering → pending` (provider register completed; identity
@@ -1009,6 +1036,7 @@ discriminated by `to`, a `LEGAL_EDGES` graph, a reducer per kind
 returning `{ patch, effects, applied }`, and a `TransitionOutcome`
 reporting `ok | reason` for illegal / domain-not-found attempts.
 Five entry points:
+
 - `create({ domain })` — validates format, checks uniqueness,
   inserts at `'registering'`, fires `register_with_provider`.
 - `transition({ domainId, input })` — direct transitions for the
@@ -1018,7 +1046,7 @@ Five entry points:
   status is `pending | verified | failed` (not `registering`);
   fires `run_dns_verification`.
 - `recordVerification({ domainId, verificationResults,
-  providerCheck })` — verifier callback. Reducer combines DNS
+providerCheck })` — verifier callback. Reducer combines DNS
   results + provider check to derive `verified | failed | pending`
   and transitions.
 - `remove({ domainId })` — fires `delete_with_provider`,
@@ -1026,6 +1054,7 @@ Five entry points:
   log.
 
 Effects:
+
 - `audit_log` — fires on every lifecycle-driven status change plus
   `create` and `remove`. Skipped on verification self-loops to
   avoid spam. New audit actions (`sending_domain.created`,
@@ -1057,7 +1086,7 @@ constraint preventing cross-provider contamination, and the
 kitchen-sink `updateDomainAfterRegistration` mutation that accepts
 all five provider-specific fields together as optionals.
 
-The module does *not* own: DNS lookup itself (the verifier action
+The module does _not_ own: DNS lookup itself (the verifier action
 in `dnsVerification.ts` runs `dns.resolveTxt` / `.resolveCname` /
 `.resolveMx` and the per-provider check, then calls
 `recordVerification`), provider API calls (the per-provider
@@ -1070,7 +1099,7 @@ or any of the read queries
 _Avoid_: Domain lifecycle (module) (collides with
 `trackingDomains`), Domain registration lifecycle (names one
 transition slice), Sending domain module (the module owns
-*transitions*, not the entire concept — CRUD shells, validation,
+_transitions_, not the entire concept — CRUD shells, validation,
 and the `dnsRecords` shape live elsewhere).
 
 **Sending domain provider adapter (module)**:
@@ -1091,6 +1120,7 @@ registry at `providers/index.ts` exporting `providerFor(kind)`. Mirrors
 the **Channel inbound adapter** shape (ADR-0005) — one TypeScript
 interface, N concrete implementations, registry-driven dispatch.
 Exports a `SendingDomainProviderModule<K>` with:
+
 - `registerDomain(domain) → { dnsRecords, identity }` — provider
   API call. Throws on failure; the `register_with_provider`
   effect handler catches and translates to a `→ failed`
@@ -1120,7 +1150,7 @@ the registry catches missing methods. The lifecycle never branches
 on `providerType` — provider variation lives entirely behind this
 seam.
 _Avoid_: Sending domain provider module (drops "adapter" — per
-LANGUAGE.md, "adapter" carries the *role* of "a concrete thing
+LANGUAGE.md, "adapter" carries the _role_ of "a concrete thing
 satisfying an interface at a seam"), Email provider module
 (the pre-deepening name for the send-side factory at
 `lib/emailProviders/`; that vocabulary is retired in favor of **Send
@@ -1168,6 +1198,7 @@ the per-recipient row), Email send (overloaded with the verb).
 The current state of a Campaign at `campaigns.status`:
 `draft | scheduled | sending | sent | cancelled | pending_review`. Legal
 edges:
+
 - `draft → scheduled` (schedule for future send)
 - `draft → sending` (send now)
 - `scheduled → draft` (unschedule for editing)
@@ -1187,9 +1218,9 @@ status by the **Campaign lifecycle (module)** reducer: `sentAt` on
 `→ scheduled`, cleared on `→ sending` / `→ cancelled`),
 `contentBlockReason` on `sending → draft`, and stats-zero
 (`statsSent..statsUnsubscribed → 0`) on `→ sending`. The per-Send
-stats *increments* live in the **Send lifecycle (module)**'s
+stats _increments_ live in the **Send lifecycle (module)**'s
 `campaign_stats_*` effect list; the Campaign lifecycle owns the
-*reset*, the Send lifecycle owns the bumps.
+_reset_, the Send lifecycle owns the bumps.
 _Avoid_: Campaign state (vague), Send status (overloaded with
 `emailSends.status`).
 
@@ -1204,6 +1235,7 @@ terminal attempts. Single entry point `transition({ campaignId, input
 `Id<'campaigns'>`.
 
 Effects:
+
 - `audit_log(action, campaignId, details?)` — fires on every transition,
   not only on `cancel`. Closes the silent drift bug where `schedule`,
   `sendNow`, `unschedule`, and the content-scan reverts wrote `status`
@@ -1225,11 +1257,11 @@ Effects:
   `fire_topic_subscribed_triggers` reaching into the **Topic
   subscription (module)**.
 
-The module does *not* own: the pre-flight gates
+The module does _not_ own: the pre-flight gates
 (`validateReadyToSend(ctx, campaign)` helper at
 `convex/campaigns/preflight.ts` — domain verification, template-present,
 audience-configured, fromEmail-set, abuse-allowed,
-scheduled-time-future, **sending-capacity** — runs in callers *before*
+scheduled-time-future, **sending-capacity** — runs in callers _before_
 `lifecycle.transition` to `'scheduled'` / `'sending'`; reducer trusts
 its input), the
 archive-snapshot write (stays in
@@ -1247,13 +1279,14 @@ over the active campaign IPs). The pure predicate is
 `convex/campaigns/capacityPlan.ts:planCampaignCapacity`. A campaign that
 provably cannot finish before the MTA expires its queued tail is refused
 with `reason: 'exceeds_sending_capacity'` and a structured multi-day
-`capacityPlan` attached — capacity is a *schedule*, not an error. The
+`capacityPlan` attached — capacity is a _schedule_, not an error. The
 gate FAILS OPEN in every direction: it only binds when the warming cap
 can actually strand the campaign (own-MTA campaign route, no warm-up
 overflow to a verified relay), and missing, stale, unbounded or
 unmeasurable capacity all answer "allow".
 
 Producers of transition calls today (post-deepening):
+
 - `convex/campaigns/scheduling.ts:cancel` (`→ cancelled`)
 - `convex/campaigns/scheduling.ts:unschedule` (`→ draft`)
 - One surviving `schedule` mutation (`→ scheduled`) — the
@@ -1299,6 +1332,7 @@ _Avoid_: Campaign state machine (names the value), Campaign manager
 **AB test status**:
 The current state of a campaign's AB test at `campaigns.abTestStatus`:
 `pending | testing | winner_selected`. Legal edges:
+
 - `(none) → pending` (`enableABTest`)
 - `pending → testing` (cross-machine — the **Campaign lifecycle
   (module)** transitions to `sending` and `isABTest` is true)
@@ -1327,6 +1361,7 @@ entry point `transition({ campaignId, input })`. No external-key
 entry — campaigns are identified by `Id<'campaigns'>`.
 
 Effects:
+
 - `audit_log(action, campaignId, details?)` — fires on every
   transition.
 - `schedule_winner_remainder(campaignId)` — fires on
@@ -1335,7 +1370,7 @@ Effects:
   second-phase send) at zero delay. Cross-machine effect — the
   **Campaign send orchestrator (module)** is the consumer.
 
-The module does *not* own: the kickoff (called via the **Campaign
+The module does _not_ own: the kickoff (called via the **Campaign
 lifecycle (module)**'s `start_ab_test_if_enabled` effect when the
 campaign goes `→ sending`), the per-recipient variant fanout (lives in
 the **Campaign send orchestrator (module)** — the orchestrator's
@@ -1352,6 +1387,7 @@ production — `getABTestStats` reads `emailSends` directly via the
 denormalization, deferred until a query-perf need lands).
 
 Producers of transition calls today (post-deepening):
+
 - `convex/campaigns/abTest.ts:enableABTest` (`→ pending`)
 - `convex/campaigns/abTest.ts:disableABTest` (`→ (none)`)
 - `convex/campaigns/abTest.ts:declareABTestWinner` (`→ winner_selected`)
@@ -1372,6 +1408,7 @@ The two-action surface at `convex/emails.ts` that owns the campaign
 send pipeline — taking a campaign from `scheduled | sending` through
 content scan, archive snapshot, audience resolution, A/B variant
 fanout, and workpool enqueue. Two entry points:
+
 - `startCampaignSend({ campaignId })` — first-phase entry. Producers:
   the daily scheduler tick (`processScheduledCampaigns`), the
   **Campaign lifecycle (module)**'s `schedule_campaign_send_orchestrator`
@@ -1382,7 +1419,7 @@ fanout, and workpool enqueue. Two entry points:
   `scheduled → sending` transition if the campaign is still in
   `scheduled` at fire time. For A/B test campaigns
   (`isABTest && abTestStatus === 'testing'`) the first-phase send fans
-  out a *test cohort* (see below); for non-A/B campaigns it sends to
+  out a _test cohort_ (see below); for non-A/B campaigns it sends to
   the full audience uniformly.
 - `sendCampaignWinnerToRemainder({ campaignId })` — second-phase
   entry. Sole producer: the **AB test lifecycle (module)**'s
@@ -1398,14 +1435,14 @@ fanout, and workpool enqueue. Two entry points:
   and exits with `skipped: true`.
 
 A/B test fanout model (two-phase): `abTestConfig.splitPercentage`
-means *"% per variant of the test cohort"* (10–50). For a campaign
+means _"% per variant of the test cohort"_ (10–50). For a campaign
 with N recipients in a language group, the cohort is
 `floor((2 × splitPercentage / 100) × N)` recipients, randomly
 shuffled and split into `floor(cohort/2)` variant A and the rest
 variant B. Cohorts smaller than 2 degrade gracefully to a
 no-variant uniform send for that language group (`emailSends.abVariant`
 is left unset, a single batch fires). The remainder
-`N - cohort_size` is *held back* — no `emailSends` row is created
+`N - cohort_size` is _held back_ — no `emailSends` row is created
 in first phase. After the operator (or future auto-pick timer) calls
 `declareABTestWinner`, the second-phase send creates rows for the
 held-back remainder tagged with the winner's variant.
@@ -1414,12 +1451,12 @@ The orchestrator is the only writer of `emailSends.abVariant`, the
 only consumer of `abTestConfig.variantBSubject` /
 `abTestConfig.variantBTemplateId`, and the only caller of
 `internal.emailWorkerMutations.enqueueCampaignEmails` for campaign-
-driven sends. Per-language enqueue does *not* coalesce into a single
+driven sends. Per-language enqueue does _not_ coalesce into a single
 batch when a variant split is in play — variant A and variant B are
 enqueued separately (different `subject` / `htmlContent` per call) so
 the existing per-batch enqueue contract holds.
 
-The module does *not* own: the `→ sending` transition itself (Campaign
+The module does _not_ own: the `→ sending` transition itself (Campaign
 lifecycle), the AB test status transitions (AB test lifecycle), the
 audit-log writes (lifecycle effects), the per-recipient HTML rendering
 (`internal.emailWorker.sendSingleEmail` is the consumer that applies
@@ -1445,7 +1482,7 @@ is manual via `declareABTestWinner` only — `winnerCriteria !=
 'manual'` and `testDuration` are stored on `abTestConfig` but no cron
 consumes them; the **AB test lifecycle (module)**'s
 `schedule_winner_remainder` effect fires the second-phase send
-regardless of pick mode — only the *trigger* is manual today); and
+regardless of pick mode — only the _trigger_ is manual today); and
 per-variant Send-lifecycle stats counter bumps (documented in the AB
 test lifecycle entry, deferred until a query-perf need lands —
 `getABTestStats` reads `emailSends` rows directly today).
@@ -1454,7 +1491,7 @@ Known race: `declareABTestWinner` can be called between the first-
 phase orchestrator scheduling its enqueue mutations
 (`runAfter(0, enqueueCampaignEmails, ...)`) and those mutations
 landing the `emailSends` rows. If a winner is declared inside that
-window, `sendCampaignWinnerToRemainder` will see *too few* contacts
+window, `sendCampaignWinnerToRemainder` will see _too few_ contacts
 in `listSentContactIdsForCampaign` and re-target some test-cohort
 contacts as remainder — producing duplicate sends for those
 contacts (one with the test variant, one with the winner). The race
@@ -1470,12 +1507,12 @@ Campaign send pipeline (overloaded with the MTA **Dispatch pipeline
 (module)** vocabulary — the orchestrator is a single linear flow, not
 composed of typed `Phase`s), Campaign send action (names the
 implementation runtime, not the responsibility), Email orchestrator
-(too broad — transactional sends are *not* in this module's scope).
+(too broad — transactional sends are _not_ in this module's scope).
 
 ## Audience
 
 **Audience**:
-A Campaign's targeting *selection* — who a Campaign sends to, before
+A Campaign's targeting _selection_ — who a Campaign sends to, before
 eligibility filtering. A discriminated union over `kind`:
 `{ kind: 'topic', topicId }` (every **Topic membership** of one Topic)
 or `{ kind: 'segment', segmentId }` (every live Contact matching a
@@ -1487,13 +1524,13 @@ wizard, the public count query, and the **Audience resolution
 `audience` field — illegal states (`kind: 'topic'` carrying a
 `segmentId`; `kind: 'segment'` carrying neither id nor snapshot) become
 unrepresentable in storage. The wizard-facing selection subset carries
-no snapshot; the *stored* segment case additionally carries an optional
+no snapshot; the _stored_ segment case additionally carries an optional
 `frozenFilters`, populated at send time by the **Campaign send
 orchestrator (module)**, so an already-sent Campaign reproduces the
 exact Segment definition it targeted even after the Segment is later
 edited. Distinct from the resolved recipient projection
 (`CampaignRecipient[]` — the eligibility-filtered output) and from the
-raw **Topic membership** / Segment match (an Audience is the *spec*,
+raw **Topic membership** / Segment match (an Audience is the _spec_,
 not the rows).
 _Avoid_: Audience type (collides with the legacy `audienceType`
 discriminant column — the value is the whole union, not the tag),
@@ -1503,22 +1540,23 @@ spec), Segment alone (covers one `kind` only).
 **Audience resolution (module)**:
 The module at `convex/campaigns/audienceResolution.ts` that owns the
 single mapping from an **Audience** to its eligible recipients
-(`CampaignRecipient[]`). One pure per-Contact *eligibility predicate*
+(`CampaignRecipient[]`). One pure per-Contact _eligibility predicate_
 is the shared core; it lives with the unpaginated candidate stream and
 the counting core in the domain sibling
 `convex/campaigns/audienceCandidates.ts` (the split the ~500 LOC rule in
 `convex/CONVENTIONS.md` asks for; the dependency runs one way,
 `audienceResolution.ts` → `audienceCandidates.ts`). Two thin entries
 route through it so a count can never disagree with a send:
+
 - `resolveRecipients({ audience }) → CampaignRecipient[]` —
   internalQuery; the **Campaign send orchestrator (module)**'s
   audience-resolution step. Materializes the rows. (`frozenFilters`
-  rides *inside* the `audience` segment case, not as a sibling arg.)
+  rides _inside_ the `audience` segment case, not as a sibling arg.)
 - `countRecipients({ audience }) → { total, eligible, completeness }` —
   public query; the wizard's audience-size readout. `completeness` is
   the **discriminant that says what the two numbers license**, and it
   is load-bearing — the wizard branches on it (`SetupAudiencePicker`),
-  and reading it wrong renders an *over*-count as "at least":
+  and reading it wrong renders an _over_-count as "at least":
   - `exact` — the predicate ran to completion over the whole audience.
     `eligible` is quotable as the audience size.
   - `candidate_capped` — the candidate scan stopped at its ceiling.
@@ -1527,25 +1565,25 @@ route through it so a count can never disagree with a send:
   - `read_budget_exhausted` — the document budget ran out mid-count.
     Also a **lower bound**, same copy, different cause.
   - `suppression_truncated` — the suppression set could not be read in
-    full, so candidates were filtered through a *subset* of the
+    full, so candidates were filtered through a _subset_ of the
     blocklist. `eligible` is an **over-count** that bounds the audience
     in NEITHER direction: it licenses no decision, must never be shown
     as "at least", and the capacity gate treats it as unmeasured.
-  Runs the *identical*
-  predicate but accumulates integers instead of rows, so `eligible`
-  equals the number actually delivered. `total` is the raw membership
-  (topic) / live-match (segment) count; the `total - eligible` gap is
-  the "excluded" count, and its composition differs by kind: a *topic*
-  gap is DOI-pending + emailless + suppressed, **plus** any
-  soft-deleted or orphaned (hard-deleted-Contact) memberships still
-  counted in `total`; a *segment* gap is emailless + suppressed only
-  (soft-deleted are already dropped from `total`, and DOI never gates a
-  segment).
+    Runs the _identical_
+    predicate but accumulates integers instead of rows, so `eligible`
+    equals the number actually delivered. `total` is the raw membership
+    (topic) / live-match (segment) count; the `total - eligible` gap is
+    the "excluded" count, and its composition differs by kind: a _topic_
+    gap is DOI-pending + emailless + suppressed, **plus** any
+    soft-deleted or orphaned (hard-deleted-Contact) memberships still
+    counted in `total`; a _segment_ gap is emailless + suppressed only
+    (soft-deleted are already dropped from `total`, and DOI never gates a
+    segment).
 
 The eligibility predicate, in order: live-Contact (skip soft-deleted),
 email-present (skip phone/SMS/WhatsApp/generic Contacts — the recipient
 list is email-only), not-suppressed (skip `blockedEmails` — the only
-suppression gate in the send path), then the *DOI gate*. The DOI gate
+suppression gate in the send path), then the _DOI gate_. The DOI gate
 is asymmetric **by design**: a `topic` Audience gates on the Contact's
 `doiStatus` (`confirmed | not_required` pass) when the Topic
 `requireDoubleOptIn`; a `segment` Audience never gates on DOI —
@@ -1565,18 +1603,18 @@ delivered); soft-deleted Contacts reachable on the segment send path
 violating the live-Contact invariant); and the count-vs-send
 divergence that two independent implementations guaranteed.
 
-The module does *not* own: the `frozenFilters` snapshot write (the
+The module does _not_ own: the `frozenFilters` snapshot write (the
 **Campaign send orchestrator (module)** / preflight copies the live
-Segment's filters at send time; the resolver only *reads* a snapshot
+Segment's filters at send time; the resolver only _reads_ a snapshot
 when handed one), the A/B already-sent exclusion
 (`listSentContactIdsForCampaign` dedup stays in the orchestrator —
 that is send-state, not Audience membership), the variant fanout /
 workpool enqueue (orchestrator), auth (the public `countRecipients`
 keeps its session shell), or the full-table Segment scan's
-*performance* (the module localizes the scan so a future index lands
+_performance_ (the module localizes the scan so a future index lands
 in one place, but adds none in this slice).
 _Avoid_: Recipient resolution (a recipient is the resolved output /
-the per-**Send** row; this module resolves the *Audience* spec into
+the per-**Send** row; this module resolves the _Audience_ spec into
 them), Audience query (names the mechanism and hides the two-entry /
 shared-predicate shape), Audience selection (names the UI act and the
 **Audience** value, not the resolver), Segment evaluation (covers the
@@ -1621,13 +1659,14 @@ Email referencing block (verbose), Saved block host (host suggests
 deployment infrastructure).
 
 **Saved block (module)**:
-The module at `convex/emailBlocks/module.ts` that owns *all* writes to
+The module at `convex/emailBlocks/module.ts` that owns _all_ writes to
 `emailBlocks` rows and the cascade walks into **Saved block consumer**
 tables. Same shape as **Topic subscription (module)** — event-with-
 effects, multiple entry points dispatched by the row write being
 performed, atomic typed effect list per call. No status column, no
 `LEGAL_EDGES` graph; saved blocks have no state machine. Four row-side
 entry points:
+
 - `create({ name, description?, content })` — inserts a row at
   `usageCount: 0`. Effect: `audit_log`.
 - `update({ blockId, patch: { name?, description?, content? } })` —
@@ -1644,6 +1683,7 @@ entry points:
 
 Plus one cross-cutting entry point used by **Saved block consumer**
 lifecycles:
+
 - `updateBlockUsageCounts({ previousIds, nextIds })` —
   increments/decrements `usageCount` on saved blocks based on a
   consumer's `linkedBlockIds` delta. The single writer of
@@ -1653,6 +1693,7 @@ lifecycles:
   and delegate.
 
 Effects:
+
 - `propagate_content` — walks both **Saved block consumer** tables for
   rows with this `blockId` in `linkedBlockIds`. Replaces the embedded
   blocks via `savedBlockRef.groupId` match, re-serializes content, and
@@ -1685,7 +1726,7 @@ Effects:
 The send path (**Campaign send orchestrator (module)** for campaigns,
 **Transactional send intake (module)** for transactional dispatches)
 reads `htmlRenderState.stale` at dispatch time and logs a warning when
-true, but does *not* refuse the send. Gating sends on stale HTML is a
+true, but does _not_ refuse the send. Gating sends on stale HTML is a
 deferred decision; the durable flag makes the surface available when
 the decision lands.
 
@@ -1697,6 +1738,7 @@ cross-cutting entry point) and absorbs the open-coded
 `emailBlocks.ts:196-225` into the `update` reducer's classification.
 
 Closes drift bugs:
+
 - Duplicated `parseContentBlocks` across
   `lib/linkedBlockPropagation.ts:18` and `linkedBlockRender.ts:24` —
   one canonical walker remains.
@@ -1718,7 +1760,7 @@ Closes drift bugs:
   `linkedBlockRender.ts:46`) — one walker shared across
   `propagate_content`, `propagate_name`, `detach_all`.
 
-The module does *not* own: the renderer call itself (lives in
+The module does _not_ own: the renderer call itself (lives in
 `convex/emailBlocks/rendering.ts`, `'use node'` because
 `@owlat/email-renderer` needs Node); the `htmlContent` patch on
 consumer rows (the rendering action owns it post-render); the
@@ -1735,7 +1777,7 @@ Saved block propagation (module) (names a verb that only covers half —
 (module)** that doesn't exist here), Saved block lifecycle (module)
 (no status column to drive `LEGAL_EDGES`; calling it a lifecycle
 invites confusion with **Email template lifecycle (module)** which
-*does* have one), Email block module (drops "saved" — the row is named
+_does_ have one), Email block module (drops "saved" — the row is named
 `emailBlocks` but the domain term across frontend, docs, and schema
 annotations is "saved block").
 
@@ -1770,7 +1812,7 @@ A reusable email content source stored in `emailTemplates` with a
 `htmlTranslations` (per-language pre-rendered HTML), and
 `linkedBlockIds` (saved-block references). The marketing template feeds
 into a Campaign as `campaigns.emailTemplateId`. The transactional
-template is a *separate concept* — the row in `transactionalEmails` is
+template is a _separate concept_ — the row in `transactionalEmails` is
 the **Transactional email** with its own table and dedicated lifecycle.
 The two share the publish-state shape but not the table.
 _Avoid_: Template alone (collides with the broader templating concept
@@ -1783,6 +1825,7 @@ Email source (vague).
 **Email template status**:
 The current state of an **Email template** at `emailTemplates.status`:
 `draft | published`. Legal edges:
+
 - `(insert) → draft` (every create path lands here)
 - `draft → published` (publish — caller passes the pre-rendered
   `htmlContent` and optional `htmlTranslations`; idempotent
@@ -1791,7 +1834,7 @@ The current state of an **Email template** at `emailTemplates.status`:
 - `published → draft` (unpublish — clears `publishedAt`)
 
 No content-scan gate on this path. Marketing templates are scanned at
-*send time* by the **Campaign send orchestrator (module)**, not at
+_send time_ by the **Campaign send orchestrator (module)**, not at
 publish time. The parallel **Transactional email status** adds
 `pending_review` for the scan-at-publish path because the public
 transactional send API can dispatch without an operator in the loop.
@@ -1811,14 +1854,15 @@ Mirrors the **Campaign lifecycle (module)** shape — typed
 reducer per kind returning `{ patch, effects, applied }`, and a
 `TransitionOutcome` reporting `ok | reason` for illegal /
 already-in-state attempts. Four entry points:
+
 - `create({ name, type, subject?, previewText?, content?,
-  defaultLanguage?, linkedBlockIds? })` — validates input, inserts the
+defaultLanguage?, linkedBlockIds? })` — validates input, inserts the
   row at `'draft'` with `contentBlockVersion` and `rendererVersion`
   populated uniformly across all three pre-existing create shells,
   fires `update_block_usage_counts` if `linkedBlockIds` is set,
   `audit_log`.
 - `transition({ templateId, input })` — `input` is `{ to: 'published',
-  htmlContent, htmlTranslations? } | { to: 'draft' }`. Idempotent on
+htmlContent, htmlTranslations? } | { to: 'draft' }`. Idempotent on
   same-state transitions (`already_in_state` outcome, no re-patch).
 - `duplicate({ sourceTemplateId })` — clones source row fields with
   `name → "<source.name> (Copy)"`, `status: 'draft'`, fresh timestamps.
@@ -1828,6 +1872,7 @@ already-in-state attempts. Four entry points:
   `update_block_usage_counts`.
 
 Effects:
+
 - `audit_log` — fires on every transition plus `create`, `duplicate`,
   `remove`. New audit actions `email_template.created`, `.published`,
   `.unpublished`, `.duplicated`, `.deleted` land in
@@ -1855,6 +1900,7 @@ expose publish/unpublish so its mutations refuse on published without
 the knob.
 
 Producers of transition calls today (post-deepening):
+
 - `emailTemplates/emails.ts:publish` (`→ published`)
 - `emailTemplates/emails.ts:unpublish` (`→ draft`)
 - `emailTemplates/emails.ts:create`,
@@ -1884,7 +1930,7 @@ it); silent edits to published templates' `subject` / `content` /
 on `setDefaultLanguage` / `removeTranslation` / `updateTranslation` /
 `addTranslation` / `changeType` paths.
 
-The module does *not* own: the i18n CRUD writes themselves (those stay
+The module does _not_ own: the i18n CRUD writes themselves (those stay
 in `emailTemplates/i18n.ts` — they just gain the guard call), the
 saved-block propagation algorithm (lives in
 `lib/linkedBlockPropagation.ts`; the effect calls it), or the read
@@ -1893,7 +1939,7 @@ queries, etc.).
 _Avoid_: Template lifecycle (module) (the term "template" alone is
 overloaded with the transactional table — both tables are colloquially
 "templates"), Email template module (drops "lifecycle" — the module
-owns *transitions*, not the entire row CRUD), Email template state
+owns _transitions_, not the entire row CRUD), Email template state
 machine (names the value).
 
 ## Transactional sends
@@ -1928,10 +1974,11 @@ the `attachment_cleanup` effect. Pre-created in `queued` by the
 **Transactional send intake (module)** before the workpool runs;
 transitioned through the Send lifecycle by **Send completion (module)**
 and the **Webhook dispatcher**. The transactional half of the campaign
-+ transactional `Send` union the Send lifecycle owns.
-_Avoid_: Transactional dispatch (names the verb; the row is the send),
-API send (collides with API-key terminology), Transactional record
-(vague).
+
+- transactional `Send` union the Send lifecycle owns.
+  _Avoid_: Transactional dispatch (names the verb; the row is the send),
+  API send (collides with API-key terminology), Transactional record
+  (vague).
 
 **Transactional send intake (module)**:
 The module at `convex/transactional/dispatch.ts` that owns the intake
@@ -1945,17 +1992,18 @@ every successful intake lands directly in `queued`, and the Send
 lifecycle owns every transition after.
 
 Single entry point:
+
 - `dispatch({ templateLookup, email, dataVariables?, language?,
-  attachmentRefs? })` — internal mutation. `templateLookup` is a
+attachmentRefs? })` — internal mutation. `templateLookup` is a
   discriminated union `{ kind: 'id', id } | { kind: 'slug', slug }`;
   `attachmentRefs` carries already-resolved storage references
   `{ filename, contentType?, url, storageId? }`. Returns one of:
   - `{ ok: true, sendId, contactId, contactCreated, language,
-    queued: true }`
+queued: true }`
   - `{ ok: false, reason: 'abuse_blocked' | 'recipient_blocked' |
-    'template_not_found' | 'template_not_published' |
-    'template_no_content' | 'domain_unverified' | 'invalid_variables',
-    detail? }`.
+'template_not_found' | 'template_not_published' |
+'template_no_content' | 'domain_unverified' | 'invalid_variables',
+detail? }`.
 
 The HTTP shell pre-validates input before calling `dispatch`:
 JSON-shape validation (required fields, types, email format, language
@@ -1965,6 +2013,7 @@ can only run in an `httpAction` context) live at the boundary. The
 module's input is typed, well-formed data.
 
 Per-call order of operations:
+
 1. Abuse gate (`isSendingAllowed` on `instanceSettings.abuseStatus`)
    → `abuse_blocked`.
 2. Blocklist (`blockedEmails.isBlockedInternal`) → `recipient_blocked`.
@@ -1977,7 +2026,7 @@ Per-call order of operations:
 5. Validate `dataVariables` against
    `transactionalEmail.dataVariablesSchema` → `invalid_variables`.
 6. **Contact resolution (module)** (`mode: 'upsert'`, `source:
-   'transactional'`) — closes the previously open-coded contact upsert
+'transactional'`) — closes the previously open-coded contact upsert
    with race-retry `try/catch` hack at
    `transactionalApiHttp.ts:484-512`.
 7. Language resolution (request → contact → template default → `'en'`).
@@ -1995,14 +2044,15 @@ Per-call order of operations:
 11. Increment BOTH counters atomically with the row insert:
     `instanceSettings.transactionalSendCount` and
     `emailsQueries.incrementDailySendCountInternal`. Today the daily
-    counter is incremented from the HTTP shell *after* the enqueue;
+    counter is incremented from the HTTP shell _after_ the enqueue;
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
 12. Enqueue `transactionalEmailPool.enqueueAction` with
     `onComplete: emailOnComplete` and `sendRef: { kind: 'transactional',
-    id: sendId }`.
+id: sendId }`.
 
 One shell dispatches to this entry today:
+
 - `convex/transactional/api.ts:sendTransactional` (the `httpAction`,
   renamed from `transactionalApiHttp.ts`). The shell shrinks from ~400
   lines of orchestration to ~80 lines: auth, CORS, JSON-shape
@@ -2015,11 +2065,12 @@ Replaces the open-coded intake in
 (absorbed into `dispatch`). `transactionalApi.ts` is deleted outright.
 
 Closes drift bugs:
+
 - Open-coded contact upsert with race-retry `try/catch` hack at
   `transactionalApiHttp.ts:484-512`. The four other pre-ADR-0008 sites
   already migrated to **Contact resolution (module)**; the transactional
   path was missed (mirrors the form-path gap that ADR-0015 closed).
-- Daily send counter incremented from the HTTP shell *after* the
+- Daily send counter incremented from the HTTP shell _after_ the
   enqueue rather than atomically with the row insert. Any future
   non-HTTP shell (admin replay, batch transactional dispatch, SDK
   trigger) would silently skip the counter.
@@ -2032,7 +2083,7 @@ Closes drift bugs:
 - No isolatable surface for unit-testing intake classification.
   Today the only test path is end-to-end through `httpAction`.
 
-The module does *not* own: HTTP plumbing (CORS, auth, JSON-shape
+The module does _not_ own: HTTP plumbing (CORS, auth, JSON-shape
 validation, attachment base64 decoding + `ctx.storage.store` — these
 stay in the HTTP shell because they require action context and vary
 per content-type); the `transactionalEmails` CRUD (stays in
@@ -2074,6 +2125,7 @@ module is a single intake function).
 The current state of a **Transactional email** at
 `transactionalEmails.status`: `draft | published | pending_review`.
 Legal edges:
+
 - `(insert) → draft` (`create()`)
 - `draft → published` (publish with clean content scan)
 - `draft → pending_review` (publish with suspicious content scan;
@@ -2088,7 +2140,7 @@ Legal edges:
   admin surface lands as follow-up)
 - `published → draft` (`unpublish` — clears `publishedAt`)
 
-Content scanning is *part of the transition decision*, not a side
+Content scanning is _part of the transition decision_, not a side
 effect — `scanContent(subject, htmlContent)` from
 `@owlat/email-scanner` runs synchronously inside the `→ published`
 reducer. The result determines the next state:
@@ -2113,8 +2165,9 @@ parallel shape, separate `LEGAL_EDGES` (3 states vs 2), distinct effect
 list (adds content-scan effect). Same **Campaign lifecycle (module)**
 skeleton — typed `TransitionInput`, `LEGAL_EDGES`, reducer, effects,
 `TransitionOutcome`. Four entry points:
+
 - `create({ name, slug, subject?, content?, dataVariablesSchema?,
-  defaultLanguage? })` — validates slug format and uniqueness, inserts
+defaultLanguage? })` — validates slug format and uniqueness, inserts
   the row at `'draft'`, fires `audit_log`.
 - `transition({ transactionalEmailId, input })` — `input` is the
   discriminated `to`-union including the admin kinds. Suspicious-scan
@@ -2129,6 +2182,7 @@ skeleton — typed `TransitionInput`, `LEGAL_EDGES`, reducer, effects,
   `audit_log`.
 
 Effects:
+
 - `audit_log` — fires on every transition plus `create`, `duplicate`,
   `remove`. New audit actions `transactional_email.created`,
   `.published`, `.flagged_for_review`, `.approved`, `.rejected`,
@@ -2153,6 +2207,7 @@ content (`update` today; the i18n mutations once they split out from
 `transactional/emails.ts`).
 
 Producers of transition calls today (post-deepening):
+
 - `transactional/emails.ts:publish` (`→ published` | `→ pending_review`)
 - `transactional/emails.ts:unpublish` (`→ draft`)
 - `transactional/emails.ts:create` delegates to `lifecycle.create`
@@ -2160,7 +2215,7 @@ Producers of transition calls today (post-deepening):
   `lifecycle.duplicate`
 - `transactional/emails.ts:remove` delegates to `lifecycle.remove`
 - (Future) the admin approve/reject surface (`pending_review →
-  published`, `pending_review → draft`) lands as a follow-up — the
+published`, `pending_review → draft`) lands as a follow-up — the
   legal-edges graph ships with the edges in place so the surface plugs
   in without re-litigating the graph.
 
@@ -2179,7 +2234,7 @@ surface ahead of implementation); the inline `contentScanResults`
 write (lives in one effect now, gates a future "re-scan on update"
 addition).
 
-The module does *not* own: the public HTTP intake (**Transactional
+The module does _not_ own: the public HTTP intake (**Transactional
 send intake (module)** at `transactional/dispatch.ts`), the per-send
 worker dispatch (**Send dispatch (helper)**), the translation CRUD
 (stays in `transactional/translations.ts`), the per-template
@@ -2189,7 +2244,7 @@ queries (`get`, `getBySlug`, `list`, `countByStatus`,
 read-side files).
 _Avoid_: Transactional template lifecycle (overloaded — the row is
 called "transactional email" in this codebase), Transactional email
-module (drops "lifecycle" — the module owns *transitions*, not the
+module (drops "lifecycle" — the module owns _transitions_, not the
 entire row CRUD), Transactional email state machine (names the
 value).
 
@@ -2223,7 +2278,7 @@ controller (generic), Email builder backend (collides with `apps/api` as
 The app-side helper shared by the **Email template** editor and the
 **Transactional email** editor — the two surfaces whose `save()` renders
 HTML, builds translations (`buildHtmlTranslationsForEmail`), derives
-`linkedBlockIds`, and writes a publishable lifecycle. Kept *out* of the
+`linkedBlockIds`, and writes a publishable lifecycle. Kept _out_ of the
 **Email editor bridge** so the bridge stays envelope-agnostic: the **Saved
 block** editor renders nothing and writes its own `{ blocks: [...] }`
 envelope, so it shares the bridge but not this helper.
@@ -2233,7 +2288,7 @@ shared concept).
 ## Outbound lifecycle
 
 **Outbound lifecycle**:
-The shared *shape* used by every module that owns transitions of a thing
+The shared _shape_ used by every module that owns transitions of a thing
 dispatched to the MTA. Components: a typed `TransitionInput` discriminated by
 `to`, a `LEGAL_EDGES` graph mapping current state → set of legal next states,
 a private reducer per transition kind returning `{ patch, effects, applied }`,
@@ -2251,7 +2306,7 @@ boundary), Lifecycle alone (every CRUD module has one).
 A single addressed message dispatch tracked in `emailSends` (campaign) or
 `transactionalSends` (transactional). Each row carries a `status` that
 progresses through the lifecycle state graph. One instance of Outbound
-lifecycle. Postbox personal-mail dispatches (`mailMessages`) are *not* Sends —
+lifecycle. Postbox personal-mail dispatches (`mailMessages`) are _not_ Sends —
 they have their own Postbox outbound lifecycle. The two share the shape,
 not the table.
 _Avoid_: Email send (overloaded with the verb), Delivery (Resend's term),
@@ -2263,13 +2318,14 @@ The discriminated foreign key into the right Send table:
 The Send lifecycle module operates on a SendRef so the same transitions cover
 both kinds — only the kind-specific side effects (campaign stats,
 instance-default-from lookup, activity-log shape) branch on `kind` internally.
-SendRef does *not* extend to Postbox: a `mailMessage` is identified by its
+SendRef does _not_ extend to Postbox: a `mailMessage` is identified by its
 own `Id<'mailMessages'>`, not by SendRef.
 
 **Send status**:
 The current state of a Send:
 `queued | sent | failed | delivered | opened | clicked | bounced | complained`.
 Legal edges:
+
 - `queued → sent` (worker accepted by provider)
 - `queued → failed` (worker errored; `errorCode` records why)
 - `sent → delivered` (provider webhook confirms acceptance)
@@ -2347,7 +2403,7 @@ in `queued` — see **Send status** below). Builds the matching
 `TransitionInput` (`{to: 'sent', providerMessageId, providerType}` on
 success, `{to: 'failed', errorMessage, errorCode}` on error), calls
 `sendLifecycle.transition`. Provider health for failover routing is
-*not* recorded here — it's the **Send dispatch (helper)**'s job,
+_not_ recorded here — it's the **Send dispatch (helper)**'s job,
 upstream of this module, so every send path records uniformly (test
 sends and automation-step sends did not flow through Send completion
 pre-deepening and were silently missing from `providerHealth`). The
@@ -2383,12 +2439,13 @@ transformation half runs in Node (cheerio). Discriminated by `kind:
 the registry at `sendComposition/index.ts` exporting `composerFor(kind)`.
 
 Two V8 entry points (registry-dispatched):
+
 - `personalizeSubject({ kind, template, contactInfo? }) → string` —
   cheap subject-only personalization. Used by the campaign orchestrator
   to write `emailSends.personalizedSubject` (SNAPSHOT field per
   CONVENTIONS.md) at enqueue time without composing the full envelope.
 - `composeForSend({ kind, ... }) → { subject, html, headers,
-  attachmentRefs, transformConfig }` — full composition. Used by the
+attachmentRefs, transformConfig }` — full composition. Used by the
   worker (`emailWorker.sendSingleEmail`) and by the synchronous
   test-send paths in `emailsSending.ts`. `transformConfig` is the
   fully-resolved set of inputs the Node transform half needs
@@ -2397,6 +2454,7 @@ Two V8 entry points (registry-dispatched):
   not toggles, so the transform half has no policy decisions.
 
 One Node entry point:
+
 - `transformHtml(html, transformConfig) → string` at
   `sendComposition/transform.ts` (`'use node'`). Single cheerio pass
   performing view-in-browser injection, footer injection, link
@@ -2406,6 +2464,7 @@ One Node entry point:
 Per-kind composer module exports a `SendComposerModule<K>` with the
 typed `Input<K>` shape and the per-kind `compose` function. The four
 kinds and their policies:
+
 - `campaign` — variable substitution against contact fields; tracking
   pixel + click tracking; footer (unsubscribe + preference) only when
   `audienceType !== 'segment'`; List-Unsubscribe header pair only for
@@ -2433,6 +2492,7 @@ kinds and their policies:
   the change lives here.
 
 Shared V8 leaves under the module:
+
 - `sendComposition/personalization.ts` — the single canonical
   `replaceVariables(content, variables, { escape: 'html' | 'plain' })`.
   Replaces the three pre-deepening implementations at
@@ -2453,6 +2513,7 @@ Shared V8 leaves under the module:
   time) does too.
 
 Replaces the open-coded blocks in:
+
 - `emailWorker.ts:152-163` (`replaceVariables` with inline
   `escapeHtml`), `:222-258` (the `if (args.type === 'campaign')`
   branch that inlines personalize + build transform options + apply
@@ -2462,7 +2523,7 @@ Replaces the open-coded blocks in:
   `:225-275` that personalize subject + html per type.
 - `emails.ts:309` (archive snapshot's open-coded
   `replaceVariables(template.htmlContent, { email:'', firstName:'',
-  lastName:'' })`) and `:562` (the enqueue-time SNAPSHOT subject
+lastName:'' })`) and `:562` (the enqueue-time SNAPSHOT subject
   personalization that today re-runs personalization the worker will
   re-run again at send).
 - `emailsSending.ts:86-87, 185-186` (test-send personalization that
@@ -2471,6 +2532,7 @@ Replaces the open-coded blocks in:
   inline personalize-then-enqueue).
 
 Closes drift bugs:
+
 - The three `replaceVariables` implementations diverge on HTML
   escaping (worker variant escapes via inline `escapeHtml`,
   `lib/emailHelpers` and `automations/steps/shared/personalize` do
@@ -2497,12 +2559,12 @@ Closes drift bugs:
   explicitly; transactional / test / archive_snapshot returning an
   empty `transformConfig` is the visible policy.
 - The placeholder-contact magic string `{ email:'', firstName:'',
-  lastName:'' }` for archive snapshots lives at one call site
+lastName:'' }` for archive snapshots lives at one call site
   (`emails.ts:309`) and risks divergence if a second archive path
   ships. Under the module: the placeholder lives once inside
   `archive_snapshot/index.ts`.
 
-The module does *not* own: attachment fetch + file-type validation +
+The module does _not_ own: attachment fetch + file-type validation +
 ClamAV scan (stays in the worker — `composeForSend` returns
 `AttachmentRef[]` carrying storage URLs and filenames, the worker
 fetches/validates/scans at send time because the IO + Node-only scan
@@ -2534,6 +2596,7 @@ granularities.
 
 Per-recipient state on each entry in `mailMessages.outbound.recipients[]`:
 `queued | sent | bounced | failed`. Legal edges:
+
 - `queued → sent` (MTA webhook accepts)
 - `queued → bounced` (synchronous bounce from MTA POST 5xx)
 - `queued → failed` (pre-MTA error: attachment scan failure, dispatcher
@@ -2548,6 +2611,7 @@ Aggregate state denormalized at `mailMessages.outbound.state`:
 `queued | sent | bounced | failed | partial`. Derived by the
 **Postbox outbound lifecycle (module)** from the per-recipient array
 after every transition:
+
 - All recipients `queued` → `queued`
 - All `sent` → `sent`
 - All `bounced` → `bounced`
@@ -2563,7 +2627,7 @@ field on each entry is metadata; the same address can appear at
 multiple `idx`es. The `mtaJobId` is `pb-<mailMessageId>-<idx>`,
 deterministic at row-insert time.
 
-Postbox does *not* track `delivered / opened / clicked / complained` —
+Postbox does _not_ track `delivered / opened / clicked / complained` —
 personal mail has no campaign-style analytics surface. The `sending`
 and `pending` literals that previously appeared in the schema are
 unused (no writer ever set them) and are dropped in the breaking-changes
@@ -2577,7 +2641,7 @@ The module at `convex/mail/postboxOutboundLifecycle.ts` that owns
 transitions of every `mailMessages.outbound.recipients[].state` and
 derives the aggregate `mailMessages.outbound.state` from the recipient
 array after every transition. First lifecycle in the codebase where the
-unit of transition is a *slice* of a row (one recipient) rather than
+unit of transition is a _slice_ of a row (one recipient) rather than
 the row itself.
 
 A second instance of **Outbound lifecycle** — same shape as Send
@@ -2585,6 +2649,7 @@ lifecycle (legal-edges graph, typed `TransitionInput`, reducer, effects
 list) — distinct because Postbox transitions a recipient slice, the
 effect set is intentionally smaller, and the aggregate state is
 read-only (no caller writes it). Two entry points:
+
 - `transition({ mailMessageId, recipientIdx, input })` — direct path,
   per-recipient. Used by `mail/outbound.ts:dispatchDraft` inside the
   MTA POST loop for synchronous failures: 5xx response maps to
@@ -2597,12 +2662,13 @@ read-only (no caller writes it). Two entry points:
   moves into this module.
 
 Effects:
+
 - `audit_log(action, mailMessageId, mailboxId, recipientIdx, ...)` —
   fires on every transition. One audit row per recipient transition.
   The aggregate-state change (if any) is recorded in the action details.
 
 Per-mailbox UI notification on bounce and per-domain reputation update
-on send/bounce are *deferred to follow-up ADRs*. Both require
+on send/bounce are _deferred to follow-up ADRs_. Both require
 infrastructure that doesn't exist today: there is no notification
 surface in `apps/api/convex/`, and the existing reputation tracking
 (`analytics/sendingReputation.ts`) is org-level, not per-domain.
@@ -2610,7 +2676,7 @@ Coupling the lifecycle to introducing a new surface inflates the
 deepening. The lifecycle ships with `audit_log` only; the two named
 effects land in short follow-up PRs once their surfaces exist.
 
-Postbox explicitly does *not* fire: campaign stats, contact activity
+Postbox explicitly does _not_ fire: campaign stats, contact activity
 logs, content-scan feedback, or org blocklist insert. A misdelivered
 personal email must not blocklist that address from the entire org.
 
@@ -2625,7 +2691,7 @@ bounceMessage}` into a single-recipient array, then the legacy
 top-level fields are removed and `outbound.state` becomes the
 derived aggregate).
 
-`mail/outboundQueries.ts:markDispatchFailed` is *not* replaced by this
+`mail/outboundQueries.ts:markDispatchFailed` is _not_ replaced by this
 module — it writes `mailDrafts.state` (reverts a draft to `'draft'` on
 ClamAV malware verdict, before any `mailMessages` row exists). The
 **Mail draft lifecycle (module)** owns that write under its
@@ -2638,10 +2704,11 @@ outbound state specifically), Outbound state machine (names the value).
 **Mail draft state**:
 The dispatch state of a personal-mail compose row in
 `mailDrafts.state`: `draft | pending_send | scheduled`. Three literals,
-no terminal `sent` literal — successful dispatch *deletes* the draft
+no terminal `sent` literal — successful dispatch _deletes_ the draft
 row and inserts a `mailMessages` row in `outbound.state: 'queued'`
 where the **Postbox outbound lifecycle (module)** takes over. Legal
 edges:
+
 - `(insert) → draft` (compose-new or reply-to)
 - `draft → pending_send` (user clicked send, undo-window enabled)
 - `draft → scheduled` (user picked a future `scheduledSendAt`)
@@ -2658,7 +2725,7 @@ check finds the draft's `fromAddress` is no longer in the mailbox's
 allowed-from set. `scan_blocked` fires when ClamAV returns a malware
 verdict on an attachment.
 
-`pending_send` and `scheduled` differ only in *when* the dispatch
+`pending_send` and `scheduled` differ only in _when_ the dispatch
 runs: `pending_send` schedules the dispatch action at
 `now + undoSendDelayMs` (default 30s), `scheduled` schedules it at the
 user-chosen `scheduledSendAt`. Both carry an `undoToken` so the
@@ -2683,6 +2750,7 @@ by `to`, a `LEGAL_EDGES` graph (above), a private reducer per kind
 returning `{ patch, effects, applied }`, and a `TransitionOutcome`
 reporting `ok | reason` for illegal / kind-mismatched attempts. Three
 entry points:
+
 - `create({ mailboxId, inReplyToMessageId? })` — inserts at `'draft'`
   with the reply-derived `toAddresses` / `subject` / `threadId`
   populated. Single mutation behind the public `drafts.create` shell.
@@ -2690,7 +2758,7 @@ entry points:
   `send` mutation (`→ pending_send` / `→ scheduled`), the dispatch
   action (`→ sent` on success, `→ draft, reason: 'from_revoked'`
   when the claim-time from-address check fails, `→ draft,
-  reason: 'scan_blocked'` on ClamAV malware verdict), and the
+reason: 'scan_blocked'` on ClamAV malware verdict), and the
   cron rearm path for overdue scheduled drafts.
 - `transitionByUndoToken({ undoToken, input })` — external-key
   path. Sole consumer: the public `drafts.cancelPendingSend`
@@ -2704,15 +2772,17 @@ entry points:
 Effects per kind:
 
 `→ pending_send` / `→ scheduled`:
+
 - `schedule_dispatch_action({ draftId, undoToken, sendAt })` —
   schedules `internal.mail.outbound.dispatchDraft`. Single producer
   of the scheduler hop; the cron at
   `mail/outboundCron.dispatchOverdueDrafts` re-arms missed runs.
 - `audit_log('postbox_draft.send_initiated', mailboxId, draftId,
-  { sendAt, undoSendDelayMs })`. One literal for both kinds; the
+{ sendAt, undoSendDelayMs })`. One literal for both kinds; the
   `details.sendAt` discriminates.
 
 `→ draft` (revert):
+
 - `audit_log` — picks the literal from `reason`:
   `'postbox_draft.cancelled'` for `user_cancel`,
   `'postbox_draft.from_revoked'` for `from_revoked`,
@@ -2722,6 +2792,7 @@ Effects per kind:
   the claim check sees `state === 'draft'` and exits.
 
 `→ sent` (terminal, deletes the draft row):
+
 - `insert_mail_message({ draftRow, sentFolderId })` — writes the
   new `mailMessages` row in `outbound.state: 'queued'` with the
   deduplicated `recipients[]` array. The Postbox outbound lifecycle
@@ -2743,15 +2814,16 @@ Effects per kind:
 - `delete_draft_row({ draftId })` — terminal. The row is gone after
   this effect.
 - `audit_log('postbox_draft.sent', mailboxId, draftId,
-  { messageId, recipientCount })`.
+{ messageId, recipientCount })`.
 
 Invariants:
+
 - The reducer for `→ sent` re-runs the from-address binding check
   inside the reducer (not as an effect) — if the address is no
   longer allowed, the kind is rejected with `outcome: { ok: false,
-  reason: 'from_revoked' }` and the caller (the dispatch action)
+reason: 'from_revoked' }` and the caller (the dispatch action)
   must instead call `transition({ to: 'draft', reason:
-  'from_revoked' })` explicitly. The reducer never silently
+'from_revoked' })` explicitly. The reducer never silently
   downgrades a transition kind.
 - `transitionByUndoToken` skips entries whose `state` is `'draft'`
   with `outcome: { ok: false, reason: 'already_draft' }` —
@@ -2774,6 +2846,7 @@ internalMutation at `drafts.ts:322-332` (zero callers; despite the
 name it sets `state: 'draft'`) is deleted outright.
 
 Closes drift bugs:
+
 - Silent attachment-storage leak on send-success (closed by
   `delete_attachment_storage` effect). Pre-deepening, `discard`
   frees the blobs but the happy path orphans them.
@@ -2793,10 +2866,10 @@ Closes drift bugs:
   from-address binding is still valid; the reducer's invariant
   check replaces the inline branch.
 
-The module does *not* own: the rfc822 serialization (lives in the
+The module does _not_ own: the rfc822 serialization (lives in the
 `'use node'` dispatch action — `internal.mail.outbound.dispatchDraft`);
 the MTA POST itself (same place); attachment ClamAV scanning (lives
-in the dispatch action, runs *before* the `→ sent` transition; on
+in the dispatch action, runs _before_ the `→ sent` transition; on
 malware verdict the action calls `transition({ to: 'draft',
 reason: 'scan_blocked' })` and returns); the Postbox outbound
 lifecycle transitions (sibling lifecycle on the new `mailMessages`
@@ -2821,7 +2894,7 @@ not the module).
 ## Send providers
 
 This section describes the SEND PATH of a provider — the adapter, the retry
-loop, route strategies and health. What a provider *is* (its kind, capabilities,
+loop, route strategies and health. What a provider _is_ (its kind, capabilities,
 credential form and tier) is declared elsewhere and read from there; see
 **§ Send provider catalog** below.
 
@@ -2840,6 +2913,7 @@ from that adapter — different surface (sending an email vs. registering
 a domain), different runtime (`'use node'` action vs. mutation),
 different provider set (Resend ships only on this side). Exports a
 `SendProviderModule<K>` with:
+
 - `kind: K` — the discriminator.
 - `retryDelays: number[]` — per-provider retry backoff schedule
   (MTA: `[1s, 5s]`; Resend: `[1s, 5s, 30s]`; SES: per-attempt
@@ -2883,7 +2957,7 @@ The compile-time `satisfies` check on the core registry catches missing methods.
 The dispatch helper never branches on `kind` — provider variation lives
 entirely behind this seam.
 
-The module does *not* own: the retry loop (Send dispatch helper), the
+The module does _not_ own: the retry loop (Send dispatch helper), the
 strategy selection across providers (Send route strategy module), the
 `providerHealth` row writes (Send dispatch helper writes; see below),
 the workpool's per-job rate limiting (`lib/emailWorkpool.ts`), the
@@ -2897,8 +2971,8 @@ deepening).
 _Avoid_: Email provider module (the pre-deepening factory's name —
 collides with itself; the deepening retires that vocabulary), Send
 provider module (without `(module)` and without "adapter" — per
-LANGUAGE.md, "adapter" carries the role of *a concrete thing satisfying
-an interface at a seam*; matches the Sending domain provider's suffix
+LANGUAGE.md, "adapter" carries the role of _a concrete thing satisfying
+an interface at a seam_; matches the Sending domain provider's suffix
 exactly), Mail send provider adapter (verbose; the domain noun is
 already "Send"), Send-side provider adapter (over-qualified).
 
@@ -2911,12 +2985,13 @@ single-attempt `sendEmail`. The dispatch unit is a **Send transport
 (record)** — one configured instance of a kind, resolved fail-closed
 from `convex/lib/sendProviders/transports.ts` — not a bare kind. Three concerns
 inside one helper, all "post-attempt" in scope:
+
 - Retry loop driven by the module's `retryDelays` and
   `categorizeError(message, httpStatus?) → EmailErrorCode`. The
   schedule is the only thing each module declares; the loop is shared.
 - Health recording — writes to `providerHealth` via the **Send provider
   health (module)**'s `recordSendResult({ providerType, success,
-  latencyMs })`. Runs after every terminal outcome (success or
+latencyMs })`. Runs after every terminal outcome (success or
   exhausted retries), uniformly across all callers. Closes the
   silent-drift bug where test sends (`emails.sendEmail`,
   `emailsSending.testSend`) and the automation email step today bypass
@@ -2934,7 +3009,7 @@ transactional HTTP send (`transactionalApiHttp.ts`), and any future
 internal sender. All go through the helper; no caller imports a
 provider module directly.
 
-The helper does *not* own: provider selection across an org's route
+The helper does _not_ own: provider selection across an org's route
 config (**Send route strategy (module)** + `resolveRoute`), Send-row
 state transitions (**Send lifecycle (module)** — called by the
 workpool callback through **Send completion (module)**), or the
@@ -2957,16 +3032,17 @@ on a `providerRoutes` row. Dispatched by the registry at
 `strategies/index.ts` exporting `strategyFor(kind)`. Mirrors the **Send
 provider adapter (module)** shape but at a different unit of dispatch.
 Exports a `SendRouteStrategyModule<K>` with:
+
 - `kind: K`.
 - `select(entries: ProviderEntry[], healthStatuses?:
-  ProviderHealthStatus[]) → ResolvedRoute | null` — pure function. The
+ProviderHealthStatus[]) → ResolvedRoute | null` — pure function. The
   routing entry point `resolveRoute(routeConfig, healthStatuses)`
   shrinks to: validate the config, look up the strategy module via
   `strategyFor(routeConfig.strategy)`, call `select()`, return the
   result (or the `null` "no candidate" fallback). Adding a fourth
   strategy (e.g. `least_loaded`) is one folder + one registry entry.
 
-The module does *not* own: the `providerRoutes` CRUD (stays in
+The module does _not_ own: the `providerRoutes` CRUD (stays in
 `providerRoutes.ts`), the `providerHealth` rows themselves (**Send
 provider health (module)**), or the `routeConfig === null` / "no
 enabled candidates" fallbacks (`resolveRoute` owns those before any
@@ -2977,9 +3053,10 @@ domain provider adapter (module)**), Strategy alone (overloaded).
 
 **Send provider health (module)**:
 The sibling module at `convex/lib/sendProviders/health.ts` that owns
-*all* reads and writes of `providerHealth`. Renamed from the
+_all_ reads and writes of `providerHealth`. Renamed from the
 pre-deepening `lib/emailProviders/healthTracker.ts` (moved alongside
 its consumers; same exports, same shape). Three entry points:
+
 - `recordSendResult({ providerType, success, latencyMs })` — internal
   mutation. The **Send dispatch (helper)** is the only writer.
 - `getProviderHealth({ providerType })` — internal query for one
@@ -3001,7 +3078,7 @@ the file now contains queries too, not just write-tracking).
 ## Send provider catalog
 
 **Send provider catalog**:
-The single declaration of what every send transport *is*, needs and can do, at
+The single declaration of what every send transport _is_, needs and can do, at
 `packages/shared/src/sendProviderCatalog.ts` — one entry per core kind, plus the
 bundled plugin entries composed in at the backend. Everything that used to
 restate a provider fact derives from it: the kind union is read off the entries
@@ -3011,6 +3088,7 @@ labels and the credential forms are re-exports or lookups rather than the
 independent declarations they were.
 
 Split in two halves, and the split is a security boundary rather than tidiness:
+
 - **Data half** — `packages/shared`. Labels, capability declarations, credential
   field descriptors and environment variable NAMES. Never values, never secrets,
   never adapter code, because this module reaches the web client bundle. That is
@@ -3218,7 +3296,7 @@ match the **Webhook event** literals exactly so dispatcher and outbound
 fanout share one vocabulary. `channel.received` carries a `channel:
 'sms' | 'whatsapp' | 'generic'` field — one kind covers all non-email
 channels, mirroring how `inbound.received` covers all email-inbound
-providers (the *transport* differs, the *event* doesn't). The
+providers (the _transport_ differs, the _event_ doesn't). The
 `internal.*` kinds are never customer-fanned out.
 _Avoid_: Inbound delivery event (the prior, email-centric name; "delivery"
 stretches to fit SMS/WhatsApp). Webhook event (use that for the outbound
@@ -3239,7 +3317,7 @@ The MTA SMTP bounce server is also an Inbound event producer — it
 constructs the union directly because its transport is SMTP not HTTPS.
 Protocol handshakes that aren't events (Meta's GET verification
 challenge) live as additional helpers exported from the adapter module
-but run in the outer HTTP shell *before* `runInboundPipeline`, since the
+but run in the outer HTTP shell _before_ `runInboundPipeline`, since the
 pipeline accepts POST events only. Adapters never write to the database
 and never call domain mutations.
 Writing the file is one of three halves for a **send provider**'s feedback
@@ -3338,7 +3416,7 @@ status changes via the **Conversation thread (module)**'s `status_change`
 kind accept any edge ("fully flexible"). Resolved threads can be
 reopened, closed threads can be re-resolved without an intermediate
 state, and a user can move directly from `open` to `closed`. Inbound
-activity hitting a closed thread *implicitly* reopens it via the
+activity hitting a closed thread _implicitly_ reopens it via the
 `inbound_activity` kind — the reducer writes `status: 'open'` atomically
 with the `messageCount` / `lastMessageAt` patch and fires a
 `thread.reopened_by_inbound` audit row. Closes the drift bug where
@@ -3350,17 +3428,18 @@ chat-room concept), Inbox state (overloaded with the per-message
 `processingStatus` and the per-thread assignment state).
 
 **Conversation thread (module)**:
-The module at `convex/inbox/threads/module.ts` that owns *all* writes to
+The module at `convex/inbox/threads/module.ts` that owns _all_ writes to
 `conversationThreads`. Mirrors **Mail draft lifecycle (module)** shape —
 typed `TransitionInput` discriminated by `kind` (not `to`, because
 threads have heterogeneous independent dimensions: `status`,
 `assignedTo`, `latestDraftStatus`, `messageCount` / `lastMessageAt`),
-*no* `LEGAL_EDGES` graph for status (fully flexible), a private reducer
+_no_ `LEGAL_EDGES` graph for status (fully flexible), a private reducer
 per kind returning `{ patch, effects, applied }`, and a
 `TransitionOutcome` reporting `ok | reason` for kind-mismatched /
 thread-not-found attempts. Three entry points:
+
 - `findOrCreateForEmail({ contactId, contactIdentifier, subject,
-  normalizedSubject, inReplyTo?, references? })` — runs the
+normalizedSubject, inReplyTo?, references? })` — runs the
   three-strategy thread-match cascade (`In-Reply-To` header →
   `References` header → normalized-subject + `contactIdentifier`
   composite index) and creates a new row if none match. **Implicitly**
@@ -3375,18 +3454,19 @@ thread-not-found attempts. Three entry points:
   touch closed threads and forked instead. Same return shape.
 - `transition({ threadId, input })` — direct path for non-intake writes.
   `input` is `{ kind: 'inbound_activity'; occurredAt } | { kind:
-  'status_change'; to: ConversationThreadStatus; source } | { kind:
-  'assignment_change'; assignedTo?: string; source } | { kind:
-  'draft_status_change'; latestDraftStatus }`. Used by the **Inbox
+'status_change'; to: ConversationThreadStatus; source } | { kind:
+'assignment_change'; assignedTo?: string; source } | { kind:
+'draft_status_change'; latestDraftStatus }`. Used by the **Inbox
   processing lifecycle (module)**'s `set_thread_draft_status`
   effect-runner (delegates to this entry instead of patching the row
   directly) and by the user-facing `assignThread` / `updateThreadStatus`
   shells in `inbox/mutations.ts`.
 
 Effects (atomic with the row patch):
+
 - `audit_log` — fires on every transition kind. Audit actions added to
   `auditActions/catalog.ts`: `thread.reopened_by_inbound` (only when
-  `inbound_activity` lands on a *closed* thread — not on every inbound,
+  `inbound_activity` lands on a _closed_ thread — not on every inbound,
   to avoid timeline noise), `thread.status_changed` (with `from`, `to`,
   `source`), `thread.assigned` / `thread.unassigned` (with `userId`,
   `source`), `thread.draft_status_changed` (with the new
@@ -3400,6 +3480,7 @@ keeps its name but its second key column renames. Pre-prod migration
 backfills the column in one pass.
 
 Replaces the open-coded `db.insert` / `db.patch` sites in:
+
 - `inbox/messages.ts:131, 147` (intake + metadata patch for email).
 - `webhooks/channels.ts:111, 120` (intake + metadata patch for SMS /
   WhatsApp / generic; the status-agnostic find under the new module
@@ -3411,6 +3492,7 @@ Replaces the open-coded `db.insert` / `db.patch` sites in:
   patching directly).
 
 Closes drift bugs:
+
 - Channel inbound on a closed thread silently forked a new thread
   instead of reopening (now uniform with email; both reopen).
 - The `messageCount + 1` re-read race in `messages.ts:147-152` (insert
@@ -3425,7 +3507,7 @@ Closes drift bugs:
   effect that wrote a different table without delegating to its owner
   module — closes the implicit cross-module reach.
 
-The module does *not* own: the `inboundMessages` row write (stays in
+The module does _not_ own: the `inboundMessages` row write (stays in
 `inbox/messages.ts:receiveMessage`), the `unifiedMessages` row write
 (stays in `webhooks/channels.ts:processInboundChannel`), the
 `processingStatus` transitions on inbound messages (**Inbox processing
@@ -3442,7 +3524,7 @@ _Avoid_: Thread lifecycle (module) (collides with the
 `LEGAL_EDGES`-driven lifecycle pattern — this module has no edge graph,
 status is fully flexible), Inbox thread (module) (names the surface, not
 the row), Conversation lifecycle (module) (overloaded — the module owns
-*writes*, not state-machine transitions in the per-status sense),
+_writes_, not state-machine transitions in the per-status sense),
 Thread writer (module) (writers in this codebase are the verbs the
 module exposes, not the module itself), Conversation intake (module)
 (covers only the find-or-create-plus-record half; the module also owns
@@ -3462,6 +3544,7 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 `quarantined` / `archived`), `classification` (when `classify` completes),
 `draftResponse` / `draftSubject` / `confidenceScore` (when `draft` completes),
 `contextTier` (when context-retrieval completes). Legal edges:
+
 - `received → security_check` (security_scan step starts)
 - `security_check → quarantined` (security flag set)
 - `security_check → classifying` (no security issue; classify step starts)
@@ -3488,7 +3571,7 @@ and `route` step kinds create **Agent action** rows without changing the
 processing status — they are recorded as ancillary step effects rather than
 visible transitions (kept this way to preserve today's queue-filter indexes).
 The four-state `conversationThreads.latestDraftStatus` is a
-*projection* of the latest draft-bearing message's processing status —
+_projection_ of the latest draft-bearing message's processing status —
 written by the lifecycle module as a `set_thread_draft_status` effect,
 never by callers directly.
 _Avoid_: Processing state (vague), Message status (collides with
@@ -3527,13 +3610,14 @@ are identified by their own `Id<'inboundMessages'>`, and the SMTP
 `messageId` is for threading, not transition lookup.
 
 Effects:
-- `create_agent_action(actionType)` — fires on transitions *into*
+
+- `create_agent_action(actionType)` — fires on transitions _into_
   pipeline-phase states (`security_check`, `classifying`, `drafting`) and
   on the ancillary kinds (`context_retrieval`, `route`). Primitive
   surfaces (`recordStepBegin` / `recordStepEnd` / `recordStepFail`) are
   exposed for the **Agent walker**'s in-state step calls.
 - `complete_agent_action(actionId, output?, tokenUsage?, durationMs?,
-  modelUsed?)` — fires on transitions *out of* pipeline-phase states
+modelUsed?)` — fires on transitions _out of_ pipeline-phase states
   on success.
 - `fail_agent_action(actionId, errorMessage)` — fires on `to: 'failed'`
   carrying the in-progress action's id.
@@ -3543,7 +3627,7 @@ Effects:
   35-39, 77-81) instead of via the helper.
 - `schedule_send` — fires on `to: 'approved'`; replaces the inline
   scheduler call in `inbox/mutations.ts:42-44`. Next-step scheduling for
-  the agent pipeline is *not* a lifecycle effect — the **Agent walker**
+  the agent pipeline is _not_ a lifecycle effect — the **Agent walker**
   owns the `runStep → runStep` self-schedule loop and calls the lifecycle
   for the state-change side of each hop.
 - `audit_log(action, resourceId, details?)` — fires on human-driven
@@ -3554,10 +3638,10 @@ Effects:
 
 Replaces the nine open-coded writers above plus the in-pipeline
 status/agentAction split. Closes drift bugs: today the pipeline writes
-`processingStatus` and `agentActions` in *two separate mutations*, so
+`processingStatus` and `agentActions` in _two separate mutations_, so
 a step that crashes between them leaves them inconsistent; today the
 human review path writes `processingStatus` and `latestDraftStatus`
-in *two separate patches* inside one mutation, identical drift surface
+in _two separate patches_ inside one mutation, identical drift surface
 at human boundaries.
 _Avoid_: Agent pipeline lifecycle (excludes the human-review half),
 Inbox lifecycle (overloaded with thread state and assignment state),
@@ -3629,6 +3713,7 @@ loop for the agent pipeline. Mirrors the automation **Step walker** shape
 — a typed dispatch table `Record<AgentStepKind, AgentStepModule<...>>`;
 modules are pure; the walker owns lifecycle effects and the
 self-scheduled `runStep` hop. Two entry points:
+
 - `start({ inboundMessageId })` — kicks the pipeline off at
   `security_scan`. Three callers: `inbox/messages.ts:receiveMessage` on
   new-message arrival (replaces today's direct
@@ -3653,9 +3738,9 @@ self-scheduled `runStep` hop. Two entry points:
   `lifecycle.transition` with the step result merged in, optionally
   schedules a next `runStep`), or `done` (calls `recordStepEnd` and
   stops). On exception, calls `lifecycle.transition({ to: 'failed',
-  failingActionId })`.
+failingActionId })`.
 
-Retry semantics are *whole-pipeline restart* (same as today's reducer
+Retry semantics are _whole-pipeline restart_ (same as today's reducer
 intent): when the cron transitions a failed message to `received`, the
 walker's `start` re-runs from `security_scan`. Per-step resumption would
 require reconstructing the failed step's input from prior outputs —
@@ -3677,13 +3762,14 @@ SDK's `usage` shape and the internal `TokenUsage` validator. Lifted
 out of the agent-internal `convex/agent/steps/shared/llm.ts` (see
 ADR-0014) so every LLM caller across the deployment shares the same
 dispatch + token-usage extraction surface. Two entry points:
+
 - `runLlmText({ model, messages | { prompt, system? }, temperature? })
-  → { text, tokenUsage, modelUsed }` — wraps `generateText`. Accepts
+→ { text, tokenUsage, modelUsed }` — wraps `generateText`. Accepts
   either a `messages` array or a `{ prompt, system? }` pair as a
   discriminated input; translation-style and visualization-style
   callers both fit without separate entry points.
 - `runLlmObject({ model, schema, prompt, temperature? }) →
-  { object, tokenUsage, modelUsed }` — wraps `generateObject`.
+{ object, tokenUsage, modelUsed }` — wraps `generateObject`.
 
 Callers: the **Agent walker** (for the two LLM-based **Agent step
 (module)** kinds — `classify` and `draft`), `translate.ts`,
@@ -3693,7 +3779,7 @@ Callers: the **Agent walker** (for the two LLM-based **Agent step
 callers log them via `lib/runtimeLog.ts` so operators see AI cost in
 runtime logs without a new persistence surface.
 
-The module does *not* own: model resolution (lives behind
+The module does _not_ own: model resolution (lives behind
 `lib/llmProviders/` — one seam picks the model, this seam issues the
 call), retry policy, parse-failure fallback, embedding (`embed()`
 stays open-coded at its two callers — knowledge extraction and
@@ -3730,7 +3816,7 @@ overloaded).
 **Mailbox gate (helper)**:
 The function at `convex/mail/permissions.ts` exporting
 `loadOwnedMailbox(ctx, mailboxId) → MailboxAccessOutcome` that owns the
-permission predicate for *every* `mail/*` mutation and query operating on
+permission predicate for _every_ `mail/*` mutation and query operating on
 a **Mailbox**. Mirrors **Abuse gate (module)** in role (read-side
 predicate co-located with the area it gates) but is a `(helper)` because
 it exports one function, not a sibling-paired module family — same
@@ -3741,6 +3827,7 @@ reason: 'no_session' | 'mailbox_missing' | 'mailbox_inactive' |
 or HTTP error mapping can dispatch.
 
 Policy encoded:
+
 - Session must exist with a role (`no_session` otherwise).
 - Mailbox must exist (`mailbox_missing`) and `status === 'active'`
   (`mailbox_inactive`) — read paths refuse on suspended/deleted mailboxes
@@ -3763,7 +3850,7 @@ in `drafts.ts` alone). The single canonical owner makes the
 delegated access, app-password scope filtering, or an `audit_log` effect
 on "admin acted on user's mailbox" lands once, not eleven times.
 
-The helper does *not* own: BetterAuth session lookup (delegated to
+The helper does _not_ own: BetterAuth session lookup (delegated to
 `getBetterAuthSessionWithRole` in `lib/sessionOrganization.ts`), the
 **Mail alias** address-allow check (lives at
 `resolveAllowedFromAddressesForCtx` in `mail/aliases.ts`), per-row state
@@ -3792,6 +3879,7 @@ CommandSession`. Modules are pure with respect to socket I/O — they
 receive a `send(line)` callback from the **IMAP pump** and the
 **Connection state**, and they return a session that the pump tracks
 until its `completion` resolves. One interface covers both shapes:
+
 - **One-shot** — `start` writes its response lines via `send`, returns a
   session whose `completion` is already resolved with the next state.
   Covers the ~14 read-only and state-transitioning commands
@@ -3822,7 +3910,7 @@ bookkeeping owned by the connection shell. LOGIN transitions
 `auth: null → AuthState`. SELECT / EXAMINE transitions `selected`.
 UNSELECT / CLOSE clears `selected`. The pump owns `pendingAppend`
 absorption progress and `idleSession` timer handles — these are
-*not* connection state because they're per-active-command lifetime,
+_not_ connection state because they're per-active-command lifetime,
 not per-connection lifetime. The pump tears them down when the
 session's `completion` resolves; the connection state survives across
 command boundaries.
@@ -3845,7 +3933,7 @@ rewrite for 8-bit APPEND bodies is tracked as separate correctness
 debt and not blocked on this deepening.
 _Avoid_: IMAP server (that's `server.ts` — the TLS bootstrap and
 per-IP accounting), IMAP connection alone (the class keeps that name;
-"pump" names the *role* the post-deepening class plays).
+"pump" names the _role_ the post-deepening class plays).
 
 **IMAP command walker**:
 The dispatcher at `apps/imap/src/commands/walker.ts` that owns the
@@ -3883,6 +3971,7 @@ Reputation period (names the daily bucket, not the granularity).
 The module at `convex/analytics/sendingReputation.ts` that owns the
 rolling-window reputation table and is its only writer. Two
 responsibilities behind one small interface:
+
 - `recordEvent({ eventType, domain? })` — the only writer. Buckets the
   event by UTC day at each **Reputation scope** (org always; domain when
   present), then summarizes the `org` scope and, when its derived risk
@@ -3910,7 +3999,7 @@ One producer today: the **Send lifecycle (module)**'s `reputation_update`
 effect (the sole caller). The module is upstream of the **Abuse status
 (module)** — one of that module's three internal writers (ADR-0011) — and
 never reads or writes `abuseStatus` itself. The hourly cron is now
-cleanup-only: it ages out buckets older than 60 days across *both*
+cleanup-only: it ages out buckets older than 60 days across _both_
 scopes, closing the pre-deepening asymmetry where org buckets were pruned
 but domain buckets grew unbounded.
 
@@ -3970,6 +4059,7 @@ experiment over content), Provider side.
 **Measurement plane**:
 The two arm-keyed tables the ramp reads, and the discipline that keeps them
 cheap:
+
 - `sendAssignments` — one row per recipient per send, written INSIDE the enqueue
   transaction BEFORE dispatch, recording the cell, the transport kind, the arm
   and the mix version. `sends.providerType` is written post-hoc from the
@@ -3978,9 +4068,9 @@ cheap:
   write into N rows and SUMMED on read, so a hot cell does not serialize on one
   document. That sharded-write/summed-read shape is ADR-0042's, reused rather
   than reinvented.
-_Avoid_: Analytics (this is a control input, not a report), Metrics (too
-generic — Owlat has several unrelated metric surfaces), Experiment table (names
-one of the two).
+  _Avoid_: Analytics (this is a control input, not a report), Metrics (too
+  generic — Owlat has several unrelated metric surfaces), Experiment table (names
+  one of the two).
 
 **Own share**:
 The controlled variable in a deployment that has a reference transport: `s`, the
@@ -4049,8 +4139,8 @@ ramp's share) / `advisory` (recorded and readable, moves nothing on its own) —
 and its ABSENCE semantics as data. The families describe what a reading is
 ALLOWED TO DO, not how it was gathered. Every absence carries `isBlocking: false`
 by TYPE, so a source that blocked on its own absence could not be declared at
-all. Both the ramp's own five gates and the three provider reputation feeds
-(Microsoft SNDS, Yahoo CFL, Google Postmaster) are sources, and `SIGNAL_SOURCES`
+all. Both the ramp's own five gates and the two provider reputation feeds
+(Yahoo CFL and Google Postmaster) are sources, and `SIGNAL_SOURCES`
 SPREADS the five from the same record the gate evaluation folds — so
 "registered" and "measured" cannot come apart the way two lists would let them.
 Deliberately not open to plugins yet: the registry is the seam, and opening it
@@ -4064,7 +4154,7 @@ ONE table — `ramp/degradationMatrix.ts`, one row per absent integration — fo
 in exactly one place, never as a conditional per integration. A row may lower
 confidence, require more clean windows, shrink the step, lengthen the dwell,
 tighten a threshold or cap the pace; it may not block. Adding an integration is
-a row, and the controller never asks "is SNDS connected?".
+a row, and the controller never branches on whether a particular feed is connected.
 _Avoid_: Fallback (taken by the deliverability fallback relay), Degraded mode
 (implies a second code path, which is exactly what the table exists to avoid),
 Default.
@@ -4106,12 +4196,13 @@ one literal).
 
 **Abuse status (module)**:
 The module at `convex/organizations/abuseStatus.ts` that owns
-*writes* of `abuseStatus` and its companion fields. Mirrors the
+_writes_ of `abuseStatus` and its companion fields. Mirrors the
 **Outbound lifecycle** shape — typed `TransitionInput` discriminated
 by `to`, a severity-ordered `LEGAL_EDGES` graph (above), a reducer per
 kind returning `{ patch, effects, applied }`, and a `TransitionOutcome`
 reporting `ok | reason` for illegal / no-op (severity downgrade) /
 terminal-without-override attempts. Two entry points:
+
 - `transition({ to, reason, changedBy })` — internal-writer path,
   enforces severity rules (no lateral moves, no demotes except to
   `clean`, no escape from `banned`). Three internal callers:
@@ -4120,9 +4211,10 @@ terminal-without-override attempts. Two entry points:
   rolling-stats enforcement, and any future internal escalator.
 - `adminOverride({ to, reason, changedBy })` — admin-only path,
   bypasses all severity rules. Only caller: `platformAdmin/mutations.ts:
-  setOrganizationStatus` (auth-gated by `requirePlatformAdmin`).
+setOrganizationStatus` (auth-gated by `requirePlatformAdmin`).
 
 Effects:
+
 - `audit_log(action, ...)` — fires on every transition, not only on
   the admin path. Closes the silent drift bug where internal escalations
   (circuit breaker, auto-enforcement) wrote `abuseStatus` without an
@@ -4140,13 +4232,14 @@ severity rule for the same domain), the three open-coded `banned`-terminal
 checks (lines 469, 244, plus implicit in the gates), and the missing
 audit-log effect on internal escalations.
 _Avoid_: Abuse lifecycle (lifecycle is the shape, not the noun), Abuse
-enforcement (overloaded — that's what the *callers* do), Abuse manager
+enforcement (overloaded — that's what the _callers_ do), Abuse manager
 (vague).
 
 **Abuse gate (module)**:
-The module at `convex/organizations/abuseGate.ts` that owns *reads*
+The module at `convex/organizations/abuseGate.ts` that owns _reads_
 of `abuseStatus` for sending-allowed predicates. Sibling of the
 **Abuse status (module)** (reads vs writes). Exports two functions:
+
 - `requireSendingAllowed(ctx)` — fetches `instanceSettings` and
   throws `ConvexError` on `suspended | banned`. Used in mutation
   hot paths (campaign send, transactional send).
@@ -4174,16 +4267,17 @@ many reasons; this one is specifically abuse-driven), Abuse helpers
 
 **Organization settings (module)**:
 The module at `convex/organizations/settings.ts` that owns the singleton
-`instanceSettings` row's *settings* surface — `emailTheme`, `timezone`,
+`instanceSettings` row's _settings_ surface — `emailTheme`, `timezone`,
 `defaultFromName`, `defaultFromEmail`, and any future org-level
 configuration that isn't a feature flag or an abuse-status column.
 Sibling of the **Abuse status (module)**, the **Feature flags (module)**,
 and the **Organization deletion (module)** — all four modules write
 disjoint columns on the same singleton row. The schema table stays
-`instanceSettings` (one physical row); the modules are split by *what
-concern owns each column*, not by table.
+`instanceSettings` (one physical row); the modules are split by _what
+concern owns each column_, not by table.
 
 Four entry points:
+
 - `get(ctx)` — public query; org-member auth. Returns the full row or
   `null`. The dashboard organization-settings page, email-theme editor,
   and `useOrganizationContext` composable all read through this.
@@ -4207,7 +4301,7 @@ the dead-code `organizationSettings.create` (zero callers; bootstrap
 goes through `createInternal`) and `instanceSettings.getAbuseStatus`
 (zero callers; the **Abuse gate (module)** reads the row directly).
 
-The module does *not* own: the `abuseStatus` column (writes by the
+The module does _not_ own: the `abuseStatus` column (writes by the
 **Abuse status (module)**, reads by the **Abuse gate (module)**); the
 `featureFlags` map (writes and reads by the **Feature flags (module)**);
 the row's eventual delete (owned by the **Organization deletion
@@ -4232,6 +4326,7 @@ answer to different permission audiences (settings: `settings:manage`;
 flags: `requireAdminContext`).
 
 Five entry points:
+
 - `getFeatureFlags(ctx)` — public query; no auth (the resolved flag
   map drives nav rendering on the pre-auth setup page). Returns the
   cascaded `FeatureFlagState` from `resolveFlags(stored)`.
@@ -4390,6 +4485,7 @@ The module-family at `convex/organizations/deletion/` that owns the
 the **Step walker** (automations) and **Agent walker** (inbox)
 shapes — typed dispatch table, pure per-table modules, walker owns
 the batch loop semantics. Composed of:
+
 - An **Organization deletion walker** at
   `convex/organizations/deletion/walker.ts` owning the public entry
   point, the ordered table list, and the self-scheduled
@@ -4403,7 +4499,8 @@ Lifecycle delegation is intentionally narrow — for an org wipe, most
 lifecycle `remove()` effects (audit-log writes, cache patches,
 back-reference cleanups in other tables) are noise about to be wiped
 moments later. Two tables delegate because their lifecycles do
-something that *escapes* the org boundary:
+something that _escapes_ the org boundary:
+
 - `contacts` step delegates to
   `permanentlyDeleteContactWithRelations({ decrementCount: false })`
   in `lib/contactMutations.ts` — single canonical cascade writer,
@@ -4414,7 +4511,7 @@ something that *escapes* the org boundary:
 - `domains` step delegates to
   `sendingDomainLifecycle.remove()` per row — fires
   `delete_with_provider` so SES / MTA-side identity is released.
-  This is the *only* place where ordering inside the wipe is
+  This is the _only_ place where ordering inside the wipe is
   externally visible — failing to call `remove()` leaves
   provider-side records orphaned.
 
@@ -4433,13 +4530,15 @@ in the list. The terminal step is `instanceSettings` (the singleton
 row that owned the org's existence in the first place).
 
 Replaces the open-coded switch + `getNextStep(step: string)` helper
-+ `DELETION_STEPS: readonly string[]` constant in
-`organizationSettings.ts`. Closes drift bugs:
-- Silent contact-cascade divergence between the org-wipe path and
+
+- `DELETION_STEPS: readonly string[]` constant in
+  `organizationSettings.ts`. Closes drift bugs:
+
+* Silent contact-cascade divergence between the org-wipe path and
   the soft-delete cron path (today's switch hard-deletes contact-
   related sends; the canonical helper preserves them as soft-deleted
   for audit history — different semantics for the same cascade).
-- Coverage gap: today's switch touches ~22 tables; a quick schema
+* Coverage gap: today's switch touches ~22 tables; a quick schema
   audit lists ~37 tables in scope. Tables missed today include
   `agentActions`, `inboundMessages`, `conversationThreads`,
   `mailMessages`, `mailboxes`, `mailDrafts`, `contentScanResults`,
@@ -4447,7 +4546,7 @@ Replaces the open-coded switch + `getNextStep(step: string)` helper
   `providerRoutes`, the per-provider sending-domain identity
   tables, `trackingDomains`, `domainReputation`, `mediaAssets`.
   Each lands as one new **Organization deletion step (module)**.
-- Storage-blob orphans: today's switch hard-deletes
+* Storage-blob orphans: today's switch hard-deletes
   `transactionalSends` without purging
   `attachmentStorageIds` from Convex storage. Same gap for
   `mediaAssets`, `semanticFiles`, and any mail-attachment-bearing
@@ -4455,16 +4554,16 @@ Replaces the open-coded switch + `getNextStep(step: string)` helper
   **Organization deletion step (module)** closes these uniformly
   — each storage-bearing module declares the hook, the walker
   calls it before `db.delete(row)` inside the batch loop.
-- Provider-side orphans: today's switch hard-deletes `domains`
+* Provider-side orphans: today's switch hard-deletes `domains`
   without calling `sendingDomainLifecycle.remove()` — SES / MTA-
   side identities are never cleaned up.
-- Stringly-typed `step: v.string()` arg making missing-step-type
+* Stringly-typed `step: v.string()` arg making missing-step-type
   a runtime not compile-time error.
-- Duplicated "more-batch-in-step vs advance-to-next-step" branching
+* Duplicated "more-batch-in-step vs advance-to-next-step" branching
   per case in the switch (today: nine duplicated blocks; under the
   walker: one).
 
-The module-family does *not* own: the public `remove` mutation (lives
+The module-family does _not_ own: the public `remove` mutation (lives
 on the **Organization settings (module)** at
 `convex/organizations/settings.ts` — auth check, returns the "deletion
 started" response, schedules the walker's `start()`); the
@@ -4481,7 +4580,7 @@ retain their reads — the deletion module only writes).
 _Avoid_: Org deletion (module) (drops "Organization" — the
 single-org-per-deployment memory note settles the naming on the
 full word; the table being walked is `instanceSettings` but the
-*concept* is the organization), Instance deletion (module) (the
+_concept_ is the organization), Instance deletion (module) (the
 mutation says "Instance deletion started" colloquially, but
 "organization" is the load-bearing noun for the data being wiped),
 Organization wipe (module) (informal), Organization cleanup
@@ -4492,6 +4591,7 @@ cron).
 The action-and-internal-mutation pair at
 `convex/organizations/deletion/walker.ts` that owns the
 self-scheduled per-table dispatch loop. Two entry points:
+
 - `start()` — internal mutation called by the **Organization settings
   (module)**'s `remove` entry. Schedules `runStep` for the first table
   in the ordered list. No batch work in this entry — keeps the public
@@ -4539,10 +4639,10 @@ hard-delete (the common case) or delegate to a lifecycle's
 internal to each module; the walker doesn't see the difference.
 Modules never know the order — they don't peek at sibling tables,
 they don't assume children/parents have been cleared. If they
-*depended* on ordering (e.g. the `contacts` step assuming
+_depended_ on ordering (e.g. the `contacts` step assuming
 `emailSends` was already empty so the cascade helper's
 soft-delete loop is a no-op), that assumption lives in the
-*walker's ordered list*, not in the module — making the assumption
+_walker's ordered list_, not in the module — making the assumption
 local-but-fragile would silently break under a list reshuffle.
 
 Adding a new table to the schema is a one-file change: new
@@ -4574,6 +4674,7 @@ email translations), Automation engine (vague — name the moving part).
 **Automation status**:
 The current state of an Automation at `automations.status`:
 `draft | active | paused`. Legal edges:
+
 - `draft → active` (activate — validates trigger config and requires
   ≥1 `automationSteps` row)
 - `active → paused` (pause — leaves in-flight `automationRuns` alone;
@@ -4596,9 +4697,9 @@ through later pause/resume cycles, same pattern as `verifiedAt` on
 
 The four stats counters (`statsEntered`, `statsActive`,
 `statsCompleted`) are lifetime — they persist through revert-to-draft
-cycles. Stats *increments* live in the **Trigger fanout** and in
+cycles. Stats _increments_ live in the **Trigger fanout** and in
 `stepExecutorQueries.ts:completeAutomationRun` /
-`cancelAutomationRun`; the lifecycle owns *no* stats writes — same
+`cancelAutomationRun`; the lifecycle owns _no_ stats writes — same
 split as Campaign lifecycle (which zeroes stats on `→ sending`) vs
 Send lifecycle (which bumps the per-recipient counters).
 _Avoid_: Automation state (vague — collides with the per-run
@@ -4617,6 +4718,7 @@ illegal / precondition-failed / not-found attempts. Single entry point
 automations are identified by their own `Id<'automations'>`.
 
 Effects:
+
 - `audit_log(action, automationId, userId, details)` — fires on every
   transition including idempotent self-loops. New audit actions added
   to the catalog at `auditActions/catalog.ts`:
@@ -4634,6 +4736,7 @@ Effects:
 
 Preconditions enforced inside the `→ active` reducer (returned as
 `{ ok: false, reason }` rather than thrown):
+
 - `no_steps` — the automation has zero `automationSteps` rows.
 - `invalid_trigger_config` — the trigger config is missing for a
   trigger kind that requires it (`contact_updated`, `event_received`,
@@ -4646,7 +4749,7 @@ writes in `automations/automations.ts:333-430` (activate / pause /
 resume). Introduces a new `revertToDraft` public mutation for the
 `paused → draft` edge that did not exist pre-deepening.
 
-The module does *not* own: row creation (the `create` mutation and
+The module does _not_ own: row creation (the `create` mutation and
 `duplicate` mutation stay as direct CRUD inserts at `status: 'draft'`
 — same split as Campaign lifecycle vs Campaign create), row deletion
 (`remove` mutation stays where it is, refusing `active` automations),
@@ -4675,9 +4778,10 @@ audit actions from ADR-0002).
 **Step module**:
 A Step's full surface, physically split into two halves — same rationale as
 Block module:
+
 - **Walker half** — `apps/api/convex/automations/steps/<kind>/index.ts`
   exporting a `StepModule<T, C>`: `parseConfig`, `execute(ctx, args) →
-  StepOutcome`, optional `entryDelay(config) → ms` (only `delay`
+StepOutcome`, optional `entryDelay(config) → ms` (only `delay`
   implements).
 - **Editor half** — `apps/web/app/composables/automations/steps/<kind>/index.ts`
   exporting a `StepEditorModule<T, C>`: label, description, color,
@@ -4734,11 +4838,12 @@ per-source-of-events shell, not the per-kind fanout).
 **Condition**:
 The canonical shape used by both segment evaluation and the automation
 `condition` step. Discriminated union:
+
 - `{ kind: 'contact_property'; field; operator; value }` — `operator` ∈
   `equals | not_equals | contains | not_contains | gt | lt | gte | lte
-  | is_empty | not_empty`.
+| is_empty | not_empty`.
 - `{ kind: 'email_activity'; field: 'opened' | 'clicked';
-  operator: 'is_true' | 'is_false' }`.
+operator: 'is_true' | 'is_false' }`.
 - `{ kind: 'topic_membership'; topicId; operator: 'equals' | 'not_equals' }`.
 
 One persisted shape across segments (`segments.filters[].condition`) and
@@ -4757,7 +4862,7 @@ evaluate(condition, contact, lookup) → boolean }`. Operators applicable
 to the kind live inside the module — there is no global operator switch.
 Used by the segment evaluator (batched preload across many contacts)
 and by the automation `condition` step (preload of one, evaluate
-against one contact). This is the *evaluator half*; the editor half is
+against one contact). This is the _evaluator half_; the editor half is
 the **Condition editor module**.
 _Avoid_: Condition module alone (collides with **Condition** the value),
 Condition evaluator (names the verb, not the unit).
@@ -4800,7 +4905,7 @@ A computed audience defined by a set of **Condition**s combined with
 conditions[] }` and a denormalized `cachedCount` (refreshed by the
 `refreshSingleSegmentCount` fire-and-forget task on create/update and the
 `refreshAllSegmentCounts` 30-minute cron). Distinct from a **Topic** —
-a Segment has no membership table; its members are whoever matches *now*.
+a Segment has no membership table; its members are whoever matches _now_.
 One of the two **Audience** kinds (`{ kind: 'segment', segmentId }`); the
 **Audience resolution (module)** materializes it into recipients at send
 time, freezing the `filters` into `frozenFilters` so an already-sent
@@ -4813,9 +4918,10 @@ list (verbose; "Segment" is the established noun).
 The module at `apps/api/convex/conditions/segmentMatch.ts` that owns the
 single mapping from a stored filter set to the **Contact**s that match —
 the layer above per-**Condition** evaluation. Two layers:
+
 - **Pure core** — `parseSegmentFilters(input) → ParsedSegmentFilters`
   (normalizes the stored `string | { logic, conditions[] }` shape through
-  the conditions registry; *throws* on corrupt filters, since they are
+  the conditions registry; _throws_ on corrupt filters, since they are
   storage-validated — a parse failure is corrupt data, not user input)
   and `makeSegmentPredicate(filters, lookup) → (contact) => boolean`
   (empty conditions match every Contact; otherwise short-circuit AND/OR
@@ -4831,7 +4937,7 @@ the layer above per-**Condition** evaluation. Two layers:
   single-Contact case, used by the automation `condition` step.
 
 The two-layer split is load-bearing: the **Audience resolution (module)**'s
-segment branch and the multi-Segment cron consume the *pure predicate* (so
+segment branch and the multi-Segment cron consume the _pure predicate_ (so
 they can interleave eligibility filtering / share one scan and lookup
 across Segments), while the simple preview/count callers want the
 conveniences. The send path does NOT use the lenient conveniences — it
@@ -4848,7 +4954,7 @@ size-one-preload), the segment branch of
 `conditions/index.ts:evaluateAgainstContact`. The combine logic and the
 empty / corrupt / live-Contact decisions now live in one place.
 
-The module does *not* own: the per-**Condition** primitive (`evaluateOne`
+The module does _not_ own: the per-**Condition** primitive (`evaluateOne`
 / `preloadConditionsLookup` stay in the conditions registry), the
 eligibility predicate (email-present, suppression, DOI — that is the
 **Audience resolution (module)**'s `selectRecipient`), the `segments` CRUD
@@ -4858,7 +4964,7 @@ _Avoid_: Segment evaluation (module) (ADR-0033 parked "Segment
 evaluation" as a name because the **Audience** also covers **Topic
 membership**; this module is the segment/Condition half only, so
 "matching" names the operation without claiming audience resolution),
-Condition matching (module) (it matches a *set* of Conditions against a
+Condition matching (module) (it matches a _set_ of Conditions against a
 population, not one Condition — and "Segment" is the domain noun the
 filters belong to), Segment matcher (names the returned predicate, not the
 module).
@@ -4876,14 +4982,16 @@ both consuming the shared response helpers at
 lifecycle** sense; the shell wraps one request/response and exits.
 
 Single entry point:
+
 - `publicTokenEndpoint({ path, method, rateLimit, cors?, body?,
-  resultMode }, handler) → httpAction` — declarative route + typed
+resultMode }, handler) → httpAction` — declarative route + typed
   handler. The shell extracts the token, runs the rate-limit gate,
   parses the body, and invokes the handler with a typed
   `{ token, body, request }` context. The handler returns a typed
   result; the shell maps it to HTTP per `resultMode`.
 
 Configuration:
+
 - `path`: pattern with named segments (`/unsub/:token`,
   `/prefs/update/:token`, `/confirm/doi`). A small in-module matcher
   (~20 LOC, rolled in-tree — no `path-to-regexp` dep) extracts named
@@ -4894,10 +5002,10 @@ Configuration:
   before the handler runs.
 - `rateLimit`: a `PublicRateLimitKind` literal —
   `'subscriptionManagement' | 'doiConfirmation' | 'formSubmission' |
-  'emailTracking'`. Shell invokes `checkPublicRateLimit` keyed by
+'emailTracking'`. Shell invokes `checkPublicRateLimit` keyed by
   `getClientIp(request)` and returns `rateLimitedResponse` on miss.
 - `cors`: `'GET, OPTIONS' | 'POST, OPTIONS' | 'GET, POST, OPTIONS' |
-  false`. Shell owns the `OPTIONS` preflight uniformly; `false` opts
+false`. Shell owns the `OPTIONS` preflight uniformly; `false` opts
   out (RFC 8058 one-click unsubscribe — not a browser-fetch path).
 - `body`: `'none' | 'json' | 'formData'`. `'json'` parses and size-
   checks to 100 KB; `'formData'` accepts JSON / urlencoded / multipart
@@ -4906,9 +5014,10 @@ Configuration:
 - `resultMode`: `'action' | 'outcome'`.
 
 Result modes:
+
 - `'action'`: handler returns
   `{ ok: true, data: T } | { ok: false, reason: string, status?:
-  number }`. Shell maps `ok: false` to a 4xx (default 400) with the
+number }`. Shell maps `ok: false` to a 4xx (default 400) with the
   locked envelope `{ error: { message: reason, code: reason } }`. Used
   by one-click unsub, form submit, prefs update, DOI confirm.
 - `'outcome'`: handler returns
@@ -4916,7 +5025,7 @@ Result modes:
   both to HTTP 200 with `{ ok, data } | { ok: false, reason }`. The
   "200 on invalid token" verify endpoints land here naturally — a
   successful verification request that returns an "expired token"
-  *result* is no longer pretended to be an HTTP error.
+  _result_ is no longer pretended to be an HTTP error.
 
 Locked response envelope: `{ error: { message, code } }` on action-mode
 4xx; `{ ok, data | reason }` on outcome-mode 200; structured JSON only.
@@ -4926,6 +5035,7 @@ and `{ error: { message, code } }`. Frontend callers in `apps/web`
 migrate to the single shape in the same commit.
 
 Replaces the open-coded shells at:
+
 - `delivery/unsubscribeHttp.ts:10-88` (one-click POST)
 - `delivery/unsubscribeHttp.ts:92-172` (verify GET)
 - `delivery/preferencesHttp.ts:10-90` (verify GET)
@@ -4938,6 +5048,7 @@ Replaces the open-coded shells at:
 - `campaigns/archiveHttp.ts:11-77` (archive GET)
 
 Closes drift bugs:
+
 - Path-positional indexing silently misbehaves when route prefixes
   change. Named segments enforce the contract at declaration.
 - Error envelope drift across four flavors. Locked under one shape.
@@ -4951,11 +5062,11 @@ Closes drift bugs:
 - 500-on-throw discipline scattered across sites with varying
   `logError` calls. Shell owns the catch.
 
-The module does *not* own: the domain handler (each endpoint hands off
+The module does _not_ own: the domain handler (each endpoint hands off
 to a typed internal action/mutation — the **Form submission (module)**
 at `forms/submission.ts`, the **DOI lifecycle (module)**, the
 unsubscribe processor — those keep their independent intake / lifecycle
-modules), auth (no API key, no session — the auth posture *is* the
+modules), auth (no API key, no session — the auth posture _is_ the
 token; an endpoint needing both API-key + token would compose this
 shell with **API-key endpoint** rather than extend it),
 graceful-on-rate-limit short-circuits (the tracking pixel and click
@@ -5000,8 +5111,8 @@ _Avoid_: mutation wrapper, `useConvexMutation`.
 
 The one read-side surface for "give me a filtered, searched, paginated,
 counted page of <entity>." The counterpart to the write-side lifecycle
-modules: where a lifecycle owns how an entity *changes*, listing owns how a
-collection of them is *read*. A thin generic **Listing engine** dispatches
+modules: where a lifecycle owns how an entity _changes_, listing owns how a
+collection of them is _read_. A thin generic **Listing engine** dispatches
 over per-entity **Listing descriptors**, mirroring the **Walker** /
 **Block module** split — thin dispatcher, per-type data ownership. One
 Convex-native cursor everywhere. See ADR-0037.
@@ -5014,7 +5125,7 @@ into a uniform `{ page, isDone, continueCursor }` (the existing
 load-bearing policy every list query open-codes today: pick the cheapest
 Convex access path (the search index when `search` is present, the browse
 index otherwise), apply soft-delete, run per-row enrichment over the page,
-and emit a single *real* Convex cursor. Takes a `DatabaseReader`, never a
+and emit a single _real_ Convex cursor. Takes a `DatabaseReader`, never a
 session — auth stays in the calling shell, the same split lifecycle effects
 use. Kills the `'search'`-sentinel cursor in `contacts.ts:list` (search
 becomes genuinely multi-page) and the stringified-offset cursor in
@@ -5030,7 +5141,7 @@ One entity's full read surface, declared as data: the search index (and its
 is soft-deletable, the optional per-row `enrich`, and its **Facets**. The
 unit the **Listing engine** consumes; one per listable entity (Contact,
 Campaign, Email template, Topic, Segment, Automation). Shared by the
-entity's `list` *and* its `get` for the enrichment half, so the two stop
+entity's `list` _and_ its `get` for the enrichment half, so the two stop
 duplicating it (today `topics.ts:list` and `topics.ts:get` both inline the
 `contactCount` enrichment). Load-bearing interface fact it encodes:
 **search results are relevance-ordered, so sort keys apply to the browse
@@ -5048,7 +5159,7 @@ total plus per-bucket breakdowns (`by status`, `by type`) the dashboards
 render next to a list. Each facet names its count strategy, and exactly
 three exist in the wild: an index count, a group-by over a small closed
 bucket set, or a read of a denormalized cached counter (the contacts
-cached-count path, which lives in a *different* table, `instanceSettings`).
+cached-count path, which lives in a _different_ table, `instanceSettings`).
 Replaces the open-coded `countByStatus` / `countByType` group-by loops and
 the bespoke `count` queries.
 _Avoid_: stat (overloaded with analytics), count query (names one strategy),
@@ -5092,7 +5203,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   recipient array after every transition). The Send lifecycle and the
   Postbox outbound lifecycle both implement the **Outbound lifecycle**
   shape — same legal-edges + reducer + effects skeleton — but Postbox
-  is the first lifecycle in the codebase to transition a *slice* of a
+  is the first lifecycle in the codebase to transition a _slice_ of a
   row (one recipient) rather than the row itself; the Send lifecycle
   still transitions whole Sends. The aggregate-derivation step is unique
   to Postbox and lives inside the lifecycle's reducer; no caller writes
@@ -5110,7 +5221,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   lifecycle transition, which in turn calls **Webhook event fanout** with
   the matching `email.bounced` **Webhook event** literal — so the same
   word travels through inbound, lifecycle, and outbound without
-  translation. (Postbox bounces are *not* fanned out
+  translation. (Postbox bounces are _not_ fanned out
   to customer webhooks today — personal-mail events live behind the user
   UI, not the public webhook surface.)
 - An **Automation** is triggered by exactly one **Trigger module** (keyed
@@ -5119,8 +5230,8 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   exist. Each **Step** is implemented by exactly one **Step module**
   (one-to-one, keyed by `kind`). The **Step walker** dispatches to a Step
   based on `step.kind`, applies the **Step outcome** to advance or branch,
-  and asks the *next* module for its `entryDelay` to schedule. The
-  automation `condition` step is itself a Step module that *consumes* a
+  and asks the _next_ module for its `entryDelay` to schedule. The
+  automation `condition` step is itself a Step module that _consumes_ a
   **Condition type module** — the same module family the segment
   evaluator consumes — so the operator and field vocabulary are shared
   across the two evaluation paths. **Condition** is the persisted shape
@@ -5165,11 +5276,11 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   `webhooks/channels.ts:processInboundChannel`,
   `transactional/dispatch.ts`, `forms/submission.ts:submit`,
   `automations/triggers.ts:sendEvent`). The module
-  owns *only* the trio; callers keep their own domain effects on top
+  owns _only_ the trio; callers keep their own domain effects on top
   (inbox's `inbound_received` activity, the form's submission row). It is
   created-effects only — its callers run `strict`/`upsert`, which never
   yield `action: 'updated'`. The **Contact import (module)** is the sole
-  exception: it calls `resolveContact` directly and fires *one* batched
+  exception: it calls `resolveContact` directly and fires _one_ batched
   `incrementContactCount(imported)` plus its own per-row composition
   (ADR-0019) — single-create goes through Contact creation, only import
   calls resolution directly (convention, not enforced). Closes the drift
@@ -5193,9 +5304,9 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   (confirm — under the unified token namespace, looks up the form
   submission by token then delegates to `transitionByConfirmationToken`
   for the contact-side patch). `email.bounced` and other send-side
-  events do *not* feed this lifecycle — DOI is a consent-grant state,
+  events do _not_ feed this lifecycle — DOI is a consent-grant state,
   not a deliverability state. The DOI lifecycle and the **Outbound
-  lifecycle** share the *shape* (typed transitions + legal-edges +
+  lifecycle** share the _shape_ (typed transitions + legal-edges +
   reducer + effects + an external-key entry point) but not the table;
   with the Send lifecycle, Postbox outbound lifecycle, and DOI lifecycle
   all instantiating that shape, the `Lifecycle<S, E, Eff>` factor
@@ -5217,9 +5328,9 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   unsubscribe link). The form-submission path reaches the module
   through `addContact` (membership is inserted at submission time,
   before DOI confirmation); the pre-deepening `forms/endpoints.ts:
-  confirmSubmission` fallback insert is deleted. The module's `source`
+confirmSubmission` fallback insert is deleted. The module's `source`
   discriminator (`'admin' | 'form' | 'import' | 'public_api' |
-  'automation' | 'public_email_link' | 'preferences_page'`) is the
+'automation' | 'public_email_link' | 'preferences_page'`) is the
   one place where "which side effects fire for which trigger" lives
   — admin-remove now writes the `topic_unsubscribed` Contact activity
   row it was silently missing; public-link unsubscribe still owns the
@@ -5238,7 +5349,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   (writing one of five status literals: `spam`, `invalid`, `duplicate`,
   `pending_confirmation`, or `success`), and `markConfirmedByToken`
   for the only post-create transition (`pending_confirmation →
-  success`). The submit HTTP handler at `forms/apiHttp.ts` is the only
+success`). The submit HTTP handler at `forms/apiHttp.ts` is the only
   caller of `submit`; the form-confirm HTTP handler at
   `forms/endpoints.ts` chains `doiLifecycle.transitionByConfirmationToken`
   → `submission.markConfirmedByToken` for the confirm path — each
@@ -5278,35 +5389,35 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   processing lifecycle (module)** is the only writer of `processingStatus`,
   the only creator/updater of `agentActions`, and the only writer of
   `conversationThreads.latestDraftStatus`. Two distinct producer
-  populations of transition calls: the *agent pipeline* — the **Agent
+  populations of transition calls: the _agent pipeline_ — the **Agent
   walker** dispatching to six **Agent step (module)**s
   (`security_scan → context_retrieval → classify → clarify → draft → route`) plus
   the cron-driven `Agent walker.retryStep` — drives the pipeline-phase
   transitions (`received → security_check → classifying → drafting →
-  draft_ready`); the *human review path* (`inbox/mutations.ts:
-  approveDraft / rejectDraft / releaseFromQuarantine / blockSender`)
+draft_ready`); the _human review path_ (`inbox/mutations.ts:
+approveDraft / rejectDraft / releaseFromQuarantine / blockSender`)
   drives the post-pipeline transitions (`draft_ready → approved → sent |
-  rejected`, plus `quarantined → received` and `* → archived`). The seam
+rejected`, plus `quarantined → received` and `* → archived`). The seam
   between the two populations is `quarantined → received` (release
   restarts the agent pipeline via `Agent walker.start`) and `failed →
-  received` (cron retry restarts the affected step via `Agent walker.
-  retryStep`) — both routed through the same lifecycle module so the
+received` (cron retry restarts the affected step via `Agent walker.
+retryStep`) — both routed through the same lifecycle module so the
   agentAction reset + processingStatus advance happens atomically. The
   thread-state machine (`conversationThreads.status: open/waiting/
-  resolved/closed`) is independent of inbox processing — driven only by
+resolved/closed`) is independent of inbox processing — driven only by
   the `updateThreadStatus` mutation, not by this lifecycle.
 - The deployment has exactly one **Abuse status** at any time, stored
   on the singleton `instanceSettings` row. The **Abuse status (module)**
   is the only writer; the **Abuse gate (module)** is the only reader
   for sending-allowed decisions. The two modules are split because the
-  *concerns* are different (write-side severity rules vs read-side gate
+  _concerns_ are different (write-side severity rules vs read-side gate
   semantics) and the call-site populations are disjoint (three internal
   writers + one admin-override caller vs many send-path readers). Both
   read/write the same column and share the same four-state value
   vocabulary. Send and transactional send paths consult the Abuse gate
   before reaching the **Send lifecycle (module)** — abuse blocks send
   creation upstream of the lifecycle, so a `suspended` org never produces
-  a `queued` Send. The Send lifecycle does *not* check abuse status; by
+  a `queued` Send. The Send lifecycle does _not_ check abuse status; by
   the time a transition runs, the gate already cleared. The MTA-side
   circuit breaker produces an `internal.circuit_breaker_tripped`
   **Inbound event** which the Webhook dispatcher routes to
@@ -5319,7 +5430,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   the event carries one — by exactly one operation in the **Sending
   reputation (module)**, the only writer of the unified scope-
   discriminated `sendingReputation` table. A single `summarize(reader,
-  scope)` is the only summarizer of the window; both the public auth-
+scope)` is the only summarizer of the window; both the public auth-
   shell reads and the platform-admin reads cross it (the shell-vs-engine
   split of ADR-0037), and derived rate/risk is computed on read, never
   stored. One producer today: the **Send lifecycle (module)**'s
@@ -5338,7 +5449,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   **Organization deletion (module)** owns the terminal row delete as
   the last step of the wipe. Each module is the sole writer of its
   column set; they do not share the writer set. The split is by
-  *concern*, not by table — the schema's singleton-row shape reflects
+  _concern_, not by table — the schema's singleton-row shape reflects
   the [[project_single_org_per_deployment]] invariant, but the module-
   family follows the columns. Permission audiences also partition:
   settings writes need `settings:manage` (owner/admin); flag writes
@@ -5363,7 +5474,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   forward. The walker's typed `Record<ImapVerb, ImapCommandModule>` makes
   missing a verb a compile error; CAPABILITY-line atoms are aggregated
   from per-module `capabilities?` declarations so adding `MOVE` or
-  `UIDPLUS` support is one module edit. The IMAP modules sit *upstream*
+  `UIDPLUS` support is one module edit. The IMAP modules sit _upstream_
   of the Postbox / Inbox lifecycle modules — APPEND lands a message into
   `mailMessages`, but the Postbox outbound lifecycle and Inbox processing
   lifecycle each own their tables once the message is in.
@@ -5383,7 +5494,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   implement it; MTA omits it) before calling
   `lifecycle.recordVerification`, so "what counts as verified" is the
   reducer's combination of a generic DNS rule with one boolean from the
-  adapter. The lifecycle sits *upstream* of the Send path: a Campaign's
+  adapter. The lifecycle sits _upstream_ of the Send path: a Campaign's
   send-time domain check (`getEmailDomainVerificationStatus` read query)
   and a transactional send's domain check both consult the
   `domains.status` column the lifecycle owns — but neither the Campaign
@@ -5403,7 +5514,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   variation lives entirely behind the adapter seam. The adapter shape
   mirrors the **Sending domain provider adapter (module)**: typed `kind`,
   registry dispatch, one-folder addition for a new provider. The walker
-  sits *upstream* of the **Contact import (module)**: each page's
+  sits _upstream_ of the **Contact import (module)**: each page's
   normalized rows feed `importBatch` with `source = provider` and
   `doiAttest` derived from the adapter's `defaultDoiAttest`, so DOI
   attestation policy travels with the adapter and not with the walker.
@@ -5419,14 +5530,14 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   parallel tables — same shape, separate `LEGAL_EDGES` (2 states vs
   3), distinct effect lists (transactional adds a content-scan effect).
   The marketing scan runs at send time inside the **Campaign send
-  orchestrator (module)**; the transactional scan runs at *publish*
+  orchestrator (module)**; the transactional scan runs at _publish_
   time inside the lifecycle's `→ published` reducer because the public
   transactional send API can dispatch without an operator in the loop.
   The suspicious-scan outcome routes to `pending_review`, mirroring
   the Campaign lifecycle's `pending_review → sending` admin surface
   (the edges land in the graph now; the surface lands as follow-up).
   Both lifecycles export an `assertEditableForPublishableChange(row,
-  force?)` guard consumed by every mutation that touches publishable
+force?)` guard consumed by every mutation that touches publishable
   content (`subject`, `previewText`, `content`, `htmlContent`, `slug`,
   `type`, `defaultLanguage`, all translation-related fields), forcing
   callers to either pass `forceWhilePublished: true` or call
@@ -5460,7 +5571,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   `{ patch, effects, applied }`, and a `TransitionOutcome` reporting
   `ok | reason`. The **Abuse status (module)** is the same skeleton plus
   an `adminOverride` second entry point. Ten instances of the shape are
-  now in the codebase by convention (no factor). Email template + 
+  now in the codebase by convention (no factor). Email template +
   Transactional email land as the second sibling-pair on parallel
   tables (first pair: Campaign + AB test on the same row). The Send
   lifecycle's pre-deepening role as "the lifecycle that handles two
@@ -5472,7 +5583,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   as siblings on the same row — first time two lifecycles share a row,
   coordinated by a cross-machine effect (`start_ab_test_if_enabled` on
   the Campaign reducer reaches into the AB test lifecycle). Sending
-  domain is the first lifecycle that owns row insertion *and* row
+  domain is the first lifecycle that owns row insertion _and_ row
   deletion as lifecycle entry points (`create()` and `remove()`),
   bracketing the state machine — Topic subscription is the closest
   precedent but it acts on membership rows, not the parent row. The
@@ -5481,7 +5592,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   non-trivial ways (external keys, polymorphic identity, override entry
   points, cross-machine coordination, per-kind adapter dispatch) that
   would be lossy to push behind a generic factor. The factor lands when
-  the duplication bites at the *reducer-implementation* level, not at
+  the duplication bites at the _reducer-implementation_ level, not at
   the type-signature level — and so far the reducers genuinely diverge.
 
 ## Example dialogue
@@ -5548,7 +5659,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
 > IDLE returns with `completion` pending and owns its own poll timer;
 > the pump calls `session.onClientLine('DONE')` when it sees the bare
 > DONE on the next line. APPEND returns with `awaitingLiteral: { bytes:
-> N }` and the pump absorbs N bytes into `onLiteralBytes` before the
+N }` and the pump absorbs N bytes into `onLiteralBytes` before the
 > session resolves. The pump never special-cases IDLE or APPEND — the
 > session declares its shape and the pump routes accordingly."
 
@@ -5591,8 +5702,8 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
 ## Flagged ambiguities
 
 - "Component" was historically used in code for both Vue/React UI components
-  AND Block renderer files. Resolved: UI components are *components*; content
-  blocks are *Blocks*. Files under `email-renderer/src/blocks/` are Block
+  AND Block renderer files. Resolved: UI components are _components_; content
+  blocks are _Blocks_. Files under `email-renderer/src/blocks/` are Block
   modules, not components.
 - Error vocabulary was historically three overlapping systems in
   `_utils/errors.ts` — `SCREAMING_SNAKE` `ConvexError` codes, a separate
@@ -5625,7 +5736,7 @@ matching code comment at the cited file.
   caller; `addPlatformAdmin` needs an existing admin to bootstrap), so
   `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
   Intentional: the multi-tenant control plane that would seed and use these
-  admins lives in the separate private Nest repo (see *Nest Extracted*); this
+  admins lives in the separate private Nest repo (see _Nest Extracted_); this
   repo is single-org-per-deployment OSS. The module is kept so the control
   plane reuses it unchanged, but no OSS bootstrap is wired — granting one
   operator instance-wide power is a deployer decision, not a default. Intended
