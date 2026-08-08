@@ -35,8 +35,6 @@ import type { DeliverabilityCell, DestinationProviderKey } from './deliverabilit
 import { deliverabilityCellKey, type DeliverabilityCellKey } from './deliverabilityRouting';
 import type {
 	SeedConfidence,
-	SeedCorroboration,
-	SeedGateResult,
 	SeedObservation,
 	SeedPlacement,
 	SeedProviderRollup,
@@ -45,7 +43,6 @@ import type {
 import {
 	SEED_ACCOUNTS_PER_ORG_LIMIT,
 	SEED_GATE_CONFIDENCE,
-	evaluateSeedPlacementGate,
 	summarizeSeedPlacement,
 } from './seedPlacement';
 
@@ -243,22 +240,6 @@ export function resolvePlacementAdapter(config: PlacementSourceConfig): Placemen
 		improvement: seeds > 0 ? 'none' : 'add_seed_mailboxes',
 		blocking: false,
 	};
-}
-
-/**
- * Adapter → gate 5, in one call. This is the whole point of the interface: the
- * controller asks a source-agnostic question and gets the SHIPPED gate-5
- * verdict back, corroboration rule and all.
- */
-export function evaluatePlacementGate(input: {
-	adapter: PlacementAdapter;
-	evidence: PlacementEvidence;
-	corroboration: SeedCorroboration;
-}): SeedGateResult {
-	return evaluateSeedPlacementGate({
-		rollups: input.adapter.summarize(input.evidence),
-		corroboration: input.corroboration,
-	});
 }
 
 // ============ SCHEDULING: A PROBE RUN BEFORE EVERY PHASE PROMOTION ============

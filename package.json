@@ -76,7 +76,7 @@
 		"typecheck": "turbo typecheck",
 		"lint": "turbo lint",
 		"lint:fix": "turbo lint:fix",
-		"lint:deadcode": "bash scripts/check-dead-code.sh",
+		"lint:deadcode": "bash scripts/check-dead-code.sh && bun scripts/check-shared-production-exports.ts",
 		"lint:build-graph": "bun scripts/check-build-graph.ts",
 		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:filesize": "bash scripts/check-file-size.sh",
