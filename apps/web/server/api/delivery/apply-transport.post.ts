@@ -34,6 +34,14 @@
  * disk, e.g. a dev checkout), the `.env` is still written and the response says
  * plainly that a restart is required — the caller hands off to the restart
  * affordance rather than failing silently.
+ *
+ * DISCONNECTING THE RELAY GOES THROUGH HERE TOO, and it is the one transport
+ * change that can lose reputation: cells the ramp has not graduated are still
+ * sending part of their mail through the relay, and repointing at the built-in
+ * MTA moves all of that traffic at once — the exact failure the ramp exists to
+ * avoid. So the typed phrase is re-checked HERE, on the server, exactly as
+ * `forceAdvanceCellShare` re-checks its own: a client that skipped the
+ * consequence dialog, a replayed request and a script all meet the same rule.
  */
 
 import { resolve } from 'node:path';
@@ -46,11 +54,21 @@ import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
+import {
+	isConfirmationPhraseMatch,
+	RELAY_REMOVAL_CONFIRMATION,
+} from '@owlat/shared/deliverabilityIndependence';
+import { api } from '@owlat/api';
+import type { FunctionReturnType } from 'convex/server';
+import type { ConvexHttpClient } from 'convex/browser';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
+import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 
 interface ApplyBody {
 	/** The provider-key patch from the wizard's `buildProviderEnv` — SET keys only. */
 	providerEnv: Record<string, string>;
+	/** The phrase an operator typed to confirm losing the relay, when they did. */
+	relayRemovalConfirmation?: string;
 }
 
 interface ApplyResult {
@@ -59,12 +77,123 @@ interface ApplyResult {
 	/** True when the change took effect live; false ⇒ a restart is required. */
 	applied: boolean;
 	requiresRestart: boolean;
+	/**
+	 * Set on the ONE refusal the typed phrase clears. A client cannot read that
+	 * out of the message, and it needs to: the browser's own removal read may be
+	 * unresolved or faulted when Apply is pressed, so the refusal is routinely the
+	 * FIRST thing that knows a confirmation is wanted — and a caller that renders
+	 * it as an error string leaves the operator holding a rule with nowhere to
+	 * meet it.
+	 */
+	needsRelayRemovalConfirmation?: true;
+	/**
+	 * THE CONSEQUENCE WITHOUT THE INSTRUCTION, for the caller that renders it in a
+	 * dialog: that dialog already carries "Type REMOVE THE RELAY to confirm" as
+	 * the label of the input directly below this text, so the combined message
+	 * stated the same instruction twice on the one path where an operator is
+	 * reading carefully. `message` keeps both sentences, because a caller reading
+	 * the HTTP response on its own — a script, a log line, curl — has no such
+	 * label and would otherwise be told a rule with no way to meet it.
+	 */
+	relayRemovalConsequence?: string;
 }
 
 const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
 
+function refuse(message: string): ApplyResult {
+	return { ok: false, applied: false, requiresRestart: false, message };
+}
+
+/** A refusal the phrase clears — flagged, so the caller can ASK for it. */
+function askForRelayRemovalPhrase(consequence: string): ApplyResult {
+	return {
+		...refuse(`${consequence} Type “${RELAY_REMOVAL_CONFIRMATION}” to disconnect it anyway.`),
+		needsRelayRemovalConfirmation: true,
+		relayRemovalConsequence: consequence,
+	};
+}
+
+type IndependenceSummary = FunctionReturnType<
+	typeof api.delivery.rampIndependence.getIndependenceSummary
+>;
+
+/** The removal-safety read, or `null` when it could not be made. */
+async function readIndependenceSummary(
+	client: ConvexHttpClient
+): Promise<IndependenceSummary | null> {
+	try {
+		return await client.query(api.delivery.rampIndependence.getIndependenceSummary, {});
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Does this change PULL THE RELAY, and if so has its consequence been confirmed?
+ * Returns the refusal to send back, or `null` to let the change through.
+ *
+ * "Removes the reference arm" is read off the RESULTING env rather than off the
+ * patch: an operator switching one relay for another keeps a second arm and is
+ * not disconnecting anything, and only a result of `mta` (or of nothing at all)
+ * leaves the deployment sending on its own.
+ *
+ * FAIL-CLOSED ON AN UNREADABLE SUMMARY. A read that did not answer knows nothing
+ * about which cells are still leaning on the relay, so it may not answer "safe"
+ * on the deployment's behalf; the operator can still proceed by typing the
+ * phrase, which is the same consequence confirmation they would have typed
+ * anyway. Both refusals carry `needsRelayRemovalConfirmation`, because a client
+ * whose own removal read faulted reaches this fail-closed branch on an ordinary
+ * apply and has to be able to ASK for the phrase rather than print the demand.
+ *
+ * The consequence itself is the SHARED sentence (`relayRemovalConsequenceCopy`),
+ * so the refusal and the dialog that collects the phrase cannot quote different
+ * stakes for one click.
+ */
+async function unconfirmedRelayRemoval(
+	client: ConvexHttpClient,
+	confirmation: unknown
+): Promise<ApplyResult | null> {
+	// Confirmed first, so a confirmed change never needs the backend to answer.
+	if (
+		typeof confirmation === 'string' &&
+		isConfirmationPhraseMatch(confirmation, RELAY_REMOVAL_CONFIRMATION)
+	) {
+		return null;
+	}
+	const summary = await readIndependenceSummary(client);
+	if (summary === null) {
+		// No cell list and no transport id — the copy says the situation could not
+		// be established rather than inventing a count of zero.
+		return askForRelayRemovalPhrase(
+			relayRemovalConsequenceCopy({
+				dependentCells: null,
+				referenceTransportId: null,
+				projectedSafeAt: null,
+			}).consequence
+		);
+	}
+	// `getIndependenceSummary` answers `{kind:'safe'}` for every deployment with NO
+	// RELAY AT ALL (`rampIndependence.ts`), so "is there a relay at all" is not a
+	// second question to ask here — asking it anyway would put a second definition
+	// of "no relay" one layer away from its home.
+	//
+	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON, and it was wrong until
+	// #513: the summary keyed on "exactly one relay kind", so a deployment with a
+	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` answered `safe`
+	// and this line waved through the removal of an arm cells were still leaning
+	// on. It now keys on `isRelayConfigured`, and the pin for that shape lives in
+	// `__tests__/apply-transport-relay-removal.test.ts`.
+	if (summary.relayRemoval.kind === 'safe') return null;
+	const { consequence, safeDate } = relayRemovalConsequenceCopy({
+		dependentCells: summary.relayRemoval.dependentCells,
+		referenceTransportId: summary.referenceTransportId,
+		projectedSafeAt: summary.relayRemoval.projectedSafeAt,
+	});
+	return askForRelayRemovalPhrase(safeDate === null ? consequence : `${consequence} ${safeDate}`);
+}
+
 export default defineEventHandler(async (event): Promise<ApplyResult> => {
-	await requireOrgAdmin(event);
+	const client = await requireOrgAdmin(event);
 
 	const body = await readBody<ApplyBody>(event);
 	const patch = body?.providerEnv;
@@ -84,12 +213,9 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	// omits EMAIL_PROVIDER (the send path fails-closed), which is allowed.
 	const chosen = patch['EMAIL_PROVIDER'];
 	if (chosen !== undefined && !isDeliveryProviderKind(chosen)) {
-		return {
-			ok: false,
-			applied: false,
-			requiresRestart: false,
-			message: `"${chosen}" is not a delivery provider. Choose your own MTA, Resend, Amazon SES, or an SMTP relay.`,
-		};
+		return refuse(
+			`"${chosen}" is not a delivery provider. Choose your own MTA, Resend, Amazon SES, or an SMTP relay.`
+		);
 	}
 
 	const envPath = resolve(OWLAT_DIR, '.env');
@@ -116,6 +242,15 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	}
 	const { merged, changes } = plan;
 
+	// THE CONSEQUENCE GATE, before anything is pushed or written. A resulting
+	// provider of `mta` — or of nothing at all — is a deployment sending on its
+	// own from the moment this returns.
+	const resultingProvider = (merged['EMAIL_PROVIDER'] ?? '').trim();
+	if (resultingProvider === '' || resultingProvider === 'mta') {
+		const refusal = await unconfirmedRelayRemoval(client, body?.relayRemovalConfirmation);
+		if (refusal !== null) return refusal;
+	}
+
 	// The on-disk backup gets the SEALED relay password; `changes` (the live
 	// push below) keeps the working plaintext.
 	const envBackup = sealRelayPasswordForBackup(merged);
@@ -127,12 +262,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 		try {
 			await writeEnvFile(envPath, envBackup);
 		} catch (e) {
-			return {
-				ok: false,
-				applied: false,
-				requiresRestart: false,
-				message: `Saved nothing: could not write ${envPath} (${(e as Error).message}).`,
-			};
+			return refuse(`Saved nothing: could not write ${envPath} (${(e as Error).message}).`);
 		}
 		return {
 			ok: true,
@@ -156,12 +286,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	try {
 		await pushConvexRuntimeEnv(convexAdminUrl, adminKey, changes);
 	} catch (e) {
-		return {
-			ok: false,
-			applied: false,
-			requiresRestart: false,
-			message: `Could not update the delivery provider on the backend: ${(e as Error).message}`,
-		};
+		return refuse(`Could not update the delivery provider on the backend: ${(e as Error).message}`);
 	}
 
 	try {

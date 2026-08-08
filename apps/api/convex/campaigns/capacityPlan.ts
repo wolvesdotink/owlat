@@ -1,0 +1,299 @@
+/**
+ * Campaign capacity planner — the PURE decision function behind the binding
+ * pre-flight capacity check (deliverability plan rev 3, P0-5).
+ *
+ * A warming deployment with no relay to overflow to can start a campaign it
+ * provably cannot finish: the MTA hits the warming cap, defers the tail, and
+ * the tail silently expires at `maxMessageAgeMs`. Rather than let that happen,
+ * pre-flight refuses the send and hands back a multi-day SCHEDULE — capacity is
+ * a schedule, not a failure (plan D2/D14 honesty rule).
+ *
+ * Purity is the point (D15): no `Date.now()`, no DB reads, no env reads. The
+ * clock and every input are parameters, so the predicate is exhaustively
+ * table-testable. The ctx-bound half (reading warming state, counting the
+ * audience) lives in `capacityPreflight.ts`.
+ *
+ * What `remainingCapacityByDay` IS (`delivery/warmingCapacity.ts` produces it,
+ * and documents the bound in full): the published base warming schedule walked
+ * at one schedule day per calendar day, summed over the active campaign IPs.
+ * It is NOT an upper bound in general — the shipped MTA evaluator can advance
+ * the schedule day faster than the calendar — so this planner claims only what
+ * is true: the projection is optimistic in assuming the whole cap is available
+ * to this campaign (which is what keeps a REFUSAL conservative) and pessimistic
+ * under adaptive acceleration (which can over-schedule a campaign that would
+ * have fit). Both errors are named there; neither lets the gate approve a send
+ * whose tail will expire.
+ */
+
+import { MS_PER_DAY } from '../lib/constants';
+import { utcDayStart } from '../lib/utcDay';
+
+/**
+ * Hard bound on how many days a returned plan may span. A plan longer than
+ * this is not a schedule anyone would accept; the slices are truncated and the
+ * caller renders "N+ days".
+ */
+export const MAX_PLAN_DAYS = 60;
+
+/**
+ * Hard bound on how many days the RETENTION HORIZON walk may span — a different
+ * quantity from `MAX_PLAN_DAYS` ("how long a plan may be"). It exists only to
+ * keep `usableDayCount` finite against a hostile `maxMessageAgeMs`; sharing
+ * `MAX_PLAN_DAYS` for it would silently truncate the horizon — and start
+ * allowing sends whose tail expires — the day `maxMessageAgeMs` is raised past
+ * that bound.
+ *
+ * INVARIANT: this must stay comfortably above the largest `maxMessageAgeMs` the
+ * MTA can be configured with (`GOVERNED_MTA_MAX_MESSAGE_AGE_MS` is 4 days).
+ */
+export const MAX_HORIZON_DAYS = 400;
+
+/** Inputs to the schedule builder — the planner minus the retention horizon. */
+export interface CapacityScheduleInput {
+	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
+	audienceSize: number;
+	/**
+	 * Projected sendable volume per day, index 0 = the REMAINDER of today,
+	 * index k = the whole of the k-th day after today (UTC day boundaries).
+	 */
+	remainingCapacityByDay: readonly number[];
+	/** Current wall-clock time (ms since epoch). */
+	now: number;
+}
+
+/**
+ * The schedule builder's inputs plus the retention horizon. Declared as an
+ * EXTENSION rather than a second copy of the clump so each field's meaning is
+ * stated exactly once.
+ */
+export interface CampaignCapacityPlanInput extends CapacityScheduleInput {
+	/** How long a queued message survives before the MTA expires it. */
+	maxMessageAgeMs: number;
+}
+
+/**
+ * The multi-day schedule handed back instead of an error when the audience
+ * provably cannot be delivered inside the message-retention horizon. Capacity
+ * is a SCHEDULE, not a failure — the UI renders "Sending over N days".
+ */
+export interface CampaignCapacitySchedule {
+	fits: false;
+	/**
+	 * Days the send needs. `0` is the "cannot be planned" sentinel — no usable
+	 * capacity was projected at all, or the projection plateaus at zero before
+	 * the audience is covered. Callers MUST treat `days === 0` as unknown
+	 * capacity and ALLOW the send (never refuse on missing data).
+	 */
+	days: number;
+	/** Per-day recipient slice sizes, `slices.length === days`. */
+	slices: number[];
+	/**
+	 * End of the last sliced day. This is the projected completion instant
+	 * unless `truncated` is set, in which case it is only the end of the last
+	 * ENUMERATED day and the real finish is later.
+	 */
+	finishesAt: number;
+	/**
+	 * Recipients the returned slices actually cover. Equals the audience size
+	 * unless `truncated` is set, so a caller can never mistake a partial
+	 * schedule for a complete one (plan D14 — say the quiet part).
+	 */
+	covered: number;
+	/**
+	 * The plan hit `MAX_PLAN_DAYS` with recipients still unscheduled. The copy
+	 * must say "more than N days", never quote `days` as the finish date.
+	 */
+	truncated: boolean;
+	/**
+	 * The audience size the schedule was built from is itself a LOWER bound — the
+	 * count stopped at a ceiling or ran out of read budget. A DIFFERENT fact from
+	 * `truncated`: the enumeration finished, but of an audience that is at least
+	 * this big, so the copy says "at least N days" (plan D14 — say the quiet
+	 * part). The two can be true independently.
+	 */
+	audienceUnderCounted: boolean;
+}
+
+export type CampaignCapacityPlan = { fits: true } | CampaignCapacitySchedule;
+
+/** Non-negative finite integer, or 0 for anything hostile (NaN, -1, Infinity). */
+function sanitizeCount(value: number): number {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value);
+}
+
+/**
+ * How many projected days are usable before a message queued *now* expires.
+ * Day 0 (the remainder of today) is usable whenever the horizon is positive;
+ * day k is usable when it STARTS before the expiry instant.
+ */
+export function usableDayCount(now: number, maxMessageAgeMs: number): number {
+	if (!Number.isFinite(now) || !Number.isFinite(maxMessageAgeMs) || maxMessageAgeMs <= 0) return 0;
+	const expiresAt = now + maxMessageAgeMs;
+	const dayZeroStart = utcDayStart(now);
+	// Closed form for "how many day-starts at or before the expiry instant":
+	// day k is usable when `dayZeroStart + k * MS_PER_DAY < expiresAt`, so the
+	// count is `ceil((expiresAt - dayZeroStart) / MS_PER_DAY)`. Clamped below at
+	// 1 (the remainder of today is always usable for a positive horizon) and
+	// above at MAX_HORIZON_DAYS.
+	const days = Math.ceil((expiresAt - dayZeroStart) / MS_PER_DAY);
+	return Math.min(MAX_HORIZON_DAYS, Math.max(1, days));
+}
+
+/**
+ * Total projected capacity inside the retention horizon — everything the
+ * deployment could send before a message queued at `now` expires.
+ *
+ * This is the threshold `planCampaignCapacity` compares the audience against —
+ * the whole content of "does this campaign fit" — and it is exported so that
+ * threshold is table-testable on its own. A caller holding only a LOWER BOUND on
+ * the audience asks it through the planner and reads the answer the same way: a
+ * floor the horizon cannot carry is a sound refusal (the real audience can only
+ * be larger), a floor it can carry decides nothing.
+ */
+export function capacityWithinHorizon(
+	input: Omit<CampaignCapacityPlanInput, 'audienceSize'>
+): number {
+	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
+	let total = 0;
+	for (let day = 0; day < horizonDays; day += 1) {
+		// Through `capacityForDay`, never by indexing: the schedule builder extends
+		// past the end of the projection at the trailing rate, and a horizon sum
+		// that treated past-the-end as zero could answer `fits: false` while
+		// handing back a schedule that finishes INSIDE the horizon.
+		total += capacityForDay(input.remainingCapacityByDay, day);
+	}
+	return total;
+}
+
+/**
+ * The projection's trailing rate — the last projected day, or 0 for an empty
+ * projection. The warming schedule plateaus, so extending at this rate neither
+ * invents growth nor pretends at zero.
+ */
+function trailingRate(capacities: readonly number[]): number {
+	return capacities.length > 0 ? sanitizeCount(capacities[capacities.length - 1] ?? 0) : 0;
+}
+
+/**
+ * Sanitized capacity on schedule day `day`, extending past the end of the
+ * projection at the trailing rate. THE single definition of "what can day `day`
+ * carry" — the schedule builder and `totalPlannableCapacity` both go through it
+ * so the enumerated slices and the summed total can never disagree about a day.
+ */
+function capacityForDay(remainingCapacityByDay: readonly number[], day: number): number {
+	if (day < remainingCapacityByDay.length) {
+		return sanitizeCount(remainingCapacityByDay[day] ?? 0);
+	}
+	return trailingRate(remainingCapacityByDay);
+}
+
+/**
+ * Everything a plan could ever carry: the projected days plus the trailing-rate
+ * extension out to `MAX_PLAN_DAYS`. Callers bound work by capacity rather than
+ * by audience size — once a count exceeds this, the verdict is already decided
+ * and there is no reason to keep streaming audience documents.
+ *
+ * Shares `capacityForDay` with `buildCapacitySchedule`, so "how far past the
+ * projection do we extend, and at what rate" is stated exactly once.
+ */
+export function totalPlannableCapacity(remainingCapacityByDay: readonly number[]): number {
+	let total = 0;
+	for (let day = 0; day < MAX_PLAN_DAYS; day += 1) {
+		total += capacityForDay(remainingCapacityByDay, day);
+	}
+	return total;
+}
+
+/**
+ * Enumerate the day-by-day schedule that delivers `audienceSize` against the
+ * projected capacity — with NO retention-horizon short-circuit. Callers that
+ * only want the advisory day count (the campaign wizard's send estimate) call
+ * this directly; `planCampaignCapacity` calls it once it has established the
+ * campaign cannot finish inside the horizon.
+ *
+ * The schedule extends past the projected window at the last projected day's
+ * rate (the warming schedule plateaus, so this neither invents growth nor
+ * pretends at zero). A day with no capacity is still a real day of the
+ * schedule, so slices are indexed by calendar day from `now` (a leading 0
+ * means "nothing goes out today"). The plan is truncated at `MAX_PLAN_DAYS`.
+ *
+ * Returns the `days: 0` sentinel when no schedule can reach everyone — see
+ * `CampaignCapacitySchedule.days`.
+ */
+export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCapacitySchedule {
+	const audienceSize = sanitizeCount(input.audienceSize);
+	const capacities = input.remainingCapacityByDay;
+	const now = Number.isFinite(input.now) ? input.now : 0;
+	const plateauRate = trailingRate(capacities);
+	const slices: number[] = [];
+	let remaining = audienceSize;
+	for (let day = 0; day < MAX_PLAN_DAYS && remaining > 0; day += 1) {
+		const capacity = capacityForDay(capacities, day);
+		const slice = Math.min(capacity, remaining);
+		slices.push(slice);
+		remaining -= slice;
+	}
+
+	// Trim trailing zero days so `days` is the day the last recipient goes out.
+	while (slices.length > 0 && slices[slices.length - 1] === 0) slices.pop();
+
+	const covered = audienceSize - remaining;
+
+	// Nothing could be scheduled at all, OR the projection plateaus at zero
+	// before the audience is covered: there is no schedule that reaches everyone
+	// and none can be invented. Rather than hand back slices that silently drop
+	// the tail, collapse to the "cannot be planned" sentinel — callers hold and
+	// allow, exactly as they do for unknown capacity.
+	if (slices.length === 0 || (remaining > 0 && plateauRate <= 0)) {
+		return {
+			fits: false,
+			days: 0,
+			slices: [],
+			finishesAt: now,
+			covered: 0,
+			truncated: false,
+			audienceUnderCounted: false,
+		};
+	}
+
+	// Reaching MAX_PLAN_DAYS with recipients left is a real, coverable schedule
+	// that is simply longer than we are willing to enumerate. Say so.
+	const truncated = remaining > 0;
+
+	const days = slices.length;
+	const finishesAt = utcDayStart(now) + days * MS_PER_DAY;
+	return { fits: false, days, slices, finishesAt, covered, truncated, audienceUnderCounted: false };
+}
+
+/**
+ * Decide whether a campaign can finish inside the message-retention horizon,
+ * and if not, what the multi-day schedule looks like.
+ *
+ * Degenerate inputs deliberately answer `{ fits: true }` — an empty audience,
+ * a hostile audience size, or a non-sensical retention horizon are never
+ * grounds to block a send (D2: absence of measurement never blocks).
+ */
+export function planCampaignCapacity(input: CampaignCapacityPlanInput): CampaignCapacityPlan {
+	const audienceSize = sanitizeCount(input.audienceSize);
+	if (audienceSize === 0) return { fits: true };
+
+	if (usableDayCount(input.now, input.maxMessageAgeMs) === 0) return { fits: true };
+
+	// Does it finish inside the horizon? Only the days the message survives count.
+	// ONE definition of that sum (`capacityWithinHorizon`), so the threshold this
+	// verdict turns on and the threshold the gate's lower-bound reasoning is stated
+	// against can never drift apart (campaigns/capacityPreflight.ts).
+	const withinHorizon = capacityWithinHorizon({
+		remainingCapacityByDay: input.remainingCapacityByDay,
+		maxMessageAgeMs: input.maxMessageAgeMs,
+		now: input.now,
+	});
+	if (withinHorizon >= audienceSize) return { fits: true };
+
+	return buildCapacitySchedule({
+		audienceSize,
+		remainingCapacityByDay: input.remainingCapacityByDay,
+		now: input.now,
+	});
+}

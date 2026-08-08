@@ -69,6 +69,23 @@ export const instanceTables = {
 		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
 		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
 		trustedArcForwarders: v.optional(v.array(v.string())),
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2's named mitigation for
+		// controller complexity). When true, every ramp cell is PINNED at its
+		// current share: the hourly controller still evaluates and still audits, so
+		// an operator can watch what it WOULD have done, but it writes no share.
+		// Honoured before every other rule, including the hard stops — a paused
+		// controller changes nothing in either direction. Unset ⇒ running.
+		isRampControllerPaused: v.optional(v.boolean()),
+		// WHAT THE RELAY CHARGES, so the Independence screen can show the spend it
+		// has replaced this month. THE PRICE IS THE OPERATOR'S, NEVER OURS: unset is
+		// the ordinary state and the screen simply says what it would take to show
+		// the figure — a rate the product invented would be quoted back at us as
+		// fact. Minor units (cents, pence, yen) per THOUSAND messages, paired with
+		// an ISO-4217 code so the number is formatted with its own currency's
+		// exponent rather than a hardcoded 100. Admin-gated write via
+		// `settings.update`; read by `delivery/rampIndependence`.
+		relayMinorUnitsPerThousand: v.optional(v.number()),
+		relayCurrency: v.optional(v.string()),
 		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
 		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
 		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.

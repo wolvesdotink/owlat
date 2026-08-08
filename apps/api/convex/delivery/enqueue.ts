@@ -1,9 +1,13 @@
-import { v } from 'convex/values';
+import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
-import { isSuppressed } from '../lib/suppression';
+import { isSuppressed, type SuppressionScope } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
+import { recordSendAssignments } from './sendAssignments';
+import { normalizeEngagementScore } from './workerEnvelope';
+import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
+import { logError } from '../lib/runtimeLog';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -25,9 +29,6 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
  */
 export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 
-/** Test-preview Sends outlive the MTA's four-day queue ceiling, then self-delete. */
-export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
 // Per ADR-0006, the workpool `onComplete` callback is owned by the Send
 // completion (module) at `delivery/sendCompletion.ts` — each enqueue below
 // wires it directly via `internal.delivery.sendCompletion.completeSend`. The
@@ -36,84 +37,32 @@ export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 // contact-activity insert, attachment-cleanup loop, provider health tracking)
 // is gone; every concern moved to the lifecycle effect list or to the Send
 // completion module.
+//
+// The member-only TEST PREVIEW producer and its retention callback live in the
+// sibling `delivery/enqueueTestSend.ts` — a preview has no contact, so it has
+// none of this module's contact-shaped concerns (suppression, engagement score,
+// experiment assignment, seed probe) and carries a retention concern of its own.
 
 /**
- * Queue a member-only test preview through the same durable governed path as
- * every other Send. The caller owns recipient/sender authorization; this
- * mutation owns the durable SendRef, workpool completion, and bounded cleanup.
+ * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
+ * campaign enqueue. THE VALIDATOR IS THE SINGLE DEFINITION: producers
+ * (`campaigns/send.ts`) build their batches against `CampaignEnqueueEmail`
+ * rather than hand-duplicating the shape, so adding a field here is one edit
+ * and a drift is a type error rather than a silently dropped value.
  */
-export const enqueueTestSend = internalMutation({
-	args: {
-		email: v.string(),
-		organizationId: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		html: v.string(),
-	},
-	handler: async (ctx, args) => {
-		if (!(await selectedSendProviderReady(ctx, undefined))) {
-			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
-		}
-		const queuedAt = Date.now();
-		const sendId = await ctx.db.insert('transactionalSends', {
-			kind: 'test' as const,
-			email: args.email,
-			subject: args.subject,
-			status: 'queued',
-			queuedAt,
-		});
-
-		await transactionalEmailPool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{
-				envelopeInput: {
-					kind: 'transactional' as const,
-					deliveryDomain: 'member_test' as const,
-					messageType: 'transactional' as const,
-					emailPurpose: 'transactional' as const,
-					to: args.email,
-					from: args.from,
-					replyTo: args.replyTo,
-					organizationId: args.organizationId,
-					sendId,
-					template: { subject: args.subject, htmlContent: args.html },
-				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: { kind: 'transactional' as const, id: sendId } },
-			}
-		);
-		await ctx.scheduler.runAfter(
-			TEST_SEND_RETENTION_MS,
-			internal.delivery.enqueue.deleteExpiredTestSend,
-			{ sendId, queuedAt }
-		);
-		return { sendId };
-	},
+export const campaignEnqueueEmailValidator = v.object({
+	emailSendId: v.id('emailSends'),
+	contactId: v.id('contacts'),
+	email: v.string(),
+	firstName: v.optional(v.string()),
+	lastName: v.optional(v.string()),
+	// `contacts.engagementScore` (0-100) as projected by audience
+	// resolution. Absent for an unscored contact; carried on the
+	// envelope so dispatch never re-reads the contact row.
+	engagementScore: v.optional(v.number()),
 });
 
-/** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
-export const deleteExpiredTestSend = internalMutation({
-	args: { sendId: v.id('transactionalSends'), queuedAt: v.number() },
-	handler: async (ctx, args) => {
-		const send = await ctx.db.get(args.sendId);
-		if (!send || send.kind !== 'test' || send.queuedAt !== args.queuedAt) return false;
-		const remainingMs = args.queuedAt + TEST_SEND_RETENTION_MS - Date.now();
-		if (remainingMs > 0) {
-			await ctx.scheduler.runAfter(
-				remainingMs,
-				internal.delivery.enqueue.deleteExpiredTestSend,
-				args
-			);
-			return false;
-		}
-		await ctx.db.delete(args.sendId);
-		return true;
-	},
-});
+export type CampaignEnqueueEmail = Infer<typeof campaignEnqueueEmailValidator>;
 
 /**
  * Internal mutation to enqueue campaign emails to workpool (used for
@@ -127,15 +76,7 @@ export const deleteExpiredTestSend = internalMutation({
 export const enqueueCampaignEmails = internalMutation({
 	args: {
 		campaignId: v.id('campaigns'),
-		emails: v.array(
-			v.object({
-				emailSendId: v.id('emailSends'),
-				contactId: v.id('contacts'),
-				email: v.string(),
-				firstName: v.optional(v.string()),
-				lastName: v.optional(v.string()),
-			})
-		),
+		emails: v.array(campaignEnqueueEmailValidator),
 		from: v.string(),
 		replyTo: v.optional(v.string()),
 		subject: v.string(),
@@ -152,42 +93,95 @@ export const enqueueCampaignEmails = internalMutation({
 		// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
 		// orchestrator via `getListIdHeader`. Absent for segment campaigns.
 		listId: v.optional(v.string()),
+		// A/B arm this page belongs to. Only used to key the seed-probe set: the
+		// two arms are different messages and each deserves its own reading.
+		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
 	},
 	handler: async (ctx, args) => {
+		// The experiment record (plan D7): one assignment row per recipient,
+		// written BEFORE any dispatch and inside THIS transaction, so the record
+		// and the sends commit or roll back together. Never throws: an
+		// unresolvable org or route degrades to no row, never a failed send.
+		//
+		// `args.providerType` is deliberately NOT used as the recorded
+		// transport: the orchestrator resolves it once per page from the first
+		// recipient and labels it an advisory snapshot, while the deliverability
+		// fallback is keyed per destination provider. The writer re-resolves
+		// in-transaction, memoized per destination provider.
+		await recordSendAssignments(ctx, {
+			organizationId: args.organizationId,
+			stream: 'campaign',
+			sendKind: 'campaign',
+			// THE anti-cohort salt (plan D7): without it a contact would sit in
+			// the same arm for every campaign forever and the two arms would be
+			// two fixed cohorts, so every ratio the ramp controller reads would
+			// compare cohort quality rather than transport quality.
+			campaignId: args.campaignId,
+			routing: { messageType: 'campaign', from: args.from },
+			recipients: args.emails.map((recipient) => ({
+				sendId: recipient.emailSendId,
+				email: recipient.email,
+				contactId: recipient.contactId,
+				// Already projected onto the envelope by audience resolution, so
+				// stratified assignment costs no additional read. Handed over RAW:
+				// every reader applies `normalizeEngagementScore` itself — the ranker
+				// here, the envelope below, the walker's day-slice ordering — so one
+				// number cannot be a top-of-cell engagement signal here and an
+				// upstream defect three lines later.
+				...(recipient.engagementScore !== undefined
+					? { engagementScore: recipient.engagementScore }
+					: {}),
+			})),
+		});
+
+		// The envelope the seed shadow copies are CLONED from. Every recipient on
+		// this page produces a byte-identical envelope apart from the per-contact
+		// fields the clone strips anyway, so any one of them is a faithful base —
+		// but it is pinned to the FIRST recipient so the probe's base cannot
+		// silently depend on iteration order.
+		let probeBaseEnvelope: CampaignEnvelopeInput | undefined;
 		for (const recipient of args.emails) {
+			// Narrow at the WRITE boundary, not only where dispatch reads it: a
+			// degenerate stored score (NaN / out-of-range, i.e. an upstream
+			// scorer defect) must never reach the DURABLE envelope. It would be
+			// persisted into `routingReentry.envelopeInput`, round-trip through
+			// the MTA's JSON (NaN → null), and be rejected by
+			// `envelopeInputValidator` on re-entry — dropping the deferred send.
+			const engagementScore = normalizeEngagementScore(recipient.engagementScore);
+			const envelopeInput: CampaignEnvelopeInput = {
+				kind: 'campaign' as const,
+				deliveryDomain: 'production' as const,
+				to: recipient.email,
+				from: args.from,
+				replyTo: args.replyTo,
+				providerType: args.providerType,
+				ipPool: args.ipPool,
+				template: {
+					subject: args.subject,
+					htmlContent: args.htmlContent,
+				},
+				contactInfo: {
+					contactId: recipient.contactId,
+					email: recipient.email,
+					firstName: recipient.firstName,
+					lastName: recipient.lastName,
+				},
+				audienceType: args.audienceType,
+				emailSendId: recipient.emailSendId,
+				campaignId: args.campaignId,
+				organizationId: args.organizationId,
+				siteUrl: args.siteUrl,
+				convexSiteUrl: args.convexSiteUrl,
+				trackingBaseUrl: args.trackingBaseUrl,
+				viewInBrowserUrl: args.viewInBrowserUrl,
+				listId: args.listId,
+				...(engagementScore !== undefined ? { engagementScore } : {}),
+			};
+			probeBaseEnvelope ??= envelopeInput;
 			await campaignEmailPool.enqueueAction(
 				ctx,
 				internal.delivery.worker.sendSingleEmail,
-				{
-					envelopeInput: {
-						kind: 'campaign' as const,
-						deliveryDomain: 'production' as const,
-						to: recipient.email,
-						from: args.from,
-						replyTo: args.replyTo,
-						providerType: args.providerType,
-						ipPool: args.ipPool,
-						template: {
-							subject: args.subject,
-							htmlContent: args.htmlContent,
-						},
-						contactInfo: {
-							contactId: recipient.contactId,
-							email: recipient.email,
-							firstName: recipient.firstName,
-							lastName: recipient.lastName,
-						},
-						audienceType: args.audienceType,
-						emailSendId: recipient.emailSendId,
-						campaignId: args.campaignId,
-						organizationId: args.organizationId,
-						siteUrl: args.siteUrl,
-						convexSiteUrl: args.convexSiteUrl,
-						trackingBaseUrl: args.trackingBaseUrl,
-						viewInBrowserUrl: args.viewInBrowserUrl,
-						listId: args.listId,
-					},
-				},
+				{ envelopeInput },
 				{
 					onComplete: internal.delivery.sendCompletion.completeSend,
 					context: {
@@ -200,9 +194,64 @@ export const enqueueCampaignEmails = internalMutation({
 			);
 		}
 
+		// Deliverability seed probe (gate 5): CLONE the real envelope this page
+		// just enqueued into every operator-owned seed mailbox, in this same
+		// transaction — the probe has to be written where the send is decided, not
+		// from a scheduled call that could observe a different world. Idempotent
+		// per (org, campaign, variant), so the walker's page fan-out produces
+		// exactly one probe set per arm. With no seed mailboxes connected — the
+		// default — it is a no-op (D2).
+		//
+		// The measurement may never take the send down with it. Running inline is
+		// the right shape, but it puts up to one workpool enqueue per seed into
+		// this page's transaction, and a throw from any of them (workpool
+		// capacity, an OCC conflict on the pool component) would otherwise roll
+		// back every recipient on the page. A probe-side failure degrades the
+		// measurement — this page simply goes unprobed, and the next campaign
+		// probes again — and nothing else.
+		if (probeBaseEnvelope && args.organizationId) {
+			try {
+				await enqueueSeedShadowCopies(ctx, {
+					organizationId: args.organizationId,
+					campaignId: args.campaignId,
+					...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+					base: probeBaseEnvelope,
+					now: Date.now(),
+				});
+			} catch (error) {
+				logError('seed shadow copy enqueue failed', error, {
+					campaignId: args.campaignId,
+					organizationId: args.organizationId,
+				});
+			}
+		}
+
 		return { enqueued: args.emails.length };
 	},
 });
+
+/** The kinds of mail `enqueueNonCampaignSend` writes. */
+const nonCampaignSendKindValidator = v.union(v.literal('automation'), v.literal('agent_reply'));
+
+/** @see nonCampaignSendKindValidator */
+export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
+
+/**
+ * Which {@link SuppressionScope} each non-campaign kind is gated at.
+ *
+ * TOTAL BY CONSTRUCTION, and deliberately so. The `satisfies
+ * Record<NonCampaignSendKind, SuppressionScope>` makes adding a third literal
+ * to {@link nonCampaignSendKindValidator} a COMPILE ERROR until the new kind
+ * names its scope — where a ternary with a permissive else-branch would have
+ * silently handed it the transactional reading and stopped marketing-hygiene
+ * rows blocking it. `lib/suppression.ts` states the same invariant for the
+ * default: forgetting to think about scope must yield the blocking behaviour,
+ * never the permissive one.
+ */
+const SUPPRESSION_SCOPE_BY_KIND = {
+	automation: 'marketing',
+	agent_reply: 'transactional',
+} as const satisfies Record<NonCampaignSendKind, SuppressionScope>;
 
 /**
  * Shared writer for the three NON-campaign, non-template-API Send sources:
@@ -230,7 +279,7 @@ export const enqueueCampaignEmails = internalMutation({
  */
 export const enqueueNonCampaignSend = internalMutation({
 	args: {
-		kind: v.union(v.literal('automation'), v.literal('agent_reply')),
+		kind: nonCampaignSendKindValidator,
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
 		automationId: v.optional(v.id('automations')),
@@ -267,7 +316,22 @@ export const enqueueNonCampaignSend = internalMutation({
 		// The shared `isSuppressed` owns the normalization + `by_email` point
 		// read; this path's POLICY is to THROW before the row insert, so no
 		// `transactionalSends` row is produced for a suppressed address.
-		if (await isSuppressed(ctx, args.email)) {
+		//
+		// THE SCOPE IS PER-KIND, because this producer writes two very different
+		// kinds of mail. An `automation` step is marketing — it takes the strict
+		// scope, so a marketing-hygiene row (`unengaged`) blocks it like every
+		// other reason. An `agent_reply` is a 1:1 answer to a human who wrote in;
+		// it carries no List-Unsubscribe, is classified as the `transactional`
+		// stream for routing a few lines below, and must not be thrown away
+		// because the same person stopped opening campaigns — that inbound is the
+		// clearest possible evidence they are still there. Bounce, complaint and
+		// manual rows still block it: `isMarketingOnlyBlockReason` is false for
+		// those, so the transactional scope keeps blocking on mailbox evidence.
+		//
+		// The mapping is the TOTAL table above, not a ternary: a future kind has
+		// to name its scope to compile.
+		const suppressionScope = SUPPRESSION_SCOPE_BY_KIND[args.kind];
+		if (await isSuppressed(ctx, args.email, { scope: suppressionScope })) {
 			throw new Error(RECIPIENT_BLOCKED_ERROR);
 		}
 
@@ -284,12 +348,52 @@ export const enqueueNonCampaignSend = internalMutation({
 			...(args.providerType ? { providerType: args.providerType } : {}),
 		});
 
+		// Recipient engagement score for the MTA's enqueue-time priority bands.
+		// A single indexed point read HERE, in the enqueue transaction, is the
+		// cheap place to pay for it — the dispatch action must never read a
+		// contact per send. A send with no contact record (test previews, agent
+		// replies to an unknown address) does no read at all and carries no
+		// score, which the MTA reads as "unknown" rather than "cold".
+		//
+		// Normalised HERE, at the DB read, so a degenerate stored score never
+		// enters the durable envelope (see the campaign producer above).
+		const engagementScore = args.contactId
+			? normalizeEngagementScore((await ctx.db.get(args.contactId))?.engagementScore)
+			: undefined;
+
 		// Gmail FBL — singleton org id anchors the stable `txn`-stream
 		// Feedback-ID SenderId for automation + agent-reply sends.
 		const organizationId = await ctx.runQuery(
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
 			{}
 		);
+
+		// Experiment record (plan D7), same transaction, before dispatch. An
+		// automation step is the `automation` stream; an agent 1:1 reply is
+		// `transactional`. Both are `transactionalSends` rows, and the stream
+		// is derived ONCE so the new cell axis and the envelope's shipped
+		// `messageType` below cannot drift apart.
+		const stream =
+			args.kind === 'automation' ? ('automation' as const) : ('transactional' as const);
+		await recordSendAssignments(ctx, {
+			organizationId,
+			stream,
+			sendKind: 'transactional',
+			routing: { messageType: stream, from: args.from },
+			// No campaign salt: an automation step or a 1:1 reply is its own
+			// single-recipient experiment. The split then salts with the SEND id
+			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
+			// re-drawn on every message instead of being pinned for the life of
+			// the mix version — the fixed-cohort bias D7 exists to prevent, and
+			// `automation` is a first-class high-volume stream, not an edge.
+			recipients: [
+				{
+					sendId,
+					email: args.email,
+					...(args.contactId !== undefined ? { contactId: args.contactId } : {}),
+				},
+			],
+		});
 
 		await transactionalEmailPool.enqueueAction(
 			ctx,
@@ -298,8 +402,7 @@ export const enqueueNonCampaignSend = internalMutation({
 				envelopeInput: {
 					kind: 'transactional' as const,
 					deliveryDomain: 'production' as const,
-					messageType:
-						args.kind === 'automation' ? ('automation' as const) : ('transactional' as const),
+					messageType: stream,
 					emailPurpose:
 						args.kind === 'automation' ? ('marketing' as const) : ('transactional' as const),
 					to: args.email,
@@ -324,6 +427,7 @@ export const enqueueNonCampaignSend = internalMutation({
 					...(args.contactId ? { contactId: args.contactId } : {}),
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
+					...(engagementScore !== undefined ? { engagementScore } : {}),
 				},
 			},
 			{

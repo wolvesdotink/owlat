@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { sesSendProvider, _resetSesClientCacheForTests } from '../index';
+import { resolveSendTransport } from '../../transports';
+
+const SES_TRANSPORT = resolveSendTransport('ses');
 
 // Capture the raw bytes handed to SES so we can decode the MIME message and
 // assert that no attacker-influenced value smuggled an extra header line.
@@ -63,7 +66,7 @@ describe('SES raw-MIME header injection', () => {
 	});
 
 	it('strips CRLF-smuggled headers from attachment filename, reply-to, and custom headers', async () => {
-		const result = await sesSendProvider.sendEmail({
+		const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hello',
@@ -90,9 +93,7 @@ describe('SES raw-MIME header injection', () => {
 		expect(raw).not.toMatch(/^X-Injected:/im);
 
 		// The Content-Disposition filename param must not contain a raw CR/LF.
-		const dispositionLine = raw
-			.split(/\r\n/)
-			.find((line) => /^Content-Disposition:/i.test(line));
+		const dispositionLine = raw.split(/\r\n/).find((line) => /^Content-Disposition:/i.test(line));
 		expect(dispositionLine).toBeDefined();
 		expect(dispositionLine).not.toMatch(/[\r\n]/);
 
@@ -103,7 +104,7 @@ describe('SES raw-MIME header injection', () => {
 	});
 
 	it('preserves a benign attachment filename intact', async () => {
-		await sesSendProvider.sendEmail({
+		await sesSendProvider.sendEmail(SES_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hello',

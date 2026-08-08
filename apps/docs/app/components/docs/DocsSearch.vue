@@ -8,13 +8,13 @@
 			>
 				<!-- Backdrop -->
 				<div
-					class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+					class="absolute inset-0 bg-black/40 backdrop-blur-sm"
 					@click="emit('update:open', false)"
 				/>
 
 				<!-- Modal -->
 				<div
-					class="search-modal-inner relative w-full max-w-lg mx-4 bg-bg-elevated border border-border-default rounded-2xl shadow-lg overflow-hidden"
+					class="search-modal-inner relative w-full max-w-lg mx-4 bg-surface-3 border border-border-subtle rounded-2xl shadow-(--shadow-6) overflow-hidden"
 				>
 					<!-- Search input -->
 					<div class="flex items-center gap-3 px-4 h-14 border-b border-border-subtle">
@@ -42,7 +42,7 @@
 							@keydown.enter.prevent="selectCurrent"
 						/>
 						<kbd
-							class="hidden sm:inline-flex items-center h-5 px-1.5 rounded border border-border-default bg-bg-surface text-[11px] font-mono text-text-tertiary"
+							class="hidden sm:inline-flex items-center h-5 px-2 rounded-full border border-border-subtle bg-bg-soft text-2xs font-mono text-text-tertiary"
 						>
 							ESC
 						</kbd>
@@ -128,18 +128,18 @@
 						<div class="flex items-center gap-3">
 							<span class="flex items-center gap-1">
 								<kbd
-									class="inline-flex items-center justify-center w-4 h-4 rounded border border-border-default bg-bg-surface font-mono"
+									class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-border-subtle bg-bg-soft font-mono"
 									>&uarr;</kbd
 								>
 								<kbd
-									class="inline-flex items-center justify-center w-4 h-4 rounded border border-border-default bg-bg-surface font-mono"
+									class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-border-subtle bg-bg-soft font-mono"
 									>&darr;</kbd
 								>
 								Navigate
 							</span>
 							<span class="flex items-center gap-1">
 								<kbd
-									class="inline-flex items-center justify-center h-4 px-1 rounded border border-border-default bg-bg-surface font-mono"
+									class="inline-flex items-center justify-center h-4 px-1.5 rounded-full border border-border-subtle bg-bg-soft font-mono"
 									>&crarr;</kbd
 								>
 								Select

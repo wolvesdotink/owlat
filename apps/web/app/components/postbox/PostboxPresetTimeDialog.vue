@@ -78,7 +78,7 @@ function pickCustom() {
 							{{ preset.label }}
 							<span
 								v-if="preset.suggested"
-								class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-primary"
+								class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
 							>Suggested</span>
 						</span>
 						<span class="text-text-tertiary">{{ preset.sub }}</span>

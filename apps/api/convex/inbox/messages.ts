@@ -208,7 +208,11 @@ export const receiveMessage = internalMutation({
 		// (`received → archived`, reason `sender_blocked`) and skip the entire AI
 		// classify/route pipeline. This mirrors the store-but-skip shape of the
 		// auto-responder and rate-cap branches below.
-		if (await isSuppressed(ctx, senderEmail)) {
+		// SCOPE `'transactional'`: this gate is about a sender we hard-blocked, not
+		// about bulk-mail hygiene. A contact who stopped opening campaigns and then
+		// writes to us is engaging — auto-archiving that reply unread would hide
+		// the clearest possible evidence that they are still there.
+		if (await isSuppressed(ctx, senderEmail, { scope: 'transactional' })) {
 			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 				inboundMessageId,
 				input: {

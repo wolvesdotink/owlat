@@ -4,8 +4,14 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, type ActionCtx } from './_generated/server';
 import { getOptional } from './lib/env';
-import { EmailErrorCode, isSendProviderKind, type SendProviderKind } from './lib/sendProviders';
+import {
+	EmailErrorCode,
+	isSendProviderKind,
+	type MtaExtras,
+	type SendProviderKind,
+} from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
+import { defaultSendTransportId } from './lib/sendProviders/transports';
 import {
 	systemMailRetryDisposition,
 	type SystemMailAttemptOutcome,
@@ -109,7 +115,7 @@ export async function attemptSystemEmail(
 			// previous dedicated client byte-for-byte.
 			const dispatched = await sendProviderDispatch(
 				ctx,
-				'mta',
+				defaultSendTransportId('mta'),
 				{
 					to: args.to,
 					from: args.from,
@@ -122,7 +128,7 @@ export async function attemptSystemEmail(
 					organizationId: 'system',
 					intakePath: 'system',
 					...(args.idempotencyKey ? { messageId: args.idempotencyKey } : {}),
-				}
+				} satisfies MtaExtras
 			);
 			if (!dispatched.result.success) {
 				return failedAttempt(
@@ -146,7 +152,7 @@ export async function attemptSystemEmail(
 		// anti-loop header the MTA path stamps server-side.
 		const dispatched = await sendProviderDispatch(
 			ctx,
-			provider,
+			defaultSendTransportId(provider),
 			{
 				to: args.to,
 				from: args.from,

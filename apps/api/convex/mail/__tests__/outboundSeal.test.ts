@@ -25,7 +25,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { decideSeal } from '../sealPolicy';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { isSealedBytesAtRest } from '../../lib/atRestBodies';
 import { readSealedBlobBytes } from '../../lib/sealedBlob';
 

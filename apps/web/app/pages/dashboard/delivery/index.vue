@@ -26,17 +26,39 @@ const {
 	error: overviewError,
 } = useOrganizationQuery(api.analytics.reputationQueries.getSendingOverview);
 
-// Domain table: every sending domain + auth summary + 30-day volume.
-const { data: domainRows, isLoading: domainsLoading } = useOrganizationQuery(
-	api.analytics.reputationQueries.getDeliveryDomainTable
-);
+// Domain table: every sending domain + auth summary + 30-day volume. The `error`
+// travels with it for the same reason the Postmaster one does — the table's empty
+// state is "No sending domains yet", with a link into the setup flow, and a read
+// that failed has not established that.
+const {
+	data: domainRows,
+	isLoading: domainsLoading,
+	error: domainsError,
+	refetch: refetchDomains,
+} = useOrganizationQuery(api.analytics.reputationQueries.getDeliveryDomainTable);
 
-// Delivery-rate history for the trend chart.
-const { data: snapshots } = useOrganizationQuery(
-	api.analytics.reputationSnapshots.getDeliverySnapshots
-);
+// Google Postmaster Tools: additive-only, so an unconnected account renders a
+// calm invitation rather than a warning. The `error` goes down with it — a
+// faulted read must not render as "Not connected", which is a claim about the
+// deployment this page has not been able to check.
+const {
+	data: postmasterStatus,
+	isLoading: postmasterLoading,
+	error: postmasterError,
+} = useOrganizationQuery(api.delivery.postmaster.getPostmasterStatus);
 
-// Suppression roll-up (bounced/complained/manual) for the quiet summary line.
+// Delivery-rate history for the trend chart. The `error` travels with it for the
+// same reason as the two above: an empty history renders "Collecting history —
+// full trends in a week", which is a claim about how long this deployment has
+// been sending, and a read that answered nothing has not established it.
+const {
+	data: snapshots,
+	isLoading: snapshotsLoading,
+	error: snapshotsError,
+	refetch: refetchSnapshots,
+} = useOrganizationQuery(api.analytics.reputationSnapshots.getDeliverySnapshots);
+
+// Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
 const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
 
 const isLoading = computed(() => teamLoading.value || overviewLoading.value);
@@ -74,7 +96,9 @@ const abuseWarning = computed(() => {
 // --- Stat tiles ---
 // Yesterday's rolling rates — the point just before the newest snapshot — so the
 // bounce/complaint tiles can show a real day-over-day delta direction instead of
-// a hardcoded one. `null` until at least two days of history exist.
+// a hardcoded one. `null` until at least two days of history exist — and `null`
+// again when the history read faulted, which drops the delta off the tiles
+// rather than drawing one against a day nobody could read.
 const previousRates = computed(() => {
 	const points = snapshots.value ?? [];
 	const prev = points[points.length - 2];
@@ -127,6 +151,7 @@ const suppressionParts = computed(() => {
 	if (c.bounced > 0) parts.push(`${c.bounced.toLocaleString()} bounced`);
 	if (c.complained > 0) parts.push(`${c.complained.toLocaleString()} complained`);
 	if (c.manual > 0) parts.push(`${c.manual.toLocaleString()} manual`);
+	if (c.unengaged > 0) parts.push(`${c.unengaged.toLocaleString()} unengaged`);
 	return { total: c.total, breakdown: parts.join(' · ') };
 });
 
@@ -169,13 +194,43 @@ const sendingDetail = computed(() => {
 					</p>
 				</div>
 			</div>
-			<NuxtLink
-				to="/dashboard/delivery/setup"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) shrink-0 mt-1"
-			>
-				<Icon name="lucide:settings-2" class="w-4 h-4" />
-				Delivery setup
-			</NuxtLink>
+			<div class="flex shrink-0 items-center gap-4">
+				<NuxtLink
+					to="/dashboard/delivery/independence"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:trending-up" class="w-4 h-4" />
+					Independence
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/cells"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:grid-3x3" class="w-4 h-4" />
+					Cells
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/controls"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
+					Controls
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/measurement"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:activity" class="w-4 h-4" />
+					Measurement
+				</NuxtLink>
+				<NuxtLink
+					to="/dashboard/delivery/setup"
+					class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand transition-colors duration-(--motion-fast) mt-1"
+				>
+					<Icon name="lucide:settings-2" class="w-4 h-4" />
+					Delivery setup
+				</NuxtLink>
+			</div>
 		</div>
 
 		<!-- The one readiness panel leads the hub: it derives a single truth for
@@ -260,19 +315,63 @@ const sendingDetail = computed(() => {
 							</p>
 						</div>
 					</div>
-					<UiTrendChart
-						:data="trendData"
-						:format-value="formatRate"
-						aria-label="30-day delivery rate trend"
-					/>
-					<p v-if="collectingHistory" class="text-xs text-text-tertiary">
-						Collecting history — full trends in a week.
-					</p>
+					<!-- Behind its own boundary: an empty history draws a flat chart under
+						 "Collecting history — full trends in a week", which tells an operator
+						 with three weeks of sending behind them that this deployment is new. -->
+					<UiQueryBoundary
+						:loading="snapshotsLoading"
+						:error="snapshotsError"
+						error-title="Couldn’t load your delivery-rate history"
+						error-message="This trend could not be read. It is not shown empty: an empty chart here means you have only just started sending, and that is not something to claim while the read is failing."
+						@retry="refetchSnapshots"
+					>
+						<template #loading>
+							<div
+								class="h-40 animate-pulse rounded-xl bg-bg-surface"
+								role="status"
+								aria-live="polite"
+								aria-label="Loading delivery-rate history"
+							/>
+						</template>
+						<UiTrendChart
+							:data="trendData"
+							:format-value="formatRate"
+							aria-label="30-day delivery rate trend"
+						/>
+						<p v-if="collectingHistory" class="mt-3 text-xs text-text-tertiary">
+							Collecting history — full trends in a week.
+						</p>
+					</UiQueryBoundary>
 				</div>
 			</UiCard>
 
-			<!-- Domain table -->
-			<DeliveryDomainTable v-if="!domainsLoading" :rows="domainRows ?? []" />
+			<DeliveryPostmasterComplianceCard
+				:status="postmasterStatus"
+				:is-loading="postmasterLoading"
+				:error="postmasterError"
+			/>
+
+			<!-- Domain table. Behind its own boundary: an empty domain list here reads
+				 "No sending domains yet — add a domain and publish its DNS records" and
+				 points into the setup flow, which is a claim about the deployment that a
+				 faulted read has not earned. -->
+			<UiQueryBoundary
+				:loading="domainsLoading"
+				:error="domainsError"
+				error-title="Couldn’t load your sending domains"
+				error-message="This list could not be read. It is not shown empty: an empty list here means you have no sending domains set up, and that is not something to claim while the read is failing."
+				@retry="refetchDomains"
+			>
+				<template #loading>
+					<div
+						class="h-40 animate-pulse rounded-xl bg-bg-surface"
+						role="status"
+						aria-live="polite"
+						aria-label="Loading sending domains"
+					/>
+				</template>
+				<DeliveryDomainTable :rows="domainRows ?? []" />
+			</UiQueryBoundary>
 
 			<!-- Quiet suppressions summary -->
 			<NuxtLink

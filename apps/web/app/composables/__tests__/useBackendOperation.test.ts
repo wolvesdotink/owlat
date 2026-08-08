@@ -93,15 +93,13 @@ describe('useBackendOperation', () => {
 
 			expect(showToast).toHaveBeenCalledWith(
 				expect.stringContaining('Connection problem'),
-				'error',
+				'error'
 			);
 			expect(captureError).toHaveBeenCalledOnce();
 		});
 
 		it('redirects to login on unauthenticated', async () => {
-			mutation.mockRejectedValue(
-				new ConvexError({ category: 'unauthenticated', message: 'nope' }),
-			);
+			mutation.mockRejectedValue(new ConvexError({ category: 'unauthenticated', message: 'nope' }));
 			const { run } = useBackendOperation(fakeOp, { label: 'create' });
 
 			await run({});
@@ -109,7 +107,7 @@ describe('useBackendOperation', () => {
 			expect(navigate).toHaveBeenCalledWith('/auth/login');
 			expect(showToast).toHaveBeenCalledWith(
 				expect.stringContaining('session has expired'),
-				'error',
+				'error'
 			);
 			expect(captureError).not.toHaveBeenCalled();
 		});
@@ -118,7 +116,7 @@ describe('useBackendOperation', () => {
 	describe('inlineTarget', () => {
 		it('writes inlineError on invalid_input when a target is bound (no toast)', async () => {
 			mutation.mockRejectedValue(
-				new ConvexError({ category: 'invalid_input', message: 'Email is invalid' }),
+				new ConvexError({ category: 'invalid_input', message: 'Email is invalid' })
 			);
 			const target = ref<string | null>(null);
 			const { run, inlineError } = useBackendOperation(fakeOp, {
@@ -135,7 +133,7 @@ describe('useBackendOperation', () => {
 
 		it('falls back to a toast on invalid_input when no target is bound', async () => {
 			mutation.mockRejectedValue(
-				new ConvexError({ category: 'already_exists', message: 'Already taken' }),
+				new ConvexError({ category: 'already_exists', message: 'Already taken' })
 			);
 			const { run, inlineError } = useBackendOperation(fakeOp, { label: 'create' });
 
@@ -153,6 +151,56 @@ describe('useBackendOperation', () => {
 			await run({});
 
 			expect(target.value).toBeNull();
+		});
+	});
+
+	describe('onError claim', () => {
+		it('suppresses the default surface when the caller claims the failure', async () => {
+			mutation.mockRejectedValue(
+				new ConvexError({
+					category: 'invalid_state',
+					message: 'This campaign is larger than your sending capacity allows in one go.',
+					data: { reason: 'exceeds_sending_capacity', capacityPlan: { days: 5 } },
+				})
+			);
+			const seen: unknown[] = [];
+			const { run } = useBackendOperation(fakeOp, {
+				label: 'send',
+				onError: (op) => {
+					seen.push(op.data);
+					return true;
+				},
+			});
+
+			const result = await run({});
+
+			expect(result).toBeUndefined();
+			expect(seen).toEqual([{ reason: 'exceeds_sending_capacity', capacityPlan: { days: 5 } }]);
+			expect(showToast).not.toHaveBeenCalled();
+			expect(captureError).not.toHaveBeenCalled();
+		});
+
+		it('falls through to the normal treatment when the caller declines', async () => {
+			mutation.mockRejectedValue(
+				new ConvexError({ category: 'invalid_state', message: 'No template' })
+			);
+			const { run } = useBackendOperation(fakeOp, {
+				label: 'send',
+				onError: () => false,
+			});
+
+			await run({});
+
+			expect(showToast).toHaveBeenCalledWith('No template', 'error');
+		});
+
+		it('does not suppress reporting on a genuine fault the caller declines', async () => {
+			mutation.mockRejectedValue(new Error('kaboom'));
+			const { run } = useBackendOperation(fakeOp, { label: 'send', onError: () => false });
+
+			await run({});
+
+			expect(captureError).toHaveBeenCalledOnce();
 		});
 	});
 

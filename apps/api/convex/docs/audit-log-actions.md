@@ -32,6 +32,14 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `contact.deleted` | `contact` | `{ email }` (soft-delete; hard cascade happens in cron; also emitted per-row by `bulkDelete`) |
 | `contact.imported` | `contact` | `{ count, source }` |
 | `contact.merged` | `contact` | `{ sourceContactId, sourceEmail }` (target is `resourceId`; source hard-deleted) |
+| `contact.sunset_reengagement` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_suppressed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` + `detailsBlob` (the full decision snapshot: facts, policy, verdict) |
+| `contact.sunset_resumed` | `contact` | `{ actor: 'sunset_engine', email, reason, fromStage, toStage, quietDays, tenureDays }` |
+| `contact.sunset_restored` | `contact` | `{ email, fromStage, exempted: true }` (operator-driven) |
+| `contact.sunset_exemption_changed` | `contact` | `{ email, exempt }` |
+| `contact.sunset_policy_updated` | `settings` | `{ topicId, changedFields, clearedFields, isEnabled, reengageAfterDays, suppressAfterDays }` (the values are the RESULTING row, `null` where it inherits) |
+| `contact.sunset_sweep_summary` | `settings` | `{ actor: 'sunset_engine', scanned, suppressed, reengaged, resumed, deferredSuppressions, suppressionCeiling, isSuppressionCeilingHit, message }`, plus `isClockSkewed: true` on the clock-abort variant only — one aggregated row per sweep tick that suppressed, or refused to suppress, anything |
+| `contact.sunset_clock_confirmed` | `settings` | `{ clockVerifiedAt, message }` (operator re-arm after a clock stall; `contacts/sunset:confirmSunsetClock`) |
 | `topic.created` / `topic.updated` / `topic.deleted` | `topic` | `{ name }` |
 | `email_template.created` | `email_template` | `{ name, type }` |
 | `email_template.updated` | `email_template` | `detailsBlob: { changes: {...} }` |
@@ -59,8 +67,13 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `sending_domain.created` / `registered` / `registration_failed` / `verified` / `verification_failed` / `regenerated` / `deleted` | `sending_domain` | `{ previousStatus?, newStatus?, applied, error? }` (lifecycle transitions; see ADR-0018) |
 | `sending_domain.dmarc_policy_changed` | `sending_domain` | `{ domain, previousPolicy, newPolicy, newSubdomainPolicy, newPct, applied }` |
 | `sending_domain.dkim_rotated` | `sending_domain` | `{ domain, selector, phase, applied }` |
+| `sending_domain.yahoo_cfl_changed` | `sending_domain` | `{ event, changed, state, reason, complaintSource }` — one row per Yahoo CFL guided-flow event (`submit` / `confirm` / `reset`), including refusals, so a downgrade of the yahoo cell's complaint measurement always names its cause |
 | `sending_domain.return_path_changed` | `sending_domain` | `{ domain, previousReturnPathHost, newReturnPathHost, applied }` on edit; `{ domain, returnPathHost, applied: 'sync_failed', attempts, error }` when the MTA push permanently fails |
+| `seed_mailbox.rotation_reminder` | `seed_mailbox` | `{ provider, ageDays }` — advisory rotation nudge for a deliverability seed mailbox, emitted by the placement sweep. Provider and age only: never the seed address, never a credential, never mailbox contents. |
+| `seed_mailbox.rotation_acknowledged` | `seed_mailbox` | `{ provider, ageDays }` — the operator dismissed the nudge; the 90-day clock restarts from here. |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
+| `blocklist.provider_suppressed` | `blocklist` | `{ email, reason, provider, source, bounceType?, evidence? }` — a send provider's own suppression list added the address: `source: 'webhook'` is ongoing feedback (a Mandrill `reject`, `evidence` = its reject code), `source: 'import'` is the migration carry-over of an existing list. `userId` is the synthetic actor `system:<provider>_<source>`; one row per address that actually changed state, so a replayed batch or a re-run import adds none. |
+| `blocklist.provider_import_summary` | `blocklist` | `{ provider, source: 'import', bouncedHard, bouncedSoft, complained, manual, alreadyBlocked, unsubscribed, alreadyUnsubscribed, noContact, skipped, message }` — ONE aggregated row per suppression carry-over import run (Mandrill plan D9), keyed by the `integrationImports` row id. The per-address rows above answer "why is this address suppressed"; this one answers "did an import just stop us mailing four thousand people, and from whose list". `userId` is `system:<provider>_import`. Written only when the run changed something, so re-running a completed carry-over adds nothing — the same write gate as `contact.sunset_sweep_summary`. |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |
 | `platform_admin.tier_override` | `platform_admin` | `{ tier }` |
@@ -79,6 +92,8 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `agent.demotion_acknowledged` | `autonomy_rule` | `{ category, sender }` |
 | `knowledge.edge_backfill_started` / `edge_backfill_cancelled` | `knowledge_config` | `{ jobId }` |
 | `abuse_status_changed` | `instance_settings` | `{ previousStatus, newStatus, reason, changedBy }` (see ADR-0011) |
+| `deliverability_ramp.decision_applied` | `deliverability_ramp` | `{ cell, fromShare, toShare, direction, reason, failedGate?, verdict }` — the AIMD ramp controller applied a decision that changed a cell's durable ramp state (the share moved, or a gate breach froze a cell already on the share floor) |
+| `deliverability_ramp.cell_evaluation_failed` | `deliverability_ramp` | `{ cell, error }` — one cell threw while the hourly ramp tick was evaluating it; the tick recorded this and continued with the remaining cells. `error` is the thrown message, truncated to 200 characters — our own controller's read of our own rows, not third-party text (see the catalog entry) |
 | `postbox_outbound_transition` | `mail_message` | `{ mailboxId, recipientIdx, from, to, aggregateBefore, aggregateAfter, at, bounceMessage?, errorMessage?, errorCode? }` (see ADR-0012) |
 | `plugin.action_completed` / `plugin.action_failed` / `plugin.action_denied` | `plugin` | Dedicated `organizationId` + `pluginId`; allowlisted `{ operation, outcome, attempts?, usageAvailable?, chargedMicrousd?, actualMicrousd?, reasonCode? }`. Never storage keys/values/cursors, prompts/results, secrets, or raw errors. |
 | `connected_app.registered` / `connected_app.enabled` / `connected_app.disabled` / `connected_app.revoked` / `connected_app.deleted` / `connected_app.secret_rotated` | `connected_app` | Tier-2 connected-app lifecycle (`connectedApps/*`). Dedicated `organizationId` + `pluginId`; scalar `{ pluginId, capabilityCount }`. Never the endpoint URL, the shared secret, or its sealed envelope. |

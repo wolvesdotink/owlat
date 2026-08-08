@@ -518,7 +518,14 @@ describe('handleEmailJob', () => {
 
 		expect(sendToMx).toHaveBeenCalledOnce();
 		expect(queue.add).toHaveBeenCalledOnce();
-		expect(queueConvexWebhook).not.toHaveBeenCalled();
+		// NO LIFECYCLE CALLBACK: the message is deferred, not terminal, so nothing
+		// may tell Convex its fate. The MEASUREMENT beside it is a different claim —
+		// `smtp.classified` reports what the receiver said (issue #501) — and the
+		// replay lands on the SAME outbox slot, so a reconciled attempt reports the
+		// one response once rather than twice.
+		const queued = vi.mocked(queueConvexWebhook).mock.calls;
+		expect(queued.map(([sent]) => sent.event)).toEqual(['smtp.classified', 'smtp.classified']);
+		expect(new Set(queued.map(([, , , key]) => key)).size).toBe(1);
 	});
 
 	it('promotes a retained legacy job through its prior work-attempt receipt', async () => {
@@ -847,7 +854,9 @@ describe('handleEmailJob', () => {
 			redis,
 			'10.0.0.1',
 			undefined,
-			expect.stringMatching(/^effect:v1:/)
+			expect.stringMatching(/^effect:v1:/),
+			// The day the attempt was gated on, carried onto the effect.
+			expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
 		);
 	});
 
@@ -954,10 +963,24 @@ describe('handleEmailJob', () => {
 		// is rejected outright, which dead-letters the job. A transient outbox
 		// failure on the first run is the cheapest way to reach the second
 		// rebuild that the guard would compare against.
-		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const wh = await import('../../webhooks/convexNotifier.js');
+		const { queueConvexWebhook } = wh;
 		const { firstEnqueuedAt } = await setup();
 		const job = createJob({ firstEnqueuedAt });
-		vi.mocked(queueConvexWebhook).mockRejectedValueOnce(new Error('outbox unavailable'));
+		// FAIL THE TERMINAL CALLBACK, not merely the first webhook of the attempt.
+		// The expired-message case reduces a deferral first, whose `smtp.classified`
+		// measurement is deliberately fail-soft (issue #501) — rejecting it changes
+		// nothing and the attempt would never reach the terminalization this case is
+		// about. So the transient failure is aimed at the event under test.
+		let hasFailed = false;
+		vi.mocked(queueConvexWebhook).mockImplementation(async (sent, webhookConfig, client) => {
+			if (!hasFailed && sent.event === event) {
+				hasFailed = true;
+				throw new Error('outbox unavailable');
+			}
+			await wh.notifyConvex(sent, webhookConfig, client);
+			return 'outbox-test';
+		});
 
 		await expect(run(job, { timestamp: firstEnqueuedAt })).rejects.toThrow('outbox unavailable');
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -1157,14 +1180,19 @@ describe('handleEmailJob', () => {
 	// throttle / warming cap / no-IP) re-enqueue with the computed delay and
 	// the handler RESOLVES (no throw) so GroupMQ does not increment attempts.
 
-	it('PR-04 (b): warming cap reached re-enqueues (300000ms) and does not throw', async () => {
+	// P3-7: a spent DAILY warming cap now re-enqueues at the next cap window
+	// (bounded by `capDeferDelayMs`) rather than at a blind 300 s — the verdict
+	// cannot change until the day's counter resets. The re-enqueue-instead-of-
+	// throw behaviour this case exists to pin is unchanged; only the delay is.
+	it('PR-04 (b): warming cap reached re-enqueues at the cap window and does not throw', async () => {
 		const { checkCap } = await import('../../intelligence/warming.js');
+		const { capDeferDelayMs } = await import('../../intelligence/warmingCapWindow.js');
 		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
 
 		await expect(run(createJob())).resolves.toBeUndefined();
 
 		expect(queue.add).toHaveBeenCalledTimes(1);
-		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, 300_000);
+		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, capDeferDelayMs(Date.now()));
 	});
 
 	it('PR-04 (b): warming-capped 5x in a row stays retryable (re-enqueued, never dead-lettered)', async () => {

@@ -26,11 +26,7 @@ import {
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
-import {
-	buildMtaIdentityEnv,
-	validateMtaIdentityDraft,
-	type MtaIdentityDraft,
-} from '~/utils/setupMtaIdentity';
+import { buildMtaIdentityEnv, type MtaIdentityDraft } from '~/utils/setupMtaIdentity';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
@@ -71,7 +67,7 @@ export function setupStepPath(stepId: SetupStepId): string {
 
 // ── Shared draft types ───────────────────────────────────────────────────────
 
-export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'none';
+export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'mandrill' | 'none';
 
 export interface AdminDraft {
 	email: string;
@@ -101,6 +97,12 @@ export interface EmailStepDraft {
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
 	resendKey: string;
+	/**
+	 * Mailchimp Transactional (Mandrill) API key. One field, because that is the
+	 * whole sending credential — the webhook signing key, the subaccount and the
+	 * IP pool are set in `.env` out of band (see `PROVIDER_ENV_KEYS`).
+	 */
+	mandrillKey: string;
 	ses: SesCredentials;
 	smtp: SmtpRelayDraft;
 	/**
@@ -119,95 +121,10 @@ export interface EmailStepDraft {
 
 // ── Pure validation ──────────────────────────────────────────────────────────
 
-// Mirrors the server's deliberately-lenient check in apply.post.ts so the client
-// never blocks an address the backend would accept (or vice-versa). Named
-// distinctly from the strict `@owlat/shared` `isValidEmail` (also auto-imported)
-// to avoid a Nuxt auto-import collision.
-const EMAIL_RE = /^.+@.+\..+$/;
-
-export function isSetupEmailValid(value: string): boolean {
-	return EMAIL_RE.test(value.trim());
-}
-
-export const MIN_PASSWORD_LENGTH = 12;
-
-export interface AdminErrors {
-	email?: string;
-	password?: string;
-}
-
-export function validateAdmin(admin: AdminDraft): AdminErrors {
-	const errors: AdminErrors = {};
-	if (!isSetupEmailValid(admin.email)) {
-		errors.email = 'Enter a valid email address.';
-	}
-	if (admin.password.length < MIN_PASSWORD_LENGTH) {
-		errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
-	}
-	return errors;
-}
-
-export function adminIsValid(admin: AdminDraft): boolean {
-	return Object.keys(validateAdmin(admin)).length === 0;
-}
-
-export interface EmailStepErrors {
-	provider?: string;
-	resendKey?: string;
-	ses?: string;
-	smtp?: string;
-	mtaIdentity?: string;
-	fromEmail?: string;
-}
-
-/** A relay port is optional (defaults to 587), but if given must be a real port. */
-function isValidSmtpPort(port: string): boolean {
-	const trimmed = port.trim();
-	if (trimmed === '') return true;
-	if (!/^\d+$/.test(trimmed)) return false;
-	const n = Number.parseInt(trimmed, 10);
-	return n >= 1 && n <= 65535;
-}
-
-export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
-	const errors: EmailStepErrors = {};
-
-	if (draft.provider === 'none' && draft.requiresProvider) {
-		errors.provider =
-			'A delivery provider is required because campaigns, transactional, or automations are enabled. Pick your own MTA, Amazon SES, or an SMTP relay — or disable bulk sending.';
-	}
-	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
-		errors.resendKey = 'Enter your Resend API key.';
-	}
-	if (draft.provider === 'ses') {
-		const { region, accessKeyId, secretAccessKey } = draft.ses;
-		if (!region.trim() || !accessKeyId.trim() || !secretAccessKey.trim()) {
-			errors.ses = 'Region, access key ID, and secret access key are all required for SES.';
-		}
-	}
-	if (draft.provider === 'smtp') {
-		const { host, port, username, password } = draft.smtp;
-		if (!host.trim() || !username.trim() || !password.trim()) {
-			errors.smtp = 'Server host, username, and password are all required for an SMTP relay.';
-		} else if (!isValidSmtpPort(port)) {
-			errors.smtp = 'Port must be a whole number between 1 and 65535 (leave blank for 587).';
-		}
-	}
-	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
-		const identityError = validateMtaIdentityDraft(draft.mtaIdentity);
-		if (identityError) errors.mtaIdentity = identityError;
-	}
-	// From-identity is optional, but if supplied it must be a real address.
-	if (draft.fromEmail.trim() !== '' && !isSetupEmailValid(draft.fromEmail)) {
-		errors.fromEmail = 'Enter a valid From address, or leave it blank.';
-	}
-
-	return errors;
-}
-
-export function emailStepIsValid(draft: EmailStepDraft): boolean {
-	return Object.keys(validateEmailStep(draft)).length === 0;
-}
+// The step rules (`validateAdmin`, `validateEmailStep`, `transportStepIsValid`
+// and friends) live in the sibling `setupWizardValidation` module, split out —
+// like the outbound-TLS surface above — to keep this file under the file-size
+// ratchet. They are pure functions over the draft types declared here.
 
 /**
  * Build the env patch for the email step from the current draft, starting from
@@ -233,6 +150,9 @@ export function buildProviderEnv(
 		}
 		if (draft.provider === 'resend') {
 			next['RESEND_API_KEY'] = draft.resendKey;
+		}
+		if (draft.provider === 'mandrill') {
+			next['MANDRILL_API_KEY'] = draft.mandrillKey;
 		}
 		if (draft.provider === 'ses') {
 			next['AWS_SES_REGION'] = draft.ses.region;
@@ -287,6 +207,7 @@ const PROVIDER_LABELS: Record<ProviderChoice, string> = {
 	resend: 'Resend',
 	ses: 'Amazon SES',
 	smtp: 'SMTP relay',
+	mandrill: 'Mailchimp Transactional (Mandrill)',
 	none: 'None (receive-only)',
 };
 
@@ -308,7 +229,8 @@ export function buildSetupSummary(
 		rawProvider === 'mta' ||
 		rawProvider === 'resend' ||
 		rawProvider === 'ses' ||
-		rawProvider === 'smtp'
+		rawProvider === 'smtp' ||
+		rawProvider === 'mandrill'
 			? rawProvider
 			: 'none';
 

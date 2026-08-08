@@ -10,10 +10,17 @@
  */
 
 import { getOptional } from '../env';
+import { isFallbackRelayEligible } from './fallbackEligibility';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
-import type { ProviderEntry, ProviderHealthStatus, ResolvedRoute } from './strategies/types';
+import type { MixContext } from './strategies';
+import type {
+	ProviderEntry,
+	ProviderHealthStatus,
+	ResolvedRoute,
+	SendRouteStrategyKind,
+} from './strategies/types';
 
 export type { ProviderHealthStatus, ResolvedRoute } from './strategies/types';
 
@@ -23,7 +30,7 @@ export type { ProviderHealthStatus, ResolvedRoute } from './strategies/types';
  * `lib/emailProviders/routing.ts` so callers don't need to retype.
  */
 export interface ProviderRouteConfig {
-	strategy: 'single' | 'priority_failover' | 'workload_split';
+	strategy: SendRouteStrategyKind;
 	providers: Array<{
 		providerType: string;
 		weight?: number;
@@ -85,7 +92,13 @@ export function resolveRoute(
 	routeConfig: ProviderRouteConfig | null,
 	healthStatuses?: readonly ProviderHealthStatus[],
 	isReady: (kind: SendProviderKind) => boolean = () => true,
-	deliverability?: DeliverabilityRouteInput
+	deliverability?: DeliverabilityRouteInput,
+	/**
+	 * Per-recipient mix context — a recipient to decide for, or a recorded arm
+	 * to replay. Only `adaptive_mix` reads it; every other strategy ignores it,
+	 * so threading it through is inert for shipped routes.
+	 */
+	mix?: MixContext
 ): ResolvedRoute | null {
 	if (deliverability?.isGlobalBreakerOpen) throw new GlobalDeliveryCircuitOpenError();
 	if (!routeConfig) return fallback(isReady);
@@ -103,7 +116,7 @@ export function resolveRoute(
 	if (enabledEntries.length === 0) return fallback(isReady);
 
 	const strategy = strategyFor(routeConfig.strategy);
-	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses);
+	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses, mix);
 	const resolved = selected ?? fallback(isReady);
 	if (!resolved) return resolved;
 
@@ -124,7 +137,11 @@ export function resolveRoute(
 			? 'warmup_overflow'
 			: undefined);
 	if (!reason || !fallbackConfig?.isEnabled) return resolved;
-	if (fallbackConfig.relayProviderType !== 'ses') {
+	// D6: a CAPABILITY question, not an identity check. Judged against this
+	// resolution's own readiness predicate — the same one `enabledEntries` was
+	// filtered by — so the gate and the relay lookup below can never disagree
+	// about whether a transport is configured.
+	if (!isFallbackRelayEligible(fallbackConfig.relayProviderType, isReady)) {
 		throw new DeliverabilityRouteError('unavailable');
 	}
 	const relay = enabledEntries.find(

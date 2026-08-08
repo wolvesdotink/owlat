@@ -15,10 +15,15 @@ import {
 import { sendEvent } from './eventsApi';
 import { sendTransactional } from './transactional/api';
 import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
-import { handleOneClickUnsubscribe, verifyUnsubscribeToken } from './delivery/unsubscribeHttp';
+import {
+	handleOneClickUnsubscribe,
+	handleSeedProbeUnsubscribe,
+	verifyUnsubscribeToken,
+} from './delivery/unsubscribeHttp';
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import { handleResendWebhook } from './resendWebhook';
+import { handleMandrillWebhook, handleMandrillPing } from './mandrillWebhook';
 import { handleMtaWebhook } from './mtaWebhook';
 import { handleSesWebhook } from './sesWebhook';
 import { handleMailWebhook } from './mail/webhook';
@@ -55,6 +60,15 @@ http.route({
 	pathPrefix: '/unsub/',
 	method: 'POST',
 	handler: handleOneClickUnsubscribe,
+});
+
+// One-click unsubscribe target of a deliverability seed probe (RFC 8058):
+// POST /unsub/probe/{token}. More specific than `/unsub/`, so the router
+// prefers it for probe tokens; a probe token never resolves to a contact.
+http.route({
+	pathPrefix: '/unsub/probe/',
+	method: 'POST',
+	handler: handleSeedProbeUnsubscribe,
 });
 
 // Verify unsubscribe token: GET /unsub/verify/{token}
@@ -239,6 +253,22 @@ http.route({
 	path: '/webhooks/resend',
 	method: 'POST',
 	handler: handleResendWebhook,
+});
+
+// POST /webhooks/mandrill - Mailchimp Transactional feedback batch
+// (send, deferral, hard/soft bounce, spam, unsub, reject — never open/click)
+http.route({
+	path: '/webhooks/mandrill',
+	method: 'POST',
+	handler: handleMandrillWebhook,
+});
+
+// GET /webhooks/mandrill - Mandrill's unsigned URL-validation probe. Convex
+// routes HEAD (which is what Mandrill actually sends) to the GET handler.
+http.route({
+	path: '/webhooks/mandrill',
+	method: 'GET',
+	handler: handleMandrillPing,
 });
 
 // POST /webhooks/mta - Handle custom MTA webhook events (bounce, complaint, IP events)

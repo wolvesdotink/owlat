@@ -8,11 +8,17 @@ import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
 import { scheduleSuppressionMirror } from './delivery/suppressionMirror';
 import { recordAuditLog } from './lib/auditLog';
+import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
 // match or null. Single source of truth for the blocklist-by-email read.
-async function findBlockedByEmail(
+//
+// Exported for the suppression carry-over import, which needs to tell an address
+// it just blocked from one that was already blocked in order to report an
+// honest run summary. It reads through this rather than re-deriving the key,
+// because a second normalization would eventually disagree with this one.
+export async function findBlockedByEmail(
 	ctx: QueryCtx | MutationCtx,
 	email: string
 ): Promise<Doc<'blockedEmails'> | null> {
@@ -41,12 +47,27 @@ function deriveBlockSourceType(source: {
 // per-query document read limit. Return the most recent N (ordered by creation
 // time via the implicit by_creation_time index / the by_reason index) instead
 // of every row; the UI filters by reason for anything older.
-const BLOCKLIST_VIEW_LIMIT = 1000;
+//
+// Exported because it is the cap every count of this table saturates at — the
+// operator counter below and the platform-admin org detail
+// (`platformAdmin/queries.ts`) must not disagree about the same number.
+export const BLOCKLIST_VIEW_LIMIT = 1000;
 
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
 export const listByTeam = authedQuery({
 	args: {
-		reason: v.optional(v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual'))),
+		reason: v.optional(
+			v.union(
+				v.literal('bounced'),
+				v.literal('complained'),
+				v.literal('manual'),
+				// The sunset engine's own reason (P4-4). Filterable like the rest:
+				// an operator looking at the blocklist has to be able to separate
+				// "we stopped mailing this address because it never engaged" from a
+				// bounce, a complaint, or a human decision.
+				v.literal('unengaged')
+			)
+		),
 	},
 	handler: async (ctx, args) => {
 		const reason = args.reason;
@@ -58,6 +79,61 @@ export const listByTeam = authedQuery({
 				.take(BLOCKLIST_VIEW_LIMIT);
 		}
 		return await ctx.db.query('blockedEmails').order('desc').take(BLOCKLIST_VIEW_LIMIT);
+	},
+});
+
+/**
+ * WHO PUT THIS HERE — provenance for the provider-driven suppressions on the
+ * blocklist screen.
+ *
+ * A `manual`-reason row used to mean "a human typed this address in". Since the
+ * Mandrill reject sync (plan D9) it can also mean "the provider's own blacklist
+ * rejected it and we mirrored that", with no operator behind it at all. Those
+ * two are indistinguishable on the row itself, and deliberately so: the
+ * suppression schema gained no provenance column (plan §5) because provenance
+ * is an EVENT, not a property of the address — re-blocking an address that was
+ * already blocked writes nothing, so a column would record only whichever cause
+ * happened to arrive first.
+ *
+ * The event lives where events live: the `blocklist.provider_suppressed` audit
+ * entry, keyed by the blocklist row's own id (`resourceId`). This read joins the
+ * two so the screen can answer the question without a schema change and without
+ * an N+1 lookup per row.
+ *
+ * Admin-gated: audit data is not a member-level read (the same reason
+ * `auditLogs.list` is gated), and the evidence string is a third party's raw
+ * reason code. Not org-keyed, exactly like the `blockedEmails` rows it explains:
+ * both are deployment-wide under the singleton-org invariant, and the writer
+ * (`addFromEvent`, a system actor with no session) has no organization to
+ * attribute the entry to.
+ */
+export const listProviderProvenance = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		await requireOrgPermission(ctx, 'organization:manage');
+		const entries = await ctx.db
+			.query('auditLogs')
+			.withIndex('by_action', (q) => q.eq('action', 'blocklist.provider_suppressed'))
+			.order('desc')
+			.take(BLOCKLIST_VIEW_LIMIT);
+
+		return entries.flatMap((entry) => {
+			const details = entry.details;
+			if (!entry.resourceId || !details) return [];
+			const provider = details['provider'];
+			const source = details['source'];
+			if (typeof provider !== 'string' || typeof source !== 'string') return [];
+			const evidence = details['evidence'];
+			return [
+				{
+					blockedEmailId: entry.resourceId,
+					provider,
+					source,
+					evidence: typeof evidence === 'string' ? evidence : null,
+					recordedAt: entry.createdAt,
+				},
+			];
+		});
 	},
 });
 
@@ -162,6 +238,40 @@ export const remove = authedMutation({
 		);
 		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
 
+		// A SUNSET SUPPRESSION IS UNDONE BY THE SUNSET RESTORE PATH, NOT BY A
+		// DELETE. Deleting the row alone leaves the contact's stage and quiet
+		// window exactly as the engine found them, so the next sweep re-suppresses
+		// it within the day with a fresh audit entry and no explanation — the
+		// visible "Remove" action would undo itself. Routing through
+		// `restoreSunsetSuppression` deletes the same row AND sets the operator
+		// override that stops the engine touching the contact again, and it emits
+		// its own `contact.sunset_restored` audit entry.
+		if (blockedEmail.reason === 'unengaged') {
+			// `by_email` is NOT unique and `contacts` is a soft-delete table, so the
+			// live-row filter belongs IN the query (CONVENTIONS.md): a soft-deleted
+			// duplicate sorting first would otherwise send the operator down the
+			// plain delete below, leaving the live contact pinned at
+			// `sunsetStage: 'suppressed'` with no blocklist row behind it and the
+			// engine holding on `already_suppressed` forever.
+			const contact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
+				.filter((q) => q.eq(q.field('deletedAt'), undefined))
+				.first();
+			if (contact !== null) {
+				const restore = await restoreSunsetSuppression(ctx, {
+					contactId: contact._id,
+					actorUserId: session.userId,
+					now: Date.now(),
+				});
+				// The restore removed the row and reset the stage — nothing left to do.
+				if (restore.outcome === 'restored') return { success: true };
+			}
+			// No live contact row behind the address (imported, merged away,
+			// hard-deleted): there is no stage to reset, so the plain delete below
+			// is the whole job.
+		}
+
 		await ctx.db.delete(args.blockedEmailId);
 
 		await recordAuditLog(ctx, {
@@ -246,7 +356,7 @@ export const getCountsByReason = authedQuery({
 		// is append-only with no expiry, so bounced/complained reach tens of
 		// thousands and three uncapped collects would trip the per-query read limit
 		// before the (already-capped) list view does. Counts saturate at the cap.
-		const [bounced, complained, manual] = await Promise.all([
+		const [bounced, complained, manual, unengaged] = await Promise.all([
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
@@ -259,13 +369,18 @@ export const getCountsByReason = authedQuery({
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
 				.take(BLOCKLIST_VIEW_LIMIT),
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
+				.take(BLOCKLIST_VIEW_LIMIT),
 		]);
 
 		return {
-			total: bounced.length + complained.length + manual.length,
+			total: bounced.length + complained.length + manual.length + unengaged.length,
 			bounced: bounced.length,
 			complained: complained.length,
 			manual: manual.length,
+			unengaged: unengaged.length,
 		};
 	},
 });
@@ -283,12 +398,45 @@ export const isBlockedInternal = internalQuery({
 
 // Internal function to add to blocklist from bounce/complaint handler
 // This is exported for use by other Convex functions
+//
+// THE ONE WRITER FOR PROVIDER-SOURCED SUPPRESSIONS. Two callers share it today
+// — the redacted-complaint path (`webhooks/complaintDispatch.ts`) and the
+// Mandrill reject sync (`webhooks/mandrillRejectSuppression.ts`, plan D9) — and
+// the suppression IMPORT that carries a migrating deployment's accumulated
+// Mandrill/Mailchimp list over is meant to be the third, so that "already
+// blocked ⇒ no second row, no second mirror, no second audit entry" is decided
+// once rather than once per ingress.
+//
+// Three additive widenings serve that (plan D9), all optional so every shipped
+// caller is untouched:
+//   - `reason` accepts `'manual'`, the class an operator-curated blacklist
+//     entry belongs to (Mandrill `custom` / `rule`). The schema union has
+//     always had it; only this validator was narrower.
+//   - `bounceType` is carried through to the row AND to the MTA mirror, where
+//     it decides permanent (`hard_bounce`) vs. expiring (`manual`) backstop
+//     entries — a soft-bounce suppression that mirrored as hard would be
+//     unrecoverable at the last hop.
+//   - `provenance` names WHO caused the suppression, and its presence is what
+//     turns on the audit entry. The lifecycle-effect callers have a Send row to
+//     explain themselves with; a provider blacklist hit or a bulk import has
+//     nothing on the suppression screen to say where the address came from.
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained')),
+		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
+		provenance: v.optional(
+			v.object({
+				/** Send-provider kind the suppression came from, e.g. `mandrill`. */
+				provider: v.string(),
+				/** Ongoing feedback vs. a one-off carry-over of an existing list. */
+				source: v.union(v.literal('webhook'), v.literal('import')),
+				/** The provider's own reason code, e.g. `MANDRILL_REJECT_SPAM`. */
+				evidence: v.optional(v.string()),
+			})
+		),
 	},
 	handler: async (ctx, args) => {
 		const normalizedEmail = normalizeEmail(args.email);
@@ -297,7 +445,10 @@ export const addFromEvent = internalMutation({
 		const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
 		if (existing) {
-			// Already blocked, just return the existing ID
+			// Already blocked, just return the existing ID. A replayed webhook batch
+			// or a re-run import therefore writes NOTHING — no row, no mirror, and
+			// (below) no audit entry, because an audit trail records state changes
+			// and this call changed no state.
 			return existing._id;
 		}
 
@@ -306,11 +457,29 @@ export const addFromEvent = internalMutation({
 		const blockedEmailId = await ctx.db.insert('blockedEmails', {
 			email: normalizedEmail,
 			reason: args.reason,
+			...(args.bounceType ? { bounceType: args.bounceType } : {}),
 			sourceType,
 			sourceEmailSendId: args.sourceEmailSendId,
 			sourceTransactionalSendId: args.sourceTransactionalSendId,
 			createdAt: Date.now(),
 		});
+
+		if (args.provenance) {
+			await recordAuditLog(ctx, {
+				userId: `system:${args.provenance.provider}_${args.provenance.source}`,
+				action: 'blocklist.provider_suppressed',
+				resource: 'blocklist',
+				resourceId: blockedEmailId,
+				details: {
+					email: normalizedEmail,
+					reason: args.reason,
+					provider: args.provenance.provider,
+					source: args.provenance.source,
+					...(args.bounceType ? { bounceType: args.bounceType } : {}),
+					...(args.provenance.evidence ? { evidence: args.provenance.evidence } : {}),
+				},
+			});
+		}
 
 		// Mirror provider-webhook bounce/complaint suppressions to the MTA's
 		// Redis backstop (Resend/SES events land here, never on the MTA list
@@ -318,6 +487,7 @@ export const addFromEvent = internalMutation({
 		await scheduleSuppressionMirror(ctx, {
 			email: normalizedEmail,
 			reason: args.reason,
+			...(args.bounceType ? { bounceType: args.bounceType } : {}),
 		});
 
 		return blockedEmailId;

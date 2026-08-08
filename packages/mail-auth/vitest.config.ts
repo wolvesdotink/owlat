@@ -5,6 +5,11 @@ export default defineConfig({
 	test: {
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
+		// The mailauth differential suites flaked once on the loaded release
+		// runner (oracle verdict flip, unreproducible in 40 local runs). Mirror
+		// apps/api's retry so a rare infra flake cannot kill a release gate;
+		// real failures reproduce on retry and still fail.
+		retry: 1,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],

@@ -1,4 +1,5 @@
-import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
+import { capitalize, type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
+import { parsePluginNamespacedKind } from '@owlat/plugin-kit';
 import type { HealthTone } from '~/utils/healthTone';
 
 /**
@@ -39,7 +40,38 @@ export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
 	ses: 'Amazon SES',
 	resend: 'Resend',
 	smtp: 'SMTP relay',
+	mandrill: 'Mailchimp Transactional',
 };
+
+/**
+ * The operator's name for a stored transport id, wherever prose has to NAME the
+ * second arm — "instead of Amazon SES", not "instead of ses".
+ *
+ * TWO SHAPES REACH THIS, because the reference transport is any configured
+ * relay (`configuredRelayKinds`): one of the built-in kinds, or a plugin
+ * transport id `plugin.<pack>.<id>`. A built-in kind is named from the map
+ * above — the same one the transport card and the DNS guidance use. A plugin
+ * transport is named from the LEAF of its id, the pack author's own word for
+ * it, because the plugin catalog's display label is not carried by the ramp and
+ * dashboard queries: the transport card, which does read the catalog, may
+ * therefore word that one relay differently until the label is threaded
+ * through. The leaf is the closest name this surface can give without inventing
+ * one, and it beats printing the namespaced id in a sentence.
+ *
+ * ANYTHING ELSE FALLS BACK TO THE RAW VALUE ON PURPOSE. The reference transport
+ * can be whatever `EMAIL_PROVIDER` was set to, so an id this build does not know
+ * must still read as itself; printing nothing, or "Unknown", would leave the
+ * sentence naming a relay the operator cannot identify.
+ *
+ * NOT `providerRouting.transportLabel`, which resolves the SAME id against a
+ * catalog it was handed. Both are auto-imported, so they may not share a name:
+ * whichever lost would be silently substituted for the other in every template.
+ */
+export function transportIdLabel(kind: string): string {
+	if (isDeliveryProviderKind(kind)) return TRANSPORT_LABEL[kind];
+	const plugin = parsePluginNamespacedKind(kind);
+	return plugin === undefined ? kind : capitalize(plugin.localId);
+}
 
 /** One-line description of how each transport delivers mail. */
 const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
@@ -47,6 +79,8 @@ const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
 	ses: 'Mail goes out through your Amazon SES account.',
 	resend: 'Mail goes out through your Resend account.',
 	smtp: 'Mail is handed to your SMTP relay, which delivers it on your behalf.',
+	mandrill:
+		'Mail goes out through your Mailchimp Transactional (Mandrill) account, so you keep the reputation you arrived with.',
 };
 
 export type ConfiguredTone = 'success' | 'error';

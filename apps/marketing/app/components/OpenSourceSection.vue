@@ -29,35 +29,29 @@ const links = [
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12">
-				<span
-					class="oss-el text-xs font-medium uppercase tracking-widest text-text-tertiary mb-4 block"
-					style="--i: 0"
-				>
-					Open Source
-				</span>
-				<h2
-					class="oss-el text-[clamp(2rem,4.5vw,3.25rem)] font-semibold leading-[1.1] tracking-tight text-text-primary mb-4"
-					style="--i: 1"
-				>
+				<span class="oss-el lp-eyebrow mb-4" style="--i: 0">Open Source</span>
+				<h2 class="oss-el lp-title mb-4" style="--i: 1">
 					Built in the open,<br class="max-md:hidden" />
-					owned by you
+					owned by <span class="lp-title-accent">you</span>
 				</h2>
-				<p class="oss-el text-base text-text-secondary leading-relaxed max-w-prose" style="--i: 2">
-					Owlat is open source software. Inspect every line, self-host on your terms, and contribute
-					to the platform you rely on. Fork it, extend it, migrate away — you always own your email
-					stack.
+				<p
+					class="oss-el text-base text-text-secondary leading-relaxed max-w-[540px]"
+					style="--i: 2"
+				>
+					Inspect every line, self-host on your terms, and contribute to the platform you rely on.
+					Fork it, extend it, migrate away — you always own your email stack.
 				</p>
 			</div>
 
 			<!-- Repo + self-hosting links -->
-			<div class="grid grid-cols-2 gap-3 max-md:grid-cols-1">
+			<div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
 				<a
 					v-for="link in links"
 					:key="link.title"
 					:href="link.href"
 					:target="link.external ? '_blank' : undefined"
 					:rel="link.external ? 'noopener noreferrer' : undefined"
-					class="oss-card no-underline"
+					class="oss-card group no-underline"
 				>
 					<div class="flex items-start gap-3.5">
 						<!-- GitHub -->
@@ -95,7 +89,7 @@ const links = [
 						</svg>
 						<div class="min-w-0">
 							<span
-								class="flex items-center gap-1.5 text-md font-[550] text-text-primary leading-[1.3] mb-1.5"
+								class="flex items-center gap-1.5 text-md font-medium text-text-primary leading-[1.3] mb-1.5"
 							>
 								{{ link.title }}
 								<svg
@@ -107,7 +101,7 @@ const links = [
 									stroke-width="2"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									class="text-text-tertiary"
+									class="text-text-tertiary transition-transform duration-(--motion-fast) group-hover:translate-x-[2px] group-hover:-translate-y-[2px]"
 									aria-hidden="true"
 								>
 									<path d="M7 17 17 7" />
@@ -139,15 +133,15 @@ const links = [
 .oss-card {
 	opacity: 0;
 	transform: translateY(8px);
-	background: var(--surface-2);
+	background: var(--surface-3);
 	border: 1px solid var(--color-border-subtle);
 	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-2);
-	padding: 1.75rem;
+	box-shadow: var(--shadow-1);
+	padding: 2rem;
 	transition:
 		opacity var(--motion-moderate) var(--ease-spring),
 		transform var(--motion-moderate) var(--ease-spring),
-		background var(--motion-fast) var(--ease-spring),
+		border-color var(--motion-fast) var(--ease-spring),
 		box-shadow var(--motion-fast) var(--ease-spring);
 }
 
@@ -157,9 +151,9 @@ const links = [
 	transform: none;
 }
 
-/* Hover: one surface step, one elevation step */
+/* Hover: hairline darkens, shadow lifts */
 .oss-card:hover {
-	background: var(--surface-2-hover);
+	border-color: var(--color-border-default);
 	box-shadow: var(--shadow-3);
 }
 </style>

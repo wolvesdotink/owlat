@@ -35,11 +35,13 @@ export type OrganizationDeletionTable =
 	| 'agentActions'
 	| 'contentScanResults'
 	| 'deliverySnapshots'
+	| 'seedPlacementProbes'
 	| 'gmailDeliveryReceipts'
 	| 'gmailVolumeBuckets'
 	| 'gmailDomainVolumeRollups'
 	| 'gmailDomainVolumeRollupJobs'
 	| 'googlePostmasterStats'
+	| 'googlePostmasterCompliance'
 	| 'unsubscribeLatencyBuckets'
 	| 'threadPresence'
 	| 'threadReads'
@@ -85,11 +87,13 @@ export type OrganizationDeletionTable =
 	| 'knowledgeEntryContacts'
 	| 'sendingDomainMtaIdentities'
 	| 'sendingDomainSesIdentities'
+	| 'sendingDomainRelayIdentities'
 	| 'trackingDomains'
 	| 'sendingReputation'
 	| 'providerHealth'
 	| 'providerRoutes'
 	| 'deliverabilityRouteStates'
+	| 'deliverabilityAlignmentStates'
 	| 'deliverabilityAlertRecipients'
 	| 'deliverabilityAlertRecipientReceipts'
 	| 'deliverabilityRegressionAlerts'
@@ -97,6 +101,12 @@ export type OrganizationDeletionTable =
 	| 'deliverabilityEvidence'
 	| 'deliverabilityLoopbackAttempts'
 	| 'destinationProviderDomains'
+	| 'sendAssignments'
+	| 'transportOutcomes'
+	| 'smtpResponseCategories'
+	| 'mixDecisions'
+	| 'rampStreamPresets'
+	| 'yahooCflEnrollments'
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
@@ -143,6 +153,7 @@ export type OrganizationDeletionTable =
 	| 'contactActivities'
 	| 'contactIdentities'
 	| 'contactRelationships'
+	| 'sunsetPolicies'
 	| 'knowledgeRelations'
 	| 'knowledgeBackfillJobs'
 	| 'knowledgeEdgeBackfillJobs'
@@ -200,11 +211,13 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('agentActions'),
 	v.literal('contentScanResults'),
 	v.literal('deliverySnapshots'),
+	v.literal('seedPlacementProbes'),
 	v.literal('gmailDeliveryReceipts'),
 	v.literal('gmailVolumeBuckets'),
 	v.literal('gmailDomainVolumeRollups'),
 	v.literal('gmailDomainVolumeRollupJobs'),
 	v.literal('googlePostmasterStats'),
+	v.literal('googlePostmasterCompliance'),
 	v.literal('unsubscribeLatencyBuckets'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
@@ -250,11 +263,13 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('knowledgeEntryContacts'),
 	v.literal('sendingDomainMtaIdentities'),
 	v.literal('sendingDomainSesIdentities'),
+	v.literal('sendingDomainRelayIdentities'),
 	v.literal('trackingDomains'),
 	v.literal('sendingReputation'),
 	v.literal('providerHealth'),
 	v.literal('providerRoutes'),
 	v.literal('deliverabilityRouteStates'),
+	v.literal('deliverabilityAlignmentStates'),
 	v.literal('deliverabilityAlertRecipients'),
 	v.literal('deliverabilityAlertRecipientReceipts'),
 	v.literal('deliverabilityRegressionAlerts'),
@@ -262,6 +277,12 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('deliverabilityEvidence'),
 	v.literal('deliverabilityLoopbackAttempts'),
 	v.literal('destinationProviderDomains'),
+	v.literal('sendAssignments'),
+	v.literal('transportOutcomes'),
+	v.literal('smtpResponseCategories'),
+	v.literal('mixDecisions'),
+	v.literal('rampStreamPresets'),
+	v.literal('yahooCflEnrollments'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
@@ -308,6 +329,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('contactActivities'),
 	v.literal('contactIdentities'),
 	v.literal('contactRelationships'),
+	v.literal('sunsetPolicies'),
 	v.literal('knowledgeRelations'),
 	v.literal('knowledgeBackfillJobs'),
 	v.literal('knowledgeEdgeBackfillJobs'),

@@ -36,6 +36,9 @@ export const TENANT_TABLES = [
 	'contactActivities',
 	'contactIdentities',
 	'contactRelationships',
+	// Per-topic sunset-policy overrides (P4-4). Configuration, not contact data,
+	// but it is tenant-owned and must not survive an org wipe.
+	'sunsetPolicies',
 	'emailSends',
 	'contacts',
 	'contactProperties',
@@ -77,7 +80,12 @@ export const TENANT_TABLES = [
 
 	// ── Sending domains & deliverability ──
 	'sendingDomainMtaIdentities',
+	'yahooCflEnrollments',
 	'sendingDomainSesIdentities',
+	// The generic per-provider relay identity (D7) that succeeds the two
+	// frozen siblings above. Org-scoped sending-domain state — a wipe must not
+	// leave the org's relay verification records behind.
+	'sendingDomainRelayIdentities',
 	'trackingDomains',
 	'sendingReputation',
 	'gmailDeliveryReceipts',
@@ -85,8 +93,10 @@ export const TENANT_TABLES = [
 	'gmailDomainVolumeRollups',
 	'gmailDomainVolumeRollupJobs',
 	'googlePostmasterStats',
+	'googlePostmasterCompliance',
 	'unsubscribeLatencyBuckets',
 	'deliverabilityRouteStates',
+	'deliverabilityAlignmentStates',
 	'deliverabilityAlertRecipients',
 	'deliverabilityAlertRecipientReceipts',
 	'deliverabilityRegressionAlerts',
@@ -94,6 +104,24 @@ export const TENANT_TABLES = [
 	'deliverabilityEvidence',
 	'deliverabilityLoopbackAttempts',
 	'destinationProviderDomains',
+	// The transport-mix experiment record: one row per recipient per send,
+	// carrying organizationId and a sendId into emailSends/transactionalSends.
+	// Per-recipient tenant business data — a wipe that left it behind would
+	// leave the whole experiment record of a deleted org on disk.
+	'sendAssignments',
+	// Per-cell, per-arm outcome counters derived from that experiment record.
+	// Tenant sending history in aggregate form — a wipe must not leave it behind.
+	'transportOutcomes',
+	// What receivers said in their own 4xx/5xx text, per cell and per arm — the
+	// same experiment record one classification further in. Tenant sending
+	// history: a wipe must not leave it behind.
+	'smtpResponseCategories',
+	// Every ramp-controller decision, including no-ops (plan D12). Tenant
+	// sending history: a wipe must not leave the org's ramp audit trail behind.
+	'mixDecisions',
+	// The per-stream ramp aggressiveness preset an operator chose (plan D9).
+	// Per-organization business configuration — a wipe must not leave it behind.
+	'rampStreamPresets',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',
@@ -164,6 +192,10 @@ export const TENANT_TABLES = [
 	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	// Seed-mailbox placement probe ledger (deliverability gate 5). One row per
+	// shadow copy this org's sends dropped into its own seed mailboxes —
+	// org-scoped observation data, wiped with the org.
+	'seedPlacementProbes',
 	'mailboxMembers',
 	'pendingMailboxMembers',
 	'mailboxes',
@@ -245,6 +277,18 @@ export const NON_TENANT_TABLES = [
 	'providerHealth',
 	'warmingState',
 	'mtaIpReadinessAlerts',
+	// Deployment-scoped transport capability fact: does this send transport let us
+	// set a custom VERP return path? Keyed by transport id with no organizationId,
+	// no credentials and no contact business data — a re-probeable property of the
+	// relay itself, shared by every org on the deployment. Like `providerHealth`,
+	// it is regenerable telemetry about infrastructure, so it is out of the tenant
+	// wipe (wiping it would only force a needless re-probe).
+	'sendTransportReturnPathProbes',
+	// Microsoft SNDS per-IP daily telemetry. Keyed by the deployment's SENDING
+	// IPs, not by anything of this org's: bands, filter results and trap counts
+	// Microsoft attributes to the infrastructure. Regenerable by re-polling the
+	// feed, so it is out of the tenant wipe like `warmingState` / `tlsReports`.
+	'sndsIpDailyStats',
 	// Inbound TLS-RPT (RFC 8460) aggregate reports from partner MX — operator
 	// deliverability telemetry keyed by the partner's own report-id, not org
 	// business data. Regenerable (partners re-send daily); not personal data of

@@ -22,16 +22,16 @@
 						"
 						aria-hidden="true"
 					/>
-					<span class="text-[0.9375rem] font-semibold tracking-tight">Owlat Docs</span>
+					<span class="text-md font-semibold tracking-tight">Owlat Docs</span>
 				</NuxtLink>
 
 				<!-- Nav links (md+) -->
-				<nav class="hidden md:flex items-center gap-6">
+				<nav class="hidden md:flex items-center gap-1">
 					<NuxtLink
 						v-for="link in navLinks"
 						:key="link.to"
 						:to="link.to"
-						class="text-[0.8125rem] font-medium py-1 transition-colors duration-(--motion-fast)"
+						class="px-3 py-1.5 text-caption font-medium rounded-full transition-colors duration-(--motion-fast)"
 						:class="
 							isActiveSection(link.to)
 								? 'text-text-primary'
@@ -47,7 +47,7 @@
 			<div class="flex items-center gap-2">
 				<!-- Search trigger -->
 				<button
-					class="flex items-center gap-2.5 h-9 pl-3 pr-2.5 rounded-lg border border-border-subtle bg-bg-surface text-text-tertiary hover:text-text-secondary transition-colors duration-(--motion-fast) text-sm"
+					class="flex items-center gap-2.5 h-9 pl-3.5 pr-2 rounded-full border border-border-default bg-transparent text-text-tertiary hover:border-border-strong hover:text-text-secondary transition-colors duration-(--motion-fast) text-caption"
 					@click="searchOpen = true"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -60,7 +60,7 @@
 					</svg>
 					<span class="hidden sm:inline">Search...</span>
 					<kbd
-						class="hidden sm:inline-flex items-center h-5 px-1.5 rounded border border-border-subtle bg-bg-elevated text-[11px] font-mono text-text-tertiary"
+						class="hidden sm:inline-flex items-center h-5 px-2 rounded-full border border-border-subtle bg-bg-soft text-2xs font-mono text-text-tertiary"
 					>
 						{{ metaKey }}K
 					</kbd>
@@ -68,12 +68,12 @@
 
 				<!-- Color mode toggle -->
 				<UiThemeToggle
-					class="flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+					class="flex items-center justify-center w-9 h-9 rounded-full text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 				/>
 
 				<!-- Mobile hamburger (< lg) -->
 				<button
-					class="flex lg:hidden items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+					class="flex lg:hidden items-center justify-center w-9 h-9 rounded-full text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 					aria-label="Toggle sidebar"
 					@click="$emit('toggleSidebar')"
 				>

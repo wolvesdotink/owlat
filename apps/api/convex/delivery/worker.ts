@@ -3,7 +3,12 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
-import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
+import {
+	getUnsubscribeUrl,
+	getListUnsubscribeHeader,
+	getSeedProbeListUnsubscribeHeader,
+	getSeedProbeFooterUrls,
+} from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
@@ -13,6 +18,7 @@ import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCo
 import { dispatchGovernedEmail } from './governedDispatch';
 import {
 	envelopeInputValidator,
+	isSeedShadowEnvelope,
 	retryStateValidator,
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
@@ -60,19 +66,114 @@ export function buildTransactionalListUnsubscribe(
 	if (
 		envelopeInput.kind !== 'transactional' ||
 		envelopeInput.listUnsubscribe !== true ||
-		envelopeInput.contactId === undefined ||
 		!envelopeInput.convexSiteUrl
 	) {
 		return {};
 	}
-	const header = getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId);
+	// A seed probe on the automation stream is marketing-shaped mail with no
+	// contact to unsubscribe, and the RFC 8058 pair is exactly the kind of
+	// feature a filter weighs — dropping it would measure a materially different
+	// message than the one being measured, and would fail
+	// `assertMarketingOneClickHeaders` besides. Same header shape as a
+	// subscriber's, minted against the probe's own token namespace, so it can no
+	// more reach a contact record than the campaign shadow copy's can.
+	const header =
+		envelopeInput.seedProbeId !== undefined
+			? getSeedProbeListUnsubscribeHeader(
+					envelopeInput.convexSiteUrl,
+					envelopeInput.organizationId ?? '',
+					envelopeInput.seedProbeId
+				)
+			: envelopeInput.contactId !== undefined
+				? getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId)
+				: undefined;
+	if (header === undefined) return {};
 	return {
 		'List-Unsubscribe': header.listUnsubscribe,
 		'List-Unsubscribe-Post': header.listUnsubscribePost,
 	};
 }
 
+/**
+ * The D18 invariant, enforced structurally rather than by convention: a seed
+ * probe is NEVER countable, and a countable Send NEVER carries the probe
+ * header. `seedProbeId` and the envelope's countable id (`emailSendId` on a
+ * campaign, `sendId` on a transactional one) are mutually exclusive, as are
+ * `seedProbeId` and a contact, and `seedProbeId` always travels with its
+ * durable ledger reference.
+ *
+ * Asserted on the composition path, which EVERY envelope — campaign or
+ * transactional, real or probe — passes through before dispatch. Both kinds are
+ * checked because both now produce probes: the campaign shadow copy for the
+ * `campaign` cell, `delivery/seedScheduledProbe.ts` for the other two.
+ */
+export function assertSeedShadowExclusion(envelopeInput: WorkerEnvelopeInput): void {
+	if (!isSeedShadowEnvelope(envelopeInput)) return;
+	const countableSendId =
+		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
+	const contactId =
+		envelopeInput.kind === 'campaign'
+			? envelopeInput.contactInfo.contactId
+			: envelopeInput.contactId;
+	if (countableSendId !== undefined || contactId !== undefined) {
+		throw new Error('A seed probe must not carry a countable Send or a contact.');
+	}
+	if (envelopeInput.seedProbeRef === undefined) {
+		throw new Error('A seed probe must carry its probe ledger reference.');
+	}
+}
+
+interface ListUnsubscribePair {
+	listUnsubscribe: string;
+	listUnsubscribePost: string;
+}
+
+/**
+ * Who the RFC 8058 one-click pair on a CAMPAIGN message belongs to.
+ *
+ * Three genuinely different cases, and the discriminant says which: a real
+ * subscriber's contact-scoped token; a seed shadow copy's PROBE-scoped token
+ * (same header shape, its own token namespace, no contact to unsubscribe — the
+ * pre-dispatch marketing gate and Gmail/Yahoo's bulk-sender rules require the
+ * pair on every campaign-shaped message, and a probe without it would measure
+ * a materially different message); or neither, when there is no site URL to
+ * build one against.
+ */
+type ListUnsubscribeResolution =
+	| { scope: 'none' }
+	| { scope: 'contact'; header: ListUnsubscribePair }
+	| { scope: 'seedProbe'; header: ListUnsubscribePair };
+
+export function resolveListUnsubscribeHeader(
+	envelopeInput: Extract<WorkerEnvelopeInput, { kind: 'campaign' }>
+): ListUnsubscribeResolution {
+	const convexSiteUrl = envelopeInput.convexSiteUrl;
+	if (convexSiteUrl === undefined) return { scope: 'none' };
+	const seedProbeId = envelopeInput.seedProbeId;
+	if (seedProbeId !== undefined) {
+		return {
+			scope: 'seedProbe',
+			// A shadow copy always carries its organization (it is cloned from a
+			// campaign envelope inside that org's enqueue transaction). The `?? ''`
+			// keeps the header present rather than dropping the RFC 8058 pair a
+			// campaign-shaped message must carry: an unattributable token simply
+			// records nothing when exercised.
+			header: getSeedProbeListUnsubscribeHeader(
+				convexSiteUrl,
+				envelopeInput.organizationId ?? '',
+				seedProbeId
+			),
+		};
+	}
+	const contactId = envelopeInput.contactInfo.contactId;
+	if (contactId === undefined) return { scope: 'none' };
+	return { scope: 'contact', header: getListUnsubscribeHeader(convexSiteUrl, contactId) };
+}
+
 export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeInput {
+	// The D18 exclusion, ahead of the per-kind split: both kinds carry probes now,
+	// so asserting it inside one branch would leave the other unchecked.
+	assertSeedShadowExclusion(envelopeInput);
 	if (envelopeInput.kind === 'transactional') {
 		// Build the unsubscribe + preference footer URLs only when the template
 		// opted in (`showUnsubscribe`) AND the send has a resolvable contact +
@@ -96,6 +197,10 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 			unsubscribeUrl,
 			preferenceUrl,
 			organizationId: envelopeInput.organizationId,
+			// The join key between this send and the IMAP observation. Absent on
+			// every envelope bound for a real recipient; without it a scheduled
+			// probe would be mailed and never found again.
+			seedProbeId: envelopeInput.seedProbeId,
 		};
 	}
 
@@ -111,21 +216,39 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	const isTopic = envelopeInput.audienceType !== 'segment';
 	const hasContact = envelopeInput.contactInfo.contactId !== undefined;
 
+	// The in-body footer, for a subscriber's copy and for a seed shadow copy
+	// alike. A probe has no contact and no `siteUrl`, but it MUST still render
+	// the footer: it is a feature filters weigh, and its absence would make the
+	// probe a materially different message than the one being measured. The probe
+	// footer is keyed by the opaque probe id, so it can no more reach a contact
+	// record than the header pair can.
+	const seedProbeFooter =
+		isTopic && envelopeInput.seedProbeId !== undefined && envelopeInput.convexSiteUrl !== undefined
+			? getSeedProbeFooterUrls(
+					envelopeInput.convexSiteUrl,
+					envelopeInput.organizationId ?? '',
+					envelopeInput.seedProbeId
+				)
+			: undefined;
 	const unsubscribeUrl =
-		isTopic && hasContact && envelopeInput.siteUrl
+		seedProbeFooter?.unsubscribeUrl ??
+		(isTopic && hasContact && envelopeInput.siteUrl
 			? getUnsubscribeUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined;
+			: undefined);
 	const preferenceUrl =
-		isTopic && hasContact && envelopeInput.siteUrl
+		seedProbeFooter?.preferenceUrl ??
+		(isTopic && hasContact && envelopeInput.siteUrl
 			? getPreferenceUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined;
+			: undefined);
+	const listUnsubscribe = resolveListUnsubscribeHeader(envelopeInput);
 	const listUnsubscribeHeader =
-		hasContact && envelopeInput.convexSiteUrl
-			? getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined;
+		listUnsubscribe.scope === 'none' ? undefined : listUnsubscribe.header;
 
+	// Tracking is keyed by the Send for real mail and by the opaque probe id for
+	// a shadow copy; the shipped `/t/o` and `/t/c` handlers reject a probe id by
+	// name (`isSeedProbeId`) and record nothing for it.
 	const trackingBaseUrl =
-		envelopeInput.emailSendId && envelopeInput.convexSiteUrl
+		(envelopeInput.emailSendId ?? envelopeInput.seedProbeId) && envelopeInput.convexSiteUrl
 			? (envelopeInput.trackingBaseUrl ?? envelopeInput.convexSiteUrl)
 			: undefined;
 
@@ -146,6 +269,9 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		listId: envelopeInput.listId,
 		trackingBaseUrl,
 		viewInBrowserUrl: envelopeInput.viewInBrowserUrl,
+		// Seed shadow copies only — stamps `X-Owlat-Seed-Probe`. Absent on every
+		// envelope bound for a real recipient.
+		seedProbeId: envelopeInput.seedProbeId,
 	};
 	return composeInput;
 }
@@ -280,7 +406,7 @@ export const sendSingleEmail = internalAction({
 			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
 		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
-		return await dispatchGovernedEmail(ctx, {
+		const dispatchResult = await dispatchGovernedEmail(ctx, {
 			envelopeInput,
 			deliveryDomain: envelopeInput.deliveryDomain ?? 'production',
 			messageType: resolveWorkerMessageType(envelopeInput),
@@ -290,12 +416,25 @@ export const sendSingleEmail = internalAction({
 			providerType: envelopeInput.providerType,
 			ipPool: envelopeInput.ipPool,
 			organizationId: envelopeInput.organizationId,
+			// Producer-supplied recipient engagement score. Rides the envelope so
+			// dispatch never point-reads a contact per send; absent for unscored
+			// contacts and for sends with no contact record at all.
+			engagementScore: envelopeInput.engagementScore,
 			sendRef:
 				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
 					? { kind: 'campaign', id: envelopeInput.emailSendId }
-					: envelopeInput.kind === 'transactional' && envelopeInput.sendId
-						? { kind: 'transactional', id: envelopeInput.sendId }
-						: undefined,
+					: // A seed probe's durable reference is its probe ledger row (D18):
+						// enough for a stable idempotency key and an authenticated
+						// re-entry token, and deliberately not a Send. Checked ahead of
+						// `sendId` on either kind — the exclusion above already refuses an
+						// envelope carrying both, so the order only decides which error a
+						// malformed probe would produce, and this one keeps the probe arm
+						// unreachable-by-a-countable-send by construction.
+						envelopeInput.seedProbeRef
+						? { kind: 'seedProbe', id: envelopeInput.seedProbeRef }
+						: envelopeInput.kind === 'transactional' && envelopeInput.sendId
+							? { kind: 'transactional', id: envelopeInput.sendId }
+							: undefined,
 			retryState,
 			message: {
 				subject: composed.subject,
@@ -308,5 +447,26 @@ export const sendSingleEmail = internalAction({
 				attachments: resolvedAttachments,
 			},
 		});
+
+		// Attribute the probe to the arm the route ACTUALLY resolved to. Guessing
+		// from the requested `providerType` mis-files every default-routed probe,
+		// and the arm is the whole point of a placement observation.
+		// `dispatchedAt` is also what makes the probe searchable at all: the poller
+		// selects and expires work on it, so a probe that never gets here is never
+		// looked for and never classified `missing`.
+		if (
+			envelopeInput.seedProbeRef !== undefined &&
+			envelopeInput.organizationId !== undefined &&
+			dispatchResult.success
+		) {
+			await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
+				organizationId: envelopeInput.organizationId,
+				probeRef: envelopeInput.seedProbeRef,
+				transportArm: dispatchResult.providerType === 'mta' ? 'own' : 'reference',
+				now: Date.now(),
+			});
+		}
+
+		return dispatchResult;
 	},
 });

@@ -20,8 +20,10 @@ export function useAppTheme() {
 	});
 
 	const resolvedTheme = computed<'dark' | 'light'>(() => {
+		// Light-first: anything that isn't explicitly dark resolves light,
+		// matching the color-mode fallback in nuxt.config.
 		const value = colorMode.value;
-		return value === 'light' ? 'light' : 'dark';
+		return value === 'dark' ? 'dark' : 'light';
 	});
 
 	const isDark = computed(() => resolvedTheme.value === 'dark');

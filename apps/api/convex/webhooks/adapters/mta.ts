@@ -17,7 +17,7 @@ import { getInboundChannelAdapter } from '@owlat/channels';
 import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
-import type { InboundEvent } from '../types';
+import { type InboundEvent, postmasterStatsMetrics } from '../types';
 import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
@@ -32,6 +32,7 @@ function isSensitiveInternalPayload(rawBody: string): boolean {
 			isRecord(payload) &&
 			(payload['event'] === 'postmaster.authorize_domain' ||
 				payload['event'] === 'postmaster.stats' ||
+				payload['event'] === 'postmaster.compliance' ||
 				payload['event'] === 'deliverability.probe_observed')
 		);
 	} catch {
@@ -235,6 +236,16 @@ export const mtaAdapter: InboundAdapter = {
 				// Prefer Message-ID attribution; fall back to the recipient
 				// address (RFC 5965 §3.2) so a Gmail-redacted FBL still
 				// suppresses the complainer. Drop only when neither is present.
+				//
+				// `reportedDomain` / `sourceIsp` ride along on BOTH shapes: they say
+				// which of our DKIM domains the report named and which ISP filed it,
+				// independent of which attribution handle the report carried. NOT to be
+				// confused with `arf.feedbackProvenance` (production vs member-preview
+				// delivery domain) — hence the `fblReport` prefix.
+				const fblReportProvenance = {
+					...(payload.reportedDomain ? { reportedDomain: payload.reportedDomain } : {}),
+					...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
+				};
 				if (payload.messageId) {
 					return {
 						kind: 'email.complained',
@@ -242,6 +253,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...fblReportProvenance,
 					};
 				}
 				if (payload.recipient) {
@@ -251,6 +263,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...fblReportProvenance,
 					};
 				}
 				return null;
@@ -331,6 +344,19 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.message ? { message: payload.message } : {}),
 				};
 			}
+			case 'smtp.classified': {
+				// Both fields are already narrowed by `isMtaWebhookEvent` — the category
+				// against the SHARED vocabulary, never re-derived from `message` here.
+				// The re-check is the adapter's own trust boundary, the shape every case
+				// above keeps.
+				if (!payload.messageId || !payload.smtpCategory) return null;
+				return {
+					kind: 'internal.smtp_classified',
+					providerMessageId: payload.messageId,
+					category: payload.smtpCategory,
+					observedAt: payload.timestamp,
+				};
+			}
 			case 'ip.readiness_regressed': {
 				return {
 					kind: 'internal.ip_readiness_regressed',
@@ -378,6 +404,18 @@ export const mtaAdapter: InboundAdapter = {
 					domain: payload.domain,
 					date: payload.date,
 					userReportedSpamRatio: payload.userReportedSpamRatio,
+					...postmasterStatsMetrics(payload),
+					fetchedAt: payload.timestamp,
+				};
+			}
+			case 'postmaster.compliance': {
+				// The shared contract already bounded and shape-checked `checks`.
+				if (!payload.domain || !payload.date || payload.checks === undefined) return null;
+				return {
+					kind: 'internal.postmaster_compliance',
+					domain: payload.domain,
+					date: payload.date,
+					checks: payload.checks,
 					fetchedAt: payload.timestamp,
 				};
 			}
@@ -405,7 +443,8 @@ export const mtaAdapter: InboundAdapter = {
 		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||
-			event.kind === 'internal.postmaster_stats'
+			event.kind === 'internal.postmaster_stats' ||
+			event.kind === 'internal.postmaster_compliance'
 		) {
 			return postmasterAcknowledgement(event, dispatchResult);
 		}

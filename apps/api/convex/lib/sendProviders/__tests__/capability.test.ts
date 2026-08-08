@@ -16,11 +16,13 @@ const ENV_KEYS = [
 	'MTA_API_URL',
 	'MTA_API_KEY',
 	'RESEND_API_KEY',
+	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'SMTP_RELAY_HOST',
 	'SMTP_RELAY_USERNAME',
 	'SMTP_RELAY_PASSWORD',
+	'MANDRILL_API_KEY',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -72,11 +74,20 @@ describe('deliveryConfiguredFromEnv — fail-closed', () => {
 		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
-	it('ses: requires access key id and secret', async () => {
+	// Region included: the adapter reads it on every send, so a deployment
+	// without it is not configured however many keys it has.
+	it('ses: requires region, access key id and secret', async () => {
 		setEnv({ EMAIL_PROVIDER: 'ses', AWS_SES_ACCESS_KEY_ID: 'AKIA' });
 		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({
 			EMAIL_PROVIDER: 'ses',
+			AWS_SES_ACCESS_KEY_ID: 'AKIA',
+			AWS_SES_SECRET_ACCESS_KEY: 'sk',
+		});
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
+		setEnv({
+			EMAIL_PROVIDER: 'ses',
+			AWS_SES_REGION: 'us-east-1',
 			AWS_SES_ACCESS_KEY_ID: 'AKIA',
 			AWS_SES_SECRET_ACCESS_KEY: 'sk',
 		});
@@ -101,10 +112,25 @@ describe('deliveryConfiguredFromEnv — fail-closed', () => {
 		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
+	it('mandrill: requires the API key ONLY', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mandrill' });
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
+		// The webhook key, subaccount and IP pool are deliberately NOT required: a
+		// deployment that has not created a webhook or bought a dedicated IP still
+		// sends perfectly well, and demanding them would report a working Mandrill
+		// account as unconfigured.
+		setEnv({ EMAIL_PROVIDER: 'mandrill', MANDRILL_API_KEY: 'md-x' });
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
+	});
+
 	it('providerKindConfigured is the single per-kind cred source', () => {
 		setEnv({ RESEND_API_KEY: 're_x' });
 		expect(providerKindConfigured('resend')).toBe(true);
 		expect(providerKindConfigured('mta')).toBe(false);
+		expect(providerKindConfigured('mandrill')).toBe(false);
+		setEnv({ MANDRILL_API_KEY: 'md-x' });
+		expect(providerKindConfigured('mandrill')).toBe(true);
+		expect(providerKindConfigured('resend')).toBe(false);
 	});
 });
 

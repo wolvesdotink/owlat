@@ -59,6 +59,10 @@ describe('dispatchGovernedEmail', () => {
 			startedAt: expect.any(Number),
 			deliveryDomain: 'production',
 			mtaReconciliation: false,
+			// The durable Send id travels with the routing request so an
+			// adaptive_mix cell dispatches on the arm the enqueue transaction
+			// recorded for this recipient.
+			sendId: 'send-row-1',
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -128,6 +132,68 @@ describe('dispatchGovernedEmail', () => {
 		});
 	});
 
+	// G-02 — the envelope's engagement score is stamped onto MtaExtras. The
+	// exact-match assertion above is the companion regression: with NO score on
+	// the request the extras object is byte-for-byte what it always was.
+	describe('engagementScore on MtaExtras', () => {
+		async function extrasForScore(engagementScore: number | undefined) {
+			runMutation
+				.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+				.mockResolvedValueOnce({ ok: true });
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind: 'mta',
+				route: { ipPool: 'campaign' },
+				organizationId: 'org-1',
+				routingLease: 'lease-1',
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: { success: true, id: 'mta-1' },
+				providerType: 'mta',
+				latencyMs: 4,
+				attempts: 1,
+			});
+
+			await dispatchGovernedEmail(ctx, { ...baseRequest, engagementScore });
+
+			return sendProviderDispatch.mock.calls[0]?.[3] as Record<string, unknown>;
+		}
+
+		it('stamps a scored recipient onto the extras', async () => {
+			expect((await extrasForScore(87))['engagementScore']).toBe(87);
+		});
+
+		it('keeps a 0 ("cold") score — it is a real band, not an absence', async () => {
+			const extras = await extrasForScore(0);
+			expect(extras['engagementScore']).toBe(0);
+			expect('engagementScore' in extras).toBe(true);
+		});
+
+		it('OMITS the key for an unscored recipient (not 0, not null)', async () => {
+			const extras = await extrasForScore(undefined);
+			expect('engagementScore' in extras).toBe(false);
+			// Every shipped extra survives untouched.
+			expect(extras).toMatchObject({
+				messageId: 'send_send-row-1',
+				workAttemptId: expect.any(String),
+				routingReentryToken: 'reentry-token',
+				organizationId: 'org-1',
+				messageType: 'campaign',
+				deliveryDomain: 'production',
+				routingLease: 'lease-1',
+				allowWarmupOverflow: false,
+				ipPool: 'campaign',
+			});
+		});
+
+		it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 101])(
+			'treats the hostile score %p as unknown rather than clamping it',
+			async (score) => {
+				expect('engagementScore' in (await extrasForScore(score))).toBe(false);
+			}
+		);
+	});
+
 	it('preserves the original retry key when the provider rejects a stale lease', async () => {
 		runMutation
 			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
@@ -165,11 +231,57 @@ describe('dispatchGovernedEmail', () => {
 			success: false,
 			deferred: true,
 			retryAfterMs: 5_000,
+			// The MTA withdrew its own lease at enqueue: governance about this
+			// identity, so gate 2 may count it.
+			deferralOrigin: 'governed',
 			retryState: {
 				attempt: 3,
 				startedAt,
 				idempotencyKey: 'send_original',
 			},
+		});
+	});
+
+	// ISSUE #505. Same 409 status, same wait, same bounded re-entry — and the
+	// opposite claim: the MTA could not read back a lease record it wrote, so no
+	// receiver refused anything and nothing was decided about this identity.
+	// Marking it `governed` let a lease-store outage spend gate 2's 10% ceiling
+	// and walk a cell towards its 25% halt.
+	it('defers an unreadable-lease answer as our own fault, not the identity’s', async () => {
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		const startedAt = Date.now() - 100;
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: null,
+			organizationId: 'org-1',
+			routingLease: 'lease-3',
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: {
+				success: false,
+				errorCode: 'ROUTING_LEASE_UNREADABLE',
+				errorMessage: 'Routing lease could not be read; resolve again',
+				retryAfterMs: 5_000,
+			},
+			providerType: 'mta',
+			latencyMs: 3,
+			attempts: 1,
+		});
+
+		expect(
+			await dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				retryState: { attempt: 2, startedAt, idempotencyKey: 'send_original' },
+			})
+		).toMatchObject({
+			success: false,
+			deferred: true,
+			retryAfterMs: 5_000,
+			deferralOrigin: 'local',
+			retryState: { attempt: 3, startedAt, idempotencyKey: 'send_original' },
 		});
 	});
 
@@ -235,6 +347,7 @@ describe('dispatchGovernedEmail', () => {
 			kind: 'defer',
 			retryAfterMs: 600_000,
 			isPolicyHold: true,
+			origin: 'local',
 		});
 
 		const result = await dispatchGovernedEmail(ctx, {
@@ -246,19 +359,31 @@ describe('dispatchGovernedEmail', () => {
 			success: false,
 			deferred: true,
 			retryAfterMs: 600_000,
+			// The origin travels to the completion callback, which is the only place
+			// gate 2's numerator can be written from — a hold this deployment chose
+			// is not the destination throttling it.
+			deferralOrigin: 'local',
 			retryState: { attempt: 4 },
 		});
 	});
 
 	it('still spends an attempt on ordinary routing churn', async () => {
-		resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'defer',
+			retryAfterMs: 30_000,
+			origin: 'governed',
+		});
 
 		const result = await dispatchGovernedEmail(ctx, {
 			...baseRequest,
 			retryState: { attempt: 4, startedAt: Date.now(), idempotencyKey: 'send_send-row-1' },
 		});
 
-		expect(result).toMatchObject({ deferred: true, retryState: { attempt: 5 } });
+		expect(result).toMatchObject({
+			deferred: true,
+			deferralOrigin: 'governed',
+			retryState: { attempt: 5 },
+		});
 	});
 
 	it('gives a routing re-entry successor a work attempt of its own', async () => {
@@ -350,4 +475,129 @@ describe('dispatchGovernedEmail', () => {
 			}
 		}
 	);
+	describe('relay arm — the custom return path (plan G-08)', () => {
+		function relayRouting(relayReturnPathHost: string | undefined) {
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind: 'smtp',
+				route: null,
+				organizationId: 'org-1',
+				relayReturnPathHost,
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: { success: true, id: 'relay-message-id' },
+				providerType: 'smtp',
+				latencyMs: 7,
+				attempts: 1,
+			});
+		}
+
+		function dispatchedExtras(): unknown {
+			// Indexed rather than `.at(-1)`: convex/tsconfig.json's `lib` stops at
+			// ES2021, so `Array.prototype.at` is not in the type set here.
+			const calls = sendProviderDispatch.mock.calls;
+			return calls[calls.length - 1]?.[3];
+		}
+
+		it('passes the authorised return-path host through to SmtpExtras', async () => {
+			relayRouting('bounces.example.com');
+			await dispatchGovernedEmail(ctx, baseRequest);
+			expect(sendProviderDispatch).toHaveBeenCalledWith(ctx, 'smtp', expect.anything(), {
+				returnPathHost: 'bounces.example.com',
+			});
+			expect(dispatchedExtras()).toEqual({ returnPathHost: 'bounces.example.com' });
+		});
+
+		it('fails closed to the composer envelope sender when no host was authorised', async () => {
+			relayRouting(undefined);
+			await dispatchGovernedEmail(ctx, baseRequest);
+			expect(dispatchedExtras()).toEqual({});
+		});
+
+		it('reads the capability from the ROUTING result — no extra query per send', async () => {
+			// The routing pass already ran a query; a second round trip on the hot
+			// send path to read a deployment-scoped fact would be pure overhead. The
+			// ctx here deliberately has NO runQuery, so a reintroduced read throws.
+			relayRouting('bounces.example.com');
+			await expect(dispatchGovernedEmail(ctx, baseRequest)).resolves.toMatchObject({
+				success: true,
+				providerType: 'smtp',
+			});
+			expect((ctx as unknown as { runQuery?: unknown }).runQuery).toBeUndefined();
+		});
+	});
+
+	/**
+	 * AN AMBIGUOUS TIMEOUT ON A RELAY (plan D4).
+	 *
+	 * The MTA reconciles by REPLAYING the attempt — its idempotency key is the MTA
+	 * message id, so a repeat costs nothing. Mandrill's `send-raw` has no
+	 * idempotency surface at all, so the same replay would double-deliver. Before
+	 * this branch existed the ambiguity fell through to `throw`, `completeSend`
+	 * terminalized the row `failed`/`WORKPOOL_FAILED`, and `failed` is terminal —
+	 * the row claimed a definite non-delivery for a message that may have been
+	 * delivered and closed itself to every later transition.
+	 */
+	describe('ambiguous acceptance on a non-MTA transport', () => {
+		function ambiguousRouting(providerKind: 'smtp' | 'mandrill') {
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind,
+				route: null,
+				organizationId: 'org-1',
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: {
+					success: false,
+					errorCode: 'AMBIGUOUS_TIMEOUT',
+					errorMessage: 'Mandrill send timed out',
+					acceptanceUnknown: true,
+				},
+				providerType: providerKind,
+				latencyMs: 30_000,
+				attempts: 1,
+			});
+		}
+
+		it('parks a feedback-capable relay send instead of terminalizing it', async () => {
+			ambiguousRouting('mandrill');
+			const startedAt = Date.now() - 5_000;
+
+			const result = await dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				retryState: { attempt: 1, startedAt, idempotencyKey: 'send_send-row-1' },
+			});
+
+			expect(result).toEqual({
+				success: false,
+				acceptanceUnknown: true,
+				awaitingProviderFeedback: true,
+				providerType: 'mandrill',
+				startedAt,
+				retryState: { attempt: 1, startedAt, idempotencyKey: 'send_send-row-1' },
+			});
+		});
+
+		it('carries NOTHING a caller could re-dispatch from', async () => {
+			// D4: the lost response may sit on top of an accepted and delivered
+			// message. The absence of an envelope and of a provider message id is the
+			// structural guarantee — not a comment asking the callback to behave.
+			ambiguousRouting('mandrill');
+			const result = await dispatchGovernedEmail(ctx, baseRequest);
+			expect('envelopeInput' in result).toBe(false);
+			expect('providerMessageId' in result).toBe(false);
+			expect('retryAfterMs' in result).toBe(false);
+			expect(sendProviderDispatch).toHaveBeenCalledOnce();
+		});
+
+		it('does not park a transport with no feedback channel to wait for', async () => {
+			// A bring-your-own SMTP relay reports nothing out of band
+			// (`hasProviderFeedback: false`), so parking it would only delay the same
+			// answer by the delivery deadline. Unchanged: it throws.
+			ambiguousRouting('smtp');
+			await expect(dispatchGovernedEmail(ctx, baseRequest)).rejects.toThrow(
+				'Mandrill send timed out'
+			);
+		});
+	});
 });

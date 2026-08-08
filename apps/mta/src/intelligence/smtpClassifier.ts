@@ -15,21 +15,20 @@
 
 import type { DestinationProviderKey } from '../types.js';
 
-export type SmtpFailureCategory =
-	| 'greylisted' // Temporary — try again in a few minutes
-	| 'rate_limited' // Too many connections/messages — back off
-	| 'content_rejected' // Message content blocked (spam/virus) — no retry
-	| 'policy_rejected' // Sender policy violation (DMARC/SPF fail) — no retry
-	| 'mailbox_full' // Recipient mailbox full — soft, retry later
-	| 'auth_required' // Authentication issue — defer
-	| 'network_error' // DNS/connection issue — retry after backoff
-	| 'gmail_rate_limited'
-	| 'gmail_ip_identity'
-	| 'gmail_tls_required'
-	| 'yahoo_ts03'
-	| 'yahoo_tss04'
-	| 'microsoft_resource_throttle'
-	| 'unknown'; // Unclassified — use default behavior
+/**
+ * The category vocabulary now lives in `@owlat/shared/smtpBlockCategories`,
+ * re-exported here so every existing importer keeps working unchanged.
+ *
+ * It moved because it grew a SECOND consumer in another deployable: the ramp
+ * controller's standalone gate suite (plan D2/D14) treats a subset of these
+ * categories — the ones that mean "the receiver is refusing this sending
+ * identity" rather than "slow down" — as a hard stop. Two independent spellings
+ * of the same names across two apps would drift silently, and the failure mode
+ * is the hard stop quietly never firing again. Same names, same values, no
+ * behaviour change here.
+ */
+export type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 
 export interface SmtpClassification {
 	/** Failure category */

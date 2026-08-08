@@ -196,6 +196,9 @@ jobs:
           INSTANCE_SECRET: placeholder
           MTA_API_KEY: placeholder
           MTA_WEBHOOK_SECRET: placeholder
+          BOUNCE_VERP_KEY: placeholder
+          FBL_DEDUP_PROTOCOL: placeholder
+          FBL_DEDUP_CUTOVER_ACK: placeholder
 
       # S2 / Phase 1.3: publish a SHA256 manifest alongside the compose file so
       # the in-app updater (apps/web/server/api/system/update.post.ts) can

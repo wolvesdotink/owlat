@@ -9,10 +9,8 @@
 import { singleStrategy } from './single';
 import { priorityFailoverStrategy } from './priority_failover';
 import { workloadSplitStrategy } from './workload_split';
-import type {
-	SendRouteStrategyKind,
-	SendRouteStrategyModule,
-} from './types';
+import { adaptiveMixStrategy } from './adaptive_mix';
+import type { SendRouteStrategyKind, SendRouteStrategyModule } from './types';
 
 export type {
 	SendRouteStrategyKind,
@@ -21,11 +19,22 @@ export type {
 	ProviderHealthStatus,
 	ResolvedRoute,
 } from './types';
+export type {
+	MixArm,
+	MixAssignment,
+	MixAssignmentBasis,
+	MixAssignmentInput,
+	MixCellState,
+	MixContext,
+	MixRecipientIdentity,
+} from './adaptive_mix';
+export { rankTieBreakUnit, DEFAULT_MIX_VERSION, OWN_ARM_TRANSPORT_KIND } from './adaptive_mix';
 
 export const SEND_ROUTE_STRATEGIES = {
 	single: singleStrategy,
 	priority_failover: priorityFailoverStrategy,
 	workload_split: workloadSplitStrategy,
+	adaptive_mix: adaptiveMixStrategy,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the module shape for
@@ -34,9 +43,7 @@ const _typecheck: { [K in SendRouteStrategyKind]: SendRouteStrategyModule<K> } =
 	SEND_ROUTE_STRATEGIES;
 void _typecheck;
 
-export function strategyFor<K extends SendRouteStrategyKind>(
-	kind: K,
-): SendRouteStrategyModule<K> {
+export function strategyFor<K extends SendRouteStrategyKind>(kind: K): SendRouteStrategyModule<K> {
 	const mod = SEND_ROUTE_STRATEGIES[kind];
 	if (!mod) {
 		throw new Error(`Unknown send route strategy: ${kind}`);
@@ -44,12 +51,24 @@ export function strategyFor<K extends SendRouteStrategyKind>(
 	return mod as unknown as SendRouteStrategyModule<K>;
 }
 
+/**
+ * Whether a configured strategy resolves deterministically.
+ *
+ * An UNRECOGNISED kind is deterministic: `resolveRoute` never invokes a
+ * strategy for it, it falls straight through to the env fallback.
+ */
+export function isDeterministicRouteStrategy(kind: string | undefined | null): boolean {
+	if (!isSendRouteStrategyKind(kind)) return true;
+	return SEND_ROUTE_STRATEGIES[kind].isDeterministic;
+}
+
 export function isSendRouteStrategyKind(
-	kind: string | undefined | null,
+	kind: string | undefined | null
 ): kind is SendRouteStrategyKind {
 	return (
 		kind === 'single' ||
 		kind === 'priority_failover' ||
-		kind === 'workload_split'
+		kind === 'workload_split' ||
+		kind === 'adaptive_mix'
 	);
 }

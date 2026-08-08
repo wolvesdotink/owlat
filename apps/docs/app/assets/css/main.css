@@ -4,6 +4,12 @@
 @source "../../../../../packages/ui/components/**/*.vue";
 @source "../../../../../packages/ui/composables/**/*.ts";
 
+/* Docs-only syntax highlighting tokens (shared with the landing code windows) */
+:root {
+	--color-syntax-fn: #d9946e;
+	--color-syntax-str: #7a9b6e;
+}
+
 /* ═══════════════ BASE ═══════════════ */
 
 @layer base {
@@ -45,5 +51,17 @@
 
 	.btn-press:active {
 		transform: scale(0.98);
+	}
+}
+
+/* Ghost pill: hairline border + secondary text. Compose with `.btn`. */
+@utility btn-hairline {
+	border: 1px solid var(--color-border-default);
+	background: transparent;
+	color: var(--color-text-secondary);
+
+	&:hover {
+		border-color: var(--color-border-strong);
+		color: var(--color-text-primary);
 	}
 }

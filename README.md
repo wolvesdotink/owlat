@@ -100,6 +100,7 @@ Owlat is built as a set of independent feature areas. Each one can be turned on 
 | Embeddable forms | `forms` | on | Signup/capture forms for external sites |
 | Mailchimp import | `imports.mailchimp` | off | One-click contact and list import |
 | Stripe customer sync | `imports.stripe` | off | Sync Stripe customers into contacts (email, name, and their Stripe metadata as properties) |
+| Mandrill suppression import | `imports.mandrill` | off | Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating |
 
 ### Security & deliverability
 

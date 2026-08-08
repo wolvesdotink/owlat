@@ -1,0 +1,240 @@
+/**
+ * Deliverability route-state lookup (the D1 resolution seam).
+ *
+ * One place that knows how a `(stream, destinationProvider)` ramp cell maps
+ * onto `deliverabilityRouteStates` rows, so the stream widening cannot fork
+ * into per-caller lookup rules.
+ *
+ * A cell has TWO rows, not one, and they have DIFFERENT WRITERS:
+ *
+ *  - the per-stream row is the ramp controller's, carrying `ownShare` (absent
+ *    until P3-2 writes one);
+ *  - the stream-less row is the MTA snapshot's, carrying the infrastructure
+ *    verdict (`isFallbackActive`) and its `signals`, and it is also the LEGACY
+ *    shape every row written before the migration has.
+ *
+ * So `loadRouteStateCell` returns BOTH. "Per-stream else stream-less" is the
+ * SHARE resolution (`perStream ?? streamless`) and nothing more: collapsing the
+ * two rows at lookup time would let an empty per-stream row shadow the
+ * infrastructure signals for that provider, and a critical DNSBL listing or an
+ * open breaker would stop being read until the controller's next tick.
+ *
+ * Share resolution itself lives in `@owlat/shared/deliverabilityRouting`
+ * (`resolveOwnShare` / `isRouteStateFallbackActive`) and is shared with the
+ * MTA-facing code; this module is only the database seam.
+ */
+
+import type { Doc } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import {
+	deliverabilityCellKey,
+	isDestinationProviderKey,
+	resolveOwnShare,
+	type DeliverabilityCell,
+	type DeliverabilitySignalProvider,
+	type DeliverabilityStream,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
+import type { MixCellState } from './sendProviders/strategies';
+
+/**
+ * Row cap for a whole-organization scan.
+ *
+ * AN ASSERTION, NOT A PAGE. The cell space is streams x providers (15 today)
+ * plus the handful of stream-less snapshot rows — ~21 against 128 — so no
+ * organization reaches this and neither scanning loader below pages past it.
+ * That matters because truncation would be SILENT and would fail in the
+ * REFUSING direction: a dropped cell defaults to
+ * {@link EMPTY_ROUTE_STATE_CELL}, i.e. share 1, which RAISES the warming-cap
+ * gate's own-arm floor and so licenses a refusal the dropped row might have
+ * removed. If the cell space ever grows towards this number the loaders need
+ * real pagination, not a bigger constant.
+ *
+ * A scan also has to break a TIE the point read never sees: `by_org_provider`
+ * returns every row of a provider slice, so two rows sharing one
+ * `(destinationProvider, stream)` key — unreachable today, since every writer
+ * patches the row it looked up — arrive as two entries. Both loaders keep the
+ * FIRST in index order, which is the row `loadRouteStateCell`'s `.first()`
+ * resolves (both indexes order a fixed key group by `_creationTime`), so the
+ * scan and the point read cannot answer differently about one cell.
+ */
+const ROUTE_STATE_SCAN_LIMIT = 128;
+
+/** The all-stream row for a provider slice: what the MTA snapshot maintains. */
+export async function loadStreamlessRouteState(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string,
+	destinationProvider: DeliverabilitySignalProvider
+): Promise<Doc<'deliverabilityRouteStates'> | null> {
+	return await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider_stream', (q) =>
+			q
+				.eq('organizationId', organizationId)
+				.eq('destinationProvider', destinationProvider)
+				.eq('stream', undefined)
+		)
+		.first();
+}
+
+/**
+ * Both rows backing one ramp cell. Either may be absent.
+ *
+ * READ-ONLY, because one instance of this shape — {@link EMPTY_ROUTE_STATE_CELL}
+ * — is a module-level default SHARED by every reader in the isolate. A loader
+ * that assigned into a cell it had just defaulted would poison that default for
+ * all of them, and the symptom (route-state rows surfacing on cells that have
+ * none) lands nowhere near the assignment. Build a new object instead.
+ */
+export interface RouteStateCellRows {
+	/** The ramp controller's row: the cell's share. Absent until P3-2 writes one. */
+	readonly perStream: Doc<'deliverabilityRouteStates'> | null;
+	/** The MTA snapshot's (and legacy) row: the infrastructure verdict + signals. */
+	readonly streamless: Doc<'deliverabilityRouteStates'> | null;
+}
+
+/**
+ * Cell lookup. Returns BOTH rows so no caller can let one shadow the other;
+ * share resolution is `perStream ?? streamless` on top of this, while signals
+ * and the fallback boolean must be read from EVERY non-null row.
+ *
+ * The global `'all'` slice is infrastructure-wide and never per-stream, so it
+ * is not a cell: read it with `loadStreamlessRouteState(ctx, org, 'all')`.
+ */
+export async function loadRouteStateCell(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string,
+	cell: DeliverabilityCell
+): Promise<RouteStateCellRows> {
+	const [perStream, streamless] = await Promise.all([
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider_stream', (q) =>
+				q
+					.eq('organizationId', organizationId)
+					.eq('destinationProvider', cell.destinationProvider)
+					.eq('stream', cell.stream)
+			)
+			.first(),
+		loadStreamlessRouteState(ctx, organizationId, cell.destinationProvider),
+	]);
+	return { perStream, streamless };
+}
+
+/**
+ * The ramp's view of one cell: D1's resolution expression, in ONE place.
+ *
+ * `ownShare ?? (isFallbackActive ? 0 : 1)` (via `resolveOwnShare`) over
+ * `perStream ?? streamless` — the share convention this module documents. The
+ * stream-less row carries no share of its own, so on a pre-controller cell this
+ * resolves to exactly the shipped boolean. Both the enqueue-time decision and
+ * the dispatch-time replay read it from here so they can never drift apart.
+ */
+export function mixCellStateFor(cell: RouteStateCellRows): MixCellState {
+	const shareRow = cell.perStream ?? cell.streamless;
+	return { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion };
+}
+
+/**
+ * A cell the organization has no row for at all: the un-migrated default.
+ *
+ * FROZEN. It is one object handed to every reader that defaults a missing cell,
+ * so a stray write to it would be a write to all of them; the readonly fields
+ * catch that at compile time and this catches it at runtime.
+ */
+export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = Object.freeze({
+	perStream: null,
+	streamless: null,
+});
+
+/**
+ * Every cell of ONE stream — BOTH rows each — from a single indexed scan.
+ *
+ * `loadRouteStateCell` answers for one destination provider and costs two
+ * reads; a caller that has to judge a WHOLE stream would pay ten. The campaign
+ * warming-cap gate is exactly that caller: it judges an audience, not a
+ * recipient, so it has no single cell to look up.
+ *
+ * Unlike `loadRouteStatesByCell` the stream-less rows are KEPT, because they are
+ * the other half of the `perStream ?? streamless` share resolution: dropping
+ * them would read a cell whose controller row does not exist yet as
+ * un-degraded, while the MTA snapshot says the relay is engaged for it.
+ *
+ * Providers with no row are simply absent from the map — a reader defaults them
+ * to {@link EMPTY_ROUTE_STATE_CELL} rather than to a fabricated row.
+ *
+ * OCC FOOTPRINT (D16). This is an INDEX RANGE over the whole organization, so a
+ * caller inside a mutation — the campaign warming-cap gate runs in
+ * `campaigns.scheduling.schedule` / `campaigns.campaigns.sendNow` — puts EVERY
+ * route-state row of the organization in that mutation's read set, where the MTA
+ * snapshot (~10 minutes) and the ramp controller (hourly) both write. The
+ * dispatch path's point read touches one cell and conflicts with nothing else;
+ * this one conflicts with any route-state write in flight. The trade is
+ * deliberate and small — the range is `ROUTE_STATE_SCAN_LIMIT` rows of a table
+ * written on a ten-minute cadence, and Convex retries the mutation — but it is a
+ * real widening, so a caller that only needs ONE cell must keep using
+ * {@link loadRouteStateCell}.
+ */
+export async function loadStreamRouteStateCells(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string,
+	stream: DeliverabilityStream
+): Promise<Map<DestinationProviderKey, RouteStateCellRows>> {
+	const rows = await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
+		.take(ROUTE_STATE_SCAN_LIMIT);
+	const cells = new Map<DestinationProviderKey, RouteStateCellRows>();
+	for (const row of rows) {
+		const destinationProvider = row.destinationProvider;
+		// The pool-wide `'all'` slice is infrastructure, not a cell.
+		if (!isDestinationProviderKey(destinationProvider)) continue;
+		// Another stream's controller row says nothing about this one.
+		if (row.stream !== undefined && row.stream !== stream) continue;
+		// A NEW cell each time, never an assignment into the one already in the
+		// map: that object is `EMPTY_ROUTE_STATE_CELL` until the first row for the
+		// provider arrives, and the shared default is not this loader's to write.
+		const cell = cells.get(destinationProvider) ?? EMPTY_ROUTE_STATE_CELL;
+		// FIRST WINS, so this scan resolves the same row `loadRouteStateCell`'s
+		// `.first()` does (see `ROUTE_STATE_SCAN_LIMIT`).
+		if (row.stream === undefined) {
+			if (cell.streamless === null) cells.set(destinationProvider, { ...cell, streamless: row });
+		} else if (cell.perStream === null) {
+			cells.set(destinationProvider, { ...cell, perStream: row });
+		}
+	}
+	return cells;
+}
+
+/**
+ * Every ramp-managed row for an organization, keyed by `deliverabilityCellKey`.
+ *
+ * Whole-screen readers (the controls grid, the independence summary) want all
+ * cells at once rather than one `loadRouteStateCell` per cell. Stream-less rows
+ * are skipped here on purpose: they are the MTA snapshot's, carry no cell
+ * identity, and have no key in this map. The key format lives in ONE place so
+ * changing it cannot silently fork between callers.
+ */
+export async function loadRouteStatesByCell(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string
+): Promise<Map<string, Doc<'deliverabilityRouteStates'>>> {
+	const rows = await ctx.db
+		.query('deliverabilityRouteStates')
+		.withIndex('by_org_provider', (q) => q.eq('organizationId', organizationId))
+		.take(ROUTE_STATE_SCAN_LIMIT);
+	const byCell = new Map<string, Doc<'deliverabilityRouteStates'>>();
+	for (const row of rows) {
+		const stream = row.stream;
+		// A row is a CELL only if it has both halves of the pair: the stream-less
+		// snapshot rows and the pool-wide `'all'` slice are neither, and the type
+		// says so — `destinationProvider` on the table admits `'all'`.
+		if (stream === undefined) continue;
+		const destinationProvider = row.destinationProvider;
+		if (!isDestinationProviderKey(destinationProvider)) continue;
+		// FIRST WINS, the same tie-break the other scanning loader takes.
+		const key = deliverabilityCellKey({ stream, destinationProvider });
+		if (!byCell.has(key)) byCell.set(key, row);
+	}
+	return byCell;
+}

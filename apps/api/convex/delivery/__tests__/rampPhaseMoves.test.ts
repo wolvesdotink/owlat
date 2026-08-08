@@ -1,0 +1,688 @@
+/**
+ * A PHASE CEILING RISES ONE WAY ONLY (plan D3, D12).
+ *
+ * The rung is the biggest lever on the ramp: it bounds what the AIMD ladder may
+ * climb to, and moving it re-shuffles which arm EVERY recipient of the cell
+ * lands in. Plan D3 guards it with a table of evidence routes — an external
+ * reading for the cell, or four corroborating self-hosted conditions — and a
+ * gate that guards one of two doors is not a gate. So this suite pins the shape
+ * rather than only the arithmetic:
+ *
+ *   - `resetCellPhase` moves a rung DOWN and refuses to move one up, naming the
+ *     mutation that owns the upward move;
+ *   - `promoteCellPhase` is that mutation, and it consults the routes;
+ *   - every write that SETS a rung stamps `phaseCeilingSince`, because the dwell
+ *     clock is one of the four standalone conditions and a rung with no anchor
+ *     leaves a yahoo/apple/other cell unpromotable for ever;
+ *   - a row with no stored share is not the ramp's to promote;
+ *   - and the shared rule underneath, `applyRampPhasePromotion`, writes the row
+ *     and no audit, so a caller that fails to attribute the move leaves a
+ *     ceiling nobody can explain. That is the ONLY thing pinned below the door:
+ *     there is one door, and every rule it enforces is pinned through it.
+ */
+
+import { convexTest } from 'convex-test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api } from '../../_generated/api';
+import { modules } from '../../__tests__/testModules';
+import { configuredRelayKinds } from '../relayConfiguration';
+import { applyRampPhasePromotion } from '../rampPhasePromotion';
+import {
+	connectRelay,
+	readManagedCell,
+	seedArmOutcomes,
+	seedRampCell,
+	type Harness,
+} from './rampCronFixtures';
+
+const ORG = 'org_ramp_phase_moves';
+const HOUR_MS = 60 * 60 * 1000;
+
+const session = vi.hoisted(() => ({ organizationId: 'org_ramp_phase_moves', isAdmin: true }));
+
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireAdminContext: vi.fn(async () => {
+			if (!session.isAdmin) throw new Error('Admin access required');
+			return { userId: 'user_admin', role: 'owner' };
+		}),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'user_admin', role: 'owner' }),
+	};
+});
+
+const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
+
+function harness(): Harness {
+	session.organizationId = ORG;
+	session.isAdmin = true;
+	// The relay, where a test wants one, is expressed through `providerRoutes`:
+	// the single-transport env is the OWN MTA here, so no ambient `EMAIL_PROVIDER`
+	// can hand a "standalone" fixture a second sender it never asked for.
+	vi.stubEnv('EMAIL_PROVIDER', 'mta');
+	return convexTest(schema, modules);
+}
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
+async function auditActions(t: Harness): Promise<string[]> {
+	const rows = await t.run(async (ctx) => await ctx.db.query('auditLogs').collect());
+	return rows.map((row) => row.action);
+}
+
+async function decisions(t: Harness) {
+	return await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
+}
+
+/**
+ * THE CONFIGURATION HALF of "is there a second sender", read through the reader
+ * the reset door itself uses. A standalone premise that is never stated is a
+ * premise a stray `providerRoutes` row or an ambient `EMAIL_PROVIDER` can
+ * silently take away, leaving a suite named "standalone" asserting nothing.
+ */
+async function relayKinds(t: Harness): Promise<string[]> {
+	return await t.run(async (ctx) => await configuredRelayKinds(ctx));
+}
+
+describe('reset-to-phase is downward-only', () => {
+	it('refuses to raise a ceiling and points at the promotion instead', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.5,
+		});
+		expect(result).toEqual({
+			applied: false,
+			refusal: 'phase_increase_requires_promotion',
+		});
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.ownShare).toBe(0.2);
+		// A refusal writes nothing — not even the audit pair a real move earns.
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	/**
+	 * The absent ceiling is the interesting one: a row that predates the controller
+	 * carries none, and a guard comparing the argument against itself would wave
+	 * every raise through. The ladder's first rung is the reading the promotion
+	 * path takes, and this asserts the reset path agrees with it.
+	 */
+	it('reads a ceiling-less row as sitting on the first rung', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, omitPhaseCeiling: true });
+
+		const raised = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 1,
+		});
+		expect(raised.refusal).toBe('phase_increase_requires_promotion');
+		expect((await readManagedCell(t))?.phaseCeiling).toBeUndefined();
+
+		const onFirstRung = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(onFirstRung.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+
+	it('restarts the dwell clock on the rung it puts the cell back on', async () => {
+		const t = harness();
+		const staleAnchor = Date.now() - 40 * 24 * HOUR_MS;
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.8, phaseCeiling: 1 });
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('deliverabilityRouteStates').collect();
+			const cell = rows.find((row) => row.stream === 'campaign');
+			if (cell !== undefined) await ctx.db.patch(cell._id, { phaseCeilingSince: staleAnchor });
+		});
+
+		await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, { ...CELL, phaseCeiling: 0.25 });
+
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.25);
+		// Carrying the old anchor down would arrive on the low rung with that rung's
+		// dwell already served, and the standalone route would hand the ceiling
+		// straight back.
+		expect(row?.phaseCeilingSince).toBeGreaterThan(staleAnchor);
+	});
+});
+
+/**
+ * A RUNG BOUNDS THE SHARE DIAL, SO IT BOUNDS ONLY A CELL THAT HAS ONE (plan D3).
+ *
+ * STANDALONE MEANS NO SECOND SENDER AT ALL, and both halves of that are stated
+ * here: no `providerRoutes` relay and no `EMAIL_PROVIDER` naming one (asserted
+ * through the door's own reader), and no reference-arm traffic. An enrolled cell
+ * then sits at full share, and the one enabled rung button would otherwise cut
+ * three quarters of its mail toward a relay that does not exist — flipping the
+ * derived boolean, revoking a graduation pin and spending a mix generation on a
+ * cohort with one arm in it.
+ */
+describe('a reset where there is no second sender', () => {
+	it('takes the lower rung without touching a standalone cell’s share', async () => {
+		const t = harness();
+		const graduatedAt = Date.now() - 1_000;
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			cleanStreak: 3,
+			mixVersion: 2,
+			graduatedAt,
+		});
+		// THE PREMISE, STATED. Without it this asserts nothing about standalone-ness:
+		// a suite with a relay row would take the same branch for a different reason.
+		expect(await relayKinds(t)).toEqual([]);
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		// THE MOVE THE REVIEW ASKED FOR: one click must not land an enrolled
+		// standalone cell at 25% of its own traffic.
+		expect(result).toEqual({ applied: true, share: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(1);
+		expect(row?.isFallbackActive).toBe(false);
+		// No share moved, so no cohort is re-randomised and no pin is revoked.
+		expect(row?.mixVersion).toBe(2);
+		expect(row?.graduatedAt).toBe(graduatedAt);
+		// The rung and the streak ARE the reset — both are stored state the cell
+		// re-earns, and the rung binds again the tick a relay carries this cell.
+		expect(row?.phaseCeiling).toBe(0.25);
+		expect(row?.phaseCeilingSince).toBeGreaterThan(0);
+		expect(row?.cleanStreak).toBe(0);
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		// The timeline must not report a cut that did not happen.
+		expect(recorded[0]?.fromShare).toBe(1);
+		expect(recorded[0]?.toShare).toBe(1);
+		expect(recorded[0]?.direction).toBe('hold');
+		expect(recorded[0]?.message).toContain('no second sender');
+		expect(await auditActions(t)).toContain('deliverability_ramp.phase_reset');
+	});
+
+	/**
+	 * THE GRADUATION CLOCK IS AN EVIDENCE CLOCK, so a reset restarts it on the
+	 * path where nothing else moves too. Holding it would let a standalone cell
+	 * run out its fourteenth green day and PIN two days after an operator took it
+	 * off its rung — a graduation awarded over the very stretch the reset declared
+	 * untrusted, and the cheapest possible one to buy: on a standalone cell the
+	 * reset costs no traffic at all.
+	 *
+	 * The pin ALREADY on the row is a different fact: it claims this cell's mail
+	 * is carried by its own server, and that claim survives because the share did.
+	 */
+	it('restarts the graduation clock while holding the share and an existing pin', async () => {
+		const t = harness();
+		const graduatedAt = Date.now() - 1_000;
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			greenSince: Date.now() - 13 * 24 * HOUR_MS,
+			graduatedAt,
+		});
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.5,
+		});
+
+		expect(result).toEqual({ applied: true, share: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.greenSince).toBeUndefined();
+		expect(row?.ownShare).toBe(1);
+		expect(row?.graduatedAt).toBe(graduatedAt);
+	});
+
+	it('cuts the same cell to the rung once a relay arm carries it, with none configured', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			mixVersion: 2,
+			greenSince: Date.now() - 13 * 24 * HOUR_MS,
+			graduatedAt: Date.now() - 1_000,
+		});
+		// THE MEASURED HALF OF THE UNION, on its own: a relay disconnected inside the
+		// evaluation window leaves no configuration behind but is still carrying this
+		// cell, and the tick binds the ladder on that reading. The door must not hold
+		// a share the controller is already bounding.
+		expect(await relayKinds(t)).toEqual([]);
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 40 });
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		expect(result).toEqual({ applied: true, share: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.isFallbackActive).toBe(true);
+		expect(row?.mixVersion).toBe(3);
+		expect(row?.graduatedAt).toBeUndefined();
+		// The clocks restart on this path for the same reason they do on the other.
+		expect(row?.greenSince).toBeUndefined();
+		expect((await decisions(t))[0]?.direction).toBe('decrease');
+	});
+});
+
+/**
+ * A CONFIGURED RELAY IS A SECOND SENDER EVEN WITH NOTHING FLOWING THROUGH IT
+ * (plan D14 x D3) — and this is the cell the control exists for.
+ *
+ * A GRADUATED cell sits at full share with the relay on standby, so by
+ * construction it produces no reference-arm outcomes at all. A door that asked
+ * only "has this cell sent through a relay in the last day?" therefore answered
+ * "there is no second sender" for every fully-ramped cell in every ESP
+ * deployment: the share stayed at 100%, the graduation pin survived, and
+ * `rampEnrollment`'s "start it over" pointed at a control that could not.
+ */
+describe('a reset on a deployment with a relay configured', () => {
+	it('cuts a graduated cell to the rung though nothing has flowed through the relay', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 1,
+			phaseCeiling: 1,
+			mixVersion: 2,
+			graduatedAt: Date.now() - 1_000,
+		});
+		await connectRelay(t);
+		// The premise both ways round: a relay IS configured, and this cell has no
+		// reference-arm rows — the steady state of a fully-ramped cell, not a window.
+		expect(await relayKinds(t)).toEqual(['ses']);
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+
+		expect(result).toEqual({ applied: true, share: 0.25 });
+		const row = await readManagedCell(t);
+		expect(row?.ownShare).toBe(0.25);
+		expect(row?.isFallbackActive).toBe(true);
+		// The share moved, so what follows it moves: a new cohort generation, and a
+		// pin that may not outlive the share that earned it.
+		expect(row?.mixVersion).toBe(3);
+		expect(row?.graduatedAt).toBeUndefined();
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]?.direction).toBe('decrease');
+		// AND THE SENTENCE MAY NOT DENY THE RELAY. The audit row is the permanent
+		// record of what the operator was told about a deployment that has one.
+		expect(recorded[0]?.message).not.toMatch(/no second sender|no relay is connected/i);
+	});
+
+	/**
+	 * THE SCREEN MAY NOT PROMISE A DIFFERENT MOVE FROM THE ONE THE DOOR MAKES.
+	 *
+	 * `getRampControls` carries two readings of ONE relay list, and the two-relay
+	 * deployment is where they come apart: there is no single arm to name, and
+	 * there IS a second sender. Deriving the screen's boolean from
+	 * `referenceTransportId !== null` would grey out the rung buttons on a
+	 * deployment whose reset cuts — so the query's two fields are pinned against
+	 * the mutation that answers the same question.
+	 */
+	it('shows a second sender with no single reference arm, and the reset cuts', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1 });
+		await connectRelay(t);
+		// One relay from each surface the reader reads: the route row and the
+		// single-transport env.
+		vi.stubEnv('EMAIL_PROVIDER', 'resend');
+		expect(await relayKinds(t)).toEqual(['resend', 'ses']);
+
+		const view = await t.query(api.delivery.rampControlQueries.getRampControls, {});
+		expect(view.referenceTransportId).toBeNull();
+		expect(view.isRelayConfigured).toBe(true);
+
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result).toEqual({ applied: true, share: 0.25 });
+	});
+
+	/**
+	 * AND THE THIRD READING IS THE DIAL, WHICH IS NEITHER OF THE OTHER TWO.
+	 *
+	 * `isShareRamped` is `bindsPhaseLadder` over the cell's degradation — the same
+	 * answer `readsShareDial` hands the mutation that writes the audit row — so the
+	 * pre-click copy on the pause and pin controls and the sentence in the timeline
+	 * are one fact. The screen's other two fields are configuration; this one is
+	 * measurement, and a relay CONFIGURED but carrying nothing this window is
+	 * exactly where they part.
+	 */
+	it('reports the dial the tick is climbing, not the one the route table implies', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4 });
+		await connectRelay(t);
+		// The premise: a relay IS configured, and nothing has come through it.
+		expect(await relayKinds(t)).toEqual(['ses']);
+
+		const quiet = await t.query(api.delivery.rampControlQueries.getRampControls, {});
+		expect(quiet.isRelayConfigured).toBe(true);
+		// The controller ramps this cell by pace, so the screen may not offer a
+		// share the pin cannot bound. `controls.test.ts` pins the server's sentence
+		// for this same cell ('follows the tick, not the route table').
+		expect(quiet.cells.find((c) => c.cellKey === 'campaign:gmail')?.isShareRamped).toBe(false);
+
+		// Give the reference arm traffic and the same query answers the other way.
+		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', sent: 500 });
+		const carried = await t.query(api.delivery.rampControlQueries.getRampControls, {});
+		expect(carried.cells.find((c) => c.cellKey === 'campaign:gmail')?.isShareRamped).toBe(true);
+	});
+});
+
+describe('promotion is the upward door', () => {
+	it('raises one rung below the evidence line, stamps the dwell anchor and audits it', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			mixVersion: 2,
+		});
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: true, phaseCeiling: 0.5 });
+
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.5);
+		expect(row?.phaseCeilingSince).toBeGreaterThan(0);
+		// A promotion IS a new mix generation (plan D7).
+		expect(row?.mixVersion).toBe(3);
+		// IT MOVES THE CEILING, NOT THE SHARE: the share still has to earn each step.
+		expect(row?.ownShare).toBe(0.2);
+
+		expect(await auditActions(t)).toContain('deliverability_ramp.phase_promoted');
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]?.reason).toBe('operator_phase_promotion');
+		expect(recorded[0]?.fromShare).toBe(0.2);
+		expect(recorded[0]?.toShare).toBe(0.2);
+		expect(recorded[0]?.direction).toBe('hold');
+	});
+
+	it('refuses to cross the 0.5 line with no evidence, naming what is missing', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.4, phaseCeiling: 0.5 });
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result.applied).toBe(false);
+		expect(result.refusal).toBe('promotion_evidence_outstanding');
+		expect(result.phaseCeiling).toBe(0.5);
+		// Every applicable route's unmet conditions come back BY NAME so the screen
+		// can say what would unlock the rung (plan D12/D14).
+		expect(result.outstanding).toContain('google_compliance_pass');
+		expect(result.outstanding).toContain('dnsbl_clean_streak');
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.5);
+		// A refusal is not a decision: nothing lands in the timeline.
+		expect(await decisions(t)).toHaveLength(0);
+	});
+
+	it('is a calm no-op at the top rung', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1, mixVersion: 2 });
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: false, phaseCeiling: 1 });
+		// Re-randomising the cohort for a no-op would cost the comparison its
+		// continuity for nothing.
+		expect((await readManagedCell(t))?.mixVersion).toBe(2);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	/**
+	 * A ROW WITH NO STORED SHARE IS NOT THE RAMP'S. Giving it a rung would leave a
+	 * ceiling on a cell the controller still skips, and the next enrolment would
+	 * inherit a rung nobody earned.
+	 */
+	it('refuses a per-stream row that carries no share, and patches nothing', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: false,
+				signals: [],
+				snapshotGeneratedAt: now,
+				expiresAt: now + 60_000,
+				updatedAt: now,
+				mixVersion: 4,
+			});
+		});
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: false, refusal: 'cell_not_ramp_managed' });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBeUndefined();
+		expect(row?.phaseCeilingSince).toBeUndefined();
+		// A refusal spends no mix generation: re-randomising the cohort for a move
+		// that did not happen would cost the comparison its continuity for nothing.
+		expect(row?.mixVersion).toBe(4);
+	});
+
+	it('refuses a cell this tenant does not have', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, {
+			stream: 'transactional' as const,
+			destinationProvider: 'yahoo' as const,
+		});
+		expect(result).toEqual({ applied: false, refusal: 'cell_not_ramp_managed' });
+	});
+});
+
+/**
+ * THE PROMOTION SENTENCE IS THE PERMANENT RECORD, and it may not describe a move
+ * the controller will never make. `RampDecisionTimeline` renders the
+ * `mixDecisions` row back long after the screen's own outcome line is gone, so a
+ * standalone cell told its share "climbs toward the new ceiling" is told that
+ * forever — on a cell that sits ABOVE the rung and whose phase bounds
+ * `phaseLadderBounds` drops entirely. The enrolment row two decisions earlier
+ * already said there is no relay; both halves are pinned here so the timeline
+ * cannot come to argue with itself.
+ */
+describe('what a promotion says about the rung it just wrote', () => {
+	it('does not promise a climb on a cell the ladder does not bound', async () => {
+		const t = harness();
+		// The pace path's own opening state: full share, first rung.
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 0.25 });
+		// THE PREMISE, STATED. Without it this asserts nothing about standalone-ness.
+		expect(await relayKinds(t)).toEqual([]);
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: true, phaseCeiling: 0.5 });
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		const message = recorded[0]?.message ?? '';
+		// The defect, named: the cell stands at 100% and the new rung is 50%.
+		expect(message).not.toMatch(/climbs toward/);
+		expect(message).toContain('the phase ladder does not bound its share');
+		expect(message).toContain('the warm-up pace is what ramps');
+		// The rung is still recorded and still binds the tick a second sender
+		// appears — the same rule the reset door states from the downward side.
+		expect(message).toContain('once a second sender appears');
+		// Same shape as the reset's `shareHeld` and the enrolment's
+		// `shareNotRouted` — the flag rides the snapshot, not a column.
+		expect(recorded[0]?.snapshot).toContain('ceilingNotBinding');
+	});
+
+	it('keeps the climb sentence where a relay is configured to hold the share back', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
+		await connectRelay(t);
+		expect(await relayKinds(t)).toEqual(['ses']);
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: true, phaseCeiling: 0.5 });
+
+		const recorded = await decisions(t);
+		expect(recorded).toHaveLength(1);
+		const message = recorded[0]?.message ?? '';
+		expect(message).toContain('The share stays at 20% and climbs toward the new ceiling');
+		expect(message).not.toMatch(/does not bound its share/);
+		// The rung binds here, so the row makes no claim that it does not.
+		expect(recorded[0]?.snapshot).not.toContain('ceilingNotBinding');
+	});
+});
+
+/**
+ * A STORED RUNG IS AN UNCONSTRAINED NUMBER in the schema, so both paths read it
+ * through the ladder's own `normalizePhaseCeiling` rather than raw. Comparing a
+ * normalised next rung against a RAW current one is how a degenerate row talks a
+ * gate into a move nobody asked for.
+ */
+describe('a rung that is not on the ladder', () => {
+	it('is at the top when it stands above it, and is not "promoted" downward', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 1, phaseCeiling: 1.2, mixVersion: 2 });
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		// Raw, this read `nextPhaseCeiling(1.2) === 1`, `1 !== 1.2`, "not at the
+		// top" — and patched the ceiling DOWN to 1.0 while writing an audit row
+		// claiming a promotion to 100% and spending a mix generation on it.
+		expect(result).toEqual({ applied: false, phaseCeiling: 1 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(1.2);
+		expect(row?.mixVersion).toBe(2);
+		expect(await decisions(t)).toHaveLength(0);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+
+	it('is on the first rung when it stands below it, so a reset can still reach it', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.1 });
+
+		// Raw, `0.25 > 0.1` read as an upward move and refused: a cell stranded
+		// below the ladder could never be put back on it by anyone.
+		const result = await t.mutation(api.delivery.rampPhaseReset.resetCellPhase, {
+			...CELL,
+			phaseCeiling: 0.25,
+		});
+		expect(result.applied).toBe(true);
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+});
+
+/**
+ * THE SHARED RULE, CALLED DIRECTLY — the one thing the operator door cannot pin
+ * about it. `applyRampPhasePromotion` writes the row and deliberately writes NO
+ * audit, because only a caller knows whom to attribute the move to; every case
+ * below it (the rungs, the refusals, the outstanding evidence) is pinned through
+ * `promoteCellPhase` above, which is the only door onto this rule.
+ *
+ * This case used to run through `rampControllerCron.promoteRampPhase`, a second
+ * internalMutation entry over the same rule that no cron registered and no
+ * module called. It was removed under D20, and the four cases it flattened —
+ * the refusals, the top rung, the outstanding evidence — are all pinned through
+ * the operator's door above; only the rule's own silence about the actor needed
+ * a home of its own.
+ */
+describe('the shared rule writes the row and leaves the audit to its caller', () => {
+	it('promotes one rung, stamps the dwell anchor and records nothing about who asked', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			mixVersion: 2,
+		});
+		const before = Date.now();
+
+		const promotion = await t.run(
+			async (ctx) =>
+				await applyRampPhasePromotion(ctx, { organizationId: ORG, cell: CELL, now: Date.now() })
+		);
+
+		expect(promotion).toMatchObject({ status: 'promoted', fromCeiling: 0.25, phaseCeiling: 0.5 });
+		const row = await readManagedCell(t);
+		expect(row?.phaseCeiling).toBe(0.5);
+		// The dwell clock restarts on the rung just written — one of the four
+		// standalone conditions, and a rung with no anchor is unpromotable for ever.
+		expect(row?.phaseCeilingSince).toBeGreaterThanOrEqual(before);
+		// A promotion IS a new mix generation on the ESP path.
+		expect(row?.mixVersion).toBe(3);
+		// THE POINT: the rule attributes nothing, so the D12 pair is the caller's to
+		// write. `promoteCellPhase` writes it; a caller that forgot to would leave the
+		// cell's timeline showing an unexplained jump in its ceiling.
+		expect(await auditActions(t)).toHaveLength(0);
+		expect(await decisions(t)).toHaveLength(0);
+	});
+});
+
+/**
+ * A PROMOTION IS AN INCREASE, so it meets the increases' hard stops — through the
+ * controller's own readers rather than a second copy of the rules.
+ */
+describe('hard stops bound a promotion', () => {
+	it('refuses while the global kill switch is engaged', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			isPaused: true,
+		});
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: false, refusal: 'controller_paused' });
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+
+	it('refuses inside a live cooldown from an earlier retreat', async () => {
+		const t = harness();
+		await seedRampCell(t, {
+			organizationId: ORG,
+			ownShare: 0.2,
+			phaseCeiling: 0.25,
+			frozenUntil: Date.now() + HOUR_MS,
+			freezeReason: 'gate_breach',
+		});
+
+		const result = await t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL);
+		expect(result).toEqual({ applied: false, refusal: 'hard_stop_active' });
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+	});
+});
+
+describe('the admin floor', () => {
+	it('refuses a non-admin promotion and writes nothing', async () => {
+		const t = harness();
+		await seedRampCell(t, { organizationId: ORG, ownShare: 0.2, phaseCeiling: 0.25 });
+		session.isAdmin = false;
+		try {
+			await expect(
+				t.mutation(api.delivery.rampPhasePromotion.promoteCellPhase, CELL)
+			).rejects.toThrow();
+		} finally {
+			session.isAdmin = true;
+		}
+		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.25);
+		expect(await auditActions(t)).toHaveLength(0);
+	});
+});

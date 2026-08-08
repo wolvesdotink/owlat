@@ -6,11 +6,17 @@ import { formTables } from './schema/forms';
 import { automationTables } from './schema/automations';
 import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
+import { relayIdentitiesTables } from './schema/relayIdentities';
 import { contactTables } from './schema/contacts';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
+import { alignmentTables } from './schema/alignment';
+import { sendAssignmentTables } from './schema/sendAssignments';
+import { smtpResponseCategoryTables } from './schema/smtpResponseCategories';
+import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
+import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
@@ -24,6 +30,8 @@ import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
 import { e2eeTables } from './schema/e2ee';
 import { pluginTables } from './schema/plugins';
+import { postmasterTables } from './schema/postmaster';
+import { sndsTables } from './schema/snds';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -35,11 +43,17 @@ export default defineSchema({
 	...automationTables,
 	...campaignTables,
 	...domainTables,
+	...relayIdentitiesTables,
 	...contactTables,
 	...authTables,
 	...instanceTables,
 	...templateTables,
 	...deliveryTables,
+	...seedPlacementTables,
+	...alignmentTables,
+	...sendAssignmentTables,
+	...smtpResponseCategoryTables,
+	...transportOutcomeTables,
 	...inboxTables,
 	...autonomyTables,
 	...askEagernessTables,
@@ -53,4 +67,6 @@ export default defineSchema({
 	...draftStreamTables,
 	...e2eeTables,
 	...pluginTables,
+	...postmasterTables,
+	...sndsTables,
 });

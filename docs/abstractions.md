@@ -27,7 +27,7 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface | Env var | Implementations | Files |
 |---|---|---|---|
 | `EmailProvider` (domain identity/verification) | `EMAIL_PROVIDER` (mta) | SES, MTA | `emailProviders/{domainVerification,sesIdentity,mtaIdentity}.ts` |
-| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp` | `sendProviders/` |
+| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp`, `mandrill` | `sendProviders/` |
 | `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
 
 Send providers additionally take **operator-installed** implementations: a

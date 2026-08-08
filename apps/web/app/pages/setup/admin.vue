@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { SETUP_WIZARD_STEPS, validateAdmin, adminIsValid } from '~/composables/useSetupWizard';
+import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import { validateAdmin, adminIsValid } from '~/composables/setupWizardValidation';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Admin account' });

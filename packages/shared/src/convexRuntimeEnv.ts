@@ -85,11 +85,26 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'MTA_WEBHOOK_SECRET',
 	'MTA_IP_POOLS',
 	'MTA_RETURN_PATH_DOMAIN',
+	// The MTA's VERP signing key. Pushed because the Convex relay adapter stamps
+	// the SAME signed envelope sender on relay sends — without it in the
+	// deployment the relay arm produces no bounce data of its own.
+	'MTA_BOUNCE_VERP_KEY',
+	// SPF terms authorising the relay on the return-path host. Read by the
+	// routing seam before it lets a relay send carry our VERP envelope sender,
+	// so it must be present in the deployment, not just in the MTA's env.
+	'MTA_RETURN_PATH_RELAY_SPF',
 	// The active transport's effective DKIM d= domain, when it isn't the per-message
 	// From-domain. Read by the outbound DMARC-alignment guard at Convex function
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
 	'OUTBOUND_DKIM_DOMAIN',
 	'SPF_QUALIFIER',
+	// BIMI (P4-7). The DOMAIN WIZARD generates the `_bimi` record at Convex
+	// function runtime, so these must reach the deployment and not merely the
+	// MTA's env — a self-hoster who set them would otherwise find the wizard
+	// still reporting that no logo is known, with no error to explain it.
+	'MTA_BIMI_LOGO_URL',
+	'MTA_BIMI_VMC_URL',
+	'MTA_BIMI_SELECTOR',
 	// Mail sync worker
 	'MAIL_SYNC_API_URL',
 	'MAIL_SYNC_API_KEY',
@@ -102,6 +117,14 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'SES_CONFIGURATION_SET',
 	'SES_SNS_TOPIC_ARN',
+	// Provider: Mailchimp Transactional (Mandrill). The send adapter reads the
+	// API key (and the optional subaccount/IP-pool defaults) at Convex function
+	// runtime, and the webhook route verifies X-Mandrill-Signature with the
+	// webhook key — none of them can stay behind in the compose .env.
+	'MANDRILL_API_KEY',
+	'MANDRILL_IP_POOL',
+	'MANDRILL_SUBACCOUNT',
+	'MANDRILL_WEBHOOK_KEY',
 	// Provider: generic SMTP relay (Mailgun/Postmark/SendGrid/Brevo/custom).
 	// The instance-level outbound transport when EMAIL_PROVIDER=smtp — the
 	// in-house SMTP relay adapter reads these at Convex function runtime, so they
@@ -112,6 +135,15 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'SMTP_RELAY_SECURE',
 	'SMTP_RELAY_USERNAME',
 	'SMTP_RELAY_PASSWORD',
+	// Extra NAMED send-transport instances beyond the one each transport kind
+	// gets for free: comma-separated `<kind>#<instanceKey>` entries (`smtp#backup`)
+	// whose config lives under `<BASE>__<INSTANCEKEY>` variables. The transport
+	// resolver (lib/sendProviders/transports.ts) parses this at Convex function
+	// runtime via getOptional(), so an unpushed value would leave every extra
+	// instance undeclared — silently invisible to dispatch, which then fails
+	// closed on it. Unset ⇒ one transport per kind (the shipped
+	// single-transport deployment).
+	'SEND_TRANSPORT_INSTANCES',
 	// LLM
 	'LLM_PROVIDER',
 	'LLM_API_KEY',
@@ -167,6 +199,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// scheduling replies.
 	'CALENDAR_FREEBUSY_ICS_URL',
 	'CALENDAR_TIMEZONE',
+	// Microsoft SNDS "Automated Data Access" feed URLs, read at Convex function
+	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
+	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always
+	// undefined and the poller silently dead in production. Unset ⇒ the poller
+	// returns immediately: SNDS enrollment is additive-only (D2).
+	'SNDS_DATA_FEED_URLS',
 ] as const;
 
 /**

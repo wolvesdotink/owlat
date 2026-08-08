@@ -3,14 +3,17 @@ import { api } from '@owlat/api';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
 import {
 	buildTransportOptions,
+	fallbackRelayIssue,
 	isTransportAvailable,
 	routeProvidersForWrite,
 	seedRouteProviders,
 	transportLabel,
 } from '~/utils/providerRouting';
 import {
+	isControllerOwnedStrategy,
 	PROVIDER_ROUTE_MESSAGE_TYPES as MESSAGE_TYPES,
 	PROVIDER_ROUTE_STRATEGIES as STRATEGIES,
+	strategyLabelFor as strategyLabel,
 	type ProviderRouteMessageType as MessageType,
 	type ProviderRouteStrategy as Strategy,
 } from '~/utils/providerRouteOptions';
@@ -39,9 +42,6 @@ interface DeliverabilityFallback {
 	relayProviderType: string;
 	isWarmupOverflowEnabled: boolean;
 }
-
-const strategyLabel = (strategy: string): string =>
-	STRATEGIES.find((s) => s.value === strategy)?.label ?? strategy;
 
 // ── Data ────────────────────────────────────────────────────────────
 const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
@@ -151,10 +151,11 @@ function moveProvider(index: number, direction: -1 | 1) {
 	editProviders.value = next;
 }
 
+// A controller-owned strategy is displayed, never picked — and it is written
+// back unchanged, so an unrelated edit cannot downgrade the route.
+const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrategy.value));
+
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
-const enabledRelays = computed(() =>
-	editProviders.value.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
-);
 
 async function handleSave() {
 	if (!hasActiveOrganization.value) return;
@@ -164,14 +165,14 @@ async function handleSave() {
 		showNotification('Enable at least one provider before saving', 'error');
 		return;
 	}
-	if (
-		editFallbackEnabled.value &&
-		(editFallbackRelay.value !== 'ses' ||
-			!enabled.some((provider) => provider.providerType === 'mta') ||
-			!enabledRelays.value.some((provider) => provider.providerType === editFallbackRelay.value))
-	) {
-		showNotification('Enable the owned MTA and the selected relay before saving', 'error');
-		return;
+	// The backend's own rule and the backend's own sentence (D6), so the screen
+	// refuses exactly what `setRoute` would refuse and says the same thing.
+	if (editFallbackEnabled.value) {
+		const issue = fallbackRelayIssue(editProviders.value, editFallbackRelay.value);
+		if (issue !== null) {
+			showNotification(issue, 'error');
+			return;
+		}
 	}
 
 	isSaving.value = true;
@@ -278,7 +279,11 @@ async function handleReset() {
 				</div>
 			</div>
 
+			<DeliveryReferenceRelayNotice />
+
 			<DeliveryRelayDomainStatus />
+
+			<DeliveryMandrillDomainStatus />
 
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">
@@ -332,15 +337,28 @@ async function handleReset() {
 			<div class="space-y-5">
 				<!-- Strategy -->
 				<div>
-					<label for="route-strategy" class="label">Strategy</label>
-					<select id="route-strategy" v-model="editStrategy" class="input">
-						<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
-							{{ strategy.label }}
-						</option>
-					</select>
-					<p class="mt-1 text-xs text-text-tertiary">
-						{{ STRATEGIES.find((s) => s.value === editStrategy)?.description }}
-					</p>
+					<template v-if="isEditStrategyManaged">
+						<span class="label">Strategy</span>
+						<p class="input flex items-center gap-2">
+							<span>{{ strategyLabel(editStrategy) }}</span>
+							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">Managed</span>
+						</p>
+						<p class="mt-1 text-xs text-text-tertiary">
+							The sending-share controller manages this route's strategy. Everything else on this
+							route stays editable, and saving keeps the managed strategy.
+						</p>
+					</template>
+					<template v-else>
+						<label for="route-strategy" class="label">Strategy</label>
+						<select id="route-strategy" v-model="editStrategy" class="input">
+							<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
+								{{ strategy.label }}
+							</option>
+						</select>
+						<p class="mt-1 text-xs text-text-tertiary">
+							{{ STRATEGIES.find((s) => s.value === editStrategy)?.description }}
+						</p>
+					</template>
 				</div>
 
 				<!-- Providers -->
