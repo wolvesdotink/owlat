@@ -555,7 +555,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/activities.ts#countByContact',
 	'contacts/contacts.ts#count',
 	'contacts/contacts.ts#getAudienceStats',
-	'contacts/contacts.ts#reconcileContactCountInternal',
 	'contacts/creation.ts#create',
 	'contacts/identities.ts#ensureEmailIdentity',
 	'contacts/identities.ts#findByIdentifier',
