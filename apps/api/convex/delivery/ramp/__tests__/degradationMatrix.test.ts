@@ -23,7 +23,6 @@ import {
 	type RampIntegrationId,
 	type RampSubstituteSource,
 } from '../degradationMatrix';
-import { SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
@@ -187,15 +186,19 @@ const SOURCES_THE_TABLE_MAY_NOT_CLAIM: readonly { source: string; prose: RegExp 
 /**
  * EVERY NAMED SIGNAL IS A SIGNAL EVERY CELL IT IS NAMED FOR RUNS ON (issue #501).
  *
- * The table is what the dashboard renders and what the audit row records, so a
- * source in the vocabulary that no entry claims is a name waiting to be pasted
- * onto a cell — and a source an entry claims that a cell it covers never
- * consults is worse: it tells an operator their cell is measured by something
- * that never executes for them. `smtp_classification` was exactly that for the
- * Microsoft cell, first because it had no producer at all and now because its
- * one consumer is the standalone evaluator. It comes back when the table can
- * express that condition, and this suite is what makes "when" a build failure
- * rather than a memory.
+ * The table is what the CONTROLLER runs on — `resolveRampDegradation` folds
+ * `substitutes` into which actuator a cell drives, which evaluator judges it and
+ * which complaint line applies, and the audit row records the absent
+ * INTEGRATIONS behind those constants. So a source in the vocabulary that no
+ * entry claims is a name waiting to be pasted onto a cell — and a source an
+ * entry claims that a cell it covers never consults is worse: it tells the
+ * controller (and, the day a screen renders the copy, an operator) that a cell
+ * is measured by something that never executes for it. `smtp_classification`
+ * was exactly that for the Microsoft cell, first because it had no producer at
+ * all and now because its one consumer is the standalone evaluator while the
+ * `microsoft_snds` row covers relay-equipped cells too. It comes back when the
+ * table can express that condition, and this suite is what makes "when" a
+ * build failure rather than a memory.
  */
 describe('the substitution table names only signals that run', () => {
 	it('leaves no source in the vocabulary unclaimed by an entry', () => {
@@ -234,29 +237,6 @@ describe('the substitution table names only signals that run', () => {
 		// constant, and a quieter ramp would be a different change hiding in a doc fix.
 		expect(degradation.dwellMultiplier).toBe(2);
 		expect(degradedCeilingCap(degradation)).toBe(0.8);
-	});
-
-	it('says the same thing on the SNDS gate as in the table — in the same words', () => {
-		// Two entries describing one cell: the P3-8 table and the gate input's own
-		// substitution shape, rendered on different screens. WHAT THESE GUARD IS THE
-		// DERIVATION, not a live drift — `sndsGate.ts` now builds its note as a
-		// template over the table's, so while that holds the comparison below cannot
-		// fail. Re-literalising the sentence is the regression that already happened
-		// once (the table named seed placement beside the cell's own rates; this
-		// file's copy stopped at the rates), and it fails here the moment someone
-		// types the sentence out again. The source-name check alone never could: the
-		// gate's single name is trivially one of the table's list.
-		const entry = RAMP_DEGRADATION_BY_INTEGRATION.get('microsoft_snds');
-		expect(entry?.substitutes).toContain(SNDS_ABSENT_SUBSTITUTION.source);
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.startsWith(entry?.confidenceNote ?? '#')).toBe(
-			true
-		);
-		// The one clause the gate row adds, because the table keeps it in a separate
-		// `improvement` field the gate row has nowhere to render.
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote.slice(entry?.confidenceNote.length ?? 0)).toBe(
-			' Connecting SNDS would measure this IP’s complaint band directly.'
-		);
-		expect(SNDS_ABSENT_SUBSTITUTION.confidenceNote).not.toMatch(/SMTP reply/i);
 	});
 });
 

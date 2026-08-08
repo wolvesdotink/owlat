@@ -1,26 +1,31 @@
 /**
- * Microsoft SNDS storage, retention and gate input.
+ * Microsoft SNDS storage and retention.
  *
  * The poller — fetching and fan-out — lives in the sibling `sndsPoll.ts`;
- * configuration parsing in `sndsConfig.ts`, feed parsing in `sndsFeed.ts`, and
- * the decision in `ramp/sndsGate.ts` beside the rest of the ramp's gates.
- * What remains here is the durable side: the idempotent ingest mutation, the
- * retention sweep, and the bounded read that gate 3 consumes.
+ * configuration parsing in `sndsConfig.ts` and feed parsing in `sndsFeed.ts`.
+ * What remains here is the durable side: the idempotent ingest mutation and the
+ * retention sweep.
  *
- * D2 — ADDITIVE ONLY. Nothing here throws on an absent enrolment: the gate read
- * answers `available: false` with the documented substitution, and SNDS can only
- * lower measurement confidence and slow the Microsoft cell's ramp, never block it.
+ * WHAT READS THE ROWS. `delivery/rampPromotionEvidence.ts`, and only it: the
+ * `snds_band` promotion route asks for the newest green complaint band in the
+ * window, over the same `by_period` index the sweep walks. There is no gate read
+ * here — a `getMicrosoftGateInput` internalQuery and the pure gate beside it
+ * shipped ahead of a controller that never consumed either, and both were
+ * removed under D20 (issue #515) rather than given an invented caller.
+ *
+ * D2 — ADDITIVE ONLY. Nothing here throws on an absent enrolment: with no feed
+ * configured the poller returns early, no row is ever written, and the Microsoft
+ * cell runs on the `microsoft_snds` substitution the degradation matrix already
+ * applies. SNDS can only lower measurement confidence and slow that cell's ramp,
+ * never block it.
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import { DAY_MS, normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
-import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './ramp/sndsGate';
-import { oldestStorableDay, parsePoolAllowlist, parseSndsFeedUrls } from './sndsConfig';
+import { oldestStorableDay } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 
@@ -28,17 +33,6 @@ const RETENTION_MS = 90 * DAY_MS;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 
 export const SNDS_CLEANUP_BATCH_SIZE = 128;
-/** How many stored days one UNSCOPED gate evaluation may read. */
-export const SNDS_GATE_MAX_ROWS = 512;
-/**
- * How many declared pool addresses one gate evaluation walks, and how many days
- * it reads for each. A pool-scoped read is bounded by the pool rather than by
- * the table, so it never reports `truncated` merely for having a lot of history:
- * the per-IP cap is comfortably above the 90-day retention ceiling.
- */
-export const SNDS_GATE_MAX_POOL_IPS = 64;
-export const SNDS_GATE_MAX_ROWS_PER_IP = 96;
-export const SNDS_GATE_WINDOW_DAYS = 7;
 
 const observationValidator = v.object({
 	ip: v.string(),
@@ -159,107 +153,3 @@ export const cleanup = internalMutation({
 			scheduleContinuation: () => ctx.scheduler.runAfter(0, internal.delivery.snds.cleanup, {}),
 		}),
 });
-
-/**
- * Gate 3's input for the Microsoft cell.
- *
- * Returns `available: false` with the documented substitution when the
- * operator never enrolled OR when the window is empty — the caller treats both
- * the same way, which is the point of the substitution table.
- *
- * THE READ IS SCOPED THE WAY THE INGEST IS SCOPED. An SNDS key is issued per
- * REGISTERED RANGE, so the table can legitimately hold days belonging to other
- * senders in that range — the poller only drops them when the operator has
- * declared `MTA_IP_POOLS`, and rows ingested before they declared it stay for
- * the full retention. Folding those in would let a neighbour's clean band
- * satisfy OUR promotion criterion, because the worst-of fold only protects the
- * DOWN direction. So: with a declared pool the query walks the pool and reads
- * nothing else; with no declared pool the window is read whole but marked
- * UNATTRIBUTED, which caps confidence at `low` and makes promotion impossible
- * while leaving pass/fail — and therefore every ability to slow the ramp —
- * exactly as it was. D2 holds: nothing here blocks, errors or nags.
- */
-export const getMicrosoftGateInput = internalQuery({
-	args: { windowDays: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<SndsGateInput> => {
-		const windowDays =
-			args.windowDays !== undefined && Number.isFinite(args.windowDays) && args.windowDays > 0
-				? Math.min(Math.floor(args.windowDays), 90)
-				: SNDS_GATE_WINDOW_DAYS;
-		const enrolled = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS')).length > 0;
-		if (!enrolled) {
-			return buildSndsGateInput({
-				enrolled,
-				windowDays,
-				observations: [],
-				truncated: false,
-				attributed: false,
-			});
-		}
-
-		const window = await readGateRows(ctx, {
-			pool: [...parsePoolAllowlist(getOptional('MTA_IP_POOLS'))].sort(),
-			cutoff: Date.now() - windowDays * DAY_MS,
-		});
-		// ONE build, ONE argument set. The two read shapes differ in HOW they walk
-		// the table, never in which disqualifiers they declare.
-		return buildSndsGateInput({ enrolled, windowDays, ...window });
-	},
-});
-
-/**
- * Read the gate window, either pool-scoped or whole.
- *
- * Both shapes read NEWEST FIRST. The read is capped, and an ascending scan
- * spends the cap on the OLDEST days — so a red filter result recorded today is
- * exactly the row that falls off the end, and the gate would answer `pass` from
- * a window that no longer contains the breach. Descending keeps today's evidence
- * inside the cap, and `truncated` then tells the gate that what it did NOT see
- * must never be read as cleanliness.
- */
-async function readGateRows(
-	ctx: QueryCtx,
-	args: { pool: readonly string[]; cutoff: number }
-): Promise<{ observations: SndsGateObservation[]; truncated: boolean; attributed: boolean }> {
-	const observations: SndsGateObservation[] = [];
-	if (args.pool.length === 0) {
-		const rows = await ctx.db
-			.query('sndsIpDailyStats')
-			.withIndex('by_period', (q) => q.gte('periodStart', args.cutoff))
-			.order('desc')
-			.take(SNDS_GATE_MAX_ROWS);
-		for (const row of rows) observations.push(projectGateObservation(row));
-		return { observations, truncated: rows.length >= SNDS_GATE_MAX_ROWS, attributed: false };
-	}
-
-	// A pool larger than this reads as truncated rather than as a long query:
-	// the window is then a subset, which the gate already knows how to hold.
-	let truncated = args.pool.length > SNDS_GATE_MAX_POOL_IPS;
-	for (const ip of args.pool.slice(0, SNDS_GATE_MAX_POOL_IPS)) {
-		const rows = await ctx.db
-			.query('sndsIpDailyStats')
-			.withIndex('by_ip_period', (q) => q.eq('ip', ip).gte('periodStart', args.cutoff))
-			.order('desc')
-			.take(SNDS_GATE_MAX_ROWS_PER_IP);
-		if (rows.length >= SNDS_GATE_MAX_ROWS_PER_IP) truncated = true;
-		for (const row of rows) observations.push(projectGateObservation(row));
-	}
-	return { observations, truncated, attributed: true };
-}
-
-/**
- * Narrow a stored row to what the gate reads.
- *
- * It takes the ROW TYPE, not a structural literal that re-spells the row's
- * fields: a schema rename should be a compile error here rather than a silent
- * drift into a projection nothing populates any more.
- */
-function projectGateObservation(row: Doc<'sndsIpDailyStats'>): SndsGateObservation {
-	return {
-		ip: row.ip,
-		periodStart: row.periodStart,
-		complaintBand: row.complaintBand,
-		filterResult: row.filterResult,
-		trapHits: row.trapHits,
-	};
-}

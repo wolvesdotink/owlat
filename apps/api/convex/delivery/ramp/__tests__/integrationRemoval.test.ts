@@ -3,7 +3,10 @@
  *
  * Removing a previously-connected integration must:
  *   1. make the affected gate fall back to its SUBSTITUTE within ONE window,
- *   2. drop the cell's confidence, NAMING the integration that would restore it,
+ *   2. drop the cell's confidence, NAMING the integration that would restore it
+ *      — through the fold's own `confidence` and `absent` list, which are what
+ *      the tick records (`absentIntegrations`, plan D12) and what
+ *      `controllerNarrative` reads the operator sentence off,
  *   3. and CONTINUE THE RAMP AT REDUCED SPEED rather than halting.
  *
  * "Within one window" is a property of the resolution, not of a scheduler: the
@@ -33,7 +36,6 @@ import {
 	usesTrailingBaseline,
 } from '../degradation';
 import { RAMP_FULLY_EQUIPPED } from '../degradationMatrix';
-import { rampCellConfidence } from '../measurementConfidence';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 
@@ -88,17 +90,20 @@ describe('removing a connected integration degrades within one window', () => {
 });
 
 describe('the confidence drop names the integration that would restore it', () => {
+	// ASKED OF THE RESOLUTION, which is the only thing production reads. A
+	// `rampCellConfidence` projection used to answer this; it rendered nowhere and
+	// went under D20 (issue #515). The facts it projected are all still here — the
+	// fold's `confidence`, and the `absent` list the tick records and the narrative
+	// names — so the acceptance criterion is asserted against the surface the
+	// controller actually acts on rather than against a second copy of it.
 	it('names Google Postmaster on the gmail cell', () => {
 		const degradation = resolveRampDegradation({
 			presence: absent('google_postmaster'),
 			provider: 'gmail',
 		});
-		const confidence = rampCellConfidence({ degradation, evaluated: 'high' });
-		expect(confidence.level).not.toBe('high');
-		expect(confidence.improvements.map((offer) => offer.integration)).toEqual([
-			'google_postmaster',
-		]);
-		expect(confidence.improvements[0]?.improvement).toMatch(/Google Postmaster/);
+		expect(degradation.confidence).not.toBe('high');
+		expect(degradation.absent.map((entry) => entry.integration)).toEqual(['google_postmaster']);
+		expect(degradation.absent[0]?.label).toMatch(/Google Postmaster/);
 	});
 
 	it('names seed mailboxes — the one absence with no substitute at all', () => {
@@ -107,9 +112,8 @@ describe('the confidence drop names the integration that would restore it', () =
 			provider: 'gmail',
 		});
 		expect(degradation.substitutes).toHaveLength(0);
-		const confidence = rampCellConfidence({ degradation, evaluated: 'high' });
-		expect(confidence.level).toBe('low');
-		expect(confidence.improvements.map((offer) => offer.integration)).toEqual(['seed_mailboxes']);
+		expect(degradation.confidence).toBe('low');
+		expect(degradation.absent.map((entry) => entry.integration)).toEqual(['seed_mailboxes']);
 		// The reason is stated on the cell, not hidden behind a support article.
 		expect(degradation.absent[0]?.paceCeilingDay).toBe(14);
 	});
@@ -228,19 +232,14 @@ describe('the deployment itself degrades within one window', () => {
 						now: Date.now(),
 					})
 			);
-			return rampCellConfidence({
-				degradation: resolveRampDegradation({
-					presence: withReferenceArm(deployment, hasArm),
-					provider: 'gmail',
-				}),
-				evaluated: 'high',
+			return resolveRampDegradation({
+				presence: withReferenceArm(deployment, hasArm),
+				provider: 'gmail',
 			});
 		};
 
 		const before = await confidenceNow();
-		expect(before.improvements.map((offer) => offer.integration)).not.toContain(
-			'reference_transport'
-		);
+		expect(before.absent.map((entry) => entry.integration)).not.toContain('reference_transport');
 
 		await t.run(async (ctx) => {
 			const rows = await ctx.db.query('transportOutcomes').collect();
@@ -248,10 +247,9 @@ describe('the deployment itself degrades within one window', () => {
 		});
 
 		const after = await confidenceNow();
-		expect(after.level).toBe('low');
-		expect(after.improvements.map((offer) => offer.integration)).toContain('reference_transport');
-		// An OFFER, not a warning: the surface stays informational throughout.
-		expect(after.tone).toBe('info');
+		expect(after.confidence).toBe('low');
+		expect(after.absent.map((entry) => entry.integration)).toContain('reference_transport');
+		// An OFFER, not a warning: the resolution stays non-blocking throughout (D2).
 		expect(after.isBlocking).toBe(false);
 	});
 });
