@@ -33,8 +33,8 @@ export const sendAssignmentTables = {
 		sendKind: v.union(v.literal('campaign'), v.literal('transactional')),
 		// `${stream}:${destinationProvider}` — see @owlat/shared/deliverabilityRouting.
 		cell: v.string(),
-		// The provider KIND from the shipped send-transport catalog (`mta`,
-		// `ses`, `resend`, `smtp`, a plugin transport kind) — deliberately NOT a
+		// The provider KIND from the shipped send-transport catalog — a
+		// `SendTransportKind` (`@owlat/shared`), core or plugin — deliberately NOT a
 		// `SendTransportId` (`lib/sendProviders/transports.ts`, `<kind>` or
 		// `<kind>#<instanceKey>`). The routing layer's own verdict
 		// (`ResolvedRoute.providerType`) is a kind, so a kind is the most

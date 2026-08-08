@@ -65,7 +65,9 @@ export const domainTables = {
 		dmarcPct: v.optional(v.number()),
 		// Verification results with detailed status per record type
 		verificationResults: v.optional(verificationResultsValidator),
-		// Provider type that registered this domain ('mta' | 'ses').
+		// Provider type that registered this domain: a `SendingDomainProviderKind`
+		// (`domains/providers/types.ts`) — every kind the registry declares, plugin
+		// kinds included, not a fixed pair. Stored open per ADR-0055 (D10).
 		// The lifecycle dispatches per-provider work through
 		// `providers/index.ts:providerFor(kind)` keyed by this field.
 		providerType: v.optional(v.string()),

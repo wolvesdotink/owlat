@@ -256,8 +256,10 @@ settings, so a named instance would resolve and then send with the default
 instance's credentials.
 
 The policy that follows is the one D4 names: **new providers ship as plugins**
-unless they need something only core can give. The four incumbents plus Mandrill
-stay core; migrating them would be churn without benefit. What makes the policy
+unless they need something only core can give. The four incumbents — the own MTA
+plus the three `core` relays — and Mandrill stay in-repo; migrating them would be
+churn without benefit. (In-repo, not `core`: `mta` declares `tier: 'own'`, so the
+tier literal is not what they have in common.) What makes the policy
 honest rather than aspirational is that the claim is executed in CI — a fixture
 ESP built entirely through the plugin contract sends under every strategy,
 serves as the reference arm with correct arm attribution, receives feedback on
@@ -300,13 +302,23 @@ tolerance for an arm whose bounces we cannot attribute.
 
 ### Persisted kind fields stay strings (D10)
 
-Every place a provider kind is STORED is a plain `v.string()` with the union in
-a comment: `providerRoutes.providers[].providerType` and
-`providerHealth.providerType` (`schema/delivery.ts`), `domains.providerType`
-(`schema/domains.ts`), the transport kind on the plugin-feedback tables
-(`schema/webhooks.ts`), `sendAssignments.transport` and
-`sendingDomainRelayIdentities.providerKind`. This is recorded here as policy so
-those comments stop being the only witness.
+Every place a provider kind is STORED is a plain `v.string()`:
+`providerRoutes.providers[].providerType` and `providerHealth.providerType`
+(`schema/delivery.ts`), `domains.providerType` (`schema/domains.ts`), the
+transport kind on the plugin-feedback tables (`schema/webhooks.ts`),
+`sendAssignments.transport` and `sendingDomainRelayIdentities.providerKind`.
+
+Those columns carry a comment naming the TYPE — `SendTransportKind`
+(`packages/shared`), or `SendingDomainProviderKind` for the domain registry's own
+subset, the plugin-feedback tables naming the `plugin.<pluginId>.<localId>` shape
+that is the only kind they hold — rather than re-listing the kinds, and that is
+not a style preference. It
+is the correction this ADR forced: three of the six had restated
+`'mta' | 'ses' | 'resend' | 'smtp'`, a union that predated both Mandrill and the
+plugin tier, so a reader establishing what may legally land in
+`providerRoutes.providers[].providerType` got the opposite of the policy below. A
+comment that restates a union rots exactly as a second declaration does; this is
+recorded here as policy so no comment is the only witness again.
 
 A new kind must be **rows, not columns**. A closed validator union would make
 adding a provider a schema migration, and — worse — would make a row written by

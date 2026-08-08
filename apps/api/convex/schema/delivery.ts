@@ -207,7 +207,11 @@ export const deliveryTables = {
 		// Ordered list of providers for this route
 		providers: v.array(
 			v.object({
-				providerType: v.string(), // 'mta' | 'ses' | 'resend' | 'smtp'
+				// A `SendTransportKind` (`@owlat/shared`): a catalog core kind or a
+				// `plugin.<pluginId>.<localId>`. Deliberately NOT re-listed here — the
+				// column stays an open string (ADR-0055, D10) and the union has one
+				// declaration, which is the catalog.
+				providerType: v.string(),
 				weight: v.optional(v.number()), // For workload_split: traffic percentage (0-100)
 				isEnabled: v.boolean(), // Whether this provider is active in the route
 			})
@@ -232,7 +236,9 @@ export const deliveryTables = {
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({
-		providerType: v.string(), // 'mta' | 'ses' | 'resend' | 'smtp'
+		// A `SendTransportKind` (`@owlat/shared`), stored open per ADR-0055 (D10)
+		// — see `providerRoutes.providers[].providerType` above.
+		providerType: v.string(),
 		status: v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down')),
 		// Rolling metrics
 		recentSuccesses: v.number(),
