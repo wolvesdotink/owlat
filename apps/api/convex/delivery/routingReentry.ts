@@ -268,11 +268,16 @@ export const issueSnapshot = internalMutation({
 			// checked here is the one the probe header carries.
 			const probe = await ctx.db.get(args.sendRef.id);
 			if (!probe) throw new Error('Routing re-entry token requires an existing seed probe.');
-			if (
-				args.envelopeInput.kind !== 'campaign' ||
-				args.envelopeInput.seedProbeId !== probe.probeId ||
-				args.envelopeInput.emailSendId !== undefined
-			) {
+			// EITHER envelope kind can carry a probe: the campaign shadow copy
+			// measures the `campaign` cell, the scheduled probe measures the other
+			// two through the transactional envelope. What is asserted is the same
+			// on both — the header's id is this ledger row's, and the envelope
+			// carries no countable Send id of its own kind.
+			const countableSendId =
+				args.envelopeInput.kind === 'campaign'
+					? args.envelopeInput.emailSendId
+					: args.envelopeInput.sendId;
+			if (args.envelopeInput.seedProbeId !== probe.probeId || countableSendId !== undefined) {
 				throw new Error('Routing re-entry envelope does not belong to the seed probe.');
 			}
 			if (probe.organizationId !== args.organizationId) {

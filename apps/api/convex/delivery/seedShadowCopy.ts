@@ -140,8 +140,14 @@ export function buildSeedShadowEnvelope(
  * core never draws one. `isSeedProbeId` accepts exactly this alphabet and
  * length and nothing wider, because it is what the two public tracking
  * endpoints use to tell a probe from a Send.
+ *
+ * THE ONE MINTING SITE, shared with `delivery/seedScheduledProbe.ts`. Two
+ * producers drawing ids independently is two chances for one of them to drift
+ * out of the alphabet those endpoints check, which would make its probes
+ * indistinguishable from Sends at exactly the boundary that must tell them
+ * apart.
  */
-function newProbeId(): string {
+export function newSeedProbeId(): string {
 	return `sp_${crypto.randomUUID().replace(/-/g, '').slice(0, 22)}`;
 }
 
@@ -193,7 +199,7 @@ export async function enqueueSeedShadowCopies(
 	if (seeds.length === 0) return { enqueued: 0 };
 
 	for (const seed of seeds) {
-		const probeId = newProbeId();
+		const probeId = newSeedProbeId();
 		const probeRef = await ctx.db.insert('seedPlacementProbes', {
 			organizationId: args.organizationId,
 			probeId,
@@ -201,11 +207,9 @@ export async function enqueueSeedShadowCopies(
 			provider: seed.provider,
 			// This module only ever shadows a CAMPAIGN send. The card's other half
 			// — "or on a schedule for transactional streams" — is a different
-			// construction site (a cron, not a campaign transaction) and is picked
-			// up by P4-7, the seed-placement adapter piece, which is where gate 5
-			// gains its pluggable sources. Widening this column to the other two
-			// streams is purely additive when it lands; `stream` is already the
-			// cell axis, so nothing here has to change shape for it.
+			// construction site (a cron, not a campaign transaction) and lives in
+			// `delivery/seedScheduledProbe.ts`, which writes the same rows with the
+			// other two streams on them.
 			stream: 'campaign',
 			campaignId: args.campaignId,
 			...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),

@@ -219,4 +219,24 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
 		{}
 	);
+
+	// Gate 5's evidence for the streams that have no campaign to shadow (P4-7).
+	// The campaign shadow copy rides a real send, so the `transactional` and
+	// `automation` cells had no probes at all and gate 5 held on them forever;
+	// this is the plan's "or on a schedule for transactional streams".
+	//
+	// SIX-HOURLY, while the CADENCE is daily and lives in the sweep itself
+	// (`SCHEDULED_SEED_PROBE_INTERVAL_MS`). A tick that finds a cell already
+	// probed inside the window costs one indexed read and mails nothing, so the
+	// extra ticks buy recovery — a deployment that had no sender configured, no
+	// seeds, or an unverified domain at the due moment starts being measured
+	// within hours rather than at the next daily slot.
+	//
+	// With no seed mailboxes connected it is a permanent no-op (D2).
+	crons.interval(
+		'sweep scheduled seed probes',
+		{ hours: 6 },
+		internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes,
+		{}
+	);
 }
