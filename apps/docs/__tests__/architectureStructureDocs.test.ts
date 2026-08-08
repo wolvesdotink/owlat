@@ -7,12 +7,12 @@ import { dirname, resolve } from 'node:path';
  * Docs-lint for the "Monorepo Structure" tables in the architecture overview —
  * the page a new reader opens first to learn what is in this repository.
  *
- * It listed nine of eighteen packages. Not because nine were once right and the
- * rest arrived unannounced: three whole programs (own-the-mail, the plugin
- * platform, the wire package) each shipped multiple packages, and none of them
- * touched this page, because nothing made them. A table of contents that is
- * half a table of contents is worse than none — a reader concludes the other
- * nine do not exist.
+ * It listed ten of the nineteen directories under `packages/`. Not because ten
+ * were once right and the rest arrived unannounced: three whole programs
+ * (own-the-mail, the plugin platform, the wire package) each shipped multiple
+ * packages, and none of them touched this page, because nothing made them. A
+ * table of contents that is half a table of contents is worse than none — a
+ * reader concludes the other nine do not exist.
  *
  * So the tables are pinned to the DIRECTORIES, in both directions: a package or
  * app with no row fails, and a row naming a directory that is gone fails too
@@ -25,6 +25,13 @@ import { dirname, resolve } from 'node:path';
  * is the proof that the plugin platform is a real extension point rather than a
  * claim — invisible on the page a new reader opens first, it may as well not
  * exist.
+ *
+ * THAT ALL THREE GROUPS ARE PINNED IS A DELIBERATE CHOICE, not a side effect,
+ * and it has a cost worth naming: a PR adding an app or an example plugin now
+ * fails this suite until it adds a row. That is accepted. The gate IS the
+ * mechanism — a table nothing enforces is how this page got half-empty in the
+ * first place — and a page that pinned one of its three tables would teach a
+ * reader to trust all three, which is worse than pinning none.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -115,22 +122,25 @@ describe('2.architecture.md: the monorepo tables list every directory', () => {
 	}
 
 	it('reads a real package list rather than an empty one', () => {
-		// Non-triviality: a directory read that returned nothing would agree with
-		// an empty table. The floor is what the tree held when the table was
-		// completed — eighteen workspace packages plus `sdk-java`, which lives
-		// under `packages/` and is outside the workspace globs because it is a
-		// Maven project. A nineteenth package raises the floor, it does not fail
-		// here; the completeness check above is what asks for its row.
-		expect(directories('packages').length).toBeGreaterThanOrEqual(19);
+		// Non-triviality only: a directory read that returned nothing, or a couple
+		// of entries, would agree with a table that documents nothing. The floor is
+		// deliberately far below today's census (nineteen) rather than pinned to
+		// it — deleting a package is a legitimate act this program itself
+		// contemplates (`packages/channels`), and a check that went red on it with
+		// a message about an empty listing would teach the next author to edit the
+		// number, which is the habit this file argues against. The named member
+		// carries the real signal.
+		expect(directories('packages').length).toBeGreaterThan(5);
 		expect(directories('packages')).toContain('packages/mta-protocol');
 	});
 
 	it('reads a real example list, gallery included', () => {
-		// Same non-triviality, and one named member: the conformance gallery is
-		// the group's reason to be on the page at all, so a listing that lost it
-		// while still returning three plugins must fail rather than pass thinner.
+		// Same non-triviality, same reasoning about the floor, and one named
+		// member: the conformance gallery is the group's reason to be on the page
+		// at all, so a listing that lost it while still returning the plugins must
+		// fail rather than pass thinner.
 		const examples = GROUPS.find((group) => group.heading === 'Examples')!.members();
 		expect(examples).toContain('examples/conformance');
-		expect(examples.length).toBeGreaterThanOrEqual(4);
+		expect(examples.length).toBeGreaterThan(1);
 	});
 });
