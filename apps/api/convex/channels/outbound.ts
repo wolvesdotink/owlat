@@ -42,8 +42,12 @@ import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValida
  * (`apps/web/app/components/channels/ChannelConfigForm.vue`). This mirrors that
  * form exactly — every key the form can write is listed and nothing else, so a
  * field with no writer cannot masquerade as a stored credential. Only the keys
- * `buildAdapter` reads below reach a provider; the two that do not are marked
+ * `buildAdapter` reads below reach a provider; the one that does not is marked
  * and explained in the note there.
+ *
+ * A pre-existing row may still carry a `secretKey` from before D10 removed the
+ * field; it is deliberately absent here, so nothing reads it and re-saving the
+ * channel drops it. See the note on `buildAdapter`.
  */
 interface ChannelCreds {
 	// sms (Twilio)
@@ -56,7 +60,6 @@ interface ChannelCreds {
 	phoneNumberId?: string;
 	// generic webhook
 	endpointUrl?: string;
-	secretKey?: string; // stored only — see the INBOUND-ONLY note on buildAdapter
 }
 
 /**
@@ -403,22 +406,23 @@ async function loadAdapter(
  * the MTA send pipeline; chat is native). Missing fields yield a configured
  * adapter that simply returns a failed SendResult — the fail-safe path.
  *
- * TWO STORED FIELDS DELIBERATELY REACH NO PROVIDER, and the config form says so
- * on both (`ChannelConfigForm.vue`, `1.guide/38.channels.md`) so an operator is
- * never told a value is in force when it is not:
+ * ONE STORED FIELD DELIBERATELY REACHES NO PROVIDER, and the config form says so
+ * on it (`ChannelConfigForm.vue`, `1.guide/38.channels.md`) so an operator is
+ * never told a value is in force when it is not: `creds.businessAccountId` is
+ * operator reference data, because the Meta Cloud API send and health calls are
+ * keyed on the phone number ID, so WhatsAppAdapter never needs it.
  *
- *   - `creds.secretKey` is an INBOUND credential (the shared secret an external
- *     system echoes back to us). The shipped inbound route verifies generic
- *     webhooks in `webhooks/adapters/generic.ts` against the
- *     `GENERIC_WEBHOOK_SECRET` deployment variable, and the outbound POST
- *     carries no secret header at all. Passing it to an outbound adapter only
- *     ever fed a second, caller-less verifier; that verifier is gone, so the
- *     field stops here. Making the stored per-channel secret the one the
- *     inbound route trusts is a real change to who can post to Owlat, not a
- *     refactor — it needs its own piece.
- *   - `creds.businessAccountId` is operator reference data: the Meta Cloud API
- *     send and health calls are keyed on the phone number ID, so WhatsAppAdapter
- *     never needs it.
+ * THE GENERIC CHANNEL'S `secretKey` IS GONE, not merely unread. It was an
+ * INBOUND credential (the shared secret an external system echoes back to us)
+ * whose only consumer was `WebhookAdapter.validateSignature` — the caller-less
+ * verifier D10 deleted. The shipped inbound route verifies generic webhooks in
+ * `webhooks/adapters/generic.ts` against the `GENERIC_WEBHOOK_SECRET`
+ * deployment variable, and the outbound POST carries no secret header at all,
+ * so keeping the form field would have sealed a real shared secret into the
+ * AES-256-GCM envelope with nothing able to answer with it. Making a stored
+ * per-channel secret the one the inbound route trusts is a real change to who
+ * can post to Owlat, not a refactor — it needs its own piece, and that piece
+ * re-adds the field.
  *
  * (Meta's `hub.verify_token` is not in `ChannelCreds` at all — the form never
  * collected it, so no row ever carried one. The subscription challenge is

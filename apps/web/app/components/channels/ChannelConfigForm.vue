@@ -67,14 +67,14 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 		{ key: 'accessToken', label: 'Access Token', placeholder: 'Enter your access token', type: 'password' },
 		{ key: 'phoneNumberId', label: 'Phone Number ID', placeholder: 'Enter your phone number ID', type: 'text' },
 	],
+	// No Secret Key field: its only consumer was `WebhookAdapter.validateSignature`,
+	// a verifier the inbound route never called and that D10 deleted. Inbound
+	// generic webhooks are authenticated against the GENERIC_WEBHOOK_SECRET
+	// deployment variable (apps/api/convex/webhooks/adapters/generic.ts), and the
+	// outbound POST carries no secret header — so collecting one here would seal a
+	// real shared secret into the credential envelope with nothing able to use it.
 	generic: [
 		{ key: 'endpointUrl', label: 'Endpoint URL', placeholder: 'https://example.com/webhook', type: 'url', hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).' },
-		// Stored encrypted, but read by nothing today. Inbound generic webhooks
-		// are verified against the GENERIC_WEBHOOK_SECRET deployment variable
-		// (apps/api/convex/webhooks/adapters/generic.ts), and the outbound POST
-		// carries no secret header. Kept for a future per-channel inbound secret;
-		// the hint says so rather than letting the form imply it is in force.
-		{ key: 'secretKey', label: 'Secret Key', placeholder: 'Reserved — not used yet', type: 'password', hint: 'Stored for a future per-channel inbound secret; nothing reads it today. Inbound webhooks are authenticated against the GENERIC_WEBHOOK_SECRET backend environment variable.' },
 	],
 	chat: [],
 };

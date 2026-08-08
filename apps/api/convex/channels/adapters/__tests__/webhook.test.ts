@@ -35,11 +35,12 @@ describe('WebhookAdapter — send()', () => {
 		const [url, init] = fetchMock.mock.calls[0]!;
 		expect(url).toBe('https://hook.example/in');
 		expect(init.method).toBe('POST');
-		// Content-Type and nothing else. The channel's stored `secretKey` is an
-		// INBOUND credential (what an external system echoes back to us); the
-		// shipped inbound verifier reads GENERIC_WEBHOOK_SECRET instead. Sending
-		// it outbound would be a new wire behaviour, not a refactor — so this
-		// pins the header set until someone decides otherwise on purpose.
+		// Content-Type and nothing else. The generic channel collects no secret
+		// any more (D10 removed the form field with the caller-less verifier it
+		// fed), and the shipped inbound verifier reads GENERIC_WEBHOOK_SECRET.
+		// Signing the outbound POST would be a new wire behaviour, not a
+		// refactor — so this pins the header set until someone decides
+		// otherwise on purpose.
 		expect(Object.keys(init.headers)).toEqual(['Content-Type']);
 		expect(init.headers['Content-Type']).toBe('application/json');
 		const body = JSON.parse(init.body as string);
