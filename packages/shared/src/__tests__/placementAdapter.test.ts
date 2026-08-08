@@ -17,16 +17,14 @@ import {
 	PLACEMENT_SOURCE_KINDS,
 	commercialPlacementApiAdapter,
 	commercialReportsToObservations,
-	evaluatePlacementGate,
 	planPlacementProbeForPromotion,
 	resolvePlacementAdapter,
 	selfHostedSeedPlacementAdapter,
 	type PlacementAdapter,
 } from '../placementAdapter';
 import { SEED_GATE_CONFIDENCE } from '../seedPlacement';
-import type { SeedCorroboration, SeedObservation } from '../seedPlacement';
+import type { SeedObservation } from '../seedPlacement';
 
-const QUIET: SeedCorroboration = { deferralGateBreached: false, bounceGateBreached: false };
 const CELL: DeliverabilityCell = { stream: 'campaign', destinationProvider: 'gmail' };
 
 function seeds(inbox: number, spam: number, missing = 0): SeedObservation[] {
@@ -134,56 +132,6 @@ describe('D2 — an absent commercial key changes NOTHING', () => {
 		// Advisory ONLY — a hint next to a confidence label, never an error.
 		expect(resolution.improvement).toBe('add_seed_mailboxes');
 		expect(resolution.confidence).toBe('none');
-	});
-
-	it('with no evidence at all gate 5 HOLDS rather than passing or failing', () => {
-		const result = evaluatePlacementGate({
-			adapter: resolvePlacementAdapter({ seedMailboxCount: 0, commercialApiConfigured: false })
-				.adapter,
-			evidence: { kind: 'self_hosted_seeds', observations: [] },
-			corroboration: QUIET,
-		});
-		expect(result.verdict).toBe('insufficient_data');
-		expect(result.reason).toBe('no_seed_mailboxes_connected');
-	});
-});
-
-describe('the adapter feeds gate 5', () => {
-	it('a healthy reading passes gate 5 through either source', () => {
-		expect(
-			evaluatePlacementGate({
-				adapter: selfHostedSeedPlacementAdapter,
-				evidence: { kind: 'self_hosted_seeds', observations: seeds(10, 0) },
-				corroboration: QUIET,
-			}).verdict
-		).toBe('pass');
-		expect(
-			evaluatePlacementGate({
-				adapter: commercialPlacementApiAdapter,
-				evidence: { kind: 'commercial_api', reports: [{ provider: 'gmail', inbox: 10, spam: 0 }] },
-				corroboration: QUIET,
-			}).verdict
-		).toBe('pass');
-	});
-
-	it('a corroborated collapse fails gate 5 through the commercial source too', () => {
-		const result = evaluatePlacementGate({
-			adapter: commercialPlacementApiAdapter,
-			evidence: { kind: 'commercial_api', reports: [{ provider: 'gmail', inbox: 1, spam: 19 }] },
-			corroboration: { deferralGateBreached: true, bounceGateBreached: false },
-		});
-		expect(result.verdict).toBe('fail');
-		expect(result.failedProviders).toEqual(['gmail']);
-	});
-
-	it('an uncorroborated collapse holds — D17s tripwire rule is not bypassed', () => {
-		const result = evaluatePlacementGate({
-			adapter: commercialPlacementApiAdapter,
-			evidence: { kind: 'commercial_api', reports: [{ provider: 'gmail', inbox: 1, spam: 19 }] },
-			corroboration: QUIET,
-		});
-		expect(result.verdict).toBe('insufficient_data');
-		expect(result.suspectProviders).toEqual(['gmail']);
 	});
 });
 

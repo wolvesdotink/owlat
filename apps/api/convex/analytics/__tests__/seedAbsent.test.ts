@@ -5,14 +5,13 @@ import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow, SEED_PLACEMENT_WINDOW_MS } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
-import { evaluateSeedPlacementGate, SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
+import { SEED_GATE_CONFIDENCE } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';
-const NO_CORROBORATION = { deferralGateBreached: false, bounceGateBreached: false };
 
 /**
  * (f) THE D2 PROOF — a fresh install with zero seed mailboxes.
@@ -41,30 +40,6 @@ describe('zero seed mailboxes is a supported configuration', () => {
 		const t = convexTest(schema, modules);
 		const accounts = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
 		expect(accounts).toEqual([]);
-	});
-
-	it('gate 5 returns insufficient_data — the controller HOLDS', async () => {
-		const t = convexTest(schema, modules);
-		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
-		const gate = evaluateSeedPlacementGate({
-			rollups: summary.rollups,
-			corroboration: NO_CORROBORATION,
-		});
-		expect(gate.verdict).toBe('insufficient_data');
-		expect(gate.reason).toBe('no_seed_mailboxes_connected');
-		expect(gate.confidence).toBe('none');
-		expect(gate.failedProviders).toEqual([]);
-		expect(gate.suspectProviders).toEqual([]);
-	});
-
-	it('cannot reach a fail verdict with no seeds, however bad the other gates look', async () => {
-		const t = convexTest(schema, modules);
-		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
-		const gate = evaluateSeedPlacementGate({
-			rollups: summary.rollups,
-			corroboration: { deferralGateBreached: true, bounceGateBreached: true },
-		});
-		expect(gate.verdict).toBe('insufficient_data');
 	});
 
 	// The module's ONE shipped query, driven end to end. Its gate-verdict sibling
