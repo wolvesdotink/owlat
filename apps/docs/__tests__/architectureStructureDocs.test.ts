@@ -32,6 +32,23 @@ import { dirname, resolve } from 'node:path';
  * mechanism — a table nothing enforces is how this page got half-empty in the
  * first place — and a page that pinned one of its three tables would teach a
  * reader to trust all three, which is worse than pinning none.
+ *
+ * WHEN IT FIRES IS THE SECOND HALF OF THAT COST, and it is not on the offending
+ * PR. `scripts/ci-select-affected.sh` selects workspaces with `turbo --affected`;
+ * `@owlat/docs` depends on no app, package or example, so a PR that adds
+ * `apps/foo` leaves this suite unselected and goes green. The red lands on the
+ * next full matrix (push to main, nightly, manual dispatch) — the same latency
+ * every repo-root docs-lint here already has (`abstractionsDocs`,
+ * `contextVocabularyDocs`), widened by this file from "someone edited a doc" to
+ * "someone added a workspace".
+ *
+ * Closing that gap by declaring the repo-root paths as turbo `inputs` was tried
+ * and rejected on measurement: a single `$TURBO_ROOT$` input on ONE task makes
+ * `turbo ls --affected` report all 33 workspaces affected for ANY change,
+ * including a one-package one — it does not widen this suite's selection, it
+ * disables affected-selection for the whole repository. A day of latency on a
+ * docs table is the cheaper of the two, so the latency is documented instead of
+ * traded for running the full matrix on every PR.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
