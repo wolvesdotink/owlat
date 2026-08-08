@@ -18,6 +18,13 @@ import { dirname, resolve } from 'node:path';
  * app with no row fails, and a row naming a directory that is gone fails too
  * (that is the half that catches a rename, which is the more common event and
  * the one a "did you add a row" reviewer never notices).
+ *
+ * `examples/` is a third group and gets the same treatment. Its members are
+ * workspace members like the rest (root `package.json` claims
+ * `examples/conformance` and `examples/plugins/*`), and the conformance gallery
+ * is the proof that the plugin platform is a real extension point rather than a
+ * claim — invisible on the page a new reader opens first, it may as well not
+ * exist.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -27,13 +34,31 @@ const page = readFileSync(
 	'utf8'
 );
 
-/** The `apps/x` / `packages/x` directories that actually exist. */
-function directories(group: 'apps' | 'packages'): string[] {
-	return readdirSync(resolve(repoRoot, group), { withFileTypes: true })
+/** The immediate subdirectories of one repo-relative directory, as paths. */
+function directories(parent: string): string[] {
+	return readdirSync(resolve(repoRoot, parent), { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-		.map((entry) => `${group}/${entry.name}`)
+		.map((entry) => `${parent}/${entry.name}`)
 		.sort();
 }
+
+/**
+ * The three groups the page tabulates, and how to enumerate each on disk.
+ *
+ * `examples/` is not a flat directory — the workspace globs are
+ * `examples/conformance` plus `examples/plugins/*` — so the group is expressed
+ * as its own listing rather than by flattening `examples/` and hoping. A fourth
+ * shape (say `examples/tools/*`) would be a new entry here, and until it is one
+ * the page is allowed not to mention it.
+ */
+const GROUPS: readonly { heading: string; members: () => string[] }[] = [
+	{ heading: 'Apps', members: () => directories('apps') },
+	{ heading: 'Packages', members: () => directories('packages') },
+	{
+		heading: 'Examples',
+		members: () => ['examples/conformance', ...directories('examples/plugins')].sort(),
+	},
+];
 
 /**
  * The body of one `### ` subsection: up to the NEXT heading of any level.
@@ -68,11 +93,9 @@ function tableRowPaths(heading: string): string[] {
 }
 
 describe('2.architecture.md: the monorepo tables list every directory', () => {
-	for (const group of ['apps', 'packages'] as const) {
-		const heading = group === 'apps' ? 'Apps' : 'Packages';
-
-		it(`every ${group}/ directory has a row`, () => {
-			const missing = directories(group).filter((dir) => !tableRowPaths(heading).includes(dir));
+	for (const { heading, members } of GROUPS) {
+		it(`every directory under "${heading}" has a row`, () => {
+			const missing = members().filter((dir) => !tableRowPaths(heading).includes(dir));
 			expect(missing, `undocumented: ${missing.join(', ')}`).toEqual([]);
 		});
 
@@ -100,5 +123,14 @@ describe('2.architecture.md: the monorepo tables list every directory', () => {
 		// here; the completeness check above is what asks for its row.
 		expect(directories('packages').length).toBeGreaterThanOrEqual(19);
 		expect(directories('packages')).toContain('packages/mta-protocol');
+	});
+
+	it('reads a real example list, gallery included', () => {
+		// Same non-triviality, and one named member: the conformance gallery is
+		// the group's reason to be on the page at all, so a listing that lost it
+		// while still returning three plugins must fail rather than pass thinner.
+		const examples = GROUPS.find((group) => group.heading === 'Examples')!.members();
+		expect(examples).toContain('examples/conformance');
+		expect(examples.length).toBeGreaterThanOrEqual(4);
 	});
 });
