@@ -4,12 +4,29 @@ import { isDestinationProviderKey, type DestinationProviderKey } from './deliver
 import { parseIpAddress } from './ipAddress';
 import { isDeliveryDomain, type DeliveryDomain } from './routingDispatch';
 import { isDeliverabilityProbeTokenFormat } from './deliverabilityProbeFormat';
+import { isSmtpFailureCategory, type SmtpFailureCategory } from './smtpBlockCategories';
+import { isComplianceChecks, isDeliveryErrorBreakdown } from './mtaPostmasterEvent';
+
+/**
+ * THE POSTMASTER SUB-CONTRACT, re-exported so this module stays the ONE import
+ * surface for the MTA webhook wire (CONVENTIONS' ~500 LOC guideline moved the
+ * shapes and their bounds to a sibling; no consumer has to know about the seam).
+ */
+export {
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
+	POSTMASTER_TOKEN,
+	type PostmasterComplianceCheck,
+	type PostmasterDeliveryError,
+} from './mtaPostmasterEvent';
+import type { PostmasterComplianceCheck, PostmasterDeliveryError } from './mtaPostmasterEvent';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
 	'bounced',
 	'failed',
 	'complained',
+	'smtp.classified',
 	'org.circuit_breaker',
 	'campaign.complaint_rate',
 	'ip.blocklisted',
@@ -28,36 +45,6 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 ] as const;
 
 export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
-
-// ─── Google Postmaster Tools contract ──────────────────────────────────────
-// One definition of the shapes and of the sanitization bounds, imported by the
-// MTA collector and by the Convex ingest. Each end still re-VALIDATES at its
-// own trust boundary; what must never drift is the numbers it validates
-// against — a collector that kept more checks than this guard accepts would
-// have the whole event rejected and the day's verdict silently lost.
-
-/** One Compliance Status check as Google reports it, normalized. */
-export interface PostmasterComplianceCheck {
-	name: string;
-	state: 'passing' | 'failing' | 'unknown';
-}
-
-/** One delivery-error category's share of a domain's traffic for a day. */
-export interface PostmasterDeliveryError {
-	category: string;
-	ratio: number;
-}
-
-/**
- * The only shape a Postmaster check name or delivery-error category may take.
- * Both are stored and rendered verbatim, so anything else is DROPPED rather
- * than escaped.
- */
-export const POSTMASTER_TOKEN = /^[A-Z0-9_]{1,64}$/;
-/** Upper bound on the Compliance Status checks carried for one domain/day. */
-export const POSTMASTER_MAX_COMPLIANCE_CHECKS = 32;
-/** Upper bound on the delivery-error categories carried for one domain/day. */
-export const POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES = 24;
 
 interface EventBase<K extends MtaWebhookEventType> {
 	event: K;
@@ -99,6 +86,22 @@ interface EventBase<K extends MtaWebhookEventType> {
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	/**
+	 * THE MTA CLASSIFIER'S VERDICT ON ONE 4xx/5xx RESPONSE, as a TYPED field in the
+	 * shared vocabulary — never as prose.
+	 *
+	 * It rides on {@link EventBase} rather than on the `smtp.classified` variant
+	 * alone so the bound below covers every event shape, exactly as `checks` and
+	 * `blocklists` do; only that one variant REQUIRES it.
+	 *
+	 * The category is `@owlat/shared/smtpBlockCategories`' — the one vocabulary the
+	 * producer (`apps/mta/.../classifySmtpResponse`) and the consumer (the ramp's
+	 * gate-2 block clause) share. Convex narrows what arrives here with
+	 * `isSmtpFailureCategory` and never re-derives it from `message`: a second
+	 * classifier is free to disagree with the first, which is the whole reason this
+	 * field exists instead of a sentence.
+	 */
+	smtpCategory?: SmtpFailureCategory;
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
 	eligibilityGeneration?: number;
@@ -118,6 +121,26 @@ export type SharedMtaWebhookEvent =
 			bounceType?: 'hard' | 'soft';
 	  })
 	| (EventBase<'failed'> & { messageId: string; message?: string; errorCode?: string })
+	/**
+	 * ONE CLASSIFIED SMTP RESPONSE, reported for measurement and for nothing else.
+	 *
+	 * Deliberately NOT a field bolted onto `bounced`. Two of the classifier's
+	 * outcomes have to reach Convex for the ramp's block clause to mean anything —
+	 * the RETRYABLE 4xx (greylisting, throttling, an over-quota mailbox), which is
+	 * the denominator, and the NON-RETRYABLE one, which is the numerator — and only
+	 * the second has a bounce to ride on. A `bounced` field would have delivered
+	 * the numerator alone, so every window would read as a 100% block rate and the
+	 * halt would fire on the first refusal a healthy cell ever collected.
+	 *
+	 * It changes NO send state. The dispatcher routes it to a counter and nothing
+	 * else: no status transition, no suppression, no reputation penalty. A message
+	 * deferred five times reports five observations, because the gate's denominator
+	 * is classified RESPONSES and not messages.
+	 */
+	| (EventBase<'smtp.classified'> & {
+			messageId: string;
+			smtpCategory: SmtpFailureCategory;
+	  })
 	| (EventBase<'complained'> & {
 			messageId?: string;
 			recipient?: string;
@@ -266,6 +289,9 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		(value['destinationProvider'] !== undefined &&
 			!isDestinationProviderKey(value['destinationProvider'])) ||
 		(value['sourceIsp'] !== undefined && !isDestinationProviderKey(value['sourceIsp'])) ||
+		(value['smtpCategory'] !== undefined &&
+			(typeof value['smtpCategory'] !== 'string' ||
+				!isSmtpFailureCategory(value['smtpCategory']))) ||
 		(value['severity'] !== undefined &&
 			value['severity'] !== 'info' &&
 			value['severity'] !== 'warning' &&
@@ -295,6 +321,11 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 					value['bounceType'] === 'hard' ||
 					value['bounceType'] === 'soft')
 			);
+		case 'smtp.classified':
+			// The category is REQUIRED here and already narrowed to the shared
+			// vocabulary above, so an unrecognised spelling is dropped at the trust
+			// boundary rather than landing in a counter column no reader addresses.
+			return bounded(value['messageId'], 512) && value['smtpCategory'] !== undefined;
 		case 'complained':
 			return bounded(value['messageId'], 512) || bounded(value['recipient'], 320);
 		case 'org.circuit_breaker':
@@ -433,41 +464,6 @@ function bounded(value: unknown, maximum: number): value is string {
 
 function optionalBounded(value: unknown, maximum: number): boolean {
 	return value === undefined || bounded(value, maximum);
-}
-
-/** Bounded `{ category, ratio }` list — the Postmaster delivery-error breakdown. */
-function isDeliveryErrorBreakdown(value: unknown): boolean {
-	return (
-		Array.isArray(value) &&
-		value.length <= POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES &&
-		value.every(
-			(item) =>
-				isRecord(item) &&
-				typeof item['category'] === 'string' &&
-				POSTMASTER_TOKEN.test(item['category']) &&
-				ratio(item['ratio'])
-		)
-	);
-}
-
-/**
- * Bounded Compliance Status checks with enum-shaped names. An EMPTY list is
- * well-formed here: `checks` rides on {@link EventBase} for every event kind,
- * so it is bounded at the top level for all of them and only the
- * `postmaster.compliance` case additionally requires a non-empty verdict.
- */
-function isComplianceChecks(value: unknown): boolean {
-	return (
-		Array.isArray(value) &&
-		value.length <= POSTMASTER_MAX_COMPLIANCE_CHECKS &&
-		value.every(
-			(item) =>
-				isRecord(item) &&
-				typeof item['name'] === 'string' &&
-				POSTMASTER_TOKEN.test(item['name']) &&
-				(item['state'] === 'passing' || item['state'] === 'failing' || item['state'] === 'unknown')
-		)
-	);
 }
 
 function boundedStrings(value: unknown, maximumItems: number, maximumLength: number): boolean {

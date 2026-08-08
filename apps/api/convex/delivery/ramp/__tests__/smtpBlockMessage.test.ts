@@ -8,18 +8,20 @@
  * REAL response shapes, does the gate halt on the ones that mean "we are refusing
  * this sender" and stay quiet on the ones that mean "slow down"?
  *
- * THE CLAUSE IS DORMANT IN EVERY SHIPPED DEPLOYMENT (issue #501). The
- * classification happens in the MTA and no row carries its per-category counts
- * into Convex per (cell, arm), so `input.smtpBlocks` is always absent and today's
- * gate 2 is the deferral RATE alone. This suite still runs — against the SHARED
- * samples rather than against a live counter — because what it guards is the
- * agreement between the two halves of the vocabulary, not the liveness of the
- * wire between them: the categories can drift apart while the clause sleeps just
- * as easily as while it runs, and the drift would only be discovered by the halt
- * silently never firing again. So the arithmetic, the sample floor, the freshness
- * rule and the block-versus-pressure split stay verified until the telemetry
- * surface arrives, and the wiring guard (`gateInputWiring.test.ts`) is what
- * records that it has not.
+ * THE CLAUSE IS LIVE (issue #501). The classification still happens in the MTA,
+ * but the category now travels as a typed field on an `smtp.classified` webhook
+ * and `analytics/smtpResponseCategories.ts` counts it per (cell, arm, UTC day),
+ * so both readers supply `input.smtpBlocks` and this halt can fire in a real
+ * deployment.
+ *
+ * THIS SUITE STILL RUNS AGAINST THE SHARED SAMPLES rather than against a live
+ * counter, because what it guards is the agreement between the two halves of the
+ * vocabulary and not the liveness of the wire between them — a drift in the
+ * category names would be discovered only by the halt silently never firing
+ * again, whether the wire is up or not. That the clause is REACHED from a real
+ * deployment's rows is the other suite's job
+ * (`delivery/__tests__/smtpBlockWiring.test.ts`), and that both readers supply
+ * the field at all is `gateInputWiring.test.ts`'.
  *
  * THE FIXTURES ARE SHARED WITH THE CLASSIFIER (`SMTP_BLOCK_MESSAGE_SAMPLES` in
  * `@owlat/shared/smtpBlockCategories`). The MTA's own suite runs the same strings

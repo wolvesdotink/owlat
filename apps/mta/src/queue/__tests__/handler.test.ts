@@ -518,7 +518,14 @@ describe('handleEmailJob', () => {
 
 		expect(sendToMx).toHaveBeenCalledOnce();
 		expect(queue.add).toHaveBeenCalledOnce();
-		expect(queueConvexWebhook).not.toHaveBeenCalled();
+		// NO LIFECYCLE CALLBACK: the message is deferred, not terminal, so nothing
+		// may tell Convex its fate. The MEASUREMENT beside it is a different claim —
+		// `smtp.classified` reports what the receiver said (issue #501) — and the
+		// replay lands on the SAME outbox slot, so a reconciled attempt reports the
+		// one response once rather than twice.
+		const queued = vi.mocked(queueConvexWebhook).mock.calls;
+		expect(queued.map(([sent]) => sent.event)).toEqual(['smtp.classified', 'smtp.classified']);
+		expect(new Set(queued.map(([, , , key]) => key)).size).toBe(1);
 	});
 
 	it('promotes a retained legacy job through its prior work-attempt receipt', async () => {
@@ -956,10 +963,24 @@ describe('handleEmailJob', () => {
 		// is rejected outright, which dead-letters the job. A transient outbox
 		// failure on the first run is the cheapest way to reach the second
 		// rebuild that the guard would compare against.
-		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const wh = await import('../../webhooks/convexNotifier.js');
+		const { queueConvexWebhook } = wh;
 		const { firstEnqueuedAt } = await setup();
 		const job = createJob({ firstEnqueuedAt });
-		vi.mocked(queueConvexWebhook).mockRejectedValueOnce(new Error('outbox unavailable'));
+		// FAIL THE TERMINAL CALLBACK, not merely the first webhook of the attempt.
+		// The expired-message case reduces a deferral first, whose `smtp.classified`
+		// measurement is deliberately fail-soft (issue #501) — rejecting it changes
+		// nothing and the attempt would never reach the terminalization this case is
+		// about. So the transient failure is aimed at the event under test.
+		let hasFailed = false;
+		vi.mocked(queueConvexWebhook).mockImplementation(async (sent, webhookConfig, client) => {
+			if (!hasFailed && sent.event === event) {
+				hasFailed = true;
+				throw new Error('outbox unavailable');
+			}
+			await wh.notifyConvex(sent, webhookConfig, client);
+			return 'outbox-test';
+		});
 
 		await expect(run(job, { timestamp: firstEnqueuedAt })).rejects.toThrow('outbox unavailable');
 		await new Promise((resolve) => setTimeout(resolve, 5));

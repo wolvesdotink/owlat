@@ -344,6 +344,19 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.message ? { message: payload.message } : {}),
 				};
 			}
+			case 'smtp.classified': {
+				// Both fields are already narrowed by `isMtaWebhookEvent` — the category
+				// against the SHARED vocabulary, never re-derived from `message` here.
+				// The re-check is the adapter's own trust boundary, the shape every case
+				// above keeps.
+				if (!payload.messageId || !payload.smtpCategory) return null;
+				return {
+					kind: 'internal.smtp_classified',
+					providerMessageId: payload.messageId,
+					category: payload.smtpCategory,
+					observedAt: payload.timestamp,
+				};
+			}
 			case 'ip.readiness_regressed': {
 				return {
 					kind: 'internal.ip_readiness_regressed',
