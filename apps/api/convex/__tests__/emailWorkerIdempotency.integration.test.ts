@@ -130,7 +130,10 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		const body1 = JSON.parse(fetchSpy.mock.calls[2]![1]!.body as string);
 		expect(body0.messageId).toBe(body1.messageId);
 		expect(body0.messageId).toBe(`send_${sendId!}`);
-	});
+		// A full API run initializes hundreds of convex-test module graphs in
+		// parallel. Give this integration harness headroom without relaxing any
+		// retry-count, response, or idempotency assertion above.
+	}, 30_000);
 
 	it('campaign path derives the key from emailSendId', async () => {
 		const t = convexTest(schema, modules);
