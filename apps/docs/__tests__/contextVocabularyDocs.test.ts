@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { coreCatalogKinds } from './catalogSource';
 
 /**
  * Docs-lint for the repo-root `CONTEXT.md`, the file that "pins the
@@ -195,18 +196,13 @@ describe('CONTEXT.md: ADR citations resolve', () => {
 
 describe('CONTEXT.md: the send-provider catalog section is pinned to the catalog', () => {
 	/**
-	 * The core kinds, read off the catalog's own entries.
-	 *
-	 * Not `constArrayLiterals`: this array holds whole entry OBJECTS, so its
-	 * string literals are mostly labels, env names and credential-field values.
-	 * The kind is the `kind:` at entry depth — two tabs, which nothing nested
-	 * inside an entry reaches.
+	 * The core kinds, read off the catalog's own entries — through the one
+	 * parser in `./catalogSource`, which `providerCapabilityDocs.test.ts` reads
+	 * too. Not `constArrayLiterals`: that array holds whole entry OBJECTS, so its
+	 * string literals are mostly labels, env names and credential-field values,
+	 * and telling the kind apart takes the entry-depth anchor that helper owns.
 	 */
-	const source = read('packages/shared/src/sendProviderCatalog.ts');
-	const start = source.indexOf('const CORE_SEND_PROVIDER_CATALOG = [');
-	expect(start, 'the core catalog array is gone or renamed').toBeGreaterThan(-1);
-	const body = source.slice(start, source.indexOf('\n] as const', start));
-	const kinds = [...body.matchAll(/^\t\tkind: '([a-z][a-z0-9]*)',$/gm)].map((match) => match[1]!);
+	const kinds = coreCatalogKinds();
 
 	it('parses mandrill out of the catalog', () => {
 		// The kind whose arrival made "four core adapters" false.
@@ -326,6 +322,46 @@ describe('CONTEXT.md: the ramp section is pinned to the deliverability vocabular
 		expectCountedWord(body, /([A-Z][a-z]+) streams \(/, rows, 'streams');
 		expectCountedWord(body, /× ([a-z]+) destination providers/, columns, 'destination providers');
 		expectCountedWord(body, /= ([a-z]+) cells/, rows * columns, 'cells');
+	});
+
+	/**
+	 * The share a cell OPENS at, per stream, read off `RAMP_STREAM_CONFIGS`.
+	 *
+	 * Sliced per stream rather than scanned flat: the three constants sit in
+	 * sibling entries with identical field names, so a flat scan would happily
+	 * pair `campaign` with `transactional`'s number.
+	 */
+	function initialSharePercents(): Map<string, number> {
+		const source = read('apps/api/convex/delivery/ramp/gateConfig.ts');
+		const start = source.indexOf('export const RAMP_STREAM_CONFIGS');
+		expect(start, 'RAMP_STREAM_CONFIGS is gone or renamed').toBeGreaterThan(-1);
+		const block = source.slice(start, source.indexOf('\n};', start));
+		const marks = [...block.matchAll(/\n\t([a-z]+): \{/g)];
+		const percents = new Map<string, number>();
+		for (const [index, mark] of marks.entries()) {
+			const entry = block.slice(mark.index!, marks[index + 1]?.index ?? block.length);
+			const fraction = /initialShareFraction: rateFraction\(([\d.]+)\)/.exec(entry)?.[1];
+			expect(fraction, `${mark[1]} declares no initialShareFraction`).toBeDefined();
+			// Rounded to a tenth of a point: 0.02 * 100 is not 2 in binary floating
+			// point, and the prose is written in whole points.
+			percents.set(mark[1]!, Math.round(Number(fraction) * 1000) / 10);
+		}
+		return percents;
+	}
+
+	it('states the share a cell actually opens at, per stream', () => {
+		// The one number in this section that is a CONTROL CONSTANT rather than a
+		// list length, and the one a reader is most likely to act on: "starts at
+		// 0" shipped here while enrolment opens a campaign cell at 2%. Pinned per
+		// stream to the config that decides it.
+		const body = ramp().replace(/\s+/g, ' ');
+		const percents = initialSharePercents();
+		expect([...percents.keys()].sort()).toEqual([...streams()].sort());
+		for (const [stream, percent] of percents) {
+			expect(body, `the opening share for ${stream} is unstated or stale`).toContain(
+				`\`${stream}\` ${percent}%`
+			);
+		}
 	});
 
 	it('names every ramp gate the signal registry declares', () => {

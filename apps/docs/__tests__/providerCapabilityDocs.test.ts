@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coreCatalogEntries } from './catalogSource';
 
 /**
  * Docs-lint for the "Declared capabilities" table on the providers page.
@@ -22,27 +23,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const catalogSource = readRepoFile('packages/shared/src/sendProviderCatalog.ts');
 const providers = readRepoFile('apps/docs/content/3.developer/15.providers.md');
 
-/** Every core catalog entry, as the literal declares it. */
-function coreCatalogEntries(): Array<{ kind: string; body: string }> {
-	const start = catalogSource.indexOf('const CORE_SEND_PROVIDER_CATALOG = [');
-	expect(
-		start,
-		'sendProviderCatalog.ts no longer declares CORE_SEND_PROVIDER_CATALOG'
-	).toBeGreaterThan(-1);
-	const block = catalogSource.slice(start, catalogSource.indexOf('] as const satisfies', start));
-	// TWO TABS: an ENTRY's `kind:`. Credential-field descriptors (D5) nest one
-	// level deeper and carry a `kind:` of their own (`kind: 'secret'`), which this
-	// anchor must not read as a transport kind — the same anchor, for the same
-	// reason, as the kind parser in scripts/check-provider-identity.sh.
-	const marks = [...block.matchAll(/\n\t\tkind: '([a-z][a-zA-Z0-9]*)',/g)];
-	return marks.map((mark, index) => ({
-		kind: mark[1]!,
-		body: block.slice(mark.index!, marks[index + 1]?.index ?? block.length),
-	}));
-}
+// The entry parser lives in `./catalogSource` — one anchor and one terminator
+// for the two suites that read this literal, because two readers of one fact is
+// the defect these suites exist to catch.
 
 function declared(body: string, field: string): string | undefined {
 	return new RegExp(`\\n\\t\\t${field}: '([a-z-]+)',`).exec(body)?.[1];
