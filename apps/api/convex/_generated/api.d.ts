@@ -151,6 +151,11 @@ import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.
 import type * as campaigns_senders from '../campaigns/senders.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
+import type * as channels_adapters_index from '../channels/adapters/index.js';
+import type * as channels_adapters_sms from '../channels/adapters/sms.js';
+import type * as channels_adapters_types from '../channels/adapters/types.js';
+import type * as channels_adapters_webhook from '../channels/adapters/webhook.js';
+import type * as channels_adapters_whatsapp from '../channels/adapters/whatsapp.js';
 import type * as channels_outbound from '../channels/outbound.js';
 import type * as chat__helpers from '../chat/_helpers.js';
 import type * as chat_attachments from '../chat/attachments.js';
@@ -1107,6 +1112,11 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/senders': typeof campaigns_senders;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
+	'channels/adapters/index': typeof channels_adapters_index;
+	'channels/adapters/sms': typeof channels_adapters_sms;
+	'channels/adapters/types': typeof channels_adapters_types;
+	'channels/adapters/webhook': typeof channels_adapters_webhook;
+	'channels/adapters/whatsapp': typeof channels_adapters_whatsapp;
 	'channels/outbound': typeof channels_outbound;
 	'chat/_helpers': typeof chat__helpers;
 	'chat/attachments': typeof chat_attachments;
