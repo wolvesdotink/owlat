@@ -593,9 +593,10 @@ the integration-side surface of one third-party platform that
 supplies contacts via paginated HTTP. Three adapters today:
 `providers/mailchimp/`, `providers/stripe/`, `providers/mandrill/`.
 Discriminated by that `kind`, matching the `provider` column on
-`integrationImports` (the one adapter union in this repository that IS a
-closed validator union, because an import provider is chosen by a user in
-a form rather than resolved from deployment configuration). Dispatched by the registry at
+`integrationImports` — a CLOSED validator union here, unlike the send
+path's open string (**§ Send provider catalog**), because an import
+provider is picked by a user in a form rather than resolved from
+deployment configuration. Dispatched by the registry at
 `providers/index.ts` exporting `providerFor(kind)`. Mirrors the
 **Sending domain provider adapter (module)** shape (ADR-0018) and
 **Channel inbound adapter** shape (ADR-0005) — one TypeScript
@@ -1133,9 +1134,9 @@ The per-provider record of a registered Sending domain. One row in
 `sendingDomainMtaIdentities` or `sendingDomainSesIdentities` — the two
 FROZEN sibling tables — or, for every kind added after those two, one row
 in the shared `sendingDomainRelayIdentities` table keyed by
-(organization, domain, `providerKind`). 1:0..1 with `domains` (a domain has at
-most one identity per provider; the providerType field
-on `domains` tells the lifecycle which one to load). The MTA
+(organization, domain, `providerKind`). 1:0..1 with `domains` (a
+domain has at most one identity per provider; the providerType
+field on `domains` tells the lifecycle which one to load). The MTA
 shape is `{ domainId, dkimSelector }`; the SES shape is
 `{ domainId, dkimTokens, verificationToken }`. The application
 enforces uniqueness via the **Sending domain provider adapter
@@ -5367,22 +5368,24 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   `mailMessages`, but the Postbox outbound lifecycle and Inbox processing
   lifecycle each own their tables once the message is in.
 - A **Sending domain** has exactly one **Sending domain status** at any
-  time and 1:0..1 **Sending domain identity** (in the per-provider
-  sibling table selected by `domain.providerType`). The **Sending domain
-  lifecycle (module)** is the only writer of `domains.status`, the only
-  insertor/deleter of `domains` rows, and the only caller of the
-  **Sending domain provider adapter (module)**'s `writeIdentity` /
-  `clearIdentity` methods. Three adapters today (`mta`, `ses`,
-  `mandrill` — the kinds `SendingDomainIdentityRegistry` declares), keyed by
-  `providerType` and dispatched by `providerFor(kind)`; the lifecycle
-  never branches on `providerType` — provider variation lives entirely
-  behind the adapter seam. The DNS verifier action consumes
-  `adapter.runProviderCheck` (SES and Mandrill implement it; MTA omits it) before
-  calling `lifecycle.recordVerification`, so "what counts as verified"
-  is the reducer's combination of a generic DNS rule with one boolean
-  from the adapter. The lifecycle sits *upstream* of the Send path: a
-  Campaign's send-time domain check (`getEmailDomainVerificationStatus`
-  read query) and a transactional send's domain check both consult the
+  time and 1:0..1 **Sending domain identity** (in the table selected by
+  `domain.providerType` — MTA's or SES's frozen sibling, or the shared
+  `sendingDomainRelayIdentities` row every later kind writes). The
+  **Sending domain lifecycle (module)** is the only writer of
+  `domains.status`, the only insertor/deleter of `domains` rows, and the
+  only caller of the **Sending domain provider adapter (module)**'s
+  `writeIdentity` / `clearIdentity` methods. Three adapters today (`mta`,
+  `ses`, `mandrill` — the kinds `SendingDomainIdentityRegistry`
+  declares), keyed by `providerType` and dispatched by
+  `providerFor(kind)`; the lifecycle never branches on `providerType` —
+  provider variation lives entirely behind the adapter seam. The DNS
+  verifier action consumes `adapter.runProviderCheck` (SES and Mandrill
+  implement it; MTA omits it) before calling
+  `lifecycle.recordVerification`, so "what counts as verified" is the
+  reducer's combination of a generic DNS rule with one boolean from the
+  adapter. The lifecycle sits *upstream* of the Send path: a Campaign's
+  send-time domain check (`getEmailDomainVerificationStatus` read query)
+  and a transactional send's domain check both consult the
   `domains.status` column the lifecycle owns — but neither the Campaign
   lifecycle nor the Send lifecycle ever writes to it. **Tracking domain**
   is disjoint (separate table, no lifecycle, no per-provider work).
@@ -5395,21 +5398,20 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   `completedAt`; the only other writer of the row is the public
   `cancelImport` mutation, which patches `status: 'failed'` as a
   user-cancel terminal and never touches the counters. Three adapters
-  today (`mailchimp`, `stripe`, `mandrill`), dispatched by `providerFor(kind)`; the
-  walker never branches on `provider` — provider variation lives entirely
-  behind the adapter seam. The adapter shape mirrors the **Sending
-  domain provider adapter (module)**: typed `kind`, registry dispatch,
-  one-folder addition for a new provider. The walker sits *upstream* of
-  the **Contact import (module)**: each page's normalized rows feed
-  `importBatch` with `source = provider` and `doiAttest` derived from
-  the adapter's `defaultDoiAttest`, so DOI attestation policy travels
-  with the adapter and not with the walker. The
-  [[project_single_org_per_deployment]] invariant plus the walker's
+  today (`mailchimp`, `stripe`, `mandrill`), dispatched by
+  `providerFor(kind)`; the walker never branches on `provider` — provider
+  variation lives entirely behind the adapter seam. The adapter shape
+  mirrors the **Sending domain provider adapter (module)**: typed `kind`,
+  registry dispatch, one-folder addition for a new provider. The walker
+  sits *upstream* of the **Contact import (module)**: each page's
+  normalized rows feed `importBatch` with `source = provider` and
+  `doiAttest` derived from the adapter's `defaultDoiAttest`, so DOI
+  attestation policy travels with the adapter and not with the walker.
+  The [[project_single_org_per_deployment]] invariant plus the walker's
   refusal to schedule when any `integrationImports` row is `'running'`
-  gives the deployment a single-in-flight integration discipline; CSV
-  / API contact imports (the **Contact import (module)**'s inline
-  sources) are disjoint — no `integrationImports` row, no adapter, no
-  walker hop.
+  gives the deployment a single-in-flight integration discipline; CSV /
+  API contact imports (the **Contact import (module)**'s inline sources)
+  are disjoint — no `integrationImports` row, no adapter, no walker hop.
 - An **Email template** has exactly one **Email template status** at
   any time; a **Transactional email** has exactly one **Transactional
   email status** at any time. The **Email template lifecycle (module)**
