@@ -3,7 +3,10 @@
  *
  * Per ADR-0020. Looks up the strategy module by `routeConfig.strategy` and
  * calls its `select()`. Owns the fallback semantics for null configs, empty
- * enabled-provider sets, and the env-var → `'mta'` default chain.
+ * enabled-provider sets, and the env-var fallback — which resolves to `null`,
+ * meaning UNCONFIGURED, when neither a route nor `EMAIL_PROVIDER` names a
+ * provider. There is no implicit `'mta'` default; see `resolveRoute`'s own
+ * docblock for what callers must do with the null.
  *
  * The strategy switch lives behind `strategyFor()` — adding a new strategy
  * is a one-folder change in `./strategies/`.

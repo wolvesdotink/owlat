@@ -16,9 +16,11 @@ import { rowCells } from './markdownDocs';
  * not. This pins every mechanical cell to the catalog literal so the next stale
  * one fails a test instead of waiting for a reader.
  *
- * Only cells whose value IS the declaration are pinned. `requiredEnvVars` and
- * the `mta` `domainVerification` cell are prose summaries by design ("AWS keys",
- * "own DNS path"), so they stay the author's to write.
+ * Only cells whose value IS the declaration are pinned. `requiredEnvVars`,
+ * `optionalEnvVars` and the `mta` `domainVerification` cell are prose summaries
+ * by design ("AWS keys", "own DNS path"), so their WORDING stays the author's to
+ * write — but an env-var cell reading `—` is not a wording choice, it is the
+ * claim that the entry declares none, and that one is pinned below.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -98,6 +100,41 @@ describe('the providers page restates the send catalog without drifting from it'
 			'these catalog fields have no row in the Declared capabilities table'
 		).toEqual([]);
 	});
+
+	it.each(['requiredEnvVars', 'optionalEnvVars'])(
+		'%s: no cell says "none" for an entry that declares some',
+		(field) => {
+			// THE CELL A PROSE ROW CAN STILL GET WRONG. These two rows are summaries
+			// ("AWS keys", "TLS floor, webhook secret"), so no assertion can pin their
+			// wording — but `—` is not wording, it is the claim that the entry declares
+			// nothing, and the `ses` / `optionalEnvVars` cell held that claim through
+			// the very commit that added `optionalEnvVars: ['SES_CONFIGURATION_SET']`
+			// to the entry. An operator reading it concludes SES has nothing optional
+			// to set and never enables the configuration set, losing event attribution
+			// on every send — and setting it later never applies retroactively.
+			//
+			// The env-vars reference gets the same superset check on its own Optional
+			// column (`providerCatalogDocs`); this is that check for the cell this
+			// page owns.
+			const { cells } = tableRow(field);
+			let checked = 0;
+			for (const [index, entry] of entries.entries()) {
+				const declares = new RegExp(`\\n\\t\\t${field}: \\[[^\\]]`).test(entry.body);
+				if (!declares) continue;
+				checked += 1;
+				const cell = cells[index]!;
+				expect(cell, `${entry.kind} declares ${field}, and the table says it has none`).not.toBe(
+					'—'
+				);
+				expect(cell.length, `${entry.kind} / ${field} is blank`).toBeGreaterThan(1);
+			}
+			// A parse that matched nothing would leave every case above unrun and the
+			// test green — the failure mode that let the `ses` cell drift in the first
+			// place. Every shipped kind declares both lists, so the bound is a floor
+			// well under that rather than a count to be updated with the sixth.
+			expect(checked, `no entry parsed as declaring ${field}`).toBeGreaterThan(3);
+		}
+	);
 
 	it.each([
 		// `tier` is pinned like any other single-valued declaration: the row says
