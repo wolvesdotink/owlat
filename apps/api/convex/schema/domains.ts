@@ -66,8 +66,12 @@ export const domainTables = {
 		// Verification results with detailed status per record type
 		verificationResults: v.optional(verificationResultsValidator),
 		// Provider type that registered this domain: a `SendingDomainProviderKind`
-		// (`domains/providers/types.ts`) — every kind the registry declares, plugin
-		// kinds included, not a fixed pair. Stored open per ADR-0055 (D10).
+		// (`domains/providers/types.ts`) — the CLOSED primary union, one adapter per
+		// kind, and no longer the fixed pair this comment used to name.
+		// Stored as an open string per ADR-0055 (D10) for forward-compat
+		// only: the union itself stays closed to core kinds on purpose
+		// (`isSendingDomainProviderKind`), so a bundled plugin transport proves a
+		// domain through `sendingDomainRelayIdentities.providerKind`, never here.
 		// The lifecycle dispatches per-provider work through
 		// `providers/index.ts:providerFor(kind)` keyed by this field.
 		providerType: v.optional(v.string()),

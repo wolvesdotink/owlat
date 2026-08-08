@@ -78,10 +78,15 @@ export const webhookTables = {
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution
 	webhookPayloads: defineTable({
-		// 'resend' | 'mta' | 'ses' | a namespaced `plugin.<pluginId>.<localId>`
-		// transport kind (D6/P2.2 — bundled-plugin feedback, retained only for the
-		// adapters that set `storeRawPayload`). Open by design: a reader that
-		// switches over the three core literals silently drops the plugin tier.
+		// An `InboundAdapter['source']` (`webhooks/pipeline.ts`): the wire
+		// identifier of whichever adapter accepted the request, which is WIDER than
+		// the send path — a send-provider feedback kind (a `SendTransportKind`,
+		// core or `plugin.<pluginId>.<localId>`, D6/P2.2) OR a channel adapter's
+		// vendor name (`webhooks/adapters/`). Rows exist only for the adapters that
+		// do not opt out through `shouldStoreRawPayload`. Deliberately NOT re-listed
+		// here (ADR-0055, D10): the union it once named was already four short, and
+		// a reader who switches over a fixed set of literals silently drops both the
+		// plugin tier and every channel.
 		source: v.string(),
 		rawPayload: v.string(), // JSON string of the raw webhook body
 		receivedAt: v.number(),

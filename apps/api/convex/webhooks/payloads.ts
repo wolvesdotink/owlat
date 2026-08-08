@@ -15,7 +15,9 @@ import { internal } from '../_generated/api';
  */
 export const store = internalMutation({
 	args: {
-		// 'resend' | 'mta' | 'ses' | `plugin.<pluginId>.<localId>` (D6/P2.2).
+		// An `InboundAdapter['source']` (`./pipeline.ts`) — see the
+		// `webhookPayloads.source` column comment in `schema/webhooks.ts` for what
+		// may land here; the kinds are not re-listed at either site (ADR-0055, D10).
 		source: v.string(),
 		rawPayload: v.string(),
 	},

@@ -191,7 +191,8 @@ export const deliveryTables = {
 		expiresAt: v.number(), // 24h for clean, 1h for flagged
 	}).index('by_url_hash', ['urlHash']),
 
-	// Provider Routes - which email provider (mta, ses, resend, smtp) per message type
+	// Provider Routes - which email provider per message type; one entry per
+	// configured send transport kind, see the `providerType` comment below
 	providerRoutes: defineTable({
 		messageType: v.union(
 			v.literal('campaign'),

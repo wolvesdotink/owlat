@@ -28,8 +28,10 @@ import { internalMutation } from './_generated/server';
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.
  *
- * Each organization can configure which email provider (mta, ses, resend)
- * to use for each message type (campaign, transactional, automation).
+ * Each organization can configure which email provider — any
+ * `SendTransportKind` the catalog declares, core or plugin; the kinds are not
+ * re-listed here (ADR-0055, D10) — to use for each message type (campaign,
+ * transactional, automation).
  */
 
 type MessageType = Doc<'providerRoutes'>['messageType'];

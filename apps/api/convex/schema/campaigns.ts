@@ -293,8 +293,12 @@ export const campaignTables = {
 		// Error information for failures
 		errorMessage: v.optional(v.string()),
 		errorCode: v.optional(v.string()),
-		// Provider routing metadata (multi-tenant sending platform)
-		providerType: v.optional(v.string()), // Which provider sent this email (mta, ses, resend)
+		// Provider routing metadata (multi-tenant sending platform).
+		// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
+		// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
+		// result. Stored open per ADR-0055 (D10); the kinds have one declaration,
+		// which is the catalog, so they are deliberately not re-listed here.
+		providerType: v.optional(v.string()),
 		// Correlation ID for end-to-end traceability (API request → send → webhook)
 		correlationId: v.optional(v.string()),
 		// Soft-delete fields: set on cascade from a soft-deleted contact, so the historical
