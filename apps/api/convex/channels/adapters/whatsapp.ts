@@ -4,7 +4,14 @@
  * Sends and receives WhatsApp messages via the Meta Cloud API.
  */
 
-import type { ChannelAdapter, OutboundMessage, SendResult, ParsedMessage, DeliveryStatus, ChannelHealth } from './types';
+import type {
+	ChannelAdapter,
+	OutboundMessage,
+	SendResult,
+	ParsedMessage,
+	DeliveryStatus,
+	ChannelHealth,
+} from './types';
 
 interface WhatsAppConfig {
 	phoneNumberId: string;
@@ -62,14 +69,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
 			const response = await fetch(url, {
 				method: 'POST',
 				headers: {
-					'Authorization': `Bearer ${this.config.accessToken}`,
+					Authorization: `Bearer ${this.config.accessToken}`,
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(payload),
 			});
 
 			if (response.ok) {
-				const data = await response.json() as WhatsAppSendResponse;
+				const data = (await response.json()) as WhatsAppSendResponse;
 				return { success: true, externalMessageId: data.messages?.[0]?.id };
 			}
 
@@ -126,7 +133,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
 			const url = `https://graph.facebook.com/v18.0/${this.config.phoneNumberId}`;
 			const start = Date.now();
 			const response = await fetch(url, {
-				headers: { 'Authorization': `Bearer ${this.config.accessToken}` },
+				headers: { Authorization: `Bearer ${this.config.accessToken}` },
 			});
 			const latencyMs = Date.now() - start;
 

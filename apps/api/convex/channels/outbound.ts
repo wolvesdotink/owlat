@@ -4,7 +4,7 @@
  * Outbound channel dispatch + credential encryption (NODE RUNTIME).
  *
  * This file is `'use node'` because it imports `lib/credentialCrypto`
- * (which pulls in `node:crypto`) and the `@owlat/channels` provider adapters.
+ * (which pulls in `node:crypto`) and the `./adapters` provider adapters.
  * Per the convention in lib/credentialCrypto.ts, anything that calls
  * encryptSecret/decryptSecret MUST live in a `'use node'` action file — never
  * a v8 query/mutation. Reached as `internal.channels.outbound.*`.
@@ -32,11 +32,9 @@ import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { outboundChannelValidator } from '../lib/convexValidators';
 import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
-import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from '@owlat/channels';
-import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from '@owlat/channels';
-import {
-	unifiedMessageChannelValidator as channelValidator,
-} from '../lib/convexValidators';
+import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from './adapters';
+import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from './adapters';
+import { unifiedMessageChannelValidator as channelValidator } from '../lib/convexValidators';
 import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValidators';
 
 /** Shape of the plaintext credential blob entered in the channel config form. */
@@ -78,7 +76,7 @@ export const encryptAndPersistConfig = internalAction({
 			// Never throw out of the scheduled job — leave the prior config intact.
 			// eslint-disable-next-line no-console
 			console.error(
-				`[channels] failed to encrypt config for ${args.channel}: ${error instanceof Error ? error.message : String(error)}`,
+				`[channels] failed to encrypt config for ${args.channel}: ${error instanceof Error ? error.message : String(error)}`
 			);
 		}
 		return null;
@@ -111,7 +109,11 @@ export const dispatchOutbound = internalAction({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const record = async (status: 'sent' | 'failed', externalMessageId?: string, error?: string) => {
+		const record = async (
+			status: 'sent' | 'failed',
+			externalMessageId?: string,
+			error?: string
+		) => {
 			// Recording the timeline row requires a thread (unifiedMessages.threadId
 			// is non-null in the schema). The autonomy/routing + agent-reply callers
 			// always supply one; if absent we log and skip the row.
@@ -127,7 +129,9 @@ export const dispatchOutbound = internalAction({
 				});
 			} else {
 				// eslint-disable-next-line no-console
-				console.warn(`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`);
+				console.warn(
+					`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`
+				);
 			}
 
 			// Completion for an approved agent reply: flip the inbound message off
@@ -358,7 +362,7 @@ export const probeChannelHealth = internalAction({
  */
 async function loadAdapter(
 	ctx: ActionCtx,
-	channel: UnifiedMessageChannel,
+	channel: UnifiedMessageChannel
 ): Promise<{ adapter: ChannelAdapter; error?: undefined } | { adapter: null; error: string }> {
 	const config = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
 		channel,

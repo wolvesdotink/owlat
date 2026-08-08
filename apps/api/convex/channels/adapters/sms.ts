@@ -4,7 +4,14 @@
  * Sends and receives SMS via the Twilio API.
  */
 
-import type { ChannelAdapter, OutboundMessage, SendResult, ParsedMessage, DeliveryStatus, ChannelHealth } from './types';
+import type {
+	ChannelAdapter,
+	OutboundMessage,
+	SendResult,
+	ParsedMessage,
+	DeliveryStatus,
+	ChannelHealth,
+} from './types';
 
 interface TwilioConfig {
 	accountSid: string;
@@ -70,14 +77,14 @@ export class SmsAdapter implements ChannelAdapter {
 			const response = await fetch(url, {
 				method: 'POST',
 				headers: {
-					'Authorization': this.authHeader(this.config),
+					Authorization: this.authHeader(this.config),
 					'Content-Type': 'application/x-www-form-urlencoded',
 				},
 				body: body.toString(),
 			});
 
 			if (response.ok) {
-				const data = await response.json() as TwilioSendResponse;
+				const data = (await response.json()) as TwilioSendResponse;
 				return { success: true, externalMessageId: data.sid };
 			}
 
@@ -120,18 +127,18 @@ export class SmsAdapter implements ChannelAdapter {
 			const url = this.accountUrl(this.config, `/Messages/${externalId}.json`);
 
 			const response = await fetch(url, {
-				headers: { 'Authorization': this.authHeader(this.config) },
+				headers: { Authorization: this.authHeader(this.config) },
 			});
 
 			if (response.ok) {
-				const data = await response.json() as TwilioStatusResponse;
+				const data = (await response.json()) as TwilioStatusResponse;
 				const statusMap: Record<string, DeliveryStatus> = {
-					'queued': 'queued',
-					'sent': 'sent',
-					'delivered': 'delivered',
-					'read': 'read',
-					'failed': 'failed',
-					'undelivered': 'failed',
+					queued: 'queued',
+					sent: 'sent',
+					delivered: 'delivered',
+					read: 'read',
+					failed: 'failed',
+					undelivered: 'failed',
 				};
 				return (data.status ? statusMap[data.status] : undefined) ?? 'sent';
 			}
@@ -164,7 +171,7 @@ export class SmsAdapter implements ChannelAdapter {
 
 			const start = Date.now();
 			const response = await fetch(url, {
-				headers: { 'Authorization': this.authHeader(this.config) },
+				headers: { Authorization: this.authHeader(this.config) },
 			});
 			const latencyMs = Date.now() - start;
 

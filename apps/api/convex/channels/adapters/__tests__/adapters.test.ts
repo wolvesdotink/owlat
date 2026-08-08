@@ -1,21 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
-	EmailAdapter,
 	SmsAdapter,
 	WhatsAppAdapter,
 	WebhookAdapter,
-	ChatAdapter,
 	type ChannelAdapter,
 	type OutboundMessage,
 	type ParsedMessage,
 } from '../index';
 
 const adapters = {
-	email: new EmailAdapter(),
 	sms: new SmsAdapter(),
 	whatsapp: new WhatsAppAdapter(),
 	generic: new WebhookAdapter(),
-	chat: new ChatAdapter(),
 } satisfies Record<string, ChannelAdapter>;
 
 // =============================================================================
@@ -23,11 +19,17 @@ const adapters = {
 // =============================================================================
 describe('channel adapters — instantiation', () => {
 	it('every adapter exposes its declared id', () => {
-		expect(adapters.email.id).toBe('email');
 		expect(adapters.sms.id).toBe('sms');
 		expect(adapters.whatsapp.id).toBe('whatsapp');
 		expect(adapters.generic.id).toBe('generic');
-		expect(adapters.chat.id).toBe('chat');
+	});
+
+	// The set is closed on purpose: `email` is dispatched by the send-provider
+	// seam and `chat` is persisted natively, so neither has (or had) a working
+	// adapter here. The two classes that pretended otherwise were deleted with
+	// the D10 honesty pass; this pins the surface so they cannot creep back.
+	it('covers exactly the operator-configurable outbound channels', () => {
+		expect(Object.keys(adapters).sort()).toEqual(['generic', 'sms', 'whatsapp']);
 	});
 });
 
@@ -61,25 +63,14 @@ describe('channel adapters — ChannelAdapter contract', () => {
 // =============================================================================
 // Bucket 3 — Behavior-parity / regression
 //
-// The adapter file contents were moved verbatim from
-// apps/api/convex/lib/channels/. parseInbound's normalization shape is
-// stable: we lock the chat and webhook parsers to known input/output
-// pairs so a careless edit can't drift the public contract.
+// The adapter file contents were moved verbatim from `@owlat/channels` (and,
+// before that, from apps/api/convex/lib/channels/). parseInbound's
+// normalization shape is stable: we lock the webhook and SMS parsers to known
+// input/output pairs so a careless edit can't drift the public contract.
 // =============================================================================
 describe('channel adapters — parseInbound parity', () => {
-	it('chat parser extracts userId and text', () => {
-		const parsed: ParsedMessage = adapters.chat.parseInbound({
-			userId: 'u1',
-			text: 'hello world',
-			messageId: 'msg-1',
-		});
-		expect(parsed.from).toBe('u1');
-		expect(parsed.content.text).toBe('hello world');
-		expect(parsed.externalMessageId).toBe('msg-1');
-	});
-
 	it('generic-webhook parser handles the canonical { from, text } payload', () => {
-		const parsed = adapters.generic.parseInbound({
+		const parsed: ParsedMessage = adapters.generic.parseInbound({
 			from: 'webhook-source',
 			text: 'inbound text',
 		});
@@ -204,7 +195,7 @@ describe('SmsAdapter.getDeliveryStatus — transient vs terminal', () => {
 	it('reports `sent` (not `failed`) on a transient non-2xx response', async () => {
 		const status = await withFetch(
 			(async () => new Response('rate limited', { status: 429 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('sent');
 	});
@@ -212,7 +203,7 @@ describe('SmsAdapter.getDeliveryStatus — transient vs terminal', () => {
 	it('reports `sent` (not `failed`) on a 5xx response', async () => {
 		const status = await withFetch(
 			(async () => new Response('boom', { status: 503 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('sent');
 	});
@@ -222,31 +213,34 @@ describe('SmsAdapter.getDeliveryStatus — transient vs terminal', () => {
 			(async () => {
 				throw new Error('ETIMEDOUT');
 			}) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('sent');
 	});
 
 	it('maps a confirmed Twilio `failed` status to `failed`', async () => {
 		const status = await withFetch(
-			(async () => new Response(JSON.stringify({ status: 'failed' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(async () =>
+				new Response(JSON.stringify({ status: 'failed' }), { status: 200 })) as typeof fetch,
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('failed');
 	});
 
 	it('maps a confirmed Twilio `undelivered` status to `failed`', async () => {
 		const status = await withFetch(
-			(async () => new Response(JSON.stringify({ status: 'undelivered' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(async () =>
+				new Response(JSON.stringify({ status: 'undelivered' }), { status: 200 })) as typeof fetch,
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('failed');
 	});
 
 	it('maps a confirmed Twilio `delivered` status to `delivered`', async () => {
 		const status = await withFetch(
-			(async () => new Response(JSON.stringify({ status: 'delivered' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1'),
+			(async () =>
+				new Response(JSON.stringify({ status: 'delivered' }), { status: 200 })) as typeof fetch,
+			(a) => a.getDeliveryStatus('SM1')
 		);
 		expect(status).toBe('delivered');
 	});

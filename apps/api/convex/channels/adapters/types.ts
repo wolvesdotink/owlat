@@ -1,8 +1,16 @@
 /**
  * Channel Adapter Interface
  *
- * Pluggable TypeScript interface for normalizing different communication
- * channels into Owlat's unified message model.
+ * The contract the three configurable outbound channel providers share
+ * (Twilio SMS, Meta WhatsApp, generic HTTP webhook). See `./index.ts` for what
+ * deliberately does NOT implement it — `email` belongs to the send-provider
+ * seam, `chat` is native, and inbound signature verification for these same
+ * channels lives in `webhooks/adapters/`.
+ *
+ * `ChannelType` stays the full unified-message channel set (it is the
+ * discriminator carried on an `OutboundMessage`, and `unifiedMessages` rows use
+ * all five); the dispatchable subset is `OutboundChannel` in
+ * `lib/convexValidators.ts`.
  */
 
 export type ChannelType = 'email' | 'sms' | 'whatsapp' | 'generic' | 'chat';

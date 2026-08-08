@@ -97,7 +97,7 @@ describe('WebhookAdapter — parseInbound()', () => {
 
 	it('text source precedence: text > message > content.text', () => {
 		expect(
-			adapter.parseInbound({ text: 't', message: 'm', content: { text: 'c' } }).content.text,
+			adapter.parseInbound({ text: 't', message: 'm', content: { text: 'c' } }).content.text
 		).toBe('t');
 		expect(adapter.parseInbound({ message: 'm', content: { text: 'c' } }).content.text).toBe('m');
 		expect(adapter.parseInbound({ content: { text: 'c' } }).content.text).toBe('c');
@@ -121,10 +121,12 @@ describe('WebhookAdapter — parseInbound()', () => {
 	});
 
 	it('prefers `id` over `messageId` for externalMessageId', () => {
-		expect(adapter.parseInbound({ from: 'a@x', id: 'id-1', messageId: 'mid-1' }).externalMessageId).toBe(
-			'id-1',
+		expect(
+			adapter.parseInbound({ from: 'a@x', id: 'id-1', messageId: 'mid-1' }).externalMessageId
+		).toBe('id-1');
+		expect(adapter.parseInbound({ from: 'a@x', messageId: 'mid-1' }).externalMessageId).toBe(
+			'mid-1'
 		);
-		expect(adapter.parseInbound({ from: 'a@x', messageId: 'mid-1' }).externalMessageId).toBe('mid-1');
 	});
 
 	it('passes through timestamp and metadata, defaulting metadata to {}', () => {
@@ -169,7 +171,9 @@ describe('WebhookAdapter — validateSignature()', () => {
 
 	it('returns true for the correct secret in x-webhook-secret', async () => {
 		const adapter = configured();
-		await expect(adapter.validateSignature({ 'x-webhook-secret': secret }, '{}')).resolves.toBe(true);
+		await expect(adapter.validateSignature({ 'x-webhook-secret': secret }, '{}')).resolves.toBe(
+			true
+		);
 	});
 
 	it('returns true for the correct secret in the authorization header', async () => {
@@ -182,23 +186,29 @@ describe('WebhookAdapter — validateSignature()', () => {
 		// Same length as the secret so the comparison runs the full byte loop.
 		const wrong = 'super-secret-WRONG'.slice(0, secret.length);
 		expect(wrong.length).toBe(secret.length);
-		await expect(adapter.validateSignature({ 'x-webhook-secret': wrong }, '{}')).resolves.toBe(false);
+		await expect(adapter.validateSignature({ 'x-webhook-secret': wrong }, '{}')).resolves.toBe(
+			false
+		);
 	});
 
 	it('returns false for a wrong secret (different length)', async () => {
 		const adapter = configured();
-		await expect(adapter.validateSignature({ 'x-webhook-secret': 'nope' }, '{}')).resolves.toBe(false);
+		await expect(adapter.validateSignature({ 'x-webhook-secret': 'nope' }, '{}')).resolves.toBe(
+			false
+		);
 	});
 
 	it('returns false when no secret header is present', async () => {
 		const adapter = configured();
-		await expect(adapter.validateSignature({ 'content-type': 'application/json' }, '{}')).resolves.toBe(
-			false,
-		);
+		await expect(
+			adapter.validateSignature({ 'content-type': 'application/json' }, '{}')
+		).resolves.toBe(false);
 	});
 
 	it('returns false when unconfigured even if the header carries a value', async () => {
 		const adapter = new WebhookAdapter();
-		await expect(adapter.validateSignature({ 'x-webhook-secret': secret }, '{}')).resolves.toBe(false);
+		await expect(adapter.validateSignature({ 'x-webhook-secret': secret }, '{}')).resolves.toBe(
+			false
+		);
 	});
 });

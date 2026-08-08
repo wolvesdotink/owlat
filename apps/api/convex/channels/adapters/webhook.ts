@@ -5,7 +5,14 @@
  * via HTTP POST webhooks.
  */
 
-import type { ChannelAdapter, OutboundMessage, SendResult, ParsedMessage, DeliveryStatus, ChannelHealth } from './types';
+import type {
+	ChannelAdapter,
+	OutboundMessage,
+	SendResult,
+	ParsedMessage,
+	DeliveryStatus,
+	ChannelHealth,
+} from './types';
 
 interface WebhookInboundPayload {
 	from?: string;
