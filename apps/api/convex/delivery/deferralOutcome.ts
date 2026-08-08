@@ -20,22 +20,25 @@
  * the identity, which is why the adapter classifies per defer reason
  * (`lib/sendProviders/mta/index.ts`, `MTA_DEFER_REASON_ORIGIN`).
  *
- * ONLY THE FIRST OF THOSE TWO SOURCES ENFORCES THAT RULE TODAY. The
- * `ROUTING_DEFERRED` branch in `governedDispatch.ts` hardcodes
- * `deferralOrigin: 'governed'` for every transport defer, and the adapter routes
- * any 409 carrying a `ROUTING_DECISION_` code into it — including
- * `ROUTING_DECISION_EXPIRED`, which the MTA also answers when `readRoutingLease`
- * comes back empty because its Redis lost the key rather than because the lease
- * aged out. A store failure on our own side can therefore still spend gate 2's
- * budget through that path. Classifying it needs the MTA to tell an expired
- * lease apart from an unreadable one on the wire, which is parked in issue #505;
- * until that lands, read the rule above as holding for
- * `resolveLastMileRouting`'s own answer and as an intention for the other.
+ * BOTH SOURCES ENFORCE THAT RULE, on either side of one distinction the MTA now
+ * makes on the wire (issue #505). The adapter routes a 409 carrying a
+ * `ROUTING_DECISION_` code into a `governed` transport defer — an aged-out or
+ * no-longer-binding lease, a breaker or IP generation that moved, all of them
+ * the MTA declining THIS IDENTITY — while a lease it could not READ answers
+ * `ROUTING_LEASE_UNREADABLE` instead (`routes/sendRoutingLease.ts`), which the
+ * `ROUTING_DEFERRED` branch in `governedDispatch.ts` marks `local` beside the
+ * `lease_persistence` case. A truncated or corrupt lease record is our own
+ * storage failing and no longer spends gate 2's budget. ONE HONEST RESIDUE: a
+ * lease key that is simply GONE reads as absent, and a Redis `GET` cannot tell a
+ * key that aged out of its 15-minute TTL from one an eviction or an empty-replica
+ * failover took — the MTA keeps calling that `governed`, because the ordinary
+ * cause is the TTL and the alternative is guessing.
  *
  * WHAT IT DOES NOT RECORD, and this is not an omission: `origin: 'local'`. A
  * deliberate policy hold, the idempotency reconciliation wait, an unconfigured or
  * unreachable MTA decision endpoint, a warm-up cap we set ourselves, and the MTA
- * reporting any Redis failure while taking the lease — those are this deployment
+ * reporting any Redis failure while taking the lease or an unreadable record
+ * when it reads that lease back at enqueue — those are this deployment
  * holding its own message, wherever the machinery that held it runs. Gate 2 halts
  * a cell at 25%, so counting a forty-minute outage on our own side would drop the
  * share to the floor, open a cooldown and revoke a graduation pin over a fault no
