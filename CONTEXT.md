@@ -2988,7 +2988,7 @@ bundled plugin entries composed in at the backend. Everything that used to
 restate a provider fact derives from it: the kind union is read off the entries
 (`CoreSendProviderKind = (typeof CORE_SEND_PROVIDER_CATALOG)[number]['kind']`),
 and `SEND_TRANSPORT_KINDS`, the per-provider required-env tables, the provider
-labels and the credential forms are re-exports or lookups rather than the five
+labels and the credential forms are re-exports or lookups rather than the
 independent declarations they were.
 
 Split in two halves, and the split is a security boundary rather than tidiness:
@@ -3047,8 +3047,11 @@ adapter folder; `plugin` is a Tier-1 bundled package contributing a
 never a capability one — after plugin parity both satisfy the same contract, and
 nothing on the send path may branch on the distinction. The stated policy is
 that provider N+1 ships as a plugin unless it needs something only core can
-give; the four incumbents plus `mandrill` stay core because migrating them would
-be churn without benefit.
+give; the four incumbents (the own MTA plus the three `core` relays) and
+`mandrill` stay in-repo because migrating them would be churn without benefit.
+"In-repo" rather than "`core`" on purpose: `mta` declares `tier: 'own'`, so the
+tier literal is not what the incumbents have in common — the integration style
+is.
 _Avoid_: Provider type (`providerType` is already a stored column, and it holds
 a KIND), Provider class, Provider level.
 
@@ -3071,16 +3074,34 @@ one half of the bundle), Provider integration (vague about what travels).
 
 **Credential field descriptor**:
 One field of the form an operator fills in to configure a transport, declared on
-the catalog entry in `packages/shared/src/sendProviderCredentialFields.ts`.
-Seven kinds: `string`, `secret`, `number`, `boolean`, `select`, `region-select`,
-`host-port` — the plugin platform's `settingsSchema` vocabulary plus two
-composite kinds, deliberately the same family so a core and a plugin provider
-describe credentials identically. Each descriptor names the environment variable
-it writes, which is what joins the form to the presence checks and to the
-paste-ready `.env` skeleton. The web layer renders descriptors and knows no
-provider: adding one adds zero lines to any `.vue` file.
+the catalog entry (`packages/shared/src/sendProviderCatalog.ts`, a
+`credentialFields` array per entry) in the field vocabulary of
+`packages/shared/src/sendProviderCredentialFields.ts` — that second module holds
+the field KINDS, the shared option shapes and the SMTP preset table, and no
+entry. Seven kinds: `string`, `secret`, `number`, `boolean`, `select`,
+`region-select`, `host-port` — the plugin platform's `settingsSchema` vocabulary
+plus two composite kinds, deliberately the same family so a core and a plugin
+provider describe credentials identically. Each descriptor names the environment
+variable it writes, which is what joins the form to the presence checks and to
+the paste-ready `.env` skeleton. The in-app transport editor renders descriptors
+and knows no provider — `TransportCredentialFields.vue` draws whatever the
+selected entry declares — so a core kind added to the catalog reaches that form
+with no `.vue` edit.
 
-Known gap, pinned by
+Known gap, and the reason the sentence above says "the in-app transport editor"
+rather than "the web layer": the two STANDALONE SETUP WIZARDS,
+`apps/web/app/pages/setup/email.vue` and `apps/web/app/pages/desktop/setup.vue`,
+still spell their provider list and their credential half per vendor, because
+the draft they read (`EmailStepDraft`) is vendor-shaped (`resendKey`,
+`ses.region`, `smtp.host`) rather than descriptor-keyed. Both are recorded as
+open debt under the `provider-shaped-ui-followup` family in
+`scripts/provider-identity-allowlist.txt`, alongside
+`apps/web/app/composables/setupWizardValidation.ts`; `RelayDomainStatus.vue` is
+written out separately there under `relay-identity-panel`, for the kind literal
+the ratchet cannot see. Until that follow-up lands, a sixth core kind still
+needs those two wizard pages edited by hand.
+
+Second known gap, pinned by
 `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`: a
 BUNDLED PLUGIN transport's descriptors never reach the web layer. Every
 `apps/web` surface resolves through `coreSendProviderCatalogEntry`, the
@@ -3945,8 +3966,15 @@ one of the two).
 
 **Own share**:
 The controlled variable in a deployment that has a reference transport: `s`, the
-fraction of a cell's mail routed to the own arm, in `[0, 1]`. Starts at 0 for a
-migration and is walked up by the **Ramp controller**. A share is a measurement
+fraction of a cell's mail routed to the own arm, in `[0, 1]`. An UNMANAGED cell
+resolves to 1.0 — shipped routing puts the mail on the own MTA — so the ramp
+does not start a migration from zero, it CUTS: enrolling a cell on the ESP path
+opens it at its stream's `initialShareFraction` (`RAMP_STREAM_CONFIGS` in
+`ramp/gateConfig.ts`) — `campaign` 2%, `automation` 5%, `transactional` 0% — a
+measured sliver on the own MTA with the rest handed to the relay, walked back up
+from there by the **Ramp controller**. (Enrolling on the standalone path opens
+at 1 instead: there is no second sender to hold a share back for, and the dial
+that ramps is the pace multiplier.) A share is a measurement
 outcome, not a setting the controller reads back: an operator can pause a cell,
 pin its share or force one advance, and each of those is an OVERRIDE the ladder
 answers at its top rung (a pin holds in both directions) rather than an input to
