@@ -259,6 +259,7 @@ import type * as delivery_checklistVerification from "../delivery/checklistVerif
 import type * as delivery_complianceTelemetry from "../delivery/complianceTelemetry.js";
 import type * as delivery_deferralOutcome from "../delivery/deferralOutcome.js";
 import type * as delivery_deliverabilityDashboard from "../delivery/deliverabilityDashboard.js";
+import type * as delivery_deliverabilityDashboardHelpers from "../delivery/deliverabilityDashboardHelpers.js";
 import type * as delivery_deliverabilityDashboardView from "../delivery/deliverabilityDashboardView.js";
 import type * as delivery_deliverabilityRouting from "../delivery/deliverabilityRouting.js";
 import type * as delivery_deliverabilityValidators from "../delivery/deliverabilityValidators.js";
@@ -1192,6 +1193,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/complianceTelemetry": typeof delivery_complianceTelemetry;
   "delivery/deferralOutcome": typeof delivery_deferralOutcome;
   "delivery/deliverabilityDashboard": typeof delivery_deliverabilityDashboard;
+  "delivery/deliverabilityDashboardHelpers": typeof delivery_deliverabilityDashboardHelpers;
   "delivery/deliverabilityDashboardView": typeof delivery_deliverabilityDashboardView;
   "delivery/deliverabilityRouting": typeof delivery_deliverabilityRouting;
   "delivery/deliverabilityValidators": typeof delivery_deliverabilityValidators;
