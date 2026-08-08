@@ -521,7 +521,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'analytics/qualityMetrics.ts#getClarifyMetrics',
 	'analytics/qualityMetrics.ts#getDraftQualityMetrics',
 	'analytics/reputationQueries.ts#getDomainReputations',
-	'analytics/seedPlacement.ts#getGateVerdict',
 	'analytics/seedPlacement.ts#getSeedPlacementSummary',
 	'assistant/conversations.ts#getConversation',
 	'auditLogs.ts#get',
