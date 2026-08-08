@@ -100,6 +100,17 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// The classified-response buckets beside them, on the SAME horizon and the
+	// same sweep shape: the two are read over the same windows by the same two
+	// readers, so a cell whose block evidence expired while its outcome counters
+	// remained would be graded on half the window it appears to have.
+	crons.interval(
+		'cleanup smtp response categories',
+		{ hours: 6 },
+		internal.analytics.smtpResponseCategories.cleanupExpiredSmtpResponses,
+		{}
+	);
+
 	// THE AIMD RAMP CONTROLLER (plan D13). Convex owns the decision — it has the
 	// reputation and outcome data, and it reads MTA state through the existing
 	// /ip-reputation sync. Hourly, and BOUNDED per tick: each run takes a slice of
@@ -217,6 +228,26 @@ export function registerDeliveryCrons(crons: Crons): void {
 		'verify dual-transport alignment',
 		{ minuteUTC: 20 },
 		internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
+		{}
+	);
+
+	// Gate 5's evidence for the streams that have no campaign to shadow (P4-7).
+	// The campaign shadow copy rides a real send, so the `transactional` and
+	// `automation` cells had no probes at all and gate 5 held on them forever;
+	// this is the plan's "or on a schedule for transactional streams".
+	//
+	// SIX-HOURLY, while the CADENCE is daily and lives in the sweep itself
+	// (`SCHEDULED_SEED_PROBE_INTERVAL_MS`). A tick that finds a cell already
+	// probed inside the window costs one indexed read and mails nothing, so the
+	// extra ticks buy recovery — a deployment that had no sender configured, no
+	// seeds, or an unverified domain at the due moment starts being measured
+	// within hours rather than at the next daily slot.
+	//
+	// With no seed mailboxes connected it is a permanent no-op (D2).
+	crons.interval(
+		'sweep scheduled seed probes',
+		{ hours: 6 },
+		internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes,
 		{}
 	);
 }

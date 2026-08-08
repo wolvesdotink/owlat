@@ -85,8 +85,24 @@ describe('removesReferenceArm', () => {
 	});
 
 	it('stays quiet on a deployment that never had a relay', () => {
-		summary.value = independenceSummary({ referenceTransportId: null });
+		summary.value = independenceSummary({
+			referenceTransportId: null,
+			isRelayConfigured: false,
+			relayRemoval: { kind: 'safe' },
+		});
 
 		expect(guardFor('mta').removesReferenceArm.value).toBe(false);
+	});
+
+	/**
+	 * The #513 shape: a relay configured through `EMAIL_PROVIDER` alone has no
+	 * transport id, and the guard used to read the missing id as "no relay" and
+	 * stay quiet — the operator only met the server's raw refusal. `unsafe` is
+	 * the fact that matters, and it already implies the relay exists.
+	 */
+	it('fires on an env-configured relay whose transport id is unknown', () => {
+		summary.value = independenceSummary({ referenceTransportId: null });
+
+		expect(guardFor('mta').removesReferenceArm.value).toBe(true);
 	});
 });

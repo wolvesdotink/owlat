@@ -183,6 +183,7 @@ export {
 export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	ROUTING_LEASE_UNREADABLE_CODE,
 	type GovernedCandidateProvider,
 	type GovernedIpPool,
 	type GovernedMessageType,

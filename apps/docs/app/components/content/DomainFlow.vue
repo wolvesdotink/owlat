@@ -239,9 +239,9 @@ const steps = [
 }
 
 .df-status--danger {
-  background: color-mix(in oklab, #c45a5a 12%, var(--color-bg-surface));
-  color: #c45a5a;
-  border: 1px solid color-mix(in oklab, #c45a5a 25%, transparent);
+  background: color-mix(in oklab, var(--color-error) 12%, var(--color-bg-surface));
+  color: var(--color-error);
+  border: 1px solid color-mix(in oklab, var(--color-error) 25%, transparent);
 }
 
 .df-status--sm {
@@ -280,7 +280,7 @@ const steps = [
 }
 
 .df-branch--result .df-branch-connector { color: var(--color-success); opacity: 0.5; }
-.df-branch--error .df-branch-connector { color: #c45a5a; opacity: 0.5; }
+.df-branch--error .df-branch-connector { color: var(--color-error); opacity: 0.5; }
 
 .df-branch-content {
   display: flex;

@@ -305,6 +305,57 @@ describe('applyEffects — per-effect dispatch', () => {
 			'dispatch:m-1:sent'
 		);
 	});
+
+	it('gives each classified response its OWN outbox slot (issue #501)', async () => {
+		// Every other terminal callback is one-per-message-per-event, and the outbox
+		// keys its entry by a hash of that string. A classified response is
+		// one-per-ATTEMPT — a greylisted message collects a new one every time it is
+		// retried — so keyed by the event name alone the second attempt would land
+		// on the first one's slot and the ramp's denominator would count one
+		// response per message however many the receiver actually sent.
+		const first = {
+			event: 'smtp.classified' as const,
+			messageId: 'm-1',
+			organizationId: 'org-1',
+			smtpCategory: 'greylisted' as const,
+			timestamp: 1700000000,
+		};
+		await applyEffects([{ kind: 'notify_convex', event: first }], makeDeps());
+		await applyEffects(
+			[{ kind: 'notify_convex', event: { ...first, timestamp: 1700000060 } }],
+			makeDeps()
+		);
+		expect(vi.mocked(queueConvexWebhook).mock.calls.map(([, , , key]) => key)).toEqual([
+			'dispatch:m-1:smtp.classified:1700000000',
+			'dispatch:m-1:smtp.classified:1700000060',
+		]);
+	});
+
+	it('never fails the attempt when the classified response cannot be queued', async () => {
+		// FAIL-SOFT BY DESIGN. A measurement is not an ownership transfer: the
+		// retryable-4xx branch emits one BEFORE the message is terminalized, so an
+		// outbox blip that rejected here would abort the attempt and stall a message
+		// the receiver merely asked us to retry. The lifecycle callback beside it is
+		// deliberately NOT fail-soft, which is the contrast this case pins.
+		vi.mocked(queueConvexWebhook).mockRejectedValue(new Error('outbox unavailable'));
+		const base = { messageId: 'm-1', organizationId: 'org-1', timestamp: 1700000000 };
+
+		await expect(
+			applyEffects(
+				[
+					{
+						kind: 'notify_convex',
+						event: { ...base, event: 'smtp.classified', smtpCategory: 'content_rejected' },
+					},
+				],
+				makeDeps()
+			)
+		).resolves.toBeUndefined();
+
+		await expect(
+			applyEffects([{ kind: 'notify_convex', event: { ...base, event: 'bounced' } }], makeDeps())
+		).rejects.toThrow('outbox unavailable');
+	});
 });
 
 describe('applyEffects — ordering', () => {

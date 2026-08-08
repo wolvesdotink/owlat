@@ -22,13 +22,19 @@ import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
  * category names are the shared vocabulary in
  * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
  *
- * NOTHING IN PRODUCTION CONSTRUCTS ONE YET (issue #501). The counts exist only
- * inside the MTA's dispatch reducer, which reports a remote 4xx to Convex as a
- * per-IP warming aggregate carrying no (cell, arm) — so there is no row a reader
- * could turn into this shape. Unlike its neighbour below, which
- * `analytics/seedPlacementSweeps.ts` produces from the probe ledger, this
- * interface is a contract waiting for its producer, and the gate that reads it
- * says so at its own definition rather than leaving a halt looking live.
+ * PRODUCED BY `analytics/smtpResponseCategories.ts` (issue #501), for the
+ * controller (`rampControllerInputs.ts`) and the dashboard alike — exactly as its
+ * neighbour below is produced from the probe ledger. The MTA reports each
+ * classified 4xx/5xx as a TYPED category on an `smtp.classified` webhook; the
+ * counter it lands in is keyed per (org, cell, arm, UTC day) and sharded, and the
+ * summarizer sums it over whichever window the reader is judging.
+ *
+ * `null` FROM THAT SUMMARIZER IS ABSENCE AND NOT A ZERO, which is the whole
+ * reason the producer returns an option rather than an empty observation. A
+ * window with no rows means the deployment did not measure and the gate's clause
+ * yields no verdict; a window of rows that were all rate pressure means it DID
+ * measure and receivers are not refusing us. Those are opposite facts, and a
+ * zeroed observation standing in for the first would report the second.
  */
 export interface SmtpBlockObservation {
 	/** Every classified response over the window — the denominator. */

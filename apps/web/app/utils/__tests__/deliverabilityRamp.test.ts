@@ -126,14 +126,19 @@ describe('relayRemovalConsequenceCopy', () => {
  * `transportState.test.ts`; these are the sentences it lands in.
  */
 describe('naming the reference transport', () => {
+	/** The relay sentence, for a deployment with exactly one relay to name. */
+	function subheadFor(referenceTransportId: string): string {
+		return independenceSubhead({ isRelayConfigured: true, referenceTransportId });
+	}
+
 	it('names the relay the way the transport card does', () => {
-		expect(independenceSubhead('ses')).toContain('instead of Amazon SES');
-		expect(independenceSubhead('smtp')).toContain('instead of SMTP relay');
-		expect(independenceSubhead('ses')).not.toContain(' ses');
+		expect(subheadFor('ses')).toContain('instead of Amazon SES');
+		expect(subheadFor('smtp')).toContain('instead of SMTP relay');
+		expect(subheadFor('ses')).not.toContain(' ses');
 	});
 
 	it('never prints a namespaced plugin id in a sentence', () => {
-		const subhead = independenceSubhead('plugin.mail-pack.postmark');
+		const subhead = subheadFor('plugin.mail-pack.postmark');
 		expect(subhead).toContain('instead of Postmark');
 		expect(subhead).not.toContain('plugin.');
 	});
@@ -141,7 +146,7 @@ describe('naming the reference transport', () => {
 	it('falls back to the raw id rather than dropping an unknown transport', () => {
 		// The reference arm is whatever `EMAIL_PROVIDER` was set to, so an id this
 		// build does not know must still read as itself.
-		expect(independenceSubhead('postmark')).toContain('instead of postmark');
+		expect(subheadFor('postmark')).toContain('instead of postmark');
 		expect(
 			relayRemovalConsequenceCopy({
 				dependentCells: ['campaign:gmail'],
@@ -162,6 +167,23 @@ describe('naming the reference transport', () => {
 	});
 
 	it('leaves the standalone sentence alone — there is no relay to name', () => {
-		expect(independenceSubhead(null)).toContain('There is no relay to move away from');
+		expect(independenceSubhead({ isRelayConfigured: false, referenceTransportId: null })).toContain(
+			'There is no relay to move away from'
+		);
+	});
+
+	/**
+	 * TWO RELAYS: a name it cannot give, on a screen that is still about a relay
+	 * (#513). The sentence is chosen by whether a relay EXISTS, so the unnamed
+	 * case says "the relays you have connected" rather than falling through to the
+	 * standalone promise that there is nothing to move away from.
+	 */
+	it('speaks of the relays in the plural when no single one can be named', () => {
+		const subhead = independenceSubhead({
+			isRelayConfigured: true,
+			referenceTransportId: null,
+		});
+		expect(subhead).toContain('instead of the relays you have connected');
+		expect(subhead).not.toContain('There is no relay to move away from');
 	});
 });

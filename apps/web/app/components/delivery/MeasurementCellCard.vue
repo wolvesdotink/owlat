@@ -22,6 +22,12 @@
  *
  * Nothing here divides: every rate comes off the server summary verbatim
  * (ADR-0042 / plan D5).
+ *
+ * TWO SPANS ON ONE CARD, both named. The table and the trend are the REPORTED
+ * window — seven days, the span the page heading gives dates for — and the checks
+ * are the ramp controller's own, which is what makes the verdict here the verdict
+ * the cron reached (#510). The gate list carries that label, so the numbers under
+ * a check are never read as the numbers in the table above it.
  */
 import {
 	armMetricRows,
@@ -38,6 +44,8 @@ import { transportIdLabel } from '~/utils/transportState';
 const props = defineProps<{
 	cell: DeliverabilityDashboardCell;
 	referenceTransportId: string | null;
+	/** The span this cell's CHECKS were decided over, in words (#510). */
+	decisionWindowLabel: string;
 }>();
 
 const title = computed(() => cellLabel(props.cell.cell));
@@ -114,8 +122,8 @@ const hasQuietRelayHistory = computed(
 
 			<!-- Zero volume: nothing sent, nothing wrong. -->
 			<p v-if="isEmpty" data-testid="measurement-empty" class="text-sm text-text-secondary">
-				Nothing has been sent in this cell during this window. There is nothing to measure yet, and
-				that is fine.
+				Nothing has been sent in this cell during the reported window. There is nothing to measure
+				yet, and that is fine.
 			</p>
 
 			<template v-else>
@@ -126,7 +134,7 @@ const hasQuietRelayHistory = computed(
 							{{
 								title
 							}}
-							over the selected window
+							over the reported window
 						</caption>
 						<thead>
 							<tr class="text-left text-xs uppercase tracking-wide text-text-secondary">
@@ -170,6 +178,7 @@ const hasQuietRelayHistory = computed(
 					:gates="cell.gates"
 					:failed-gate="cell.failedGate"
 					:requires-corroboration="cell.requiresCorroboration"
+					:decision-window-label="decisionWindowLabel"
 				/>
 
 				<div v-if="trendPoints.length > 0">
@@ -179,7 +188,7 @@ const hasQuietRelayHistory = computed(
 						data-testid="measurement-quiet-relay"
 						class="mt-1 text-sm text-text-secondary"
 					>
-						Your relay carried this cell earlier in this window but not recently, so the checks had
+						Your relay carried this cell earlier in the reported window but not recently, so the checks had
 						nothing to compare against and the comparison column is gone. The days it did carry are
 						still plotted below.
 					</p>

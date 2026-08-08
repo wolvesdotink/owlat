@@ -103,6 +103,7 @@ export type OrganizationDeletionTable =
 	| 'destinationProviderDomains'
 	| 'sendAssignments'
 	| 'transportOutcomes'
+	| 'smtpResponseCategories'
 	| 'mixDecisions'
 	| 'rampStreamPresets'
 	| 'yahooCflEnrollments'
@@ -278,6 +279,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('destinationProviderDomains'),
 	v.literal('sendAssignments'),
 	v.literal('transportOutcomes'),
+	v.literal('smtpResponseCategories'),
 	v.literal('mixDecisions'),
 	v.literal('rampStreamPresets'),
 	v.literal('yahooCflEnrollments'),

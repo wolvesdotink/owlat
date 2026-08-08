@@ -1,6 +1,8 @@
 <template>
 	<nav v-if="headings.length" class="toc" aria-label="Table of contents">
-		<h4 class="text-xs uppercase tracking-widest text-text-tertiary px-2">On this page</h4>
+		<h4 class="text-2xs font-medium uppercase tracking-widest text-text-tertiary px-2">
+			On this page
+		</h4>
 		<ul class="toc-list">
 			<li v-for="heading in headings" :key="heading.id">
 				<a
@@ -102,7 +104,7 @@ onUnmounted(() => {
 .toc-link {
 	display: block;
 	padding: 4px 8px;
-	font-size: 14px;
+	font-size: var(--text-caption);
 	line-height: 1.4;
 	border-radius: 6px;
 	text-decoration: none;
@@ -120,7 +122,7 @@ onUnmounted(() => {
 
 .toc-link.active {
 	color: var(--color-text-primary);
-	font-weight: var(--font-weight-medium, 450);
+	font-weight: var(--font-weight-semibold, 550);
 }
 
 .toc-link:not(.active):hover {

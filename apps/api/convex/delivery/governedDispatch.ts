@@ -311,20 +311,26 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			...(providerKind === 'mta' ? { acceptedForDelivery: true as const } : {}),
 		};
 	}
-	if (dispatched.result.errorCode === 'ROUTING_DEFERRED') {
+	if (
+		dispatched.result.errorCode === 'ROUTING_DEFERRED' ||
+		dispatched.result.errorCode === 'ROUTING_LEASE_UNREADABLE'
+	) {
 		return {
 			success: false,
 			deferred: true,
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
-			// The MTA revalidated its own lease at enqueue and withdrew it
-			// (`mtaSendProvider.categorizeError`) — its governance, not our fault.
-			// OVER-BROAD, KNOWINGLY: the same 409 carries `ROUTING_DECISION_EXPIRED`,
-			// which the MTA also answers when its Redis lost the lease record rather
-			// than when the lease aged out, and that is our fault. Separating them
-			// needs a distinction the MTA does not make on the wire, so this path
-			// still spends gate 2's budget — issue #505 carries the wire change,
-			// and `delivery/deferralOutcome.ts` says the same.
-			deferralOrigin: 'governed',
+			// TWO 409s, ONE WAIT, TWO DIFFERENT CLAIMS. `ROUTING_DEFERRED` is the MTA
+			// revalidating its own lease at enqueue and withdrawing it — an aged-out
+			// or no-longer-binding decision, an open breaker, an IP whose eligibility
+			// moved — which is governance ABOUT THIS IDENTITY and gate 2's to count.
+			// `ROUTING_LEASE_UNREADABLE` is the MTA failing to read back a record it
+			// wrote: our own storage, no receiver involved, `local` by the same rule
+			// `MTA_DEFER_REASON_ORIGIN` applies to `lease_persistence` on the decision
+			// endpoint. The message waits the same either way; only the counting
+			// differs, so a lease-store outage can no longer walk a cell towards gate
+			// 2's 25% halt (issue #505).
+			deferralOrigin:
+				dispatched.result.errorCode === 'ROUTING_LEASE_UNREADABLE' ? 'local' : 'governed',
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),
 		};

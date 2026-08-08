@@ -21,11 +21,16 @@
  * PURE: `now` never enters, no database handle, no clock. The caller reads the
  * window (`analytics/seedPlacement.ts`) and hands the rows over.
  *
- * WHAT IT CANNOT ANSWER YET. Every probe the shadow copy writes is a CAMPAIGN
- * probe, so the transactional and automation cells of a provider have no
- * evidence here and gate 5 holds on them — honestly, and without borrowing the
- * campaign cell's sweep. The scheduled transactional probe that would close it
- * is tracked in issue #500.
+ * WHERE EACH STREAM'S PROBES COME FROM, because the sweeps are only as
+ * comparable as their producers. The `campaign` cells are measured by a SHADOW
+ * of a real send (`delivery/seedShadowCopy.ts`) — same bytes as a subscriber's
+ * copy. The `transactional` and `automation` cells are measured by a SCHEDULED
+ * probe (`delivery/seedScheduledProbe.ts`) carrying a fixed neutral body,
+ * because those streams have no bulk transaction to clone from. Same cell axis,
+ * same evidence rule, same reduction; the CONTENT behind a non-campaign sweep is
+ * synthetic, which is why placement stays a tripwire for collapse (D17) rather
+ * than a content-quality gauge. A cell whose stream is never probed still holds,
+ * and still does not borrow another stream's sweep.
  */
 
 import {

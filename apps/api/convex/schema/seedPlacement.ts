@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
+	deliverabilityStreamValidator,
 	destinationProviderValidator,
 	seedPlacementValidator,
 } from '../delivery/deliverabilityValidators';
@@ -43,13 +44,17 @@ export const seedPlacementTables = {
 		/** Mailbox provider of the seed account (the cell's destination axis). */
 		provider: destinationProviderValidator,
 		/**
-		 * The cell's stream axis. This piece only ever drops a probe on a CAMPAIGN
-		 * send, so the column is narrowed to what is actually produced (D20 — no
-		 * speculative seams). Widening it to the full `automation` /
-		 * `transactional` union is a purely additive schema change for whichever
-		 * piece ships a scheduled transactional probe.
+		 * The cell's stream axis — the GOVERNED-STREAM union, in full.
+		 *
+		 * It shipped as `v.literal('campaign')` because the shadow copy
+		 * (`delivery/seedShadowCopy.ts`) only ever mirrors a campaign send, and a
+		 * cell with no probes is a cell gate 5 holds on forever. The scheduled
+		 * probe (`delivery/seedScheduledProbe.ts`) now produces the other two
+		 * streams as well, so the column carries what is actually written. The
+		 * widening is purely additive: `stream` was already the cell axis, every
+		 * reader reduces per cell off it, and campaign rows read exactly as before.
 		 */
-		stream: v.literal('campaign'),
+		stream: deliverabilityStreamValidator,
 		/**
 		 * Which arm actually carried the shadow copy, so placement is
 		 * attributable. Written by the worker AFTER dispatch resolves the route —
@@ -116,6 +121,12 @@ export const seedPlacementTables = {
 		// probe row is only ever reachable through the org that owns it).
 		.index('by_org_campaign_and_variant', ['organizationId', 'campaignId', 'abVariant'])
 		.index('by_org_and_sent_at', ['organizationId', 'sentAt'])
+		// The SCHEDULED probe's cadence key. A campaign probe set is keyed by the
+		// campaign (and its A/B arm); a scheduled one has no campaign to key on, so
+		// its "have we already probed this cell's stream recently" question is
+		// answered by the newest row of an (organization, stream) — one indexed
+		// read, never a page that could start answering "no" once the ledger grows.
+		.index('by_org_stream_and_sent_at', ['organizationId', 'stream', 'sentAt'])
 		// Poller work selection: UNCLASSIFIED, DISPATCHED probes only, oldest
 		// dispatch first. `placement` leads the range fields on purpose. Keyed on
 		// `(accountId, dispatchedAt)` alone, a bounded page of one account's probes

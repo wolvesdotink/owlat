@@ -8,7 +8,7 @@
 			>
 				<!-- Backdrop -->
 				<div
-					class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+					class="absolute inset-0 bg-black/40 backdrop-blur-sm"
 					@click="emit('update:open', false)"
 				/>
 
@@ -41,10 +41,10 @@
 									stroke-linecap="round"
 								/>
 							</svg>
-							<span class="text-[0.9375rem] font-semibold tracking-tight">Owlat Docs</span>
+							<span class="text-md font-semibold tracking-tight">Owlat Docs</span>
 						</NuxtLink>
 						<button
-							class="flex items-center justify-center w-8 h-8 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+							class="flex items-center justify-center w-8 h-8 rounded-full text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 							aria-label="Close sidebar"
 							@click="emit('update:open', false)"
 						>

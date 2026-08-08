@@ -17,6 +17,7 @@
 import { api } from '@owlat/api';
 import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
 import type { DeliverabilityDashboardCell } from '~/utils/deliverabilityMeasurement';
+import { decisionWindowLabel } from '~/utils/deliverabilityWindows';
 
 useHead({ title: 'Delivery cells — Owlat' });
 
@@ -56,6 +57,16 @@ const selectedCell = computed<RampCellControl | null>(
 const selectedEvidence = computed<DeliverabilityDashboardCell | null>(
 	() => dashboard.value?.cells.find((cell) => cell.cellKey === selectedCellKey.value) ?? null
 );
+/**
+ * The span those gate verdicts were decided over — the ramp controller's own,
+ * which is exactly why this panel can stand beside the decision history without
+ * the two disagreeing (#510). Named on screen rather than assumed: this page
+ * shows no counters of its own, so a reader has nothing else to infer it from.
+ */
+const evidenceWindowLabel = computed(() => {
+	const data = dashboard.value;
+	return data ? decisionWindowLabel(data) : '';
+});
 
 const decisionArgs = computed(() => {
 	const cell = selectedCell.value;
@@ -147,6 +158,7 @@ function select(cellKey: string): void {
 							:gates="selectedEvidence.gates"
 							:failed-gate="selectedEvidence.failedGate"
 							:requires-corroboration="selectedEvidence.requiresCorroboration"
+							:decision-window-label="evidenceWindowLabel"
 						/>
 						<p v-else class="mt-3 text-sm text-text-secondary" data-testid="ramp-evidence-absent">
 							No measurements have been recorded for this cell yet. Nothing is wrong — the checks

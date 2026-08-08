@@ -47,35 +47,44 @@ export type IndependenceSummary = FunctionReturnType<
  * The measurement screen asks the other question — was this cell measured
  * against anything — and passes the other input.
  *
- * BUT THE INPUT IT IS GIVEN DOES NOT ASK THAT QUESTION. `referenceTransportId`
- * is `configuredRelayKinds().length === 1` failing, so a deployment relaying
- * through MORE THAN ONE kind reads `null` here and is framed as standalone,
- * exactly as a deployment with no relay at all is. `isRelayConfigured` is the
- * reading this paragraph describes. Do not read the keying as deliberate: it is
+ * SO IT TAKES `isRelayConfigured`, NOT `referenceTransportId` (#513). The id is
+ * `configuredRelayKinds().length === 1` failing, so a deployment relaying
+ * through MORE THAN ONE kind reads `null` — and keying the screen to it framed
+ * such a deployment as standalone, exactly as one with no relay at all. That was
  * the same substitution of a configuration answer for an existence question that
- * survived on the measurement dashboard until #502 made gate 5 decide, and it is
- * worse here, because `relayRemoval: 'safe'` is a GUARD — the apply-transport
- * endpoint demands no confirmation phrase on it. Tracked as #513, with the
- * two-relay reproduction; closing it is a decision about which reading
- * `rampIndependence.ts` should take, not a rename.
+ * survived on the measurement dashboard until #502 made gate 5 decide, and worse
+ * here, because `relayRemoval: 'safe'` is a GUARD the apply-transport endpoint
+ * skips its confirmation phrase on. The summary now carries both readings off
+ * one scan, and the id is left doing the one job it is honest at: naming.
  */
-export function independenceHeadline(referenceTransportId: string | null): string {
-	return measurementHeadline(referenceTransportId !== null);
+export function independenceHeadline(isRelayConfigured: boolean): string {
+	return measurementHeadline(isRelayConfigured);
 }
 
 /**
- * THE RELAY IS NAMED, NOT KEYED. `referenceTransportId` is the stored transport
- * id, and "instead of ses" reads as a configuration value leaking onto the
- * screen people screenshot. `transportIdLabel` names the built-in kinds from the
- * same map the transport card and the DNS guidance use; a PLUGIN relay is named
- * from its id's leaf here and from the plugin catalog on the card, so those two
- * can still word one relay differently until this query carries the catalog
- * label.
+ * THE RELAY IS NAMED, NOT KEYED. Which sentence to say is
+ * `isRelayConfigured`'s decision (#513); `referenceTransportId` only supplies
+ * the NAME inside the relay sentence, and its `null` there is the OTHER null —
+ * more than one kind connected, so no single one to name, which the plural
+ * phrasing covers rather than falling back to the standalone sentence.
+ *
+ * `transportIdLabel` names the built-in kinds from the same map the transport
+ * card and the DNS guidance use; a PLUGIN relay is named from its id's leaf here
+ * and from the plugin catalog on the card, so those two can still word one relay
+ * differently until this query carries the catalog label.
  */
-export function independenceSubhead(referenceTransportId: string | null): string {
-	return referenceTransportId === null
-		? 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.'
-		: `How much of your mail your own server now carries instead of ${transportIdLabel(referenceTransportId)}.`;
+export function independenceSubhead(input: {
+	readonly isRelayConfigured: boolean;
+	readonly referenceTransportId: string | null;
+}): string {
+	if (!input.isRelayConfigured) {
+		return 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.';
+	}
+	const relay =
+		input.referenceTransportId === null
+			? 'the relays you have connected'
+			: transportIdLabel(input.referenceTransportId);
+	return `How much of your mail your own server now carries instead of ${relay}.`;
 }
 
 /** The month-to-date own-arm volume sentence — always available, always true. */

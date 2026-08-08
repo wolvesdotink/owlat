@@ -17,7 +17,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -36,12 +36,20 @@ import type { DashboardCellView } from '../deliverabilityDashboardView';
 import type { RampGateEvaluation, RampGateResult } from '../ramp/gateTypes';
 import {
 	connectRelay,
+	connectRelaysAcrossEnvAndRoutes,
 	connectTwoRelays,
 	seedArmOutcomes,
 	seedRampCell,
 	type Harness,
 } from './rampCronFixtures';
 import { modules } from '../../__tests__/testModules';
+
+// `connectRelaysAcrossEnvAndRoutes` stubs EMAIL_PROVIDER, and a stub that
+// outlived its case would turn every later deployment in this file into a relay
+// one — which is exactly the class of misreading the suite is about.
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 const ORG = 'org_seed_gate_wiring';
 const HOUR_MS = 60 * 60 * 1000;
@@ -292,12 +300,64 @@ describe('absence stays absent — the gate holds and says why', () => {
 	it('does not lend a cell the probes of another STREAM', async () => {
 		const t = convexTest(schema, modules);
 		await standaloneCell(t);
-		// Every probe the shadow copy writes today is a CAMPAIGN probe, so the
-		// transactional and automation cells of the same provider have no seed
-		// evidence at all. That is a hold, not a borrowed verdict.
+		// A cell is only ever decided on ITS OWN stream's probes. With campaign
+		// probes alone the transactional cell of the same provider has no evidence
+		// at all, and that is a hold — never a borrowed verdict.
 		await seedProbes(t, { count: 20, placement: 'inbox' });
 
 		expect((await dashboardSeedGate(t)).status).toBe('pass');
+		expect(
+			(await dashboardSeedGate(t, { stream: 'transactional', destinationProvider: 'gmail' })).status
+		).toBe('insufficient_data');
+	});
+
+	/**
+	 * THE HOLD WAS THE ABSENCE OF A PRODUCER, NOT A PROPERTY OF THE GATE.
+	 *
+	 * `seedPlacementProbes.stream` shipped as `v.literal('campaign')` because the
+	 * shadow copy was the only writer, so the transactional and automation cells
+	 * held forever whatever the operator did. The scheduled probe writes those
+	 * streams now, and the READER never changed: the same reduction, the same
+	 * cell key, the same gate. These two cases prove that end to end — the same
+	 * evidence that passes a campaign cell passes its own cell on either of the
+	 * other streams, and still does not leak sideways.
+	 */
+	it('reaches a verdict on a TRANSACTIONAL cell once that stream has probes', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox', stream: 'transactional' });
+
+		const gate = await dashboardSeedGate(t, {
+			stream: 'transactional',
+			destinationProvider: 'gmail',
+		});
+		expect(gate.status).toBe('pass');
+		expect(gate.measurement.ownSample).toBe(20);
+		// The campaign cell, which has no probes of its own, still holds.
+		expect((await dashboardSeedGate(t)).status).toBe('insufficient_data');
+	});
+
+	it('fails a transactional cell whose own stream collapsed into spam', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 4, placement: 'inbox', stream: 'transactional' });
+		await seedProbes(t, { count: 16, placement: 'spam', stream: 'transactional' });
+		// A healthy CAMPAIGN sweep on the same provider must not rescue it.
+		await seedProbes(t, { count: 20, placement: 'inbox' });
+
+		const cell: DeliverabilityCell = { stream: 'transactional', destinationProvider: 'gmail' };
+		expect((await dashboardSeedGate(t, cell)).status).toBe('fail');
+		expect((await dashboardSeedGate(t)).status).toBe('pass');
+	});
+
+	it('reaches a verdict on an AUTOMATION cell the same way', async () => {
+		const t = convexTest(schema, modules);
+		await standaloneCell(t);
+		await seedProbes(t, { count: 20, placement: 'inbox', stream: 'automation' });
+
+		expect(
+			(await dashboardSeedGate(t, { stream: 'automation', destinationProvider: 'gmail' })).status
+		).toBe('pass');
 		expect(
 			(await dashboardSeedGate(t, { stream: 'transactional', destinationProvider: 'gmail' })).status
 		).toBe('insufficient_data');
@@ -434,28 +494,28 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 	});
 
 	/**
-	 * THE THIRD SCREEN STILL MAKES THE SUBSTITUTION THIS SUITE REMOVED, and this
-	 * case exists to make that fact fail loudly the day someone closes it (#513).
+	 * THE THIRD SCREEN MADE THE SUBSTITUTION THIS SUITE REMOVED, until #513.
 	 *
-	 * `rampIndependence.getIndependenceSummary` keys on `referenceTransportId`,
+	 * `rampIndependence.getIndependenceSummary` keyed on `referenceTransportId`,
 	 * which two relay kinds leave null — so the SAME deployment the case above
-	 * grades against a measured arm is framed here as having no relay at all. The
-	 * share is not a rounding artefact: `readIndependenceSeries` does not read the
-	 * reference arm when `hasReferenceArm` is false, so the relay's sends are
-	 * structurally absent from the denominator.
+	 * grades against a measured arm was framed here as having no relay at all. The
+	 * share was not a rounding artefact: `readIndependenceSeries` skipped the
+	 * reference arm entirely, so the relay's sends were structurally absent from
+	 * the denominator and the share came out 1 on a deployment relaying half its
+	 * mail.
 	 *
 	 * AND `relayRemoval: 'safe'` IS A GUARD, NOT A SENTENCE.
 	 * `apps/web/server/api/delivery/apply-transport.post.ts` demands no
-	 * confirmation phrase on it, deliberately, because a deployment with no
-	 * reference arm has nothing to confirm. On this deployment it does — so
-	 * disconnecting a relay mid-ramp skips the whole RELAY_REMOVAL_CONFIRMATION
-	 * path on cells still leaning on it.
+	 * confirmation phrase on it, deliberately, because a deployment with no relay
+	 * has nothing to confirm. On this deployment it does — so disconnecting a
+	 * relay mid-ramp skipped the whole RELAY_REMOVAL_CONFIRMATION path on cells
+	 * still leaning on it.
 	 *
-	 * This asserts the CURRENT, WRONG answers on purpose. The fix belongs to
-	 * `rampIndependence.ts` and to the separate decision of which reading it
-	 * should take; when it lands, this case fails and its expectations invert.
+	 * The summary now keys on `isRelayConfigured`, which is the column the
+	 * dashboard beside it publishes off the same scan; these two queries may not
+	 * describe one deployment two ways.
 	 */
-	it('is still framed as already independent by the independence screen (#513)', async () => {
+	it('is framed as still relaying by the independence screen too (#513)', async () => {
 		const t = convexTest(schema, modules);
 		await connectTwoRelays(t);
 		await twoArmedBreach(t);
@@ -464,12 +524,47 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		expect(dashboard.isRelayConfigured).toBe(true);
 
 		const independence = await t.query(api.delivery.rampIndependence.getIndependenceSummary, {});
-		// One query apart, on one deployment: the screen above measured every cell
-		// against a relay; this one reports there is none to become independent of.
+		// One query apart, on one deployment, and now agreeing: there is no single
+		// arm to NAME, and there is unmistakably a relay.
+		expect(independence.referenceTransportId).toBe(dashboard.referenceTransportId);
+		expect(independence.isRelayConfigured).toBe(dashboard.isRelayConfigured);
+		// The relay's 800 sends are in the denominator, so the own arm's 800 are
+		// half the window and not all of it.
+		expect(independence.ownShare).toBeCloseTo(0.5, 6);
+		expect(independence.series.some((point) => point.reference > 0)).toBe(true);
+		// There IS something to become independent of, so the projection is not the
+		// standalone verdict.
+		expect(independence.projection.kind).not.toBe('already_independent');
+		// The guard, right way up: the managed cell has not graduated, so the
+		// endpoint is told to demand its phrase.
+		expect(independence.relayRemoval.kind).toBe('unsafe');
+		if (independence.relayRemoval.kind !== 'unsafe') return;
+		expect(independence.relayRemoval.dependentCells).toContain('campaign:gmail');
+	});
+
+	/**
+	 * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION (#513): one relay in
+	 * `EMAIL_PROVIDER`, one in `providerRoutes`.
+	 *
+	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is
+	 * still null — but here an apply of `EMAIL_PROVIDER=mta` from the transport
+	 * editor genuinely disconnects an arm cells are leaning on, where the
+	 * two-`providerRoutes` case above resolves to `mta` and removes nothing. This
+	 * is the deployment the endpoint's pin is written against
+	 * (`apps/web/server/api/delivery/__tests__/apply-transport-relay-removal.test.ts`),
+	 * and this case is what makes the summary it is handed a real one.
+	 */
+	it('demands the removal guard with one relay in the env and one in the routes (#513)', async () => {
+		const t = convexTest(schema, modules);
+		await connectRelaysAcrossEnvAndRoutes(t);
+		await twoArmedBreach(t);
+
+		const independence = await t.query(api.delivery.rampIndependence.getIndependenceSummary, {});
+		// The premise: two kinds across the two surfaces still leave no single arm
+		// to name, so the null the endpoint sees is the same null as before.
 		expect(independence.referenceTransportId).toBeNull();
-		expect(independence.projection.kind).toBe('already_independent');
-		// The guard, and the reason this is tracked rather than merely noted.
-		expect(independence.relayRemoval.kind).toBe('safe');
+		expect(independence.isRelayConfigured).toBe(true);
+		expect(independence.relayRemoval.kind).toBe('unsafe');
 	});
 
 	/**
@@ -636,20 +731,21 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 	});
 
 	/**
-	 * THE DIVERGENCE THIS SUITE DOES NOT CLOSE, PINNED SO IT CANNOT GO SILENT.
+	 * THE DIVERGENCE THAT USED TO BE PINNED HERE, PINNED SHUT (#510).
 	 *
-	 * One rule over two spans: the evaluator, the constants and the complaint
-	 * line agree, and the own arm is still summarized over SEVEN days here and
-	 * ONE there. On a standalone cell — no relay anywhere, so the predicate this
-	 * PR fixes is not even in play — a hard-bounce spike four days old is inside
-	 * the screen's window and outside the controller's, and the screen renders a
-	 * red gate-1 fail on a cell the ramp is holding for want of data.
+	 * The fixture is the issue's, unchanged: a standalone cell — no relay
+	 * anywhere, so the evaluator choice is not in play — clean today and spiking
+	 * four days ago. The spike is inside the screen's seven-day window and
+	 * outside the controller's day, and the screen used to render a red gate-1
+	 * fail on a cell the ramp was holding for want of data.
 	 *
-	 * Asserted, not merely documented, because #510 is a decision about which
-	 * span the screen REPORTS: whoever takes it has to delete this test, which is
-	 * the moment the module docblock's disclosure has to go with it.
+	 * Now both readers grade both arms over the controller's span, so the VERDICT
+	 * and the DECIDING GATE are the same object on both sides — while the arm the
+	 * card renders is still the seven days plan D2/D5 asks for, spike included.
+	 * That split is the whole fix, so it is asserted in one test: same verdict,
+	 * different reported counters, and the query naming both spans on the wire.
 	 */
-	it('still grades the own arm over a wider span than the controller (#510)', async () => {
+	it('reports the controller’s verdict on a four-day-old spike, over the week it renders (#510)', async () => {
 		const t = convexTest(schema, modules);
 		await seedRampCell(t, { organizationId: ORG });
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
@@ -662,32 +758,32 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		});
 
 		const controller = await controllerEvaluation(t);
+		const dashboard = await dashboardOf(t);
 		const view = await dashboardCellView(t);
 		const gateOf = (gates: readonly RampGateResult[]): RampGateResult => {
 			const gate = gates.find((result) => result.gate === 'hard_bounce');
 			if (gate === undefined) throw new Error('no hard-bounce gate');
 			return gate;
 		};
-		// The spike is four days back: the controller's 24h window never sees it.
+		// The spike is four days back: neither reader's evaluation window sees it.
 		expect(gateOf(controller.perGate)).toMatchObject({
 			status: 'insufficient_data',
+			reason: 'baseline_sample_below_floor',
 			measurement: { ownRate: 0, ownSample: 5000 },
 		});
 		expect(controller.verdict).toBe('insufficient_data');
-		// The screen sees both days and fails the cell on the absolute clause.
-		expect(gateOf(view.gates)).toMatchObject({
-			status: 'fail',
-			reason: 'absolute_threshold_breached',
-			measurement: { ownRate: 0.1, ownSample: 10_000 },
-		});
-		expect(view.verdict).toBe('fail');
-		// The EVALUATOR still agreed — this is the span, and nothing above it.
-		// Gate 3 grades `medium` on both sides only where the trailing twin ran.
-		const complaintOf = (gates: readonly RampGateResult[]): RampGateResult => {
-			const gate = gates.find((result) => result.gate === 'complaint');
-			if (gate === undefined) throw new Error('no complaint gate');
-			return gate;
-		};
-		expect(complaintOf(view.gates).confidence).toBe(complaintOf(controller.perGate).confidence);
+		// THE WHOLE POINT: the same gate, reason and numbers on the screen.
+		expect(gateOf(view.gates)).toMatchObject(gateOf(controller.perGate));
+		expect(view.verdict).toBe(controller.verdict);
+		// EVERY gate, not just the one that decides: a second arm's span could
+		// only diverge on a gate this fixture does not exercise.
+		expect(view.gates).toMatchObject(controller.perGate.map((gate) => ({ ...gate })));
+		// AND THE SPIKE IS STILL REPORTED. The arm the card renders covers the
+		// week, so an operator sees the 1000 bounces the verdict did not decide on
+		// — which is why the query names the two spans separately.
+		expect(view.own.sent).toBe(10_000);
+		expect(view.own.hardBounced).toBe(1000);
+		expect(dashboard.decisionWindowStart).toBeGreaterThan(dashboard.windowStart);
+		expect(dashboard.decisionWindowEnd).toBeLessThanOrEqual(dashboard.windowEnd);
 	});
 });

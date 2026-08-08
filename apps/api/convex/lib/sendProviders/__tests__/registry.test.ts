@@ -110,14 +110,26 @@ describe('isSendProviderKind', () => {
 });
 
 describe('EmailErrorCode + isRetryableErrorCode', () => {
-	it('has the seven expected codes', () => {
-		expect(EmailErrorCode.RATE_LIMIT).toBe('RATE_LIMIT');
-		expect(EmailErrorCode.SERVER_ERROR).toBe('SERVER_ERROR');
-		expect(EmailErrorCode.INVALID_RECIPIENT).toBe('INVALID_RECIPIENT');
-		expect(EmailErrorCode.INVALID_SENDER).toBe('INVALID_SENDER');
-		expect(EmailErrorCode.AUTH_FAILED).toBe('AUTH_FAILED');
-		expect(EmailErrorCode.CONTENT_REJECTED).toBe('CONTENT_REJECTED');
-		expect(EmailErrorCode.UNKNOWN).toBe('UNKNOWN');
+	// EXHAUSTIVE, because the enum is a registry two other tables key off: the
+	// dispatch helper's retry predicate below, and `governedDispatch`'s deferral
+	// branch, which reads a code to decide whose fault a deferral is. A member
+	// added without a decision in both places is the drift this list catches — it
+	// grew `ROUTING_LEASE_UNREADABLE` (issue #505) exactly that way.
+	it('ships exactly these codes, each named on the wire by its own key', () => {
+		expect([...Object.values(EmailErrorCode)].sort()).toEqual([
+			'AMBIGUOUS_TIMEOUT',
+			'AUTH_FAILED',
+			'CONTENT_REJECTED',
+			'INVALID_RECIPIENT',
+			'INVALID_SENDER',
+			'RATE_LIMIT',
+			'ROUTING_DEFERRED',
+			'ROUTING_LEASE_UNREADABLE',
+			'SERVER_ERROR',
+			'SMTPUTF8_UNSUPPORTED',
+			'UNKNOWN',
+		]);
+		for (const [key, value] of Object.entries(EmailErrorCode)) expect(value).toBe(key);
 	});
 
 	it('classifies retryable codes correctly', () => {
@@ -127,6 +139,10 @@ describe('EmailErrorCode + isRetryableErrorCode', () => {
 		expect(isRetryableErrorCode(EmailErrorCode.INVALID_SENDER)).toBe(false);
 		expect(isRetryableErrorCode(EmailErrorCode.AUTH_FAILED)).toBe(false);
 		expect(isRetryableErrorCode(EmailErrorCode.CONTENT_REJECTED)).toBe(false);
+		// Both routing codes reschedule through a FRESH routing decision, never
+		// through a provider-attempt retry of the withdrawn one.
+		expect(isRetryableErrorCode(EmailErrorCode.ROUTING_DEFERRED)).toBe(false);
+		expect(isRetryableErrorCode(EmailErrorCode.ROUTING_LEASE_UNREADABLE)).toBe(false);
 		expect(isRetryableErrorCode(EmailErrorCode.UNKNOWN)).toBe(false);
 	});
 });

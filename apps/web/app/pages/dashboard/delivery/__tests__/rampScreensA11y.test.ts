@@ -169,6 +169,8 @@ describe('cells screen accessibility', () => {
 					generatedAt: 0,
 					windowStart: 0,
 					windowEnd: 1,
+					decisionWindowStart: 0,
+					decisionWindowEnd: 1,
 					referenceTransportId: 'ses',
 					isRelayConfigured: true,
 					hasSeedCoverage: false,
