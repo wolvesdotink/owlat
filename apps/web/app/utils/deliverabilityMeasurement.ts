@@ -13,6 +13,14 @@
  * problem. The copy below says so in words, and the tones below say so in
  * colour: nothing that is merely UNMEASURED is ever rendered in an error tone
  * (plan D2).
+ *
+ * TWO SPANS, AND EVERY SENTENCE SAYS WHICH ONE IT IS OVER. The server counts
+ * over a WINDOW of seven days and reaches every gate verdict over the ramp
+ * controller's own, shorter DECIDING span, so the two readers agree on the
+ * verdict (#510). A gate sentence here reading "this window" beside a table
+ * covering a different one would be the same lie the server just stopped
+ * telling, so the sentences say whose window they mean and
+ * `deliverabilityWindows.ts` puts each span into words for the headings.
  */
 
 import type { FunctionReturnType } from 'convex/server';
@@ -190,9 +198,13 @@ export function gateStatusLabel(status: GateStatus): string {
 /**
  * The sentence under a gate's verdict — the numbers that produced it, in words.
  *
- * A holding gate says how far off the floor it is ("124 of 400 sends this
- * window"), because "insufficient data" on its own reads as a fault in the
- * product rather than as a fact about the traffic.
+ * A holding gate says how far off the floor it is ("124 of 400 sends in the
+ * checks' window"), because "insufficient data" on its own reads as a fault in
+ * the product rather than as a fact about the traffic.
+ *
+ * "THE CHECKS' WINDOW", NEVER "THIS WINDOW". Every number here is the
+ * evaluator's, over the DECIDING span, under a card whose table covers the wider
+ * reported one — so the sentence names whose window it means (#510).
  */
 /**
  * WHAT `ownSample` / `minSample` ARE COUNTING for a given gate.
@@ -286,12 +298,12 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 		const { reason } = gate;
 		switch (reason) {
 			case 'own_sample_below_floor':
-				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} this window.`;
+				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} in the checks’ window.`;
 			case 'reference_sample_below_floor':
 				// The unit is the GATE's, not the sentence's: the seed gate's second sweep is
 				// denominated in PROBES, and it reaches this reason whenever that sweep
 				// is thin.
-				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport this window.`;
+				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport in the checks’ window.`;
 			case 'baseline_sample_below_floor':
 				return `Not enough history yet — this cell has not sent enough over the past 30 days to be compared with its own past.`;
 			case 'own_evidence_stale':
@@ -301,7 +313,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 			case 'own_rate_unmeasurable':
 			case 'reference_rate_unmeasurable':
 			case 'baseline_rate_unmeasurable':
-				return 'The recorded counters for this window could not be read as a rate, so this check is holding.';
+				return 'The recorded counters for the checks’ window could not be read as a rate, so this check is holding.';
 			case 'reference_not_a_denominator':
 			case 'baseline_not_a_denominator':
 				// NOT a fault, and the sentence must not read like one: the series this
@@ -344,7 +356,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// it has no producer, so the halt never arrives here. Kept and pinned rather
 	// than deleted, so the unit does not have to be rediscovered when it does.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
-		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses this window were block messages, against a limit of ${threshold}.`;
+		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses in the checks’ window were block messages, against a limit of ${threshold}.`;
 	}
 	const comparison =
 		reference === null

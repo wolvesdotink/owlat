@@ -91,6 +91,7 @@ describe('cells drill-down', () => {
 				gates: cell.gates,
 				failedGate: cell.failedGate,
 				requiresCorroboration: cell.requiresCorroboration,
+				decisionWindowLabel: 'the last 24 hours',
 			},
 		});
 		expect(wrapper.findAll('li').length).toBe(cell.gates.length);
@@ -100,7 +101,12 @@ describe('cells drill-down', () => {
 	it('renders a holding gate neutrally, with how far off its floor it is', () => {
 		const holding = holdingGate();
 		const wrapper = mount(MeasurementGateList, {
-			props: { gates: [holding], failedGate: null, requiresCorroboration: false },
+			props: {
+				gates: [holding],
+				failedGate: null,
+				requiresCorroboration: false,
+				decisionWindowLabel: 'the last 24 hours',
+			},
 		});
 		expect(wrapper.text()).toContain('124');
 		expect(wrapper.text()).toContain('400');

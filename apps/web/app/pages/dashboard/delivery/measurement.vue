@@ -26,6 +26,11 @@
  * — offered on a measurement, it appeared above a card explaining that this
  * deployment's relay had gone quiet. Same split as `dashboardConfidence` makes
  * for the per-cell offer: framing from the cells, offer from the relay list.
+ *
+ * AND THE PAGE NAMES BOTH SPANS. What the cards COUNT is the reported window;
+ * what their checks DECIDED on is the ramp controller's own window, which is what
+ * makes the verdicts here the ones the cron reached (#510). Both labels are in
+ * the heading, and the deciding one travels down to every card.
  */
 import { api } from '@owlat/api';
 import {
@@ -35,7 +40,7 @@ import {
 	standaloneNote,
 	type DeliverabilityDashboardCell,
 } from '~/utils/deliverabilityMeasurement';
-import { formatShortDate } from '~/utils/formatters';
+import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
 
 useHead({ title: 'Delivery measurement — Owlat' });
 
@@ -111,11 +116,20 @@ const cells = computed<DeliverabilityDashboardCell[]>(() => {
 	return all.sort((a, b) => Number(isZeroVolume(a)) - Number(isZeroVolume(b)));
 });
 
+/**
+ * THE TWO SPANS, NAMED SEPARATELY (#510). The counters, the trend and the arm
+ * columns are over the REPORTED window; every check on every card was decided
+ * over the ramp controller's own, shorter one. One heading over both would put a
+ * week's dates above numbers reached over a day — the disagreement the server
+ * just closed, re-opened as a caption.
+ */
 const windowLabel = computed(() => {
 	const data = dashboard.value;
-	if (!data) return '';
-	// `windowEnd` is exclusive; the label names the last day actually included.
-	return `${formatShortDate(data.windowStart)} – ${formatShortDate(data.windowEnd - 1)}`;
+	return data ? reportedWindowLabel(data) : '';
+});
+const decisionLabel = computed(() => {
+	const data = dashboard.value;
+	return data ? decisionWindowLabel(data) : '';
 });
 </script>
 
@@ -127,7 +141,9 @@ const windowLabel = computed(() => {
 				<h1 class="text-2xl font-semibold text-text-primary">{{ headline }}</h1>
 				<p class="mt-1 max-w-2xl text-sm text-text-secondary">{{ subhead }}</p>
 				<p v-if="windowLabel" class="mt-1 text-xs text-text-secondary">
-					Window: <span data-testid="measurement-window">{{ windowLabel }}</span>
+					Reported window: <span data-testid="measurement-window">{{ windowLabel }}</span> · checks
+					decided over
+					<span data-testid="measurement-decision-window">{{ decisionLabel }}</span>
 				</p>
 			</div>
 		</header>
@@ -177,6 +193,7 @@ const windowLabel = computed(() => {
 					:key="cell.cellKey"
 					:cell="cell"
 					:reference-transport-id="referenceTransportId"
+					:decision-window-label="decisionLabel"
 				/>
 			</div>
 		</UiQueryBoundary>
