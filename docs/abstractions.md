@@ -469,7 +469,22 @@ persists the row and there is no provider to adapt. Until the D10 honesty pass
 both had a class in this set anyway, and each faked its answers — a `send` that
 hard-returned failure or a fabricated id, a `healthCheck` that hard-returned
 healthy without probing, a `validateSignature` that hard-returned `true`. They
-are deleted, not reimplemented.
+are deleted, not reimplemented — and the exclusion is now typed, not merely
+documented: `ChannelAdapter.id` is `OutboundChannel` (`sms | whatsapp |
+generic`), the dispatchable subset declared beside `UnifiedMessageChannel` in
+`lib/convexValidators.ts`, so an adapter claiming `email` or `chat` does not
+compile.
+
+The same honesty applies inside the contract. `ChannelHealth` reports `status`
+and `lastError` and nothing else, because those are exactly the arguments its
+only consumer (`updateChannelHealth`, reached via `probeChannelHealth`) can
+persist. It previously also declared `lastSuccessfulSend` and
+`rateLimitRemaining`, which no adapter ever set, and `latencyMs`, which the
+Twilio and Meta probes measured on every five-minute run and then dropped —
+`channelConfigs` has no column for it. (`channelConfigs.lastSuccessfulSend` is
+real, but `unifiedMessages.recordOutbound` stamps it off an actual send, never
+a probe.) Persisting probe latency is a schema change; a member nothing reads
+is not a substitute for one.
 
 **Nothing here verifies or parses an inbound webhook, and the contract has no
 member for it.** Verification and payload normalization for these same three

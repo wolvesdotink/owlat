@@ -4,9 +4,10 @@ import {
 	WhatsAppAdapter,
 	WebhookAdapter,
 	type ChannelAdapter,
+	type ChannelHealth,
 	type OutboundMessage,
 } from '../index';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,17 @@ const adapters = {
 	whatsapp: new WhatsAppAdapter(),
 	generic: new WebhookAdapter(),
 } satisfies Record<string, ChannelAdapter>;
+
+/**
+ * Every `.ts` module in the adapter folder, enumerated from disk rather than
+ * listed here — a new sibling (`telegram.ts`) must be *covered* by the
+ * source-text guards below, not silently skipped by them.
+ */
+const ADAPTER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const adapterSourceFiles = readdirSync(ADAPTER_DIR, { withFileTypes: true })
+	.filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+	.map((entry) => entry.name)
+	.sort();
 
 // =============================================================================
 // Bucket 1 — Unit: instantiation
@@ -32,6 +44,21 @@ describe('channel adapters — instantiation', () => {
 	// the D10 honesty pass; this pins the surface so they cannot creep back.
 	it('covers exactly the operator-configurable outbound channels', () => {
 		expect(Object.keys(adapters).sort()).toEqual(['generic', 'sms', 'whatsapp']);
+	});
+
+	// The map above is hand-written, so on its own it can only prove that what
+	// it lists is real — not that it lists everything. Pin the folder contents
+	// against it: a new `telegram.ts` fails here and its author has to decide,
+	// deliberately, whether it is an adapter (add it to the map, and to the
+	// dispatch switch in channels/outbound.ts) or something else entirely.
+	it('has no adapter module the map above does not cover', () => {
+		expect(adapterSourceFiles).toEqual([
+			'index.ts',
+			'sms.ts',
+			'types.ts',
+			'webhook.ts',
+			'whatsapp.ts',
+		]);
 	});
 });
 
@@ -108,9 +135,12 @@ describe('channel adapters — outbound-only surface', () => {
 	});
 
 	it('never names an inbound member anywhere in the adapter sources', () => {
-		const adapterDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-		for (const file of ['types.ts', 'index.ts', 'sms.ts', 'whatsapp.ts', 'webhook.ts']) {
-			const source = readFileSync(resolve(adapterDir, file), 'utf8');
+		// Enumerated from disk: a module added after this test was written is
+		// covered automatically, which is the whole point — the regression this
+		// guards against is a *new* adapter re-growing the deleted half.
+		expect(adapterSourceFiles.length).toBeGreaterThan(0);
+		for (const file of adapterSourceFiles) {
+			const source = readFileSync(resolve(ADAPTER_DIR, file), 'utf8');
 			// Strip comments: the header notes deliberately explain why the pair
 			// is gone, and that prose must stay readable.
 			const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -122,14 +152,59 @@ describe('channel adapters — outbound-only surface', () => {
 });
 
 // =============================================================================
-// Bucket 4 — Extension proof: the interface accepts a new channel
+// Bucket 3b — A health probe reports only what its consumer can persist
+//
+// `probeChannelHealth` (channels/outbound.ts) forwards the result straight to
+// `unifiedMessages.updateChannelHealth`, whose arguments are exactly
+// `healthStatus` + `lastError`. The shape used to declare `lastSuccessfulSend`,
+// `rateLimitRemaining` and `latencyMs` too — the first two never set by any
+// adapter, the third measured on every 5-minute probe and then discarded. D10
+// dropped all three; this keeps a member nobody reads from creeping back.
+//
+// `apps/api`'s knip entry glob covers every file under `convex/`, so an unused
+// member here is invisible to the dead-code ratchet. This test is the ratchet.
+// =============================================================================
+describe('channel adapters — ChannelHealth carries nothing unread', () => {
+	// Compile-time exhaustiveness, same trick as the contract methods above: a
+	// new member on `ChannelHealth` fails to build here until it is listed, and
+	// listing it fails the runtime assertion until updateChannelHealth can
+	// actually store it.
+	const HEALTH_FIELDS: Record<keyof ChannelHealth, true> = { status: true, lastError: true };
+
+	it('declares exactly the fields updateChannelHealth persists', () => {
+		expect(Object.keys(HEALTH_FIELDS).sort()).toEqual(['lastError', 'status']);
+	});
+
+	it('no adapter returns a health field beyond that set', async () => {
+		for (const [name, adapter] of Object.entries(adapters)) {
+			const health = await adapter.healthCheck();
+			for (const key of Object.keys(health)) {
+				expect(
+					key in HEALTH_FIELDS,
+					`${name} adapter reports ${key}, which updateChannelHealth cannot store`
+				).toBe(true);
+			}
+		}
+	});
+});
+
+// =============================================================================
+// Bucket 4 — Extension proof: the contract is implementable from outside
+//
+// A replacement provider for a dispatchable channel — a different HTTP relay
+// behind `generic`, say — satisfies `ChannelAdapter` by structural typing
+// alone, with no base class and no registration. Note the id is deliberately a
+// dispatchable channel: `ChannelAdapter.id` is `OutboundChannel`, so an adapter
+// claiming `email` or `chat` does not compile (see types.ts). That is the
+// folder's stated invariant enforced by the type checker rather than by the
+// hand-written map in bucket 1.
 // =============================================================================
 describe('channel adapters — extension proof', () => {
 	it('a third-party ChannelAdapter satisfies the interface and integrates by structural typing', async () => {
-		const slackLike: ChannelAdapter = {
-			id: 'chat',
+		const relayLike: ChannelAdapter = {
+			id: 'generic',
 			async send() {
-				return { success: true, externalMessageId: 'slack-1' };
+				return { success: true, externalMessageId: 'relay-1' };
 			},
 			async getDeliveryStatus() {
 				return 'delivered';
@@ -139,13 +214,35 @@ describe('channel adapters — extension proof', () => {
 			},
 		};
 
-		const result = await slackLike.send({
+		const result = await relayLike.send({
 			contactId: 'c1',
-			channel: 'chat',
+			channel: 'generic',
 			content: { text: 'hi' },
 		});
 		expect(result.success).toBe(true);
-		expect(result.externalMessageId).toBe('slack-1');
+		expect(result.externalMessageId).toBe('relay-1');
+	});
+
+	// The non-dispatchable half of the same rule. `email` and `chat` are
+	// `UnifiedMessageChannel` members with no adapter here on purpose, and
+	// `ChannelAdapter.id` excludes them — this pins that the exclusion is a
+	// compile error, not just a comment.
+	it('rejects an adapter claiming a non-dispatchable channel at compile time', () => {
+		const emailLike: ChannelAdapter = {
+			// @ts-expect-error `email` is owned by the send-provider seam, so it is
+			// not an `OutboundChannel` and cannot be a ChannelAdapter id.
+			id: 'email',
+			async send() {
+				return { success: true };
+			},
+			async getDeliveryStatus() {
+				return 'delivered' as const;
+			},
+			async healthCheck() {
+				return { status: 'healthy' as const };
+			},
+		};
+		expect(emailLike.id).toBe('email');
 	});
 });
 

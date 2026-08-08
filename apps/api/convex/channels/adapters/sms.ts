@@ -132,16 +132,14 @@ export class SmsAdapter implements ChannelAdapter {
 		try {
 			const url = this.accountUrl(this.config, '.json');
 
-			const start = Date.now();
 			const response = await fetch(url, {
 				headers: { Authorization: this.authHeader(this.config) },
 			});
-			const latencyMs = Date.now() - start;
 
 			if (response.ok) {
-				return { status: 'healthy', latencyMs };
+				return { status: 'healthy' };
 			}
-			return { status: 'degraded', latencyMs, lastError: `HTTP ${response.status}` };
+			return { status: 'degraded', lastError: `HTTP ${response.status}` };
 		} catch (error) {
 			return { status: 'down', lastError: error instanceof Error ? error.message : String(error) };
 		}

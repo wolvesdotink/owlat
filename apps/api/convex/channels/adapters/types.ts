@@ -16,14 +16,15 @@
  * pair that only compiled. Do not re-add an inbound half here — extend
  * `webhooks/adapters/` instead.
  *
- * The channel discriminator is the unified-message channel union itself
- * (`UnifiedMessageChannel`), declared once by `lib/convexValidators.ts` next to
- * the validator the schema and every function argument use. The dispatchable
- * subset — the three channels that actually reach an adapter here — is
- * `OutboundChannel` in that same module.
+ * The channel discriminator is not restated here. `lib/convexValidators.ts`
+ * declares it once, next to the validator the schema and every function
+ * argument use: `UnifiedMessageChannel` for a message's channel (all five —
+ * `dispatchOutbound` accepts any of them and fails safe on the two with no
+ * adapter) and its dispatchable subset `OutboundChannel` for an adapter's own
+ * id, which is what makes the "no email/chat adapter here" rule a type error.
  */
 
-import type { UnifiedMessageChannel } from '../../lib/convexValidators';
+import type { UnifiedMessageChannel, OutboundChannel } from '../../lib/convexValidators';
 
 export interface OutboundMessage {
 	contactId: string;
@@ -46,12 +47,24 @@ export interface SendResult {
 
 export type DeliveryStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
 
+/**
+ * What a health probe reports — exactly the two things the probe's only
+ * consumer persists.
+ *
+ * `channels/outbound.ts:probeChannelHealth` forwards `status` and `lastError`
+ * to `unifiedMessages.updateChannelHealth`, which has no other argument. The
+ * shape used to carry `lastSuccessfulSend`, `rateLimitRemaining` and
+ * `latencyMs` as well: no adapter ever set the first two, and the third was
+ * measured on every 5-minute probe and then dropped on the floor, because
+ * `channelConfigs` has nowhere to put it. (`channelConfigs.lastSuccessfulSend`
+ * is a real column, but it is stamped by `unifiedMessages.recordOutbound` off
+ * an actual send — never by a probe.) The D10 honesty pass dropped all three;
+ * persisting probe latency is a schema + mutation change, so it needs its own
+ * piece rather than a member nothing reads.
+ */
 export interface ChannelHealth {
 	status: 'healthy' | 'degraded' | 'down';
-	lastSuccessfulSend?: number;
 	lastError?: string;
-	rateLimitRemaining?: number;
-	latencyMs?: number;
 }
 
 /**
@@ -60,8 +73,14 @@ export interface ChannelHealth {
  * methods (dispatch, delivery-status poll, health probe).
  */
 export interface ChannelAdapter {
-	/** Unique channel identifier */
-	id: UnifiedMessageChannel;
+	/**
+	 * Which channel this adapter dispatches. `OutboundChannel`, not the full
+	 * `UnifiedMessageChannel` union, so the folder's "no email/chat adapter
+	 * here" rule is a compile error rather than a convention: `email` is owned
+	 * by the send-provider seam and `chat` is native, so an adapter claiming
+	 * either id has nothing to dispatch through.
+	 */
+	id: OutboundChannel;
 
 	/** Send a message through this channel */
 	send(message: OutboundMessage): Promise<SendResult>;
