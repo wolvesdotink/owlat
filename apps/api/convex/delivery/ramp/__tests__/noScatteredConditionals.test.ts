@@ -41,6 +41,11 @@ const DECISION_PATH: readonly string[] = [
 	join(rampDir, 'controllerConfig.ts'),
 	join(rampDir, 'gates.ts'),
 	join(rampDir, 'gateEvaluation.ts'),
+	// The list gate evaluation folds — which measurements exist and which arm
+	// evaluates each — moved here when the signal registry landed (seams plan
+	// D9). It is decision-path source like the module it moved out of, so the
+	// guard follows it: a substitution may not hide in the registry either.
+	join(deliveryDir, 'signals', 'rampGateSources.ts'),
 	join(deliveryDir, 'rampControllerInputs.ts'),
 	join(deliveryDir, 'rampControllerCron.ts'),
 ];

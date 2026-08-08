@@ -32,9 +32,8 @@
  */
 
 import { CORROBORATION_REQUIRED_RAMP_GATES, OPTIONAL_RAMP_GATES } from './gateConfig';
-import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from './gates';
-import { evaluateSeedPlacementGate, evaluateStandaloneSeedPlacementGate } from './seedGate';
 import { weakestConfidence } from './gateGrades';
+import { collectRampGateSignals, type RampArm } from '../signals/rampGateSources';
 import type {
 	RampGateAggregationInput,
 	RampGateConfidence,
@@ -45,12 +44,6 @@ import type {
 	RampGateStatus,
 	RampVerdict,
 } from './gateTypes';
-import {
-	asTrailingEngagement,
-	evaluateStandaloneComplaintGate,
-	evaluateStandaloneDeferralGate,
-	evaluateTrailingHardBounceGate,
-} from './trailingBaselineGates';
 
 const STATUS_RANK: Readonly<Record<RampGateStatus, number>> = {
 	halt: 3,
@@ -153,6 +146,23 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 }
 
 /**
+ * ONE EVALUATION BODY, ASKED PER ARM (plan D9).
+ *
+ * Which measurements exist, in which order they fold, and which of them an arm
+ * evaluates are declared once in `../signals/rampGateSources` — so this module
+ * no longer names gate modules, and a sixth measurement is registered rather
+ * than remembered twice. What is left here is the part that is genuinely shared:
+ * the fold.
+ */
+function evaluateArm(arm: RampArm, input: RampGateEvaluationInput): RampGateEvaluation {
+	return aggregateRampGates({
+		perGate: collectRampGateSignals(arm, input),
+		previousCleanStreak: input.previousCleanStreak,
+		now: input.now,
+	});
+}
+
+/**
  * The concurrent, two-armed evaluator (plan D3's first implementation): a
  * reference transport is configured, so every gate can compare the two arms
  * over the same window. P1-7 adds the trailing-baseline twin behind the same
@@ -163,20 +173,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 export const referenceArmGateEvaluator: RampGateEvaluator = {
 	kind: 'reference_arm',
 	evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
-		const perGate: RampGateResult[] = [
-			evaluateHardBounceGate(input),
-			evaluateDeferralGate(input),
-			evaluateComplaintGate(input),
-		];
-		// Gate 4 (engagement ratio) is computed elsewhere; absent means "not
-		// measured this window", which contributes nothing rather than holding.
-		if (input.engagement) perGate.push(input.engagement);
-		perGate.push(evaluateSeedPlacementGate(input));
-		return aggregateRampGates({
-			perGate,
-			previousCleanStreak: input.previousCleanStreak,
-			now: input.now,
-		});
+		return evaluateArm('reference_arm', input);
 	},
 };
 
@@ -198,30 +195,18 @@ export const referenceArmGateEvaluator: RampGateEvaluator = {
  *      ignored. Every gate here reads the cell's own history, so a caller that
  *      wires a reference arm into this evaluator gets standalone behaviour rather
  *      than a silent hybrid nobody designed.
- *   2. The pre-computed gate-4 result is RE-GRADED to the weak trailing signal
- *      (`asTrailingEngagement`), so the concurrent ratio's high-confidence,
- *      increase-justifying verdict cannot be smuggled into a deployment that has
- *      no second arm to have measured it with.
+ *   2. The pre-computed gate-4 result is RE-GRADED to the weak trailing signal,
+ *      so the concurrent ratio's high-confidence, increase-justifying verdict
+ *      cannot be smuggled into a deployment that has no second arm to have
+ *      measured it with.
+ *
+ * BOTH RULES ARE THE REGISTRY'S, not this constant's: each source declares which
+ * evaluator this arm runs, so the standalone arm reads the cell's own history
+ * because that is the only evaluator it has — not because a branch here says so.
  */
 export const trailingBaselineGateEvaluator: RampGateEvaluator = {
 	kind: 'trailing_baseline',
 	evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
-		const perGate: RampGateResult[] = [
-			evaluateTrailingHardBounceGate(input),
-			evaluateStandaloneDeferralGate(input),
-			evaluateStandaloneComplaintGate(input),
-		];
-		// Gate 4, exactly as the reference-arm evaluator treats it: absent means
-		// "not measured this window", which contributes nothing rather than holding.
-		// Holding here instead would freeze every standalone cell that has not yet
-		// accumulated 2000 calibration sends — turning an ABSENT weak signal into a
-		// blocker, which is the one thing plan D2 forbids it from being.
-		if (input.engagement) perGate.push(asTrailingEngagement(input.engagement));
-		perGate.push(evaluateStandaloneSeedPlacementGate(input));
-		return aggregateRampGates({
-			perGate,
-			previousCleanStreak: input.previousCleanStreak,
-			now: input.now,
-		});
+		return evaluateArm('trailing_baseline', input);
 	},
 };
