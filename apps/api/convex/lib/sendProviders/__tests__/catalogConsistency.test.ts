@@ -115,8 +115,10 @@ type CoreEntry = (typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number];
  * A helper with a naked type parameter rather than an inline conditional,
  * because only a naked parameter DISTRIBUTES over the union of entries: written
  * inline, `CoreEntry extends { optionalEnvVars: … }` asks whether EVERY entry
- * has the property, SES does not, and the whole thing collapses to `never` —
- * a silently empty assertion rather than a failing one.
+ * has the property, and a single entry declaring none — `ses` was that entry
+ * until it declared `SES_CONFIGURATION_SET`, and the field stays optional on the
+ * shape for the generated plugin entries that declare none — collapses the whole
+ * thing to `never`: a silently empty assertion rather than a failing one.
  */
 type OptionalEnvVarOf<Entry> = Entry extends {
 	readonly optionalEnvVars: readonly (infer Name)[];

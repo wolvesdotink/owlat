@@ -125,11 +125,15 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		label: 'Amazon SES',
 		tier: 'core',
 		retryDelays: [1_000, 5_000, 30_000],
-		// Every variable the adapter requires, region included: `ses/index.ts`
-		// reads AWS_SES_REGION through `transportEnvRequired`, so omitting it here
-		// would let a named instance resolve as configured and then fail on every
-		// send.
+		// Every variable the adapter requires, region included: `ses/index.ts` reads AWS_SES_REGION
+		// through `transportEnvRequired`, so omitting it here would let a named instance resolve as
+		// configured and then fail on every send.
 		requiredEnvVars: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+		// READ BY THE TRANSPORT, on every send: `ses/index.ts` stamps `ConfigurationSetName` on the
+		// command so SES event publishing can attribute the feedback — but a send without it works,
+		// so it sits beside the gate rather than in it, like `mta`'s `MTA_WEBHOOK_SECRET`. Its
+		// neighbour `SES_SNS_TOPIC_ARN` stays undeclared: the feedback verifier alone reads it.
+		optionalEnvVars: ['SES_CONFIGURATION_SET'],
 		credentialFields: [
 			{
 				kind: 'region-select',
@@ -157,9 +161,8 @@ const CORE_SEND_PROVIDER_CATALOG = [
 				required: true,
 			},
 		],
-		// SES derives MAIL FROM from the verified identity's configured custom
-		// MAIL FROM domain, not from a per-send address — but it reports every
-		// bounce and complaint back to us.
+		// SES derives MAIL FROM from the verified identity's configured custom MAIL FROM domain, not
+		// from a per-send address — but it reports every bounce and complaint back to us.
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
 		// SNS delivers the notifications, so the operator's job is a SUBSCRIPTION
@@ -168,20 +171,17 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		// SES identity APIs (`getVerificationStatus` + the DKIM/MAIL FROM proof
 		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
 		domainVerification: 'api',
-		// SES has no idempotency surface: a replayed request after a lost response
-		// would double-deliver, which is why its adapter answers AMBIGUOUS_TIMEOUT
-		// rather than a retryable code.
+		// SES has no idempotency surface: a replayed request after a lost response would
+		// double-deliver, which is why its adapter answers AMBIGUOUS_TIMEOUT, not a retryable code.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
-		// No dedup header, no dedup id: a repeat request after a lost response
-		// delivers a second copy.
+		// No dedup header, no dedup id: a repeat request after a lost response delivers a second copy.
 		deduplicatesOnIdempotencyKey: false,
 		// SNS notifications are SES's own report about a message we handed it;
 		// nothing of ours annotates them, so there is no provenance tag to read.
 		tagsFeedbackProvenance: false,
-		// No `setupProbe`: SES has no cheap pre-apply check, and the shipped
-		// endpoints refuse to pretend otherwise — the live send test after
-		// applying is its proof.
+		// No `setupProbe`: SES has no cheap pre-apply check, and the shipped endpoints refuse to
+		// pretend otherwise — the live send test after applying is its proof.
 	},
 	{
 		kind: 'resend',
