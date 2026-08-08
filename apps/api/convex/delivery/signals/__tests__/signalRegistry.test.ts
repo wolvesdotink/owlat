@@ -251,10 +251,13 @@ describe('the substituted sentence is read, never restated', () => {
 		});
 		// The stand-in is NAMED in the one substitute vocabulary the degradation
 		// table and the dashboard use, and the sentence is the substitution's own.
-		expect(proxy.source).not.toBe('yahoo_cfl');
+		// A deployment with nothing configured is by definition not on the feed.
+		const source = proxy.source;
+		expect(source).not.toBe('yahoo_cfl');
+		if (source === 'yahoo_cfl') return;
 		expect(YAHOO_CFL_SIGNAL_SOURCE.absence).toEqual({
 			behaviour: 'substitute',
-			substitutes: YAHOO_ABSENCE_SUBSTITUTE[proxy.source as keyof typeof YAHOO_ABSENCE_SUBSTITUTE],
+			substitutes: YAHOO_ABSENCE_SUBSTITUTE[source],
 			note: proxy.confidenceNote,
 			isBlocking: false,
 		});
