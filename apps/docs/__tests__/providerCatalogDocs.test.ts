@@ -487,6 +487,21 @@ function defaultClaims(page: string): string[] {
 	return claims;
 }
 
+/**
+ * Lines declaring the send-provider kind union as a HAND-WRITTEN literal.
+ *
+ * The third shape of the same drift, and the one the two predicates above cannot
+ * see: they read "default" claims and `EMAIL_PROVIDER` table rows, so a fenced
+ * `type SendProviderKind = 'mta' | 'ses' | 'resend'` in a code block walked past
+ * both while telling a developer to widen a union that is not declared anywhere.
+ * It is derived — `CoreSendProviderKind | PluginSendTransportKind`, whose core
+ * half is the catalog literal itself — which is the whole content of "there is no
+ * 'declare the kind' step".
+ */
+function literalKindUnions(page: string): string[] {
+	return page.split('\n').filter((line) => /type\s+(Core)?SendProviderKind\s*=\s*'/.test(line));
+}
+
 /** Table rows that enumerate the `EMAIL_PROVIDER` values a deployment may set. */
 function kindEnumerationRows(page: string): string[] {
 	return page
@@ -548,6 +563,15 @@ describe('no page in the docs still advertises a default or a short kind list', 
 		}
 	});
 
+	it('never declares the kind union as a literal', () => {
+		for (const page of pages) {
+			expect(
+				literalKindUnions(page.text),
+				`${page.path} writes the kind union out by hand; it is derived from the catalog`
+			).toEqual([]);
+		}
+	});
+
 	it('would catch each claim it is written against', () => {
 		// The negative controls: the exact rows and sentences that shipped, beside
 		// the corrected forms. Without them a typo in either predicate leaves three
@@ -562,8 +586,37 @@ describe('no page in the docs still advertises a default or a short kind list', 
 		expect(defaultClaims('The default `.env` ships a value nobody reads.')).toEqual([]);
 		expect(kindEnumerationRows('| `EMAIL_PROVIDER` | `mta`, `ses`, `resend` |')).toHaveLength(1);
 		expect(kindEnumerationRows('Set `EMAIL_PROVIDER` to `ses` or `resend` in prose.')).toEqual([]);
+		expect(literalKindUnions("type SendProviderKind = 'mta' | 'ses' | 'resend';")).toHaveLength(1);
+		expect(
+			literalKindUnions(
+				"type SendProviderKind = (typeof CORE_SEND_PROVIDER_CATALOG)[number]['kind'];"
+			)
+		).toEqual([]);
 	});
 });
+
+/**
+ * The `::callout{…}` blocks on a page, title and body as ONE unit — because a
+ * callout's subject lives in its title (`title="\`deduplicatesOnIdempotencyKey\`
+ * is half a promise"`) and its claim in the body.
+ */
+function callouts(page: string): string[] {
+	return [...page.matchAll(/::callout\{[^}]*\}\n[\s\S]*?\n::/g)].map((hit) => hit[0]);
+}
+
+/**
+ * Capabilities the page says the plugin tier cannot declare, out of a list it
+ * genuinely can.
+ */
+function pluginBarredCapabilities(page: string, declarable: readonly string[]): string[] {
+	const barred = new Set<string>();
+	for (const block of callouts(page)) {
+		if (!/cannot declare/i.test(block)) continue;
+		const named = new Set(codeSpans(block));
+		for (const field of declarable) if (named.has(field)) barred.add(field);
+	}
+	return [...barred];
+}
 
 describe('the providers page documents every provider the catalog declares', () => {
 	it('lists every catalog kind as a supported kind, in the catalog order', () => {
@@ -681,6 +734,45 @@ describe('the provider-N+1 checklist covers both integration tiers', () => {
 		for (const field of ['supportsCustomReturnPath', 'acceptanceSemantics', 'setupProbe']) {
 			expect(tierChoice, `the tier-choice sentence omits \`${field}\``).toContain(`\`${field}\``);
 		}
+	});
+
+	it('never bars the plugin tier from a capability the kit now lets it declare', () => {
+		// THE EXCEPTION LIST HAS A SECOND COPY, and it went stale where the first
+		// one did not: the `deduplicatesOnIdempotencyKey` callout still said a
+		// bundled transport "cannot declare `true` at all — the plugin tier has no
+		// per-send extras contract", written before P3.1 gave that tier
+		// `buildSystemMailExtras` and turned the composition-time refusal into a
+		// load-time check of the PAIR. An author whose ESP threads an idempotency
+		// key read it, believed the plugin tier could not promise dedup, and either
+		// shipped on core for nothing or left the declaration off — after which
+		// `systemMailRetryDisposition` refuses to re-send an ambiguous password
+		// reset that was safe to re-send.
+		//
+		// So the claim is bound to the contract. A capability the kit accepts as a
+		// plain `boolean` has no type standing between an author and the word, and
+		// a callout ABOUT that field may not say this tier cannot declare it.
+		// Everything else the tier cannot declare is refused by its type — a
+		// narrowed union or an absent field — and those callouts are left alone.
+		const kit = read('packages/plugin-kit/src/sendTransport.ts');
+		const definition = /export interface PluginSendTransportDefinition \{([\s\S]*?)\n\}/.exec(kit);
+		expect(definition, 'the kit no longer declares PluginSendTransportDefinition').not.toBeNull();
+		const declarable = [...definition![1]!.matchAll(/readonly ([a-zA-Z]+)\?: boolean;/g)].map(
+			(hit) => hit[1]!
+		);
+		expect(declarable, 'P3.1 gave this tier the dedup declaration').toContain(
+			'deduplicatesOnIdempotencyKey'
+		);
+		expect(pluginBarredCapabilities(providers, declarable)).toEqual([]);
+		// The negative control: the callout as it read before P3.1 landed, which
+		// names its subject in the TITLE and its claim in the body — which is why
+		// the unit here is the callout and not the sentence.
+		expect(
+			pluginBarredCapabilities(
+				'::callout{type="warning" title="`deduplicatesOnIdempotencyKey` is half a promise"}\n' +
+					'A **bundled plugin** transport cannot declare `true` at all.\n::',
+				declarable
+			)
+		).toEqual(['deduplicatesOnIdempotencyKey']);
 	});
 
 	/**
