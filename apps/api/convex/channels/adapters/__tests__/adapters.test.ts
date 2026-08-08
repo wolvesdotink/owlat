@@ -28,6 +28,52 @@ const adapterSourceFiles = readdirSync(ADAPTER_DIR, { withFileTypes: true })
 	.map((entry) => entry.name)
 	.sort();
 
+/** One recorded outbound HTTP call, as the adapter issued it. */
+interface RecordedCall {
+	url: string;
+	init: RequestInit;
+}
+
+/**
+ * Run `body` with `globalThis.fetch` replaced by `impl`, restoring the original
+ * afterwards, and hand back everything the adapter asked the network for. Every
+ * configured-path assertion below goes through this: an adapter's contract is
+ * "this provider response becomes this SendResult", which is unobservable
+ * against a never-configured instance.
+ */
+async function withFetch<T>(
+	impl: (url: string, init: RequestInit) => Promise<Response>,
+	body: (calls: RecordedCall[]) => Promise<T>
+): Promise<{ result: T; calls: RecordedCall[] }> {
+	const calls: RecordedCall[] = [];
+	const original = globalThis.fetch;
+	globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+		calls.push({ url: String(url), init });
+		return impl(String(url), init);
+	}) as unknown as typeof fetch;
+	try {
+		return { result: await body(calls), calls };
+	} finally {
+		globalThis.fetch = original;
+	}
+}
+
+/** `impl` shorthand: always answer with this status and body. */
+const respond = (status: number, body: unknown) => async () =>
+	new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+
+const configuredSms = () => {
+	const adapter = new SmsAdapter();
+	adapter.configure({ accountSid: 'AC123', authToken: 'tok', fromNumber: '+1555' });
+	return adapter;
+};
+
+const configuredWhatsApp = () => {
+	const adapter = new WhatsAppAdapter();
+	adapter.configure({ phoneNumberId: 'PN123', accessToken: 'meta-tok' });
+	return adapter;
+};
+
 // =============================================================================
 // Bucket 1 — Unit: instantiation
 // =============================================================================
@@ -63,22 +109,142 @@ describe('channel adapters — instantiation', () => {
 });
 
 // =============================================================================
-// Bucket 2 — Contract: every adapter honours ChannelAdapter
+// Bucket 2 — Configured send/health paths: provider response → SendResult
+//
+// This is the bucket that would catch a real break. `dispatchOutbound` records
+// `sent` with `result.externalMessageId` and `failed` with `result.error`, so
+// the mapping from a provider's own response shape to those two fields IS the
+// adapter's job. WebhookAdapter has its own mocked-fetch suite (webhook.test.ts);
+// these are the Twilio and Meta halves.
+//
+// (An earlier revision asserted `typeof result.success === 'boolean'` over the
+// never-configured module-level instances instead. That only ever exercised the
+// `if (!this.config)` early return — which Bucket 5 already covers exhaustively
+// — and passed no matter what the 2xx branch returned.)
 // =============================================================================
-describe('channel adapters — ChannelAdapter contract', () => {
-	for (const [name, adapter] of Object.entries(adapters)) {
-		describe(`${name}`, () => {
-			it('returns a SendResult with success boolean from send()', async () => {
-				const msg: OutboundMessage = {
-					contactId: 'c1',
-					channel: adapter.id,
-					content: { text: 'hi' },
-				};
-				const result = await adapter.send(msg);
-				expect(typeof result.success).toBe('boolean');
-			});
+describe('SmsAdapter.send — configured path', () => {
+	const message: OutboundMessage = {
+		contactId: 'c1',
+		channel: 'sms',
+		content: { text: 'hi' },
+		metadata: { phoneNumber: '+1999' },
+	};
+
+	it('maps a 201 with a sid to success + externalMessageId, and posts the Twilio form', async () => {
+		const { result, calls } = await withFetch(respond(201, { sid: 'SM_ABC' }), () =>
+			configuredSms().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: 'SM_ABC' });
+		expect(calls).toHaveLength(1);
+		const call = calls[0]!;
+		expect(call.url).toBe('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json');
+		expect(call.init.method).toBe('POST');
+		const body = new URLSearchParams(call.init.body as string);
+		expect(body.get('To')).toBe('+1999');
+		expect(body.get('From')).toBe('+1555');
+		expect(body.get('Body')).toBe('hi');
+	});
+
+	it('maps a 400 to a failed SendResult carrying the status and provider body', async () => {
+		const { result } = await withFetch(respond(400, 'bad To number'), () =>
+			configuredSms().send(message)
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/Twilio error: 400/);
+		expect(result.error).toContain('bad To number');
+		expect(result.externalMessageId).toBeUndefined();
+	});
+
+	it('maps a thrown fetch to a failed SendResult rather than propagating', async () => {
+		const { result } = await withFetch(
+			async () => {
+				throw new Error('ECONNRESET');
+			},
+			() => configuredSms().send(message)
+		);
+
+		expect(result).toEqual({ success: false, error: 'ECONNRESET' });
+	});
+
+	it('reports healthy when the Twilio account fetch succeeds', async () => {
+		const { result, calls } = await withFetch(respond(200, { sid: 'AC123' }), () =>
+			configuredSms().healthCheck()
+		);
+
+		expect(result).toEqual({ status: 'healthy' });
+		expect(calls[0]!.url).toBe('https://api.twilio.com/2010-04-01/Accounts/AC123.json');
+	});
+});
+
+describe('WhatsAppAdapter.send / healthCheck — configured path', () => {
+	const message: OutboundMessage = {
+		contactId: 'c1',
+		channel: 'whatsapp',
+		content: { text: 'hi' },
+		metadata: { phoneNumber: '+1999' },
+	};
+
+	it('maps a Meta messages[0].id to externalMessageId, and posts the graph payload', async () => {
+		const { result, calls } = await withFetch(
+			respond(200, { messages: [{ id: 'wamid.XYZ' }] }),
+			() => configuredWhatsApp().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: 'wamid.XYZ' });
+		const call = calls[0]!;
+		expect(call.url).toBe('https://graph.facebook.com/v18.0/PN123/messages');
+		expect(call.init.method).toBe('POST');
+		const payload = JSON.parse(call.init.body as string);
+		expect(payload).toEqual({
+			messaging_product: 'whatsapp',
+			to: '+1999',
+			type: 'text',
+			text: { body: 'hi' },
 		});
-	}
+	});
+
+	it('reports success with no externalMessageId when Meta returns an empty messages array', async () => {
+		// The poller only re-polls rows that HAVE an external id, so an accepted
+		// send with no id must still read as success — not as a failure.
+		const { result } = await withFetch(respond(200, { messages: [] }), () =>
+			configuredWhatsApp().send(message)
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.externalMessageId).toBeUndefined();
+	});
+
+	it('maps a non-2xx to a failed SendResult carrying the status and provider body', async () => {
+		const { result } = await withFetch(respond(400, 'invalid recipient'), () =>
+			configuredWhatsApp().send(message)
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/WhatsApp error: 400/);
+		expect(result.error).toContain('invalid recipient');
+	});
+
+	it('maps a 401 from the graph probe to degraded, not down', async () => {
+		// `down` is reserved for "we could not reach the provider at all"; a
+		// reachable-but-rejecting API is degraded, and the status string is what
+		// updateChannelHealth persists for the operator.
+		const { result } = await withFetch(respond(401, 'expired token'), () =>
+			configuredWhatsApp().healthCheck()
+		);
+
+		expect(result).toEqual({ status: 'degraded', lastError: 'HTTP 401' });
+	});
+
+	it('reports healthy when the graph probe succeeds', async () => {
+		const { result, calls } = await withFetch(respond(200, { id: 'PN123' }), () =>
+			configuredWhatsApp().healthCheck()
+		);
+
+		expect(result).toEqual({ status: 'healthy' });
+		expect(calls[0]!.url).toBe('https://graph.facebook.com/v18.0/PN123');
+	});
 });
 
 // =============================================================================
@@ -134,16 +300,36 @@ describe('channel adapters — outbound-only surface', () => {
 		}
 	});
 
+	/**
+	 * Remove comments so the header prose — which deliberately explains why the
+	 * inbound pair is gone — does not trip the scan below, WITHOUT swallowing
+	 * code. The line-comment pattern requires the `//` not to be preceded by a
+	 * colon, so a provider base URL (`https://api.twilio.com/...`) keeps the rest
+	 * of its line: a naive `/\/\/.*$/gm` truncates both `sms.ts` and
+	 * `whatsapp.ts` at the URL scheme and blinds the scan on exactly the lines
+	 * where a one-line inbound helper would most plausibly be appended.
+	 */
+	const stripComments = (source: string) =>
+		source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+	it('strips comments without truncating a line at a URL scheme', () => {
+		expect(stripComments('const u = `https://x/y`; // trailing note')).toBe(
+			'const u = `https://x/y`; '
+		);
+		expect(stripComments('// parseInbound lives elsewhere')).toBe('');
+		expect(stripComments('/** validateSignature is gone */\nconst a = 1;')).toBe('\nconst a = 1;');
+		// The regression the colon guard exists for: a member re-grown on the same
+		// line as a URL literal must survive stripping and be seen by the scan.
+		expect(stripComments('const u = `https://x/y`; parseInbound(raw);')).toContain('parseInbound');
+	});
+
 	it('never names an inbound member anywhere in the adapter sources', () => {
 		// Enumerated from disk: a module added after this test was written is
 		// covered automatically, which is the whole point — the regression this
 		// guards against is a *new* adapter re-growing the deleted half.
 		expect(adapterSourceFiles.length).toBeGreaterThan(0);
 		for (const file of adapterSourceFiles) {
-			const source = readFileSync(resolve(ADAPTER_DIR, file), 'utf8');
-			// Strip comments: the header notes deliberately explain why the pair
-			// is gone, and that prose must stay readable.
-			const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+			const code = stripComments(readFileSync(resolve(ADAPTER_DIR, file), 'utf8'));
 			for (const member of INBOUND_ONLY_MEMBERS) {
 				expect(code, `${file} re-declares ${member}`).not.toContain(member);
 			}
@@ -290,21 +476,7 @@ describe('channel adapters — failure modes', () => {
 });
 
 describe('SmsAdapter.getDeliveryStatus — transient vs terminal', () => {
-	const configure = () => {
-		const adapter = new SmsAdapter();
-		adapter.configure({ accountSid: 'AC123', authToken: 'tok', fromNumber: '+1555' });
-		return adapter;
-	};
-
-	const withFetch = async (impl: typeof fetch, run: (a: SmsAdapter) => Promise<unknown>) => {
-		const original = globalThis.fetch;
-		globalThis.fetch = impl;
-		try {
-			return await run(configure());
-		} finally {
-			globalThis.fetch = original;
-		}
-	};
+	const lookup = () => configuredSms().getDeliveryStatus('SM1');
 
 	it('reports the no-change sentinel (sent), not failed, when unconfigured', async () => {
 		// `failed` is a forward transition for the poller; an unconfigured lookup
@@ -313,55 +485,37 @@ describe('SmsAdapter.getDeliveryStatus — transient vs terminal', () => {
 	});
 
 	it('reports `sent` (not `failed`) on a transient non-2xx response', async () => {
-		const status = await withFetch(
-			(async () => new Response('rate limited', { status: 429 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
-		);
-		expect(status).toBe('sent');
+		const { result } = await withFetch(respond(429, 'rate limited'), lookup);
+		expect(result).toBe('sent');
 	});
 
 	it('reports `sent` (not `failed`) on a 5xx response', async () => {
-		const status = await withFetch(
-			(async () => new Response('boom', { status: 503 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
-		);
-		expect(status).toBe('sent');
+		const { result } = await withFetch(respond(503, 'boom'), lookup);
+		expect(result).toBe('sent');
 	});
 
 	it('reports `sent` (not `failed`) on a network/parse error', async () => {
-		const status = await withFetch(
-			(async () => {
-				throw new Error('ETIMEDOUT');
-			}) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
-		);
-		expect(status).toBe('sent');
+		const { result } = await withFetch(async () => {
+			throw new Error('ETIMEDOUT');
+		}, lookup);
+		expect(result).toBe('sent');
 	});
 
 	it('maps a confirmed Twilio `failed` status to `failed`', async () => {
-		const status = await withFetch(
-			(async () =>
-				new Response(JSON.stringify({ status: 'failed' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
-		);
-		expect(status).toBe('failed');
+		const { result } = await withFetch(respond(200, { status: 'failed' }), lookup);
+		expect(result).toBe('failed');
 	});
 
 	it('maps a confirmed Twilio `undelivered` status to `failed`', async () => {
-		const status = await withFetch(
-			(async () =>
-				new Response(JSON.stringify({ status: 'undelivered' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
-		);
-		expect(status).toBe('failed');
+		const { result } = await withFetch(respond(200, { status: 'undelivered' }), lookup);
+		expect(result).toBe('failed');
 	});
 
 	it('maps a confirmed Twilio `delivered` status to `delivered`', async () => {
-		const status = await withFetch(
-			(async () =>
-				new Response(JSON.stringify({ status: 'delivered' }), { status: 200 })) as typeof fetch,
-			(a) => a.getDeliveryStatus('SM1')
+		const { result, calls } = await withFetch(respond(200, { status: 'delivered' }), lookup);
+		expect(result).toBe('delivered');
+		expect(calls[0]!.url).toBe(
+			'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/SM1.json'
 		);
-		expect(status).toBe('delivered');
 	});
 });
