@@ -2795,11 +2795,18 @@ not the module).
 
 ## Send providers
 
+This section describes the SEND PATH of a provider — the adapter, the retry
+loop, route strategies and health. What a provider *is* (its kind, capabilities,
+credential form and tier) is declared elsewhere and read from there; see
+**§ Send provider catalog** below.
+
 **Send provider adapter (module)**:
 The per-provider module at `convex/lib/sendProviders/<kind>/index.ts` that
-owns the Send-side surface of one email provider. Four core adapters today:
-`mta`, `ses`, `resend`, `smtp`. Core kinds are discriminated by those literals;
-bundled plugin kinds use `plugin.<pluginId>.<localId>`.
+owns the Send-side surface of one email provider. Five core adapters today:
+`mta`, `ses`, `resend`, `smtp`, `mandrill` — the list is the **Send provider
+catalog**'s, not this paragraph's; a sixth is added by declaring an entry, and
+the completeness guard then requires the folder. Core kinds are discriminated by
+those literals; bundled plugin kinds use `plugin.<pluginId>.<localId>`.
 Dispatched by the registry at `sendProviders/index.ts` exporting
 `providerFor(kind)`. Mirrors the **Sending domain provider adapter
 (module)** shape — one TypeScript interface, N concrete implementations,
@@ -2964,6 +2971,114 @@ provider verification health), Send health (vague), Health tracker
 (today's file name; the deepening drops the "tracker" suffix because
 the file now contains queries too, not just write-tracking).
 
+## Send provider catalog
+
+**Send provider catalog**:
+The single declaration of what every send transport *is*, needs and can do, at
+`packages/shared/src/sendProviderCatalog.ts` — one entry per core kind, plus the
+bundled plugin entries composed in at the backend. Everything that used to
+restate a provider fact derives from it: the kind union is read off the entries
+(`CoreSendProviderKind = (typeof CORE_SEND_PROVIDER_CATALOG)[number]['kind']`),
+and `SEND_TRANSPORT_KINDS`, the per-provider required-env tables, the provider
+labels and the credential forms are re-exports or lookups rather than the five
+independent declarations they were.
+
+Split in two halves, and the split is a security boundary rather than tidiness:
+- **Data half** — `packages/shared`. Labels, capability declarations, credential
+  field descriptors and environment variable NAMES. Never values, never secrets,
+  never adapter code, because this module reaches the web client bundle. That is
+  what lets `apps/web`, `apps/setup-cli` and `apps/docs` consume the same
+  declaration instead of each restating it.
+- **Code half** — `convex/lib/sendProviders/`, keyed by the shared vocabulary:
+  the **Send provider adapter (module)**s, the client caches, and the composed
+  plugin tier. Its `_typecheck` mapped-type guard fails the build when a
+  declared kind has no adapter.
+
+_Avoid_: Provider registry (that names the code half — `SEND_PROVIDERS` in
+`convex/lib/sendProviders/index.ts` — which dispatches adapters, not
+declarations),
+Provider config (collides with `providerRoutes`, which is one org's routing
+choice rather than the provider's nature), Transport catalog (drops the domain
+noun, and "send transport" already names the CONFIGURED INSTANCE of a kind —
+`<kind>` or `<kind>#<instanceKey>` — which is the dispatch unit, not the
+declaration).
+
+**Provider capability**:
+A declared answer to "can this transport do X", read in place of asking "is this
+kind `ses`". The seven on a catalog entry today:
+`supportsCustomReturnPath: 'yes' | 'no' | 'probe'` (may we set the VERP envelope
+sender), `hasProviderFeedback` (does it report its own outcomes to a route of
+ours), `domainVerification: 'api' | 'none'` (is there a provider-side identity
+API to ask), `acceptanceSemantics: 'accepted' | 'unknown-on-timeout'` (does a
+successful send mean custody, or is the send itself the handoff),
+`messageIdSource: 'provider' | 'idempotency-key' | 'composed'` (does the
+recorded id exist before the network crossing),
+`deduplicatesOnIdempotencyKey` (does a replay under our key deliver once), and
+`tagsFeedbackProvenance` (does this transport's inbound feedback carry our own
+provenance tag).
+Every one has a FAIL-CLOSED default when absent — claiming a capability we were
+never granted is the expensive direction in each case. Recorded in ADR-0055; the
+rule that no code outside an adapter folder may compare a kind to a literal is
+enforced mechanically by `bun run lint:providers`, whose allowlist only shrinks.
+_Avoid_: Provider feature (Feature is taken by the flag registry — see
+**§ Feature flags**), Provider flag (same collision), Provider trait (Trait is
+taken by the deployment checklist).
+
+**Provider tier**:
+How a provider is INTEGRATED, on the catalog entry as `own | core | plugin`.
+`own` is Owlat's own MTA and is special by definition and by nothing else: it is
+the arm a deliverability fallback moves traffic away from, so "own vs. not-own"
+is the one identity question that legitimately exists. `core` is an in-repo
+adapter folder; `plugin` is a Tier-1 bundled package contributing a
+`sendTransports` entry. `core` versus `plugin` is an integration difference and
+never a capability one — after plugin parity both satisfy the same contract, and
+nothing on the send path may branch on the distinction. The stated policy is
+that provider N+1 ships as a plugin unless it needs something only core can
+give; the four incumbents plus `mandrill` stay core because migrating them would
+be churn without benefit.
+_Avoid_: Provider type (`providerType` is already a stored column, and it holds
+a KIND), Provider class, Provider level.
+
+**Provider bundle**:
+One provider as one cohesive unit — send module, feedback adapter (only if
+`hasProviderFeedback`), sending-domain identity provider (only if
+`domainVerification: 'api'`), catalog entry, credential fields — travelling
+together: one folder for a core kind, one package for a plugin kind, same
+contract either way. The two optional halves carry no boolean beside them:
+declaring the module IS the capability, so nothing can disagree with the code
+that implements it. What the bundle means operationally is that adding a
+provider edits nothing in routing, dispatch, retries, the deliverability
+fallback, the ramp controller (**§ Ramp controller and measurement plane**) or
+the measurement plane. The feedback half is registered by kind and served on a
+hand-written static route — see **Inbound adapter** under **§ Webhook events**;
+the domain-identity half registers into the registry described under
+**§ Sending domains**.
+_Avoid_: Provider package (true only at the plugin tier), Provider module (names
+one half of the bundle), Provider integration (vague about what travels).
+
+**Credential field descriptor**:
+One field of the form an operator fills in to configure a transport, declared on
+the catalog entry in `packages/shared/src/sendProviderCredentialFields.ts`.
+Seven kinds: `string`, `secret`, `number`, `boolean`, `select`, `region-select`,
+`host-port` — the plugin platform's `settingsSchema` vocabulary plus two
+composite kinds, deliberately the same family so a core and a plugin provider
+describe credentials identically. Each descriptor names the environment variable
+it writes, which is what joins the form to the presence checks and to the
+paste-ready `.env` skeleton. The web layer renders descriptors and knows no
+provider: adding one adds zero lines to any `.vue` file.
+
+Known gap, pinned by
+`apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`: a
+BUNDLED PLUGIN transport's descriptors never reach the web layer. Every
+`apps/web` surface resolves through `coreSendProviderCatalogEntry`, the
+core-only half in `packages/shared`, because the composed catalog is built from
+generated code in `apps/api` and `packages/` may not import app code. The
+descriptors exist and do not arrive; a plugin transport is configured by
+environment variables until that is closed.
+_Avoid_: Credential schema (Schema is taken by the Convex schema and by the
+plugin `settingsSchema`), Provider form (names the rendering, not the
+declaration), Credential field (without "descriptor" it reads as the value).
+
 ## MTA dispatch
 
 **Dispatch attempt**:
@@ -3082,9 +3197,22 @@ type over `FeedbackReportingSendProviderKind` makes a missing or
 mis-keyed entry a build error) and served by the shared
 `providerFeedbackWebhook(kind)` handler on a static `/webhooks/<kind>`
 route written out by hand in `http.ts` — never derived from the registry,
-because those URLs are already pasted into provider consoles. The
+because those URLs are already pasted into provider consoles. Which kinds must
+have one is not this registry's decision but the catalog's
+`hasProviderFeedback` (**§ Send provider catalog**); registering an adapter for
+a kind that declares no feedback is a build error in the other direction. The
 `channels.ts` adapters (twilio, meta, generic) are not send transports:
 no kind, no catalog entry, and they keep their own per-vendor handlers.
+
+A BUNDLED PLUGIN transport's feedback does not arrive here. It arrives on one
+generated surface, `POST /webhooks/plugin/<pluginId>`, contributed as a second
+module export on the same `sendTransports` bundle rather than as its own
+contribution kind. Its verifier is the HOST's — a plugin never decides whether a
+request is authentic, and a webhook export without a declared signature contract
+fails manifest validation — and the plugin's half is parse-only, its output
+revalidated before anything is trusted. This is deliberately NOT the reserved
+`inboundAdapters` contribution bucket, which is held for genuine inbound-MAIL
+sources.
 _Avoid_: Webhook handler (the HTTP handler still owns that name).
 
 **Webhook dispatcher**:
@@ -3742,6 +3870,147 @@ _Avoid_: Reputation tracker (vague), Reputation analytics (it's a sending
 control that auto-suspends, not a report), Deliverability module
 (overbroad — warming and DNS verification are separate concerns).
 
+Sending reputation is the deployment-wide SAFETY control: it counts bounces and
+complaints across the whole org and can suspend sending. It is not the control
+that decides how much mail leaves through our own MTA — that is a separate,
+per-cell controller with its own measurements; see
+**§ Ramp controller and measurement plane**.
+
+## Ramp controller and measurement plane
+
+The vocabulary of the measured migration onto Owlat's own MTA. The decision
+architecture behind these terms — why one controller drives two actuators, why
+the constants are asymmetric, why thin data holds — is ADR-0054; this section
+names the pieces, that document argues them.
+
+**Deliverability cell**:
+The unit every deliverability decision is made in: one
+`${stream}:${destinationProvider}` pair. Three streams (`campaign`,
+`transactional`, `automation` — the governed message types) × five destination
+providers (`gmail`, `microsoft`, `yahoo`, `apple`, `other`) = fifteen cells,
+enumerated by `allDeliverabilityCells()`. Both axes are declared exactly once,
+in `packages/shared/src/deliverabilityRouting.ts`, and every consumer — the
+Convex controller, the MTA's shaping profiles and warming store, the dashboard —
+imports from there, so a sixth destination provider propagates or fails the
+build. Gmail and Yahoo judge a sender differently, and a transactional receipt
+and a Tuesday newsletter earn different tolerance from both, so a single global
+"how are we doing" number is the thing this grain exists to refuse.
+_Avoid_: Segment (taken by audience segmentation), Bucket (taken by the
+reputation day buckets), Slice (used loosely for a share of traffic).
+
+**Arm**:
+Which side of the comparison a send took: `own` (Owlat's own MTA) or `reference`
+(any configured relay). The whole measurement plane is keyed by it, and by
+nothing more specific — arm is a property of the KIND, not of a named instance,
+so two configured SES instances are one arm. This is what makes the plane
+provider-agnostic: adding a provider adds rows, never columns, and the
+controller never learns a provider's name.
+_Avoid_: Variant / branch (A/B-testing vocabulary; this is not a randomized
+experiment over content), Provider side.
+
+**Measurement plane**:
+The two arm-keyed tables the ramp reads, and the discipline that keeps them
+cheap:
+- `sendAssignments` — one row per recipient per send, written INSIDE the enqueue
+  transaction BEFORE dispatch, recording the cell, the transport kind, the arm
+  and the mix version. `sends.providerType` is written post-hoc from the
+  dispatch result and cannot answer "what did we decide, and for whom".
+- `transportOutcomes` — rolling per-`(org, cell, arm, day)` counters, SHARDED on
+  write into N rows and SUMMED on read, so a hot cell does not serialize on one
+  document. That sharded-write/summed-read shape is ADR-0042's, reused rather
+  than reinvented.
+_Avoid_: Analytics (this is a control input, not a report), Metrics (too
+generic — Owlat has several unrelated metric surfaces), Experiment table (names
+one of the two).
+
+**Own share**:
+The controlled variable in a deployment that has a reference transport: `s`, the
+fraction of a cell's mail routed to the own arm, in `[0, 1]`. Starts at 0 for a
+migration and is walked up by the **Ramp controller**. A share is not a config
+value an operator types — it is a measurement outcome, which is why the operator
+surface offers a pause and a ceiling rather than a number.
+_Avoid_: Weight (taken by the `workload_split` route strategy, which is an
+operator's static choice), Traffic split, Ratio.
+
+**Ramp controller**:
+The pure decision core at `convex/delivery/ramp/` that answers, once per hour
+per cell, whether the ramp may advance. Pure and TOTAL — no clock, no database
+handle, no environment read, no randomness; the clock is a parameter — and the
+boundary is the directory, so "is `ramp/` pure?" has a yes/no answer a source
+level test enumerating the folder can enforce. The effectful shell lives
+outside it (`delivery/rampControllerCron.ts`): it loads inputs, calls the pure
+functions, writes the result and the audit row, and is bounded (a slice of the
+grid per tick, each cell in its own try/catch). Convex owns the decision
+outright and reads MTA state through the existing IP-reputation sync — one
+owner, no split brain.
+_Avoid_: Ramp engine (Engine is taken by the resource **Listing engine**),
+Deliverability controller (overbroad — DNS verification and warming are separate
+concerns), Autopilot.
+
+**Actuator**:
+The dial a controller decision actually turns. Two, and one controller drives
+both: **own share** where a reference transport exists, and the warming-pace
+multiplier where none does. They compose in a fixed, non-commutative order —
+share first because it is cheap and instantly reversible, pace second because it
+is reputation-bearing and a cap that grew too fast is not undone by lowering it
+— and a cell may never increase both in the same window, because two
+reputation-bearing dials moving together is the experiment whose result nobody
+can read.
+_Avoid_: Knob (reads as an operator control; these are moved by measurement),
+Lever, Output.
+
+**Ramp gate**:
+One measurement standing between a cell and an increase, returning the numbers
+that produced its verdict rather than a boolean. Five today, named in the shared
+signal vocabulary: `bounce_rate`, `persistent_defers`, `complaint_rate`,
+`engagement_ratio`, `seed_placement`. Verdicts rank
+`halt > fail > insufficient_data > pass`, and `insufficient_data` outranking
+`pass` is the whole rule: thin data is not a licence to advance and not a reason
+to retreat, so holding is its own verdict rather than a quiet failure. Each gate
+declares a minimum sample below which returning a verdict at all is a defect.
+_Avoid_: Check (taken by the deployment checklist), Guard (taken by the
+authorization guards), Threshold (names one input of a gate).
+
+**Signal source**:
+One answer to "where does this deployment's evidence about its own
+deliverability come from", declared as a module in `convex/delivery/signals/`
+with three things: a `key` in the one shared vocabulary, a `kind` —
+`infrastructure` (may flip the shipped relay fallback) / `outcome` (may move the
+ramp's share) / `advisory` (recorded and readable, moves nothing on its own) —
+and its ABSENCE semantics as data. The families describe what a reading is
+ALLOWED TO DO, not how it was gathered. Every absence carries `isBlocking: false`
+by TYPE, so a source that blocked on its own absence could not be declared at
+all. Both the ramp's own five gates and the three provider reputation feeds
+(Microsoft SNDS, Yahoo CFL, Google Postmaster) are sources, and the gate
+aggregator folds the registry rather than naming modules. Deliberately not open
+to plugins yet: the registry is the seam, and opening it is its own piece on the
+day someone wants it.
+_Avoid_: Feed (names only the provider half), Sensor, Data source (vague about
+what the reading is permitted to move).
+
+**Substitution**:
+What stands in for a signal source a deployment has not connected. Declared as
+ONE table — `ramp/degradationMatrix.ts`, one row per absent integration — folded
+in exactly one place, never as a conditional per integration. A row may lower
+confidence, require more clean windows, shrink the step, lengthen the dwell,
+tighten a threshold or cap the pace; it may not block. Adding an integration is
+a row, and the controller never asks "is SNDS connected?".
+_Avoid_: Fallback (taken by the deliverability fallback relay), Degraded mode
+(implies a second code path, which is exactly what the table exists to avoid),
+Default.
+
+**Standalone**:
+A deployment with no third-party deliverability accounts at all. A first-class
+configuration and the DEGENERATE CASE of the same mechanism, never a second code
+path: which actuator a cell drives is read off the substitution table, not off a
+`hasRelay` boolean. It pays for the missing evidence in SPEED — more clean
+windows, a halved step, a longer route to the top phase on corroborated
+self-hosted evidence — not in reach. Absence of an external account lowers
+confidence and slows the ramp, and does nothing else: it never blocks a send,
+never surfaces an error and never renders a setup-incomplete nag.
+_Avoid_: Degraded (that names the substitution, not the configuration),
+Unconfigured, Self-hosted-only (Owlat is self-hosted either way).
+
 ## Abuse
 
 **Abuse status**:
@@ -3968,6 +4237,10 @@ verifies without running. The stored kind is always
 `plugin.<pluginId>.<localId>`, so a plugin can never shadow or collide
 with a core kind. Buckets that no seam consumes yet are reserved names,
 not extension points.
+The largest consumed bucket is `sendTransports`: a plugin's send transport is a
+full **Provider bundle** at parity with a core kind — same capability
+declarations, same typed per-send extras, same named instances, its own feedback
+route and its own sending-domain identity. See **§ Send provider catalog**.
 _Avoid_: Hook (that is the Tier-2 synchronous call), Extension point (the
 seam is the extension point; the contribution is what fills it).
 
