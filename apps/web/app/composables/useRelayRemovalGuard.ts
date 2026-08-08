@@ -115,10 +115,12 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 	return {
 		removesReferenceArm: computed(() => {
 			const resulting = resultingProvider.value.trim();
+			// `unsafe` alone establishes that a relay exists — the summary only
+			// answers it off `isRelayConfigured` (#513). Requiring the transport id
+			// too kept this dialog closed on an env-configured relay, whose id the
+			// route table does not know.
 			return (
-				(resulting === 'mta' || NO_PROVIDER.has(resulting)) &&
-				referenceTransportId.value !== null &&
-				relayRemoval.value?.kind === 'unsafe'
+				(resulting === 'mta' || NO_PROVIDER.has(resulting)) && relayRemoval.value?.kind === 'unsafe'
 			);
 		}),
 		removalConsequence: localConsequence,
