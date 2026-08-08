@@ -69,7 +69,7 @@ export async function getCachedContactCount(
  * Reconcile the cached contact count by doing a real count.
  * Corrects drift caused by partial failures or missed updates.
  *
- * Called by a daily cron (`reconcileAllContactCounts` / `reconcileContactCountInternal`).
+ * Called by the daily `reconcileAllContactCounts` cron.
  * Counts via a paginated stream (summing page lengths) instead of one full-table
  * collect, so the reconcile stays under the Convex per-query document-read limit
  * on large deployments. Counts only LIVE rows (`deletedAt === undefined`) to
