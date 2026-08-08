@@ -337,15 +337,20 @@ comment there that reads "plugin kinds included" sends an author into a
 
 Those columns carry a comment naming the TYPE — the third column of the table
 above — rather than re-listing the kinds, and that is not a style preference. It
-is the correction this ADR forced, and every one of the nine comments was stale,
-in four vintages: two restated `'mta' | 'ses' | 'resend' | 'smtp'`, a union that
-predated both Mandrill and the plugin tier; the two send-row columns restated an
-even older `(mta, ses, resend)`; `domains.providerType` named the original pair;
+is the correction this ADR forced. SEVEN of the nine re-listed kinds, and all
+seven lists were wrong, in five different vintages: two restated
+`'mta' | 'ses' | 'resend' | 'smtp'`, a union that predated both Mandrill and the
+plugin tier; the two send-row columns restated an even older `(mta, ses,
+resend)`; `domains.providerType` named the original pair; `sendAssignments.transport`
+named four core kinds plus the plugin shape, missing only Mandrill; and
 `webhookPayloads.source` named three core kinds plus the plugin shape while the
 column had, in fact, been holding four sources it does not name (`mandrill`, and
-the three channel adapters) for as long as the shared pipeline has existed. So a
-reader establishing what may legally land in any of
-them got the opposite of the policy below. A comment that restates a union rots
+the three channel adapters) for as long as the shared pipeline has existed. (The
+two that re-listed nothing —
+`sendingDomainRelayIdentities.providerKind`, which cited its sibling columns, and
+`pluginWebhookDeliveries.transportKind`, which holds one shape — were touched
+only to name the type.) So a reader establishing what may legally land in any of
+the seven got the opposite of the policy below. A comment that restates a union rots
 exactly as a second declaration does; this is recorded here as policy so no
 comment is the only witness again — and a duplicated comment rots twice, which is
 why the mutation argument that feeds `webhookPayloads.source`
