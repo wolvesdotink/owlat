@@ -27,8 +27,9 @@
  *     per-provider roll-up, the thresholds and the tolerance that turn probes
  *     into a STATUS, the minimum sample, and the confidence a seed reading
  *     carries (`SEED_GATE_CONFIDENCE`).
- *     `analytics/seedPlacement.getGateVerdict` is the Convex surface that feeds
- *     it real probes.
+ *     `analytics/seedPlacement.ts` is the Convex surface that feeds it real
+ *     probes — the ledger, the provider roll-up behind
+ *     `getSeedPlacementSummary`, and the per-cell sweeps the ramp gate reads.
  *   - `delivery/ramp/seedGate.ts` owns the TRANSLATION: it consumes the
  *     `SeedProviderRollup` statuses produced here and restates them in the
  *     controller's `RampGateResult` vocabulary (freshness cascade, reason
