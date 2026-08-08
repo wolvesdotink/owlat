@@ -450,15 +450,39 @@ only the first is what the screen's connect affordance asks).
 
 ---
 
-## Channel adapters (`packages/channels/`)
+## Outbound channel adapters (`apps/api/convex/channels/adapters/`)
 
-| Adapter           | Outbound                    | Inbound                               |
-| ----------------- | --------------------------- | ------------------------------------- |
-| `EmailAdapter`    | delegates to email provider | normalizes inbound (legacy MTA shape) |
-| `SmsAdapter`      | Twilio (stub)               | —                                     |
-| `WhatsAppAdapter` | Meta (stub)                 | —                                     |
-| `WebhookAdapter`  | generic HTTP                | —                                     |
-| `ChatAdapter`     | native Convex               | —                                     |
+The three non-email channels an operator can configure credentials for and send
+through. One consumer: the sibling `channels/outbound.ts` action, which decrypts
+those credentials and builds an adapter per dispatch, per delivery-status poll
+and per health probe.
+
+| Adapter           | Outbound provider                       | Delivery status        | Health probe            |
+| ----------------- | --------------------------------------- | ---------------------- | ----------------------- |
+| `SmsAdapter`      | Twilio REST `Messages.json`             | Twilio message lookup  | Twilio account fetch    |
+| `WhatsAppAdapter` | Meta Cloud API `/{phoneNumberId}/messages` | webhook-driven      | Meta graph fetch        |
+| `WebhookAdapter`  | HTTP POST to the configured endpoint    | none (`sent`)          | config presence only    |
+
+Not adapters here, on purpose. **Email** is the send-provider seam above —
+`sendEmail` on a catalog kind, not a channel. **Chat** is native: the mutation
+persists the row and there is no provider to adapt. Until the D10 honesty pass
+both had a class in this set anyway, and each faked its answers — a `send` that
+hard-returned failure or a fabricated id, a `healthCheck` that hard-returned
+healthy without probing, a `validateSignature` that hard-returned `true`. They
+are deleted, not reimplemented.
+
+**Nothing here verifies an inbound webhook.** The signature checks for these
+same three channels live in `webhooks/adapters/{twilio,meta,generic}.ts`, where
+they run against real secrets on the real inbound route. An adapter's own
+`validateSignature`/`parseInbound` are contract leftovers with no host caller;
+treat the `webhooks/` pair as the only answer.
+
+## Inbound mail normalization (`packages/channels/`)
+
+`@owlat/channels` is now exactly one thing, whatever its name still suggests:
+the source-keyed registry (`inboundRegistry.ts`) that turns a vendor's inbound
+envelope into the canonical `InboundEmailMessage`. See "Inbound channel
+adapters" above for the registry itself; the package holds nothing else.
 
 ---
 
