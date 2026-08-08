@@ -1396,14 +1396,23 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		// dropped from the list is caught by the contribution-bucket assertion,
 		// which requires every declared kind to be documented somewhere.
 		const reserved = section(docs.contributions, '## Reserved names');
+		// ONLY the list paragraph. The rest of the section is prose about a
+		// WITHDRAWN reservation, and it names buckets that are wired
+		// (`sendTransports`, `inboundAdapters`) — sweeping those into the loop
+		// below would assert that codegen must never mention a bucket it is
+		// entitled to read, and would fail on an unrelated codegen refactor.
+		const list = reserved
+			.split('\n\n')
+			.find((paragraph) => paragraph.includes('`PLUGIN_CONTRIBUTION_KINDS` also contains'));
+		expect(list, 'the Reserved names section no longer lists the reserved buckets').toBeDefined();
 		const kinds = new Set(contributionKinds());
-		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
+		const buckets = [...list!.matchAll(/`([a-zA-Z]+)`/g)]
 			.map((match) => match[1]!)
 			.filter((name) => kinds.has(name));
-		// Non-degeneracy floor only — it stops the section from silently emptying
-		// out, and tracks the reserved-name count, which is 8 since D10 withdrew
-		// `channelAdapters` along with the stub surface that bucket named.
-		expect(buckets.length).toBeGreaterThan(7);
+		// Exact, so a name dropped from the list is caught on the first drop:
+		// eight kinds are reserved today. Wiring one up means editing the
+		// sentence and this number together, which is the point.
+		expect(buckets.length, `reserved buckets: ${buckets.join(', ')}`).toBe(8);
 		const generate = read('packages/plugin-codegen/src/generate.ts');
 		for (const bucket of buckets) {
 			expect(
