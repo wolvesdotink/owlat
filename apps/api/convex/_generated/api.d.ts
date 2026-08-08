@@ -281,6 +281,7 @@ import type * as delivery_pacedWarmingCapacity from '../delivery/pacedWarmingCap
 import type * as delivery_postmaster from '../delivery/postmaster.js';
 import type * as delivery_signals_postmaster from '../delivery/signals/postmaster.js';
 import type * as delivery_signals_rampGateSources from '../delivery/signals/rampGateSources.js';
+import type * as delivery_signals_registry from '../delivery/signals/registry.js';
 import type * as delivery_signals_types from '../delivery/signals/types.js';
 import type * as delivery_ramp_actuatorComposition from '../delivery/ramp/actuatorComposition.js';
 import type * as delivery_ramp_aimd from '../delivery/ramp/aimd.js';
@@ -1245,6 +1246,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/relayReturnPathProbe': typeof delivery_relayReturnPathProbe;
 	'delivery/signals/postmaster': typeof delivery_signals_postmaster;
 	'delivery/signals/rampGateSources': typeof delivery_signals_rampGateSources;
+	'delivery/signals/registry': typeof delivery_signals_registry;
 	'delivery/signals/types': typeof delivery_signals_types;
 	'delivery/ramp/capacityProjection': typeof delivery_ramp_capacityProjection;
 	'delivery/ramp/controlOverride': typeof delivery_ramp_controlOverride;

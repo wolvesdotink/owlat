@@ -304,3 +304,54 @@ describe('docs/abstractions.md: the feedback adapter section matches the registr
 		expect(existsSync(resolve(repoRoot, gate))).toBe(true);
 	});
 });
+
+/**
+ * The signal-source registry is the fourth provider seam on the page and the
+ * only one about EVIDENCE rather than dispatch, so the failure mode is the same
+ * but the consequence is worse: a source the page omits is a reading an operator
+ * does not know the deployment is taking, and an absence row the page invents is
+ * a promise about a deployment that never configured it.
+ *
+ * The registry is keyed by the shared vocabulary rather than by camelCase
+ * adapter names, so it needs its own two-line parser rather than `registryKeys`.
+ */
+describe('docs/abstractions.md: the signal-source section matches the registry', () => {
+	const registrySource = read('apps/api/convex/delivery/signals/registry.ts');
+	const declaration = 'export const SIGNAL_SOURCES';
+	const start = registrySource.indexOf(declaration);
+	expect(start, `the registry no longer declares ${declaration}`).toBeGreaterThan(-1);
+	const body = registrySource.slice(start, registrySource.indexOf('\n};', start));
+	const keys = [...body.matchAll(/^\t([a-z][a-z_]*): /gm)].map((match) => match[1]!);
+	const section = pageSection('### Deliverability signal sources');
+
+	it('parses the registered sources out of the registry', () => {
+		expect(keys.length, 'no keys parsed out of SIGNAL_SOURCES').toBeGreaterThan(1);
+		// The three provider feeds are the reason the seam declares absence at all.
+		expect(keys).toEqual(expect.arrayContaining(['snds', 'yahoo_cfl', 'google_postmaster']));
+	});
+
+	it('tabulates exactly the sources the registry declares', () => {
+		const listed = [...section.matchAll(/^\| `([a-z_]+)`\s*\|/gm)].map((match) => match[1]!);
+		expect(listed.sort()).toEqual([...keys].sort());
+	});
+
+	it('gives every source one of the three families', () => {
+		const kinds = [...section.matchAll(/^\| `[a-z_]+`\s*\| `([a-z]+)`/gm)].map(
+			(match) => match[1]!
+		);
+		expect(kinds).toHaveLength(keys.length);
+		for (const kind of kinds) {
+			expect(['infrastructure', 'outcome', 'advisory']).toContain(kind);
+		}
+	});
+
+	it('states the two promises the seam is worth having', () => {
+		// Non-blocking absence is the invariant; the deferred plugin bucket is the
+		// decision a reader would otherwise re-litigate.
+		expect(section).toContain('isBlocking: false');
+		expect(section).toContain('no plugin bucket');
+		const gate = 'apps/api/convex/delivery/signals/__tests__/signalRegistry.test.ts';
+		expect(section).toContain('signals/__tests__/signalRegistry.test.ts');
+		expect(existsSync(resolve(repoRoot, gate))).toBe(true);
+	});
+});

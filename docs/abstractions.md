@@ -366,6 +366,70 @@ adapter that normalizes the webhook payload into a canonical
 `inbound.received`) and any future inbound source via
 `getInboundChannelAdapter(source)`.
 
+### Deliverability signal sources
+
+`SignalSource` (`apps/api/convex/delivery/signals/`) — the fourth provider seam,
+and the only one that is about EVIDENCE rather than about dispatch: where a
+deployment's readings about its own deliverability come from. Every source
+declares three things — its `key` in the shared deliverability vocabulary, its
+`kind`, and what happens when it is **not configured** — and the registry
+(`registry.ts`) is keyed by the vocabulary, so a new source is a compile error
+until it is registered and a registered source that names an unknown key does not
+compile either.
+
+| Key                 | Kind             | Absence      | Implementation                                        |
+| ------------------- | ---------------- | ------------ | ----------------------------------------------------- |
+| `bounce_rate`       | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 1)            |
+| `persistent_defers` | `infrastructure` | `hold`       | `signals/rampGateSources.ts` (ramp gate 2)            |
+| `complaint_rate`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 3)            |
+| `engagement_ratio`  | `outcome`        | `omit`       | `signals/rampGateSources.ts` (ramp gate 4)            |
+| `seed_placement`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 5)            |
+| `snds`              | `advisory`       | `substitute` | `signals/snds.ts` (Microsoft SNDS)                     |
+| `yahoo_cfl`         | `advisory`       | `substitute` | `signals/yahooCfl.ts` (Yahoo Complaint Feedback Loop)  |
+| `google_postmaster` | `advisory`       | `omit`       | `signals/postmaster.ts` (Google Postmaster Tools)      |
+
+**`kind` says what a reading is allowed to do**, in the sense
+`packages/shared/src/deliverabilityRouting.ts` gives the three families:
+infrastructure flips the shipped relay fallback, outcome moves the ramp
+controller's share, advisory is recorded and readable and moves nothing on its
+own. It is not a taxonomy of how the evidence was gathered — the three provider
+feeds are advisory because no decision path consults them today, not because a
+complaint band is advice. Wiring one into a gate changes what the ramp does and
+is its own piece. The five ramp keys are pinned against the shared classifier by
+`signals/__tests__/signalRegistry.test.ts`, so the ramp cannot come to measure a
+signal the routing vocabulary spells differently.
+
+**Absence is the point of the seam.** "Not configured" is a supported verdict
+(the deliverability plan's D2): every absence carries `isBlocking: false` BY TYPE,
+so a source that blocked on its own absence could not be declared, and the
+registry suite drives each source with its evidence removed to check that what it
+declared is what it does — `substitute` hands back the stand-in it names,
+`hold` still answers `insufficient_data`, `omit` contributes nothing at all.
+The substitution sentences are READ from the substitution the cell actually
+applies (`SNDS_ABSENT_SUBSTITUTION`, `yahooComplaintSubstitution`), never
+restated here or in the registry.
+
+**Gate evaluation folds the registry, not a list of modules.**
+`ramp/gateEvaluation.ts` asks `collectRampGateSignals(arm, input)`; each source
+declares one evaluator per arm (the concurrent two-armed one and the standalone
+trailing-baseline twin), which is the one thing the two implementations differ
+about. The ARRAY ORDER is a contract: the aggregator names the first result at
+the winning rank, so the sources are declared in the plan's gate numbering.
+
+**Two things are deliberately absent.** The shipped relay-fallback triggers
+(`ip_quarantined`, `dnsbl_*`) are declared in the shared routing vocabulary and
+recorded by the routing plane; nothing collects them through this contract, and a
+registry row with no collector would promise a reader there is not. And there is
+**no plugin bucket**: third-party signal sources are deferred — the registry is
+the seam, and opening it is a one-piece follow-up on the day someone wants it.
+
+The durable halves stay outside this directory, because their Convex function
+paths are addressed by pollers, crons, the webhook dispatcher and the delivery
+screens: `delivery/snds.ts` (ingest, retention, the bounded gate read) and
+`delivery/postmaster.ts` (the two ingest mutations, the sweep, and
+`getPostmasterStatus`, which now derives its cards through the registered
+source).
+
 ---
 
 ## Channel adapters (`packages/channels/`)
