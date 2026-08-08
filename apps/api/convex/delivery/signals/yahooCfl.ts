@@ -260,6 +260,13 @@ export interface YahooComplaintSignalInput {
 }
 
 /**
+ * The two sources that are a stand-in FOR the Yahoo feed rather than the feed.
+ * `yahoo_cfl` is excluded because it is the feed itself, and a live Yahoo feed is
+ * a PRESENT reading rather than a substitution for one.
+ */
+export type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
+
+/**
  * This module's names for its stand-ins, in the ONE substitute vocabulary the
  * degradation table and the dashboard use (`RAMP_SUBSTITUTE_SOURCES`).
  *
@@ -269,13 +276,7 @@ export interface YahooComplaintSignalInput {
  * registry entry that spelled the CFBL feed `cfbl_address` while every other
  * reader spells it `cfbl_address_reports` is one stand-in with two names, so the
  * translation happens once, here, at the boundary.
- *
- * `yahoo_cfl` maps to nothing: it is the feed itself, and a live Yahoo feed is a
- * PRESENT reading rather than a substitution for one.
  */
-/** The two sources that are a stand-in FOR the Yahoo feed rather than the feed. */
-export type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
-
 export const YAHOO_ABSENCE_SUBSTITUTE: Readonly<Record<YahooStandIn, RampSubstituteSource>> = {
 	cfbl_address: 'cfbl_address_reports',
 	unsubscribe_rate_proxy: 'unsubscribe_rate_proxy',

@@ -34,6 +34,7 @@ import { GOOGLE_POSTMASTER_SIGNAL_SOURCE, type PostmasterDomainSignals } from '.
 import {
 	collectRampGateSignals,
 	RAMP_GATE_SIGNAL_SOURCES,
+	RAMP_GATE_SIGNALS,
 	type RampArm,
 	type RampGateSignalSource,
 } from '../rampGateSources';
@@ -94,24 +95,21 @@ function rampProbe(source: RampGateSignalSource): SignalCollection<unknown> {
 	return source.collect({ arm: ARM, input: unmeasuredWindow() });
 }
 
-const [HARD_BOUNCE, DEFERRAL, COMPLAINT, ENGAGEMENT, SEED_PLACEMENT] = RAMP_GATE_SIGNAL_SOURCES as [
-	RampGateSignalSource,
-	RampGateSignalSource,
-	RampGateSignalSource,
-	RampGateSignalSource,
-	RampGateSignalSource,
-];
-
 /**
  * ONE NO-SIGNAL CASE PER SOURCE — the deployment that never configured it, or
  * the window that measured nothing. Exhaustive by type.
+ *
+ * The ramp probes are taken from `RAMP_GATE_SIGNALS` BY KEY rather than from the
+ * folded array by position: the fold order is deliberately re-orderable, and a
+ * positional binding would silently re-point `bounce_rate`'s probe at another
+ * source the day someone re-orders it.
  */
 const NO_SIGNAL: Readonly<Record<SignalSourceKey, () => SignalCollection<unknown>>> = {
-	bounce_rate: () => rampProbe(HARD_BOUNCE),
-	persistent_defers: () => rampProbe(DEFERRAL),
-	complaint_rate: () => rampProbe(COMPLAINT),
-	engagement_ratio: () => rampProbe(ENGAGEMENT),
-	seed_placement: () => rampProbe(SEED_PLACEMENT),
+	bounce_rate: () => rampProbe(RAMP_GATE_SIGNALS.bounce_rate),
+	persistent_defers: () => rampProbe(RAMP_GATE_SIGNALS.persistent_defers),
+	complaint_rate: () => rampProbe(RAMP_GATE_SIGNALS.complaint_rate),
+	engagement_ratio: () => rampProbe(RAMP_GATE_SIGNALS.engagement_ratio),
+	seed_placement: () => rampProbe(RAMP_GATE_SIGNALS.seed_placement),
 	snds: () =>
 		SNDS_SIGNAL_SOURCE.collect(
 			buildSndsGateInput({
@@ -308,12 +306,13 @@ describe('the ramp folds the registry, in the registry’s order', () => {
 		]);
 	});
 
-	it('folds every declared key, in the vocabulary’s order', () => {
-		// The list above pins the five that ARE folded; this pins them against the
-		// five that EXIST. A sixth measurement declared and not folded would leave
-		// the ramp growing its clean streak on evidence nothing ever looked at — the
-		// direction a hand-written array cannot fail in. (`RampGateId`'s own end of
-		// the same promise is `_EveryRampGateIsFolded`, checked by the compiler.)
+	it('folds the vocabulary itself, each source under the key it calls itself', () => {
+		// What this pins, precisely: the fold is DERIVED from `RAMP_GATE_SIGNAL_KEYS`
+		// (so the gate-order list above is that array's order, spelled out once for a
+		// reader), and every record entry's own `key` agrees with the slot it sits
+		// in. It is not a completeness check — a sixth key is folded automatically by
+		// the derivation, a sixth key with no source does not compile, and a sixth
+		// `RampGateId` nothing folds is caught by `_EveryRampGateIsFolded`.
 		expect(RAMP_GATE_SIGNAL_SOURCES.map((source) => source.key)).toEqual([
 			...RAMP_GATE_SIGNAL_KEYS,
 		]);
@@ -341,7 +340,7 @@ describe('the ramp folds the registry, in the registry’s order', () => {
 	});
 
 	it('the standalone arm re-grades a concurrent gate-4 answer, the equipped arm does not', () => {
-		const collected = ENGAGEMENT.collect({
+		const collected = RAMP_GATE_SIGNALS.engagement_ratio.collect({
 			arm: ARM,
 			input: matrixInput(MATRIX_MODE, { engagement: ENGAGEMENT_PASS }),
 		});
@@ -359,7 +358,7 @@ describe('the ramp folds the registry, in the registry’s order', () => {
 		// DID classify probes answers something else. Without this, a change that
 		// made the gate hold on every window — advancing nothing, but hiding a
 		// placement failure behind a hold — would pass the absence suite untouched.
-		const measured = SEED_PLACEMENT.collect({
+		const measured = RAMP_GATE_SIGNALS.seed_placement.collect({
 			arm: ARM,
 			input: matrixInput(MATRIX_MODE, { engagement: null }),
 		});
