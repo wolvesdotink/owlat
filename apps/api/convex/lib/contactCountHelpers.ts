@@ -1,13 +1,13 @@
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { Value } from "convex/values";
-import { countWithPagination } from "./pagination";
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Value } from 'convex/values';
+import { countWithPagination } from './pagination';
 
 /**
  * Increment the contact count for the instance.
  * Creates the instanceSettings document if it doesn't exist.
  */
 export async function incrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
-	const settings = await ctx.db.query("instanceSettings").first();
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	if (settings) {
 		await ctx.db.patch(settings._id, {
@@ -16,7 +16,7 @@ export async function incrementContactCount(ctx: MutationCtx, delta: number = 1)
 		});
 	} else {
 		// Create settings document if it doesn't exist
-		await ctx.db.insert("instanceSettings", {
+		await ctx.db.insert('instanceSettings', {
 			contactCount: delta,
 			createdAt: Date.now(),
 		});
@@ -28,7 +28,7 @@ export async function incrementContactCount(ctx: MutationCtx, delta: number = 1)
  * Ensures count never goes below 0.
  */
 export async function decrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
-	const settings = await ctx.db.query("instanceSettings").first();
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	if (settings) {
 		const newCount = Math.max(0, (settings.contactCount ?? 0) - delta);
@@ -46,7 +46,7 @@ export async function decrementContactCount(ctx: MutationCtx, delta: number = 1)
  * Works in both queries and mutations.
  */
 export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promise<number | null> {
-	const settings = await ctx.db.query("instanceSettings").first();
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	return settings?.contactCount ?? null;
 }
@@ -64,19 +64,19 @@ export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promis
  * it. The cached count is only a hint.
  */
 export async function reconcileContactCount(
-	ctx: MutationCtx,
+	ctx: MutationCtx
 ): Promise<{ previous: number | null; actual: number; corrected: boolean }> {
 	const actual = await countWithPagination(
 		ctx.db,
-		"contacts",
-		"by_deleted_at_and_created_at",
+		'contacts',
+		'by_deleted_at_and_created_at',
 		// `deletedAt === undefined` selects live rows. The generic index-range
 		// builder types values as `Value` (no `undefined`), so assert through it
 		// — Convex resolves an absent optional field to `undefined` at runtime.
-		(q) => q.eq("deletedAt", undefined as unknown as Value),
+		(q) => q.eq('deletedAt', undefined as unknown as Value)
 	);
 
-	const settings = await ctx.db.query("instanceSettings").first();
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	const previous = settings?.contactCount ?? null;
 	const corrected = previous !== actual;
@@ -89,7 +89,7 @@ export async function reconcileContactCount(
 			});
 		}
 	} else {
-		await ctx.db.insert("instanceSettings", {
+		await ctx.db.insert('instanceSettings', {
 			contactCount: actual,
 			createdAt: Date.now(),
 		});
