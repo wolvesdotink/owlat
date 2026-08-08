@@ -13,16 +13,25 @@ import { dirname, resolve } from 'node:path';
  * second vitest project rooted at `/` to hold two files would be worse than the
  * import path it saves.
  *
- * Three classes of rot, all of which had already happened by the time this file
- * was written:
+ * Three classes of rot. One of them had already happened; the other two are
+ * conventions this file INTRODUCES, and guards from their first use rather than
+ * after the first casualty:
  *
- *  1. A COUNTED LIST that a later provider silently invalidated ("Four core
- *     adapters today: mta, ses, resend, smtp" — five had shipped).
+ *  1. A COUNTED LIST that a later provider silently invalidated. This one is
+ *     history: "Four core adapters today: mta, ses, resend, smtp" shipped, and
+ *     stayed after `mandrill` made five. Every counted list in this vocabulary
+ *     is now pinned to the array it counts.
  *  2. A CROSS-REFERENCE to a section that does not exist, or that was renamed.
- *     The house spelling for one is `**§ Section name**`, so it is greppable;
- *     this file is what makes it checkable.
- *  3. An `ADR-NNNN` citation with no document behind it. `lint:adr` guarantees
- *     one document per number; nothing guaranteed the number was real.
+ *     New: before this change the file had no `**§ Section name**` references
+ *     at all, so there was nothing to dangle. That spelling is introduced here
+ *     precisely BECAUSE it is greppable, and this is what makes it checkable —
+ *     a convention nobody can verify decays into prose.
+ *  3. An `ADR-NNNN` citation with no document behind it. Also not yet a
+ *     casualty: every number the file cited before this change resolved.
+ *     `lint:adr` guarantees one document per number, but nothing guaranteed a
+ *     citation named a number that exists — and this change adds citations to
+ *     an ADR written in the same commit range, which is exactly when a typo or
+ *     a renumber (0054 was filed as 0043) goes unnoticed.
  *
  * Everything below is pinned to CODE, never to a second copy of the prose.
  */
@@ -81,10 +90,73 @@ function prose(text: string): string {
 	return text.replace(/`[^`]*`/g, '');
 }
 
-describe('CONTEXT.md: section cross-references resolve', () => {
-	const references = [...prose(context).matchAll(/\*\*§ ([^*]+)\*\*/g)].map((match) =>
-		match[1]!.trim()
+/**
+ * Every `**§ Section**` reference in a body, by section name.
+ *
+ * Interior whitespace is COLLAPSED because the file is hand-wrapped at ~80
+ * columns and a two-word section name straddles a line break sooner or later.
+ * Matching the raw capture would report that wrap as a dangling reference,
+ * which trains the next author to either widen the line or delete the check.
+ */
+function referencesIn(body: string): string[] {
+	return [...prose(body).matchAll(/\*\*§ ([^*]+)\*\*/g)].map((match) =>
+		match[1]!.replace(/\s+/g, ' ').trim()
 	);
+}
+
+/**
+ * The English word a count is written as in this file's prose. Longer than the
+ * catalog can plausibly get, so a count that outgrows it reads `undefined` and
+ * fails loudly rather than matching by accident.
+ */
+const COUNT_WORDS = [
+	'Zero',
+	'One',
+	'Two',
+	'Three',
+	'Four',
+	'Five',
+	'Six',
+	'Seven',
+	'Eight',
+	'Nine',
+	'Ten',
+	'Eleven',
+	'Twelve',
+	'Thirteen',
+	'Fourteen',
+	'Fifteen',
+	'Sixteen',
+	'Seventeen',
+	'Eighteen',
+	'Nineteen',
+	'Twenty',
+];
+
+/**
+ * Assert that a "N <things>" sentence spells the length of the array it counts.
+ *
+ * The sentence is located by a regex with the number word as its only capture,
+ * so a REWORDING fails here rather than passing vacuously — a counted list this
+ * helper can no longer find is the same defect as one that counts wrong.
+ *
+ * Matched against the body with runs of whitespace collapsed, for the reason
+ * `referencesIn` collapses them: the file is hand-wrapped, so any sentence long
+ * enough to be worth pinning contains a line break somewhere, and where it
+ * falls must not be part of the contract.
+ */
+function expectCountedWord(body: string, pattern: RegExp, count: number, what: string): void {
+	const found = body.replace(/\s+/g, ' ').match(pattern);
+	expect(found, `the "${what}" count sentence is gone or reworded`).not.toBeNull();
+	const word = COUNT_WORDS[count];
+	expect(word, `no English word for ${count}`).toBeDefined();
+	expect(found![1]!.toLowerCase(), `${what}: prose says "${found![1]}", code has ${count}`).toBe(
+		word!.toLowerCase()
+	);
+}
+
+describe('CONTEXT.md: section cross-references resolve', () => {
+	const references = referencesIn(context);
 
 	it('finds the cross-references it is meant to check', () => {
 		// Non-triviality: a regex that matched nothing would agree with every
@@ -101,7 +173,7 @@ describe('CONTEXT.md: section cross-references resolve', () => {
 		// A self-reference is always a copy-paste, and always sends a reader in a
 		// circle rather than to the section that actually holds the answer.
 		const selfReferencing = sectionHeadings.filter((name) =>
-			prose(section(name)).includes(`**§ ${name}**`)
+			referencesIn(section(name)).includes(name)
 		);
 		expect(selfReferencing).toEqual([]);
 	});
@@ -149,11 +221,46 @@ describe('CONTEXT.md: the send-provider catalog section is pinned to the catalog
 	});
 
 	it('the send-path section states the adapter count the catalog actually has', () => {
-		const providers = section('Send providers');
-		const counted = providers.match(/([A-Z][a-z]+) core adapters today:/);
-		expect(counted, 'the "N core adapters today" sentence is gone or reworded').not.toBeNull();
-		const words = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
-		expect(counted![1]).toBe(words[kinds.length]);
+		expectCountedWord(
+			section('Send providers'),
+			/([A-Z][a-z]+) core adapters today:/,
+			kinds.length,
+			'core adapters'
+		);
+	});
+
+	/**
+	 * The capability fields, read off the one module that must hold a reader for
+	 * each.
+	 *
+	 * `sendProviderCapabilities.ts` exists so that every optional capability
+	 * field on the entry has exactly one fail-closed accessor, so its `…Of`
+	 * exports ARE the capability list. Reading the entry TYPE instead would mean
+	 * telling capability fields apart from `kind`, `label`, the env names and
+	 * the credential array by eye, which is a judgement a test cannot make.
+	 */
+	function capabilityFields(): string[] {
+		const source = read('packages/shared/src/sendProviderCapabilities.ts');
+		const fields = [...source.matchAll(/^export function (\w+)Of\(/gm)].map((match) => match[1]!);
+		expect(fields.length, 'no capability accessors parsed').toBeGreaterThan(3);
+		return fields;
+	}
+
+	it('the catalog section names every capability, and counts them right', () => {
+		const catalog = section('Send provider catalog');
+		const fields = capabilityFields();
+		// A capability may be written bare (`hasProviderFeedback`) or with its
+		// union inside the same span (`domainVerification: 'api' | 'none'`), so
+		// the field name is matched from the opening backtick rather than as a
+		// whole span.
+		const unmentioned = fields.filter((field) => !catalog.includes(`\`${field}`));
+		expect(unmentioned, `capabilities missing: ${unmentioned.join(', ')}`).toEqual([]);
+		expectCountedWord(
+			catalog,
+			/The ([a-z]+) on a catalog entry today:/,
+			fields.length,
+			'provider capabilities'
+		);
 	});
 
 	it('the catalog section names every credential field kind the vocabulary declares', () => {
@@ -164,6 +271,12 @@ describe('CONTEXT.md: the send-provider catalog section is pinned to the catalog
 		);
 		const unmentioned = fieldKinds.filter((kind) => !catalog.includes(`\`${kind}\``));
 		expect(unmentioned, `credential field kinds missing: ${unmentioned.join(', ')}`).toEqual([]);
+		expectCountedWord(
+			catalog,
+			/([A-Z][a-z]+) kinds: `string`/,
+			fieldKinds.length,
+			'credential field kinds'
+		);
 	});
 
 	it('the catalog section names every provider tier', () => {
@@ -177,30 +290,78 @@ describe('CONTEXT.md: the send-provider catalog section is pinned to the catalog
 describe('CONTEXT.md: the ramp section is pinned to the deliverability vocabulary', () => {
 	const ramp = () => section('Ramp controller and measurement plane');
 
-	it('names both axes of a deliverability cell', () => {
-		const body = ramp();
-		for (const stream of constArrayLiterals(
+	const streams = () =>
+		constArrayLiterals(
 			'packages/shared/src/routingDispatch.ts',
 			'export const GOVERNED_MESSAGE_TYPES = ['
-		)) {
-			expect(body, `stream ${stream} unnamed`).toContain(`\`${stream}\``);
-		}
-		for (const destination of constArrayLiterals(
+		);
+	const destinations = () =>
+		constArrayLiterals(
 			'packages/shared/src/deliverabilityRouting.ts',
 			'export const DESTINATION_PROVIDER_KEYS = ['
-		)) {
+		);
+	const gateKeys = () =>
+		constArrayLiterals(
+			'apps/api/convex/delivery/signals/types.ts',
+			'export const RAMP_GATE_SIGNAL_KEYS = ['
+		);
+
+	it('names both axes of a deliverability cell', () => {
+		const body = ramp();
+		for (const stream of streams()) {
+			expect(body, `stream ${stream} unnamed`).toContain(`\`${stream}\``);
+		}
+		for (const destination of destinations()) {
 			expect(body, `destination ${destination} unnamed`).toContain(`\`${destination}\``);
 		}
 	});
 
+	it('states the grid the two axes actually make', () => {
+		// The three numbers in "N streams × M destination providers = N*M cells"
+		// are the same rot class as the adapter count: adding a destination
+		// provider makes the sentence wrong while every name in it stays right.
+		const body = ramp();
+		const rows = streams().length;
+		const columns = destinations().length;
+		expectCountedWord(body, /([A-Z][a-z]+) streams \(/, rows, 'streams');
+		expectCountedWord(body, /× ([a-z]+) destination providers/, columns, 'destination providers');
+		expectCountedWord(body, /= ([a-z]+) cells/, rows * columns, 'cells');
+	});
+
 	it('names every ramp gate the signal registry declares', () => {
 		const body = ramp();
-		for (const key of constArrayLiterals(
-			'apps/api/convex/delivery/signals/types.ts',
-			'export const RAMP_GATE_SIGNAL_KEYS = ['
-		)) {
+		for (const key of gateKeys()) {
 			expect(body, `ramp gate ${key} unnamed`).toContain(`\`${key}\``);
 		}
+	});
+
+	it('states the gate count everywhere the section states it', () => {
+		// Three sentences count the gates — the definition, the signal-source
+		// entry's "the ramp's own N gates", and the "SPREADS the N" that explains
+		// why the registry and the fold cannot disagree. All three are pinned, so
+		// a sixth gate cannot be half-documented.
+		const body = ramp();
+		const count = gateKeys().length;
+		expectCountedWord(body, /([A-Z][a-z]+) today, named in the shared signal/, count, 'ramp gates');
+		expectCountedWord(body, /the ramp's own ([a-z]+) gates/, count, 'ramp gates (signal source)');
+		expectCountedWord(body, /SPREADS the ([a-z]+) from/, count, 'ramp gates (spread)');
+	});
+
+	it('states how many provider reputation feeds the registry declares', () => {
+		// The feeds the ramp gates do NOT cover: the keys the registry names
+		// beside the spread of the gate record.
+		const registry = read('apps/api/convex/delivery/signals/registry.ts');
+		const start = registry.indexOf('export const SIGNAL_SOURCES');
+		expect(start, 'SIGNAL_SOURCES is gone or renamed').toBeGreaterThan(-1);
+		const body = registry.slice(start, registry.indexOf('\n};', start));
+		const named = [...body.matchAll(/^\t([a-z_]+): /gm)].map((match) => match[1]!);
+		expect(named.length, 'no explicitly named signal sources parsed').toBeGreaterThan(0);
+		expectCountedWord(
+			ramp(),
+			/the ([a-z]+) provider reputation feeds/,
+			named.length,
+			'provider reputation feeds'
+		);
 	});
 
 	it('names every signal source family', () => {
