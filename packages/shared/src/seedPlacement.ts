@@ -127,10 +127,8 @@ import type { SeedPlacement } from './seedPlacementFolders';
 
 // ============ ROLL-UP, CORROBORATION AND GATE 5 ============
 
-// The roll-up (the measurement) and the corroboration rule plus gate 5 (what
-// the controller may do about it) are long enough to own a file each; they live
-// in two siblings and are re-exported here so `@owlat/shared/seedPlacement`
-// stays the one import surface.
+// The roll-up (the measurement) owns a sibling file and is re-exported here so
+// `@owlat/shared/seedPlacement` stays the one import surface.
 export {
 	SEED_COLLAPSE_THRESHOLD,
 	SEED_GATE_CONFIDENCE,
@@ -148,19 +146,6 @@ export {
 	type SeedReferenceStatus,
 	type SeedTransportArm,
 } from './seedPlacementGate';
-
-// The corroboration rule and gate 5's verdict — the other side of the roll-up.
-export {
-	evaluateSeedPlacementGate,
-	resolveSeedTripwire,
-	type SeedCorroboratedReason,
-	type SeedCorroboration,
-	type SeedGateResult,
-	type SeedGateVerdict,
-	type SeedSuspicionReason,
-	type SeedTripwireOutcome,
-	type SeedTripwireResolution,
-} from './seedPlacementTripwire';
 
 // ============ PROBE HYGIENE (part of the feature, not a follow-up) ============
 
