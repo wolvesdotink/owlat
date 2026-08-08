@@ -357,15 +357,6 @@ a plugin arm, and `governedDispatch` still terminalizes an ambiguous-acceptance
 send on one rather than waiting for feedback that does now arrive. Declaring it
 is P3.1's parity work, not this seam's.
 
-### Inbound channel adapters
-
-`@owlat/channels` (`packages/channels/src/inboundRegistry.ts`) — registry
-mapping vendor name (`mta`, `resend`, `ses`, `postmark`, `mailgun`) to an
-adapter that normalizes the webhook payload into a canonical
-`InboundEmailMessage`. Used by the MTA feedback adapter (for
-`inbound.received`) and any future inbound source via
-`getInboundChannelAdapter(source)`.
-
 ### Deliverability signal sources
 
 `SignalSource` (`apps/api/convex/delivery/signals/`) — the fourth provider seam,
@@ -499,10 +490,34 @@ module, never a method here.
 
 ## Inbound mail normalization (`packages/channels/`)
 
-`@owlat/channels` is now exactly one thing, whatever its name still suggests:
-the source-keyed registry (`inboundRegistry.ts`) that turns a vendor's inbound
-envelope into the canonical `InboundEmailMessage`. See "Inbound channel
-adapters" above for the registry itself; the package holds nothing else.
+`@owlat/channels` is exactly one thing, whatever its name still suggests, and
+this is its only row: the source-keyed registry in
+`packages/channels/src/inboundRegistry.ts` that turns a vendor's inbound
+envelope into the canonical `InboundEmailMessage`. The package holds nothing
+else — the stub outbound `ChannelAdapter` classes that used to live beside it
+were deleted by the D10 honesty pass, and the three real ones moved to
+`apps/api/convex/channels/adapters/` (the section above).
+
+| `InboundSource` key | Adapter                                                      |
+| ------------------- | ------------------------------------------------------------ |
+| `mta`               | `MtaInboundAdapter` — the `inbound.received` event envelope   |
+| `resend`            | `ResendInboundAdapter` — flat inbound-mail payload            |
+| `ses`               | declared, **not registered** — lookup throws                  |
+| `postmark`          | declared, **not registered** — lookup throws                  |
+| `mailgun`           | declared, **not registered** — lookup throws                  |
+
+The last three are keys in the `InboundSource` union with no adapter behind
+them, on purpose: `getInboundChannelAdapter` throws a named error for them, so a
+caller can tell "source registered but not implemented" from "unknown source"
+instead of silently parsing nothing. Consumers reach an adapter through
+`getInboundChannelAdapter(source)` — today the MTA feedback adapter (for
+`inbound.received`). **A new inbound vendor is a new adapter module plus a
+`registerInboundChannelAdapter()` call**; no handler and no other row in this
+file needs editing for it.
+
+Not to be confused with `webhooks/adapters/` in apps/api, which verifies and
+parses *channel* (SMS/WhatsApp/generic) webhooks — a different seam with a
+different job. This registry only ever sees mail.
 
 ---
 
