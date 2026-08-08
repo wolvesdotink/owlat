@@ -66,9 +66,10 @@ describe('removing a connected integration degrades within one window', () => {
 			presence: absent('microsoft_snds'),
 			provider: 'microsoft',
 		});
-		// NOT SMTP reply classification, which this entry claimed until issue #501:
-		// the classifier runs in the MTA and its per-category counts never reach
-		// Convex, so the cell would have been told it was measured by nothing.
+		// NOT SMTP reply classification, which this entry claimed until issue #501.
+		// The counts reach Convex now, but the clause reading them is on the
+		// standalone evaluator, and this entry also covers relay-equipped cells
+		// whose gate 2 never consults it.
 		expect(after.substitutes).toEqual(['own_bounce_deferral_complaint', 'seed_placement']);
 		expect(degradedCeilingCap(after)).toBeLessThan(OWN_SHARE_CEILING);
 	});

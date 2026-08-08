@@ -13,6 +13,7 @@ import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
 import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
+import { smtpResponseCategoryTables } from './schema/smtpResponseCategories';
 import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
 import { seedPlacementTables } from './schema/seedPlacement';
@@ -51,6 +52,7 @@ export default defineSchema({
 	...seedPlacementTables,
 	...alignmentTables,
 	...sendAssignmentTables,
+	...smtpResponseCategoryTables,
 	...transportOutcomeTables,
 	...inboxTables,
 	...autonomyTables,

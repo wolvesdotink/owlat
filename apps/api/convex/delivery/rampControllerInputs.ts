@@ -43,6 +43,10 @@ import {
 	summarizeTransportOutcomeBuckets,
 } from '../analytics/transportOutcomeSummary';
 import { seedSweepsForCell, type SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
+import {
+	readCellArmCategoryBuckets,
+	summarizeSmtpBlockObservation,
+} from '../analytics/smtpResponseCategories';
 import { RAMP_AIMD } from './ramp/controllerConfig';
 import { readHardStopSignals } from './rampHardStops';
 import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
@@ -260,6 +264,25 @@ export async function loadCellInput(
 		since: now - RAMP_WINDOW_MS,
 	});
 
+	// WHAT THE RECEIVERS SAID, over the SAME evaluation window the rates above are
+	// taken over (issue #501). A second bounded index read per cell rather than a
+	// column on the outcome rows: the categories are an open-ended vocabulary
+	// written once per ATTEMPT, and the counters beside them are a closed one
+	// written once per recipient transition.
+	//
+	// Read over the gate window and no wider. The clause is the ramp's fast signal
+	// — it HALTS a cell — so it may only ever see the day it is deciding about,
+	// exactly as the deferral rate it outranks does.
+	const smtpBlocks = summarizeSmtpBlockObservation(
+		await readCellArmCategoryBuckets(ctx.db, {
+			organizationId,
+			cell: cellKey,
+			arm: 'own',
+			since: now - RAMP_WINDOW_MS,
+		}),
+		{ since: now - RAMP_WINDOW_MS }
+	);
+
 	// GATE 5'S EVIDENCE, off the tick's one ledger read. Resolved AFTER the
 	// managed check above, so an unmanaged slice never triggers it. Both arms are
 	// handed over as they stand: the standalone evaluator drops the reference
@@ -328,6 +351,14 @@ export async function loadCellInput(
 		// baseline needs them); the predicate clamps to its own span, so the extra
 		// day cannot make this reader answer differently from the screen.
 		hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
+		// ABSENT, NEVER ZEROED. `summarizeSmtpBlockObservation` returns `null` for a
+		// window with no rows, which the block clause reads as "no verdict" and
+		// falls through to the deferral rate. A zeroed observation would say the
+		// deployment MEASURED a clean SMTP conversation it never had, and on a cell
+		// that had genuinely collected refusals it would put a real numerator over a
+		// denominator of zero. The summarizer is the one place that distinction is
+		// made, so the screen below reaches the same verdict from the same rows.
+		smtpBlocks,
 		ownSeeds: seedSweeps.own,
 		referenceSeeds: seedSweeps.reference,
 		engagement,

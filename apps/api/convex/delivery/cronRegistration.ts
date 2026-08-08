@@ -100,6 +100,17 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// The classified-response buckets beside them, on the SAME horizon and the
+	// same sweep shape: the two are read over the same windows by the same two
+	// readers, so a cell whose block evidence expired while its outcome counters
+	// remained would be graded on half the window it appears to have.
+	crons.interval(
+		'cleanup smtp response categories',
+		{ hours: 6 },
+		internal.analytics.smtpResponseCategories.cleanupExpiredSmtpResponses,
+		{}
+	);
+
 	// THE AIMD RAMP CONTROLLER (plan D13). Convex owns the decision — it has the
 	// reputation and outcome data, and it reads MTA state through the existing
 	// /ip-reputation sync. Hourly, and BOUNDED per tick: each run takes a slice of

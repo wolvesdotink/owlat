@@ -352,9 +352,9 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// the server's `gateTypes.ts`), and it reads as a share OF those responses
 	// rather than as a rate over a sample — so it gets its own whole sentence.
 	//
-	// NO DEPLOYMENT REACHES THIS BRANCH TODAY (issue #501): the gate clause behind
-	// it has no producer, so the halt never arrives here. Kept and pinned rather
-	// than deleted, so the unit does not have to be rediscovered when it does.
+	// REACHABLE SINCE ISSUE #501 CLOSED: the MTA's classified responses now land in
+	// a per-(cell, arm, day) counter, so a standalone cell whose window is at least
+	// 0.5% refusals renders this sentence.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
 		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses in the checks’ window were block messages, against a limit of ${threshold}.`;
 	}

@@ -417,13 +417,16 @@ export interface RampGateEvaluationInput {
 	readonly hasDeferralTelemetry?: boolean;
 	/**
 	 * Block-message counts from the shipped SMTP classifier over the window.
-	 * Absent means "not observed", which holds; it never fails.
+	 * Absent means "not observed", which yields no verdict at all — the deferral
+	 * rate behind the clause decides on its own. It never fails and never holds.
 	 *
-	 * ABSENT IS THE ONLY STATE THERE IS TODAY (issue #501): the classifier runs in
-	 * the MTA and nothing carries its per-category counts into Convex per (cell,
-	 * arm), so no production reader supplies this field. See
-	 * `gateObservations.ts` for what the shape is waiting on — said here as well
-	 * because this is the declaration an author reaches for when wiring a gate.
+	 * SUPPLIED BY BOTH READERS from `analytics/smtpResponseCategories.ts` (issue
+	 * #501): the MTA reports each classified 4xx/5xx as a typed category on an
+	 * `smtp.classified` webhook, and the counter it lands in is summarized per
+	 * (cell, own arm) over each reader's own window. ABSENT AND ZEROED ARE
+	 * DIFFERENT and the summarizer is what keeps them apart — a window with no
+	 * rows is `null`, a window of pure rate pressure is an observation whose block
+	 * count is zero.
 	 */
 	readonly smtpBlocks?: SmtpBlockObservation | null;
 	/**

@@ -71,9 +71,10 @@ describe('SNDS absent — the gate', () => {
 		if (input.available) return;
 		expect(input.reason).toBe('not_enrolled');
 		// The cell's own outcome counters, dwell x2, ceiling one phase lower. NOT
-		// SMTP reply classification: the classifier runs in the MTA and nothing
-		// carries its per-category counts into Convex (issue #501), so a
-		// substitution naming it named a signal the ramp never reads.
+		// SMTP reply classification (issue #501): the classifier's per-category
+		// counts do reach Convex now, but the clause that reads them belongs to the
+		// standalone evaluator and this substitution covers relay-equipped cells
+		// too, whose gate 2 never consults it.
 		expect(input.substitution).toEqual({
 			source: 'own_bounce_deferral_complaint',
 			dwellMultiplier: 2,
