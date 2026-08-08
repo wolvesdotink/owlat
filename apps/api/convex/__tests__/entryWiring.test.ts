@@ -715,6 +715,7 @@ describe('the wiring guard is looking at production', () => {
 			'internalQuery',
 			'mutation',
 			'ownerMutation',
+			'providerFeedbackWebhook',
 			'publicAction',
 			'publicMutation',
 			'publicQuery',
