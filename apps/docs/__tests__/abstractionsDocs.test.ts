@@ -314,6 +314,60 @@ describe('docs/abstractions.md: the feedback adapter section matches the registr
 	});
 });
 
+/** One source's row as its own module declares it. */
+interface DeclaredSignalSource {
+	readonly key: string;
+	readonly kind: string;
+	readonly behaviour: string;
+}
+
+/**
+ * Resolve an `absence:` expression to the behaviour it declares.
+ *
+ * Two forms exist in the tree and both have to be followed, because a parser
+ * that gave up on one would silently agree with whatever the page happened to
+ * say for those rows: an INLINE object literal (read the `behaviour:` inside
+ * it) and a CALL to a local absence builder — `COUNTER_ABSENCE(…)`,
+ * `sndsAbsence(…)`, `yahooAbsence(…)` — whose own definition, in the same
+ * module, declares the behaviour every call site gets.
+ */
+function absenceBehaviour(source: string, expression: string, after: number): string {
+	const behaviourAfter = (from: number, what: string): string => {
+		const match = /behaviour: '([a-z]+)'/.exec(source.slice(from));
+		expect(match, `no absence behaviour found for ${what}`).not.toBeNull();
+		return match![1]!;
+	};
+	if (expression.startsWith('{')) return behaviourAfter(after, 'an inline absence');
+	const helper = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(expression)?.[1];
+	expect(helper, `unparsable absence expression: ${expression}`).toBeDefined();
+	const definition = new RegExp(`(?:const|function) ${helper}\\b`).exec(source);
+	expect(definition, `${helper} is not defined in the module that calls it`).not.toBeNull();
+	return behaviourAfter(definition!.index, helper!);
+}
+
+/**
+ * Every signal source a module declares, as `key` / `kind` / absence behaviour.
+ *
+ * The three fields are declared adjacently and in that order in every source
+ * (the ramp's carry a `gate` between the first two), which is what makes a
+ * two-regex parse honest here: the page's Kind and Absence columns get the same
+ * treatment as its Key column instead of being checked only for plausibility.
+ */
+function declaredSignalSources(relativePath: string): DeclaredSignalSource[] {
+	const source = read(relativePath);
+	const declarations = [
+		...source.matchAll(
+			/\bkey: '([a-z_]+)',\n(?:\s*gate: '[a-z_]+',\n)?\s*kind: '([a-z]+)',\n\s*absence: ([^\n]+)/g
+		),
+	];
+	expect(declarations.length, `no signal sources parsed out of ${relativePath}`).toBeGreaterThan(0);
+	return declarations.map((match) => ({
+		key: match[1]!,
+		kind: match[2]!,
+		behaviour: absenceBehaviour(source, match[3]!.trim(), match.index + match[0].length),
+	}));
+}
+
 /**
  * The signal-source registry is the fourth provider seam on the page and the
  * only one about EVIDENCE rather than dispatch, so the failure mode is the same
@@ -347,6 +401,26 @@ describe('docs/abstractions.md: the signal-source section matches the registry',
 	const keys = spreadsRampGates ? [...rampKeys, ...named] : named;
 	const section = pageSection('### Deliverability signal sources');
 
+	// The declaring modules, read for all three columns. The registry itself only
+	// re-exports the sources, so `kind` and `absence` are where each source is
+	// built — which is also where a later piece would change them.
+	const declared = new Map<string, DeclaredSignalSource>(
+		[
+			'apps/api/convex/delivery/signals/rampGateSources.ts',
+			'apps/api/convex/delivery/signals/snds.ts',
+			'apps/api/convex/delivery/signals/yahooCfl.ts',
+			'apps/api/convex/delivery/signals/postmaster.ts',
+		].flatMap((path) => declaredSignalSources(path).map((source) => [source.key, source] as const))
+	);
+
+	/** The page's table, as key → the Kind and Absence it prints. */
+	const tabulated = new Map(
+		[...section.matchAll(/^\| `([a-z_]+)`\s*\| `([a-z]+)`\s*\| `([a-z]+)`/gm)].map((match) => [
+			match[1]!,
+			{ kind: match[2]!, behaviour: match[3]! },
+		])
+	);
+
 	it('parses the registered sources out of the registry', () => {
 		expect(keys.length, 'no keys parsed out of SIGNAL_SOURCES').toBeGreaterThan(1);
 		// The three provider feeds are the reason the seam declares absence at all,
@@ -358,18 +432,36 @@ describe('docs/abstractions.md: the signal-source section matches the registry',
 		expect(new Set(keys).size).toBe(keys.length);
 	});
 
+	it('parses a kind and an absence for every registered source', () => {
+		// The row parser is the load-bearing half of the two tests below: a
+		// declaration it stopped matching would leave that source's Kind and
+		// Absence columns unchecked, which is exactly the state this replaced.
+		expect([...declared.keys()].sort()).toEqual([...keys].sort());
+	});
+
 	it('tabulates exactly the sources the registry declares', () => {
 		const listed = [...section.matchAll(/^\| `([a-z_]+)`\s*\|/gm)].map((match) => match[1]!);
 		expect(listed.sort()).toEqual([...keys].sort());
+		// Every listed row parsed all three columns; a row whose Kind or Absence
+		// stopped being a bare code span would otherwise drop out of the comparison.
+		expect([...tabulated.keys()].sort()).toEqual(listed.sort());
 	});
 
-	it('gives every source one of the three families', () => {
-		const kinds = [...section.matchAll(/^\| `[a-z_]+`\s*\| `([a-z]+)`/gm)].map(
-			(match) => match[1]!
-		);
-		expect(kinds).toHaveLength(keys.length);
-		for (const kind of kinds) {
-			expect(['infrastructure', 'outcome', 'advisory']).toContain(kind);
+	it('prints the family and the absence each source actually declares', () => {
+		// Not "is one of the three families": a source whose `kind` a later piece
+		// changes from `advisory` to `outcome` when it wires SNDS into gate 3 — or
+		// an absence flipped from `omit` to `hold` — moves the ramp's share while
+		// the page keeps stating the old promise. Both columns are compared per
+		// key, the same treatment the key column gets.
+		for (const [key, source] of declared) {
+			expect(
+				['infrastructure', 'outcome', 'advisory'],
+				`${key} declares an unknown kind`
+			).toContain(source.kind);
+			expect(tabulated.get(key), `${key} is missing from the table`).toEqual({
+				kind: source.kind,
+				behaviour: source.behaviour,
+			});
 		}
 	});
 
