@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { columnIndex, section as sectionOf, tableHeader, tableRows } from './markdownDocs';
 
 /**
  * Docs-lint for the send-provider authoring guide (the seams plan's P3.4).
@@ -27,29 +28,12 @@ const read = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
 const guide = read('apps/docs/content/3.developer/49.plugin-send-providers.md');
 
-/** The body of one markdown section, up to the next heading of the same level. */
-function section(heading: string): string {
-	const start = guide.indexOf(`${heading}\n`);
-	expect(start, `the guide has no section "${heading}"`).toBeGreaterThan(-1);
-	const level = heading.indexOf(' ');
-	const rest = guide.slice(start + heading.length);
-	const next = rest.search(new RegExp(`\\n#{1,${level}} `));
-	return next === -1 ? rest : rest.slice(0, next);
-}
-
-/** The rows of the one markdown table in `body`, as arrays of trimmed cells. */
-function tableRows(body: string): string[][] {
-	return body
-		.split('\n')
-		.filter((line) => line.startsWith('|') && !/^\|[\s:-]+\|/.test(line))
-		.map((line) =>
-			line
-				.split('|')
-				.slice(1, -1)
-				.map((cell) => cell.trim())
-		)
-		.slice(1);
-}
+// `section` and `tableRows` live in `./markdownDocs`: this suite and
+// `providerCatalogDocs` parse the SAME table (the N+1 checklist on
+// `15.providers.md`) and had a parser each, already disagreeing on the section
+// terminator — so a markdown change could pass one and fail the other for
+// reasons that had nothing to do with the docs being wrong.
+const section = (heading: string) => sectionOf(guide, heading);
 
 /** Every string member of a union type alias declared in a kit source. */
 function unionMembers(source: string, alias: string): string[] {
@@ -316,20 +300,19 @@ describe('the send-provider guide carries the two-tier provider checklist', () =
 	 */
 	describe('and defers to the canonical core-tier list rather than contradicting it', () => {
 		const core = read('apps/docs/content/3.developer/15.providers.md');
-		const heading = '### Send (email) — the provider-N+1 checklist';
-		const coreChecklist = (() => {
-			const start = core.indexOf(`${heading}\n`);
-			expect(start, 'the core providers page no longer carries the N+1 checklist').toBeGreaterThan(
-				-1
-			);
-			const rest = core.slice(start + heading.length);
-			const next = rest.search(/\n#{1,3} /);
-			return next === -1 ? rest : rest.slice(0, next);
-		})();
-		/** `| # | Artifact | File(s) | Required? |` — the last cell decides the split. */
+		const coreChecklist = sectionOf(core, '### Send (email) — the provider-N+1 checklist');
+		/**
+		 * `| # | Artifact | Core kind | Required? | Plugin kind |` — the `Required?`
+		 * cell decides the split, FOUND BY ITS HEADER. It used to be read as
+		 * `cells[3]`, which survived P5.2's restructure only because the new tier
+		 * column happened to land to its right: had it landed to its left, every row
+		 * would have re-classified as required and the failure would have surfaced
+		 * as a row-count mismatch on THIS page, which nobody had edited.
+		 */
+		const coreRequired = columnIndex(tableHeader(coreChecklist), 'Required?');
 		const coreRows = tableRows(coreChecklist);
-		const optional = coreRows.filter((cells) => /optional/i.test(cells[3] ?? ''));
-		const required = coreRows.filter((cells) => !/optional/i.test(cells[3] ?? ''));
+		const optional = coreRows.filter((cells) => /optional/i.test(cells[coreRequired] ?? ''));
+		const required = coreRows.filter((cells) => !/optional/i.test(cells[coreRequired] ?? ''));
 
 		it('links to it as the canonical list, at an anchor that page still has', () => {
 			// The anchor github-slugger derives from the heading above, so a renamed

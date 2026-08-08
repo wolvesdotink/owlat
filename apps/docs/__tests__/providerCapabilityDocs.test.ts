@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coreCatalogEntries } from './catalogSource';
+import { rowCells } from './markdownDocs';
 
 /**
  * Docs-lint for the "Declared capabilities" table on the providers page.
@@ -41,14 +42,11 @@ function tableRow(field: string): { columns: string[]; cells: string[] } {
 	const lines = providers.split('\n');
 	const headerIndex = lines.findIndex((line) => line.startsWith('| Field | Meaning |'));
 	expect(headerIndex, 'the declared-capabilities table is gone').toBeGreaterThan(-1);
-	const split = (line: string) =>
-		line
-			.split('|')
-			.slice(1, -1)
-			.map((cell) => cell.trim());
+	// `rowCells` is the shared splitter in `./markdownDocs` — the third copy of it
+	// in this directory is what that module removed.
 	const row = lines.find((line) => line.startsWith(`| \`${field}\` |`));
 	expect(row, `the ${field} row is gone`).toBeDefined();
-	return { columns: split(lines[headerIndex]!).slice(2), cells: split(row!).slice(2) };
+	return { columns: rowCells(lines[headerIndex]!).slice(2), cells: rowCells(row!).slice(2) };
 }
 
 /** `` `probe` → settles `no_envelope_control` `` ⇒ `probe`. */
