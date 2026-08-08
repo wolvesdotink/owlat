@@ -55,14 +55,22 @@ export interface DestinationProviderProfile {
  * The rows the checked-in shaping table is total over: every NAMED cell of the
  * destination taxonomy, plus the generic row every other destination reads.
  *
- * `other` is deliberately absent. It is the taxonomy's UNNAMED cell, and
- * `__default__` is the row that shapes it: `canonicalProfileKey` leaves an
- * operator outside the taxonomy on its OWN domain key, so `getProfile` finds no
- * checked-in entry and falls through to `mta:isp-profile:__default__` — the
- * Redis row seeded from this table's `__default__` values. Giving `other` a row
- * here would produce `mta:isp-profile:other`, which that read path never
- * consults, so it would shape nothing while looking like it shaped everything
- * unnamed.
+ * `other` is deliberately absent, and the reason is PINNING THE STATUS QUO, not
+ * inertness — `mta:isp-profile:other` is a live, hot row. It is what
+ * `getProfile` reads for every destination whose MX set is not one of the four
+ * named operators (`smtp/sender.ts` passes `destination.providerKey`, which is
+ * `other` for the majority of B2B destinations), and it is operator-writable:
+ * `PUT /isp-profiles/other` passes `isDestinationProviderKey` and HSETs it.
+ *
+ * What the absence buys is that today that read finds no checked-in entry and
+ * falls through to `mta:isp-profile:__default__` — the Redis row seeded from
+ * this table's `__default__` values, which operators tune as "everything else".
+ * Adding an `other` row here would take over that fallback for all
+ * MX-unclassified traffic on the next boot while the `__default__` row kept
+ * shaping only the per-domain keys `canonicalProfileKey` passes through, so it
+ * is a shaping change to real traffic, not a completeness fix. If a considered
+ * `other` policy is ever wanted, it belongs in the same change that decides
+ * what `__default__` then means.
  */
 type CheckedInProfileKey = Exclude<DestinationProviderKey, 'other'> | '__default__';
 
@@ -82,11 +90,12 @@ type CheckedInProfileKey = Exclude<DestinationProviderKey, 'other'> | '__default
  * the `Object.freeze` call.
  *
  * The EXPORTED alias below is string-keyed on purpose: `config/ispProfiles.ts`
- * looks profiles up by `canonicalProfileKey`, which is deliberately a raw
- * DOMAIN for operators outside the taxonomy (the pinned divergence documented
- * there), and the docs table iterates the object's own entries. Both are
- * legitimate string reads of a table whose membership is nonetheless
- * exhaustively checked here.
+ * looks profiles up by `canonicalProfileKey`, whose result is deliberately
+ * WIDER than this table's key set — `other`, and a raw DOMAIN for operators
+ * outside the taxonomy (the pinned divergence documented there) — and a miss is
+ * the meaningful answer that starts the `__default__` fall-through. The docs
+ * table likewise iterates the object's own entries. Both are legitimate string
+ * reads of a table whose membership is nonetheless exhaustively checked here.
  */
 const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze<
 	Readonly<Record<CheckedInProfileKey, Readonly<DestinationProviderProfile>>>

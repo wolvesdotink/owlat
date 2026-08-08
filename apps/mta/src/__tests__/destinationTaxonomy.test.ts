@@ -38,6 +38,11 @@ vi.mock('../monitoring/logger.js', () => ({
 import {
 	DESTINATION_PROVIDER_KEYS,
 	destinationProviderForDomain,
+	// The expectation is the SHIPPED normalizer, not a restatement of it: a test
+	// that re-spells `trim/lowercase/trailing-dot` would keep passing on the day
+	// the shared normalizer gains a step and `canonicalProfileKey`'s two branches
+	// silently start answering on differently-normalized strings.
+	normalizeDestinationDomain,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import { canonicalProfileKey, getProfile } from '../config/ispProfiles.js';
@@ -64,10 +69,6 @@ import {
 } from './helpers/destinationDomainCorpus.js';
 
 const IP = '10.0.0.9';
-/** What every shipped caller has already applied before a key reaches a store. */
-function normalizedDomain(domain: string): string {
-	return domain.trim().toLowerCase().replace(/\.$/, '');
-}
 /** Fixed clock: the ISP metric row and the snapshot route each derive their own
  *  UTC date, and a real clock can put them on opposite sides of midnight. */
 const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);
@@ -307,7 +308,9 @@ describe('consumer: config/ispProfiles.ts — the PINNED DIVERGENCE', () => {
 			// The divergence, stated as an assertion: the taxonomy says `other`,
 			// profile selection says "this domain's own shaping row".
 			expect(destinationProviderForDomain(domain)).toBe('other');
-			expect(canonicalProfileKey(domain), `${domain} — ${note}`).toBe(normalizedDomain(domain));
+			expect(canonicalProfileKey(domain), `${domain} — ${note}`).toBe(
+				normalizeDestinationDomain(domain)
+			);
 		}
 	});
 
@@ -330,18 +333,46 @@ describe('consumer: config/ispProfiles.ts — the PINNED DIVERGENCE', () => {
 		}
 	});
 
+	async function writeProfileRow(
+		key: string,
+		profile: (typeof DESTINATION_PROVIDER_PROFILES)[string]
+	): Promise<void> {
+		await redis.hset(
+			key,
+			Object.fromEntries(Object.entries(profile).map(([field, value]) => [field, String(value)]))
+		);
+	}
+
 	it('reads an unknown operator from ITS OWN Redis row, not from the `other` row', async () => {
 		const shaped = { ...DESTINATION_PROVIDER_PROFILES['__default__']!, defaultRate: 7 };
-		await redis.hset(
-			'mta:isp-profile:example.com',
-			Object.fromEntries(Object.entries(shaped).map(([field, value]) => [field, String(value)]))
-		);
+		await writeProfileRow('mta:isp-profile:example.com', shaped);
 
-		// The throttle path hands `getProfile` the throttleKey, which IS the domain
-		// for operators outside the taxonomy.
+		// The domain-scoped branch, exercised the way the `providerKey = throttleKey`
+		// default would reach it.
 		expect(await getProfile(redis, 'example.com')).toEqual(shaped);
-		// …and that row is emphatically not the one an `other`-folded read finds.
+		// …and that row is emphatically not the one an `other`-keyed read finds.
 		expect(await getProfile(redis, 'other')).toEqual(DESTINATION_PROVIDER_PROFILES['__default__']);
+	});
+
+	it('shapes `other`-keyed traffic from `mta:isp-profile:other` — an absent row, not an inert one', async () => {
+		// `other` is deliberately missing from the checked-in shaping table, so the
+		// read falls through to `__default__`. That is ABSENCE, and the reason the
+		// exclusion is behaviour-preserving; it is NOT inertness. `smtp/sender.ts`
+		// passes `destination.providerKey`, which is `other` for every destination
+		// whose MX set is not one of the four named operators, and
+		// `PUT /isp-profiles/other` writes exactly this row. Pinning both halves
+		// keeps the comment on `CheckedInProfileKey` honest.
+		expect(await getProfile(redis, 'other')).toEqual(DESTINATION_PROVIDER_PROFILES['__default__']);
+
+		const shapedOther = { ...DESTINATION_PROVIDER_PROFILES['__default__']!, defaultRate: 11 };
+		await writeProfileRow('mta:isp-profile:other', shapedOther);
+
+		expect(await getProfile(redis, 'other')).toEqual(shapedOther);
+		// …and it shapes that key ONLY: the domain-scoped branch is a different row,
+		// so an `other` override does not reach through to per-operator reads.
+		expect(await getProfile(redis, 'example.com')).toEqual(
+			DESTINATION_PROVIDER_PROFILES['__default__']
+		);
 	});
 
 	it('routes a named provider domain to the shared provider row, not a per-domain row', async () => {

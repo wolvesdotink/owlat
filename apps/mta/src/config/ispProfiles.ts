@@ -14,6 +14,7 @@ import { isOutboundTlsMode, strictestOutboundTlsMode } from '@owlat/shared';
 import {
 	destinationProviderForDomain,
 	isDestinationProviderKey,
+	normalizeDestinationDomain,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import type { DestinationProviderProfile } from '../types.js';
@@ -34,17 +35,26 @@ const MAX_RECOVERY_FACTOR = 100;
  * matrix, the warming dimensions and the ISP metric labels are all keyed by.
  *
  * This function answers a different question — "which Redis row shapes the
- * connection to this destination?" — and its input is a PROFILE KEY OR A RAW
- * DOMAIN, because that is what its callers hold: `acquireSlot`, `recordSuccess`
- * and `recordDefer` default `providerKey` to the `throttleKey` computed in
- * `smtp/destinationProvider.ts`, which is deliberately the DOMAIN for operators
- * outside the taxonomy ("known providers share a budget; unknown operators
- * remain domain scoped"). Folding those into `other` would merge every unknown
- * operator into one shaping row and silently retarget the Redis key each read
- * and write uses — a live behaviour change, not a cleanup. It also has to accept
- * a bare provider key (`getProfile(redis, 'gmail')` from the admin route and the
- * sender), which is not a domain at all and which the shared classifier would
- * correctly answer `other` for.
+ * connection to this destination?" — and the reason it cannot BE the classifier
+ * is the input every shipped caller actually hands it: A BARE PROVIDER KEY.
+ * `smtp/sender.ts` passes `destination.providerKey` and `routeProvider`, the
+ * dispatch phases pass `ctx.destination.providerKey`, the throttle effects pass
+ * `effect.providerKey`, and the admin routes pass a parameter already validated
+ * with `isDestinationProviderKey`. `'gmail'` is not a domain, so the shared
+ * classifier correctly answers `other` for it — folding it would retarget every
+ * gmail shaping read from `mta:isp-profile:gmail` to the generic row. That is
+ * the live, load-bearing half of the divergence.
+ *
+ * The other half is a capability rather than a live path: `acquireSlot`,
+ * `recordSuccess` and `recordDefer` DEFAULT `providerKey` to the `throttleKey`
+ * from `smtp/destinationProvider.ts`, which is deliberately the DOMAIN for
+ * operators outside the taxonomy ("known providers share a budget; unknown
+ * operators remain domain scoped"). No shipped caller currently takes that
+ * default — all four pass `providerKey` explicitly — so per-operator rows such
+ * as `mta:isp-profile:example.com` are reachable from the signature but not
+ * written or read in production today. Keeping the passthrough is what lets a
+ * caller take the default again without silently merging every unknown operator
+ * into one shaping row.
  *
  * So the two mappers stay, and the ALIAS TABLE — the part that could drift —
  * does not: the domain→provider folding is delegated to the shared classifier,
@@ -52,21 +62,22 @@ const MAX_RECOVERY_FACTOR = 100;
  * `__tests__/destinationTaxonomy.test.ts` pins exactly that: agreement on every
  * domain the taxonomy names, and the domain-scoped passthrough everywhere else.
  *
- * NORMALIZATION. Delegating also adopts the shared classifier's normalization —
- * `trim` and a trailing-dot strip on top of the lowercase this used to do alone
- * — so the fold path and the passthrough branch are normalized IDENTICALLY,
- * once, at the top. Two consequences worth stating because they are the only
- * inputs whose answer differs from the pre-D8 implementation, and both are
- * unreachable from production: `'gmail.com.'` now folds to `gmail` instead of
- * naming its own row, and `'example.com.'` now shares the `example.com` row
- * instead of splitting one operator's shaping and throttle budget across two
- * rows that each see half the traffic. Every shipped caller hands over either a
- * `throttleKey` (already trimmed, lowercased, dot-stripped and IDNA-normalized
- * by `smtp/destinationProvider.ts`) or a provider key the admin routes have
- * already validated with `isDestinationProviderKey`.
+ * NORMALIZATION is delegated too, to the same module's
+ * `normalizeDestinationDomain`, and it is deliberately applied ONCE at the top
+ * so the branch that FOLDS and the branch that PASSES THROUGH are decided and
+ * answered on the identical string. Restating the transform here would re-arm
+ * the drift the delegation just closed: the day the shared normalizer gains a
+ * step — IDNA folding is the obvious candidate — a unicode domain would be
+ * classified in its punycode form and returned in its unicode form, giving one
+ * operator two rows that each see half the traffic. Two inputs answer
+ * differently from the pre-D8 implementation, both unreachable from production
+ * because every shipped caller hands over either an already-normalized
+ * `throttleKey` or a validated provider key: `'gmail.com.'` now folds to
+ * `gmail` instead of naming its own row, and `'example.com.'` now shares the
+ * `example.com` row instead of splitting one operator across two.
  */
 export function canonicalProfileKey(value: string): string {
-	const normalized = value.trim().toLowerCase().replace(/\.$/, '');
+	const normalized = normalizeDestinationDomain(value);
 	const provider = destinationProviderForDomain(normalized);
 	return provider === 'other' ? normalized : provider;
 }
