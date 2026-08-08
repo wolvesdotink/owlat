@@ -153,13 +153,24 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
  * no longer names gate modules, and a sixth measurement is registered rather
  * than remembered twice. What is left here is the part that is genuinely shared:
  * the fold.
+ *
+ * THE ARM IS NAMED ONCE. A factory rather than two object literals, because an
+ * evaluator that declared `kind` and then passed the arm again would be one fact
+ * written twice: a third arm copy-pasted from the second, with `kind` changed
+ * and the second argument forgotten, would report itself as the new arm while
+ * folding the old one's evaluators — and both spellings typecheck.
  */
-function evaluateArm(arm: RampArm, input: RampGateEvaluationInput): RampGateEvaluation {
-	return aggregateRampGates({
-		perGate: collectRampGateSignals(arm, input),
-		previousCleanStreak: input.previousCleanStreak,
-		now: input.now,
-	});
+function armGateEvaluator(kind: RampArm): RampGateEvaluator {
+	return {
+		kind,
+		evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
+			return aggregateRampGates({
+				perGate: collectRampGateSignals(kind, input),
+				previousCleanStreak: input.previousCleanStreak,
+				now: input.now,
+			});
+		},
+	};
 }
 
 /**
@@ -170,12 +181,7 @@ function evaluateArm(arm: RampArm, input: RampGateEvaluationInput): RampGateEval
  * there is deliberately no delegating `evaluateGates` wrapper that would hide
  * which implementation ran.
  */
-export const referenceArmGateEvaluator: RampGateEvaluator = {
-	kind: 'reference_arm',
-	evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
-		return evaluateArm('reference_arm', input);
-	},
-};
+export const referenceArmGateEvaluator: RampGateEvaluator = armGateEvaluator('reference_arm');
 
 /**
  * The STANDALONE evaluator (plan D2, D3, D14): no reference transport, and no
@@ -204,9 +210,5 @@ export const referenceArmGateEvaluator: RampGateEvaluator = {
  * evaluator this arm runs, so the standalone arm reads the cell's own history
  * because that is the only evaluator it has — not because a branch here says so.
  */
-export const trailingBaselineGateEvaluator: RampGateEvaluator = {
-	kind: 'trailing_baseline',
-	evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
-		return evaluateArm('trailing_baseline', input);
-	},
-};
+export const trailingBaselineGateEvaluator: RampGateEvaluator =
+	armGateEvaluator('trailing_baseline');
