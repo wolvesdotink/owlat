@@ -64,7 +64,8 @@ function lease(overrides: Record<string, unknown> = {}) {
 }
 
 async function request(options: {
-	lease?: string;
+	/** Omit for the bound lease; `null` is the key Redis no longer has. */
+	lease?: string | null;
 	evalResult?: number;
 	state?: (key: string) => object;
 	bodyOverrides?: Record<string, unknown>;
@@ -78,7 +79,7 @@ async function request(options: {
 	const redis = {
 		zcard: vi.fn().mockResolvedValue(0),
 		llen: vi.fn().mockResolvedValue(0),
-		get: vi.fn().mockResolvedValue(options.lease ?? lease()),
+		get: vi.fn().mockResolvedValue('lease' in options ? options.lease : lease()),
 		hgetall: vi.fn(async (key: string) => options.state?.(key) ?? {}),
 		eval: vi.fn().mockResolvedValue(options.evalResult ?? 1),
 		set: vi.fn().mockResolvedValue('OK'),
@@ -183,6 +184,9 @@ describe('POST /send routing lease revalidation', () => {
 	])('rejects a replay outside the bound tenant/message/recipient', async (storedLease) => {
 		const { response, queue } = await request({ lease: storedLease });
 		expect(response.status).toBe(409);
+		// GOVERNANCE, NOT A STORAGE FAULT: the record is right there and readable,
+		// it just does not bind this send. Convex counts this against gate 2.
+		expect(await response.json()).toMatchObject({ code: 'ROUTING_DECISION_EXPIRED' });
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
@@ -190,6 +194,46 @@ describe('POST /send routing lease revalidation', () => {
 		const { response, queue } = await request({ evalResult: 0 });
 		expect(response.status).toBe(409);
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	// ISSUE #505. Every one of these defers the send; what differs is the CODE, and
+	// the code is the only thing that tells Convex whether the deferral is evidence
+	// about this sending identity (gate 2's `governed` budget, 10% ceiling and a
+	// 25% halt) or about our own lease store (`local`, not counted). One over-broad
+	// `ROUTING_DECISION_EXPIRED` used to answer all of them, so a Redis that lost a
+	// lease record could walk a cell towards a halt over a fault no receiver saw.
+	describe('separates an unreadable lease from an expired one', () => {
+		it.each([
+			{ label: 'a truncated value', stored: '{"token":"token-1","messageId":"mess' },
+			{ label: 'a value that is not an object', stored: '"token-1"' },
+			{ label: 'a record naming another token', stored: lease({ token: 'token-2' }) },
+			{ label: 'a record with no usable deadline', stored: lease({ expiresAt: 'soon' }) },
+		])('answers the local code for $label', async ({ stored }) => {
+			const { response, queue } = await request({ lease: stored });
+			expect(response.status).toBe(409);
+			expect(await response.json()).toMatchObject({ code: 'ROUTING_LEASE_UNREADABLE' });
+			expect(queue.add).not.toHaveBeenCalled();
+		});
+
+		it('does not answer the local code for a lease that aged out', async () => {
+			const { response, queue } = await request({ lease: lease({ expiresAt: Date.now() - 1 }) });
+			expect(response.status).toBe(409);
+			expect(await response.json()).toMatchObject({ code: 'ROUTING_DECISION_EXPIRED' });
+			expect(queue.add).not.toHaveBeenCalled();
+		});
+
+		// THE HONEST RESIDUE. The key is written with a 15-minute `EX` and an
+		// `expiresAt` the same distance ahead, so a missing key is a lease that aged
+		// out in the ordinary case — and a `GET` returning nil looks identical
+		// whether the TTL elapsed or an eviction took it. The MTA keeps calling that
+		// governance rather than guessing; only a record it can SEE and cannot USE is
+		// reported as our own storage failing.
+		it('keeps the governed code for a key Redis no longer has', async () => {
+			const { response, queue } = await request({ lease: null });
+			expect(response.status).toBe(409);
+			expect(await response.json()).toMatchObject({ code: 'ROUTING_DECISION_EXPIRED' });
+			expect(queue.add).not.toHaveBeenCalled();
+		});
 	});
 
 	it('rejects a global or provider breaker race before enqueue', async () => {
