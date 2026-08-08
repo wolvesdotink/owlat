@@ -62,6 +62,11 @@ export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number];
  * triggers (`ip_quarantined`, `dnsbl_*`) are recorded by the routing plane and
  * have no collector here, and a registry entry for a source nothing collects
  * would be a promise the tree does not keep.
+ *
+ * THE ORDER IS THIS ARRAY'S OWN, not shared's: the keys are shared's, but the
+ * sequence is the plan's gate numbering (1 hard bounce … 5 seed placement), and
+ * `rampGateSources` folds in it, so the FIRST breach at the winning rank — the
+ * one the operator is shown — is decided here and nowhere else.
  */
 export const RAMP_GATE_SIGNAL_KEYS = [
 	'bounce_rate',

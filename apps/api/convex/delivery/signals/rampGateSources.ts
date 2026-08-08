@@ -16,9 +16,11 @@
  * at the winning rank, and the sources are folded in the plan's gate numbering
  * (1 hard bounce, 2 deferral, 3 complaint, 4 engagement ratio, 5 seed
  * placement), so the earliest, most fundamental problem is the one reported.
- * That order is `RAMP_GATE_SIGNAL_KEYS`' rather than a sequence written out a
- * second time here: re-ordering the shared vocabulary re-orders which breach an
- * operator is shown.
+ * That order is `RAMP_GATE_SIGNAL_KEYS`' own — the KEYS come from the shared
+ * vocabulary, but their SEQUENCE is declared in `./types` and is the ramp's, not
+ * shared's (shared's outcome list neither contains `persistent_defers` nor is in
+ * gate order). Re-ordering that one array re-orders which breach an operator is
+ * shown; re-ordering anything in `@owlat/shared` does not.
  *
  * REGISTRATION IS NOT REMEMBERED, IT IS CHECKED. The measurements are a RECORD
  * keyed by the vocabulary and the fold is derived from it, so a declared key
@@ -62,10 +64,20 @@ import {
 	type RampGateSignalKey,
 	type SignalAbsence,
 	type SignalSource,
+	type SignalSourceKind,
 } from './types';
 
 /** Which evaluator arm is asking — the two implementations of plan D3. */
 export type RampArm = RampGateEvaluator['kind'];
+
+/**
+ * The families a RAMP measurement can belong to — the registry's three minus
+ * `advisory`, because folding a reading is precisely what advisory means it may
+ * not do. Derived from `SignalSourceKind` rather than spelled out, so renaming a
+ * family in `./types` stops compiling here instead of forking the ramp's union
+ * from the registry's.
+ */
+export type RampMeasurementKind = Exclude<SignalSourceKind, 'advisory'>;
 
 /** One arm's question about one window. */
 export interface RampGateSignalInput {
@@ -74,32 +86,51 @@ export interface RampGateSignalInput {
 }
 
 /**
- * A ramp measurement as a signal source. `kind` is narrowed to the two families
- * a ramp measurement can belong to: nothing the controller folds is advisory,
- * because folding it is precisely what advisory means it may not do.
+ * A ramp measurement as a signal source, narrowed to the families a ramp
+ * measurement can belong to (see `RampMeasurementKind`).
  */
 export interface RampGateSignalSource extends SignalSource<RampGateSignalInput, RampGateResult> {
 	readonly key: RampGateSignalKey;
-	readonly kind: 'infrastructure' | 'outcome';
+	readonly kind: RampMeasurementKind;
 	/** The ramp's own id for this measurement — the audit and notification key. */
 	readonly gate: RampGateId;
 }
 
-interface RampGateSignalSpec<Gate extends RampGateId = RampGateId> {
+interface RampGateSignalSpecBase<Gate extends RampGateId> {
 	readonly key: RampGateSignalKey;
 	readonly gate: Gate;
-	readonly kind: 'infrastructure' | 'outcome';
-	readonly absence: SignalAbsence;
-	/**
-	 * The evaluator per arm. `null` means THIS WINDOW MEASURED NOTHING and the
-	 * source contributes no result at all — which is only ever correct for a
-	 * source whose declared absence is `omit`, since a source that holds must
-	 * hand back the holding result for the aggregator to weigh.
-	 */
-	readonly evaluate: Readonly<
-		Record<RampArm, (input: RampGateEvaluationInput) => RampGateResult | null>
-	>;
+	readonly kind: RampMeasurementKind;
 }
+
+/**
+ * A SOURCE THAT DOES NOT ANSWER IS A SOURCE THAT DECLARED `omit`, and the
+ * compiler is what says so.
+ *
+ * `null` from an evaluator means THIS WINDOW MEASURED NOTHING: `collect()` hands
+ * back the declared absence and `collectRampGateSignals` folds nothing at all.
+ * For a source that declared `hold` that would be a silent contradiction — the
+ * hold exists precisely so the aggregator has a result to weigh above `pass`
+ * (plan D10), and a gate that vanished instead would let a cell's clean streak
+ * grow on a window the gate never graded. So the spec is DISCRIMINATED on the
+ * declared behaviour: only the `omit` arm may return `null`, and a `hold` source
+ * whose evaluator learns to return `null` stops compiling here rather than
+ * quietly disappearing from the fold.
+ */
+type RampGateSignalSpec<Gate extends RampGateId = RampGateId> = RampGateSignalSpecBase<Gate> &
+	(
+		| {
+				readonly absence: Extract<SignalAbsence, { behaviour: 'omit' }>;
+				readonly evaluate: Readonly<
+					Record<RampArm, (input: RampGateEvaluationInput) => RampGateResult | null>
+				>;
+		  }
+		| {
+				readonly absence: Exclude<SignalAbsence, { behaviour: 'omit' }>;
+				readonly evaluate: Readonly<
+					Record<RampArm, (input: RampGateEvaluationInput) => RampGateResult>
+				>;
+		  }
+	);
 
 function rampGateSignalSource<Gate extends RampGateId>(
 	spec: RampGateSignalSpec<Gate>
@@ -121,7 +152,7 @@ function rampGateSignalSource<Gate extends RampGateId>(
  * "no evidence this window" is that answer's `insufficient_data`, which the
  * aggregator weighs above `pass` so the ramp never advances on nothing (D10).
  */
-const COUNTER_ABSENCE = (measurement: string): SignalAbsence => ({
+const COUNTER_ABSENCE = (measurement: string): Extract<SignalAbsence, { behaviour: 'hold' }> => ({
 	behaviour: 'hold',
 	note: `A window with no ${measurement} to compare answers insufficient_data, which holds the ramp where it is — never a pass, and never a retreat.`,
 	isBlocking: false,
@@ -243,9 +274,10 @@ export type _EveryRampGateIsFolded = AssertEveryRampGateIsFolded<UnfoldedRampGat
 
 /**
  * The five measurements, in the plan's gate numbering. ORDER IS CONTRACT, and it
- * is `RAMP_GATE_SIGNAL_KEYS`' order rather than a second hand-written sequence:
- * the aggregator names the FIRST result at the winning rank, so re-ordering the
- * vocabulary re-orders which breach an operator is shown.
+ * is `RAMP_GATE_SIGNAL_KEYS`' order (declared in `./types`) rather than a second
+ * hand-written sequence: the aggregator names the FIRST result at the winning
+ * rank, so re-ordering that array — and only that array — re-orders which breach
+ * an operator is shown.
  */
 export const RAMP_GATE_SIGNAL_SOURCES: readonly RampGateSignalSource[] = RAMP_GATE_SIGNAL_KEYS.map(
 	(key) => RAMP_GATE_SIGNALS[key]
