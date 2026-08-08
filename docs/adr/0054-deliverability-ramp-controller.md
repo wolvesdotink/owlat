@@ -1,10 +1,12 @@
-# The deliverability ramp controller — one AIMD controller, two actuators, a substitution table instead of a degraded code path
+# ADR-0054: The deliverability ramp controller — one AIMD controller, two actuators, a substitution table instead of a degraded code path
 
 **Status:** accepted (shipped — see Execution)
 
 > Filed as ADR-0043 in issue #485; `0043`–`0053` were already taken when it was
 > written, and this repo's rule is one document per number (see the note at the
-> top of [ADR-0043](./0043-execution-plan.md)), so it lands at **0054**. The
+> top of [ADR-0043](./0043-execution-plan.md)), so it lands at **ADR-0054** —
+> which is the spelling every citation of it uses, and the spelling
+> `grep -n ADR-0054` has to find here for the number to name one document. The
 > content is unchanged.
 
 ## Context

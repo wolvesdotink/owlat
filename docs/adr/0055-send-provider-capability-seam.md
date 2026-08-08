@@ -302,23 +302,54 @@ tolerance for an arm whose bounces we cannot attribute.
 
 ### Persisted kind fields stay strings (D10)
 
-Every place a provider kind is STORED is a plain `v.string()`:
-`providerRoutes.providers[].providerType` and `providerHealth.providerType`
-(`schema/delivery.ts`), `domains.providerType` (`schema/domains.ts`), the
-transport kind on the plugin-feedback tables (`schema/webhooks.ts`),
-`sendAssignments.transport` and `sendingDomainRelayIdentities.providerKind`.
+Every column that stores a provider KIND is a plain `v.string()`. The audited
+set, as of this ADR, is nine:
 
-Those columns carry a comment naming the TYPE — `SendTransportKind`
-(`packages/shared`), or `SendingDomainProviderKind` for the domain registry's own
-subset, the plugin-feedback tables naming the `plugin.<pluginId>.<localId>` shape
-that is the only kind they hold — rather than re-listing the kinds, and that is
-not a style preference. It
-is the correction this ADR forced: three of the six had restated
-`'mta' | 'ses' | 'resend' | 'smtp'`, a union that predated both Mandrill and the
-plugin tier, so a reader establishing what may legally land in
-`providerRoutes.providers[].providerType` got the opposite of the policy below. A
-comment that restates a union rots exactly as a second declaration does; this is
-recorded here as policy so no comment is the only witness again.
+| Column | Schema file | What the string is |
+| --- | --- | --- |
+| `providerRoutes.providers[].providerType` | `schema/delivery.ts` | a `SendTransportKind` |
+| `providerHealth.providerType` | `schema/delivery.ts` | a `SendTransportKind` |
+| `emailSends.providerType` | `schema/campaigns.ts` | a `SendTransportKind`, post-hoc |
+| `transactionalSends.providerType` | `schema/templates.ts` | a `SendTransportKind`, post-hoc |
+| `sendAssignments.transport` | `schema/sendAssignments.ts` | a `SendTransportKind`, pre-declared |
+| `sendingDomainRelayIdentities.providerKind` | `schema/relayIdentities.ts` | a `SendTransportKind` |
+| `pluginWebhookDeliveries.transportKind` | `schema/webhooks.ts` | a `plugin.<pluginId>.<localId>` kind only |
+| `webhookPayloads.source` | `schema/webhooks.ts` | an `InboundAdapter['source']` — WIDER than the send path |
+| `domains.providerType` | `schema/domains.ts` | a `SendingDomainProviderKind` — a CLOSED union, stored open |
+
+Two neighbours are deliberately NOT on that list, because they are not kinds:
+`sendTransportReturnPathProbes.transportId` (`schema/returnPath.ts`) holds a
+`SendTransportId` — `<kind>` or `<kind>#<instanceKey>`, a different vocabulary —
+and the `arm` columns on `sendAssignments` / `transportOutcomes` are closed
+`own | reference` unions, because an arm is a fixed two-valued question rather
+than an extension point.
+
+The last two rows of the table are the ones a sweep gets wrong. A
+`webhookPayloads.source` is whatever inbound adapter accepted the request, which
+includes the CHANNEL adapters (`webhooks/adapters/twilio|meta|generic.ts`) that
+have nothing to do with sending mail; and `domains.providerType` is the one kind
+column whose union is deliberately closed to core kinds
+(`isSendingDomainProviderKind`), open `v.string()` at the database boundary for
+forward-compat only. A bundled plugin transport proves a domain through
+`sendingDomainRelayIdentities.providerKind`, never through `domains`, so a
+comment there that reads "plugin kinds included" sends an author into a
+`providerFor()` throw.
+
+Those columns carry a comment naming the TYPE — the third column of the table
+above — rather than re-listing the kinds, and that is not a style preference. It
+is the correction this ADR forced, and every one of the nine comments was stale,
+in four vintages: two restated `'mta' | 'ses' | 'resend' | 'smtp'`, a union that
+predated both Mandrill and the plugin tier; the two send-row columns restated an
+even older `(mta, ses, resend)`; `domains.providerType` named the original pair;
+`webhookPayloads.source` named three core kinds plus the plugin shape while the
+column had, in fact, been holding four sources it does not name (`mandrill`, and
+the three channel adapters) for as long as the shared pipeline has existed. So a
+reader establishing what may legally land in any of
+them got the opposite of the policy below. A comment that restates a union rots
+exactly as a second declaration does; this is recorded here as policy so no
+comment is the only witness again — and a duplicated comment rots twice, which is
+why the mutation argument that feeds `webhookPayloads.source`
+(`webhooks/payloads.ts`) points at the column instead of repeating it.
 
 A new kind must be **rows, not columns**. A closed validator union would make
 adding a provider a schema migration, and — worse — would make a row written by
