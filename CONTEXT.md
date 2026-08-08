@@ -4,6 +4,12 @@ This file pins the project-specific language used across architecture decisions
 and grilling sessions. Update inline when terms get sharpened during design
 conversations.
 
+Two spellings are load-bearing, because a test checks them
+(`apps/docs/__tests__/contextVocabularyDocs.test.ts`): a cross-reference to
+another section is written `**§ Section name**`, and a decision record is cited
+as `ADR-NNNN`. Both must resolve — to a `## ` heading here, and to a document in
+`docs/adr/`.
+
 ## Email rendering
 
 **Block**:

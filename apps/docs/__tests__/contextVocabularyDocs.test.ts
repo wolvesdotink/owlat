@@ -70,8 +70,21 @@ function constArrayLiterals(relativePath: string, declaration: string): string[]
 	return values;
 }
 
+/**
+ * The file with inline-code spans removed.
+ *
+ * A cross-reference inside backticks is a QUOTATION of the convention (the note
+ * at the top of the file is one), not a reference to a section, and must not be
+ * resolved as one.
+ */
+function prose(text: string): string {
+	return text.replace(/`[^`]*`/g, '');
+}
+
 describe('CONTEXT.md: section cross-references resolve', () => {
-	const references = [...context.matchAll(/\*\*§ ([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+	const references = [...prose(context).matchAll(/\*\*§ ([^*]+)\*\*/g)].map((match) =>
+		match[1]!.trim()
+	);
 
 	it('finds the cross-references it is meant to check', () => {
 		// Non-triviality: a regex that matched nothing would agree with every
@@ -88,7 +101,7 @@ describe('CONTEXT.md: section cross-references resolve', () => {
 		// A self-reference is always a copy-paste, and always sends a reader in a
 		// circle rather than to the section that actually holds the answer.
 		const selfReferencing = sectionHeadings.filter((name) =>
-			section(name).includes(`**§ ${name}**`)
+			prose(section(name)).includes(`**§ ${name}**`)
 		);
 		expect(selfReferencing).toEqual([]);
 	});
