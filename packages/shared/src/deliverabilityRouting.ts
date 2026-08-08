@@ -16,9 +16,9 @@ export type DeliverabilitySignalProvider = DestinationProviderKey | 'all';
  *
  * The stream axis is not a new taxonomy: it IS the shipped governed message
  * type, which is what lets `route.ts` pass a `MessageType` straight into a cell
- * lookup. Aliasing rather than re-declaring is what makes that safe — a fifth
- * governed message type widens the stream axis with it instead of silently
- * missing every per-stream row.
+ * lookup. Aliasing rather than re-declaring is what makes that safe — a FOURTH
+ * governed message type (there are three) widens the stream axis with it
+ * instead of silently missing every per-stream row.
  */
 export const DELIVERABILITY_STREAM_KEYS = GOVERNED_MESSAGE_TYPES;
 export type DeliverabilityStream = GovernedMessageType;

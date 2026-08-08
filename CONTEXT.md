@@ -2852,7 +2852,9 @@ different provider set (Resend ships only on this side). Exports a
   edit the governed send path to get a single per-send knob.
 
 Adding a core provider remains a one-folder change: a new
-`sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one core kind.
+`sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one catalog
+entry in `packages/shared/src/sendProviderCatalog.ts` — the core kind union
+derives from that entry, so there is no union to widen by hand.
 An operator-installed provider instead declares a data-only
 `contributes.sendTransports` descriptor and exports a `parseExtras` plus
 single-attempt `send` module from a verified package subpath. Codegen adds its
@@ -3004,10 +3006,9 @@ _Avoid_: Provider registry (that names the code half — `SEND_PROVIDERS` in
 `convex/lib/sendProviders/index.ts` — which dispatches adapters, not
 declarations), Provider config (collides with `providerRoutes`, which is one
 org's routing choice rather than the provider's nature), Transport catalog
-(drops the domain
-noun, and "send transport" already names the CONFIGURED INSTANCE of a kind —
-`<kind>` or `<kind>#<instanceKey>` — which is the dispatch unit, not the
-declaration).
+(drops the domain noun, and "send transport" already names the CONFIGURED
+INSTANCE of a kind — `<kind>` or `<kind>#<instanceKey>` — which is the dispatch
+unit, not the declaration).
 
 **Provider capability**:
 A declared answer to "can this transport do X", read in place of asking "is this
@@ -3026,9 +3027,15 @@ Every one has a FAIL-CLOSED default when absent — claiming a capability we wer
 never granted is the expensive direction in each case. Recorded in ADR-0055; the
 rule that no code outside an adapter folder may compare a kind to a literal is
 enforced mechanically by `bun run lint:providers`, whose allowlist only shrinks.
+Distinct from **Capability** under **§ Plugin platform**, which is a
+`domain:action` string a plugin REQUESTS from the host: a provider capability is
+a declared property of a transport that code reads, never a request for a host
+service and never something an operator grants. A plugin-tier transport has
+both, and they are unrelated.
 _Avoid_: Provider feature (Feature is taken by the flag registry — see
 **§ Feature flags**), Provider flag (same collision), Provider trait (Trait is
-taken by the deployment checklist).
+taken by the deployment checklist), plain Capability (that is the plugin grant
+string above).
 
 **Provider tier**:
 How a provider is INTEGRATED, on the catalog entry as `own | core | plugin`.
@@ -3894,13 +3901,20 @@ The unit every deliverability decision is made in: one
 `${stream}:${destinationProvider}` pair. Three streams (`campaign`,
 `transactional`, `automation` — the governed message types) × five destination
 providers (`gmail`, `microsoft`, `yahoo`, `apple`, `other`) = fifteen cells,
-enumerated by `allDeliverabilityCells()`. Both axes are declared exactly once,
-in `packages/shared/src/deliverabilityRouting.ts`, and every consumer — the
-Convex controller, the MTA's shaping profiles and warming store, the dashboard —
-imports from there, so a sixth destination provider propagates or fails the
-build. Gmail and Yahoo judge a sender differently, and a transactional receipt
-and a Tuesday newsletter earn different tolerance from both, so a single global
-"how are we doing" number is the thing this grain exists to refuse.
+enumerated by `allDeliverabilityCells()`. Each axis is declared exactly once,
+but not in the same file. The destination axis is `DESTINATION_PROVIDER_KEYS` in
+`packages/shared/src/deliverabilityRouting.ts`. The stream axis IS the governed
+message type: `GOVERNED_MESSAGE_TYPES` in
+`packages/shared/src/routingDispatch.ts`, re-exported by the routing module as
+`DELIVERABILITY_STREAM_KEYS` — aliased rather than re-declared, which is what
+lets `route.ts` pass a message type straight into a cell lookup and what makes a
+fourth governed message type widen the ramp grid instead of silently missing
+every per-stream row. Every consumer — the Convex controller, the MTA's shaping
+profiles and warming store, the dashboard — reads the axes from those
+declarations, so a sixth destination provider propagates or fails the build.
+Gmail and Yahoo judge a sender differently, and a transactional receipt and a
+Tuesday newsletter earn different tolerance from both, so a single global "how
+are we doing" number is the thing this grain exists to refuse.
 _Avoid_: Segment (taken by audience segmentation), Bucket (taken by the
 reputation day buckets), Slice (used loosely for a share of traffic).
 
@@ -3991,9 +4005,9 @@ by TYPE, so a source that blocked on its own absence could not be declared at
 all. Both the ramp's own five gates and the three provider reputation feeds
 (Microsoft SNDS, Yahoo CFL, Google Postmaster) are sources, and `SIGNAL_SOURCES`
 SPREADS the five from the same record the gate evaluation folds — so
-"registered" and "measured" cannot come apart the way two lists would let them. Deliberately not open
-to plugins yet: the registry is the seam, and opening it is its own piece on the
-day someone wants it.
+"registered" and "measured" cannot come apart the way two lists would let them.
+Deliberately not open to plugins yet: the registry is the seam, and opening it
+is its own piece on the day someone wants it.
 _Avoid_: Feed (names only the provider half), Sensor, Data source (vague about
 what the reading is permitted to move).
 
@@ -4235,7 +4249,10 @@ plugin may REQUEST. Exact match; no wildcards. Distinct from a **Grant**,
 which is the operator decision allowing one declared capability for an
 installation. Grants can only ever restrict the manifest. The API-key
 scope vocabulary doubles as the capability vocabulary for connected-app
-access.
+access. Distinct too from a **Provider capability** under **§ Send
+provider catalog**, which is a declared property of a send transport
+that code READS — nobody grants it, and a bundled transport plugin has
+both kinds at once.
 _Avoid_: Permission (that is the granted state), Scope (that is the
 API-key spelling of the same string, on the Tier-2 path only).
 
