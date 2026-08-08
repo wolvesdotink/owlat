@@ -1,6 +1,13 @@
 /**
  * Turning Google Postmaster Tools v2 telemetry into operator actions.
  *
+ * ONE OF THE THREE PROVIDER REPUTATION FEEDS registered in `./registry` (seams
+ * plan D9). The durable half — the two ingest mutations, the retention sweep and
+ * the org-facing status query — stays in `delivery/postmaster.ts`, whose Convex
+ * function paths are addressed by the webhook dispatcher, the cron registration
+ * and the delivery screens. What lives here is the READING: stored signals in,
+ * operator cards out.
+ *
  * Pure: takes the stored signals for one domain and returns the cards the
  * delivery screens render. No clock, no database, no environment — the whole
  * translation from "a raw API field went red" to "here is what to do about it"
@@ -15,6 +22,7 @@ import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
 } from '@owlat/mta-protocol/webhookEvent';
+import { signalAbsent, signalPresent, type SignalSource } from './types';
 
 export type { PostmasterComplianceCheck, PostmasterDeliveryError };
 
@@ -245,3 +253,56 @@ export function derivePostmasterCards(signals: PostmasterDomainSignals): Postmas
 		(a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
 	);
 }
+
+/**
+ * Whether Google has said ANYTHING about this domain.
+ *
+ * Every metric absent and both lists empty is the shape a domain has before a
+ * single observation lands — an operator with no Google account connected, or
+ * one whose first fetch has not run. It is deliberately not "no cards": a
+ * connected domain with nothing failing also produces no cards, and calling that
+ * "not configured" would tell the operator to go and connect an account they
+ * already connected.
+ */
+function hasPostmasterObservation(signals: PostmasterDomainSignals): boolean {
+	return (
+		signals.userReportedSpamRatio !== null ||
+		signals.spfSuccessRatio !== null ||
+		signals.dkimSuccessRatio !== null ||
+		signals.dmarcSuccessRatio !== null ||
+		signals.deliveryErrorRatio !== null ||
+		signals.deliveryErrors.length > 0 ||
+		signals.checks.length > 0
+	);
+}
+
+/**
+ * Google Postmaster Tools as a signal source (plan D9).
+ *
+ * ADVISORY, in the shared vocabulary's sense of the word: the reading is
+ * recorded and readable and moves nothing by itself. No gate folds a Postmaster
+ * card, no route reads one, and the compliance checks are Google's verdict on
+ * OUR configuration rather than a measurement any controller compares.
+ *
+ * ITS ABSENCE OMITS. A domain Google has said nothing about contributes no
+ * cards — not a hold, not a warning, not a nag. That is the same sentence this
+ * module has always opened with; the registry now states it as data so the
+ * absence test can ask.
+ */
+export const GOOGLE_POSTMASTER_SIGNAL_SOURCE: SignalSource<
+	PostmasterDomainSignals,
+	PostmasterCard[]
+> = {
+	key: 'google_postmaster',
+	kind: 'advisory',
+	absence: {
+		behaviour: 'omit',
+		note: 'A domain with no Postmaster observation produces no cards at all — the operator who never connected a Google account sees a calm "not connected" affordance, never a warning and never a nag.',
+		isBlocking: false,
+	},
+	collect(signals: PostmasterDomainSignals) {
+		return hasPostmasterObservation(signals)
+			? signalPresent(derivePostmasterCards(signals))
+			: signalAbsent<PostmasterCard[]>(GOOGLE_POSTMASTER_SIGNAL_SOURCE.absence);
+	},
+};

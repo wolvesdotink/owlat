@@ -23,7 +23,7 @@ import {
 	type RampIntegrationId,
 	type RampSubstituteSource,
 } from '../degradationMatrix';
-import { SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
+import { SNDS_ABSENT_SUBSTITUTION } from '../../signals/snds';
 import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
@@ -228,7 +228,7 @@ describe('the substitution table names only signals that run', () => {
 	it('says the same thing on the SNDS gate as in the table — in the same words', () => {
 		// Two entries describing one cell: the P3-8 table and the gate input's own
 		// substitution shape, rendered on different screens. WHAT THESE GUARD IS THE
-		// DERIVATION, not a live drift — `sndsGate.ts` now builds its note as a
+		// DERIVATION, not a live drift — `signals/snds.ts` now builds its note as a
 		// template over the table's, so while that holds the comparison below cannot
 		// fail. Re-literalising the sentence is the regression that already happened
 		// once (the table named seed placement beside the cell's own rates; this

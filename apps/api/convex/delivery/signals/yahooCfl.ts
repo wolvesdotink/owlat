@@ -6,9 +6,11 @@
  * this one is the gate-input SUBSTITUTION the ramp reads — and P3-8's
  * substitution table subsumes exactly this file, not the state machine.
  *
- * It lives HERE, under `delivery/ramp/`, rather than in `@owlat/shared`, for one
- * reason: the threshold it substitutes for is gate 3's, and gate 3's threshold
- * has exactly one home — `RAMP_GATE_THRESHOLDS.complaintMax` in `./gateConfig`.
+ * It lives HERE, under `delivery/signals/` — one of the three provider
+ * reputation feeds registered in `./registry` (seams plan D9) — rather than in
+ * `@owlat/shared`, for one reason: the threshold it substitutes for is gate 3's,
+ * and gate 3's threshold has exactly one home —
+ * `RAMP_GATE_THRESHOLDS.complaintMax` in `../ramp/gateConfig`.
  * `packages/shared` cannot import from `apps/api`, so a copy in shared would be
  * a SECOND declaration of that number, and D5 is explicit that the controller
  * and the dashboard must never be able to disagree about a number. Absolute trip
@@ -17,7 +19,7 @@
  *
  * ONE RULE PER SOURCE, and it is the rule the running gate applies. What this
  * module publishes as `trip` is the same comparison
- * `evaluateStandaloneComplaintGate` (`./trailingBaselineGates`) performs — the
+ * `evaluateStandaloneComplaintGate` (`../ramp/trailingBaselineGates`) performs — the
  * absolute `complaintMax` ceiling with a feedback loop, the 3x trailing-
  * unsubscribe multiple without one — read from the same constants. The dashboard
  * cannot state a trip point the controller does not enforce.
@@ -28,8 +30,9 @@
  */
 
 import type { YahooCflEnrollmentState } from '@owlat/shared/yahooCfl';
-import { PROXY_MEASUREMENT } from './gateGrades';
-import { RAMP_GATE_THRESHOLDS, type RateFraction } from './gateConfig';
+import { PROXY_MEASUREMENT } from '../ramp/gateGrades';
+import { RAMP_GATE_THRESHOLDS, type RateFraction } from '../ramp/gateConfig';
+import { signalAbsent, signalPresent, type SignalAbsence, type SignalSource } from './types';
 
 /**
  * Which complaint signal the `yahoo` cell's gate 3 is actually running on.
@@ -59,7 +62,7 @@ export type YahooComplaintTrip =
 			/**
 			 * The rate ABOVE which gate 3 fails — pass iff `rate <= thresholdRate`,
 			 * fail iff `rate > thresholdRate`. Strictly `>`, matching
-			 * `evaluateCeilingGate` in `./ceilingGate`: exactly the threshold PASSES.
+			 * `evaluateCeilingGate` in `../ramp/ceilingGate`: exactly the threshold PASSES.
 			 */
 			readonly thresholdRate: RateFraction;
 	  }
@@ -69,7 +72,7 @@ export type YahooComplaintTrip =
 			 * The multiple of the cell's OWN 30-day trailing rate of the SAME series
 			 * at or above which the gate fails. Inclusive on the fail side — exactly
 			 * `multiple x baseline` FAILS — matching `UNSUBSCRIBE_PROXY_SPEC`'s
-			 * `boundary: 'inclusive_fail'` in `./trailingBaselineGates`.
+			 * `boundary: 'inclusive_fail'` in `../ramp/trailingBaselineGates`.
 			 */
 			readonly multiple: number;
 			/** Which series both sides of the comparison are denominated in. */
@@ -83,7 +86,7 @@ export interface YahooComplaintSubstitution {
 	 *
 	 * It is published rather than described because it is the contract P3-8
 	 * consumes when it subsumes this function, and because the gate that ACTUALLY
-	 * runs — `evaluateStandaloneComplaintGate` in `./trailingBaselineGates` —
+	 * runs — `evaluateStandaloneComplaintGate` in `../ramp/trailingBaselineGates` —
 	 * applies exactly this rule. The dashboard states what the controller
 	 * enforces, or the two can disagree about a number (plan D5).
 	 *
@@ -201,7 +204,7 @@ export function compareYahooComplaintRate(
  *
  * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
  * lands it SUBSUMES this function; the thresholds do NOT move with it, because
- * they already live in `./gateConfig` where the rest of the ramp reads them.
+ * they already live in `../ramp/gateConfig` where the rest of the ramp reads them.
  */
 export function yahooComplaintSubstitution(input: {
 	enrollmentState: YahooCflEnrollmentState;
@@ -248,3 +251,60 @@ export function yahooComplaintSubstitution(input: {
 		isBlocking: false,
 	};
 }
+
+/** What this cell's enrollment state and CFBL-Address presence are. */
+export interface YahooComplaintSignalInput {
+	enrollmentState: YahooCflEnrollmentState;
+	hasCfblAddress: boolean;
+}
+
+/**
+ * The absence, READ from the substitution that was actually picked — the
+ * registry never states a stand-in the cell does not run on, and never restates
+ * a sentence the substitution already owns.
+ */
+function yahooAbsence(substitution: YahooComplaintSubstitution): SignalAbsence {
+	return {
+		behaviour: 'substitute',
+		substitutes: substitution.source,
+		note: substitution.confidenceNote,
+		isBlocking: substitution.isBlocking,
+	};
+}
+
+/**
+ * Yahoo's Complaint Feed as a signal source (plan D9).
+ *
+ * PRESENT MEANS YAHOO'S OWN FEED, nothing weaker. The other two branches of
+ * `yahooComplaintSubstitution` are exactly what this source's absence means: a
+ * stand-in is live, the gate keeps running on it, and the cell says so at a
+ * lower confidence. Reporting `cfbl_address` as a present Yahoo feed would be
+ * the one misreading this module was split out to prevent — Yahoo does not serve
+ * RFC 9477 CFBL-Address.
+ *
+ * ADVISORY, for the reason `./snds` is: `kind` says what a reading may do, and
+ * this one moves nothing on its own. The complaint gate that DOES move the share
+ * is the ramp's own `complaint_rate` source, which measures the cell's counters;
+ * this feed names which signal those counters are standing on and at what
+ * confidence.
+ *
+ * A `lapsed` enrollment is absent, exactly as `yahooComplaintSubstitution`
+ * treats it: the point of the derived lapse is that the feed can no longer be
+ * trusted to be live.
+ */
+export const YAHOO_CFL_SIGNAL_SOURCE: SignalSource<
+	YahooComplaintSignalInput,
+	YahooComplaintSubstitution
+> = {
+	key: 'yahoo_cfl',
+	kind: 'advisory',
+	absence: yahooAbsence(
+		yahooComplaintSubstitution({ enrollmentState: 'not_started', hasCfblAddress: false })
+	),
+	collect(input: YahooComplaintSignalInput) {
+		const substitution = yahooComplaintSubstitution(input);
+		return substitution.source === 'yahoo_cfl'
+			? signalPresent(substitution)
+			: signalAbsent<YahooComplaintSubstitution>(yahooAbsence(substitution));
+	},
+};

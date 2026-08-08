@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { parseSndsFeedUrls } from '../sndsConfig';
-import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../ramp/sndsGate';
+import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../signals/snds';
 
 import { modules } from './helpers/convexModules';
 

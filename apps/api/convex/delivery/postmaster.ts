@@ -15,10 +15,10 @@ import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 import {
-	derivePostmasterCards,
+	GOOGLE_POSTMASTER_SIGNAL_SOURCE,
 	type PostmasterCard,
 	type PostmasterDomainSignals,
-} from './postmasterCards';
+} from './signals/postmaster';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
@@ -339,11 +339,17 @@ export const getPostmasterStatus = authedQuery({
 					deliveryErrors: stats?.deliveryErrors ?? [],
 					checks: compliance?.checks ?? [],
 				};
+				// THROUGH THE REGISTERED SOURCE, not around it (plan D9): a domain
+				// Google has said nothing about collects nothing, which is the same
+				// empty card list the derivation returns for it — the difference is
+				// that the absence is now the source's declared answer rather than a
+				// coincidence of every threshold happening to skip a null.
+				const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals);
 				return {
 					...signals,
 					periodStart: stats?.periodStart ?? null,
 					compliancePeriodStart: compliance?.periodStart ?? null,
-					cards: derivePostmasterCards(signals),
+					cards: collected.available ? collected.reading : [],
 				};
 			})
 		);

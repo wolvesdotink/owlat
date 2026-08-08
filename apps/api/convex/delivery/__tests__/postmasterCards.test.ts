@@ -10,7 +10,7 @@ import {
 	POSTMASTER_SPAM_RATE_LIMIT,
 	derivePostmasterCards,
 	type PostmasterDomainSignals,
-} from '../postmasterCards';
+} from '../signals/postmaster';
 
 function signals(overrides: Partial<PostmasterDomainSignals> = {}): PostmasterDomainSignals {
 	return {

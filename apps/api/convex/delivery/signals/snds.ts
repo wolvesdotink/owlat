@@ -1,5 +1,13 @@
 /**
- * The Microsoft cell's external-reputation gate input, derived from SNDS.
+ * The Microsoft cell's external-reputation signal source, derived from SNDS.
+ *
+ * ONE OF THE THREE PROVIDER REPUTATION FEEDS registered in `./registry` (seams
+ * plan D9). It lives under `delivery/signals/` rather than beside the ramp's own
+ * gates because it is not one of them: SNDS is a per-cell INPUT that a
+ * deployment may simply not have, and "may not have" is what this directory's
+ * contract is about. The durable half — ingest, retention, the bounded read —
+ * stays in `delivery/snds.ts`, whose Convex function paths are addressed by the
+ * poller and the cron registration.
  *
  * PURE (D15): observations in, a verdict and a reason out. No clock, no
  * database, no env — the cron shell loads and the controller decides.
@@ -32,8 +40,9 @@ import {
 	type SndsComplaintBand,
 	type SndsFilterResult,
 } from '../sndsFeed';
-import { rampSubstitutionEntry } from './degradationMatrix';
-import type { RampGateId, RampGateStatus } from './gateTypes';
+import { rampSubstitutionEntry } from '../ramp/degradationMatrix';
+import type { RampGateId, RampGateStatus } from '../ramp/gateTypes';
+import { signalAbsent, signalPresent, type SignalAbsence, type SignalSource } from './types';
 
 /**
  * The Microsoft cell's row in the P3-8 table — READ, never restated. The gate's
@@ -50,7 +59,7 @@ const MICROSOFT_SNDS_ABSENT = rampSubstitutionEntry('microsoft_snds');
  * Its shape is a table ENTRY, not an if-branch: the degraded path is expressed
  * as data so the controller substitutes rather than special-cases (D3).
  *
- * IT DELIBERATELY SPELLS ITS FIELDS THE WAY `./yahooComplaintSignal` DOES.
+ * IT DELIBERATELY SPELLS ITS FIELDS THE WAY `./yahooCfl` DOES.
  * Both are entries in the ONE P3-8 substitution table — "which signal is gate 3
  * actually running on for this destination-provider cell" — so `source`,
  * `confidence`, `confidenceNote` and `isBlocking` mean the same thing in both
@@ -430,3 +439,43 @@ export function sndsPromotionPass(
 	// re-deriving any of that here would be a second derivation of one rule.
 	return evaluateSndsGate(input, thresholds).verdict === 'pass';
 }
+
+/**
+ * The absence, as the registry states it — READ from the substitution, never
+ * restated. `substitutes`, the sentence and the non-blocking promise are all the
+ * substitution's own fields, so the registry cannot come to describe an absence
+ * the Microsoft cell does not actually apply.
+ */
+function sndsAbsence(substitution: SndsSubstitution): SignalAbsence {
+	return {
+		behaviour: 'substitute',
+		substitutes: substitution.source,
+		note: substitution.confidenceNote,
+		isBlocking: substitution.isBlocking,
+	};
+}
+
+/**
+ * SNDS as a signal source (plan D9).
+ *
+ * ADVISORY, and that is a statement about the tree rather than about Microsoft:
+ * `kind` says what a reading is allowed to do, and no decision path consults
+ * this one today — `evaluateSndsGate` is a complete, tested verdict that nothing
+ * folds into the controller. Wiring it into gate 3 for the Microsoft cell would
+ * change what the ramp does and is its own piece; until then, calling it
+ * `outcome` here would promise a share movement that does not happen.
+ *
+ * BOTH FLAVOURS OF ABSENCE COLLAPSE TO ONE, exactly as `buildSndsGateInput`
+ * documents: never enrolled and enrolled-but-silent are the same fact to a
+ * caller — there is no band this window, so the substitution stands in.
+ */
+export const SNDS_SIGNAL_SOURCE: SignalSource<SndsGateInput, SndsGateVerdict> = {
+	key: 'snds',
+	kind: 'advisory',
+	absence: sndsAbsence(SNDS_ABSENT_SUBSTITUTION),
+	collect(input: SndsGateInput) {
+		return input.available
+			? signalPresent(evaluateSndsGate(input))
+			: signalAbsent<SndsGateVerdict>(sndsAbsence(input.substitution));
+	},
+};

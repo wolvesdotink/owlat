@@ -3,7 +3,7 @@
  *
  * The poller — fetching and fan-out — lives in the sibling `sndsPoll.ts`;
  * configuration parsing in `sndsConfig.ts`, feed parsing in `sndsFeed.ts`, and
- * the decision in `ramp/sndsGate.ts` beside the rest of the ramp's gates.
+ * the decision in `signals/snds.ts` beside the other provider signal sources.
  * What remains here is the durable side: the idempotent ingest mutation, the
  * retention sweep, and the bounded read that gate 3 consumes.
  *
@@ -19,7 +19,7 @@ import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import { DAY_MS, normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
-import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './ramp/sndsGate';
+import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './signals/snds';
 import { oldestStorableDay, parsePoolAllowlist, parseSndsFeedUrls } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
