@@ -439,6 +439,52 @@ function label(entry: ConvexEntry): string {
 }
 
 /**
+ * The walk, in two passes. Pass one is `callersOf`: cross-module references,
+ * client calls, worker paths, cron registrations. Pass two answers the case
+ * pass one is blind to by design: a module whose REACHED entry hands a SIBLING
+ * entry of the same module to the scheduler — `completeSend` scheduling
+ * `expireUnconfirmedAcceptance` two functions down is a live continuation, not
+ * a door with no handle. Module code only executes through the module's own
+ * entries, so a same-module reference is a way in exactly when some OTHER
+ * entry of that module already has one; a module whose only reference to an
+ * entry is that entry naming itself stays an orphan, which is the
+ * self-schedule refusal `runRampController` pins below. Iterated to a fixed
+ * point so a chain of same-module continuations resolves regardless of
+ * declaration order.
+ */
+function reachedEntries(
+	entries: readonly ConvexEntry[],
+	convexSources: ReadonlyMap<string, string>,
+	clientSources: ReadonlyMap<string, string>
+): ReadonlySet<string> {
+	const reached = new Set(
+		entries.filter((entry) => callersOf(entry, convexSources, clientSources).length > 0).map(label)
+	);
+	let grew = true;
+	while (grew) {
+		grew = false;
+		for (const entry of entries) {
+			if (reached.has(label(entry))) continue;
+			const source = convexSources.get(entry.module);
+			if (source === undefined) continue;
+			const referenced =
+				generatedReference(entry.module, entry.name).test(source) ||
+				workerReference(entry.module, entry.name).test(source);
+			if (!referenced) continue;
+			const throughSibling = entries.some(
+				(other) =>
+					other.module === entry.module && other.name !== entry.name && reached.has(label(other))
+			);
+			if (throughSibling) {
+				reached.add(label(entry));
+				grew = true;
+			}
+		}
+	}
+	return reached;
+}
+
+/**
  * THE LEDGER — every entry point in this backend that nothing can start, as of
  * the day the walk widened from `delivery/ramp*.ts` to all of `convex/` (#509).
  *
@@ -446,12 +492,15 @@ function label(entry: ConvexEntry): string {
  * with no handle: an `internalMutation` no cron registers and no module calls, an
  * `authedQuery` no screen reads, an `internalQuery` whose only caller was deleted
  * with the feature that had it. The ramp's three were found one at a time by
- * reading diffs; there are 238 more, and the first honest thing to do with a
- * number that size is to write it down. Each one is either wired up or deleted —
+ * reading diffs; there are 150 more, and the first honest thing to do with a
+ * number that size is to write it down. (The walk's first draft counted 238:
+ * 88 of those were same-module continuations — a reached entry handing a
+ * sibling to the scheduler — which the sibling pass in `reachedEntries` now
+ * credits, so they were never debt.) Each one is either wired up or deleted —
  * one PR at a time, not in the PR that discovered them.
  *
- * WHY A LEDGER AND NOT 238 DELETIONS HERE. A deletion is a behaviour claim about
- * the feature the entry belongs to, and 238 of them across every domain in the
+ * WHY A LEDGER AND NOT 150 DELETIONS HERE. A deletion is a behaviour claim about
+ * the feature the entry belongs to, and 150 of them across every domain in the
  * backend is not a reviewable change; several of these are public `query`/
  * `mutation` surfaces where "no in-repo caller" is weaker evidence than it looks,
  * because a public function is an API an external client may hold. The ratchet is
@@ -465,36 +514,17 @@ function label(entry: ConvexEntry): string {
  * Tracked in issue #528.
  */
 const UNREACHED_ENTRIES: readonly string[] = [
-	'agent/coalescing.ts#processCoalescedBatch',
-	'agent/knowledgeBackfill.ts#finalizeJob',
-	'agent/knowledgeBackfill.ts#hasExtraction',
-	'agent/knowledgeBackfill.ts#isAgentEnabled',
-	'agent/knowledgeBackfill.ts#loadJob',
-	'agent/knowledgeBackfill.ts#nextChunk',
-	'agent/knowledgeBackfill.ts#patchProgress',
-	'agent/walker.ts#runStep',
-	'agentHealth.ts#cleanupOldMetrics',
 	'agentHealth.ts#getCircuitBreakers',
-	'agentHealth.ts#getPendingCount',
-	'agentHealth.ts#getRecentActions',
-	'agentHealth.ts#recordMetric',
-	'agentHealth.ts#updateCircuitBreaker',
 	'analytics/engagementScoreSync.ts#clearEngagementSuppression',
 	'analytics/engagementScoreSync.ts#recomputeContactScore',
 	'analytics/llmUsage.ts#getSpendByPlugin',
-	'analytics/llmUsage.ts#record',
 	'analytics/qualityMetrics.ts#getClarifyMetrics',
 	'analytics/qualityMetrics.ts#getDraftQualityMetrics',
-	'analytics/reporter.ts#gatherMetrics',
 	'analytics/reputationQueries.ts#getDomainReputations',
 	'analytics/seedPlacement.ts#getGateVerdict',
 	'analytics/seedPlacement.ts#getSeedPlacementSummary',
-	'analytics/sendingReputation.ts#autoEnforceReputation',
 	'assistant/conversations.ts#getConversation',
 	'auditLogs.ts#get',
-	'auth/accountExportArtifacts.ts#expireSession',
-	'auth/apiAuth.ts#updateKeyLastUsed',
-	'auth/apiAuth.ts#validateAndCheckRateLimit',
 	'auth/apiKeys.ts#countByTeam',
 	'auth/apiKeys.ts#get',
 	'auth/apiKeys.ts#revokeByPlugin',
@@ -503,15 +533,11 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'auth/userProfiles.ts#getByEmail',
 	'auth/userProfiles.ts#update',
 	'automations/automations.ts#revertToDraft',
-	'automations/stepWalker.ts#executeStep',
 	'automations/triggers.ts#fireEventReceivedTrigger',
 	'automations/triggers.ts#firePluginTrigger',
 	'autonomyFeedback.ts#getRecentFeedback',
-	'autonomyFeedback.ts#getRecentFeedbackInternal',
-	'autonomyFeedback.ts#updateThreshold',
 	'blockedEmails.ts#get',
 	'blockedEmails.ts#isBlocked',
-	'campaigns/abTest.ts#getAbTestWinnerInputs',
 	'campaigns/analytics.ts#getActiveByOrganization',
 	'campaigns/analytics.ts#getRecentlySentByOrganization',
 	'campaigns/analytics.ts#getSendVolumeByDayByOrganization',
@@ -546,43 +572,24 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/sunset.ts#setSunsetContactExemption',
 	'contacts/sunset.ts#setSunsetPolicy',
 	'delivery/alignmentPreflight.ts#getAlignmentGateState',
-	'delivery/checklistAlertState.ts#expireRecipientAttempts',
-	'delivery/checklistLoopbackState.ts#expire',
-	'delivery/checklistRetention.ts#reconcileExpiredLoopbackAttempts',
-	'delivery/checklistRetention.ts#sweepAlerts',
-	'delivery/checklistRetention.ts#sweepEvidence',
-	'delivery/checklistRetention.ts#sweepLoopbackAttempts',
-	'delivery/checklistRetention.ts#sweepOrphanVerificationStates',
-	'delivery/complianceTelemetry.ts#refreshGmailDomainVolume',
-	'delivery/enqueueTestSend.ts#deleteExpiredTestSend',
 	'delivery/ipReadinessAlerts.ts#listRecent',
-	'delivery/mtaHealth.ts#record',
 	'delivery/relayReturnPath.ts#transportReturnPathCapability',
-	'delivery/relayReturnPathProbe.ts#runReturnPathProbe',
-	'delivery/sendCompletion.ts#retrySend',
 	'delivery/sends.ts#create',
 	'delivery/sends.ts#deleteByCampaign',
 	'delivery/sends.ts#getQueuedSends',
 	'delivery/sends.ts#listByCampaign',
 	'delivery/sends.ts#listByContact',
-	'delivery/status.ts#recordTestResult',
 	'delivery/suppressionMirror.ts#mirror',
-	'delivery/warmingSync.ts#upsertWarmingState',
-	'devShortcuts/forceVerifyDomain.ts#forceVerifyDomainInternal',
-	'devShortcuts/reset.ts#runReset',
 	'domains/domains.ts#countByStatus',
 	'domains/domains.ts#get',
 	'domains/domains.ts#getByDomain',
 	'domains/domains.ts#isDomainVerificationFresh',
 	'domains/domains.ts#isDomainVerified',
 	'domains/encryptionKeysReadiness.ts#checkEncryptionKeysReadiness',
-	'domains/trackingDomains.ts#markVerifiedInternal',
-	'domains/trackingDomains.ts#verifyTrackingDomainDns',
 	'e2ee/keys.ts#backfillKeys',
 	'e2ee/keys.ts#getInstancePublicKey',
 	'e2ee/keys.ts#getKeyForWkd',
 	'e2ee/keys.ts#getPublicKeyByAddress',
-	'e2ee/keysNode.ts#remintLegacyProfile',
 	'e2ee/lifecycle.ts#revokeAddressKey',
 	'e2ee/lifecycle.ts#rotateAddressKey',
 	'e2ee/lifecycleNode.ts#runExportRecoveryKit',
@@ -593,7 +600,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'emailTemplates/emails.ts#publish',
 	'emailTemplates/emails.ts#unpublish',
 	'emailTemplates/organization.ts#createForOrganization',
-	'forms/endpoints.ts#drainAndDeleteForm',
 	'forms/endpoints.ts#get',
 	'forms/endpoints.ts#getForSubmission',
 	'inbox/clarification.ts#answerClarification',
@@ -601,10 +607,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'inbox/clarificationMemory.ts#promoteClarificationMemory',
 	'inbox/clarificationMemory.ts#revokeClarificationMemory',
 	'inbox/mutations.ts#undoAutoSend',
-	'integrationImports/walker.ts#completeImport',
-	'integrationImports/walker.ts#getImportById',
-	'integrationImports/walker.ts#processIntegrationPage',
-	'integrationImports/walker.ts#updateImportProgress',
 	'knowledge/edgeBackfill.ts#cancel',
 	'knowledge/edgeBackfill.ts#getStatus',
 	'knowledge/graph.ts#createPolicyEntry',
@@ -613,41 +615,20 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'knowledge/graph.ts#setCommitmentStatus',
 	'knowledge/graph.ts#updateConfidence',
 	'knowledge/graphAnalytics.ts#getCrossContactLinks',
-	'knowledge/graphAnalyticsRecompute.ts#writeStats',
-	'knowledge/maintenance.ts#dedupeContactEntries',
 	'mail/ai.ts#summarizeThread',
-	'mail/appPasswords.ts#_candidatesByAddressAndPrefix',
 	'mail/category.ts#backfill',
-	'mail/category.ts#enqueue',
-	'mail/category.ts#listUnclassifiedInbox',
 	'mail/commitments.ts#listCommitments',
 	'mail/commitments.ts#resolveCommitment',
-	'mail/dailyBrief.ts#buildForMailbox',
 	'mail/dailyBrief.ts#getLatestBrief',
 	'mail/externalAccountsActions.ts#connectSeed',
 	'mail/externalAccountsSeed.ts#acknowledgeSeedRotation',
-	'mail/externalDelivery.ts#ingestExternalMessage',
 	'mail/folders.ts#list',
-	'mail/folders.ts#relocateAndDeleteFolder',
-	'mail/labels.ts#stripLabelReferences',
-	'mail/mailbox.ts#getReadableMessageBodySource',
-	'mail/mailbox.ts#getReadableMessageRawStorageId',
 	'mail/mailbox.ts#inboxUnreadCount',
 	'mail/mailbox.ts#latestInboxUnread',
-	'mail/migrationIndexing.ts#finalizeMigration',
-	'mail/migrationIndexing.ts#isKnowledgeEnabled',
-	'mail/migrationIndexing.ts#loadMigration',
-	'mail/migrationIndexing.ts#nextIndexChunk',
-	'mail/migrationIndexing.ts#patchIndexProgress',
-	'mail/migrationIndexing.ts#resolveSenderContact',
-	'mail/outboundCron.ts#findOverdueDrafts',
 	'mail/voiceProfile.ts#removeDerivedAdjustment',
 	'mail/voiceProfile.ts#setStandingInstructions',
 	'mediaAssets.ts#get',
-	'mediaAssets.ts#quarantineAsset',
-	'mediaAssets.ts#reconcileAssetSize',
 	'mediaAssets.ts#remove',
-	'mediaAssets.ts#scanAssetBytes',
 	'platformAdmin/platformAdmin.ts#seedPlatformAdmin',
 	'platformAdmin/queries.ts#getAdminAuditLog',
 	'platformAdmin/queries.ts#getBillingOverview',
@@ -662,36 +643,18 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'plugins/workerTasks.ts#enqueue',
 	'plugins/workerTasks.ts#listRecent',
 	'plugins/workerTasks.ts#requestCancel',
-	'providerRoutes.ts#provisionDeliverabilityRelayBatch',
-	'seedDemo/index.ts#runSeedDemo',
-	'seedDemo/messages.ts#messageSeeded',
-	'segments.ts#countMatchingContactsPage',
-	'segments.ts#getInternal',
-	'segments.ts#listMembersPage',
-	'segments.ts#refreshSingleSegmentCount',
 	'storage.ts#deleteFile',
 	'systemHealth.ts#getHealthStats',
-	'systemUpdates.ts#cacheCheckFailure',
-	'systemUpdates.ts#cacheLatestRelease',
-	'systemUpdates.ts#getLatestCheckInternal',
 	'topics/apiHttp.ts#topicContactsCollection',
-	'topics/subscription.ts#recordCampaignUnsubscribe',
 	'topics/topics.ts#reorder',
 	'transactional/emails.ts#getBySlug',
 	'transactional/sends.ts#deleteByTransactionalEmail',
 	'transactional/sends.ts#getByEmail',
 	'transactional/sends.ts#listAll',
 	'unifiedMessages.ts#getChannelConfig',
-	'unifiedMessages.ts#getEnabledChannels',
 	'unifiedMessages.ts#mirrorEmailSend',
 	'unifiedMessages.ts#recordInbound',
-	'visualizationAgent.ts#dataAgentHealth',
-	'visualizationAgent.ts#dataCampaignPerformance',
-	'visualizationAgent.ts#dataContactGrowth',
-	'visualizationAgent.ts#dataEmailDelivery30d',
-	'visualizationAgent.ts#generate',
 	'visualizationAgent.ts#get',
-	'visualizationAgent.ts#updateGenerated',
 	'webhooks/deliveryQueries.ts#getDeliveryLog',
 	'webhooks/deliveryQueries.ts#listDeliveryLogs',
 	'webhooks/deliveryQueries.ts#listDeliveryLogsByTeam',
@@ -700,8 +663,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'webhooks/endpoints.ts#enable',
 	'webhooks/endpoints.ts#get',
 	'webhooks/endpoints.ts#listDeliveryLogsByOrganization',
-	'webhooks/payloads.ts#deleteOldBatch',
-	'workspaces/deletion/walker.ts#runStep',
 	'workspaces/featureFlags.ts#setAllFeatureFlags',
 ];
 
@@ -1079,12 +1040,46 @@ describe('the walk fails an entry nothing can start', () => {
 		);
 		expect(callersOf(ORPHAN, rewired, clients)).toEqual(['delivery/cronRegistration.ts']);
 	});
+
+	it('credits the sibling a reached entry schedules, and still fails the lone self-scheduler', () => {
+		// The `completeSend` shape: a cron-reached entry hands its module-mate to
+		// the scheduler. File-granular `callersOf` cannot see it — the reference is
+		// same-module — so the sibling pass is what must credit it, and the ORPHAN
+		// (whose module's only reference to it is its own) is what the pass must
+		// still refuse.
+		const COMPLETE = { module: 'delivery/sendCompletion.ts', name: 'completeSend' } as const;
+		const EXPIRE = {
+			module: 'delivery/sendCompletion.ts',
+			name: 'expireUnconfirmedAcceptance',
+		} as const;
+		const rewired = new Map(convex);
+		rewired.set(
+			COMPLETE.module,
+			stripComments(
+				[
+					'export const completeSend = internalMutation({});',
+					'await ctx.scheduler.runAfter(0, internal.delivery.sendCompletion.expireUnconfirmedAcceptance, {});',
+					'export const expireUnconfirmedAcceptance = internalMutation({});',
+				].join('\n')
+			)
+		);
+		rewired.set(
+			'delivery/cronRegistration.ts',
+			stripComments(
+				"crons.hourly('complete', {}, internal.delivery.sendCompletion.completeSend, {});"
+			)
+		);
+		const reached = reachedEntries([COMPLETE, EXPIRE, ORPHAN], rewired, clients);
+		expect(reached.has(label(COMPLETE))).toBe(true);
+		expect(reached.has(label(EXPIRE))).toBe(true);
+		expect(reached.has(label(ORPHAN))).toBe(false);
+	});
 });
 
 describe('every Convex entry point is reachable, or on the ledger', () => {
+	const reached = reachedEntries(CONVEX_ENTRIES, CONVEX_SOURCES, CLIENT_SOURCES);
 	const unreached = CONVEX_ENTRIES.filter(
-		(entry) =>
-			!isHandRun(entry.module) && callersOf(entry, CONVEX_SOURCES, CLIENT_SOURCES).length === 0
+		(entry) => !isHandRun(entry.module) && !reached.has(label(entry))
 	).map(label);
 
 	it('has no entry point that is neither reachable nor written down', () => {
