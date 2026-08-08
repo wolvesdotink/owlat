@@ -45,6 +45,20 @@ const lastSesEventLabel = computed(() => {
 	return new Date(at).toLocaleString();
 });
 
+// Mandrill feedback loop -----------------------------------------------------
+// Same shape as the SES block: the endpoint Mandrill posts to, and — because the
+// SIGNING key is not part of what the transport needs to SEND — a presence check
+// for `MANDRILL_WEBHOOK_KEY` that `getStatus.requiredEnv` cannot answer.
+const isMandrill = computed(() => status.value?.provider === 'mandrill');
+const mandrillWebhookUrl = computed(() => {
+	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
+	return base ? `${base.replace(/\/$/, '')}/webhooks/mandrill` : '';
+});
+const { data: mandrillFeedback } = useOrganizationQuery(
+	api.delivery.status.getMandrillFeedbackStatus,
+	() => (isMandrill.value ? {} : undefined)
+);
+
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
 const missingEnvNames = computed(() =>
@@ -63,6 +77,29 @@ const envSetCommand = computed(() => {
 });
 
 const { copy, isCopied } = useCopyToClipboard();
+
+// Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
+// Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
+// the server: which domain we sign as, and which transport is the REFERENCE arm,
+// are facts about the `domains` table and the configured transport surface, not
+// something this page can derive from the transport status. Passing no arguments
+// is what keeps them right — an earlier revision derived the domain here and got
+// an inert step 3, and derived the probe target from the ACTIVE provider, which
+// on a standalone deployment is our own MTA.
+//
+// Both are total: no verified signing domain answers `null`, and no relay
+// answers `transportId: null` with the unresolvable posture. Neither is an
+// error, and neither renders one.
+//
+// Both are passed through UNCHANGED, `undefined` included: `undefined` is the
+// read in flight and `null` is a resolved negative answer, and collapsing the
+// two renders a finding about a question that has not been answered yet.
+const { data: alignmentArms } = useOrganizationQuery(
+	api.delivery.alignmentPreflight.getAlignmentArms
+);
+const { data: returnPathReadiness } = useOrganizationQuery(
+	api.delivery.relayReturnPath.getReturnPathReadiness
+);
 
 // Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
 // TLS negotiation when delivering mail to our MX. Member-safe (operator
@@ -109,6 +146,11 @@ const {
 		/>
 
 		<div v-else-if="status" class="space-y-6 max-w-3xl">
+			<!-- Plan D8: exactly one reference relay, or the ramp has no single
+			     second arm to judge the own server against and every cell holds.
+			     Renders nothing in every healthy configuration, standalone included. -->
+			<DeliveryReferenceRelayNotice />
+
 			<!-- Can-send status -->
 			<UiCard padding="none" overflow="hidden">
 				<div class="p-6 flex items-start gap-4" :class="canSend ? 'bg-success/5' : 'bg-error/5'">
@@ -219,6 +261,18 @@ const {
 				@applied="refetchStatus"
 			/>
 
+			<!-- Optional guided "connect an ESP" flow: credentials → live send test
+			     → live-DNS alignment → return-path capability. Skipping it leaves the
+			     deployment fully functional on its own MTA (plan D2), so it renders as
+			     a plain offer with no warning state of any kind. -->
+			<DeliveryTransportConnectionWizard
+				:alignment-arms="alignmentArms"
+				:return-path-transport-id="returnPathReadiness?.transportId"
+				:return-path-capability="returnPathReadiness?.capability"
+				:can-send="canSend"
+				@applied="refetchStatus"
+			/>
+
 			<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
 			     testing → enforce). Receiving posture, but it lives beside the
 			     transport controls so all TLS policy is in one place. -->
@@ -285,8 +339,10 @@ const {
 					<p v-else class="text-sm text-text-tertiary border-t border-border-subtle pt-5">
 						Select a delivery provider (set <code class="text-text-primary">EMAIL_PROVIDER</code> to
 						<code class="text-text-primary">mta</code>,
-						<code class="text-text-primary">resend</code>, or
-						<code class="text-text-primary">ses</code>) to see its required variables.
+						<code class="text-text-primary">ses</code>,
+						<code class="text-text-primary">resend</code>,
+						<code class="text-text-primary">smtp</code>, or
+						<code class="text-text-primary">mandrill</code>) to see its required variables.
 					</p>
 				</div>
 			</UiCard>
@@ -295,6 +351,14 @@ const {
 			<DeliveryTestSendCard
 				:can-send="canSend"
 				:last-test-succeeded-at="status?.lastTestSucceededAt"
+			/>
+
+			<!-- Mandrill feedback webhook (only when Mandrill is the provider) -->
+			<DeliveryMandrillWebhookCard
+				v-if="isMandrill"
+				:webhook-url="mandrillWebhookUrl"
+				:is-webhook-key-present="mandrillFeedback?.isWebhookKeyPresent === true"
+				:last-event-at="mandrillFeedback?.lastEventAt ?? null"
 			/>
 
 			<!-- SES bounce & complaint feedback (only when SES is the provider) -->

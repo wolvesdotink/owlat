@@ -1,0 +1,230 @@
+/**
+ * Seed shadow copy — the SEND half of the seed-placement probe (D18).
+ *
+ * A shadow copy goes to an operator-owned seed mailbox through the IDENTICAL
+ * composer and the IDENTICAL transport as the real send it mirrors: it is
+ * CLONED from a real campaign envelope inside the very transaction that
+ * enqueues that campaign's mail (`delivery/enqueue.ts`), so there is exactly
+ * one construction site and no second, hand-rolled envelope to drift from it.
+ * Same `sendSingleEmail` worker, same composer, same `from`, same
+ * `providerType`/`ipPool`, same template bytes, same tracking pixel and
+ * wrapped links, same RFC 8058 one-click pair.
+ *
+ * Only three things change, and each is forced by a rule in the plan:
+ *
+ *   1. `to` / `contactInfo` — the seed address instead of a subscriber, with
+ *      NEUTRAL PLACEHOLDER merge-tag values in place of the subscriber's name.
+ *   2. `contactId` and `emailSendId` are STRIPPED. `emailSendId` is what makes
+ *      a Send countable: without it there is no `emailSends` row, no workpool
+ *      `onComplete` -> no Send lifecycle -> no campaign stat-shard bump and no
+ *      `sendingReputation` event. That is the D18 exclusion, enforced by
+ *      construction rather than by a filter somewhere downstream. Dropping
+ *      `contactId` additionally keeps a real subscriber's unsubscribe HMAC out
+ *      of a mailbox that is not theirs — the probe carries a PROBE-SCOPED
+ *      one-click target and PROBE-SCOPED tracking URLs instead, and neither
+ *      resolves to anything countable (see `delivery/worker.ts`).
+ *   3. `seedProbeId` + `seedProbeRef` are added — the `X-Owlat-Seed-Probe`
+ *      header the IMAP poller looks for, and the probe's durable ledger row.
+ *      The header value is opaque; no recipient or campaign PII.
+ *
+ * RESIDUAL WIRE DELTAS — the complete list, because "identical" is the claim
+ * this whole measurement rests on:
+ *
+ *   a. `viewInBrowserUrl` (a contact-scoped archive token) is dropped: it is
+ *      only meaningful with a `contactId`. Everything a FILTER weighs is kept
+ *      and re-keyed to the probe id instead of dropped — the RFC 8058 header
+ *      pair, the tracking pixel, the wrapped links, and the in-body
+ *      unsubscribe/preference FOOTER (`delivery/worker.ts` mints it from
+ *      `getSeedProbeFooterUrls` when the envelope carries a probe id, so the
+ *      probe does not have to carry the contact-scoped `siteUrl`).
+ *   b. The probe's two footer HREFS differ from a subscriber's in BOTH ways,
+ *      and both are stated here because this list is the merge record for the
+ *      byte-identity claim. (i) ORIGIN: the probe footer is minted from
+ *      `convexSiteUrl` (`delivery/unsubscribe.ts` `getSeedProbeFooterUrls`)
+ *      while a subscriber's is minted from the contact-scoped `siteUrl`, so
+ *      the two footers resolve to DIFFERENT HOSTS, not merely to different
+ *      paths on the same one. (ii) ARITY: a probe has no preferences to
+ *      manage, so its Unsubscribe and Manage-Preferences slots point at the
+ *      one same probe endpoint where a subscriber's point at two. The rendered
+ *      footer's SHAPE — the link text, the ordering, the surrounding markup —
+ *      is identical; the two hrefs are not.
+ *   c. Merge tags render the neutral placeholders above rather than the
+ *      subscriber's own name.
+ *   d. The `X-Owlat-Seed-Probe` header is added.
+ *
+ * D2: zero seed mailboxes is a supported configuration. With an empty seed
+ * list this enqueues nothing and reports `{ enqueued: 0 }`; it never throws
+ * and never affects the real send.
+ */
+
+import type { Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import { campaignEmailPool } from './workpool';
+import type { WorkerEnvelopeInput } from './workerEnvelope';
+import { loadSeedAccounts } from '../analytics/seedAccounts';
+import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
+
+export type CampaignEnvelopeInput = Extract<WorkerEnvelopeInput, { kind: 'campaign' }>;
+
+/**
+ * Merge-tag values a shadow copy renders with.
+ *
+ * A probe must not carry the last real recipient's name (that is the whole
+ * point of stripping `contactInfo`), but rendering every merge tag EMPTY is
+ * not neutral either: "Hi ," is both a visible difference from the mail
+ * subscribers receive and, on its own, something filters notice. Neutral
+ * placeholders keep the rendered shape identical to a personalized send while
+ * carrying no subscriber data.
+ */
+const SEED_PLACEHOLDER_FIRST_NAME = 'Seed';
+const SEED_PLACEHOLDER_LAST_NAME = 'Mailbox';
+
+/**
+ * Build the shadow-copy envelope from the REAL send's envelope.
+ *
+ * Pure: same input, same output, no clock and no db. The real envelope is
+ * never mutated.
+ */
+export function buildSeedShadowEnvelope(
+	base: CampaignEnvelopeInput,
+	seed: { address: string; probeId: string; probeRef: Id<'seedPlacementProbes'> }
+): CampaignEnvelopeInput {
+	// Explicitly rebuilt (not spread-and-delete) so a future field added to the
+	// campaign envelope has to be considered here rather than silently leaking
+	// a subscriber-scoped value into an operator mailbox.
+	const shadow: CampaignEnvelopeInput = {
+		kind: 'campaign',
+		to: seed.address,
+		from: base.from,
+		template: base.template,
+		contactInfo: {
+			email: seed.address,
+			firstName: SEED_PLACEHOLDER_FIRST_NAME,
+			lastName: SEED_PLACEHOLDER_LAST_NAME,
+		},
+		seedProbeId: seed.probeId,
+		seedProbeRef: seed.probeRef,
+	};
+	if (base.deliveryDomain !== undefined) shadow.deliveryDomain = base.deliveryDomain;
+	if (base.replyTo !== undefined) shadow.replyTo = base.replyTo;
+	if (base.providerType !== undefined) shadow.providerType = base.providerType;
+	if (base.ipPool !== undefined) shadow.ipPool = base.ipPool;
+	if (base.audienceType !== undefined) shadow.audienceType = base.audienceType;
+	if (base.campaignId !== undefined) shadow.campaignId = base.campaignId;
+	if (base.organizationId !== undefined) shadow.organizationId = base.organizationId;
+	if (base.listId !== undefined) shadow.listId = base.listId;
+	// Kept so the shadow carries the same wire features a subscriber's copy
+	// does — the one-click header pair and the tracking pixel / wrapped links
+	// are exactly what a filter weighs. Both are keyed by the opaque probe id,
+	// so neither can reach a contact record or a campaign denominator.
+	if (base.convexSiteUrl !== undefined) shadow.convexSiteUrl = base.convexSiteUrl;
+	if (base.trackingBaseUrl !== undefined) shadow.trackingBaseUrl = base.trackingBaseUrl;
+	// `engagementScore` is deliberately NOT copied: it is the REAL recipient's
+	// contact score, and a probe has no contact. Omitting it is the correct
+	// reading — the MTA treats an absent score as "unknown" and applies
+	// `PRIORITY_BANDS.DEFAULT`, whereas cloning the last subscriber's score
+	// would let an unrelated contact's engagement reorder the measurement.
+	// `siteUrl` is not copied and does not need to be: it is the CONTACT-scoped
+	// footer origin, and the worker mints the probe's footer from
+	// `convexSiteUrl` + the probe id instead, so the shadow copy still renders
+	// the in-body unsubscribe/preference footer a real recipient's copy carries.
+	// `viewInBrowserUrl` (a contact-scoped archive token) IS dropped: there is no
+	// probe-scoped equivalent, and an archive link is not a feature filters weigh.
+	return shadow;
+}
+
+/**
+ * Generate an opaque probe id: `sp_` + 22 lowercase HEX characters, sliced out
+ * of a hyphen-stripped UUIDv4. Randomness lives here, at the edge — the pure
+ * core never draws one. `isSeedProbeId` accepts exactly this alphabet and
+ * length and nothing wider, because it is what the two public tracking
+ * endpoints use to tell a probe from a Send.
+ *
+ * THE ONE MINTING SITE, shared with `delivery/seedScheduledProbe.ts`. Two
+ * producers drawing ids independently is two chances for one of them to drift
+ * out of the alphabet those endpoints check, which would make its probes
+ * indistinguishable from Sends at exactly the boundary that must tell them
+ * apart.
+ */
+export function newSeedProbeId(): string {
+	return `sp_${crypto.randomUUID().replace(/-/g, '').slice(0, 22)}`;
+}
+
+/**
+ * Enqueue one shadow copy per seed mailbox and write its ledger row, INSIDE
+ * the caller's transaction (the campaign enqueue mutation).
+ *
+ * Deliberately enqueued WITHOUT the `onComplete` / `sendRef` wiring every real
+ * Send carries: there is no Send to complete, so the lifecycle — and with it
+ * every analytics and reputation denominator — is never entered.
+ *
+ * IDEMPOTENT per (organization, campaign, A/B variant): the campaign walker
+ * fans out over pages and time zones and calls this once per page, so the
+ * ledger is checked first. The variant is part of the key because the two arms
+ * of an A/B campaign are DIFFERENT MESSAGES and each deserves its own reading.
+ */
+export async function enqueueSeedShadowCopies(
+	ctx: MutationCtx,
+	args: {
+		organizationId: string;
+		campaignId: Id<'campaigns'>;
+		abVariant?: 'A' | 'B';
+		base: CampaignEnvelopeInput;
+		now: number;
+	}
+): Promise<{ enqueued: number }> {
+	// The whole idempotency key is in the INDEX. A bounded page plus a linear
+	// `.some()` over it silently starts answering "no probe set yet" once one
+	// campaign accumulates more probe rows than the page bound, and the failure
+	// mode is a duplicate probe set on every subsequent page of the walker.
+	const existing = await ctx.db
+		.query('seedPlacementProbes')
+		.withIndex('by_org_campaign_and_variant', (q) =>
+			q
+				.eq('organizationId', args.organizationId)
+				.eq('campaignId', args.campaignId)
+				.eq('abVariant', args.abVariant)
+		)
+		.first();
+	if (existing !== null) return { enqueued: 0 };
+
+	// CONNECTABLE seeds only — the exact set `analytics/seedProbePoller.ts` will
+	// walk. A seed sitting in `auth_error` still occupies a slot against the
+	// connect cap and still counts in the roll-up's denominator, but mailing it
+	// would burn real volume against the warming cap and the IP on a message
+	// nothing can ever observe, and leave an unclassified ledger row for the
+	// whole retention window.
+	const seeds = await loadSeedAccounts(ctx.db, args.organizationId, args.now, 'connectable');
+	if (seeds.length === 0) return { enqueued: 0 };
+
+	for (const seed of seeds) {
+		const probeId = newSeedProbeId();
+		const probeRef = await ctx.db.insert('seedPlacementProbes', {
+			organizationId: args.organizationId,
+			probeId,
+			accountId: seed.accountId,
+			provider: seed.provider,
+			// This module only ever shadows a CAMPAIGN send. The card's other half
+			// — "or on a schedule for transactional streams" — is a different
+			// construction site (a cron, not a campaign transaction) and lives in
+			// `delivery/seedScheduledProbe.ts`, which writes the same rows with the
+			// other two streams on them.
+			stream: 'campaign',
+			campaignId: args.campaignId,
+			...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+			sentAt: args.now,
+			expiresAt: args.now + SEED_PROBE_RETENTION_MS,
+		});
+		const shadow = buildSeedShadowEnvelope(args.base, {
+			address: seed.address,
+			probeId,
+			probeRef,
+		});
+		await campaignEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: shadow,
+		});
+	}
+
+	return { enqueued: seeds.length };
+}

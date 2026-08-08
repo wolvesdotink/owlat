@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { classifyResult, reduce, type DispatchOutcome } from '../outcome.js';
 import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
+import { isSmtpBlockCategory, isSmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { AttemptCtx } from '../types.js';
 import type { EmailJob, EmailJobResult } from '../../types.js';
 
@@ -38,6 +39,9 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 		pool: 'transactional',
 		dedicatedIp: undefined,
 		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
+		providerVolumePressure: 0,
+		utcDate: '2026-03-01',
 		durationMs: 421,
 		...overrides,
 	};
@@ -257,7 +261,7 @@ describe('member test delivery effect isolation', () => {
 });
 
 describe('reduce(deferred)', () => {
-	it('produces the canonical 5-effect list (no notify_convex) plus a defer from the classification', () => {
+	it('produces the canonical 6-effect list plus a defer from the classification', () => {
 		const outcome: DispatchOutcome = {
 			kind: 'deferred',
 			smtpCode: 421,
@@ -278,11 +282,47 @@ describe('reduce(deferred)', () => {
 			'warming_record',
 			'metrics_record',
 			'log_delivery_event',
+			'notify_convex',
 		]);
 		expect(defer).toEqual({
 			delayMs: 120_000,
 			reason: expect.stringContaining('greylisted'),
 		});
+	});
+
+	it('reports the retryable response to Convex as a MEASUREMENT and nothing else (issue #501)', () => {
+		// THE DENOMINATOR of the ramp's gate-2 block clause. This branch used to
+		// emit no `notify_convex` at all, so the only category Convex ever saw was a
+		// refusal — which, divided by itself, is a 100% block rate on the first one
+		// a healthy cell ever collected.
+		//
+		// It is `smtp.classified` and NOT `bounced`: the message is still in flight
+		// and re-enters the queue below, so an event that moved the send status
+		// would terminalize a message the receiver merely asked us to retry.
+		const outcome: DispatchOutcome = {
+			kind: 'deferred',
+			smtpCode: 421,
+			error: 'Try again in 120 seconds',
+			enhancedCode: undefined,
+			classification: {
+				category: 'greylisted',
+				retryable: true,
+				suggestedDelayMs: 120_000,
+				countAsBounce: false,
+			},
+		};
+
+		const notified = reduce(outcome, makeCtx()).effects.filter((e) => e.kind === 'notify_convex');
+		expect(notified).toHaveLength(1);
+		const only = notified[0];
+		if (only?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
+		expect(only.event.event).toBe('smtp.classified');
+		expect(only.event.smtpCategory).toBe('greylisted');
+		expect(only.event.messageId).toBe(makeCtx().job.messageId);
+		// It carries NO cell and NO arm: this service knows neither, and Convex
+		// resolves both from the send's assignment row.
+		expect(only.event).not.toHaveProperty('cell');
+		expect(only.event).not.toHaveProperty('arm');
 	});
 });
 
@@ -324,6 +364,7 @@ describe('reduce(deferred) — non-retryable classification', () => {
 			'metrics_record',
 			'log_delivery_event',
 			'notify_convex',
+			'notify_convex',
 			'suppress_recipient',
 		]);
 		const suppress = effects.find((e) => e.kind === 'suppress_recipient');
@@ -332,11 +373,54 @@ describe('reduce(deferred) — non-retryable classification', () => {
 			address: 'user@example.com',
 			reason: 'hard_bounce',
 		});
-		const notify = effects.find((e) => e.kind === 'notify_convex');
+		// TWO notifications, and they are not interchangeable. The bounce moves the
+		// send to a terminal status; the classified response moves a counter. The
+		// retryable branch above emits only the second, which is what lets it report
+		// the same fact about a message that is still in flight.
+		expect(
+			effects
+				.filter((e) => e.kind === 'notify_convex')
+				.map((e) => (e.kind === 'notify_convex' ? e.event.event : null))
+		).toEqual(['bounced', 'smtp.classified']);
+		const notify = effects.find((e) => e.kind === 'notify_convex' && e.event.event === 'bounced');
 		if (notify?.kind === 'notify_convex') {
 			expect(notify.event.event).toBe('bounced');
 			expect(notify.event.bounceType).toBe('hard');
 		}
+	});
+
+	it('carries the category as a TYPED field, not only in prose (issue #501)', () => {
+		// THE OTHER END OF THIS READS IT: the standalone ramp's gate-2 block clause
+		// (`apps/api/convex/delivery/ramp/trailingBaselineGates.ts`) counts the
+		// categories this service assigns. It used to receive them only inside the
+		// bounce's prose `message`, so a consumer wanting the category would have
+		// had to re-parse the sentence with a SECOND classifier free to disagree
+		// with this one — which is what `@owlat/shared/smtpBlockCategories` exists
+		// to prevent.
+		//
+		// The bounce still SAYS the category in its message, for the operator
+		// reading a failure. What decides a ramp verdict is the typed field beside
+		// it, on its own event.
+		const outcome = deferredNonRetryable();
+		const category = outcome.kind === 'deferred' ? outcome.classification.category : '';
+		expect(category).toBe('content_rejected');
+		const effects = reduce(outcome, makeCtx()).effects;
+		const bounce = effects.find((e) => e.kind === 'notify_convex' && e.event.event === 'bounced');
+		if (bounce?.kind !== 'notify_convex') throw new Error('expected a bounced notification');
+		expect(bounce.event.message).toContain(category);
+		// The bounce itself still carries NO typed category — the split is the
+		// design, not an accident: a lifecycle event beside a measurement event.
+		expect(bounce.event.smtpCategory).toBeUndefined();
+
+		const classified = effects.find(
+			(e) => e.kind === 'notify_convex' && e.event.event === 'smtp.classified'
+		);
+		if (classified?.kind !== 'notify_convex') throw new Error('expected a classified response');
+		expect(classified.event.smtpCategory).toBe(category);
+		// The SHARED vocabulary, checked against the shared guards rather than
+		// against a literal this file spells for itself.
+		expect(isSmtpFailureCategory(classified.event.smtpCategory ?? '')).toBe(true);
+		expect(isSmtpBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
 	});
 
 	it('still re-defers a retryable greylist deferral (regression guard)', () => {

@@ -20,6 +20,11 @@ import {
 } from './sendLifecycle/reducers';
 import { applyEffects, type Effect } from './sendLifecycle/effects';
 import {
+	hasOutboundAttemptEvidence,
+	queuedTerminalSendAccountingEffects,
+	transitionOutcomeEffects,
+} from './sendLifecycle/outcomeAccounting';
+import {
 	canAttributeRemoteAcceptance,
 	reduceDeliveryObservation,
 	type DeliveryObservationResult,
@@ -43,9 +48,11 @@ import { mirrorEmailSendWrite } from '../unifiedMessages';
 // the 7 pure reducers and the legal-edges DAG live in `./sendLifecycle/reducers`
 // (no `ctx`, directly unit-testable); the effect runner lives in
 // `./sendLifecycle/effects`; the DB lookups (load/resolve/provenance) live in
-// `./sendLifecycle/lookups`. Splitting per CONVENTIONS.md "Split only above
-// ~500 LOC" — the reducer/runner boundary that already existed conceptually is
-// now a file boundary.
+// `./sendLifecycle/lookups`; the volume-denominator and deliverability-outcome
+// effects of a transition live in `./sendLifecycle/outcomeAccounting`.
+// Splitting per CONVENTIONS.md "Split only above ~500 LOC" — the
+// reducer/runner boundary that already existed conceptually is now a file
+// boundary.
 //
 // Public surface:
 //   - transition({ send, transition })                — worker / direct path
@@ -103,22 +110,6 @@ const transitionInputValidator = v.union(
 	}),
 	v.object({ to: v.literal('complained'), at: v.number() })
 );
-
-/**
- * Whether an MTA terminal callback proves that an SMTP envelope was attempted.
- *
- * Bounce and complaint evidence necessarily follows an outbound attempt.
- * `ambiguous_post_data` is the one failed disposition emitted after message
- * data reached the wire. Other failed codes describe local policy, routing, or
- * intake failures and must not inflate sent-volume denominators.
- */
-function hasOutboundAttemptEvidence(input: TransitionInput): boolean {
-	return (
-		input.to === 'bounced' ||
-		input.to === 'complained' ||
-		(input.to === 'failed' && input.errorCode === 'ambiguous_post_data')
-	);
-}
 
 // ─── Dispatcher — the one place that fans transition kinds to reducers ─────
 
@@ -229,34 +220,30 @@ async function dispatch(
 		}
 	}
 
-	// An SMTP rejection or post-DATA ambiguity goes `queued -> terminal` without
-	// passing through `sent`, so `reduceSent`'s outbound accounting never runs.
-	// Preserve the rate denominator only when the callback proves an envelope
-	// attempt. Local screening, suppression, routing exhaustion, and intake
-	// uncertainty are terminal non-deliveries, not sent volume. The `email.sent`
-	// customer webhook deliberately stays with `reduceSent`: nothing here was
-	// accepted for delivery.
+	// Volume denominator and deliverability outcome — see
+	// `./sendLifecycle/outcomeAccounting`. Appended to the SAME effect list the
+	// reducers produced, so both inherit the duplicate suppression and the
+	// test-send stripping below.
 	const queuedTerminalSendAccounting: Effect[] =
 		isBoundQueuedMtaTerminal && result.applied !== 'duplicate' && hasOutboundAttemptEvidence(input)
-			? [
-					...(ref.kind === 'campaign'
-						? ([
-								{ kind: 'campaign_stats_sent', campaignId: (send as EmailSendDoc).campaignId },
-							] as Effect[])
-						: []),
-					{ kind: 'daily_stats_bump', field: 'sent', at: input.at },
-					{
-						kind: 'reputation_update',
-						eventType: 'send',
-						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
-					},
-				]
+			? await queuedTerminalSendAccountingEffects(ctx, {
+					send,
+					ref,
+					input,
+					senderDomain: deliverySenderDomain,
+				})
 			: [];
+	const outcomeEffects = transitionOutcomeEffects(ref, input);
 
 	result = withoutTestSendEffects(send, ref, {
 		...result,
 		patch: { ...deliveryObservation.patch, ...result.patch },
-		effects: [...queuedTerminalSendAccounting, ...deliveryObservation.effects, ...result.effects],
+		effects: [
+			...queuedTerminalSendAccounting,
+			...deliveryObservation.effects,
+			...result.effects,
+			...outcomeEffects,
+		],
 		applied:
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'
 				? 'recorded'
@@ -432,17 +419,38 @@ export const bindMtaProviderIdentity = internalMutation({
 	},
 });
 
-/** Apply an authenticated terminal MTA result to its pre-bound provisional Send. */
+/**
+ * Apply a terminal result our OWN MTA authenticated to the Send it names.
+ *
+ * Attribution is the EXACT `providerMessageId` match below: the id an MTA
+ * report carries is the one it was bound to (direct MX) or the one a signed
+ * VERP token decoded to (a bounce our own bounce server accepted). A send that
+ * has since been re-dispatched carries a different id and is not matched.
+ *
+ * Deliberately NOT restricted to `providerType === 'mta'`. A relay send stamped
+ * with our VERP envelope sender produces DSNs that land on OUR bounce server,
+ * so the MTA reports them exactly like a direct-MX bounce — while the Send row
+ * still records the transport it actually left through (`smtp`). Requiring the
+ * row to say `mta` dropped every one of those bounces as `send_not_found`,
+ * which is precisely the measurement bias the relay VERP stamp exists to remove
+ * (plan G-08).
+ *
+ * The queued-terminal relaxation stays MTA-only: only the direct-MX path binds
+ * a provisional identity while the row is still `queued`, so only it can
+ * legitimately go `queued → bounced` without an intervening `sent`.
+ */
 export const transitionMtaByProviderMessageId = internalMutation({
 	args: { providerMessageId: v.string(), transition: transitionInputValidator },
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		const send = await loadSend(ctx, ref);
-		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+		if (!send || send.providerMessageId !== args.providerMessageId) {
 			return { ok: false, reason: 'send_not_found' };
 		}
-		return await dispatch(ctx, ref, args.transition, { allowQueuedMtaTerminal: true });
+		return await dispatch(ctx, ref, args.transition, {
+			allowQueuedMtaTerminal: send.providerType === 'mta',
+		});
 	},
 });
 

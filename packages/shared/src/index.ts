@@ -6,6 +6,11 @@ export {
 	MTA_WEBHOOK_EVENT_TYPES,
 	type MtaWebhookEventType,
 	type SharedMtaWebhookEvent,
+	type PostmasterComplianceCheck,
+	type PostmasterDeliveryError,
+	POSTMASTER_TOKEN,
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
 	isMtaWebhookEventType,
 	isMtaWebhookEvent,
 } from './mtaWebhookEvent';
@@ -38,7 +43,7 @@ export {
 	zoneRelativeHost,
 } from './dnsZone';
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
-export { SES_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
+export { SES_RELAY_PROOF_MAX_AGE_MS, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
 	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
 	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
@@ -178,6 +183,7 @@ export {
 export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	ROUTING_LEASE_UNREADABLE_CODE,
 	type GovernedCandidateProvider,
 	type GovernedIpPool,
 	type GovernedMessageType,

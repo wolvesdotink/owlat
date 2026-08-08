@@ -63,6 +63,18 @@ export const update = authedMutation({
 		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
 		// `off`. Unset ⇒ `auto` at resolution time.
 		sealPolicy: v.optional(sealPolicyValidator),
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2). True pins every ramp
+		// cell at its current share: the hourly controller still evaluates and
+		// audits, but writes no share. It is the plan's named mitigation for
+		// controller complexity, so an owner/admin must be able to pull it from the
+		// product — not only from an internal mutation.
+		isRampControllerPaused: v.optional(v.boolean()),
+		// What the relay charges, in minor units per thousand messages, with its
+		// ISO-4217 code — the only input behind the Independence screen's
+		// month-to-date "spend avoided". Optional in every sense: unset simply
+		// means the figure is not shown.
+		relayMinorUnitsPerThousand: v.optional(v.number()),
+		relayCurrency: v.optional(v.string()),
 		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
 		// can disable it for legacy senders that cannot negotiate TLS.
 		isInboundTlsRequired: v.optional(v.boolean()),
@@ -83,6 +95,15 @@ export const update = authedMutation({
 		);
 		const now = Date.now();
 		if (
+			args.relayMinorUnitsPerThousand !== undefined &&
+			(!Number.isFinite(args.relayMinorUnitsPerThousand) || args.relayMinorUnitsPerThousand < 0)
+		) {
+			throw new Error('A relay price must be a non-negative number of minor units per thousand');
+		}
+		if (args.relayCurrency !== undefined && !/^[A-Za-z]{3}$/.test(args.relayCurrency)) {
+			throw new Error('A relay currency must be a three-letter ISO-4217 code');
+		}
+		if (
 			args.trustedArcForwarders !== undefined &&
 			args.trustedArcForwarders.length > MAX_TRUSTED_ARC_FORWARDERS
 		) {
@@ -96,6 +117,11 @@ export const update = authedMutation({
 			...args,
 			...(args.trustedArcForwarders !== undefined
 				? { trustedArcForwarders: sanitizeTrustedForwarders(args.trustedArcForwarders) }
+				: {}),
+			// Stored upper-case so two spellings of one currency cannot format
+			// differently on two screens.
+			...(args.relayCurrency !== undefined
+				? { relayCurrency: args.relayCurrency.toUpperCase() }
 				: {}),
 		};
 		const existing = await ctx.db.query('instanceSettings').first();

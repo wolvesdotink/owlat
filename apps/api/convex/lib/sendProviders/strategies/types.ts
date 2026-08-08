@@ -7,9 +7,17 @@
  * `select()`.
  */
 
+import type { ActionableDeliverabilitySignalSource } from '@owlat/shared/deliverabilityRouting';
 import type { SendProviderKind } from '../types';
+// Local import only: `strategies/index.ts` is the ONE public path to the mix
+// types, so a caller cannot end up importing the same type by two routes.
+import type { MixAssignment, MixContext } from './adaptive_mix/mix';
 
-export type SendRouteStrategyKind = 'single' | 'priority_failover' | 'workload_split';
+export type SendRouteStrategyKind =
+	| 'single'
+	| 'priority_failover'
+	| 'workload_split'
+	| 'adaptive_mix';
 
 export interface ProviderEntry {
 	providerType: SendProviderKind;
@@ -37,25 +45,56 @@ export interface ResolvedRoute {
 	// when nothing is configured, route resolution returns `null` (unconfigured),
 	// never a phantom MTA.
 	source: 'org_config' | 'env_fallback' | 'deliverability_fallback';
-	deliverabilityReason?:
-		| 'ip_quarantined'
-		| 'dnsbl_listed'
-		| 'breaker_open'
-		| 'persistent_defers'
-		| 'warmup_overflow';
+	/**
+	 * The per-recipient mix decision that produced this route, when the route
+	 * came from `adaptive_mix` DERIVING one (never when it replayed a recorded
+	 * arm, and never for the shipped strategies). Carried on the route so the
+	 * enqueue writer records the decision the router actually took instead of
+	 * evaluating the same pure function a second time.
+	 */
+	mix?: MixAssignment;
+	/**
+	 * Why the deliverability fallback engaged. Derived from the SHARED signal
+	 * taxonomy rather than re-spelled here, so an added advisory source (which
+	 * must never surface as a routing verdict) cannot silently become a legal
+	 * reason: `route.ts`'s actionable filter is load-bearing by construction.
+	 * `warmup_overflow` is not a signal at all — it is the resolver's own reason.
+	 */
+	deliverabilityReason?: ActionableDeliverabilitySignalSource | 'warmup_overflow';
 }
 
 export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 	readonly kind: K;
 
 	/**
+	 * Whether `select()` is a function of its inputs alone. False for
+	 * `workload_split`, which draws at random on every call, so two calls with
+	 * identical inputs can return different providers.
+	 *
+	 * Load-bearing for BATCH callers that record which transport a recipient
+	 * was assigned to (`delivery/sendAssignments.ts`): they resolve once per
+	 * cell, while the worker draws again independently per recipient at
+	 * dispatch. Under a non-deterministic strategy a recorded arm would be
+	 * wrong for roughly half the batch, so those callers must record no row
+	 * at all — a guessed arm is worse than a missing row.
+	 */
+	readonly isDeterministic: boolean;
+
+	/**
 	 * Pure function. Given enabled providers and (optionally) their
 	 * health statuses, return the chosen provider — or null if no
 	 * candidate is selectable (caller falls back).
+	 *
+	 * `mix` is the per-RECIPIENT context `adaptive_mix` splits against (plan
+	 * D7) — either a recipient to decide for or an already-recorded arm to
+	 * replay. It is optional and the shipped three ignore it: a strategy that
+	 * does not split per recipient has no use for one, and every caller that
+	 * has no recipient in hand (health probes, preflight) supplies none.
 	 */
 	select(
 		entries: readonly ProviderEntry[],
 		ipPool: string | undefined,
-		healthStatuses?: readonly ProviderHealthStatus[]
+		healthStatuses?: readonly ProviderHealthStatus[],
+		mix?: MixContext
 	): ResolvedRoute | null;
 }

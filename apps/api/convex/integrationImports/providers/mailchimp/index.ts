@@ -16,6 +16,7 @@ import {
 	RetryableProviderError,
 	type FetchPageResult,
 	type IntegrationImportProviderModule,
+	type SuppressionRow,
 } from '../../_common';
 import type { ImportRow } from '../../../contacts/import';
 
@@ -36,8 +37,47 @@ interface MailchimpListResponse {
 	total_items: number;
 }
 
+/**
+ * What one non-subscribed audience member means for Owlat's suppression state
+ * (plan D9), or `null` when it means nothing.
+ *
+ * NO SECOND FETCH IS NEEDED, and that is the whole shape of this feature on the
+ * Mailchimp side. `GET /lists/{id}/members` is not status-filtered here: every
+ * page the contacts import already walks carries the audience's `unsubscribed`
+ * and `cleaned` members too, and the importer's only use for them until now was
+ * to `continue` past them. So the carry-over adds no request, no second paging
+ * pass, no extra rate-limit exposure — it routes rows that were already on the
+ * wire and were being dropped.
+ *
+ *  - `unsubscribed` — a departure. Routed to the CONSENT path, not the
+ *    blocklist: Owlat has membership deletes, an opt-out stamp, campaign
+ *    counters and a `topic.unsubscribed` webhook for this, and a blocklist row
+ *    would record the outcome while skipping all of it.
+ *  - `cleaned` — Mailchimp's word for "this address hard-bounced (or repeatedly
+ *    failed) and we stopped mailing it". Mailbox evidence, and the strongest
+ *    kind: `bounced`/`hard`, which the MTA mirror makes a permanent backstop
+ *    entry.
+ *  - `pending` (double opt-in in flight), `transactional`, `archived`, and any
+ *    status Mailchimp adds later — NOT suppressions. A pending member has not
+ *    said no, and an archived one is an audience-management decision about a
+ *    list, not a statement about the mailbox. Suppressing on either would let a
+ *    tidy-up in Mailchimp permanently silence an address here. They are counted
+ *    as skipped so the run summary accounts for every member the page saw.
+ */
+function suppressionForStatus(member: MailchimpMember): SuppressionRow | null {
+	const email = member.email_address.toLowerCase();
+	if (member.status === 'unsubscribed') {
+		return { email, reason: 'unsubscribe', evidence: 'unsubscribed' };
+	}
+	if (member.status === 'cleaned') {
+		return { email, reason: 'bounced', bounceType: 'hard', evidence: 'cleaned' };
+	}
+	return null;
+}
+
 export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 	kind: 'mailchimp',
+	contactSource: 'mailchimp',
 	defaultDoiAttest: 'mailchimp',
 
 	validateConfig(config) {
@@ -64,7 +104,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 		const datacenter = config.apiKey.split('-').pop();
 		if (!datacenter || !/^[a-z]{2}\d+$/.test(datacenter)) {
 			throw new Error(
-				'Invalid Mailchimp API key format. Expected format: apikey-datacenter (e.g., abc123-us21)',
+				'Invalid Mailchimp API key format. Expected format: apikey-datacenter (e.g., abc123-us21)'
 			);
 		}
 
@@ -84,7 +124,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			});
 		} catch (err) {
 			throw new RetryableProviderError(
-				`Network error fetching Mailchimp page at offset ${offset}: ${err instanceof Error ? err.message : 'unknown'}`,
+				`Network error fetching Mailchimp page at offset ${offset}: ${err instanceof Error ? err.message : 'unknown'}`
 			);
 		}
 
@@ -111,8 +151,17 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 		// rest through as `properties` — the **Contact import (module)**
 		// auto-registers unknown property keys on `mailchimp` source.
 		const rows: ImportRow[] = [];
+		const suppressions: SuppressionRow[] = [];
+		let suppressionsSkipped = 0;
 		for (const member of data.members) {
-			if (member.status !== 'subscribed') continue;
+			if (member.status !== 'subscribed') {
+				if (config.importSuppressions) {
+					const carried = suppressionForStatus(member);
+					if (carried) suppressions.push(carried);
+					else suppressionsSkipped++;
+				}
+				continue;
+			}
 			const mergeFields = member.merge_fields ?? {};
 			const properties: Record<string, string | number | boolean | null> = {};
 			for (const [key, value] of Object.entries(mergeFields)) {
@@ -129,9 +178,14 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 		}
 
 		const nextOffset = offset + PAGE_SIZE;
-		const nextCursor: string | null =
-			data.members.length === PAGE_SIZE ? String(nextOffset) : null;
+		const nextCursor: string | null = data.members.length === PAGE_SIZE ? String(nextOffset) : null;
 
-		return { rows, nextCursor, totalEstimate: data.total_items };
+		return {
+			rows,
+			nextCursor,
+			totalEstimate: data.total_items,
+			...(suppressions.length > 0 ? { suppressions } : {}),
+			...(suppressionsSkipped > 0 ? { suppressionsSkipped } : {}),
+		};
 	},
 };

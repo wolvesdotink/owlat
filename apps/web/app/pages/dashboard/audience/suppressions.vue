@@ -2,6 +2,11 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import {
+	indexSuppressionProvenance,
+	suppressionProvenanceLine,
+} from '~/utils/suppressionProvenance';
 
 useHead({ title: 'Suppressions — Owlat' });
 
@@ -14,7 +19,7 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Filter state
-const reasonFilter = ref<'all' | 'bounced' | 'complained' | 'manual'>('all');
+const reasonFilter = ref<'all' | BlockReason>('all');
 
 // Get blocked emails with real-time updates
 const {
@@ -27,6 +32,15 @@ const {
 
 // Get counts by reason
 const { data: countsData } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
+
+// WHO PUT THIS HERE. A `manual` row can be a colleague's decision or a provider
+// blacklist hit mirrored in with nobody behind it (plan D9); the audit entry is
+// what tells them apart. Admin-gated, so it simply stays empty for a member and
+// the column falls back to saying nothing.
+const { data: provenanceData } = useOrganizationQuery(api.blockedEmails.listProviderProvenance);
+const provenanceById = computed(() => indexSuppressionProvenance(provenanceData.value));
+const provenanceFor = (blockedEmailId: string): string | null =>
+	suppressionProvenanceLine(provenanceById.value.get(blockedEmailId));
 
 const isLoading = computed(() => organizationLoading.value || blockedEmailsLoading.value);
 
@@ -143,41 +157,25 @@ const handleDeleteBlockedEmail = async () => {
 	emailToDelete.value = null;
 };
 
-// Get reason badge class
-const getReasonBadgeClass = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return 'bg-error/20 text-error border-error/30';
-		case 'complained':
-			return 'bg-warning/20 text-warning border-warning/30';
-		default: // manual
-			return 'bg-brand/20 text-brand border-brand/30';
-	}
-};
+// The reason -> badge/icon/label decision lives in ONE place (see
+// `~/utils/suppressionReasons`), shared with the contact-profile notice. The
+// parameter is the closed `BlockReason` union, so the lookup is total: a fifth
+// schema literal fails the build instead of silently rendering as "manual".
+const presentation = (reason: BlockReason) => suppressionReasonPresentation(reason);
 
-// Get reason icon
-const getReasonIcon = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return 'lucide:mail';
-		case 'complained':
-			return 'lucide:message-square-warning';
-		default: // manual
-			return 'lucide:user-x';
-	}
-};
-
-// Get reason label — plain language, no jargon. Explains WHY in the label itself.
-const getReasonLabel = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return "Bounced — mailbox doesn't exist";
-		case 'complained':
-			return 'Complained — marked a send as spam';
-		default: // manual
-			return 'Manually suppressed';
-	}
-};
+// The stat row, driven by the shared reason table rather than four hand-written
+// cards. Typed as `BlockReason` so the icons and tones come from that same
+// total lookup instead of a widened string.
+const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[]>(() => {
+	const c = countsData.value;
+	if (!c) return [];
+	return [
+		{ key: 'bounced', label: 'Bounced', count: c.bounced },
+		{ key: 'complained', label: 'Complained', count: c.complained },
+		{ key: 'manual', label: 'Manual', count: c.manual },
+		{ key: 'unengaged', label: 'Unengaged', count: c.unengaged },
+	];
+});
 </script>
 
 <template>
@@ -228,6 +226,10 @@ const getReasonLabel = (reason: string) => {
 
 			<!-- Content -->
 			<div v-else class="space-y-6">
+				<!-- Auto-suppression paused on an uncorroborated clock. Self-contained:
+				     renders nothing at all on a healthy deployment. -->
+				<ContactsSunsetClockBanner />
+
 				<!-- Info Card -->
 				<div class="card p-6 bg-warning/5 border-warning/20">
 					<div class="flex gap-4">
@@ -245,31 +247,21 @@ const getReasonLabel = (reason: string) => {
 				</div>
 
 				<!-- Stats Cards -->
-				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
 					<div class="card p-4">
 						<p class="text-sm text-text-secondary">Total suppressed</p>
 						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
 					</div>
-					<div class="card p-4">
+					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:mail" class="w-4 h-4 text-error" />
-							<p class="text-sm text-text-secondary">Bounced</p>
+							<Icon
+								:name="presentation(tile.key).icon"
+								class="w-4 h-4"
+								:class="presentation(tile.key).tone"
+							/>
+							<p class="text-sm text-text-secondary">{{ tile.label }}</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.bounced }}</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:message-square-warning" class="w-4 h-4 text-warning" />
-							<p class="text-sm text-text-secondary">Complained</p>
-						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.complained }}</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:user-x" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">Manual</p>
-						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.manual }}</p>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ tile.count }}</p>
 					</div>
 				</div>
 
@@ -297,6 +289,7 @@ const getReasonLabel = (reason: string) => {
 							<option value="bounced">Bounced</option>
 							<option value="complained">Complained</option>
 							<option value="manual">Manually suppressed</option>
+							<option value="unengaged">Unengaged</option>
 						</select>
 					</div>
 				</div>
@@ -374,7 +367,7 @@ const getReasonLabel = (reason: string) => {
 									<div class="flex items-center gap-3">
 										<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
 											<Icon
-												:name="getReasonIcon(blockedEmail.reason)"
+												:name="presentation(blockedEmail.reason).icon"
 												class="w-4 h-4 text-text-secondary"
 											/>
 										</div>
@@ -387,10 +380,10 @@ const getReasonLabel = (reason: string) => {
 									<span
 										:class="[
 											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-											getReasonBadgeClass(blockedEmail.reason),
+											presentation(blockedEmail.reason).badge,
 										]"
 									>
-										{{ getReasonLabel(blockedEmail.reason) }}
+										{{ presentation(blockedEmail.reason).label }}
 									</span>
 								</td>
 								<td class="px-6 py-4 hidden md:table-cell">
@@ -399,6 +392,13 @@ const getReasonLabel = (reason: string) => {
 										class="text-sm text-text-secondary truncate max-w-[200px] block"
 									>
 										{{ blockedEmail.notes }}
+									</span>
+									<span
+										v-else-if="provenanceFor(blockedEmail._id)"
+										class="text-sm text-text-secondary block"
+										data-testid="suppression-provenance"
+									>
+										{{ provenanceFor(blockedEmail._id) }}
 									</span>
 									<span v-else class="text-sm text-text-tertiary">—</span>
 								</td>

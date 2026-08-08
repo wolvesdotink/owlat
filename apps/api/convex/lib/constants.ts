@@ -103,6 +103,14 @@ export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 /** pluginStorageEntries.valueJson canonical JSON shape. */
 export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
 
+/**
+ * sendingDomainRelayIdentities.providerDetails JSON shape (D7) — the
+ * provider-specific extras blob on a generic relay identity. Every registered
+ * relay provider writes its own shape into it, so bumping this is a contract
+ * change for all of them at once; branch on the stored version on read.
+ */
+export const CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION = 1;
+
 /** deliverabilityEvidence.observedValues structured JSON observation contract. */
 export const CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION =
 	DELIVERABILITY_OBSERVATION_SCHEMA_VERSION;
@@ -125,3 +133,12 @@ export const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small';
  * that produces a different width is rejected (see lib/llmProvider.ts).
  */
 export const EMBEDDING_DIMENSIONS = 1536;
+
+/**
+ * Milliseconds in a UTC day. The granularity the MTA's warming cap resets on,
+ * and therefore the day boundary the warming projection
+ * (`delivery/warmingCapacity.ts`) and the campaign capacity planner
+ * (`campaigns/capacityPlan.ts`) both index by. ONE definition: the two modules
+ * must never disagree about where a day starts.
+ */
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;

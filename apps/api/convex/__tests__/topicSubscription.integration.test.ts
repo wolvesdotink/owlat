@@ -34,16 +34,16 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ const modules = Object.fromEntries(
 
 async function createContact(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'contacts'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('contacts', {
@@ -73,7 +73,7 @@ async function createContact(
 async function createTopic(
 	t: TestConvex<typeof schema>,
 	requireDoubleOptIn: boolean,
-	name = 'Newsletter',
+	name = 'Newsletter'
 ): Promise<Id<'topics'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('topics', {
@@ -87,14 +87,12 @@ async function createTopic(
 async function getMembership(
 	t: TestConvex<typeof schema>,
 	contactId: Id<'contacts'>,
-	topicId: Id<'topics'>,
+	topicId: Id<'topics'>
 ) {
 	return await t.run(async (ctx) => {
 		return await ctx.db
 			.query('contactTopics')
-			.withIndex('by_contact_and_topic', (q) =>
-				q.eq('contactId', contactId).eq('topicId', topicId),
-			)
+			.withIndex('by_contact_and_topic', (q) => q.eq('contactId', contactId).eq('topicId', topicId))
 			.first();
 	});
 }
@@ -103,17 +101,11 @@ async function getTopic(t: TestConvex<typeof schema>, topicId: Id<'topics'>) {
 	return await t.run(async (ctx) => await ctx.db.get(topicId));
 }
 
-async function getContact(
-	t: TestConvex<typeof schema>,
-	contactId: Id<'contacts'>,
-) {
+async function getContact(t: TestConvex<typeof schema>, contactId: Id<'contacts'>) {
 	return await t.run(async (ctx) => await ctx.db.get(contactId));
 }
 
-async function getActivitiesForContact(
-	t: TestConvex<typeof schema>,
-	contactId: Id<'contacts'>,
-) {
+async function getActivitiesForContact(t: TestConvex<typeof schema>, contactId: Id<'contacts'>) {
 	return await t.run(async (ctx) => {
 		return await ctx.db
 			.query('contactActivities')
@@ -132,10 +124,11 @@ describe('subscription.subscribe', () => {
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, false);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -157,10 +150,11 @@ describe('subscription.subscribe', () => {
 		});
 		const topicId = await createTopic(t, true);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -178,10 +172,12 @@ describe('subscription.subscribe', () => {
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, true);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'form', siteUrl: 'https://example.com' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'form',
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -208,10 +204,12 @@ describe('subscription.subscribe', () => {
 		});
 		const topicId = await createTopic(t, true);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'form', siteUrl: 'https://example.com' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'form',
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -237,10 +235,11 @@ describe('subscription.subscribe', () => {
 		});
 
 		// Subscribe again — should be a no-op.
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -257,10 +256,11 @@ describe('subscription.subscribe', () => {
 		const contactId = await createContact(t, { deletedAt: Date.now() });
 		const topicId = await createTopic(t, false);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
@@ -288,10 +288,11 @@ describe('subscription.subscribe', () => {
 			return id;
 		});
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId: fakeContactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId: fakeContactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
@@ -312,10 +313,11 @@ describe('subscription.subscribe', () => {
 			return id;
 		});
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId: fakeTopicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId: fakeTopicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
@@ -328,10 +330,12 @@ describe('subscription.subscribe', () => {
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, true);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.subscribe,
-			{ topicId, contactId, source: 'import', skipDoi: true },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'import',
+			skipDoi: true,
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -360,14 +364,15 @@ describe('subscription.subscribeMany', () => {
 				createContact(t, {
 					email: `c${i}@example.com`,
 					searchableText: `c${i}@example.com`,
-				}),
-			),
+				})
+			)
 		);
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.subscribeMany,
-			{ topicId, contactIds, source: 'admin' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId,
+			contactIds,
+			source: 'admin',
+		});
 
 		expect(outcomes).toHaveLength(10);
 		for (const outcome of outcomes) {
@@ -407,14 +412,11 @@ describe('subscription.subscribeMany', () => {
 			source: 'admin',
 		});
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.subscribeMany,
-			{
-				topicId,
-				contactIds: [newContact, memberContact, deletedContact],
-				source: 'admin',
-			},
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId,
+			contactIds: [newContact, memberContact, deletedContact],
+			source: 'admin',
+		});
 
 		expect(outcomes[0]!.ok).toBe(true);
 		if (outcomes[0]!.ok) expect(outcomes[0]!.action).toBe('subscribed');
@@ -442,10 +444,11 @@ describe('subscription.subscribeMany', () => {
 			return id;
 		});
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.subscribeMany,
-			{ topicId: fakeTopicId, contactIds: [c1, c2], source: 'admin' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId: fakeTopicId,
+			contactIds: [c1, c2],
+			source: 'admin',
+		});
 
 		expect(outcomes).toHaveLength(2);
 		for (const outcome of outcomes) {
@@ -485,7 +488,7 @@ describe('subscription.unsubscribe — admin source', () => {
 				submissionCount: 0,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const submissionId = await t.run(async (ctx) =>
 			ctx.db.insert('formSubmissions', {
@@ -495,14 +498,15 @@ describe('subscription.unsubscribe — admin source', () => {
 				status: 'success' as const,
 				confirmedAt: Date.now(),
 				submittedAt: Date.now(),
-			}),
+			})
 		);
 
 		// Unsubscribe.
-		const outcome = await t.mutation(
-			internal.topics.subscription.unsubscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.unsubscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) expect(outcome.action).toBe('unsubscribed');
@@ -519,7 +523,7 @@ describe('subscription.unsubscribe — admin source', () => {
 		// Activity row written (closes drift bug #3 — admin-remove activity row).
 		const activities = await getActivitiesForContact(t, contactId);
 		const unsubActivities = activities.filter(
-			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed',
+			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed'
 		);
 		expect(unsubActivities).toHaveLength(1);
 		expect(unsubActivities[0]?.metadata?.reason).toBe('admin_remove');
@@ -539,18 +543,20 @@ describe('subscription.unsubscribe — admin source', () => {
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, false);
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.unsubscribe,
-			{ topicId, contactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.unsubscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) expect(outcome.action).toBe('not_member');
 
 		// No activity row written.
 		const activities = await getActivitiesForContact(t, contactId);
-		expect(activities.filter((a: { activityType: string }) => a.activityType === 'topic_unsubscribed'))
-			.toHaveLength(0);
+		expect(
+			activities.filter((a: { activityType: string }) => a.activityType === 'topic_unsubscribed')
+		).toHaveLength(0);
 	});
 
 	it('returns contact_not_found for unknown contactId', async () => {
@@ -568,10 +574,11 @@ describe('subscription.unsubscribe — admin source', () => {
 			return id;
 		});
 
-		const outcome = await t.mutation(
-			internal.topics.subscription.unsubscribe,
-			{ topicId, contactId: fakeContactId, source: 'admin' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.unsubscribe, {
+			topicId,
+			contactId: fakeContactId,
+			source: 'admin',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('contact_not_found');
@@ -605,7 +612,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 				submissionCount: 0,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const submissionId = await t.run(async (ctx) =>
 			ctx.db.insert('formSubmissions', {
@@ -615,7 +622,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 				status: 'success' as const,
 				confirmedAt: Date.now(),
 				submittedAt: Date.now(),
-			}),
+			})
 		);
 
 		// Add a campaign + emailSend so campaign stats can increment.
@@ -628,7 +635,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 				statsUnsubscribed: 0,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		await t.run(async (ctx) =>
 			ctx.db.insert('emailSends', {
@@ -639,16 +646,17 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 				queuedAt: Date.now(),
 				sentAt: Date.now(),
 				openCount: 0,
-			}),
+			})
 		);
 
 		// Fake timers so the scheduled recordCampaignUnsubscribe (runAfter 0) runs
 		// under finishAllScheduledFunctions.
 		vi.useFakeTimers();
-		const outcome = await t.mutation(
-			internal.topics.subscription.unsubscribe,
-			{ topicId, contactId, source: 'public_email_link' },
-		);
+		const outcome = await t.mutation(internal.topics.subscription.unsubscribe, {
+			topicId,
+			contactId,
+			source: 'public_email_link',
+		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		vi.useRealTimers();
 
@@ -667,7 +675,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 		// Activity row written with the source-derived reason.
 		const activities = await getActivitiesForContact(t, contactId);
 		const unsub = activities.find(
-			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed',
+			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed'
 		);
 		expect(unsub?.metadata?.reason).toBe('unsubscribe');
 	});
@@ -687,8 +695,8 @@ describe('subscription.unsubscribeMany — admin source', () => {
 				createContact(t, {
 					email: `bulk${i}@example.com`,
 					searchableText: `bulk${i}@example.com`,
-				}),
-			),
+				})
+			)
 		);
 
 		// Subscribe all 5.
@@ -702,10 +710,11 @@ describe('subscription.unsubscribeMany — admin source', () => {
 		expect(topicBefore?.cachedMemberCount).toBe(5);
 
 		// Bulk unsubscribe all 5.
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.unsubscribeMany,
-			{ topicId, contactIds, source: 'admin' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeMany, {
+			topicId,
+			contactIds,
+			source: 'admin',
+		});
 
 		expect(outcomes).toHaveLength(5);
 		for (const outcome of outcomes) {
@@ -721,7 +730,7 @@ describe('subscription.unsubscribeMany — admin source', () => {
 		for (const contactId of contactIds) {
 			const activities = await getActivitiesForContact(t, contactId);
 			expect(
-				activities.filter((a: { activityType: string }) => a.activityType === 'topic_unsubscribed'),
+				activities.filter((a: { activityType: string }) => a.activityType === 'topic_unsubscribed')
 			).toHaveLength(1);
 		}
 	});
@@ -765,7 +774,7 @@ describe('subscription.unsubscribeAllForContact', () => {
 				submissionCount: 0,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const sub1 = await t.run(async (ctx) =>
 			ctx.db.insert('formSubmissions', {
@@ -775,7 +784,7 @@ describe('subscription.unsubscribeAllForContact', () => {
 				status: 'success' as const,
 				confirmedAt: Date.now(),
 				submittedAt: Date.now(),
-			}),
+			})
 		);
 		const sub2 = await t.run(async (ctx) =>
 			ctx.db.insert('formSubmissions', {
@@ -785,13 +794,13 @@ describe('subscription.unsubscribeAllForContact', () => {
 				status: 'success' as const,
 				confirmedAt: Date.now(),
 				submittedAt: Date.now(),
-			}),
+			})
 		);
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.unsubscribeAllForContact,
-			{ contactId, source: 'public_email_link' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			source: 'public_email_link',
+		});
 
 		expect(outcomes).toHaveLength(3);
 		for (const outcome of outcomes) {
@@ -810,15 +819,13 @@ describe('subscription.unsubscribeAllForContact', () => {
 		expect((await getTopic(t, topicC))?.cachedMemberCount).toBe(0);
 
 		// Form submission confirmations cleared (per-contact, all).
-		expect((await t.run(async (ctx) => ctx.db.get(sub1)))?.confirmedAt)
-			.toBeUndefined();
-		expect((await t.run(async (ctx) => ctx.db.get(sub2)))?.confirmedAt)
-			.toBeUndefined();
+		expect((await t.run(async (ctx) => ctx.db.get(sub1)))?.confirmedAt).toBeUndefined();
+		expect((await t.run(async (ctx) => ctx.db.get(sub2)))?.confirmedAt).toBeUndefined();
 
 		// Three activity rows (one per topic).
 		const activities = await getActivitiesForContact(t, contactId);
 		const unsubActivities = activities.filter(
-			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed',
+			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed'
 		);
 		expect(unsubActivities).toHaveLength(3);
 	});
@@ -840,10 +847,11 @@ describe('subscription.unsubscribeAllForContact', () => {
 			source: 'admin',
 		});
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.unsubscribeAllForContact,
-			{ contactId, topicId: topicA, source: 'public_email_link' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicId: topicA,
+			source: 'public_email_link',
+		});
 
 		expect(outcomes).toHaveLength(1);
 		expect(outcomes[0]!.ok).toBe(true);
@@ -859,14 +867,90 @@ describe('subscription.unsubscribeAllForContact', () => {
 		const contactId = await createContact(t);
 		const topicId = await createTopic(t, false);
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.unsubscribeAllForContact,
-			{ contactId, topicId, source: 'public_email_link' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicId,
+			source: 'public_email_link',
+		});
 
 		expect(outcomes).toHaveLength(1);
 		expect(outcomes[0]!.ok).toBe(true);
 		if (outcomes[0]!.ok) expect(outcomes[0]!.action).toBe('not_member');
+	});
+
+	// The case above is the EARLY RETURN — nothing in scope at all. A batch save
+	// where only SOME of the scoped topics have a membership goes down the other
+	// path, and a caller lines the outcomes up against the toggles it sent: a
+	// scoped topic that answered with nothing would leave it unable to tell an
+	// applied toggle from a dropped one.
+	it('answers every scoped topic, membership or not', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await createContact(t);
+		const memberA = await createTopic(t, false, 'A');
+		const memberB = await createTopic(t, false, 'B');
+		const strangerC = await createTopic(t, false, 'C');
+
+		for (const topicId of [memberA, memberB]) {
+			await t.mutation(internal.topics.subscription.subscribe, {
+				topicId,
+				contactId,
+				source: 'admin',
+			});
+		}
+
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicIds: [memberA, memberB, strangerC],
+			source: 'preferences_page',
+		});
+
+		expect(outcomes).toHaveLength(3);
+		// Removals come first and the topics with nothing to remove follow, so the
+		// (topic, action) pairs are compared as a set rather than positionally.
+		expect(
+			outcomes.map((outcome) => [
+				String(outcome.topicId),
+				outcome.ok ? outcome.action : `not_ok:${outcome.reason}`,
+			])
+		).toEqual(
+			expect.arrayContaining([
+				[String(memberA), 'unsubscribed'],
+				[String(memberB), 'unsubscribed'],
+				[String(strangerC), 'not_member'],
+			])
+		);
+		expect(await getMembership(t, contactId, memberA)).toBeNull();
+		expect(await getMembership(t, contactId, memberB)).toBeNull();
+	});
+
+	// Two spellings of one scope. The args doc names which one wins; this is that
+	// precedence, so it cannot drift into "whichever the handler reads first".
+	it('lets topicIds win when topicId is passed alongside it', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await createContact(t);
+		const named = await createTopic(t, false, 'named');
+		const listed = await createTopic(t, false, 'listed');
+
+		for (const topicId of [named, listed]) {
+			await t.mutation(internal.topics.subscription.subscribe, {
+				topicId,
+				contactId,
+				source: 'admin',
+			});
+		}
+
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId,
+			topicId: named,
+			topicIds: [listed],
+			source: 'public_email_link',
+		});
+
+		expect(outcomes).toHaveLength(1);
+		expect(await getMembership(t, contactId, listed)).toBeNull();
+		expect(await getMembership(t, contactId, named)).not.toBeNull();
+		// Still a SCOPED call, so no contact-level opt-out was stamped.
+		expect((await getContact(t, contactId))?.unsubscribedAt).toBeUndefined();
 	});
 
 	it('returns contact_not_found for unknown contactId', async () => {
@@ -883,10 +967,10 @@ describe('subscription.unsubscribeAllForContact', () => {
 			return id;
 		});
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.unsubscribeAllForContact,
-			{ contactId: fakeContactId, source: 'public_email_link' },
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.unsubscribeAllForContact, {
+			contactId: fakeContactId,
+			source: 'public_email_link',
+		});
 
 		expect(outcomes).toHaveLength(1);
 		expect(outcomes[0]!.ok).toBe(false);
@@ -904,15 +988,12 @@ describe('subscription — drift bug closures', () => {
 		const topicId = await createTopic(t, true); // requireDoubleOptIn = true
 		const contactId = await createContact(t); // not_required
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.subscribeMany,
-			{
-				topicId,
-				contactIds: [contactId],
-				source: 'import',
-				siteUrl: 'https://example.com',
-			},
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId,
+			contactIds: [contactId],
+			source: 'import',
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcomes[0]!.ok).toBe(true);
 		if (outcomes[0]!.ok) {
@@ -930,15 +1011,12 @@ describe('subscription — drift bug closures', () => {
 		const topicId = await createTopic(t, true);
 		const contactId = await createContact(t);
 
-		const { outcomes } = await t.mutation(
-			internal.topics.subscription.subscribeMany,
-			{
-				topicId,
-				contactIds: [contactId],
-				source: 'import',
-				skipDoi: true,
-			},
-		);
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId,
+			contactIds: [contactId],
+			source: 'import',
+			skipDoi: true,
+		});
 
 		expect(outcomes[0]!.ok).toBe(true);
 		if (outcomes[0]!.ok) {
@@ -968,7 +1046,7 @@ describe('subscription — drift bug closures', () => {
 
 		const activities = await getActivitiesForContact(t, contactId);
 		const unsubActivity = activities.find(
-			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed',
+			(a: { activityType: string }) => a.activityType === 'topic_unsubscribed'
 		);
 		expect(unsubActivity).toBeDefined();
 		// Reason captures the admin source.
@@ -983,8 +1061,8 @@ describe('subscription — drift bug closures', () => {
 				createContact(t, {
 					email: `d4-${i}@example.com`,
 					searchableText: `d4-${i}@example.com`,
-				}),
-			),
+				})
+			)
 		);
 
 		await t.mutation(internal.topics.subscription.subscribeMany, {

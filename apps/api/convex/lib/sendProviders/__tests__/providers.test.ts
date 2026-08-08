@@ -5,6 +5,14 @@ import { sesSendProvider, _resetSesClientCacheForTests } from '../ses';
 import { resendSendProvider, _resetResendClientCacheForTests } from '../resend';
 import { EmailErrorCode, isRetryableErrorCode } from '../types';
 import { sendProviderDispatch } from '../dispatch';
+import { resolveSendTransport } from '../transports';
+
+// Adapters are dispatched BY TRANSPORT: each resolves its own config from the
+// record it is handed. These are the deployment-default instances, i.e. the
+// exact single-transport deployment these assertions have always covered.
+const MTA_TRANSPORT = resolveSendTransport('mta');
+const SES_TRANSPORT = resolveSendTransport('ses');
+const RESEND_TRANSPORT = resolveSendTransport('resend');
 
 // Capture the args passed to the Resend SDK's `emails.send` so the idempotency-
 // key forwarding (FIX H1) can be asserted without a live API call. The
@@ -49,10 +57,10 @@ describe('mtaSendProvider', () => {
 			new Response(JSON.stringify({ success: true, id: 'msg-123' }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}),
+			})
 		);
 
-		const result = await mtaSendProvider.sendEmail({
+		const result = await mtaSendProvider.sendEmail(MTA_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -63,12 +71,12 @@ describe('mtaSendProvider', () => {
 	});
 
 	it('sendEmail does NOT retry internally (single-attempt contract)', async () => {
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response('500 Internal Server Error', { status: 500 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(new Response('500 Internal Server Error', { status: 500 }));
 		global.fetch = fetchSpy;
 
-		const result = await mtaSendProvider.sendEmail({
+		const result = await mtaSendProvider.sendEmail(MTA_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -83,11 +91,9 @@ describe('mtaSendProvider', () => {
 	});
 
 	it('sendEmail classifies HTTP 429 as RATE_LIMIT', async () => {
-		global.fetch = vi.fn().mockResolvedValue(
-			new Response('Too many requests', { status: 429 }),
-		);
+		global.fetch = vi.fn().mockResolvedValue(new Response('Too many requests', { status: 429 }));
 
-		const result = await mtaSendProvider.sendEmail({
+		const result = await mtaSendProvider.sendEmail(MTA_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -107,7 +113,7 @@ describe('mtaSendProvider', () => {
 		vi.stubEnv('MTA_API_URL', '');
 		vi.stubEnv('MTA_API_KEY', 'test-key');
 
-		const result = await mtaSendProvider.sendEmail({
+		const result = await mtaSendProvider.sendEmail(MTA_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -121,14 +127,17 @@ describe('mtaSendProvider', () => {
 	});
 
 	it('sendEmail wires MTA extras (ipPool, dkimDomain) into the POST body', async () => {
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'msg-x' }), { status: 200 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true, id: 'msg-x' }), { status: 200 })
+			);
 		global.fetch = fetchSpy;
 
 		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
 			{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
-			{ ipPool: 'campaign', dkimDomain: 'example.com', messageId: 'fixed-id' },
+			{ ipPool: 'campaign', dkimDomain: 'example.com', messageId: 'fixed-id' }
 		);
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -144,15 +153,18 @@ describe('mtaSendProvider', () => {
 	// to the From-address domain so the DKIM `d=` aligns with the RFC5322.From
 	// domain. A From of `x@acme.com` therefore signs under `acme.com`.
 	it('defaults dkimDomain to the From-address domain when no explicit dkimDomain extra is given (PR-74)', async () => {
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'msg-align' }), { status: 200 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true, id: 'msg-align' }), { status: 200 })
+			);
 		global.fetch = fetchSpy;
 
 		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
 			{ to: 'to@example.com', from: 'x@acme.com', subject: 'hi', html: '<p>hi</p>' },
 			// No dkimDomain — must fall back to the From domain for DMARC alignment.
-			{ messageId: 'send_align1' },
+			{ messageId: 'send_align1' }
 		);
 
 		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
@@ -160,14 +172,17 @@ describe('mtaSendProvider', () => {
 	});
 
 	it('strips a trailing ">" when defaulting dkimDomain from an angle-bracket From (PR-74)', async () => {
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'msg-align2' }), { status: 200 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true, id: 'msg-align2' }), { status: 200 })
+			);
 		global.fetch = fetchSpy;
 
 		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
 			{ to: 'to@example.com', from: 'Acme <x@acme.com>', subject: 'hi', html: '<p>hi</p>' },
-			{ messageId: 'send_align2' },
+			{ messageId: 'send_align2' }
 		);
 
 		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
@@ -178,19 +193,23 @@ describe('mtaSendProvider', () => {
 		// The MTA `/send` route SET-NX dedups on `messageId`; a stable
 		// Send-row-derived key is what makes a surviving retry de-dupe instead
 		// of double-deliver.
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'msg-y' }), { status: 200 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true, id: 'msg-y' }), { status: 200 })
+			);
 		global.fetch = fetchSpy;
 
 		const stableKey = 'send_abc123';
 		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
 			{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
-			{ messageId: stableKey },
+			{ messageId: stableKey }
 		);
 		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
 			{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
-			{ messageId: stableKey },
+			{ messageId: stableKey }
 		);
 
 		const body0 = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
@@ -200,12 +219,14 @@ describe('mtaSendProvider', () => {
 	});
 
 	it('falls back to a fresh UUID only when no messageId extra is supplied (legacy path)', async () => {
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'msg-z' }), { status: 200 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true, id: 'msg-z' }), { status: 200 })
+			);
 		global.fetch = fetchSpy;
 
-		await mtaSendProvider.sendEmail({
+		await mtaSendProvider.sendEmail(MTA_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -234,19 +255,33 @@ describe('mtaSendProvider', () => {
 		});
 		it('maps network timeout text to SERVER_ERROR', () => {
 			expect(mtaSendProvider.categorizeError('Request timeout')).toBe(EmailErrorCode.SERVER_ERROR);
-			expect(mtaSendProvider.categorizeError('AbortError: aborted')).toBe(EmailErrorCode.SERVER_ERROR);
-			expect(mtaSendProvider.categorizeError('connect ECONNREFUSED 1.2.3.4:443')).toBe(EmailErrorCode.SERVER_ERROR);
+			expect(mtaSendProvider.categorizeError('AbortError: aborted')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
+			expect(mtaSendProvider.categorizeError('connect ECONNREFUSED 1.2.3.4:443')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
 		});
 		it('maps "invalid recipient" text to INVALID_RECIPIENT', () => {
-			expect(mtaSendProvider.categorizeError('Invalid recipient address')).toBe(EmailErrorCode.INVALID_RECIPIENT);
+			expect(mtaSendProvider.categorizeError('Invalid recipient address')).toBe(
+				EmailErrorCode.INVALID_RECIPIENT
+			);
 		});
 		it('maps DKIM/domain text to INVALID_SENDER', () => {
-			expect(mtaSendProvider.categorizeError('DKIM signing failed')).toBe(EmailErrorCode.INVALID_SENDER);
-			expect(mtaSendProvider.categorizeError('Domain not verified')).toBe(EmailErrorCode.INVALID_SENDER);
+			expect(mtaSendProvider.categorizeError('DKIM signing failed')).toBe(
+				EmailErrorCode.INVALID_SENDER
+			);
+			expect(mtaSendProvider.categorizeError('Domain not verified')).toBe(
+				EmailErrorCode.INVALID_SENDER
+			);
 		});
 		it('maps spam/blocked text to CONTENT_REJECTED', () => {
-			expect(mtaSendProvider.categorizeError('Email marked as spam')).toBe(EmailErrorCode.CONTENT_REJECTED);
-			expect(mtaSendProvider.categorizeError('Recipient server blocked the message')).toBe(EmailErrorCode.CONTENT_REJECTED);
+			expect(mtaSendProvider.categorizeError('Email marked as spam')).toBe(
+				EmailErrorCode.CONTENT_REJECTED
+			);
+			expect(mtaSendProvider.categorizeError('Recipient server blocked the message')).toBe(
+				EmailErrorCode.CONTENT_REJECTED
+			);
 		});
 		it('maps API-key text to AUTH_FAILED', () => {
 			expect(mtaSendProvider.categorizeError('Invalid API key')).toBe(EmailErrorCode.AUTH_FAILED);
@@ -275,28 +310,46 @@ describe('sesSendProvider', () => {
 		afterEach(() => _resetSesClientCacheForTests());
 
 		it('maps SES Throttling error to RATE_LIMIT', () => {
-			expect(sesSendProvider.categorizeError('Throttling: Maximum sending rate exceeded')).toBe(EmailErrorCode.RATE_LIMIT);
-			expect(sesSendProvider.categorizeError('TooManyRequestsException: too many requests')).toBe(EmailErrorCode.RATE_LIMIT);
+			expect(sesSendProvider.categorizeError('Throttling: Maximum sending rate exceeded')).toBe(
+				EmailErrorCode.RATE_LIMIT
+			);
+			expect(sesSendProvider.categorizeError('TooManyRequestsException: too many requests')).toBe(
+				EmailErrorCode.RATE_LIMIT
+			);
 		});
 		it('maps SES AccountSendingPausedException to RATE_LIMIT', () => {
-			expect(sesSendProvider.categorizeError('AccountSendingPausedException')).toBe(EmailErrorCode.RATE_LIMIT);
+			expect(sesSendProvider.categorizeError('AccountSendingPausedException')).toBe(
+				EmailErrorCode.RATE_LIMIT
+			);
 		});
 		it('maps SES ServiceUnavailable / InternalFailure to SERVER_ERROR', () => {
-			expect(sesSendProvider.categorizeError('ServiceUnavailable: try again')).toBe(EmailErrorCode.SERVER_ERROR);
+			expect(sesSendProvider.categorizeError('ServiceUnavailable: try again')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
 			expect(sesSendProvider.categorizeError('InternalFailure')).toBe(EmailErrorCode.SERVER_ERROR);
 		});
 		it('maps SES MailFromDomainNotVerified to INVALID_SENDER', () => {
-			expect(sesSendProvider.categorizeError('MailFromDomainNotVerified: example.com not verified')).toBe(EmailErrorCode.INVALID_SENDER);
+			expect(
+				sesSendProvider.categorizeError('MailFromDomainNotVerified: example.com not verified')
+			).toBe(EmailErrorCode.INVALID_SENDER);
 		});
 		it('maps SES InvalidClientTokenId / SignatureDoesNotMatch to AUTH_FAILED', () => {
-			expect(sesSendProvider.categorizeError('InvalidClientTokenId: bad creds')).toBe(EmailErrorCode.AUTH_FAILED);
-			expect(sesSendProvider.categorizeError('SignatureDoesNotMatch: oops')).toBe(EmailErrorCode.AUTH_FAILED);
+			expect(sesSendProvider.categorizeError('InvalidClientTokenId: bad creds')).toBe(
+				EmailErrorCode.AUTH_FAILED
+			);
+			expect(sesSendProvider.categorizeError('SignatureDoesNotMatch: oops')).toBe(
+				EmailErrorCode.AUTH_FAILED
+			);
 		});
 		it('maps SES MessageRejected to CONTENT_REJECTED', () => {
-			expect(sesSendProvider.categorizeError('MessageRejected: spam content')).toBe(EmailErrorCode.CONTENT_REJECTED);
+			expect(sesSendProvider.categorizeError('MessageRejected: spam content')).toBe(
+				EmailErrorCode.CONTENT_REJECTED
+			);
 		});
 		it('maps InvalidParameterValue + Destination to INVALID_RECIPIENT', () => {
-			expect(sesSendProvider.categorizeError('InvalidParameterValue: Destination address is malformed')).toBe(EmailErrorCode.INVALID_RECIPIENT);
+			expect(
+				sesSendProvider.categorizeError('InvalidParameterValue: Destination address is malformed')
+			).toBe(EmailErrorCode.INVALID_RECIPIENT);
 		});
 		it('maps HTTP 429 to RATE_LIMIT', () => {
 			expect(sesSendProvider.categorizeError('whatever', 429)).toBe(EmailErrorCode.RATE_LIMIT);
@@ -310,7 +363,7 @@ describe('sesSendProvider', () => {
 		vi.unstubAllEnvs();
 		_resetSesClientCacheForTests();
 
-		const result = await sesSendProvider.sendEmail({
+		const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -351,7 +404,7 @@ describe('sesSendProvider', () => {
 		});
 
 		it('emits SendRawEmailCommand whose RawMessage carries both List-Unsubscribe header lines', async () => {
-			const result = await sesSendProvider.sendEmail({
+			const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',
@@ -375,13 +428,13 @@ describe('sesSendProvider', () => {
 			const decoded = Buffer.from(rawData as Uint8Array).toString('utf-8');
 
 			expect(decoded).toContain(
-				'List-Unsubscribe: <https://example.com/u/abc>, <mailto:unsub@example.com>',
+				'List-Unsubscribe: <https://example.com/u/abc>, <mailto:unsub@example.com>'
 			);
 			expect(decoded).toContain('List-Unsubscribe-Post: List-Unsubscribe=One-Click');
 		});
 
 		it('still uses plain SendEmailCommand when there are no headers and no attachments', async () => {
-			const result = await sesSendProvider.sendEmail({
+			const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',
@@ -422,7 +475,7 @@ describe('sesSendProvider', () => {
 			timeout.name = 'TimeoutError';
 			sendSpy = vi.spyOn(SESClient.prototype, 'send').mockRejectedValue(timeout as never);
 
-			const result = await sesSendProvider.sendEmail({
+			const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',
@@ -447,7 +500,7 @@ describe('sesSendProvider', () => {
 				// The dispatch helper only touches ctx.scheduler for health recording.
 				ctx as unknown as Parameters<typeof sendProviderDispatch>[0],
 				'ses',
-				{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
+				{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' }
 			);
 
 			// A SECOND SES SendEmail would double-deliver. There must be exactly one.
@@ -469,7 +522,7 @@ describe('sesSendProvider', () => {
 			err.name = 'ServiceUnavailable';
 			sendSpy = vi.spyOn(SESClient.prototype, 'send').mockRejectedValue(err as never);
 
-			const result = await sesSendProvider.sendEmail({
+			const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',
@@ -503,27 +556,49 @@ describe('resendSendProvider', () => {
 		afterEach(() => _resetResendClientCacheForTests());
 
 		it('maps rate_limit_exceeded to RATE_LIMIT', () => {
-			expect(resendSendProvider.categorizeError('rate_limit_exceeded: Too many requests')).toBe(EmailErrorCode.RATE_LIMIT);
+			expect(resendSendProvider.categorizeError('rate_limit_exceeded: Too many requests')).toBe(
+				EmailErrorCode.RATE_LIMIT
+			);
 		});
 		it('maps internal_server_error / application_error to SERVER_ERROR', () => {
-			expect(resendSendProvider.categorizeError('internal_server_error: oops')).toBe(EmailErrorCode.SERVER_ERROR);
-			expect(resendSendProvider.categorizeError('application_error: oops')).toBe(EmailErrorCode.SERVER_ERROR);
-			expect(resendSendProvider.categorizeError('Resend API call timed out')).toBe(EmailErrorCode.SERVER_ERROR);
+			expect(resendSendProvider.categorizeError('internal_server_error: oops')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
+			expect(resendSendProvider.categorizeError('application_error: oops')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
+			expect(resendSendProvider.categorizeError('Resend API call timed out')).toBe(
+				EmailErrorCode.SERVER_ERROR
+			);
 		});
 		it('maps invalid_to_field to INVALID_RECIPIENT', () => {
-			expect(resendSendProvider.categorizeError('invalid_to_field: address malformed')).toBe(EmailErrorCode.INVALID_RECIPIENT);
+			expect(resendSendProvider.categorizeError('invalid_to_field: address malformed')).toBe(
+				EmailErrorCode.INVALID_RECIPIENT
+			);
 		});
 		it('maps invalid_from_field / not_verified to INVALID_SENDER', () => {
-			expect(resendSendProvider.categorizeError('invalid_from_field: domain not registered')).toBe(EmailErrorCode.INVALID_SENDER);
-			expect(resendSendProvider.categorizeError('not_verified: example.com')).toBe(EmailErrorCode.INVALID_SENDER);
+			expect(resendSendProvider.categorizeError('invalid_from_field: domain not registered')).toBe(
+				EmailErrorCode.INVALID_SENDER
+			);
+			expect(resendSendProvider.categorizeError('not_verified: example.com')).toBe(
+				EmailErrorCode.INVALID_SENDER
+			);
 		});
 		it('maps missing_api_key / invalid_api_key to AUTH_FAILED', () => {
-			expect(resendSendProvider.categorizeError('missing_api_key: header absent')).toBe(EmailErrorCode.AUTH_FAILED);
-			expect(resendSendProvider.categorizeError('invalid_api_key: bad token')).toBe(EmailErrorCode.AUTH_FAILED);
+			expect(resendSendProvider.categorizeError('missing_api_key: header absent')).toBe(
+				EmailErrorCode.AUTH_FAILED
+			);
+			expect(resendSendProvider.categorizeError('invalid_api_key: bad token')).toBe(
+				EmailErrorCode.AUTH_FAILED
+			);
 		});
 		it('maps spam/blocked text to CONTENT_REJECTED', () => {
-			expect(resendSendProvider.categorizeError('validation_error: content flagged as spam')).toBe(EmailErrorCode.CONTENT_REJECTED);
-			expect(resendSendProvider.categorizeError('Recipient server blocked the message')).toBe(EmailErrorCode.CONTENT_REJECTED);
+			expect(resendSendProvider.categorizeError('validation_error: content flagged as spam')).toBe(
+				EmailErrorCode.CONTENT_REJECTED
+			);
+			expect(resendSendProvider.categorizeError('Recipient server blocked the message')).toBe(
+				EmailErrorCode.CONTENT_REJECTED
+			);
 		});
 		it('falls through to UNKNOWN for unrecognized errors', () => {
 			expect(resendSendProvider.categorizeError('mystery error')).toBe(EmailErrorCode.UNKNOWN);
@@ -534,7 +609,7 @@ describe('resendSendProvider', () => {
 		vi.unstubAllEnvs();
 		_resetResendClientCacheForTests();
 
-		const result = await resendSendProvider.sendEmail({
+		const result = await resendSendProvider.sendEmail(RESEND_TRANSPORT, {
 			to: 'to@example.com',
 			from: 'from@example.com',
 			subject: 'hi',
@@ -561,8 +636,9 @@ describe('resendSendProvider', () => {
 
 		it('forwards the idempotencyKey extra as the Resend SDK Idempotency-Key option', async () => {
 			const result = await resendSendProvider.sendEmail(
+				RESEND_TRANSPORT,
 				{ to: 'to@example.com', from: 'from@example.com', subject: 'hi', html: '<p>hi</p>' },
-				{ idempotencyKey: 'send_xyz789' },
+				{ idempotencyKey: 'send_xyz789' }
 			);
 
 			expect(result).toEqual({ success: true, id: 'resend-msg-1' });
@@ -572,7 +648,7 @@ describe('resendSendProvider', () => {
 		});
 
 		it('omits the options arg when no idempotencyKey is supplied (legacy path)', async () => {
-			await resendSendProvider.sendEmail({
+			await resendSendProvider.sendEmail(RESEND_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',

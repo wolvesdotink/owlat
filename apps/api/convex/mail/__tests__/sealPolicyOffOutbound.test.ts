@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { modules } from './testModules';
+import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { readSealedBlobBytes } from '../../lib/sealedBlob';
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';

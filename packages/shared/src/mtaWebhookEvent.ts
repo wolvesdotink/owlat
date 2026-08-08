@@ -4,12 +4,29 @@ import { isDestinationProviderKey, type DestinationProviderKey } from './deliver
 import { parseIpAddress } from './ipAddress';
 import { isDeliveryDomain, type DeliveryDomain } from './routingDispatch';
 import { isDeliverabilityProbeTokenFormat } from './deliverabilityProbeFormat';
+import { isSmtpFailureCategory, type SmtpFailureCategory } from './smtpBlockCategories';
+import { isComplianceChecks, isDeliveryErrorBreakdown } from './mtaPostmasterEvent';
+
+/**
+ * THE POSTMASTER SUB-CONTRACT, re-exported so this module stays the ONE import
+ * surface for the MTA webhook wire (CONVENTIONS' ~500 LOC guideline moved the
+ * shapes and their bounds to a sibling; no consumer has to know about the seam).
+ */
+export {
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
+	POSTMASTER_TOKEN,
+	type PostmasterComplianceCheck,
+	type PostmasterDeliveryError,
+} from './mtaPostmasterEvent';
+import type { PostmasterComplianceCheck, PostmasterDeliveryError } from './mtaPostmasterEvent';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
 	'bounced',
 	'failed',
 	'complained',
+	'smtp.classified',
 	'org.circuit_breaker',
 	'campaign.complaint_rate',
 	'ip.blocklisted',
@@ -18,6 +35,7 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 	'all_ips_blocked',
 	'postmaster.authorize_domain',
 	'postmaster.stats',
+	'postmaster.compliance',
 	'dkim.rotated',
 	'inbound.received',
 	'routing.reentry',
@@ -53,6 +71,12 @@ interface EventBase<K extends MtaWebhookEventType> {
 	complaintRate?: number;
 	date?: string;
 	userReportedSpamRatio?: number;
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: PostmasterDeliveryError[];
+	checks?: PostmasterComplianceCheck[];
 	inboundPayload?: object;
 	mailboxPayload?: object;
 	routingReentryToken?: string;
@@ -62,6 +86,22 @@ interface EventBase<K extends MtaWebhookEventType> {
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	/**
+	 * THE MTA CLASSIFIER'S VERDICT ON ONE 4xx/5xx RESPONSE, as a TYPED field in the
+	 * shared vocabulary — never as prose.
+	 *
+	 * It rides on {@link EventBase} rather than on the `smtp.classified` variant
+	 * alone so the bound below covers every event shape, exactly as `checks` and
+	 * `blocklists` do; only that one variant REQUIRES it.
+	 *
+	 * The category is `@owlat/shared/smtpBlockCategories`' — the one vocabulary the
+	 * producer (`apps/mta/.../classifySmtpResponse`) and the consumer (the ramp's
+	 * gate-2 block clause) share. Convex narrows what arrives here with
+	 * `isSmtpFailureCategory` and never re-derives it from `message`: a second
+	 * classifier is free to disagree with the first, which is the whole reason this
+	 * field exists instead of a sentence.
+	 */
+	smtpCategory?: SmtpFailureCategory;
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
 	eligibilityGeneration?: number;
@@ -81,7 +121,44 @@ export type SharedMtaWebhookEvent =
 			bounceType?: 'hard' | 'soft';
 	  })
 	| (EventBase<'failed'> & { messageId: string; message?: string; errorCode?: string })
-	| (EventBase<'complained'> & { messageId?: string; recipient?: string; message?: string })
+	/**
+	 * ONE CLASSIFIED SMTP RESPONSE, reported for measurement and for nothing else.
+	 *
+	 * Deliberately NOT a field bolted onto `bounced`. Two of the classifier's
+	 * outcomes have to reach Convex for the ramp's block clause to mean anything —
+	 * the RETRYABLE 4xx (greylisting, throttling, an over-quota mailbox), which is
+	 * the denominator, and the NON-RETRYABLE one, which is the numerator — and only
+	 * the second has a bounce to ride on. A `bounced` field would have delivered
+	 * the numerator alone, so every window would read as a 100% block rate and the
+	 * halt would fire on the first refusal a healthy cell ever collected.
+	 *
+	 * It changes NO send state. The dispatcher routes it to a counter and nothing
+	 * else: no status transition, no suppression, no reputation penalty. A message
+	 * deferred five times reports five observations, because the gate's denominator
+	 * is classified RESPONSES and not messages.
+	 */
+	| (EventBase<'smtp.classified'> & {
+			messageId: string;
+			smtpCategory: SmtpFailureCategory;
+	  })
+	| (EventBase<'complained'> & {
+			messageId?: string;
+			recipient?: string;
+			message?: string;
+			/**
+			 * RFC 5965 `Reported-Domain` from the ARF report — OUR sending/DKIM domain
+			 * the complaint was filed against. Optional: many ISPs omit it. FBL-only,
+			 * so it lives on this variant rather than on every event shape.
+			 */
+			reportedDomain?: string;
+			/**
+			 * The feedback-loop source ISP the MTA's ARF processor resolved. Typed as
+			 * the shipped destination-provider union rather than a free string, so a
+			 * consumer comparing it to `'yahoo'` is comparing against a checked
+			 * constant. An ISP outside the union is simply not forwarded.
+			 */
+			sourceIsp?: DestinationProviderKey;
+	  })
 	| (EventBase<'org.circuit_breaker'> & {
 			organizationId: string;
 			bounceRate: number;
@@ -102,6 +179,16 @@ export type SharedMtaWebhookEvent =
 			domain: string;
 			date: string;
 			userReportedSpamRatio: number;
+			spfSuccessRatio?: number;
+			dkimSuccessRatio?: number;
+			dmarcSuccessRatio?: number;
+			deliveryErrorRatio?: number;
+			deliveryErrors?: PostmasterDeliveryError[];
+	  })
+	| (EventBase<'postmaster.compliance'> & {
+			domain: string;
+			date: string;
+			checks: PostmasterComplianceCheck[];
 	  })
 	| (EventBase<'dkim.rotated'> & {
 			domain: string;
@@ -144,6 +231,14 @@ export type SharedMtaWebhookEvent =
 			selector?: string;
 	  });
 
+/**
+ * The ingress bound on every human-readable `message` field. Convex rejects the
+ * WHOLE event when it is exceeded, so producers that must not be dropped (the
+ * DNSBL halt alert) build their message to fit against this exact number rather
+ * than a duplicated literal.
+ */
+export const MTA_WEBHOOK_MESSAGE_MAX_LENGTH = 512;
+
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CAMPAIGN_ID = /^[a-z0-9]{16,64}$/;
@@ -175,10 +270,11 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 	if (
 		!optionalBounded(value['recipient'], 320) ||
 		!optionalBounded(value['organizationId'], 128) ||
-		!optionalBounded(value['message'], 512) ||
+		!optionalBounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH) ||
 		!optionalBounded(value['errorCode'], 128) ||
 		!optionalBounded(value['ip'], 64) ||
 		!optionalBounded(value['domain'], 253) ||
+		!optionalBounded(value['reportedDomain'], 253) ||
 		!optionalBounded(value['selector'], 128) ||
 		!optionalBounded(value['dnsRecord'], 4096) ||
 		!optionalBounded(value['probeToken'], 128) ||
@@ -192,6 +288,10 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		(value['deliveryDomain'] !== undefined && !isDeliveryDomain(value['deliveryDomain'])) ||
 		(value['destinationProvider'] !== undefined &&
 			!isDestinationProviderKey(value['destinationProvider'])) ||
+		(value['sourceIsp'] !== undefined && !isDestinationProviderKey(value['sourceIsp'])) ||
+		(value['smtpCategory'] !== undefined &&
+			(typeof value['smtpCategory'] !== 'string' ||
+				!isSmtpFailureCategory(value['smtpCategory']))) ||
 		(value['severity'] !== undefined &&
 			value['severity'] !== 'info' &&
 			value['severity'] !== 'warning' &&
@@ -199,7 +299,13 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		(value['blocklists'] !== undefined && !boundedStrings(value['blocklists'], 100, 253)) ||
 		!optionalRatio(value['bounceRate']) ||
 		!optionalRatio(value['complaintRate']) ||
-		!optionalRatio(value['userReportedSpamRatio'])
+		!optionalRatio(value['userReportedSpamRatio']) ||
+		!optionalRatio(value['spfSuccessRatio']) ||
+		!optionalRatio(value['dkimSuccessRatio']) ||
+		!optionalRatio(value['dmarcSuccessRatio']) ||
+		!optionalRatio(value['deliveryErrorRatio']) ||
+		(value['deliveryErrors'] !== undefined && !isDeliveryErrorBreakdown(value['deliveryErrors'])) ||
+		(value['checks'] !== undefined && !isComplianceChecks(value['checks']))
 	) {
 		return false;
 	}
@@ -215,13 +321,18 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 					value['bounceType'] === 'hard' ||
 					value['bounceType'] === 'soft')
 			);
+		case 'smtp.classified':
+			// The category is REQUIRED here and already narrowed to the shared
+			// vocabulary above, so an unrecognised spelling is dropped at the trust
+			// boundary rather than landing in a counter column no reader addresses.
+			return bounded(value['messageId'], 512) && value['smtpCategory'] !== undefined;
 		case 'complained':
 			return bounded(value['messageId'], 512) || bounded(value['recipient'], 320);
 		case 'org.circuit_breaker':
 			return (
 				bounded(value['organizationId'], 128) &&
 				ratio(value['bounceRate']) &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		case 'campaign.complaint_rate':
 			return (
@@ -230,19 +341,19 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				typeof value['campaignId'] === 'string' &&
 				CAMPAIGN_ID.test(value['campaignId']) &&
 				ratio(value['complaintRate']) &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		case 'ip.blocklisted':
 			return (
 				bounded(value['ip'], 64) &&
-				bounded(value['message'], 512) &&
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH) &&
 				(value['blocklists'] === undefined || boundedStrings(value['blocklists'], 100, 253))
 			);
 		case 'ip.delisted':
 		case 'ip.warming_complete':
-			return bounded(value['ip'], 64) && bounded(value['message'], 512);
+			return bounded(value['ip'], 64) && bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH);
 		case 'all_ips_blocked':
-			return bounded(value['message'], 512);
+			return bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH);
 		case 'postmaster.authorize_domain':
 			return bounded(value['domain'], 253);
 		case 'postmaster.stats':
@@ -252,6 +363,18 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				DATE.test(value['date']) &&
 				ratio(value['userReportedSpamRatio'])
 			);
+		case 'postmaster.compliance': {
+			// Shape and bounds are already enforced above for every kind; a
+			// verdict with nothing in it is what this one kind additionally rejects.
+			const checks = value['checks'];
+			return (
+				bounded(value['domain'], 253) &&
+				typeof value['date'] === 'string' &&
+				DATE.test(value['date']) &&
+				Array.isArray(checks) &&
+				checks.length > 0
+			);
+		}
 		case 'dkim.rotated':
 			return (
 				bounded(value['domain'], 253) &&
@@ -296,7 +419,7 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				typeof value['eligibilityGeneration'] === 'number' &&
 				Number.isSafeInteger(value['eligibilityGeneration']) &&
 				value['eligibilityGeneration'] >= 1 &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		}
 		case 'deliverability.probe_observed':

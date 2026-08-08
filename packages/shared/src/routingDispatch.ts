@@ -37,6 +37,21 @@ export interface GovernedRoutingContext {
 
 export const ROUTING_LEASE_TOKEN_MAX_LENGTH = 128;
 
+/**
+ * The 409 code the governed `/send` intake answers when it could not READ the
+ * lease record at all — a truncated or corrupt value, not a lease that aged out
+ * or stopped binding (those keep `ROUTING_DECISION_EXPIRED`).
+ *
+ * SHARED BECAUSE THE TWO SIDES MUST AGREE LETTER FOR LETTER AND THE FAILURE IS
+ * SILENT: the MTA writes this string on the wire (`apps/mta/src/routes/
+ * sendRoutingLease.ts`) and Convex matches it (`lib/sendProviders/mta/index.ts`,
+ * `categorizeError`) to answer `deferralOrigin: 'local'`. A typo on either side
+ * does not throw — the answer simply falls back into the `governed` bucket this
+ * code exists to keep it out of, and a lease-store fault starts spending gate
+ * 2's 10%-ceiling/25%-halt budget again (issue #505).
+ */
+export const ROUTING_LEASE_UNREADABLE_CODE = 'ROUTING_LEASE_UNREADABLE';
+
 export function isGovernedMessageType(value: unknown): value is GovernedMessageType {
 	return GOVERNED_MESSAGE_TYPES.includes(value as GovernedMessageType);
 }

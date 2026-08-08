@@ -167,15 +167,52 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects(
 			[
-				{ kind: 'warming_record', ip: '10.0.0.1', result: 'send' },
-				{ kind: 'warming_record', ip: '10.0.0.2', result: 'bounce' },
-				{ kind: 'warming_record', ip: '10.0.0.3', result: 'deferral' },
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.1',
+					result: 'send',
+					providerKey: 'gmail',
+					pool: 'campaign',
+					utcDate: '2026-03-01',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.2',
+					result: 'bounce',
+					providerKey: 'gmail',
+					utcDate: '2026-03-01',
+				},
+				{
+					kind: 'warming_record',
+					ip: '10.0.0.3',
+					result: 'deferral',
+					providerKey: 'gmail',
+					utcDate: '2026-03-01',
+				},
 			],
 			deps
 		);
-		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1', undefined);
-		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
-		expect(warming.recordDeferral).toHaveBeenCalledWith(expect.anything(), '10.0.0.3');
+		// The attempt's day reaches the per-IP store too, not only its per-provider
+		// twin: both mirror one outcome and may not disagree about the day.
+		expect(warming.recordSend).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.1',
+			undefined,
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordBounce).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.2',
+			undefined,
+			'2026-03-01'
+		);
+		expect(warming.recordDeferral).toHaveBeenCalledWith(
+			expect.anything(),
+			'10.0.0.3',
+			undefined,
+			'2026-03-01'
+		);
 	});
 
 	it('metrics_record → metrics.record with the full arg list', async () => {
@@ -268,6 +305,57 @@ describe('applyEffects — per-effect dispatch', () => {
 			'dispatch:m-1:sent'
 		);
 	});
+
+	it('gives each classified response its OWN outbox slot (issue #501)', async () => {
+		// Every other terminal callback is one-per-message-per-event, and the outbox
+		// keys its entry by a hash of that string. A classified response is
+		// one-per-ATTEMPT — a greylisted message collects a new one every time it is
+		// retried — so keyed by the event name alone the second attempt would land
+		// on the first one's slot and the ramp's denominator would count one
+		// response per message however many the receiver actually sent.
+		const first = {
+			event: 'smtp.classified' as const,
+			messageId: 'm-1',
+			organizationId: 'org-1',
+			smtpCategory: 'greylisted' as const,
+			timestamp: 1700000000,
+		};
+		await applyEffects([{ kind: 'notify_convex', event: first }], makeDeps());
+		await applyEffects(
+			[{ kind: 'notify_convex', event: { ...first, timestamp: 1700000060 } }],
+			makeDeps()
+		);
+		expect(vi.mocked(queueConvexWebhook).mock.calls.map(([, , , key]) => key)).toEqual([
+			'dispatch:m-1:smtp.classified:1700000000',
+			'dispatch:m-1:smtp.classified:1700000060',
+		]);
+	});
+
+	it('never fails the attempt when the classified response cannot be queued', async () => {
+		// FAIL-SOFT BY DESIGN. A measurement is not an ownership transfer: the
+		// retryable-4xx branch emits one BEFORE the message is terminalized, so an
+		// outbox blip that rejected here would abort the attempt and stall a message
+		// the receiver merely asked us to retry. The lifecycle callback beside it is
+		// deliberately NOT fail-soft, which is the contrast this case pins.
+		vi.mocked(queueConvexWebhook).mockRejectedValue(new Error('outbox unavailable'));
+		const base = { messageId: 'm-1', organizationId: 'org-1', timestamp: 1700000000 };
+
+		await expect(
+			applyEffects(
+				[
+					{
+						kind: 'notify_convex',
+						event: { ...base, event: 'smtp.classified', smtpCategory: 'content_rejected' },
+					},
+				],
+				makeDeps()
+			)
+		).resolves.toBeUndefined();
+
+		await expect(
+			applyEffects([{ kind: 'notify_convex', event: { ...base, event: 'bounced' } }], makeDeps())
+		).rejects.toThrow('outbox unavailable');
+	});
 });
 
 describe('applyEffects — ordering', () => {
@@ -286,7 +374,13 @@ describe('applyEffects — ordering', () => {
 
 		const effects: DispatchEffect[] = [
 			{ kind: 'domain_throttle_reject', ip: '10.0.0.1', domain: 'g.com' },
-			{ kind: 'warming_record', ip: '10.0.0.1', result: 'bounce' },
+			{
+				kind: 'warming_record',
+				ip: '10.0.0.1',
+				result: 'bounce',
+				providerKey: 'gmail',
+				utcDate: '2026-03-01',
+			},
 			{ kind: 'suppress_recipient', address: 'a@b.c', reason: 'hard_bounce' },
 		];
 

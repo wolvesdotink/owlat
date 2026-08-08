@@ -27,7 +27,7 @@
 					>
 						{{ crumb.label }}
 					</NuxtLink>
-					<span v-else class="text-text-primary" aria-current="page">
+					<span v-else class="text-text-primary font-medium" aria-current="page">
 						{{ crumb.label }}
 					</span>
 				</div>

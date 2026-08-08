@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.3.3",
+	"version": "0.4.1",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -40,6 +40,14 @@
 		"./setupValidators": {
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
+		},
+		"./verp": {
+			"types": "./src/verp.ts",
+			"import": "./src/verp.ts"
+		},
+		"./verpNormalize": {
+			"types": "./src/verpNormalize.ts",
+			"import": "./src/verpNormalize.ts"
 		},
 		"./returnPathHost": {
 			"types": "./src/returnPathHost.ts",
@@ -165,6 +173,10 @@
 			"types": "./src/emailLimits.ts",
 			"import": "./src/emailLimits.ts"
 		},
+		"./engagementBands": {
+			"types": "./src/engagementBands.ts",
+			"import": "./src/engagementBands.ts"
+		},
 		"./reputation": {
 			"types": "./src/reputation.ts",
 			"import": "./src/reputation.ts"
@@ -185,6 +197,18 @@
 			"types": "./src/ipAddress.ts",
 			"import": "./src/ipAddress.ts"
 		},
+		"./ipAudit": {
+			"types": "./src/ipAudit.ts",
+			"import": "./src/ipAudit.ts"
+		},
+		"./ipAuditDelisting": {
+			"types": "./src/ipAuditDelisting.ts",
+			"import": "./src/ipAuditDelisting.ts"
+		},
+		"./ipAuditProviders": {
+			"types": "./src/ipAuditProviders.ts",
+			"import": "./src/ipAuditProviders.ts"
+		},
 		"./ipReadiness": {
 			"types": "./src/ipReadiness.ts",
 			"import": "./src/ipReadiness.ts"
@@ -197,9 +221,41 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
+		"./deliverabilityIndependence": {
+			"types": "./src/deliverabilityIndependence.ts",
+			"import": "./src/deliverabilityIndependence.ts"
+		},
+		"./seedPlacement": {
+			"types": "./src/seedPlacement.ts",
+			"import": "./src/seedPlacement.ts"
+		},
+		"./placementAdapter": {
+			"types": "./src/placementAdapter.ts",
+			"import": "./src/placementAdapter.ts"
+		},
+		"./deliverabilityAlignment": {
+			"types": "./src/deliverabilityAlignment.ts",
+			"import": "./src/deliverabilityAlignment.ts"
+		},
+		"./deliverabilityAlignmentGate": {
+			"types": "./src/deliverabilityAlignmentGate.ts",
+			"import": "./src/deliverabilityAlignmentGate.ts"
+		},
+		"./spfCoexistence": {
+			"types": "./src/spfCoexistence.ts",
+			"import": "./src/spfCoexistence.ts"
+		},
+		"./yahooCfl": {
+			"types": "./src/yahooCfl.ts",
+			"import": "./src/yahooCfl.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
+		},
+		"./smtpBlockCategories": {
+			"types": "./src/smtpBlockCategories.ts",
+			"import": "./src/smtpBlockCategories.ts"
 		},
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",

@@ -8,21 +8,25 @@
  * code derived from the HTTP response.
  */
 
-import { getOptional } from '../../env';
 import {
 	extractDomainOrNull,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	ROUTING_LEASE_UNREADABLE_CODE,
 	type DeliveryDomain,
 	type GovernedMessageType,
 } from '@owlat/shared';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
+	type DispatchExtrasInput,
 	type EmailSendAttempt,
 	type EmailSendParams,
 	type MtaExtras,
+	type MtaIpPool,
 	type SendProviderModule,
 } from '../types';
+import { transportEnvOptional } from '../transportEnv';
+import { sendTransportEnvName, type SendTransportRecord } from '../transports';
 
 /**
  * Default retry schedule. The **Send dispatch (helper)** consumes this; the
@@ -44,26 +48,88 @@ export type MtaRoutingDecision =
 				| 'provider_hysteresis'
 				| 'warmup_overflow';
 	  }
-	| { kind: 'defer'; retryAfterMs: number };
+	| {
+			kind: 'defer';
+			retryAfterMs: number;
+			/**
+			 * WHO DECIDED TO DEFER — the MTA's routing governance, or a fault on our
+			 * own side. Both shapes are `defer` to the caller (the message waits
+			 * either way), but only `governed` is a statement about whether this
+			 * sending identity may send. An unconfigured, unreachable, slow or
+			 * malformed decision endpoint is `local`, and so is an ANSWER that
+			 * reports our own infrastructure failing rather than the identity's
+			 * standing (`MTA_DEFER_REASON_ORIGIN`) — the receiver saw neither.
+			 * `delivery/deferralOutcome.ts` counts the first and skips the second, so
+			 * an outage on our side cannot halt a cell for a fortnight.
+			 */
+			origin: 'governed' | 'local';
+	  };
 
-export async function resolveMtaRoutingDecision(input: {
-	messageId: string;
-	workAttemptId: string;
-	routingReentryToken: string;
-	startedAt: number;
-	deliveryDomain: DeliveryDomain;
-	messageType: GovernedMessageType;
-	organizationId: string;
-	recipient: string;
-	from: string;
-	candidateProvider: 'mta' | 'relay';
-	ipPool?: MtaExtras['ipPool'];
-	allowWarmupOverflow: boolean;
-	requireProviderProbe?: boolean;
-}): Promise<MtaRoutingDecision> {
-	const baseUrl = getOptional('MTA_API_URL');
-	const apiKey = getOptional('MTA_API_KEY');
-	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000 };
+/**
+ * EVERY defer reason the MTA may answer, each paired with WHOSE FAULT IT IS.
+ *
+ * One table, two jobs, so the accept-list and the classification cannot drift
+ * apart: a reason absent here is an answer we did not understand and falls
+ * through to the unrecognised-body return, and a reason added here cannot be
+ * added without naming an origin.
+ *
+ * `governed` is the MTA declining this SENDING IDENTITY — an open global safety
+ * circuit, a probe budget, no warmed IP to send from. `lease_persistence` is
+ * none of those: it is ANY REDIS FAILURE WHILE TAKING THE LEASE — reserving a
+ * half-open probe, writing the lease record, whatever the one catch in
+ * `apps/mta/src/routes/routingDecision.ts` covers — so it is our own storage
+ * layer failing and no receiver ever refused the mail. Gate 2 halts a cell at
+ * 25% of `governed` deferrals; a Redis outage on our own MTA must not be able to
+ * spend that budget.
+ *
+ * Exported so the adapter's own suite can assert its case list covers every key
+ * — the drift this table exists to stop is a reason added here and nowhere else.
+ */
+export const MTA_DEFER_REASON_ORIGIN = {
+	global_safety: 'governed',
+	global_probe: 'governed',
+	no_owned_ip: 'governed',
+	lease_persistence: 'local',
+} as const satisfies Record<string, 'governed' | 'local'>;
+
+type MtaDeferReason = keyof typeof MTA_DEFER_REASON_ORIGIN;
+
+function deferReasonOrigin(reason: unknown): 'governed' | 'local' | undefined {
+	if (typeof reason !== 'string') return undefined;
+	if (!Object.prototype.hasOwnProperty.call(MTA_DEFER_REASON_ORIGIN, reason)) return undefined;
+	return MTA_DEFER_REASON_ORIGIN[reason as MtaDeferReason];
+}
+
+/**
+ * Take a last-mile routing lease from ONE configured MTA transport.
+ *
+ * `transport` names WHICH one, for the same reason `sendEmail` takes it: a
+ * lease is granted by the MTA that will be asked to honour it, so taking it
+ * from the default instance and then presenting it to `mta#secondary` would be
+ * presenting one server's decision to another. The caller passes the transport
+ * it is about to send through.
+ */
+export async function resolveMtaRoutingDecision(
+	transport: SendTransportRecord,
+	input: {
+		messageId: string;
+		workAttemptId: string;
+		routingReentryToken: string;
+		startedAt: number;
+		deliveryDomain: DeliveryDomain;
+		messageType: GovernedMessageType;
+		organizationId: string;
+		recipient: string;
+		from: string;
+		candidateProvider: 'mta' | 'relay';
+		ipPool?: MtaExtras['ipPool'];
+		allowWarmupOverflow: boolean;
+		requireProviderProbe?: boolean;
+	}
+): Promise<MtaRoutingDecision> {
+	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
+	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
+	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), MTA_DECISION_TIMEOUT_MS);
 	try {
@@ -73,10 +139,10 @@ export async function resolveMtaRoutingDecision(input: {
 			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
 			signal: controller.signal,
 		});
-		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000 };
+		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 		const value = (await response.json()) as unknown;
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-			return { kind: 'defer', retryAfterMs: 60_000 };
+			return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 		}
 		const result = value as Record<string, unknown>;
 		if (result['decision'] === 'mta') {
@@ -119,27 +185,38 @@ export async function resolveMtaRoutingDecision(input: {
 		) {
 			return { kind: 'relay', reason: 'relay_allowed' };
 		}
+		const deferOrigin = deferReasonOrigin(result['reason']);
 		if (
 			result['decision'] === 'defer' &&
 			Object.keys(result).length === 3 &&
 			Object.keys(result).every((key) => ['decision', 'reason', 'retryAfterMs'].includes(key)) &&
-			(result['reason'] === 'global_safety' ||
-				result['reason'] === 'global_probe' ||
-				result['reason'] === 'no_owned_ip' ||
-				result['reason'] === 'lease_persistence')
+			deferOrigin !== undefined
 		) {
 			const retryAfterMs = result['retryAfterMs'];
+			// AN ANSWER THE MTA ITSELF GAVE, which is not the same as an answer ABOUT
+			// THIS IDENTITY: the reason decides that, and only its `governed` half is
+			// the defer shape gate 2 may count. Honour the delay either way — the
+			// message waits the same amount of time whoever is at fault.
 			return {
 				kind: 'defer',
+				origin: deferOrigin,
 				retryAfterMs:
 					typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
 						? Math.min(Math.max(retryAfterMs, 1_000), 60 * 60 * 1000)
 						: 60_000,
 			};
 		}
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		// THE UNRECOGNISED ANSWER, deliberately beside the malformed-body and
+		// timeout cases: a body we cannot fully validate is a body we did not
+		// understand, and an answer we did not understand is not an observation
+		// about this identity. A NEW DEFER REASON ON THE MTA SIDE THEREFORE LANDS
+		// HERE AND STOPS BEING COUNTED until it is added to
+		// `MTA_DEFER_REASON_ORIGIN` with an origin beside it — the two sides change
+		// together, which is the safe direction (a reason nobody vouched for cannot
+		// halt a cell) but never a silent one.
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} catch {
-		return { kind: 'defer', retryAfterMs: 60_000 };
+		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -149,20 +226,56 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
 	retryDelays: MTA_RETRY_DELAYS,
 
-	async sendEmail(params: EmailSendParams, extras?: MtaExtras): Promise<EmailSendAttempt> {
-		const baseUrl = getOptional('MTA_API_URL');
+	/**
+	 * The governed last mile's per-send extras.
+	 *
+	 * The owned MTA is the only transport that takes the full governance packet:
+	 * the work identity it deduplicates on, the re-entry material its callback
+	 * echoes back, and the authenticated lease it revalidates immediately before
+	 * enqueue. Everything here is carried, never re-derived — the re-entry
+	 * `retryState` in particular must stay byte-identical to the issued snapshot
+	 * or the callback digest stops matching.
+	 */
+	buildDispatchExtras(input: DispatchExtrasInput): MtaExtras {
+		return {
+			messageId: input.idempotencyKey,
+			workAttemptId: input.workAttemptId,
+			routingReentryToken: input.routingReentryToken,
+			routingReentry: input.routingReentry,
+			organizationId: input.organizationId,
+			messageType: input.messageType,
+			deliveryDomain: input.deliveryDomain,
+			routingLease: input.routingLease,
+			// Only a campaign may spend warm-up overflow: transactional mail is not
+			// what a warming schedule is pacing, so the route's permission alone
+			// never grants it.
+			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
+			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
+			// Omitted, never zeroed, when the recipient has no score: the MTA reads
+			// absence as "unknown" and applies its DEFAULT band, whereas 0 would
+			// order the message behind every cold contact.
+			...(input.engagementScore !== undefined ? { engagementScore: input.engagementScore } : {}),
+		};
+	},
+
+	async sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: MtaExtras
+	): Promise<EmailSendAttempt> {
+		const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 		if (!baseUrl) {
 			return {
 				success: false,
-				errorMessage: 'MTA_API_URL environment variable is not set',
+				errorMessage: `${sendTransportEnvName('MTA_API_URL', transport.instanceKey)} environment variable is not set`,
 				errorCode: EmailErrorCode.AUTH_FAILED,
 			};
 		}
-		const apiKey = getOptional('MTA_API_KEY');
+		const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
 		if (!apiKey) {
 			return {
 				success: false,
-				errorMessage: 'MTA_API_KEY environment variable is not set',
+				errorMessage: `${sendTransportEnvName('MTA_API_KEY', transport.instanceKey)} environment variable is not set`,
 				errorCode: EmailErrorCode.AUTH_FAILED,
 			};
 		}
@@ -267,6 +380,14 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
+		// FIRST, AND SEPARATELY FROM THE PREFIX MATCH BELOW. This 409 reports the
+		// MTA's own lease store failing to give back a record it wrote — no
+		// receiver saw the message and nothing was decided about the sending
+		// identity — so it must not be folded into the governance bucket gate 2
+		// counts (issue #505). It reschedules identically; only the origin differs.
+		if (httpStatus === 409 && message.includes(ROUTING_LEASE_UNREADABLE_CODE)) {
+			return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
+		}
 		if (
 			httpStatus === 409 &&
 			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))

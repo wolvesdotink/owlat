@@ -145,7 +145,7 @@
    Images
    ============================================================ */
 .prose img {
-	border-radius: 10px;
+	border-radius: 12px;
 	/* Outer 1px ring, not the ladder shadow: dark --shadow-1 is inset-only and
 	   paints beneath replaced content, leaving images edgeless. */
 	box-shadow: 0 0 0 1px var(--color-border-subtle);
@@ -159,7 +159,7 @@
 	border-spacing: 0;
 	/* Outer 1px ring — inset shadows disappear under opaque cell backgrounds */
 	box-shadow: 0 0 0 1px var(--color-border-subtle);
-	border-radius: 10px;
+	border-radius: 12px;
 	overflow: hidden;
 }
 
@@ -196,7 +196,7 @@
 .prose pre {
 	background: var(--owlat-code-bg);
 	box-shadow: 0 0 0 1px var(--color-border-subtle);
-	border-radius: 10px;
+	border-radius: 12px;
 	padding: 1rem 1.25rem;
 	overflow-x: auto;
 	font-size: 0.8125rem;

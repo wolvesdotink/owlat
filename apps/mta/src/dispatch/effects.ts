@@ -31,7 +31,19 @@ import * as metrics from '../monitoring/collector.js';
 import { logDeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
-import type { MtaWebhookEvent, MetricOutcome } from '../types.js';
+import { logger } from '../monitoring/logger.js';
+import type {
+	DestinationProviderKey,
+	IpPoolType,
+	MtaWebhookEvent,
+	MetricOutcome,
+} from '../types.js';
+import {
+	recordProviderVolumePressure,
+	recordProviderWarmingOutcome,
+	recordProviderWarmingSend,
+} from '../intelligence/warmingProviderStore.js';
+import { PROVIDER_WARMING_POLICY } from '../intelligence/warmingProviderPolicy.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import type { PhaseDeps } from './types.js';
 import type { WarmingReservation } from '../intelligence/warming.js';
@@ -67,10 +79,56 @@ export type DispatchEffect =
 			campaignId: string;
 	  }
 	| {
+			/**
+			 * A DELIVERED send. This is the only outcome that consumes warming
+			 * capacity, so it is the only one carrying the reservation it consumes
+			 * and the pool that decides whether it counts toward the bulk pacing
+			 * curve — the union says so rather than threading dead payload (and
+			 * journalling it) through the three non-delivery branches.
+			 */
 			kind: 'warming_record';
 			ip: string;
-			result: 'send' | 'bounce' | 'deferral';
+			result: 'send';
 			reservation?: WarmingReservation;
+			/**
+			 * Mirrors the outcome into the per-(IP x mailbox provider) warming
+			 * dimension. Required: every reducer branch that emits this effect
+			 * resolves the destination before it does.
+			 */
+			providerKey: DestinationProviderKey;
+			/**
+			 * Only `campaign` sends count toward the bulk pacing curve;
+			 * transactional volume is exempt from pacing and holds its own
+			 * headroom out of the same daily cap.
+			 */
+			pool: IpPoolType;
+			/**
+			 * The attempt's UTC day (`YYYY-MM-DD`), carried rather than re-read at
+			 * apply time so a replayed or midnight-straddling effect books into the
+			 * day its capacity was taken from.
+			 */
+			utcDate: string;
+	  }
+	| {
+			/** A bounce or a deferral: counted, but it consumes no capacity. */
+			kind: 'warming_record';
+			ip: string;
+			result: 'bounce' | 'deferral';
+			providerKey: DestinationProviderKey;
+			/** The attempt's UTC day — see the `send` branch. */
+			utcDate: string;
+	  }
+	| {
+			/**
+			 * One SMTP volume-pressure verdict (4xx rate limiting / provider
+			 * throttling) for this (IP x mailbox provider). Feeds the per-provider
+			 * cap gate and lengthens this destination's retry backoff.
+			 */
+			kind: 'warming_provider_pressure';
+			ip: string;
+			providerKey: DestinationProviderKey;
+			/** The attempt's UTC day — see the `warming_record` `send` branch. */
+			utcDate: string;
 	  }
 	| {
 			kind: 'metrics_record';
@@ -112,6 +170,38 @@ export interface DispatchEffectReplayGuard {
  * The partitioning preserves the exact behavior of the pre-deepening
  * handler, including the suppression-after-bounce ordering.
  */
+/**
+ * The outbox slot one terminal callback occupies, WITHIN a message.
+ *
+ * The outbox keys its entry by a hash of this, so two effects that resolve to the
+ * same slot collapse into one delivery. For every other event that is exactly
+ * right: a message is sent once, bounces once, fails once, and re-storing the
+ * same fact must not deliver it twice.
+ *
+ * `smtp.classified` IS NOT ONE OF THOSE. It reports ONE RESPONSE, and a
+ * greylisted message collects a new one on every attempt — all of them for the
+ * same `messageId`. Keyed by the event name alone, attempt two would land on
+ * attempt one's slot and the ramp's denominator would count one classified
+ * response per message however many the receiver actually sent. So this event's
+ * slot carries the instant it observed, which is what makes each attempt its own
+ * entry.
+ */
+function outboxIdentity(event: MtaWebhookEvent): string {
+	return isMeasurementNotification(event) ? `${event.event}:${event.timestamp}` : event.event;
+}
+
+/**
+ * Does this notification report a MEASUREMENT rather than the send's fate?
+ *
+ * The one predicate behind both of the ways `smtp.classified` differs from every
+ * other terminal callback — its own outbox slot per response, and a failure that
+ * degrades telemetry instead of failing the attempt — so the two can never be
+ * answered differently for the same event.
+ */
+function isMeasurementNotification(event: MtaWebhookEvent): boolean {
+	return event.event === 'smtp.classified';
+}
+
 export async function applyEffects(
 	effects: ReadonlyArray<DispatchEffect>,
 	deps: PhaseDeps,
@@ -126,13 +216,30 @@ export async function applyEffects(
 			if (!effect.event.messageId) {
 				throw new Error('Dispatch terminal callback is missing its stable message identity');
 			}
+			const queued = queueConvexWebhook(
+				effect.event,
+				deps.config,
+				deps.redis,
+				`dispatch:${effect.event.messageId}:${outboxIdentity(effect.event)}`
+			);
+			// A MEASUREMENT IS NOT AN OWNERSHIP TRANSFER, so its outbox write may not
+			// fail the attempt. `smtp.classified` reports what a receiver said; the
+			// send's own fate is decided by the lifecycle callbacks beside it. Awaited
+			// in the same batch — the write is durable and worth waiting a Redis
+			// round-trip for — but its rejection is swallowed, or an outbox blip on a
+			// retryable 4xx would abort the attempt BEFORE the terminalization that
+			// follows it, and a message the receiver merely asked us to retry would
+			// stall for want of a counter. `outboxIdentity` above says why the two
+			// also occupy different slots.
 			terminal.push(
-				queueConvexWebhook(
-					effect.event,
-					deps.config,
-					deps.redis,
-					`dispatch:${effect.event.messageId}:${effect.event.event}`
-				)
+				isMeasurementNotification(effect.event)
+					? queued.catch((err: unknown) => {
+							logger.error(
+								{ err, operation: 'convex_webhook_outbox', eventType: effect.event.event },
+								'Classified-response telemetry was not queued'
+							);
+						})
+					: queued
 			);
 		}
 	}
@@ -184,6 +291,63 @@ function fireAndForget(
 	deps: PhaseDeps
 ): void {
 	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
+}
+
+/**
+ * The per-IP warming accounting. It takes the attempt's day for the same reason
+ * its per-provider twin below does — the two mirror one outcome, so the per-day
+ * STATS both book into must be the same day, or one dimension's bounce rate is
+ * computed over a day the other never counted.
+ *
+ * The two rolling `sentToday` slots do NOT follow it: this one stays on the apply
+ * clock (`recordSend` — writing a finished day into it would zero the live day's
+ * cap consumption, so the slot is never rewound; a late effect lands in whichever
+ * day the slot is on, which is the live one once that day's first cap gate has
+ * rolled it), while the per-provider slot is monotonic and a stale-day send
+ * leaves it untouched (`warmingProviderScripts.ts`, which spends no live
+ * allowance instead). Same tradeoff, opposite side; each is argued where its
+ * write happens.
+ */
+function applyPerIpWarmingRecord(
+	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
+	if (effect.result === 'send') {
+		return warming.recordSend(
+			deps.redis,
+			effect.ip,
+			effect.reservation,
+			downstreamIdentity,
+			effect.utcDate
+		);
+	}
+	if (effect.result === 'bounce') {
+		return warming.recordBounce(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
+	}
+	return warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity, effect.utcDate);
+}
+
+/** The additive per-(IP x mailbox provider) mirror of the same outcome. */
+function applyPerProviderWarmingRecord(
+	effect: Extract<DispatchEffect, { kind: 'warming_record' }>,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
+	const ref = {
+		ip: effect.ip,
+		provider: effect.providerKey,
+		utcDate: effect.utcDate,
+	};
+	if (effect.result === 'send') {
+		return recordProviderWarmingSend(deps.redis, ref, effect.pool, downstreamIdentity);
+	}
+	return recordProviderWarmingOutcome(
+		deps.redis,
+		ref,
+		effect.result === 'bounce' ? 'bounced' : 'deferred',
+		downstreamIdentity
+	);
 }
 
 function applyOne(
@@ -246,17 +410,17 @@ function applyOne(
 				downstreamIdentity
 			);
 		case 'warming_record':
-			if (effect.result === 'send')
-				return downstreamIdentity
-					? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
-					: warming.recordSend(deps.redis, effect.ip, effect.reservation);
-			if (effect.result === 'bounce')
-				return downstreamIdentity
-					? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
-					: warming.recordBounce(deps.redis, effect.ip);
-			return downstreamIdentity
-				? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
-				: warming.recordDeferral(deps.redis, effect.ip);
+			return Promise.all([
+				applyPerIpWarmingRecord(effect, deps, downstreamIdentity),
+				applyPerProviderWarmingRecord(effect, deps, downstreamIdentity),
+			]);
+		case 'warming_provider_pressure':
+			return recordProviderVolumePressure(
+				deps.redis,
+				{ ip: effect.ip, provider: effect.providerKey, utcDate: effect.utcDate },
+				PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
+				downstreamIdentity
+			);
 		case 'metrics_record':
 			return metrics.record(
 				deps.redis,

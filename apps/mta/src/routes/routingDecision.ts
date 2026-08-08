@@ -154,18 +154,56 @@ async function writeLease(redis: Redis, lease: RoutingLeaseRecord): Promise<void
 	if (stored !== 'OK') throw new Error('Routing lease token collision');
 }
 
-export async function readRoutingLease(
-	redis: Redis,
-	token: string
-): Promise<RoutingLeaseRecord | null> {
+/**
+ * WHY A LEASE READ DID NOT PRODUCE A LEASE — three answers, not one `null`.
+ *
+ * The caller turns this into a code on the wire, and Convex turns that code into
+ * WHOSE FAULT the resulting deferral is (`deferralOrigin`, issue #505). Gate 2
+ * halts a cell at 25% `governed` deferrals, so "the MTA declined this identity"
+ * and "our own Redis lost the record" must not arrive as the same answer.
+ *
+ * `unreadable` is the one that is OURS: a value that is present but is not the
+ * record we wrote — truncated, corrupt, or carrying another token — is a storage
+ * fault with no receiver anywhere near it.
+ */
+export type RoutingLeaseRead =
+	| { status: 'ok'; lease: RoutingLeaseRecord }
+	| { status: 'absent' }
+	| { status: 'expired' }
+	| { status: 'unreadable' };
+
+/**
+ * Read the lease record behind a token.
+ *
+ * THE ABSENT/EXPIRED BOUNDARY, DECIDED HERE AND ON PURPOSE. `writeLease` sets
+ * the key with `EX ROUTING_LEASE_TTL_SECONDS` and stamps `expiresAt` the same
+ * number of milliseconds ahead in the same call, so the Redis TTL and the
+ * embedded deadline elapse together: a key we no longer see is, in the ordinary
+ * case, a lease that aged out. Eviction, a flush, or a failover to an empty
+ * replica produce the identical nil, and NOTHING IN A `GET` DISTINGUISHES THEM —
+ * so `absent` keeps the shipped reading ("the decision is stale, resolve again",
+ * `governed`) rather than guessing. Only a value we can see and cannot use is
+ * reported as a storage fault. A `GET` that THROWS is not a read result at all:
+ * it propagates and the route answers 500, which Convex categorises as
+ * `SERVER_ERROR` and never counts against gate 2's deferral budget.
+ */
+export async function readRoutingLease(redis: Redis, token: string): Promise<RoutingLeaseRead> {
 	const raw = await redis.get(`${ROUTING_LEASE_PREFIX}${token}`);
-	if (!raw) return null;
+	if (!raw) return { status: 'absent' };
+	let parsed: unknown;
 	try {
-		const lease = JSON.parse(raw) as RoutingLeaseRecord;
-		return lease.token === token && lease.expiresAt >= Date.now() ? lease : null;
+		parsed = JSON.parse(raw);
 	} catch {
-		return null;
+		return { status: 'unreadable' };
 	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		return { status: 'unreadable' };
+	}
+	const lease = parsed as RoutingLeaseRecord;
+	// A record under our key that names another token, or carries no usable
+	// deadline, is not the record this MTA wrote — corruption, not governance.
+	if (lease.token !== token || !Number.isFinite(lease.expiresAt)) return { status: 'unreadable' };
+	return lease.expiresAt >= Date.now() ? { status: 'ok', lease } : { status: 'expired' };
 }
 
 export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {

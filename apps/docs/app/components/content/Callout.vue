@@ -22,7 +22,7 @@ withDefaults(
 	margin: 1.5rem 0;
 	padding: 14px 20px;
 	border-left: 1px solid var(--color-border-default);
-	border-radius: 0 6px 6px 0;
+	border-radius: 0 8px 8px 0;
 }
 
 .callout-title {

@@ -111,6 +111,35 @@ describe('providerRoutes mutation contracts', () => {
 		expect(id).toBeTruthy();
 	});
 
+	it('keeps a controller-owned strategy through an unrelated edit', async () => {
+		// The operator UI never OFFERS `adaptive_mix` — the ramp controller writes
+		// it — but a route already carrying it goes back through this mutation on
+		// every unrelated save. A validator that did not accept the kind the
+		// schema stores would reject that save, and the settings page would
+		// silently downgrade the route to a pickable strategy.
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		await t.mutation(api.providerRoutes.setRoute, {
+			...singleMtaRoute,
+			strategy: 'adaptive_mix' as const,
+		});
+
+		const [saved] = await t.query(api.providerRoutes.listRoutes, {});
+		expect(saved?.strategy).toBe('adaptive_mix');
+
+		// The unrelated edit: toggle a provider, echoing back the strategy the
+		// page read, exactly as the settings form serializes it.
+		await t.mutation(api.providerRoutes.setRoute, {
+			messageType: 'campaign' as const,
+			strategy: 'adaptive_mix' as const,
+			providers: [{ providerType: 'mta', isEnabled: false }],
+		});
+
+		const [edited] = await t.query(api.providerRoutes.listRoutes, {});
+		expect(edited?.strategy).toBe('adaptive_mix');
+		expect(edited?.providers.map((provider) => provider.isEnabled)).toEqual([false]);
+	});
+
 	it('rejects an unknown retired transport even when the client marks it disabled', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
@@ -125,7 +154,48 @@ describe('providerRoutes mutation contracts', () => {
 		).rejects.toThrow('Provider route contains an unknown transport');
 	});
 
-	it('rejects a non-SES deliverability fallback and never persists it', async () => {
+	/**
+	 * THE PERSISTENCE GATE AND THE ROUTING GATE ARE ONE PREDICATE (plan D6).
+	 *
+	 * The shipped check here was `relayProviderType !== 'ses'` — a capability
+	 * question answered with a list of one. `resolveRoute` was widened to
+	 * `isFallbackRelayEligible` (configured, and not our own MTA), so this
+	 * mutation now asks exactly that, and these cases are the four corners of it:
+	 * a configured relay is accepted, an UNCONFIGURED one is not (a relay with no
+	 * credentials is a second outage, not a fallback), the owned MTA is never a
+	 * fallback FOR itself, and an unknown kind still fails closed.
+	 */
+	it('accepts a configured non-SES relay — the migration shape from the plan', async () => {
+		vi.stubEnv('MANDRILL_API_KEY', 'md-test-key');
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		const routeId = await t.mutation(api.providerRoutes.setRoute, {
+			...singleMtaRoute,
+			strategy: 'adaptive_mix' as const,
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'mandrill', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'mandrill',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		expect(routeId).toBeTruthy();
+		const [saved] = await t.query(api.providerRoutes.listRoutes, {});
+		expect(saved?.deliverabilityFallback).toEqual({
+			isEnabled: true,
+			relayProviderType: 'mandrill',
+			isWarmupOverflowEnabled: true,
+		});
+	});
+
+	it('rejects an UNCONFIGURED relay and never persists it', async () => {
+		// `RESEND_API_KEY` is absent, so the kind is known and non-MTA but has no
+		// credentials. Before D6 this was refused for being "not SES"; now it is
+		// refused for the reason routing would refuse it at dispatch.
 		const t = convexTest(schema, modules).withIdentity(identity);
 
 		await expect(
@@ -141,7 +211,39 @@ describe('providerRoutes mutation contracts', () => {
 					isWarmupOverflowEnabled: true,
 				},
 			})
-		).rejects.toThrow('Deliverability fallback currently supports only Amazon SES');
+		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
+
+		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+	});
+
+	it('refuses the owned MTA as its own fallback relay, and an unknown kind', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		// The MTA is the arm a fallback moves traffic AWAY from — relieving a
+		// reputation problem through the transport that has it is not a fallback.
+		// It is configured (MTA_API_URL/KEY are stubbed above), so only the
+		// non-MTA half of the predicate can be rejecting it.
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'mta',
+					isWarmupOverflowEnabled: false,
+				},
+			})
+		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
+
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'plugin.retired-mail.postmark',
+					isWarmupOverflowEnabled: false,
+				},
+			})
+		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
 
 		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
 	});

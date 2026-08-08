@@ -77,7 +77,7 @@ export async function enqueueGovernedTestEmail(
 	params: EmailSendParams,
 	organizationId: string
 ) {
-	const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueTestSend, {
+	const { sendId } = await ctx.runMutation(internal.delivery.enqueueTestSend.enqueueTestSend, {
 		email: params.to,
 		organizationId,
 		from: params.from,

@@ -116,6 +116,26 @@ const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/delivery',
 		page: 'Setup',
 	},
+	'/dashboard/delivery/measurement': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Measurement',
+	},
+	'/dashboard/delivery/independence': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Independence',
+	},
+	'/dashboard/delivery/cells': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Cells',
+	},
+	'/dashboard/delivery/controls': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		page: 'Controls',
+	},
 	'/dashboard/delivery/config': {
 		section: 'Delivery',
 		sectionHref: '/dashboard/delivery',
@@ -129,6 +149,13 @@ const routeConfigs: Record<string, RouteConfig> = {
 		subsection: 'Setup',
 		subsectionHref: '/dashboard/delivery/setup',
 		page: 'Sending Domains',
+	},
+	'/dashboard/delivery/migrate': {
+		section: 'Delivery',
+		sectionHref: '/dashboard/delivery',
+		subsection: 'Setup',
+		subsectionHref: '/dashboard/delivery/setup',
+		page: 'Migrate from Mailchimp',
 	},
 	'/dashboard/delivery/provider-routing': {
 		section: 'Delivery',

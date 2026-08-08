@@ -1,7 +1,7 @@
 <template>
 	<nav class="space-y-6" aria-label="Documentation navigation">
 		<div v-for="group in visibleGroups" :key="group.label">
-			<h3 class="text-xs uppercase tracking-widest text-text-tertiary mb-2 px-2">
+			<h3 class="text-2xs font-medium uppercase tracking-widest text-text-tertiary mb-2 px-3">
 				{{ group.label }}
 			</h3>
 			<ul class="space-y-0.5">
@@ -11,7 +11,7 @@
 						class="block px-3 py-1.5 text-sm rounded-lg transition-colors duration-(--motion-fast)"
 						:class="
 							isActive(item.to)
-								? 'text-text-primary bg-bg-surface font-medium'
+								? 'text-text-primary font-semibold'
 								: 'text-text-secondary hover:text-text-primary'
 						"
 					>

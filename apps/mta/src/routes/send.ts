@@ -19,15 +19,15 @@ import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
-import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
-import { canSend, canSendScope } from '../intelligence/circuitBreaker.js';
-import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
+import { revalidateRoutingLease } from './sendRoutingLease.js';
 import {
 	INTAKE_RESERVATION_LEASE_MS,
 	hasAcceptedIntakeReceipt,
 	intakeReceiptKey,
 	parseIntakeReceipt,
 } from './sendReceipt.js';
+
+import { readEngagementScore } from './sendEngagementScore.js';
 
 export { createSendReceiptHandler } from './sendReceipt.js';
 
@@ -54,7 +54,8 @@ interface SendRequest {
 	organizationId: string;
 	messageType?: 'campaign' | 'transactional' | 'automation';
 	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	engagementScore?: number;
+	/** Unvalidated JSON — read it through `readEngagementScore`, never raw. */
+	engagementScore?: unknown;
 	dkimDomain: string;
 	/**
 	 * Postbox-only: the allowed-from set for the originating mailbox.
@@ -230,72 +231,26 @@ export function createSendHandler(
 
 		let routingLease: EmailJob['routingLease'];
 		if (mode === 'governed' && body.routingLease) {
-			const lease = await readRoutingLease(redis, body.routingLease);
-			if (
-				!isRoutingLeaseBoundTo(lease, {
-					messageId: body.messageId,
-					workAttemptId: body.workAttemptId!,
-					routingReentryToken: body.routingReentryToken!,
-					startedAt: body.routingReentry!.retryState.startedAt,
-					deliveryDomain: body.deliveryDomain!,
-					organizationId: body.organizationId,
-					recipient: body.to,
-					from: body.from,
-					messageType: body.messageType!,
-					candidateProvider: 'mta',
-					ipPool: body.ipPool,
-					allowWarmupOverflow: body.allowWarmupOverflow === true,
-				})
-			) {
-				return c.json(
-					{ error: 'Routing decision expired; resolve again', code: 'ROUTING_DECISION_EXPIRED' },
-					409
-				);
+			// Every rejection here is a 409 the caller turns into a deferral, and the
+			// CODE is what says whose fault it was — see `revalidateRoutingLease`.
+			const revalidated = await revalidateRoutingLease(redis, body.routingLease, {
+				messageId: body.messageId,
+				workAttemptId: body.workAttemptId!,
+				routingReentryToken: body.routingReentryToken!,
+				startedAt: body.routingReentry!.retryState.startedAt,
+				deliveryDomain: body.deliveryDomain!,
+				organizationId: body.organizationId,
+				recipient: body.to,
+				from: body.from,
+				messageType: body.messageType!,
+				candidateProvider: 'mta',
+				ipPool: body.ipPool,
+				allowWarmupOverflow: body.allowWarmupOverflow === true,
+			});
+			if (!revalidated.ok) {
+				return c.json({ error: revalidated.error, code: revalidated.code }, 409);
 			}
-			const global = await canSend(redis, body.organizationId);
-			if (!global.allowed || global.generation !== lease.globalBreakerGeneration) {
-				return c.json(
-					{ error: 'Delivery temporarily deferred by safety policy', code: 'GLOBAL_SAFETY_DEFER' },
-					409
-				);
-			}
-			const provider = await canSendScope(redis, body.organizationId, lease.destinationProvider);
-			if (!provider.allowed || provider.generation !== lease.providerBreakerGeneration) {
-				return c.json(
-					{
-						error: 'Destination provider route changed; resolve again',
-						code: 'ROUTING_DECISION_CHANGED',
-					},
-					409
-				);
-			}
-			if (
-				lease.ip &&
-				lease.eligibilityGeneration !== undefined &&
-				!(await isIpEligibilityLeaseValid(redis, {
-					ip: lease.ip,
-					eligibilityGeneration: lease.eligibilityGeneration,
-				}))
-			) {
-				return c.json(
-					{
-						error: 'Owned IP eligibility changed; resolve again',
-						code: 'ROUTING_DECISION_CHANGED',
-					},
-					409
-				);
-			}
-			routingLease = {
-				token: lease.token,
-				destinationProvider: lease.destinationProvider,
-				probe: lease.probe,
-				globalProbe: lease.globalProbe,
-				ip: lease.ip,
-				eligibilityGeneration: lease.eligibilityGeneration,
-				globalBreakerGeneration: lease.globalBreakerGeneration,
-				providerBreakerGeneration: lease.providerBreakerGeneration,
-				warmingReservation: lease.warmingReservation,
-			};
+			routingLease = revalidated.routingLease;
 		}
 
 		if (body.sealedMimeBase64) {
@@ -413,6 +368,7 @@ export function createSendHandler(
 		}
 
 		// Build job
+		const engagementScore = readEngagementScore(body.messageId, body.engagementScore);
 		const job: EmailJob = {
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
@@ -429,7 +385,7 @@ export function createSendHandler(
 			ipPool: body.ipPool,
 			organizationId: body.organizationId,
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
-			engagementScore: body.engagementScore,
+			engagementScore,
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: mode === 'governed' ? body.routingReentry!.retryState.startedAt : Date.now(),
 			...(routingLease ? { routingLease } : {}),
@@ -444,7 +400,7 @@ export function createSendHandler(
 		// Calculate group key and priority
 		const domain = extractDomain(body.to);
 		const groupId = buildGroupKey(body.ipPool, domain);
-		const priority = mapToPriority(body.engagementScore);
+		const priority = mapToPriority(engagementScore);
 
 		try {
 			// GroupMQ identity is attempt-scoped. `job.data.messageId` remains the

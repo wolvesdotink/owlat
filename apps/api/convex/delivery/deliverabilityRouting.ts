@@ -1,9 +1,13 @@
 import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
-import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
+import {
+	DESTINATION_PROVIDER_KEYS,
+	isActionableDeliverabilitySignalSource,
+} from '@owlat/shared/deliverabilityRouting';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { contactEmailOf, loadSend, resolveProviderMessageId } from './sendLifecycle/lookups';
 import {
 	deliverabilitySignalValidator,
@@ -15,6 +19,20 @@ export const DELIVERABILITY_MIN_HEALTHY_MS = 15 * 60 * 1000;
 export const DELIVERABILITY_FALLBACK_COOLDOWN_MS = 30 * 60 * 1000;
 const STATE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const DOMAIN_CLASSIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * How stale a CONFIRMING observation has to be before it is worth a write.
+ *
+ * The classifier row is a read dependency of the campaign enqueue transaction
+ * (`delivery/sendAssignments.ts` keys the cell off it), while
+ * {@link recordDestinationProviderDomain} runs once per delivered message. A
+ * gmail-heavy campaign would otherwise patch `gmail.com` continuously and
+ * invalidate the read set of every in-flight enqueue page, driving OCC retries
+ * on a transaction that must not fail. A repeat observation of the SAME
+ * provider carries no new information, so it is skipped inside this interval;
+ * a CHANGED provider or an aged row always writes, leaving self-correction
+ * untouched.
+ */
+const DOMAIN_CLASSIFICATION_REFRESH_MS = 60 * 60 * 1000;
 const PROVIDERS = ['all', ...DESTINATION_PROVIDER_KEYS] as const;
 
 /**
@@ -30,18 +48,23 @@ export const applySnapshot = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		for (const provider of PROVIDERS) {
-			const existing = await ctx.db
-				.query('deliverabilityRouteStates')
-				.withIndex('by_org_provider', (q) =>
-					q.eq('organizationId', args.organizationId).eq('destinationProvider', provider)
-				)
-				.first();
+			// The MTA snapshot owns the LEGACY stream-less row: it reports
+			// infrastructure health for a provider slice, which is not per-stream.
+			const existing = await loadStreamlessRouteState(ctx, args.organizationId, provider);
 			if (existing && existing.snapshotGeneratedAt >= args.generatedAt) continue;
 
 			const signals = args.signals
 				.filter((signal) => signal.provider === provider)
 				.map(({ source, severity, observedAt }) => ({ source, severity, observedAt }));
-			const degraded = signals.length > 0;
+			// ONE RULE: only the four INFRASTRUCTURE sources flip the shipped
+			// boolean. Advisory sources ("we could not complete the lookup", "part
+			// of the pool is ejected") and outcome-derived sources (bounce,
+			// complaint, engagement, placement) are persisted here so the ramp
+			// controller and the dashboard can read them, and they move the
+			// controller's share — but neither ever triggers relay fallback.
+			const degraded = signals.some((signal) =>
+				isActionableDeliverabilitySignalSource(signal.source)
+			);
 			let persistedSignals = signals;
 			let isFallbackActive = existing?.isFallbackActive ?? false;
 			let fallbackActiveSince = existing?.fallbackActiveSince;
@@ -54,7 +77,14 @@ export const applySnapshot = internalMutation({
 				// Preserve the triggering reasons while hysteresis deliberately keeps
 				// fallback active. Route resolution uses these reasons as its decision
 				// input, so clearing them before failback would bypass the cooldown.
-				persistedSignals = existing?.signals ?? [];
+				// Advisory readings are refreshed rather than preserved: they carry no
+				// routing weight and must reflect the latest snapshot.
+				persistedSignals = [
+					...(existing?.signals ?? []).filter((signal) =>
+						isActionableDeliverabilitySignalSource(signal.source)
+					),
+					...signals.filter((signal) => !isActionableDeliverabilitySignalSource(signal.source)),
+				];
 				healthySince ??= args.appliedAt;
 				const healthyLongEnough = args.appliedAt - healthySince >= DELIVERABILITY_MIN_HEALTHY_MS;
 				const cooldownComplete =
@@ -62,7 +92,7 @@ export const applySnapshot = internalMutation({
 					args.appliedAt - fallbackActiveSince >= DELIVERABILITY_FALLBACK_COOLDOWN_MS;
 				if (healthyLongEnough && cooldownComplete) {
 					isFallbackActive = false;
-					persistedSignals = [];
+					persistedSignals = signals;
 					fallbackActiveSince = undefined;
 					healthySince = undefined;
 				}
@@ -123,6 +153,15 @@ export const recordDestinationProviderDomain = internalMutation({
 			)
 			.first();
 		if (existing && existing.observedAt >= args.observedAt) return { recorded: false };
+		// Cooled write: a confirming observation inside the refresh interval is a
+		// no-op (see DOMAIN_CLASSIFICATION_REFRESH_MS). Fixture-pinned.
+		if (
+			existing &&
+			existing.destinationProvider === args.destinationProvider &&
+			args.observedAt - existing.observedAt < DOMAIN_CLASSIFICATION_REFRESH_MS
+		) {
+			return { recorded: false };
+		}
 		const fields = {
 			organizationId,
 			domain,

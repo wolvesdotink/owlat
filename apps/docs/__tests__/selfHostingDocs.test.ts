@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { selectRuntimeEnvVars } from '@owlat/shared/convexRuntimeEnv';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, relative } from 'node:path';
@@ -121,4 +122,116 @@ describe('self-host templates: no extracted control-plane (Nest) leftovers', () 
 			expect(tpl.text).not.toMatch(/nest/i);
 		});
 	}
+});
+
+/**
+ * The two .env templates have DIFFERENT audiences — .env.example is for
+ * contributors running `bun run dev`, .env.selfhost.example for operators
+ * running docker compose — and an operator knob documented only in the
+ * contributor template is a knob operators never learn exists. The
+ * deliverability knobs are the ones that drifted: each is unset-by-default and
+ * silently costs measurement quality rather than erroring, so nothing else in
+ * the product would ever tell an operator about them.
+ *
+ * The list is cross-checked against the EnvKey union so a rename in code fails
+ * here instead of leaving two templates describing a variable nothing reads.
+ */
+describe('self-host template: deliverability operator knobs', () => {
+	const contributorEnv = readFileSync(resolve(repoRoot, '.env.example'), 'utf8');
+	const selfhostEnv = readFileSync(resolve(repoRoot, '.env.selfhost.example'), 'utf8');
+	const envKeySource = readFileSync(resolve(repoRoot, 'apps/api/convex/lib/env.ts'), 'utf8');
+
+	const knobs = [
+		'MTA_RETURN_PATH_RELAY_SPF',
+		'MTA_BIMI_LOGO_URL',
+		'MTA_BIMI_VMC_URL',
+		'MTA_BIMI_SELECTOR',
+		'SEND_TRANSPORT_INSTANCES',
+		'SNDS_DATA_FEED_URLS',
+	];
+
+	// Whole-word match so MTA_BIMI_SELECTOR can't be satisfied by a longer name.
+	const documents = (text: string, key: string) =>
+		new RegExp(`(^|[^A-Za-z0-9_])${key}([^A-Za-z0-9_]|$)`).test(text);
+
+	for (const key of knobs) {
+		it(`${key} is a real EnvKey and both templates document it`, () => {
+			expect(envKeySource).toContain(`| '${key}'`);
+			expect(documents(contributorEnv, key)).toBe(true);
+			expect(documents(selfhostEnv, key)).toBe(true);
+		});
+	}
+
+	it('tells operators the VERP signing key is projected, never hand-copied', () => {
+		// MTA_BOUNCE_VERP_KEY / MTA_RETURN_PATH_DOMAIN are the two knobs an
+		// operator must NOT set: setup derives them from BOUNCE_VERP_KEY /
+		// RETURN_PATH_DOMAIN, and a hand-copied signing key that differs by one
+		// character mints tokens the MTA will never verify — which reads
+		// downstream as "the relay arm produced no bounces", not as an error.
+		expect(documents(selfhostEnv, 'MTA_BOUNCE_VERP_KEY')).toBe(true);
+		expect(documents(selfhostEnv, 'MTA_RETURN_PATH_DOMAIN')).toBe(true);
+		expect(selfhostEnv).not.toMatch(/^MTA_BOUNCE_VERP_KEY=/m);
+		expect(selfhostEnv).not.toMatch(/^MTA_RETURN_PATH_DOMAIN=/m);
+	});
+
+	for (const key of knobs) {
+		it(`${key} ships commented out, so copying the template enables nothing`, () => {
+			expect(selfhostEnv).toMatch(new RegExp(`^# ${key}=`, 'm'));
+			expect(selfhostEnv).not.toMatch(new RegExp(`^${key}=`, 'm'));
+		});
+	}
+
+	/**
+	 * The template's blocks are separated by `── … ──` rules; a phrase found
+	 * anywhere in the file would let one block lose its reassurance while another
+	 * block's copy keeps the assertion green.
+	 */
+	const blockContaining = (key: string) => {
+		const index = selfhostEnv.indexOf(key);
+		if (index === -1) throw new Error(`${key} is not in .env.selfhost.example`);
+		const rules = [...selfhostEnv.matchAll(/^# ──.*$/gm)];
+		const start = rules.filter((m) => m.index < index).at(-1)?.index ?? 0;
+		const end = rules.find((m) => m.index > index)?.index ?? selfhostEnv.length;
+		return selfhostEnv.slice(start, end);
+	};
+
+	it.each([
+		['MTA_RETURN_PATH_RELAY_SPF', /[Uu]nset changes nothing and blocks nothing/],
+		['MTA_BIMI_LOGO_URL', /never blocks a send/],
+		['SNDS_DATA_FEED_URLS', /supported configuration/],
+	])(
+		'%s says in its own block that leaving it unset costs measurement, not sends',
+		(key, phrase) => {
+			// The one thing an operator template must not imply is that an unset
+			// optional knob is a broken install.
+			expect(blockContaining(key)).toMatch(phrase);
+		}
+	);
+
+	it('warns that a named instance\'s "__" credentials are not pushed by setup', () => {
+		// SEND_TRANSPORT_INSTANCES rides the push; the suffixed credentials it
+		// names cannot (the suffix is operator-invented, so nothing enumerates
+		// them). An operator who set both here would get a declared transport that
+		// fails closed on its first send with nothing to read about why.
+		const block = blockContaining('SEND_TRANSPORT_INSTANCES');
+		expect(block).toMatch(/convex env set SMTP_RELAY_HOST__BACKUP/);
+		expect(block).toMatch(/DO NOT GO IN THIS FILE/);
+		expect(block).not.toMatch(/^# SMTP_RELAY_\w+__BACKUP=/m);
+	});
+
+	it('pushes the instance declaration and none of its suffixed credentials', () => {
+		// The behaviour the warning describes. If a later piece teaches
+		// selectRuntimeEnvVars to project the suffixed keys, this fails and the
+		// template text above must be retired with it.
+		const pushed = new Map(
+			selectRuntimeEnvVars({
+				SEND_TRANSPORT_INSTANCES: 'smtp#backup',
+				SMTP_RELAY_HOST__BACKUP: 'smtp.postmarkapp.com',
+				SMTP_RELAY_USERNAME__BACKUP: 'apikey',
+				SMTP_RELAY_PASSWORD__BACKUP: 'secret',
+			})
+		);
+		expect(pushed.get('SEND_TRANSPORT_INSTANCES')).toBe('smtp#backup');
+		expect([...pushed.keys()].filter((key) => key.includes('__BACKUP'))).toEqual([]);
+	});
 });

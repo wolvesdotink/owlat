@@ -10,55 +10,34 @@
  *
  * Negative-feedback events (`email.bounced` / `email.complained`) whose
  * `providerMessageId` resolves to no Send row now emit an `unresolved_bounce`
- * signal via `recordUnresolvedBounce` instead of acking silently — see that
- * function for the rationale (M3AAWG measure-unattributable-feedback).
+ * signal via `recordUnresolvedBounce` (`./unresolvedBounce`) instead of acking
+ * silently — see that function for the rationale (M3AAWG
+ * measure-unattributable-feedback).
+ *
+ * A handler that outgrows a table entry moves to its own module and is
+ * registered here by name: `email.complained` lives in `./complaintDispatch`.
  */
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { isAllowedSnsHost } from './adapters/ses';
-import { isPostboxMessageId } from '../delivery/messageIdRouting';
+import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
-import { logError, logWarn } from '../lib/runtimeLog';
-import type { InboundEvent, InboundEventKind, InboundEventOf } from './types';
+import { logError } from '../lib/runtimeLog';
+import { dispatchComplaint } from './complaintDispatch';
+import { syncMandrillReject } from './mandrillRejectSuppression';
+import { recordUnresolvedBounce } from './unresolvedBounce';
+import {
+	type InboundEvent,
+	type InboundEventKind,
+	type InboundEventOf,
+	postmasterStatsMetrics,
+} from './types';
 
 /** Max time to wait for the SNS subscription-confirm GET before giving up. */
 const SNS_CONFIRM_FETCH_TIMEOUT_MS = 10_000;
-
-/**
- * Unresolved-bounce observability (M3AAWG "measure unattributable feedback").
- *
- * `transitionByProviderMessageId` returns `{ ok: false, reason:
- * 'send_not_found' }` when a provider message id resolves to no Send row, and
- * the webhook path otherwise acks silently. For a negative-signal event
- * (`email.bounced` / `email.complained`) that silence hides a real failure
- * class: a bounce the MTA attributed (so the worker-side unattributed-bounce
- * counter never fires) but which is lost at the Convex resolve step — e.g. the
- * VERP-token-vs-stored-providerMessageId mismatch (PR-01). Without a signal
- * here those bounces are invisible end-to-end.
- *
- * So: when a negative-signal transition resolves to `send_not_found`, emit a
- * structured `unresolved_bounce` warning carrying the event kind and provider
- * message id. The literal token makes the mismatch observable to log-based
- * metrics/alerts rather than a no-op.
- */
-function recordUnresolvedBounce(
-	signal: 'email.bounced' | 'email.complained',
-	providerMessageId: string,
-	at: number,
-	outcome: TransitionOutcome | undefined
-): void {
-	// Only the specific no-row outcome is a signal; any other shape (success,
-	// a different failure reason, or an absent return) is a quiet no-op.
-	if (!outcome || outcome.ok || outcome.reason !== 'send_not_found') return;
-	logWarn(
-		`[Webhook Dispatcher] unresolved_bounce: ${signal} for providerMessageId ` +
-			`${providerMessageId} resolved to no Send row (at=${at}). The bounce was ` +
-			`attributed at the MTA but lost at Convex resolve — measure-unattributable-feedback.`
-	);
-}
 
 type Handler<K extends InboundEventKind> = (
 	ctx: ActionCtx,
@@ -164,6 +143,14 @@ const DISPATCH: DispatchTable = {
 			});
 			return;
 		}
+		// SUPPRESSION FIRST, bookkeeping second (the `dispatchComplaint`
+		// principle): a Mandrill `reject` is that provider's blacklist refusing an
+		// address, and mirroring it into ours is what stops the own arm mailing a
+		// population the reference arm no longer touches. See
+		// `./mandrillRejectSuppression` for which reject reasons are recipient
+		// truths and which are about our own account. A no-op for every other
+		// provider and every other failure.
+		await syncMandrillReject(ctx, e);
 		await ctx.runMutation(
 			e.providerType === 'mta'
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
@@ -180,6 +167,17 @@ const DISPATCH: DispatchTable = {
 		);
 	},
 	'email.bounced': async (ctx, e) => {
+		// A return-path probe is not a Send: its bounce is the EVIDENCE that the
+		// relay preserved our VERP envelope sender — an attributed DSN cannot
+		// exist otherwise, because the signed token lives in the envelope
+		// recipient's local part — and it must never touch a campaign's numbers.
+		if (isReturnPathProbeMessageId(e.providerMessageId)) {
+			await ctx.runMutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+				probeMessageId: e.providerMessageId,
+				at: e.at,
+			});
+			return;
+		}
 		if (isPostboxMessageId(e.providerMessageId)) {
 			// Postbox does not distinguish hard/soft at the per-recipient level —
 			// the Send lifecycle's `bounceType` is a campaign-side concern (drives
@@ -211,31 +209,28 @@ const DISPATCH: DispatchTable = {
 		)) as TransitionOutcome;
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
 	},
-	'email.complained': async (ctx, e) => {
-		// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
-		// original Message-ID (e.g. Gmail), so there's no send to transition.
-		// Suppress the complainer directly by email — a complaint must always
-		// reach the blocklist, never evaporate into a metric.
-		if (!e.providerMessageId) {
-			if (!e.recipient || (e.providerType !== 'ses' && e.deliveryDomain !== 'production')) return;
-			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
-				email: e.recipient,
-				reason: 'complained',
-			});
-			return;
-		}
-		if (isPostboxMessageId(e.providerMessageId)) return;
-		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
-				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
-				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'complained', at: e.at },
-			}
-		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
+	'email.deferred': async (ctx, e) => {
+		// A relay holding a message it already accepted moves NO send state — the
+		// relay is still retrying and owns the terminal edge. The only thing this
+		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
+		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
+		// accepts a send that is already `sent`.
+		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
+			providerMessageId: e.providerMessageId,
+			at: e.at,
+		});
 	},
+	'email.unsubscribed': async (ctx, e) => {
+		// The relay's unsubscribe surface carries an address, not a send, so the
+		// contact join happens inside the mutation — which then replays the exact
+		// public one-click path (membership delete, opt-out stamp, campaign
+		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
+		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
+			email: e.recipient,
+		});
+	},
+	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
 		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
@@ -418,6 +413,23 @@ const DISPATCH: DispatchTable = {
 			}
 		}
 	},
+	'internal.smtp_classified': async (ctx, e) => {
+		// MEASUREMENT ONLY. No lifecycle transition, no suppression, no reputation
+		// bump — the receiver's verdict on one response becomes a counter and
+		// nothing else (issue #501). The terminal bounce that a non-retryable
+		// refusal ALSO produces arrives as its own `bounced` event and moves the
+		// send status there; keeping the two apart is what lets the retryable half
+		// report the same fact without inventing a bounce for a message still in
+		// flight.
+		return await ctx.runMutation(
+			internal.analytics.smtpResponseCategories.recordClassifiedResponse,
+			{
+				providerMessageId: e.providerMessageId,
+				category: e.category,
+				observedAt: e.observedAt,
+			}
+		);
+	},
 	'internal.ip_readiness_regressed': async (ctx, e) => {
 		return await ctx.runMutation(internal.delivery.ipReadinessAlerts.recordRegression, {
 			eventId: e.eventId,
@@ -446,6 +458,15 @@ const DISPATCH: DispatchTable = {
 			domain: e.domain,
 			date: e.date,
 			userReportedSpamRatio: e.userReportedSpamRatio,
+			...postmasterStatsMetrics(e),
+			fetchedAt: e.fetchedAt,
+		});
+	},
+	'internal.postmaster_compliance': async (ctx, e) => {
+		return ctx.runMutation(internal.delivery.postmaster.ingestCompliance, {
+			domain: e.domain,
+			date: e.date,
+			checks: e.checks,
 			fetchedAt: e.fetchedAt,
 		});
 	},

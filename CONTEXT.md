@@ -305,6 +305,39 @@ _Avoid_: Activity alone (overloaded with audit logs and agent
 actions), Contact event (collides with **Inbound event** / **Webhook
 event**), Timeline entry (names the surface, not the row).
 
+**Contact engagement score (module)**:
+The 0-100, recency-weighted measure of how engaged a Contact is with our
+mail, split into a PURE core and a thin Convex shell:
+- `convex/analytics/engagementScore.ts` — the pure core. One
+  exponentially-decayed accumulator over the **Contact activity**
+  timeline (clicks outweigh opens, replies outweigh clicks, soft bounces
+  apply a decaying multiplicative penalty, a hard bounce or complaint
+  suppresses to 0, and a decaying tenure prior keeps a brand-new Contact
+  out of the coldest band). No db reads, no `Date.now()`, no env reads —
+  the clock is a parameter, so the fixture matrix is deterministic.
+  Exports `engagementBand` (cuts at 80/50/20, mirroring the MTA's
+  `PRIORITY_BANDS`) and `engagementPercentile`, the seam stratified
+  assignment consumes — the scoring logic is never duplicated.
+- `convex/analytics/engagementScoreSync.ts` — the shell. The single
+  **Contact activity** writer folds each relevant activity into the
+  cached accumulator in O(1) on the same contact read it already makes
+  for `hasOpened`/`hasClicked`, so one activity still costs at most one
+  contact write. An HOURLY cron re-projects stale rows so a score decays
+  on the clock too, walking a bounded prefix of the
+  `by_engagement_score_updated_at` range — recomputing a row stamps it
+  out of that range, so the range IS the cursor and there is no
+  `.collect()` over `contacts`. The per-tick bound is sized in
+  DOCUMENTS, not contacts (each recompute reads up to 500 activity
+  rows), so capacity comes from ticks: `BACKFILL_CONTACTS_PER_HOUR`
+  states the ceiling, and a book larger than that re-projects on a
+  longer cycle — which the cron logs rather than hides.
+
+Cached on the Contact as three additive optional fields
+(`engagementScore`, `engagementScoreUpdatedAt`, `engagementScoreState`).
+Absent means UNMEASURED, never zero — legacy rows keep working.
+_Avoid_: Engagement level (collides with the derived band), Contact
+score (ambiguous with lead scoring).
+
 **Contact activity (module)**:
 One activity literal's full surface, physically split into two halves
 keyed by literal — same shape as Block module, Step module, Condition
@@ -1171,13 +1204,29 @@ The module does *not* own: the pre-flight gates
 (`validateReadyToSend(ctx, campaign)` helper at
 `convex/campaigns/preflight.ts` — domain verification, template-present,
 audience-configured, fromEmail-set, abuse-allowed,
-scheduled-time-future — runs in callers *before* `lifecycle.transition`
-to `'scheduled'` / `'sending'`; reducer trusts its input), the
+scheduled-time-future, **sending-capacity** — runs in callers *before*
+`lifecycle.transition` to `'scheduled'` / `'sending'`; reducer trusts
+its input), the
 archive-snapshot write (stays in
 `archiveQueries.setArchiveSnapshot`, called by the campaign-send
 orchestrator mid-`sending`, not on the transition to it), the per-Send
 stats bumps (Send lifecycle's `campaign_stats_*` effects), or the AB
 test state itself (sibling lifecycle).
+
+The **sending-capacity** gate is appended LAST, so every shipped check
+keeps its first-failure surface. `convex/campaigns/capacityPreflight.ts`
+sizes the audience under a document budget and compares it against the
+warming projection from `convex/delivery/warmingCapacity.ts` (the
+published base schedule walked one schedule day per calendar day, summed
+over the active campaign IPs). The pure predicate is
+`convex/campaigns/capacityPlan.ts:planCampaignCapacity`. A campaign that
+provably cannot finish before the MTA expires its queued tail is refused
+with `reason: 'exceeds_sending_capacity'` and a structured multi-day
+`capacityPlan` attached — capacity is a *schedule*, not an error. The
+gate FAILS OPEN in every direction: it only binds when the warming cap
+can actually strand the campaign (own-MTA campaign route, no warm-up
+overflow to a verified relay), and missing, stale, unbounded or
+unmeasurable capacity all answer "allow".
 
 Producers of transition calls today (post-deepening):
 - `convex/campaigns/scheduling.ts:cancel` (`→ cancelled`)
@@ -1430,14 +1479,34 @@ spec), Segment alone (covers one `kind` only).
 The module at `convex/campaigns/audienceResolution.ts` that owns the
 single mapping from an **Audience** to its eligible recipients
 (`CampaignRecipient[]`). One pure per-Contact *eligibility predicate*
-is the shared core; two thin entries route through it so a count can
-never disagree with a send:
+is the shared core; it lives with the unpaginated candidate stream and
+the counting core in the domain sibling
+`convex/campaigns/audienceCandidates.ts` (the split the ~500 LOC rule in
+`convex/CONVENTIONS.md` asks for; the dependency runs one way,
+`audienceResolution.ts` → `audienceCandidates.ts`). Two thin entries
+route through it so a count can never disagree with a send:
 - `resolveRecipients({ audience }) → CampaignRecipient[]` —
   internalQuery; the **Campaign send orchestrator (module)**'s
   audience-resolution step. Materializes the rows. (`frozenFilters`
   rides *inside* the `audience` segment case, not as a sibling arg.)
-- `countRecipients({ audience }) → { total, eligible }` — public
-  query; the wizard's audience-size readout. Runs the *identical*
+- `countRecipients({ audience }) → { total, eligible, completeness }` —
+  public query; the wizard's audience-size readout. `completeness` is
+  the **discriminant that says what the two numbers license**, and it
+  is load-bearing — the wizard branches on it (`SetupAudiencePicker`),
+  and reading it wrong renders an *over*-count as "at least":
+  - `exact` — the predicate ran to completion over the whole audience.
+    `eligible` is quotable as the audience size.
+  - `candidate_capped` — the candidate scan stopped at its ceiling.
+    `eligible` is a **lower bound** ("at least N"); the real audience
+    is at least this big.
+  - `read_budget_exhausted` — the document budget ran out mid-count.
+    Also a **lower bound**, same copy, different cause.
+  - `suppression_truncated` — the suppression set could not be read in
+    full, so candidates were filtered through a *subset* of the
+    blocklist. `eligible` is an **over-count** that bounds the audience
+    in NEITHER direction: it licenses no decision, must never be shown
+    as "at least", and the capacity gate treats it as unmeasured.
+  Runs the *identical*
   predicate but accumulates integers instead of rows, so `eligible`
   equals the number actually delivered. `total` is the raw membership
   (topic) / live-match (segment) count; the `total - eligible` gap is
@@ -2757,6 +2826,16 @@ different provider set (Resend ships only on this side). Exports a
   MTA carries `ipPool | engagementScore | dkimDomain | messageId`; SES
   and Resend carry `{}` today. Replaces the `params as MtaSendParams`
   cast in pre-deepening call sites.
+- `buildDispatchExtras?(input: DispatchExtrasInput) → ExtrasFor<K>` —
+  optional, pure and synchronous: turns the governed dispatch facts
+  (idempotency key, work attempt, re-entry material, lease, IP pool,
+  engagement score, authorised relay return-path host) into THIS
+  provider's extras. Reached through the registry's
+  `buildDispatchExtrasFor(kind, input)`; an absent builder (and every
+  hosted plugin transport, which parses its own extras) means no extras.
+  Replaces the per-kind ternary chain that used to live in
+  `delivery/governedDispatch.ts`, where every new provider kind had to
+  edit the governed send path to get a single per-send knob.
 
 Adding a core provider remains a one-folder change: a new
 `sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one core kind.
@@ -2790,9 +2869,12 @@ already "Send"), Send-side provider adapter (over-qualified).
 
 **Send dispatch (helper)**:
 The function at `convex/lib/sendProviders/dispatch.ts` exporting
-`sendProviderDispatch(kind, params, extras?) → { result, providerType,
-latencyMs }` that owns the per-attempt orchestration around a **Send
-provider adapter (module)**'s single-attempt `sendEmail`. Three concerns
+`sendProviderDispatch(transportId, params, extras?) → { result,
+providerType, transportId, latencyMs }` that owns the per-attempt
+orchestration around a **Send provider adapter (module)**'s
+single-attempt `sendEmail`. The dispatch unit is a **Send transport
+(record)** — one configured instance of a kind, resolved fail-closed
+from `convex/lib/sendProviders/transports.ts` — not a bare kind. Three concerns
 inside one helper, all "post-attempt" in scope:
 - Retry loop driven by the module's `retryDelays` and
   `categorizeError(message, httpStatus?) → EmailErrorCode`. The

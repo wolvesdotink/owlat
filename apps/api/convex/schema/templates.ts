@@ -278,6 +278,18 @@ export const templateTables = {
 		// See CONTEXT.md "Send status" — canonical encoding of bounce class.
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 		complainedAt: v.optional(v.number()),
+		// When this send absorbed the recipient's unsubscribe — the per-send
+		// uniqueness gate for the `unsubscribed` transport outcome, exactly as on
+		// `emailSends`. Only marketing (`kind: 'automation'`) rows can ever carry
+		// it: transactional/agent/preview mail has no one-click header to answer.
+		// See `delivery/unsubscribeOutcome.ts`.
+		unsubscribedAt: v.optional(v.number()),
+		// The UTC day this send last had a last-mile deferral counted against its
+		// cell — the `deferred` outcome's per-send, per-day rate limiter, exactly as
+		// on `emailSends`. Every governed send kind can carry it: the last-mile
+		// router defers automation and transactional mail alike. See
+		// `delivery/deferralOutcome.ts`.
+		deferralCountedDay: v.optional(v.number()),
 		// Link tracking for click attribution
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)

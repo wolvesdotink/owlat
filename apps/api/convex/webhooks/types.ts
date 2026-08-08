@@ -8,6 +8,11 @@ import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared';
+import type {
+	PostmasterComplianceCheck,
+	PostmasterDeliveryError,
+} from '@owlat/shared/mtaWebhookEvent';
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
@@ -76,6 +81,43 @@ export type InboundEvent =
 			errorCode: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
+			/**
+			 * The address the terminal failure names, when the provider reports one.
+			 *
+			 * Set by the Mandrill adapter for a `reject` event (plan D9/D10): a
+			 * reject is Mandrill's own blacklist refusing the address, and P2.2's
+			 * suppression sync needs the address to mirror that hit into
+			 * `blockedEmails`. Untrusted telemetry, exactly like the `recipient` on
+			 * `email.delivered` — any handler that suppresses on it must decide
+			 * that on the provider identity, never on the wire value alone.
+			 */
+			recipient?: string;
+	  }
+	| {
+			// Transient RELAY-side deferral (Mandrill `deferral`, plan D10). The
+			// receiver 4xx'd AFTER the relay accepted the message for delivery, so
+			// the Send's own status is not in question — the relay keeps retrying —
+			// and the only thing this event moves is the (cell, arm) `deferred`
+			// transport-outcome counter that ramp gate 2 divides.
+			kind: 'email.deferred';
+			providerMessageId: string;
+			at: number;
+			providerType?: string;
+			/** Provider free text (Mandrill `msg.diag`), for operator logs only. */
+			reason?: string;
+	  }
+	| {
+			// The recipient left through the RELAY's own unsubscribe surface
+			// (Mandrill `unsub`, plan D10). It carries an ADDRESS and not a Send:
+			// the dispatcher joins it to a Contact and replays the ordinary public
+			// one-click unsubscribe, so relay-side and first-party departures reach
+			// the same membership delete, the same campaign counter and the same
+			// `unsubscribed` transport outcome.
+			kind: 'email.unsubscribed';
+			recipient: string;
+			at: number;
+			providerMessageId?: string;
+			providerType?: string;
 	  }
 	| {
 			kind: 'email.bounced';
@@ -100,6 +142,18 @@ export type InboundEvent =
 			recipient?: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
+			/**
+			 * RFC 5965 `Reported-Domain` — OUR sending/DKIM domain the complaint was
+			 * filed against — and the feedback-loop source ISP the MTA's ARF
+			 * processor resolved. Both optional; most ISPs omit at least one.
+			 * Together they keep a DKIM-domain-based FBL enrollment marked live.
+			 *
+			 * `sourceIsp` is the shipped destination-provider union, not a free
+			 * string, so the dispatcher's yahoo branch compares against a checked
+			 * constant instead of a magic literal.
+			 */
+			reportedDomain?: string;
+			sourceIsp?: DestinationProviderKey;
 	  }
 	| {
 			kind: 'email.opened';
@@ -146,6 +200,19 @@ export type InboundEvent =
 			severity?: 'info' | 'warning' | 'critical';
 			message?: string;
 	  }
+	/**
+	 * ONE classified 4xx/5xx response, for MEASUREMENT ONLY. It moves no send
+	 * status, suppresses nobody and penalises no reputation — the dispatcher routes
+	 * it to a counter and stops there (issue #501). The cell and the arm are NOT on
+	 * the wire: the MTA knows neither, so they are resolved from the send's
+	 * `sendAssignments` row by the same join every other transport outcome uses.
+	 */
+	| {
+			kind: 'internal.smtp_classified';
+			providerMessageId: string;
+			category: SmtpFailureCategory;
+			observedAt: number;
+	  }
 	| {
 			kind: 'internal.ip_readiness_regressed';
 			eventId: string;
@@ -185,6 +252,22 @@ export type InboundEvent =
 			domain: string;
 			date: string;
 			userReportedSpamRatio: number;
+			// Google withholds a metric on days a domain had too little traffic,
+			// so every widened v2 field is optional by design.
+			spfSuccessRatio?: number;
+			dkimSuccessRatio?: number;
+			dmarcSuccessRatio?: number;
+			deliveryErrorRatio?: number;
+			deliveryErrors?: PostmasterDeliveryError[];
+			fetchedAt: number;
+	  }
+	| {
+			// The v2 Compliance Status verdict for one domain/day. Additive-only:
+			// an operator with no Google account simply never produces one.
+			kind: 'internal.postmaster_compliance';
+			domain: string;
+			date: string;
+			checks: PostmasterComplianceCheck[];
 			fetchedAt: number;
 	  }
 	| {
@@ -210,6 +293,37 @@ export type InboundEvent =
 	  };
 
 export type InboundEventKind = InboundEvent['kind'];
+
+/** The five optional Postmaster metrics that always travel together. */
+export interface PostmasterStatsMetrics {
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: PostmasterDeliveryError[];
+}
+
+/**
+ * Carry only the widened Postmaster metrics Google actually reported.
+ *
+ * Google withholds a metric on a day a domain had too little traffic, and an
+ * absent metric must stay absent rather than become an explicit `undefined`
+ * that a Convex validator would reject. One definition, used by the adapter
+ * that reads the wire event and by the dispatcher that calls the ingest.
+ */
+export function postmasterStatsMetrics(source: PostmasterStatsMetrics): PostmasterStatsMetrics {
+	return {
+		...(source.spfSuccessRatio !== undefined ? { spfSuccessRatio: source.spfSuccessRatio } : {}),
+		...(source.dkimSuccessRatio !== undefined ? { dkimSuccessRatio: source.dkimSuccessRatio } : {}),
+		...(source.dmarcSuccessRatio !== undefined
+			? { dmarcSuccessRatio: source.dmarcSuccessRatio }
+			: {}),
+		...(source.deliveryErrorRatio !== undefined
+			? { deliveryErrorRatio: source.deliveryErrorRatio }
+			: {}),
+		...(source.deliveryErrors !== undefined ? { deliveryErrors: source.deliveryErrors } : {}),
+	};
+}
 
 export type InboundEventOf<K extends InboundEventKind> = Extract<InboundEvent, { kind: K }>;
 

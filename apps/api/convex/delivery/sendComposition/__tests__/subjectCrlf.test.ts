@@ -79,7 +79,8 @@ describe('worker dispatch path — no bare CR/LF reaches sendProviderDispatch (P
 	it('the subject handed to the provider has no bare CR/LF (end-to-end)', async () => {
 		// Capture the params the worker dispatch path would hand the transport.
 		let dispatchedParams: EmailSendParams | undefined;
-		vi.spyOn(mtaSendProvider, 'sendEmail').mockImplementation(async (params) => {
+		// Dispatch is transport-keyed: (transport, params, extras).
+		vi.spyOn(mtaSendProvider, 'sendEmail').mockImplementation(async (_transport, params) => {
 			dispatchedParams = params;
 			return { success: true, id: 'msg-1' };
 		});
@@ -102,16 +103,12 @@ describe('worker dispatch path — no bare CR/LF reaches sendProviderDispatch (P
 		const fakeCtx = {
 			scheduler: { runAfter: async () => undefined },
 		};
-		await sendProviderDispatch(
-			fakeCtx as never,
-			'mta',
-			{
-				to: 'jane@example.com',
-				from: 'news@org.example',
-				subject: composed.subject,
-				html: composed.html,
-			},
-		);
+		await sendProviderDispatch(fakeCtx as never, 'mta', {
+			to: 'jane@example.com',
+			from: 'news@org.example',
+			subject: composed.subject,
+			html: composed.html,
+		});
 
 		expect(dispatchedParams).toBeDefined();
 		expect(dispatchedParams!.subject).not.toMatch(CRLF_RE);

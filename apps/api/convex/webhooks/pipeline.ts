@@ -31,6 +31,9 @@ export interface InboundAdapter {
 	 * Translate the verified raw body into a normalized InboundEvent or null
 	 * when the provider sent an event kind we don't act on. Adapters never
 	 * touch the database and never dispatch.
+	 *
+	 * A provider that delivers a BATCH per request implements
+	 * `InboundBatchAdapter` below instead of this method.
 	 */
 	parseEvent(rawBody: string): InboundEvent | null;
 	/**
@@ -46,9 +49,37 @@ export interface InboundAdapter {
 	 * `200 OK`) supply this. Must construct a fresh Response per call —
 	 * Response bodies are one-shot streams. When absent, the pipeline
 	 * returns its default JSON envelope `{success: true, kind}`.
+	 *
+	 * Called with the LAST dispatched event of a batch and its result. No
+	 * batching provider supplies one today; a future one that does must accept
+	 * that a single response describes the whole batch.
 	 */
 	successResponse?: (event: InboundEvent, dispatchResult?: unknown) => Response;
 }
+
+/**
+ * An adapter for a provider that delivers a BATCH of events per request.
+ *
+ * Mandrill posts a `mandrill_events` array of up to thousands of items (plan
+ * D10) where Resend, SES and the MTA post one event each. Rather than widening
+ * `parseEvent` — which would make every single-event adapter's return type
+ * `InboundEvent | InboundEvent[] | null` and push the narrowing onto every
+ * caller — a batch provider implements `parseEvents` and the pipeline
+ * dispatches the result IN ORDER. Everything else (rate limit, signature
+ * verification, raw-audit storage, response shaping) is identical, so the rest
+ * of the contract is inherited.
+ *
+ * Returning an empty array is the same acknowledgement as `parseEvent`
+ * returning null: it is how a batch of nothing but events we don't act on —
+ * and Mandrill's empty-batch verification ping — are answered 200 without
+ * dispatching anything.
+ */
+export interface InboundBatchAdapter extends Omit<InboundAdapter, 'parseEvent'> {
+	parseEvents(rawBody: string): InboundEvent[];
+}
+
+/** Either adapter shape. What `runInboundPipeline` accepts. */
+export type AnyInboundAdapter = InboundAdapter | InboundBatchAdapter;
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
 	return new Response(JSON.stringify(body), {
@@ -60,7 +91,7 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
 export async function runInboundPipeline(
 	ctx: ActionCtx,
 	request: Request,
-	adapter: InboundAdapter
+	adapter: AnyInboundAdapter
 ): Promise<Response> {
 	if (request.method !== 'POST') {
 		return jsonResponse(405, { error: 'Method not allowed' });
@@ -106,22 +137,42 @@ export async function runInboundPipeline(
 		}
 	}
 
-	let event: InboundEvent | null;
+	let events: InboundEvent[];
 	try {
-		event = adapter.parseEvent(rawBody);
+		if ('parseEvents' in adapter) {
+			events = adapter.parseEvents(rawBody);
+		} else {
+			const parsed = adapter.parseEvent(rawBody);
+			events = parsed ? [parsed] : [];
+		}
 	} catch (err) {
 		logError(`[${adapter.source} Webhook] Failed to parse event:`, err);
 		return jsonResponse(400, { error: 'Invalid event payload' });
 	}
 
-	if (!event) {
+	if (events.length === 0) {
 		// Provider sent an event kind we don't act on — acknowledge.
 		return jsonResponse(200, { success: true, ignored: true });
 	}
 
+	// IN ORDER, AND SEQUENTIALLY. A provider batch is a timeline for a single
+	// message as often as it is a fan of unrelated ones (`deferral` then
+	// `hard_bounce` on the same id), and the Send lifecycle's legal-edge graph
+	// reads the state the previous event left behind. Dispatching concurrently
+	// would race two transitions on one row for no latency we need.
+	//
+	// A FAILURE FAILS THE WHOLE BATCH, deliberately: the provider redelivers it,
+	// and every downstream reducer is idempotent per transition (a repeat is
+	// `duplicate` / `terminal`, never a second effect), so replaying the already
+	// applied prefix costs nothing and losing the unapplied tail would cost a
+	// suppression.
+	let event = events[0]!;
 	let dispatchResult: unknown;
 	try {
-		dispatchResult = await dispatchInboundEvent(ctx, event, { returnResult: true });
+		for (const next of events) {
+			event = next;
+			dispatchResult = await dispatchInboundEvent(ctx, next, { returnResult: true });
+		}
 	} catch (err) {
 		logError(`[${adapter.source} Webhook] Dispatcher error for ${event.kind}:`, err);
 		return jsonResponse(500, { error: 'Failed to process event' });
@@ -130,5 +181,7 @@ export async function runInboundPipeline(
 	if (adapter.successResponse) {
 		return adapter.successResponse(event, dispatchResult);
 	}
-	return jsonResponse(200, { success: true, kind: event.kind });
+	return events.length === 1
+		? jsonResponse(200, { success: true, kind: event.kind })
+		: jsonResponse(200, { success: true, processed: events.length });
 }

@@ -22,6 +22,7 @@ import { runIpv6SpfReadinessCheck } from './scaling/ipv6SpfReadiness.js';
 import { runSourceAddressReadinessCheck } from './scaling/sourceAddressReadiness.js';
 import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
+import { configuredAuditIps, defaultIpAuditDeps, startIpAuditor } from './scaling/ipAudit.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
 import { pool } from './smtp/connectionPool.js';
@@ -118,8 +119,12 @@ export async function main() {
 	const dnsblInterval = await startDnsblChecker(redis, config, isLeader);
 	startLeaderElection(redis, config.serverId);
 
+	// Advisory pre-flight IP audit: port-25 egress, blocklists, FCrDNS, and the
+	// /24 neighbourhood. It gates nothing, so it never delays or fails startup.
+	const ipAuditInterval = startIpAuditor(redis, config, isLeader, defaultIpAuditDeps());
+
 	// ── 5. Initialize warming for all IPs ──
-	const allIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
+	const allIps = configuredAuditIps(config);
 	for (const ip of allIps) {
 		await initializeWarming(redis, ip);
 	}
@@ -352,6 +357,7 @@ export async function main() {
 
 		// Stop accepting new work
 		clearInterval(dnsblInterval);
+		clearInterval(ipAuditInterval);
 		clearInterval(fcrdnsInterval);
 		clearInterval(warmingInterval);
 		clearInterval(postmasterInterval);

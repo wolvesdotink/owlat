@@ -238,7 +238,12 @@ export async function observeDomainCheck(
 						? 'fail'
 						: dnsBundleStatus(results.mailFrom, isFinalDnsRetry, mailFromRecords.length),
 				pass
-					? 'The configured return-path host and every required DNS record are live.'
+					? // Informational tail only — the return-path host is optional and this
+						// observation never becomes a "setup incomplete" nag. A per-domain
+						// host is what makes the CFBL host align with RFC5322.From, which is
+						// the one thing that turns RFC 9477 complaint feedback on, and that
+						// connection is otherwise stated nowhere an operator can see.
+						'The configured return-path host and every required DNS record are live. It also enables RFC 9477 (CFBL-Address) complaint feedback for this domain.'
 					: (diagnostic ?? 'No verified per-domain return path is available.'),
 				[
 					...providerValues,
