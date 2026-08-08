@@ -177,11 +177,40 @@ describe('a collected absence is exactly a domain Google has said nothing about'
 		}
 	);
 
-	it('declares absent only when the derivation has nothing to render either', () => {
-		for (const only of Object.values(ONLY_EVIDENCE)) {
-			const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(only);
-			if (!collected.available) expect(derivePostmasterCards(only)).toEqual([]);
+	/**
+	 * CONNECTED BUT QUIET — the case the `omit` absence exists to distinguish, and
+	 * the one an "absent means no cards" predicate would get wrong. Each fixture
+	 * stores the field at a value that is healthy, so the derivation renders
+	 * NOTHING and the only thing separating it from an unconfigured domain is that
+	 * Google said something. Keyed by field for the same reason as the table
+	 * above: a new signal field has to be given a quiet value before it compiles.
+	 */
+	const QUIET: Readonly<
+		Record<keyof Omit<PostmasterDomainSignals, 'domain'>, PostmasterDomainSignals>
+	> = {
+		userReportedSpamRatio: signals({ userReportedSpamRatio: 0 }),
+		spfSuccessRatio: signals({ spfSuccessRatio: 1 }),
+		dkimSuccessRatio: signals({ dkimSuccessRatio: 1 }),
+		dmarcSuccessRatio: signals({ dmarcSuccessRatio: 1 }),
+		deliveryErrorRatio: signals({ deliveryErrorRatio: 0 }),
+		deliveryErrors: signals({ deliveryErrors: [{ category: 'SUSPECTED_SPAM', ratio: 0 }] }),
+		checks: signals({ checks: [{ name: 'SPAM_RATE', state: 'passing' }] }),
+	};
+
+	it.each(Object.entries(QUIET))(
+		'a domain whose only stored %s is healthy is present with no cards, not absent',
+		(_field, quiet) => {
+			expect(derivePostmasterCards(quiet)).toEqual([]);
+			const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(quiet);
+			// Present, empty — "nothing to report" is not "no account", and only the
+			// second is an invitation to go and connect one.
+			expect(collected.available).toBe(true);
+			if (!collected.available) return;
+			expect(collected.reading).toEqual([]);
 		}
+	);
+
+	it('declares absent only for a domain with nothing stored at all', () => {
 		const nothing = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals());
 		expect(nothing.available).toBe(false);
 		expect(derivePostmasterCards(signals())).toEqual([]);

@@ -442,9 +442,11 @@ The durable halves stay outside this directory, because their Convex function
 paths are addressed by pollers, crons, the webhook dispatcher and the delivery
 screens: `delivery/snds.ts` (ingest, retention, the bounded gate read) and
 `delivery/postmaster.ts` (the two ingest mutations, the sweep, and
-`getPostmasterStatus`, which now derives both its cards AND its `connected`
-verdict through the registered source, so the screen's "not connected" and the
-registry's declared absence are one predicate rather than two).
+`getPostmasterStatus`, which now reads its cards through the registered source
+rather than calling the derivation around it — `connected` is deliberately left
+on the stored period timestamps, because "an observation was stored" and "the
+stored observation has something readable in it" are different questions and
+only the first is what the screen's connect affordance asks).
 
 ---
 

@@ -296,17 +296,6 @@ export interface PostmasterDomainStatus extends PostmasterDomainSignals {
 	cards: PostmasterCard[];
 }
 
-/**
- * One domain's status alongside whether the registered source found anything to
- * read for it — the fact `connected` folds. Kept beside the status rather than
- * inside it because it is derivable from the source and has no business being on
- * the wire shape twice.
- */
-interface CollectedDomain {
-	readonly configured: boolean;
-	readonly status: PostmasterDomainStatus;
-}
-
 export interface PostmasterStatus {
 	/**
 	 * Whether ANY Postmaster data has ever arrived. `false` is a supported
@@ -326,8 +315,8 @@ export const getPostmasterStatus = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
-		const collected = await Promise.all(
-			domains.map(async (domainRecord): Promise<CollectedDomain> => {
+		const statuses = await Promise.all(
+			domains.map(async (domainRecord): Promise<PostmasterDomainStatus> => {
 				const [stats, compliance] = await Promise.all([
 					ctx.db
 						.query('googlePostmasterStats')
@@ -350,36 +339,36 @@ export const getPostmasterStatus = authedQuery({
 					deliveryErrors: stats?.deliveryErrors ?? [],
 					checks: compliance?.checks ?? [],
 				};
-				// THROUGH THE REGISTERED SOURCE, not around it (plan D9): a domain
-				// Google has said nothing about collects nothing, which is the same
-				// empty card list the derivation returns for it — the difference is
-				// that the absence is now the source's declared answer rather than a
-				// coincidence of every threshold happening to skip a null.
+				// THROUGH THE REGISTERED SOURCE, not around it (plan D9). The value is
+				// unchanged either way — the source's absent branch is exactly the
+				// empty card list the derivation returns for a domain Google has said
+				// nothing about — but the cards now come from the one declared
+				// collector rather than from a direct call around it.
 				const reading = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals);
 				return {
-					configured: reading.available,
-					status: {
-						...signals,
-						periodStart: stats?.periodStart ?? null,
-						compliancePeriodStart: compliance?.periodStart ?? null,
-						cards: reading.available ? reading.reading : [],
-					},
+					...signals,
+					periodStart: stats?.periodStart ?? null,
+					compliancePeriodStart: compliance?.periodStart ?? null,
+					cards: reading.available ? reading.reading : [],
 				};
 			})
 		);
 
 		return {
-			// ONE PREDICATE FOR "IS THIS CONFIGURED", and it is the registered source's.
-			// Reading the stored period timestamps here was a second, independently
-			// written answer to the question the source exists to answer: the two agree
-			// only while every stats row is guaranteed to carry a metric the source
-			// counts, and a domain reported as connected while the source declares it
-			// absent is the seam publishing "not configured" for a deployment that is.
-			connected: collected.some((domain) => domain.configured),
+			// ROW EXISTENCE, deliberately: `connected` asks whether any Postmaster
+			// observation has ever been STORED, which the period timestamps answer
+			// directly. It is not the same question as the source's absence — that one
+			// asks whether the stored row has anything readable in it — and a stored
+			// row with nothing readable is still a connected Google account. Deriving
+			// this from `collect()` would turn a quiet-but-connected deployment into
+			// an invitation to connect the account it already has.
+			connected: statuses.some(
+				(status) => status.periodStart !== null || status.compliancePeriodStart !== null
+			),
 			// Domains with something to say first, then alphabetically for stability.
-			domains: collected
-				.map((domain) => domain.status)
-				.sort((a, b) => b.cards.length - a.cards.length || a.domain.localeCompare(b.domain)),
+			domains: statuses.sort(
+				(a, b) => b.cards.length - a.cards.length || a.domain.localeCompare(b.domain)
+			),
 		};
 	},
 });
