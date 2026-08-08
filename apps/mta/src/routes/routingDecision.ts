@@ -26,7 +26,8 @@ import {
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { resolvePool } from '../scaling/poolRules.js';
 import { selectIpWithLease } from '../scaling/ipPool.js';
-import type { DestinationProviderKey, IpPoolType } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { IpPoolType } from '../types.js';
 import {
 	MTA_ROUTING_DECISION_REQUEST_KEYS,
 	MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS,

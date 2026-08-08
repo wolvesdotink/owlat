@@ -23,7 +23,7 @@ import {
 	warmingProviderStateKey,
 } from '../warmingKeys.js';
 import type { DurableEffectIdentity } from '../../lib/effectCheckpoint.js';
-import type { DestinationProviderKey } from '../../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

@@ -24,8 +24,10 @@ import {
 	warmingStateKey,
 } from '../warmingKeys.js';
 import { resolveProviderCap } from './helpers/providerCapGate.js';
-import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
-import type { DestinationProviderKey } from '../../types.js';
+import {
+	DESTINATION_PROVIDER_KEYS,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

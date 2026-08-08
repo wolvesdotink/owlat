@@ -16,7 +16,8 @@ import {
 import { warmingProviderDailyStatsKey, warmingProviderStateKey } from '../warmingKeys.js';
 import { reduce, type DispatchOutcome } from '../../dispatch/outcome.js';
 import type { AttemptCtx } from '../../dispatch/types.js';
-import type { DestinationProviderKey, EmailJob } from '../../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJob } from '../../types.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

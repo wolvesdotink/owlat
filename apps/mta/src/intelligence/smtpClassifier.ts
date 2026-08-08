@@ -13,7 +13,7 @@
  * - Authentication required: defer with longer delay
  */
 
-import type { DestinationProviderKey } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 /**
  * The category vocabulary now lives in `@owlat/shared/smtpBlockCategories`,

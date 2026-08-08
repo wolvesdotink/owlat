@@ -359,15 +359,17 @@ export interface BounceClassification {
 
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
-/**
- * The destination-provider taxonomy is DECLARED ONCE, in
- * `@owlat/shared/deliverabilityRouting` (D8). This module used to spell the
- * union out a second time, so a provider added to the shared taxonomy widened
- * the ramp's cell axis on the Convex side while the MTA's own consumers — cell
- * keys, warming dimensions, ISP metrics, profile shaping — kept the old five
- * and never failed to compile. It is re-exported here rather than deleted so
- * the MTA's existing importers keep one local `types.js` surface, the same
- * derivation `config.ts` already uses for `DESTINATION_PROVIDER_PROFILES` and
- * `BASE_WARMING_SCHEDULE`.
+/*
+ * DestinationProviderKey is NOT exported from this module — deliberately (D8).
+ *
+ * It used to be spelled out here as a second union, so a provider added to the
+ * shared taxonomy widened the ramp's cell axis on the Convex side while the
+ * MTA's own consumers — cell keys, warming dimensions, ISP metrics, profile
+ * shaping — kept the old five and never failed to compile. A re-export would
+ * have fixed the divergence but left ONE taxonomy behind TWO doors, with no
+ * rule for which to use: the next person widening the taxonomy greps
+ * `@owlat/shared/deliverabilityRouting` for its consumers and silently misses
+ * every file that typed itself through `types.js`. So every MTA consumer now
+ * imports the type from the one module that declares it, and this file only
+ * consumes it (`MtaRoutingSignal.destinationProvider`) like any other.
  */
-export type { DestinationProviderKey };

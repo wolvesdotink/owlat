@@ -1,6 +1,7 @@
 /** Pure translation from an SMTP sender result to a typed Dispatch outcome. */
 
-import type { DestinationProviderKey, EmailJobResult } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJobResult } from '../types.js';
 import { classifySmtpResponse, type SmtpClassification } from '../intelligence/smtpClassifier.js';
 
 export type DispatchOutcome =
