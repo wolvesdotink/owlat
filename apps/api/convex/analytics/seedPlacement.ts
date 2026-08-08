@@ -25,11 +25,16 @@
  * per-provider roll-up, the windowed READ that feeds the ramp controller's
  * per-cell sweeps, and `getSeedPlacementSummary` for a screen to read.
  *
- * GATE 5'S VERDICT IS NOT HERE. `delivery/ramp/seedGate.ts` decides it, over the
- * per-cell sweeps `analytics/seedPlacementSweeps.ts` reduces from these same
- * rows; that is the path the controller runs on every tick. `getGateVerdict`
- * below states the same rule over the PROVIDER roll-up instead and has no
- * production caller — a parallel route to one rule, tracked in issue #504.
+ * GATE 5'S VERDICT IS NOT HERE, AND THERE IS NO SECOND ROUTE TO IT.
+ * `delivery/ramp/seedGate.ts` decides it, over the per-cell sweeps
+ * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and D17's
+ * corroboration rule rides from there through `CORROBORATION_REQUIRED_RAMP_GATES`
+ * (gateConfig) into the controller's `awaiting_corroboration` hold. That is the
+ * path the controller runs on every tick, and now the only one: this module used
+ * to export a `getGateVerdict` query restating the same rule over the PROVIDER
+ * roll-up — pooled across streams, where the ramp is per cell — with no
+ * production caller. It was deleted rather than kept as a second answer to one
+ * question (issue #504, design rule D5).
  *
  * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
  * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
@@ -52,9 +57,7 @@ import { internalMutation, internalQuery, type DatabaseReader } from '../_genera
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	classifySeedFolder,
-	evaluateSeedPlacementGate,
 	planSeedHygiene,
-	type SeedGateResult,
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
@@ -338,7 +341,7 @@ export const recordSeedProbeUnsubscribe = internalMutation({
 	},
 });
 
-// ============ ROLL-UP + GATE 5 ============
+// ============ THE PROVIDER ROLL-UP ============
 
 export interface SeedPlacementSummary {
 	rollups: SeedProviderRollup[];
@@ -462,39 +465,15 @@ export async function summarizeSeedPlacementWindow(
 	};
 }
 
+/**
+ * THE MODULE'S ONE READ SURFACE: the provider roll-up a screen renders.
+ *
+ * It reports STATUSES and confidence, never a verdict. Gate 5's verdict is the
+ * ramp's (`delivery/ramp/seedGate.ts` over the per-cell sweeps) and reaching it
+ * from here as well is the parallel route #504 removed.
+ */
 export const getSeedPlacementSummary = internalQuery({
 	args: { organizationId: v.string(), now: v.number() },
 	handler: async (ctx, args): Promise<SeedPlacementSummary> =>
 		summarizeSeedPlacementWindow(ctx.db, args.organizationId, args.now),
-});
-
-/**
- * Gate 5's verdict over the PROVIDER roll-up, with D17's corroboration rule
- * applied: a seed collapse across eight consumer mailboxes may not move a
- * healthy deployment's share on its own. With no seeds connected — the default —
- * the verdict is `insufficient_data` (D10).
- *
- * NOT THE ROUTE THE CONTROLLER TAKES, despite the name. The ramp reaches gate 5
- * through `delivery/ramp/seedGate.ts` over the PER-CELL sweeps, and corroborates
- * through `CORROBORATION_REQUIRED_RAMP_GATES` + `requiresCorroboration`; this
- * query has no production caller. The duplication is tracked in issue #504.
- */
-export const getGateVerdict = internalQuery({
-	args: {
-		organizationId: v.string(),
-		now: v.number(),
-		deferralGateBreached: v.boolean(),
-		bounceGateBreached: v.boolean(),
-	},
-	handler: async (ctx, args): Promise<SeedGateResult & { seedAccountCount: number }> => {
-		const summary = await summarizeSeedPlacementWindow(ctx.db, args.organizationId, args.now);
-		const result = evaluateSeedPlacementGate({
-			rollups: summary.rollups,
-			corroboration: {
-				deferralGateBreached: args.deferralGateBreached,
-				bounceGateBreached: args.bounceGateBreached,
-			},
-		});
-		return { ...result, seedAccountCount: summary.seedAccountCount };
-	},
 });
