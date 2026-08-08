@@ -1,3 +1,19 @@
+/**
+ * Every contribution bucket a manifest may name.
+ *
+ * Membership is the ceiling, not a promise: `contributionRequirements.ts` says
+ * which of these the host actually enforces a capability for and which of those
+ * it invokes. The rest are reservations — the validator accepts them as opaque
+ * arrays and nothing reads them.
+ *
+ * A RESERVATION MUST NAME SOMETHING REAL. Per D10 of the seams program, a bucket
+ * held open for a host seam that does not exist is documentation debt that reads
+ * as a roadmap. `channelAdapters` was withdrawn on those grounds: the surface it
+ * pointed at (a bidirectional send/parse/verify channel interface in
+ * `@owlat/channels`) is gone, and the two seams that replaced it — the send
+ * provider catalog and the inbound webhook adapter registry — already have their
+ * own buckets. Add the name back the day a channel seam does exist.
+ */
 export const PLUGIN_CONTRIBUTION_KINDS = [
 	'sendTransports',
 	'agentSteps',
@@ -11,7 +27,6 @@ export const PLUGIN_CONTRIBUTION_KINDS = [
 	'inboundAdapters',
 	'webhookEvents',
 	'importProviders',
-	'channelAdapters',
 	'crons',
 	'emailBlocks',
 	'commands',

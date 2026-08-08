@@ -1400,7 +1400,10 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
 			.map((match) => match[1]!)
 			.filter((name) => kinds.has(name));
-		expect(buckets.length).toBeGreaterThan(8);
+		// Non-degeneracy floor only — it stops the section from silently emptying
+		// out, and tracks the reserved-name count, which is 8 since D10 withdrew
+		// `channelAdapters` along with the stub surface that bucket named.
+		expect(buckets.length).toBeGreaterThan(7);
 		const generate = read('packages/plugin-codegen/src/generate.ts');
 		for (const bucket of buckets) {
 			expect(
