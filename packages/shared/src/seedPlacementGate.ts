@@ -4,10 +4,8 @@
  * Split out of `seedPlacement.ts` purely for size (CONVENTIONS' ~500 LOC
  * guideline); `@owlat/shared/seedPlacement` re-exports everything here, so it
  * stays the one import surface and no caller has to know about the seam.
- * `seedPlacementTripwire.ts` is the sibling on the other side of the
- * `SeedProviderRollup`: it owns the corroboration rule and gate 5's verdict —
- * what the controller may DO about a reading — while every threshold that
- * PRODUCES a reading stays here.
+ * Every threshold that produces a reading stays here; the ramp owns the
+ * controller decision it makes from that reading.
  *
  * D17 — A TRIPWIRE, NOT A GAUGE. Nothing this module returns is a placement
  * percentage: the roll-up is a STATUS per mailbox provider, the reference-arm
