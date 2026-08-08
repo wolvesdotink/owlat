@@ -4,6 +4,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
 import type { SendProviderCatalogEntryShape } from '@owlat/shared/sendProviderCatalog';
+import {
+	codeSpans,
+	columnIndex,
+	envVarSpans,
+	section,
+	tableHeader,
+	tableRows,
+} from './markdownDocs';
 
 /**
  * THE COVERAGE GATE: every provider the catalog declares is documented, and the
@@ -50,33 +58,22 @@ const envVars = read('apps/docs/content/3.developer/8.environment-variables.md')
  */
 const entries: readonly SendProviderCatalogEntryShape[] = CORE_SEND_PROVIDER_CATALOG_ENTRIES;
 
-/** The body of one markdown section, up to the next heading of the same level. */
-function section(page: string, heading: string): string {
-	const start = page.indexOf(`${heading}\n`);
-	expect(start, `the page has no section "${heading}"`).toBeGreaterThan(-1);
-	const level = heading.indexOf(' ');
-	const rest = page.slice(start + heading.length);
-	const next = rest.search(new RegExp(`\\n#{1,${level}} `));
-	return next === -1 ? rest : rest.slice(0, next);
-}
+// `section`, `tableRows`, `tableHeader`, `columnIndex` and the two code-span
+// readers live in `./markdownDocs` — one parser for the three suites that read
+// these pages, because two of them parse the SAME table and a parser each is how
+// a markdown change fails the wrong suite.
 
-/** The rows of the first markdown table in `body`, header dropped. */
-function tableRows(body: string): string[][] {
-	return body
-		.split('\n')
-		.filter((line) => line.startsWith('|') && !/^\|[\s:-]+\|/.test(line))
-		.map((line) =>
-			line
-				.split('|')
-				.slice(1, -1)
-				.map((cell) => cell.trim())
-		)
-		.slice(1);
-}
-
-/** Every `` `BACKTICKED` `` token in a cell, in order. */
-function codeSpans(cell: string): string[] {
-	return [...cell.matchAll(/`([A-Z][A-Z0-9_]*)`/g)].map((hit) => hit[1]!);
+/**
+ * Does this line claim something is required WITHOUT saying what for?
+ *
+ * "Required to enable the feedback loop", "Required for delivery event tracking"
+ * and "required whenever the `postbox` flag is on" all name their condition and
+ * are fine on an optional variable. A bare "Required when using MTA." does not —
+ * "when using MTA" is the provider, not the condition — and neither does a flat
+ * "Required."
+ */
+function unconditionalRequirement(line: string): boolean {
+	return /\brequired\b(?!\s+(to|for|whenever)\b)/i.test(line);
 }
 
 /** The anchor github-slugger derives from a heading's text. */
@@ -111,7 +108,20 @@ function envKeys(): Set<string> {
 }
 
 /** The provider table on the environment-variables reference. */
-const providerSelectionRows = tableRows(section(envVars, '### Provider Selection'));
+const providerSelection = section(envVars, '### Provider Selection');
+const providerSelectionRows = tableRows(providerSelection);
+
+/**
+ * Its columns, resolved BY HEADER TEXT. Positional reads are what let a column
+ * inserted to the left re-point every assertion at the neighbour's cell while
+ * staying green on the rows that happen to agree.
+ */
+const column = (name: string) => columnIndex(tableHeader(providerSelection), name);
+const KIND = column('`EMAIL_PROVIDER`');
+const PROVIDER = column('Provider');
+const REQUIRED = column('Required');
+const OPTIONAL = column('Optional');
+const SETUP = column('Setup');
 
 /**
  * THE GATE ITSELF, as a function of the kinds it is asked about — so the suite
@@ -124,7 +134,7 @@ const providerSelectionRows = tableRows(section(envVars, '### Provider Selection
  * a kind no page can possibly document.
  */
 function kindsMissingFromEnvReference(kinds: readonly string[]): string[] {
-	const documented = new Set(providerSelectionRows.map((cells) => cells[0]));
+	const documented = new Set(providerSelectionRows.map((cells) => cells[KIND]));
 	return kinds.filter((kind) => !documented.has(`\`${kind}\``));
 }
 
@@ -141,14 +151,14 @@ describe('the environment-variables reference documents every provider the catal
 		// Order too: the catalog's declaration order is the canonical one every
 		// derived list follows, and a reader comparing this table against the
 		// transport picker should see the same sequence.
-		expect(providerSelectionRows.map((cells) => cells[0])).toEqual(
+		expect(providerSelectionRows.map((cells) => cells[KIND])).toEqual(
 			entries.map((entry) => `\`${entry.kind}\``)
 		);
 	});
 
 	it('calls each provider what the catalog calls it', () => {
 		for (const [index, entry] of entries.entries()) {
-			expect(providerSelectionRows[index]![1], entry.kind).toContain(entry.label);
+			expect(providerSelectionRows[index]![PROVIDER], entry.kind).toContain(entry.label);
 		}
 	});
 
@@ -159,7 +169,7 @@ describe('the environment-variables reference documents every provider the catal
 		// does not read reads as a hard requirement that isn't one; one omitted
 		// reads as a working transport that will refuse to send.
 		for (const [index, entry] of entries.entries()) {
-			expect(codeSpans(providerSelectionRows[index]![2]!), entry.kind).toEqual([
+			expect(envVarSpans(providerSelectionRows[index]![REQUIRED]!), entry.kind).toEqual([
 				...entry.requiredEnvVars,
 			]);
 		}
@@ -167,11 +177,48 @@ describe('the environment-variables reference documents every provider the catal
 
 	it('lists at least the optional variables the catalog declares', () => {
 		for (const [index, entry] of entries.entries()) {
-			const listed = new Set(codeSpans(providerSelectionRows[index]![3]!));
+			const listed = new Set(envVarSpans(providerSelectionRows[index]![OPTIONAL]!));
 			for (const variable of entry.optionalEnvVars ?? []) {
 				expect(listed, `${entry.kind} / ${variable}`).toContain(variable);
 			}
 		}
+	});
+
+	it('never calls an optional variable unconditionally required, anywhere on the page', () => {
+		// THE CONTRADICTION THIS CATCHES, which the index table alone could not.
+		// `MTA_WEBHOOK_SECRET` sat in the Optional column here and read "Required
+		// when using MTA." in the Custom MTA table 160 lines below — so an operator
+		// standing the MTA up either issued a secret they did not need or, worse,
+		// read the two rows as disagreeing and guessed. The catalog is unambiguous
+		// (it declares the variable beside `OUTBOUND_TLS_MODE`, outside the presence
+		// gate), so the detail row was the stale one.
+		//
+		// The rule is CONDITIONAL PHRASING, not silence: an optional variable may
+		// well be required *for something* — feedback, postbox, an SNS loop — and
+		// saying so is the useful sentence. What it may never do is claim a bare
+		// requirement, so every "required" it carries has to name what for.
+		const optional = new Set(entries.flatMap((entry) => entry.optionalEnvVars ?? []));
+		expect(optional.size).toBeGreaterThan(4);
+		for (const variable of optional) {
+			for (const row of envVars
+				.split('\n')
+				.filter((line) => line.startsWith(`| \`${variable}\` |`))) {
+				expect(
+					unconditionalRequirement(row),
+					`${variable} is optional in the catalog, but this row calls it required without saying what for: ${row}`
+				).toBe(false);
+			}
+		}
+	});
+
+	it('would catch the unconditional phrasing it is written against', () => {
+		// The negative control: the exact sentence that shipped, and the conditional
+		// forms its siblings use. A gate that passed both would be checking nothing.
+		expect(unconditionalRequirement('| `X` | Required when using MTA. |')).toBe(true);
+		expect(unconditionalRequirement('| `X` | Required. |')).toBe(true);
+		expect(unconditionalRequirement('| `X` | Required to enable the feedback loop. |')).toBe(false);
+		expect(unconditionalRequirement('| `X` | Required for delivery event tracking. |')).toBe(false);
+		expect(unconditionalRequirement('| `X` | Optional. Recommended with feedback. |')).toBe(false);
 	});
 
 	it('names only variables the backend actually reads', () => {
@@ -182,10 +229,11 @@ describe('the environment-variables reference documents every provider the catal
 		// cannot see.
 		const known = envKeys();
 		for (const cells of providerSelectionRows) {
-			for (const variable of [...codeSpans(cells[2]!), ...codeSpans(cells[3]!)]) {
-				expect(known, `${cells[0]} names ${variable}, which lib/env.ts does not declare`).toContain(
-					variable
-				);
+			for (const variable of [...envVarSpans(cells[REQUIRED]!), ...envVarSpans(cells[OPTIONAL]!)]) {
+				expect(
+					known,
+					`${cells[KIND]} names ${variable}, which lib/env.ts does not declare`
+				).toContain(variable);
 			}
 		}
 	});
@@ -198,9 +246,9 @@ describe('the environment-variables reference documents every provider the catal
 				.map((line) => slug(line.replace(/^#+\s*/, '')))
 		);
 		for (const cells of providerSelectionRows) {
-			const anchor = /\]\(#([a-z0-9-]+)\)/.exec(cells[4]!)?.[1];
-			expect(anchor, `${cells[0]} links to no setup section`).toBeDefined();
-			expect(headings, `${cells[0]} links to #${anchor}, which no heading produces`).toContain(
+			const anchor = /\]\(#([a-z0-9-]+)\)/.exec(cells[SETUP]!)?.[1];
+			expect(anchor, `${cells[KIND]} links to no setup section`).toBeDefined();
+			expect(headings, `${cells[KIND]} links to #${anchor}, which no heading produces`).toContain(
 				anchor
 			);
 		}
@@ -264,28 +312,41 @@ describe('the coverage gate fails when a provider is undocumented', () => {
 
 describe('the provider-N+1 checklist covers both integration tiers', () => {
 	const checklist = section(providers, '### Send (email) — the provider-N+1 checklist');
+	const header = tableHeader(checklist);
 	const rows = tableRows(checklist);
+	const STEP = columnIndex(header, '#');
+	const CORE = columnIndex(header, 'Core kind');
+	const PLUGIN = columnIndex(header, 'Plugin kind');
 
 	it('answers every step at both tiers', () => {
 		// THE RESTRUCTURE THIS PIECE EXISTS FOR (plan §4). The checklist used to
 		// have one column of file paths, with the plugin tier described afterwards
 		// in prose — so the reader deciding WHICH tier to ship on had to hold two
-		// shapes in their head and take on trust that they matched. A row with one
-		// tier blank reads as "that tier has nothing to do here", which is never
-		// true of any step on this list.
+		// shapes in their head and take on trust that they matched.
+		//
+		// An EMPTY plugin cell is the failure, not a plugin cell that says there is
+		// nothing to do: step 7's honest answer IS "no equivalent step at this
+		// tier", because the web override maps are keyed by core kind. What the
+		// reader must never get is a blank they have to interpret. So the gate is
+		// on CONTENT: every plugin cell either names an artifact (a backticked
+		// manifest field, module export or file) or says outright that the tier has
+		// no such step — a cell reading "see the guide" fails.
 		expect(rows.length).toBeGreaterThan(4);
 		rows.forEach((cells, index) => {
-			expect(cells[0], 'the steps are no longer numbered in order').toBe(String(index + 1));
-			expect(cells[2]!.length, `step ${index + 1} has no core-tier artifact`).toBeGreaterThan(10);
-			expect(cells[4]!.length, `step ${index + 1} has no plugin-tier artifact`).toBeGreaterThan(10);
+			expect(cells[STEP], 'the steps are no longer numbered in order').toBe(String(index + 1));
+			expect(cells[CORE]!.length, `step ${index + 1} has no core-tier artifact`).toBeGreaterThan(
+				10
+			);
+			const plugin = cells[PLUGIN]!;
+			const answers = codeSpans(plugin).length > 0 || /no equivalent step/i.test(plugin);
+			expect(answers, `step ${index + 1}'s plugin cell names no artifact and denies none`).toBe(
+				true
+			);
 		});
 	});
 
 	it('declares the tiers in its header, core before plugin', () => {
-		const header = checklist.split('\n').find((line) => line.startsWith('| # |'));
-		expect(header).toBeDefined();
-		expect(header!.indexOf('Core kind')).toBeGreaterThan(-1);
-		expect(header!.indexOf('Plugin kind')).toBeGreaterThan(header!.indexOf('Core kind'));
+		expect(PLUGIN).toBeGreaterThan(CORE);
 	});
 
 	it('sends the plugin tier on to the guide it is written against', () => {
@@ -297,10 +358,76 @@ describe('the provider-N+1 checklist covers both integration tiers', () => {
 		).toBeGreaterThan(0);
 	});
 
+	/**
+	 * D4's policy, in the place someone about to add provider N+1 reads. The
+	 * PARAGRAPH is the unit, not the section: every field named below also appears
+	 * in step 1's list of catalog fields, so a section-wide `toContain` would have
+	 * gone on passing with the recommendation itself gutted.
+	 */
+	const tierChoice = checklist
+		.split('\n\n')
+		.find((paragraph) => /default for provider N\+1/.test(paragraph));
+
 	it('states which tier a new provider should use', () => {
-		// D4's policy, in the place someone about to add provider N+1 reads. Without
-		// it the two-tier table is a menu with no recommendation, and the default
-		// silently stays "core" because that is where the incumbents live.
-		expect(checklist).toMatch(/default for provider N\+1/);
+		// Without it the two-tier table is a menu with no recommendation, and the
+		// default silently stays "core" because that is where the incumbents live.
+		expect(tierChoice, 'the checklist no longer recommends a tier').toBeTypeOf('string');
+	});
+
+	it('names every capability the plugin tier genuinely cannot declare', () => {
+		// Get this exception list wrong by one and an author ships on the tier that
+		// cannot express the capability their ESP was chosen for — the VERP envelope
+		// sender being the expensive one, since losing it costs per-message bounce
+		// attribution silently. The kit is the authority: `supportsCustomReturnPath`
+		// is narrowed to a single literal there, and the custody fields plus
+		// `setupProbe` are refused in the contract's own "WHAT A PLUGIN STILL CANNOT
+		// DECLARE" note.
+		const kit = read('packages/plugin-kit/src/sendTransport.ts');
+		const returnPath = /export type PluginSendTransportCustomReturnPathSupport =([^;]+);/.exec(kit);
+		expect(returnPath, 'the kit no longer narrows supportsCustomReturnPath').not.toBeNull();
+		expect(
+			[...returnPath![1]!.matchAll(/'([a-z-]+)'/g)].map((hit) => hit[1]!),
+			'the plugin tier can declare more than `no` now — the recommendation has to say so'
+		).toEqual(['no']);
+		for (const field of ['supportsCustomReturnPath', 'acceptanceSemantics', 'setupProbe']) {
+			expect(tierChoice, `the tier-choice sentence omits \`${field}\``).toContain(`\`${field}\``);
+		}
+	});
+
+	/**
+	 * THE PLUGIN COLUMN, BOUND TO THE GUIDE IT SUMMARISES.
+	 *
+	 * The guide at `/developer/plugin-send-providers` carries the same six steps
+	 * with the plugin column canonical, and each page names the other canonical for
+	 * its non-primary column. `sendProviderAuthoringDocs` already binds the two by
+	 * step COUNT and by the optional step's number — but never by CONTENT, so
+	 * changing what a plugin author must export on one page left the other
+	 * advertising the old contract with both suites green. That drift costs an
+	 * author a missing module export and a composition that fails at first send.
+	 */
+	it('summarises the same plugin artifacts the guide requires, step for step', () => {
+		const guide = read('apps/docs/content/3.developer/49.plugin-send-providers.md');
+		const guideChecklist = section(guide, '## The provider checklist, at both tiers');
+		const guideHeader = tableHeader(guideChecklist);
+		const guideStep = columnIndex(guideHeader, '#');
+		const guidePlugin = columnIndex(guideHeader, 'Plugin kind');
+		const guideRows = tableRows(guideChecklist);
+		expect(guideRows.length).toBeGreaterThan(4);
+
+		for (const cells of guideRows) {
+			// The artifact each guide row LEADS with — `sendTransports`,
+			// `requiredEnvVars`, `module`, `webhook`, `domainIdentity`,
+			// `plugins.config.ts`. Renaming one there and not here is the drift.
+			const [artifact] = codeSpans(cells[guidePlugin]!);
+			expect(artifact, `the guide's step ${cells[guideStep]} names no plugin artifact`).toBeTypeOf(
+				'string'
+			);
+			const mirror = rows.find((row) => row[STEP] === cells[guideStep]);
+			expect(mirror, `this page has no step ${cells[guideStep]} to mirror`).toBeDefined();
+			expect(
+				codeSpans(mirror![PLUGIN]!),
+				`step ${cells[guideStep]}'s plugin cell no longer names \`${artifact}\`, which the guide requires`
+			).toContain(artifact);
+		}
 	});
 });
