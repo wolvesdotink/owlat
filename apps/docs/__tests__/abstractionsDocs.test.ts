@@ -102,12 +102,21 @@ describe('docs/abstractions.md: the send-provider row matches the registry', () 
 	});
 });
 
-/** A `### `-level section of the page, heading to next heading. */
+/**
+ * A `### `-level section of the page, heading to next heading.
+ *
+ * BOUNDED BY `## ` TOO, because the LAST `###` under a `##` has no `###` after
+ * it: without the second bound its "section" runs to the end of the page and
+ * swallows every following top-level section, so a table added three sections
+ * away fails the assertion on this one.
+ */
 function pageSection(heading: string): string {
 	const start = abstractions.indexOf(heading);
 	expect(start, `the ${heading} section is gone`).toBeGreaterThan(-1);
-	const end = abstractions.indexOf('\n### ', start + 1);
-	return abstractions.slice(start, end === -1 ? undefined : end);
+	const ends = ['\n### ', '\n## ']
+		.map((marker) => abstractions.indexOf(marker, start + 1))
+		.filter((index) => index !== -1);
+	return abstractions.slice(start, ends.length === 0 ? undefined : Math.min(...ends));
 }
 
 /** The `### Sending-domain identity providers` section, heading to next heading. */
@@ -321,13 +330,32 @@ describe('docs/abstractions.md: the signal-source section matches the registry',
 	const start = registrySource.indexOf(declaration);
 	expect(start, `the registry no longer declares ${declaration}`).toBeGreaterThan(-1);
 	const body = registrySource.slice(start, registrySource.indexOf('\n};', start));
-	const keys = [...body.matchAll(/^\t([a-z][a-z_]*): /gm)].map((match) => match[1]!);
+	// The ramp's five are SPREAD in from the record gate evaluation folds, so they
+	// are read where they are declared — the shared-vocabulary list — and only the
+	// provider feeds are named in the record literal itself.
+	const spreadsRampGates = body.includes('...RAMP_GATE_SIGNALS');
+	const typesSource = read('apps/api/convex/delivery/signals/types.ts');
+	const vocabulary = 'export const RAMP_GATE_SIGNAL_KEYS = [';
+	const vocabularyStart = typesSource.indexOf(vocabulary);
+	expect(vocabularyStart, `the contract no longer declares ${vocabulary}`).toBeGreaterThan(-1);
+	const rampKeys = [
+		...typesSource
+			.slice(vocabularyStart, typesSource.indexOf('] as const', vocabularyStart))
+			.matchAll(/'([a-z_]+)'/g),
+	].map((match) => match[1]!);
+	const named = [...body.matchAll(/^\t([a-z][a-z_]*): /gm)].map((match) => match[1]!);
+	const keys = spreadsRampGates ? [...rampKeys, ...named] : named;
 	const section = pageSection('### Deliverability signal sources');
 
 	it('parses the registered sources out of the registry', () => {
 		expect(keys.length, 'no keys parsed out of SIGNAL_SOURCES').toBeGreaterThan(1);
-		// The three provider feeds are the reason the seam declares absence at all.
+		// The three provider feeds are the reason the seam declares absence at all,
+		// and the ramp's own measurements are the other half of the inventory.
 		expect(keys).toEqual(expect.arrayContaining(['snds', 'yahoo_cfl', 'google_postmaster']));
+		expect(keys).toEqual(expect.arrayContaining(['bounce_rate', 'seed_placement']));
+		// Registered once, listed once: a key both spread in and named again would
+		// silently double a row's worth of expectation.
+		expect(new Set(keys).size).toBe(keys.length);
 	});
 
 	it('tabulates exactly the sources the registry declares', () => {

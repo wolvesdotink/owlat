@@ -32,6 +32,7 @@
 import type { YahooCflEnrollmentState } from '@owlat/shared/yahooCfl';
 import { PROXY_MEASUREMENT } from '../ramp/gateGrades';
 import { RAMP_GATE_THRESHOLDS, type RateFraction } from '../ramp/gateConfig';
+import type { RampSubstituteSource } from '../ramp/degradationMatrix';
 import { signalAbsent, signalPresent, type SignalAbsence, type SignalSource } from './types';
 
 /**
@@ -259,18 +260,58 @@ export interface YahooComplaintSignalInput {
 }
 
 /**
+ * This module's names for its stand-ins, in the ONE substitute vocabulary the
+ * degradation table and the dashboard use (`RAMP_SUBSTITUTE_SOURCES`).
+ *
+ * The two vocabularies are separate on purpose — `YahooComplaintSignalSource`
+ * answers "which of the three complaint pipelines is live for the yahoo cell",
+ * `RampSubstituteSource` answers "what is any cell running on instead" — but a
+ * registry entry that spelled the CFBL feed `cfbl_address` while every other
+ * reader spells it `cfbl_address_reports` is one stand-in with two names, so the
+ * translation happens once, here, at the boundary.
+ *
+ * `yahoo_cfl` maps to nothing: it is the feed itself, and a live Yahoo feed is a
+ * PRESENT reading rather than a substitution for one.
+ */
+/** The two sources that are a stand-in FOR the Yahoo feed rather than the feed. */
+export type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
+
+export const YAHOO_ABSENCE_SUBSTITUTE: Readonly<Record<YahooStandIn, RampSubstituteSource>> = {
+	cfbl_address: 'cfbl_address_reports',
+	unsubscribe_rate_proxy: 'unsubscribe_rate_proxy',
+};
+
+/**
  * The absence, READ from the substitution that was actually picked — the
  * registry never states a stand-in the cell does not run on, and never restates
- * a sentence the substitution already owns.
+ * a sentence the substitution already owns. Only the NAME is translated, once,
+ * through the table above.
+ *
+ * The source is passed separately because the caller is the one that established
+ * it is not `yahoo_cfl`: a live Yahoo feed is a present reading, never a
+ * stand-in for one, so it has no absence to build.
  */
-function yahooAbsence(substitution: YahooComplaintSubstitution): SignalAbsence {
+function yahooAbsence(
+	source: YahooStandIn,
+	substitution: YahooComplaintSubstitution
+): SignalAbsence {
 	return {
 		behaviour: 'substitute',
-		substitutes: substitution.source,
+		substitutes: YAHOO_ABSENCE_SUBSTITUTE[source],
 		note: substitution.confidenceNote,
 		isBlocking: substitution.isBlocking,
 	};
 }
+
+/**
+ * What the yahoo cell runs on with NOTHING configured — no enrollment, no
+ * CFBL-Address. The weakest of the two stand-ins, and therefore the one the
+ * static declaration below states.
+ */
+const NOTHING_CONFIGURED = yahooComplaintSubstitution({
+	enrollmentState: 'not_started',
+	hasCfblAddress: false,
+});
 
 /**
  * Yahoo's Complaint Feed as a signal source (plan D9).
@@ -291,6 +332,13 @@ function yahooAbsence(substitution: YahooComplaintSubstitution): SignalAbsence {
  * A `lapsed` enrollment is absent, exactly as `yahooComplaintSubstitution`
  * treats it: the point of the derived lapse is that the feed can no longer be
  * trusted to be live.
+ *
+ * TWO STAND-INS, AND THE FIELD STATES THE WEAKER ONE. `absence` is what a
+ * deployment that configured NOTHING runs on — the unsubscribe-rate proxy. A
+ * deployment that sends with a CFBL-Address substitutes the stronger
+ * `cfbl_address_reports` instead, and only `collect()` knows which, because only
+ * `collect()` is given the cell. An inventory reader wanting a particular cell's
+ * stand-in has to ask `collect()`; this field answers the worst case.
  */
 export const YAHOO_CFL_SIGNAL_SOURCE: SignalSource<
 	YahooComplaintSignalInput,
@@ -298,13 +346,12 @@ export const YAHOO_CFL_SIGNAL_SOURCE: SignalSource<
 > = {
 	key: 'yahoo_cfl',
 	kind: 'advisory',
-	absence: yahooAbsence(
-		yahooComplaintSubstitution({ enrollmentState: 'not_started', hasCfblAddress: false })
-	),
+	absence: yahooAbsence('unsubscribe_rate_proxy', NOTHING_CONFIGURED),
 	collect(input: YahooComplaintSignalInput) {
 		const substitution = yahooComplaintSubstitution(input);
-		return substitution.source === 'yahoo_cfl'
+		const source = substitution.source;
+		return source === 'yahoo_cfl'
 			? signalPresent(substitution)
-			: signalAbsent<YahooComplaintSubstitution>(yahooAbsence(substitution));
+			: signalAbsent<YahooComplaintSubstitution>(yahooAbsence(source, substitution));
 	},
 };

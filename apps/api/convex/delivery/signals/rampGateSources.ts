@@ -13,10 +13,17 @@
  * be remembered in both, and neither sequence said what an absent one meant.
  *
  * ORDER IS PART OF THE DECLARATION. `aggregateRampGates` names the FIRST result
- * at the winning rank, and the sources are declared in the plan's gate numbering
+ * at the winning rank, and the sources are folded in the plan's gate numbering
  * (1 hard bounce, 2 deferral, 3 complaint, 4 engagement ratio, 5 seed
  * placement), so the earliest, most fundamental problem is the one reported.
- * Re-ordering this array re-orders which breach an operator is shown.
+ * That order is `RAMP_GATE_SIGNAL_KEYS`' rather than a sequence written out a
+ * second time here: re-ordering the shared vocabulary re-orders which breach an
+ * operator is shown.
+ *
+ * REGISTRATION IS NOT REMEMBERED, IT IS CHECKED. The measurements are a RECORD
+ * keyed by the vocabulary and the fold is derived from it, so a declared key
+ * with no source does not compile; `_EveryRampGateIsFolded` closes the other
+ * direction, so a `RampGateId` nothing measures does not compile either.
  *
  * TWO ARMS, ONE LIST. Each source declares an evaluator per arm — the concurrent
  * two-armed one and the standalone trailing-baseline twin (plan D3). That is the
@@ -49,6 +56,7 @@ import type {
 	RampGateResult,
 } from '../ramp/gateTypes';
 import {
+	RAMP_GATE_SIGNAL_KEYS,
 	signalAbsent,
 	signalPresent,
 	type RampGateSignalKey,
@@ -77,9 +85,9 @@ export interface RampGateSignalSource extends SignalSource<RampGateSignalInput, 
 	readonly gate: RampGateId;
 }
 
-interface RampGateSignalSpec {
+interface RampGateSignalSpec<Gate extends RampGateId = RampGateId> {
 	readonly key: RampGateSignalKey;
-	readonly gate: RampGateId;
+	readonly gate: Gate;
 	readonly kind: 'infrastructure' | 'outcome';
 	readonly absence: SignalAbsence;
 	/**
@@ -93,7 +101,9 @@ interface RampGateSignalSpec {
 	>;
 }
 
-function rampGateSignalSource(spec: RampGateSignalSpec): RampGateSignalSource {
+function rampGateSignalSource<Gate extends RampGateId>(
+	spec: RampGateSignalSpec<Gate>
+): RampGateSignalSource & { readonly gate: Gate } {
 	return {
 		key: spec.key,
 		gate: spec.gate,
@@ -117,97 +127,129 @@ const COUNTER_ABSENCE = (measurement: string): SignalAbsence => ({
 	isBlocking: false,
 });
 
-export const HARD_BOUNCE_SIGNAL = rampGateSignalSource({
-	key: 'bounce_rate',
-	gate: 'hard_bounce',
-	kind: 'outcome',
-	absence: COUNTER_ABSENCE('hard bounces'),
-	evaluate: {
-		reference_arm: evaluateHardBounceGate,
-		trailing_baseline: evaluateTrailingHardBounceGate,
-	},
-});
-
-export const DEFERRAL_SIGNAL = rampGateSignalSource({
-	key: 'persistent_defers',
-	gate: 'deferral',
-	kind: 'infrastructure',
-	absence: COUNTER_ABSENCE('deferrals'),
-	evaluate: {
-		reference_arm: evaluateDeferralGate,
-		trailing_baseline: evaluateStandaloneDeferralGate,
-	},
-});
-
-export const COMPLAINT_SIGNAL = rampGateSignalSource({
-	key: 'complaint_rate',
-	gate: 'complaint',
-	kind: 'outcome',
-	absence: COUNTER_ABSENCE('complaints'),
-	evaluate: {
-		reference_arm: evaluateComplaintGate,
-		trailing_baseline: evaluateStandaloneComplaintGate,
-	},
-});
-
 /**
- * Gate 4 is computed elsewhere (it carries the MPP handling) and arrives on the
- * input, so absent means "not measured this window" and contributes NOTHING —
- * deliberately not a hold. Holding here would freeze every cell that has not yet
- * accumulated its calibration sends, turning an absent weak signal into a
- * blocker, which is the one thing plan D2 forbids it from being.
+ * THE MEASUREMENTS, KEYED BY THE SHARED VOCABULARY.
  *
- * The standalone arm RE-GRADES the pre-computed result to the weak trailing
- * signal, so the concurrent ratio's high-confidence, increase-justifying verdict
- * cannot be smuggled into a deployment that has no second arm to have measured
- * it with.
+ * A RECORD RATHER THAN A LIST, because a list is exactly the thing this module
+ * was written to delete: an array can be short by one and still compile, which
+ * is the failure the two hand-written sequences in `gateEvaluation.ts` had and
+ * the one worth closing. Keyed by `RampGateSignalKey`, a sixth measurement in
+ * the vocabulary does not compile until a source for it is declared HERE, and
+ * the assertion below closes the other end — a sixth `RampGateId` does not
+ * compile until it is folded.
  */
-export const ENGAGEMENT_SIGNAL = rampGateSignalSource({
-	key: 'engagement_ratio',
-	gate: 'engagement_ratio',
-	kind: 'outcome',
-	absence: {
-		behaviour: 'omit',
-		note: 'A window with no engagement ratio contributes nothing at all: an absent weak signal must never be able to hold a cell.',
-		isBlocking: false,
-	},
-	evaluate: {
-		reference_arm: (input) => input.engagement ?? null,
-		trailing_baseline: (input) =>
-			input.engagement ? asTrailingEngagement(input.engagement) : null,
-	},
-});
+export const RAMP_GATE_SIGNALS = {
+	bounce_rate: rampGateSignalSource({
+		key: 'bounce_rate',
+		gate: 'hard_bounce',
+		kind: 'outcome',
+		absence: COUNTER_ABSENCE('hard bounces'),
+		evaluate: {
+			reference_arm: evaluateHardBounceGate,
+			trailing_baseline: evaluateTrailingHardBounceGate,
+		},
+	}),
+
+	persistent_defers: rampGateSignalSource({
+		key: 'persistent_defers',
+		gate: 'deferral',
+		kind: 'infrastructure',
+		absence: COUNTER_ABSENCE('deferrals'),
+		evaluate: {
+			reference_arm: evaluateDeferralGate,
+			trailing_baseline: evaluateStandaloneDeferralGate,
+		},
+	}),
+
+	complaint_rate: rampGateSignalSource({
+		key: 'complaint_rate',
+		gate: 'complaint',
+		kind: 'outcome',
+		absence: COUNTER_ABSENCE('complaints'),
+		evaluate: {
+			reference_arm: evaluateComplaintGate,
+			trailing_baseline: evaluateStandaloneComplaintGate,
+		},
+	}),
+
+	/**
+	 * Gate 4 is computed elsewhere (it carries the MPP handling) and arrives on
+	 * the input, so absent means "not measured this window" and contributes
+	 * NOTHING — deliberately not a hold. Holding here would freeze every cell that
+	 * has not yet accumulated its calibration sends, turning an absent weak signal
+	 * into a blocker, which is the one thing plan D2 forbids it from being.
+	 *
+	 * The standalone arm RE-GRADES the pre-computed result to the weak trailing
+	 * signal, so the concurrent ratio's high-confidence, increase-justifying
+	 * verdict cannot be smuggled into a deployment that has no second arm to have
+	 * measured it with.
+	 */
+	engagement_ratio: rampGateSignalSource({
+		key: 'engagement_ratio',
+		gate: 'engagement_ratio',
+		kind: 'outcome',
+		absence: {
+			behaviour: 'omit',
+			note: 'A window with no engagement ratio contributes nothing at all: an absent weak signal must never be able to hold a cell.',
+			isBlocking: false,
+		},
+		evaluate: {
+			reference_arm: (input) => input.engagement ?? null,
+			trailing_baseline: (input) =>
+				input.engagement ? asTrailingEngagement(input.engagement) : null,
+		},
+	}),
+
+	/**
+	 * Gate 5 answers on every window, including the windows it could not measure —
+	 * a cell with no classified probes gets its hold. That the hold then costs the
+	 * ramp NO GATE BREACH is the OPTIONAL-gate rule, and that rule has one home
+	 * (`OPTIONAL_RAMP_GATES` in `ramp/gateConfig.ts`) which this note deliberately
+	 * points at rather than restates.
+	 *
+	 * It is not the same claim as "having no seed mailboxes is free": a deployment
+	 * with nowhere to land probes pays at the ramp level, and that price is the
+	 * `seed_mailboxes` entry in `../ramp/degradationMatrix` — the other plane, the
+	 * one `SignalAbsence` deliberately does not speak for.
+	 */
+	seed_placement: rampGateSignalSource({
+		key: 'seed_placement',
+		gate: 'seed_placement',
+		kind: 'outcome',
+		absence: {
+			behaviour: 'hold',
+			note: 'A cell with no classified probes answers insufficient_data; because seed placement is one of OPTIONAL_RAMP_GATES that hold is not itself a gate breach.',
+			isBlocking: false,
+		},
+		evaluate: {
+			reference_arm: evaluateSeedPlacementGate,
+			trailing_baseline: evaluateStandaloneSeedPlacementGate,
+		},
+	}),
+} satisfies Readonly<Record<RampGateSignalKey, RampGateSignalSource>>;
 
 /**
- * Gate 5 answers on every window, including the windows it could not measure —
- * a cell with no classified probes gets its hold. That the hold then costs the
- * ramp nothing is the OPTIONAL-gate rule, and that rule has one home
- * (`OPTIONAL_RAMP_GATES` in `ramp/gateConfig.ts`) which this note deliberately
- * points at rather than restates.
+ * EVERY RAMP GATE IS FOLDED — the direction that hurts, checked by the compiler.
+ *
+ * The record above stops a declared KEY from going unregistered. This stops a
+ * declared GATE from going unmeasured: add a sixth `RampGateId` and forget this
+ * module, and `aggregateRampGates` would grow its clean streak on a measurement
+ * nothing ever took. Both evaluators fold this one list, so an omission here is
+ * an omission everywhere.
  */
-export const SEED_PLACEMENT_SIGNAL = rampGateSignalSource({
-	key: 'seed_placement',
-	gate: 'seed_placement',
-	kind: 'outcome',
-	absence: {
-		behaviour: 'hold',
-		note: 'A cell with no classified probes answers insufficient_data; because seed placement is one of OPTIONAL_RAMP_GATES that hold costs the ramp nothing.',
-		isBlocking: false,
-	},
-	evaluate: {
-		reference_arm: evaluateSeedPlacementGate,
-		trailing_baseline: evaluateStandaloneSeedPlacementGate,
-	},
-});
+type UnfoldedRampGate = Exclude<RampGateId, (typeof RAMP_GATE_SIGNALS)[RampGateSignalKey]['gate']>;
+type AssertEveryRampGateIsFolded<_T extends never> = true;
+export type _EveryRampGateIsFolded = AssertEveryRampGateIsFolded<UnfoldedRampGate>;
 
-/** The five measurements, in the plan's gate numbering. Order is contract. */
-export const RAMP_GATE_SIGNAL_SOURCES: readonly RampGateSignalSource[] = [
-	HARD_BOUNCE_SIGNAL,
-	DEFERRAL_SIGNAL,
-	COMPLAINT_SIGNAL,
-	ENGAGEMENT_SIGNAL,
-	SEED_PLACEMENT_SIGNAL,
-];
+/**
+ * The five measurements, in the plan's gate numbering. ORDER IS CONTRACT, and it
+ * is `RAMP_GATE_SIGNAL_KEYS`' order rather than a second hand-written sequence:
+ * the aggregator names the FIRST result at the winning rank, so re-ordering the
+ * vocabulary re-orders which breach an operator is shown.
+ */
+export const RAMP_GATE_SIGNAL_SOURCES: readonly RampGateSignalSource[] = RAMP_GATE_SIGNAL_KEYS.map(
+	(key) => RAMP_GATE_SIGNALS[key]
+);
 
 /**
  * Fold one arm's window into the per-gate results the aggregator weighs.

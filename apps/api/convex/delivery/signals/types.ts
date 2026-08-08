@@ -40,6 +40,7 @@
  */
 
 import type { DeliverabilitySignalSource } from '@owlat/shared/deliverabilityRouting';
+import type { RampSubstituteSource } from '../ramp/degradationMatrix';
 
 /**
  * The three families, from `@owlat/shared/deliverabilityRouting`. Restated as a
@@ -95,12 +96,32 @@ export type SignalSourceKey = RampGateSignalKey | ProviderFeedSignalKey;
  *    this window", which neither advances nor retreats the ramp (plan D10).
  *  - `omit` — the source contributes nothing at all: nothing is measured, so
  *    nothing is folded, so an absent source cannot hold anything either.
+ *
+ * ONE PLANE, AND IT IS THE COLLECTION PLANE. This is what `collect()` hands back
+ * when it has no reading — what the CALLER of this source gets, and nothing
+ * else. It is deliberately NOT the ramp-level price of an absent integration:
+ * how much longer a cell dwells, how many clean windows it needs, how far its
+ * ceiling drops and which OTHER gates take over have exactly one home, the
+ * `RAMP_DEGRADATION_MATRIX` in `../ramp/degradationMatrix`, and a second
+ * statement of any of it here would be free to disagree with the card the
+ * operator is reading beside it. So `google_postmaster` can declare `omit` (no
+ * observation, no cards) while the matrix's `google_postmaster` entry doubles
+ * the Gmail cell's dwell: those are answers to two different questions, and the
+ * registry only ever answers the first.
+ *
+ * Where an absence DOES name a stand-in, the name comes from that same matrix's
+ * `RAMP_SUBSTITUTE_SOURCES` vocabulary, so "what is this cell running on" reads
+ * the same word on the gate row, the degradation card and this inventory.
  */
 export type SignalAbsence =
 	| {
 			readonly behaviour: 'substitute';
-			/** What stands in — the substituting source's own name for itself. */
-			readonly substitutes: string;
+			/**
+			 * What stands in, in the ONE substitute vocabulary the degradation table
+			 * and the dashboard already use. A bare string here let two feeds spell
+			 * the same stand-in differently and a typo in either compile.
+			 */
+			readonly substitutes: RampSubstituteSource;
 			/** The operator-visible sentence, taken from the substitution, never restated. */
 			readonly note: string;
 			readonly isBlocking: false;
@@ -138,6 +159,15 @@ export function signalAbsent<Reading>(absence: SignalAbsence): SignalCollection<
 export interface SignalSourceDeclaration {
 	readonly key: SignalSourceKey;
 	readonly kind: SignalSourceKind;
+	/**
+	 * THE ABSENCE WITH NOTHING ELSE CONFIGURED — the worst case, which is the only
+	 * one a static inventory can state. A source whose stand-in depends on what
+	 * else the deployment has (`yahoo_cfl` falls to the CFBL feed if a send
+	 * carried one, otherwise to the unsubscribe proxy) declares the weakest of
+	 * them here and hands back the one that is ACTUALLY live from `collect()`.
+	 * Rendering a specific cell's absence means asking `collect()`; reading this
+	 * field means asking "what does a deployment that configured nothing get".
+	 */
 	readonly absence: SignalAbsence;
 }
 

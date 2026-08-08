@@ -29,7 +29,7 @@ import {
 	type DeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
 import type { RampGateResult, RampGateStatus } from '../../ramp/gateTypes';
-import { arm, input, MATRIX_MODE, matrixInput, seeds } from '../../ramp/__tests__/gateFixtures';
+import { arm, input, MATRIX_MODE, matrixInput } from '../../ramp/__tests__/gateFixtures';
 import { GOOGLE_POSTMASTER_SIGNAL_SOURCE, type PostmasterDomainSignals } from '../postmaster';
 import {
 	collectRampGateSignals,
@@ -37,7 +37,7 @@ import {
 	type RampArm,
 	type RampGateSignalSource,
 } from '../rampGateSources';
-import { allSignalSources, SIGNAL_SOURCES, signalSourcesOfKind } from '../registry';
+import { allSignalSources, SIGNAL_SOURCES } from '../registry';
 import { buildSndsGateInput, SNDS_ABSENT_SUBSTITUTION, SNDS_SIGNAL_SOURCE } from '../snds';
 import {
 	PROVIDER_FEED_SIGNAL_KEYS,
@@ -46,7 +46,11 @@ import {
 	type SignalCollection,
 	type SignalSourceKey,
 } from '../types';
-import { YAHOO_CFL_SIGNAL_SOURCE, yahooComplaintSubstitution } from '../yahooCfl';
+import {
+	YAHOO_ABSENCE_SUBSTITUTE,
+	YAHOO_CFL_SIGNAL_SOURCE,
+	yahooComplaintSubstitution,
+} from '../yahooCfl';
 
 /** The arm this leg of the matrix is about. */
 const ARM: RampArm = MATRIX_MODE === 'reference_arm' ? 'reference_arm' : 'trailing_baseline';
@@ -208,7 +212,9 @@ describe('a kind is the shared vocabulary, not a local opinion', () => {
 	});
 
 	it('nothing the ramp folds is advisory', () => {
-		const advisory = signalSourcesOfKind('advisory').map((source) => source.key);
+		const advisory = allSignalSources()
+			.filter((source) => source.kind === 'advisory')
+			.map((source) => source.key);
 		expect(advisory.sort()).toEqual([...PROVIDER_FEED_SIGNAL_KEYS].sort());
 	});
 });
@@ -243,9 +249,12 @@ describe('the substituted sentence is read, never restated', () => {
 			enrollmentState: 'not_started',
 			hasCfblAddress: false,
 		});
+		// The stand-in is NAMED in the one substitute vocabulary the degradation
+		// table and the dashboard use, and the sentence is the substitution's own.
+		expect(proxy.source).not.toBe('yahoo_cfl');
 		expect(YAHOO_CFL_SIGNAL_SOURCE.absence).toEqual({
 			behaviour: 'substitute',
-			substitutes: proxy.source,
+			substitutes: YAHOO_ABSENCE_SUBSTITUTE[proxy.source as keyof typeof YAHOO_ABSENCE_SUBSTITUTE],
 			note: proxy.confidenceNote,
 			isBlocking: false,
 		});
@@ -257,7 +266,7 @@ describe('the substituted sentence is read, never restated', () => {
 		});
 		expect(withCfbl.available).toBe(false);
 		if (withCfbl.available) return;
-		expect(withCfbl.absence).toMatchObject({ substitutes: 'cfbl_address' });
+		expect(withCfbl.absence).toMatchObject({ substitutes: 'cfbl_address_reports' });
 	});
 
 	it('an enrolled cell is present, and a lapsed one is not', () => {
@@ -296,6 +305,17 @@ describe('the ramp folds the registry, in the registry’s order', () => {
 		]);
 	});
 
+	it('folds every declared key, in the vocabulary’s order', () => {
+		// The list above pins the five that ARE folded; this pins them against the
+		// five that EXIST. A sixth measurement declared and not folded would leave
+		// the ramp growing its clean streak on evidence nothing ever looked at — the
+		// direction a hand-written array cannot fail in. (`RampGateId`'s own end of
+		// the same promise is `_EveryRampGateIsFolded`, checked by the compiler.)
+		expect(RAMP_GATE_SIGNAL_SOURCES.map((source) => source.key)).toEqual([
+			...RAMP_GATE_SIGNAL_KEYS,
+		]);
+	});
+
 	it('collects the sources in gate order, omitting the unmeasured ones', () => {
 		const healthy = matrixInput(MATRIX_MODE, { engagement: null });
 		expect(collectRampGateSignals(ARM, healthy).map((result) => result.gate)).toEqual([
@@ -330,12 +350,18 @@ describe('the ramp folds the registry, in the registry’s order', () => {
 		expect(reading.mayJustifyIncrease).toBe(ARM === 'reference_arm');
 	});
 
-	it('a cell with classified probes still answers gate 5', () => {
-		const measured = ENGAGEMENT.collect({
+	it('a cell with classified probes answers gate 5 with a real reading', () => {
+		// The other half of gate 5's declared `hold`: the unmeasured window answers
+		// `insufficient_data` (pinned by the absence suite above), and a window that
+		// DID classify probes answers something else. Without this, a change that
+		// made the gate hold on every window — advancing nothing, but hiding a
+		// placement failure behind a hold — would pass the absence suite untouched.
+		const measured = SEED_PLACEMENT.collect({
 			arm: ARM,
-			input: input({ own: arm({ sent: 1_000 }), ownSeeds: seeds(19, 1), engagement: null }),
+			input: matrixInput(MATRIX_MODE, { engagement: null }),
 		});
-		expect(measured.available).toBe(false);
-		expect(rampProbe(SEED_PLACEMENT).available).toBe(true);
+		expect(measured.available).toBe(true);
+		if (!measured.available) return;
+		expect((measured.reading as RampGateResult).status).toBe('pass');
 	});
 });

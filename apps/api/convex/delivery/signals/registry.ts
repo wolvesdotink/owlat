@@ -26,24 +26,22 @@
  */
 
 import { GOOGLE_POSTMASTER_SIGNAL_SOURCE } from './postmaster';
-import {
-	COMPLAINT_SIGNAL,
-	DEFERRAL_SIGNAL,
-	ENGAGEMENT_SIGNAL,
-	HARD_BOUNCE_SIGNAL,
-	SEED_PLACEMENT_SIGNAL,
-} from './rampGateSources';
+import { RAMP_GATE_SIGNALS } from './rampGateSources';
 import { SNDS_SIGNAL_SOURCE } from './snds';
-import type { SignalSourceDeclaration, SignalSourceKey, SignalSourceKind } from './types';
+import type { SignalSourceDeclaration, SignalSourceKey } from './types';
 import { YAHOO_CFL_SIGNAL_SOURCE } from './yahooCfl';
 
-/** Every declared signal source, keyed by its name in the vocabulary. */
+/**
+ * Every declared signal source, keyed by its name in the vocabulary.
+ *
+ * The ramp's five are SPREAD from the record gate evaluation folds rather than
+ * listed again: the inventory and the fold are then the same five objects, so
+ * "registered" and "measured" cannot come apart the way two lists would let
+ * them. The three provider feeds have no fold to spread from — each is consumed
+ * by the one reader that has its input shape — so they are named here.
+ */
 export const SIGNAL_SOURCES: Readonly<Record<SignalSourceKey, SignalSourceDeclaration>> = {
-	bounce_rate: HARD_BOUNCE_SIGNAL,
-	persistent_defers: DEFERRAL_SIGNAL,
-	complaint_rate: COMPLAINT_SIGNAL,
-	engagement_ratio: ENGAGEMENT_SIGNAL,
-	seed_placement: SEED_PLACEMENT_SIGNAL,
+	...RAMP_GATE_SIGNALS,
 	snds: SNDS_SIGNAL_SOURCE,
 	yahoo_cfl: YAHOO_CFL_SIGNAL_SOURCE,
 	google_postmaster: GOOGLE_POSTMASTER_SIGNAL_SOURCE,
@@ -52,13 +50,4 @@ export const SIGNAL_SOURCES: Readonly<Record<SignalSourceKey, SignalSourceDeclar
 /** Every declared source, in registration order. */
 export function allSignalSources(): readonly SignalSourceDeclaration[] {
 	return Object.values(SIGNAL_SOURCES);
-}
-
-/**
- * The sources of one class — "what may flip routing", "what moves the share",
- * "what is only ever read". The three questions the `kind` field exists to
- * answer, asked here rather than by each caller filtering the record itself.
- */
-export function signalSourcesOfKind(kind: SignalSourceKind): readonly SignalSourceDeclaration[] {
-	return allSignalSources().filter((source) => source.kind === kind);
 }

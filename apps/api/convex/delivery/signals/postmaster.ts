@@ -255,6 +255,36 @@ export function derivePostmasterCards(signals: PostmasterDomainSignals): Postmas
 }
 
 /**
+ * WHICH STORED FIELDS COUNT AS GOOGLE HAVING SAID SOMETHING — one classification
+ * per field, and the compiler insists on it.
+ *
+ * A `Record` over `PostmasterDomainSignals`' own keys rather than a chain of
+ * `||`s, because the failure mode of the chain is silent and expensive: add a
+ * metric to the signals AND a card that fires off it, forget this predicate, and
+ * a domain whose only stored data is that new failing metric collects as ABSENT
+ * — the source declares "not configured" and the operator loses a card that was
+ * about to tell them something was wrong. A new field now has to be classified
+ * before it compiles.
+ *
+ * `domain` is excluded because it is the row's identity, not an observation:
+ * every domain has one, connected or not.
+ */
+const OBSERVED_FIELDS: Readonly<
+	Record<
+		keyof Omit<PostmasterDomainSignals, 'domain'>,
+		(signals: PostmasterDomainSignals) => boolean
+	>
+> = {
+	userReportedSpamRatio: (signals) => signals.userReportedSpamRatio !== null,
+	spfSuccessRatio: (signals) => signals.spfSuccessRatio !== null,
+	dkimSuccessRatio: (signals) => signals.dkimSuccessRatio !== null,
+	dmarcSuccessRatio: (signals) => signals.dmarcSuccessRatio !== null,
+	deliveryErrorRatio: (signals) => signals.deliveryErrorRatio !== null,
+	deliveryErrors: (signals) => signals.deliveryErrors.length > 0,
+	checks: (signals) => signals.checks.length > 0,
+};
+
+/**
  * Whether Google has said ANYTHING about this domain.
  *
  * Every metric absent and both lists empty is the shape a domain has before a
@@ -265,15 +295,7 @@ export function derivePostmasterCards(signals: PostmasterDomainSignals): Postmas
  * already connected.
  */
 function hasPostmasterObservation(signals: PostmasterDomainSignals): boolean {
-	return (
-		signals.userReportedSpamRatio !== null ||
-		signals.spfSuccessRatio !== null ||
-		signals.dkimSuccessRatio !== null ||
-		signals.dmarcSuccessRatio !== null ||
-		signals.deliveryErrorRatio !== null ||
-		signals.deliveryErrors.length > 0 ||
-		signals.checks.length > 0
-	);
+	return Object.values(OBSERVED_FIELDS).some((observed) => observed(signals));
 }
 
 /**
@@ -284,10 +306,18 @@ function hasPostmasterObservation(signals: PostmasterDomainSignals): boolean {
  * card, no route reads one, and the compliance checks are Google's verdict on
  * OUR configuration rather than a measurement any controller compares.
  *
- * ITS ABSENCE OMITS. A domain Google has said nothing about contributes no
- * cards — not a hold, not a warning, not a nag. That is the same sentence this
- * module has always opened with; the registry now states it as data so the
- * absence test can ask.
+ * ITS ABSENCE OMITS, ON THE PLANE THIS FIELD SPEAKS FOR. A domain Google has
+ * said nothing about contributes no cards — not a hold, not a warning, not a
+ * nag. That is the same sentence this module has always opened with; the
+ * registry now states it as data so the absence test can ask.
+ *
+ * IT IS NOT THE CLAIM THAT AN ABSENT POSTMASTER ACCOUNT IS FREE. What a missing
+ * Google account costs the Gmail cell — twice the dwell, medium confidence, and
+ * the cell's own bounce/deferral/complaint rates plus seed placement standing in
+ * — is the `google_postmaster` entry in `../ramp/degradationMatrix`, which is
+ * the one home for that question (see `SignalAbsence` in `./types`). Restating
+ * any of it here would be a second declaration free to disagree with the
+ * degradation card rendered beside these very cards.
  */
 export const GOOGLE_POSTMASTER_SIGNAL_SOURCE: SignalSource<
 	PostmasterDomainSignals,

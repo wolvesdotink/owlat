@@ -6,11 +6,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+	GOOGLE_POSTMASTER_SIGNAL_SOURCE,
 	POSTMASTER_AUTH_SUCCESS_FLOOR,
 	POSTMASTER_SPAM_RATE_LIMIT,
 	derivePostmasterCards,
 	type PostmasterDomainSignals,
-} from '../signals/postmaster';
+} from '../postmaster';
 
 function signals(overrides: Partial<PostmasterDomainSignals> = {}): PostmasterDomainSignals {
 	return {
@@ -137,5 +138,52 @@ describe('Postmaster compliance cards', () => {
 
 		expect(cards.map((card) => card.check)).toEqual(['SPF']);
 		expect(JSON.stringify(cards)).not.toContain('NaN');
+	});
+});
+
+/**
+ * THE SOURCE MAY NOT HIDE A CARD.
+ *
+ * `getPostmasterStatus` renders `collect()`'s reading, so "this domain is not
+ * configured" and "this domain has nothing to show" have to be the same set of
+ * domains. The dangerous direction is a stored field that produces a card while
+ * the observation predicate does not count it: the card would vanish and the
+ * screen would invite the operator to connect an account they already have.
+ *
+ * The fixture table is keyed by the signal fields themselves, so a field added
+ * to `PostmasterDomainSignals` does not compile until someone has said what
+ * evidence looks like for it.
+ */
+describe('a collected absence is exactly a domain Google has said nothing about', () => {
+	const ONLY_EVIDENCE: Readonly<
+		Record<keyof Omit<PostmasterDomainSignals, 'domain'>, PostmasterDomainSignals>
+	> = {
+		userReportedSpamRatio: signals({ userReportedSpamRatio: 0.05 }),
+		spfSuccessRatio: signals({ spfSuccessRatio: 0.1 }),
+		dkimSuccessRatio: signals({ dkimSuccessRatio: 0.1 }),
+		dmarcSuccessRatio: signals({ dmarcSuccessRatio: 0.1 }),
+		deliveryErrorRatio: signals({ deliveryErrorRatio: 0.2 }),
+		deliveryErrors: signals({ deliveryErrors: [{ category: 'SUSPECTED_SPAM', ratio: 0.2 }] }),
+		checks: signals({ checks: [{ name: 'SPAM_RATE', state: 'failing' }] }),
+	};
+
+	it.each(Object.entries(ONLY_EVIDENCE))(
+		'a domain whose only stored evidence is %s is collected, not declared absent',
+		(_field, only) => {
+			const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(only);
+			expect(collected.available).toBe(true);
+			if (!collected.available) return;
+			expect(collected.reading).toEqual(derivePostmasterCards(only));
+		}
+	);
+
+	it('declares absent only when the derivation has nothing to render either', () => {
+		for (const only of Object.values(ONLY_EVIDENCE)) {
+			const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(only);
+			if (!collected.available) expect(derivePostmasterCards(only)).toEqual([]);
+		}
+		const nothing = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals());
+		expect(nothing.available).toBe(false);
+		expect(derivePostmasterCards(signals())).toEqual([]);
 	});
 });

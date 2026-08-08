@@ -296,6 +296,17 @@ export interface PostmasterDomainStatus extends PostmasterDomainSignals {
 	cards: PostmasterCard[];
 }
 
+/**
+ * One domain's status alongside whether the registered source found anything to
+ * read for it — the fact `connected` folds. Kept beside the status rather than
+ * inside it because it is derivable from the source and has no business being on
+ * the wire shape twice.
+ */
+interface CollectedDomain {
+	readonly configured: boolean;
+	readonly status: PostmasterDomainStatus;
+}
+
 export interface PostmasterStatus {
 	/**
 	 * Whether ANY Postmaster data has ever arrived. `false` is a supported
@@ -315,8 +326,8 @@ export const getPostmasterStatus = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
-		const statuses = await Promise.all(
-			domains.map(async (domainRecord): Promise<PostmasterDomainStatus> => {
+		const collected = await Promise.all(
+			domains.map(async (domainRecord): Promise<CollectedDomain> => {
 				const [stats, compliance] = await Promise.all([
 					ctx.db
 						.query('googlePostmasterStats')
@@ -344,24 +355,31 @@ export const getPostmasterStatus = authedQuery({
 				// empty card list the derivation returns for it — the difference is
 				// that the absence is now the source's declared answer rather than a
 				// coincidence of every threshold happening to skip a null.
-				const collected = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals);
+				const reading = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals);
 				return {
-					...signals,
-					periodStart: stats?.periodStart ?? null,
-					compliancePeriodStart: compliance?.periodStart ?? null,
-					cards: collected.available ? collected.reading : [],
+					configured: reading.available,
+					status: {
+						...signals,
+						periodStart: stats?.periodStart ?? null,
+						compliancePeriodStart: compliance?.periodStart ?? null,
+						cards: reading.available ? reading.reading : [],
+					},
 				};
 			})
 		);
 
 		return {
-			connected: statuses.some(
-				(status) => status.periodStart !== null || status.compliancePeriodStart !== null
-			),
+			// ONE PREDICATE FOR "IS THIS CONFIGURED", and it is the registered source's.
+			// Reading the stored period timestamps here was a second, independently
+			// written answer to the question the source exists to answer: the two agree
+			// only while every stats row is guaranteed to carry a metric the source
+			// counts, and a domain reported as connected while the source declares it
+			// absent is the seam publishing "not configured" for a deployment that is.
+			connected: collected.some((domain) => domain.configured),
 			// Domains with something to say first, then alphabetically for stability.
-			domains: statuses.sort(
-				(a, b) => b.cards.length - a.cards.length || a.domain.localeCompare(b.domain)
-			),
+			domains: collected
+				.map((domain) => domain.status)
+				.sort((a, b) => b.cards.length - a.cards.length || a.domain.localeCompare(b.domain)),
 		};
 	},
 });

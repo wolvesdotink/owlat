@@ -384,9 +384,9 @@ compile either.
 | `complaint_rate`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 3)            |
 | `engagement_ratio`  | `outcome`        | `omit`       | `signals/rampGateSources.ts` (ramp gate 4)            |
 | `seed_placement`    | `outcome`        | `hold`       | `signals/rampGateSources.ts` (ramp gate 5)            |
-| `snds`              | `advisory`       | `substitute` | `signals/snds.ts` (Microsoft SNDS)                     |
-| `yahoo_cfl`         | `advisory`       | `substitute` | `signals/yahooCfl.ts` (Yahoo Complaint Feedback Loop)  |
-| `google_postmaster` | `advisory`       | `omit`       | `signals/postmaster.ts` (Google Postmaster Tools)      |
+| `snds`              | `advisory`       | `substitute` | `signals/snds.ts` (Microsoft SNDS)                    |
+| `yahoo_cfl`         | `advisory`       | `substitute` | `signals/yahooCfl.ts` (Yahoo Complaint Feedback Loop) |
+| `google_postmaster` | `advisory`       | `omit`       | `signals/postmaster.ts` (Google Postmaster Tools)     |
 
 **`kind` says what a reading is allowed to do**, in the sense
 `packages/shared/src/deliverabilityRouting.ts` gives the three families:
@@ -407,7 +407,22 @@ declared is what it does — `substitute` hands back the stand-in it names,
 `hold` still answers `insufficient_data`, `omit` contributes nothing at all.
 The substitution sentences are READ from the substitution the cell actually
 applies (`SNDS_ABSENT_SUBSTITUTION`, `yahooComplaintSubstitution`), never
-restated here or in the registry.
+restated here or in the registry, and a stand-in is NAMED in the one
+`RAMP_SUBSTITUTE_SOURCES` vocabulary the degradation table and the dashboard use.
+
+**The `Absence` column is the collection plane, and only that.** It says what a
+source's own `collect()` hands its caller with no reading — no cards, a holding
+`insufficient_data`, or the stand-in it fell to. It is deliberately NOT the
+ramp-level price of an absent integration: how much longer a cell dwells, how
+many clean windows it needs and how far its ceiling drops live in
+`RAMP_DEGRADATION_MATRIX` (`apps/api/convex/delivery/ramp/degradationMatrix.ts`)
+and nowhere else. So `google_postmaster` reads `omit` here — a domain Google has
+said nothing about produces no cards — while the matrix's `google_postmaster`
+entry doubles the Gmail cell's dwell and drops it to medium confidence. Two
+questions, two homes, no second copy of either. A source whose stand-in depends
+on what else is configured (`yahoo_cfl` falls to the CFBL feed when a send
+carried one, otherwise to the unsubscribe proxy) declares the WORST case here
+and answers per-cell from `collect()`.
 
 **Gate evaluation folds the registry, not a list of modules.**
 `ramp/gateEvaluation.ts` asks `collectRampGateSignals(arm, input)`; each source
@@ -427,8 +442,9 @@ The durable halves stay outside this directory, because their Convex function
 paths are addressed by pollers, crons, the webhook dispatcher and the delivery
 screens: `delivery/snds.ts` (ingest, retention, the bounded gate read) and
 `delivery/postmaster.ts` (the two ingest mutations, the sweep, and
-`getPostmasterStatus`, which now derives its cards through the registered
-source).
+`getPostmasterStatus`, which now derives both its cards AND its `connected`
+verdict through the registered source, so the screen's "not connected" and the
+registry's declared absence are one predicate rather than two).
 
 ---
 
