@@ -63,6 +63,15 @@ describe('the CI matrix exists and runs both configurations', () => {
 		);
 	});
 
+	it('runs the signal registry in both legs, not just the ramp directory', () => {
+		// The registry declares WHICH measurements each arm evaluates (seams plan
+		// D9), so a leg that runs `convex/delivery/ramp` alone still folds the
+		// standalone evaluators but never checks that they are the ones registered
+		// for a deployment with no reference transport. Narrowing the glob back is
+		// a one-word edit, and this is what makes that edit fail on its own PR.
+		expect(WORKFLOW).toContain('bunx vitest run convex/delivery/ramp convex/delivery/signals');
+	});
+
 	it('is wired into the required status check, not left dangling', () => {
 		const summaryNeeds = WORKFLOW.slice(WORKFLOW.indexOf('test-summary:'));
 		expect(summaryNeeds).toContain('ramp-gate-matrix');
