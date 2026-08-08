@@ -28,6 +28,11 @@ function dashboard(overrides: Partial<DeliverabilityDashboard> = {}): Deliverabi
 		generatedAt: WINDOW_END,
 		windowStart: WINDOW_START,
 		windowEnd: WINDOW_END,
+		// The deciding span is the controller's, and it is a fixture value here for
+		// the same reason the window is: the page renders both, and only the page
+		// knows they are different spans (#510).
+		decisionWindowStart: WINDOW_END - 24 * 60 * 60 * 1000,
+		decisionWindowEnd: WINDOW_END,
 		referenceTransportId: 'ses',
 		isRelayConfigured: true,
 		hasSeedCoverage: false,
@@ -97,6 +102,24 @@ describe('measurement page — headings and landmarks', () => {
 	it('renders the window it summarizes', () => {
 		const wrapper = mountPage();
 		expect(wrapper.find('[data-testid="measurement-window"]').text().length).toBeGreaterThan(0);
+		wrapper.unmount();
+	});
+
+	/**
+	 * TWO SPANS, TWO LABELS (#510). The cards count over the reported window and
+	 * their checks were decided over the controller's own, so a heading that named
+	 * only the first would put a week's dates over verdicts reached in a day.
+	 */
+	it('names the deciding span beside the window it summarizes', () => {
+		const wrapper = mountPage();
+		const reported = wrapper.find('[data-testid="measurement-window"]').text();
+		const deciding = wrapper.find('[data-testid="measurement-decision-window"]').text();
+		expect(deciding).toBe('the last 24 hours');
+		expect(deciding).not.toBe(reported);
+		// And it reaches every card, so no gate list is left unlabelled.
+		expect(wrapper.findAll('[data-testid="measurement-gate-window"]').length).toBe(
+			wrapper.findAll('[data-testid="measurement-gate-list"]').length
+		);
 		wrapper.unmount();
 	});
 

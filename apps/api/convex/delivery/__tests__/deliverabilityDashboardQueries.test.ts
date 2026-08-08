@@ -28,6 +28,7 @@ import type { DatabaseWriter } from '../../_generated/server';
 import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { summarizeTransportOutcomeBuckets } from '../../analytics/transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
+import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../ramp/engagementConfig';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
 import type { DeliverabilityDashboard } from '../deliverabilityDashboard';
@@ -187,6 +188,109 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 		);
 		// A quiet day is still a point — a trend with holes reads as continuous traffic.
 		expect(cell.trend.every((entry) => entry.own.sent >= 0)).toBe(true);
+	});
+});
+
+/**
+ * TWO SPANS ON ONE SCREEN, AND THE QUERY SAYS WHICH IS WHICH (#510).
+ *
+ * The counters are the week plan D2/D5 specifies; the verdicts are the
+ * controller's own evaluation window, so the screen cannot report a gate the
+ * cron never reached. `seedGateWiring.test.ts` pins the agreement against the
+ * cron's own loader on the issue's fixture — what is pinned HERE is the wire:
+ * both spans present, both named, and the deciding one taken from the
+ * controller's constant rather than spelled again in the query.
+ */
+describe('getDeliverabilityDashboard — the reported window and the deciding span', () => {
+	const DAY = 24 * 60 * 60 * 1000;
+
+	it('reports the week, decides over the controller’s window, and names both', async () => {
+		const t = convexTest(schema, modules);
+		const today = startOfDayUtc(Date.now());
+		const clean = bucket({ periodStart: today, sent: 5000, delivered: 5000 });
+		const spike = bucket({
+			periodStart: today - 4 * DAY,
+			shardKey: 1,
+			sent: 5000,
+			delivered: 4000,
+			hardBounced: 1000,
+		});
+		await t.run(async (ctx) => {
+			for (const row of [clean, spike]) await ctx.db.insert('transportOutcomes', row);
+		});
+
+		const dashboard = await t.query(
+			api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
+			{}
+		);
+		const cell = gmailCell(dashboard);
+
+		// THE DECIDING SPAN IS THE CONTROLLER'S CONSTANT, not a second spelling of
+		// "a day" that could drift from it.
+		expect(dashboard.decisionWindowStart).toBe(
+			dashboard.generatedAt - RAMP_AIMD.evaluationWindowMs
+		);
+		expect(dashboard.decisionWindowEnd).toBe(dashboard.generatedAt);
+
+		// THE ARMS ARE THE REPORTED WINDOW'S: the spike is four days old and the
+		// card still shows it, because an operator reading a week of traffic must
+		// see the week's traffic.
+		expect(cell.own).toEqual(
+			summarizeTransportOutcomeBuckets([clean, spike], {
+				since: dashboard.windowStart,
+				until: dashboard.windowEnd,
+			})
+		);
+		expect(cell.own.hardBounced).toBe(1000);
+
+		// AND THE VERDICT IS THE DECIDING SPAN'S: the spike is outside it, so gate 1
+		// never sees those 1000 bounces and the cell is not failed on them.
+		const hardBounce = cell.gates.find((gate) => gate.gate === 'hard_bounce');
+		expect(hardBounce?.measurement.ownSample).toBe(5000);
+		expect(hardBounce?.measurement.ownRate).toBe(0);
+		expect(hardBounce?.status).not.toBe('fail');
+		expect(cell.verdict).not.toBe('fail');
+	});
+
+	/**
+	 * The other direction, which is the one a wider screen used to hide: a spike
+	 * INSIDE the deciding span is decided on even though six clean days dilute it
+	 * in the reported column. A screen still grading the week would print a
+	 * comfortable 0.5% beside a cell the cron has just failed.
+	 */
+	it('fails on a spike inside the deciding span that the week dilutes', async () => {
+		const t = convexTest(schema, modules);
+		const today = startOfDayUtc(Date.now());
+		await t.run(async (ctx) => {
+			// 4%, twice the absolute hard-bounce ceiling.
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: today, sent: 5000, delivered: 4800, hardBounced: 200 })
+			);
+			for (let offset = 2; offset <= 6; offset += 1) {
+				await ctx.db.insert(
+					'transportOutcomes',
+					bucket({
+						periodStart: today - offset * DAY,
+						shardKey: offset,
+						sent: 20_000,
+						delivered: 20_000,
+					})
+				);
+			}
+		});
+
+		const cell = gmailCell(
+			await t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
+		);
+		const hardBounce = cell.gates.find((gate) => gate.gate === 'hard_bounce');
+		expect(hardBounce?.status).toBe('fail');
+		expect(hardBounce?.reason).toBe('absolute_threshold_breached');
+		expect(hardBounce?.measurement.ownRate).toBeCloseTo(0.04, 10);
+		// The reported column keeps the diluted week beside it, and says so by
+		// being a different number: 0.19%, comfortably inside the same ceiling.
+		expect(cell.own.sent).toBe(105_000);
+		expect(cell.own.hardBounceRate).toBeCloseTo(200 / 105_000, 10);
 	});
 });
 

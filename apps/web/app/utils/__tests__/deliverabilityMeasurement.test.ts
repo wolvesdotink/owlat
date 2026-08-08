@@ -54,6 +54,8 @@ import {
 	standaloneNote,
 	type DeliverabilityDashboardGate,
 } from '~/utils/deliverabilityMeasurement';
+import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
+import { formatShortDate } from '~/utils/formatters';
 
 /**
  * THE SECOND ARM IS NAMED, NOT KEYED. `referenceTransportId` arrives as the
@@ -408,5 +410,53 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 		const poisoned = gateExplanation(held('baseline_rate_unmeasurable'));
 		expect(clean).not.toBe(poisoned);
 		expect(clean).toContain('too clean');
+	});
+});
+
+/**
+ * THE TWO SPANS ARE NAMED FROM THE SERVER'S BOUNDS (#510).
+ *
+ * The screen reports counters over a week and renders verdicts reached over the
+ * ramp controller's own window. Both labels are DERIVED — a screen holding its
+ * own copy of "24 hours" would keep printing it after the controller's cadence
+ * moved, which is the drift the server-side fix removed.
+ */
+describe('the reported window and the deciding span, in words', () => {
+	const DAY = 24 * 60 * 60 * 1000;
+	const END = Date.UTC(2026, 6, 16);
+
+	it('names the last day the reported window actually includes', () => {
+		// `windowEnd` is EXCLUSIVE: a label naming it would claim a day of data
+		// that is not in any number on the screen. Asserted against the formatter
+		// rather than against literal dates, so the pin holds in every timezone.
+		const label = reportedWindowLabel({ windowStart: END - 7 * DAY, windowEnd: END });
+		expect(label).toBe(`${formatShortDate(END - 7 * DAY)} – ${formatShortDate(END - 1)}`);
+	});
+
+	it('reads the deciding span off the bounds rather than assuming a day', () => {
+		expect(decisionWindowLabel({ decisionWindowStart: END - DAY, decisionWindowEnd: END })).toBe(
+			'the last 24 hours'
+		);
+		// A cadence change renames the label instead of leaving a stale number.
+		expect(
+			decisionWindowLabel({
+				decisionWindowStart: END - 6 * 60 * 60 * 1000,
+				decisionWindowEnd: END,
+			})
+		).toBe('the last 6 hours');
+		expect(
+			decisionWindowLabel({ decisionWindowStart: END - 3 * DAY, decisionWindowEnd: END })
+		).toBe('the last 3 days');
+	});
+
+	it('never renders a nonsense span as a number', () => {
+		// A degenerate or reversed pair is a fault in the read, not a licence to
+		// print "the last 0 hours" under every verdict on the screen.
+		expect(decisionWindowLabel({ decisionWindowStart: END, decisionWindowEnd: END })).toBe(
+			'the latest measurements'
+		);
+		expect(decisionWindowLabel({ decisionWindowStart: Number.NaN, decisionWindowEnd: END })).toBe(
+			'the latest measurements'
+		);
 	});
 });
