@@ -65,8 +65,6 @@ export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_CONTENT_TYPE
 export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_MAX_AGE_SECONDS
 export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_MODES
 export:packages/shared/src/mtaStsPolicy.ts:parseMtaStsTxtId
-export:packages/shared/src/mtaWebhookEvent.ts:MTA_WEBHOOK_EVENT_TYPES
-export:packages/shared/src/mtaWebhookEvent.ts:isMtaWebhookEventType
 export:packages/shared/src/operatingModes.ts:operatingModeNeedsTransport
 export:packages/shared/src/operationError.ts:OPERATION_ERROR_CATEGORIES
 export:packages/shared/src/operationError.ts:isOperationError
