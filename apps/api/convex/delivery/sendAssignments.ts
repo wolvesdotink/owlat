@@ -1,5 +1,5 @@
 /**
- * Send assignments — the experiment record (plan D7 / D16).
+ * Send assignments — the experiment record (ADR-0054 §8, plan D7 / D16).
  *
  * Send rows record `providerType` POST-HOC, from the dispatch result. That is
  * enough to know what happened to one message and not enough to compare two

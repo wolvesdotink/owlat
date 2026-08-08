@@ -272,8 +272,10 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 };
 
 /**
- * Per-stream ramp constants (plan D6/D9). Defined ONCE here; the AIMD
- * controller (P3-2) reuses this object rather than re-declaring the numbers.
+ * Per-stream ramp constants (ADR-0054 §4, plan D6/D9). Defined ONCE here; the
+ * AIMD controller (P3-2) reuses this object rather than re-declaring the
+ * numbers. Like `RAMP_AIMD`, these are a safety surface rather than a config
+ * surface — `docs/adr/0054-deliverability-ramp-controller.md` argues why.
  *
  * Transactional starts at zero and ramps LAST — it is the mail a failure hurts
  * most — but once started it moves in the smallest steps.
