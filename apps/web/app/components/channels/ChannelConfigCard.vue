@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+// Derived from the backend contract (see utils/channelKinds.ts) rather than
+// restating the channel literals a third time.
+import type { ChannelKind } from '~/utils/channelKinds';
 
 interface ChannelHealth {
 	healthStatus?: 'healthy' | 'degraded' | 'down';
@@ -10,7 +13,7 @@ interface ChannelHealth {
 
 interface ChannelConfig {
 	_id: string;
-	channel: 'email' | 'sms' | 'whatsapp' | 'generic' | 'chat';
+	channel: ChannelKind;
 	isEnabled: boolean;
 	displayName?: string;
 	config?: string;
