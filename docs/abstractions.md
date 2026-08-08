@@ -471,11 +471,16 @@ hard-returned failure or a fabricated id, a `healthCheck` that hard-returned
 healthy without probing, a `validateSignature` that hard-returned `true`. They
 are deleted, not reimplemented.
 
-**Nothing here verifies an inbound webhook.** The signature checks for these
-same three channels live in `webhooks/adapters/{twilio,meta,generic}.ts`, where
-they run against real secrets on the real inbound route. An adapter's own
-`validateSignature`/`parseInbound` are contract leftovers with no host caller;
-treat the `webhooks/` pair as the only answer.
+**Nothing here verifies or parses an inbound webhook, and the contract has no
+member for it.** Verification and payload normalization for these same three
+channels live in `webhooks/adapters/{twilio,meta,generic}.ts` — the only
+implementation — where they run against real secrets on the real inbound route.
+The `ChannelAdapter` interface used to declare a `validateSignature` and a
+`parseInbound` that nothing ever called and that had already drifted from the
+shipped verifiers (the generic one accepted a bare `Authorization` value where
+the route strips `Bearer ` first). D10 deleted the pair rather than keep two
+expressions of one rule. A new inbound source is a new `webhooks/adapters/`
+module, never a method here.
 
 ## Inbound mail normalization (`packages/channels/`)
 

@@ -54,11 +54,14 @@ export interface InboundEmailMessage {
 export type InboundSource = 'mta' | 'resend' | 'ses' | 'postmark' | 'mailgun';
 
 /**
- * Inbound channel adapter contract.
+ * Inbound channel adapter contract — the whole of it.
  *
- * Lighter than the full `ChannelAdapter` (which is bidirectional). This one is
- * inbound-only and produces a typed result instead of the looser
- * `ParsedMessage`.
+ * A source key and one translation function producing the canonical, fully
+ * typed `InboundEmailMessage`. There is no outbound half, no health probe and
+ * no signature check: sending belongs to the send-provider seam, and verifying
+ * an inbound request belongs to the caller's own route handler
+ * (`apps/api/convex/webhooks/adapters/`), which does it against a real secret
+ * before it ever asks this registry to parse.
  */
 export interface InboundChannelAdapter {
 	source: InboundSource;

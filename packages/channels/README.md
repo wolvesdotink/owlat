@@ -48,7 +48,12 @@ which is worse than absent.
   Twilio, the Meta Cloud API and a configured HTTP endpoint — and they have
   exactly one consumer, the `channels/outbound.ts` action that decrypts an
   operator's credentials and dispatches through them. Nothing crossed the
-  package boundary, so the boundary was doing no work.
+  package boundary, so the boundary was doing no work. **Their inbound half did
+  not move: it was deleted.** `parseInbound` and `validateSignature` restated,
+  with no caller and some already-visible drift, what
+  `apps/api/convex/webhooks/adapters/{twilio,meta,generic}.ts` do on the live
+  route. The relocated contract is outbound only — `send`,
+  `getDeliveryStatus`, `healthCheck`.
 
 Sending **email** is not a channel adapter question at all: it belongs to the
 send-provider seam (`apps/api/convex/lib/sendProviders/` and the catalog in
