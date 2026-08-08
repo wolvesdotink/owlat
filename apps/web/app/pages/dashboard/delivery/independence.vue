@@ -42,11 +42,24 @@ const {
 	error,
 } = useOrganizationQuery(api.delivery.rampIndependence.getIndependenceSummary);
 
+/**
+ * THE NAME OF THE RELAY, and separately WHETHER THERE IS ONE (#513).
+ *
+ * `referenceTransportId` is null on two different deployments — no relay, and
+ * more than one kind of relay — so every branch on this screen that decides
+ * WHICH FEATURE this is keys on `isRelayConfigured` instead. The id is passed
+ * only where a name is wanted, and the shared copy words its null as "the
+ * relay(s)" rather than reverting to the standalone sentence.
+ */
 const referenceTransportId = computed<string | null>(
 	() => summary.value?.referenceTransportId ?? null
 );
-const isStandalone = computed(() => referenceTransportId.value === null);
-const headline = computed(() => independenceHeadline(referenceTransportId.value));
+// The `?? false` keeps the pre-arrival framing exactly where it was: the header
+// renders before the summary does, and the standalone wording is the one the
+// page has always shown for the moment it knows nothing.
+const isRelayConfigured = computed(() => summary.value?.isRelayConfigured ?? false);
+const isStandalone = computed(() => !isRelayConfigured.value);
+const headline = computed(() => independenceHeadline(isRelayConfigured.value));
 // THE TAB TITLE FOLLOWS THE H1. A static "Sending independence" would leave a
 // standalone deployment reading "Warm-up autopilot" on the page and something
 // else in its browser tab — the D14 rename half-applied.
@@ -126,7 +139,7 @@ function confirmRelayRemoval(): void {
 		<header class="mb-6">
 			<h1 class="text-2xl font-semibold text-text-primary">{{ headline }}</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				{{ independenceSubhead(referenceTransportId) }}
+				{{ independenceSubhead({ isRelayConfigured, referenceTransportId }) }}
 			</p>
 		</header>
 

@@ -172,10 +172,17 @@ async function unconfirmedRelayRemoval(
 			}).consequence
 		);
 	}
-	// `getIndependenceSummary` answers `{kind:'safe'}` for every deployment with no
-	// reference arm (`rampIndependence.ts`), so "is there a relay at all" is not a
+	// `getIndependenceSummary` answers `{kind:'safe'}` for every deployment with NO
+	// RELAY AT ALL (`rampIndependence.ts`), so "is there a relay at all" is not a
 	// second question to ask here — asking it anyway would put a second definition
 	// of "no relay" one layer away from its home.
+	//
+	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON, and it was wrong until
+	// #513: the summary keyed on "exactly one relay kind", so a deployment with a
+	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` answered `safe`
+	// and this line waved through the removal of an arm cells were still leaning
+	// on. It now keys on `isRelayConfigured`, and the pin for that shape lives in
+	// `__tests__/apply-transport-relay-removal.test.ts`.
 	if (summary.relayRemoval.kind === 'safe') return null;
 	const { consequence, safeDate } = relayRemovalConsequenceCopy({
 		dependentCells: summary.relayRemoval.dependentCells,

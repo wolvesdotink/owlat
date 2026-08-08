@@ -17,7 +17,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -36,12 +36,20 @@ import type { DashboardCellView } from '../deliverabilityDashboardView';
 import type { RampGateEvaluation, RampGateResult } from '../ramp/gateTypes';
 import {
 	connectRelay,
+	connectRelaysAcrossEnvAndRoutes,
 	connectTwoRelays,
 	seedArmOutcomes,
 	seedRampCell,
 	type Harness,
 } from './rampCronFixtures';
 import { modules } from '../../__tests__/testModules';
+
+// `connectRelaysAcrossEnvAndRoutes` stubs EMAIL_PROVIDER, and a stub that
+// outlived its case would turn every later deployment in this file into a relay
+// one — which is exactly the class of misreading the suite is about.
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 const ORG = 'org_seed_gate_wiring';
 const HOUR_MS = 60 * 60 * 1000;
@@ -434,28 +442,28 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 	});
 
 	/**
-	 * THE THIRD SCREEN STILL MAKES THE SUBSTITUTION THIS SUITE REMOVED, and this
-	 * case exists to make that fact fail loudly the day someone closes it (#513).
+	 * THE THIRD SCREEN MADE THE SUBSTITUTION THIS SUITE REMOVED, until #513.
 	 *
-	 * `rampIndependence.getIndependenceSummary` keys on `referenceTransportId`,
+	 * `rampIndependence.getIndependenceSummary` keyed on `referenceTransportId`,
 	 * which two relay kinds leave null — so the SAME deployment the case above
-	 * grades against a measured arm is framed here as having no relay at all. The
-	 * share is not a rounding artefact: `readIndependenceSeries` does not read the
-	 * reference arm when `hasReferenceArm` is false, so the relay's sends are
-	 * structurally absent from the denominator.
+	 * grades against a measured arm was framed here as having no relay at all. The
+	 * share was not a rounding artefact: `readIndependenceSeries` skipped the
+	 * reference arm entirely, so the relay's sends were structurally absent from
+	 * the denominator and the share came out 1 on a deployment relaying half its
+	 * mail.
 	 *
 	 * AND `relayRemoval: 'safe'` IS A GUARD, NOT A SENTENCE.
 	 * `apps/web/server/api/delivery/apply-transport.post.ts` demands no
-	 * confirmation phrase on it, deliberately, because a deployment with no
-	 * reference arm has nothing to confirm. On this deployment it does — so
-	 * disconnecting a relay mid-ramp skips the whole RELAY_REMOVAL_CONFIRMATION
-	 * path on cells still leaning on it.
+	 * confirmation phrase on it, deliberately, because a deployment with no relay
+	 * has nothing to confirm. On this deployment it does — so disconnecting a
+	 * relay mid-ramp skipped the whole RELAY_REMOVAL_CONFIRMATION path on cells
+	 * still leaning on it.
 	 *
-	 * This asserts the CURRENT, WRONG answers on purpose. The fix belongs to
-	 * `rampIndependence.ts` and to the separate decision of which reading it
-	 * should take; when it lands, this case fails and its expectations invert.
+	 * The summary now keys on `isRelayConfigured`, which is the column the
+	 * dashboard beside it publishes off the same scan; these two queries may not
+	 * describe one deployment two ways.
 	 */
-	it('is still framed as already independent by the independence screen (#513)', async () => {
+	it('is framed as still relaying by the independence screen too (#513)', async () => {
 		const t = convexTest(schema, modules);
 		await connectTwoRelays(t);
 		await twoArmedBreach(t);
@@ -464,12 +472,47 @@ describe('the screen picks the evaluator the controller picked (ADR-0042)', () =
 		expect(dashboard.isRelayConfigured).toBe(true);
 
 		const independence = await t.query(api.delivery.rampIndependence.getIndependenceSummary, {});
-		// One query apart, on one deployment: the screen above measured every cell
-		// against a relay; this one reports there is none to become independent of.
+		// One query apart, on one deployment, and now agreeing: there is no single
+		// arm to NAME, and there is unmistakably a relay.
+		expect(independence.referenceTransportId).toBe(dashboard.referenceTransportId);
+		expect(independence.isRelayConfigured).toBe(dashboard.isRelayConfigured);
+		// The relay's 800 sends are in the denominator, so the own arm's 800 are
+		// half the window and not all of it.
+		expect(independence.ownShare).toBeCloseTo(0.5, 6);
+		expect(independence.series.some((point) => point.reference > 0)).toBe(true);
+		// There IS something to become independent of, so the projection is not the
+		// standalone verdict.
+		expect(independence.projection.kind).not.toBe('already_independent');
+		// The guard, right way up: the managed cell has not graduated, so the
+		// endpoint is told to demand its phrase.
+		expect(independence.relayRemoval.kind).toBe('unsafe');
+		if (independence.relayRemoval.kind !== 'unsafe') return;
+		expect(independence.relayRemoval.dependentCells).toContain('campaign:gmail');
+	});
+
+	/**
+	 * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION (#513): one relay in
+	 * `EMAIL_PROVIDER`, one in `providerRoutes`.
+	 *
+	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is
+	 * still null — but here an apply of `EMAIL_PROVIDER=mta` from the transport
+	 * editor genuinely disconnects an arm cells are leaning on, where the
+	 * two-`providerRoutes` case above resolves to `mta` and removes nothing. This
+	 * is the deployment the endpoint's pin is written against
+	 * (`apps/web/server/api/delivery/__tests__/apply-transport-relay-removal.test.ts`),
+	 * and this case is what makes the summary it is handed a real one.
+	 */
+	it('demands the removal guard with one relay in the env and one in the routes (#513)', async () => {
+		const t = convexTest(schema, modules);
+		await connectRelaysAcrossEnvAndRoutes(t);
+		await twoArmedBreach(t);
+
+		const independence = await t.query(api.delivery.rampIndependence.getIndependenceSummary, {});
+		// The premise: two kinds across the two surfaces still leave no single arm
+		// to name, so the null the endpoint sees is the same null as before.
 		expect(independence.referenceTransportId).toBeNull();
-		expect(independence.projection.kind).toBe('already_independent');
-		// The guard, and the reason this is tracked rather than merely noted.
-		expect(independence.relayRemoval.kind).toBe('safe');
+		expect(independence.isRelayConfigured).toBe(true);
+		expect(independence.relayRemoval.kind).toBe('unsafe');
 	});
 
 	/**
