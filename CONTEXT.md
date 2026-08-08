@@ -3002,9 +3002,9 @@ Split in two halves, and the split is a security boundary rather than tidiness:
 
 _Avoid_: Provider registry (that names the code half — `SEND_PROVIDERS` in
 `convex/lib/sendProviders/index.ts` — which dispatches adapters, not
-declarations),
-Provider config (collides with `providerRoutes`, which is one org's routing
-choice rather than the provider's nature), Transport catalog (drops the domain
+declarations), Provider config (collides with `providerRoutes`, which is one
+org's routing choice rather than the provider's nature), Transport catalog
+(drops the domain
 noun, and "send transport" already names the CONFIGURED INSTANCE of a kind —
 `<kind>` or `<kind>#<instanceKey>` — which is the dispatch unit, not the
 declaration).
@@ -3932,9 +3932,11 @@ one of the two).
 **Own share**:
 The controlled variable in a deployment that has a reference transport: `s`, the
 fraction of a cell's mail routed to the own arm, in `[0, 1]`. Starts at 0 for a
-migration and is walked up by the **Ramp controller**. A share is not a config
-value an operator types — it is a measurement outcome, which is why the operator
-surface offers a pause and a ceiling rather than a number.
+migration and is walked up by the **Ramp controller**. A share is a measurement
+outcome, not a setting the controller reads back: an operator can pause a cell,
+pin its share or force one advance, and each of those is an OVERRIDE the ladder
+answers at its top rung (a pin holds in both directions) rather than an input to
+the arithmetic below.
 _Avoid_: Weight (taken by the `workload_split` route strategy, which is an
 operator's static choice), Traffic split, Ratio.
 
@@ -3942,8 +3944,8 @@ operator's static choice), Traffic split, Ratio.
 The pure decision core at `convex/delivery/ramp/` that answers, once per hour
 per cell, whether the ramp may advance. Pure and TOTAL — no clock, no database
 handle, no environment read, no randomness; the clock is a parameter — and the
-boundary is the directory, so "is `ramp/` pure?" has a yes/no answer a source
-level test enumerating the folder can enforce. The effectful shell lives
+boundary is the directory, so "is `ramp/` pure?" has a yes/no answer a
+source-level test enumerating the folder can enforce. The effectful shell lives
 outside it (`delivery/rampControllerCron.ts`): it loads inputs, calls the pure
 functions, writes the result and the audit row, and is bounded (a slice of the
 grid per tick, each cell in its own try/catch). Convex owns the decision
@@ -3987,8 +3989,9 @@ and its ABSENCE semantics as data. The families describe what a reading is
 ALLOWED TO DO, not how it was gathered. Every absence carries `isBlocking: false`
 by TYPE, so a source that blocked on its own absence could not be declared at
 all. Both the ramp's own five gates and the three provider reputation feeds
-(Microsoft SNDS, Yahoo CFL, Google Postmaster) are sources, and the gate
-aggregator folds the registry rather than naming modules. Deliberately not open
+(Microsoft SNDS, Yahoo CFL, Google Postmaster) are sources, and `SIGNAL_SOURCES`
+SPREADS the five from the same record the gate evaluation folds — so
+"registered" and "measured" cannot come apart the way two lists would let them. Deliberately not open
 to plugins yet: the registry is the seam, and opening it is its own piece on the
 day someone wants it.
 _Avoid_: Feed (names only the provider half), Sensor, Data source (vague about
