@@ -6,13 +6,8 @@ import { countWithPagination } from './pagination';
  * Increment the contact count for the instance.
  * Creates the instanceSettings document if it doesn't exist.
  */
-export async function incrementContactCount(
-	ctx: MutationCtx,
-	delta: number = 1
-): Promise<void> {
-	const settings = await ctx.db
-		.query('instanceSettings')
-		.first();
+export async function incrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	if (settings) {
 		await ctx.db.patch(settings._id, {
@@ -32,13 +27,8 @@ export async function incrementContactCount(
  * Decrement the contact count for the instance.
  * Ensures count never goes below 0.
  */
-export async function decrementContactCount(
-	ctx: MutationCtx,
-	delta: number = 1
-): Promise<void> {
-	const settings = await ctx.db
-		.query('instanceSettings')
-		.first();
+export async function decrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	if (settings) {
 		const newCount = Math.max(0, (settings.contactCount ?? 0) - delta);
@@ -55,12 +45,8 @@ export async function decrementContactCount(
  * Returns null if no cached count is available (fallback to pagination count needed).
  * Works in both queries and mutations.
  */
-export async function getCachedContactCount(
-	ctx: QueryCtx | MutationCtx
-): Promise<number | null> {
-	const settings = await ctx.db
-		.query('instanceSettings')
-		.first();
+export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promise<number | null> {
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	return settings?.contactCount ?? null;
 }
@@ -69,7 +55,7 @@ export async function getCachedContactCount(
  * Reconcile the cached contact count by doing a real count.
  * Corrects drift caused by partial failures or missed updates.
  *
- * Called by a daily cron (`reconcileAllContactCounts` / `reconcileContactCountInternal`).
+ * Called by the daily `reconcileAllContactCounts` cron.
  * Counts via a paginated stream (summing page lengths) instead of one full-table
  * collect, so the reconcile stays under the Convex per-query document-read limit
  * on large deployments. Counts only LIVE rows (`deletedAt === undefined`) to
@@ -87,12 +73,10 @@ export async function reconcileContactCount(
 		// `deletedAt === undefined` selects live rows. The generic index-range
 		// builder types values as `Value` (no `undefined`), so assert through it
 		// — Convex resolves an absent optional field to `undefined` at runtime.
-		(q) => q.eq('deletedAt', undefined as unknown as Value),
+		(q) => q.eq('deletedAt', undefined as unknown as Value)
 	);
 
-	const settings = await ctx.db
-		.query('instanceSettings')
-		.first();
+	const settings = await ctx.db.query('instanceSettings').first();
 
 	const previous = settings?.contactCount ?? null;
 	const corrected = previous !== actual;

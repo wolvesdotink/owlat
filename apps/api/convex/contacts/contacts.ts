@@ -720,17 +720,6 @@ export const listByTeam = internalQuery({
 // ==========================================
 
 /**
- * Reconcile cached contact count.
- * Called by daily cron to correct any drift.
- */
-export const reconcileContactCountInternal = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		return await reconcileContactCount(ctx);
-	},
-});
-
-/**
  * Reconcile contact counts.
  * Called by daily cron.
  */
