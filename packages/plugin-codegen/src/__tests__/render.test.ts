@@ -65,6 +65,7 @@ describe('composition rendering', () => {
 		expect(rendered.nuxt).toContain('void bundledPluginComposition;');
 		expect(rendered.components).toContain('void app;');
 		expect(rendered.sendTransportCatalog).toContain('Object.freeze([])');
+		expect(rendered.sendTransportWebCatalog).toBe(rendered.sendTransportCatalog);
 		expect(rendered.sendTransportModules).toContain("'use node';");
 		expect(rendered.sendTransportModules).toContain('Object.freeze([])');
 		expect(rendered.agentStepCatalog).toContain('Object.freeze([] as const)');

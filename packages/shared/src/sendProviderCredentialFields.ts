@@ -50,9 +50,9 @@
  * therefore land in the same `credentialFields` a core entry's do, and the
  * assignment is pinned at build time by
  * `apps/api/convex/lib/sendProviders/__tests__/credentialFieldVocabulary.test.ts`.
- * What P3.1 did NOT do is render them: no surface reads a plugin entry's form
- * yet, which is the seams plan's P3.3 (the fixture ESP that must render its
- * credentials form from descriptors).
+ * Plugin codegen emits the composed data-only catalog into `apps/web`, where the
+ * transport editor renders these descriptors and derives its env allowlist; the
+ * backend receives the byte-identical rendered catalog.
  *
  * One validator family is the point. A renderer that already knows how to draw a
  * plugin's `secret` field draws a core provider's the same way, and the two

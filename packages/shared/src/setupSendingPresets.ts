@@ -121,7 +121,17 @@ export interface TransportEnvPlan {
 	 * identity is pushed ONLY when the patch supplies it, so an omitted (blank)
 	 * From field leaves the current default untouched.
 	 */
-	changes: Array<[ProviderEnvKey, string]>;
+	changes: Array<[string, string]>;
+}
+
+export interface TransportEnvPlanOptions {
+	/**
+	 * Build-owned plugin credential keys, derived from the generated catalog by
+	 * the caller. This is host authority, never request data: it widens both the
+	 * patch allowlist and the clear-then-set set without letting a browser invent
+	 * an arbitrary environment variable.
+	 */
+	readonly additionalCredentialKeys?: readonly string[];
 }
 
 /**
@@ -129,7 +139,8 @@ export interface TransportEnvPlan {
  * (`existing`) and the provider-key `patch` the editor built with
  * `buildProviderEnv` (SET keys only).
  *
- *  - Only `PROVIDER_ENV_KEYS` may appear in the patch — any other key throws
+ *  - Only `PROVIDER_ENV_KEYS` plus build-owned plugin credential keys supplied
+ *    by the host may appear in the patch — any other key throws
  *    `UnexpectedTransportEnvKeyError`, so a browser request can never inject an
  *    unrelated env var such as `INSTANCE_SECRET`.
  *  - CREDENTIALS are clear-then-set: each is unset first (pushed as `''` live)
@@ -140,18 +151,23 @@ export interface TransportEnvPlan {
  */
 export function planTransportEnvChange(
 	existing: Record<string, string>,
-	patch: Record<string, string>
+	patch: Record<string, string>,
+	options: TransportEnvPlanOptions = {}
 ): TransportEnvPlan {
+	const ownedKeys = Object.freeze([
+		...new Set([...PROVIDER_ENV_KEYS, ...(options.additionalCredentialKeys ?? [])]),
+	]);
+	const ownedKeySet = new Set(ownedKeys);
 	for (const key of Object.keys(patch)) {
-		if (!(PROVIDER_ENV_KEYS as readonly string[]).includes(key)) {
+		if (!ownedKeySet.has(key)) {
 			throw new UnexpectedTransportEnvKeyError(key);
 		}
 	}
 
 	const merged: Record<string, string> = { ...existing };
-	const changes: Array<[ProviderEnvKey, string]> = [];
+	const changes: Array<[string, string]> = [];
 
-	for (const key of PROVIDER_ENV_KEYS) {
+	for (const key of ownedKeys) {
 		const supplied = patch[key];
 		if (isFromIdentityKey(key)) {
 			// Preserve on omission; only touch when the patch sets it.

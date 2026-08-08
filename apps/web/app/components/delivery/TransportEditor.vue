@@ -7,7 +7,8 @@ import {
 	validateEmailStep,
 } from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
-import { isCoreSendProviderKind, OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { isComposedSendProviderKind } from '~/utils/composedSendProviderCatalog';
 import {
 	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
 	applyTransportEnv,
@@ -68,13 +69,13 @@ const isEditing = ref(false);
 // seedable here without an edit, and an unknown/retired kind still falls back to
 // the own arm rather than to a transport this build cannot render fields for.
 function knownKind(kind: string | null): ProviderChoice {
-	return kind !== null && isCoreSendProviderKind(kind) ? kind : OWN_SEND_PROVIDER_KIND;
+	return kind !== null && isComposedSendProviderKind(kind) ? kind : OWN_SEND_PROVIDER_KIND;
 }
 
 // The SAME relay-credential draft the connection wizard's step 1 uses — one
 // provider list, one preset table, one live handshake, one env patch.
 const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
-const { provider, credentialValues, preset, presetOptions } = relay;
+const { provider, credentialValues, preset, presetOptions, requiredCredentialError } = relay;
 
 // Outbound TLS posture for the built-in MTA (direct-MX) is one of that entry's
 // credential fields, so it is seeded into the same map every other credential
@@ -129,7 +130,7 @@ const showErrors = computed(() => submitted.value);
  * question, and the two must not be able to answer it differently.
  */
 const credentialError = computed(() =>
-	showErrors.value ? credentialErrorFor(errors.value) : undefined
+	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
 );
 
 /**
@@ -140,7 +141,9 @@ const credentialError = computed(() =>
  * step gains must be classified there instead of silently gating this Apply
  * button on a field this screen does not render.
  */
-const isValid = computed(() => transportStepIsValid(draft.value));
+const isValid = computed(
+	() => transportStepIsValid(draft.value) && requiredCredentialError.value === undefined
+);
 
 // Whether a pre-apply handshake exists at all is the catalog's `setupProbe`
 // (absent ⇒ no cheap check, and the button is not offered).
@@ -208,7 +211,9 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	noteServerRefusal(null);
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
-		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
+		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation, {
+			...credentialValues,
+		});
 		if (!res.ok) {
 			// A FAIL-CLOSED REFUSAL IS NOT AN ERROR MESSAGE. The endpoint demands the
 			// phrase whenever it cannot establish that the removal is safe — which

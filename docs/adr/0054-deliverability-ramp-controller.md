@@ -240,8 +240,8 @@ One deliberate refinement of "insufficient data holds": an **optional** gate's
 still count in full). Optionality is a fixed property of the gate id
 (`OPTIONAL_RAMP_GATES`), consulted by the aggregator rather than trusted off a
 flag on the result, so a caller-supplied gate result cannot remove itself from
-the holding logic by mislabelling itself. That is rule 6 in one line: no absent
-external account may hold the ramp.
+the holding logic by mislabelling itself. That is decision 7 in one line: no
+absent external account may hold the ramp.
 
 Relatedly, a `fail` from a **tripwire** gate (`CORROBORATION_REQUIRED_RAMP_GATES`
 — seed placement, which is 5–10 mailboxes) is flagged `requiresCorroboration`
@@ -349,8 +349,9 @@ fewer table, no new retention sweep. It is not equivalent, for three reasons.
 
 Writing it in the enqueue transaction is what makes the row and the decision the
 same event. Denormalising `organizationId` onto the row is part of the same
-decision rather than a convenience: a cell-keyed table readable across tenants
-is a security defect, so every read is org-leading.
+decision rather than a convenience: a cell-keyed controller read that can cross
+tenants is a security defect, so those reads lead with the organization instead
+of recovering tenant scope through another table.
 
 **The plane is keyed by ARM, never by provider kind or instance.** Both tables
 carry `own | reference` and stop there — `sendAssignments` also records the

@@ -37,6 +37,20 @@ describe('planTransportEnvChange — allowlist', () => {
 			planTransportEnvChange({}, { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_x' })
 		).not.toThrow();
 	});
+
+	it('admits only host-supplied plugin keys and still rejects a neighbouring variable', () => {
+		const options = { additionalCredentialKeys: ['PLUGIN_MOCK_ESP_TOKEN'] } as const;
+		expect(() =>
+			planTransportEnvChange(
+				{},
+				{ EMAIL_PROVIDER: 'plugin.mock-esp.relay', PLUGIN_MOCK_ESP_TOKEN: 'tok-live' },
+				options
+			)
+		).not.toThrow();
+		expect(() => planTransportEnvChange({}, { PLUGIN_UNDECLARED_TOKEN: 'leak' }, options)).toThrow(
+			UnexpectedTransportEnvKeyError
+		);
+	});
 });
 
 describe('planTransportEnvChange — From identity is preserved on omission', () => {
@@ -105,5 +119,17 @@ describe('planTransportEnvChange — credentials are clear-then-set', () => {
 		expect(m.get('RESEND_API_KEY')).toBe('re_x');
 		// From identity untouched (omitted).
 		expect(merged['DEFAULT_FROM_EMAIL']).toBe('ops@acme.test');
+	});
+
+	it('clears a dropped plugin credential supplied by the host catalog', () => {
+		const { merged, changes } = planTransportEnvChange(
+			{ EMAIL_PROVIDER: 'plugin.mock-esp.relay', PLUGIN_MOCK_ESP_TOKEN: 'old-token' },
+			{ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_x' },
+			{ additionalCredentialKeys: ['PLUGIN_MOCK_ESP_TOKEN', 'PLUGIN_MOCK_ESP_TOKEN'] }
+		);
+		expect(merged['PLUGIN_MOCK_ESP_TOKEN']).toBeUndefined();
+		expect(changes.filter(([key]) => key === 'PLUGIN_MOCK_ESP_TOKEN')).toEqual([
+			['PLUGIN_MOCK_ESP_TOKEN', ''],
+		]);
 	});
 });

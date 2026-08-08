@@ -62,7 +62,7 @@ export default defineConfig({
 			// THERE IS NO `apps/web` ALIAS, and that is a choice rather than an
 			// omission: the web half of the proof needs Nuxt's auto-imports, which do
 			// not resolve under this config, so it is pinned in `apps/web`'s own suite
-			// (`app/composables/__tests__/pluginTransportCredentialGap.test.ts`). What
+			// (`app/composables/__tests__/pluginTransportCredentials.test.ts`). What
 			// this suite reads of the UI vocabulary it reads from `@owlat/shared`.
 			//
 			// THE ALIASES ARE NOT THE DEPENDENCY. `@owlat/api` and `@owlat/shared` are

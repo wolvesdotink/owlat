@@ -266,18 +266,14 @@ serves as the reference arm with correct arm attribution, receives feedback on
 its plugin route, verifies a sending domain and resolves a named instance, with
 no core edits.
 
-One clause of that claim is NOT yet true, and the conformance suite proves it
-false rather than skipping it: a plugin kind's **credential form does not
-render**. The descriptors exist — the fixture declares `credentialFields` in the
-shared vocabulary and the composed catalog carries them — but every `apps/web`
-surface resolves through `coreSendProviderCatalogEntry`, the core-only half in
-`packages/shared`, because the composed catalog is built from generated code in
-`apps/api` and `packages/` may not import app code. The gap is therefore
-structural, not an oversight, and it is pinned by a failing-if-fixed suite
-(`apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`) so
-the day someone closes it, the test that documents the gap is what tells them.
-Until then, a bundled plugin transport is configured by environment variables,
-exactly as a core kind's named instances are.
+That claim now includes the web half. Plugin codegen emits the same data-only
+transport catalog into `apps/api` and `apps/web`; the latter composes it with the
+shared core entries without either app importing through the other. The picker,
+generic credential renderer, required-field gate, env patch, server allowlist
+and capability-derived DNS guidance therefore all see a bundled plugin kind.
+`apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts` is the
+positive receipt, while the server and artifact-guard suites pin the fail-closed
+env-write boundary.
 
 ### Parity did not relax the custody refusal
 
@@ -314,7 +310,7 @@ set, as of this ADR, is nine:
 | `sendAssignments.transport` | `schema/sendAssignments.ts` | a `SendTransportKind`, pre-declared |
 | `sendingDomainRelayIdentities.providerKind` | `schema/relayIdentities.ts` | a `SendTransportKind` |
 | `pluginWebhookDeliveries.transportKind` | `schema/webhooks.ts` | a `plugin.<pluginId>.<localId>` kind only |
-| `webhookPayloads.source` | `schema/webhooks.ts` | an `InboundAdapter['source']` — WIDER than the send path |
+| `webhookPayloads.source` | `schema/webhooks.ts` | an inbound route source — WIDER than the send path |
 | `domains.providerType` | `schema/domains.ts` | a `SendingDomainProviderKind` — a CLOSED union, stored open |
 
 Two neighbours are deliberately NOT on that list, because they are not kinds:
@@ -325,10 +321,14 @@ and the `arm` columns on `sendAssignments` / `transportOutcomes` are closed
 than an extension point.
 
 The last two rows of the table are the ones a sweep gets wrong. A
-`webhookPayloads.source` is whatever inbound adapter accepted the request, which
-includes the CHANNEL adapters (`webhooks/adapters/twilio|meta|generic.ts`) that
-have nothing to do with sending mail; and `domains.providerType` is the one kind
-column whose union is deliberately closed to core kinds
+`webhookPayloads.source` names whichever inbound route accepted the request: an
+`InboundAdapter['source']` for built-in provider/channel adapters, or a
+namespaced transport kind for the plugin feedback route. It therefore includes
+CHANNEL adapters (`webhooks/adapters/twilio|meta|generic.ts`) that have nothing
+to do with sending mail. Built-in/channel adapters retain raw payloads unless
+they opt out; plugin transports retain them only when their manifest opts in.
+`domains.providerType`, meanwhile, is the one kind column whose union is
+deliberately closed to core kinds
 (`isSendingDomainProviderKind`), open `v.string()` at the database boundary for
 forward-compat only. A bundled plugin transport proves a domain through
 `sendingDomainRelayIdentities.providerKind`, never through `domains`, so a
@@ -347,10 +347,11 @@ named four core kinds plus the plugin shape, missing only Mandrill; and
 column had, in fact, been holding four sources it does not name (`mandrill`, and
 the three channel adapters) for as long as the shared pipeline has existed. (The
 two that re-listed nothing —
-`sendingDomainRelayIdentities.providerKind`, which cited its sibling columns, and
-`pluginWebhookDeliveries.transportKind`, which holds one shape — were touched
-only to name the type.) So a reader establishing what may legally land in any of
-the seven got the opposite of the policy below. A comment that restates a union rots
+`sendingDomainRelayIdentities.providerKind`, which cited its sibling columns,
+was touched only to name the type; `pluginWebhookDeliveries.transportKind`,
+which holds one shape, also had its attribution comment tightened.) So a reader
+establishing what may legally land in any of the seven got the opposite of the
+policy below. A comment that restates a union rots
 exactly as a second declaration does; this is recorded here as policy so no
 comment is the only witness again — and a duplicated comment rots twice, which is
 why the mutation argument that feeds `webhookPayloads.source`

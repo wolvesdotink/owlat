@@ -25,16 +25,20 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
-import {
-	coreSendProviderCatalogEntry,
-	isCoreSendProviderKind,
-	isOwnSendProviderKind,
-	type CoreSendProviderKind,
-} from '@owlat/shared/sendProviderCatalog';
+import { isOwnSendProviderKind, type SendTransportKind } from '@owlat/shared/sendProviderCatalog';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { buildMtaIdentityEnv, type MtaIdentityDraft } from '~/utils/setupMtaIdentity';
-import { credentialValuesFromDraft, transportCredentialEnv } from './setupWizardCredentials';
+import {
+	credentialValuesFromDraft,
+	transportCredentialEnv,
+	type TransportCredentialValues,
+} from './setupWizardCredentials';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
+import {
+	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
+	composedSendProviderCatalogEntry,
+	isComposedSendProviderKind,
+} from '~/utils/composedSendProviderCatalog';
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
@@ -85,7 +89,7 @@ export function setupStepPath(stepId: SetupStepId): string {
  * word and belongs to no provider: it means "no delivery transport at all",
  * which is a legal answer for a receive-only install and never a catalog entry.
  */
-export type ProviderChoice = CoreSendProviderKind | 'none';
+export type ProviderChoice = SendTransportKind | 'none';
 
 export interface AdminDraft {
 	email: string;
@@ -162,14 +166,17 @@ export interface EmailStepDraft {
  */
 export function buildProviderEnv(
 	existing: Record<string, string>,
-	draft: EmailStepDraft
+	draft: EmailStepDraft,
+	credentialValues: TransportCredentialValues = credentialValuesFromDraft(draft)
 ): Record<string, string> {
 	const next: Record<string, string> = { ...existing };
-	for (const key of PROVIDER_ENV_KEYS) delete next[key];
+	for (const key of [...PROVIDER_ENV_KEYS, ...COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS]) {
+		delete next[key];
+	}
 
-	if (isCoreSendProviderKind(draft.provider)) {
+	if (isComposedSendProviderKind(draft.provider)) {
 		next['EMAIL_PROVIDER'] = draft.provider;
-		Object.assign(next, transportCredentialEnv(draft.provider, credentialValuesFromDraft(draft)));
+		Object.assign(next, transportCredentialEnv(draft.provider, credentialValues));
 	}
 	// The sending IPs and the EHLO identity are the OWN ARM's — D3's one
 	// legitimate identity question, asked through the catalog's `tier: 'own'`
@@ -233,7 +240,7 @@ const OWN_ARM_REVIEW_LABEL = 'Owlat MTA (self-hosted)';
 
 function providerLabel(provider: ProviderChoice): string {
 	if (isOwnSendProviderKind(provider)) return OWN_ARM_REVIEW_LABEL;
-	return coreSendProviderCatalogEntry(provider)?.label ?? RECEIVE_ONLY_LABEL;
+	return composedSendProviderCatalogEntry(provider)?.label ?? RECEIVE_ONLY_LABEL;
 }
 
 /**
@@ -253,7 +260,7 @@ export function buildSetupSummary(
 	// transport this build does not carry — reads as no provider at all, which is
 	// the fail-closed answer the launch gate below depends on.
 	const rawProvider = env['EMAIL_PROVIDER'];
-	const provider: ProviderChoice = isCoreSendProviderKind(rawProvider) ? rawProvider : 'none';
+	const provider: ProviderChoice = isComposedSendProviderKind(rawProvider) ? rawProvider : 'none';
 
 	const fromEmail = env['DEFAULT_FROM_EMAIL'];
 	const fromName = env['DEFAULT_FROM_NAME'];

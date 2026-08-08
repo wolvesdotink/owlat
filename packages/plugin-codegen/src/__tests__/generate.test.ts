@@ -196,6 +196,7 @@ describe('generated composition freshness', () => {
 		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
 		const nuxtPath = join(root, 'apps/web/app/plugins/plugin-composition.generated.ts');
 		const catalogPath = join(root, 'apps/api/convex/plugins/sendTransportCatalog.generated.ts');
+		const webCatalogPath = join(root, 'apps/web/app/generated/sendTransportCatalog.generated.ts');
 		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
 		const agentCatalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
 		const agentModulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
@@ -227,6 +228,7 @@ describe('generated composition freshness', () => {
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
 		expect(await readFile(catalogPath, 'utf8')).toContain('Object.freeze([])');
+		expect(await readFile(webCatalogPath, 'utf8')).toBe(await readFile(catalogPath, 'utf8'));
 		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
 		expect(await readFile(agentCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(agentModulesPath, 'utf8')).toContain("'use node';");
@@ -442,6 +444,7 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/components.generated.ts',
 				'apps/web/app/plugins/plugin-composition.generated.ts',
 				'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+				'apps/web/app/generated/sendTransportCatalog.generated.ts',
 				'apps/api/convex/plugins/sendTransportModules.generated.ts',
 				'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
 				'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',

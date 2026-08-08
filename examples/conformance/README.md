@@ -59,23 +59,12 @@ rather than three unrelated demos.
   the above runs against code that has never heard of it, and the two test files
   that ARE allowed to know are named and bound to the composed kind.
 
-  **Two of the card's obligations are not met as written, and neither is edited
-  around.**
+  The credentials-UI obligation is closed by the generated web catalog and
+  `pluginTransportCredentials.test.ts`: the same rendered descriptors reach the
+  picker, required-field gate, env patch and server allowlist. One older
+  obligation is superseded rather than missing:
 
-  1. _The credentials UI._ A real gap, and the reason the Wave-3 gate must not
-     record A4 as met on this suite alone. The plugin's half is complete; the
-     host's is not, because every `apps/web` surface resolves a kind through the
-     core-only `coreSendProviderCatalogEntry` while the composed catalog is an
-     `apps/api` artifact. Closing it needs a card of its own — a composed-catalog
-     view for `apps/web`, in the spirit of P1.2, which has already shipped — and
-     until it lands the gap is pinned at the surface that owes it, in
-     `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`.
-     That file's header is the full account — the one asymmetry, the four call
-     sites it blocks, the owning card, and the "A4 is not met until this lands"
-     line for the wave gate — so a reader of a clone needs nothing else. A green
-     run there is what the absence of the capability looks like, so the gate must
-     not read the clause off its exit code.
-  2. _Return-path probes._ Superseded rather than missing: P3.1 made
+  1. _Return-path probes._ P3.1 made
      `supportsCustomReturnPath: 'no'` the only value this tier may declare, so a
      plugin kind is unprobeable by construction and the obligation is discharged
      as "the fold reads the declaration and the sweep excludes the kind". The

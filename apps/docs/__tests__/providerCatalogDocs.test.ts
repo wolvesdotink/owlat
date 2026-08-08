@@ -426,6 +426,26 @@ describe('the environment-variables reference documents every provider the catal
 			expect(row!, `the reference row omits ${entry.kind}`).toContain(`\`${entry.kind}\``);
 		}
 	});
+
+	it('carries every catalog-declared variable into the complete reference', () => {
+		// The provider-selection table above is the concise setup index. The complete
+		// reference is the place an operator expects the per-variable definition, so
+		// pin the handoff as well: otherwise both catalog-facing tables can stay green
+		// while the supposedly complete table silently drops a newly declared key.
+		const completeReference = section(envVars, '## Complete Reference');
+		const documented = new Set(
+			completeReference
+				.split('\n')
+				.filter((line) => line.startsWith('| `'))
+				.flatMap((line) => envVarSpans(rowCells(line)[0] ?? ''))
+		);
+
+		for (const entry of entries) {
+			for (const variable of [...entry.requiredEnvVars, ...(entry.optionalEnvVars ?? [])]) {
+				expect(documented, `${entry.kind} / ${variable}`).toContain(variable);
+			}
+		}
+	});
 });
 
 /**

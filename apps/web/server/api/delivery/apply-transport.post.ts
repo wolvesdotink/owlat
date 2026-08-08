@@ -9,8 +9,9 @@
  * `buildProviderEnv` (so the editor and the wizard produce byte-identical env),
  * containing ONLY the keys that should be SET. This endpoint:
  *
- *   1. Rejects any key outside `PROVIDER_ENV_KEYS` — a transport change can
- *      never inject an unrelated env var (e.g. `INSTANCE_SECRET`).
+ *   1. Rejects any key outside the core allowlist plus this build's generated
+ *      plugin credential descriptors — a transport change can never inject an
+ *      unrelated env var (e.g. `INSTANCE_SECRET`).
  *   2. Pushes the change into the Convex deployment's env store (the live source
  *      the send path reads via `getOptional`), setting supplied CREDENTIALS and
  *      CLEARING dropped ones — so flipping provider leaves no stale credential
@@ -50,7 +51,6 @@ import {
 	UnexpectedTransportEnvKeyError,
 	type TransportEnvPlan,
 } from '@owlat/shared/setupSendingPresets';
-import { isDeliveryProviderKind } from '@owlat/shared/featureFlags';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { deriveConvexAdminUrl, pushConvexRuntimeEnv } from '@owlat/shared/convexRuntimeEnv';
@@ -64,6 +64,10 @@ import type { FunctionReturnType } from 'convex/server';
 import type { ConvexHttpClient } from 'convex/browser';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
 import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
+import {
+	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
+	isComposedSendProviderKind,
+} from '~/utils/composedSendProviderCatalog';
 
 interface ApplyBody {
 	/** The provider-key patch from the wizard's `buildProviderEnv` — SET keys only. */
@@ -206,10 +210,8 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	// A named provider must be a real delivery kind. `none`/receive-only simply
 	// omits EMAIL_PROVIDER (the send path fails-closed), which is allowed.
 	const chosen = patch['EMAIL_PROVIDER'];
-	if (chosen !== undefined && !isDeliveryProviderKind(chosen)) {
-		return refuse(
-			`"${chosen}" is not a delivery provider. Choose your own MTA, Resend, Amazon SES, or an SMTP relay.`
-		);
+	if (chosen !== undefined && !isComposedSendProviderKind(chosen)) {
+		return refuse(`"${chosen}" is not a delivery provider in this build.`);
 	}
 
 	const envPath = resolve(OWLAT_DIR, '.env');
@@ -227,7 +229,9 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	// blank must never wipe DEFAULT_FROM_EMAIL/DEFAULT_FROM_NAME.
 	let plan: TransportEnvPlan;
 	try {
-		plan = planTransportEnvChange(existing, patch);
+		plan = planTransportEnvChange(existing, patch, {
+			additionalCredentialKeys: COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
+		});
 	} catch (e) {
 		if (e instanceof UnexpectedTransportEnvKeyError) {
 			throw createError({ statusCode: 400, message: e.message });

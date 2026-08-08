@@ -31,29 +31,17 @@
  *
  * WHAT REMAINS HERE IS THE FIXTURE'S OWN: the recorded attempt log the dispatch
  * cases read (the scaffolded subject has a stubbed `fetch` instead), the exact
- * wire values its manifest declares, the author-prose round trip, the web-gap
- * finding, and the bindings to the two hand-written copies of this fixture that
+ * wire values its manifest declares, the author-prose round trip, and the
+ * bindings to the hand-written copies of this fixture that
  * live in other packages.
  *
- * TWO OF THE CARD'S OBLIGATIONS ARE NOT MET AS WRITTEN, and finding that is this
- * piece's job rather than a shortfall of it. Neither is edited around here.
+ * THE CREDENTIALS UI OBLIGATION is closed at its owning surface by
+ * `apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts`. Plugin
+ * codegen emits the same catalog data into web and API, so the picker, renderer,
+ * required-field gate, env patch and server allowlist all consume the composed
+ * descriptor without learning this fixture's name.
  *
- *   1. THE CREDENTIALS UI (plan A4, "renders its credentials UI") — a real gap.
- *      The form is complete on the PLUGIN's side, but no `apps/web` surface can
- *      reach it: every web lookup resolves a kind through
- *      `coreSendProviderCatalogEntry` and the editor lists `SEND_TRANSPORT_KINDS`,
- *      both core-only, because the composed plugin catalog is an `apps/api`
- *      artifact. The gap is pinned AT THE WEB SURFACE, in
- *      `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`,
- *      so any shape of closure — a fallback inside `credentialFieldsFor` or a new
- *      composed view feeding it — turns that suite red. Closing it needs a card
- *      of its own (a composed-catalog view for `apps/web`; P1.2, the piece that
- *      would have owned it, has shipped), not an edit this proof may make. That
- *      suite's header carries the whole account — the asymmetry, the four blocked
- *      call sites, the owning card and the line "A4 is not met until this lands" —
- *      so nothing outside the repository has to be fetched to read it.
- *
- *   2. RETURN-PATH PROBES (plan §5's P3.3 obligation list) — SUPERSEDED, not a
+ * RETURN-PATH PROBES (plan §5's P3.3 obligation list) are SUPERSEDED, not a
  *      gap. P3.1 gave this tier `supportsCustomReturnPath: 'no'` as its only
  *      value, because the VERP local part a probe would measure is signed with a
  *      deployment secret a third-party module is never handed. So a plugin kind
@@ -301,15 +289,15 @@ describeSendProviderConformance({
 	},
 });
 
-describe('the bundle composes to the exact kind two other packages spell', () => {
+describe('the bundle composes to the exact kind its host fixtures spell', () => {
 	// THE LITERAL, spelled once. The fixture BUILDS its kind through the grammar's
 	// single builder (the rule `namespacedKindGrammar.test.ts` owns), so nothing
 	// here re-checks the grammar — what this pins is the resulting string, because
-	// two files outside this package spell it by hand: the ramp fixture in
-	// `apps/api` and the web-gap pin in `apps/web`. Renaming the plugin id or the
-	// transport's local id has to fail HERE, where the rename is visible, rather
-	// than leaving those two measuring a kind nothing composes.
-	it('composes to the exact kind the two out-of-package fixtures spell', () => {
+	// host fixtures outside this package spell it by hand across the API, web and
+	// shared packages. Renaming the plugin id or the transport's local id has to
+	// fail HERE, where the rename is visible, rather than leaving those fixtures
+	// measuring a kind nothing composes.
+	it('composes to the exact kind the out-of-package fixtures spell', () => {
 		expect(MOCK_ESP_KIND).toBe('plugin.mock-esp.relay');
 	});
 });
@@ -596,31 +584,25 @@ describe('its credentials form is a descriptor set the UI vocabulary can draw', 
 	});
 
 	/**
-	 * THE GAP THIS PIECE FOUND, STATED WHERE ITS ARCHITECTURE IS.
+	 * THE COMPOSITION BOUNDARY, STATED WHERE ITS ARCHITECTURE IS.
 	 *
 	 * Everything above is the PLUGIN's half of D5 and it is complete: the bundle
 	 * ships a form in the vocabulary `TransportCredentialFields.vue` draws, joined
-	 * to the variables its sends read. The HOST's half is not, and the shape of the
-	 * shortfall is exactly this asymmetry: the BACKEND's lookup composes both
-	 * tiers, while the lookup every `apps/web` surface reaches for is core-only by
-	 * construction and by name. So a plugin transport renders no form today — not
-	 * because the renderer knows about providers (it does not) but because the
-	 * descriptors never reach it.
+	 * to the variables its sends read. Shared deliberately stays core-only; plugin
+	 * codegen now emits the same composed data-only catalog into web and API, so
+	 * each package gets the concrete build without importing through the other.
 	 *
 	 * THE BEHAVIOURAL PIN IS AT THE WEB SURFACE, not here:
-	 * `apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`
+	 * `apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts`
 	 * drives `credentialFieldsFor` / `seedCredentialValues` /
 	 * `transportCredentialEnv` — the three functions the wizard and the editor
-	 * actually call — and turns red on ANY shape of closure, including a fallback
-	 * added inside `credentialFieldsFor` that would leave a source-text pin here
-	 * green forever. This case asserts only the architectural fact that explains
-	 * it, which is the fact this package can see.
+	 * actually call. This case asserts the complementary architectural fact that
+	 * shared itself still does not absorb a concrete plugin build.
 	 */
-	it('is composed for the backend and invisible to the shared, core-only view', () => {
+	it('leaves the shared catalog core-only', () => {
 		// The composed half is asserted by the shared body ("is served by the shipped
 		// catalog as the entry composition produced"); what this adds is the other
-		// side of the asymmetry — the core-only view every `apps/web` surface reaches
-		// for does not answer for this kind.
+		// side of the package boundary — shared does not answer for this kind.
 		expect(coreSendProviderCatalogEntry(MOCK_ESP_KIND)).toBeUndefined();
 	});
 });
@@ -630,13 +612,19 @@ describe('none of it required a core edit', () => {
 	 * THE HEADLINE CLAIM, ASSERTED. Everything above runs against shipped modules;
 	 * this checks that no PRODUCTION file learned the fixture exists.
 	 *
-	 * Two test files under `apps/` are exempt and named, because each proves a half
-	 * of this proof that cannot live in this package: the ramp fixture needs a
-	 * Convex database, and the credentials-gap pin needs `apps/web`'s own module
-	 * graph. `--untracked` so a file added in this working tree counts.
+	 * Five test files under `apps/` / `packages/` are exempt and named, because they prove
+	 * parts of this proof that cannot live in this package: the ramp fixture needs a
+	 * Convex database, while the credential and artifact guards need `apps/web`'s own
+	 * module graph. `--untracked` so a file added in this working tree counts.
 	 */
 	const RAMP_FIXTURE = 'apps/api/convex/delivery/ramp/__tests__/pluginReferenceArm.test.ts';
-	const WEB_GAP_PIN = 'apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts';
+	const WEB_CREDENTIAL_PROOF =
+		'apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts';
+	const WEB_CATALOG_GUARD_PROOF =
+		'apps/web/app/utils/__tests__/composedSendProviderCatalog.test.ts';
+	const WEB_SERVER_ALLOWLIST_PROOF =
+		'apps/web/server/api/delivery/__tests__/apply-transport.test.ts';
+	const SHARED_ENV_PLAN_PROOF = 'packages/shared/src/__tests__/transportEnvPlan.test.ts';
 
 	it('leaves every non-test file under apps/ and packages/ ignorant of the fixture', () => {
 		// The search itself lives in `../repository`, because the scaffold gate makes
@@ -646,8 +634,16 @@ describe('none of it required a core edit', () => {
 		const hits = repositoryFilesMentioning([MOCK_ESP_PLUGIN_ID, MOCK_ESP_PACKAGE_NAME]);
 
 		expect(hits.filter((path) => !path.includes('/__tests__/'))).toEqual([]);
-		// And the two test files that ARE allowed to know.
-		expect([...hits].sort()).toEqual([RAMP_FIXTURE, WEB_GAP_PIN]);
+		// And the five test files that ARE allowed to know.
+		expect([...hits].sort()).toEqual(
+			[
+				RAMP_FIXTURE,
+				WEB_CREDENTIAL_PROOF,
+				WEB_CATALOG_GUARD_PROOF,
+				WEB_SERVER_ALLOWLIST_PROOF,
+				SHARED_ENV_PLAN_PROOF,
+			].sort()
+		);
 	});
 
 	/**
@@ -666,7 +662,13 @@ describe('none of it required a core edit', () => {
 	 * datum in that copy rather than a chosen subset of it, so "the mock is what
 	 * composition produces" is checked rather than asserted in a comment.
 	 */
-	it.each([[RAMP_FIXTURE], [WEB_GAP_PIN]])('binds %s to the composed kind', (path) => {
+	it.each([
+		[RAMP_FIXTURE],
+		[WEB_CREDENTIAL_PROOF],
+		[WEB_CATALOG_GUARD_PROOF],
+		[WEB_SERVER_ALLOWLIST_PROOF],
+		[SHARED_ENV_PLAN_PROOF],
+	])('binds %s to the composed kind', (path) => {
 		const source = readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8');
 		expect(source).toContain(MOCK_ESP_KIND);
 	});

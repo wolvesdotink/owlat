@@ -42,13 +42,13 @@
  */
 
 import {
-	coreSendProviderCatalogEntry,
 	type SendProviderCredentialField,
 	type SendProviderHostPortField,
 	type SmtpRelayPreset,
 	type TransportCredentialEnvKey,
 } from '@owlat/shared/sendProviderCatalog';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
+import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCatalog';
 import type { EmailStepDraft } from './useSetupWizard';
 
 /**
@@ -63,7 +63,20 @@ export type TransportCredentialValues = Record<string, string>;
 export function credentialFieldsFor(
 	kind: string | null | undefined
 ): readonly SendProviderCredentialField[] {
-	return coreSendProviderCatalogEntry(kind ?? undefined)?.credentialFields ?? [];
+	return composedSendProviderCatalogEntry(kind ?? undefined)?.credentialFields ?? [];
+}
+
+/** The first missing required credential, phrased for a generic form. */
+export function requiredCredentialError(
+	kind: string | null | undefined,
+	values: TransportCredentialValues
+): string | undefined {
+	for (const field of credentialFieldsFor(kind)) {
+		if (field.required === true && (values[field.envVar] ?? '').trim() === '') {
+			return `Enter ${field.label.toLowerCase()}.`;
+		}
+	}
+	return undefined;
 }
 
 /**

@@ -48,8 +48,15 @@ import TransportCredentialFields from './TransportCredentialFields.vue';
 const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 
 const relay = useRelayCredentialDraft('resend');
-const { provider, credentialValues, preset, presetOptions, enteredSecrets, canValidateLive } =
-	relay;
+const {
+	provider,
+	credentialValues,
+	preset,
+	presetOptions,
+	enteredSecrets,
+	canValidateLive,
+	requiredCredentialError,
+} = relay;
 
 const providerOptions = RELAY_PROVIDER_OPTIONS;
 
@@ -71,7 +78,7 @@ const showErrors = computed(() => submitted.value);
  * neither screen can be left announcing a key the other has learned about.
  */
 const credentialFieldError = computed(() =>
-	showErrors.value ? credentialErrorFor(errors.value) : undefined
+	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
 );
 const credentialError = ref('');
 const restartNotice = ref('');
@@ -97,7 +104,7 @@ async function applyCredentials() {
 	credentialError.value = '';
 	restartNotice.value = '';
 	validationResult.value = null;
-	if (!emailStepIsValid(draft.value)) return;
+	if (!emailStepIsValid(draft.value) || requiredCredentialError.value !== undefined) return;
 	applying.value = true;
 	try {
 		// The SHIPPED pre-apply handshake first (Resend and SMTP have one), so a bad
@@ -111,7 +118,7 @@ async function applyCredentials() {
 				return;
 			}
 		}
-		const res = await applyTransportEnv(draft.value);
+		const res = await applyTransportEnv(draft.value, undefined, { ...credentialValues });
 		if (!res.ok) {
 			fail(res.message);
 			return;

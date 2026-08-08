@@ -34,6 +34,7 @@ export interface GeneratedPluginComposition {
 	readonly components: string;
 	readonly nuxt: string;
 	readonly sendTransportCatalog: string;
+	readonly sendTransportWebCatalog: string;
 	readonly sendTransportModules: string;
 	readonly sendTransportWebhookCatalog: string;
 	readonly sendTransportWebhookModules: string;
@@ -62,8 +63,8 @@ export interface GeneratedPluginComposition {
  * Every file codegen emits, as ONE table: artifact key -> repository path.
  *
  * The output set used to be spelled out three times — the fields of
- * `GeneratedPluginComposition`, twenty-two `*_OUTPUT_PATH` constants, and
- * twenty-two `{ path, source }` target entries — so adding one registry meant
+ * `GeneratedPluginComposition`, one path constant per output, and the same
+ * number of `{ path, source }` target entries — so adding one registry meant
  * six coordinated edits across two files and forgetting one silently dropped a
  * file from both the writer and the `--check` staleness gate. Typing this as a
  * `Record` over the composition's own keys makes the compiler demand a path for
@@ -75,6 +76,7 @@ export const GENERATED_ARTIFACT_PATHS: Readonly<Record<keyof GeneratedPluginComp
 		components: 'apps/api/convex/plugins/components.generated.ts',
 		nuxt: 'apps/web/app/plugins/plugin-composition.generated.ts',
 		sendTransportCatalog: 'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+		sendTransportWebCatalog: 'apps/web/app/generated/sendTransportCatalog.generated.ts',
 		sendTransportModules: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
 		sendTransportWebhookCatalog: 'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
 		sendTransportWebhookModules: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
@@ -141,11 +143,16 @@ export function renderPluginComposition(
 		: 'export const bundledPluginComposition = composeBundledPlugins([]);\n';
 	const shared = `${GENERATED_HEADER}import { composeBundledPlugins } from '@owlat/plugin-host';\n${imports}${imports ? '\n' : ''}\n${composition}`;
 
+	const sendTransportCatalog = renderSendTransportCatalog(plugins);
 	return Object.freeze({
 		convex: shared,
 		components: renderConvexComponents(plugins),
 		nuxt: `${shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
-		sendTransportCatalog: renderSendTransportCatalog(plugins),
+		sendTransportCatalog,
+		// The same data-only artifact in the browser's package. Web must not reach
+		// across the package boundary into `apps/api`, and rendering this twice from
+		// one value makes the backend and credential UI views byte-identical.
+		sendTransportWebCatalog: sendTransportCatalog,
 		sendTransportModules: renderSendTransportModules(plugins),
 		sendTransportWebhookCatalog: renderSendTransportWebhookCatalog(plugins),
 		sendTransportWebhookModules: renderSendTransportWebhookModules(plugins),

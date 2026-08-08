@@ -25,10 +25,7 @@
 
 import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
-	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	OWN_SEND_PROVIDER_KIND,
-	SEND_TRANSPORT_KINDS,
-	coreSendProviderCatalogEntry,
 	isOwnSendProviderKind,
 	type OwnSendProviderKind,
 	type SendProviderHostPortField,
@@ -39,6 +36,7 @@ import {
 	hostPortFieldFor,
 	seedCredentialValues,
 	secretEnvKeys,
+	requiredCredentialError,
 	type DraftCredentials,
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
@@ -48,6 +46,11 @@ import {
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import {
+	COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES,
+	COMPOSED_SEND_TRANSPORT_KINDS,
+	composedSendProviderCatalogEntry,
+} from '~/utils/composedSendProviderCatalog';
 
 /**
  * The transports you CONNECT: every catalog kind except the own arm (D3's one
@@ -120,16 +123,19 @@ const TRANSPORT_PICKER_COPY: readonly {
 /** The catalog's kinds, ordered by the copy table above and then by the catalog. */
 function pickerOrderedKinds(): readonly string[] {
 	const copyOrder = TRANSPORT_PICKER_COPY.map((row) => row.kind).filter((kind) =>
-		SEND_TRANSPORT_KINDS.includes(kind as never)
+		COMPOSED_SEND_TRANSPORT_KINDS.includes(kind as never)
 	);
-	return [...copyOrder, ...SEND_TRANSPORT_KINDS.filter((kind) => !copyOrder.includes(kind))];
+	return [
+		...copyOrder,
+		...COMPOSED_SEND_TRANSPORT_KINDS.filter((kind) => !copyOrder.includes(kind)),
+	];
 }
 
 function pickerOption(kind: string): RelayProviderOption {
 	const copy = TRANSPORT_PICKER_COPY.find((row) => row.kind === kind);
 	return {
 		value: kind as RelayProviderChoice,
-		label: copy?.label ?? coreSendProviderCatalogEntry(kind)?.label ?? kind,
+		label: copy?.label ?? composedSendProviderCatalogEntry(kind)?.label ?? kind,
 		hint: copy?.hint ?? '',
 		icon: copy?.icon ?? 'lucide:send',
 	};
@@ -262,6 +268,8 @@ export interface RelayCredentialDraft {
 	readonly enteredSecrets: ComputedRef<string[]>;
 	/** True only for a kind whose catalog entry declares a pre-apply probe. */
 	readonly canValidateLive: ComputedRef<boolean>;
+	/** Missing required descriptor value, for every core or plugin transport. */
+	readonly requiredCredentialError: ComputedRef<string | undefined>;
 	clearEnteredSecrets(): void;
 	/** The shipped live handshake, or null when this kind has none. */
 	validateLive(): Promise<ValidateTransportResponse | null>;
@@ -270,7 +278,7 @@ export interface RelayCredentialDraft {
 /** The blank form for every kind at once, so switching provider keeps input. */
 function seedAllCredentialValues(): TransportCredentialValues {
 	const values: TransportCredentialValues = {};
-	for (const entry of CORE_SEND_PROVIDER_CATALOG_ENTRIES) {
+	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
 		Object.assign(values, seedCredentialValues(entry.kind));
 	}
 	return values;
@@ -278,7 +286,7 @@ function seedAllCredentialValues(): TransportCredentialValues {
 
 /** The preset a `host-port` field starts on: the first the descriptor offers. */
 function seedPreset(): SmtpPreset {
-	for (const entry of CORE_SEND_PROVIDER_CATALOG_ENTRIES) {
+	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
 		const field = hostPortFieldFor(entry.kind);
 		const preset = field === undefined ? undefined : firstPreset(field);
 		if (preset !== undefined) return preset.key;
@@ -319,11 +327,16 @@ export function useRelayCredentialDraft(
 	// Every `secret` field the catalog declares, across every kind: the draft can
 	// hold a key for a provider the operator moved away from, and the redaction
 	// list has to cover it.
-	const secretKeys = secretEnvKeys(CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind));
+	const secretKeys = secretEnvKeys(
+		COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind)
+	);
 
 	const enteredSecrets = computed(() => secretKeys.map((key) => credentialValues[key] ?? ''));
 
-	const activeProbe = computed(() => coreSendProviderCatalogEntry(provider.value)?.setupProbe);
+	const activeProbe = computed(() => composedSendProviderCatalogEntry(provider.value)?.setupProbe);
+	const missingRequiredCredential = computed(() =>
+		requiredCredentialError(provider.value, credentialValues)
+	);
 
 	const canValidateLive = computed(
 		() => probeRequestBuilder(activeProbe.value?.validator) !== undefined
@@ -353,6 +366,7 @@ export function useRelayCredentialDraft(
 		credentialFields,
 		enteredSecrets,
 		canValidateLive,
+		requiredCredentialError: missingRequiredCredential,
 		clearEnteredSecrets,
 		validateLive,
 	};
@@ -370,11 +384,12 @@ export function useRelayCredentialDraft(
  */
 export async function applyTransportEnv(
 	draft: EmailStepDraft,
-	relayRemovalConfirmation?: string
+	relayRemovalConfirmation?: string,
+	credentialValues?: TransportCredentialValues
 ): Promise<ApplyTransportResponse> {
 	// An empty base, so only the transport keys are sent; the backend allowlists
 	// and clears the rest.
-	const providerEnv = buildProviderEnv({}, draft);
+	const providerEnv = buildProviderEnv({}, draft, credentialValues);
 	return await $fetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
 		method: 'POST',
 		body: { providerEnv, relayRemovalConfirmation },

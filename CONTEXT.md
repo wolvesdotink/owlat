@@ -3120,14 +3120,13 @@ written out separately there under `relay-identity-panel`, for the kind literal
 the ratchet cannot see. Until that follow-up lands, a sixth core kind still
 needs those two wizard pages edited by hand.
 
-Second known gap, pinned by
-`apps/web/app/composables/__tests__/pluginTransportCredentialGap.test.ts`: a
-BUNDLED PLUGIN transport's descriptors never reach the web layer. Every
-`apps/web` surface resolves through `coreSendProviderCatalogEntry`, the
-core-only half in `packages/shared`, because the composed catalog is built from
-generated code in `apps/api` and `packages/` may not import app code. The
-descriptors exist and do not arrive; a plugin transport is configured by
-environment variables until that is closed.
+A BUNDLED PLUGIN transport reaches those generic surfaces through a generated,
+data-only catalog emitted byte-identically into `apps/api` and `apps/web`. The
+web transport picker, credential renderer, required-field gate, env patch,
+server allowlist and DNS guidance all consume the composed web view; shared
+stays core-only and neither app imports through the other. The positive receipt
+is `apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts`, with
+artifact and server-allowlist guards beside it.
 _Avoid_: Credential schema (Schema is taken by the Convex schema and by the
 plugin `settingsSchema`), Provider form (names the rendering, not the
 declaration), Credential field (without "descriptor" it reads as the value).
@@ -3986,18 +3985,19 @@ one of the two).
 **Own share**:
 The controlled variable in a deployment that has a reference transport: `s`, the
 fraction of a cell's mail routed to the own arm, in `[0, 1]`. An UNMANAGED cell
-resolves to 1.0 — shipped routing puts the mail on the own MTA — so the ramp
-does not start a migration from zero, it CUTS: enrolling a cell on the ESP path
-opens it at its stream's `initialShareFraction` (`RAMP_STREAM_CONFIGS` in
-`ramp/gateConfig.ts`) — `campaign` 2%, `automation` 5%, `transactional` 0% — a
-measured sliver on the own MTA with the rest handed to the relay, walked back up
-from there by the **Ramp controller**. (Enrolling on the standalone path opens
-at 1 instead: there is no second sender to hold a share back for, and the dial
-that ramps is the pace multiplier.) A share is a measurement
-outcome, not a setting the controller reads back: an operator can pause a cell,
-pin its share or force one advance, and each of those is an OVERRIDE the ladder
-answers at its top rung (a pin holds in both directions) rather than an input to
-the arithmetic below.
+has no per-stream `ownShare`; routing therefore resolves the legacy streamless
+state: 0 while its shipped emergency fallback is active, otherwise 1. The ramp
+does not start a healthy migration from zero, it CUTS: enrolling a cell on the
+ESP path opens it at its stream's `initialShareFraction` (`RAMP_STREAM_CONFIGS`
+in `ramp/gateConfig.ts`) — `campaign` 2%, `automation` 5%, `transactional` 0% —
+a measured sliver on the own MTA with the rest handed to the relay, walked back
+up from there by the **Ramp controller**. (Enrolling on the standalone path
+opens at 1 instead: there is no second sender to hold a share back for, and the
+dial that ramps is the pace multiplier.) A share is a measurement outcome, not
+a setting the controller reads back: an operator can pause a cell, pin its share
+or force one advance, and each of those is an OVERRIDE the ladder answers at its
+top rung (a pin holds in both directions) rather than an input to the arithmetic
+below.
 _Avoid_: Weight (taken by the `workload_split` route strategy, which is an
 operator's static choice), Traffic split, Ratio.
 

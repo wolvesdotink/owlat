@@ -23,11 +23,11 @@
 
 import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
 import {
-	coreSendProviderCatalogEntry,
 	domainVerificationOf,
 	type SendProviderCatalogEntryShape,
 } from '@owlat/shared/sendProviderCatalog';
 import { transportKindLabel } from '~/utils/transportState';
+import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCatalog';
 
 export interface TransportDnsGuidance {
 	/** The transport's name, as the delivery surface words it. */
@@ -143,7 +143,9 @@ const GUIDANCE: Partial<Record<DeliveryProviderKind, Guidance>> = {
  */
 export function transportDnsGuidance(
 	kind: string | null | undefined,
-	entry: SendProviderCatalogEntryShape | undefined = coreSendProviderCatalogEntry(kind ?? undefined)
+	entry: SendProviderCatalogEntryShape | undefined = composedSendProviderCatalogEntry(
+		kind ?? undefined
+	)
 ): TransportDnsGuidance | null {
 	if (entry === undefined) return null;
 	const declared = isDeliveryProviderKind(entry.kind);
