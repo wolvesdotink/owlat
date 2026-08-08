@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
@@ -8,6 +8,7 @@ import {
 	codeSpans,
 	columnIndex,
 	envVarSpans,
+	rowCells,
 	section,
 	tableHeader,
 	tableRows,
@@ -27,10 +28,14 @@ import {
  * was invisible on the page that tells you how to configure it.
  *
  * The relationship this suite enforces is a SUPERSET, in one direction: the docs
- * may say more than the catalog (SES's SNS variables are read by its feedback
- * path, not by the transport, so the catalog rightly does not gate sending on
- * them) and may never say less. A kind, a required variable or a whole provider
- * that exists in code and not on the page is a failure here.
+ * may say more than the catalog and may never say less. `SES_SNS_TOPIC_ARN` is
+ * the standing example of "more" — it is read by SES's feedback VERIFIER alone
+ * (`webhooks/adapters/ses.ts`), never on the send path and never as a signing
+ * key, so no catalog field describes it while the reference still has to. (Its
+ * neighbour `SES_CONFIGURATION_SET` is not that case and no longer documented as
+ * one: the transport reads it on every send, so the entry declares it optional.)
+ * A kind, a required variable or a whole provider that exists in code and not on
+ * the page is a failure here.
  *
  * WHY THIS SUITE IMPORTS THE CATALOG WHILE ITS SIBLING PARSES IT.
  * `providerCapabilityDocs` pins the capability TABLE cell by cell and reads the
@@ -64,25 +69,88 @@ const entries: readonly SendProviderCatalogEntryShape[] = CORE_SEND_PROVIDER_CAT
 // a markdown change fails the wrong suite.
 
 /**
- * Does this line claim something is required WITHOUT saying what for?
+ * The words that name a PROVIDER rather than a condition — the kinds and the
+ * words of their labels, off the catalog so a sixth provider needs no edit.
+ */
+const PROVIDER_WORDS: ReadonlySet<string> = new Set(
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES.flatMap((entry) => [
+		entry.kind,
+		...entry.label
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter(Boolean),
+	])
+);
+
+/**
+ * Does this text claim something is required WITHOUT saying what for?
  *
  * "Required to enable the feedback loop", "Required for delivery event tracking"
  * and "required whenever the `postbox` flag is on" all name their condition and
- * are fine on an optional variable. A bare "Required when using MTA." does not —
- * "when using MTA" is the provider, not the condition — and neither does a flat
- * "Required."
+ * are fine on an optional variable. A flat "Required." does not, and neither
+ * does "Required when using MTA." — "when using MTA" is the provider, not the
+ * condition.
+ *
+ * NAMING THE PROVIDER IS NOT A CONDITION, whichever preposition carries it. The
+ * first version of this predicate whitelisted any `for`, so the very sentence it
+ * was written against could come back as "Required for the MTA." and stay green.
+ * So a conditional clause is read: articles are dropped, and a clause that is
+ * nothing but provider words ("for the MTA", "for SES") is no condition at all.
+ * A clause that names a PURPOSE keeps its exemption even when a provider's name
+ * is in it — "Required for SES event publishing" says what for.
  */
-function unconditionalRequirement(line: string): boolean {
-	return /\brequired\b(?!\s+(to|for|whenever)\b)/i.test(line);
+function unconditionalRequirement(text: string): boolean {
+	for (const hit of text.matchAll(/\brequired\b(?:\s+(to|for|whenever)\b([^.|]*))?/gi)) {
+		if (!hit[1]) return true;
+		const words = (hit[2] ?? '')
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter((word) => word && word !== 'the' && word !== 'a' && word !== 'an');
+		if (words.length > 0 && words.every((word) => PROVIDER_WORDS.has(word))) return true;
+	}
+	return false;
 }
 
-/** The anchor github-slugger derives from a heading's text. */
+/**
+ * Everything the page CLAIMS about one variable — the unit the requirement gate
+ * judges, so that "anywhere on the page" means it.
+ *
+ * Two shapes, because the subject is established differently in each. A row that
+ * OPENS with the variable is about it whole, sentences included (the shipped
+ * offender's "Required when using MTA." lived in a later sentence of such a row,
+ * with the variable named only in the first cell). Prose has no such column, so
+ * there the SENTENCE is the unit: "The IMAP server does not read
+ * `MTA_WEBHOOK_SECRET`. Its only required Convex credential is
+ * `CONVEX_ADMIN_KEY`." is two claims about two variables, and reading it as one
+ * line would fail this page's most careful sentence.
+ */
+function claimsAbout(page: string, variable: string): string[] {
+	const token = `\`${variable}\``;
+	const lines = page.split('\n');
+	return [
+		...lines.filter((line) => line.startsWith(`| ${token} |`)),
+		...lines
+			.filter((line) => !line.startsWith('|') && line.includes(token))
+			.flatMap((line) => line.split(/(?<=\.)\s+/))
+			.filter((sentence) => sentence.includes(token)),
+	];
+}
+
+/**
+ * The anchor github-slugger derives from a heading's text — which Nuxt Content
+ * uses, so this has to be its algorithm and not a plausible one: STRIP the
+ * disallowed characters, then turn each remaining space into a hyphen. It does
+ * NOT collapse runs, and the difference is visible on this very page
+ * (`#send-email--the-provider-n1-checklist`, `#routing--health`): a heading like
+ * "Custom MTA & postbox" renders as `custom-mta--postbox`, so a predicate that
+ * collapsed the run would demand the broken single-hyphen link instead.
+ */
 function slug(headingText: string): string {
 	return headingText
+		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9 -]/g, '')
-		.trim()
-		.replace(/\s+/g, '-');
+		.replace(/ /g, '-');
 }
 
 /** The `EnvKey` union members — the variables the Convex backend may read. */
@@ -148,9 +216,18 @@ function kindsMissingFromProvidersPage(kinds: readonly string[]): string[] {
 describe('the environment-variables reference documents every provider the catalog declares', () => {
 	it('gives each catalog kind a row, in the catalog order', () => {
 		expect(kindsMissingFromEnvReference(entries.map((entry) => entry.kind))).toEqual([]);
-		// Order too: the catalog's declaration order is the canonical one every
-		// derived list follows, and a reader comparing this table against the
-		// transport picker should see the same sequence.
+		// Order too: the catalog's declaration order is the canonical one the
+		// derived KIND LISTS follow (`SEND_TRANSPORT_KINDS`,
+		// `DELIVERY_PROVIDER_KINDS`, and the tables built off them), so a reader
+		// comparing this table against the providers page sees one sequence.
+		//
+		// The relay picker is the one deliberate exception, and this suite does not
+		// ask it to agree: `TRANSPORT_PICKER_COPY`
+		// (`apps/web/app/composables/useRelayCredentialDraft.ts`) leads with the
+		// four incumbents in the order the shipped screens have always shown them
+		// and appends the rest in catalog order, because re-sorting a shipped form
+		// is a user-visible change. A test that demanded catalog order there would
+		// be asking for exactly that change.
 		expect(providerSelectionRows.map((cells) => cells[KIND])).toEqual(
 			entries.map((entry) => `\`${entry.kind}\``)
 		);
@@ -200,12 +277,10 @@ describe('the environment-variables reference documents every provider the catal
 		const optional = new Set(entries.flatMap((entry) => entry.optionalEnvVars ?? []));
 		expect(optional.size).toBeGreaterThan(4);
 		for (const variable of optional) {
-			for (const row of envVars
-				.split('\n')
-				.filter((line) => line.startsWith(`| \`${variable}\` |`))) {
+			for (const claim of claimsAbout(envVars, variable)) {
 				expect(
-					unconditionalRequirement(row),
-					`${variable} is optional in the catalog, but this row calls it required without saying what for: ${row}`
+					unconditionalRequirement(claim),
+					`${variable} is optional in the catalog, but the page calls it required without saying what for: ${claim}`
 				).toBe(false);
 			}
 		}
@@ -216,9 +291,34 @@ describe('the environment-variables reference documents every provider the catal
 		// forms its siblings use. A gate that passed both would be checking nothing.
 		expect(unconditionalRequirement('| `X` | Required when using MTA. |')).toBe(true);
 		expect(unconditionalRequirement('| `X` | Required. |')).toBe(true);
+		// A PROVIDER IS NOT A CONDITION, whichever word introduces it — the escape
+		// the first version of this predicate left open.
+		expect(unconditionalRequirement('| `X` | Required for the MTA. |')).toBe(true);
+		expect(unconditionalRequirement('| `X` | Required for SES. |')).toBe(true);
 		expect(unconditionalRequirement('| `X` | Required to enable the feedback loop. |')).toBe(false);
 		expect(unconditionalRequirement('| `X` | Required for delivery event tracking. |')).toBe(false);
+		// A purpose stays a purpose when a provider's name is inside it.
+		expect(unconditionalRequirement('| `X` | Required for SES event publishing. |')).toBe(false);
 		expect(unconditionalRequirement('| `X` | Optional. Recommended with feedback. |')).toBe(false);
+	});
+
+	it('reads prose claims, not only table rows', () => {
+		// The other half of "anywhere on the page": restating the contradiction in a
+		// sentence used to walk straight past this gate, which only ever looked at
+		// `| \`VAR\` |` rows.
+		expect(
+			claimsAbout(
+				'| `X` | Fine. |\n\nSetting `X` is optional. `X` is required when using MTA.',
+				'X'
+			)
+		).toEqual(['| `X` | Fine. |', 'Setting `X` is optional.', '`X` is required when using MTA.']);
+		// And a sentence is only a claim about the variables IT names: the sentence
+		// after "the IMAP server does not read `MTA_WEBHOOK_SECRET`." is about
+		// another key entirely, and attributing its "required" to this one would be
+		// a false failure on correct prose.
+		expect(claimsAbout('The server never reads `X`. Its only required key is `Y`.', 'X')).toEqual([
+			'The server never reads `X`.',
+		]);
 	});
 
 	it('names only variables the backend actually reads', () => {
@@ -258,10 +358,17 @@ describe('the environment-variables reference documents every provider the catal
 		// The inverse of the coverage check: a kind REMOVED from the catalog leaves
 		// this page advertising a value that resolves to nothing, which fails closed
 		// at dispatch and looks like a broken deployment rather than a stale doc.
+		//
+		// ANCHORED ON THE TWO FORMS THAT REALLY ARE OFFERS — an assignment and a
+		// `convex env set` — rather than on "any lowercase word after the variable".
+		// The loose version read "set EMAIL_PROVIDER to ses" as offering the value
+		// `to` and failed the suite on a correct sentence, which is the kind of
+		// false failure that gets a gate loosened rather than a doc fixed.
 		const kinds = new Set(entries.map((entry) => entry.kind));
-		const offered = [...envVars.matchAll(/EMAIL_PROVIDER[= ]([a-z][a-z0-9]*)/g)].map(
-			(hit) => hit[1]!
-		);
+		const offered = [
+			...envVars.matchAll(/EMAIL_PROVIDER=([a-z][a-z0-9]*)/g),
+			...envVars.matchAll(/env set EMAIL_PROVIDER ([a-z][a-z0-9]*)/g),
+		].map((hit) => hit[1]!);
 		expect(offered.length).toBeGreaterThan(entries.length);
 		for (const value of offered) {
 			expect(kinds, `the page offers EMAIL_PROVIDER=${value}`).toContain(value);
@@ -279,6 +386,143 @@ describe('the environment-variables reference documents every provider the catal
 		for (const entry of entries) {
 			expect(row!, `the reference row omits ${entry.kind}`).toContain(`\`${entry.kind}\``);
 		}
+	});
+});
+
+/**
+ * THE SAME TWO CLAIMS, EVERYWHERE THEY ARE MADE.
+ *
+ * Pinning two pages left the drift alive one page over: seven other pages still
+ * called `mta` the default and offered three kinds, so an operator could read
+ * "no implicit default — an unset variable refuses sends" on the env reference
+ * and "the MTA is the default email provider" on the MTA page, with no way to
+ * tell which was current. Both halves were false against the code
+ * (`routing.ts` returns `null` when nothing names a provider; the catalog
+ * declares five kinds) and the pages that carried them are the ones a
+ * self-hoster reads first.
+ *
+ * So the gate is the tree, not the two files: every markdown page under
+ * `apps/docs/content` is read, and the two claims are checked wherever they are
+ * made. ADRs included — a decision record that stated a default would be as
+ * misleading as any other page, and both of ours already say the opposite.
+ */
+function contentPages(): { path: string; text: string }[] {
+	const pages: { path: string; text: string }[] = [];
+	const walk = (dir: string) => {
+		for (const entry of readdirSync(resolve(repoRoot, dir), { withFileTypes: true })) {
+			if (entry.isDirectory()) walk(`${dir}/${entry.name}`);
+			else if (entry.name.endsWith('.md'))
+				pages.push({ path: `${dir}/${entry.name}`, text: read(`${dir}/${entry.name}`) });
+		}
+	};
+	walk('apps/docs/content');
+	return pages;
+}
+
+/**
+ * How far from an `EMAIL_PROVIDER` mention a "default" is still ABOUT it.
+ *
+ * A window rather than the sentence or the line, because the false positives
+ * live at both extremes: one prose line runs a whole paragraph long and pairs a
+ * `(default when a browser is available)` with an `EMAIL_PROVIDER` mention two
+ * clauses later, while the sentence that says "`.env.selfhost.example` ships
+ * `COMPOSE_PROFILES=mta`" legitimately names the variable further along. Sixty
+ * characters is about a clause — close enough that the two are one statement.
+ */
+const DEFAULT_CLAIM_WINDOW = 60;
+
+/** Everywhere a page claims `EMAIL_PROVIDER` has a default, denials excluded. */
+function defaultClaims(page: string): string[] {
+	const claims: string[] = [];
+	for (const hit of page.matchAll(/\bdefaults?\b/gi)) {
+		const at = hit.index!;
+		const before = page.slice(Math.max(0, at - DEFAULT_CLAIM_WINDOW), at);
+		const after = page.slice(at, at + DEFAULT_CLAIM_WINDOW);
+		if (!`${before}${after}`.includes('EMAIL_PROVIDER')) continue;
+		// "there is **no implicit default**", "not an implicit default", "never
+		// defaults to" — the sentences that state the truth all deny the word
+		// within a few words of it, which is what tells them from a claim.
+		if (/\b(no|not|never)\b[^.]{0,30}$/i.test(before)) continue;
+		claims.push(`${before}${after}`.replace(/\n/g, ' '));
+	}
+	return claims;
+}
+
+/** Table rows that enumerate the `EMAIL_PROVIDER` values a deployment may set. */
+function kindEnumerationRows(page: string): string[] {
+	return page
+		.split('\n')
+		.filter(
+			(line) =>
+				line.startsWith('|') &&
+				line.includes('EMAIL_PROVIDER') &&
+				[...line.matchAll(/`([a-z][a-z0-9]*)`/g)].filter((hit) =>
+					entries.some((entry) => entry.kind === hit[1])
+				).length > 1
+		);
+}
+
+describe('no page in the docs still advertises a default or a short kind list', () => {
+	const pages = contentPages();
+
+	it('reads the whole content tree, so the gate cannot pass by finding nothing', () => {
+		expect(pages.length).toBeGreaterThan(40);
+		expect(pages.filter((page) => page.text.includes('EMAIL_PROVIDER')).length).toBeGreaterThan(8);
+	});
+
+	it('never claims `EMAIL_PROVIDER` has a default', () => {
+		// `routing.ts` returns `null` when neither a route nor the variable names a
+		// provider, and the send entry points refuse before a row is written. A page
+		// promising the MTA instead sends an operator looking for a bug in delivery.
+		for (const page of pages) {
+			expect(defaultClaims(page.text), `${page.path} claims a default`).toEqual([]);
+		}
+	});
+
+	it('names every catalog kind wherever it enumerates them', () => {
+		for (const page of pages) {
+			for (const row of kindEnumerationRows(page.text)) {
+				for (const entry of entries) {
+					expect(row, `${page.path} lists EMAIL_PROVIDER values without ${entry.kind}`).toContain(
+						`\`${entry.kind}\``
+					);
+				}
+			}
+		}
+	});
+
+	it('never gives an EMAIL_PROVIDER row a kind as its default value', () => {
+		// The shape a `Default` column takes: no word "default" on the row at all,
+		// just `mta` sitting in the column the table's header calls one. It is the
+		// same claim, and it survived the check above for years.
+		for (const page of pages) {
+			for (const row of page.text
+				.split('\n')
+				.filter((line) => line.startsWith('| `EMAIL_PROVIDER`'))) {
+				for (const cell of rowCells(row)) {
+					expect(
+						entries.some((entry) => cell.replace(/`/g, '') === entry.kind),
+						`${page.path} gives EMAIL_PROVIDER the default value ${cell}`
+					).toBe(false);
+				}
+			}
+		}
+	});
+
+	it('would catch each claim it is written against', () => {
+		// The negative controls: the exact rows and sentences that shipped, beside
+		// the corrected forms. Without them a typo in either predicate leaves three
+		// green cases that check nothing.
+		expect(defaultClaims('| `EMAIL_PROVIDER` | Convex | `mta` (default), `ses` |')).toHaveLength(1);
+		expect(
+			defaultClaims('The MTA is the **default** email provider (`EMAIL_PROVIDER=mta`).')
+		).toHaveLength(1);
+		expect(
+			defaultClaims('`EMAIL_PROVIDER` names the kind; there is **no implicit default**.')
+		).toEqual([]);
+		expect(defaultClaims('The default `.env` ships a value nobody reads.')).toEqual([]);
+		expect(kindEnumerationRows('| `EMAIL_PROVIDER` | `mta`, `ses`, `resend` |')).toHaveLength(1);
+		expect(kindEnumerationRows('Set `EMAIL_PROVIDER` to `ses` or `resend` in prose.')).toEqual([]);
 	});
 });
 
