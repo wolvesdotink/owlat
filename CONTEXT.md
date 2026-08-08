@@ -590,10 +590,12 @@ with the table).
 The per-provider module at
 `convex/integrationImports/providers/<kind>/index.ts` that owns
 the integration-side surface of one third-party platform that
-supplies contacts via paginated HTTP. Two adapters today:
-`providers/mailchimp/` and `providers/stripe/`. Discriminated by
-`kind: 'mailchimp' | 'stripe'` matching the `provider` column on
-`integrationImports`. Dispatched by the registry at
+supplies contacts via paginated HTTP. Three adapters today:
+`providers/mailchimp/`, `providers/stripe/`, `providers/mandrill/`.
+Discriminated by that `kind`, matching the `provider` column on
+`integrationImports` (the one adapter union in this repository that IS a
+closed validator union, because an import provider is chosen by a user in
+a form rather than resolved from deployment configuration). Dispatched by the registry at
 `providers/index.ts` exporting `providerFor(kind)`. Mirrors the
 **Sending domain provider adapter (module)** shape (ADR-0018) and
 **Channel inbound adapter** shape (ADR-0005) — one TypeScript
@@ -949,8 +951,10 @@ companion entry point).
 A custom email-sending domain registered for an Owlat deployment.
 Stored in `domains` with `domain` (the FQDN), `status`, `dnsRecords`
 (the SPF/DKIM/DMARC/MAIL-FROM records the customer must publish),
-`verificationResults`, `providerType` (`'mta' | 'ses'`),
-`lastRegistrationError?`, `lastVerifiedAt?`, `verifiedAt?` (first-time
+`verificationResults`, `providerType` (a `SendingDomainProviderKind` — the
+kinds the **Sending domain provider adapter (module)** entry below counts,
+never a send-only or plugin kind), `lastRegistrationError?`,
+`lastVerifiedAt?`, `verifiedAt?` (first-time
 verified timestamp; preserved through later `→ pending` / `→ failed`
 re-verifies), and timestamps. Provider-specific identity data (DKIM
 selector for MTA; DKIM tokens + verification token for SES) lives in
@@ -1071,12 +1075,20 @@ and the `dnsRecords` shape live elsewhere).
 **Sending domain provider adapter (module)**:
 The per-provider module at `convex/domains/providers/<kind>/index.ts`
 that owns the Sending domain–side surface of one email provider.
-Two adapters today: `providers/mta/` and `providers/ses/`.
-Discriminated by `kind: 'mta' | 'ses'` matching the `providerType`
-field on the **Sending domain** row. Dispatched by the registry at
-`providers/index.ts` exporting `providerFor(kind)`. Mirrors the
-**Channel inbound adapter** shape (ADR-0005) — one TypeScript
-interface, two concrete implementations, registry-driven dispatch.
+Three adapters today: `providers/mta/`, `providers/ses/`,
+`providers/mandrill/` — the kinds `SendingDomainIdentityRegistry`
+declares (`providers/types.ts`), not this paragraph's list; a fourth is
+added by declaring an entry there, and the registry's completeness guard
+then requires the folder. That union is deliberately CLOSED to core kinds
+(`isSendingDomainProviderKind`) — a bundled plugin transport proves a
+domain through the shared `sendingDomainRelayIdentities` table instead,
+never by owning a `domains` row — which is the one way this registry
+differs from the send path's, where the plugin tier composes in (see
+**§ Send provider catalog**). Discriminated by that `kind`, matching the
+`providerType` field on the **Sending domain** row. Dispatched by the
+registry at `providers/index.ts` exporting `providerFor(kind)`. Mirrors
+the **Channel inbound adapter** shape (ADR-0005) — one TypeScript
+interface, N concrete implementations, registry-driven dispatch.
 Exports a `SendingDomainProviderModule<K>` with:
 - `registerDomain(domain) → { dnsRecords, identity }` — provider
   API call. Throws on failure; the `register_with_provider`
@@ -1087,17 +1099,21 @@ Exports a `SendingDomainProviderModule<K>` with:
   `delete_with_provider` effects.
 - `runProviderCheck?(domain) → { verified, lastError? }` —
   optional per-provider verification check. SES implements it
-  (live `getVerificationStatus` call); MTA omits it (lifecycle
-  treats absent as `{ verified: true }`). Called by the DNS
-  verifier action before `recordVerification`.
+  (live `getVerificationStatus` call) and so does Mandrill
+  (`check-domain`); MTA omits it (lifecycle treats absent as
+  `{ verified: true }`). Called by the DNS verifier action before
+  `recordVerification`.
 - `writeIdentity(ctx, domainId, identity)`,
-  `clearIdentity(ctx, domainId)` — sibling-table persistence.
-  Each adapter owns its **Sending domain identity** table; the
-  lifecycle reducer dispatches to these via `providerFor(kind)`.
+  `clearIdentity(ctx, domainId)` — identity persistence. MTA and
+  SES each own a frozen sibling table; every kind after them
+  writes the shared `sendingDomainRelayIdentities` row instead
+  (`providers/relayIdentityPersistence.ts` owns those write
+  rules). The lifecycle reducer dispatches to these via
+  `providerFor(kind)`.
 
-Adding a third sending provider is a one-folder change: new
-`providers/<kind>/` directory, new sibling table in
-`schema/domains.ts`, one new entry in
+Adding a sending provider is a one-folder change: new
+`providers/<kind>/` directory, one new entry in
+`SendingDomainIdentityRegistry` and in
 `SENDING_DOMAIN_PROVIDERS`. The compile-time `satisfies` check on
 the registry catches missing methods. The lifecycle never branches
 on `providerType` — provider variation lives entirely behind this
@@ -1113,11 +1129,13 @@ provider concept itself; reach for the `(module)` suffix to name
 the typed surface.
 
 **Sending domain identity**:
-One row in `sendingDomainMtaIdentities` or
-`sendingDomainSesIdentities` — the per-provider record of a
-registered Sending domain. 1:0..1 with `domains` (a domain has at
-most one identity in one provider's table; the providerType field
-on `domains` tells the lifecycle which table to load). The MTA
+The per-provider record of a registered Sending domain. One row in
+`sendingDomainMtaIdentities` or `sendingDomainSesIdentities` — the two
+FROZEN sibling tables — or, for every kind added after those two, one row
+in the shared `sendingDomainRelayIdentities` table keyed by
+(organization, domain, `providerKind`). 1:0..1 with `domains` (a domain has at
+most one identity per provider; the providerType field
+on `domains` tells the lifecycle which one to load). The MTA
 shape is `{ domainId, dkimSelector }`; the SES shape is
 `{ domainId, dkimTokens, verificationToken }`. The application
 enforces uniqueness via the **Sending domain provider adapter
@@ -5354,11 +5372,12 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   lifecycle (module)** is the only writer of `domains.status`, the only
   insertor/deleter of `domains` rows, and the only caller of the
   **Sending domain provider adapter (module)**'s `writeIdentity` /
-  `clearIdentity` methods. Two adapters today (`mta`, `ses`), keyed by
+  `clearIdentity` methods. Three adapters today (`mta`, `ses`,
+  `mandrill` — the kinds `SendingDomainIdentityRegistry` declares), keyed by
   `providerType` and dispatched by `providerFor(kind)`; the lifecycle
   never branches on `providerType` — provider variation lives entirely
   behind the adapter seam. The DNS verifier action consumes
-  `adapter.runProviderCheck` (SES implements it; MTA omits it) before
+  `adapter.runProviderCheck` (SES and Mandrill implement it; MTA omits it) before
   calling `lifecycle.recordVerification`, so "what counts as verified"
   is the reducer's combination of a generic DNS rule with one boolean
   from the adapter. The lifecycle sits *upstream* of the Send path: a
@@ -5375,8 +5394,8 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   `updated`, `skipped`, `failed`, `errors`, `totalEstimate`, and
   `completedAt`; the only other writer of the row is the public
   `cancelImport` mutation, which patches `status: 'failed'` as a
-  user-cancel terminal and never touches the counters. Two adapters
-  today (`mailchimp`, `stripe`), dispatched by `providerFor(kind)`; the
+  user-cancel terminal and never touches the counters. Three adapters
+  today (`mailchimp`, `stripe`, `mandrill`), dispatched by `providerFor(kind)`; the
   walker never branches on `provider` — provider variation lives entirely
   behind the adapter seam. The adapter shape mirrors the **Sending
   domain provider adapter (module)**: typed `kind`, registry dispatch,

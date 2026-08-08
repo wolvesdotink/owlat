@@ -81,6 +81,25 @@ function constArrayLiterals(relativePath: string, declaration: string): string[]
 }
 
 /**
+ * The KEYS of a hand-written `export interface <NAME> { … }` registry.
+ *
+ * The sending-domain registry is an interface rather than a `const` array
+ * (`SendingDomainProviderKind = keyof SendingDomainIdentityRegistry`), so the
+ * array reader above cannot see it — and that shape is the point: the union is
+ * deliberately CLOSED and hand-written, which is exactly the kind of list a
+ * counted sentence in prose drifts away from.
+ */
+function interfaceKeys(relativePath: string, declaration: string): string[] {
+	const source = read(relativePath);
+	const start = source.indexOf(declaration);
+	expect(start, `${relativePath} no longer declares ${declaration}`).toBeGreaterThan(-1);
+	const body = source.slice(start, source.indexOf('\n}', start));
+	const keys = [...body.matchAll(/^\t(\w+):/gm)].map((match) => match[1]!);
+	expect(keys.length, `no members parsed out of ${declaration}`).toBeGreaterThan(1);
+	return keys;
+}
+
+/**
  * The file with inline-code spans removed.
  *
  * A cross-reference inside backticks is a QUOTATION of the convention (the note
@@ -280,6 +299,93 @@ describe('CONTEXT.md: the send-provider catalog section is pinned to the catalog
 		for (const tier of ['own', 'core', 'plugin']) {
 			expect(catalog).toContain(`\`${tier}\``);
 		}
+	});
+});
+
+/**
+ * The send path is not the only adapter family this file counts, and it was not
+ * the only one counting wrong: "Two adapters today: `providers/mta/` and
+ * `providers/ses/`" outlived Mandrill's sending-domain adapter, and "Two
+ * adapters today (`mailchimp`, `stripe`)" outlived its import adapter, in both
+ * the term entry and the `## Relationships` restatement of it. Pinning one
+ * family and leaving the neighbours unpinned is the worse of the two states: a
+ * reader who learns that the counts are enforced trusts all of them.
+ *
+ * Each family is pinned to the declaration a new adapter MUST edit — the
+ * registry, not the folder listing — so the check fails on the same commit that
+ * makes the sentence false rather than one refactor later.
+ */
+describe('CONTEXT.md: every adapter-family count is pinned to its registry', () => {
+	const FAMILIES: readonly {
+		what: string;
+		kinds: () => string[];
+		entry: { section: string; pattern: RegExp };
+		relationship: RegExp;
+	}[] = [
+		{
+			what: 'sending domain provider adapters',
+			kinds: () =>
+				interfaceKeys(
+					'apps/api/convex/domains/providers/types.ts',
+					'export interface SendingDomainIdentityRegistry {'
+				),
+			entry: { section: 'Sending domains', pattern: /([A-Z][a-z]+) adapters today: `providers/ },
+			relationship: /([A-Z][a-z]+) adapters today \(`mta`/,
+		},
+		{
+			what: 'integration import provider adapters',
+			kinds: () =>
+				constArrayLiterals(
+					'apps/api/convex/integrationImports/_common.ts',
+					'export const INTEGRATION_PROVIDER_KINDS = ['
+				),
+			entry: {
+				section: 'Integration imports',
+				pattern: /([A-Z][a-z]+) adapters today: `providers/,
+			},
+			relationship: /([A-Z][a-z]+) adapters today \(`mailchimp`/,
+		},
+	];
+
+	for (const family of FAMILIES) {
+		it(`the ${family.what} entry names every kind, and counts them right`, () => {
+			const body = section(family.entry.section);
+			const kinds = family.kinds();
+			// Mandrill is the member whose arrival invalidated both counts, and the
+			// one a listing-based reader would still miss: it owns no sibling
+			// identity table of its own.
+			expect(kinds, 'the registry parse lost mandrill').toContain('mandrill');
+			// Both entries name a kind by its FOLDER (`providers/<kind>/`), which is
+			// what a reader adding one needs; a bare `` `<kind>` `` span counts too,
+			// because that is how the `## Relationships` restatement spells it.
+			const unmentioned = kinds.filter(
+				(kind) => !body.includes(`\`${kind}\``) && !body.includes(`providers/${kind}/`)
+			);
+			expect(unmentioned, `"${family.entry.section}" never names: ${unmentioned}`).toEqual([]);
+			expectCountedWord(body, family.entry.pattern, kinds.length, family.what);
+		});
+
+		it(`the "Relationships" restatement of the ${family.what} agrees`, () => {
+			// The second copy of the count, three thousand lines away from the first.
+			// It is the copy that rotted silently both times.
+			expectCountedWord(
+				section('Relationships'),
+				family.relationship,
+				family.kinds().length,
+				`${family.what} (relationships)`
+			);
+		});
+	}
+
+	it('the sending-domain entry records that its union is closed to the plugin tier', () => {
+		// Not a count, but the claim a wrong count invites: the send-path registry
+		// composes the bundled plugin tier in and this one deliberately does not,
+		// so a plugin transport proves a domain through the shared relay table. An
+		// author who reads "N adapters, add yours" without this lands in
+		// `providerFor()`'s throw.
+		const body = section('Sending domains');
+		expect(body).toContain('isSendingDomainProviderKind');
+		expect(body).toContain('sendingDomainRelayIdentities');
 	});
 });
 
