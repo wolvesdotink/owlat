@@ -1,15 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 // Derived from the backend contract (see utils/channelKinds.ts) rather than
-// restating the channel literals a third time.
-import type { ChannelKind } from '~/utils/channelKinds';
-
-interface ChannelHealth {
-	healthStatus?: 'healthy' | 'degraded' | 'down';
-	lastHealthCheckAt?: number;
-	lastSuccessfulSend?: number;
-	lastError?: string;
-}
+// restating the channel literals — or the health-status literals — a third
+// time: widening either union there must reach this card, not stop at it.
+import type { ChannelKind, ChannelHealthStatus } from '~/utils/channelKinds';
 
 interface ChannelConfig {
 	_id: string;
@@ -17,7 +11,7 @@ interface ChannelConfig {
 	isEnabled: boolean;
 	displayName?: string;
 	config?: string;
-	healthStatus?: 'healthy' | 'degraded' | 'down';
+	healthStatus?: ChannelHealthStatus;
 	lastHealthCheckAt?: number;
 	lastSuccessfulSend?: number;
 	lastError?: string;
