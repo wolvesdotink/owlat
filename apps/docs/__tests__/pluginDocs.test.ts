@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+// The one markdown section parser (`./markdownDocs`) — this file used to carry a
+// line-for-line copy of it, which is exactly the duplication that module was
+// extracted to remove: the next fix to terminator handling would have landed
+// there and not here, and this suite would have gone on parsing a differently
+// shaped section, greenly.
+import { section } from './markdownDocs';
 
 /**
  * Docs-lint for the plugin-platform chapter (PP-30).
@@ -74,20 +80,6 @@ function regionSource(name: string): string {
 	const end = samplesSource.indexOf(`// #endregion ${name}`);
 	if (start === -1 || end === -1) throw new Error(`docsSamples has no region "${name}"`);
 	return samplesSource.slice(start + `// #region ${name}\n`.length, end).trimEnd();
-}
-
-/**
- * The body of one markdown section, from its heading up to the next heading of
- * the same or a higher level. Lets an assertion pin what a specific section
- * says instead of accepting the word appearing anywhere on the page.
- */
-function section(markdown: string, heading: string): string {
-	const start = markdown.indexOf(`${heading}\n`);
-	if (start === -1) throw new Error(`no section "${heading}"`);
-	const level = heading.indexOf(' ');
-	const rest = markdown.slice(start + heading.length);
-	const next = rest.search(new RegExp(`\\n#{1,${level}} `));
-	return next === -1 ? rest : rest.slice(0, next);
 }
 
 /**
