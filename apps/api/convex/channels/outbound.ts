@@ -37,7 +37,12 @@ import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from 
 import { unifiedMessageChannelValidator as channelValidator } from '../lib/convexValidators';
 import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValidators';
 
-/** Shape of the plaintext credential blob entered in the channel config form. */
+/**
+ * Shape of the plaintext credential blob entered in the channel config form
+ * (`apps/web/app/components/channels/ChannelConfigForm.vue`). Every field the
+ * form collects is listed, but only the ones `buildAdapter` reads below reach a
+ * provider — see the note there about the inbound-only fields.
+ */
 interface ChannelCreds {
 	// sms (Twilio)
 	accountSid?: string;
@@ -396,6 +401,16 @@ async function loadAdapter(
  * Returns null for channels with no outbound provider here (email is owned by
  * the MTA send pipeline; chat is native). Missing fields yield a configured
  * adapter that simply returns a failed SendResult — the fail-safe path.
+ *
+ * INBOUND-ONLY CREDS ARE NOT PASSED. `creds.verifyToken` (Meta's
+ * `hub.verify_token`) and `creds.secretKey` (the shared secret an external
+ * system echoes back to us) authenticate INBOUND requests, and the shipped
+ * inbound route authenticates them in `webhooks/adapters/{meta,generic}.ts`
+ * against the `META_VERIFY_TOKEN`/`GENERIC_WEBHOOK_SECRET` deployment
+ * variables. Handing them to an outbound adapter only ever fed a second,
+ * caller-less verifier; that verifier is gone, so the fields stop here. Making
+ * the stored per-channel secret the one the inbound route trusts is a real
+ * change to who can post to Owlat, not a refactor — it needs its own piece.
  */
 function buildAdapter(channel: string, creds: ChannelCreds): ChannelAdapter | null {
 	switch (channel) {
@@ -413,16 +428,12 @@ function buildAdapter(channel: string, creds: ChannelCreds): ChannelAdapter | nu
 			adapter.configure({
 				phoneNumberId: creds.phoneNumberId ?? '',
 				accessToken: creds.accessToken ?? '',
-				verifyToken: creds.verifyToken ?? '',
 			});
 			return adapter;
 		}
 		case 'generic': {
 			const adapter = new WebhookAdapter();
-			adapter.configure({
-				outboundUrl: creds.endpointUrl ?? '',
-				secret: creds.secretKey ?? '',
-			});
+			adapter.configure({ outboundUrl: creds.endpointUrl ?? '' });
 			return adapter;
 		}
 		default:

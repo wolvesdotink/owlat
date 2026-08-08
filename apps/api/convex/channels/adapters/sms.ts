@@ -1,14 +1,16 @@
 /**
- * SMS Channel Adapter (Twilio)
+ * SMS Channel Adapter (Twilio) — OUTBOUND ONLY.
  *
- * Sends and receives SMS via the Twilio API.
+ * Sends SMS through the Twilio REST API and reads back a message's delivery
+ * status. Inbound Twilio webhooks (signature verification and payload
+ * normalization) belong to `webhooks/adapters/twilio.ts`, which is the half
+ * the HTTP route actually calls.
  */
 
 import type {
 	ChannelAdapter,
 	OutboundMessage,
 	SendResult,
-	ParsedMessage,
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
@@ -25,16 +27,6 @@ interface TwilioSendResponse {
 
 interface TwilioStatusResponse {
 	status?: string;
-}
-
-interface TwilioInboundPayload {
-	From?: string;
-	Body?: string;
-	MediaUrl0?: string;
-	MessageSid?: string;
-	FromCity?: string;
-	FromState?: string;
-	FromCountry?: string;
 }
 
 export class SmsAdapter implements ChannelAdapter {
@@ -95,24 +87,6 @@ export class SmsAdapter implements ChannelAdapter {
 		}
 	}
 
-	parseInbound(raw: unknown): ParsedMessage {
-		const payload = raw as TwilioInboundPayload;
-		return {
-			from: payload.From ?? '',
-			content: {
-				text: payload.Body ?? '',
-				mediaUrl: payload.MediaUrl0 ?? undefined,
-			},
-			externalMessageId: payload.MessageSid,
-			timestamp: Date.now(),
-			metadata: {
-				fromCity: payload.FromCity,
-				fromState: payload.FromState,
-				fromCountry: payload.FromCountry,
-			},
-		};
-	}
-
 	async getDeliveryStatus(externalId: string): Promise<DeliveryStatus> {
 		// Fail-safe sentinel: this method returns a status enum (not an error), so
 		// any condition where the *terminal* delivery state is unknown right now
@@ -150,17 +124,6 @@ export class SmsAdapter implements ChannelAdapter {
 			// the no-change sentinel (`sent`) so the caller polls again next tick.
 			return 'sent';
 		}
-	}
-
-	async validateSignature(_headers: Record<string, string>, _body: string): Promise<boolean> {
-		// SECURITY: fail closed. Twilio's `X-Twilio-Signature` is HMAC-SHA1 of
-		// the full request URL plus the sorted POST params, keyed by the auth
-		// token — none of which (notably the request URL) is available to this
-		// header+body interface. Inbound SMS webhooks are not wired yet, so we
-		// reject rather than accept on mere header presence (which any forged
-		// request can satisfy). Implement full Twilio verification before
-		// routing inbound SMS webhooks to this adapter.
-		return false;
 	}
 
 	async healthCheck(): Promise<ChannelHealth> {

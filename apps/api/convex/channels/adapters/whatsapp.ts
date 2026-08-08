@@ -1,14 +1,16 @@
 /**
- * WhatsApp Channel Adapter (WhatsApp Business API via Meta)
+ * WhatsApp Channel Adapter (WhatsApp Business API via Meta) — OUTBOUND ONLY.
  *
- * Sends and receives WhatsApp messages via the Meta Cloud API.
+ * Sends WhatsApp messages through the Meta Cloud API. Inbound Meta webhooks
+ * (the `X-Hub-Signature-256` check, the `hub.verify_token` handshake and
+ * payload normalization) belong to `webhooks/adapters/meta.ts`, which is the
+ * half the HTTP route actually calls.
  */
 
 import type {
 	ChannelAdapter,
 	OutboundMessage,
 	SendResult,
-	ParsedMessage,
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
@@ -16,31 +18,10 @@ import type {
 interface WhatsAppConfig {
 	phoneNumberId: string;
 	accessToken: string;
-	verifyToken: string; // For webhook verification
 }
 
 interface WhatsAppSendResponse {
 	messages?: Array<{ id?: string }>;
-}
-
-interface WhatsAppInboundMessage {
-	from?: string;
-	id?: string;
-	timestamp?: string;
-	text?: { body?: string };
-	image?: { url?: string };
-	document?: { url?: string };
-}
-
-interface WhatsAppInboundPayload {
-	entry?: Array<{
-		changes?: Array<{
-			value?: {
-				messages?: WhatsAppInboundMessage[];
-				contacts?: Array<{ profile?: { name?: string } }>;
-			};
-		}>;
-	}>;
 }
 
 export class WhatsAppAdapter implements ChannelAdapter {
@@ -87,43 +68,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
 		}
 	}
 
-	parseInbound(raw: unknown): ParsedMessage {
-		const payload = raw as WhatsAppInboundPayload;
-		// Meta webhook format
-		const entry = payload.entry?.[0];
-		const change = entry?.changes?.[0];
-		const value = change?.value;
-		const msg = value?.messages?.[0];
-
-		return {
-			from: msg?.from ?? '',
-			content: {
-				text: msg?.text?.body ?? '',
-				mediaUrl: msg?.image?.url ?? msg?.document?.url ?? undefined,
-			},
-			externalMessageId: msg?.id,
-			timestamp: msg?.timestamp ? parseInt(msg.timestamp) * 1000 : Date.now(),
-			metadata: {
-				profileName: value?.contacts?.[0]?.profile?.name,
-			},
-		};
-	}
-
 	async getDeliveryStatus(_externalId: string): Promise<DeliveryStatus> {
 		// WhatsApp delivery status comes via webhooks
 		return 'sent';
-	}
-
-	async validateSignature(_headers: Record<string, string>, _body: string): Promise<boolean> {
-		// SECURITY: fail closed. Real verification requires computing
-		// HMAC-SHA256 of the raw request body keyed by the Meta *app secret*
-		// (delivered in `X-Hub-Signature-256` as `sha256=<hex>`). The app
-		// secret is not part of WhatsAppConfig and inbound WhatsApp webhooks
-		// are not wired yet, so we reject rather than accept unverified
-		// requests — a presence-only check would let any forged payload
-		// through. Implement HMAC verification (and add `appSecret` to the
-		// config) before routing inbound WhatsApp webhooks to this adapter.
-		return false;
 	}
 
 	async healthCheck(): Promise<ChannelHealth> {

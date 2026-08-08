@@ -22,19 +22,16 @@
  *     provider to adapt.
  *   - INBOUND signature verification and payload parsing for these same three
  *     channels — that is `webhooks/adapters/{twilio,meta,generic}.ts`, which
- *     verify real signatures against real secrets. Nothing outbound here is a
- *     webhook authenticator.
+ *     verify real signatures against real secrets on the real route. The old
+ *     `ChannelAdapter.validateSignature`/`parseInbound` pair was a second,
+ *     caller-less expression of those same rules (and had already drifted from
+ *     them), so the D10 pass deleted it rather than carrying it along.
+ *
+ * The barrel exports only what the outbound action outside this folder needs.
+ * `DeliveryStatus` is a sibling-only type: import it from './types'.
  */
 
-export type {
-	ChannelType,
-	OutboundMessage,
-	SendResult,
-	ParsedMessage,
-	DeliveryStatus,
-	ChannelHealth,
-	ChannelAdapter,
-} from './types';
+export type { OutboundMessage, SendResult, ChannelHealth, ChannelAdapter } from './types';
 
 export { SmsAdapter } from './sms';
 export { WhatsAppAdapter } from './whatsapp';

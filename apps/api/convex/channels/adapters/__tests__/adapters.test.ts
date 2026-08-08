@@ -5,8 +5,10 @@ import {
 	WebhookAdapter,
 	type ChannelAdapter,
 	type OutboundMessage,
-	type ParsedMessage,
 } from '../index';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const adapters = {
 	sms: new SmsAdapter(),
@@ -39,14 +41,6 @@ describe('channel adapters — instantiation', () => {
 describe('channel adapters — ChannelAdapter contract', () => {
 	for (const [name, adapter] of Object.entries(adapters)) {
 		describe(`${name}`, () => {
-			it('implements every ChannelAdapter method', () => {
-				expect(typeof adapter.send).toBe('function');
-				expect(typeof adapter.parseInbound).toBe('function');
-				expect(typeof adapter.getDeliveryStatus).toBe('function');
-				expect(typeof adapter.validateSignature).toBe('function');
-				expect(typeof adapter.healthCheck).toBe('function');
-			});
-
 			it('returns a SendResult with success boolean from send()', async () => {
 				const msg: OutboundMessage = {
 					contactId: 'c1',
@@ -61,32 +55,69 @@ describe('channel adapters — ChannelAdapter contract', () => {
 });
 
 // =============================================================================
-// Bucket 3 — Behavior-parity / regression
+// Bucket 3 — The surface is OUTBOUND ONLY
 //
-// The adapter file contents were moved verbatim from `@owlat/channels` (and,
-// before that, from apps/api/convex/lib/channels/). parseInbound's
-// normalization shape is stable: we lock the webhook and SMS parsers to known
-// input/output pairs so a careless edit can't drift the public contract.
+// The contract used to carry `parseInbound` and `validateSignature`, and no
+// host path ever called either: the shipped inbound route verifies and parses
+// through `webhooks/adapters/{twilio,meta,generic}.ts`. Keeping a second copy
+// meant a Twilio field change or a `Bearer ` prefix rule could be fixed in one
+// place and silently missed in the other — and they had already drifted. D10
+// deleted the caller-less half; this bucket keeps it deleted, at the type
+// level (the interface would not compile with a stray member — see the
+// exhaustive literal below), at runtime, and in the source text.
 // =============================================================================
-describe('channel adapters — parseInbound parity', () => {
-	it('generic-webhook parser handles the canonical { from, text } payload', () => {
-		const parsed: ParsedMessage = adapters.generic.parseInbound({
-			from: 'webhook-source',
-			text: 'inbound text',
-		});
-		expect(parsed.from).toBe('webhook-source');
-		expect(parsed.content.text).toBe('inbound text');
+describe('channel adapters — outbound-only surface', () => {
+	const INBOUND_ONLY_MEMBERS = ['parseInbound', 'validateSignature'] as const;
+
+	// Compile-time exhaustiveness: `Record<ContractMethod, true>` fails to build
+	// if a member is added to `ChannelAdapter` and not listed here (missing key)
+	// or listed and not on the interface (excess property). So the runtime
+	// assertion below cannot silently stop covering the whole contract.
+	type ContractMethod = Exclude<keyof ChannelAdapter, 'id'>;
+	const CONTRACT_METHODS: Record<ContractMethod, true> = {
+		send: true,
+		getDeliveryStatus: true,
+		healthCheck: true,
+	};
+
+	it('implements exactly the contract the outbound action calls', () => {
+		expect(Object.keys(CONTRACT_METHODS).sort()).toEqual([
+			'getDeliveryStatus',
+			'healthCheck',
+			'send',
+		]);
+		for (const [name, adapter] of Object.entries(adapters)) {
+			for (const method of Object.keys(CONTRACT_METHODS)) {
+				expect(
+					typeof (adapter as unknown as Record<string, unknown>)[method],
+					`${name} adapter is missing ${method}`
+				).toBe('function');
+			}
+		}
 	});
 
-	it('sms parser maps Twilio fields (From, Body, MessageSid)', () => {
-		const parsed = adapters.sms.parseInbound({
-			From: '+15551234',
-			Body: 'sms body',
-			MessageSid: 'SM-abc',
-		});
-		expect(parsed.from).toBe('+15551234');
-		expect(parsed.content.text).toBe('sms body');
-		expect(parsed.externalMessageId).toBe('SM-abc');
+	it('carries no inbound verification or parsing member at runtime', () => {
+		for (const [name, adapter] of Object.entries(adapters)) {
+			for (const member of INBOUND_ONLY_MEMBERS) {
+				expect(
+					member in (adapter as unknown as Record<string, unknown>),
+					`${name} adapter must not re-grow ${member} — extend webhooks/adapters/ instead`
+				).toBe(false);
+			}
+		}
+	});
+
+	it('never names an inbound member anywhere in the adapter sources', () => {
+		const adapterDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+		for (const file of ['types.ts', 'index.ts', 'sms.ts', 'whatsapp.ts', 'webhook.ts']) {
+			const source = readFileSync(resolve(adapterDir, file), 'utf8');
+			// Strip comments: the header notes deliberately explain why the pair
+			// is gone, and that prose must stay readable.
+			const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+			for (const member of INBOUND_ONLY_MEMBERS) {
+				expect(code, `${file} re-declares ${member}`).not.toContain(member);
+			}
+		}
 	});
 });
 
@@ -100,16 +131,8 @@ describe('channel adapters — extension proof', () => {
 			async send() {
 				return { success: true, externalMessageId: 'slack-1' };
 			},
-			parseInbound: (raw) => ({
-				from: (raw as { user?: string }).user ?? 'unknown',
-				content: { text: (raw as { text?: string }).text ?? '' },
-				timestamp: Date.now(),
-			}),
 			async getDeliveryStatus() {
 				return 'delivered';
-			},
-			async validateSignature() {
-				return true;
 			},
 			async healthCheck() {
 				return { status: 'healthy' };

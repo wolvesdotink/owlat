@@ -4,20 +4,30 @@
  * The contract the three configurable outbound channel providers share
  * (Twilio SMS, Meta WhatsApp, generic HTTP webhook). See `./index.ts` for what
  * deliberately does NOT implement it — `email` belongs to the send-provider
- * seam, `chat` is native, and inbound signature verification for these same
- * channels lives in `webhooks/adapters/`.
+ * seam, `chat` is native, and inbound signature verification and payload
+ * parsing for these same channels live in `webhooks/adapters/`.
  *
- * `ChannelType` stays the full unified-message channel set (it is the
- * discriminator carried on an `OutboundMessage`, and `unifiedMessages` rows use
- * all five); the dispatchable subset is `OutboundChannel` in
- * `lib/convexValidators.ts`.
+ * OUTBOUND ONLY, on purpose. The contract carried a `parseInbound` and a
+ * `validateSignature` for as long as it lived in `@owlat/channels`, and neither
+ * ever had a host caller: the shipped inbound route verifies and parses through
+ * `webhooks/adapters/{twilio,meta,generic}.ts`. Two expressions of one rule is
+ * how a Twilio field change gets fixed in one place and silently missed in the
+ * other, so the D10 honesty pass kept the verifiers that run and deleted the
+ * pair that only compiled. Do not re-add an inbound half here — extend
+ * `webhooks/adapters/` instead.
+ *
+ * The channel discriminator is the unified-message channel union itself
+ * (`UnifiedMessageChannel`), declared once by `lib/convexValidators.ts` next to
+ * the validator the schema and every function argument use. The dispatchable
+ * subset — the three channels that actually reach an adapter here — is
+ * `OutboundChannel` in that same module.
  */
 
-export type ChannelType = 'email' | 'sms' | 'whatsapp' | 'generic' | 'chat';
+import type { UnifiedMessageChannel } from '../../lib/convexValidators';
 
 export interface OutboundMessage {
 	contactId: string;
-	channel: ChannelType;
+	channel: UnifiedMessageChannel;
 	content: {
 		text?: string;
 		html?: string;
@@ -34,19 +44,6 @@ export interface SendResult {
 	error?: string;
 }
 
-export interface ParsedMessage {
-	from: string;
-	content: {
-		text?: string;
-		html?: string;
-		subject?: string;
-		mediaUrl?: string;
-	};
-	externalMessageId?: string;
-	timestamp: number;
-	metadata?: Record<string, string | undefined>;
-}
-
 export type DeliveryStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface ChannelHealth {
@@ -58,23 +55,19 @@ export interface ChannelHealth {
 }
 
 /**
- * Channel adapter interface — every channel implements this
+ * Outbound channel adapter interface — every configurable channel provider
+ * implements this, and `channels/outbound.ts` calls exactly these three
+ * methods (dispatch, delivery-status poll, health probe).
  */
 export interface ChannelAdapter {
 	/** Unique channel identifier */
-	id: ChannelType;
+	id: UnifiedMessageChannel;
 
 	/** Send a message through this channel */
 	send(message: OutboundMessage): Promise<SendResult>;
 
-	/** Parse an inbound webhook payload into a unified message */
-	parseInbound(raw: unknown): ParsedMessage;
-
 	/** Check delivery status of a sent message */
 	getDeliveryStatus(externalId: string): Promise<DeliveryStatus>;
-
-	/** Validate an inbound webhook signature */
-	validateSignature(headers: Record<string, string>, body: string): Promise<boolean>;
 
 	/** Report current connection health */
 	healthCheck(): Promise<ChannelHealth>;
