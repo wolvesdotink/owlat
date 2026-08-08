@@ -33,13 +33,13 @@
  *
  * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
  * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
- * `analytics/seedProbeLedger.ts`. It does NOT own the CELL
- * DASHBOARD that renders the status or the confidence line beside it — that is
- * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
- * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
- * probe is P4-7's (`delivery/seedShadowCopy.ts` shadows a campaign send only);
- * the `stream` column is already the cell axis, so that is an additive widening
- * rather than a reshaping.
+ * `analytics/seedProbeLedger.ts`. It does NOT own the CELL DASHBOARD that
+ * renders the status or the confidence line beside it — P3-6 (Independence &
+ * Cells UI) and P3-8 (confidence surfacing) own that and consume
+ * `getSeedPlacementSummary` as it stands. TWO PRODUCERS write this ledger, one
+ * per shape of stream: `delivery/seedShadowCopy.ts` shadows a real campaign
+ * send, and P4-7's `delivery/seedScheduledProbe.ts` mails the `transactional`
+ * and `automation` streams on a cron. Same row, same classification path.
  *
  * SECURITY. Seed credentials are the SAME sealed envelope every other external
  * account uses; this module never reads, returns, or logs them. Seed mailbox
