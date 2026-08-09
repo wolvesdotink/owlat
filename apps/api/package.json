@@ -57,6 +57,7 @@
 		"@owlat/mta-protocol": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
+		"@owlat/provider-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"ai": "catalog:ai",

@@ -826,6 +826,9 @@ import type * as plugins_webhookEventAuthorization from '../plugins/webhookEvent
 import type * as plugins_webhookEventCatalog from '../plugins/webhookEventCatalog.js';
 import type * as plugins_webhookEventCatalog_generated from '../plugins/webhookEventCatalog.generated.js';
 import type * as plugins_workerTasks from '../plugins/workerTasks.js';
+import type * as providers_composition from '../providers/composition.js';
+import type * as providers_domainIdentity from '../providers/domainIdentity.js';
+import type * as providers_feedback from '../providers/feedback.js';
 import type * as providerRoutes from '../providerRoutes.js';
 import type * as publicRateLimit from '../publicRateLimit.js';
 import type * as quickQuery from '../quickQuery.js';
@@ -1768,6 +1771,9 @@ declare const fullApi: ApiFromModules<{
 	'plugins/sendTransportWebhookCatalog': typeof plugins_sendTransportWebhookCatalog;
 	'plugins/sendTransportWebhookCatalog.generated': typeof plugins_sendTransportWebhookCatalog_generated;
 	'plugins/sendTransportWebhookModules.generated': typeof plugins_sendTransportWebhookModules_generated;
+	'providers/composition': typeof providers_composition;
+	'providers/domainIdentity': typeof providers_domainIdentity;
+	'providers/feedback': typeof providers_feedback;
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;

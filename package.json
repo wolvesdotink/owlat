@@ -87,7 +87,7 @@
 		"lint:providers": "vitest run scripts/__tests__/check-provider-identity.test.ts && bash scripts/check-provider-identity.sh",
 		"lint:docker-workspaces": "bash scripts/check-docker-workspaces.sh",
 		"lint:plugin-imports": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --boundaries-only",
-		"plugins:prepare": "bun run --cwd packages/plugin-kit build",
+		"plugins:prepare": "bun run --cwd packages/provider-kit build && bun run --cwd packages/plugin-kit build",
 		"plugins:codegen": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts",
 		"plugins:check": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --check",
 		"plugins:test-clean": "bun packages/plugin-codegen/scripts/cleanCheckoutSmoke.ts",

@@ -33,15 +33,10 @@
  * Per ADR-0018, extended by Mandrill plan D6/D7.
  */
 
-import { mandrillProvider } from './mandrill';
-import { mtaProvider } from './mta';
-import { createHostedRelayIdentityProvider } from './plugin';
-import { toRelayIdentityProvider } from './relaySurface';
-import { sesProvider } from './ses';
 import {
-	pluginSendTransportDomainIdentityFor,
-	pluginSendTransportDomainIdentityKinds,
-} from '../../plugins/sendTransportDomainIdentityCatalog';
+	PRIMARY_DOMAIN_IDENTITY_PROVIDERS,
+	RELAY_DOMAIN_IDENTITY_PROVIDERS,
+} from '../../providers/domainIdentity';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
 import type { RelayIdentityProviderModule } from './relayIdentityTypes';
 import type {
@@ -71,11 +66,7 @@ export type {
 //
 // We use the `unknown` round-trip to satisfy TypeScript while keeping the
 // generic parameter narrowed at the call site of `providerFor`.
-export const SENDING_DOMAIN_PROVIDERS = {
-	mta: mtaProvider,
-	ses: sesProvider,
-	mandrill: mandrillProvider,
-} as const;
+export const SENDING_DOMAIN_PROVIDERS = PRIMARY_DOMAIN_IDENTITY_PROVIDERS;
 
 /**
  * OUR OWN INFRASTRUCTURE, in the domain-provider type domain — the one kind
@@ -90,7 +81,7 @@ export const SENDING_DOMAIN_PROVIDERS = {
  * the twin of this constant in the SEND-TRANSPORT type domain: same string,
  * different union, each declared once.
  */
-export const OWN_SENDING_DOMAIN_PROVIDER_KIND = mtaProvider.kind;
+export const OWN_SENDING_DOMAIN_PROVIDER_KIND = SENDING_DOMAIN_PROVIDERS.mta.kind;
 
 /**
  * Compile-time pin: the two names for our own infrastructure are ONE STRING.
@@ -248,30 +239,6 @@ export function providerFor<K extends SendingDomainProviderKind>(
  * rather than to an inherited member being handed back as an adapter — the same
  * reason `providerFor` above asks `hasOwnProperty`.
  */
-function coreRelayIdentityProviders(): readonly RelayIdentityProviderModule[] {
-	const providers: RelayIdentityProviderModule[] = [];
-	for (const kind of Object.keys(SENDING_DOMAIN_PROVIDERS) as SendingDomainProviderKind[]) {
-		const provider: SendingDomainProviderModule<SendingDomainProviderKind> = providerFor(kind);
-		const relay = toRelayIdentityProvider(kind, provider);
-		if (relay) providers.push(relay);
-	}
-	return providers;
-}
-
-function pluginRelayIdentityProviders(): readonly RelayIdentityProviderModule[] {
-	return pluginSendTransportDomainIdentityKinds().flatMap((kind) => {
-		const identity = pluginSendTransportDomainIdentityFor(kind);
-		return identity ? [createHostedRelayIdentityProvider(identity.definition)] : [];
-	});
-}
-
-const RELAY_IDENTITY_PROVIDERS: ReadonlyMap<string, RelayIdentityProviderModule> = new Map(
-	[...coreRelayIdentityProviders(), ...pluginRelayIdentityProviders()].map((provider) => [
-		provider.kind,
-		provider,
-	])
-);
-
 /**
  * The relay-identity provider for `kind`, or `undefined` when the kind cannot
  * prove a domain.
@@ -286,7 +253,7 @@ const RELAY_IDENTITY_PROVIDERS: ReadonlyMap<string, RelayIdentityProviderModule>
 export function relayIdentityProviderFor(
 	kind: string | undefined | null
 ): RelayIdentityProviderModule | undefined {
-	return typeof kind === 'string' ? RELAY_IDENTITY_PROVIDERS.get(kind) : undefined;
+	return typeof kind === 'string' ? RELAY_DOMAIN_IDENTITY_PROVIDERS.get(kind) : undefined;
 }
 
 /**

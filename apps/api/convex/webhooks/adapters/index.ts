@@ -35,10 +35,7 @@
  * id — the seams plan's P2.2.
  */
 
-import { mandrillAdapter } from './mandrill';
-import { mtaAdapter } from './mta';
-import { resendAdapter } from './resend';
-import { sesAdapter } from './ses';
+import { PROVIDER_FEEDBACK_CONTRIBUTIONS } from '../../providers/feedback';
 import type { FeedbackReportingSendProviderKind } from '../../lib/sendProviders/catalog';
 import type { AnyInboundAdapter } from '../pipeline';
 
@@ -46,12 +43,12 @@ import type { AnyInboundAdapter } from '../pipeline';
  * Keyed by send-provider kind — the same key `providerFeedback.webhookPath`
  * declares a route for and the same key the measurement plane grades an arm by.
  */
-export const PROVIDER_FEEDBACK_ADAPTERS = {
-	mta: mtaAdapter,
-	ses: sesAdapter,
-	resend: resendAdapter,
-	mandrill: mandrillAdapter,
-} as const;
+export const PROVIDER_FEEDBACK_ADAPTERS = Object.fromEntries(
+	PROVIDER_FEEDBACK_CONTRIBUTIONS.flatMap(({ kind, contribution }) => {
+		if (!['mta', 'ses', 'resend', 'mandrill'].includes(kind)) return [];
+		return [[kind, contribution.parser]];
+	})
+) as { [K in FeedbackReportingSendProviderKind]: AnyInboundAdapter<K> };
 
 /** The kinds this registry can dispatch. */
 export type ProviderFeedbackKind = keyof typeof PROVIDER_FEEDBACK_ADAPTERS;

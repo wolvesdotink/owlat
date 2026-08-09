@@ -49,6 +49,9 @@
 		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@owlat/provider-kit": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",

@@ -1,0 +1,40 @@
+{
+	"name": "@owlat/provider-kit",
+	"version": "0.4.1",
+	"description": "Runtime-neutral contracts for Owlat send-provider bundles",
+	"license": "Apache-2.0",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsup src/index.ts --format esm --dts --sourcemap --target node20 --clean",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"tsup": "^8.5.1",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

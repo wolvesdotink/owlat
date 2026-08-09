@@ -1,4 +1,27 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
+// Provider authors may adopt the universal vocabulary through plugin-kit while
+// existing PluginSendTransport* names remain source compatible.
+export {
+	composeProviderBundles,
+	defineSendProviderBundle,
+	ProviderBundleCompositionError,
+} from '@owlat/provider-kit';
+export type {
+	ComposedSendProviderBundle,
+	HmacTimestampBodyVerifier,
+	ProviderBundleSource,
+	ProviderFeedbackContribution,
+	ProviderFeedbackEvent,
+	ProviderFeedbackParserModule,
+	ProviderFeedbackVerifier,
+	ProviderModuleExport,
+	ProviderSetupContribution,
+	ProviderSetupProbeModule,
+	ProviderStaticModuleExport,
+	SendProviderBundle,
+	SendProviderDescriptor,
+	SourceAssignedProviderBundle,
+} from '@owlat/provider-kit';
 export {
 	PLUGIN_AUTONOMY_GATE_CAPABILITY,
 	PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS,

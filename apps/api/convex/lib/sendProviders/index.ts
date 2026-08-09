@@ -4,31 +4,21 @@
  * Send provider adapter (module) — registry + dispatch.
  *
  * Per ADR-0020. Mirrors `convex/domains/providers/index.ts` (ADR-0018) shape.
- * Adding another core send provider:
- *   1. Declare the entry in `packages/shared/src/sendProviderCatalog.ts`. That
- *      is where the kind literal lives: `CoreSendProviderKind` is read off those
- *      entries in `./catalogTypes` and reaches the rest of the backend through
- *      `./catalog` and `./types`, which only re-export it.
- *   2. Create `convex/lib/sendProviders/<kind>/index.ts` with the adapter.
- *   3. Add one entry to `SEND_PROVIDERS` below.
- *
- * Step 1 without step 3 does not compile: the mapped-type annotation on
- * `_typecheck` below keys the registry by the catalog's kind union, so a missing
- * adapter is a build error and a malformed one names the method it lacks.
+ * Executable transports are composed in `convex/providers/composition.ts`.
+ * `SEND_PROVIDERS` below is the compatibility view for callers that still need
+ * the closed core map; dispatch itself asks the composed bundle registry.
  * `__tests__/catalogConsistency.test.ts` restates that guard against the union
  * imported straight from `@owlat/shared`, so the chain cannot quietly be rebuilt
  * on a union local to this app.
  * The **Send dispatch (helper)** in `./dispatch.ts` never branches on `kind`.
  */
 
-import { mtaSendProvider } from './mta';
-import { sesSendProvider } from './ses';
-import { resendSendProvider } from './resend';
-import { smtpSendProvider } from './smtp';
-import { mandrillSendProvider } from './mandrill';
-import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
-import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
-import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
+import { isCoreSendProviderKind } from './catalog';
+import type { HostedSendProviderModule } from './pluginProvider';
+import {
+	SEND_PROVIDER_BUNDLES,
+	runtimeTransportFor,
+} from '../../providers/composition';
 import type {
 	CoreSendProviderKind,
 	DispatchExtrasInput,
@@ -75,85 +65,16 @@ export {
 
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
-export const SEND_PROVIDERS = {
-	mta: mtaSendProvider,
-	ses: sesSendProvider,
-	resend: resendSendProvider,
-	smtp: smtpSendProvider,
-	mandrill: mandrillSendProvider,
-} as const;
+export const SEND_PROVIDERS = Object.fromEntries(
+	SEND_PROVIDER_BUNDLES.filter(({ descriptor }) =>
+		isCoreSendProviderKind(descriptor.kind)
+	).map(({ descriptor, transport }) => [descriptor.kind, transport])
+) as { [K in CoreSendProviderKind]: SendProviderModule<K> };
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`.
 const _typecheck: { [K in CoreSendProviderKind]: SendProviderModule<K> } = SEND_PROVIDERS;
 void _typecheck;
-
-interface GeneratedSendTransportModule {
-	readonly kind: SendProviderKind;
-	readonly pluginId: string;
-	readonly module: unknown;
-}
-
-const hostedProviders = new Map<SendProviderKind, HostedSendProviderModule>();
-for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly GeneratedSendTransportModule[]) {
-	const catalogEntry = sendProviderCatalogEntry(generated.kind);
-	if (
-		isCoreSendProviderKind(generated.kind) ||
-		catalogEntry.pluginId !== generated.pluginId ||
-		hostedProviders.has(generated.kind)
-	) {
-		throw new TypeError('Invalid bundled send transport registry');
-	}
-	const instanceEnvVars = catalogEntry.instanceEnvVars ?? [];
-	const hosted = createHostedSendProvider(
-		generated.kind,
-		catalogEntry.retryDelays,
-		generated.module,
-		{
-			instanceEnvVars,
-			// THE INTERSECTION, not the gate. A plugin entry's presence gate is a
-			// UNION that also carries the contributing PLUGIN's deployment-wide flag
-			// variables, and those are not this transport's to be handed — so a
-			// variable is required-for-a-send only if it is also instance-scoped.
-			requiredEnvVars: catalogEntry.requiredEnvVars.filter((name) =>
-				instanceEnvVars.includes(name)
-			),
-		}
-	);
-	// THE DEDUP CLAIM IS A PAIR, and this is the half a manifest cannot make on
-	// its own: the catalog says a repeat is safe, and the module's
-	// `buildSystemMailExtras` is what carries the key the repeat would be
-	// deduplicated on. Without it, `systemMailRetryDisposition` reports an
-	// ambiguous password reset as `safe_to_retry` while the key never reached the
-	// provider — and the "retry" is a second mail to a real person. Refused at
-	// module load, where it is a deployment that does not start rather than a
-	// wrong answer nobody attributes to a plugin. (This replaces the blanket
-	// refusal of the declaration itself, which stood only while the plugin tier
-	// had no extras contract at all.)
-	if (catalogEntry.deduplicatesOnIdempotencyKey === true && !hosted.buildSystemMailExtras) {
-		throw new TypeError(
-			`Bundled send transport '${generated.kind}' declares deduplicatesOnIdempotencyKey: true ` +
-				'but its module exports no buildSystemMailExtras, so the system/auth mail path cannot ' +
-				'hand it the key it would deduplicate on. See buildSystemMailExtras in ' +
-				'lib/sendProviders/systemMailExtras.ts.'
-		);
-	}
-	// THE RETURN-PATH CLAIM IS NOT CHECKED HERE, and a reader comparing the two
-	// pairs will want to know why. It is not a pair at all at this tier: no value
-	// of `supportsCustomReturnPath` other than `no` may reach a bundled entry,
-	// because the wire the claim needs is a VERP address the HOST signs and a
-	// bundled module is never handed a signing key. That is refused one layer
-	// earlier, on the artifact itself — `assertPluginReturnPathClaimsAreHonest` in
-	// `./catalog.ts` — where it can be stated without a module in hand.
-	hostedProviders.set(generated.kind, hosted);
-}
-if (
-	SEND_PROVIDER_CATALOG.some(
-		(entry) => entry.pluginId !== undefined && !hostedProviders.has(entry.kind)
-	)
-) {
-	throw new TypeError('Bundled send transport catalog is missing an executable module');
-}
 
 /**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
@@ -172,10 +93,7 @@ export function providerFor(
 export function providerFor(
 	kind: SendProviderKind
 ): SendProviderModule<SendProviderKind> | HostedSendProviderModule {
-	const mod: SendProviderModule<SendProviderKind> | HostedSendProviderModule | undefined =
-		isCoreSendProviderKind(kind) ? SEND_PROVIDERS[kind] : hostedProviders.get(kind);
-	if (!mod) throw new TypeError('Unknown send provider');
-	return mod;
+	return runtimeTransportFor(kind);
 }
 
 /**
@@ -221,7 +139,11 @@ function extrasModuleFor(
 	kind: SendProviderKind
 ): SendProviderModule<SendProviderKind> | HostedSendProviderModule | null {
 	if (isCoreSendProviderKind(kind)) return SEND_PROVIDERS[kind];
-	return hostedProviders.get(kind) ?? null;
+	try {
+		return runtimeTransportFor(kind);
+	} catch {
+		return null;
+	}
 }
 
 /**

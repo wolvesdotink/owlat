@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node"],
+		"lib": ["ES2022"],
+		"declaration": true,
+		"declarationMap": true,
+		"noEmit": true,
+		"outDir": "./dist",
+		"rootDir": ".",
+		"ignoreDeprecations": "6.0",
+		"baseUrl": ".",
+		"paths": { "@owlat/provider-kit": ["./src/index.ts"] }
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}
