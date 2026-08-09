@@ -15,10 +15,7 @@
 
 import { isCoreSendProviderKind } from './catalog';
 import type { HostedSendProviderModule } from './pluginProvider';
-import {
-	SEND_PROVIDER_BUNDLES,
-	runtimeTransportFor,
-} from '../../providers/composition';
+import { SEND_PROVIDER_BUNDLES, runtimeTransportFor } from '../../providers/composition';
 import type {
 	CoreSendProviderKind,
 	DispatchExtrasInput,
@@ -38,6 +35,7 @@ export type {
 	MtaIpPool,
 	SesExtras,
 	ResendExtras,
+	EmailitExtras,
 	SmtpExtras,
 	MandrillExtras,
 	EmailSendAttempt,
@@ -66,9 +64,9 @@ export {
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
 export const SEND_PROVIDERS = Object.fromEntries(
-	SEND_PROVIDER_BUNDLES.filter(({ descriptor }) =>
-		isCoreSendProviderKind(descriptor.kind)
-	).map(({ descriptor, transport }) => [descriptor.kind, transport])
+	SEND_PROVIDER_BUNDLES.filter(({ descriptor }) => isCoreSendProviderKind(descriptor.kind)).map(
+		({ descriptor, transport }) => [descriptor.kind, transport]
+	)
 ) as { [K in CoreSendProviderKind]: SendProviderModule<K> };
 
 // Compile-time guard: each registry value must satisfy the adapter shape for

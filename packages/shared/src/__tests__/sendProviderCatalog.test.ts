@@ -71,7 +71,7 @@ import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
 const ENTRIES: readonly CoreSendProviderCatalogEntry[] = CORE_SEND_PROVIDER_CATALOG_ENTRIES;
 
 /** The kind list exactly as `transportAlignment.ts` declared it pre-move. */
-const KINDS_BEFORE = ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const;
+const KINDS_BEFORE = ['mta', 'ses', 'resend', 'smtp', 'mandrill', 'emailit'] as const;
 
 /** The `getSendPathRequiredEnv` switch, arm for arm, pre-move. */
 const SEND_PATH_REQUIRED_ENV_BEFORE: Record<string, string[]> = {
@@ -80,6 +80,7 @@ const SEND_PATH_REQUIRED_ENV_BEFORE: Record<string, string[]> = {
 	ses: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
 	smtp: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
 	mandrill: ['MANDRILL_API_KEY'],
+	emailit: ['EMAILIT_API_KEY'],
 };
 
 /**
@@ -104,6 +105,7 @@ const PROVIDER_ENV_KEYS_BEFORE = [
 	'EMAIL_PROVIDER',
 	'RESEND_API_KEY',
 	'MANDRILL_API_KEY',
+	'EMAILIT_API_KEY',
 	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
@@ -192,6 +194,7 @@ describe('PROVIDER_ENV_KEYS is derived from the credential fields', () => {
 			'SMTP_RELAY_USERNAME',
 			'SMTP_RELAY_PASSWORD',
 			'MANDRILL_API_KEY',
+			'EMAILIT_API_KEY',
 			'DEFAULT_FROM_EMAIL',
 			'DEFAULT_FROM_NAME',
 		]);
@@ -392,6 +395,7 @@ describe('the entries themselves', () => {
 		expect(probes.map((entry) => [entry.kind, entry.setupProbe?.validator])).toEqual([
 			['resend', 'validateResendKey'],
 			['smtp', 'validateSmtpRelay'],
+			['emailit', 'validateEmailitKey'],
 		]);
 		// ...and the OTHER direction, which the literal cannot give: the name has
 		// to resolve to something callable in the module the descriptor points at.
@@ -596,6 +600,7 @@ describe('the feedback channel each transport declares', () => {
 			['ses', '/webhooks/ses', undefined, 'sns-topic'],
 			['resend', '/webhooks/resend', 'RESEND_WEBHOOK_SECRET', undefined],
 			['mandrill', '/webhooks/mandrill', 'MANDRILL_WEBHOOK_KEY', 'signed-webhook'],
+			['emailit', '/webhooks/emailit', 'EMAILIT_WEBHOOK_SECRET', 'signed-webhook'],
 		]);
 	});
 

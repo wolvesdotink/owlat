@@ -84,3 +84,11 @@ export function httpStatusToErrorCode(status: number): EmailErrorCode | undefine
 export function isRetryableErrorCode(code: EmailErrorCode): boolean {
 	return code === EmailErrorCode.RATE_LIMIT || code === EmailErrorCode.SERVER_ERROR;
 }
+
+/** Parse a bounded RFC 9110 Retry-After delta-seconds value. */
+export function parseRetryAfterDeltaMs(headerValue: string | null): number | undefined {
+	if (headerValue === null) return undefined;
+	const seconds = Number(headerValue.trim());
+	if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+	return Math.min(Math.max(Math.round(seconds * 1_000), 1_000), 3_600_000);
+}

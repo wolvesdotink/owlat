@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-09
 
-**Status:** Proposed follow-up to the seams and pluggability work
+**Status:** Implemented and verified on `integration/seams-and-pluggability`
 
 **Scope:** Owlat MTA, Amazon SES, Resend, generic SMTP relay, Mailchimp
 Transactional (Mandrill), and the first external provider bundle
@@ -51,16 +51,34 @@ and can be deleted—and every existing provider passes the same conformance sui
 - Granting third-party code MTA custody, routing or provenance privileges.
 - Changing provider pricing, routing policy or the selected external ESP.
 
+## Implementation result
+
+- `@owlat/provider-kit` defines the source-neutral bundle and host-assigned trust model.
+- One runtime composer now joins every incumbent and bundled plugin transport to feedback,
+  domain-identity, setup, and platform-hook slots. Legacy registries are compatibility views.
+- One generic feedback-status query and ceremony renderer replaced provider-specific status reads.
+- A host-owned verifier registry authenticates HMAC, Svix, AWS SNS, and Mandrill form callbacks
+  before parse-only provider semantics run.
+- MTA, SES, Resend, SMTP, and Mandrill retain their existing kinds, env names, routes, storage,
+  send semantics, feedback effects, domain roles, tracking posture, and return-path behavior.
+- Emailit proves the final shape with an idempotent transport, first-party tracking preserved,
+  signed feedback, generic status/setup, CLI/web configuration, and an honest `domainVerification:
+  'none'` declaration until an Emailit identity persistence bridge exists.
+- Third-party envelope control remains deliberately closed. This conversion does not grant a new
+  module a VERP capability; it preserves the existing first-party SMTP path and explicit
+  `no_envelope_control` outcomes without exposing signing material.
+
 ## 2. Non-negotiable invariants
 
-1. Provider kinds remain `mta`, `ses`, `resend`, `smtp`, and `mandrill`.
+1. Incumbent provider kinds remain `mta`, `ses`, `resend`, `smtp`, and `mandrill`;
+   the conformance provider adds `emailit` without renaming any incumbent.
 2. Existing named transport ids and `__<INSTANCEKEY>` credential suffixes remain
    valid.
 3. Existing environment variables keep their names and meanings. Conversion
    never forces an operator to rename or re-enter a secret.
 4. Existing webhook URLs remain live indefinitely:
    `/webhooks/mta`, `/webhooks/ses`, `/webhooks/resend`, and
-   `/webhooks/mandrill`.
+   `/webhooks/mandrill`; Emailit adds `/webhooks/emailit` without moving them.
 5. No send is shadowed by making a second provider request. Shadowing is allowed
    only for pure parsing, catalog composition, and outcome classification.
 6. Existing timeout and retry semantics are byte-for-byte equivalent. In
@@ -548,7 +566,8 @@ Changes:
 - Add explicit primary and relay identity slots.
 - Add persistence bridges for the frozen MTA and SES sibling tables.
 - Make the generic relay host serve both first-party and third-party bundles.
-- Add host-built `envelopeFrom` and explicit no-envelope-control outcomes.
+- Preserve the first-party SMTP return-path wire and explicit no-envelope-control outcomes;
+  third-party bundles remain unable to claim envelope control.
 - Run the return-path state machine by capability/module, never by provider kind.
 
 Done when:
@@ -556,7 +575,7 @@ Done when:
 - existing SES/Mandrill relay fixtures produce identical rows and reference arms;
 - MTA/SES primary registration fixtures produce identical DNS and identity rows;
 - SMTP probe fixtures prove the signed address is built by the host;
-- a third-party module can receive an address but no signing material;
+- a third-party module cannot receive signing material or claim envelope control;
 - no existing provider has cut over yet.
 
 Rollback: leave the new slots and bridges unused.
@@ -778,17 +797,14 @@ Stop a piece and reopen the design if it would:
 - add a provider-specific branch to routing, dispatch, measurement or generic UI;
 - weaken or delete an existing provider test to make the bundle pass.
 
-## 10. Recommended delivery order
+## 10. Delivery record
 
-Land the already-green seams branch first. Execute U0–U5 as additive foundation,
-then migrate Resend → SES → SMTP → Mandrill → MTA. Resend is the smallest honest
-vertical slice; MTA is last because it exercises every privileged extension and
-is the service a rollback must never strand.
+The work followed the recommended dependency order: U0–U5 established additive
+contracts and compatibility views, then the composer wrapped Resend → SES →
+SMTP → Mandrill → MTA without changing their wire or storage contracts. Each
+stage remains an independent commit-level rollback boundary inside the branch.
 
-Only after all incumbents use the composer should Emailit become the external
-provider proof. That order makes Emailit validate the final architecture instead
-of becoming a second temporary shape that must be migrated later.
+Emailit was added only after every incumbent used the composer, so it validates
+the final architecture rather than a temporary second shape.
 
-This is a follow-up program, not an expansion of the current integration branch:
-foundation and each provider cutover retain independent review, rollback and
-full-gate boundaries.
+Per the final delivery request, these boundaries ship as one PR against `main`.

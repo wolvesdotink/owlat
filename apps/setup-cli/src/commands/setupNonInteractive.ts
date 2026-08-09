@@ -208,6 +208,9 @@ function resolveSending(read: (key: string) => string | undefined): SendingConfi
 	if (provider === 'resend') {
 		const apiKey = read('RESEND_API_KEY');
 		if (apiKey) return { provider: 'resend', apiKey };
+	} else if (provider === 'emailit') {
+		const apiKey = read('EMAILIT_API_KEY');
+		if (apiKey) return { provider: 'emailit', apiKey };
 	} else if (provider === 'ses') {
 		const region = read('AWS_SES_REGION');
 		const accessKeyId = read('AWS_SES_ACCESS_KEY_ID');

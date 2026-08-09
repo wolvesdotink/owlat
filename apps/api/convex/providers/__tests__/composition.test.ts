@@ -46,6 +46,12 @@ describe('send-provider bundle composition', () => {
 				optional: ['MANDRILL_WEBHOOK_KEY', 'MANDRILL_SUBACCOUNT', 'MANDRILL_IP_POOL'],
 				webhookPath: '/webhooks/mandrill',
 			},
+			{
+				kind: 'emailit',
+				required: ['EMAILIT_API_KEY'],
+				optional: ['EMAILIT_WEBHOOK_SECRET'],
+				webhookPath: '/webhooks/emailit',
+			},
 		]);
 	});
 
@@ -58,6 +64,7 @@ describe('send-provider bundle composition', () => {
 			['resend', 'first-party'],
 			['smtp', 'first-party'],
 			['mandrill', 'first-party'],
+			['emailit', 'first-party'],
 		]);
 
 		expect(providerBundleFor('mta')).toMatchObject({
@@ -85,6 +92,7 @@ describe('send-provider bundle composition', () => {
 			['ses', 'aws-sns'],
 			['resend', 'svix'],
 			['mandrill', 'mandrill-form'],
+			['emailit', 'hmac-timestamp-body'],
 		]);
 	});
 });

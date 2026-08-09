@@ -1,8 +1,8 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Five adapters today:
- * `mta`, `ses`, `resend`, `smtp`, `mandrill`. The **Send dispatch (helper)** in
+ * Per ADR-0020 — the per-provider Send-side surface. Core adapters are declared
+ * by the shared send-provider catalog. The **Send dispatch (helper)** in
  * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
  * per-provider modules own single-attempt sends and per-provider error
  * categorization.
@@ -33,7 +33,12 @@ import type { SendTransportId, SendTransportRecord } from './transports';
  * into a non-`'use node'` bundle.
  */
 export { SEND_PROVIDER_KINDS, isSendProviderKind } from './catalog';
-export { EmailErrorCode, httpStatusToErrorCode, isRetryableErrorCode } from './errors';
+export {
+	EmailErrorCode,
+	httpStatusToErrorCode,
+	isRetryableErrorCode,
+	parseRetryAfterDeltaMs,
+} from './errors';
 export type { EmailSendAttempt } from './errors';
 export type { SystemMailExtrasInput, SystemMailExtrasCapableModule } from './systemMailExtras';
 export type { CoreSendProviderKind, SendProviderKind } from './catalog';
@@ -141,6 +146,11 @@ export interface ResendExtras {
 	 * header so a surviving retry de-dupes at Resend instead of double-sending.
 	 * The governed dispatch boundary derives this from the durable Send row.
 	 */
+	idempotencyKey?: string;
+}
+
+/** Stable provider-side deduplication key for Emailit sends. */
+export interface EmailitExtras {
 	idempotencyKey?: string;
 }
 
@@ -281,7 +291,9 @@ export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 				? SmtpExtras
 				: K extends 'mandrill'
 					? MandrillExtras
-					: unknown;
+					: K extends 'emailit'
+						? EmailitExtras
+						: unknown;
 
 // ─── Dispatch helper result ────────────────────────────────────────────────
 

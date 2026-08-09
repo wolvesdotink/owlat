@@ -115,8 +115,8 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 			{
 				ok: false,
 				message: provider
-					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (mta|resend|ses|smtp)`
-					: 'a sending feature is enabled but EMAIL_PROVIDER is unset — set mta|resend|ses|smtp and its credentials, or this install cannot send mail',
+					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (mta|resend|emailit|ses|smtp)`
+					: 'a sending feature is enabled but EMAIL_PROVIDER is unset — set mta|resend|emailit|ses|smtp and its credentials, or this install cannot send mail',
 			},
 		];
 	}

@@ -37,6 +37,7 @@
 
 import { PROVIDER_FEEDBACK_CONTRIBUTIONS } from '../../providers/feedback';
 import type { FeedbackReportingSendProviderKind } from '../../lib/sendProviders/catalog';
+import { isCoreSendProviderKind } from '../../lib/sendProviders/catalog';
 import type { AnyInboundAdapter } from '../pipeline';
 import { composeProviderFeedbackAdapter } from '../providerFeedbackAdapter';
 
@@ -46,7 +47,7 @@ import { composeProviderFeedbackAdapter } from '../providerFeedbackAdapter';
  */
 export const PROVIDER_FEEDBACK_ADAPTERS = Object.fromEntries(
 	PROVIDER_FEEDBACK_CONTRIBUTIONS.flatMap(({ kind, contribution }) => {
-		if (!['mta', 'ses', 'resend', 'mandrill'].includes(kind)) return [];
+		if (!isCoreSendProviderKind(kind)) return [];
 		return [[kind, composeProviderFeedbackAdapter(kind, contribution)]];
 	})
 ) as { [K in FeedbackReportingSendProviderKind]: AnyInboundAdapter<K> };

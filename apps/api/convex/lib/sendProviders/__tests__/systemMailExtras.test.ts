@@ -44,7 +44,7 @@ function carriesKey(extras: unknown): boolean {
 
 describe('buildSystemMailExtrasFor — the declaration and the wiring are one promise', () => {
 	it('covers every core kind, so the table below cannot go vacuous', () => {
-		expect(coreKinds).toEqual(['mta', 'ses', 'resend', 'smtp', 'mandrill']);
+		expect(coreKinds).toEqual(['mta', 'ses', 'resend', 'smtp', 'mandrill', 'emailit']);
 	});
 
 	it.each(coreKinds)(
@@ -83,6 +83,13 @@ describe('buildSystemMailExtrasFor — the declaration and the wiring are one pr
 			idempotencyKey: KEY,
 		});
 		expect(buildSystemMailExtrasFor('resend', {})).toEqual({});
+	});
+
+	it('gives Emailit the dedup header only when there is a key to dedup on', () => {
+		expect(buildSystemMailExtrasFor('emailit', { idempotencyKey: KEY })).toEqual({
+			idempotencyKey: KEY,
+		});
+		expect(buildSystemMailExtrasFor('emailit', {})).toEqual({});
 	});
 
 	it.each(['ses', 'smtp', 'mandrill'] as const)(

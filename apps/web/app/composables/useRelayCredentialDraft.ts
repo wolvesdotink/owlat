@@ -118,6 +118,11 @@ const TRANSPORT_PICKER_COPY: readonly {
 		hint: 'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
 		icon: 'lucide:shuffle',
 	},
+	{
+		kind: 'emailit',
+		hint: 'Managed email API with signed delivery feedback and idempotent sends.',
+		icon: 'lucide:send',
+	},
 ];
 
 /** The catalog's kinds, ordered by the copy table above and then by the catalog. */
@@ -215,6 +220,7 @@ export type ProbeRequestBuilder = (
 
 const PROBE_REQUEST_BODIES: Record<string, ProbeRequestBuilder> = {
 	validateResendKey: (values) => ({ apiKey: values['RESEND_API_KEY'] ?? '' }),
+	validateEmailitKey: (values) => ({ apiKey: values['EMAILIT_API_KEY'] ?? '' }),
 	validateSmtpRelay: (values, endpoint) => {
 		const port = (values['SMTP_RELAY_PORT'] ?? '').trim();
 		// The BLANK-PORT fallback is the descriptor's `portDefault`, not a literal

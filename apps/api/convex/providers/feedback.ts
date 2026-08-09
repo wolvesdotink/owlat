@@ -1,9 +1,14 @@
 /** Isolate-safe feedback contributions for every composed send provider. */
 import type { ProviderFeedbackContribution, ProviderFeedbackVerifier } from '@owlat/provider-kit';
 import type { PluginReplayBoundSignatureContract } from '@owlat/plugin-kit';
-import { SEND_PROVIDER_CATALOG, isCoreSendProviderKind } from '../lib/sendProviders/catalog';
+import {
+	SEND_PROVIDER_CATALOG,
+	isCoreSendProviderKind,
+	type FeedbackReportingSendProviderKind,
+} from '../lib/sendProviders/catalog';
 import type { SendProviderKind } from '../lib/sendProviders/types';
 import { pluginSendTransportWebhookFor } from '../plugins/sendTransportWebhookCatalog';
+import { emailitAdapter } from '../webhooks/adapters/emailit';
 import { mandrillAdapter } from '../webhooks/adapters/mandrill';
 import { mtaAdapter } from '../webhooks/adapters/mta';
 import { resendAdapter } from '../webhooks/adapters/resend';
@@ -80,8 +85,19 @@ const CORE_FEEDBACK = {
 		} as const,
 		parser: mandrillAdapter,
 	},
+	emailit: {
+		webhookPath: '/webhooks/emailit',
+		verifier: hmacVerifier(
+			'EMAILIT_WEBHOOK_SECRET',
+			'x-emailit-signature',
+			'x-emailit-timestamp',
+			'sha256',
+			'hex'
+		),
+		parser: emailitAdapter,
+	},
 } as const satisfies Record<
-	'mta' | 'ses' | 'resend' | 'mandrill',
+	FeedbackReportingSendProviderKind,
 	ProviderFeedbackContribution<unknown>
 >;
 

@@ -111,6 +111,9 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// Provider: Resend
 	'RESEND_API_KEY',
 	'RESEND_WEBHOOK_SECRET',
+	// Provider: Emailit
+	'EMAILIT_API_KEY',
+	'EMAILIT_WEBHOOK_SECRET',
 	// Provider: AWS SES
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_REGION',

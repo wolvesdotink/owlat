@@ -29,9 +29,7 @@
  * optional capability field lives in `./sendProviderCapabilities`. All three are
  * re-exported here so consumers import one module.
  *
- * ENTRY ORDER IS THE CANONICAL ORDER. `SEND_TRANSPORT_KINDS` and every table
- * derived from it follow it: our own MTA first, then the relays in the order
- * they shipped.
+ * Entry order is canonical: our MTA first, then relays in shipped order.
  */
 
 import { deepFreeze } from './deepFreeze';
@@ -60,64 +58,27 @@ const CORE_SEND_PROVIDER_CATALOG = [
 	{
 		kind: 'mta',
 		label: 'Owlat MTA',
-		// The one `own` entry — D3's "own MTA is special by definition", as a
-		// declaration rather than as a comparison somebody writes again.
 		tier: 'own',
 		retryDelays: [1_000, 5_000],
 		requiredEnvVars: ['MTA_API_URL', 'MTA_API_KEY'],
-		// `MTA_WEBHOOK_SECRET` for the same reason `resend` declares
-		// `RESEND_WEBHOOK_SECRET` and `mandrill` declares `MANDRILL_WEBHOOK_KEY`:
-		// the MTA's feedback path (`webhooks/adapters/mta.ts`, the TLS-report
-		// endpoint, the checklist loopback) reads it, but a deployment that has not
-		// issued it still sends perfectly well — so it belongs beside the required
-		// list, not in it. It is not a credential FIELD either: the installer
-		// writes it alongside `MTA_API_KEY`.
 		optionalEnvVars: ['OUTBOUND_TLS_MODE', 'MTA_WEBHOOK_SECRET'],
-		// NOT a credential form field, deliberately: `MTA_API_URL` / `MTA_API_KEY`
-		// are written by the installer when it stands the MTA up, not typed by an
-		// operator — which is why `PROVIDER_ENV_KEYS` (derived from the FIELDS
-		// below) has never contained them, and must not start to: that list is
-		// cleared and re-set on every transport swap, so including them would
-		// unset a working MTA the moment someone rotated a Resend key.
 		credentialFields: [
 			{
 				kind: 'select',
 				key: 'outboundTlsMode',
-				// The string the shipped editor shows: the catalog is its ONE
-				// declaration (D1), so the label moved here rather than changing on
-				// the way in — renaming a field on a live editor is a user-visible
-				// change no wave of this plan ships.
 				label: 'Connection security',
 				envVar: 'OUTBOUND_TLS_MODE',
 				options: OUTBOUND_TLS_MODE_OPTIONS,
 				default: 'opportunistic',
 			},
 		],
-		// Our own MTA stamps the VERP envelope sender itself (smtp/sender.ts).
 		supportsCustomReturnPath: 'yes',
 		hasProviderFeedback: true,
-		// The one channel with NO operator ceremony: our own MTA posts here with
-		// the secret the installer wrote beside `MTA_API_KEY` — so no panel.
 		providerFeedback: { webhookPath: '/webhooks/mta', signingKeyEnvVar: 'MTA_WEBHOOK_SECRET' },
-		// Our MTA's sending domains ARE verified — through `domains/providers/mta`
-		// and the generic DNS verifier — but never through this seam: the MTA is
-		// the arm a deliverability fallback moves traffic AWAY from, never the
-		// relay it moves traffic to, so it has no relay identity to report.
 		domainVerification: 'none',
-		// `POST /send` is an INTAKE: it enqueues the work and answers; the message
-		// is delivered (or not) later and reported over the MTA's own webhook. So a
-		// success here is custody, not delivery, and the Send stays `queued`.
 		acceptanceSemantics: 'accepted',
-		// The id the MTA correlates work by IS the idempotency key we minted, so it
-		// exists before the request does — which is what lets the durable Send be
-		// bound to it pre-dispatch, and what makes a lost response replayable.
 		messageIdSource: 'idempotency-key',
-		// Its intake dedups on that same id, which is what makes the replay above
-		// safe — and what lets an ambiguous system/auth mail be sent again.
 		deduplicatesOnIdempotencyKey: true,
-		// The ONE transport whose feedback we stamp ourselves: mail leaving our own
-		// infrastructure is VERP-attributed on the way out, and the bounce/FBL
-		// processor writes `deliveryDomain` onto the event it emits.
 		tagsFeedbackProvenance: true,
 	},
 	{
@@ -204,10 +165,9 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		],
 		supportsCustomReturnPath: 'no',
 		hasProviderFeedback: true,
-		// Mandrill's ceremony, but NO `setupPanel`: the shipped delivery page has
-		// never drawn one for Resend, and the key-presence read a panel reports is
-		// still a per-kind backend query (`getMandrillFeedbackStatus`), not one for
-		// whichever signed kind is active. The gap is declared rather than absent.
+		// No `setupPanel`: the webhook is optional and Resend keeps working without
+		// it. The generic feedback-status query still reports the signing-key state
+		// whenever a surface chooses to draw the ceremony.
 		providerFeedback: {
 			webhookPath: '/webhooks/resend',
 			signingKeyEnvVar: 'RESEND_WEBHOOK_SECRET',
@@ -349,6 +309,38 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		deduplicatesOnIdempotencyKey: false,
 		// A third-party ESP's webhook, unannotated by us.
 		tagsFeedbackProvenance: false,
+	},
+	{
+		kind: 'emailit',
+		label: 'Emailit',
+		tier: 'core',
+		retryDelays: [1_000, 5_000, 30_000],
+		requiredEnvVars: ['EMAILIT_API_KEY'],
+		optionalEnvVars: ['EMAILIT_WEBHOOK_SECRET'],
+		credentialFields: [
+			{
+				kind: 'secret',
+				key: 'apiKey',
+				label: 'Emailit API key',
+				envVar: 'EMAILIT_API_KEY',
+				placeholder: 'em_...',
+				required: true,
+			},
+		],
+		supportsCustomReturnPath: 'no',
+		hasProviderFeedback: true,
+		providerFeedback: {
+			webhookPath: '/webhooks/emailit',
+			signingKeyEnvVar: 'EMAILIT_WEBHOOK_SECRET',
+			setupPanel: 'signed-webhook',
+		},
+		// Keep this honest until Owlat persists Emailit domain identities.
+		domainVerification: 'none',
+		acceptanceSemantics: 'unknown-on-timeout',
+		messageIdSource: 'provider',
+		deduplicatesOnIdempotencyKey: true,
+		tagsFeedbackProvenance: false,
+		setupProbe: { validator: 'validateEmailitKey', label: 'Test API key' },
 	},
 ] as const satisfies readonly CoreSendProviderCatalogEntry[];
 

@@ -119,6 +119,8 @@ export interface EmailStepDraft {
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
 	resendKey: string;
+	/** Emailit API key. Optional for compatibility with persisted pre-Emailit drafts. */
+	emailitKey?: string;
 	/**
 	 * Mailchimp Transactional (Mandrill) API key. One field, because that is the
 	 * whole sending credential — the webhook signing key, the subaccount and the

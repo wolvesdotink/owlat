@@ -65,13 +65,10 @@ export interface SendProviderFeedbackChannel {
 	/**
 	 * The operator-facing setup panel this channel gets, when one exists.
 	 *
-	 * ABSENT IS A DECLARATION, and it covers two cases the entries spell out
-	 * individually: a channel WE wire (our own MTA posts to us with a secret the
-	 * installer writes, so there is nothing to show), and a channel whose console
-	 * setup this app does not surface yet (Resend's signed webhook — the shipped
-	 * delivery page has never had a panel for it, and the key-presence read that
-	 * a panel needs is per-kind backend work no plan piece owns yet: the feedback
-	 * registry made the ROUTES general, not the STATUS READS behind the panels).
+	 * ABSENT IS A DECLARATION: the channel is either wired by the host (our own
+	 * MTA) or intentionally has no setup ceremony in the delivery page (Resend).
+	 * When a panel is declared, the generic transport-keyed feedback-status query
+	 * supplies its signing-key state and last-event time.
 	 */
 	readonly setupPanel?: SendProviderFeedbackSetupPanel;
 }

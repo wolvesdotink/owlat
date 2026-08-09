@@ -237,6 +237,7 @@ const ENTRY_BUILDERS: readonly string[] = [
  * of the ones that have been looked at, and the reason each is no door.
  */
 const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
+	composeProviderBundles: 'validates and indexes plain provider bundle data',
 	composeBundledPlugins: 'folds the generated plugin manifests into one composition object',
 	createFeatureFlagRegistry: 'builds the plugin feature-flag lookup map',
 	defineStep: 'declares one workspace-deletion step — data the deletion walker reads',

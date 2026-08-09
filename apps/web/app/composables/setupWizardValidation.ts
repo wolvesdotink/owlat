@@ -51,6 +51,7 @@ export function adminIsValid(admin: AdminDraft): boolean {
 export interface EmailStepErrors {
 	provider?: string;
 	resendKey?: string;
+	emailitKey?: string;
 	mandrillKey?: string;
 	ses?: string;
 	smtp?: string;
@@ -76,6 +77,9 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	}
 	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
 		errors.resendKey = 'Enter your Resend API key.';
+	}
+	if (draft.provider === 'emailit' && (draft.emailitKey ?? '').trim() === '') {
+		errors.emailitKey = 'Enter your Emailit API key.';
 	}
 	if (draft.provider === 'mandrill' && draft.mandrillKey.trim() === '') {
 		errors.mandrillKey = 'Enter your Mailchimp Transactional (Mandrill) API key.';
@@ -129,6 +133,7 @@ export function emailStepIsValid(draft: EmailStepDraft): boolean {
  */
 const CREDENTIAL_ERRORS = {
 	resendKey: true,
+	emailitKey: true,
 	mandrillKey: true,
 	ses: true,
 	smtp: true,
@@ -174,6 +179,7 @@ export function credentialErrorFor(errors: EmailStepErrors): string | undefined 
 const TRANSPORT_EDITOR_OWNED_ERRORS = {
 	provider: true,
 	resendKey: true,
+	emailitKey: true,
 	mandrillKey: true,
 	ses: true,
 	smtp: true,

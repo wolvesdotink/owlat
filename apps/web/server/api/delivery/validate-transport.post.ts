@@ -24,6 +24,7 @@
  */
 
 import {
+	validateEmailitKey,
 	validateResendKey,
 	validateSmtpRelay,
 	type SmtpRelayInput,
@@ -31,7 +32,7 @@ import {
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
 
 interface ValidateBody {
-	provider: 'resend' | 'smtp';
+	provider: 'resend' | 'emailit' | 'smtp';
 	apiKey?: string;
 	smtp?: Partial<SmtpRelayInput>;
 }
@@ -72,6 +73,13 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; message:
 			throw createError({ statusCode: 400, message: 'apiKey is required.' });
 		}
 		return validateResendKey(body.apiKey);
+	}
+
+	if (body.provider === 'emailit') {
+		if (!body.apiKey) {
+			throw createError({ statusCode: 400, message: 'apiKey is required.' });
+		}
+		return validateEmailitKey(body.apiKey);
 	}
 
 	throw createError({

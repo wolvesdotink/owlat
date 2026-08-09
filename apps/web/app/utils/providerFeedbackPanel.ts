@@ -30,14 +30,12 @@ export type { SendProviderFeedbackSetupPanel };
  * The setup panel this transport's feedback channel needs, or `undefined` when
  * there is none to draw.
  *
- * FOUR WAYS TO GET `undefined`, all of them correct: the kind has no feedback at
- * all (a bring-your-own SMTP relay), the kind's channel needs nothing from the
- * operator (our own MTA, which we wire ourselves), its ceremony has no panel in
- * this app yet (Resend — see the entry), or the panel it declares is one whose
- * backend read cannot yet speak for this kind (see
- * {@link PANEL_ANSWERS_FOR_KINDS}). `hasProviderFeedback` is checked as well as
- * the descriptor so a channel declared beside a transport that reports nothing
- * can never put a "wire up your feedback" card on screen.
+ * `undefined` means the kind has no feedback at all, its channel needs nothing
+ * from the operator, or the catalog intentionally declares no ceremony. Every
+ * declared panel is supported by the generic transport-keyed status query.
+ * `hasProviderFeedback` is checked as well as the descriptor so a channel
+ * declared beside a transport that reports nothing can never put a "wire up
+ * your feedback" card on screen.
  */
 export function providerFeedbackPanel(
 	kind: string | null | undefined

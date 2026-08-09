@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { coreCatalogEntries, coreCatalogKinds } from './catalogSource';
 
 /**
  * Docs-lint for `docs/abstractions.md`, which declares itself "single source of
@@ -42,10 +43,7 @@ function registryKeys(relativePath: string, declaration: string): string[] {
 }
 
 describe('docs/abstractions.md: the send-provider row matches the registry', () => {
-	const kinds = registryKeys(
-		'apps/api/convex/lib/sendProviders/index.ts',
-		'export const SEND_PROVIDERS = {'
-	);
+	const kinds = coreCatalogKinds();
 
 	// Non-triviality is `registryKeys`'s own assertion (a parse that matched
 	// nothing must not silently agree with an empty row), stated once there
@@ -133,10 +131,7 @@ function sendingDomainSection(): string {
  * next person who trusts the page.
  */
 describe('docs/abstractions.md: the sending-domain provider section matches the registry', () => {
-	const kinds = registryKeys(
-		'apps/api/convex/domains/providers/index.ts',
-		'export const SENDING_DOMAIN_PROVIDERS = {'
-	);
+	const kinds = registryKeys('apps/api/convex/providers/domainIdentity.ts', 'const primary = {');
 	const section = sendingDomainSection();
 
 	// Same split as the send-provider block above: `registryKeys` owns the
@@ -261,10 +256,9 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
  * being discovered by the next person who trusts the page.
  */
 describe('docs/abstractions.md: the feedback adapter section matches the registry', () => {
-	const kinds = registryKeys(
-		'apps/api/convex/webhooks/adapters/index.ts',
-		'export const PROVIDER_FEEDBACK_ADAPTERS = {'
-	);
+	const kinds = coreCatalogEntries()
+		.filter((entry) => entry.body.includes('hasProviderFeedback: true'))
+		.map((entry) => entry.kind);
 	const feedbackSection = pageSection('### Provider feedback (webhook) adapters');
 
 	// `registryKeys` owns the non-vacuity assertion; this case owns membership.

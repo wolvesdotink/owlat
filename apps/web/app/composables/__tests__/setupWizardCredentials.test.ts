@@ -152,6 +152,16 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			placeholder: 'md-...',
 		},
 	],
+	emailit: [
+		{
+			key: 'apiKey',
+			kind: 'secret',
+			label: 'Emailit API key',
+			envVars: ['EMAILIT_API_KEY'],
+			required: true,
+			placeholder: 'em_...',
+		},
+	],
 };
 
 /** A filled-in form per kind, in the env-keyed shape the renderer writes. */
@@ -171,6 +181,7 @@ const FILLED_VALUES: Record<string, Record<string, string>> = {
 		SMTP_RELAY_PASSWORD: 'relay-secret',
 	},
 	mandrill: { MANDRILL_API_KEY: 'md-9f3c2b7a41' },
+	emailit: { EMAILIT_API_KEY: 'em_live_123' },
 };
 
 /** The env patch each of those forms wrote before the refactor, byte for byte. */
@@ -190,6 +201,7 @@ const EXPECTED_ENV: Record<string, Record<string, string>> = {
 		SMTP_RELAY_PASSWORD: 'relay-secret',
 	},
 	mandrill: { MANDRILL_API_KEY: 'md-9f3c2b7a41' },
+	emailit: { EMAILIT_API_KEY: 'em_live_123' },
 };
 
 const CATALOG_KINDS = CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind);
@@ -199,6 +211,7 @@ function draft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 		provider: 'mta',
 		requiresProvider: true,
 		resendKey: '',
+		emailitKey: '',
 		mandrillKey: '',
 		ses: { region: '', accessKeyId: '', secretAccessKey: '' },
 		smtp: { preset: 'custom', host: '', port: '', secure: false, username: '', password: '' },
@@ -286,6 +299,7 @@ describe('credential descriptors — the env patch, pinned', () => {
 			'MANDRILL_SUBACCOUNT',
 			'MANDRILL_IP_POOL',
 			'RESEND_WEBHOOK_SECRET',
+			'EMAILIT_WEBHOOK_SECRET',
 			'MTA_API_URL',
 			'MTA_API_KEY',
 			'MTA_WEBHOOK_SECRET',
@@ -375,6 +389,7 @@ describe('the blank form', () => {
 	it('names every secret the redaction list has to cover, across all kinds', () => {
 		expect([...secretEnvKeys(CATALOG_KINDS)].sort()).toEqual([
 			'AWS_SES_SECRET_ACCESS_KEY',
+			'EMAILIT_API_KEY',
 			'MANDRILL_API_KEY',
 			'RESEND_API_KEY',
 			'SMTP_RELAY_PASSWORD',
@@ -390,6 +405,7 @@ describe('the legacy draft bridge', () => {
 			...FILLED_VALUES['resend'],
 			...FILLED_VALUES['smtp'],
 			...FILLED_VALUES['mandrill'],
+			...FILLED_VALUES['emailit'],
 		};
 		const credentials = draftCredentialsFromValues(values, 'mailgun');
 		expect(credentialValuesFromDraft({ ...draft(), ...credentials })).toEqual(values);
@@ -414,6 +430,7 @@ describe('buildProviderEnv writes exactly the selected kind’s credentials', ()
 				...FILLED_VALUES['resend'],
 				...FILLED_VALUES['smtp'],
 				...FILLED_VALUES['mandrill'],
+				...FILLED_VALUES['emailit'],
 			},
 			'mailgun'
 		);
@@ -478,6 +495,7 @@ describe('credentialErrorFor', () => {
 			},
 		},
 		mandrill: { mandrillKey: 'md-1' },
+		emailit: { emailitKey: 'em_1' },
 	};
 
 	it.each(CATALOG_KINDS)('surfaces %s’s missing-credential message', (kind) => {

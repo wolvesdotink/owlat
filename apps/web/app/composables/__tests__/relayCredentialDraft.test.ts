@@ -32,6 +32,7 @@ describe('the transport picker', () => {
 			'smtp',
 			'resend',
 			'mandrill',
+			'emailit',
 		]);
 	});
 
@@ -58,6 +59,7 @@ describe('the transport picker', () => {
 			'SMTP relay',
 			'Resend',
 			'Mailchimp Transactional (Mandrill)',
+			'Emailit',
 		]);
 	});
 
@@ -82,7 +84,7 @@ describe('the transport picker', () => {
 	});
 
 	it('shows the sentences the shipped editor showed, to the letter', () => {
-		// The four incumbents plus the own arm DO have copy, and it is
+		// The shipped relays plus the own arm DO have copy, and it is
 		// operator-facing: pinned as literals for the same reason the labels above
 		// are, since a hint read off the table agrees with any rewrite of it.
 		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => option.hint)).toEqual([
@@ -91,6 +93,7 @@ describe('the transport picker', () => {
 			'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
 			'Managed API with a generous free tier.',
 			'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
+			'Managed email API with signed delivery feedback and idempotent sends.',
 		]);
 	});
 });

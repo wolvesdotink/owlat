@@ -188,17 +188,4 @@ export function isAmbiguousMandrillTimeout(name: string | undefined, message: st
 	);
 }
 
-/**
- * The `Retry-After` header as milliseconds, when Mandrill sends a derivable one.
- *
- * RFC 9110 §10.2.3 allows delta-seconds or an HTTP-date; only the delta form is
- * honoured here (an HTTP-date would need a trusted clock delta to be meaningful,
- * and Mandrill does not send one). Clamped to [1s, 1h] so a hostile or garbled
- * header cannot park a Send for a day or busy-loop it.
- */
-export function parseRetryAfterMs(headerValue: string | null): number | undefined {
-	if (headerValue === null) return undefined;
-	const seconds = Number(headerValue.trim());
-	if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
-	return Math.min(Math.max(Math.round(seconds * 1_000), 1_000), 3_600_000);
-}
+export { parseRetryAfterDeltaMs as parseRetryAfterMs } from '../errors';

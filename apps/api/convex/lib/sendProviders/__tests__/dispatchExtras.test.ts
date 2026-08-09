@@ -143,7 +143,7 @@ function expectMatchesLegacy(kind: SendProviderKind, input: DispatchExtrasInput)
  */
 const LEGACY_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
 
-const CORE_KINDS = [...LEGACY_KINDS, 'mandrill'] as const;
+const CORE_KINDS = [...LEGACY_KINDS, 'mandrill', 'emailit'] as const;
 
 /**
  * Representative routing situations, each one a shape the routing pass really

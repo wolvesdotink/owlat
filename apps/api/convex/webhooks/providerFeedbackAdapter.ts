@@ -12,18 +12,20 @@ export function composeProviderFeedbackAdapter<K extends string>(
 	contribution: ProviderFeedbackContribution<unknown>
 ): AnyInboundAdapter<K> {
 	const parser = contribution.parser as AnyInboundAdapter<K>;
-	if (!parser || parser.source !== kind || typeof parser.verifySignature !== 'function') {
+	if (
+		!parser ||
+		parser.source !== kind ||
+		((!('parseEvent' in parser) || typeof parser.parseEvent !== 'function') &&
+			(!('parseEvents' in parser) || typeof parser.parseEvents !== 'function'))
+	) {
 		throw new TypeError(`Send provider '${kind}' has an invalid feedback parser contribution`);
 	}
+	const legacyVerifier =
+		typeof parser.verifySignature === 'function' ? parser.verifySignature.bind(parser) : undefined;
 	const common = {
 		source: kind,
 		verifySignature: (request: Request, rawBody: string) =>
-			verifyProviderFeedbackRequest(
-				request,
-				rawBody,
-				contribution.verifier,
-				parser.verifySignature.bind(parser)
-			),
+			verifyProviderFeedbackRequest(request, rawBody, contribution.verifier, legacyVerifier),
 		...(parser.shouldStoreRawPayload
 			? { shouldStoreRawPayload: parser.shouldStoreRawPayload.bind(parser) }
 			: {}),

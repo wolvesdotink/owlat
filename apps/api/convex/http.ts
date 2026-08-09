@@ -262,6 +262,13 @@ http.route({
 	handler: providerFeedbackWebhook('resend'),
 });
 
+// POST /webhooks/emailit - Handle Emailit delivery feedback
+http.route({
+	path: '/webhooks/emailit',
+	method: 'POST',
+	handler: providerFeedbackWebhook('emailit'),
+});
+
 // POST /webhooks/mandrill - Mailchimp Transactional feedback batch
 // (send, deferral, hard/soft bounce, spam, unsub, reject — never open/click)
 http.route({

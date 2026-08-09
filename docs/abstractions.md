@@ -27,7 +27,7 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface                                                               | Env var                 | Implementations                                                             | Files                                                                                    |
 | ----------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta)  | see `domains/providers/` below                                              | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts`                         |
-| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`                                  | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
+| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit`                        | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
 | `LLMProvider`                                                           | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts`                                                                         |
 
 The first row is **history, not a seam to implement**: there is no `EmailProvider`
@@ -270,10 +270,11 @@ length and is the home for that statement.
 `AnyInboundAdapter` (`apps/api/convex/webhooks/adapters/`) — the third provider
 seam: where a send transport's own bounces, complaints and deliveries come back
 to us. A registry keyed by send-provider kind, one adapter file per kind (`mta`,
-`ses`, `resend`, `mandrill`), each owning exactly two things — verifying that
-provider's signature and translating its payload into the canonical
-`InboundEvent`. Everything else (rate limiting per source, raw-payload audit,
-ordered dispatch, the HTTP response) is `webhooks/pipeline.ts` and is shared.
+`ses`, `resend`, `mandrill`, `emailit`), each owning provider-specific parsing
+into the canonical `InboundEvent`. Signature verification is a host-owned
+contract composed in `providers/feedback.ts`; rate limiting per source,
+raw-payload audit, ordered dispatch, and the HTTP response remain shared in
+`webhooks/pipeline.ts`.
 
 Which kinds must be here is declared, not assumed: `hasProviderFeedback: true`
 in the catalog is the promise, and `FeedbackReportingSendProviderKind` turns it

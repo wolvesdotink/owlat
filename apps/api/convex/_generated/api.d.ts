@@ -608,6 +608,7 @@ import type * as lib_sendProviders_catalogTypes from '../lib/sendProviders/catal
 import type * as lib_sendProviders_cellRoute from '../lib/sendProviders/cellRoute.js';
 import type * as lib_sendProviders_destinationProvider from '../lib/sendProviders/destinationProvider.js';
 import type * as lib_sendProviders_dispatch from '../lib/sendProviders/dispatch.js';
+import type * as lib_sendProviders_emailit_index from '../lib/sendProviders/emailit/index.js';
 import type * as lib_sendProviders_errors from '../lib/sendProviders/errors.js';
 import type * as lib_sendProviders_fallbackEligibility from '../lib/sendProviders/fallbackEligibility.js';
 import type * as lib_sendProviders_fallbackRelays from '../lib/sendProviders/fallbackRelays.js';
@@ -915,6 +916,7 @@ import type * as transactional_translations from '../transactional/translations.
 import type * as translate from '../translate.js';
 import type * as unifiedMessages from '../unifiedMessages.js';
 import type * as visualizationAgent from '../visualizationAgent.js';
+import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
 import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
@@ -1579,6 +1581,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/cellRoute': typeof lib_sendProviders_cellRoute;
 	'lib/sendProviders/destinationProvider': typeof lib_sendProviders_destinationProvider;
 	'lib/sendProviders/dispatch': typeof lib_sendProviders_dispatch;
+	'lib/sendProviders/emailit/index': typeof lib_sendProviders_emailit_index;
 	'lib/sendProviders/errors': typeof lib_sendProviders_errors;
 	'lib/sendProviders/fallbackEligibility': typeof lib_sendProviders_fallbackEligibility;
 	'lib/sendProviders/fallbackRelays': typeof lib_sendProviders_fallbackRelays;
@@ -1886,6 +1889,7 @@ declare const fullApi: ApiFromModules<{
 	translate: typeof translate;
 	unifiedMessages: typeof unifiedMessages;
 	visualizationAgent: typeof visualizationAgent;
+	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
 	'webhooks/adapters/generic': typeof webhooks_adapters_generic;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;

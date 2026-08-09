@@ -31,6 +31,7 @@ const EXPECTED: Record<string, { panel: string | undefined; url: string }> = {
 	// No feedback at all: a bring-your-own relay reports nothing.
 	smtp: { panel: undefined, url: '' },
 	mandrill: { panel: 'signed-webhook', url: `${SITE}/webhooks/mandrill` },
+	emailit: { panel: 'signed-webhook', url: `${SITE}/webhooks/emailit` },
 };
 
 describe('the delivery page picks its feedback panel from the catalog', () => {

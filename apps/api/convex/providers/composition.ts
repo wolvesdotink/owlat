@@ -13,12 +13,14 @@ import {
 	type ComposedSendProviderBundle,
 	type SendProviderBundle,
 } from '@owlat/provider-kit';
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
 import type { SendProviderCatalogEntry } from '../lib/sendProviders/catalogTypes';
 import {
 	SEND_PROVIDER_CATALOG,
 	isCoreSendProviderKind,
 	sendProviderCatalogEntry,
 } from '../lib/sendProviders/catalog';
+import { emailitSendProvider } from '../lib/sendProviders/emailit';
 import { mandrillSendProvider } from '../lib/sendProviders/mandrill';
 import { mtaSendProvider } from '../lib/sendProviders/mta';
 import {
@@ -36,6 +38,10 @@ import type {
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../plugins/sendTransportModules.generated';
 import { pluginSendTransportDomainIdentityFor } from '../plugins/sendTransportDomainIdentityCatalog';
 import { providerFeedbackFor } from './feedback';
+import {
+	PRIMARY_DOMAIN_IDENTITY_PROVIDERS,
+	RELAY_DOMAIN_IDENTITY_PROVIDERS,
+} from './domainIdentity';
 
 type RuntimeTransport = SendProviderModule<SendProviderKind> | HostedSendProviderModule;
 
@@ -53,22 +59,31 @@ const CORE_TRANSPORTS = {
 	resend: resendSendProvider,
 	smtp: smtpSendProvider,
 	mandrill: mandrillSendProvider,
+	emailit: emailitSendProvider,
 } as const satisfies { [K in CoreSendProviderKind]: SendProviderModule<K> };
+
+const platformHooks = new Map<string, { readonly exportPath: string }>([
+	[OWN_SEND_PROVIDER_KIND, { exportPath: 'providers/mta/platformHooks' }],
+]);
 
 function coreBundle<K extends CoreSendProviderKind>(
 	kind: K
 ): SendProviderBundle<K, RuntimeTransport, unknown> {
 	const descriptor = sendProviderCatalogEntry(kind) as SendProviderCatalogEntry & { kind: K };
 	const feedback = providerFeedbackFor(kind);
+	const primaryDomainIdentity =
+		PRIMARY_DOMAIN_IDENTITY_PROVIDERS[kind as keyof typeof PRIMARY_DOMAIN_IDENTITY_PROVIDERS];
+	const relayDomainIdentity = RELAY_DOMAIN_IDENTITY_PROVIDERS.get(kind);
+	const hooks = platformHooks.get(kind);
 	const bundle: SendProviderBundle<K, RuntimeTransport, unknown> = {
 		descriptor,
 		transport: CORE_TRANSPORTS[kind],
 		...(feedback ? { feedback } : {}),
-		...(kind === 'mta' || kind === 'ses' || kind === 'mandrill'
-			? { primaryDomainIdentity: { exportPath: `domains/providers/${kind}` } }
+		...(primaryDomainIdentity
+			? { primaryDomainIdentity: { exportPath: `domains/providers/${primaryDomainIdentity.kind}` } }
 			: {}),
-		...(descriptor.domainVerification === 'api'
-			? { relayDomainIdentity: { exportPath: `domains/providers/${kind}` } }
+		...(relayDomainIdentity
+			? { relayDomainIdentity: { exportPath: `domains/providers/${relayDomainIdentity.kind}` } }
 			: {}),
 		...(descriptor.setupProbe
 			? {
@@ -80,7 +95,7 @@ function coreBundle<K extends CoreSendProviderKind>(
 			: descriptor.providerFeedback?.setupPanel
 				? { setup: { ceremony: descriptor.providerFeedback.setupPanel } }
 				: {}),
-		...(kind === 'mta' ? { platformHooks: { exportPath: 'providers/mta/platformHooks' } } : {}),
+		...(hooks ? { platformHooks: hooks } : {}),
 	};
 	return bundle;
 }
@@ -116,7 +131,7 @@ function pluginBundle(
 	);
 	if (descriptor.deduplicatesOnIdempotencyKey === true && !transport.buildSystemMailExtras) {
 		throw new TypeError(
-			`Bundled send transport '${descriptor.kind}' declares idempotency without system-mail extras`
+			`Bundled send transport '${descriptor.kind}' declares deduplicatesOnIdempotencyKey: true without buildSystemMailExtras. See PluginSendTransportModule in packages/plugin-kit/src/sendTransport.ts`
 		);
 	}
 	const feedback = providerFeedbackFor(descriptor.kind);

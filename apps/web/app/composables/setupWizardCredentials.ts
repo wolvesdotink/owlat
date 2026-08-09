@@ -240,7 +240,7 @@ export function secretEnvKeys(kinds: readonly string[]): readonly string[] {
 /** The credential half of {@link EmailStepDraft}, as the wizard still spells it. */
 export type DraftCredentials = Pick<
 	EmailStepDraft,
-	'resendKey' | 'mandrillKey' | 'ses' | 'smtp' | 'outboundTlsMode'
+	'resendKey' | 'emailitKey' | 'mandrillKey' | 'ses' | 'smtp' | 'outboundTlsMode'
 >;
 
 /**
@@ -257,6 +257,7 @@ export function credentialValuesFromDraft(
 		AWS_SES_ACCESS_KEY_ID: draft.ses.accessKeyId,
 		AWS_SES_SECRET_ACCESS_KEY: draft.ses.secretAccessKey,
 		RESEND_API_KEY: draft.resendKey,
+		EMAILIT_API_KEY: draft.emailitKey ?? '',
 		SMTP_RELAY_HOST: draft.smtp.host,
 		SMTP_RELAY_PORT: draft.smtp.port,
 		SMTP_RELAY_SECURE: String(draft.smtp.secure),
@@ -280,6 +281,7 @@ export function draftCredentialsFromValues(
 ): DraftCredentials {
 	return {
 		resendKey: values['RESEND_API_KEY'] ?? '',
+		emailitKey: values['EMAILIT_API_KEY'] ?? '',
 		mandrillKey: values['MANDRILL_API_KEY'] ?? '',
 		ses: {
 			region: values['AWS_SES_REGION'] ?? '',

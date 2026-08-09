@@ -2900,9 +2900,9 @@ credential form and tier) is declared elsewhere and read from there; see
 
 **Send provider adapter (module)**:
 The per-provider module at `convex/lib/sendProviders/<kind>/index.ts` that
-owns the Send-side surface of one email provider. Five core adapters today:
-`mta`, `ses`, `resend`, `smtp`, `mandrill` — the list is the **Send provider
-catalog**'s, not this paragraph's; a sixth is added by declaring an entry, and
+owns the Send-side surface of one email provider. Six core adapters today:
+`mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit` — the list is the **Send provider
+catalog**'s, not this paragraph's; another is added by declaring an entry, and
 the completeness guard then requires the folder. Core kinds are discriminated by
 those literals; bundled plugin kinds use `plugin.<pluginId>.<localId>`.
 Dispatched by the registry at `sendProviders/index.ts` exporting
@@ -3185,18 +3185,12 @@ and knows no provider — `TransportCredentialFields.vue` draws whatever the
 selected entry declares — so a core kind added to the catalog reaches that form
 with no `.vue` edit.
 
-Known gap, and the reason the sentence above says "the in-app transport editor"
-rather than "the web layer": the two STANDALONE SETUP WIZARDS,
-`apps/web/app/pages/setup/email.vue` and `apps/web/app/pages/desktop/setup.vue`,
-still spell their provider list and their credential half per vendor, because
-the draft they read (`EmailStepDraft`) is vendor-shaped (`resendKey`,
-`ses.region`, `smtp.host`) rather than descriptor-keyed. Both are recorded as
-open debt under the `provider-shaped-ui-followup` family in
-`scripts/provider-identity-allowlist.txt`, alongside
-`apps/web/app/composables/setupWizardValidation.ts`; `RelayDomainStatus.vue` is
-written out separately there under `relay-identity-panel`, for the kind literal
-the ratchet cannot see. Until that follow-up lands, a sixth core kind still
-needs those two wizard pages edited by hand.
+The in-app transport editor is fully descriptor-driven. The standalone setup
+wizard keeps a backwards-compatible vendor-shaped persisted draft
+(`resendKey`, `ses.region`, `smtp.host`, `emailitKey`), but its provider choices,
+credential bridge and validation all derive from the catalog and shared setup
+probes. A new core kind therefore joins setup through its catalog descriptors;
+only a deliberately custom ceremony needs provider-specific UI.
 
 A BUNDLED PLUGIN transport reaches those generic surfaces through a generated,
 data-only catalog emitted byte-identically into `apps/api` and `apps/web`. The

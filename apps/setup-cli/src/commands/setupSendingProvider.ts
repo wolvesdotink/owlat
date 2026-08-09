@@ -16,7 +16,7 @@
 import { select, password, text, confirm, group, isCancel } from '@clack/prompts';
 import { validateWithSpinner } from '../lib/progress';
 import { type EnvMap } from '../lib/env';
-import { validateResendKey, validateSmtpRelay } from '../lib/validators';
+import { validateEmailitKey, validateResendKey, validateSmtpRelay } from '../lib/validators';
 import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSendingPresets';
 
 /** A relay port is optional (backend defaults to 587), but if given must parse
@@ -57,6 +57,7 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 				hint: 'Mailgun / Postmark / SendGrid / Brevo / custom',
 			},
 			{ label: 'Resend', value: 'resend', hint: 'managed API' },
+			{ label: 'Emailit', value: 'emailit', hint: 'managed API' },
 		],
 	});
 	if (isCancel(provider)) return null;
@@ -76,6 +77,19 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 			return null;
 		}
 		return { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: apiKey as string };
+	}
+
+	if (provider === 'emailit') {
+		const apiKey = await password({ message: 'Emailit API key' });
+		if (isCancel(apiKey)) return null;
+		if (
+			!(await validateWithSpinner('Validating Emailit key', () =>
+				validateEmailitKey(apiKey as string)
+			))
+		) {
+			return null;
+		}
+		return { EMAIL_PROVIDER: 'emailit', EMAILIT_API_KEY: apiKey as string };
 	}
 
 	if (provider === 'ses') {
