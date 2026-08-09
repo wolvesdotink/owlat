@@ -829,6 +829,7 @@ import type * as plugins_workerTasks from '../plugins/workerTasks.js';
 import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
+import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as providerRoutes from '../providerRoutes.js';
 import type * as publicRateLimit from '../publicRateLimit.js';
 import type * as quickQuery from '../quickQuery.js';
@@ -1774,6 +1775,7 @@ declare const fullApi: ApiFromModules<{
 	'providers/composition': typeof providers_composition;
 	'providers/domainIdentity': typeof providers_domainIdentity;
 	'providers/feedback': typeof providers_feedback;
+	'providers/feedbackStatus': typeof providers_feedbackStatus;
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;

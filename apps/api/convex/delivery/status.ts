@@ -29,6 +29,13 @@ import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
+import { providerFeedbackFor } from '../providers/feedback';
+import {
+	deriveProviderFeedbackStatus,
+	feedbackVerifierEnvVars,
+	providerKindFromTransportId,
+	type ProviderFeedbackStatus,
+} from '../providers/feedbackStatus';
 
 export type DeliveryTestStageKey =
 	| 'provider_configuration'
@@ -202,6 +209,41 @@ export const getMandrillFeedbackStatus = adminQuery({
 			isWebhookKeyPresent: isEnvPresent('MANDRILL_WEBHOOK_KEY'),
 			lastEventAt: latest?.receivedAt ?? null,
 		};
+	},
+});
+
+/**
+ * Generic feedback-channel status for any default or named transport.
+ *
+ * Feedback credentials remain deployment-wide in this migration, so a named
+ * transport intentionally reads the same verifier channel as its provider kind.
+ * Only environment-variable names and presence booleans influence the result;
+ * no secret or retained webhook body leaves the backend.
+ */
+export const getProviderFeedbackStatus = adminQuery({
+	args: { transportId: v.string() },
+	handler: async (ctx, { transportId }): Promise<ProviderFeedbackStatus | null> => {
+		const kind = providerKindFromTransportId(transportId);
+		if (!kind) return null;
+		const descriptor = sendProviderCatalogEntry(kind);
+		const feedback = providerFeedbackFor(kind);
+		const missingVariables = feedback
+			? feedbackVerifierEnvVars(feedback.verifier).filter((name) => !isEnvPresent(name))
+			: [];
+		const latest = feedback
+			? await ctx.db
+					.query('webhookPayloads')
+					.withIndex('by_source_and_received_at', (q) => q.eq('source', kind))
+					.order('desc')
+					.first()
+			: null;
+		return deriveProviderFeedbackStatus({
+			hasFeedback: feedback !== undefined,
+			ceremony: descriptor.providerFeedback?.setupPanel ?? 'none',
+			missingVariables,
+			lastEventAt: latest?.receivedAt ?? null,
+			now: Date.now(),
+		});
 	},
 });
 

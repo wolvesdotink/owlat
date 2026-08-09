@@ -44,39 +44,21 @@ const feedbackWebhookUrl = computed(() =>
 	)
 );
 
-// Live "last event received" — enabled only for the SNS panel so we don't poll
-// otherwise.
-//
-// STILL A PER-KIND QUERY, exactly like the signed-webhook read below:
-// `getLastSesEventAt` reads SES's own event table, while the gate above it is a
-// MECHANISM (`setupPanel: 'sns-topic'`). That mismatch is not left to be noticed
-// — `providerFeedbackPanel` holds each panel's answering set, so a second
-// `sns-topic` kind gets NO panel rather than SES's timestamp under its name, and
-// generalising the read is what opens the set. Still open, and owned by no plan
-// piece: the feedback-adapter registry generalised the ROUTES, not this query.
-const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
-	feedbackPanel.value === 'sns-topic' ? {} : undefined
+// One provider-bundle status read serves every feedback ceremony. The query is
+// keyed by transport id and returns presence-only configuration facts plus the
+// newest retained event timestamp; it never exposes a verifier secret or body.
+const { data: feedbackStatus } = useOrganizationQuery(
+	api.delivery.status.getProviderFeedbackStatus,
+	() =>
+		feedbackPanel.value && status.value?.provider
+			? { transportId: status.value.provider }
+			: undefined
 );
 const lastSesEventLabel = computed(() => {
-	const at = lastSesEventAt.value;
+	const at = feedbackStatus.value?.lastEventAt;
 	if (!at) return null;
 	return new Date(at).toLocaleString();
 });
-
-// The signed-webhook panel's own read: because the SIGNING key is not part of
-// what the transport needs to SEND, `getStatus.requiredEnv` cannot answer
-// whether it is present.
-//
-// STILL A PER-KIND QUERY: the backend has one key-presence read per signed kind
-// rather than one that answers for whichever kind is active. As above, the
-// panel's answering set in `providerFeedbackPanel` is what keeps a second signed
-// kind from being shown MANDRILL_WEBHOOK_KEY's presence as its own. Generalising
-// the read is still open work, unowned by any plan piece — see the note on
-// `PANEL_ANSWERS_FOR_KINDS`.
-const { data: mandrillFeedback } = useOrganizationQuery(
-	api.delivery.status.getMandrillFeedbackStatus,
-	() => (feedbackPanel.value === 'signed-webhook' ? {} : undefined)
-);
 
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
@@ -227,8 +209,7 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre
-								>
+									>{{ envSnippet }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Values are left blank — fill in your real credentials. They are never displayed
 									here.
@@ -255,8 +236,7 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre
-								>
+									>{{ envSetCommand }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
 									variable your current configuration needs. See the
@@ -382,8 +362,8 @@ const {
 			<DeliveryMandrillWebhookCard
 				v-if="feedbackPanel === 'signed-webhook'"
 				:webhook-url="feedbackWebhookUrl"
-				:is-webhook-key-present="mandrillFeedback?.isWebhookKeyPresent === true"
-				:last-event-at="mandrillFeedback?.lastEventAt ?? null"
+				:is-webhook-key-present="feedbackStatus?.missingVariables.length === 0"
+				:last-event-at="feedbackStatus?.lastEventAt ?? null"
 			/>
 
 			<!-- SNS-topic feedback (bounces & complaints delivered through a topic) -->
@@ -430,8 +410,7 @@ const {
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ feedbackWebhookUrl }}</pre
-						>
+							>{{ feedbackWebhookUrl }}</pre>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
 						Set your site URL to see the endpoint SNS should subscribe to.

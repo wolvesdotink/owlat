@@ -10,10 +10,6 @@
  * all, and `providerFeedback` says where it arrives and what wiring it up asks
  * of the operator.
  *
- * WHAT IS NOT YET A DECLARATION is the DATA each panel then renders — a key
- * presence, a last-event timestamp — which still comes from a per-kind backend
- * query. {@link PANEL_ANSWERS_FOR_KINDS} keeps the gate from outrunning it.
- *
  * PURE, and in `~/utils` rather than inline in the page, because this is the one
  * behaviour change P1.2 makes to a shipped dashboard: a mistyped path or a
  * missing declaration would make a live panel (and its polling query) appear or
@@ -29,40 +25,6 @@ import {
 } from '@owlat/shared/sendProviderCatalog';
 
 export type { SendProviderFeedbackSetupPanel };
-
-/**
- * THE KINDS EACH PANEL'S BACKEND READ CAN ACTUALLY SPEAK FOR — the same
- * discipline `RelayDomainStatus.vue`'s `ANSWERS_FOR_KINDS` carries, and here for
- * the same reason: a gate cannot be more general than the data behind it.
- *
- * The PANEL is chosen by mechanism, which is the D5 half of this work. But each
- * panel then renders numbers that come from a PER-KIND query:
- * `getMandrillFeedbackStatus` is a `MANDRILL_WEBHOOK_KEY` presence read, and
- * `getLastSesEventAt` reads SES's own event table. A sixth kind declaring
- * `setupPanel: 'signed-webhook'` would therefore be shown Mandrill's key
- * presence and Mandrill's last-event timestamp under its own name — a green
- * build, a green suite, and an operator told their webhook is wired when nothing
- * of theirs was ever read.
- *
- * So a kind outside its panel's set draws NO panel rather than another
- * provider's numbers. That is a deliberately visible gap: a provider author who
- * declares the panel and gets nothing on screen goes looking, where one who gets
- * a plausible wrong card does not. Both sets collapse to "every kind that
- * declares this panel" when the two reads are generalised to the ACTIVE
- * transport — one status query answering for whichever kind is routed, instead
- * of `getMandrillFeedbackStatus` and `getLastSesEventAt`.
- *
- * That generalisation is still open, and no seams-plan piece owns it: the
- * feedback registry (D6/P2.1) made the ROUTES general — one dispatcher, a
- * compile-guarded adapter per declaring kind — and deliberately stopped at the
- * HTTP seam. The panels read `delivery/status.ts`, which it never touched. So a
- * second kind of either mechanism has to land the read alongside itself.
- */
-const PANEL_ANSWERS_FOR_KINDS: Readonly<Record<SendProviderFeedbackSetupPanel, readonly string[]>> =
-	{
-		'sns-topic': ['ses'],
-		'signed-webhook': ['mandrill'],
-	};
 
 /**
  * The setup panel this transport's feedback channel needs, or `undefined` when
@@ -84,7 +46,7 @@ export function providerFeedbackPanel(
 	if (entry === undefined || !hasProviderFeedbackOf(entry)) return undefined;
 	const panel = entry.providerFeedback?.setupPanel;
 	if (panel === undefined) return undefined;
-	return PANEL_ANSWERS_FOR_KINDS[panel].includes(entry.kind) ? panel : undefined;
+	return panel;
 }
 
 /**

@@ -64,18 +64,7 @@ describe('the delivery page picks its feedback panel from the catalog', () => {
 	});
 });
 
-/**
- * THE ANSWERING SET — a panel is chosen by mechanism, but the numbers inside it
- * still come from a per-kind backend read.
- *
- * The failure this pins is silent and plausible-looking: a sixth kind declaring
- * `setupPanel: 'signed-webhook'` would render `getMandrillFeedbackStatus`'s key
- * presence and last-event timestamp under its own name, telling an operator
- * their webhook is wired when nothing of theirs was ever read. The whole suite
- * stays green, because the shipped catalog has exactly one kind per mechanism —
- * which is why the kind under test has to be injected.
- */
-describe('a panel whose backend read cannot speak for the kind', () => {
+describe('new feedback mechanisms use the transport-keyed status read', () => {
 	const entry = (kind: string, setupPanel: string) => ({
 		kind,
 		label: kind,
@@ -108,18 +97,16 @@ describe('a panel whose backend read cannot speak for the kind', () => {
 		return answer;
 	}
 
-	it('draws no panel for a second signed-webhook kind, rather than Mandrill’s', async () => {
+	it('draws a panel for a second signed-webhook kind', async () => {
 		const { panel, url } = await askAbout('acme-post', 'signed-webhook');
-		// The endpoint proves the injected entry IS being read — the panel is
-		// withheld by the answering set, not by the kind being unknown.
 		expect(url).toBe(`${SITE}/webhooks/acme-post`);
-		expect(panel).toBeUndefined();
+		expect(panel).toBe('signed-webhook');
 	});
 
-	it('draws no panel for a second sns-topic kind, rather than SES’s timestamp', async () => {
+	it('draws a panel for a second sns-topic kind', async () => {
 		const { panel, url } = await askAbout('acme-cloud', 'sns-topic');
 		expect(url).toBe(`${SITE}/webhooks/acme-cloud`);
-		expect(panel).toBeUndefined();
+		expect(panel).toBe('sns-topic');
 	});
 
 	it('still draws the shipped panels, so the guard is a set and not an off switch', () => {

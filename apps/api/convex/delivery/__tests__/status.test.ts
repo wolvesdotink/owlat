@@ -49,6 +49,8 @@ const ENV_KEYS = [
 	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
+	'RESEND_WEBHOOK_SECRET',
+	'MANDRILL_WEBHOOK_KEY',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -132,6 +134,62 @@ describe('delivery.status.getStatus — no secret leakage', () => {
 			expect(Object.keys(entry).sort()).toEqual(['isPresent', 'name']);
 			expect(typeof entry.isPresent).toBe('boolean');
 		}
+	});
+});
+
+describe('delivery.status.getProviderFeedbackStatus', () => {
+	it('answers missing configuration for a default or named Resend transport', async () => {
+		setEnv({});
+		const t = convexTest(schema, modules);
+		for (const transportId of ['resend', 'resend#eu']) {
+			const status = await t.query(api.delivery.status.getProviderFeedbackStatus, {
+				transportId,
+			});
+			expect(status).toEqual({
+				status: 'missing_configuration',
+				lastEventAt: null,
+				missingVariables: ['RESEND_WEBHOOK_SECRET'],
+				ceremony: 'none',
+			});
+		}
+	});
+
+	it('reads only the selected provider source and never returns the secret', async () => {
+		const SECRET = 'mandrill-feedback-secret-DO-NOT-LEAK';
+		setEnv({ MANDRILL_WEBHOOK_KEY: SECRET });
+		const t = convexTest(schema, modules);
+		const receivedAt = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('webhookPayloads', {
+				source: 'ses',
+				rawPayload: 'not-mandrill',
+				receivedAt: receivedAt + 1,
+			});
+			await ctx.db.insert('webhookPayloads', {
+				source: 'mandrill',
+				rawPayload: SECRET,
+				receivedAt,
+			});
+		});
+		const status = await t.query(api.delivery.status.getProviderFeedbackStatus, {
+			transportId: 'mandrill',
+		});
+		expect(status).toEqual({
+			status: 'healthy',
+			lastEventAt: receivedAt,
+			missingVariables: [],
+			ceremony: 'signed-webhook',
+		});
+		expect(JSON.stringify(status)).not.toContain(SECRET);
+	});
+
+	it('returns null for an unknown transport kind', async () => {
+		const t = convexTest(schema, modules);
+		expect(
+			await t.query(api.delivery.status.getProviderFeedbackStatus, {
+				transportId: 'postmark',
+			})
+		).toBeNull();
 	});
 });
 
