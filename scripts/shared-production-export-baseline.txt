@@ -45,7 +45,6 @@ export:packages/shared/src/envBackupBox.ts:ENV_BACKUP_SEALED_PREFIX
 export:packages/shared/src/fcrdns.ts:DEFAULT_GENERIC_PTR_SUFFIXES
 export:packages/shared/src/fcrdns.ts:FCRDNS_DNS_TIMEOUT_MS
 export:packages/shared/src/fcrdns.ts:isGenericPtrHostname
-export:packages/shared/src/featureFlags.ts:DELIVERY_PROVIDER_KINDS
 export:packages/shared/src/ipAddress.ts:IP_ADDRESS_FAMILIES
 export:packages/shared/src/ipAddress.ts:ipv6HexNibbles
 export:packages/shared/src/ipAudit.ts:IP_AUDIT_FINDING_IDS
