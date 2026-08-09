@@ -2,7 +2,12 @@
 import { api } from '@owlat/api';
 import { SEND_TRANSPORT_KINDS } from '@owlat/shared/sendProviderCatalog';
 import { buildProviderEnvSkeleton } from '~/utils/deliveryEnvSnippet';
-import { providerFeedbackPanel, providerFeedbackWebhookUrl } from '~/utils/providerFeedbackPanel';
+import {
+	providerFeedbackPanel,
+	providerFeedbackSigningKeyEnvVar,
+	providerFeedbackWebhookUrl,
+} from '~/utils/providerFeedbackPanel';
+import { transportKindLabel } from '~/utils/transportState';
 
 useHead({ title: 'Delivery provider — Owlat' });
 
@@ -42,6 +47,17 @@ const feedbackWebhookUrl = computed(() =>
 		status.value?.provider,
 		runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl
 	)
+);
+
+// The two vendor facts the signed-webhook panel prints — the provider's NAME and
+// the NAME of the variable its signing key goes in — both read off the ACTIVE
+// kind's catalog entry. The card is the CEREMONY's, not one vendor's: it used to
+// spell the first provider's variable for every kind declaring the ceremony, so
+// the second one's operator set a variable the backend does not read and watched
+// a "missing" chip (fed by the backend's own list) that could never clear.
+const feedbackProviderLabel = computed(() => transportKindLabel(status.value?.provider ?? ''));
+const feedbackSigningKeyEnvVar = computed(
+	() => providerFeedbackSigningKeyEnvVar(status.value?.provider) ?? ''
 );
 
 // One provider-bundle status read serves every feedback ceremony. The query is
@@ -359,8 +375,11 @@ const {
 			/>
 
 			<!-- Signed-webhook feedback (a provider that posts events with a key) -->
-			<DeliveryMandrillWebhookCard
+			<DeliverySignedWebhookCard
 				v-if="feedbackPanel === 'signed-webhook'"
+				:provider-kind="status?.provider ?? ''"
+				:provider-label="feedbackProviderLabel"
+				:signing-key-env-var="feedbackSigningKeyEnvVar"
 				:webhook-url="feedbackWebhookUrl"
 				:is-webhook-key-present="feedbackStatus?.missingVariables.length === 0"
 				:last-event-at="feedbackStatus?.lastEventAt ?? null"

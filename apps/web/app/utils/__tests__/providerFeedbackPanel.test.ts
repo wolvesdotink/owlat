@@ -16,22 +16,41 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
-import { providerFeedbackPanel, providerFeedbackWebhookUrl } from '../providerFeedbackPanel';
+import {
+	providerFeedbackPanel,
+	providerFeedbackSigningKeyEnvVar,
+	providerFeedbackWebhookUrl,
+} from '../providerFeedbackPanel';
 
 const SITE = 'https://example.convex.site';
 
-/** Panel and endpoint, as the shipped page renders them today. */
-const EXPECTED: Record<string, { panel: string | undefined; url: string }> = {
+/** Panel, endpoint and signing-key VARIABLE, as the shipped page renders them. */
+const EXPECTED: Record<
+	string,
+	{ panel: string | undefined; url: string; keyEnvVar: string | undefined }
+> = {
 	// We wire our own MTA's feedback ourselves: a channel, but no ceremony.
-	mta: { panel: undefined, url: `${SITE}/webhooks/mta` },
-	ses: { panel: 'sns-topic', url: `${SITE}/webhooks/ses` },
+	mta: { panel: undefined, url: `${SITE}/webhooks/mta`, keyEnvVar: 'MTA_WEBHOOK_SECRET' },
+	ses: { panel: 'sns-topic', url: `${SITE}/webhooks/ses`, keyEnvVar: undefined },
 	// Feedback and a signing key, but no panel in this app yet — the shipped
 	// page has never drawn one for Resend.
-	resend: { panel: undefined, url: `${SITE}/webhooks/resend` },
+	resend: {
+		panel: undefined,
+		url: `${SITE}/webhooks/resend`,
+		keyEnvVar: 'RESEND_WEBHOOK_SECRET',
+	},
 	// No feedback at all: a bring-your-own relay reports nothing.
-	smtp: { panel: undefined, url: '' },
-	mandrill: { panel: 'signed-webhook', url: `${SITE}/webhooks/mandrill` },
-	emailit: { panel: 'signed-webhook', url: `${SITE}/webhooks/emailit` },
+	smtp: { panel: undefined, url: '', keyEnvVar: undefined },
+	mandrill: {
+		panel: 'signed-webhook',
+		url: `${SITE}/webhooks/mandrill`,
+		keyEnvVar: 'MANDRILL_WEBHOOK_KEY',
+	},
+	emailit: {
+		panel: 'signed-webhook',
+		url: `${SITE}/webhooks/emailit`,
+		keyEnvVar: 'EMAILIT_WEBHOOK_SECRET',
+	},
 };
 
 describe('the delivery page picks its feedback panel from the catalog', () => {
@@ -44,6 +63,22 @@ describe('the delivery page picks its feedback panel from the catalog', () => {
 	it.each(Object.entries(EXPECTED))('renders %s as declared', (kind, expected) => {
 		expect(providerFeedbackPanel(kind)).toBe(expected.panel);
 		expect(providerFeedbackWebhookUrl(kind, SITE)).toBe(expected.url);
+		expect(providerFeedbackSigningKeyEnvVar(kind)).toBe(expected.keyEnvVar);
+	});
+
+	it('gives every signed-webhook kind ITS OWN signing-key variable', () => {
+		// The panel prints this name beside a present/missing chip fed by the
+		// backend's missing-variable list for the ACTIVE transport. One kind's name
+		// rendered for another is an operator setting a variable nothing reads, in
+		// front of a chip that can never clear.
+		const signed = CORE_SEND_PROVIDER_CATALOG_ENTRIES.filter(
+			(entry) => providerFeedbackPanel(entry.kind) === 'signed-webhook'
+		).map((entry) => entry.kind);
+		expect(signed).toContain('mandrill');
+		expect(signed).toContain('emailit');
+		const names = signed.map((kind) => providerFeedbackSigningKeyEnvVar(kind));
+		expect(names).not.toContain(undefined);
+		expect(new Set(names).size).toBe(names.length);
 	});
 
 	it('draws nothing for a transport this build does not carry', () => {
@@ -51,6 +86,8 @@ describe('the delivery page picks its feedback panel from the catalog', () => {
 		expect(providerFeedbackPanel(null)).toBeUndefined();
 		expect(providerFeedbackPanel(undefined)).toBeUndefined();
 		expect(providerFeedbackWebhookUrl('postmark', SITE)).toBe('');
+		expect(providerFeedbackSigningKeyEnvVar('postmark')).toBeUndefined();
+		expect(providerFeedbackSigningKeyEnvVar(null)).toBeUndefined();
 	});
 
 	it('never hands out a relative endpoint when the site URL is unknown', () => {

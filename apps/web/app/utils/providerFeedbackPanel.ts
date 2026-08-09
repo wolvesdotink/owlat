@@ -48,6 +48,24 @@ export function providerFeedbackPanel(
 }
 
 /**
+ * The NAME of the deployment variable holding this transport's webhook signing
+ * key, or `undefined` when its ceremony issues none.
+ *
+ * NAME only — never a value; `getStatus` and `getProviderFeedbackStatus` return
+ * presence booleans and nothing else. The panel renders this beside a
+ * present/missing chip, so reading it from the ACTIVE kind's entry rather than
+ * from the panel's markup is the whole point: a `signed-webhook` card that
+ * hardcodes one vendor's variable tells every other vendor's operator to set the
+ * wrong one, and the chip — computed from the backend's own missing-variable
+ * list — then never clears.
+ */
+export function providerFeedbackSigningKeyEnvVar(
+	kind: string | null | undefined
+): string | undefined {
+	return coreSendProviderCatalogEntry(kind ?? undefined)?.providerFeedback?.signingKeyEnvVar;
+}
+
+/**
  * The ABSOLUTE endpoint the provider posts to — the deployment's own site URL
  * joined to the path the entry declares.
  *
