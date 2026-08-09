@@ -50,10 +50,11 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			// plugin-host intentionally consumes plugin-kit's packaged dist in production.
-			// API tests run from a frozen clean checkout, so use the same source alias as
-			// plugin-host's own Vitest suite instead of depending on ignored build output.
+			// The host consumes both contract packages from dist in production. Tests
+			// run from a frozen clean checkout, so keep the source aliases paired: the
+			// plugin-kit entry re-exports the universal provider-kit vocabulary.
 			'@owlat/plugin-kit': resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '../../packages/provider-kit/src/index.ts'),
 		},
 	},
 });

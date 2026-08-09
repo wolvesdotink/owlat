@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
+	copyFile,
 	mkdtemp,
 	mkdir,
 	readFile,
@@ -503,9 +504,36 @@ describe('generated composition freshness', () => {
 
 	it('supports concurrent generation in separate Bun processes', async () => {
 		const root = await createZeroPluginWorkspace();
+		const subprocessBundleRoot = await mkdtemp(join(dirname(cliPath), '.subprocess-cli-'));
+		temporaryRoots.push(subprocessBundleRoot);
+		const subprocessCli = join(subprocessBundleRoot, 'plugin-codegen-cli.mjs');
+		// Bundle the checked-in CLI and contract sources once, then exercise four
+		// real Bun processes. The process-isolation proof must not read shared dist
+		// directories that clean-checkout and package-build gates deliberately wipe.
+		await build({
+			entryPoints: [cliPath],
+			bundle: true,
+			platform: 'node',
+			format: 'esm',
+			packages: 'external',
+			outfile: subprocessCli,
+			alias: {
+				'@owlat/plugin-host': join(repositoryRoot, 'packages/plugin-host/src/index.ts'),
+				'@owlat/plugin-kit': join(repositoryRoot, 'packages/plugin-kit/src/index.ts'),
+				'@owlat/provider-kit': join(repositoryRoot, 'packages/provider-kit/src/index.ts'),
+			},
+		});
+		await copyFile(
+			join(dirname(cliPath), 'atomicCommit.mjs'),
+			join(subprocessBundleRoot, 'atomicCommit.mjs')
+		);
+		await copyFile(
+			join(dirname(cliPath), 'writeFully.mjs'),
+			join(subprocessBundleRoot, 'writeFully.mjs')
+		);
 
 		await Promise.all(
-			Array.from({ length: 4 }, () => execFileAsync('bun', [cliPath], { cwd: root }))
+			Array.from({ length: 4 }, () => execFileAsync('bun', [subprocessCli], { cwd: root }))
 		);
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();

@@ -170,7 +170,10 @@ function tsconfig(toRoot: string): Record<string, unknown> {
 			types: ['node'],
 			lib: ['ES2023', 'DOM'],
 			noEmit: true,
-			paths: { '@owlat/plugin-kit': [`${toRoot}/packages/plugin-kit/src/index.ts`] },
+			paths: {
+				'@owlat/plugin-kit': [`${toRoot}/packages/plugin-kit/src/index.ts`],
+				'@owlat/provider-kit': [`${toRoot}/packages/provider-kit/src/index.ts`],
+			},
 		},
 		include: ['src/**/*.ts'],
 		exclude: ['node_modules', 'dist'],
@@ -189,6 +192,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@owlat/plugin-kit': resolve(__dirname, '${toRoot}/packages/plugin-kit/src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '${toRoot}/packages/provider-kit/src/index.ts'),
 		},
 	},
 });

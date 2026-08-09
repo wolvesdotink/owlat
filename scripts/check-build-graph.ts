@@ -201,7 +201,7 @@ function findUnsanctionedProducerScripts(
 		}
 		if (/\bpm\s+pack\b/.test(command) && !/--ignore-scripts(?:\s|$)/.test(command)) {
 			failures.push(
-				`${SHARED_ARTIFACT_PACKAGE} script "${script}" packs without \`--ignore-scripts\`, which fires prepack and rebuilds the shared artifact: ${command}`
+				`${artifact.packageName} script "${script}" packs without \`--ignore-scripts\`, which fires prepack and rebuilds the shared artifact: ${command}`
 			);
 		}
 	}

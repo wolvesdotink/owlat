@@ -13,6 +13,7 @@ export default defineConfig({
 		// prior `dist` build (tsconfig `paths` does the same for typecheck).
 		alias: {
 			'@owlat/plugin-kit': resolve(__dirname, 'src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '../provider-kit/src/index.ts'),
 		},
 	},
 });

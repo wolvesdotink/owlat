@@ -41,6 +41,13 @@ describe('buildScaffold', () => {
 			buildScaffold(root, targetDir, id, packageName).get('tsconfig.json') ?? '{}'
 		);
 		expect(tsconfig.extends).toBe('../../../tsconfig.base.json');
+		expect(tsconfig.compilerOptions.paths).toMatchObject({
+			'@owlat/plugin-kit': ['../../../packages/plugin-kit/src/index.ts'],
+			'@owlat/provider-kit': ['../../../packages/provider-kit/src/index.ts'],
+		});
+		const vitest = buildScaffold(root, targetDir, id, packageName).get('vitest.config.ts') ?? '';
+		expect(vitest).toContain("'@owlat/plugin-kit': resolve(");
+		expect(vitest).toContain("'@owlat/provider-kit': resolve(");
 	});
 
 	it('generates a manifest that declares the requested id and camelCased export', () => {
