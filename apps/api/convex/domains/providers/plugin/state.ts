@@ -236,17 +236,21 @@ export function buildFailedPluginProviderDetails(
  * still handed to the alignment pre-flight — from one row.
  *
  * What IS this tier's call, and stays: which fields it picks out, and that they
- * come back through {@link parseDnsFacts} bounded, because the values inside a
- * plugin's blob were a third party's before they were the row's.
+ * come back through {@link parseDnsFacts} / {@link boundedText} bounded, because
+ * the values inside a plugin's blob were a third party's before they were the
+ * row's — `lastError` included, which reaches an operator's screen.
  */
 export function readPluginProviderDetails(raw: string | undefined): {
 	readonly dkimSelectors: readonly string[];
 	readonly spfMechanisms: readonly string[];
+	readonly lastError?: string;
 } {
 	const stored = parseStoredProviderDetails(raw);
+	const lastError = boundedText(stored['lastError']);
 	return {
 		dkimSelectors: parseDnsFacts(stored['dkimSelectors']),
 		spfMechanisms: parseDnsFacts(stored['spfMechanisms']),
+		...(lastError !== undefined ? { lastError } : {}),
 	};
 }
 

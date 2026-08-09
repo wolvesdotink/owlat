@@ -18,13 +18,13 @@ import type { SendingDomainProviderKind } from '../domains/providers/types';
  * deployment that switches its fallback from SES to another relay keeps its old
  * SES sibling rows (nothing deletes them on a switch, and `verifyDomain` keeps
  * refreshing them), so crediting "every relay identity is proven" from those
- * rows would report a relay that holds ZERO identities as ready. When the
- * generic `sendingDomainRelayIdentities` read lands beside
- * `providerRoutes.listDeliverabilityRelayDomains` — the two carry different
- * per-kind identity shapes and have to change together, see the sending-domain
- * section of `docs/abstractions.md` — this constant is replaced by asking the
- * loaded rows which kind they belong to, and nothing else in the validator
- * changes.
+ * rows would report a relay that holds ZERO identities as ready. THE PATTERN
+ * THAT RETIRES IT NOW EXISTS: `providerRoutes.listRelayDomainIdentities` asks
+ * each registered kind to describe a domain (`describeRelayIdentity`, see the
+ * sending-domain section of `docs/abstractions.md`) instead of reading one
+ * vendor's table, and this validator's own context can load its rows the same
+ * way — at which point this constant is replaced by asking the loaded rows which
+ * kind they belong to, and nothing else in the validator changes.
  *
  * TWO NAMESPACES, ONE STRING, PINNED. The rows belong to a SENDING-DOMAIN
  * provider (they are that provider's identity table), and the validator

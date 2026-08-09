@@ -417,6 +417,7 @@ import type * as domains_providers_mandrill_identity from '../domains/providers/
 import type * as domains_providers_mandrill_index from '../domains/providers/mandrill/index.js';
 import type * as domains_providers_mandrill_persistence from '../domains/providers/mandrill/persistence.js';
 import type * as domains_providers_mandrill_records from '../domains/providers/mandrill/records.js';
+import type * as domains_providers_mandrill_relayIdentityView from '../domains/providers/mandrill/relayIdentityView.js';
 import type * as domains_providers_mandrill_relayVerification from '../domains/providers/mandrill/relayVerification.js';
 import type * as domains_providers_mandrill_validators from '../domains/providers/mandrill/validators.js';
 import type * as domains_providers_mta_index from '../domains/providers/mta/index.js';
@@ -428,10 +429,12 @@ import type * as domains_providers_relayIdentityPersistence from '../domains/pro
 import type * as domains_providers_relayIdentityProof from '../domains/providers/relayIdentityProof.js';
 import type * as domains_providers_relayIdentityProviderDetails from '../domains/providers/relayIdentityProviderDetails.js';
 import type * as domains_providers_relayIdentityTypes from '../domains/providers/relayIdentityTypes.js';
+import type * as domains_providers_relayIdentityView from '../domains/providers/relayIdentityView.js';
 import type * as domains_providers_relaySurface from '../domains/providers/relaySurface.js';
 import type * as domains_providers_ses_index from '../domains/providers/ses/index.js';
 import type * as domains_providers_ses_mailFrom from '../domains/providers/ses/mailFrom.js';
 import type * as domains_providers_ses_referenceArm from '../domains/providers/ses/referenceArm.js';
+import type * as domains_providers_ses_relayIdentityView from '../domains/providers/ses/relayIdentityView.js';
 import type * as domains_providers_ses_relayVerification from '../domains/providers/ses/relayVerification.js';
 import type * as domains_providers_types from '../domains/providers/types.js';
 import type * as domains_queries from '../domains/queries.js';
@@ -947,7 +950,6 @@ import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/event
 import type * as webhooks_fanout from '../webhooks/fanout.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
 import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
-import type * as webhooks_mandrillRejectSuppression from '../webhooks/mandrillRejectSuppression.js';
 import type * as webhooks_payloads from '../webhooks/payloads.js';
 import type * as webhooks_pipeline from '../webhooks/pipeline.js';
 import type * as webhooks_pluginFeedbackDeliveries from '../webhooks/pluginFeedbackDeliveries.js';
@@ -1390,6 +1392,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/mandrill/index': typeof domains_providers_mandrill_index;
 	'domains/providers/mandrill/persistence': typeof domains_providers_mandrill_persistence;
 	'domains/providers/mandrill/records': typeof domains_providers_mandrill_records;
+	'domains/providers/mandrill/relayIdentityView': typeof domains_providers_mandrill_relayIdentityView;
 	'domains/providers/mandrill/relayVerification': typeof domains_providers_mandrill_relayVerification;
 	'domains/providers/mandrill/validators': typeof domains_providers_mandrill_validators;
 	'domains/providers/mta/index': typeof domains_providers_mta_index;
@@ -1401,10 +1404,12 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/relayIdentityProof': typeof domains_providers_relayIdentityProof;
 	'domains/providers/relayIdentityProviderDetails': typeof domains_providers_relayIdentityProviderDetails;
 	'domains/providers/relayIdentityTypes': typeof domains_providers_relayIdentityTypes;
+	'domains/providers/relayIdentityView': typeof domains_providers_relayIdentityView;
 	'domains/providers/relaySurface': typeof domains_providers_relaySurface;
 	'domains/providers/ses/index': typeof domains_providers_ses_index;
 	'domains/providers/ses/mailFrom': typeof domains_providers_ses_mailFrom;
 	'domains/providers/ses/referenceArm': typeof domains_providers_ses_referenceArm;
+	'domains/providers/ses/relayIdentityView': typeof domains_providers_ses_relayIdentityView;
 	'domains/providers/ses/relayVerification': typeof domains_providers_ses_relayVerification;
 	'domains/providers/types': typeof domains_providers_types;
 	'domains/queries': typeof domains_queries;
@@ -1920,7 +1925,6 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/fanout': typeof webhooks_fanout;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;
 	'webhooks/inboundHttp': typeof webhooks_inboundHttp;
-	'webhooks/mandrillRejectSuppression': typeof webhooks_mandrillRejectSuppression;
 	'webhooks/payloads': typeof webhooks_payloads;
 	'webhooks/pipeline': typeof webhooks_pipeline;
 	'webhooks/pluginFeedbackDeliveries': typeof webhooks_pluginFeedbackDeliveries;

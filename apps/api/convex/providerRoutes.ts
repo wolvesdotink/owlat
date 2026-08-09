@@ -1,6 +1,5 @@
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
-import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
@@ -19,7 +18,11 @@ import {
 	ensureRelayIdentities,
 	relayIdentityBackfills,
 } from './lib/sendProviders/fallbackRelays';
-import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './domains/providers';
+import {
+	describeSharedRelayIdentity,
+	OWN_SENDING_DOMAIN_PROVIDER_KIND,
+	relayIdentityProviders,
+} from './domains/providers';
 import { logError } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
@@ -161,43 +164,64 @@ export const listTransportCatalog = authedQuery({
 });
 
 /**
- * Operational SES relay DNS/status for every owned-MTA sending domain.
+ * The relay kinds this organization has configured as a deliverability escape
+ * hatch — ENABLED OR NOT.
  *
- * STILL SES-ONLY, and knowingly so. This reads the frozen
- * `sendingDomainSesIdentities` sibling directly and shapes the result around
- * SES's DNS bundle (dkim tokens, MAIL FROM, `spfProofState`), which is what its
- * one consumer — `RelayDomainStatus.vue` — renders. The drain below now
- * backfills whichever kind the route named, so with a non-SES relay configured
- * this table reports `provisioning` for every domain forever: the identity
- * exists, in `sendingDomainRelayIdentities`, and this query cannot see it.
- *
- * Deliberately NOT fixed here. Making the read generic is not a table swap —
- * the per-kind identity shapes differ (Mandrill remembers provider VERDICTS,
- * not tokens, and derives its records), so the row this returns and the
- * component that renders it have to change together, and widening the read
- * shape from a wave-0 refactor would be exactly the user-visible change wave 0
- * is not allowed to make. This piece is the write half only. Until the pair
- * moves: a non-SES fallback relays correctly and reports nothing here.
- *
- * NO PIECE CURRENTLY OWNS THE FIX, and that is stated rather than wished away.
- * The natural home is P1.2 (catalog-driven web UI), but its scope names
- * `TransportEditor.vue`, `useSetupWizard.ts`, `useRelayCredentialDraft.ts`,
- * `DeliverabilityFallbackEditor.vue` and `config.vue` — neither this query nor
- * `RelayDomainStatus.vue`, which the plan mentions only in its duplication
- * inventory. So this pair is carried into P1.2 as an explicit added input (it
- * is called out by name in this piece's handoff notes); a reader who arrives
- * here from the code rather than from the plan should not conclude someone
- * already signed up for it.
- *
- * The divergence is at least PINNED rather than merely described:
- * `__tests__/providerRoutes.integration.test.ts` → "PINNED DIVERGENCE (P1.2)"
- * inserts a VERIFIED Mandrill relay identity and asserts this query still
- * answers `provisioning` with no DNS records. That test asserts today's broken
- * behaviour, so it cannot fail the fix into existence — it exists so that
- * whoever does make the read generic has to delete an assertion that spells out
- * what used to be wrong, instead of discovering the SES-shaped row by surprise.
+ * Publishing a relay's DNS is what an operator does BEFORE switching the hatch
+ * on, so filtering on `isEnabled` would hide the records from exactly the
+ * operator who is mid-setup. This used to be a `flatMap` in
+ * `RelayDomainStatus.vue` over a second `listRoutes` subscription; it is here
+ * because it decides which kinds the read below reports "provisioning" for, and
+ * a visibility rule computed in the browser cannot be more truthful than the
+ * rows it filters.
  */
-export const listDeliverabilityRelayDomains = authedQuery({
+async function configuredRelayKinds(ctx: QueryCtx): Promise<ReadonlySet<string>> {
+	const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
+	return new Set(
+		routes.flatMap((route) =>
+			route.deliverabilityFallback ? [route.deliverabilityFallback.relayProviderType] : []
+		)
+	);
+}
+
+/** The operator's name for a kind, from the composed catalog — never a literal. */
+function relayKindLabel(kind: string): string {
+	return SEND_PROVIDER_CATALOG.find((entry) => entry.kind === kind)?.label ?? kind;
+}
+
+/**
+ * Every relay identity this deployment holds for its owned sending domains —
+ * one row per (domain, relay kind), for WHICHEVER KINDS THE REGISTRY PROVES.
+ *
+ * IT USED TO BE `listDeliverabilityRelayDomains`, AND IT USED TO BE SES. That
+ * query point-read the frozen `sendingDomainSesIdentities` sibling and shaped its
+ * result around SES's bundle (dkim tokens, MAIL FROM, `spfProofState`), which
+ * made one vendor's storage the shape of the surface: Mandrill's identities were
+ * reported by a second, `providerKind === 'mandrill'` query under a second Vue
+ * panel, and the bundled plugin relay tier — which writes the same generic table
+ * Mandrill does — wrote rows that NO surface could render. A deployment relaying
+ * through a plugin transport was told, forever, that provisioning was queued.
+ *
+ * SO THE ANSWERING KINDS COME FROM THE REGISTRY (`relayIdentityProviders()`),
+ * not from this file. Each kind describes its own domain through
+ * `describeRelayIdentity`, or through the generic read of the shared row when it
+ * implements no such arm, and this handler only adds the two facts a PROVIDER
+ * cannot know: that the domain's own verification has not landed yet
+ * (`awaiting_primary_verification`), and that a relay this deployment has
+ * CONFIGURED holds no identity for it yet (`provisioning`). Registering a kind
+ * therefore extends the answer; nothing here is edited for the sixth relay.
+ *
+ * A DOMAIN CAN APPEAR MORE THAN ONCE, which is why the row carries `kind` and
+ * `kindLabel` rather than the page being keyed by domain: two relays configured
+ * at once is a real (if discouraged) state, and the surface has to be able to say
+ * which one is waiting on what. Pagination is still over `domains` — the cursor
+ * has to walk one table — so a page may hold more rows than domains, or none at
+ * all when this deployment has configured no relay and holds no identities.
+ *
+ * Admin-gated (`organization:manage`): which third party a domain is registered
+ * with, and why it has not verified, is operational configuration.
+ */
+export const listRelayDomainIdentities = authedQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'organization:manage');
@@ -205,41 +229,48 @@ export const listDeliverabilityRelayDomains = authedQuery({
 			.query('domains')
 			.withIndex('by_provider_type', (q) => q.eq('providerType', OWN_SENDING_DOMAIN_PROVIDER_KIND))
 			.paginate(args.paginationOpts);
-		const now = Date.now();
-		return {
-			...page,
-			page: await Promise.all(
-				page.page.map(async (domain) => {
-					const identity = await ctx.db
-						.query('sendingDomainSesIdentities')
-						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-						.first();
-					return {
-						domainId: domain._id,
-						domain: domain.domain,
-						status:
-							domain.status !== 'verified'
-								? ('awaiting_primary_verification' as const)
-								: identity
-									? identity.verifiedAt
-										? now - identity.verifiedAt <= SES_RELAY_PROOF_MAX_AGE_MS
-											? ('verified' as const)
-											: ('stale' as const)
-										: ('pending' as const)
-									: ('provisioning' as const),
-						dnsRecords: identity?.dnsRecords,
-						verificationResults: identity?.verificationResults,
-						spfProofState:
-							identity?.spfProofState ??
-							(identity?.dnsRecords?.spf
-								? ('dns_required' as const)
-								: ('not_applicable_manual_primary' as const)),
-						isProviderVerified: identity?.isProviderVerified ?? false,
-						verifiedAt: identity?.verifiedAt,
-					};
-				})
-			),
-		};
+		const configured = await configuredRelayKinds(ctx);
+		const rows = await Promise.all(
+			page.page.map(async (domain) => {
+				const described = await Promise.all(
+					relayIdentityProviders().map(async (provider) => ({
+						kind: provider.kind,
+						facts: provider.describeRelayIdentity
+							? await provider.describeRelayIdentity(ctx, domain)
+							: await describeSharedRelayIdentity(ctx, provider.kind, domain.domain),
+					}))
+				);
+				return described.flatMap(({ kind, facts }) => {
+					// A kind with no identity and no configured route has nothing to
+					// say about this domain — reporting `provisioning` for it would
+					// invent a run that will never start, which is the shipped bug one
+					// kind over.
+					if (!facts && !configured.has(kind)) return [];
+					return [
+						{
+							domainId: domain._id,
+							domain: domain.domain,
+							kind,
+							kindLabel: relayKindLabel(kind),
+							status:
+								domain.status !== 'verified'
+									? ('awaiting_primary_verification' as const)
+									: (facts?.status ?? ('provisioning' as const)),
+							records: facts?.records ?? [],
+							spf: facts?.spf,
+							dkim: facts?.dkim,
+							lastError: facts?.lastError,
+							lastCheckedAt: facts?.lastCheckedAt,
+							nextCheckDueAt: facts?.nextCheckDueAt,
+							proofMaxAgeMs: facts?.proofMaxAgeMs,
+							isOwnershipVerified: facts?.isOwnershipVerified,
+							spfProof: facts?.spfProof,
+						},
+					];
+				});
+			})
+		);
+		return { ...page, page: rows.flat() };
 	},
 });
 

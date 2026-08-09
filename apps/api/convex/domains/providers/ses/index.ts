@@ -20,6 +20,7 @@ import { logError } from '../../../lib/runtimeLog';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
+import { sesRelayIdentityFacts } from './relayIdentityView';
 import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type {
@@ -152,6 +153,12 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	// declares `domainVerification: 'api'`, so it is the one kind that can
 	// answer this; see `./relayVerification.ts` for the proof it requires.
 	relayDomainVerified: sesRelayDomainVerified,
+
+	// The operator surface's arm (see `./relayIdentityView.ts`). SES is the one
+	// kind that MUST implement it: its identities live in the frozen sibling
+	// table, so the generic read of `sendingDomainRelayIdentities` — which
+	// answers for every kind that omits this — would find nothing for SES.
+	describeRelayIdentity: sesRelayIdentityFacts,
 
 	// The alignment pre-flight's second arm (see `./referenceArm.ts`) — the same
 	// arm this deployment has always compared against, now answered through the

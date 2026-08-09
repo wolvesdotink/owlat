@@ -298,10 +298,11 @@ export async function observeDeploymentCheck(
 			// identity half reads `context.relayIdentities`, which the verification
 			// context types as rows of the FROZEN `sendingDomainSesIdentities`
 			// sibling. Widening it to the generic `sendingDomainRelayIdentities`
-			// table is the same read `providerRoutes.listDeliverabilityRelayDomains`
-			// has to grow (the two carry different per-kind identity shapes and have
-			// to move together — see the sending-domain section of
-			// `docs/abstractions.md`).
+			// table is the read `providerRoutes.listRelayDomainIdentities` has
+			// already grown: it asks each registered kind to describe a domain
+			// (`describeRelayIdentity`) rather than reading one vendor's table, and
+			// this validator's context can be loaded the same way — see the
+			// sending-domain section of `docs/abstractions.md`.
 			//
 			// SO THE TWO HALVES ARE HELD TOGETHER RATHER THAN LEFT TO DRIFT. Those
 			// rows prove ONE kind's identities ({@link RELAY_IDENTITY_PROOF_KIND}),

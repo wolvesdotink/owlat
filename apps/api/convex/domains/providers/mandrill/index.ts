@@ -33,6 +33,7 @@ import { addSenderDomain, checkSenderDomain } from './api';
 import { buildMandrillIdentity, describeMandrillIdentity } from './identity';
 import { loadMandrillRow, resolveDomainName, upsertMandrillIdentity } from './persistence';
 import { buildMandrillDnsRecords } from './records';
+import { mandrillRelayIdentityFacts } from './relayIdentityView';
 import { mandrillReferenceArm, mandrillRelayDomainVerified } from './relayVerification';
 import type { ProviderCheckResult, RelayProvingProviderModule } from '../types';
 
@@ -110,6 +111,11 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	// `./relayVerification.ts`.
 	relayDomainVerified: mandrillRelayDomainVerified,
 	describeReferenceArm: mandrillReferenceArm,
+
+	// The operator surface's arm: the shared row plus the two things only this
+	// adapter knows — the derived record set and the ownership ceremony (see
+	// `./relayIdentityView.ts`).
+	describeRelayIdentity: mandrillRelayIdentityFacts,
 
 	/**
 	 * The relay-identity backfill for the domains that predate the fallback

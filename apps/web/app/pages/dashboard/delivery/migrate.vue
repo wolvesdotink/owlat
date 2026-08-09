@@ -20,7 +20,7 @@
  * stays re-runnable (which is free — both imports are idempotent).
  *
  * Steps that own real work are self-contained components, following the
- * `<DeliveryMandrillDomainStatus />` precedent: this page is at the file-size
+ * `<DeliveryRelayDomainStatus />` precedent: this page is at the file-size
  * cap's doorstep like every other Delivery page, and a flow assembled from
  * drop-in steps is one where each step can be tested without the flow.
  */
@@ -203,7 +203,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 									</span>
 								</li>
 							</ul>
-							<DeliveryMandrillDomainStatus />
+							<DeliveryRelayDomainStatus />
 							<NuxtLink
 								to="/dashboard/delivery/domains"
 								class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"

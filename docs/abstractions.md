@@ -242,29 +242,37 @@ sibling tables (`sendingDomainMtaIdentities`, `sendingDomainSesIdentities`) are
 frozen: no third sibling is ever added, no new kind gets rows there, and they
 keep the MTA's and SES's.
 
-**Neither half of that access is encapsulated yet.** Each adapter has
-`writeIdentity` / `clearIdentity`, but the SES relay provisioning does not go
-through them: `sesRelay.provision` (the action the SES adapter's own
-`ensureRelayIdentity` schedules) calls `sesRelayMutations.storeProvisioning`,
-which inserts into `sendingDomainSesIdentities` from outside `domains/providers/` —
-so the pattern to mirror for relay kind #4 is an out-of-adapter
-`<kind>RelayMutations.ts` plus a scheduled `provision` action, not an adapter
-method. `sendingDomainMtaIdentities` has out-of-adapter writers too
-(`devShortcuts/forceVerifyDomain.ts`, the demo seed). And SES/MTA-shaped
-**readers** sit outside the adapters as well, the largest being
-`providerRoutes.listDeliverabilityRelayDomains`, which point-reads the frozen
-SES sibling for every domain and therefore reports nothing once the configured
-relay is some other kind.
+**The WRITE half is not encapsulated yet.** Each adapter has `writeIdentity` /
+`clearIdentity`, but the SES relay provisioning does not go through them:
+`sesRelay.provision` (the action the SES adapter's own `ensureRelayIdentity`
+schedules) calls `sesRelayMutations.storeProvisioning`, which inserts into
+`sendingDomainSesIdentities` from outside `domains/providers/` — so the pattern
+to mirror for relay kind #4 is an out-of-adapter `<kind>RelayMutations.ts` plus a
+scheduled `provision` action, not an adapter method. `sendingDomainMtaIdentities`
+has out-of-adapter writers too (`devShortcuts/forceVerifyDomain.ts`, the demo
+seed). P0.4 routed the SCHEDULING of that write through the adapter but left the
+insert where it is; folding it in is unclaimed by any piece.
 
-**No piece card owns either half.** P0.4 routed the SCHEDULING of that write
-through the adapter (`ensureRelayIdentity`) but left the insert where it is;
-folding the insert itself in is unclaimed. Nor is the read. P1.2
-(catalog-driven web UI) is its natural home, but that card's scope names the
-four Vue files and two composables and neither this query nor
-`RelayDomainStatus.vue` — the two have to change together, since the per-kind
-identity shapes differ. So the pair is carried into P1.2 as an added input, not
-as work someone already signed up for; the query's own docblock says so at
-length and is the home for that statement.
+**The READ half is.** `describeRelayIdentity` (optional on both module
+contracts, carried through `relaySurface.ts` into the relay-identity registry) is
+how a kind says what it can tell an operator about one sending domain, in the one
+shape every kind answers in: `RelayDomainIdentityFacts` —
+`providers/relayIdentityView.ts`. `providerRoutes.listRelayDomainIdentities`
+walks `relayIdentityProviders()` and returns one row per (domain, relay kind),
+labelled from the catalog, and a kind that implements no describe seam is still
+answered for by the generic read of its shared row. So registering a kind is what
+makes it visible, and implementing the seam only adds detail — SES's frozen
+sibling and its remembered DNS bundle, Mandrill's derived records and its
+ownership token, the plugin tier's selectors and its host-owned proof bound.
+
+That replaced the surface's per-vendor shape, which is worth stating because it
+is the failure the seam prevents: an SES-shaped query that point-read the frozen
+sibling, a second `providerKind === 'mandrill'` query beside it, one Vue panel
+above each, and `ANSWERS_FOR_KINDS = ['ses']` in the panel to keep the pair from
+lying about each other. The bundled plugin relay tier wrote rows into the shared
+table that **no surface could render**, so its operators were told provisioning
+was queued forever, about a run that had already finished. One panel
+(`components/delivery/RelayDomainStatus.vue`) now renders every kind.
 
 ### Provider feedback (webhook) adapters
 

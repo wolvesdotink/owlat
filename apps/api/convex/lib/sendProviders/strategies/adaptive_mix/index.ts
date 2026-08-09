@@ -120,10 +120,9 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * Read those three, not this list. For orientation only, the surviving families
  * as of P0.5: the RETURN-PATH pair (`domains/lifecycle.ts`,
  * `delivery/checklistDomainValidators.ts`), waiting on a capability that has no
- * home on the sending-domain adapter interface yet; FROZEN-SIBLING READS
- * (`providerRoutes.listDeliverabilityRelayDomains`,
- * `delivery/checklistValidatorTypes.ts`), retired by the generic
- * `sendingDomainRelayIdentities` read in P1.2; ADAPTER-ADJACENT actions living
+ * home on the sending-domain adapter interface yet; the FROZEN-SIBLING READ
+ * that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay
+ * panel's query, now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living
  * beside an adapter rather than inside it (`domains/mandrillRelay*.ts`,
  * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches
  * in `apps/web`, which P1.2 and its follow-up delete.

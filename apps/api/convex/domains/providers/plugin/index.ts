@@ -30,6 +30,8 @@
 import { internal } from '../../../_generated/api';
 import { isFreshRelayProof, loadRelayIdentityForDomain } from '../relayIdentityProof';
 import { relayIdentityProvisioningIsSettled } from '../relayIdentityPersistence';
+import { relayIdentityFactsFromRow } from '../relayIdentityView';
+import type { RelayDomainIdentityFacts } from '../relayIdentityView';
 import { PLUGIN_RELAY_PROOF_MAX_AGE_MS, readPluginProviderDetails } from './state';
 import type { HostedSendTransportDomainIdentityDefinition } from '../../../plugins/sendTransportDomainIdentityCatalog';
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
@@ -153,6 +155,51 @@ export function createHostedRelayIdentityProvider(
 			await ctx.scheduler.runAfter(0, internal.domains.pluginRelay.provision, {
 				kind,
 				domain: domain.domain,
+			});
+		},
+
+		/**
+		 * THE OPERATOR SURFACE'S ARM — what this relay says about one domain, in the
+		 * shape every kind answers in.
+		 *
+		 * The generic read would already report this tier's status, its verbatim
+		 * record verdicts and its freshness numbers, because the rows are in the
+		 * shared table. What is added here is the pair only the host can supply:
+		 * this tier's PROOF BOUND (so the surface ages a proof exactly when routing
+		 * stops trusting it) and the DNS FACTS the last observation recorded.
+		 *
+		 * THOSE FACTS ARE NOT A RECORD SET, and are reported as what they are. A
+		 * plugin's identity module tells us which selectors sign and which SPF
+		 * mechanisms authorise — never the zone rows to publish — so each is
+		 * carried with a label and no `type`/`host`, and the panel renders it as a
+		 * fact rather than as DNS an operator would paste. Guessing the RRset from
+		 * a selector is how a screen ends up instructing an operator to publish a
+		 * record the provider never asked for.
+		 *
+		 * NO OWNERSHIP FIELD: the ownership verdict is an INPUT to this tier's
+		 * derived status (`parsePluginRelayResult`) and is not persisted on its
+		 * own, so reporting one would be a guess. The status carries it.
+		 */
+		async describeRelayIdentity(
+			ctx: QueryCtx | MutationCtx,
+			domain: Doc<'domains'>
+		): Promise<RelayDomainIdentityFacts | null> {
+			const identity = await loadRelayIdentityForDomain(ctx, kind, domain.domain);
+			if (!identity) return null;
+			const dns = readPluginProviderDetails(identity.providerDetails);
+			return relayIdentityFactsFromRow(identity, {
+				records: [
+					...dns.spfMechanisms.map((mechanism) => ({
+						label: 'SPF mechanism',
+						value: mechanism,
+					})),
+					...dns.dkimSelectors.map((selector) => ({
+						label: 'DKIM selector',
+						value: selector,
+					})),
+				],
+				proofMaxAgeMs: PLUGIN_RELAY_PROOF_MAX_AGE_MS,
+				...(dns.lastError !== undefined ? { lastError: dns.lastError } : {}),
 			});
 		},
 

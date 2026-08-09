@@ -76,16 +76,26 @@
 # CLI/endpoint half of the descriptor rollout — see that family's own header for
 # why P1.1 was the wrong owner for it).
 #
-# AND THAT COUNT IS AN UNDERCOUNT BY TWO SITES — three spellings — deliberately
-# and visibly. P1.2 introduced kind literals that this file CANNOT license,
-# because the ratchet's own KNOWN LIMIT (a named array plus a membership test,
-# outside apps/api/convex) does not see them and an entry that excuses nothing
-# fails the gate: the answering sets in `RelayDomainStatus.vue` (one spelling)
-# and `apps/web/app/utils/providerFeedbackPanel.ts` (two). Both exist because a
-# UI gate cannot be more general than the per-vendor BACKEND READ behind it, both
-# are argued in their own family below, and both are retired by a named backend
-# change rather than by a UI edit. Read the 38 as "38 licensed spellings plus
-# those three, all with owners".
+# AND THAT COUNT IS AN UNDERCOUNT BY ONE SITE — two spellings — deliberately and
+# visibly. P1.2 introduced kind literals that this file CANNOT license, because
+# the ratchet's own KNOWN LIMIT (a named array plus a membership test, outside
+# apps/api/convex) does not see them and an entry that excuses nothing fails the
+# gate: the answering set in `apps/web/app/utils/providerFeedbackPanel.ts` (two
+# spellings). It exists because a UI gate cannot be more general than the
+# per-vendor BACKEND READ behind it, it is argued in its own family below, and it
+# is retired by a named backend change rather than by a UI edit. Read the 38 as
+# "38 licensed spellings plus those two, all with owners".
+#
+# IT WAS TWO SITES AND THREE SPELLINGS. The other was
+# `RelayDomainStatus.vue`'s `ANSWERS_FOR_KINDS = ['ses']`, and it is GONE — not
+# by deleting the array, which would have made the panel claim relays it could
+# not see, but by making the backend read answer for every kind the
+# domain-provider registry proves (`providerRoutes.listRelayDomainIdentities`,
+# `describeRelayIdentity` on the relay-identity contract). The panel now reads
+# its labels off the rows, `MandrillDomainStatus.vue` is retired into it, and a
+# bundled plugin relay — whose rows no surface could render — appears with no
+# UI edit at all. That is what "retired by a named backend change" looks like
+# when it lands; the same sentence is still owed to the feedback panel below.
 #
 # ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
 #
@@ -105,6 +115,24 @@
 #
 # Not P1.1's call either way. Recorded here AND in the piece summary so it is
 # decided rather than discovered.
+#
+# ANSWERED FOR ONE FAMILY, IN THE (a) DIRECTION, BY DOING THE WORK RATHER THAN
+# BY CARDING IT. `relay-identity-panel` — "owner: the relay-identity read,
+# backend — no card yet" — is cleared above: the read now walks the
+# domain-provider registry, one panel renders every kind, and the ownerless
+# family is a CLEARED note instead of a debt with nobody's name on it. That is
+# the smaller of the two changes for the family it applies to, and it is the
+# precedent the ask was really about: an ownerless family is fixed by someone
+# picking it up, not by the file being rephrased around it.
+#
+# THE ASK STANDS, UNCHANGED IN SUBSTANCE. The same four families still carry no
+# owning card in this plan — `return-path`, `adapter-adjacent`,
+# `provider-shaped-ui-followup`, `credentials-and-probes` — and whether they get
+# cards (a) or A1 gets restated (b) is still not a build piece's call. What has
+# changed is only that `feedback-panel-answering-sets`, which DOES have an owner
+# (P2.1) and whose unblocking change is the same shape as the one just landed —
+# one read that answers for the ACTIVE transport instead of one read per vendor —
+# now has a worked example to copy rather than a description to work from.
 #
 # THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
 # it; because the ratchet fails on an entry that excuses nothing, that piece's
@@ -295,51 +323,43 @@ apps/web/app/pages/setup/email.vue:ses
 apps/web/app/pages/setup/email.vue:smtp
 
 
-# ── relay-identity-panel (owner: the relay-identity read, backend — no card yet) ──
+# ── relay-identity-panel — CLEARED by the registry-backed relay read ──────────
 #
-# NO ENTRY THE RATCHET CAN LICENSE — WHICH IS NOT THE SAME AS NO KIND LITERAL.
-# Read the A1 count with this caveat: `RelayDomainStatus.vue` carries
-# `const ANSWERS_FOR_KINDS = ['ses'] as const` and asks `includes(kind)`, which
-# is a kind-identity check in exactly the shape `check-provider-identity.sh`
-# documents as its KNOWN LIMIT (a named array plus a membership test, outside
-# `apps/api/convex`, where the custody test cannot see it either). So the ratchet
-# does not count it and this file cannot license it; it is written out HERE
-# instead, argued below, with the backend change that retires it.
+# Kept as a note rather than as a family, because there is nothing left to own.
+# It carried NO ENTRY THE RATCHET COULD LICENSE and one kind literal the ratchet
+# cannot see: `RelayDomainStatus.vue`'s `const ANSWERS_FOR_KINDS = ['ses'] as
+# const` plus `includes(kind)`, the named-array-and-membership shape
+# `check-provider-identity.sh` documents as its KNOWN LIMIT.
 #
-# What is otherwise recorded here is the HALF OF P1.2'S CARD THAT NEEDS A BACKEND
-# CHANGE, so the wave gate can see a named owner instead of a bullet with no
-# diff.
+# WHAT IT WAS WAITING FOR, and what landed. The panel was worded for SES
+# throughout because every string was downstream of a query that point-read the
+# frozen `sendingDomainSesIdentities` sibling — so generalising the COPY without
+# generalising the READ would have claimed to cover relays whose rows the panel
+# could not see, and the answering set existed to stop exactly that (a
+# Mandrill-only deployment shown "SES status: provisioning" beside the Mandrill
+# panel already rendering its real rows). The unblocking change was named here as
+# one query, and it is what shipped:
 #
-# `RelayDomainStatus.vue` is worded for SES throughout — "SES escape-hatch
-# domains", "SES status", the dedicated MAIL FROM copy — and that wording is
-# HONEST, because every string is downstream of
-# `providerRoutes.listDeliverabilityRelayDomains`, which reads the frozen
-# `sendingDomainSesIdentities` sibling table directly. Generalising the copy
-# without generalising the read would claim to cover relays whose rows the panel
-# cannot see. THE UNBLOCKING CHANGE IS ONE QUERY: a read over the generic
-# `sendingDomainRelayIdentities` table (which the domain-provider registry
-# already writes) answering for whichever kinds that registry can prove, after
-# which this card and `MandrillDomainStatus.vue` collapse into one that names the
-# relay from its catalog label.
+#   * `providerRoutes.listRelayDomainIdentities` walks the relay-identity
+#     registry (`relayIdentityProviders()`) and returns one row per (domain,
+#     relay kind) — kind, catalog LABEL, status, the records to publish, the
+#     provider's own verdicts, and the freshness bound routing applies;
+#   * each kind answers through `describeRelayIdentity`, or through the generic
+#     read of its `sendingDomainRelayIdentities` row when it implements none, so
+#     registering a kind is what makes it visible;
+#   * `MandrillDomainStatus.vue` is retired into the one panel, whose only
+#     per-kind copy is a map keyed by kind for a console flow that cannot be
+#     described generically — the `SignedWebhookCard.vue` pattern;
+#   * `utils/relayIdentityPanel.ts` is deleted: the browser no longer gates
+#     rows it was handed regardless, because the query returns rows only where
+#     there is something true to say.
 #
-# What P1.2 DID fix from the web side, because it needed no backend: the panel
-# used to render for every deployment with an owned sending domain, since the
-# query synthesises `provisioning` for any domain with no identity row. A
-# Resend/SMTP/own-MTA deployment was therefore told to wait for an SES
-# provisioning run that would never start. The gate is now the data plus the
-# capability OF THE KIND THE QUERY ANSWERS FOR (`utils/relayIdentityPanel.ts`):
-# a row that already carries identity state, or a configured escape-hatch relay
-# that is both in this panel's answering set and declares
-# `domainVerification: 'api'`.
-#
-# THE ANSWERING SET IS WHY THE GATE IS NOT PURELY CAPABILITY-DRIVEN, which reads
-# like a D5 violation and is not. Mandrill is a SECOND `api` kind, so a gate that
-# asked the capability alone showed this SES-worded card — "SES status:
-# provisioning" — to a Mandrill-only deployment, beside the Mandrill panel that
-# was already rendering its real rows. A gate cannot be more general than the
-# data behind it. `RelayDomainStatus.vue` therefore passes the kinds its query
-# can speak for (one, today), and that argument becomes the set the generic read
-# can prove when the query above lands.
+# THE BUNDLED PLUGIN RELAY TIER IS WHY THIS COULD NOT WAIT. It writes the same
+# generic table Mandrill does, and no surface could render a single one of its
+# rows — an operator relaying through a plugin transport was told provisioning
+# was queued, forever, about a run that had already finished. A per-vendor read
+# surface does not merely cost the sixth vendor an edit; it makes the tier whose
+# whole promise is "no host edit" invisible.
 
 
 # ── feedback-panel-answering-sets (owner: the webhook registry, P2.1) ──
@@ -362,11 +382,12 @@ apps/web/app/pages/setup/email.vue:smtp
 #
 # So each panel names the kinds its read can answer for, and a kind outside the
 # set draws NO panel: a visible gap a provider author chases, rather than an
-# invisible lie. THE UNBLOCKING CHANGE is the same shape as the one above — one
-# read that answers "the ACTIVE transport's feedback health" (signing-key
-# presence, last event) instead of one read per vendor — after which both sets
-# become "every kind that declares this panel" and this block goes. It is step
-# 4's caveat in the providers doc.
+# invisible lie. THE UNBLOCKING CHANGE is the same shape as the relay-identity
+# read cleared above, which has now LANDED and can be copied rather than
+# described — one read that answers "the ACTIVE transport's feedback health"
+# (signing-key presence, last event) instead of one read per vendor — after which
+# both sets become "every kind that declares this panel" and this block goes. It
+# is step 4's caveat in the providers doc.
 
 
 # ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──

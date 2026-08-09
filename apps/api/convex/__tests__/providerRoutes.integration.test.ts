@@ -771,43 +771,35 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 100 },
 		});
 		expect(result.isDone).toBe(true);
+		// The SES sibling's remembered bundle, flattened into the one row shape
+		// every relay kind answers in — and NAMED from the catalog, not from a
+		// literal in the query or in the panel above it.
 		expect(result.page).toMatchObject([
 			{
 				domain: 'relay.example',
+				kind: 'ses',
+				kindLabel: 'Amazon SES',
 				status: 'pending',
-				isProviderVerified: false,
-				dnsRecords: { spf: { host: '@' } },
+				records: [{ label: 'SPF', type: 'TXT', host: '@' }],
 			},
 		]);
 	});
 
-	it('PINNED DIVERGENCE (P1.2): reports a non-SES relay identity as provisioning', async () => {
-		// KNOWN-BROKEN, ON PURPOSE, AND HELD HERE SO IT CANNOT BE FORGOTTEN.
-		// `listDeliverabilityRelayDomains` still reads `sendingDomainSesIdentities`
-		// directly and shapes its row around SES's DNS bundle, so a deployment
-		// whose fallback relay is Mandrill relays correctly (the drain above proves
-		// the identity is written) while this query — the entire content of
-		// `RelayDomainStatus.vue` — reports `provisioning` with no DNS records for
-		// every owned-MTA domain, forever.
-		//
-		// Not fixed in this piece: widening the read shape changes what the admin
-		// table renders, which is the user-visible change wave 0 may not make, and
-		// the row and the component have to move together.
-		//
-		// NO PIECE OWNS THE PAIR YET. P1.2 (catalog-driven web UI) is the natural
-		// home but its scope names TransportEditor.vue, useSetupWizard.ts,
-		// useRelayCredentialDraft.ts, DeliverabilityFallbackEditor.vue and
-		// config.vue — not `RelayDomainStatus.vue` and not this query. They are
-		// carried into P1.2 as an explicit added input, named in this piece's
-		// handoff notes; this test cannot force that, because it asserts the
-		// CURRENT behaviour and therefore passes in both worlds. What it can do is
-		// make the fix impossible to ship silently: the assertions below have to be
-		// inverted by hand — `status` becomes `verified`, `dnsRecords` becomes
-		// populated — and the person inverting them is reading this paragraph.
+	it('reports a non-SES relay identity from the generic table, with its own records', async () => {
+		// THE DIVERGENCE THIS INVERTS. Until the read walked the registry, the
+		// query point-read `sendingDomainSesIdentities` and shaped its row around
+		// SES's bundle, so a deployment whose fallback relay is Mandrill relayed
+		// correctly (the drain above proves the identity is written) while this
+		// query — the entire content of `RelayDomainStatus.vue` — answered
+		// `provisioning` with no DNS records for every owned-MTA domain, forever.
+		// The previous revision of this test asserted that broken behaviour on
+		// purpose, so that the fix could not ship without someone inverting it by
+		// hand. This is that inversion: `verified`, with the records Mandrill
+		// derives, under the label the catalog gives the kind.
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {
@@ -831,18 +823,48 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 100 },
 		});
 		expect(result.page).toMatchObject([
-			{ domain: 'relay.example', status: 'provisioning', isProviderVerified: false },
+			{
+				domain: 'relay.example',
+				kind: 'mandrill',
+				kindLabel: 'Mailchimp Transactional (Mandrill)',
+				status: 'verified',
+				// Derived from the domain name by the same helper the adapter
+				// registers with — Mandrill remembers no per-domain records.
+				records: [
+					{ label: 'SPF', value: 'v=spf1 include:spf.mandrillapp.com -all' },
+					{ label: 'DKIM', host: 'mandrill._domainkey' },
+				],
+			},
 		]);
-		expect(result.page[0]?.dnsRecords).toBeUndefined();
+		// Ownership is Mandrill's own ceremony and this row has never cleared it —
+		// the state that makes it bounce mail with `reject_reason: unsigned`
+		// however good the DNS is.
+		expect(result.page[0]?.isOwnershipVerified).toBe(false);
 	});
 
 	it('distinguishes primary verification and paginates beyond 512 domains', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
+			// A CONFIGURED escape hatch, with no identity provisioned yet: that is
+			// what makes `provisioning` a truthful answer for these domains. Without
+			// a configured relay the query answers for none of them, which is the
+			// point one test down.
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'mta', isEnabled: true }],
+				deliverabilityFallback: {
+					isEnabled: false,
+					relayProviderType: 'ses',
+					isWarmupOverflowEnabled: false,
+				},
+				createdAt: 0,
+				updatedAt: 0,
+			});
 			await ctx.db.insert('domains', {
 				domain: 'external.example',
 				providerType: 'ses',
@@ -863,11 +885,11 @@ describe('deliverability relay domain lifecycle', () => {
 			}
 		});
 
-		const first = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+		const first = await t.query(api.providerRoutes.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 512 },
 		});
 		expect(first.isDone).toBe(false);
-		const second = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+		const second = await t.query(api.providerRoutes.listRelayDomainIdentities, {
 			paginationOpts: { cursor: first.continueCursor, numItems: 512 },
 		});
 		const domains = [...first.page, ...second.page];
@@ -882,7 +904,31 @@ describe('deliverability relay domain lifecycle', () => {
 		);
 	});
 
-	it('surfaces an expired SES verification proof as stale', async () => {
+	it('answers for no kind at all when this deployment has configured no relay', async () => {
+		// THE SHIPPED BUG, ONE LAYER DOWN. The query used to answer for every owned
+		// sending domain whatever the deployment had configured, and the panel
+		// filtered the result in the browser — so the gate could never be more
+		// truthful than the rows behind it. A Resend, SMTP or own-MTA-only
+		// deployment now gets an empty page rather than a provisioning run that
+		// will never start.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'owned.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+			paginationOpts: { cursor: null, numItems: 10 },
+		});
+		expect(result.page).toEqual([]);
+	});
+
+	it('dates an SES proof from its verification, under the bound routing applies', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			const domainId = await ctx.db.insert('domains', {
@@ -904,10 +950,22 @@ describe('deliverability relay domain lifecycle', () => {
 				updatedAt: Date.now(),
 			});
 		});
-		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 10 },
 		});
-		expect(result.page[0]?.status).toBe('stale');
+		// AGEING MOVED TO THE SURFACE, and the bound moved with it. The query used
+		// to return a synthesised `stale`, computed here against SES's constant;
+		// the row now carries the evidence date and the SAME bound routing refuses
+		// past, so one clock read in the browser ages the proof for every kind
+		// (Mandrill's seven days, the plugin tier's, SES's thirty) instead of one
+		// backend rule per vendor. A page left open catches up on the next tick
+		// rather than on the next write.
+		expect(result.page[0]).toMatchObject({
+			kind: 'ses',
+			status: 'verified',
+			proofMaxAgeMs: SES_RELAY_PROOF_MAX_AGE_MS,
+		});
+		expect(result.page[0]?.lastCheckedAt).toBeLessThan(Date.now() - SES_RELAY_PROOF_MAX_AGE_MS);
 	});
 
 	it('keeps operational relay DNS and status behind organization management permission', async () => {
@@ -915,7 +973,7 @@ describe('deliverability relay domain lifecycle', () => {
 		permissionState.allowed = false;
 
 		await expect(
-			t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			t.query(api.providerRoutes.listRelayDomainIdentities, {
 				paginationOpts: { cursor: null, numItems: 100 },
 			})
 		).rejects.toThrow('Missing required permission');

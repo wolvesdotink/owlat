@@ -194,14 +194,24 @@ describe('docs/abstractions.md: the sending-domain provider section matches the 
 	});
 
 	it('keeps the sibling-table claim honest about the readers outside the adapters', () => {
-		// The section says an SES-shaped READ of the frozen sibling still sits
-		// outside `domains/providers/`. That exception is a fact about
-		// `providerRoutes.ts`, so it is asserted against that file in BOTH
-		// directions: while the read is still there the page must name it, and
-		// once P1.2 makes the read generic the page must stop.
+		// The section used to say an SES-shaped READ of the frozen sibling sat
+		// OUTSIDE `domains/providers/`, and pinned that in both directions against
+		// `providerRoutes.ts`. It no longer does, so the guard flips with it: the
+		// page now claims the read half is encapsulated, and that claim is a fact
+		// about WHERE the sibling read lives.
 		const routes = read('apps/api/convex/providerRoutes.ts');
 		const stillReadsTheSibling = routes.includes("query('sendingDomainSesIdentities')");
-		expect(section.includes('listDeliverabilityRelayDomains')).toBe(stillReadsTheSibling);
+		expect(stillReadsTheSibling, 'the SES sibling read is back outside the adapters').toBe(false);
+		expect(read('apps/api/convex/domains/providers/ses/relayIdentityView.ts')).toContain(
+			"query('sendingDomainSesIdentities')"
+		);
+		// The two names a reader has to be able to grep for: the seam a kind
+		// implements, and the one query that walks the registry asking it.
+		expect(section).toContain('describeRelayIdentity');
+		expect(section).toContain('listRelayDomainIdentities');
+		expect(read('apps/api/convex/domains/providers/relayIdentityTypes.ts')).toContain(
+			'describeRelayIdentity?('
+		);
 		expect(section).toContain('sendingDomainSesIdentities');
 		expect(section).toContain('sendingDomainRelayIdentities');
 	});

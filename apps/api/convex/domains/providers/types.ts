@@ -37,6 +37,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
 import type { EnsureRelayIdentityOptions } from './relayIdentityTypes';
+import type { RelayDomainIdentityFacts } from './relayIdentityView';
 
 // ─── Per-provider identity shapes ──────────────────────────────────────────
 
@@ -363,6 +364,27 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 		delayMs: number,
 		domainName: string
 	): Promise<void>;
+
+	/**
+	 * The OPERATOR SURFACE's arm: what this relay says about one sending domain,
+	 * in the one shape every kind answers in
+	 * ({@link RelayDomainIdentityFacts} — `./relayIdentityView.ts`).
+	 *
+	 * Separately optional for the same reason the sweep arm above is: it asks
+	 * neither "can this kind prove a domain?" nor "does it keep rows in the shared
+	 * table?", but "what can we TELL an operator about it?". The generic read of
+	 * the shared row answers that for any kind that omits this; what an
+	 * implementation adds is the part no generic read can reach — SES's frozen
+	 * sibling and its remembered DNS bundle, Mandrill's derived records and its
+	 * ownership token.
+	 *
+	 * Passed through to the relay-identity registry by `./relaySurface.ts`, which
+	 * is what the panel's query walks.
+	 */
+	describeRelayIdentity?(
+		ctx: QueryCtx | MutationCtx,
+		domain: Doc<'domains'>
+	): Promise<RelayDomainIdentityFacts | null>;
 
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 

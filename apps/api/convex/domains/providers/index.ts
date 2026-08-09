@@ -47,6 +47,12 @@ import type {
 
 export type { RelayIdentityProviderModule } from './relayIdentityTypes';
 export type {
+	RelayDnsRecordView,
+	RelayDomainIdentityFacts,
+	RelayIdentityViewStatus,
+} from './relayIdentityView';
+export { describeSharedRelayIdentity } from './relayIdentityView';
+export type {
 	SendingDomainProviderKind,
 	SendingDomainIdentityRegistry,
 	SendingDomainProviderModule,
@@ -254,6 +260,33 @@ export function relayIdentityProviderFor(
 	kind: string | undefined | null
 ): RelayIdentityProviderModule | undefined {
 	return typeof kind === 'string' ? RELAY_DOMAIN_IDENTITY_PROVIDERS.get(kind) : undefined;
+}
+
+/**
+ * EVERY kind that can prove a sending domain — the same registry, enumerated
+ * rather than asked about one kind.
+ *
+ * The one caller is the relay-domain-identity READ
+ * (`providerRoutes.listRelayDomainIdentities`), and enumerating is the whole
+ * point of it: the surface that reports "which of my domains are ready at my
+ * relay?" has to answer for whichever kinds this deployment composed, not for a
+ * list of vendors written into a query. Before it did, the answer was
+ * per-vendor in three places — an SES-shaped query over the frozen sibling, a
+ * `providerKind === 'mandrill'` query over the shared table, and one Vue panel
+ * above each — and a bundled plugin relay wrote rows that NOTHING could render.
+ *
+ * Derived, so registering a kind extends the answer: a new core adapter that
+ * implements the three relay seams, or a bundled plugin that contributes a
+ * `domainIdentity`, is on the panel the day it composes, with the generic read
+ * of its row (`./relayIdentityView.ts`) as its floor and
+ * {@link RelayIdentityProviderModule.describeRelayIdentity} as its ceiling.
+ *
+ * Insertion order — core adapters, then the bundled plugin tier — because that
+ * is the order the surface lists a domain's relays in, and a Map's order is the
+ * one stable thing to hang it on.
+ */
+export function relayIdentityProviders(): readonly RelayIdentityProviderModule[] {
+	return [...RELAY_DOMAIN_IDENTITY_PROVIDERS.values()];
 }
 
 /**

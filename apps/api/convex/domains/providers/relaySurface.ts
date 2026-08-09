@@ -56,6 +56,10 @@ export function toRelayIdentityProvider(
 	// doing. Absent stays absent, so the sweep skips the kind rather than
 	// scheduling into nothing.
 	const scheduleRelayIdentityRefresh = provider.scheduleRelayIdentityRefresh;
+	// Likewise optional, and likewise carried rather than re-derived: absent means
+	// the panel's query describes this kind from the shared row, which is the
+	// honest generic answer — see `./relayIdentityView.ts`.
+	const describeRelayIdentity = provider.describeRelayIdentity;
 	return Object.freeze({
 		kind,
 		relayDomainVerified: relayDomainVerified.bind(provider),
@@ -63,6 +67,9 @@ export function toRelayIdentityProvider(
 		ensureRelayIdentity: ensureRelayIdentity.bind(provider),
 		...(scheduleRelayIdentityRefresh
 			? { scheduleRelayIdentityRefresh: scheduleRelayIdentityRefresh.bind(provider) }
+			: {}),
+		...(describeRelayIdentity
+			? { describeRelayIdentity: describeRelayIdentity.bind(provider) }
 			: {}),
 	});
 }

@@ -14,6 +14,7 @@
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { RelayDomainIdentityFacts } from './relayIdentityView';
 
 /**
  * WHY the caller is asking for a relay identity — the one thing the two
@@ -92,6 +93,33 @@ export interface RelayIdentityProviderModule {
 		domain: Doc<'domains'>,
 		options: EnsureRelayIdentityOptions
 	): Promise<void>;
+	/**
+	 * WHAT THIS RELAY SAYS ABOUT ONE SENDING DOMAIN, for the operator surface —
+	 * the read seam that makes a registered kind VISIBLE.
+	 *
+	 * OPTIONAL, and absence is answered rather than hidden: a kind that does not
+	 * implement it is described by `describeSharedRelayIdentity`
+	 * (`./relayIdentityView.ts`), the generic read of the row every kind after SES
+	 * writes. So registering a kind is what puts it on the panel, and implementing
+	 * this only ever ADDS what the generic read cannot know — the records to
+	 * publish, the kind's own freshness bound, whether ownership is a separate
+	 * ceremony. A kind whose rows are NOT in the shared table (SES, whose
+	 * identities live in the frozen sibling) must implement it, or it answers for
+	 * nothing.
+	 *
+	 * Returns null for "no identity here yet". The query turns that into
+	 * `provisioning` for a relay this deployment has configured, and into no row
+	 * at all for one it has not — a distinction only the caller can make, which is
+	 * why this reports absence rather than a state.
+	 *
+	 * Runs inside a QUERY over a page of domains, so implementations do indexed
+	 * point reads and pure derivation only.
+	 */
+	describeRelayIdentity?(
+		ctx: QueryCtx | MutationCtx,
+		domain: Doc<'domains'>
+	): Promise<RelayDomainIdentityFacts | null>;
+
 	/**
 	 * OPTIONAL where the three above are required, and for the reason spelled out
 	 * on `SendingDomainProviderModule.scheduleRelayIdentityRefresh` (`./types.ts`):
