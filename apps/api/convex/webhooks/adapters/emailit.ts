@@ -62,15 +62,36 @@ const INVALID_RECIPIENT_STATUS =
 /** Free-text `status` naming an explicit refusal of the address by the receiver. */
 const REJECTED_RECIPIENT_STATUS = /reject|refus|denied/i;
 
+/** Free-text `status` reporting the recipient marked the mail as spam. */
+const SPAM_COMPLAINT_STATUS = /spam|complain|abuse|feedback[ _-]?loop|\bfbl\b/i;
+
+/** Free-text `status` reporting the recipient unsubscribed at the provider. */
+const UNSUBSCRIBED_STATUS = /unsubscrib|opt[ _-]?out/i;
+
+/** Free-text `status` reporting the suppression was caused by bouncing. */
+const BOUNCE_STATUS = /bounce/i;
+
 /**
  * Map Emailit's free-text suppression `status` onto the closed host vocabulary.
  * Emailit reports no machine cause, so the text is the only signal about WHY an
  * address was suppressed; unrecognized text falls back to the conservative
- * `recipient_blacklisted`.
+ * `recipient_blacklisted`. Order is most-specific first: nonexistent-mailbox
+ * phrasings outrank the bounce word they often ride in on, and a bounce-caused
+ * suppression borrows the shared hard/soft classifier so the block it lands
+ * matches the one the bounce event itself would have landed.
  */
 function suppressionReason(status: string | undefined): SuppressionReason {
 	const text = status ?? '';
 	if (INVALID_RECIPIENT_STATUS.test(text)) return 'invalid_recipient';
+	if (SPAM_COMPLAINT_STATUS.test(text)) return 'spam_complaint';
+	if (UNSUBSCRIBED_STATUS.test(text)) return 'unsubscribed';
+	if (BOUNCE_STATUS.test(text)) {
+		// An explicit hard/soft label is the provider stating the disposition;
+		// only unlabeled text falls to the shared cause classifier (soft default).
+		if (/soft/i.test(text)) return 'soft_bounce';
+		if (/hard/i.test(text)) return 'hard_bounce';
+		return classifyBounceMessage(text) === 'hard' ? 'hard_bounce' : 'soft_bounce';
+	}
 	if (REJECTED_RECIPIENT_STATUS.test(text)) return 'recipient_rejected';
 	return 'recipient_blacklisted';
 }

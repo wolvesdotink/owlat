@@ -113,16 +113,28 @@ describe('Emailit feedback semantics', () => {
 		});
 	});
 
-	// Only `invalid_recipient` becomes a hard `bounced` block downstream; the
-	// other two land a reversible `manual` one, so unrecognized text stays on the
-	// conservative fallback.
+	// The disposition decides the block row downstream (bounced hard/soft,
+	// complained, unsubscribe routing), so each family of phrasings must land
+	// its own member; unrecognized text stays on the conservative reversible
+	// fallback.
 	it.each([
 		['invalid recipient', 'invalid_recipient'],
 		['mailbox does not exist', 'invalid_recipient'],
 		['550 no such user here', 'invalid_recipient'],
 		['recipient rejected', 'recipient_rejected'],
 		['delivery refused by the destination', 'recipient_rejected'],
-		['spam complaint', 'recipient_blacklisted'],
+		['spam complaint', 'spam_complaint'],
+		['recipient marked the message as spam', 'spam_complaint'],
+		['abuse report received', 'spam_complaint'],
+		['fbl report', 'spam_complaint'],
+		['recipient unsubscribed', 'unsubscribed'],
+		['opt-out request', 'unsubscribed'],
+		['hard bounce: user unknown', 'invalid_recipient'],
+		['hard bounce', 'hard_bounce'],
+		['soft bounce', 'soft_bounce'],
+		['bounce: address rejected', 'hard_bounce'],
+		['bounced: mailbox full', 'soft_bounce'],
+		['too many bounces', 'soft_bounce'],
 		['suppressed', 'recipient_blacklisted'],
 		[undefined, 'recipient_blacklisted'],
 	] as const)('maps the suppression status %s to %s', (status, reason) => {
