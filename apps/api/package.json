@@ -62,11 +62,11 @@
 		"better-auth": "catalog:convex",
 		"cheerio": "^1.2.0",
 		"convex": "catalog:convex",
-		"nanoid": "^5.1.7",
+		"nanoid": "^5.1.16",
 		"openpgp": "^6.1.0",
 		"posthog-node": "^5.28.5",
-		"resend": "^6.9.4",
-		"sanitize-html": "^2.13.0",
+		"resend": "^6.18.1",
+		"sanitize-html": "^2.17.6",
 		"unpdf": "^1.6.2"
 	},
 	"devDependencies": {

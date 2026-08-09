@@ -22,8 +22,8 @@
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"convex": "catalog:convex",
-		"hono": "^4.12.25",
-		"@hono/node-server": "^2.0.0",
+		"hono": "^4.13.1",
+		"@hono/node-server": "^2.1.0",
 		"imapflow": "^1.0.171",
 		"pino": "^10.3.1"
 	},

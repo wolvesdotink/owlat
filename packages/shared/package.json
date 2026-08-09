@@ -302,7 +302,7 @@
 		"vitest": "catalog:"
 	},
 	"peerDependencies": {
-		"sanitize-html": "^2.13.0"
+		"sanitize-html": "^2.17.6"
 	},
 	"peerDependenciesMeta": {
 		"sanitize-html": {
