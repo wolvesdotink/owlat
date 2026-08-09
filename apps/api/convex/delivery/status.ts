@@ -21,11 +21,15 @@
 import { v } from 'convex/values';
 import { adminQuery, authedAction, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type QueryCtx } from '../_generated/server';
 import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
-import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
+import {
+	isCoreSendProviderKind,
+	sendProviderCatalogEntry,
+	type SendProviderKind,
+} from '../lib/sendProviders/catalog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
@@ -182,22 +186,44 @@ export const getProviderFeedbackStatus = adminQuery({
 		const missingVariables = feedback
 			? feedbackVerifierEnvVars(feedback.verifier).filter((name) => !isEnvPresent(name))
 			: [];
-		const latest = feedback
-			? await ctx.db
-					.query('webhookPayloads')
-					.withIndex('by_source_and_received_at', (q) => q.eq('source', kind))
-					.order('desc')
-					.first()
-			: null;
 		return deriveProviderFeedbackStatus({
 			hasFeedback: feedback !== undefined,
 			ceremony: descriptor.providerFeedback?.setupPanel ?? 'none',
 			missingVariables,
-			lastEventAt: latest?.receivedAt ?? null,
+			lastEventAt: feedback ? await lastFeedbackEventAt(ctx, kind) : null,
 			now: Date.now(),
 		});
 	},
 });
+
+/**
+ * When this transport's feedback channel last delivered, by tier.
+ *
+ * CORE KINDS read the raw-retention table, which they populate by default.
+ *
+ * PLUGIN KINDS CANNOT: raw retention is opt-in per adapter (`storeRawPayload`,
+ * default off), so grading a plugin channel by `webhookPayloads` reported a
+ * perfectly working non-retaining transport as `awaiting_event` forever. They
+ * read the durable marker the feedback route stamps on every completed batch
+ * instead. The replay-claim rows are NOT that signal: they expire inside the
+ * signature tolerance window (fifteen minutes at most) while this grading works
+ * over seven days.
+ */
+async function lastFeedbackEventAt(ctx: QueryCtx, kind: SendProviderKind): Promise<number | null> {
+	if (!isCoreSendProviderKind(kind)) {
+		const activity = await ctx.db
+			.query('pluginWebhookFeedbackActivity')
+			.withIndex('by_transport_kind', (q) => q.eq('transportKind', kind))
+			.first();
+		return activity?.lastEventAt ?? null;
+	}
+	const latest = await ctx.db
+		.query('webhookPayloads')
+		.withIndex('by_source_and_received_at', (q) => q.eq('source', kind))
+		.order('desc')
+		.first();
+	return latest?.receivedAt ?? null;
+}
 
 /**
  * Non-secret transport summary for the Delivery hub's single transport card and

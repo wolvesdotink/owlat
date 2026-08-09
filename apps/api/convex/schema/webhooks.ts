@@ -121,9 +121,42 @@ export const webhookTables = {
 		deliveryDigest: v.string(),
 		claimedAt: v.number(),
 		expiresAt: v.number(),
+		// WHETHER THE CLAIMED DELIVERY WAS EVER APPLIED. The claim is taken BEFORE
+		// dispatch, so "a row exists" alone cannot tell a batch that has landed from
+		// one still in flight — and the two must be answered differently. A second
+		// copy of a COMPLETED batch is a lost acknowledgement (200, `duplicate`); a
+		// second copy of an IN-FLIGHT one has to be answered retryably, because the
+		// first copy may still fail and release its claim, and a provider that has
+		// already been told 2xx never redelivers. Optional so rows written before
+		// this column existed still deserialize; a missing value reads as
+		// `in_flight`, the answer that can only cost a redelivery, never a batch.
+		status: v.optional(v.union(v.literal('in_flight'), v.literal('completed'))),
+		completedAt: v.optional(v.number()),
 	})
 		.index('by_delivery_digest', ['deliveryDigest'])
 		.index('by_expires_at', ['expiresAt']),
+
+	// Durable "this plugin feedback channel is alive" marker, one row per bundled
+	// transport kind, stamped when a batch finishes dispatching.
+	//
+	// WHY IT IS NOT `pluginWebhookDeliveries`: those rows are replay claims and
+	// expire inside the signature contract's tolerance window (at most fifteen
+	// minutes), swept by the claim hot path and the cleanup cron. Feedback health
+	// is graded over SEVEN DAYS (`PROVIDER_FEEDBACK_STALE_AFTER_MS`), so a claim
+	// row can never be the signal.
+	//
+	// WHY IT IS NOT `webhookPayloads`: that table is raw retention, which a plugin
+	// adapter must opt into (`storeRawPayload`, default off). Reading health from
+	// it left a working non-retaining channel reporting `awaiting_event` forever.
+	// This row holds a timestamp and an attribution — never payload content.
+	pluginWebhookFeedbackActivity: defineTable({
+		pluginId: v.string(),
+		// Namespaced `plugin.<pluginId>.<localId>` transport kind — the same value
+		// the send catalog grades an arm under, so the status query can look a
+		// transport up by the kind it already holds.
+		transportKind: v.string(),
+		lastEventAt: v.number(),
+	}).index('by_transport_kind', ['transportKind']),
 
 	// Transactional idempotency receipts for MTA campaign complaint alerts.
 	// The producer can retry after a lost HTTP response for up to its durable

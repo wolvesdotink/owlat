@@ -28,7 +28,8 @@
  *                           the timestamp freshness the contract declares
  *   6. authorization      — flag, operator grant, env and singleton scope,
  *                           rechecked now (`sendTransportWebhookAuthorization`)
- *   7. replay             — the delivery digest is claimed, or this is a repeat
+ *   7. replay             — the delivery digest is claimed, or this is a repeat of
+ *                           one already applied (200) or still in flight (503)
  *   8. retention          — raw payload stored only if the adapter opted in, and
  *                           stored BEFORE the plugin's module runs (see below)
  *   9. parse              — the plugin's parse-only module, its output revalidated
@@ -70,6 +71,7 @@ import {
 import { verifyPluginReplayBoundSignature } from '../plugins/inboundSignature';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
+import type { PluginFeedbackClaimResult } from './pluginFeedbackDeliveries';
 import {
 	PluginFeedbackBatchTooLargeError,
 	parsePluginFeedbackEvents,
@@ -216,26 +218,16 @@ async function deliver(
 	}
 
 	// (7) REPLAY. The claim is atomic: two concurrent copies of one delivery
-	// race in a single mutation and exactly one wins.
+	// race in a single mutation and exactly one wins. The loser is told which
+	// case it lost to, because the two are answered differently — see
+	// `duplicateResponse`.
 	const claimed = await ctx.runMutation(internal.webhooks.pluginFeedbackDeliveries.claim, {
 		pluginId,
 		transportKind: definition.kind,
 		deliveryDigest: verification.deliveryDigest,
 		expiresAt: verification.expiresAtMs,
 	});
-	if (!claimed) {
-		// 200, NOT 409. Nothing is wrong on either side: our acknowledgement was
-		// lost and the provider re-posted the identical signed bytes (Mailgun and
-		// Postmark re-send the original payload rather than re-signing it). The
-		// claim already guarantees nothing is applied twice, so the state is right
-		// either way — but a 4xx here is counted as an endpoint failure, and
-		// providers deactivate on a run of those (Postmark after 10 consecutive
-		// non-2xx, Mailgun after days of them). Answering a correct redelivery in a
-		// way that can cost the operator the whole feedback channel is a worse
-		// outcome than any information the status code carried. `duplicate: true`
-		// says what happened, mirroring the core pipeline's `ignored: true`.
-		return jsonResponse(200, { success: true, duplicate: true });
-	}
+	if (claimed !== 'claimed') return duplicateResponse(claimed);
 
 	// (8) RETENTION IS OPT-IN, and it happens BEFORE the plugin's module runs: a
 	// body that fails to parse is precisely the one whose bytes are worth having.
@@ -247,7 +239,13 @@ async function deliver(
 	}
 
 	try {
-		return await applyDelivery(ctx, pluginId, webhook, module.parseEvents(rawBody));
+		return await applyDelivery(
+			ctx,
+			pluginId,
+			webhook,
+			verification.deliveryDigest,
+			module.parseEvents(rawBody)
+		);
 	} catch (error) {
 		// The claim goes back: a body we could not apply is a delivery that did not
 		// happen, and the provider's retry must not be mistaken for an attack.
@@ -261,6 +259,55 @@ async function deliver(
 		await recordOutcome(ctx, pluginId, definition.kind, 'failed');
 		return jsonResponse(...deliveryFailureResponse(error));
 	}
+}
+
+/**
+ * How long we ask a provider to wait before re-posting bytes another copy of
+ * this same delivery is still working on. A hint, not a contract — every ESP
+ * keeps its own backoff schedule — sized to comfortably outlast one batch
+ * dispatch so the redelivery arrives after the first copy has resolved either
+ * way, rather than joining it in flight.
+ */
+const IN_FLIGHT_RETRY_AFTER_SECONDS = 30;
+
+/**
+ * The second copy of one delivery, answered by WHAT THE FIRST COPY DID.
+ *
+ * COMPLETED → 200, not 409. Nothing is wrong on either side: our acknowledgement
+ * was lost and the provider re-posted the identical signed bytes (Mailgun and
+ * Postmark re-send the original payload rather than re-signing it). The batch is
+ * already applied, so the state is right either way — but a 4xx here is counted
+ * as an endpoint failure, and providers deactivate on a run of those (Postmark
+ * after 10 consecutive non-2xx, Mailgun after days of them). Answering a correct
+ * redelivery in a way that can cost the operator the whole feedback channel is a
+ * worse outcome than any information the status code carried. `duplicate: true`
+ * says what happened, mirroring the core pipeline's `ignored: true`.
+ *
+ * IN FLIGHT → 503, and this is the case a bare 200 loses batches on. Copy A has
+ * claimed the digest and is dispatching; copy B is the provider's timeout retry
+ * of the very same bytes. Nothing is applied yet, and A may still fail — at which
+ * point it releases the claim and answers 5xx, expecting the provider to come
+ * back. If B had been told 2xx, the provider has its acknowledgement and never
+ * will: the whole batch of bounces, complaints and suppressions is lost with no
+ * trace on either side. 503 is a RETRYABLE answer — the same status this route
+ * already gives when the signing secret is unset, and carrying the `Retry-After`
+ * hint its 429 does — so the provider redelivers after A has resolved. If A
+ * succeeded, that redelivery meets a completed claim and gets the 200 above.
+ *
+ * One 503 among the 2xx a healthy channel returns is not a deactivation risk;
+ * silently dropping a batch has no upper bound on what it costs.
+ */
+function duplicateResponse(outcome: Exclude<PluginFeedbackClaimResult, 'claimed'>): Response {
+	if (outcome === 'duplicate_completed') {
+		return jsonResponse(200, { success: true, duplicate: true });
+	}
+	return new Response(JSON.stringify({ error: 'Delivery already in progress', duplicate: true }), {
+		status: 503,
+		headers: {
+			'Content-Type': 'application/json',
+			'Retry-After': String(IN_FLIGHT_RETRY_AFTER_SECONDS),
+		},
+	});
 }
 
 /**
@@ -300,6 +347,7 @@ async function applyDelivery(
 	ctx: ActionCtx,
 	pluginId: string,
 	webhook: HostedSendTransportWebhook,
+	deliveryDigest: string,
 	parsed: unknown
 ): Promise<Response> {
 	const { definition } = webhook;
@@ -313,8 +361,40 @@ async function applyDelivery(
 	// core pipeline dispatches by, shared rather than restated (`./inboundHttp`).
 	// A throw propagates to `deliver`, which releases the claim and audits.
 	await dispatchEventsInOrder(ctx, events);
+	await markCompleted(ctx, pluginId, definition.kind, deliveryDigest);
 	await recordOutcome(ctx, pluginId, definition.kind, 'completed');
 	return jsonResponse(200, { success: true, processed: events.length });
+}
+
+/**
+ * Turn our in-flight claim into a receipt, and stamp the channel as alive.
+ *
+ * ONLY REACHED WITH EVERY EVENT ALREADY DISPATCHED, which decides how its own
+ * failure is handled: NEVER by throwing. A rejection here would land in
+ * `deliver`'s catch, which releases the replay claim and answers a non-2xx — so
+ * the provider would redeliver bytes we had applied, against a claim we had just
+ * given back. The claim then simply expires with the signature tolerance window,
+ * which is the same outcome as before this marking existed, and a redelivery
+ * inside that window is answered retryably rather than acknowledged. The failure
+ * is logged because the other half of this write is what the Delivery page grades
+ * a plugin feedback channel by: a deployment whose stamps are silently not
+ * landing sees a healthy channel report `awaiting_event`.
+ */
+async function markCompleted(
+	ctx: ActionCtx,
+	pluginId: string,
+	transportKind: string,
+	deliveryDigest: string
+): Promise<void> {
+	try {
+		await ctx.runMutation(internal.webhooks.pluginFeedbackDeliveries.complete, {
+			pluginId,
+			transportKind,
+			deliveryDigest,
+		});
+	} catch (error) {
+		logError(`[${transportKind} Webhook] Failed to record the completed delivery:`, error);
+	}
 }
 
 /**

@@ -16,6 +16,9 @@
  *   replayed delivery     → applied exactly once (answered 200 `duplicate`, so a
  *                           provider's lost-ack redelivery is not counted against
  *                           the endpoint and does not get the webhook disabled)
+ *   a copy of one still IN FLIGHT → answered retryably, never 200: nothing has
+ *                           been applied yet, and telling the provider otherwise
+ *                           loses the batch if the first copy then fails
  *   revoked grant / off   → 403, and the claim is never taken
  *   oversized body        → 413 on the declared length, or on the real bytes
  *   dishonest parse output→ 400, whole batch refused, claim released, audited
@@ -169,8 +172,11 @@ const handler = (pluginFeedbackWebhook as unknown as { _handler: HttpHandler }).
 interface ContextOptions {
 	readonly isRateLimited?: boolean;
 	readonly isAuthorized?: boolean;
-	readonly isClaimable?: boolean;
+	/** What the replay claim finds; `claimed` (nobody holds the digest) by default. */
+	readonly claimOutcome?: 'claimed' | 'duplicate_in_flight' | 'duplicate_completed';
 	readonly isStorable?: boolean;
+	/** Whether the completion write succeeds — the receipt's own failure. */
+	readonly isCompletable?: boolean;
 	/** Whether `ctx.scheduler.runAfter` succeeds — the audit row's own failure. */
 	readonly isSchedulable?: boolean;
 }
@@ -179,6 +185,7 @@ function fakeContext(options: ContextOptions = {}) {
 	const calls: string[] = [];
 	const scheduled: { name: string; args: Record<string, unknown> }[] = [];
 	const stored: Record<string, unknown>[] = [];
+	const completed: Record<string, unknown>[] = [];
 	const ctx = {
 		runMutation: vi.fn(async (reference: unknown, args: Record<string, unknown>) => {
 			const name = getFunctionName(reference as never);
@@ -187,7 +194,12 @@ function fakeContext(options: ContextOptions = {}) {
 				return { ok: options.isRateLimited !== true, retryAfter: 1_000 };
 			}
 			if (name.includes('authorizeDelivery')) return options.isAuthorized !== false;
-			if (name.includes('pluginFeedbackDeliveries:claim')) return options.isClaimable !== false;
+			if (name.includes('pluginFeedbackDeliveries:claim')) return options.claimOutcome ?? 'claimed';
+			if (name.includes('pluginFeedbackDeliveries:complete')) {
+				if (options.isCompletable === false) throw new Error('completion write unavailable');
+				completed.push(args);
+				return undefined;
+			}
 			if (name.includes('pluginFeedbackDeliveries:release')) return undefined;
 			if (name.includes('payloads:store')) {
 				if (options.isStorable === false) throw new Error('audit store unavailable');
@@ -203,7 +215,7 @@ function fakeContext(options: ContextOptions = {}) {
 			}),
 		},
 	};
-	return { ctx, calls, scheduled, stored };
+	return { ctx, calls, scheduled, stored, completed };
 }
 
 const BODY = JSON.stringify({ events: [{ type: 'bounce', id: 'abc' }] });
@@ -399,7 +411,7 @@ describe('a caller replaying a request that was once authentic', () => {
 	});
 
 	it('applies nothing the second time, and says so with a 200', async () => {
-		const { ctx, calls } = fakeContext({ isClaimable: false });
+		const { ctx, calls } = fakeContext({ claimOutcome: 'duplicate_completed' });
 		const response = await handler(ctx, webhookRequest());
 
 		// The whole point: a request that verifies perfectly still applies nothing
@@ -414,6 +426,59 @@ describe('a caller replaying a request that was once authentic', () => {
 		// entire feedback channel for a delivery where nothing went wrong.
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ success: true, duplicate: true });
+	});
+
+	it('answers a copy of an IN-FLIGHT delivery retryably, not with a 200', async () => {
+		// THE BATCH-LOSING RACE. The claim is taken BEFORE dispatch, so a second copy
+		// arriving mid-flight is not evidence that anything was applied: copy A is
+		// still running and may yet fail, release its claim and answer 5xx expecting
+		// the provider to come back. Acknowledge B and the provider never does — the
+		// bounces, complaints and suppressions in that batch are gone with no trace
+		// on either side. So B is answered retryably and redelivers after A resolves.
+		const { ctx } = fakeContext({ claimOutcome: 'duplicate_in_flight' });
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(503);
+		expect(response.status).toBeGreaterThanOrEqual(500);
+		expect(await response.json()).toEqual({
+			error: 'Delivery already in progress',
+			duplicate: true,
+		});
+		// With the hint this route's 429 already carries, so a provider that honours
+		// it comes back after the first copy has resolved rather than beside it.
+		expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
+		// Nothing was applied and nothing was taken away: the in-flight copy still
+		// owns its claim, and this one must not release it.
+		expect(mocks.parseEvents).not.toHaveBeenCalled();
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+		expect(
+			ctx.runMutation.mock.calls.some((call) =>
+				getFunctionName(call[0] as never).includes('pluginFeedbackDeliveries:release')
+			)
+		).toBe(false);
+	});
+
+	it('lets the redelivery through once the first copy has failed and released', async () => {
+		// The two halves of the race, in the order they actually happen: A fails and
+		// gives the claim back, so the provider's retry finds an unclaimed digest and
+		// is APPLIED. This is the feedback the 503 above exists to preserve.
+		mocks.dispatch.mockRejectedValueOnce(new Error('dispatcher exploded'));
+		const first = fakeContext();
+		const failed = await handler(first.ctx, webhookRequest());
+
+		expect(failed.status).toBe(500);
+		expect(first.calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(
+			true
+		);
+
+		const retry = fakeContext({ claimOutcome: 'claimed' });
+		const response = await handler(retry.ctx, webhookRequest());
+
+		expect(response.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(2);
+		expect(retry.completed).toEqual([
+			{ pluginId: PLUGIN_ID, transportKind: KIND, deliveryDigest: expect.any(String) },
+		]);
 	});
 
 	it('claims a digest derived from the signature, so identical bytes collide', async () => {
@@ -694,6 +759,55 @@ describe('an authentic, authorized delivery', () => {
 				args: { pluginId: PLUGIN_ID, transportKind: KIND, outcome: 'completed' },
 			},
 		]);
+	});
+
+	it('turns its claim into a receipt, naming the digest it claimed', async () => {
+		// Completion is what makes the NEXT copy of these bytes answerable with a
+		// 200 rather than a retryable 503, and it is what stamps the durable
+		// per-transport marker the Delivery page grades this channel by.
+		const { ctx, completed } = fakeContext();
+		await handler(ctx, webhookRequest());
+
+		const claimArgs = ctx.runMutation.mock.calls.find((call) =>
+			getFunctionName(call[0] as never).includes('pluginFeedbackDeliveries:claim')
+		)![1] as { deliveryDigest: string };
+		expect(completed).toEqual([
+			{
+				pluginId: PLUGIN_ID,
+				transportKind: KIND,
+				deliveryDigest: claimArgs.deliveryDigest,
+			},
+		]);
+	});
+
+	it('marks the delivery completed only AFTER every event is dispatched', async () => {
+		// The order is the guarantee: a batch that dies halfway must leave a claim
+		// that can be released, not a receipt that answers the redelivery 200.
+		mocks.parseEvents.mockImplementationOnce(() => [
+			{ ...BOUNCE, at: Date.now(), providerMessageId: 'm1' },
+			{ ...BOUNCE, at: Date.now(), providerMessageId: 'm2' },
+		]);
+		mocks.dispatch.mockImplementationOnce(async () => undefined);
+		mocks.dispatch.mockRejectedValueOnce(new Error('halfway'));
+		const { ctx, completed, calls } = fakeContext();
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(500);
+		expect(completed).toEqual([]);
+		expect(calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(true);
+	});
+
+	it('answers 200 when the completion write itself fails', async () => {
+		// Its rejection must not escape into `deliver`'s catch: the events are
+		// already dispatched by then, so the catch would release the claim and answer
+		// a non-2xx — and the provider's redelivery would be applied a second time.
+		// The claim simply expires with the tolerance window instead.
+		const { ctx, calls } = fakeContext({ isCompletable: false });
+		const response = await handler(ctx, webhookRequest());
+
+		expect(response.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+		expect(calls.filter((name) => name.includes('pluginFeedbackDeliveries:release'))).toEqual([]);
 	});
 
 	it('dispatches a batch in order', async () => {
