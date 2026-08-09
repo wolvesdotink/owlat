@@ -176,3 +176,112 @@ describe('bundled send transport modules artifact', () => {
 		await expect(composeWithModules([])).resolves.toBeDefined();
 	});
 });
+
+/**
+ * A PLUGIN WEBHOOK, RESTATED IN THE HOST'S VERIFIER VOCABULARY.
+ *
+ * `providers/feedback.ts:pluginVerifier` is the seam that makes a plugin kind
+ * indistinguishable from a core one to everything downstream — the verifier
+ * registry that enforces the scheme, and `feedbackVerifierEnvVars`, which is
+ * what tells an operator which variable is missing. It is a TRANSLATION, so the
+ * failure it can have is naming the wrong arm: a Svix contract restated as the
+ * parameterized HMAC would recompute a different string and reject every real
+ * delivery, and its `secretEnvVar` would still look configured.
+ */
+describe('a bundled webhook reaches the verifier registry as its own scheme', () => {
+	const SEND_CATALOG = '../../plugins/sendTransportCatalog.generated';
+	const MODULES = '../../plugins/sendTransportModules.generated';
+	const WEBHOOK_CATALOG = '../../plugins/sendTransportWebhookCatalog.generated';
+	const WEBHOOK_MODULES = '../../plugins/sendTransportWebhookModules.generated';
+	const KIND = 'plugin.mail-pack.relay';
+	const PLUGIN_ID = 'mail-pack';
+
+	async function composeWithSignature(signature: unknown) {
+		vi.resetModules();
+		vi.doMock(SEND_CATALOG, () => ({
+			BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
+				Object.freeze({
+					kind: KIND,
+					pluginId: PLUGIN_ID,
+					localId: 'relay',
+					label: 'Relay',
+					retryDelays: Object.freeze([0]),
+					requiredEnvVars: Object.freeze([]),
+					requiredCapability: 'send:transport',
+				}),
+			]),
+		}));
+		vi.doMock(MODULES, () => ({
+			BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: Object.freeze([
+				Object.freeze({
+					kind: KIND,
+					pluginId: PLUGIN_ID,
+					module: { parseExtras: () => ({}), send: async () => ({ success: true, id: 'x' }) },
+				}),
+			]),
+		}));
+		vi.doMock(WEBHOOK_CATALOG, () => ({
+			BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG: Object.freeze([
+				Object.freeze({
+					kind: KIND,
+					pluginId: PLUGIN_ID,
+					localId: 'relay',
+					signature,
+					storeRawPayload: false,
+					requiredCapability: 'send:transport',
+				}),
+			]),
+		}));
+		vi.doMock(WEBHOOK_MODULES, () => ({
+			BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES: Object.freeze([
+				Object.freeze({ kind: KIND, pluginId: PLUGIN_ID, module: { parseEvents: () => [] } }),
+			]),
+		}));
+		const feedback = (await import('../feedback')) as typeof import('../feedback');
+		return feedback.providerFeedbackFor(KIND as never);
+	}
+
+	afterEach(() => {
+		for (const path of [SEND_CATALOG, MODULES, WEBHOOK_CATALOG, WEBHOOK_MODULES]) {
+			vi.doUnmock(path);
+		}
+		vi.resetModules();
+	});
+
+	it('restates the svix arm as the host’s svix scheme', async () => {
+		const contribution = await composeWithSignature(
+			Object.freeze({
+				scheme: 'svix',
+				secretEnvVar: 'PLUGIN_RELAY_WEBHOOK_SECRET',
+				toleranceSeconds: 300,
+			})
+		);
+		expect(contribution?.webhookPath).toBe(`/webhooks/plugin/${PLUGIN_ID}`);
+		expect(contribution?.verifier).toEqual({
+			scheme: 'svix',
+			secretEnvVar: 'PLUGIN_RELAY_WEBHOOK_SECRET',
+			toleranceSeconds: 300,
+		});
+	});
+
+	it('restates the default arm exactly as it always did', async () => {
+		const contribution = await composeWithSignature(
+			Object.freeze({
+				header: 'x-relay-signature',
+				algorithm: 'hmac-sha256',
+				encoding: 'hex',
+				secretEnvVar: 'PLUGIN_RELAY_WEBHOOK_SECRET',
+				replay: Object.freeze({ timestampHeader: 'x-relay-timestamp', toleranceSeconds: 300 }),
+			})
+		);
+		expect(contribution?.verifier).toEqual({
+			scheme: 'hmac-timestamp-body',
+			algorithm: 'sha256',
+			encoding: 'hex',
+			signatureHeader: 'x-relay-signature',
+			timestampHeader: 'x-relay-timestamp',
+			secretEnvVar: 'PLUGIN_RELAY_WEBHOOK_SECRET',
+			toleranceSeconds: 300,
+		});
+	});
+});

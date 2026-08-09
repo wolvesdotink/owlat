@@ -133,6 +133,77 @@ describe('the declared contract survives composition unchanged', () => {
 	});
 });
 
+/**
+ * THE SECOND HOST-VERIFIED SCHEME, ACROSS THE WHOLE CHAIN.
+ *
+ * A bundled plugin wrapping an ESP whose console signs Svix-style — most of
+ * them; the core Resend path is verified by the very same host helper — could
+ * not be pointed at `/webhooks/plugin/<id>` at all until the declarable
+ * vocabulary held the word. What has to survive the chain is the ARM: a contract
+ * that reached the host as the other one would make the route recompute a
+ * different string and reject every real delivery, which every per-link suite
+ * still calls green.
+ */
+describe('the svix arm survives composition as the svix arm', () => {
+	const rendered = render({
+		module: { exportPath: './convex/webhook' },
+		signature: Object.freeze({
+			scheme: 'svix',
+			secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+			toleranceSeconds: 300,
+		}),
+	});
+
+	it('reaches the host as data the route can verify against', () => {
+		const catalog = evaluateGeneratedArtifact(
+			rendered.sendTransportWebhookCatalog,
+			'BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG'
+		) as readonly Record<string, unknown>[];
+
+		expect(catalog).toEqual([
+			{
+				kind: 'plugin.postmark-pack.postmark',
+				pluginId: 'postmark-pack',
+				localId: 'postmark',
+				// Two declared facts and no more. The headers, the HMAC family, the
+				// encoding and the signed string are the SCHEME's, implemented once in
+				// the host, so an artifact spelling any of them would be claiming the
+				// host reads a declaration it does not.
+				signature: {
+					scheme: 'svix',
+					secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+					toleranceSeconds: 300,
+				},
+				storeRawPayload: false,
+				requiredCapability: 'send:transport',
+			},
+		]);
+	});
+});
+
+describe('a webhook whose scheme the host cannot verify with never becomes an artifact', () => {
+	it.each([
+		// HOST INFRASTRUCTURE: an SNS certificate the host fetches and caches, bound
+		// to a subscription the DEPLOYMENT owns — not a signature a manifest picks.
+		['aws-sns'],
+		// A LEGACY VENDOR shape, signed over the deployment's own public URL.
+		['mandrill-form'],
+		['invented-scheme'],
+	] as const)('is refused at validation: %s', (scheme) => {
+		const result = validatePluginManifest(
+			manifest({
+				module: { exportPath: './convex/webhook' },
+				signature: {
+					scheme,
+					secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+					toleranceSeconds: 300,
+				},
+			})
+		);
+		expect(result.ok).toBe(false);
+	});
+});
+
 describe('a transport WITHOUT a webhook', () => {
 	const rendered = render(undefined);
 

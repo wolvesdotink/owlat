@@ -66,6 +66,19 @@ const fixture = vi.hoisted(() => {
 			secretEnv: 'PLUGIN_KEEP_WEBHOOK_SECRET',
 			secret: 'the-other-signing-secret',
 		},
+		// A THIRD bundled plugin, wrapping an ESP whose console signs Svix-style —
+		// the case the tier could not serve at all before the scheme vocabulary
+		// widened. Same route, same gates, a different host verifier.
+		svix: {
+			parseEvents: vi.fn(),
+			kind: 'plugin.svix-pack.relay',
+			pluginId: 'svix-pack',
+			localId: 'relay',
+			secretEnv: 'PLUGIN_SVIX_WEBHOOK_SECRET',
+			secretBase64: 'YWJjZGVmZ2hpamtsbW5vcA==',
+			secret: 'whsec_YWJjZGVmZ2hpamtsbW5vcA==',
+			toleranceSeconds: 300,
+		},
 	};
 });
 
@@ -96,6 +109,15 @@ vi.mock('../../plugins/sendTransportCatalog.generated', () => ({
 			pluginId: fixture.retention.pluginId,
 			localId: fixture.retention.localId,
 			label: 'Keep',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze([]),
+			requiredCapability: 'send:transport',
+		}),
+		Object.freeze({
+			kind: fixture.svix.kind,
+			pluginId: fixture.svix.pluginId,
+			localId: fixture.svix.localId,
+			label: 'Svix Relay',
 			retryDelays: Object.freeze([0]),
 			requiredEnvVars: Object.freeze([]),
 			requiredCapability: 'send:transport',
@@ -141,6 +163,21 @@ vi.mock('../../plugins/sendTransportWebhookCatalog.generated', () => ({
 			storeRawPayload: true,
 			requiredCapability: 'send:transport',
 		}),
+		Object.freeze({
+			kind: fixture.svix.kind,
+			pluginId: fixture.svix.pluginId,
+			localId: fixture.svix.localId,
+			// THE SECOND ARM, as the artifact carries it: a scheme word, a secret
+			// variable and a window. Everything else is the scheme's and is not
+			// declarable — see `PluginSvixSignatureContract`.
+			signature: Object.freeze({
+				scheme: 'svix',
+				secretEnvVar: fixture.svix.secretEnv,
+				toleranceSeconds: fixture.svix.toleranceSeconds,
+			}),
+			storeRawPayload: false,
+			requiredCapability: 'send:transport',
+		}),
 	]),
 }));
 
@@ -155,6 +192,11 @@ vi.mock('../../plugins/sendTransportWebhookModules.generated', () => ({
 			kind: fixture.retention.kind,
 			pluginId: fixture.retention.pluginId,
 			module: { parseEvents: (raw: string) => fixture.retention.parseEvents(raw) as unknown },
+		}),
+		Object.freeze({
+			kind: fixture.svix.kind,
+			pluginId: fixture.svix.pluginId,
+			module: { parseEvents: (raw: string) => fixture.svix.parseEvents(raw) as unknown },
 		}),
 	]),
 }));
@@ -276,6 +318,8 @@ beforeEach(() => {
 	vi.unstubAllEnvs();
 	vi.stubEnv(SECRET_ENV, SECRET);
 	vi.stubEnv(mocks.retention.secretEnv, mocks.retention.secret);
+	vi.stubEnv(mocks.svix.secretEnv, mocks.svix.secret);
+	mocks.svix.parseEvents.mockImplementation(() => bounceEvents());
 	mocks.parseEvents.mockImplementation(() => bounceEvents());
 	mocks.retention.parseEvents.mockImplementation(() => bounceEvents());
 	mocks.dispatch.mockImplementation(async () => undefined);
@@ -935,5 +979,203 @@ describe('an authentic, authorized delivery', () => {
 
 		expect(response.status).toBe(200);
 		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * THE SECOND HOST-VERIFIED SCHEME, ON THE SAME ROUTE (Svix).
+ *
+ * Before the vocabulary widened, a bundled plugin wrapping an ESP whose console
+ * signs Svix-style — which is most of them; Resend's core adapter is verified by
+ * the very same host helper — could not be pointed at `/webhooks/plugin/<id>` at
+ * all: the console signed `<id>.<timestamp>.<body>` and the host recomputed
+ * `<timestamp>.<body>`. That is a host edit standing between an operator and a
+ * tier whose whole promise is that there is none.
+ *
+ * What is under test is that widening it moved NOTHING ELSE. The gates are the
+ * same gates in the same order, the claim is the same claim, and the host is
+ * still the only party that decides whether bytes are authentic — a plugin
+ * supplies a word from a list the host wrote and a `PLUGIN_`-scoped variable, and
+ * never a verifier.
+ */
+describe('a plugin whose provider signs with svix', () => {
+	const { pluginId: SVIX_PLUGIN_ID, secretBase64: SVIX_SECRET_BASE64 } = mocks.svix;
+	const SVIX_ID = 'msg_route_1';
+
+	function svixSign(body: string, timestampSeconds: number, secretBase64 = SVIX_SECRET_BASE64) {
+		return createHmac('sha256', Buffer.from(secretBase64, 'base64'))
+			.update(`${SVIX_ID}.${timestampSeconds}.${body}`)
+			.digest('base64');
+	}
+
+	function svixRequest(
+		overrides: { readonly body?: string; readonly headers?: Record<string, string> } = {}
+	): Request {
+		const body = overrides.body ?? BODY;
+		const timestamp = String(Math.floor(Date.now() / 1000));
+		return new Request(`https://example.convex.site/webhooks/plugin/${SVIX_PLUGIN_ID}`, {
+			method: 'POST',
+			body,
+			headers: {
+				'Content-Type': 'application/json',
+				'svix-id': SVIX_ID,
+				'svix-timestamp': timestamp,
+				'svix-signature': `v1,${svixSign(body, Number(timestamp))}`,
+				...overrides.headers,
+			},
+		});
+	}
+
+	it('accepts a correctly signed delivery and dispatches it under the plugin kind', async () => {
+		const { ctx, scheduled } = fakeContext();
+		const response = await handler(ctx, svixRequest());
+
+		expect(response.status).toBe(200);
+		expect(mocks.svix.parseEvents).toHaveBeenCalledWith(BODY);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+		// The host's own attribution, exactly as on the other arm: feedback grades
+		// the arm that sent.
+		expect(mocks.dispatch.mock.calls[0]?.[1]).toMatchObject({ providerType: mocks.svix.kind });
+		expect(scheduled.map((entry) => entry.args['outcome'])).toEqual(['completed']);
+	});
+
+	it.each([
+		['a signature under another secret', { 'svix-signature': `v1,${'A'.repeat(43)}=` }],
+		['no signature at all', { 'svix-signature': '' }],
+		['no message id', { 'svix-id': '' }],
+	] as const)('refuses %s with 401, spending nothing else', async (_label, headers) => {
+		const { ctx, calls, scheduled } = fakeContext();
+		const response = await handler(ctx, svixRequest({ headers }));
+
+		expect(response.status).toBe(401);
+		expect(calls.some((name) => name.includes('authorizeDelivery'))).toBe(false);
+		expect(calls.some((name) => name.includes('claim'))).toBe(false);
+		expect(scheduled).toEqual([]);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('refuses a valid signature over a DIFFERENT body with 401', async () => {
+		const request = svixRequest();
+		const timestamp = request.headers.get('svix-timestamp')!;
+		const { ctx } = fakeContext();
+		const response = await handler(
+			ctx,
+			new Request(request.url, {
+				method: 'POST',
+				body: JSON.stringify({ events: [{ type: 'bounce', id: 'victim' }] }),
+				headers: {
+					'svix-id': SVIX_ID,
+					'svix-timestamp': timestamp,
+					'svix-signature': request.headers.get('svix-signature')!,
+				},
+			})
+		);
+		expect(response.status).toBe(401);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['a stale timestamp', -3_600],
+		// The far-future case matters as much: without it a captured request could
+		// be parked and replayed whenever it suited.
+		['a far-future timestamp', 3_600],
+	] as const)('refuses %s with 401 even when the signature is valid', async (_label, offset) => {
+		const timestamp = Math.floor(Date.now() / 1000) + offset;
+		const { ctx } = fakeContext();
+		const response = await handler(
+			ctx,
+			svixRequest({
+				headers: {
+					'svix-timestamp': String(timestamp),
+					'svix-signature': `v1,${svixSign(BODY, timestamp)}`,
+				},
+			})
+		);
+		expect(response.status).toBe(401);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('refuses a timestamp beyond the CLAMPED ceiling', async () => {
+		// The declared window is 300s and the ceiling is 900s; a delivery an hour old
+		// is outside both, and the clamp is what stops an artifact from widening it.
+		const timestamp = Math.floor(Date.now() / 1000) - 901;
+		const { ctx } = fakeContext();
+		const response = await handler(
+			ctx,
+			svixRequest({
+				headers: {
+					'svix-timestamp': String(timestamp),
+					'svix-signature': `v1,${svixSign(BODY, timestamp)}`,
+				},
+			})
+		);
+		expect(response.status).toBe(401);
+	});
+
+	it('answers 503, never a pass, when the signing secret is unset', async () => {
+		vi.stubEnv(mocks.svix.secretEnv, '');
+		const response = await handler(fakeContext().ctx, svixRequest());
+
+		expect(response.status).toBe(503);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('claims the delivery and answers a duplicate exactly as the other arm does', async () => {
+		// The claim is about the BATCH, not the scheme: the same signed bytes twice
+		// are one delivery, and the second copy is answered by what the first did.
+		const completed = await handler(
+			fakeContext({ claimOutcome: 'duplicate_completed' }).ctx,
+			svixRequest()
+		);
+		expect(completed.status).toBe(200);
+		expect(await completed.json()).toMatchObject({ duplicate: true });
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+
+		const inFlight = await handler(
+			fakeContext({ claimOutcome: 'duplicate_in_flight' }).ctx,
+			svixRequest()
+		);
+		expect(inFlight.status).toBe(503);
+		expect(inFlight.headers.get('Retry-After')).toBe('30');
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('names the delivery by the svix message id, so two batches in one second differ', async () => {
+		const { ctx } = fakeContext();
+		await handler(ctx, svixRequest());
+		const firstClaim = ctx.runMutation.mock.calls.find(([reference]) =>
+			getFunctionName(reference as never).includes('pluginFeedbackDeliveries:claim')
+		)?.[1] as { deliveryDigest: string };
+
+		const second = fakeContext();
+		await handler(second.ctx, svixRequest());
+		const repeatClaim = second.ctx.runMutation.mock.calls.find(([reference]) =>
+			getFunctionName(reference as never).includes('pluginFeedbackDeliveries:claim')
+		)?.[1] as { deliveryDigest: string };
+
+		// Identical signed bytes: one delivery, one digest.
+		expect(repeatClaim.deliveryDigest).toBe(firstClaim.deliveryDigest);
+		expect(firstClaim.deliveryDigest).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it('still refuses a revoked grant with 403, before the claim is taken', async () => {
+		const { ctx, calls } = fakeContext({ isAuthorized: false });
+		const response = await handler(ctx, svixRequest());
+
+		expect(response.status).toBe(403);
+		expect(calls.some((name) => name.includes('claim'))).toBe(false);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it('releases the claim and audits when the plugin parse half is wrong', async () => {
+		mocks.svix.parseEvents.mockImplementationOnce(() => {
+			throw new Error('cannot parse');
+		});
+		const { ctx, calls, scheduled } = fakeContext();
+		const response = await handler(ctx, svixRequest());
+
+		expect(response.status).toBe(400);
+		expect(calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(true);
+		expect(scheduled.map((entry) => entry.args['outcome'])).toEqual(['failed']);
 	});
 });

@@ -116,6 +116,27 @@ describe('a well-formed composition', () => {
 		}
 	});
 
+	it('accepts a webhook on the svix arm, whose replay defense is the scheme’s', async () => {
+		// The second host-verified word. It carries no `replay` record because the
+		// binding is inside `<id>.<timestamp>.<body>`; what it does carry is the
+		// window, held to the same ceiling by the same predicate.
+		const registry = await load({
+			...WELL_FORMED,
+			catalog: [
+				webhookEntry(KIND, 'mail-pack', {
+					signature: Object.freeze({
+						scheme: 'svix',
+						secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						toleranceSeconds: 300,
+					}),
+				}),
+			],
+		});
+		expect(registry.pluginSendTransportWebhookFor('mail-pack')?.definition.signature).toMatchObject(
+			{ scheme: 'svix' }
+		);
+	});
+
 	it('holds two plugins whose webhooks name their own signing variables', async () => {
 		const registry = await load({
 			send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.other-pack.relay', 'other-pack')],
@@ -253,6 +274,56 @@ describe('a composition that cannot be trusted fails at load', () => {
 				],
 			},
 			/bounded replay window/,
+		],
+		[
+			// The Svix arm keeps its window in one flat field, so the SAME ceiling is
+			// re-asserted against a different shape. An artifact that widened it would
+			// keep a captured request valid for as long as it claimed.
+			'a svix webhook whose freshness window is unbounded',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({
+							scheme: 'svix',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+							toleranceSeconds: 86_400,
+						}),
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			'a svix webhook with no freshness window at all',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({
+							scheme: 'svix',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						}),
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			// The route reads anything that is not `svix` as the parameterized HMAC —
+			// the safe fallback, but not what an artifact naming a host-infrastructure
+			// scheme asked for. Verifying under a scheme nobody declared is how a
+			// webhook ends up rejecting every real delivery with no explanation.
+			'a webhook naming a scheme this tier does not have',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({ ...signature(), scheme: 'aws-sns' }),
+					}),
+				],
+			},
+			/unknown signature scheme/,
 		],
 		[
 			'a duplicated kind',

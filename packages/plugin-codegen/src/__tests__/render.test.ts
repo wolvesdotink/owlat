@@ -570,6 +570,11 @@ describe('composition rendering', () => {
 		expect(rendered.sendTransportWebhookCatalog).toContain('toleranceSeconds: 300');
 		expect(rendered.sendTransportWebhookCatalog).toContain('storeRawPayload: true');
 		expect(rendered.sendTransportWebhookCatalog).not.toContain('@acme/mail-plugin');
+		// NO DISCRIMINANT ON THE DEFAULT ARM. Its absence is what the host reads as
+		// this scheme, so every catalog rendered before the vocabulary widened still
+		// means exactly what it meant — and adding the word here would rewrite them
+		// all for no change in meaning.
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('scheme:');
 
 		// NOT `'use node'`: the router that dispatches this registry runs in the
 		// Convex isolate, and a Node-only registry there would fail at push time.
@@ -583,6 +588,59 @@ describe('composition rendering', () => {
 		// The send half is untouched by the feedback half.
 		expect(rendered.sendTransportModules).toContain("'use node';");
 		expect(rendered.sendTransportModules).not.toContain('/webhooks/postmark');
+	});
+
+	it('emits the svix arm as the svix arm, and never as the default one', () => {
+		// The second host-verified scheme (Resend and a large share of ESP consoles
+		// sign this way). The renderer decides nothing about verification — it
+		// carries the declaration across the artifact boundary — but an arm rendered
+		// as the other one is a route that recomputes the wrong string and rejects
+		// every real delivery, which no per-link suite would otherwise notice.
+		const [plugin] = composeBundledPlugins([
+			{
+				packageName: '@acme/mail-plugin',
+				manifest: {
+					id: 'mail-pack',
+					version: '1.0.0',
+					capabilities: ['send:transport'],
+					flag: {
+						default: false,
+						requiredEnvVars: ['POSTMARK_TOKEN', 'PLUGIN_POSTMARK_WEBHOOK_SECRET'],
+					},
+					contributes: {
+						sendTransports: [
+							{
+								id: 'postmark',
+								label: 'Postmark',
+								module: { exportPath: './transports/postmark' },
+								retryDelays: [1000],
+								webhook: {
+									module: { exportPath: './webhooks/postmark' },
+									signature: {
+										scheme: 'svix',
+										secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+										toleranceSeconds: 300,
+									},
+								},
+							},
+						],
+					},
+				},
+			},
+		]);
+		if (!plugin) throw new Error('Expected plugin fixture');
+		const rendered = renderPluginComposition([plugin]);
+
+		expect(rendered.sendTransportWebhookCatalog).toContain("scheme: 'svix'");
+		expect(rendered.sendTransportWebhookCatalog).toContain('PLUGIN_POSTMARK_WEBHOOK_SECRET');
+		expect(rendered.sendTransportWebhookCatalog).toContain('toleranceSeconds: 300');
+		// None of the parameterized arm's vocabulary leaks in: Svix fixes its
+		// headers, family and encoding, and an artifact spelling any of them would
+		// be claiming the host reads a declaration it does not.
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('replay:');
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('algorithm:');
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('encoding:');
+		expect(rendered.sendTransportWebhookCatalog).not.toContain('header:');
 	});
 
 	it('omits a transport that declares no webhook from the feedback artifacts', () => {

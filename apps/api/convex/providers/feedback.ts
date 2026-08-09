@@ -1,6 +1,9 @@
 /** Isolate-safe feedback contributions for every composed send provider. */
 import type { ProviderFeedbackContribution, ProviderFeedbackVerifier } from '@owlat/provider-kit';
-import type { PluginReplayBoundSignatureContract } from '@owlat/plugin-kit';
+import {
+	isPluginSvixSignatureContract,
+	type PluginWebhookSignatureContract,
+} from '@owlat/plugin-kit';
 import {
 	SEND_PROVIDER_CATALOG,
 	isCoreSendProviderKind,
@@ -32,7 +35,25 @@ function hmacVerifier(
 	};
 }
 
-function pluginVerifier(signature: PluginReplayBoundSignatureContract): ProviderFeedbackVerifier {
+/**
+ * A plugin's declared contract, restated in the host's own verifier vocabulary.
+ *
+ * The two vocabularies use the SAME WORDS on purpose — a plugin webhook is meant
+ * to be indistinguishable from a core one to everything downstream, including
+ * `feedbackVerifierEnvVars`, which is what tells an operator which variable is
+ * missing. This is a translation, not a decision: each arm maps to the host
+ * scheme of the same name, and the plugin tier can only name schemes the host
+ * already has (`aws-sns` and `mandrill-form` are not in its vocabulary — see
+ * `PluginSvixSignatureContract` in `@owlat/plugin-kit`).
+ */
+function pluginVerifier(signature: PluginWebhookSignatureContract): ProviderFeedbackVerifier {
+	if (isPluginSvixSignatureContract(signature)) {
+		return {
+			scheme: 'svix',
+			secretEnvVar: signature.secretEnvVar,
+			toleranceSeconds: signature.toleranceSeconds,
+		};
+	}
 	return {
 		scheme: 'hmac-timestamp-body',
 		algorithm: signature.algorithm === 'hmac-sha256' ? 'sha256' : 'sha1',

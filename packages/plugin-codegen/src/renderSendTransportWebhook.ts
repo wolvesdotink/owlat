@@ -1,8 +1,9 @@
 import { parsePluginPackageName, type BundledPlugin } from '@owlat/plugin-host';
 import {
+	isPluginSvixSignatureContract,
 	parsePluginId,
 	pluginNamespacedKind,
-	type PluginReplayBoundSignatureContract,
+	type PluginWebhookSignatureContract,
 } from '@owlat/plugin-kit';
 import {
 	GENERATED_HEADER,
@@ -19,7 +20,7 @@ import {
 
 interface RenderedSendTransportWebhook extends PluginModuleFileEntry {
 	readonly localId: string;
-	readonly signature: PluginReplayBoundSignatureContract;
+	readonly signature: PluginWebhookSignatureContract;
 	readonly storeRawPayload: boolean;
 }
 
@@ -53,6 +54,37 @@ function sendTransportWebhooksFor(
 	);
 }
 
+/**
+ * The declared contract, as data the host route verifies against.
+ *
+ * ONE ARM PER HOST-VERIFIED SCHEME, emitted verbatim — the renderer decides
+ * nothing about verification, it only carries the declaration across the
+ * artifact boundary. The replay-bound arm is emitted WITHOUT a `scheme` key,
+ * exactly as it always was: it is the default the host reads an absent
+ * discriminant as, and adding the word would rewrite every existing catalog for
+ * no change in meaning. The `svix` arm must spell it, because its absence is the
+ * other arm.
+ */
+function renderSignature(signature: PluginWebhookSignatureContract): string {
+	if (isPluginSvixSignatureContract(signature)) {
+		return `Object.freeze({
+\t\t\tscheme: 'svix',
+\t\t\tsecretEnvVar: ${JSON.stringify(signature.secretEnvVar)},
+\t\t\ttoleranceSeconds: ${signature.toleranceSeconds},
+\t\t})`;
+	}
+	return `Object.freeze({
+\t\t\theader: ${JSON.stringify(signature.header)},
+\t\t\talgorithm: ${JSON.stringify(signature.algorithm)},
+\t\t\tencoding: ${JSON.stringify(signature.encoding)},
+\t\t\tsecretEnvVar: ${JSON.stringify(signature.secretEnvVar)},
+\t\t\treplay: Object.freeze({
+\t\t\t\ttimestampHeader: ${JSON.stringify(signature.replay.timestampHeader)},
+\t\t\t\ttoleranceSeconds: ${signature.replay.toleranceSeconds},
+\t\t\t}),
+\t\t})`;
+}
+
 export function renderSendTransportWebhookCatalog(plugins: readonly BundledPlugin[]): string {
 	const entries = sendTransportWebhooksFor(plugins)
 		.map(
@@ -60,16 +92,7 @@ export function renderSendTransportWebhookCatalog(plugins: readonly BundledPlugi
 \t\tkind: ${JSON.stringify(webhook.kind)},
 \t\tpluginId: ${JSON.stringify(webhook.pluginId)},
 \t\tlocalId: ${JSON.stringify(webhook.localId)},
-\t\tsignature: Object.freeze({
-\t\t\theader: ${JSON.stringify(webhook.signature.header)},
-\t\t\talgorithm: ${JSON.stringify(webhook.signature.algorithm)},
-\t\t\tencoding: ${JSON.stringify(webhook.signature.encoding)},
-\t\t\tsecretEnvVar: ${JSON.stringify(webhook.signature.secretEnvVar)},
-\t\t\treplay: Object.freeze({
-\t\t\t\ttimestampHeader: ${JSON.stringify(webhook.signature.replay.timestampHeader)},
-\t\t\t\ttoleranceSeconds: ${webhook.signature.replay.toleranceSeconds},
-\t\t\t}),
-\t\t}),
+\t\tsignature: ${renderSignature(webhook.signature)},
 \t\tstoreRawPayload: ${webhook.storeRawPayload},
 \t\trequiredCapability: 'send:transport',
 \t}),`

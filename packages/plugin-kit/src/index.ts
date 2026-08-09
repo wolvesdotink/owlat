@@ -204,10 +204,15 @@ export type {
 export {
 	isBoundedReplayToleranceSeconds,
 	isPluginSecretEnvVar,
+	isPluginSvixSignatureContract,
 	PLUGIN_INBOUND_MAX_NAME_LENGTH,
 	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
 } from './inboundSignature';
-export type { PluginReplayBoundSignatureContract } from './inboundSignature';
+export type {
+	PluginReplayBoundSignatureContract,
+	PluginSvixSignatureContract,
+	PluginWebhookSignatureContract,
+} from './inboundSignature';
 export {
 	isPluginSendTransportEnvVar,
 	PLUGIN_SEND_FAILURE_CODES,

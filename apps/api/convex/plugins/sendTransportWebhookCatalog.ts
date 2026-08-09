@@ -1,8 +1,10 @@
 import {
 	isBoundedReplayToleranceSeconds,
 	isPluginSecretEnvVar,
+	isPluginSvixSignatureContract,
 	type PluginId,
 	type PluginReplayBoundSignatureContract,
+	type PluginWebhookSignatureContract,
 } from '@owlat/plugin-kit';
 import { isSendProviderKind, sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG } from './sendTransportWebhookCatalog.generated';
@@ -34,7 +36,7 @@ import { readExactFunctionModule } from './hostedModuleSnapshot';
 export interface HostedSendTransportWebhookDefinition extends HostedContributionDefinition<'send:transport'> {
 	/** The contribution's local id; `kind` is this namespaced by the plugin id. */
 	readonly localId: string;
-	readonly signature: PluginReplayBoundSignatureContract;
+	readonly signature: PluginWebhookSignatureContract;
 	readonly storeRawPayload: boolean;
 }
 
@@ -154,15 +156,33 @@ export function pluginSendTransportWebhookDefinition(
  * attacker-chosen bodies. The predicate is the kit's own, so the rule the
  * validator enforces and the rule the host re-asserts cannot drift apart.
  *
- * REPLAY PROVISIONS MUST BE THERE AND BOUNDED. Without them
- * `verifyPluginReplayBoundSignature` dereferences a missing `replay` and every
- * delivery becomes an opaque 500 at request time; with an unbounded tolerance a
- * captured request would stay valid for as long as the artifact claimed. Both are
- * deployment mistakes, and a deployment mistake must stop the deployment.
+ * REPLAY PROVISIONS MUST BE THERE AND BOUNDED, IN WHICHEVER FORM THE SCHEME
+ * KEEPS THEM. On the parameterized HMAC arm they are the declared `replay`
+ * record: without it `verifyPluginReplayBoundSignature` dereferences a missing
+ * field and every delivery becomes an opaque 500 at request time. On the `svix`
+ * arm the binding is the scheme's own and only the window is declared. Either
+ * way an unbounded tolerance would keep a captured request valid for as long as
+ * the artifact claimed. Both are deployment mistakes, and a deployment mistake
+ * must stop the deployment.
  */
-function assertVerifiableSignature(signature: PluginReplayBoundSignatureContract): void {
+function assertVerifiableSignature(signature: PluginWebhookSignatureContract): void {
 	if (!isPluginSecretEnvVar(signature.secretEnvVar)) {
 		throw new TypeError('Bundled send transport webhook signs with a non-plugin secret');
+	}
+	// A WORD THIS HOST CANNOT VERIFY WITH is refused rather than read as the
+	// default. The route dispatches anything that is not `svix` to the HMAC arm —
+	// the safe fallback, but not what an artifact naming `aws-sns` asked for, and
+	// silently verifying under a scheme nobody declared is how a webhook ends up
+	// rejecting every real delivery with no explanation.
+	const scheme: string | undefined = signature.scheme;
+	if (scheme !== undefined && scheme !== 'hmac-timestamp-body' && scheme !== 'svix') {
+		throw new TypeError('Bundled send transport webhook declares an unknown signature scheme');
+	}
+	if (isPluginSvixSignatureContract(signature)) {
+		if (!isBoundedReplayToleranceSeconds(signature.toleranceSeconds)) {
+			throw new TypeError('Bundled send transport webhook declares no bounded replay window');
+		}
+		return;
 	}
 	const replay: Partial<PluginReplayBoundSignatureContract['replay']> | undefined =
 		signature.replay;

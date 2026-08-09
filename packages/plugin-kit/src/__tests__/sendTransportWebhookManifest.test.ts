@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+	isPluginSvixSignatureContract,
 	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
 	parsePluginManifest,
 	pluginContributionModules,
@@ -27,6 +28,16 @@ function signature(overrides: Record<string, unknown> = {}) {
 		encoding: 'hex',
 		secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
 		replay: { timestampHeader: 'x-postmark-timestamp', toleranceSeconds: 300 },
+		...overrides,
+	};
+}
+
+/** The other accepted arm: a console that signs Svix-style (Resend, and many). */
+function svixSignature(overrides: Record<string, unknown> = {}) {
+	return {
+		scheme: 'svix',
+		secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+		toleranceSeconds: 300,
 		...overrides,
 	};
 }
@@ -85,7 +96,33 @@ describe('a declared feedback webhook', () => {
 		expect(Object.isFrozen(declared)).toBe(true);
 		expect(Object.isFrozen(declared?.module)).toBe(true);
 		expect(Object.isFrozen(declared?.signature)).toBe(true);
-		expect(Object.isFrozen(declared?.signature.replay)).toBe(true);
+		const contract = declared?.signature;
+		if (contract === undefined || isPluginSvixSignatureContract(contract)) {
+			throw new Error('unreachable');
+		}
+		expect(Object.isFrozen(contract.replay)).toBe(true);
+	});
+
+	it('is the arm a contract that spells no scheme means', () => {
+		// BACKWARD COMPATIBILITY as a property rather than a promise: every manifest
+		// written before the vocabulary widened omits `scheme`, and the absence has
+		// to keep meaning THIS contract — not "unspecified".
+		const parsed = parsePluginManifest(manifest([transport({ webhook: webhook() })]));
+		const contract = parsed.contributes?.sendTransports?.[0]?.webhook?.signature;
+		expect(contract).toBeDefined();
+		expect(contract && isPluginSvixSignatureContract(contract)).toBe(false);
+		expect(contract).not.toHaveProperty('scheme');
+	});
+
+	it('accepts the same contract with its scheme spelled out', () => {
+		const spelled = validatePluginManifest(
+			manifest([
+				transport({
+					webhook: webhook({ signature: signature({ scheme: 'hmac-timestamp-body' }) }),
+				}),
+			])
+		);
+		expect(spelled.ok).toBe(true);
 	});
 
 	it('is optional — a transport without one still composes', () => {
@@ -108,6 +145,140 @@ describe('a declared feedback webhook', () => {
 				role: 'webhook',
 			},
 		]);
+	});
+});
+
+/**
+ * THE SECOND HOST-VERIFIED ARM (Svix). The capability it closes is the tier's
+ * own promise: a bundled plugin wrapping an ESP whose console signs Svix-style
+ * could not point that console at `/webhooks/plugin/<id>` at all, because the
+ * host was recomputing a different string. Widening the vocabulary does not move
+ * the split — the host still holds the secret and still verifies — so what these
+ * cases pin is that the arm carries ONLY what is genuinely declarable, and is
+ * held to the same fences as the arm above.
+ */
+describe('the svix arm', () => {
+	it('composes, and is frozen', () => {
+		const parsed = parsePluginManifest(
+			manifest([transport({ webhook: webhook({ signature: svixSignature() }) })])
+		);
+		const contract = parsed.contributes?.sendTransports?.[0]?.webhook?.signature;
+
+		expect(contract).toEqual(svixSignature());
+		expect(Object.isFrozen(contract)).toBe(true);
+		expect(contract && isPluginSvixSignatureContract(contract)).toBe(true);
+	});
+
+	it.each([
+		['a missing tolerance', (({ toleranceSeconds: _t, ...rest }) => rest)(svixSignature())],
+		[
+			'an unbounded tolerance',
+			svixSignature({ toleranceSeconds: PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS + 1 }),
+		],
+		['a zero tolerance', svixSignature({ toleranceSeconds: 0 })],
+		['a fractional tolerance', svixSignature({ toleranceSeconds: 30.5 })],
+	] as const)('rejects %s — the same ceiling the other arm is held to', (_label, value) => {
+		expect(issuePaths(manifest([transport({ webhook: webhook({ signature: value }) })]))).toContain(
+			`${WEBHOOK_PATH}.signature.toleranceSeconds`
+		);
+	});
+
+	it('rejects a host secret outside the plugin namespace', () => {
+		// The one barrier between a manifest and the whole environment reaches every
+		// arm, because both arms read it through one predicate.
+		const value = svixSignature({ secretEnvVar: 'DATABASE_URL' });
+		expect(issuePaths(manifest([transport({ webhook: webhook({ signature: value }) })]))).toContain(
+			`${WEBHOOK_PATH}.signature.secretEnvVar`
+		);
+	});
+
+	it.each(['header', 'algorithm', 'encoding', 'replay'] as const)(
+		'refuses %s, which belongs to the scheme and not to the manifest',
+		(field) => {
+			// Silence would ship the author's belief that the host reads their header.
+			// It does not: Svix fixes the headers, the family, the encoding and the
+			// signed string, so a declaration of any of them can only disagree.
+			const value = svixSignature({ [field]: 'x-anything' });
+			expect(
+				issuePaths(manifest([transport({ webhook: webhook({ signature: value }) })]))
+			).toContain(`${WEBHOOK_PATH}.signature.${field}`);
+		}
+	);
+
+	it('still requires the signing secret to gate enablement', () => {
+		// The join is arm-independent: unset, the route answers 503 to every
+		// delivery until the provider deactivates the endpoint.
+		const result = validatePluginManifest({
+			id: 'mail-pack',
+			version: '1.0.0',
+			capabilities: ['send:transport'],
+			flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+			contributes: {
+				sendTransports: [transport({ webhook: webhook({ signature: svixSignature() }) })],
+			},
+		});
+		expect(result.ok).toBe(false);
+		const issue = result.ok
+			? undefined
+			: result.issues.find((entry) => entry.path === '$.flag.requiredEnvVars');
+		expect(issue?.message).toContain('PLUGIN_POSTMARK_WEBHOOK_SECRET');
+	});
+
+	it('counts against the one-webhook-per-plugin rule like any other', () => {
+		expect(
+			issuePaths(
+				manifest([
+					transport({ webhook: webhook() }),
+					transport({ id: 'postmark-eu', webhook: webhook({ signature: svixSignature() }) }),
+				])
+			)
+		).toContain('$.contributes.sendTransports[1].webhook');
+	});
+});
+
+describe('a scheme this host cannot verify with', () => {
+	it.each([
+		// HOST INFRASTRUCTURE: verified against a certificate the host fetches and
+		// caches, constrained to a subscription the DEPLOYMENT owns.
+		['aws-sns', 'aws-sns'],
+		// A LEGACY VENDOR shape, signed over the deployment's own public URL — which
+		// no build artifact knows.
+		['mandrill-form', 'mandrill-form'],
+		['an invented word', 'trust-me'],
+		['a non-string', 42],
+		['an empty string', ''],
+	] as const)('is refused: %s', (_label, scheme) => {
+		const value = { ...svixSignature(), scheme };
+		expect(issuePaths(manifest([transport({ webhook: webhook({ signature: value }) })]))).toContain(
+			`${WEBHOOK_PATH}.signature.scheme`
+		);
+	});
+
+	it('reports the scheme and nothing else', () => {
+		// Falling through to the HMAC rules would bury the real fault under a pile of
+		// "missing header/algorithm/encoding" — and would accept the contract's
+		// `secretEnvVar` on the way past, reporting it to the flag join as a variable
+		// an operator must set for a webhook that can never compose.
+		const value = { ...svixSignature(), scheme: 'aws-sns' };
+		expect(issuePaths(manifest([transport({ webhook: webhook({ signature: value }) })]))).toEqual([
+			`${WEBHOOK_PATH}.signature.scheme`,
+		]);
+	});
+
+	it('rejects a scheme accessor without evaluating it', () => {
+		let reads = 0;
+		const contract: Record<string, unknown> = { ...svixSignature() };
+		Object.defineProperty(contract, 'scheme', {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return 'svix';
+			},
+		});
+		expect(
+			issuePaths(manifest([transport({ webhook: webhook({ signature: contract }) })]))
+		).toContain(`${WEBHOOK_PATH}.signature.scheme`);
+		expect(reads).toBe(0);
 	});
 });
 

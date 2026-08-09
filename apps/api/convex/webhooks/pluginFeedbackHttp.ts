@@ -24,7 +24,8 @@
  *                           when it has one, and on its actual byte length
  *                           otherwise (a chunked caller declares nothing, so that
  *                           body is buffered before it can be measured)
- *   5. signature          — host-verified HMAC over `<timestamp>.<body>`, plus
+ *   5. signature          — host-verified under the scheme the contract declares
+ *                           (the HMAC over `<timestamp>.<body>`, or Svix), plus
  *                           the timestamp freshness the contract declares
  *   6. authorization      — flag, operator grant, env and singleton scope,
  *                           rechecked now (`sendTransportWebhookAuthorization`)
@@ -68,7 +69,7 @@ import {
 	pluginSendTransportWebhookFor,
 	type HostedSendTransportWebhook,
 } from '../plugins/sendTransportWebhookCatalog';
-import { verifyPluginReplayBoundSignature } from '../plugins/inboundSignature';
+import { verifyPluginWebhookDelivery } from '../plugins/inboundSignature';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { PluginFeedbackClaimResult } from './pluginFeedbackDeliveries';
@@ -189,15 +190,17 @@ async function deliver(
 
 	// (5) AUTHENTICITY, host-owned. The plugin's own module is not consulted:
 	// it never sees the secret and never decides whether bytes are trustworthy.
-	// The delivery is named by the plugin it arrived for, so one plugin's claim
-	// can never answer for another's — see `deliveryDigestOf`.
-	const verification = await verifyPluginReplayBoundSignature({
+	// WHICH host scheme proves it is the contract's declaration and the verifier's
+	// dispatch, not this route's business — every arm answers in the same terms, so
+	// nothing below gate 5 knows or cares which one ran. The delivery is named by
+	// the plugin it arrived for, so one plugin's claim can never answer for
+	// another's — see `deliveryDigestOf`.
+	const verification = await verifyPluginWebhookDelivery({
 		contract: signature,
 		pluginId,
 		transportKind: definition.kind,
 		rawBody,
-		signature: request.headers.get(signature.header),
-		timestamp: request.headers.get(signature.replay.timestampHeader),
+		headers: request.headers,
 		nowMs: Date.now(),
 	});
 	if (!verification.ok) {

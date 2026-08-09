@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pluginSendTransportWebhookFor } from '@owlat/api/plugins/sendTransportWebhookCatalog';
 import { pluginSendTransportDomainIdentityFor } from '@owlat/api/plugins/sendTransportDomainIdentityCatalog';
 import { verifyPluginReplayBoundSignature } from '@owlat/api/plugins/inboundSignature';
+import { isPluginSvixSignatureContract } from '@owlat/plugin-kit';
 import { parsePluginFeedbackEvents } from '@owlat/api/webhooks/pluginFeedbackEvents';
 import { parsePluginRelayResult } from '@owlat/api/domains/pluginRelayState';
 import { SEND_PROVIDER_CREDENTIAL_FIELD_KINDS } from '@owlat/shared/sendProviderCatalog';
@@ -79,8 +80,14 @@ export function describeFeedbackConformance(subject: SendProviderConformanceSubj
 			const nowMs = Date.now();
 			const timestamp = String(Math.floor(nowMs / 1000));
 			const body = subject.feedbackBatch.body;
+			// This subject declares the replay-bound arm; the svix arm's own
+			// verification is owned by the host suites named above.
+			const contract = surface.definition.signature;
+			if (isPluginSvixSignatureContract(contract)) {
+				throw new Error('the subject webhook declares svix; this case proves the replay-bound arm');
+			}
 			const verified = await verifyPluginReplayBoundSignature({
-				contract: surface.definition.signature,
+				contract,
 				pluginId: subject.pluginId,
 				transportKind: KIND,
 				rawBody: body,

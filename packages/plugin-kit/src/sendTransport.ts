@@ -1,7 +1,7 @@
 // A VALUE import, and safe: `./inboundSignature` is a leaf that imports nothing.
 // `isPluginSecretEnvVar` is the one statement of the `PLUGIN_` namespace rule,
 // and the transport predicate below composes onto it rather than restating it.
-import { isPluginSecretEnvVar, type PluginReplayBoundSignatureContract } from './inboundSignature';
+import { isPluginSecretEnvVar, type PluginWebhookSignatureContract } from './inboundSignature';
 import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 // TYPE-ONLY, and it has to stay that way: `./sendTransportDomainIdentity` reads
 // the module-export and config shapes declared below, so a value import here
@@ -40,18 +40,34 @@ export interface PluginStaticModuleExport {
  *
  * THE SPLIT OF RESPONSIBILITY. The host owns authenticity: it verifies the
  * declared `signature` contract against the raw body in constant time, enforces
- * the timestamp freshness that contract's `replay` provisions require, and
- * refuses a delivery it has already accepted. The plugin owns only semantics —
- * turning verified bytes into the events below. A webhook declared without a
- * `signature` FAILS MANIFEST VALIDATION: this endpoint is unauthenticated and
- * internet-facing by design, so an unverified one would be an open write path
- * into the delivery record.
+ * the timestamp freshness that contract declares, and refuses a delivery it has
+ * already accepted. The plugin owns only semantics — turning verified bytes into
+ * the events below. A webhook declared without a `signature` FAILS MANIFEST
+ * VALIDATION: this endpoint is unauthenticated and internet-facing by design, so
+ * an unverified one would be an open write path into the delivery record.
+ *
+ * WHAT THE PLUGIN CHOOSES IS THE SCHEME, NOT THE VERIFIER. `signature` is a
+ * discriminated union over the host-verified vocabulary this tier may name
+ * ({@link PluginWebhookSignatureContract}): the parameterized HMAC over
+ * `<timestamp>.<rawBody>` — the original shape, still what a contract spelling
+ * no `scheme` means — or `svix`, which a large share of real ESP consoles sign
+ * with. THE SPLIT IS UNCHANGED BY THAT WIDENING, because every arm ends at host
+ * code the CORE providers are verified by: the first at the same parameterized
+ * HMAC the `hmac-timestamp-body` bundles use, the second at the very same
+ * `verifySvixHeaders` the Resend path uses — secret read from the plugin's own
+ * `PLUGIN_`-scoped variable, declared tolerance clamped to the same ceiling. A
+ * plugin picks a word from a list the host wrote; it never supplies a verifier,
+ * never sees the secret, and cannot widen the list. The two host schemes left
+ * off that list, `aws-sns` and `mandrill-form`, are explained on
+ * `PluginSvixSignatureContract` in `./inboundSignature`. And the replay claim is
+ * scheme-independent: whichever arm proved the bytes, the host claims the
+ * delivery once. A claim is about the BATCH, not about how it was proved.
  */
 export interface PluginSendTransportWebhookDefinition {
 	/** The parse-only module (isolate-safe: it runs inside the HTTP router). */
 	readonly module: PluginStaticModuleExport;
 	/** Required. Host-verified; a plugin can neither weaken nor bypass it. */
-	readonly signature: PluginReplayBoundSignatureContract;
+	readonly signature: PluginWebhookSignatureContract;
 	/**
 	 * OPT-IN raw-payload retention. When true, the host stores the verified raw
 	 * request body in its webhook audit log, as it does for the core providers.

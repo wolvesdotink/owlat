@@ -1,20 +1,32 @@
 /**
  * Host enforcement of a plugin's inbound signature-verification contract. The
- * host recomputes the declared HMAC with the secret named by the contract and
- * compares it to the caller-supplied header value in constant time — a plugin
- * never sees the secret and never decides whether bytes are authentic.
+ * host verifies the bytes under the scheme the contract names, with the secret
+ * the contract names, and a plugin never sees that secret and never decides
+ * whether bytes are authentic.
  *
  * Fails closed:
  *   - secret unset/empty     → 503 (retryable once the operator configures it)
  *   - header missing/empty   → 401
  *   - signature mismatch     → 401
  *
- * {@link verifyPluginReplayBoundSignature} is the form that gates a live
- * endpoint — the send transport feedback webhook (D6/P2.2). It binds a
- * caller-supplied timestamp into the signed string and refuses one outside the
- * contract's tolerance, which bounds how long a captured request stays valid;
- * the route pairs it with delivery de-duplication over that same window, which
- * removes what remains. Neither half is sufficient alone.
+ * {@link verifyPluginWebhookDelivery} is the form that gates a live endpoint —
+ * the send transport feedback webhook (D6/P2.2). It dispatches on the declared
+ * scheme over a vocabulary the HOST owns, and every arm ends at host code the
+ * core providers are verified by:
+ *
+ *   - the parameterized HMAC over `<timestamp>.<rawBody>`
+ *     ({@link verifyPluginReplayBoundSignature}), which binds a caller-supplied
+ *     timestamp into the signed string and refuses one outside the contract's
+ *     tolerance;
+ *   - `svix` ({@link verifyPluginSvixDelivery}), whose binding is the scheme's
+ *     own `<id>.<timestamp>.<body>` and which is verified by the SAME
+ *     `verifySvixHeaders` the core Resend path and the provider verifier
+ *     registry call.
+ *
+ * Both bound how long a captured request stays valid; the route pairs either
+ * with delivery de-duplication over that same window, which removes what
+ * remains. Neither half is sufficient alone, and the claim is the same claim
+ * for both arms — it names a BATCH, not a signature scheme.
  *
  * The ORIGIN-ONLY form the import-provider contract declares lives in
  * `./importProviderSignature.ts` and shares the two primitives below. It is in
@@ -25,11 +37,20 @@
  */
 
 import {
+	isPluginSvixSignatureContract,
 	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
 	type PluginInboundSignatureContract,
 	type PluginReplayBoundSignatureContract,
+	type PluginSvixSignatureContract,
+	type PluginWebhookSignatureContract,
 } from '@owlat/plugin-kit';
 import { getPluginSecret } from '../lib/env';
+// The Svix scheme's reusable inner half, IMPORTED rather than reimplemented.
+// It lives beside the Resend adapter because that is the core provider signing
+// this way, but nothing in it is Resend's: the provider verifier registry
+// already calls it for the `svix` bundles, and a second copy here would be a
+// second implementation of a signature check to keep in agreement.
+import { verifySvixHeaders } from '../webhooks/adapters/resend';
 import {
 	bytesToHex,
 	clampToleranceSeconds,
@@ -64,7 +85,7 @@ async function computeSignature(
  * before anything else.
  */
 export function readSignatureSecret(
-	contract: PluginInboundSignatureContract
+	contract: Pick<PluginInboundSignatureContract, 'secretEnvVar'>
 ):
 	| { readonly ok: true; readonly secret: string }
 	| { readonly ok: false; readonly status: 503; readonly reason: string } {
@@ -175,17 +196,149 @@ export async function verifyPluginReplayBoundSignature(
 	if (!verification.ok) return verification;
 	return {
 		ok: true,
-		deliveryDigest: await deliveryDigestOf(delivery, timestamp, delivery.signature!),
+		deliveryDigest: await deliveryDigestOf(delivery.pluginId, delivery.transportKind, [
+			contract.header,
+			contract.replay.timestampHeader,
+			timestamp,
+			delivery.signature!,
+		]),
 		// Two tolerances wide, not one: the request stays verifiable until its own
 		// timestamp plus the tolerance, and our clock may sit a tolerance behind it.
 		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
 	};
 }
 
+/** One inbound delivery to the feedback route, before its scheme is known. */
+export interface PluginWebhookDelivery {
+	readonly contract: PluginWebhookSignatureContract;
+	/** The plugin whose route this arrived on; part of the delivery's name. */
+	readonly pluginId: string;
+	/** The transport kind its events will be attributed to. */
+	readonly transportKind: string;
+	readonly rawBody: string;
+	/**
+	 * The request's headers. WHICH ONES ARE READ IS THE CONTRACT'S DECISION, not
+	 * the route's: the parameterized HMAC names its own two, and `svix` names the
+	 * three the scheme fixes. Handing over the collection rather than two
+	 * pre-read values is what lets the arm that knows decide.
+	 */
+	readonly headers: Headers;
+	readonly nowMs: number;
+}
+
+/**
+ * Verify one inbound feedback delivery against whichever host-verified scheme
+ * its contract declares.
+ *
+ * THE DISPATCH IS THE WHOLE OF WHAT WIDENING THE VOCABULARY ADDED. Each arm
+ * below is host code — a plugin supplies a word and a secret variable, never a
+ * verifier — and each answers in the same terms, because everything downstream
+ * of here (the claim, the retention opt-in, the parse, the dispatch) is about a
+ * BATCH and has no interest in how the bytes were proved.
+ */
+export async function verifyPluginWebhookDelivery(
+	delivery: PluginWebhookDelivery
+): Promise<ReplayBoundSignatureResult> {
+	const { contract, headers } = delivery;
+	if (isPluginSvixSignatureContract(contract)) {
+		return verifyPluginSvixDelivery(delivery, contract);
+	}
+	return verifyPluginReplayBoundSignature({
+		contract,
+		pluginId: delivery.pluginId,
+		transportKind: delivery.transportKind,
+		rawBody: delivery.rawBody,
+		signature: headers.get(contract.header),
+		timestamp: headers.get(contract.replay.timestampHeader),
+		nowMs: delivery.nowMs,
+	});
+}
+
+/**
+ * Domain separator for a Svix delivery's digest.
+ *
+ * The other arm's digest is named by the contract's own header names, which are
+ * what distinguishes two contracts that happen to share a secret. Svix fixes its
+ * headers, so there is nothing contract-specific to name — this constant takes
+ * their place, and it is deliberately not a header name: no lower-case HTTP
+ * header the other arm could declare is the bare word `svix` followed by an id
+ * in a namespace (`msg_…`) the header grammar refuses, so no replay-bound
+ * delivery can collide with a Svix one.
+ */
+const SVIX_DIGEST_SCHEME = 'svix';
+
+/**
+ * The Svix arm, in the same fail-closed order the arm above documents:
+ * configuration (503, an operator's problem, one environment read), then the
+ * timestamp header's FORM, then the signature — which is where freshness is
+ * enforced too, because `verifySvixHeaders` checks the window and the MAC
+ * together over `<id>.<timestamp>.<body>`.
+ *
+ * The format gate is ours rather than the helper's: the helper reads the
+ * timestamp with `parseInt`, which accepts exponent and hex forms no sender
+ * wrote, and the plugin tier already refuses those on its other arm through
+ * `isUnixSecondsTimestamp`. Applying it here keeps one rigour across both arms
+ * and lets a malformed header be answered as the malformed header it is instead
+ * of as a signature mismatch.
+ *
+ * The tolerance is clamped to the same ceiling for the same reason as the other
+ * arm: this module must not depend on a generated artifact having been validated
+ * by the version of the kit that is running now.
+ */
+async function verifyPluginSvixDelivery(
+	delivery: PluginWebhookDelivery,
+	contract: PluginSvixSignatureContract
+): Promise<ReplayBoundSignatureResult> {
+	const { headers, nowMs } = delivery;
+	const configured = readSignatureSecret(contract);
+	if (!configured.ok) return configured;
+
+	const id = headers.get('svix-id');
+	const timestamp = headers.get('svix-timestamp');
+	const signature = headers.get('svix-signature');
+	if (id === null || id === '' || signature === null || signature === '') {
+		return { ok: false, status: 401, reason: 'Missing inbound signature' };
+	}
+	if (!isUnixSecondsTimestamp(timestamp)) {
+		return { ok: false, status: 401, reason: 'Missing or malformed inbound timestamp' };
+	}
+
+	const toleranceSeconds = clampToleranceSeconds(
+		contract.toleranceSeconds,
+		PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS
+	);
+	const verified = await verifySvixHeaders(
+		delivery.rawBody,
+		id,
+		timestamp,
+		signature,
+		configured.secret,
+		Math.floor(nowMs / 1000),
+		toleranceSeconds
+	);
+	// ONE ANSWER FOR TWO FAILURES, because the helper gives one: a stale window and
+	// a bad MAC are indistinguishable from here, and both are 401 anyway.
+	if (!verified) {
+		return { ok: false, status: 401, reason: 'Inbound signature mismatch or outside tolerance' };
+	}
+	return {
+		ok: true,
+		deliveryDigest: await deliveryDigestOf(delivery.pluginId, delivery.transportKind, [
+			SVIX_DIGEST_SCHEME,
+			id,
+			timestamp,
+			signature,
+		]),
+		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
+	};
+}
+
 /**
  * A collision-resistant name for one delivery: the secret-bearing header value,
- * domain-separated by the OWNING PLUGIN, its transport kind, the contract's own
- * header names and the timestamp.
+ * domain-separated by the OWNING PLUGIN, its transport kind, and the
+ * scheme-specific parts its caller passes (the contract's own header names and
+ * the timestamp for the parameterized HMAC; the scheme tag, the message id and
+ * the timestamp for Svix).
  *
  * The plugin id is in there because nothing forbids two bundled plugins from
  * naming the same `secretEnvVar` and the same headers (the manifest validator
@@ -202,23 +355,14 @@ export async function verifyPluginReplayBoundSignature(
  * enough to make forging a colliding digest infeasible.
  */
 async function deliveryDigestOf(
-	delivery: ReplayBoundDelivery,
-	timestamp: string,
-	signature: string
+	pluginId: string,
+	transportKind: string,
+	schemeParts: readonly string[]
 ): Promise<string> {
-	const { contract } = delivery;
 	const digest = await crypto.subtle.digest(
 		'SHA-256',
 		new TextEncoder().encode(
-			[
-				'owlat.plugin.webhook.v1',
-				delivery.pluginId,
-				delivery.transportKind,
-				contract.header,
-				contract.replay.timestampHeader,
-				timestamp,
-				signature,
-			].join('\n')
+			['owlat.plugin.webhook.v1', pluginId, transportKind, ...schemeParts].join('\n')
 		)
 	);
 	return bytesToHex(digest);
