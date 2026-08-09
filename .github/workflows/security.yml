@@ -47,7 +47,10 @@ jobs:
         run: bun audit || true
 
       - name: Test audit policy parser
-        run: bunx vitest run scripts/__tests__/check-security-audit.test.ts
+        run: >-
+          bunx vitest run
+          scripts/__tests__/check-security-audit.test.ts
+          scripts/__tests__/image-size-patch.test.ts
 
       - name: Audit (fail on High/Critical)
         run: |

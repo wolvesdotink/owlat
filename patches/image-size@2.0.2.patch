@@ -1,0 +1,552 @@
+diff --git a/dist/detector.cjs b/dist/detector.cjs
+index 0898608dbeca36722dfd795341b1c3c1448f58aa..7e20f18915807c528b8766c3e8d187045a561405 100644
+--- a/dist/detector.cjs
++++ b/dist/detector.cjs
+@@ -40,7 +40,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -251,9 +251,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize2(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/detector.mjs b/dist/detector.mjs
+index 67afcab02d627f95e98c938499e07a934b832a26..d73a1d04645af187ae19c7c4b5cd6a242d53eb2b 100644
+--- a/dist/detector.mjs
++++ b/dist/detector.mjs
+@@ -38,7 +38,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -249,9 +249,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize2(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/fromFile.cjs b/dist/fromFile.cjs
+index c226d3dac07f235db456c774b26cca88f655e1af..9eed96d3643541f2b3b5ae7215793531b97d882b 100644
+--- a/dist/fromFile.cjs
++++ b/dist/fromFile.cjs
+@@ -66,7 +66,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -277,9 +277,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/fromFile.mjs b/dist/fromFile.mjs
+index 4a3c44432982397204f7a9d04fc66ef65a8e7ba4..bceab61ef4cc65f295f61b3c310bbfb9c40c65ca 100644
+--- a/dist/fromFile.mjs
++++ b/dist/fromFile.mjs
+@@ -43,7 +43,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -254,9 +254,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/index.cjs b/dist/index.cjs
+index bde0210eb131db06ccca30a5c466c7252a03af50..9b3c37ebc3929889304030127276381c362df691 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -42,7 +42,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -253,9 +253,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 22c17afad4e406eba013fff7858366cb5f8e3ba4..4cb2839a8c51fee7d97cd88ecc1b48fe8fe01bf8 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -38,7 +38,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -249,9 +249,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/lookup.cjs b/dist/lookup.cjs
+index 9731ad8bb0949f8fdf9297851bdb312e91282f01..e1a37cf70cd210262f0132ebdc1f07455f316695 100644
+--- a/dist/lookup.cjs
++++ b/dist/lookup.cjs
+@@ -40,7 +40,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -251,9 +251,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/lookup.mjs b/dist/lookup.mjs
+index f787d1c8408d7b681fec8617595d058f66959869..a0d91f22a28eb7db218bad2cd29af20f4380e22e 100644
+--- a/dist/lookup.mjs
++++ b/dist/lookup.mjs
+@@ -38,7 +38,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -249,9 +249,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize2 = getImageSize2(imageHeader[0]);
+       images.push(imageSize2);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/types/heif.cjs b/dist/types/heif.cjs
+index 1f490788ea654ea9896060a5c0253d81e348af92..d504e52710e7607ae60f7f758c3e8c4f77920dcf 100644
+--- a/dist/types/heif.cjs
++++ b/dist/types/heif.cjs
+@@ -59,6 +59,10 @@ var HEIF = {
+     while (currentOffset < ipcoBox.offset + ipcoBox.size) {
+       const ispeBox = findBox(input, "ispe", currentOffset);
+       if (!ispeBox) break;
++      const nextOffset = ispeBox.offset + ispeBox.size;
++      if (ispeBox.size < 20 || nextOffset <= currentOffset) {
++        throw new TypeError("Invalid HEIF ispe box size");
++      }
+       const rawWidth = readUInt32BE(input, ispeBox.offset + 12);
+       const rawHeight = readUInt32BE(input, ispeBox.offset + 16);
+       const clapBox = findBox(input, "clap", currentOffset);
+@@ -69,7 +73,7 @@ var HEIF = {
+         width = rawWidth - cropRight;
+       }
+       images.push({ height, width });
+-      currentOffset = ispeBox.offset + ispeBox.size;
++      currentOffset = nextOffset;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid HEIF, no sizes found");
+diff --git a/dist/types/heif.mjs b/dist/types/heif.mjs
+index 01330919e01b3c034a96a7b4b1dbf5a7f658bb2d..0458a777253c4f69ef9b80db1def191b39320c36 100644
+--- a/dist/types/heif.mjs
++++ b/dist/types/heif.mjs
+@@ -57,6 +57,10 @@ var HEIF = {
+     while (currentOffset < ipcoBox.offset + ipcoBox.size) {
+       const ispeBox = findBox(input, "ispe", currentOffset);
+       if (!ispeBox) break;
++      const nextOffset = ispeBox.offset + ispeBox.size;
++      if (ispeBox.size < 20 || nextOffset <= currentOffset) {
++        throw new TypeError("Invalid HEIF ispe box size");
++      }
+       const rawWidth = readUInt32BE(input, ispeBox.offset + 12);
+       const rawHeight = readUInt32BE(input, ispeBox.offset + 16);
+       const clapBox = findBox(input, "clap", currentOffset);
+@@ -67,7 +71,7 @@ var HEIF = {
+         width = rawWidth - cropRight;
+       }
+       images.push({ height, width });
+-      currentOffset = ispeBox.offset + ispeBox.size;
++      currentOffset = nextOffset;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid HEIF, no sizes found");
+diff --git a/dist/types/icns.cjs b/dist/types/icns.cjs
+index 32c8d370dcf80a10f14a6deebfdbe04d3c70585c..2aa647edbf040ab264d177a16c9ff5b6dea16ecb 100644
+--- a/dist/types/icns.cjs
++++ b/dist/types/icns.cjs
+@@ -72,9 +72,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/types/icns.mjs b/dist/types/icns.mjs
+index 8710027bc5890a79d05a7fdb87de3018e556729e..1f92ff35645e6b298f22789dccf00c4cb5ec834b 100644
+--- a/dist/types/icns.mjs
++++ b/dist/types/icns.mjs
+@@ -70,9 +70,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+diff --git a/dist/types/index.cjs b/dist/types/index.cjs
+index 6949cd134db7ab59dae7b804b36c7bacb4e387cf..2f84b1e8d15ddb9b222324ecc4015b9365b4cb34 100644
+--- a/dist/types/index.cjs
++++ b/dist/types/index.cjs
+@@ -40,7 +40,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -161,6 +161,10 @@ var HEIF = {
+     while (currentOffset < ipcoBox.offset + ipcoBox.size) {
+       const ispeBox = findBox(input, "ispe", currentOffset);
+       if (!ispeBox) break;
++      const nextOffset = ispeBox.offset + ispeBox.size;
++      if (ispeBox.size < 20 || nextOffset <= currentOffset) {
++        throw new TypeError("Invalid HEIF ispe box size");
++      }
+       const rawWidth = readUInt32BE(input, ispeBox.offset + 12);
+       const rawHeight = readUInt32BE(input, ispeBox.offset + 16);
+       const clapBox = findBox(input, "clap", currentOffset);
+@@ -171,7 +175,7 @@ var HEIF = {
+         width = rawWidth - cropRight;
+       }
+       images.push({ height, width });
+-      currentOffset = ispeBox.offset + ispeBox.size;
++      currentOffset = nextOffset;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid HEIF, no sizes found");
+@@ -251,9 +255,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize2(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+@@ -485,10 +497,14 @@ function extractPartialStreams(input) {
+   while (offset < input.length) {
+     const jxlpBox = findBox(input, "jxlp", offset);
+     if (!jxlpBox) break;
++    const nextOffset = jxlpBox.offset + jxlpBox.size;
++    if (jxlpBox.size < 12 || nextOffset <= offset || nextOffset > input.length) {
++      throw new TypeError("Invalid JXL partial codestream box size");
++    }
+     partialStreams.push(
+       input.slice(jxlpBox.offset + 12, jxlpBox.offset + jxlpBox.size)
+     );
+-    offset = jxlpBox.offset + jxlpBox.size;
++    offset = nextOffset;
+   }
+   return partialStreams;
+ }
+diff --git a/dist/types/index.mjs b/dist/types/index.mjs
+index b026dda4aa16c6077a76e4b3cfe3f54fe1d6d1d0..13ddd161f7058185f43cb561f3d08aad21783193 100644
+--- a/dist/types/index.mjs
++++ b/dist/types/index.mjs
+@@ -38,7 +38,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+@@ -159,6 +159,10 @@ var HEIF = {
+     while (currentOffset < ipcoBox.offset + ipcoBox.size) {
+       const ispeBox = findBox(input, "ispe", currentOffset);
+       if (!ispeBox) break;
++      const nextOffset = ispeBox.offset + ispeBox.size;
++      if (ispeBox.size < 20 || nextOffset <= currentOffset) {
++        throw new TypeError("Invalid HEIF ispe box size");
++      }
+       const rawWidth = readUInt32BE(input, ispeBox.offset + 12);
+       const rawHeight = readUInt32BE(input, ispeBox.offset + 16);
+       const clapBox = findBox(input, "clap", currentOffset);
+@@ -169,7 +173,7 @@ var HEIF = {
+         width = rawWidth - cropRight;
+       }
+       images.push({ height, width });
+-      currentOffset = ispeBox.offset + ispeBox.size;
++      currentOffset = nextOffset;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid HEIF, no sizes found");
+@@ -249,9 +253,17 @@ var ICNS = {
+     const images = [];
+     while (imageOffset < fileLength && imageOffset < inputLength) {
+       const imageHeader = readImageHeader(input, imageOffset);
++      const imageLength = imageHeader[1];
++      if (
++        imageLength < 8 ||
++        imageOffset + imageLength > fileLength ||
++        imageOffset + imageLength > inputLength
++      ) {
++        throw new TypeError("Invalid ICNS image entry length");
++      }
+       const imageSize = getImageSize2(imageHeader[0]);
+       images.push(imageSize);
+-      imageOffset += imageHeader[1];
++      imageOffset += imageLength;
+     }
+     if (images.length === 0) {
+       throw new TypeError("Invalid ICNS, no sizes found");
+@@ -483,10 +495,14 @@ function extractPartialStreams(input) {
+   while (offset < input.length) {
+     const jxlpBox = findBox(input, "jxlp", offset);
+     if (!jxlpBox) break;
++    const nextOffset = jxlpBox.offset + jxlpBox.size;
++    if (jxlpBox.size < 12 || nextOffset <= offset || nextOffset > input.length) {
++      throw new TypeError("Invalid JXL partial codestream box size");
++    }
+     partialStreams.push(
+       input.slice(jxlpBox.offset + 12, jxlpBox.offset + jxlpBox.size)
+     );
+-    offset = jxlpBox.offset + jxlpBox.size;
++    offset = nextOffset;
+   }
+   return partialStreams;
+ }
+diff --git a/dist/types/jxl.cjs b/dist/types/jxl.cjs
+index a12095be85c7a8fd25763895a47c46b4292ebd9c..702d9fd0c0b744e54100c2472d04d0a37b854ab6 100644
+--- a/dist/types/jxl.cjs
++++ b/dist/types/jxl.cjs
+@@ -116,10 +116,14 @@ function extractPartialStreams(input) {
+   while (offset < input.length) {
+     const jxlpBox = findBox(input, "jxlp", offset);
+     if (!jxlpBox) break;
++    const nextOffset = jxlpBox.offset + jxlpBox.size;
++    if (jxlpBox.size < 12 || nextOffset <= offset || nextOffset > input.length) {
++      throw new TypeError("Invalid JXL partial codestream box size");
++    }
+     partialStreams.push(
+       input.slice(jxlpBox.offset + 12, jxlpBox.offset + jxlpBox.size)
+     );
+-    offset = jxlpBox.offset + jxlpBox.size;
++    offset = nextOffset;
+   }
+   return partialStreams;
+ }
+diff --git a/dist/types/jxl.mjs b/dist/types/jxl.mjs
+index 49b0c4cac6abb366378e5feed745f16981b441c0..6aadea894ab0541c55ad13387ca432ceb9582dc4 100644
+--- a/dist/types/jxl.mjs
++++ b/dist/types/jxl.mjs
+@@ -114,10 +114,14 @@ function extractPartialStreams(input) {
+   while (offset < input.length) {
+     const jxlpBox = findBox(input, "jxlp", offset);
+     if (!jxlpBox) break;
++    const nextOffset = jxlpBox.offset + jxlpBox.size;
++    if (jxlpBox.size < 12 || nextOffset <= offset || nextOffset > input.length) {
++      throw new TypeError("Invalid JXL partial codestream box size");
++    }
+     partialStreams.push(
+       input.slice(jxlpBox.offset + 12, jxlpBox.offset + jxlpBox.size)
+     );
+-    offset = jxlpBox.offset + jxlpBox.size;
++    offset = nextOffset;
+   }
+   return partialStreams;
+ }
+diff --git a/dist/types/utils.cjs b/dist/types/utils.cjs
+index 23d52e4cbf271e667feb2d7f040c07f69678d3aa..821dbeedc640b52910ef576bccc71894642c79bb 100644
+--- a/dist/types/utils.cjs
++++ b/dist/types/utils.cjs
+@@ -40,7 +40,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }
+diff --git a/dist/types/utils.mjs b/dist/types/utils.mjs
+index 3f09dceb036e40be8538dbb5588d88c951339158..f0f29377d7178491223bb3b7f422ded7564cc3b3 100644
+--- a/dist/types/utils.mjs
++++ b/dist/types/utils.mjs
+@@ -38,7 +38,7 @@ function readBox(input, offset) {
+ function findBox(input, boxName, currentOffset) {
+   while (currentOffset < input.length) {
+     const box = readBox(input, currentOffset);
+-    if (!box) break;
++    if (!box || box.size < 8) break;
+     if (box.name === boxName) return box;
+     currentOffset += box.size > 0 ? box.size : 8;
+   }

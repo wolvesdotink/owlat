@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 
-export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.freeze({});
+export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.freeze({
+	'GHSA-W3RX-R6R6-PGPR':
+		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects zero, truncated, and non-advancing ICNS entries.',
+	'GHSA-5P2G-FCMC-QVQQ':
+		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects undersized and non-advancing HEIF/JXL boxes.',
+});
 
 export interface AuditFinding {
 	pkg: string;
@@ -86,7 +91,7 @@ export function formatAuditClassification(
 	const stdout: string[] = [];
 	const stderr: string[] = [];
 	if (classification.acknowledged.length) {
-		stdout.push('Acknowledged (no upstream fix / not exploitable here):');
+		stdout.push('Acknowledged (locally mitigated / no upstream fix / not exploitable here):');
 		for (const finding of classification.acknowledged) {
 			stdout.push(
 				` - [${finding.severity}] ${finding.pkg} ${finding.ghsa}: ${acknowledgements[finding.ghsa!]}`
