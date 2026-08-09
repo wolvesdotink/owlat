@@ -100,10 +100,14 @@ const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }>
 			'P1.2 — replaced by asking the loaded rows which kind they belong to, once the ' +
 			'generic sendingDomainRelayIdentities read lands',
 	},
-	'webhooks/mandrillRejectSuppression.ts': {
-		family: 'adapter-adjacent',
-		owner: "one kind's reject-suppression sync moving beside its inbound adapter",
-	},
+	// `webhooks/mandrillRejectSuppression.ts` used to be here as the one
+	// `adapter-adjacent` entry: a module outside the adapter folders that declared
+	// `MANDRILL_PROVIDER_TYPE = 'mandrill'` so it could gate itself on the identity
+	// of the events reaching the shared `email.failed` handler. Its owner named the
+	// fix and this is it — the vendor half (which `reject_reason` is a recipient
+	// truth) moved into `webhooks/adapters/mandrill.ts`, where naming Mandrill is
+	// the point, and the effect half became one provider-agnostic table in
+	// `webhooks/providerSuppression.ts`. The dispatcher no longer knows the word.
 	// `lib/sendProviders/strategies/adaptive_mix/index.ts` used to be here, as the
 	// one `definitional` entry: `OWN_ARM_TRANSPORT_KIND = 'mta'`. P1.1 made it a
 	// re-export of the catalog's `tier: 'own'` (`OWN_SEND_PROVIDER_KIND` in
@@ -246,9 +250,11 @@ describe('kind literals outside the adapter folders are an enumerated, shrinking
 		// `definitional` used to be a third family, holding one entry:
 		// `OWN_ARM_TRANSPORT_KIND`. P1.1 made that a re-export of the catalog's
 		// `tier: 'own'`, so there is no definitional literal left inside
-		// apps/api/convex and the family is gone rather than empty.
+		// apps/api/convex and the family is gone rather than empty. `adapter-adjacent`
+		// went the same way when the Mandrill reject sync moved into the adapter it
+		// was adjacent to.
 		expect(new Set(Object.values(SURVIVING_KIND_LITERALS).map((entry) => entry.family))).toEqual(
-			new Set(['frozen-sibling-read', 'adapter-adjacent'])
+			new Set(['frozen-sibling-read'])
 		);
 	});
 });

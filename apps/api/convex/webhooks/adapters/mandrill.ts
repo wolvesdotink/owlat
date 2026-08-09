@@ -53,9 +53,8 @@ import {
 	urlAndSortedParamsSigningBase,
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
-import { mandrillRejectCode } from '../mandrillRejectSuppression';
 import type { InboundBatchParser } from '../pipeline';
-import type { InboundEvent } from '../types';
+import type { InboundEvent, ProviderSuppression, ProviderSuppressionReason } from '../types';
 
 /** Wire value written onto reconciled Send rows and read by the dispatcher. */
 const MANDRILL_PROVIDER_TYPE = 'mandrill';
@@ -162,6 +161,97 @@ export function classifyMandrillBounce(
 	return diagnostic && classifyBounceMessage(diagnostic) === 'hard' ? 'hard' : 'soft';
 }
 
+/**
+ * The prefix every reject code is built from. Exported so the two doors a
+ * reject reaches Owlat through cannot drift apart silently.
+ */
+export const MANDRILL_REJECT_CODE_PREFIX = 'MANDRILL_REJECT';
+
+/**
+ * WHICH REJECT REASONS ARE RECIPIENT TRUTHS — Mandrill's policy, in Mandrill's
+ * own adapter, translated into the host's closed suppression vocabulary.
+ *
+ * A reject is Mandrill's OWN blacklist refusing an address before the message
+ * ever reaches a receiver, and it reports ten reasons on one field. Only some of
+ * them say anything about the mailbox:
+ *
+ *  - `hard-bounce` / `soft-bounce` / bare `bounce` — the address itself failed,
+ *    repeatedly enough for Mandrill to stop trying. A bare `bounce` carries no
+ *    hard/soft qualifier and is read at the strongest reading the event
+ *    supports: Mandrill refused to send at all.
+ *  - `spam` — this person complained.
+ *  - `custom` / `rule` — an OPERATOR (or an account rule) curated this address
+ *    onto the blacklist by hand. A human decision, not an observation.
+ *  - `unsub` — the person unsubscribed. That is a consent fact with a whole
+ *    accounting path of its own, which the host routes it to; the adapter also
+ *    maps a first-class `unsub` EVENT there, and the two meeting on one address
+ *    is a no-op because the mutation behind them is idempotent.
+ *  - `invalid-sender`, `invalid`, `test-mode-limit`, `unsigned`, AND ANY FUTURE
+ *    REASON — these describe OUR account, OUR sending domain or OUR message,
+ *    not the recipient. They are absent from this table, so they mint no
+ *    suppression: the send row moves to `failed` and nothing else happens.
+ *    Suppressing on them would let a misconfigured sending domain permanently
+ *    blocklist an entire audience one send at a time.
+ *
+ * WHAT OWLAT DOES about each of these members — which blocklist reason, which
+ * bounce classification, which mirror lifetime — is NOT decided here. That is
+ * one table for every provider in `webhooks/providerSuppression.ts`, so the
+ * consequence of "this mailbox is gone" cannot differ by which relay said so.
+ *
+ * Keyed on the NORMALIZED code suffix rather than on Mandrill's raw free text:
+ * the reason is uppercased and underscored before it ever reaches a persisted
+ * field, so `hard-bounce` and a hypothetical `Hard Bounce` arrive as one key.
+ */
+const REJECT_SUPPRESSION_REASONS: Readonly<Record<string, ProviderSuppressionReason>> = {
+	HARD_BOUNCE: 'hard_bounce',
+	// Mandrill only blacklists on soft failures after days of retrying, so the
+	// address IS evidence — but a recoverable one, which the host mirrors as an
+	// expiring backstop entry rather than a permanent one.
+	SOFT_BOUNCE: 'soft_bounce',
+	BOUNCE: 'hard_bounce',
+	SPAM: 'spam_complaint',
+	CUSTOM: 'operator_suppressed',
+	RULE: 'operator_suppressed',
+	UNSUB: 'unsubscribed',
+};
+
+/**
+ * Stable error code for a reject reason, e.g. `MANDRILL_REJECT_HARD_BOUNCE`.
+ *
+ * Normalized (uppercase, non-alphanumerics to `_`, length-capped) because the
+ * reason is provider free text on a field the Send row persists.
+ *
+ * Exported because the reject reason reaches Owlat through TWO doors — a
+ * `reject` event while the reference arm is live, and the one-off `rejects/list`
+ * carry-over at migration time (P4.1) — and the two have to produce the same
+ * code for the same reason, or one address reads as two different pieces of
+ * evidence depending on which door it came through.
+ */
+export function mandrillRejectCode(reason: string | undefined): string {
+	const normalized = (reason ?? '')
+		.toUpperCase()
+		.replace(/[^A-Z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '')
+		.slice(0, 40);
+	return normalized ? `${MANDRILL_REJECT_CODE_PREFIX}_${normalized}` : MANDRILL_REJECT_CODE_PREFIX;
+}
+
+/**
+ * The suppression one reject carries, from its error code alone — or undefined
+ * when the reason is not about the recipient.
+ *
+ * Pure, so the whole policy table is testable without a ctx, and shared with the
+ * carry-over import so both doors read one table. The provider's own code rides
+ * along as `evidence`: an operator looking at the suppression screen sees what
+ * Mandrill actually said, not the host's translation of it.
+ */
+export function mandrillRejectSuppression(errorCode: string): ProviderSuppression | undefined {
+	if (!errorCode.startsWith(`${MANDRILL_REJECT_CODE_PREFIX}_`)) return undefined;
+	const reason =
+		REJECT_SUPPRESSION_REASONS[errorCode.slice(MANDRILL_REJECT_CODE_PREFIX.length + 1)];
+	return reason ? { reason, evidence: errorCode } : undefined;
+}
+
 /** The richest free text Mandrill offers about a failure, '' when it offers none. */
 function diagnosticOf(item: MandrillEventItem): string {
 	return item.msg?.diag || item.msg?.bounce_description || '';
@@ -245,18 +335,21 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				...(providerMessageId ? { providerMessageId } : {}),
 				providerType: MANDRILL_PROVIDER_TYPE,
 			};
-		case 'reject':
+		case 'reject': {
 			// Mandrill's OWN blacklist refused the address before sending. Terminal
-			// and non-bounce, so it takes the `email.failed` edge, which applies no
-			// recipient suppression and no reputation penalty here.
+			// and non-bounce, so it takes the `email.failed` edge: the send row
+			// leaves "sending" without a bounce's reputation penalty.
 			//
-			// P2.2 SEAM (D9): the suppression sync that mirrors a Mandrill blacklist
-			// hit into `blockedEmails` hangs off the dispatcher's `email.failed`
-			// handler and needs two things from this event — the address, carried as
-			// `recipient`, and the reason, carried in `errorCode` as
-			// `MANDRILL_REJECT[_<REASON>]`. Both are populated here so that piece is
-			// a handler change and not a re-parse.
+			// D9: the recipient half of that same fact — Mandrill's blacklist holds
+			// this address, which the own arm has to mirror or the two arms stop
+			// mailing the same population — is minted HERE, as a normalized
+			// `suppression`, because deciding what `reject_reason: 'custom'` means is
+			// knowing Mandrill. What the host DOES with it is the host's table.
+			// Absent for every reason that describes our account rather than the
+			// person, which is how those reasons suppress nobody.
 			if (!providerMessageId) return null;
+			const errorCode = mandrillRejectCode(item.msg?.reject_reason);
+			const suppression = mandrillRejectSuppression(errorCode);
 			return {
 				kind: 'email.failed',
 				providerMessageId,
@@ -264,10 +357,12 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				errorMessage: `Mandrill rejected the message${
 					item.msg?.reject_reason ? ` (${item.msg.reject_reason})` : ''
 				}`,
-				errorCode: mandrillRejectCode(item.msg?.reject_reason),
+				errorCode,
 				providerType: MANDRILL_PROVIDER_TYPE,
 				...(recipient ? { recipient } : {}),
+				...(suppression ? { suppression } : {}),
 			};
+		}
 		// `open` / `click` (D3 — first-party tracking only), `sync`, inbound
 		// routing, and any event name Mandrill adds later: acknowledged, not acted
 		// on. Same posture as the Resend adapter's default branch.

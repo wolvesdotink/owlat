@@ -24,10 +24,11 @@
 import {
 	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
 	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
+	type PluginWebhookFeedbackEvent,
 	type PluginWebhookFeedbackKind,
 } from '@owlat/plugin-kit';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
-import type { InboundEvent } from './types';
+import { PROVIDER_SUPPRESSION_REASONS, type InboundEvent } from './types';
 
 /**
  * Largest batch one delivery may carry.
@@ -231,17 +232,41 @@ function readBounceType(value: unknown): 'hard' | 'soft' {
 	return value;
 }
 
-function readSuppressionReason(
-	value: unknown
-): 'recipient_rejected' | 'recipient_blacklisted' | 'invalid_recipient' {
-	if (
-		value !== 'recipient_rejected' &&
-		value !== 'recipient_blacklisted' &&
-		value !== 'invalid_recipient'
-	) {
+/** The suppression vocabulary as the plugin CONTRACT spells it. */
+type PluginSuppressionReason = Extract<
+	PluginWebhookFeedbackEvent,
+	{ kind: 'provider_suppressed' }
+>['reason'];
+
+/**
+ * The host's vocabulary, annotated as the plugin's — which is the parity check.
+ *
+ * A member the host knows and the contract does not fails to compile HERE (a
+ * host reason no plugin could ever speak, so the lane silently ranks below the
+ * core adapters), and a member the contract knows and the host does not fails to
+ * compile where {@link readSuppressionReason}'s result is placed on an
+ * `InboundEvent` (a plugin able to name a reason nothing decides an effect for).
+ * One declaration, two directions, no restated list.
+ */
+const SUPPRESSION_REASONS: readonly PluginSuppressionReason[] = PROVIDER_SUPPRESSION_REASONS;
+const SUPPRESSION_REASON_SET = new Set<string>(SUPPRESSION_REASONS);
+
+/**
+ * A suppression reason, and one the HOST decides the consequence of.
+ *
+ * A plugin says what its provider observed — this mailbox is gone, this person
+ * complained, an operator listed them — and never what Owlat should do about
+ * it: the effect table is host-owned (`./providerSuppression.ts`), so no
+ * third-party module can choose a permanent blocklist row for a transient
+ * failure. `evidence` is deliberately absent from the contract: it is a
+ * provider-supplied string that lands in a persisted provenance field, and the
+ * host derives its own from the reason instead.
+ */
+function readSuppressionReason(value: unknown): PluginSuppressionReason {
+	if (typeof value !== 'string' || !SUPPRESSION_REASON_SET.has(value)) {
 		throw new PluginFeedbackEventError('Plugin suppression reason is not allowed');
 	}
-	return value;
+	return value as PluginSuppressionReason;
 }
 
 /**

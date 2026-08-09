@@ -27,8 +27,7 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
-import { syncMandrillReject } from './mandrillRejectSuppression';
-import { applyProviderSuppression } from './providerSuppression';
+import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
@@ -146,13 +145,14 @@ const DISPATCH: DispatchTable = {
 			return;
 		}
 		// SUPPRESSION FIRST, bookkeeping second (the `dispatchComplaint`
-		// principle): a Mandrill `reject` is that provider's blacklist refusing an
-		// address, and mirroring it into ours is what stops the own arm mailing a
-		// population the reference arm no longer touches. See
-		// `./mandrillRejectSuppression` for which reject reasons are recipient
-		// truths and which are about our own account. A no-op for every other
-		// provider and every other failure.
-		await syncMandrillReject(ctx, e);
+		// principle). A provider whose own suppression list refused this address
+		// reports it as a terminal failure carrying a normalized `suppression`,
+		// minted by ITS adapter out of ITS vocabulary; mirroring that hit into ours
+		// is what stops the own arm mailing a population the reference arm no
+		// longer touches. Which reasons are recipient truths is the adapter's
+		// question and what Owlat does about them is `./providerSuppression`'s —
+		// this table asks neither, and a no-op for every failure carrying none.
+		await applyFailureSuppression(ctx, e);
 		await ctx.runMutation(
 			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId

@@ -99,7 +99,24 @@ export type ProviderFeedbackEvent =
 			readonly kind: 'provider_suppressed';
 			readonly at: number;
 			readonly recipient: string;
-			readonly reason: 'recipient_rejected' | 'recipient_blacklisted' | 'invalid_recipient';
+			/**
+			 * WHAT THE PROVIDER OBSERVED, never what Owlat should do about it. The
+			 * host owns the consequence of each member — which blocklist reason, how
+			 * long the MTA backstop keeps it, whether it routes to the consent path
+			 * instead — so no provider module can choose a permanent block for a
+			 * transient failure. A reason describing YOUR account, YOUR sending
+			 * domain or YOUR message has no member here and must not be reported as a
+			 * suppression: it says nothing about the recipient.
+			 */
+			readonly reason:
+				| 'recipient_rejected'
+				| 'recipient_blacklisted'
+				| 'invalid_recipient'
+				| 'hard_bounce'
+				| 'soft_bounce'
+				| 'spam_complaint'
+				| 'operator_suppressed'
+				| 'unsubscribed';
 			readonly providerMessageId?: string;
 	  };
 
