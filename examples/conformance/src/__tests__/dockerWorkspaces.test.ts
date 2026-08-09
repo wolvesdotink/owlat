@@ -10,8 +10,9 @@
  * and workspaces are written per case.
  *
  * The cases pin the two ways an image could otherwise fall out of the guard's
- * sight: a purely cosmetic backslash re-wrap of the COPY instruction, and an
- * image that installs from the frozen lockfile without copying any manifest.
+ * sight: a purely cosmetic backslash re-wrap of the COPY instruction, an image
+ * that installs from the frozen lockfile without copying any manifest, and a
+ * frozen-install stage that omits the root dependency patches.
  */
 
 import { execFile } from 'node:child_process';
@@ -106,6 +107,20 @@ function wrappedImage(globs = ALL_GLOBS): string {
 	].join('\n');
 }
 
+function patchedMultiStageImage(copyPatchesInRuntimeDeps = true): string {
+	return [
+		'FROM oven/bun:1 AS build',
+		`COPY --parents ${ALL_GLOBS} ./`,
+		'COPY patches/ patches/',
+		'RUN bun install --frozen-lockfile',
+		'FROM oven/bun:1 AS runtime-deps',
+		`COPY --parents ${ALL_GLOBS} ./`,
+		...(copyPatchesInRuntimeDeps ? ['COPY patches/ patches/'] : []),
+		'RUN bun install --frozen-lockfile --production',
+		'',
+	].join('\n');
+}
+
 describe('docker workspace-manifest guard', () => {
 	it('accepts images that copy every workspace manifest', async () => {
 		const result = await runGuard({
@@ -172,6 +187,38 @@ describe('docker workspace-manifest guard', () => {
 
 		expect(result.output).toContain('all 1 Dockerfiles');
 		expect(result.code).toBe(0);
+	});
+
+	it('requires dependency patches in every frozen-install stage', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'package.json': JSON.stringify({
+				...JSON.parse(ROOT_MANIFEST),
+				patchedDependencies: { 'example@1.0.0': 'patches/example.patch' },
+			}),
+			'patches/example.patch': 'synthetic patch fixture',
+			'apps/web/Dockerfile': patchedMultiStageImage(),
+		});
+
+		expect(result.output).toContain('and required dependency patches');
+		expect(result.code).toBe(0);
+	});
+
+	it('fails when a later frozen-install stage omits dependency patches', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'package.json': JSON.stringify({
+				...JSON.parse(ROOT_MANIFEST),
+				patchedDependencies: { 'example@1.0.0': 'patches/example.patch' },
+			}),
+			'patches/example.patch': 'synthetic patch fixture',
+			'apps/web/Dockerfile': patchedMultiStageImage(false),
+		});
+
+		expect(result.output).toContain(
+			'FAIL: apps/web/Dockerfile runs a frozen Bun install without copying patches/ in that stage'
+		);
+		expect(result.code).toBe(1);
 	});
 
 	it('holds for the images checked into this repository', async () => {
