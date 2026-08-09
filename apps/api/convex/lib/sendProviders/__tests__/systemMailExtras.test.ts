@@ -85,14 +85,7 @@ describe('buildSystemMailExtrasFor — the declaration and the wiring are one pr
 		expect(buildSystemMailExtrasFor('resend', {})).toEqual({});
 	});
 
-	it('gives Emailit the dedup header only when there is a key to dedup on', () => {
-		expect(buildSystemMailExtrasFor('emailit', { idempotencyKey: KEY })).toEqual({
-			idempotencyKey: KEY,
-		});
-		expect(buildSystemMailExtrasFor('emailit', {})).toEqual({});
-	});
-
-	it.each(['ses', 'smtp', 'mandrill'] as const)(
+	it.each(['ses', 'smtp', 'mandrill', 'emailit'] as const)(
 		'gives %s the empty extras this path has always sent it',
 		(kind) => {
 			expect(buildSystemMailExtrasFor(kind, { idempotencyKey: KEY })).toEqual({});

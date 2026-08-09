@@ -11,7 +11,6 @@ import {
 	type EmailSendAttempt,
 	type EmailSendParams,
 	type SendProviderModule,
-	type SystemMailExtrasInput,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvRequired } from '../transportEnv';
@@ -52,9 +51,10 @@ export const emailitSendProvider: SendProviderModule<'emailit'> = {
 		return { idempotencyKey: input.idempotencyKey };
 	},
 
-	buildSystemMailExtras(input: SystemMailExtrasInput): EmailitExtras | undefined {
-		return input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined;
-	},
+	// No buildSystemMailExtras: the catalog declares
+	// `deduplicatesOnIdempotencyKey: false` (vendor dedup unproven), and the
+	// declaration-wiring parity test refuses a key the disposition cannot
+	// trust. Restore the builder together with the flag once proven.
 
 	async sendEmail(
 		transport: SendTransportRecord,

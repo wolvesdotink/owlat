@@ -338,12 +338,12 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		domainVerification: 'none',
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
-		// A VENDOR ASSUMPTION (unified-send-provider-shape-plan.md:64), not an
-		// observed behaviour. `systemMailRetryDisposition` reads it: `true` auto-
-		// retries an ambiguous system/auth send, which double-delivers a password
-		// reset if Emailit does not dedup on the key. Flip to the fail-closed
-		// `false` the moment the vendor contradicts the plan.
-		deduplicatesOnIdempotencyKey: true,
+		// Fail-closed until the vendor documents Idempotency-Key dedup: `true`
+		// would let `systemMailRetryDisposition` auto-retry an ambiguous
+		// system/auth send, double-delivering a password reset if Emailit does
+		// not in fact dedup. The adapter still threads the header, so flipping
+		// this to `true` once proven is a one-line change.
+		deduplicatesOnIdempotencyKey: false,
 		tagsFeedbackProvenance: false,
 		setupProbe: { validator: 'validateEmailitKey', label: 'Test API key' },
 	},
