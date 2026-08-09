@@ -19,34 +19,36 @@ import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from '
 import type { InboundEvent } from './types';
 
 /**
- * @typeParam S - This adapter's own wire identifier, as a literal type where the
+ * EVENT SEMANTICS ONLY — what a provider's bytes MEAN, with no opinion about
+ * whether they are authentic.
+ *
+ * This is the half a send provider contributes to `providers/feedback.ts`. The
+ * bundle beside it DECLARES how its requests are authenticated (a
+ * `ProviderFeedbackVerifier`), and the host enforces that declaration in
+ * `./providerVerifierRegistry.ts` — one verifier per scheme, host-owned, rather
+ * than a per-provider `verifySignature` the host would have to trust. A provider
+ * that also carries its own verifier implements {@link InboundAdapter} below;
+ * only the SNS/certificate ceremony still does.
+ *
+ * @typeParam S - This parser's own wire identifier, as a literal type where the
  * caller cares which one it is. It defaults to `string`, so an adapter that is
  * nobody's registry value (the channel adapters) writes `InboundAdapter` exactly
- * as before; the four send-provider feedback adapters name their kind, which is
- * what lets `./adapters/index.ts` prove at compile time that the key a route is
+ * as before; the send-provider feedback parsers name their kind, which is what
+ * lets `./adapters/index.ts` prove at compile time that the key a route is
  * dispatched by IS the source the pipeline rate-limits and audits under. Keyed
  * and sourced are two spellings of one fact, and they used to be kept in
  * agreement only by a runtime test in another folder.
  */
-export interface InboundAdapter<S extends string = string> {
+export interface InboundParser<S extends string = string> {
 	/** Wire identifier for audit-payload `source` field and logs. */
 	readonly source: S;
-	/**
-	 * Verify the request signature. Must read its secret via
-	 * `lib/env.getOptional` and fail-closed with status 503 when the secret
-	 * is unset.
-	 */
-	verifySignature(
-		request: Request,
-		rawBody: string
-	): Promise<{ ok: true } | { ok: false; status: number; reason: string }>;
 	/**
 	 * Translate the verified raw body into a normalized InboundEvent or null
 	 * when the provider sent an event kind we don't act on. Adapters never
 	 * touch the database and never dispatch.
 	 *
 	 * A provider that delivers a BATCH per request implements
-	 * `InboundBatchAdapter` below instead of this method.
+	 * `InboundBatchParser` below instead of this method.
 	 */
 	parseEvent(rawBody: string): InboundEvent | null;
 	/**
@@ -71,7 +73,7 @@ export interface InboundAdapter<S extends string = string> {
 }
 
 /**
- * An adapter for a provider that delivers a BATCH of events per request.
+ * A parser for a provider that delivers a BATCH of events per request.
  *
  * Mandrill posts a `mandrill_events` array of up to thousands of items (plan
  * D10) where Resend, SES and the MTA post one event each. Rather than widening
@@ -87,12 +89,47 @@ export interface InboundAdapter<S extends string = string> {
  * and Mandrill's empty-batch verification ping — are answered 200 without
  * dispatching anything.
  */
-export interface InboundBatchAdapter<S extends string = string> extends Omit<
-	InboundAdapter<S>,
+export interface InboundBatchParser<S extends string = string> extends Omit<
+	InboundParser<S>,
 	'parseEvent'
 > {
 	parseEvents(rawBody: string): InboundEvent[];
 }
+
+/** Either parser shape. What a feedback contribution supplies. */
+export type AnyInboundParser<S extends string = string> = InboundParser<S> | InboundBatchParser<S>;
+
+/**
+ * A parser that ALSO owns its verification — a parser plus the one method the
+ * pipeline calls before it will look at the body.
+ *
+ * Two populations implement this. The channel adapters (`twilio`, `meta`,
+ * `generic`) are their own surface and have no bundle to declare a scheme in.
+ * `ses` is the single send provider whose ceremony is not parameterizable — SNS
+ * signs with a rotating certificate it names in the message, so verification
+ * needs a fetch and a cache rather than a declared header and secret, and the
+ * verifier registry reaches it as the `aws-sns` scheme's legacy verifier
+ * (`./providerFeedbackAdapter.ts`).
+ *
+ * Every other send provider declares its scheme and contributes an
+ * {@link InboundParser}: a method the host would have to trust is not a method
+ * the host should ask for.
+ */
+export interface InboundAdapter<S extends string = string> extends InboundParser<S> {
+	/**
+	 * Verify the request signature. Must read its secret via
+	 * `lib/env.getOptional` and fail-closed with status 503 when the secret
+	 * is unset.
+	 */
+	verifySignature(
+		request: Request,
+		rawBody: string
+	): Promise<{ ok: true } | { ok: false; status: number; reason: string }>;
+}
+
+/** The batch shape of {@link InboundAdapter}. */
+export interface InboundBatchAdapter<S extends string = string>
+	extends InboundBatchParser<S>, Pick<InboundAdapter<S>, 'verifySignature'> {}
 
 /** Either adapter shape. What `runInboundPipeline` accepts. */
 export type AnyInboundAdapter<S extends string = string> =

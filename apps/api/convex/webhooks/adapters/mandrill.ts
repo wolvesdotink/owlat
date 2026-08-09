@@ -25,7 +25,7 @@
  *    Trying both is not a weakening: an attacker who controls the Host header
  *    still cannot produce the HMAC without the key.
  *  - **One request carries a BATCH.** `mandrill_events` is a JSON array of up to
- *    thousands of items, so this is an `InboundBatchAdapter` — it implements
+ *    thousands of items, so this is an `InboundBatchParser` — it implements
  *    `parseEvents` and the pipeline dispatches the result IN ORDER, where every
  *    other adapter answers with one event. Redelivery of a batch is expected:
  *    the Send lifecycle's reducers are idempotent per transition, so an already
@@ -49,13 +49,12 @@ import { getOptional } from '../../lib/env';
 import {
 	constantTimeEqual,
 	hmacSha1Base64,
-	missingSecretResult,
 	parseFormParams,
 	urlAndSortedParamsSigningBase,
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import { mandrillRejectCode } from '../mandrillRejectSuppression';
-import type { InboundBatchAdapter } from '../pipeline';
+import type { InboundBatchParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 
 /** Wire value written onto reconciled Send rows and read by the dispatcher. */
@@ -96,6 +95,11 @@ interface MandrillEventItem {
  * value `domains/trackingDomains.ts` derives the tracking host from), which is
  * what an operator pastes into Mandrill. `request.url` is the fallback for a
  * deployment that has not set it.
+ *
+ * RESOLVED HERE, AT REQUEST TIME, and nowhere else. The `mandrill-form` verifier
+ * a bundle declares carries no URL list: no deployment URL belongs in a build
+ * artifact, so a declared one could only ever be a placeholder — and a contract
+ * field that means nothing is a field a third-party bundle would trust.
  */
 export function mandrillSignedUrlCandidates(requestUrl: string): string[] {
 	const candidates: string[] = [];
@@ -295,35 +299,8 @@ export function parseMandrillBatch(rawBody: string): InboundEvent[] {
 	return events;
 }
 
-export const mandrillAdapter: InboundBatchAdapter<'mandrill'> = {
+export const mandrillAdapter: InboundBatchParser<'mandrill'> = {
 	source: 'mandrill',
-
-	async verifySignature(request, rawBody) {
-		const webhookKey = getOptional('MANDRILL_WEBHOOK_KEY');
-		if (!webhookKey) {
-			// 503, not 401 — the same fail-closed posture the Resend adapter takes
-			// for an unset secret, so Mandrill retries once the key is configured
-			// instead of treating the endpoint as permanently hostile.
-			return missingSecretResult('MANDRILL_WEBHOOK_KEY');
-		}
-
-		const signature = request.headers.get('x-mandrill-signature');
-		if (!signature) {
-			return { ok: false, status: 401, reason: 'Missing X-Mandrill-Signature header' };
-		}
-
-		const valid = await verifyMandrillSignature(
-			mandrillSignedUrlCandidates(request.url),
-			rawBody,
-			signature,
-			webhookKey
-		);
-		if (!valid) {
-			return { ok: false, status: 401, reason: 'Invalid Mandrill signature' };
-		}
-
-		return { ok: true };
-	},
 
 	// Raw-audit storage mirrors Resend's: the default (store) applies, because a
 	// Mandrill batch carries ordinary delivery telemetry rather than the

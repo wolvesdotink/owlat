@@ -1,10 +1,20 @@
 /** Host-owned verification mechanisms for provider feedback contributions. */
 import type { ProviderFeedbackVerifier } from '@owlat/provider-kit';
-import { isPluginSecretEnvVar } from '@owlat/plugin-kit';
+import {
+	isPluginSecretEnvVar,
+	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
+} from '@owlat/plugin-kit';
 import { getOptional, getPluginSecret, type EnvKey } from '../lib/env';
 import { verifyMandrillSignature, mandrillSignedUrlCandidates } from './adapters/mandrill';
 import { verifySvixHeaders } from './adapters/resend';
-import { bytesToBase64, bytesToHex, constantTimeEqual, missingSecretResult } from './security';
+import {
+	clampToleranceSeconds,
+	constantTimeEqual,
+	hmacSignature,
+	isUnixSecondsTimestamp,
+	isWithinTimestampTolerance,
+	missingSecretResult,
+} from './security';
 
 export type ProviderVerificationResult =
 	| { readonly ok: true }
@@ -20,21 +30,15 @@ function invalidSignature(reason = 'Invalid signature'): ProviderVerificationRes
 	return { ok: false, status: 401, reason };
 }
 
-async function computeTimestampHmac(
-	secret: string,
-	signed: string,
-	algorithm: 'sha256' | 'sha1',
-	encoding: 'hex' | 'base64'
-): Promise<string> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: algorithm === 'sha256' ? 'SHA-256' : 'SHA-1' },
-		false,
-		['sign']
-	);
-	const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signed));
-	return encoding === 'hex' ? bytesToHex(signature) : bytesToBase64(signature);
+/**
+ * Every tolerance this registry enforces is DECLARED — by a bundle or, through
+ * `providers/feedback.ts:pluginVerifier`, by a plugin manifest's replay contract.
+ * It is therefore clamped to the same ceiling the plugin inbound path clamps to,
+ * for the same reason: a verifier must not depend on the artifact it is reading
+ * having been validated by the version of the kit that is running now.
+ */
+function declaredTolerance(toleranceSeconds: number): number {
+	return clampToleranceSeconds(toleranceSeconds, PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS);
 }
 
 async function verifyTimestampHmac(
@@ -47,17 +51,15 @@ async function verifyTimestampHmac(
 	const signature = request.headers.get(verifier.signatureHeader);
 	const timestamp = request.headers.get(verifier.timestampHeader);
 	if (!signature || !timestamp) return invalidSignature('Missing signature headers');
-	const seconds = Number(timestamp);
 	if (
-		!Number.isSafeInteger(seconds) ||
-		Math.abs(Math.floor(Date.now() / 1_000) - seconds) > verifier.toleranceSeconds
+		!isUnixSecondsTimestamp(timestamp) ||
+		!isWithinTimestampTolerance(timestamp, declaredTolerance(verifier.toleranceSeconds), Date.now())
 	) {
 		return invalidSignature('Invalid or expired signature timestamp');
 	}
-	const signed = `${timestamp}.${rawBody}`;
-	const expected = await computeTimestampHmac(
+	const expected = await hmacSignature(
 		secret,
-		signed,
+		`${timestamp}.${rawBody}`,
 		verifier.algorithm,
 		verifier.encoding
 	);
@@ -75,7 +77,15 @@ async function verifySvix(
 	const timestamp = request.headers.get('svix-timestamp');
 	const signature = request.headers.get('svix-signature');
 	if (!id || !timestamp || !signature) return invalidSignature('Missing Svix headers');
-	return (await verifySvixHeaders(rawBody, id, timestamp, signature, secret))
+	return (await verifySvixHeaders(
+		rawBody,
+		id,
+		timestamp,
+		signature,
+		secret,
+		Math.floor(Date.now() / 1000),
+		declaredTolerance(verifier.toleranceSeconds)
+	))
 		? { ok: true }
 		: invalidSignature();
 }

@@ -90,20 +90,86 @@ async function importHmacKey(
 	]);
 }
 
-export async function hmacSha256Hex(secret: string, data: string): Promise<string> {
-	const key = await importHmacKey(secret, 'SHA-256');
+/**
+ * The parameterized HMAC: the ONE place in the backend that imports a signing
+ * key and signs with it.
+ *
+ * The named helpers below are the fixed-algorithm spellings the per-provider
+ * adapters read better with. Callers whose algorithm and encoding are DECLARED
+ * rather than fixed — the provider feedback verifier registry and the plugin
+ * inbound-signature contract, both of which choose sha256/sha1 × hex/base64 at
+ * runtime — use this one directly instead of open-coding `importKey` + `sign`
+ * again, which is what this module exists to stop.
+ */
+export async function hmacSignature(
+	secret: string | Uint8Array,
+	data: string,
+	algorithm: 'sha256' | 'sha1',
+	encoding: 'hex' | 'base64'
+): Promise<string> {
+	const key = await importHmacKey(secret, algorithm === 'sha256' ? 'SHA-256' : 'SHA-1');
 	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	return bytesToHex(sig);
+	return encoding === 'hex' ? bytesToHex(sig) : bytesToBase64(sig);
+}
+
+export async function hmacSha256Hex(secret: string, data: string): Promise<string> {
+	return hmacSignature(secret, data, 'sha256', 'hex');
 }
 
 export async function hmacSha256Base64(secret: string | Uint8Array, data: string): Promise<string> {
-	const key = await importHmacKey(secret, 'SHA-256');
-	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	return bytesToBase64(sig);
+	return hmacSignature(secret, data, 'sha256', 'base64');
 }
 
 export async function hmacSha1Base64(secret: string, data: string): Promise<string> {
-	const key = await importHmacKey(secret, 'SHA-1');
-	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	return bytesToBase64(sig);
+	return hmacSignature(secret, data, 'sha1', 'base64');
+}
+
+/**
+ * The freshness half of every `${timestamp}.${body}` HMAC scheme, stated once.
+ *
+ * Two verifiers enforce that scheme — the host's provider feedback verifier
+ * registry (`webhooks/providerVerifierRegistry.ts`) and the plugin inbound
+ * signature contract (`plugins/inboundSignature.ts`) — and they used to disagree
+ * about what a timestamp IS. One accepted anything `Number()` could read
+ * (`'1e3'`, `'0x10'`, `'12.0'`, negatives) against an unbounded declared
+ * tolerance; the other required ASCII digits and clamped. Same scheme, two
+ * rigours, and the weaker one is reached by DECLARED data. They now share these.
+ */
+const UNIX_SECONDS_PATTERN = /^\d{1,15}$/;
+
+/**
+ * ASCII digits only, and few enough of them to stay a safe integer. Anything a
+ * numeric coercion would silently accept — exponent form, hex, a trailing
+ * fraction, a sign — is not a timestamp a sender wrote.
+ */
+export function isUnixSecondsTimestamp(value: string | null | undefined): value is string {
+	return typeof value === 'string' && UNIX_SECONDS_PATTERN.test(value);
+}
+
+/**
+ * Bound a DECLARED tolerance before it is enforced.
+ *
+ * The declaration reaches a verifier from a manifest or a bundle — data the
+ * validators bound, but a verifier must not depend on the artifact it is reading
+ * having been validated by the version of the kit running now. Zero and
+ * negatives would reject everything (a sender-visible outage from a typo), and
+ * an unbounded value would widen the replay window without limit.
+ */
+export function clampToleranceSeconds(toleranceSeconds: number, maxSeconds: number): number {
+	return Math.min(Math.max(Math.trunc(toleranceSeconds), 1), maxSeconds);
+}
+
+/**
+ * Freshness in BOTH directions: a stale capture and a far-future timestamp,
+ * which is how a captured request would otherwise be parked for later.
+ *
+ * `timestamp` must already have passed {@link isUnixSecondsTimestamp}. A
+ * non-finite tolerance fails the comparison, so it rejects.
+ */
+export function isWithinTimestampTolerance(
+	timestamp: string,
+	toleranceSeconds: number,
+	nowMs: number
+): boolean {
+	return Math.abs(nowMs / 1000 - Number(timestamp)) <= toleranceSeconds;
 }

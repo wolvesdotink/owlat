@@ -44,10 +44,15 @@ export type ProviderFeedbackVerifier =
 			readonly topicArnEnvVar: string;
 			readonly toleranceSeconds: number;
 	  }
+	/**
+	 * URL-bound HMAC over the sorted form params (Mandrill's scheme). The signed
+	 * URL is NOT declared: it is the deployment's own address, which no build
+	 * artifact can know, so the host derives the candidates at request time
+	 * (`webhooks/adapters/mandrill.ts:mandrillSignedUrlCandidates`).
+	 */
 	| {
 			readonly scheme: 'mandrill-form';
 			readonly secretEnvVar: string;
-			readonly acceptedUrls: readonly string[];
 	  };
 
 export type ProviderFeedbackEvent =

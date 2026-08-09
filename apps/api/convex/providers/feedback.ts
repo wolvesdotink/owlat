@@ -79,9 +79,6 @@ const CORE_FEEDBACK = {
 		verifier: {
 			scheme: 'mandrill-form',
 			secretEnvVar: 'MANDRILL_WEBHOOK_KEY',
-			// Resolved at request time: configured Convex site URL first, exact
-			// request URL second. No deployment URL belongs in a build artifact.
-			acceptedUrls: ['convex-site-or-request'],
 		} as const,
 		parser: mandrillAdapter,
 	},
@@ -101,12 +98,35 @@ const CORE_FEEDBACK = {
 	ProviderFeedbackContribution<unknown>
 >;
 
+/**
+ * The deployment variable a verifier reads its key from, or undefined for a
+ * scheme that has no shared key at all.
+ *
+ * `aws-sns` is that scheme: SNS signs with a rotating certificate it names in
+ * the message, so the SES entry declares a topic ARN and the catalog declares no
+ * `signingKeyEnvVar` for it. Both spellings of "no key" must agree.
+ */
+function verifierSecretEnvVar(verifier: ProviderFeedbackVerifier): string | undefined {
+	return verifier.scheme === 'aws-sns' ? undefined : verifier.secretEnvVar;
+}
+
 const contributions = new Map<SendProviderKind, ProviderFeedbackContribution<unknown>>();
 for (const descriptor of SEND_PROVIDER_CATALOG) {
 	if (isCoreSendProviderKind(descriptor.kind)) {
 		if (descriptor.providerFeedback === undefined) continue;
 		const contribution = CORE_FEEDBACK[descriptor.kind as keyof typeof CORE_FEEDBACK];
-		if (!contribution || contribution.webhookPath !== descriptor.providerFeedback.webhookPath) {
+		// BOTH declared facts are compared, not just the route. The signing key is
+		// the one a verifier actually reads, and the catalog's `signingKeyEnvVar` is
+		// what the delivery UI tells an operator to set and what the feedback-status
+		// query reports as configured. Drift between them is silent in the direction
+		// that matters most — a verifier reading ANOTHER declared provider's secret
+		// still finds a value in a fully configured deployment, so it rejects live
+		// traffic while every "is it configured?" surface says yes.
+		if (
+			!contribution ||
+			contribution.webhookPath !== descriptor.providerFeedback.webhookPath ||
+			verifierSecretEnvVar(contribution.verifier) !== descriptor.providerFeedback.signingKeyEnvVar
+		) {
 			throw new TypeError(`Send provider '${descriptor.kind}' has inconsistent feedback metadata`);
 		}
 		contributions.set(descriptor.kind, contribution);

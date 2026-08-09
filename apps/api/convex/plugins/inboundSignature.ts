@@ -30,31 +30,30 @@ import {
 	type PluginReplayBoundSignatureContract,
 } from '@owlat/plugin-kit';
 import { getPluginSecret } from '../lib/env';
-import { bytesToBase64, bytesToHex, constantTimeEqual } from '../webhooks/security';
+import {
+	bytesToHex,
+	clampToleranceSeconds,
+	constantTimeEqual,
+	hmacSignature,
+	isUnixSecondsTimestamp,
+	isWithinTimestampTolerance,
+} from '../webhooks/security';
 
 export type InboundSignatureResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly status: 401 | 503; readonly reason: string };
-
-const HASH_BY_ALGORITHM = {
-	'hmac-sha256': 'SHA-256',
-	'hmac-sha1': 'SHA-1',
-} as const;
 
 async function computeSignature(
 	contract: PluginInboundSignatureContract,
 	secret: string,
 	signingBase: string
 ): Promise<string> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: HASH_BY_ALGORITHM[contract.algorithm] },
-		false,
-		['sign']
+	return hmacSignature(
+		secret,
+		signingBase,
+		contract.algorithm === 'hmac-sha256' ? 'sha256' : 'sha1',
+		contract.encoding
 	);
-	const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingBase));
-	return contract.encoding === 'hex' ? bytesToHex(signature) : bytesToBase64(signature);
 }
 
 /**
@@ -157,17 +156,14 @@ export async function verifyPluginReplayBoundSignature(
 	const { contract, timestamp, nowMs } = delivery;
 	const configured = readSignatureSecret(contract);
 	if (!configured.ok) return configured;
-	if (timestamp === null || timestamp === undefined || !/^\d{1,15}$/.test(timestamp)) {
+	if (!isUnixSecondsTimestamp(timestamp)) {
 		return { ok: false, status: 401, reason: 'Missing or malformed inbound timestamp' };
 	}
-	const toleranceSeconds = Math.min(
-		Math.max(Math.trunc(contract.replay.toleranceSeconds), 1),
+	const toleranceSeconds = clampToleranceSeconds(
+		contract.replay.toleranceSeconds,
 		PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS
 	);
-	const skewSeconds = Math.abs(nowMs / 1000 - Number(timestamp));
-	if (!(skewSeconds <= toleranceSeconds)) {
-		// Both directions: a stale capture AND a far-future timestamp, which is how
-		// a captured request would otherwise be parked for later.
+	if (!isWithinTimestampTolerance(timestamp, toleranceSeconds, nowMs)) {
 		return { ok: false, status: 401, reason: 'Inbound timestamp outside tolerance' };
 	}
 	const verification = await compareSignature(
