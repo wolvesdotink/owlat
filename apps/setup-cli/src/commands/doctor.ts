@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import pc from 'picocolors';
 import {
+	DELIVERY_PROVIDER_KINDS,
 	getRequiredEnvVars,
 	getSendPathRequiredEnv,
 	isDeliveryProviderKind,
@@ -111,12 +112,19 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 
 	const provider = env['EMAIL_PROVIDER'];
 	if (!isDeliveryProviderKind(provider)) {
+		// The list the operator is told to pick from is the list the guard above
+		// accepts — `isDeliveryProviderKind` is `DELIVERY_PROVIDER_KINDS` membership,
+		// and that is the send-provider catalog under another name. Spelled by hand
+		// it drifts silently and only in the DIRECTION THAT HURTS: a kind added to
+		// the catalog keeps passing the check while doctor tells the operator it is
+		// not a delivery provider (`mandrill` was exactly that).
+		const kinds = DELIVERY_PROVIDER_KINDS.join('|');
 		return [
 			{
 				ok: false,
 				message: provider
-					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (mta|resend|emailit|ses|smtp)`
-					: 'a sending feature is enabled but EMAIL_PROVIDER is unset — set mta|resend|emailit|ses|smtp and its credentials, or this install cannot send mail',
+					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (${kinds})`
+					: `a sending feature is enabled but EMAIL_PROVIDER is unset — set ${kinds} and its credentials, or this install cannot send mail`,
 			},
 		];
 	}

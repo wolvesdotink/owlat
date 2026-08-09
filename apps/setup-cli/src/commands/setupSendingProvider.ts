@@ -80,7 +80,15 @@ export async function pickSendingProvider(): Promise<EnvMap | null> {
 	}
 
 	if (provider === 'emailit') {
-		const apiKey = await password({ message: 'Emailit API key' });
+		// Blocked at the prompt, like the SMTP credentials below, rather than left to
+		// the network probe: a bare Enter here sent an empty bearer token to Emailit
+		// and turned any transport failure into an unreadable message, because the
+		// validator redacts by splitting the failure text ON THE KEY. That redaction
+		// now guards the empty key too — this stops the operator getting there at all.
+		const apiKey = await password({
+			message: 'Emailit API key',
+			validate: requireNonEmpty('Emailit API key'),
+		});
 		if (isCancel(apiKey)) return null;
 		if (
 			!(await validateWithSpinner('Validating Emailit key', () =>

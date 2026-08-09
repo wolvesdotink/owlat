@@ -49,4 +49,16 @@ describe('validateEmailitKey', () => {
 			message: 'Emailit request failed: [redacted] network unavailable',
 		});
 	});
+
+	// An empty key reaches here from a bare Enter at the setup-CLI prompt. Without
+	// a guard, `'fetch failed'.split('')` splits between every character and the
+	// operator reads `f[redacted]e[redacted]t…` instead of the failure.
+	it('leaves the failure readable when no key was supplied', async () => {
+		global.fetch = vi.fn().mockRejectedValue(new Error('fetch failed')) as typeof fetch;
+
+		await expect(validateEmailitKey('')).resolves.toEqual({
+			ok: false,
+			message: 'Emailit request failed: fetch failed',
+		});
+	});
 });

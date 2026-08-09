@@ -338,6 +338,17 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		domainVerification: 'none',
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
+		// AN ASSUMPTION, AND WHAT IT COSTS IF IT IS WRONG. Resend's `true` below
+		// rests on a header we thread ourselves; this one rests on the shape plan's
+		// "Emailit proves the final shape with an idempotent transport"
+		// (docs/design/unified-send-provider-shape-plan.md:64) — a declaration about
+		// the vendor, not a behaviour we observe on our side. What reads it is
+		// `systemMailRetryDisposition`: `true` lets an AMBIGUOUS system/auth send
+		// (dispatched, answer lost) be retried automatically, so if Emailit does not
+		// in fact dedup on the key, that retry is a SECOND DELIVERY of a password
+		// reset or verification mail. Flip this to `false` — the fail-closed default,
+		// which parks the ambiguity instead of replaying it — the moment the vendor
+		// contradicts the plan.
 		deduplicatesOnIdempotencyKey: true,
 		tagsFeedbackProvenance: false,
 		setupProbe: { validator: 'validateEmailitKey', label: 'Test API key' },

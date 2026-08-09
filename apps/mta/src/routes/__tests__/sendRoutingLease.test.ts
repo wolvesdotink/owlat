@@ -211,7 +211,15 @@ describe('POST /send routing lease revalidation', () => {
 		])('answers the local code for $label', async ({ stored }) => {
 			const { response, queue } = await request({ lease: stored });
 			expect(response.status).toBe(409);
-			expect(await response.json()).toMatchObject({ code: 'ROUTING_LEASE_UNREADABLE' });
+			// THE BYTES, not just the shape. This refusal is answered through the
+			// typed `refuse()` helper like every other one, and Convex matches the
+			// code by SUBSTRING on this body — so the two keys, their order and their
+			// exact text are the contract, and a reshaped answer must fail here.
+			const body = await response.text();
+			expect(JSON.parse(body)).toMatchObject({ code: 'ROUTING_LEASE_UNREADABLE' });
+			expect(body).toBe(
+				'{"error":"Routing lease could not be read; resolve again","code":"ROUTING_LEASE_UNREADABLE"}'
+			);
 			expect(queue.add).not.toHaveBeenCalled();
 		});
 

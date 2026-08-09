@@ -18,10 +18,11 @@
  * `allowedFromAddresses`): those had no typed producer at all.
  */
 
-import type {
-	DeliveryDomain,
-	GovernedIpPool,
-	GovernedMessageType,
+import {
+	ROUTING_LEASE_UNREADABLE_CODE,
+	type DeliveryDomain,
+	type GovernedIpPool,
+	type GovernedMessageType,
 } from '@owlat/shared/routingDispatch';
 
 /**
@@ -110,9 +111,21 @@ export type MtaSendRequestDraft = Omit<MtaSendRequest, 'organizationId'> & {
  * `INTAKE_PENDING` off the 409 body to decide the attempt's acceptance is
  * UNKNOWN rather than failed, and classifies the routing codes as a deferral
  * that must resolve a fresh decision.
+ *
+ * "Every" is meant literally, and was not: `ROUTING_LEASE_UNREADABLE` has been
+ * on the wire since the lease revalidation gained it (`apps/mta/src/routes/
+ * sendRoutingLease.ts`), but the union that claimed to list the codes did not
+ * carry it — so the one refusal it names was the one refusal the handler could
+ * not answer through the typed `refuse()` helper, and wrote raw instead. It is
+ * IMPORTED from `@owlat/shared/routingDispatch` rather than re-typed, because
+ * the string is already shared for the reason that matters most here: Convex
+ * matches it by SUBSTRING on the 409 body, so a second spelling of it would not
+ * throw anywhere — the deferral would just quietly land in the `governed`
+ * bucket that halts a cell at 25%.
  */
 export const MTA_SEND_ERROR_CODES = [
 	'ROUTING_LEASE_REQUIRED',
+	ROUTING_LEASE_UNREADABLE_CODE,
 	'ROUTING_DECISION_EXPIRED',
 	'ROUTING_DECISION_CHANGED',
 	'GLOBAL_SAFETY_DEFER',

@@ -26,7 +26,13 @@ import {
 	type MtaDeferReason,
 	type MtaRoutingDecisionResponse,
 } from '../routingDecision';
-import type { MtaSendRequest, MtaSendResponse } from '../send';
+import { ROUTING_LEASE_UNREADABLE_CODE } from '@owlat/shared/routingDispatch';
+import {
+	MTA_SEND_ERROR_CODES,
+	isMtaSendErrorCode,
+	type MtaSendRequest,
+	type MtaSendResponse,
+} from '../send';
 import {
 	isMtaWebhookEvent,
 	MTA_WEBHOOK_EVENT_TYPES,
@@ -91,6 +97,17 @@ describe('send intake wire', () => {
 		['lease required', SEND_LEASE_REQUIRED_BYTES],
 	])('carries the %s response byte-identically', (_label, bytes) => {
 		canonical<MtaSendResponse>(bytes);
+	});
+
+	// The doc on `MTA_SEND_ERROR_CODES` says EVERY code the intake attaches to a
+	// refusal, and `ROUTING_LEASE_UNREADABLE` was missing from it while being on
+	// the wire — which is exactly the gap that let one 409 be answered outside the
+	// typed helper. Pinned against the SHARED constant, not a literal: that string
+	// is matched by substring on the Convex side, where a second spelling of it
+	// fails silently.
+	it('declares the lease-unreadable code the MTA actually answers', () => {
+		expect(MTA_SEND_ERROR_CODES).toContain(ROUTING_LEASE_UNREADABLE_CODE);
+		expect(isMtaSendErrorCode(ROUTING_LEASE_UNREADABLE_CODE)).toBe(true);
 	});
 
 	it('keeps `id` the caller’s message id and the queue identity separate', () => {

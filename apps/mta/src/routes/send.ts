@@ -235,7 +235,12 @@ export function createSendHandler(
 				allowWarmupOverflow: body.allowWarmupOverflow === true,
 			});
 			if (!revalidated.ok) {
-				return c.json({ error: revalidated.error, code: revalidated.code }, 409);
+				// Through `refuse()` like every other answer: the code union now carries
+				// `ROUTING_LEASE_UNREADABLE`, so a rejection code this wire has not
+				// declared stops compiling here instead of reaching Convex — which
+				// matches these by substring and therefore cannot report a miss. The
+				// bytes are the same two keys in the same order.
+				return refuse(c, { error: revalidated.error, code: revalidated.code }, 409);
 			}
 			routingLease = revalidated.routingLease;
 		}
