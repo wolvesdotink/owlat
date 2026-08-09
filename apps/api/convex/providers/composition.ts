@@ -106,10 +106,40 @@ interface GeneratedSendTransportModule {
 	readonly module: unknown;
 }
 
-const generatedModules = new Map(
-	(BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly GeneratedSendTransportModule[]).map(
-		(entry) => [entry.kind, entry] as const
-	)
+/**
+ * THE MODULES ARTIFACT IS RE-VALIDATED, and for the reason `catalog.ts` states
+ * over its own generated half: the ARTIFACT — not the manifest the codegen read
+ * — is what this deployment actually runs, so a hand edit, a bad merge or a
+ * partial regeneration ends at an entry no validator ever saw. Both mistakes
+ * this refuses would otherwise be SILENT rather than loud:
+ *
+ *   - a module claiming a CORE kind is ignored, because a core kind is joined to
+ *     `CORE_TRANSPORTS` and never consults this artifact — so the entry would sit
+ *     in the bundle claiming to own `mta` while nothing read it;
+ *   - a DUPLICATED kind is resolved last-write-wins by `new Map`, so one of the
+ *     two contributing plugins would silently lose the transport it owns.
+ *
+ * A deployment mistake must stop the deployment, which is why this throws at
+ * module load beside the `has no owned module` join below rather than degrading.
+ */
+function ownedModulesByKind(
+	entries: readonly GeneratedSendTransportModule[]
+): ReadonlyMap<SendProviderKind, GeneratedSendTransportModule> {
+	const byKind = new Map<SendProviderKind, GeneratedSendTransportModule>();
+	for (const entry of entries) {
+		if (isCoreSendProviderKind(entry.kind)) {
+			throw new TypeError(`Bundled send transport '${entry.kind}' may not claim a core kind`);
+		}
+		if (byKind.has(entry.kind)) {
+			throw new TypeError(`Bundled send transport '${entry.kind}' has more than one owned module`);
+		}
+		byKind.set(entry.kind, entry);
+	}
+	return byKind;
+}
+
+const generatedModules = ownedModulesByKind(
+	BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly GeneratedSendTransportModule[]
 );
 
 function pluginBundle(

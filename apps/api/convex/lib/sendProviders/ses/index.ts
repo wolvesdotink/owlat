@@ -23,9 +23,9 @@ import {
 	type SendProviderModule,
 	type SesExtras,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
-import { RETRY_DELAYS_MS } from '../../constants';
 
 /**
  * Upper bound on a single SES send call. Once the request is on the wire, a
@@ -184,7 +184,7 @@ function buildRawMimeMessage(params: {
 
 export const sesSendProvider: SendProviderModule<'ses'> = {
 	kind: 'ses',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('ses').retryDelays,
 
 	/**
 	 * SES takes NO per-send extras, stated rather than left to a missing method.

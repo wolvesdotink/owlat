@@ -2,7 +2,6 @@
 
 /** Emailit transport adapter. Authentication and provider tracking stay at this boundary. */
 import { withTimeout } from '../../inputGuards';
-import { RETRY_DELAYS_MS } from '../../constants';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -14,6 +13,7 @@ import {
 	type SendProviderModule,
 	type SystemMailExtrasInput,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 
@@ -46,7 +46,7 @@ function responseId(value: unknown): string | null {
 
 export const emailitSendProvider: SendProviderModule<'emailit'> = {
 	kind: 'emailit',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('emailit').retryDelays,
 
 	buildDispatchExtras(input: DispatchExtrasInput): EmailitExtras {
 		return { idempotencyKey: input.idempotencyKey };

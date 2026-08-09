@@ -18,9 +18,9 @@ import {
 	type SendProviderModule,
 	type SystemMailExtrasInput,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
-import { RETRY_DELAYS_MS } from '../../constants';
 const RESEND_TIMEOUT_MS = 30_000;
 
 // One client per CONFIGURED TRANSPORT, not one per deployment: two `resend`
@@ -38,7 +38,7 @@ function getResendClient(transport: SendTransportRecord): Resend {
 
 export const resendSendProvider: SendProviderModule<'resend'> = {
 	kind: 'resend',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('resend').retryDelays,
 
 	/**
 	 * Resend's one per-send knob: the stable idempotency key, forwarded as the

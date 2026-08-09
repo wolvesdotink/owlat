@@ -10,7 +10,6 @@ const transport: SendTransportRecord = Object.freeze({
 	kind,
 	instanceKey: null,
 	label: 'Postmark',
-	retryDelays: [10],
 	requiredEnvVars: [],
 	pluginId: parsePluginId('mail-pack'),
 });

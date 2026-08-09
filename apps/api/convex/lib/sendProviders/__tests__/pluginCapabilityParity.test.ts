@@ -48,7 +48,6 @@ function transportRecord(instanceKey: string | null): SendTransportRecord {
 		kind: KIND,
 		instanceKey,
 		label: 'Postmark',
-		retryDelays: [10],
 		requiredEnvVars: [],
 		pluginId: PLUGIN_ID,
 	});

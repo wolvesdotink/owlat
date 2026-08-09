@@ -86,6 +86,17 @@ const MAX_TRANSPORT_ID_LENGTH =
 	SEND_TRANSPORT_INSTANCE_SEPARATOR.length +
 	MAX_INSTANCE_KEY_LENGTH;
 
+/**
+ * ONE RESOLVED INSTANCE — its identity, its label and the names that configure
+ * it. Deliberately NOT the kind's whole catalog entry: a record carries only
+ * what is INSTANCE-SPECIFIC, and anything a reader wants about the kind itself
+ * is one `sendProviderCatalogEntry(record.kind)` away.
+ *
+ * The retry schedule is the worked example. It used to be copied onto every
+ * record and read by nobody: the dispatch loop drives retries off the resolved
+ * MODULE's `retryDelays`, which is the catalog entry's own array in both tiers.
+ * A second copy here could only ever have disagreed with it.
+ */
 export interface SendTransportRecord {
 	readonly id: SendTransportId;
 	/** The provider kind this transport is an instance of. */
@@ -93,7 +104,6 @@ export interface SendTransportRecord {
 	/** `null` for the deployment-default instance (unsuffixed variables). */
 	readonly instanceKey: string | null;
 	readonly label: string;
-	readonly retryDelays: readonly number[];
 	/**
 	 * The names whose presence makes THIS instance configured, resolved for it.
 	 *
@@ -264,7 +274,6 @@ function buildRecord(
 		kind: entry.kind,
 		instanceKey,
 		label: instanceKey === null ? entry.label : `${entry.label} (${instanceKey})`,
-		retryDelays: entry.retryDelays,
 		requiredEnvVars: Object.freeze(instanceResolvedRequiredEnvVars(entry, instanceKey)),
 		...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
 	});

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared';
-import { SEND_PROVIDER_BUNDLES, providerBundleFor } from '../composition';
+import { SEND_PROVIDER_BUNDLES, providerBundleFor, runtimeTransportFor } from '../composition';
 
 describe('send-provider bundle composition', () => {
 	it('preserves incumbent order, catalog data, routes, and environment names', () => {
@@ -94,5 +94,85 @@ describe('send-provider bundle composition', () => {
 			['mandrill', 'mandrill-form'],
 			['emailit', 'hmac-timestamp-body'],
 		]);
+	});
+
+	/**
+	 * ONE RETRY SCHEDULE PER KIND, and the catalog owns it.
+	 *
+	 * The literals below are the schedules the core adapters used to hold as their
+	 * own constants (`MTA_RETRY_DELAYS` in `mta/index.ts`, `RETRY_DELAYS_MS` in
+	 * `lib/constants.ts` for the other five), so this is the byte-level proof that
+	 * moving the read to the catalog entry changed no retry behaviour: the dispatch
+	 * loop runs `retryDelays.length + 1` attempts, spaced by these numbers.
+	 *
+	 * The identity assertion is what keeps it that way. Values alone would still
+	 * pass for an adapter that copied the numbers back out into a local constant —
+	 * exactly the drift this closes — whereas holding the catalog's own frozen
+	 * array can only be true of an adapter that READ the declaration.
+	 */
+	it('drives every incumbent transport off the retry schedule its catalog entry declares', () => {
+		const incumbents = SEND_PROVIDER_BUNDLES.filter(({ source }) => source !== 'third-party');
+		expect(
+			incumbents.map(({ descriptor }) => [
+				descriptor.kind,
+				[...runtimeTransportFor(descriptor.kind).retryDelays],
+			])
+		).toEqual([
+			['mta', [1_000, 5_000]],
+			['ses', [1_000, 5_000, 30_000]],
+			['resend', [1_000, 5_000, 30_000]],
+			['smtp', [1_000, 5_000, 30_000]],
+			['mandrill', [1_000, 5_000, 30_000]],
+			['emailit', [1_000, 5_000, 30_000]],
+		]);
+		for (const { descriptor } of incumbents) {
+			expect(runtimeTransportFor(descriptor.kind).retryDelays).toBe(descriptor.retryDelays);
+		}
+	});
+});
+
+/**
+ * THE GENERATED MODULES ARTIFACT IS NOT TRUSTED.
+ *
+ * The codegen cannot emit either of these, and the catalog artifact's own kinds
+ * are checked in `lib/sendProviders/catalog.ts` — but neither fact is a check on
+ * THIS artifact, which is what a hand edit, a bad merge or a partial
+ * regeneration actually produces. Both mistakes are silent without the guard: a
+ * core kind never consults the modules artifact, and `new Map` resolves a
+ * duplicate last-write-wins, so one contributing plugin would quietly lose the
+ * transport it owns. A deployment mistake must stop the deployment.
+ */
+describe('bundled send transport modules artifact', () => {
+	const MODULES = '../../plugins/sendTransportModules.generated';
+
+	async function composeWithModules(modules: readonly unknown[]): Promise<unknown> {
+		vi.resetModules();
+		vi.doMock(MODULES, () => ({ BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: modules }));
+		return import('../composition');
+	}
+
+	afterEach(() => {
+		vi.doUnmock(MODULES);
+		vi.resetModules();
+	});
+
+	it('refuses a module that claims a core kind', async () => {
+		await expect(
+			composeWithModules([{ kind: 'ses', pluginId: 'mail-pack', module: {} }])
+		).rejects.toThrow("Bundled send transport 'ses' may not claim a core kind");
+	});
+
+	it('refuses two modules that claim the same kind', async () => {
+		const kind = 'plugin.mail-pack.postmark';
+		await expect(
+			composeWithModules([
+				{ kind, pluginId: 'mail-pack', module: {} },
+				{ kind, pluginId: 'other-pack', module: {} },
+			])
+		).rejects.toThrow(`Bundled send transport '${kind}' has more than one owned module`);
+	});
+
+	it('composes the shipped artifact without complaint', async () => {
+		await expect(composeWithModules([])).resolves.toBeDefined();
 	});
 });

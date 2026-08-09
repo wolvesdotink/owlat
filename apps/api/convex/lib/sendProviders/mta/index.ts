@@ -37,14 +37,9 @@ import {
 	type SendProviderModule,
 	type SystemMailExtrasInput,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
 import { sendTransportEnvName, type SendTransportRecord } from '../transports';
-
-/**
- * Default retry schedule. The **Send dispatch (helper)** consumes this; the
- * provider does not retry internally.
- */
-const MTA_RETRY_DELAYS = [1000, 5000] as const;
 
 const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
@@ -171,7 +166,7 @@ export async function resolveMtaRoutingDecision(
 
 export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
-	retryDelays: MTA_RETRY_DELAYS,
+	retryDelays: sendProviderCatalogEntry('mta').retryDelays,
 
 	/**
 	 * The governed last mile's per-send extras.

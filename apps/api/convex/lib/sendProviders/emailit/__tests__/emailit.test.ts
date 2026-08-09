@@ -8,7 +8,6 @@ const transport: SendTransportRecord = Object.freeze({
 	kind: 'emailit',
 	instanceKey: null,
 	label: 'Emailit',
-	retryDelays: [1_000, 5_000, 30_000],
 	requiredEnvVars: ['EMAILIT_API_KEY'],
 });
 
