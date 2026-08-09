@@ -18,7 +18,7 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@hono/node-server": "^2.0.0",
+		"@hono/node-server": "^2.1.0",
 		"@owlat/email-scanner": "workspace:*",
 		"@owlat/mail-auth": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
@@ -27,7 +27,7 @@
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/smtp-listener": "workspace:*",
 		"groupmq": "^1.1.0",
-		"hono": "^4.12.25",
+		"hono": "^4.13.1",
 		"ioredis": "^5.6.0",
 		"pino": "^10.3.1",
 		"prom-client": "^15.1.0"

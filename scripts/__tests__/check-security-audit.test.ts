@@ -68,6 +68,9 @@ describe('security audit parser', () => {
 	);
 
 	it('contains only acknowledgements that are still required by the lockfile policy', () => {
-		expect(Object.keys(ACKNOWLEDGED_ADVISORIES)).toEqual([]);
+		expect(ACKNOWLEDGED_ADVISORIES).toEqual({
+			'GHSA-W3RX-R6R6-PGPR': expect.stringContaining('patches/image-size@2.0.2.patch'),
+			'GHSA-5P2G-FCMC-QVQQ': expect.stringContaining('patches/image-size@2.0.2.patch'),
+		});
 	});
 });

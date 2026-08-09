@@ -135,15 +135,16 @@
 		"nodemailer": "9.0.3",
 		"nuxt": "4.5.2",
 		"nuxt-og-image": "6.7.4",
-		"postcss": "^8.5.18",
+		"postcss": "^8.5.26",
 		"protobufjs": "^7.6.5",
 		"sharp": "0.35.3",
 		"shell-quote": "^1.10.0",
 		"socket.io-parser": "^4.2.7",
 		"svgo": "^4.0.2",
-		"tar": "^7.5.20",
+		"tar": "^7.5.22",
 		"tmp": "^0.2.7",
 		"undici": "^7.29.0",
+		"valibot": "^1.4.2",
 		"vite": "^8.2.0",
 		"ws": "^8.21.0"
 	},
@@ -151,5 +152,8 @@
 	"trustedDependencies": [
 		"@owlat/ui",
 		"better-sqlite3"
-	]
+	],
+	"patchedDependencies": {
+		"image-size@2.0.2": "patches/image-size@2.0.2.patch"
+	}
 }
