@@ -185,9 +185,10 @@ count is what "zero identity checks" is measured against;
 `scripts/provider-identity-collisions.txt` is the permanent set where the
 spelling belongs to a different vocabulary (the MTA routing API's answer, a
 docker compose profile, the contact-import registry) and there is no coupling to
-remove. Entries are `path` or `path:literal`; collision entries must be
-qualified, because a permanent whole-file licence would excuse a real kind
-branch added to that file years later.
+remove. Entries in both files are qualified `path:literal` (the script still
+parses bare `path`, but the debt list no longer uses it), because a whole-file
+licence would excuse a real kind branch added to that file later — the exact
+blindness bare entries showed when `emailit` arrived.
 
 The two checks are disjoint, not overlapping: declarations in the backend belong
 to the vitest one, comparisons everywhere belong to the ratchet, and neither
