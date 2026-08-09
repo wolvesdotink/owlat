@@ -154,4 +154,4 @@ if [ "$failures" -gt 0 ]; then
 	exit 1
 fi
 
-echo "ok:   all $checked Dockerfiles copy every workspace manifest and required dependency patches"
+echo "ok:   all $checked Dockerfiles copy every one of the ${#manifests[@]} workspace manifests and required dependency patches"
