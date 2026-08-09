@@ -1,5 +1,9 @@
 /** Emailit event semantics. Authentication is supplied by the host verifier registry. */
-import type { InboundEvent } from '../types';
+import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
+import type { InboundEvent, InboundEventOf } from '../types';
+
+/** The closed host vocabulary for a recipient-specific provider suppression. */
+type SuppressionReason = InboundEventOf<'email.provider_suppressed'>['reason'];
 
 type EmailitEventType =
 	| 'email.accepted'
@@ -28,6 +32,49 @@ interface EmailitPayload {
 	};
 }
 
+/**
+ * The kinds the dispatcher acts on. Everything else Emailit sends — click/open
+ * tracking, scheduling, inbound receipts, and any event name Emailit adds later
+ * — is acknowledged and dropped: first-party tracking stays authoritative and
+ * scheduling/receiving do not move Owlat's outbound Send lifecycle. Same
+ * posture as the Resend and Mandrill adapters' default branches.
+ */
+const ACTIONABLE_EVENT_TYPES: ReadonlySet<EmailitEventType> = new Set([
+	'email.accepted',
+	'email.attempted',
+	'email.bounced',
+	'email.complained',
+	'email.delivered',
+	'email.failed',
+	'email.rejected',
+	'email.suppressed',
+]);
+
+/**
+ * Free-text `status` naming a mailbox that does not exist. This is the ONE
+ * suppression reason `providerSuppression` turns into a hard `bounced` block
+ * (every other reason lands a reversible `manual` one), so the list stays
+ * narrow: text that merely reports a refusal must not blocklist permanently.
+ */
+const INVALID_RECIPIENT_STATUS =
+	/invalid[ _-]?(?:recipient|address|email|mailbox)|does not exist|non-?existent|no such (?:user|mailbox|address)|user unknown|unknown (?:user|recipient)|user not found|mailbox not found|no mailbox/i;
+
+/** Free-text `status` naming an explicit refusal of the address by the receiver. */
+const REJECTED_RECIPIENT_STATUS = /reject|refus|denied/i;
+
+/**
+ * Map Emailit's free-text suppression `status` onto the closed host vocabulary.
+ * Emailit reports no machine cause, so the text is the only signal about WHY an
+ * address was suppressed; unrecognized text falls back to the conservative
+ * `recipient_blacklisted`.
+ */
+function suppressionReason(status: string | undefined): SuppressionReason {
+	const text = status ?? '';
+	if (INVALID_RECIPIENT_STATUS.test(text)) return 'invalid_recipient';
+	if (REJECTED_RECIPIENT_STATUS.test(text)) return 'recipient_rejected';
+	return 'recipient_blacklisted';
+}
+
 function payloadFrom(rawBody: string): EmailitPayload {
 	const payload = JSON.parse(rawBody) as Partial<EmailitPayload>;
 	const object = payload.data?.object;
@@ -54,6 +101,11 @@ export const emailitAdapter = {
 	parseEvent(rawBody: string): InboundEvent | null {
 		const payload = payloadFrom(rawBody);
 		const object = payload.data.object;
+		// Drop the kinds we never dispatch BEFORE parsing the timestamp: an
+		// unparseable timestamp must fail closed only for the events that move
+		// the Send lifecycle. Failing a click or a receipt with a 400 would risk
+		// Emailit disabling the endpoint over telemetry we discard anyway.
+		if (!ACTIONABLE_EVENT_TYPES.has(payload.type)) return null;
 		const providerMessageId = object.id;
 		const at = eventTime(object);
 		const recipient = recipientOf(object);
@@ -78,15 +130,21 @@ export const emailitAdapter = {
 					providerType,
 					...(object.status ? { reason: object.status } : {}),
 				};
-			case 'email.bounced':
+			case 'email.bounced': {
+				// Emailit reports one free-text `status` and no hard/soft flag, so the
+				// text is classified by the shared soft-default classifier the Resend
+				// adapter and the MTA bounce engine use. Defaulting to `hard` would
+				// permanently blocklist a recipient on any transient failure.
+				const bounceMessage = object.status ?? '';
 				return {
 					kind: 'email.bounced',
 					providerMessageId,
 					at,
 					providerType,
-					bounceType: 'hard',
-					...(object.status ? { bounceMessage: object.status } : {}),
+					bounceType: classifyBounceMessage(bounceMessage),
+					...(bounceMessage ? { bounceMessage } : {}),
 				};
+			}
 			case 'email.complained':
 				return {
 					kind: 'email.complained',
@@ -114,11 +172,11 @@ export const emailitAdapter = {
 					at,
 					providerType,
 					recipient,
-					reason: 'recipient_blacklisted',
+					reason: suppressionReason(object.status),
 				};
 			default:
-				// First-party tracking remains authoritative; scheduling/receiving do
-				// not change Owlat's outbound Send lifecycle.
+				// Unreachable: the ignorable kinds returned above, before the
+				// timestamp was parsed. See ACTIONABLE_EVENT_TYPES.
 				return null;
 		}
 	},
