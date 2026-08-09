@@ -99,11 +99,9 @@ export async function enabledFallbackRelayKinds(
  * the same reason.
  */
 export async function readyFallbackRelayKinds(ctx: QueryCtx | MutationCtx): Promise<string[]> {
-	const ready: string[] = [];
-	for (const kind of await enabledFallbackRelayKinds(ctx)) {
-		if (isSendProviderKind(kind) && (await isSendProviderReady(ctx, kind))) ready.push(kind);
-	}
-	return ready;
+	const kinds = (await enabledFallbackRelayKinds(ctx)).filter(isSendProviderKind);
+	const readiness = await Promise.all(kinds.map((kind) => isSendProviderReady(ctx, kind)));
+	return kinds.filter((_, i) => readiness[i]);
 }
 
 /**

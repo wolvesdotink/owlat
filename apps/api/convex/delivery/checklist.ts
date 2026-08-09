@@ -384,20 +384,22 @@ export const getVerificationContext = internalQuery({
 		const needsRelay = dependencies.includes('relay');
 		const needsTracking = dependencies.includes('tracking');
 		const needsPostmaster = dependencies.includes('postmaster');
-		const [settings, warming, routes, relayIdentities, tracking, postmaster] = await Promise.all([
-			needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
-			needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
-			needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
-			needsRelay ? loadRelayIdentities(ctx) : Promise.resolve([]),
-			needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),
-			domain && needsPostmaster
-				? ctx.db
-						.query('googlePostmasterStats')
-						.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain))
-						.order('desc')
-						.first()
-				: Promise.resolve(null),
-		]);
+		const [settings, warming, routes, relayIdentities, tracking, postmaster, readyRelayKinds] =
+			await Promise.all([
+				needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
+				needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
+				needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
+				needsRelay ? loadRelayIdentities(ctx) : Promise.resolve([]),
+				needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),
+				domain && needsPostmaster
+					? ctx.db
+							.query('googlePostmasterStats')
+							.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain))
+							.order('desc')
+							.first()
+					: Promise.resolve(null),
+				needsRelay ? readyFallbackRelayKinds(ctx) : Promise.resolve([]),
+			]);
 		return {
 			domain,
 			settings,
@@ -406,12 +408,12 @@ export const getVerificationContext = internalQuery({
 			relayIdentities,
 			tracking,
 			postmaster,
-			// THE READINESS HALF OF `deployment.relay`, resolved here because this is
-			// where a `ctx` exists — and asked of the module that owns "which relays
-			// is the fallback configured to use" rather than re-derived from the
-			// `routes` above, which are read under a different bound for a different
-			// question. See `lib/sendProviders/fallbackRelays.ts`.
-			readyRelayKinds: needsRelay ? await readyFallbackRelayKinds(ctx) : [],
+			// THE READINESS HALF OF `deployment.relay`, resolved above because this
+			// is where a `ctx` exists — and asked of the module that owns "which
+			// relays is the fallback configured to use" rather than re-derived from
+			// the `routes` above, which are read under a different bound for a
+			// different question. See `lib/sendProviders/fallbackRelays.ts`.
+			readyRelayKinds,
 		};
 	},
 });
