@@ -79,7 +79,7 @@ export type ProviderFeedbackEvent =
 	  }
 	| {
 			readonly kind: 'failed';
-			readonly providerMessageId?: string;
+			readonly providerMessageId: string;
 			readonly at: number;
 			readonly code: string;
 			readonly recipient?: string;

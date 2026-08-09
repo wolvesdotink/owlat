@@ -952,6 +952,9 @@ import type * as webhooks_pluginFeedbackDeliveries from '../webhooks/pluginFeedb
 import type * as webhooks_pluginFeedbackEvents from '../webhooks/pluginFeedbackEvents.js';
 import type * as webhooks_pluginFeedbackHttp from '../webhooks/pluginFeedbackHttp.js';
 import type * as webhooks_providerFeedbackHttp from '../webhooks/providerFeedbackHttp.js';
+import type * as webhooks_providerFeedbackAdapter from '../webhooks/providerFeedbackAdapter.js';
+import type * as webhooks_providerVerifierRegistry from '../webhooks/providerVerifierRegistry.js';
+import type * as webhooks_providerSuppression from '../webhooks/providerSuppression.js';
 import type * as webhooks_scheduleFanout from '../webhooks/scheduleFanout.js';
 import type * as webhooks_security from '../webhooks/security.js';
 import type * as webhooks_types from '../webhooks/types.js';
@@ -1920,6 +1923,9 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/pluginFeedbackEvents': typeof webhooks_pluginFeedbackEvents;
 	'webhooks/pluginFeedbackHttp': typeof webhooks_pluginFeedbackHttp;
 	'webhooks/providerFeedbackHttp': typeof webhooks_providerFeedbackHttp;
+	'webhooks/providerFeedbackAdapter': typeof webhooks_providerFeedbackAdapter;
+	'webhooks/providerVerifierRegistry': typeof webhooks_providerVerifierRegistry;
+	'webhooks/providerSuppression': typeof webhooks_providerSuppression;
 	'webhooks/scheduleFanout': typeof webhooks_scheduleFanout;
 	'webhooks/security': typeof webhooks_security;
 	'webhooks/types': typeof webhooks_types;

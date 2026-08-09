@@ -85,6 +85,13 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 	const kind = readKind(event['kind']);
 	const at = readTimestamp(event['at']);
 	switch (kind) {
+		case 'sent':
+			return {
+				kind: 'email.sent',
+				providerMessageId: readProviderMessageId(event['providerMessageId']),
+				at,
+				providerType,
+			};
 		case 'delivered':
 			return {
 				kind: 'email.delivered',
@@ -127,6 +134,45 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 				providerType,
 				...optionalText('reason', event['reason']),
 			};
+		case 'failed': {
+			const code = readRequiredText(event['code'], 'code');
+			return {
+				kind: 'email.failed',
+				providerMessageId: readProviderMessageId(event['providerMessageId']),
+				at,
+				errorCode: code,
+				errorMessage: code,
+				providerType,
+				...optionalText('recipient', event['recipient']),
+			};
+		}
+		case 'unsubscribed': {
+			const providerMessageId = optionalText('providerMessageId', event['providerMessageId']);
+			if ('providerMessageId' in providerMessageId) {
+				assertUnreservedMessageId(providerMessageId['providerMessageId']!);
+			}
+			return {
+				kind: 'email.unsubscribed',
+				recipient: readRequiredText(event['recipient'], 'recipient'),
+				at,
+				providerType,
+				...providerMessageId,
+			};
+		}
+		case 'provider_suppressed': {
+			const providerMessageId = optionalText('providerMessageId', event['providerMessageId']);
+			if ('providerMessageId' in providerMessageId) {
+				assertUnreservedMessageId(providerMessageId['providerMessageId']!);
+			}
+			return {
+				kind: 'email.provider_suppressed',
+				recipient: readRequiredText(event['recipient'], 'recipient'),
+				reason: readSuppressionReason(event['reason']),
+				at,
+				providerType,
+				...providerMessageId,
+			};
+		}
 	}
 }
 
@@ -181,6 +227,19 @@ function readTimestamp(value: unknown): number {
 function readBounceType(value: unknown): 'hard' | 'soft' {
 	if (value !== 'hard' && value !== 'soft') {
 		throw new PluginFeedbackEventError('Plugin bounce type must be hard or soft');
+	}
+	return value;
+}
+
+function readSuppressionReason(
+	value: unknown
+): 'recipient_rejected' | 'recipient_blacklisted' | 'invalid_recipient' {
+	if (
+		value !== 'recipient_rejected' &&
+		value !== 'recipient_blacklisted' &&
+		value !== 'invalid_recipient'
+	) {
+		throw new PluginFeedbackEventError('Plugin suppression reason is not allowed');
 	}
 	return value;
 }

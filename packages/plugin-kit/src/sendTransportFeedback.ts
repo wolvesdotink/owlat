@@ -21,10 +21,14 @@
  * write rows nothing audits. A new member is a host change, by design.
  */
 export const PLUGIN_WEBHOOK_FEEDBACK_KINDS = [
+	'sent',
 	'delivered',
 	'bounced',
 	'complained',
 	'deferred',
+	'failed',
+	'unsubscribed',
+	'provider_suppressed',
 ] as const;
 
 export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[number];
@@ -40,34 +44,7 @@ export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[n
  * Every field is re-validated by the host before it is trusted: plugin output is
  * untrusted input, exactly as a send attempt's result is.
  */
-export type PluginWebhookFeedbackEvent =
-	| {
-			readonly kind: 'delivered';
-			readonly providerMessageId: string;
-			/** Provider's event time, epoch milliseconds. */
-			readonly at: number;
-			readonly recipient?: string;
-	  }
-	| {
-			readonly kind: 'bounced';
-			readonly providerMessageId: string;
-			readonly at: number;
-			readonly bounceType: 'hard' | 'soft';
-			readonly bounceMessage?: string;
-	  }
-	| {
-			readonly kind: 'complained';
-			readonly at: number;
-			readonly providerMessageId?: string;
-			readonly recipient?: string;
-	  }
-	| {
-			readonly kind: 'deferred';
-			readonly providerMessageId: string;
-			readonly at: number;
-			/** Provider free text, for operator logs only. */
-			readonly reason?: string;
-	  };
+export type PluginWebhookFeedbackEvent = import('@owlat/provider-kit').ProviderFeedbackEvent;
 
 /**
  * Largest request body the feedback route reads, in BYTES of UTF-8 (not string

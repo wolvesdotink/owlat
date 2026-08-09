@@ -120,6 +120,17 @@ export type InboundEvent =
 			providerType?: string;
 	  }
 	| {
+			// A signed provider callback reported a recipient-specific suppression.
+			// The reason is a closed host vocabulary; account/sender failures cannot
+			// reach this event and therefore cannot suppress an address.
+			kind: 'email.provider_suppressed';
+			recipient: string;
+			at: number;
+			reason: 'recipient_rejected' | 'recipient_blacklisted' | 'invalid_recipient';
+			providerMessageId?: string;
+			providerType: string;
+	  }
+	| {
 			kind: 'email.bounced';
 			providerMessageId: string;
 			at: number;

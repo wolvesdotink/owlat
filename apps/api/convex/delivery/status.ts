@@ -165,54 +165,6 @@ export const getStatus = adminQuery({
 });
 
 /**
- * Timestamp (ms) of the most recent SNS message received on `/webhooks/ses`, or
- * null if none. Powers the Delivery page's live "last event received" line so an
- * admin can confirm the SES → SNS feedback loop is actually delivering to this
- * instance. Reads only the audit-store's newest `ses` row via the
- * `by_source_and_received_at` index — never the payload body, so nothing
- * sensitive leaves the backend. Admin-gated (operational config).
- */
-export const getLastSesEventAt = adminQuery({
-	args: {},
-	handler: async (ctx): Promise<number | null> => {
-		const latest = await ctx.db
-			.query('webhookPayloads')
-			.withIndex('by_source_and_received_at', (q) => q.eq('source', 'ses'))
-			.order('desc')
-			.first();
-		return latest?.receivedAt ?? null;
-	},
-});
-
-/**
- * Whether Mandrill's feedback loop is wired, as two non-secret facts.
- *
- * The Mandrill sibling of {@link getLastSesEventAt}, and provider-specific for
- * the same reason it is: the SIGNING key is not part of what the transport needs
- * to SEND, so it never appears in `getStatus.requiredEnv`. Without it every
- * posted batch is rejected — bounces, complaints and reject-list hits silently
- * stop arriving while sending looks perfectly healthy — and that gap has to be
- * visible on the page where the webhook is set up.
- *
- * Presence boolean only; the key's value never leaves the backend. The timestamp
- * comes from the audit store's newest `mandrill` row, never its body.
- */
-export const getMandrillFeedbackStatus = adminQuery({
-	args: {},
-	handler: async (ctx): Promise<{ isWebhookKeyPresent: boolean; lastEventAt: number | null }> => {
-		const latest = await ctx.db
-			.query('webhookPayloads')
-			.withIndex('by_source_and_received_at', (q) => q.eq('source', 'mandrill'))
-			.order('desc')
-			.first();
-		return {
-			isWebhookKeyPresent: isEnvPresent('MANDRILL_WEBHOOK_KEY'),
-			lastEventAt: latest?.receivedAt ?? null,
-		};
-	},
-});
-
-/**
  * Generic feedback-channel status for any default or named transport.
  *
  * Feedback credentials remain deployment-wide in this migration, so a named

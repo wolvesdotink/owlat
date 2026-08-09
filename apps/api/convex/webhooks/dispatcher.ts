@@ -28,6 +28,7 @@ import { withTimeout } from '../lib/inputGuards';
 import { logError } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { syncMandrillReject } from './mandrillRejectSuppression';
+import { applyProviderSuppression } from './providerSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import {
@@ -231,6 +232,7 @@ const DISPATCH: DispatchTable = {
 			email: e.recipient,
 		});
 	},
+	'email.provider_suppressed': applyProviderSuppression,
 	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
