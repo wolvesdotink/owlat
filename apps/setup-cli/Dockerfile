@@ -8,6 +8,7 @@
 FROM oven/bun:1.3-alpine AS builder
 WORKDIR /build
 COPY package.json bun.lock* ./
+COPY patches/ patches/
 # ALL workspace manifests (same idiom as apps/web/Dockerfile): bun validates the
 # frozen lockfile against the full workspace shape, so a partial set of
 # package.jsons reads as "lockfile had changes" and the install refuses to run.
