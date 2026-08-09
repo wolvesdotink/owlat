@@ -10,7 +10,10 @@
 #
 # `bun run ci:verify` does not build images, so nothing else in the verify path
 # notices. This is a sibling of check-adr-numbers.sh and check-branding.sh: a
-# hard-0 invariant with no baseline. It expands the root package.json
+# hard-0 invariant with no baseline. It also verifies that every frozen-install
+# stage copies the root patches/ directory whenever patchedDependencies is in
+# use; otherwise Bun fails before dependency installation begins. The guard
+# expands the root package.json
 # `workspaces` globs to the workspaces that actually exist and asserts that each
 # one's package.json is matched by a pattern on every Dockerfile's COPY line —
 # and, so that an image cannot quietly opt itself out, that every Dockerfile
@@ -81,8 +84,28 @@ join_continuations() {
 
 failures=0
 checked=0
+has_patched_dependencies=$(
+	node -e '
+const patched = require("./package.json").patchedDependencies;
+process.stdout.write(patched && Object.keys(patched).length > 0 ? "1" : "0");
+'
+) || exit 1
 while IFS= read -r dockerfile; do
 	joined=$(join_continuations "$dockerfile")
+	if [ "$has_patched_dependencies" = "1" ]; then
+		stage_has_patches=""
+		while IFS= read -r instruction; do
+			if [[ $instruction =~ ^[[:space:]]*FROM[[:space:]] ]]; then
+				stage_has_patches=""
+			elif [[ $instruction =~ ^[[:space:]]*COPY[[:space:]]+patches/?[[:space:]]+patches/?[[:space:]]*$ ]]; then
+				stage_has_patches=1
+			elif [[ $instruction =~ ^[[:space:]]*RUN[[:space:]].*bun[[:space:]]+install.*--frozen-lockfile ]] \
+				&& [ -z "$stage_has_patches" ]; then
+				echo "FAIL: $dockerfile runs a frozen Bun install without copying patches/ in that stage"
+				failures=$((failures + 1))
+			fi
+		done <<<"$joined"
+	fi
 	patterns=$(
 		printf '%s\n' "$joined" \
 			| grep -E '^[[:space:]]*COPY --parents .*package\.json' \
@@ -162,4 +185,4 @@ if [ "$failures" -gt 0 ]; then
 	exit 1
 fi
 
-echo "ok:   all $checked Dockerfiles copy every one of the ${#manifests[@]} workspace manifests"
+echo "ok:   all $checked Dockerfiles copy every workspace manifest and required dependency patches"
