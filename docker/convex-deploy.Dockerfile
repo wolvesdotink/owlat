@@ -24,18 +24,20 @@ COPY --parents apps/*/package.json packages/*/package.json examples/*/package.js
 
 RUN bun install --frozen-lockfile
 
-# The generated Convex composition imports the plugin host, whose public
-# contract dependency resolves through plugin-kit's built package exports.
-# Build that contract from a clean context so deploys cannot rely on a local
-# ignored dist/ directory.
+# The generated Convex composition imports the plugin host and both public
+# contract packages. Build them in dependency order from a clean context so
+# deploys cannot rely on local ignored dist directories.
 COPY tsconfig.base.json ./
+COPY packages/provider-kit/ packages/provider-kit/
 COPY packages/plugin-kit/ packages/plugin-kit/
+RUN bun run --cwd packages/provider-kit build
 RUN bun run --cwd packages/plugin-kit build
 
 # Re-run static membership, provenance, boundary, manifest, and generated-file
 # checks against the exact clean Docker context used by the deploy artifact.
 FROM deps AS composition-check
 COPY . .
+COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/
 COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
 RUN bun run plugins:check
 
@@ -69,13 +71,15 @@ COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/channels/ packages/channels/
 COPY packages/plugin-host/ packages/plugin-host/
+COPY packages/provider-kit/package.json packages/provider-kit/package.json
+COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/
 COPY packages/plugin-kit/package.json packages/plugin-kit/package.json
 COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
 COPY packages/plugin-codegen/scripts/convexBundleSmoke.ts packages/plugin-codegen/scripts/convexBundleSmoke.ts
 
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
-RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/plugin-kit', '@owlat/mta-protocol'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
 RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 
 # Version metadata — injected by CI on release
