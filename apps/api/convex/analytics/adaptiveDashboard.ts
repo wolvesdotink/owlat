@@ -8,14 +8,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation, publicQuery } from '../lib/authedFunctions';
-import {
-	getUserIdFromSession,
-	getMutationContext,
-	getBetterAuthSessionWithRole,
-	requireOrgMember,
-	type OrganizationRole,
-} from '../lib/sessionOrganization';
+import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import type { OrganizationRole } from '../lib/sessionOrganization';
 
 // ============================================================
 // Default Card Definitions
@@ -80,14 +74,14 @@ const EDITOR_CARD_TYPES = new Set([
 	'upcoming_campaigns',
 ]);
 
-function canViewCard(type: string, role: OrganizationRole | null): boolean {
+function canViewCard(type: string, role: OrganizationRole): boolean {
 	if (role === 'owner' || role === 'admin') return true;
 	return EDITOR_CARD_TYPES.has(type);
 }
 
 function visibleCards<T extends { type: string }>(
 	cards: readonly T[],
-	role: OrganizationRole | null
+	role: OrganizationRole
 ): T[] {
 	return cards.filter((card) => canViewCard(card.type, role));
 }
@@ -99,16 +93,19 @@ function visibleCards<T extends { type: string }>(
 /**
  * Get the resolved dashboard layout for the current context.
  * Evaluates all rules and returns the ordered list of cards to display.
+ *
+ * `userId` and `role` both come from the session `authedQuery`'s floor already
+ * resolved and threads in. This used to be THREE resolutions per call — the
+ * floor, then `getUserIdFromSession`, then `getBetterAuthSessionWithRole` — on
+ * the query every dashboard page subscribes to. The role is also no longer
+ * "best-effort": the floor rejects a caller without one, so the layout is
+ * always filtered against a real role rather than falling through to the
+ * null-role path that could never be reached behind it.
  */
 export const getLayout = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		// userId gates access (throws if unauthenticated); role is best-effort
-		// and only used to match role-scoped layout rules — a null role simply
-		// skips those rules rather than denying the layout.
-		const userId = await getUserIdFromSession(ctx);
-		const sessionWithRole = await getBetterAuthSessionWithRole(ctx);
-		const role = sessionWithRole?.role ?? null;
+	handler: async (ctx, _args, session) => {
+		const { userId, role } = session;
 		const layout = await ctx.db
 			.query('dashboardLayouts')
 			.withIndex('by_user', (q) => q.eq('userId', userId))
@@ -162,42 +159,32 @@ export const getLayout = authedQuery({
  * Get available card types, filtered to what the caller's organization role may
  * see.
  *
- * ONE session resolution per call. The card list is a 13-element constant, so
- * the only real work is deciding the caller's role — and under `authedQuery`
- * that was paid twice: the wrapper's floor (`requireOrgMember` →
- * `getBetterAuthSessionWithRole`) resolved the session and looked the BetterAuth
- * `member` row up, then the handler did it all again purely to read `role` off
- * the result. `publicQuery` + the floor's own helper called ONCE in the handler
- * collapses that to a single lookup while keeping the auth outcome identical.
+ * ONE session resolution per call. The card list is a 13-element constant, so the
+ * only real work is deciding the caller's role — and that is already decided when
+ * the handler runs: `authedQuery`'s floor (`requireOrgMember` →
+ * `getBetterAuthSessionWithRole`) resolved the session, looked the BetterAuth
+ * `member` row up, and threads the result in as the third argument. Reading
+ * `session.role` here is therefore free; re-resolving it in the handler is what
+ * used to make a live-subscribed query pay for two `member` lookups.
  */
-// public: NOT anonymous-reachable. `requireOrgMember` — the exact helper
-// `authedQuery`'s floor calls — is the first statement of the handler, so an
-// anonymous caller still gets `unauthenticated` and an authenticated non-member
-// still gets `forbidden`, with the same messages, before any card is returned.
-// The builder is `publicQuery` only so the role that gate resolves can be REUSED
-// instead of re-fetched. See the doc comment above.
 // all-members: card definitions are metadata every org member may read, filtered
 // to the caller's role.
-export const getAvailableCards = publicQuery({
+export const getAvailableCards = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		const { role } = await requireOrgMember(ctx);
-		return visibleCards(DEFAULT_CARDS, role);
-	},
+	handler: async (_ctx, _args, session) => visibleCards(DEFAULT_CARDS, session.role),
 });
 
 /**
- * Get raw layout configuration for editing
+ * Get raw layout configuration for editing. Keyed by the session user the floor
+ * admitted — never a caller-supplied id.
  */
 export const getRawLayout = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		const userId = await getUserIdFromSession(ctx);
-		return await ctx.db
+	handler: async (ctx, _args, session) =>
+		ctx.db
 			.query('dashboardLayouts')
-			.withIndex('by_user', (q) => q.eq('userId', userId))
-			.first();
-	},
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
+			.first(),
 });
 
 // ============================================================
@@ -245,8 +232,7 @@ export const saveLayout = authedMutation({
 			)
 		),
 	},
-	handler: async (ctx, args) => {
-		const session = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
 		const existing = await ctx.db
 			.query('dashboardLayouts')
 			.withIndex('by_user', (q) => q.eq('userId', session.userId))
@@ -276,7 +262,7 @@ export const saveLayout = authedMutation({
 // Helpers
 // ============================================================
 
-function getDefaultLayout(role: OrganizationRole | null) {
+function getDefaultLayout(role: OrganizationRole) {
 	return {
 		cards: visibleCards(
 			[
@@ -301,7 +287,7 @@ function matchesCondition(
 	},
 	currentTime: string,
 	dayOfWeek: number,
-	role: OrganizationRole | null
+	role: OrganizationRole
 ): boolean {
 	// Check time range
 	if (condition.timeRange) {

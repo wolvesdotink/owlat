@@ -13,13 +13,20 @@ import type { OrganizationRole } from '../lib/sessionOrganization';
  * caller read or overwrite another user's dashboard.
  *
  * After the fix:
- *   - queries call `getUserIdFromSession(ctx)` (throws if not authed)
- *   - mutations call `getMutationContext(ctx)` (throws if not authed)
- *   - `userId` is removed from the args schema entirely
+ *   - `userId` is removed from the args schema entirely, and every handler keys
+ *     off the session its builder's floor resolved and threads in as the third
+ *     argument (`authedQuery` → `requireOrgMember`, `authedMutation` →
+ *     `getMutationContext`, which delegates to the same helper)
+ *   - so the floor is BOTH the authentication gate and the only session lookup:
+ *     no handler in this module calls a session helper of its own. Each endpoint
+ *     below carries a call-count pin for that, because re-adding an in-handler
+ *     `getUserIdFromSession` / `getBetterAuthSessionWithRole` /
+ *     `getMutationContext` is silent — correct, just twice the BetterAuth
+ *     session + `member` work on queries every dashboard page subscribes to.
  *
  * These tests mock the session helpers and assert (a) unauthenticated
- * callers are rejected, and (b) a different session's userId is used
- * regardless of the args shape.
+ * callers are rejected, (b) a different session's userId is used
+ * regardless of the args shape, and (c) the resolution count.
  */
 
 let mockUserId: string | null = 'user-A';
@@ -31,26 +38,34 @@ vi.mock('../lib/sessionOrganization', async () => {
 	);
 	return {
 		...actual,
-		// Dynamic, not a fixed resolved value: this is BOTH the floor `authedQuery`
-		// runs and — for `getAvailableCards` — the gate the handler itself calls, so
-		// the "unauthenticated is refused" and "role decides the cards" cases have
-		// to be able to drive it.
+		// Dynamic, not a fixed resolved value: this is the floor every query in the
+		// module runs, and — since the floor threads its result into the handler —
+		// also the single source of the `userId` each layout is keyed by and the
+		// `role` the cards are filtered against. So the "unauthenticated is refused",
+		// "another user's row is untouchable" and "role decides the cards" cases all
+		// drive it.
 		requireOrgMember: vi.fn(async () => {
 			if (!mockUserId) throw new Error('Not authenticated');
 			if (!mockRole) throw new Error('You do not have access to this organization');
 			return { userId: mockUserId, role: mockRole, activeOrganizationId: 'org-1' };
 		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		// `authedMutation`'s floor. Kept faithful to the real helper (which delegates
+		// to `requireOrgMember`) so `saveLayout` sees the same session its queries do.
+		getMutationContext: vi.fn(async () => {
+			if (!mockUserId) throw new Error('Not authenticated');
+			if (!mockRole) throw new Error('You do not have access to this organization');
+			return { userId: mockUserId, role: mockRole, activeOrganizationId: 'org-1' };
+		}),
+		// The two helpers the handlers USED to call on top of their floor. Mocked so
+		// they are counted, and expected never to run: the pins below are what keeps
+		// a second session resolution from creeping back in.
 		getUserIdFromSession: vi.fn(async () => {
 			if (!mockUserId) throw new Error('Not authenticated');
 			return mockUserId;
 		}),
 		getBetterAuthSessionWithRole: vi.fn(async () => {
 			if (!mockUserId || !mockRole) return null;
-			return { userId: mockUserId, role: mockRole };
-		}),
-		getMutationContext: vi.fn(async () => {
-			if (!mockUserId || !mockRole) throw new Error('Not authenticated');
 			return { userId: mockUserId, role: mockRole };
 		}),
 	};
@@ -128,6 +143,81 @@ describe('adaptiveDashboard.getLayout — auth', () => {
 		expect(types).toEqual(['campaign_performance', 'recent_contacts']);
 		expect(types).not.toContain('agent_health');
 	});
+
+	it('resolves the session ONCE — both the user and the role come from the floor', async () => {
+		// This handler cost THREE resolutions before: `authedQuery`'s floor, then
+		// `getUserIdFromSession` for the layout key, then
+		// `getBetterAuthSessionWithRole` for the role the rules match on.
+		const t = convexTest(schema, modules);
+		await t.query(api.analytics.adaptiveDashboard.getLayout, {});
+		expect(vi.mocked(sessionOrganization.requireOrgMember)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sessionOrganization.getUserIdFromSession)).not.toHaveBeenCalled();
+		expect(vi.mocked(sessionOrganization.getBetterAuthSessionWithRole)).not.toHaveBeenCalled();
+	});
+
+	it('filters the resolved layout by the caller’s role', async () => {
+		// The role is no longer best-effort: the floor refuses a caller without one,
+		// so an editor's layout is filtered rather than falling through a null-role
+		// path that could never be reached behind the floor.
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('dashboardLayouts', {
+				userId: 'user-E',
+				rules: [],
+				pinnedCards: [
+					{ type: 'campaign_performance', size: 'medium' as const },
+					{ type: 'agent_health', size: 'small' as const },
+				],
+				updatedAt: Date.now(),
+			});
+		});
+
+		mockUserId = 'user-E';
+		mockRole = 'editor';
+		const result = await t.query(api.analytics.adaptiveDashboard.getLayout, {});
+		// `agent_health` is an organization-operations card an editor may not see.
+		expect(result.cards.map((c) => c.type)).toEqual(['campaign_performance']);
+	});
+});
+
+describe('adaptiveDashboard.getRawLayout — auth', () => {
+	it('throws when unauthenticated', async () => {
+		const t = convexTest(schema, modules);
+		mockUserId = null;
+		await expect(t.query(api.analytics.adaptiveDashboard.getRawLayout, {})).rejects.toThrow(
+			/Not authenticated/
+		);
+	});
+
+	it('reads the session user’s row, never another user’s', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('dashboardLayouts', {
+				userId: 'user-A',
+				rules: [],
+				pinnedCards: [{ type: 'queue_depth', size: 'medium' as const }],
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('dashboardLayouts', {
+				userId: 'user-B',
+				rules: [],
+				pinnedCards: [{ type: 'knowledge_graph', size: 'medium' as const }],
+				updatedAt: Date.now(),
+			});
+		});
+
+		mockUserId = 'user-A';
+		const raw = await t.query(api.analytics.adaptiveDashboard.getRawLayout, {});
+		expect(raw?.userId).toBe('user-A');
+		expect(raw?.pinnedCards?.[0]?.type).toBe('queue_depth');
+	});
+
+	it('resolves the session ONCE — the row key comes from the floor', async () => {
+		const t = convexTest(schema, modules);
+		await t.query(api.analytics.adaptiveDashboard.getRawLayout, {});
+		expect(vi.mocked(sessionOrganization.requireOrgMember)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sessionOrganization.getUserIdFromSession)).not.toHaveBeenCalled();
+	});
 });
 
 describe('adaptiveDashboard.saveLayout — auth', () => {
@@ -190,6 +280,18 @@ describe('adaptiveDashboard.saveLayout — auth', () => {
 			// user-B unchanged
 			expect(bLayout?.pinnedCards?.[0]?.type).toBe('channel_health');
 		});
+	});
+
+	it('resolves the session ONCE — the write key comes from the floor', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.analytics.adaptiveDashboard.saveLayout, {
+			rules: [],
+			pinnedCards: [],
+		});
+		// `authedMutation`'s floor, and nothing on top of it.
+		expect(vi.mocked(sessionOrganization.getMutationContext)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sessionOrganization.getUserIdFromSession)).not.toHaveBeenCalled();
+		expect(vi.mocked(sessionOrganization.getBetterAuthSessionWithRole)).not.toHaveBeenCalled();
 	});
 });
 
@@ -267,10 +369,14 @@ describe('adaptiveDashboard.getAvailableCards', () => {
 		// The regression this pins: `authedQuery` + an in-handler
 		// `getBetterAuthSessionWithRole` meant two BetterAuth session/member
 		// resolutions on every run of a query the dashboard editor live-subscribes,
-		// all to filter a 13-element constant.
+		// all to filter a 13-element constant. The handler now reads the role off
+		// the session `authedQuery`'s floor threads in, so the floor's own
+		// `requireOrgMember` is the ONLY resolution — and the handler reaches for no
+		// session helper of its own at all.
 		const t = convexTest(schema, modules);
 		await t.query(api.analytics.adaptiveDashboard.getAvailableCards, {});
 		expect(vi.mocked(sessionOrganization.requireOrgMember)).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(sessionOrganization.getBetterAuthSessionWithRole)).not.toHaveBeenCalled();
+		expect(vi.mocked(sessionOrganization.getUserIdFromSession)).not.toHaveBeenCalled();
 	});
 });

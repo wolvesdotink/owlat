@@ -6,14 +6,17 @@
  *   - the ADMIN FLOOR is real: an anonymous caller and an editor member are both
  *     refused before a seed row or an SNDS row is read;
  *   - the read is ORG-SCOPED: another organization's seed mailboxes are never
- *     counted, even though the handler no longer re-derives the org id from a
- *     second permission check;
- *   - the permission gate runs ONCE per execution. The handler used to call
- *     `requireOrgPermission` again purely to obtain `activeOrganizationId`,
- *     which meant two BetterAuth session + `member` resolutions on a query the
- *     hub live-subscribes and every seed / `sndsIpDailyStats` write invalidates;
- *   - the org scope can never be silently dropped: a claim with no active
- *     organization is refused rather than read cross-tenant.
+ *     counted, even though the handler no longer derives the org id itself at
+ *     all — it takes the one the floor admitted;
+ *   - the permission gate runs ONCE per execution, and NOTHING else looks a
+ *     session up. The handler used to call `requireOrgPermission` again purely to
+ *     obtain `activeOrganizationId` (two BetterAuth session + `member`
+ *     resolutions on a query the hub live-subscribes and every seed /
+ *     `sndsIpDailyStats` write invalidates), then `getBetterAuthSession` for the
+ *     cheaper claim read. `adminQuery` threads its own resolved session in, so
+ *     both extra reads are gone and the count is 1 + 0;
+ *   - the org scope can never be silently dropped: a session with no active
+ *     organization is refused by the floor rather than read cross-tenant.
  *
  * The session helpers are mocked because convex-test has no BetterAuth identity
  * and no BetterAuth component — the shipped pattern from
@@ -44,10 +47,8 @@ const session = vi.hoisted(() => ({
 	/** Is there a session at all? */
 	present: true,
 	role: 'owner' as OrganizationRole,
-	/** What the gate resolves — and, by default, what the JWT claim carries. */
-	organizationId: 'org_observability',
-	/** Override for the claim alone, to exercise the handler's own org guard. */
-	claimedOrganizationId: undefined as string | null | undefined,
+	/** The active org the gate resolves — and threads into the handler. */
+	organizationId: 'org_observability' as string | null,
 }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
@@ -56,6 +57,11 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 		...actual,
 		requireOrgPermission: vi.fn(async (_ctx: unknown, permission: Permission) => {
 			if (!session.present) throw new Error('Not authenticated');
+			// The floor's own order: no active organization is refused BEFORE the role
+			// is weighed, exactly as `requireOrgPermission` does it.
+			if (!session.organizationId) {
+				throw new Error('No active organization. Please select an organization.');
+			}
 			if (!actual.hasPermission(session.role, permission)) {
 				throw new Error("You don't have permission to perform this action");
 			}
@@ -65,16 +71,11 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 				activeOrganizationId: session.organizationId,
 			};
 		}),
+		// Mocked but expected NEVER to run: the handler used to reach for the JWT
+		// claim to re-derive the org id, and the count assertion below is what keeps
+		// it from creeping back.
 		getBetterAuthSession: vi.fn(async () =>
-			session.present
-				? {
-						userId: 'admin-1',
-						activeOrganizationId:
-							session.claimedOrganizationId === undefined
-								? session.organizationId
-								: session.claimedOrganizationId,
-					}
-				: null
+			session.present ? { userId: 'admin-1', activeOrganizationId: session.organizationId } : null
 		),
 	};
 });
@@ -130,7 +131,6 @@ beforeEach(() => {
 	session.present = true;
 	session.role = 'owner';
 	session.organizationId = ORG;
-	session.claimedOrganizationId = undefined;
 	// Call COUNTS are asserted below; `mockClear` keeps the factory
 	// implementations above.
 	vi.clearAllMocks();
@@ -160,9 +160,9 @@ describe('observabilityStatus.get — the admin floor', () => {
 		await expect(t.query(api.delivery.observabilityStatus.get, {})).rejects.toThrow(/permission/i);
 	});
 
-	it('refuses a session whose claim carries no active organization', async () => {
+	it('refuses a session with no active organization', async () => {
 		const t = convexTest(schema, modules);
-		session.claimedOrganizationId = null;
+		session.organizationId = null;
 		await connectSeed(t);
 		await expect(t.query(api.delivery.observabilityStatus.get, {})).rejects.toThrow(
 			/active organization/i
@@ -227,7 +227,8 @@ describe('observabilityStatus.get — the status it reports', () => {
 
 		// Once, in the `adminQuery` floor…
 		expect(vi.mocked(requireOrgPermission)).toHaveBeenCalledTimes(1);
-		// …and the handler's org scope comes off the JWT claims instead of repeating it.
-		expect(vi.mocked(getBetterAuthSession)).toHaveBeenCalledTimes(1);
+		// …and NOT AT ALL in the handler: the org scope is the floor's own resolved
+		// session, threaded in, so not even the cheap JWT-claim read remains.
+		expect(vi.mocked(getBetterAuthSession)).not.toHaveBeenCalled();
 	});
 });

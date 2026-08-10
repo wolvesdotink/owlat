@@ -10,7 +10,6 @@ const roots = [
 const allowlisted = new Set([
 	'apps/web/app/components/postbox/PostboxMailboxConnectForm.vue',
 	'apps/web/app/components/postbox/PostboxMailboxMove.vue',
-	'apps/web/app/components/postbox/PostboxSecurityBadge.vue',
 	'apps/web/app/pages/dashboard/preferences/app-passwords.vue',
 ]);
 const jargon = /\b(?:SPF|DKIM|DMARC|IMAP|SMTP)\b|\bMX records?\b/g;
@@ -66,23 +65,95 @@ if (stale.length > 0) {
 	process.exit(1);
 }
 
+const OPEN = '<template>';
+
+/**
+ * The jargon a member actually reads: the root template, comments blanked.
+ *
+ * GREEDY TO THE LAST `</template>`. A Vue SFC nests `<template v-if>` inside its
+ * root template, and a non-greedy match ended the read at the first NESTED close
+ * — on PostboxMailboxMove.vue that was line 166 of 390, so the four `MX record`
+ * strings a member is looking at were never read, and the ratchet's other
+ * direction reported a hard-working exemption as unused. Every branch of a
+ * conditional surface is member-visible, so all of them get read.
+ */
+function jargonHits(source: string): string[] {
+	const match = source.match(/<template>([\s\S]*)<\/template>/);
+	if (match?.[1] === undefined) return [];
+	// Comments are BLANKED, not deleted: a multi-line comment that collapses to
+	// nothing renumbers every line under it, and a report has to name a line
+	// someone can open.
+	const visible = match[1].replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, ''));
+	// The template rarely starts on line 1 (a `<script setup>` block usually comes
+	// first), so hits are numbered from where the template content begins.
+	const offset = source.slice(0, (match.index ?? 0) + OPEN.length).split('\n').length - 1;
+	const hits: string[] = [];
+	visible.split('\n').forEach((line, index) => {
+		if (jargon.test(line)) hits.push(`${offset + index + 1}: ${line.trim()}`);
+		jargon.lastIndex = 0;
+	});
+	return hits;
+}
+
+/**
+ * ALLOWLISTED FILES ARE READ, NOT SKIPPED.
+ *
+ * The list is strict in BOTH directions, like the provider-identity and
+ * file-size baselines: an unlisted surface that says `SPF` fails, and a LISTED
+ * surface that has stopped saying it fails too. Skipping the read would only
+ * answer the first half. An exemption whose file still exists but whose template
+ * has since been rewritten in plain words is invisible to an existence check —
+ * it excuses nothing today and quietly pre-approves the regression that puts the
+ * jargon back tomorrow, which is the one thing an exemption must never do.
+ */
 const violations: string[] = [];
+const exercised = new Set<string>();
+const scanned = new Set<string>();
 for (const root of roots) {
 	for (const file of await vueFiles(root)) {
 		const name = relative(workspace, file);
-		if (allowlisted.has(name)) continue;
-		const source = await readFile(file, 'utf8');
-		const template = source.match(/<template>([\s\S]*?)<\/template>/)?.[1] ?? '';
-		const visible = template.replace(/<!--[\s\S]*?-->/g, '');
-		visible.split('\n').forEach((line, index) => {
-			if (jargon.test(line)) violations.push(`${name}:${index + 1}: ${line.trim()}`);
-			jargon.lastIndex = 0;
-		});
+		// Roots may overlap (a directory and a file inside it); read each file once.
+		if (scanned.has(name)) continue;
+		scanned.add(name);
+		const hits = jargonHits(await readFile(file, 'utf8'));
+		if (allowlisted.has(name)) {
+			if (hits.length > 0) exercised.add(name);
+			continue;
+		}
+		violations.push(...hits.map((hit) => `${name}:${hit}`));
 	}
 }
+
+/**
+ * `scanned` is what separates the two ways an entry can excuse nothing. A file
+ * the walk never reached — a path under no root, or a non-`.vue` file the walk
+ * ignores — is not jargon-free, it is unread, and telling someone to plainen a
+ * template that was never checked sends them at the wrong edit. Both remedies
+ * are the same line deletion, so they are one report with the reason named.
+ */
+const unused = [...allowlisted]
+	.filter((name) => !exercised.has(name))
+	.map((name) =>
+		scanned.has(name)
+			? `${name} (its member-visible template says none of it any more)`
+			: `${name} (no member-visible root reaches it)`
+	);
 
 if (violations.length > 0) {
 	console.error('Protocol jargon leaked into a member-visible L1 surface:');
 	console.error(violations.join('\n'));
-	process.exit(1);
 }
+
+// Reported ALONGSIDE the violations above, not instead of them: both verdicts
+// come out of the same completed scan, they are independent edits, and hiding
+// one behind the other turns a single fix into two round trips. (A stale PATH is
+// different and still exits early — a configuration naming a file that is not
+// there means the scan itself cannot be trusted.)
+if (unused.length > 0) {
+	console.error(
+		'Unused member-jargon exemption — these allowlist entries excuse nothing, so they only widen what can regress. Delete the line:'
+	);
+	console.error(unused.join('\n'));
+}
+
+if (violations.length > 0 || unused.length > 0) process.exit(1);
