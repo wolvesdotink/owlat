@@ -43,6 +43,12 @@ const sendTitle = computed(() =>
 const fileInput = ref<HTMLInputElement | null>(null);
 const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 
+// The follow-up toggle sits inside the ⋯ panel, but the picker dialog it opens
+// is rendered here, outside the panel: the panel is `v-if`-ed and closes on the
+// first click outside it — which includes clicks inside the teleported dialog —
+// so a dialog owned by the slot would be unmounted mid-interaction.
+const followUpPickerOpen = ref(false);
+
 async function onAttachClick() {
 	if (isDesktop.value) {
 		const files = await pickNativeFiles({ title: 'Attach files', multiple: true });
@@ -62,9 +68,8 @@ function onPickFiles(event: Event) {
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex items-center justify-between">
 		<div class="flex items-center gap-2">
-			<button
+			<UiButton
 				type="button"
-				class="btn btn-primary"
 				:title="sendTitle"
 				:disabled="!canSend || sending || isScheduled"
 				@click="emit('send')"
@@ -72,35 +77,41 @@ function onPickFiles(event: Event) {
 				<Icon v-if="sending" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
 				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
 				{{ sending ? 'Sending…' : 'Send' }}
-			</button>
-			<PostboxComposerFollowUp v-model:remind-at="followUpRemindAt" :disabled="isScheduled" />
-			<button type="button" class="btn btn-ghost" title="Attach files" @click="onAttachClick">
+			</UiButton>
+			<UiButton variant="ghost" type="button" title="Attach files" @click="onAttachClick">
 				<Icon name="lucide:paperclip" class="w-4 h-4" />
-			</button>
+			</UiButton>
 			<input ref="fileInput" type="file" multiple class="hidden" @change="onPickFiles" />
-			<label
-				v-if="showSignaturePicker"
-				class="inline-flex items-center gap-1 text-xs text-text-tertiary"
-				title="Signature"
-			>
-				<Icon name="lucide:pen-line" class="w-3.5 h-3.5" />
-				<select
-					:value="activeSignatureId ?? ''"
-					class="bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs text-text-secondary outline-none"
-					aria-label="Signature"
-					@change="emit('signature-change', $event)"
-				>
-					<option value="">No signature</option>
-					<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
-						{{ sig.name }}
-					</option>
-				</select>
-			</label>
-			<!-- Secondary controls (schedule send, Simple/Designer mode + the
-			     formatting-toolbar toggle) collapse behind ⋯ to keep the footer
+			<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 			<PostboxOverflowMenu label="More compose options" align="left" direction="up">
 				<template #default="{ close }">
+					<div class="px-3 py-1.5">
+						<PostboxComposerFollowUp
+							v-model:remind-at="followUpRemindAt"
+							v-model:picker-open="followUpPickerOpen"
+							:disabled="isScheduled"
+						/>
+					</div>
+					<label
+						v-if="showSignaturePicker"
+						class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
+					>
+						<Icon name="lucide:pen-line" class="w-4 h-4 text-text-tertiary" />
+						<span>Signature</span>
+						<select
+							:value="activeSignatureId ?? ''"
+							class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
+							aria-label="Signature"
+							@change="emit('signature-change', $event)"
+						>
+							<option value="">None</option>
+							<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
+								{{ sig.name }}
+							</option>
+						</select>
+					</label>
+					<div class="border-t border-border-subtle my-1" />
 					<button
 						type="button"
 						role="menuitem"
@@ -126,6 +137,13 @@ function onPickFiles(event: Event) {
 					</div>
 				</template>
 			</PostboxOverflowMenu>
+			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
+			     must survive the panel closing (see followUpPickerOpen above). -->
+			<PostboxFollowUpDialog
+				:open="followUpPickerOpen"
+				@update:open="followUpPickerOpen = $event"
+				@confirm="(ts) => (followUpRemindAt = ts)"
+			/>
 		</div>
 		<span class="text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
 	</footer>

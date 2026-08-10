@@ -154,8 +154,8 @@ async function choose(preference: 'external' | 'instance') {
 						<span class="min-w-0">
 							<span class="font-medium text-sm block">Your own mail server</span>
 							<span class="text-xs text-text-tertiary block mt-0.5">
-								Outgoing mail goes through the outgoing (SMTP) server of the mailbox you connected.
-								This is how imported mail sends by default.
+								Outgoing mail goes through the sending server of the mailbox you connected. This is
+								how imported mail sends by default.
 							</span>
 						</span>
 					</label>

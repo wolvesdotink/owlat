@@ -138,8 +138,35 @@ them. Never reach for the bare `query`/`mutation`/`action` builders from
   the pre-auth setup page). Every use **must** carry a `// public: <reason>`
   comment.
 
+### The floor's session is threaded into the handler
+
+The org-scoped builders (`authedQuery`, `authedMutation`, `adminQuery`,
+`adminMutation`, `ownerMutation`, and the `featureGated` builders composed from
+them) resolve a full `MutationSessionContext` — `userId`, `role`,
+`activeOrganizationId` — to decide the floor, and pass it to the handler as its
+**third argument**:
+
+```ts
+export const getCenter = adminQuery({
+	args: {},
+	handler: async (ctx, _args, session) => read(ctx, session.activeOrganizationId),
+});
+```
+
+Never re-derive that context inside the handler. `getMutationContext(ctx)` /
+`requireOrgMember(ctx)` / `getBetterAuthSessionWithRole(ctx)` called under one of
+these builders is a SECOND BetterAuth session read plus a second `member`
+component query, on every execution of a function the dashboard may
+live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
+baseline in `scripts/session-threading-baseline.txt`, both directions strict;
+`// session: <reason>` opts a handler out when the re-resolution is deliberate). `ctx` and `args` are untouched, and a handler declaring only
+`(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
+`authedIdentityMutation` (identity, not an org session) and `authedAction`
+(enforced in another function's context) have nothing to thread and keep the raw
+builder signature.
+
 The wrapper only enforces the auth floor; privileged writes still layer a
-`requirePermission(hasPermission(role, '<scope>:<verb>'))` (or the
+`requirePermission(hasPermission(session.role, '<scope>:<verb>'))` (or the
 query/mutation-compatible `requireOrgPermission(ctx, '<scope>:<verb>')`) check
 inside the handler. `internalQuery`/`internalMutation`/`internalAction` and
 `httpAction` are unaffected (server-only, or a separately-authenticated HTTP

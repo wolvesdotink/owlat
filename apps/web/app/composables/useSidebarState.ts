@@ -6,10 +6,10 @@ export interface SectionState {
 	chat: boolean;
 	assistant: boolean;
 	send: boolean;
-	delivery: boolean;
 	knowledge: boolean;
 	audience: boolean;
-	settings: boolean;
+	administration: boolean;
+	preferences: boolean;
 }
 
 export type SectionKey = keyof SectionState;
@@ -29,16 +29,44 @@ const defaultSectionState: SectionState = {
 	chat: true,
 	assistant: true,
 	send: true,
-	delivery: true,
 	knowledge: true,
 	audience: true,
-	settings: true,
+	administration: true,
+	preferences: true,
 };
+
+/**
+ * Reconcile a persisted section map with the current set of sections.
+ *
+ * `useLocalStorage` returns stored JSON verbatim, and the stored object predates
+ * the current keys for anyone who used the sidebar before them ('settings' was
+ * renamed to 'administration', 'preferences' was added, 'delivery' was removed).
+ * A verbatim read therefore leaves the new keys `undefined`, and the sidebar's
+ * plain truthy check renders `undefined` as collapsed — so an upgrade would
+ * silently collapse the new sections once. Merging over the defaults fixes that;
+ * only known keys are copied, so keys for sections that no longer exist are
+ * dropped on the next write.
+ */
+function normalizeSectionState(stored: unknown): SectionState {
+	const merged = { ...defaultSectionState };
+	if (!stored || typeof stored !== 'object') return merged;
+	const source = stored as Partial<Record<SectionKey, unknown>>;
+	for (const key of Object.keys(defaultSectionState) as SectionKey[]) {
+		const value = source[key];
+		if (typeof value === 'boolean') merged[key] = value;
+	}
+	return merged;
+}
 
 // Use module-level storage to maintain singleton pattern across component instances
 const collapsedStorage = useLocalStorage<boolean>('sidebar-collapsed', false);
 const hiddenStorage = useLocalStorage<boolean>('sidebar-hidden', false);
 const sectionsStorage = useLocalStorage<SectionState>('sidebar-sections', defaultSectionState);
+
+// Section expand/collapse states, always reconciled against the current sections.
+const normalizedSectionStates = computed<SectionState>(() =>
+	normalizeSectionState(sectionsStorage.data.value)
+);
 
 // Transient peek overlay state — NOT persisted. True only while a hidden
 // sidebar is floating over the content (hover hot-zone or focus).
@@ -57,8 +85,9 @@ export function useSidebarState() {
 	// Sidebar hidden state (off the layout flow — desktop only)
 	const isHidden = hiddenStorage.data;
 
-	// Section expand/collapse states
-	const sectionStates = sectionsStorage.data;
+	// Section expand/collapse states (read-only: mutate through toggleSection so
+	// the persisted map is normalized on write)
+	const sectionStates = normalizedSectionStates;
 
 	// Hidden only takes effect on a desktop-width viewport; on mobile the raw
 	// persisted value is ignored so the off-canvas drawer keeps working.

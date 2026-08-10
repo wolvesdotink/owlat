@@ -28,6 +28,7 @@ const {
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
+const { isAdmin } = usePermissions();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: 'Assign thread',
 });
@@ -153,7 +154,7 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 	rowDomId: (t) => `inbox-row-${t._id}`,
 	onActivate: (t) => navigateTo(`/dashboard/inbox/${t._id}`),
 	onAction: (key, t) => {
-		if (key === 'i') void assignToMe(t);
+		if (key === 'i' && isAdmin.value) void assignToMe(t);
 	},
 });
 
@@ -170,7 +171,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 			</div>
 
 			<div class="flex items-center gap-3">
-				<NuxtLink to="/dashboard/inbox/review" class="btn btn-primary gap-2">
+				<UiButton to="/dashboard/inbox/review" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
 					Review Queue
 					<span
@@ -179,7 +180,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 					>
 						{{ stats.draftReady }}
 					</span>
-				</NuxtLink>
+				</UiButton>
 			</div>
 		</div>
 
@@ -243,6 +244,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 						:format-compact-relative-time="formatCompactRelativeTime"
 						:members="assignMembers"
 						:current-user-id="user?.id ?? null"
+						:can-manage="isAdmin"
 						@assign="assignTo(thread, $event)"
 						@resolve="resolveThread(thread)"
 						@snooze="openSnooze(thread)"
@@ -251,12 +253,13 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 
 				<!-- Load More -->
 				<div v-if="hasMoreThreads" class="pt-4 text-center">
-					<button class="btn btn-secondary btn-sm" @click="loadMoreThreads">Load More</button>
+					<UiButton variant="secondary" size="sm" @click="loadMoreThreads">Load More</UiButton>
 				</div>
 			</div>
 		</UiQueryBoundary>
 
 		<PostboxSnoozeDialog
+			v-if="isAdmin"
 			:open="showSnoozeDialog"
 			@update:open="showSnoozeDialog = $event"
 			@confirm="onSnoozeConfirm"

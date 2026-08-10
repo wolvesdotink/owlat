@@ -112,14 +112,16 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 				a later date — it is judged against the larger capacity you will have then.
 			</p>
 
-			<button
+			<UiButton
+				variant="secondary"
+				size="sm"
 				v-if="dismissible"
 				type="button"
-				class="btn btn-secondary btn-sm mt-3"
+				class="mt-3"
 				@click="$emit('dismiss')"
 			>
 				Change send options
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

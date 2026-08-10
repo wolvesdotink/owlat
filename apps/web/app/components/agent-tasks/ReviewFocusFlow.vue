@@ -217,9 +217,9 @@ function openThread(row: FlowItem) {
 		<UiIconBox icon="lucide:check-circle" size="xl" variant="success" rounded="full" class="mb-4" />
 		<p class="text-text-secondary font-medium">All caught up!</p>
 		<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
-		<button type="button" class="btn btn-secondary text-sm mt-6" @click="emit('exit')">
+		<UiButton variant="secondary" type="button" class="text-sm mt-6" @click="emit('exit')">
 			Back to list
-		</button>
+		</UiButton>
 	</div>
 
 	<AgentTaskFlow
@@ -372,12 +372,12 @@ function openThread(row: FlowItem) {
 					New drafts and escalations will appear here as the agent routes them.
 				</p>
 				<div class="mt-6 flex items-center justify-center gap-2">
-					<button type="button" class="btn btn-secondary text-sm" @click="emit('exit')">
+					<UiButton variant="secondary" type="button" class="text-sm" @click="emit('exit')">
 						Back to list
-					</button>
-					<NuxtLink to="/dashboard/inbox" class="btn btn-secondary text-sm">
+					</UiButton>
+					<UiButton variant="secondary" to="/dashboard/inbox" class="text-sm">
 						Back to inbox
-					</NuxtLink>
+					</UiButton>
 				</div>
 			</div>
 		</template>

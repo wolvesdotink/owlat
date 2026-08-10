@@ -166,7 +166,7 @@ const handleTranslations = () => {
 					<p class="text-text-secondary mb-6">
 						This email template doesn't exist or has been deleted.
 					</p>
-					<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
+					<UiButton @click="handleBack">Back to Emails</UiButton>
 				</div>
 			</div>
 

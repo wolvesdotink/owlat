@@ -4,22 +4,28 @@
  * The clock button opens the preset picker when off and clears the stored
  * deadline when on; the deadline (`remindAt` v-model) autosaves onto the draft
  * and arms a thread follow-up watch at send time.
+ *
+ * This component renders ONLY the toggle: the picker dialog is rendered by the
+ * footer and driven through the `pickerOpen` v-model. The toggle lives inside
+ * the footer's ⋯ overflow menu, whose panel is `v-if`-ed away on the first
+ * click outside it — and a click inside the teleported dialog counts as
+ * outside. Owning the dialog here would therefore unmount it mid-interaction.
  */
 const remindAt = defineModel<number | null>('remindAt', { required: true });
+/** Whether the parent-rendered preset picker is open. */
+const pickerOpen = defineModel<boolean>('pickerOpen', { required: true });
 
 defineProps<{
 	/** Scheduled sends can't carry a composer reminder — disable the toggle. */
 	disabled?: boolean;
 }>();
 
-const open = ref(false);
-
 function toggle() {
 	if (remindAt.value) {
 		remindAt.value = null;
 		return;
 	}
-	open.value = true;
+	pickerOpen.value = true;
 }
 
 const title = computed(() =>
@@ -30,9 +36,9 @@ const title = computed(() =>
 </script>
 
 <template>
-	<button
+	<UiButton
+		variant="ghost"
 		type="button"
-		class="btn btn-ghost"
 		:class="{ 'text-brand': remindAt }"
 		:title="title"
 		:aria-label="title"
@@ -42,10 +48,5 @@ const title = computed(() =>
 	>
 		<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 		<Icon v-if="remindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
-	</button>
-	<PostboxFollowUpDialog
-		:open="open"
-		@update:open="open = $event"
-		@confirm="(ts) => (remindAt = ts)"
-	/>
+	</UiButton>
 </template>

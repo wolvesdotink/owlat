@@ -175,7 +175,9 @@ describe('reference gallery coverage', () => {
 		// link that renders and then 404s. The route set is read from
 		// apps/web/app/pages so deleting a page turns this red.
 		const routes = await readDashboardRouteMatchers();
-		expect(routes.some((route) => route.route === '/dashboard/settings/plugins/[id]')).toBe(true);
+		expect(routes.some((route) => route.route === '/dashboard/admin/instance/plugins/[id]')).toBe(
+			true
+		);
 
 		const destinations = REFERENCE_GALLERY.flatMap((entry) =>
 			navigationHrefs(entry.manifest).map((href) => ({ ...href, plugin: entry.packageName }))

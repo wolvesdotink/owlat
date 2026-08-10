@@ -1,4 +1,27 @@
-import type { Ref } from 'vue';
+import type { ComponentPublicInstance, Ref } from 'vue';
+
+/**
+ * What a template ref can hold: a DOM element, or — when `ref=` sits on a
+ * component (`<UiButton ref="triggerEl">`) — that component's public instance,
+ * whose rendered root node is `$el`. Accepting both means a consumer can swap a
+ * raw `<button>` for a component without the containment check silently
+ * breaking (a component instance is truthy but has no `.contains`, which used to
+ * throw on every document click and leave the panel stuck open).
+ */
+type ClickOutsideTarget = Ref<HTMLElement | ComponentPublicInstance | null | undefined>;
+
+/** Anything with `contains()` — an Element, Document or DocumentFragment. */
+function isContainerNode(value: unknown): value is Node {
+	return !!value && typeof (value as Node).contains === 'function';
+}
+
+/** Resolve a template ref's current value to the node to test containment on. */
+function resolveNode(value: ClickOutsideTarget['value']): Node | null {
+	if (!value) return null;
+	if (isContainerNode(value)) return value;
+	const root = (value as ComponentPublicInstance).$el as unknown;
+	return isContainerNode(root) ? root : null;
+}
 
 /**
  * Run a handler when a click lands outside the given element(s).
@@ -12,15 +35,15 @@ import type { Ref } from 'vue';
  * fires only when the click is outside all of them.
  */
 export function useClickOutside(
-	target: Ref<HTMLElement | null | undefined> | Array<Ref<HTMLElement | null | undefined>>,
-	handler: (event: MouseEvent) => void,
+	target: ClickOutsideTarget | ClickOutsideTarget[],
+	handler: (event: MouseEvent) => void
 ): void {
 	const targets = Array.isArray(target) ? target : [target];
 
 	const onClick = (event: MouseEvent) => {
 		const node = event.target as Node | null;
 		if (!node) return;
-		const isInside = targets.some((t) => t.value?.contains(node));
+		const isInside = targets.some((t) => resolveNode(t.value)?.contains(node));
 		if (!isInside) handler(event);
 	};
 
@@ -36,7 +59,7 @@ export function useClickOutside(
  */
 export function useClickOutsideSelector(
 	selector: string,
-	handler: (event: MouseEvent) => void,
+	handler: (event: MouseEvent) => void
 ): void {
 	const onClick = (event: MouseEvent) => {
 		const node = event.target as HTMLElement | null;

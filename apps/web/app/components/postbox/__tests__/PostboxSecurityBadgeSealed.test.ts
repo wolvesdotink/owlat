@@ -99,9 +99,9 @@ describe('PostboxSecurityBadge · sealed driver', () => {
 		expect(wrapper.text()).not.toContain('Signed (PGP)');
 	});
 
-	it('no sealed prop: the pre-Sealed-Mail structural badge is unchanged', () => {
+	it('no sealed prop: the structural badge uses the plain-language label', () => {
 		const wrapper = mountBadge({ klass: 'pgp-signed' });
 		expect(wrapper.find('[data-testid="sealed-badge"]').exists()).toBe(false);
-		expect(wrapper.text()).toContain('Signed (PGP)');
+		expect(wrapper.text()).toContain('Digitally signed');
 	});
 });

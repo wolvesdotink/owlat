@@ -40,17 +40,22 @@ export interface InboxThreadRowThread {
  * snooze / open). The list owns the v-for, keyboard navigation, and every
  * mutation; this row maps DOM events to semantic emits.
  */
-const props = defineProps<{
-	thread: InboxThreadRowThread;
-	/** Keyboard-focused row (drives the focus ring + aria-selected). */
-	focused: boolean;
-	/** Compact relative-time formatter ("5m ago", short date past 7d). */
-	formatCompactRelativeTime: (timestamp: number) => string;
-	/** Org members for the hover assignee picker. */
-	members?: { userId: string; name?: string | null; email: string; image?: string | null }[];
-	/** Current viewer's user id — drives the picker's "Me" row + the `i` shortcut. */
-	currentUserId?: string | null;
-}>();
+const props = withDefaults(
+	defineProps<{
+		thread: InboxThreadRowThread;
+		/** Keyboard-focused row (drives the focus ring + aria-selected). */
+		focused: boolean;
+		/** Compact relative-time formatter ("5m ago", short date past 7d). */
+		formatCompactRelativeTime: (timestamp: number) => string;
+		/** Org members for the hover assignee picker. */
+		members?: { userId: string; name?: string | null; email: string; image?: string | null }[];
+		/** Current viewer's user id — drives the picker's "Me" row + the `i` shortcut. */
+		currentUserId?: string | null;
+		/** Admin-only triage controls; editors retain the readable thread row. */
+		canManage?: boolean;
+	}>(),
+	{ canManage: true }
+);
 
 const emit = defineEmits<{
 	/** Chosen assignee — a user id, or `undefined` to unassign. */
@@ -166,6 +171,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 		     assignee picker is open the cluster stays visible (dropping the
 		     hover-reveal class) so the teleported menu keeps its anchor. -->
 		<div
+			v-if="canManage"
 			:class="[
 				assignMenuOpen ? '' : 'ui-hover-reveal',
 				'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle',

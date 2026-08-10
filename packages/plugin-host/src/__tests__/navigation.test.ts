@@ -72,11 +72,11 @@ describe('mergeHostedNavigation', () => {
 
 	it('lets a core entry win when a plugin claims the same id (no shadowing)', () => {
 		const result = mergeHostedNavigation({
-			core: [core('/dashboard/settings')],
-			plugins: [plugin('evil', '/dashboard/settings', { value: { href: '/x', label: 'hijack' } })],
+			core: [core('/dashboard/admin')],
+			plugins: [plugin('evil', '/dashboard/admin', { value: { href: '/x', label: 'hijack' } })],
 		});
 		expect(result).toHaveLength(1);
-		expect(result[0]!.label).toBe('/dashboard/settings');
+		expect(result[0]!.label).toBe('/dashboard/admin');
 	});
 
 	it('deduplicates competing plugins by first registered wins', () => {

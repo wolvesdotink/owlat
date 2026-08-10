@@ -40,9 +40,13 @@ const {
 				<p class="text-sm text-text-tertiary mt-1">
 					This email send may have been deleted or you don't have access to it.
 				</p>
-				<NuxtLink :to="`/dashboard/campaigns/${campaignId}/report`" class="btn btn-secondary mt-6">
+				<UiButton
+					variant="secondary"
+					:to="`/dashboard/campaigns/${campaignId}/report`"
+					class="mt-6"
+				>
 					Back to Campaign Report
-				</NuxtLink>
+				</UiButton>
 			</div>
 
 			<!-- Send Detail -->

@@ -3,7 +3,7 @@
  * verified sending domains (settings/index.vue). Surfacing the mismatch as a
  * non-blocking warning — rather than a hard error — keeps the field usable
  * while a domain is still being verified, but points the operator at
- * /dashboard/delivery/domains before they ship campaigns from an unauthorized
+ * /dashboard/admin/delivery/domains before they ship campaigns from an unauthorized
  * domain.
  */
 

@@ -1,4 +1,11 @@
 <script setup lang="ts">
+/**
+ * Personal address book for the current mailbox (api.mail.contacts). This is
+ * NOT the org-wide Customers store under /dashboard/audience — that is a
+ * different dataset owned by the team. These entries feed recipient
+ * autocomplete, so this page is the only surface that can correct or remove a
+ * stale one; the postbox rail and the command palette both link here.
+ */
 import type { Id } from '@owlat/api/dataModel';
 
 useHead({ title: 'Contacts — Owlat' });
@@ -94,11 +101,14 @@ function initial(c: { displayName?: string; email: string }) {
 <template>
 	<div class="p-6 max-w-3xl mx-auto">
 		<header class="flex items-center justify-between gap-4 mb-4">
-			<h1 class="text-xl font-semibold text-text-primary">Contacts</h1>
-			<button type="button" class="btn btn-primary" @click="openNew">
-				<Icon name="lucide:user-plus" class="w-4 h-4 mr-1.5" />
+			<div>
+				<h1 class="text-xl font-semibold text-text-primary">Contacts</h1>
+				<p class="text-sm text-text-secondary">People you mail — used for address autocomplete</p>
+			</div>
+			<UiButton type="button" @click="openNew">
+				<template #iconLeft><Icon name="lucide:user-plus" class="w-4 h-4" /></template>
 				Add contact
-			</button>
+			</UiButton>
 		</header>
 
 		<div class="relative mb-4">
@@ -142,34 +152,41 @@ function initial(c: { displayName?: string; email: string }) {
 							{{ c.email }}<span v-if="c.organization"> · {{ c.organization }}</span>
 						</p>
 					</div>
-					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-						<button
+					<!-- Row actions stay reachable for keyboard and touch users: they
+					     only fade in on hover, never leave the tab order. -->
+					<div
+						class="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+					>
+						<UiButton
+							variant="ghost"
+							size="sm"
 							type="button"
-							class="p-1.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 							title="Compose"
 							aria-label="Compose to contact"
 							@click="composeTo(c.email)"
 						>
 							<Icon name="lucide:pencil" class="w-4 h-4" />
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
 							type="button"
-							class="p-1.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 							title="Edit"
 							aria-label="Edit contact"
 							@click="openEdit(c)"
 						>
 							<Icon name="lucide:edit-2" class="w-4 h-4" />
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="danger-ghost"
+							size="sm"
 							type="button"
-							class="p-1.5 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
 							title="Remove"
 							aria-label="Remove contact"
 							@click="removeContact(c)"
 						>
 							<Icon name="lucide:trash" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</li>
 			</ul>
@@ -224,8 +241,8 @@ function initial(c: { displayName?: string; email: string }) {
 					/>
 				</div>
 				<div class="flex justify-end gap-2 pt-1">
-					<button type="button" class="btn btn-ghost" @click="editOpen = false">Cancel</button>
-					<button type="submit" class="btn btn-primary" :disabled="!canSave">Save</button>
+					<UiButton variant="ghost" type="button" @click="editOpen = false">Cancel</UiButton>
+					<UiButton type="submit" :disabled="!canSave">Save</UiButton>
 				</div>
 			</form>
 		</UiModal>

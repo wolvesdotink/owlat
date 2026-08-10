@@ -167,10 +167,11 @@ const variants = computed(() => [
 				Pick the winning variant to send to the rest of the audience.
 			</p>
 			<div class="flex gap-3">
-				<button
+				<UiButton
+					variant="secondary"
 					v-for="variant in variants"
 					:key="variant.key"
-					class="btn btn-secondary gap-2 flex-1"
+					class="gap-2 flex-1"
 					:disabled="isSelectingWinner"
 					data-testid="ab-pick-winner"
 					@click="emit('select-winner', variant.key)"
@@ -178,7 +179,7 @@ const variants = computed(() => [
 					<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:trophy" class="w-4 h-4" />
 					Pick variant {{ variant.key }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 

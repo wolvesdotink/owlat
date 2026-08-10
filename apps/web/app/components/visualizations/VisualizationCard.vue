@@ -148,14 +148,15 @@ const handleRemove = async () => {
 							This will permanently delete this visualization. This action cannot be undone.
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<button class="btn btn-secondary" @click="showConfirmRemove = false">Cancel</button>
-							<button
-								class="btn bg-error text-white hover:bg-error/90"
+							<UiButton variant="secondary" @click="showConfirmRemove = false">Cancel</UiButton>
+							<UiButton
+								variant="danger"
+								class="bg-error text-white hover:bg-error/90"
 								:disabled="isRemoving"
 								@click="handleRemove"
 							>
 								{{ isRemoving ? 'Removing...' : 'Remove' }}
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

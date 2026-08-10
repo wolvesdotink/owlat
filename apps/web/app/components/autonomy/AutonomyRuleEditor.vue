@@ -198,15 +198,11 @@ const handleCancel = () => {
 					Cancel
 				</button>
 			</div>
-			<button
-				class="btn btn-primary gap-2"
-				:disabled="isSaving || (!form.category && isNew)"
-				@click="handleSave"
-			>
+			<UiButton class="gap-2" :disabled="isSaving || (!form.category && isNew)" @click="handleSave">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:save" class="w-4 h-4" />
 				{{ isNew ? 'Create Rule' : 'Save Changes' }}
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Delete Confirmation -->
@@ -221,15 +217,16 @@ const handleCancel = () => {
 				>? This action cannot be undone.
 			</p>
 			<template #footer>
-				<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
-				<button
-					class="btn bg-error text-white hover:bg-error/90 gap-2"
+				<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+				<UiButton
+					variant="danger"
+					class="bg-error text-white hover:bg-error/90 gap-2"
 					:disabled="isDeleting"
 					@click="handleDelete"
 				>
 					<UiSpinner v-if="isDeleting" size="xs" tone="inverse" />
 					Delete
-				</button>
+				</UiButton>
 			</template>
 		</UiModal>
 	</UiCard>

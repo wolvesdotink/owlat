@@ -31,6 +31,7 @@ const actionInProgress = ref<string | null>(null);
 
 // Success toast
 const { showToast } = useToast();
+const { isAdmin } = usePermissions();
 
 const onRelease = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
@@ -180,29 +181,34 @@ const getInjectionTypeLabel = (type: string) => {
 				</p>
 
 				<!-- Actions -->
-				<div class="flex items-center gap-2 border-t border-border-subtle pt-4">
-					<button
-						class="btn btn-secondary btn-sm gap-1"
+				<div v-if="isAdmin" class="flex items-center gap-2 border-t border-border-subtle pt-4">
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="gap-1"
 						:disabled="actionInProgress === message._id"
 						@click="onRelease(message._id)"
 					>
 						<Icon name="lucide:check-circle" class="w-3 h-3" />
 						Release (False Positive)
-					</button>
-					<button
-						class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
+					</UiButton>
+					<UiButton
+						variant="ghost"
+						size="sm"
+						class="gap-1 text-error hover:bg-error-subtle"
 						:disabled="actionInProgress === message._id"
 						@click="pendingBlock = { _id: message._id, from: message.from }"
 					>
 						<Icon name="lucide:ban" class="w-3 h-3" />
 						Block Sender
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>
 
 		<!-- Block confirmation — future mail from this sender is silently dropped -->
 		<UiConfirmationDialog
+			v-if="isAdmin"
 			:open="!!pendingBlock"
 			variant="danger"
 			title="Block sender"

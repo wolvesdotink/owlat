@@ -48,11 +48,11 @@ function close() {
 			</div>
 
 			<div class="flex items-center justify-between mt-4">
-				<button type="button" class="btn btn-ghost" @click="copyPassword">
+				<UiButton variant="ghost" type="button" @click="copyPassword">
 					<Icon :name="copied ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4 mr-1.5" />
 					{{ copied ? 'Copied' : 'Copy' }}
-				</button>
-				<button type="button" class="btn btn-primary" @click="close">I've saved it</button>
+				</UiButton>
+				<UiButton type="button" @click="close">I've saved it</UiButton>
 			</div>
 		</div>
 	</UiModal>

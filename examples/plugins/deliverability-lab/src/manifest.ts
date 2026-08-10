@@ -96,9 +96,9 @@ export const deliverabilityLabPlugin = definePlugin({
 				// MUST be a CORE sidebar section key (CORE_SECTIONS in
 				// apps/web/app/lib/dashboardNavigation.ts). An item targeting an
 				// unknown section is dropped fail-closed, so it would never render.
-				section: 'delivery',
+				section: 'administration',
 				name: 'Deliverability',
-				href: '/dashboard/settings/plugins/deliverability-lab',
+				href: '/dashboard/admin/instance/plugins/deliverability-lab',
 				icon: 'lucide:radar',
 			},
 		],
@@ -106,7 +106,7 @@ export const deliverabilityLabPlugin = definePlugin({
 			{
 				id: 'settings',
 				name: 'Deliverability Lab',
-				href: '/dashboard/settings/plugins/deliverability-lab',
+				href: '/dashboard/admin/instance/plugins/deliverability-lab',
 				icon: 'lucide:radar',
 			},
 		],

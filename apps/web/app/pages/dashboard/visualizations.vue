@@ -5,13 +5,14 @@ useHead({ title: 'Visualizations — Owlat' });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', 'admin'],
 });
 
-const { data: visualizations, isLoading, error } = useConvexQuery(
-	api.visualizationAgent.list,
-	() => ({ limit: 50 }),
-);
+const {
+	data: visualizations,
+	isLoading,
+	error,
+} = useConvexQuery(api.visualizationAgent.list, () => ({ limit: 50 }));
 </script>
 
 <template>
@@ -20,8 +21,8 @@ const { data: visualizations, isLoading, error } = useConvexQuery(
 		<div class="mb-8">
 			<h1 class="text-2xl font-semibold text-text-primary">Visualizations</h1>
 			<p class="text-text-secondary mt-1">
-				Generate interactive charts from natural language prompts. Use illustrative sample
-				data for layout mockups, or pick a live dataset to chart your account's real numbers.
+				Generate interactive charts from natural language prompts. Use illustrative sample data for
+				layout mockups, or pick a live dataset to chart your account's real numbers.
 			</p>
 		</div>
 
@@ -51,7 +52,13 @@ const { data: visualizations, isLoading, error } = useConvexQuery(
 			v-else-if="!visualizations || visualizations.length === 0"
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
-			<UiIconBox icon="lucide:bar-chart-3" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				icon="lucide:bar-chart-3"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">No visualizations yet</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				Use the prompt above to generate your first visualization.

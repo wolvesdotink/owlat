@@ -61,8 +61,8 @@ const emit = defineEmits<{
 					<div>
 						<p class="text-sm font-medium text-warning">Copy your webhook secret now</p>
 						<p class="text-sm text-warning/80 mt-1">
-							Use this secret to verify webhook signatures. Store it securely - you won't be
-							able to see it again.
+							Use this secret to verify webhook signatures. Store it securely - you won't be able to
+							see it again.
 						</p>
 					</div>
 				</div>
@@ -86,17 +86,17 @@ const emit = defineEmits<{
 					>
 						{{ createdWebhook.secret }}
 					</code>
-					<button class="btn btn-secondary shrink-0 gap-2" @click="emit('copySecret')">
+					<UiButton variant="secondary" class="shrink-0 gap-2" @click="emit('copySecret')">
 						<Icon v-if="copiedSecret" name="lucide:check" class="w-4 h-4 text-success" />
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
 						{{ copiedSecret ? 'Copied!' : 'Copy' }}
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</template>
 
 		<template #footer>
-			<button class="btn btn-primary" @click="emit('closeCreatedWebhook')">Done</button>
+			<UiButton @click="emit('closeCreatedWebhook')">Done</UiButton>
 		</template>
 	</UiModal>
 
@@ -107,7 +107,11 @@ const emit = defineEmits<{
 		size="md"
 		:closable="!isRegenerating"
 		:persistent="isRegenerating || !!regeneratedSecret"
-		@update:open="(v) => { if (!v) emit('closeRegenerate'); }"
+		@update:open="
+			(v) => {
+				if (!v) emit('closeRegenerate');
+			}
+		"
 	>
 		<!-- Content - Before Regeneration -->
 		<div v-if="!regeneratedSecret" class="flex items-start gap-4">
@@ -120,8 +124,8 @@ const emit = defineEmits<{
 					<span class="font-semibold">"{{ webhookToRegenerate?.name }}"</span>?
 				</p>
 				<p class="text-sm text-text-secondary mt-2">
-					The current secret will be invalidated immediately. You'll need to update your
-					webhook endpoint with the new secret.
+					The current secret will be invalidated immediately. You'll need to update your webhook
+					endpoint with the new secret.
 				</p>
 			</div>
 		</div>
@@ -148,37 +152,38 @@ const emit = defineEmits<{
 					>
 						{{ regeneratedSecret }}
 					</code>
-					<button
-						class="btn btn-secondary shrink-0 gap-2"
+					<UiButton
+						variant="secondary"
+						class="shrink-0 gap-2"
 						@click="emit('copyRegeneratedSecret')"
 					>
 						<Icon v-if="copiedRegeneratedSecret" name="lucide:check" class="w-4 h-4 text-success" />
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
 						{{ copiedRegeneratedSecret ? 'Copied!' : 'Copy' }}
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>
 
 		<template #footer>
-			<button
+			<UiButton
+				variant="secondary"
 				v-if="!regeneratedSecret"
-				class="btn btn-secondary"
 				:disabled="isRegenerating"
 				@click="emit('closeRegenerate')"
 			>
 				Cancel
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-if="!regeneratedSecret"
-				class="btn bg-warning text-white hover:bg-warning/90 gap-2"
+				class="bg-warning text-white hover:bg-warning/90 gap-2"
 				:disabled="isRegenerating"
 				@click="emit('regenerate')"
 			>
 				<Icon v-if="isRegenerating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				{{ isRegenerating ? 'Regenerating...' : 'Regenerate' }}
-			</button>
-			<button v-else class="btn btn-primary" @click="emit('closeRegenerate')">Done</button>
+			</UiButton>
+			<UiButton v-else @click="emit('closeRegenerate')">Done</UiButton>
 		</template>
 	</UiModal>
 
@@ -189,7 +194,11 @@ const emit = defineEmits<{
 		size="md"
 		:closable="!isDeleting"
 		:persistent="isDeleting"
-		@update:open="(v) => { if (!v) emit('closeDelete'); }"
+		@update:open="
+			(v) => {
+				if (!v) emit('closeDelete');
+			}
+		"
 	>
 		<div class="flex items-start gap-4">
 			<div class="p-3 rounded-full bg-error/10 shrink-0">
@@ -201,24 +210,24 @@ const emit = defineEmits<{
 					<span class="font-semibold">"{{ webhookToDelete?.name }}"</span>?
 				</p>
 				<p class="text-sm text-text-secondary mt-2">
-					This action cannot be undone. The webhook will stop receiving notifications
-					immediately.
+					This action cannot be undone. The webhook will stop receiving notifications immediately.
 				</p>
 			</div>
 		</div>
 
 		<template #footer>
-			<button class="btn btn-secondary" :disabled="isDeleting" @click="emit('closeDelete')">
+			<UiButton variant="secondary" :disabled="isDeleting" @click="emit('closeDelete')">
 				Cancel
-			</button>
-			<button
-				class="btn bg-error text-white hover:bg-error/90 gap-2"
+			</UiButton>
+			<UiButton
+				variant="danger"
+				class="bg-error text-white hover:bg-error/90 gap-2"
 				:disabled="isDeleting"
 				@click="emit('confirmDelete')"
 			>
 				<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				{{ isDeleting ? 'Deleting...' : 'Delete Webhook' }}
-			</button>
+			</UiButton>
 		</template>
 	</UiModal>
 </template>

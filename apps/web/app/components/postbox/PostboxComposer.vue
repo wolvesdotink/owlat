@@ -396,15 +396,16 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
 				Scheduled for {{ scheduledLabel }}
 			</span>
-			<button
+			<UiButton
+				variant="ghost"
 				type="button"
-				class="btn btn-ghost text-xs"
+				class="text-xs"
 				:disabled="unscheduling"
 				@click="handleUnschedule"
 			>
 				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
 				Unschedule to edit
-			</button>
+			</UiButton>
 		</div>
 
 		<div class="flex-1 overflow-hidden">

@@ -1,6 +1,5 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getDailySendVolume } from '../lib/sendingLimits';
 import {
 	summarize,
@@ -60,8 +59,6 @@ export function toReputationDto(summary: ReputationSummary): ReputationDto {
 export const getSendingOverview = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
-
 		// Get instance settings
 		const settings = await ctx.db.query('instanceSettings').first();
 
@@ -108,8 +105,6 @@ export const getCampaignSendEstimate = authedQuery({
 		recipientCount: v.number(),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-
 		const warmingState = await ctx.db.query('warmingState').first();
 
 		if (!warmingState) {
@@ -234,8 +229,6 @@ export const getCampaignSendEstimate = authedQuery({
 export const getDomainReputations = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
-
 		// Per-domain rolling summaries, derived on read through the single
 		// summarizer (grouped by domain).
 		const summaries = await summarizeDomains(ctx.db);
@@ -346,8 +339,6 @@ export function missingAuthRecords(auth: DomainAuthState): string[] {
 export const getDeliveryDomainTable = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliveryDomainRow[]> => {
-		await getUserIdFromSession(ctx);
-
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
 		const bucketGroups = await readDomainReputationBucketGroups(ctx.db);
 		const summaries = summarizeDomainReputationGroups(bucketGroups);

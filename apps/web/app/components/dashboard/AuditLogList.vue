@@ -3,7 +3,7 @@ import type { AuditLogEntry } from '../../composables/useAuditLogPresentation';
 
 /**
  * The audit-log row list + "Load More" control. Extracted from
- * `pages/dashboard/settings/audit.vue` so the page stays under the file-size
+ * `pages/dashboard/admin/team/audit.vue` so the page stays under the file-size
  * ratchet; the page keeps the fetch wiring, filters and empty states and hands
  * this component the already-filtered rows.
  */
@@ -120,10 +120,10 @@ const presentedLogs = computed(() =>
 
 		<!-- Load More -->
 		<div v-if="hasMore" class="flex justify-center pt-4">
-			<button class="btn btn-secondary gap-2" @click="$emit('loadMore')">
+			<UiButton variant="secondary" class="gap-2" @click="$emit('loadMore')">
 				<Icon name="lucide:chevron-down" class="w-4 h-4" />
 				Load More
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

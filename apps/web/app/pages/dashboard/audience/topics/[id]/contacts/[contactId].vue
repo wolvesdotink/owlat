@@ -179,9 +179,9 @@ const contactInitials = computed(() => {
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				This contact may have been removed from the topic or doesn't exist.
 			</p>
-			<NuxtLink :to="`/dashboard/audience/topics/${topicId}`" class="btn btn-primary mt-6">
+			<UiButton :to="`/dashboard/audience/topics/${topicId}`" class="mt-6">
 				Back to Topic
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<!-- Main Content -->
@@ -389,21 +389,24 @@ const contactInitials = computed(() => {
 						<h2 class="text-lg font-medium text-text-primary mb-4">Actions</h2>
 
 						<div class="space-y-3">
-							<NuxtLink
+							<UiButton
+								variant="secondary"
+								full-width
 								:to="`/dashboard/audience/contacts/${contactId}`"
-								class="btn btn-secondary w-full gap-2"
+								class="gap-2"
 							>
 								<Icon name="lucide:user" class="w-4 h-4" />
 								View Full Profile
-							</NuxtLink>
+							</UiButton>
 
-							<button
-								class="btn w-full gap-2 text-error bg-error-subtle hover:bg-error/20 border-0"
+							<UiButton
+								full-width
+								class="gap-2 text-error bg-error-subtle hover:bg-error/20 border-0"
 								@click="isRemoveModalOpen = true"
 							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
 								Remove from Topic
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

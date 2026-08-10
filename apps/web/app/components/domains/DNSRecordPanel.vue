@@ -270,14 +270,14 @@ const diagnostic = computed(() => {
 					>
 						{{ hostDisplay.primary }}
 					</code>
-					<button class="btn btn-ghost p-2" title="Copy host" @click="handleCopyHost">
+					<UiButton variant="ghost" class="p-2" title="Copy host" @click="handleCopyHost">
 						<Icon
 							v-if="isCopied(`${label}-host`)"
 							name="lucide:check"
 							class="w-4 h-4 text-success"
 						/>
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-					</button>
+					</UiButton>
 				</div>
 
 				<!-- Secondary: fully-qualified name + its own copy affordance. -->
@@ -294,14 +294,14 @@ const diagnostic = computed(() => {
 						>
 							{{ hostDisplay.fqdn }}
 						</code>
-						<button class="btn btn-ghost p-1.5" title="Copy full name" @click="handleCopyFqdn">
+						<UiButton variant="ghost" class="p-1.5" title="Copy full name" @click="handleCopyFqdn">
 							<Icon
 								v-if="isCopied(`${label}-fqdn`)"
 								name="lucide:check"
 								class="w-4 h-4 text-success"
 							/>
 							<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-						</button>
+						</UiButton>
 					</div>
 					<p class="text-xs text-text-tertiary mt-1" data-testid="dns-provider-hint">
 						Some providers want the full name — use whichever your DNS host expects.
@@ -342,14 +342,14 @@ const diagnostic = computed(() => {
 					>
 						{{ valueDisplay }}
 					</code>
-					<button class="btn btn-ghost p-2" title="Copy value" @click="handleCopyValue">
+					<UiButton variant="ghost" class="p-2" title="Copy value" @click="handleCopyValue">
 						<Icon
 							v-if="isCopied(`${label}-value`)"
 							name="lucide:check"
 							class="w-4 h-4 text-success"
 						/>
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -376,14 +376,14 @@ const diagnostic = computed(() => {
 						>
 							{{ diagnostic.foundValue }}
 						</code>
-						<button class="btn btn-ghost p-2" title="Copy found value" @click="handleCopyFound">
+						<UiButton variant="ghost" class="p-2" title="Copy found value" @click="handleCopyFound">
 							<Icon
 								v-if="isCopied(`${label}-found`)"
 								name="lucide:check"
 								class="w-4 h-4 text-success"
 							/>
 							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>
@@ -418,14 +418,19 @@ const diagnostic = computed(() => {
 						>
 							{{ coexistence.merged }}
 						</code>
-						<button class="btn btn-ghost p-2" title="Copy merged value" @click="handleCopyMerged">
+						<UiButton
+							variant="ghost"
+							class="p-2"
+							title="Copy merged value"
+							@click="handleCopyMerged"
+						>
 							<Icon
 								v-if="isCopied(`${label}-merged`)"
 								name="lucide:check"
 								class="w-4 h-4 text-success"
 							/>
 							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>

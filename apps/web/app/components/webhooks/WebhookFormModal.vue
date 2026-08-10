@@ -47,7 +47,11 @@ const localUrl = computed({
 		size="lg"
 		:closable="!isSubmitting"
 		:persistent="isSubmitting"
-		@update:open="(v) => { if (!v) emit('close'); }"
+		@update:open="
+			(v) => {
+				if (!v) emit('close');
+			}
+		"
 	>
 		<form id="webhook-form" @submit.prevent="emit('submit')">
 			<!-- Error -->
@@ -155,23 +159,13 @@ const localUrl = computed({
 		</form>
 
 		<template #footer>
-			<button
-				type="button"
-				class="btn btn-secondary"
-				:disabled="isSubmitting"
-				@click="emit('close')"
-			>
+			<UiButton variant="secondary" type="button" :disabled="isSubmitting" @click="emit('close')">
 				Cancel
-			</button>
-			<button
-				type="submit"
-				form="webhook-form"
-				class="btn btn-primary gap-2"
-				:disabled="isSubmitting"
-			>
+			</UiButton>
+			<UiButton type="submit" form="webhook-form" class="gap-2" :disabled="isSubmitting">
 				<Icon v-if="isSubmitting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				{{ isSubmitting ? submittingLabel : submitLabel }}
-			</button>
+			</UiButton>
 		</template>
 	</UiModal>
 </template>

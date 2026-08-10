@@ -55,7 +55,7 @@ describe('measurement screen — accessibility', () => {
 		expect(wrapper.findAll('h3')).toHaveLength(1);
 		expect(wrapper.findAll('h4').length).toBeGreaterThan(0);
 		// The page owns the single h1 above these cards; that is asserted against a
-		// real mount in pages/dashboard/delivery/__tests__/measurementPage.test.ts,
+		// real mount in pages/dashboard/admin/delivery/__tests__/measurementPage.test.ts,
 		// because a substring check passes on a commented-out heading.
 		wrapper.unmount();
 	});

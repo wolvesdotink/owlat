@@ -421,6 +421,7 @@ export type Permission =
 	| 'imports:manage'
 	// CRM
 	| 'contacts:manage'
+	| 'contacts:annotate'
 	// Org + admin
 	| 'organization:manage'
 	| 'settings:manage'
@@ -456,6 +457,7 @@ const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => boolean> = 
 	'shareLinks:manage': isAdmin,
 	'imports:manage': isAdmin,
 	'contacts:manage': isAdmin,
+	'contacts:annotate': isEditorOrAbove,
 	'organization:manage': isAdmin,
 	'settings:manage': isAdmin,
 	'organization:delete': isOwner,

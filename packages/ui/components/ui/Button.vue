@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, resolveComponent } from 'vue';
+
+defineOptions({ inheritAttrs: false });
 
 type ButtonVariant =
 	| 'primary'
@@ -18,6 +20,10 @@ interface Props {
 	disabled?: boolean;
 	fullWidth?: boolean;
 	type?: 'button' | 'submit' | 'reset';
+	to?: string;
+	href?: string;
+	target?: string;
+	rel?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -70,13 +76,36 @@ const buttonClasses = computed(() => {
 
 	return classes.join(' ');
 });
+
+const element = computed(() => {
+	if (props.to) return resolveComponent('NuxtLink');
+	if (props.href) return 'a';
+	return 'button';
+});
 </script>
 
 <template>
-	<button :type="type" :class="buttonClasses" :disabled="disabled || loading" @click="handleClick">
+	<component
+		:is="element"
+		v-bind="$attrs"
+		:to="to"
+		:href="href"
+		:target="target"
+		:rel="rel"
+		:type="!to && !href ? type : undefined"
+		:class="buttonClasses"
+		:disabled="!to && !href ? disabled || loading : undefined"
+		:aria-disabled="to || href ? disabled || loading : undefined"
+		@click="handleClick"
+	>
 		<slot name="iconLeft" />
-		<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" :class="{ 'mr-2': $slots['default'] }" />
+		<Icon
+			v-if="loading"
+			name="lucide:loader-2"
+			class="w-4 h-4 animate-spin"
+			:class="{ 'mr-2': $slots['default'] }"
+		/>
 		<slot />
 		<slot name="iconRight" />
-	</button>
+	</component>
 </template>

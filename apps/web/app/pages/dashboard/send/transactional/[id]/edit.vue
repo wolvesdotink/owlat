@@ -297,7 +297,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					<p class="text-text-secondary mb-6">
 						This transactional email doesn't exist or has been deleted.
 					</p>
-					<button class="btn btn-primary" @click="handleBack">Back to Emails</button>
+					<UiButton @click="handleBack">Back to Emails</UiButton>
 				</div>
 			</div>
 

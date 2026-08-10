@@ -55,15 +55,17 @@ const handleConfirmClock = async () => {
 					paused for a long time looks the same from here), confirm it below to resume the hourly
 					sweep.
 				</p>
-				<button
+				<UiButton
+					variant="secondary"
+					size="sm"
 					type="button"
-					class="btn btn-secondary btn-sm gap-2 mt-3"
+					class="gap-2 mt-3"
 					:disabled="isConfirming"
 					@click="handleConfirmClock"
 				>
 					<Icon name="lucide:check" class="w-4 h-4" />
 					{{ isConfirming ? 'Confirming…' : 'Confirm clock' }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 	</div>

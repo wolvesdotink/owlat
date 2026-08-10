@@ -341,9 +341,10 @@ async function savePreferences() {
 				</div>
 
 				<!-- Save Button -->
-				<button
+				<UiButton
+					full-width
 					type="button"
-					class="btn btn-primary w-full h-12"
+					class="h-12"
 					:disabled="!hasChanges || isSaving"
 					@click="savePreferences"
 				>
@@ -354,7 +355,7 @@ async function savePreferences() {
 					<span v-else>
 						{{ hasChanges ? 'Save Preferences' : 'No Changes to Save' }}
 					</span>
-				</button>
+				</UiButton>
 
 				<p class="text-text-tertiary text-xs mt-4 text-center">
 					Transactional emails (like password resets) may still be sent regardless of these

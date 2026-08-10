@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue';
+
 /**
  * Compact "⋯" overflow menu used by the progressive-disclosure surfaces (the
  * reader's per-message action row, the composer footer). Renders a single
@@ -9,6 +11,13 @@
  * The default slot receives `{ close }` so an item can dismiss the menu after
  * running its action. Items should be real <button role="menuitem"> elements
  * (tab-focusable); Escape and an outside click both close the menu.
+ *
+ * The panel is `v-if`-ed, so slot content is UNMOUNTED when the menu closes —
+ * and a click inside a teleported modal counts as "outside". Slot content must
+ * therefore not own the state of anything that has to outlive the menu (a
+ * dialog opened from an item): keep that state in the parent and render the
+ * dialog outside this component, as PostboxComposerFooter does for the
+ * follow-up picker.
  */
 const props = withDefaults(
 	defineProps<{
@@ -29,11 +38,13 @@ const props = withDefaults(
 		direction: 'down',
 		triggerClass: '',
 		icon: 'lucide:more-horizontal',
-	},
+	}
 );
 
 const open = ref(false);
-const triggerEl = ref<HTMLElement | null>(null);
+// The trigger is a component (<UiButton>), so this ref holds its instance, not
+// an element — useClickOutside unwraps either shape.
+const triggerEl = ref<ComponentPublicInstance | null>(null);
 const menuEl = ref<HTMLElement | null>(null);
 
 function close() {
@@ -49,10 +60,11 @@ useClickOutside([triggerEl, menuEl], close);
 
 <template>
 	<div class="relative inline-flex">
-		<button
+		<UiButton
+			variant="ghost"
 			ref="triggerEl"
 			type="button"
-			class="btn btn-ghost text-text-tertiary"
+			class="text-text-tertiary"
 			:class="props.triggerClass"
 			:title="props.label"
 			:aria-label="props.label"
@@ -61,7 +73,7 @@ useClickOutside([triggerEl, menuEl], close);
 			@click="toggle"
 		>
 			<Icon :name="props.icon" class="w-4 h-4" />
-		</button>
+		</UiButton>
 		<div
 			v-if="open"
 			ref="menuEl"

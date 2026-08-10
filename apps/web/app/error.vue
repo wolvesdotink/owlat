@@ -42,7 +42,7 @@ const statusMessage = computed(() => {
 				{{ statusMessage }}
 			</p>
 			<div class="flex gap-4">
-				<button class="btn btn-primary px-6 py-2.5" @click="handleGoBack">Go Home</button>
+				<UiButton class="px-6 py-2.5" @click="handleGoBack">Go Home</UiButton>
 			</div>
 		</main>
 	</div>

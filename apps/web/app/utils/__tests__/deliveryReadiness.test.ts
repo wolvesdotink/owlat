@@ -72,7 +72,7 @@ describe('deriveDeliveryReadiness — transport gate', () => {
 		const g = gate(deriveDeliveryReadiness(input({ transportConfigured: false })), 'transport');
 		expect(g.status).toBe('attention');
 		expect(g.tone).toBe('error');
-		expect(g.actionHref).toBe('/dashboard/delivery/config');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/transport');
 	});
 });
 
@@ -90,7 +90,7 @@ describe('deriveDeliveryReadiness — domain gate', () => {
 		);
 		expect(g.status).toBe('attention');
 		expect(g.actionLabel).toBe('Add a domain');
-		expect(g.actionHref).toBe('/dashboard/delivery/domains');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 	});
 
 	it('is pending (waiting on DNS) when a domain exists but is unverified', () => {
@@ -125,7 +125,7 @@ describe('deriveDeliveryReadiness — authentication gate', () => {
 		);
 		expect(g.status).toBe('attention');
 		expect(g.detail).toContain('DKIM, DMARC');
-		expect(g.actionHref).toBe('/dashboard/delivery/domains');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 	});
 
 	it('is ready when SPF, DKIM and DMARC are all present', () => {
@@ -159,7 +159,7 @@ describe('deriveDeliveryReadiness — MTA-STS enforce gate', () => {
 		const g = gate(r, 'mta-sts');
 		expect(g.status).toBe('attention');
 		expect(g.tone).toBe('warning');
-		expect(g.actionHref).toBe('/dashboard/delivery/domains');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 		// The summary leads with the unfinished MTA-STS step.
 		expect(r.summary).toContain('MTA-STS');
 	});
@@ -193,7 +193,7 @@ describe('deriveDeliveryReadiness — sender-alignment gate', () => {
 		const g = gate(r, 'alignment');
 		expect(g.status).toBe('attention');
 		expect(g.tone).toBe('warning');
-		expect(g.actionHref).toBe('/dashboard/delivery/config');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/transport');
 		expect(g.detail).toContain('sendgrid.net');
 		// The summary leads with the unfinished alignment step.
 		expect(r.summary).toContain('sendgrid.net');

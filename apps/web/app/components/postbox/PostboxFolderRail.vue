@@ -209,7 +209,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     dashboard sidebar links to the Postbox as a whole, so this rail is the
 		     one steady entry point to its settings. -->
 		<NuxtLink
-			to="/dashboard/postbox/settings"
+			to="/dashboard/preferences"
 			class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
 			:class="
 				railCollapsed

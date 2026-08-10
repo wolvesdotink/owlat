@@ -160,7 +160,7 @@ describe('PostboxThreadList states', () => {
 		expect(w.text()).toContain('This folder is empty');
 		const action = w.find(`${EMPTY} a`);
 		expect(action.exists()).toBe(true);
-		expect(action.attributes('href')).toBe('/dashboard/postbox/settings/filters');
+		expect(action.attributes('href')).toBe('/dashboard/preferences/filters');
 	});
 
 	it('shows the label-specific empty state in the label view', () => {

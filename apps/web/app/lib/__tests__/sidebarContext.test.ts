@@ -27,14 +27,14 @@ describe('contextForPath', () => {
 		expect(contextForPath('/dashboard/automations')).toBe('marketing');
 		expect(contextForPath('/dashboard/send/transactional')).toBe('marketing');
 		expect(contextForPath('/dashboard/audience/contacts')).toBe('marketing');
-		expect(contextForPath('/dashboard/delivery/setup')).toBe('marketing');
+		expect(contextForPath('/dashboard/admin/delivery')).toBeNull();
 	});
 
 	it('returns null for shared routes', () => {
 		expect(contextForPath('/dashboard')).toBeNull();
 		expect(contextForPath('/dashboard/assistant')).toBeNull();
 		expect(contextForPath('/dashboard/knowledge/graph')).toBeNull();
-		expect(contextForPath('/dashboard/settings/features')).toBeNull();
+		expect(contextForPath('/dashboard/admin/instance/features')).toBeNull();
 	});
 
 	it('matches whole path segments only', () => {
@@ -58,19 +58,24 @@ describe('splitSectionsByContext', () => {
 			section('assistant', ['/dashboard/assistant']),
 			section('send', ['/dashboard/send']),
 			section('audience', ['/dashboard/audience']),
-			section('delivery', ['/dashboard/delivery']),
+			section('administration', ['/dashboard/admin/delivery']),
 			section('knowledge', ['/dashboard/knowledge']),
-			section('settings', ['/dashboard/settings']),
+			section('preferences', ['/dashboard/preferences']),
 		]);
 		expect(split.inbox.map((s) => s.key)).toEqual(['inbox', 'postbox', 'chat']);
-		expect(split.marketing.map((s) => s.key)).toEqual(['send', 'audience', 'delivery']);
-		expect(split.shared.map((s) => s.key)).toEqual(['assistant', 'knowledge', 'settings']);
+		expect(split.marketing.map((s) => s.key)).toEqual(['send', 'audience']);
+		expect(split.shared.map((s) => s.key)).toEqual([
+			'assistant',
+			'administration',
+			'knowledge',
+			'preferences',
+		]);
 	});
 
 	it('yields an empty context when its sections were flag-filtered out', () => {
 		const split = splitSectionsByContext([
 			section('send', ['/dashboard/send']),
-			section('settings', ['/dashboard/settings']),
+			section('preferences', ['/dashboard/preferences']),
 		]);
 		expect(split.inbox).toEqual([]);
 		expect(split.marketing.map((s) => s.key)).toEqual(['send']);

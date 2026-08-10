@@ -319,6 +319,42 @@ export const update = authedMutation({
 });
 
 /**
+ * Update the shared note for a contact. This intentionally uses the narrow
+ * `contacts:annotate` capability so editors can record customer context without
+ * gaining profile edits, imports, topic management, or deletion.
+ */
+export const updateNotes = authedMutation({
+	args: {
+		contactId: v.id('contacts'),
+		notes: v.string(),
+	},
+	handler: async (ctx, args) => {
+		validateStringLength(args.notes, STRING_LIMITS.DESCRIPTION, 'Notes');
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:annotate',
+			'You do not have permission to annotate contacts'
+		);
+		const contact = await ctx.db.get(args.contactId);
+		if (!contact || contact.deletedAt !== undefined) throwNotFound('Contact');
+
+		const notes = args.notes.trim();
+		await ctx.db.patch(args.contactId, {
+			notes: notes || undefined,
+			updatedAt: Date.now(),
+		});
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			action: 'contact.updated',
+			resource: 'contact',
+			resourceId: args.contactId,
+			details: { changedProperties: 'notes' },
+		});
+		return args.contactId;
+	},
+});
+
+/**
  * Delete a contact.
  */
 export const remove = authedMutation({

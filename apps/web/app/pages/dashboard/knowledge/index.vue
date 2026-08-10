@@ -59,10 +59,10 @@ const handleCancelled = () => {
 					</p>
 				</div>
 			</div>
-			<button class="btn btn-primary gap-2 flex-shrink-0" @click="showCreateForm = true">
+			<UiButton class="gap-2 flex-shrink-0" @click="showCreateForm = true">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Create Entry
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Search Bar -->
@@ -128,14 +128,10 @@ const handleCancelled = () => {
 								: 'Knowledge entries are extracted from conversations and files, or you can create them manually.'
 						}}
 					</p>
-					<button
-						v-if="!searchQuery"
-						class="mt-4 btn btn-primary gap-2"
-						@click="showCreateForm = true"
-					>
+					<UiButton v-if="!searchQuery" class="mt-4 gap-2" @click="showCreateForm = true">
 						<Icon name="lucide:plus" class="w-4 h-4" />
 						Create First Entry
-					</button>
+					</UiButton>
 				</div>
 
 				<!-- Entry List -->

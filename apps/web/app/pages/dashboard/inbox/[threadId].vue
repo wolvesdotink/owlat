@@ -300,7 +300,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				class="mb-4"
 			/>
 			<p class="text-text-secondary font-medium">Thread not found</p>
-			<NuxtLink to="/dashboard/inbox" class="btn btn-secondary mt-6">Back to Inbox</NuxtLink>
+			<UiButton variant="secondary" to="/dashboard/inbox" class="mt-6">Back to Inbox</UiButton>
 		</div>
 
 		<!-- Thread Content -->
@@ -360,9 +360,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						@assign="onAssign"
 					>
 						<template #trigger>
-							<button
+							<UiButton
+								variant="secondary"
+								size="sm"
 								type="button"
-								class="btn btn-secondary btn-sm gap-1.5"
+								class="gap-1.5"
 								:aria-label="
 									assignedMemberName ? `Assigned to ${assignedMemberName}` : 'Assign thread'
 								"
@@ -377,18 +379,30 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<span class="max-w-[10rem] truncate">
 									{{ assignedMemberName ?? 'Assign' }}
 								</span>
-							</button>
+							</UiButton>
 						</template>
 					</InboxAssignPopover>
 					<!-- Snooze / unsnooze — reuses the Postbox snooze presets. -->
-					<button v-if="isSnoozed" class="btn btn-secondary btn-sm gap-1.5" @click="onUnsnooze">
+					<UiButton
+						variant="secondary"
+						size="sm"
+						v-if="isSnoozed"
+						class="gap-1.5"
+						@click="onUnsnooze"
+					>
 						<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
 						Unsnooze
-					</button>
-					<button v-else class="btn btn-secondary btn-sm gap-1.5" @click="showSnoozeDialog = true">
+					</UiButton>
+					<UiButton
+						variant="secondary"
+						size="sm"
+						v-else
+						class="gap-1.5"
+						@click="showSnoozeDialog = true"
+					>
 						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 						Snooze
-					</button>
+					</UiButton>
 					<select
 						:value="thread.status === 'closed' ? 'resolved' : thread.status"
 						class="input w-auto text-sm"
@@ -493,14 +507,16 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								{{ message.errorMessage }}
 							</p>
 							<p v-else class="text-sm text-text-secondary mb-3">No error detail was recorded.</p>
-							<button
-								class="btn btn-secondary btn-sm gap-1"
+							<UiButton
+								variant="secondary"
+								size="sm"
+								class="gap-1"
 								:disabled="isRetrying"
 								@click="onRetry(message._id)"
 							>
 								<Icon name="lucide:refresh-cw" class="w-3 h-3" />
 								Retry processing
-							</button>
+							</UiButton>
 						</div>
 
 						<!-- Agent processing trace -->
@@ -549,8 +565,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 								<!-- Action Buttons -->
 								<div class="flex items-center gap-2 mt-4">
-									<button
-										class="btn btn-primary btn-sm gap-1 disabled:cursor-not-allowed"
+									<UiButton
+										size="sm"
+										class="gap-1 disabled:cursor-not-allowed"
 										:disabled="isApproving || isHeld"
 										:aria-disabled="isHeld ? 'true' : undefined"
 										@click="onApprove(message._id)"
@@ -558,18 +575,25 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										<UiSpinner v-if="isApproving" size="xs" tone="inverse" />
 										<Icon v-else name="lucide:check" class="w-3 h-3" />
 										Approve & Send
-									</button>
-									<button class="btn btn-secondary btn-sm gap-1" @click="startEditDraft(message)">
+									</UiButton>
+									<UiButton
+										variant="secondary"
+										size="sm"
+										class="gap-1"
+										@click="startEditDraft(message)"
+									>
 										<Icon name="lucide:pencil" class="w-3 h-3" />
 										Edit
-									</button>
-									<button
-										class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
+									</UiButton>
+									<UiButton
+										variant="ghost"
+										size="sm"
+										class="gap-1 text-error hover:bg-error-subtle"
 										@click="openRejectModal(message._id)"
 									>
 										<Icon name="lucide:x" class="w-3 h-3" />
 										Reject
-									</button>
+									</UiButton>
 								</div>
 								<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
 								<p

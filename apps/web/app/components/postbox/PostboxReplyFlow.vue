@@ -403,12 +403,12 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 				</p>
 				<p class="mt-1 text-xs text-text-tertiary">New replies will appear here as they arrive.</p>
 				<div class="mt-6 flex items-center justify-center gap-2">
-					<NuxtLink to="/dashboard/postbox" class="btn btn-secondary text-sm">
+					<UiButton variant="secondary" to="/dashboard/postbox" class="text-sm">
 						Back to Today
-					</NuxtLink>
-					<NuxtLink to="/dashboard/postbox/inbox" class="btn btn-secondary text-sm">
+					</UiButton>
+					<UiButton variant="secondary" to="/dashboard/postbox/inbox" class="text-sm">
 						Back to inbox
-					</NuxtLink>
+					</UiButton>
 				</div>
 			</div>
 		</template>

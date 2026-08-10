@@ -65,12 +65,15 @@ npx vitest related path/to/file.ts  # only tests that import the given file
 The Convex backend (`apps/api/convex/`) has its own file-layout, naming, and
 permission rules — read
 [`apps/api/convex/CONVENTIONS.md`](./apps/api/convex/CONVENTIONS.md) before
-adding backend files or touching mutation auth. Two extra lint gates run as part
-of `bun run lint` and will fail CI:
+adding backend files or touching mutation auth. Extra lint gates run as part
+of `bun run lint` and will fail CI, including:
 
 - `lint:env` — all `process.env.*` reads must go through `convex/lib/env.ts`.
 - `lint:patterns` — Convex best-practice ratchets (always declare `args:`,
   index don't filter, bound `.collect()`, no `console.log`).
+- `lint:session-threading` — handlers on the org-scoped builders must use the
+  session their auth floor already resolved instead of re-resolving it
+  (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
 
 ## Code Quality
 

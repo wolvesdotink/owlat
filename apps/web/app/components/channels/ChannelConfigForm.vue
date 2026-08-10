@@ -58,14 +58,40 @@ interface ConfigField {
 const channelFields: Record<ChannelKind, ConfigField[]> = {
 	email: [],
 	sms: [
-		{ key: 'accountSid', label: 'Account SID', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', type: 'text' },
-		{ key: 'authToken', label: 'Auth Token', placeholder: 'Enter your Twilio auth token', type: 'password' },
+		{
+			key: 'accountSid',
+			label: 'Account SID',
+			placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+			type: 'text',
+		},
+		{
+			key: 'authToken',
+			label: 'Auth Token',
+			placeholder: 'Enter your Twilio auth token',
+			type: 'password',
+		},
 		{ key: 'phoneNumber', label: 'Phone Number', placeholder: '+1234567890', type: 'text' },
 	],
 	whatsapp: [
-		{ key: 'businessAccountId', label: 'Business Account ID', placeholder: 'Enter your WhatsApp Business Account ID', type: 'text', hint: 'Recorded for reference. Outbound sends are keyed on the Phone Number ID below.' },
-		{ key: 'accessToken', label: 'Access Token', placeholder: 'Enter your access token', type: 'password' },
-		{ key: 'phoneNumberId', label: 'Phone Number ID', placeholder: 'Enter your phone number ID', type: 'text' },
+		{
+			key: 'businessAccountId',
+			label: 'Business Account ID',
+			placeholder: 'Enter your WhatsApp Business Account ID',
+			type: 'text',
+			hint: 'Recorded for reference. Outbound sends are keyed on the Phone Number ID below.',
+		},
+		{
+			key: 'accessToken',
+			label: 'Access Token',
+			placeholder: 'Enter your access token',
+			type: 'password',
+		},
+		{
+			key: 'phoneNumberId',
+			label: 'Phone Number ID',
+			placeholder: 'Enter your phone number ID',
+			type: 'text',
+		},
 	],
 	// No Secret Key field: its only consumer was `WebhookAdapter.validateSignature`,
 	// a verifier the inbound route never called and that D10 deleted. Inbound
@@ -74,7 +100,13 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 	// outbound POST carries no secret header — so collecting one here would seal a
 	// real shared secret into the credential envelope with nothing able to use it.
 	generic: [
-		{ key: 'endpointUrl', label: 'Endpoint URL', placeholder: 'https://example.com/webhook', type: 'url', hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).' },
+		{
+			key: 'endpointUrl',
+			label: 'Endpoint URL',
+			placeholder: 'https://example.com/webhook',
+			type: 'url',
+			hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).',
+		},
 	],
 	chat: [],
 };
@@ -92,7 +124,8 @@ for (const field of channelFields[props.channel] ?? []) {
 // Email/chat are not offered in the Add-channel menu; these only render for an
 // existing email/chat config row. Email sending lives elsewhere — point there.
 const channelInfoMessages: Record<ChannelKind, string> = {
-	email: 'Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.',
+	email:
+		'Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.',
 	chat: 'Chat is natively integrated and requires no additional configuration.',
 	sms: '',
 	whatsapp: '',
@@ -139,8 +172,11 @@ async function handleSave() {
 	<div class="space-y-4">
 		<!-- Display Name -->
 		<div>
-			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5">Display Name</label>
-			<input id="localdisplayname"
+			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5"
+				>Display Name</label
+			>
+			<input
+				id="localdisplayname"
 				v-model="localDisplayName"
 				type="text"
 				class="input w-full"
@@ -204,25 +240,13 @@ async function handleSave() {
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
-			<button
-				class="btn btn-secondary"
-				:disabled="isSaving"
-				@click="emit('cancelled')"
-			>
+			<UiButton variant="secondary" :disabled="isSaving" @click="emit('cancelled')">
 				Cancel
-			</button>
-			<button
-				class="btn btn-primary gap-2"
-				:disabled="isSaving"
-				@click="handleSave"
-			>
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin"
-				/>
+			</UiButton>
+			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
+				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				{{ isSaving ? 'Saving...' : 'Save Configuration' }}
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

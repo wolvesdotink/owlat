@@ -48,14 +48,34 @@ const clearsignedText = computed(() =>
 const meta = computed(() => {
 	switch (props.klass) {
 		case 'pgp-encrypted':
-			return { icon: 'lucide:lock', label: 'Encrypted (PGP)', encrypted: true };
+			return {
+				icon: 'lucide:lock',
+				label: 'End-to-end encrypted',
+				encrypted: true,
+				technology: 'OpenPGP',
+			};
 		case 'smime-encrypted':
-			return { icon: 'lucide:lock', label: 'Encrypted (S/MIME)', encrypted: true };
+			return {
+				icon: 'lucide:lock',
+				label: 'End-to-end encrypted',
+				encrypted: true,
+				technology: 'S/MIME',
+			};
 		case 'pgp-signed':
 		case 'pgp-clearsigned':
-			return { icon: 'lucide:pen-tool', label: 'Signed (PGP)', encrypted: false };
+			return {
+				icon: 'lucide:pen-tool',
+				label: 'Digitally signed',
+				encrypted: false,
+				technology: 'OpenPGP',
+			};
 		case 'smime-signed':
-			return { icon: 'lucide:pen-tool', label: 'Signed (S/MIME)', encrypted: false };
+			return {
+				icon: 'lucide:pen-tool',
+				label: 'Digitally signed',
+				encrypted: false,
+				technology: 'S/MIME',
+			};
 		default:
 			return null;
 	}
@@ -63,8 +83,8 @@ const meta = computed(() => {
 
 const tooltip = computed(() =>
 	meta.value?.encrypted
-		? "Owlat can't decrypt this message — the encrypted content is shown as-is."
-		: 'A cryptographic signature is present but is not verified by Owlat.'
+		? `${meta.value.technology}: Owlat can't decrypt this message — the encrypted content is shown as-is.`
+		: `${meta.value?.technology}: a cryptographic signature is present but is not verified by Owlat.`
 );
 
 // Recovery model: the inline ("armored") ciphertext block, if the encrypted
@@ -183,8 +203,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 		<pre
 			v-if="clearsignedText && !sealedBadge"
 			class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
-			>{{ clearsignedText }}</pre
-		>
+			>{{ clearsignedText }}</pre>
 
 		<!-- Encrypted: recovery controls so the user can decrypt externally. -->
 		<div v-if="showRecovery" class="mt-2 flex flex-wrap items-center gap-2">

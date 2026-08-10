@@ -10,11 +10,12 @@
  *
  * This is a read-side badge only: opening a thread marks it seen, it never gates
  * a mutation, and — like presence — it records NO audit-log entry. The shared
- * inbox is admin-only, so `markThreadSeen` goes through `adminMutation`.
+ * inbox can be read by any organization member, so the per-user marker uses
+ * the member-authenticated mutation floor.
  */
 
 import { v } from 'convex/values';
-import { adminMutation } from '../lib/authedFunctions';
+import { authedMutation } from '../lib/authedFunctions';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 
@@ -23,7 +24,8 @@ import { getOrThrow } from '../_utils/errors';
  * team member opens the thread detail view. Idempotent: re-opening a thread just
  * advances the timestamp. One row per (user, thread).
  */
-export const markThreadSeen = adminMutation({
+// all-members: every member may read the shared inbox, and this only updates the caller's marker.
+export const markThreadSeen = authedMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 	},

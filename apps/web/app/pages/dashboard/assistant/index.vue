@@ -98,10 +98,10 @@ const formatDate = (ts: number) =>
 		<!-- Conversation list -->
 		<aside class="hidden md:flex w-72 flex-shrink-0 flex-col border-r border-border-subtle">
 			<div class="p-3">
-				<button class="btn btn-primary w-full gap-2" @click="newConversation">
+				<UiButton full-width class="gap-2" @click="newConversation">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					New chat
-				</button>
+				</UiButton>
 			</div>
 			<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
 				<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">Loading…</div>

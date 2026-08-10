@@ -120,10 +120,15 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					Serve open &amp; click tracking from your own branded subdomain
 				</p>
 			</div>
-			<button v-if="hasActiveOrganization" class="btn btn-secondary gap-2" @click="addModal.open()">
+			<UiButton
+				variant="secondary"
+				v-if="hasActiveOrganization"
+				class="gap-2"
+				@click="addModal.open()"
+			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Add Tracking Domain
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Info card -->
@@ -161,10 +166,10 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				Add a branded subdomain to serve open and click tracking from your own domain.
 			</p>
-			<button class="btn btn-secondary gap-2 mt-4" @click="addModal.open()">
+			<UiButton variant="secondary" class="gap-2 mt-4" @click="addModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Add Your First Tracking Domain
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- List -->
@@ -205,8 +210,9 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					</div>
 
 					<div class="flex items-center gap-2">
-						<button
-							class="btn btn-secondary gap-1.5 text-sm py-1.5 px-3"
+						<UiButton
+							variant="secondary"
+							class="gap-1.5 text-sm py-1.5 px-3"
 							title="Check DNS for this tracking domain"
 							:disabled="verifyingId === td._id"
 							@click.stop="handleVerify(td._id)"
@@ -218,14 +224,15 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 							/>
 							<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 							{{ verifyingId === td._id ? 'Verifying...' : 'Verify' }}
-						</button>
-						<button
-							class="btn btn-ghost p-2 text-error hover:bg-error/10"
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							class="p-2 text-error hover:bg-error/10"
 							title="Remove tracking domain"
 							@click.stop="deleteModal.open(td)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+						</UiButton>
 						<div
 							:class="[
 								'w-5 h-5 flex items-center justify-center transition-transform',

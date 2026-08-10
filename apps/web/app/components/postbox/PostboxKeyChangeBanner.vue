@@ -85,15 +85,15 @@ async function accept() {
 					reopening this thread.
 				</p>
 				<div v-if="isAdmin" class="mt-2 flex items-center gap-2">
-					<button
+					<UiButton
+						size="sm"
 						type="button"
-						class="btn btn-primary btn-sm"
 						data-testid="key-change-accept"
 						:disabled="reaccept.isLoading.value"
 						@click="accept"
 					>
 						{{ reaccept.isLoading.value ? 'Accepting…' : 'Accept new key' }}
-					</button>
+					</UiButton>
 				</div>
 				<p v-else class="mt-2 text-xs text-text-secondary" data-testid="key-change-admin-only">
 					Ask a workspace admin to review this key change before sealed mail resumes to this person.

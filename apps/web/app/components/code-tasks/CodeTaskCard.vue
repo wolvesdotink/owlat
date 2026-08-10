@@ -22,9 +22,7 @@ const { run: cancelMutation } = useBackendOperation(api.codeWorkTasks.cancel, {
 });
 const isCancelling = ref(false);
 
-const canCancel = computed(() =>
-	props.task.status === 'queued' || props.task.status === 'running',
-);
+const canCancel = computed(() => props.task.status === 'queued' || props.task.status === 'running');
 
 const handleCancel = async () => {
 	isCancelling.value = true;
@@ -77,7 +75,10 @@ const formatCost = (cost: number) => {
 			</div>
 
 			<!-- Error message -->
-			<div v-if="task.errorMessage && task.status === 'failed'" class="flex items-start gap-2 text-xs">
+			<div
+				v-if="task.errorMessage && task.status === 'failed'"
+				class="flex items-start gap-2 text-xs"
+			>
 				<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 text-error mt-0.5" />
 				<span class="text-error whitespace-pre-wrap">{{ task.errorMessage }}</span>
 			</div>
@@ -93,15 +94,17 @@ const formatCost = (cost: number) => {
 				</span>
 			</div>
 
-			<button
+			<UiButton
+				variant="ghost"
+				size="sm"
 				v-if="canCancel"
-				class="btn btn-ghost btn-sm gap-1 text-error hover:bg-error-subtle"
+				class="gap-1 text-error hover:bg-error-subtle"
 				:disabled="isCancelling"
 				@click="handleCancel"
 			>
 				<Icon name="lucide:x" class="w-3 h-3" />
 				{{ isCancelling ? 'Cancelling...' : 'Cancel' }}
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

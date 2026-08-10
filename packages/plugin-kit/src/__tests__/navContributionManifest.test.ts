@@ -46,7 +46,7 @@ function settingsBase(overrides: Record<string, unknown> = {}): Record<string, u
 				{
 					id: 'sync',
 					name: 'Sync settings',
-					href: '/dashboard/settings/deals',
+					href: '/dashboard/admin/deals',
 					icon: 'lucide:refresh-ccw',
 				},
 			],
@@ -224,7 +224,7 @@ describe('plugin settings panel contributions', () => {
 						id: 'sync',
 						section: 'settings',
 						name: 'Sync',
-						href: '/dashboard/settings/deals',
+						href: '/dashboard/admin/deals',
 						icon: 'lucide:refresh-ccw',
 					},
 				],
@@ -247,8 +247,8 @@ describe('plugin settings panel contributions', () => {
 
 describe('isSafeInternalNavPath', () => {
 	it('accepts absolute internal paths', () => {
-		expect(isSafeInternalNavPath('/dashboard/settings')).toBe(true);
-		expect(isSafeInternalNavPath('/dashboard/settings/team-inboxes')).toBe(true);
+		expect(isSafeInternalNavPath('/dashboard/admin')).toBe(true);
+		expect(isSafeInternalNavPath('/dashboard/admin/team/inboxes')).toBe(true);
 		expect(isSafeInternalNavPath('/')).toBe(true);
 	});
 

@@ -22,10 +22,11 @@ export type { NavigationItem, NavigationSection };
 export function useDashboardNavigation() {
 	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 	const { isDesktop } = useDesktopContext();
+	const { role } = usePermissions();
 
 	const navigationSections = computed<NavigationSection[]>(() =>
 		buildNavigationSections(
-			{ isFeatureEnabled, isDesktop: isDesktop.value },
+			{ isFeatureEnabled, isDesktop: isDesktop.value, role: role.value },
 			derivePluginNavigation(bundledPluginComposition, isFeatureEnabled)
 		)
 	);

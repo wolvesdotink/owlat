@@ -378,7 +378,7 @@ onMounted(async () => {
 		>
 			<template v-if="emptyState.showFilterAction" #action>
 				<NuxtLink
-					to="/dashboard/postbox/settings/filters"
+					to="/dashboard/preferences/filters"
 					class="inline-block mt-2 text-xs text-brand hover:underline"
 				>
 					Set up a filter

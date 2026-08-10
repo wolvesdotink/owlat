@@ -33,14 +33,14 @@ defineProps<{
 		<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 			Cross-channel messages appear here once a channel is connected.
 		</p>
-		<NuxtLink
+		<UiButton
 			v-if="canManage"
-			to="/dashboard/settings/channels"
-			class="btn btn-primary mt-5 inline-flex items-center gap-1.5"
+			to="/dashboard/admin/instance/channels"
+			class="mt-5 inline-flex items-center gap-1.5"
 			data-testid="connect-channel-cta"
 		>
 			<Icon name="lucide:plus" class="w-4 h-4" />
 			Connect a channel
-		</NuxtLink>
+		</UiButton>
 	</div>
 </template>

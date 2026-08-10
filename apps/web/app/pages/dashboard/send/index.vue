@@ -207,10 +207,10 @@ function getTypeBadgeClass(type: string): string {
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 							Create your first email template to get started.
 						</p>
-						<NuxtLink to="/dashboard/send/marketing" class="btn btn-primary mt-6 gap-2">
+						<UiButton to="/dashboard/send/marketing" class="mt-6 gap-2">
 							<Icon name="lucide:plus" class="w-4 h-4" />
 							Create Template
-						</NuxtLink>
+						</UiButton>
 					</div>
 
 					<!-- Templates list -->

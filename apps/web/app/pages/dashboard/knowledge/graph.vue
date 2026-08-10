@@ -22,7 +22,9 @@ definePageMeta({
 		<!-- Header -->
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-start gap-4">
-				<div class="w-12 h-12 rounded-xl bg-brand-subtle flex items-center justify-center flex-shrink-0">
+				<div
+					class="w-12 h-12 rounded-xl bg-brand-subtle flex items-center justify-center flex-shrink-0"
+				>
 					<Icon name="lucide:share-2" class="w-6 h-6 text-brand" />
 				</div>
 				<div>
@@ -32,10 +34,10 @@ definePageMeta({
 					</p>
 				</div>
 			</div>
-			<NuxtLink to="/dashboard/knowledge" class="btn btn-secondary gap-2 flex-shrink-0">
+			<UiButton variant="secondary" to="/dashboard/knowledge" class="gap-2 flex-shrink-0">
 				<Icon name="lucide:list" class="w-4 h-4" />
 				List view
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<KnowledgeGraphView />

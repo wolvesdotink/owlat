@@ -21,8 +21,8 @@ useHead({
 				aria-label="Main"
 			>
 				<NuxtLink to="/" class="font-display text-xl text-text-primary pr-4">Owlat</NuxtLink>
-				<NuxtLink to="/auth/login" class="btn btn-ghost btn-sm">Log in</NuxtLink>
-				<NuxtLink to="/auth/register" class="btn btn-primary btn-sm">Get started</NuxtLink>
+				<UiButton variant="ghost" size="sm" to="/auth/login">Log in</UiButton>
+				<UiButton size="sm" to="/auth/register">Get started</UiButton>
 			</nav>
 		</header>
 
@@ -39,8 +39,10 @@ useHead({
 				connect with your customers.
 			</p>
 			<div class="flex flex-col sm:flex-row items-center gap-3">
-				<NuxtLink to="/auth/register" class="btn btn-primary btn-lg"> Get started free </NuxtLink>
-				<NuxtLink to="/auth/login" class="btn btn-outline btn-lg bg-white/60"> Log in </NuxtLink>
+				<UiButton size="lg" to="/auth/register"> Get started free </UiButton>
+				<UiButton variant="outline" size="lg" to="/auth/login" class="bg-white/60">
+					Log in
+				</UiButton>
 			</div>
 		</main>
 

@@ -89,7 +89,7 @@ describe('ReceivingDnsSection', () => {
 		const banner = w.find('[data-testid="receiving-not-enabled"]');
 		expect(banner.exists()).toBe(true);
 		expect(banner.text()).toContain("Receiving isn't turned on yet");
-		expect(banner.find('a').attributes('href')).toBe('/dashboard/settings/features');
+		expect(banner.find('a').attributes('href')).toBe('/dashboard/admin/instance/features');
 	});
 
 	it('does not render MTA-STS records when no policy is published', () => {

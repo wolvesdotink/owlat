@@ -220,9 +220,9 @@ const handleEdit = () => {
 			<p class="text-sm text-text-tertiary mt-1">
 				This automation may have been deleted or you don't have access to it.
 			</p>
-			<NuxtLink to="/dashboard/automations" class="btn btn-secondary mt-6">
+			<UiButton variant="secondary" to="/dashboard/automations" class="mt-6">
 				Back to Automations
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<!-- Analytics Content -->
@@ -264,10 +264,10 @@ const handleEdit = () => {
 							</div>
 						</div>
 					</div>
-					<button class="btn btn-secondary gap-2" @click="handleEdit">
+					<UiButton variant="secondary" class="gap-2" @click="handleEdit">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 						Edit Automation
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -316,7 +316,7 @@ const handleEdit = () => {
 					<p class="text-sm text-text-tertiary mt-1">
 						Add steps to your automation to see funnel analytics
 					</p>
-					<button class="btn btn-secondary mt-4" @click="handleEdit">Configure Steps</button>
+					<UiButton variant="secondary" class="mt-4" @click="handleEdit">Configure Steps</UiButton>
 				</div>
 
 				<!-- Funnel chart -->
@@ -522,23 +522,25 @@ const handleEdit = () => {
 						v-if="runsOffset > 0 || runs.hasMore"
 						class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
 					>
-						<button
-							class="btn btn-secondary text-sm"
+						<UiButton
+							variant="secondary"
+							class="text-sm"
 							:disabled="runsOffset === 0"
 							@click="loadPrevRuns"
 						>
 							Previous
-						</button>
+						</UiButton>
 						<span class="text-sm text-text-tertiary">
 							{{ runsOffset + 1 }}–{{ runsOffset + (runs.runs?.length ?? 0) }}
 						</span>
-						<button
-							class="btn btn-secondary text-sm"
+						<UiButton
+							variant="secondary"
+							class="text-sm"
 							:disabled="!runs.hasMore"
 							@click="loadMoreRuns"
 						>
 							Next
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>

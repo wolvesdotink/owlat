@@ -187,13 +187,7 @@ const steps = computed(() =>
 
 <template>
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<NuxtLink
-			to="/dashboard/postbox/settings"
-			class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
-		>
-			<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-			Back to settings
-		</NuxtLink>
+		<PreferencesBackLink />
 
 		<header class="flex items-center gap-3">
 			<UiIconBox icon="lucide:mail" size="lg" variant="brand" rounded="2xl" />
@@ -486,8 +480,7 @@ const steps = computed(() =>
 							</p>
 							<pre
 								class="mt-3 text-xs text-text-secondary whitespace-pre-wrap font-sans bg-text-tertiary/5 rounded-lg p-3"
-								>{{ suggestedSignature }}</pre
-							>
+								>{{ suggestedSignature }}</pre>
 							<div class="mt-3 flex items-center gap-3">
 								<UiButton
 									size="sm"
@@ -498,7 +491,7 @@ const steps = computed(() =>
 									Use this signature
 								</UiButton>
 								<NuxtLink
-									to="/dashboard/postbox/settings/signatures"
+									to="/dashboard/preferences/signatures"
 									class="text-xs text-text-tertiary hover:text-text-primary"
 								>
 									Edit it first
@@ -514,10 +507,7 @@ const steps = computed(() =>
 						</p>
 						<p v-else class="text-xs text-text-tertiary mt-6">
 							Tip: check your
-							<NuxtLink
-								to="/dashboard/postbox/settings/signatures"
-								class="text-brand hover:underline"
-							>
+							<NuxtLink to="/dashboard/preferences/signatures" class="text-brand hover:underline">
 								email signature
 							</NuxtLink>
 							so your replies look just like they did before.

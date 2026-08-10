@@ -22,7 +22,7 @@ type DomainStatus = DomainRow['status'];
 
 defineProps<{ rows: DomainRow[] }>();
 
-const DOMAIN_SETUP_ROUTE = '/dashboard/delivery/domains';
+const DOMAIN_SETUP_ROUTE = '/dashboard/admin/delivery/domains';
 
 /** One lookup keyed off status: the chip's human label + its verification tone. */
 const STATUS_META: Record<DomainStatus, { label: string; tone: HealthTone }> = {

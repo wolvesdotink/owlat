@@ -63,10 +63,10 @@ onMounted(async () => {
 				<p class="text-text-secondary text-sm mb-6">
 					Your account deletion has been cancelled. Your account and all data will be preserved.
 				</p>
-				<NuxtLink to="/dashboard" class="btn btn-primary gap-2 inline-flex">
+				<UiButton to="/dashboard" class="gap-2 inline-flex">
 					Go to Dashboard
 					<Icon name="lucide:arrow-right" class="w-4 h-4" />
-				</NuxtLink>
+				</UiButton>
 			</div>
 
 			<!-- Error State -->
@@ -85,8 +85,8 @@ onMounted(async () => {
 					this is an error, please contact support.
 				</p>
 				<div class="flex gap-3 justify-center">
-					<NuxtLink to="/auth/login" class="btn btn-secondary"> Sign In </NuxtLink>
-					<NuxtLink to="/" class="btn btn-ghost"> Go Home </NuxtLink>
+					<UiButton variant="secondary" to="/auth/login"> Sign In </UiButton>
+					<UiButton variant="ghost" to="/"> Go Home </UiButton>
 				</div>
 			</div>
 
@@ -103,8 +103,8 @@ onMounted(async () => {
 					your email or sign in to manage your account.
 				</p>
 				<div class="flex gap-3 justify-center">
-					<NuxtLink to="/auth/login" class="btn btn-primary"> Sign In </NuxtLink>
-					<NuxtLink to="/" class="btn btn-ghost"> Go Home </NuxtLink>
+					<UiButton to="/auth/login"> Sign In </UiButton>
+					<UiButton variant="ghost" to="/"> Go Home </UiButton>
 				</div>
 			</div>
 		</div>

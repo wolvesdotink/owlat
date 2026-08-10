@@ -123,9 +123,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 				You don't have a mailbox here yet — connect an existing account to read and send from it in
 				Postbox.
 			</p>
-			<NuxtLink to="/dashboard/postbox/settings/add-account" class="btn btn-primary mt-6">
-				Connect an account
-			</NuxtLink>
+			<UiButton to="/dashboard/preferences/add-account" class="mt-6"> Connect an account </UiButton>
 		</div>
 	</div>
 
