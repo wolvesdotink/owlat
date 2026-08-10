@@ -25,9 +25,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 				<p class="text-text-secondary mt-2">
 					Provision your first personal mailbox to start receiving mail.
 				</p>
-				<NuxtLink to="/dashboard/postbox/settings/add-account" class="btn btn-primary mt-6">
-					Add mail account
-				</NuxtLink>
+				<UiButton to="/dashboard/preferences/add-account" class="mt-6"> Add mail account </UiButton>
 			</div>
 		</div>
 		<div v-else class="h-full flex items-center justify-center">

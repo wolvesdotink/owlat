@@ -17,6 +17,7 @@ const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext
 const router = useRouter();
 const route = useRoute();
 const { showToast } = useToast();
+const { canManageContacts } = usePermissions();
 
 // Data table controls (search, sort, pagination). Only `createdAt` is
 // server-sortable — it is the sole column with a soft-delete-leading index, so
@@ -142,7 +143,7 @@ async function copyEmail(email: string) {
 function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): ContextMenuItem[] {
 	const selected = bulkSelection.selectedIds.value.has(contact._id);
 	const email = contact.email;
-	return [
+	const items: ContextMenuItem[] = [
 		{
 			id: 'open',
 			label: 'Open contact',
@@ -158,14 +159,17 @@ function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): 
 				if (email) void copyEmail(email);
 			},
 		},
-		{
+	];
+	if (canManageContacts.value) {
+		items.push({
 			id: 'select',
 			label: selected ? 'Deselect' : 'Select',
 			icon: selected ? 'lucide:square' : 'lucide:check-square',
 			separatorBefore: true,
 			run: () => toggleContactSelection(contact._id),
-		},
-	];
+		});
+	}
+	return items;
 }
 
 // ============================================
@@ -268,12 +272,13 @@ useClickOutside(bulkActionDropdownRef, () => {
 onMounted(() => {
 	// Auto-open the Add Contact modal when arriving via the audience overview
 	// quick-action link (/dashboard/audience/contacts?action=add).
-	if (route.query['action'] === 'add') {
+	if (canManageContacts.value && route.query['action'] === 'add') {
 		addModal.open();
 	}
 
 	registerNewShortcut(() => {
 		if (
+			canManageContacts.value &&
 			!addModal.isOpen.value &&
 			!csvImport.isOpen.value &&
 			!isExportModalOpen.value &&
@@ -302,24 +307,25 @@ onUnmounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Subscribers</h1>
-				<p class="mt-1 text-text-secondary">Manage your email marketing subscribers</p>
+				<h1 class="text-2xl font-semibold text-text-primary">Customers</h1>
+				<p class="mt-1 text-text-secondary">People your team knows and their recent activity</p>
 			</div>
-			<div class="flex gap-2">
+			<div v-if="canManageContacts" class="flex gap-2">
 				<UiButton variant="secondary" @click="isExportModalOpen = true">
 					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
 					Export
 				</UiButton>
 				<!-- Import Dropdown -->
 				<div ref="importDropdownRef" class="relative">
-					<button
-						class="btn btn-secondary gap-2"
+					<UiButton
+						variant="secondary"
+						class="gap-2"
 						@click.stop="isImportDropdownOpen = !isImportDropdownOpen"
 					>
 						<Icon name="lucide:upload" class="w-4 h-4" />
 						Import
 						<Icon name="lucide:chevron-down" class="w-4 h-4" />
-					</button>
+					</UiButton>
 					<Transition
 						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 translate-y-1"
@@ -386,7 +392,10 @@ onUnmounted(() => {
 				leave-from-class="opacity-100 scale-100"
 				leave-to-class="opacity-0 scale-95"
 			>
-				<div v-if="bulkSelection.hasSelected.value" class="flex items-center gap-2">
+				<div
+					v-if="canManageContacts && bulkSelection.hasSelected.value"
+					class="flex items-center gap-2"
+				>
 					<span class="text-sm text-text-secondary">{{
 						bulkSelection.selectedCountText.value
 					}}</span>
@@ -617,9 +626,13 @@ onUnmounted(() => {
 					v-else-if="!isLoading && contacts.length === 0 && !debouncedSearch"
 					icon="lucide:users"
 					title="No contacts yet"
-					description="Get started by adding your first contact or importing from a CSV file."
+					:description="
+						canManageContacts
+							? 'Get started by adding your first customer or importing a CSV file.'
+							: 'No customers have been added yet.'
+					"
 				>
-					<template #action>
+					<template v-if="canManageContacts" #action>
 						<UiButton @click="addModal.open()">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 							Add Contact
@@ -644,7 +657,7 @@ onUnmounted(() => {
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="w-12 px-4 py-4">
+									<th v-if="canManageContacts" class="w-12 px-4 py-4">
 										<button
 											class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
 											:class="[
@@ -700,7 +713,7 @@ onUnmounted(() => {
 										@contextmenu="onContextmenu"
 										@keydown="onKeydown"
 									>
-										<td class="w-12 px-4 py-4">
+										<td v-if="canManageContacts" class="w-12 px-4 py-4">
 											<button
 												class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
 												:class="[
@@ -764,7 +777,7 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Add Contact Modal -->
-		<UiModal v-model:open="addModal.isOpen.value" title="Add Contact">
+		<UiModal v-if="canManageContacts" v-model:open="addModal.isOpen.value" title="Add Contact">
 			<form @submit.prevent="handleAddSubmit">
 				<div
 					v-if="addModal.errors.general"
@@ -829,6 +842,7 @@ onUnmounted(() => {
 
 		<!-- CSV Import Modal -->
 		<LazyContactsCsvImportModal
+			v-if="canManageContacts"
 			:csv-import="csvImport"
 			:topics="topics"
 			@import="handleCsvImport"
@@ -836,6 +850,7 @@ onUnmounted(() => {
 
 		<!-- Export Modal -->
 		<LazyContactsExportModal
+			v-if="canManageContacts"
 			v-model:open="isExportModalOpen"
 			:total-count="totalCount"
 			:search-query="debouncedSearch"
@@ -844,12 +859,14 @@ onUnmounted(() => {
 
 		<!-- Integration Import Modal -->
 		<LazyContactsIntegrationImportModal
+			v-if="canManageContacts"
 			v-model:open="isIntegrationImportModalOpen"
 			:topics="topics"
 		/>
 
 		<!-- Bulk Delete Modal -->
 		<LazyContactsBulkDeleteModal
+			v-if="canManageContacts"
 			v-model:open="bulkOps.isBulkDeleteModalOpen.value"
 			:count="bulkOps.bulkDeleteCount.value"
 			@confirm="bulkOps.handleBulkDelete"

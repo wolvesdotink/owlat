@@ -35,14 +35,14 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 					Manage documents, attachments, and AI-generated files.
 				</p>
 			</div>
-			<button
+			<UiButton
 				v-if="isAdmin"
-				class="btn bg-brand text-white hover:bg-brand/90"
+				class="bg-brand text-white hover:bg-brand/90"
 				@click="showUploadModal = true"
 			>
 				<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 				Upload
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Filters bar -->
@@ -141,14 +141,14 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 								: 'Files will appear here once an admin uploads them.'
 					}}
 				</p>
-				<button
+				<UiButton
 					v-if="!searchQuery && isAdmin"
-					class="btn bg-brand text-white hover:bg-brand/90 mt-4"
+					class="bg-brand text-white hover:bg-brand/90 mt-4"
 					@click="showUploadModal = true"
 				>
 					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 					Upload a file
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Grid view -->

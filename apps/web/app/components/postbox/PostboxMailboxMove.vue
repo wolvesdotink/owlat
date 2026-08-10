@@ -93,6 +93,7 @@ const checkMx = useBackendOperation(api.mail.mailboxMoveActions.checkCutoverMx, 
 
 const mxCheck = ref<MoveMxCheck>(null);
 const showCancel = ref(false);
+const dnsDetailsOpen = ref(false);
 
 async function onStart() {
 	opError.value = null;
@@ -237,11 +238,15 @@ async function onCancel() {
 								class="w-4 h-4 shrink-0"
 								:class="stage === 'archived' ? 'text-success' : 'text-text-secondary'"
 							/>
-							<span class="font-medium text-sm">2. Point your domain's mail (MX) at Owlat</span>
+							<span class="font-medium text-sm">2. Point your domain's mail at Owlat</span>
 						</div>
 
 						<div v-if="stage === 'cutover_pending'" class="mt-2 pl-6 space-y-3">
-							<template v-if="mxHost">
+							<p class="text-xs text-text-secondary">
+								Update your domain so new messages arrive directly in Owlat. If someone else manages
+								your domain, you can send them the technical details below.
+							</p>
+							<UiDisclosure v-if="mxHost" v-model="dnsDetailsOpen" label="Advanced domain setup">
 								<p class="text-xs text-text-secondary">
 									Add this MX record for <code>{{ domain }}</code> at your DNS provider. Changing MX
 									needs DNS access — if that's your admin's job, hand them this exact record:
@@ -285,7 +290,7 @@ async function onCancel() {
 									Once the MX record points at Owlat, new mail lands directly in your hosted
 									mailbox. Then archive your old account below.
 								</p>
-							</template>
+							</UiDisclosure>
 							<p v-else class="text-xs text-warning">
 								This instance has no inbound mail host configured, so it can't receive mail yet. An
 								admin needs to set that up under Delivery before you can finish the move.
@@ -345,8 +350,8 @@ async function onCancel() {
 						<div class="rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
 							<p class="text-xs text-text-tertiary">
 								<strong class="text-text-secondary">Changed your mind?</strong> Cancel any time
-								before you archive. Point your MX record back at your old provider and nothing is
-								lost — the hosted mailbox we set up is removed and your original account keeps
+								before you archive. Point your domain's mail back at your old provider and nothing
+								is lost — the hosted mailbox we set up is removed and your original account keeps
 								working untouched.
 							</p>
 						</div>
@@ -371,7 +376,7 @@ async function onCancel() {
 			:open="showCancel"
 			variant="danger"
 			title="Cancel this move?"
-			description="We'll remove the hosted mailbox we set up and leave your original account exactly as it is — still connected and syncing. Point your MX record back at your old provider if you changed it. Nothing is lost."
+			description="We'll remove the hosted mailbox we set up and leave your original account exactly as it is — still connected and syncing. Point your domain's mail back at your old provider if you changed it. Nothing is lost."
 			confirm-text="Cancel move"
 			:is-loading="cancelMove.isLoading.value"
 			@update:open="

@@ -30,9 +30,9 @@ const title = computed(() =>
 </script>
 
 <template>
-	<button
+	<UiButton
+		variant="ghost"
 		type="button"
-		class="btn btn-ghost"
 		:class="{ 'text-brand': remindAt }"
 		:title="title"
 		:aria-label="title"
@@ -42,7 +42,7 @@ const title = computed(() =>
 	>
 		<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 		<Icon v-if="remindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
-	</button>
+	</UiButton>
 	<PostboxFollowUpDialog
 		:open="open"
 		@update:open="open = $event"

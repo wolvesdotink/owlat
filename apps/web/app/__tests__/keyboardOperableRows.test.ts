@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
 const domainsRow = read('../components/domains/RecordRow.vue');
-const webhooks = read('../pages/dashboard/delivery/webhooks.vue');
+const webhooks = read('../pages/dashboard/admin/delivery/webhooks.vue');
 const marketing = read('../pages/dashboard/send/marketing/index.vue');
 const transactional = read('../pages/dashboard/send/transactional/index.vue');
 const commandRowReference = read('../components/campaigns/CommandRow.vue');

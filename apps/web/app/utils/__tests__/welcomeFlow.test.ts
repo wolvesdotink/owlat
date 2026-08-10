@@ -35,7 +35,7 @@ describe('isWelcomeTriggerPath — where the middleware checks', () => {
 	it('triggers on the Postbox root and its subpaths', () => {
 		expect(isWelcomeTriggerPath('/dashboard/postbox')).toBe(true);
 		expect(isWelcomeTriggerPath('/dashboard/postbox/inbox')).toBe(true);
-		expect(isWelcomeTriggerPath('/dashboard/postbox/settings/add-account')).toBe(true);
+		expect(isWelcomeTriggerPath('/dashboard/preferences/add-account')).toBe(true);
 	});
 
 	it('does not trigger on the welcome screen itself (no redirect loop)', () => {
@@ -43,7 +43,7 @@ describe('isWelcomeTriggerPath — where the middleware checks', () => {
 	});
 
 	it('does not trigger on unrelated dashboard or app routes', () => {
-		expect(isWelcomeTriggerPath('/dashboard/settings')).toBe(false);
+		expect(isWelcomeTriggerPath('/dashboard/admin')).toBe(false);
 		expect(isWelcomeTriggerPath('/dashboard/campaigns')).toBe(false);
 		expect(isWelcomeTriggerPath('/auth/login')).toBe(false);
 		// A route that merely starts with the dashboard-home string is not the home.
@@ -77,7 +77,7 @@ describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 		expect(visibleChecklistSteps('migration').map((s) => s.id)).toContain(AI_CONNECTED_STEP_ID);
 		const aiStep = CHECKLIST_STEPS.find((s) => s.id === AI_CONNECTED_STEP_ID);
 		expect(aiStep?.migrationOnly).toBe(false);
-		expect(aiStep?.href).toBe('/dashboard/settings/ai-provider');
+		expect(aiStep?.href).toBe('/dashboard/admin/instance/ai-provider');
 	});
 
 	it('only the migration-only steps differ between the two modes', () => {

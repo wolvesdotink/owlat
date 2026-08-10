@@ -455,6 +455,10 @@ function senderAuthState(msg: PostboxReaderMessage): SenderAuthState | null {
 	return deriveSenderAuth(senderAuthInput(msg))?.state ?? null;
 }
 
+function senderAuthSummary(msg: PostboxReaderMessage): string {
+	return deriveSenderAuth(senderAuthInput(msg))?.summary ?? 'Sender could not be verified';
+}
+
 // Reply guard: intercept reply / reply-all on a message that FAILED sender
 // authentication with a one-time-per-thread confirm. Non-failed senders (and a
 // flag-off state) pass straight through — DMARC→Spam routing is untouched.
@@ -776,43 +780,15 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 
 <template>
 	<article class="pbx-reader-article p-6 max-w-4xl mx-auto">
-		<header class="pbx-reader-header mb-4">
-			<h1 class="text-2xl font-semibold text-text-primary">
-				{{ message.subject || '(no subject)' }}
-				<span
-					v-if="allMessages.length > 1"
-					class="ml-1 text-base font-normal text-text-tertiary align-middle"
-				>
-					({{ allMessages.length }})
-				</span>
-			</h1>
-			<PostboxFollowUpChip
-				v-if="readerThread"
-				:thread="readerThread"
-				:latest-outbound-id="latestOutboundId"
-				class="mt-2"
-			/>
-			<!-- Team-inbox collision safety: who replied last (shared inboxes only;
-			     renders nothing for a personal mailbox). -->
-			<PostboxTeamReplyBadge :message-id="messageId" class="mt-2" />
-			<div v-if="threadLabels.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5">
-				<span
-					v-for="labelId in threadLabels"
-					:key="labelId"
-					class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-					:style="{
-						backgroundColor: (labelMap.get(labelId)?.color || '#6b7280') + '20',
-						color: labelMap.get(labelId)?.color || '#6b7280',
-					}"
-				>
-					<span
-						class="w-1.5 h-1.5 rounded-full"
-						:style="{ backgroundColor: labelMap.get(labelId)?.color || '#6b7280' }"
-					/>
-					{{ labelMap.get(labelId)?.name }}
-				</span>
-			</div>
-		</header>
+		<PostboxThreadHeader
+			:subject="message.subject"
+			:message-count="allMessages.length"
+			:message-id="messageId"
+			:thread="readerThread"
+			:latest-outbound-id="latestOutboundId"
+			:label-ids="threadLabels"
+			:labels="labelMap"
+		/>
 
 		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
 		     the Signal-style key-change banner (explicit re-pin) + the contact key
@@ -976,7 +952,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					>
 						<Icon name="lucide:shield-alert" class="w-4 h-4" />
 						<span v-if="msg.spamVerdict === 'spam'">Marked as spam</span>
-						<span v-else>Failed DMARC verification</span>
+						<span v-else>{{ senderAuthSummary(msg) }}</span>
 					</div>
 
 					<PostboxSecurityBadge
@@ -1054,9 +1030,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					     and forward reveal on row hover (pointer); the full set is
 					     always reachable — keyboard/touch — inside the ⋯ overflow. -->
 					<div class="mt-4 flex items-center gap-2">
-						<button
+						<UiButton
+							variant="ghost"
 							type="button"
-							class="btn btn-ghost"
 							:class="isMessageStarred(msg) ? 'text-warning' : 'text-text-tertiary'"
 							:title="isMessageStarred(msg) ? 'Unstar' : 'Star'"
 							:aria-label="isMessageStarred(msg) ? 'Unstar' : 'Star'"
@@ -1068,28 +1044,30 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								class="w-4 h-4"
 								:class="{ 'fill-current': isMessageStarred(msg) }"
 							/>
-						</button>
-						<button type="button" class="btn btn-ghost" @click="guardedReply(msg)">
+						</UiButton>
+						<UiButton variant="ghost" type="button" @click="guardedReply(msg)">
 							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 							Reply
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
 							v-if="hasOtherRecipients(msg)"
 							type="button"
-							class="btn btn-ghost hidden group-hover:inline-flex"
+							class="hidden group-hover:inline-flex"
 							@click="guardedReplyAll(msg)"
 						>
 							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
 							Reply all
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
 							type="button"
-							class="btn btn-ghost hidden group-hover:inline-flex"
+							class="hidden group-hover:inline-flex"
 							@click="openForward(msg)"
 						>
 							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
 							Forward
-						</button>
+						</UiButton>
 						<span class="flex-1" />
 						<PostboxOverflowMenu label="More message actions">
 							<template #default="{ close }">

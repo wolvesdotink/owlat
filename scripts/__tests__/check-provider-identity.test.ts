@@ -503,7 +503,10 @@ describe('provider-identity ratchet, exemptions', () => {
 	});
 
 	it.each([
-		['a per-vendor UI bundle', 'apps/web/app/pages/dashboard/delivery/smtp/CredentialsPanel.ts'],
+		[
+			'a per-vendor UI bundle',
+			'apps/web/app/pages/dashboard/admin/delivery/smtp/CredentialsPanel.ts',
+		],
 		['a per-vendor route directory', 'apps/web/app/pages/setup/ses/index.vue'],
 		['a kind-named directory in the backend', 'apps/api/convex/delivery/ses/helper.ts'],
 	])('does not exempt %s: a kind-named directory outside an adapter root', (_label, path) => {

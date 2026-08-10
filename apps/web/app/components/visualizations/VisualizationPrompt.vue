@@ -89,15 +89,11 @@ const handleCreate = async () => {
 					Pin to dashboard
 				</label>
 
-				<button
-					class="btn btn-primary gap-2"
-					:disabled="!prompt.trim() || isCreating"
-					@click="handleCreate"
-				>
+				<UiButton class="gap-2" :disabled="!prompt.trim() || isCreating" @click="handleCreate">
 					<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
 					<Icon v-else name="lucide:sparkles" class="w-4 h-4" />
 					{{ isCreating ? 'Generating...' : 'Generate' }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 	</div>

@@ -267,9 +267,7 @@ const handleExport = async () => {
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				This segment may have been deleted or doesn't exist.
 			</p>
-			<NuxtLink to="/dashboard/audience/segments" class="btn btn-primary mt-6">
-				Back to Segments
-			</NuxtLink>
+			<UiButton to="/dashboard/audience/segments" class="mt-6"> Back to Segments </UiButton>
 		</div>
 
 		<!-- Main Content -->
@@ -357,9 +355,9 @@ const handleExport = async () => {
 						No contacts currently match this segment's filters. Adjust the filters or add more
 						contacts.
 					</p>
-					<NuxtLink to="/dashboard/audience/segments" class="btn btn-secondary gap-2 mt-6">
+					<UiButton variant="secondary" to="/dashboard/audience/segments" class="gap-2 mt-6">
 						Edit Segment
-					</NuxtLink>
+					</UiButton>
 				</div>
 
 				<!-- Empty State (no search results) -->
@@ -372,15 +370,16 @@ const handleExport = async () => {
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						No contacts match "{{ debouncedSearch }}". Try a different search term.
 					</p>
-					<button
-						class="btn btn-secondary mt-6"
+					<UiButton
+						variant="secondary"
+						class="mt-6"
 						@click="
 							searchQuery = '';
 							debouncedSearch = '';
 						"
 					>
 						Clear search
-					</button>
+					</UiButton>
 				</div>
 
 				<!-- Data Table -->

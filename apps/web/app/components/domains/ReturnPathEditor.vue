@@ -105,16 +105,17 @@ async function save() {
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 				Return-path host
 			</p>
-			<button
+			<UiButton
+				variant="ghost"
 				v-if="canManage && !editing"
 				type="button"
-				class="btn btn-ghost text-xs py-1 px-2 gap-1.5"
+				class="text-xs py-1 px-2 gap-1.5"
 				data-testid="returnpath-edit"
 				@click="startEditing"
 			>
 				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 				Edit
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Collapsed: show the current host + a sync-error marker if reflecting it
@@ -167,24 +168,25 @@ async function save() {
 					:aria-describedby="describedBy"
 					@blur="handleBlur"
 				/>
-				<button
+				<UiButton
 					type="button"
-					class="btn btn-primary text-sm py-1.5 px-3 gap-1.5"
+					class="text-sm py-1.5 px-3 gap-1.5"
 					data-testid="returnpath-save"
 					:disabled="isSaving"
 					@click="save"
 				>
 					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					{{ isSaving ? 'Saving…' : 'Save' }}
-				</button>
-				<button
+				</UiButton>
+				<UiButton
+					variant="secondary"
 					type="button"
-					class="btn btn-secondary text-sm py-1.5 px-3"
+					class="text-sm py-1.5 px-3"
 					:disabled="isSaving"
 					@click="cancel"
 				>
 					Cancel
-				</button>
+				</UiButton>
 			</div>
 
 			<p

@@ -29,7 +29,7 @@ const props = withDefaults(
 		direction: 'down',
 		triggerClass: '',
 		icon: 'lucide:more-horizontal',
-	},
+	}
 );
 
 const open = ref(false);
@@ -49,10 +49,11 @@ useClickOutside([triggerEl, menuEl], close);
 
 <template>
 	<div class="relative inline-flex">
-		<button
+		<UiButton
+			variant="ghost"
 			ref="triggerEl"
 			type="button"
-			class="btn btn-ghost text-text-tertiary"
+			class="text-text-tertiary"
 			:class="props.triggerClass"
 			:title="props.label"
 			:aria-label="props.label"
@@ -61,7 +62,7 @@ useClickOutside([triggerEl, menuEl], close);
 			@click="toggle"
 		>
 			<Icon :name="props.icon" class="w-4 h-4" />
-		</button>
+		</UiButton>
 		<div
 			v-if="open"
 			ref="menuEl"

@@ -216,12 +216,12 @@ const handleCancel = () => {
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
-			<button type="button" class="btn btn-secondary" @click="handleCancel">Cancel</button>
-			<button type="submit" class="btn btn-primary gap-2" :disabled="!canSubmit || isSubmitting">
+			<UiButton variant="secondary" type="button" @click="handleCancel">Cancel</UiButton>
+			<UiButton type="submit" class="gap-2" :disabled="!canSubmit || isSubmitting">
 				<UiSpinner v-if="isSubmitting" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
 				{{ isEdit ? 'Update Entry' : 'Create Entry' }}
-			</button>
+			</UiButton>
 		</div>
 	</form>
 </template>

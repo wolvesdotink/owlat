@@ -1468,7 +1468,7 @@ describe('plugin docs: navigation samples name a real core sidebar section', () 
 
 	it('derives a non-empty core section-key set from the host', () => {
 		expect(coreSectionKeys.size).toBeGreaterThan(0);
-		expect(coreSectionKeys).toContain('settings');
+		expect(coreSectionKeys).toContain('administration');
 		expect(navigation).toContain('CORE_SECTION_KEYS.has(item.section)');
 	});
 

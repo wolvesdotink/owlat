@@ -8,13 +8,13 @@
  * allowlisted in middleware/desktop-workspace.global.ts. Global settings
  * persist to settings.json via useDesktopAppSettings; workspace cards edit
  * device-local prefs (accent, mute) and link into the Convex-backed
- * /dashboard/settings hub for everything server-side.
+ * /dashboard/admin hub for everything server-side.
  */
-useHead({ title: "Settings — Owlat" });
+useHead({ title: 'Settings — Owlat' });
 definePageMeta({ layout: false });
 
-import type { ThemeOption } from "~/composables/useAppTheme";
-import { WORKSPACE_ACCENT_OPTIONS } from "~/lib/desktop/workspaceTypes";
+import type { ThemeOption } from '~/composables/useAppTheme';
+import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
 
 const { isDesktop } = useDesktopContext();
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
@@ -29,20 +29,20 @@ const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
 const { themePreference, setTheme } = useAppTheme();
 
 const themeOptions: { value: ThemeOption; label: string; icon: string }[] = [
-	{ value: "light", label: "Light", icon: "lucide:sun" },
-	{ value: "dark", label: "Dark", icon: "lucide:moon" },
-	{ value: "system", label: "System", icon: "lucide:monitor" },
+	{ value: 'light', label: 'Light', icon: 'lucide:sun' },
+	{ value: 'dark', label: 'Dark', icon: 'lucide:moon' },
+	{ value: 'system', label: 'System', icon: 'lucide:monitor' },
 ];
 
 // Back target mirrors how the user got here: into the app when a workspace is
 // active, otherwise to the welcome flow.
-const backTarget = computed(() => (activeId.value ? "/dashboard" : "/desktop/welcome"));
+const backTarget = computed(() => (activeId.value ? '/dashboard' : '/desktop/welcome'));
 
-const appVersion = ref("");
+const appVersion = ref('');
 onMounted(async () => {
 	if (!isDesktop.value) return;
 	try {
-		const { getVersion } = await import("@tauri-apps/api/app");
+		const { getVersion } = await import('@tauri-apps/api/app');
 		appVersion.value = await getVersion();
 	} catch {
 		// Tauri not available.
@@ -61,23 +61,23 @@ function checked(e: Event): boolean {
 // for; the result arrives as a native notification.
 const updateCheckRequested = ref(false);
 function checkForUpdatesNow() {
-	window.dispatchEvent(new Event("owlat:check-updates"));
+	window.dispatchEvent(new Event('owlat:check-updates'));
 	updateCheckRequested.value = true;
 }
 
 function onStartupWorkspaceChange(e: Event) {
 	const value = (e.target as HTMLSelectElement).value;
-	setGlobal("startupWorkspaceId", value || null);
+	setGlobal('startupWorkspaceId', value || null);
 }
 
 /** Server-side settings live in the dashboard — switch there (reloads the
  * webview when the target isn't the active workspace). */
 function openWorkspaceSettings(id: string) {
 	if (id === activeId.value) {
-		void navigateTo("/dashboard/settings");
+		void navigateTo('/dashboard/admin');
 		return;
 	}
-	void switchTo(id, { destination: "/dashboard/settings" });
+	void switchTo(id, { destination: '/dashboard/admin' });
 }
 
 const workspaceToRemove = ref<{ id: string; label: string } | null>(null);
@@ -92,13 +92,13 @@ async function confirmRemoveWorkspace() {
 // Which OS the user is on, so we can show the right "set as default mail app"
 // steps. macOS/Windows/Linux all require a user action in the OS settings —
 // there is no reliable API to register the default mail handler programmatically.
-const defaultAppOs = computed<"macos" | "windows" | "linux" | "other">(() => {
-	if (import.meta.server) return "other";
+const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
+	if (import.meta.server) return 'other';
 	const ua = navigator.userAgent;
-	if (/Mac/i.test(ua)) return "macos";
-	if (/Win/i.test(ua)) return "windows";
-	if (/Linux|X11/i.test(ua)) return "linux";
-	return "other";
+	if (/Mac/i.test(ua)) return 'macos';
+	if (/Win/i.test(ua)) return 'windows';
+	if (/Linux|X11/i.test(ua)) return 'linux';
+	return 'other';
 });
 </script>
 
@@ -238,7 +238,7 @@ const defaultAppOs = computed<"macos" | "windows" | "linux" | "other">(() => {
 							<span>
 								<span class="block text-sm font-medium">Updates</span>
 								<span class="block text-xs text-text-secondary">
-									{{ appVersion ? `Owlat ${appVersion}.` : "" }}
+									{{ appVersion ? `Owlat ${appVersion}.` : '' }}
 									Check for new versions when the app starts.
 								</span>
 							</span>

@@ -68,7 +68,7 @@ function close() {
 				/>
 			</div>
 			<input v-model="newName" type="text" placeholder="New label name" class="input flex-1" />
-			<button type="submit" class="btn btn-primary" :disabled="!newName.trim()">Add</button>
+			<UiButton type="submit" :disabled="!newName.trim()">Add</UiButton>
 		</form>
 
 		<ul v-if="labels.length > 0" class="space-y-2 max-h-80 overflow-auto">

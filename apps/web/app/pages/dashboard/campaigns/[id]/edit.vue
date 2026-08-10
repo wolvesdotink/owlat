@@ -263,7 +263,7 @@ const shownCapacityPlan = computed(() => {
 				<p class="text-sm text-text-secondary mt-1">
 					The campaign you're looking for doesn't exist or you don't have access to it.
 				</p>
-				<button class="btn btn-secondary mt-6" @click="handleBack">Back to Campaigns</button>
+				<UiButton variant="secondary" class="mt-6" @click="handleBack">Back to Campaigns</UiButton>
 			</div>
 
 			<!-- Cannot Edit State -->
@@ -282,7 +282,7 @@ const shownCapacityPlan = computed(() => {
 				<p class="text-sm text-text-secondary mt-1">
 					This campaign is {{ campaignData.status }} and cannot be edited.
 				</p>
-				<button class="btn btn-secondary mt-6" @click="handleBack">Back to Campaigns</button>
+				<UiButton variant="secondary" class="mt-6" @click="handleBack">Back to Campaigns</UiButton>
 			</div>
 
 			<!-- Pending Review State -->
@@ -311,7 +311,7 @@ const shownCapacityPlan = computed(() => {
 						</p>
 					</div>
 				</div>
-				<button class="btn btn-secondary" @click="handleBack">Back to Campaigns</button>
+				<UiButton variant="secondary" @click="handleBack">Back to Campaigns</UiButton>
 			</div>
 
 			<!-- Edit Form -->
@@ -802,10 +802,10 @@ const shownCapacityPlan = computed(() => {
 								<h3 class="text-lg font-semibold text-text-primary">Send Test Email</h3>
 								<p class="text-sm text-text-secondary mt-1">Preview how your email will look.</p>
 							</div>
-							<button class="btn btn-secondary gap-2" @click="isTestEmailModalOpen = true">
+							<UiButton variant="secondary" class="gap-2" @click="isTestEmailModalOpen = true">
 								<Icon name="lucide:send-horizonal" class="w-4 h-4" />
 								Send Test
-							</button>
+							</UiButton>
 						</div>
 					</div>
 
@@ -903,40 +903,38 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Actions -->
 					<div class="flex items-center justify-between pt-4">
-						<button type="button" class="btn btn-secondary" @click="handleBack">Cancel</button>
+						<UiButton variant="secondary" type="button" @click="handleBack">Cancel</UiButton>
 						<div class="flex items-center gap-3">
 							<!-- Save button for draft campaigns -->
-							<button
+							<UiButton
+								variant="secondary"
 								v-if="isDraft"
-								class="btn btn-secondary gap-2"
+								class="gap-2"
 								:disabled="isSaving"
 								@click="handleSave"
 							>
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								Save Draft
-							</button>
+							</UiButton>
 
 							<!-- Schedule button -->
-							<button
-								class="btn btn-secondary gap-2"
+							<UiButton
+								variant="secondary"
+								class="gap-2"
 								:disabled="isSaving || !scheduledDate || !scheduledTime"
 								@click="handleSchedule"
 							>
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:clock" class="w-4 h-4" />
 								{{ isScheduled ? 'Reschedule' : 'Schedule' }}
-							</button>
+							</UiButton>
 
 							<!-- Send Now button -->
-							<button
-								class="btn btn-primary gap-2"
-								:disabled="isSaving"
-								@click="showSendConfirm = true"
-							>
+							<UiButton class="gap-2" :disabled="isSaving" @click="showSendConfirm = true">
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:send" class="w-4 h-4" />
 								Send Now
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

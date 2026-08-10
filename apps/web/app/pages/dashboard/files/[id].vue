@@ -256,28 +256,28 @@ const sourceLabel = computed(() => {
 				</div>
 
 				<div class="flex items-center gap-2 flex-shrink-0">
-					<a
+					<UiButton
+						variant="secondary"
 						v-if="file.url"
 						:href="file.url"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="btn btn-secondary"
 					>
 						<Icon name="lucide:download" class="w-4 h-4 mr-2" />
 						Download
-					</a>
-					<button v-if="isAdmin" class="btn btn-secondary" @click="showVersionUpload = true">
+					</UiButton>
+					<UiButton variant="secondary" v-if="isAdmin" @click="showVersionUpload = true">
 						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 						New Version
-					</button>
-					<button
+					</UiButton>
+					<UiButton
 						v-if="isAdmin"
-						class="btn border border-error/30 text-error hover:bg-error-subtle transition-colors"
+						class="border border-error/30 text-error hover:bg-error-subtle transition-colors"
 						@click="showDeleteConfirm = true"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
 						Delete
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -566,14 +566,15 @@ const sourceLabel = computed(() => {
 							be undone.
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
-							<button
-								class="btn bg-error text-white hover:bg-error/90"
+							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+							<UiButton
+								variant="danger"
+								class="bg-error text-white hover:bg-error/90"
 								:disabled="isDeleting"
 								@click="handleDelete"
 							>
 								{{ isDeleting ? 'Deleting...' : 'Delete' }}
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

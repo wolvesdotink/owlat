@@ -381,14 +381,14 @@ const {
 		</div>
 
 		<div class="flex justify-end gap-3 mt-6">
-			<button type="button" class="btn btn-secondary" :disabled="loading" @click="emit('cancel')">
+			<UiButton variant="secondary" type="button" :disabled="loading" @click="emit('cancel')">
 				Cancel
-			</button>
-			<button type="submit" class="btn btn-primary gap-2" :disabled="loading || isFreemail">
+			</UiButton>
+			<UiButton type="submit" class="gap-2" :disabled="loading || isFreemail">
 				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
 				{{ loading ? 'Adding...' : submitLabel }}
-			</button>
+			</UiButton>
 		</div>
 	</form>
 </template>

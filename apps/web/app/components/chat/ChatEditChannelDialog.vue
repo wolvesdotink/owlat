@@ -108,16 +108,12 @@ const handleSubmit = async () => {
 		</div>
 
 		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-			<button class="btn btn-secondary" @click="emit('close')">Cancel</button>
-			<button
-				class="btn btn-primary gap-2"
-				:disabled="!name.trim() || isSaving"
-				@click="handleSubmit"
-			>
+			<UiButton variant="secondary" @click="emit('close')">Cancel</UiButton>
+			<UiButton class="gap-2" :disabled="!name.trim() || isSaving" @click="handleSubmit">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:check" class="w-4 h-4" />
 				Save
-			</button>
+			</UiButton>
 		</div>
 	</ChatDialogShell>
 </template>

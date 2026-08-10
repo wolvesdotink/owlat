@@ -208,9 +208,7 @@ const handleRemoveRelation = async (relationId: string) => {
 			<p class="text-sm text-text-secondary mt-1">
 				This knowledge entry may have been deleted or expired.
 			</p>
-			<NuxtLink to="/dashboard/knowledge" class="mt-4 btn btn-primary">
-				Browse Knowledge Graph
-			</NuxtLink>
+			<UiButton to="/dashboard/knowledge" class="mt-4"> Browse Knowledge Graph </UiButton>
 		</div>
 
 		<!-- Entry Detail -->
@@ -252,17 +250,17 @@ const handleRemoveRelation = async (relationId: string) => {
 
 				<!-- Actions -->
 				<div class="flex items-center gap-2 flex-shrink-0">
-					<button class="btn btn-secondary gap-2" @click="showEditForm = true">
+					<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 						Edit
-					</button>
-					<button
-						class="btn border border-error/30 text-error hover:bg-error-subtle transition-colors gap-2"
+					</UiButton>
+					<UiButton
+						class="border border-error/30 text-error hover:bg-error-subtle transition-colors gap-2"
 						@click="showDeleteConfirm = true"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
 						Delete
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -298,15 +296,17 @@ const handleRemoveRelation = async (relationId: string) => {
 					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 						<div class="flex items-center justify-between mb-4">
 							<h3 class="text-sm font-semibold text-text-primary">Relations</h3>
-							<button
+							<UiButton
+								variant="secondary"
+								size="sm"
 								v-if="!showRelationForm"
 								type="button"
-								class="btn btn-secondary btn-sm gap-1.5"
+								class="gap-1.5"
 								@click="showRelationForm = true"
 							>
 								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
 								Add relation
-							</button>
+							</UiButton>
 						</div>
 
 						<!-- Add-relation form -->
@@ -388,17 +388,17 @@ const handleRemoveRelation = async (relationId: string) => {
 							</div>
 
 							<div class="flex items-center justify-end gap-2 pt-1">
-								<button type="button" class="btn btn-secondary btn-sm" @click="resetRelationForm">
+								<UiButton variant="secondary" size="sm" type="button" @click="resetRelationForm">
 									Cancel
-								</button>
-								<button
+								</UiButton>
+								<UiButton
+									size="sm"
 									type="button"
-									class="btn btn-primary btn-sm"
 									:disabled="!selectedTarget || isSavingRelation"
 									@click="handleAddRelation"
 								>
 									{{ isSavingRelation ? 'Adding…' : 'Add relation' }}
-								</button>
+								</UiButton>
 							</div>
 						</div>
 
@@ -576,14 +576,15 @@ const handleRemoveRelation = async (relationId: string) => {
 							agent's drafting context. This action cannot be undone.
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
-							<button
-								class="btn bg-error text-white hover:bg-error/90"
+							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+							<UiButton
+								variant="danger"
+								class="bg-error text-white hover:bg-error/90"
 								:disabled="isDeleting"
 								@click="handleDelete"
 							>
 								{{ isDeleting ? 'Deleting...' : 'Delete' }}
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

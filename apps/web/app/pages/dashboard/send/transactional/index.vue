@@ -682,8 +682,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre
-								>
+									>{{ getCodeSnippet('curl') }}</pre>
 							</div>
 
 							<!-- JavaScript -->
@@ -705,8 +704,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre
-								>
+									>{{ getCodeSnippet('javascript') }}</pre>
 							</div>
 
 							<!-- Python -->
@@ -728,8 +726,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre
-								>
+									>{{ getCodeSnippet('python') }}</pre>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
@@ -737,7 +734,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<strong>Note:</strong> Replace
 									<code class="px-1 py-0.5 rounded bg-warning/20">YOUR_API_KEY</code> with your
 									actual API key. You can create API keys in
-									<NuxtLink to="/dashboard/settings" class="underline hover:no-underline"
+									<NuxtLink to="/dashboard/admin" class="underline hover:no-underline"
 										>Settings</NuxtLink
 									>.
 								</p>

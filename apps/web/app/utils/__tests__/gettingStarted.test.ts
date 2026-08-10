@@ -123,15 +123,15 @@ describe('buildGettingStarted — instance steps and self-host resources', () =>
 		const steps = instance?.steps ?? [];
 		// The single "Get ready to send" step leads and points at the Delivery hub.
 		expect(steps[0]?.id).toBe('readyToSend');
-		expect(steps[0]?.href).toBe('/dashboard/delivery');
+		expect(steps[0]?.href).toBe('/dashboard/admin/delivery');
 		// The two go-live halves are NOT re-listed as separate steps here.
 		const ids = steps.map((s) => s.id);
 		expect(ids).not.toContain('sendPathReady');
 		expect(ids).not.toContain('setupDomain');
 		// Nor do their old standalone destinations reappear anywhere on the surface.
 		const hrefs = steps.map((s) => s.href);
-		expect(hrefs).not.toContain('/dashboard/delivery/config');
-		expect(hrefs).not.toContain('/dashboard/delivery/domains');
+		expect(hrefs).not.toContain('/dashboard/admin/delivery/transport');
+		expect(hrefs).not.toContain('/dashboard/admin/delivery/domains');
 	});
 
 	it('marks the readiness step done only when transport AND a verified domain are both in place', () => {
@@ -201,7 +201,7 @@ describe('no step present in the old three surfaces is lost', () => {
 		// The two go-live halves (sendPathReady + setupDomain) are not dropped — they
 		// are subsumed by the one readiness step that defers to the Delivery hub.
 		expect(READY_TO_SEND_STEP.id).toBe('readyToSend');
-		expect(READY_TO_SEND_STEP.href).toBe('/dashboard/delivery');
+		expect(READY_TO_SEND_STEP.href).toBe('/dashboard/admin/delivery');
 		// The self-host banner's backups pointer.
 		expect(BACKUPS_STEP.id).toBe('backupsScheduled');
 		// The old per-user UserChecklist steps (migration shows them all).

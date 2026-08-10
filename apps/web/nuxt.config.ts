@@ -174,21 +174,21 @@ export default defineNuxtConfig({
 
 		// IA restructure (part 2): deliverability is promoted out of the hidden
 		// Settings → Technical hub into its own first-class "Delivery" section at
-		// /dashboard/delivery/*. Redirect the old settings paths so bookmarks and
+		// /dashboard/admin/delivery/*. Redirect the old settings paths so bookmarks and
 		// deep links keep working; splat forwarding preserves trailing paths.
 		// (settings/api stays under Settings — it's app-level and only cross-linked
 		// from here. settings/blocklist re-homes under Audience; see below.)
-		'/dashboard/settings/reputation': { redirect: '/dashboard/delivery' },
-		'/dashboard/settings/domains': { redirect: '/dashboard/delivery/domains' },
-		'/dashboard/settings/domains/**': { redirect: '/dashboard/delivery/domains/**' },
-		'/dashboard/settings/provider-routing': { redirect: '/dashboard/delivery/provider-routing' },
-		'/dashboard/settings/webhooks': { redirect: '/dashboard/delivery/webhooks' },
-		'/dashboard/settings/delivery': { redirect: '/dashboard/delivery/config' },
+		'/dashboard/admin/reputation': { redirect: '/dashboard/admin/delivery' },
+		'/dashboard/admin/domains': { redirect: '/dashboard/admin/delivery/domains' },
+		'/dashboard/admin/domains/**': { redirect: '/dashboard/admin/delivery/domains/**' },
+		'/dashboard/admin/provider-routing': { redirect: '/dashboard/admin/delivery/provider-routing' },
+		'/dashboard/admin/webhooks': { redirect: '/dashboard/admin/delivery/webhooks' },
+		'/dashboard/admin/delivery': { redirect: '/dashboard/admin/delivery/transport' },
 		// Technical hub dissolved: its non-delivery cards re-home under Settings.
-		'/dashboard/settings/technical': { redirect: '/dashboard/settings' },
+		'/dashboard/admin/technical': { redirect: '/dashboard/admin' },
 		// Blocklist re-homed as "Suppressions" under Audience (it is audience data,
 		// not delivery config). Redirect the old Settings path so bookmarks work.
-		'/dashboard/settings/blocklist': { redirect: '/dashboard/audience/suppressions' },
+		'/dashboard/admin/blocklist': { redirect: '/dashboard/audience/suppressions' },
 	},
 
 	icon: {

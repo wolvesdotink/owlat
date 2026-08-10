@@ -20,7 +20,7 @@ import {
  * The AI-provider settings form as a self-contained state machine: the reactive
  * form, its derived option lists / validation, provider-default watchers, config
  * hydration, and the save / test / load-models handlers. Extracted from
- * `pages/dashboard/settings/ai-provider.vue` so the page is a thin template over
+ * `pages/dashboard/admin/instance/ai-provider.vue` so the page is a thin template over
  * this logic (and each file stays under the size cap). Everything the template
  * binds is returned; internal derivations (`saved`, `hydrate`, effective-model
  * ids, provider-default appliers) stay private.

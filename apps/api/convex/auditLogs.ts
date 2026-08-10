@@ -174,7 +174,7 @@ export const getActiveUsers = adminQuery({
 	handler: async (ctx) => {
 		const organizationId = await activeAuditOrganizationId(ctx);
 		// "Active" is bounded to the last 90 days — the filter dropdown
-		// in /dashboard/settings/audit only needs users who have been
+		// in /dashboard/admin/team/audit only needs users who have been
 		// recently active; an all-time scan grows linearly with logs.
 		const now = Date.now();
 		const since = now - AUDIT_ANALYTICS_WINDOW_MS;

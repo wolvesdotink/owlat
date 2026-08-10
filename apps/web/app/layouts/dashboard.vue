@@ -216,7 +216,7 @@ const sidebarContexts = [
 // Check if a route is active (exact or prefix match)
 const isActiveRoute = (href: string) => {
 	// For overview/index pages, use exact match
-	if (href === '/dashboard/audience' || href === '/dashboard/settings') {
+	if (href === '/dashboard/audience' || href === '/dashboard/admin') {
 		return route.path === href;
 	}
 	if (href === '/dashboard/send') {
@@ -227,13 +227,8 @@ const isActiveRoute = (href: string) => {
 			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
 		);
 	}
-	if (href === '/dashboard/delivery') {
-		// Health owns only the section root; every other /dashboard/delivery/* page
-		// (Setup + the infra config pages it links to) belongs to Setup.
+	if (href === '/dashboard/admin/delivery') {
 		return route.path === href;
-	}
-	if (href === '/dashboard/delivery/setup') {
-		return route.path.startsWith('/dashboard/delivery/');
 	}
 	if (href === '/dashboard/knowledge') {
 		// Knowledge list + entry detail pages, but not the Graph subpage (its own item).
@@ -257,10 +252,10 @@ const getSectionOverviewRoute = (sectionKey: string) => {
 		chat: '/dashboard/chat',
 		assistant: '/dashboard/assistant',
 		send: '/dashboard/send',
-		delivery: '/dashboard/delivery',
 		knowledge: '/dashboard/knowledge',
 		audience: '/dashboard/audience',
-		settings: '/dashboard/settings',
+		administration: '/dashboard/admin',
+		preferences: '/dashboard/preferences',
 	};
 	return routes[sectionKey] || '/dashboard';
 };
@@ -343,7 +338,7 @@ const chatMentionCount = computed(() => 0);
 const chatMentions = isFeatureEnabled('chat') ? useChatMentions() : null;
 const liveChatMentionCount = computed(() => chatMentions?.count.value ?? chatMentionCount.value);
 
-// Live delivery-health roll-up for the Delivery section's status dot. Stays
+// Live delivery-health roll-up for the Administration section's status dot. Stays
 // invisible while healthy; shows a warning/error dot with a title tooltip
 // naming the worst offender otherwise.
 const {
@@ -550,7 +545,7 @@ const sidebarDesktopClass = computed(() => {
 								route.path === '/dashboard' ? 'text-brand' : 'text-text-tertiary',
 							]"
 						/>
-						<span v-if="!isCollapsed">Dashboard</span>
+						<span v-if="!isCollapsed">Home</span>
 					</NuxtLink>
 				</div>
 
@@ -634,14 +629,14 @@ const sidebarDesktopClass = computed(() => {
 							<!-- Delivery health dot: worst-of reputation / domains / provider.
 							     Hidden while healthy. Expanded → inline; collapsed → corner overlay. -->
 							<span
-								v-if="section.key === 'delivery' && isDeliveryHealthVisible && !isCollapsed"
+								v-if="section.key === 'administration' && isDeliveryHealthVisible && !isCollapsed"
 								class="w-2 h-2 rounded-full flex-shrink-0"
 								:class="deliveryHealthDotClass"
 								:title="deliveryHealthReason"
 								:aria-label="deliveryHealthReason"
 							/>
 							<span
-								v-if="section.key === 'delivery' && isDeliveryHealthVisible && isCollapsed"
+								v-if="section.key === 'administration' && isDeliveryHealthVisible && isCollapsed"
 								class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-bg-base"
 								:class="deliveryHealthDotClass"
 								:title="deliveryHealthReason"
@@ -801,58 +796,12 @@ const sidebarDesktopClass = computed(() => {
 			:class="isFocusMode ? '' : mainPaddingClass"
 			class="transition-all duration-(--motion-moderate)"
 		>
-			<!-- Desktop header with breadcrumbs and search (hidden in focus mode) -->
-			<header
+			<DashboardShellHeader
 				v-if="!isFocusMode"
-				class="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border-subtle bg-bg-elevated"
-			>
-				<div class="flex-1 min-w-0 mr-4">
-					<Breadcrumbs />
-				</div>
-				<!-- On desktop the native titlebar owns the ⌘K search affordance, so the
-				     duplicate header search is dropped there; web keeps it. -->
-				<div v-if="!isDesktop" class="flex-shrink-0">
-					<GlobalSearch />
-				</div>
-			</header>
-
-			<!-- Mobile header (hidden in focus mode) -->
-			<header
-				v-if="!isFocusMode"
-				class="lg:hidden border-b border-border-subtle bg-bg-elevated pt-[env(safe-area-inset-top)]"
-			>
-				<div class="h-16 flex items-center justify-between px-4">
-					<div class="flex items-center">
-						<button
-							class="p-2 text-text-secondary hover:text-text-primary"
-							aria-label="Open navigation menu"
-							@click="isSidebarOpen = true"
-						>
-							<Icon name="lucide:menu" class="w-6 h-6" />
-						</button>
-
-						<NuxtLink to="/dashboard" class="ml-3 flex items-center gap-2">
-							<div class="w-8 h-8 rounded-lg flex items-center justify-center">
-								<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
-							</div>
-							<span class="text-lg font-semibold text-text-primary">Owlat</span>
-						</NuxtLink>
-					</div>
-
-					<!-- Mobile search button -->
-					<button
-						class="p-2 text-text-secondary hover:text-text-primary"
-						aria-label="Search"
-						@click="openCommandPalette()"
-					>
-						<Icon name="lucide:search" class="w-5 h-5" />
-					</button>
-				</div>
-				<!-- Mobile breadcrumbs -->
-				<div class="px-4 pb-3 overflow-x-auto">
-					<Breadcrumbs />
-				</div>
-			</header>
+				:is-desktop="isDesktop"
+				@open-navigation="isSidebarOpen = true"
+				@open-search="openCommandPalette()"
+			/>
 
 			<!-- Page content -->
 			<main

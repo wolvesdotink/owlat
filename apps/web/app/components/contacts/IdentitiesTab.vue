@@ -70,10 +70,10 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 		<div class="card">
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-lg font-medium text-text-primary">Channel Identities</h2>
-				<button class="btn btn-secondary btn-sm gap-1" @click="showAddForm = !showAddForm">
+				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
 					{{ showAddForm ? 'Cancel' : 'Add Identity' }}
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Add Form -->
@@ -89,26 +89,33 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 					</div>
 					<div>
 						<label for="addform-identifier" class="label">Identifier</label>
-						<input id="addform-identifier"
+						<input
+							id="addform-identifier"
 							v-model="addForm.identifier"
 							type="text"
 							class="input w-full"
-							:placeholder="addForm.channel === 'email' ? 'email@example.com' : addForm.channel === 'phone' ? '+1234567890' : 'Handle or ID'"
+							:placeholder="
+								addForm.channel === 'email'
+									? 'email@example.com'
+									: addForm.channel === 'phone'
+										? '+1234567890'
+										: 'Handle or ID'
+							"
 						/>
 					</div>
 				</div>
 				<div class="flex items-center gap-4">
 					<label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-						<input v-model="addForm.isPrimary" type="checkbox" class="rounded border-border-subtle" />
+						<input
+							v-model="addForm.isPrimary"
+							type="checkbox"
+							class="rounded border-border-subtle"
+						/>
 						Set as primary
 					</label>
-					<button
-						class="btn btn-primary btn-sm"
-						:disabled="!addForm.identifier.trim() || isAdding"
-						@click="onAdd"
-					>
+					<UiButton size="sm" :disabled="!addForm.identifier.trim() || isAdding" @click="onAdd">
 						{{ isAdding ? 'Adding...' : 'Add' }}
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -135,10 +142,16 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 							<p class="text-text-primary text-sm font-medium truncate">
 								{{ identity.identifier }}
 							</p>
-							<span v-if="identity.isPrimary" class="text-xs px-1.5 py-0.5 rounded bg-brand-subtle text-brand">
+							<span
+								v-if="identity.isPrimary"
+								class="text-xs px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
+							>
 								Primary
 							</span>
-							<span v-if="identity.verifiedAt" class="text-xs text-success flex items-center gap-0.5">
+							<span
+								v-if="identity.verifiedAt"
+								class="text-xs text-success flex items-center gap-0.5"
+							>
 								<Icon name="lucide:check-circle" class="w-3 h-3" />
 								Verified
 							</span>
@@ -167,10 +180,7 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 		</div>
 
 		<!-- Merge Suggestions -->
-		<div
-			v-if="mergeSuggestions && mergeSuggestions.length > 0"
-			class="card border-warning/20"
-		>
+		<div v-if="mergeSuggestions && mergeSuggestions.length > 0" class="card border-warning/20">
 			<div class="flex items-center gap-2 mb-4">
 				<Icon name="lucide:git-merge" class="w-5 h-5 text-warning" />
 				<h2 class="text-lg font-medium text-text-primary">Merge Suggestions</h2>
@@ -189,16 +199,21 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 							{{ suggestion.contact.email }}
 						</p>
 						<p class="text-xs text-text-tertiary">
-							Matching: {{ suggestion.matchedIdentities.map((i) => `${i.channel}: ${i.identifier}`).join(', ') }}
+							Matching:
+							{{
+								suggestion.matchedIdentities.map((i) => `${i.channel}: ${i.identifier}`).join(', ')
+							}}
 						</p>
 					</div>
-					<button
-						class="btn btn-secondary btn-sm gap-1"
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="gap-1"
 						@click="onMerge(suggestion.contact._id)"
 					>
 						<Icon name="lucide:git-merge" class="w-3 h-3" />
 						Merge
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>

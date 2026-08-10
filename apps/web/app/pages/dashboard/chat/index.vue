@@ -56,14 +56,14 @@ const handleSelectRoom = (id: Id<'chatRooms'>) => {
 				Pick a channel or DM from the sidebar, or start something new.
 			</p>
 			<div class="mt-6 flex gap-3">
-				<button class="btn btn-secondary gap-2" @click="showBrowseChannels = true">
+				<UiButton variant="secondary" class="gap-2" @click="showBrowseChannels = true">
 					<Icon name="lucide:hash" class="w-4 h-4" />
 					Browse channels
-				</button>
-				<button class="btn btn-primary gap-2" @click="showCreateChannel = true">
+				</UiButton>
+				<UiButton class="gap-2" @click="showCreateChannel = true">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					New channel
-				</button>
+				</UiButton>
 			</div>
 		</div>
 

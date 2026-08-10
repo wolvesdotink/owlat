@@ -48,7 +48,7 @@ export interface ReadinessDualArmSummary {
 	degradedReason: string | null;
 }
 
-const DOMAINS_HREF = '/dashboard/delivery/domains';
+const DOMAINS_HREF = '/dashboard/admin/delivery/domains';
 
 /**
  * Fold the alignment pre-flight rows into one summary, or `undefined` when there

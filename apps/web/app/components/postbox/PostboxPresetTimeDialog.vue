@@ -31,7 +31,7 @@ withDefaults(
 		/** Extra non-timestamp options; picking one emits `action` with its id. */
 		actions?: PresetTimeAction[];
 	}>(),
-	{ actions: () => [] },
+	{ actions: () => [] }
 );
 
 const emit = defineEmits<{
@@ -66,52 +66,53 @@ function pickCustom() {
 </script>
 
 <template>
-	<UiModal :open="open" :title="title" size="sm" @update:open="(v) => { if (!v) close(); }">
-			<ul class="space-y-1 mb-4">
-				<li v-for="preset in presets" :key="preset.label">
-					<button
-						type="button"
-						class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
-						@click="pickPreset(preset)"
-					>
-						<span class="font-medium flex items-center gap-2">
-							{{ preset.label }}
-							<span
-								v-if="preset.suggested"
-								class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
-							>Suggested</span>
-						</span>
-						<span class="text-text-tertiary">{{ preset.sub }}</span>
-					</button>
-				</li>
-				<li v-for="action in actions" :key="action.id">
-					<button
-						type="button"
-						class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
-						@click="pickAction(action.id)"
-					>
-						<span class="font-medium">{{ action.label }}</span>
-						<span class="text-text-tertiary">{{ action.sub }}</span>
-					</button>
-				</li>
-			</ul>
-			<div class="border-t border-border-subtle pt-3">
-				<label class="text-xs font-medium text-text-tertiary block mb-1">Custom</label>
-				<div class="flex items-center gap-2">
-					<input
-						v-model="customDate"
-						type="datetime-local"
-						class="input flex-1"
-					/>
-					<button
-						type="button"
-						class="btn btn-primary"
-						:disabled="!customDate"
-						@click="pickCustom"
-					>
-						{{ confirmLabel }}
-					</button>
-				</div>
+	<UiModal
+		:open="open"
+		:title="title"
+		size="sm"
+		@update:open="
+			(v) => {
+				if (!v) close();
+			}
+		"
+	>
+		<ul class="space-y-1 mb-4">
+			<li v-for="preset in presets" :key="preset.label">
+				<button
+					type="button"
+					class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
+					@click="pickPreset(preset)"
+				>
+					<span class="font-medium flex items-center gap-2">
+						{{ preset.label }}
+						<span
+							v-if="preset.suggested"
+							class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
+							>Suggested</span
+						>
+					</span>
+					<span class="text-text-tertiary">{{ preset.sub }}</span>
+				</button>
+			</li>
+			<li v-for="action in actions" :key="action.id">
+				<button
+					type="button"
+					class="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
+					@click="pickAction(action.id)"
+				>
+					<span class="font-medium">{{ action.label }}</span>
+					<span class="text-text-tertiary">{{ action.sub }}</span>
+				</button>
+			</li>
+		</ul>
+		<div class="border-t border-border-subtle pt-3">
+			<label class="text-xs font-medium text-text-tertiary block mb-1">Custom</label>
+			<div class="flex items-center gap-2">
+				<input v-model="customDate" type="datetime-local" class="input flex-1" />
+				<UiButton type="button" :disabled="!customDate" @click="pickCustom">
+					{{ confirmLabel }}
+				</UiButton>
 			</div>
+		</div>
 	</UiModal>
 </template>

@@ -18,6 +18,7 @@ const NAV_ROUTE_MAP: Record<string, string> = {
 	'knowledge/': '/dashboard/knowledge/',
 	'file/': '/dashboard/files/',
 	'contact/': '/dashboard/audience/contacts/',
+	'settings/': '/dashboard/preferences/',
 };
 
 export async function handleDeepLink(url: string): Promise<void> {

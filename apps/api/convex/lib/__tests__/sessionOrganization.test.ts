@@ -14,6 +14,7 @@ const ALL_PERMISSIONS: Permission[] = [
 	'shareLinks:manage',
 	'imports:manage',
 	'contacts:manage',
+	'contacts:annotate',
 	'organization:manage',
 	'settings:manage',
 	'organization:delete',
@@ -34,7 +35,11 @@ const EDITOR_CAMPAIGN_PERMISSIONS: Permission[] = [
 ];
 // Everything an editor may do: the public member permissions plus the campaign
 // pipeline. Any permission NOT in this set must be denied to editors.
-const EDITOR_ALLOWED: Permission[] = [...PUBLIC_PERMISSIONS, ...EDITOR_CAMPAIGN_PERMISSIONS];
+const EDITOR_ALLOWED: Permission[] = [
+	...PUBLIC_PERMISSIONS,
+	...EDITOR_CAMPAIGN_PERMISSIONS,
+	'contacts:annotate',
+];
 
 describe('hasPermission', () => {
 	it('owner has every permission', () => {
@@ -61,6 +66,11 @@ describe('hasPermission', () => {
 		for (const perm of EDITOR_CAMPAIGN_PERMISSIONS) {
 			expect(hasPermission('editor', perm)).toBe(true);
 		}
+	});
+
+	it('editors can annotate contacts without gaining contact management', () => {
+		expect(hasPermission('editor', 'contacts:annotate')).toBe(true);
+		expect(hasPermission('editor', 'contacts:manage')).toBe(false);
 	});
 
 	it('admin-only surfaces stay locked to editors after the d4 campaign remap', () => {

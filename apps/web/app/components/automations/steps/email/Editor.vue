@@ -68,10 +68,16 @@ const selectedTemplate = computed(() =>
 				<p class="text-sm text-text-secondary mb-2">
 					Or create a new email template for this automation:
 				</p>
-				<NuxtLink to="/dashboard/send/marketing" class="btn btn-secondary btn-sm gap-2 w-full">
+				<UiButton
+					variant="secondary"
+					size="sm"
+					full-width
+					to="/dashboard/send/marketing"
+					class="gap-2"
+				>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					Create New Email
-				</NuxtLink>
+				</UiButton>
 			</div>
 		</div>
 

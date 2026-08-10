@@ -124,7 +124,7 @@ export const escalationGuardPlugin = definePlugin({
 				// fail-closed by the host, so the entry would silently never render.
 				section: 'inbox',
 				name: 'Escalations',
-				href: '/dashboard/settings/plugins/escalation-guard',
+				href: '/dashboard/admin/instance/plugins/escalation-guard',
 				icon: 'lucide:siren',
 			},
 		],
@@ -132,7 +132,7 @@ export const escalationGuardPlugin = definePlugin({
 			{
 				id: 'settings',
 				name: 'Escalation Guard',
-				href: '/dashboard/settings/plugins/escalation-guard',
+				href: '/dashboard/admin/instance/plugins/escalation-guard',
 				icon: 'lucide:siren',
 			},
 		],

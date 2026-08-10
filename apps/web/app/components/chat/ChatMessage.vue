@@ -46,7 +46,7 @@ const displayName = computed(() => {
 });
 
 const avatarSeed = computed(
-	() => props.message.author.name ?? props.message.author.email ?? props.message.authorId,
+	() => props.message.author.name ?? props.message.author.email ?? props.message.authorId
 );
 
 const formattedTime = computed(() => {
@@ -54,9 +54,7 @@ const formattedTime = computed(() => {
 	return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 });
 
-const isMentioned = computed(() =>
-	(props.message.mentions ?? []).includes(props.currentUserId),
-);
+const isMentioned = computed(() => (props.message.mentions ?? []).includes(props.currentUserId));
 
 // Render the text with @-mentions visually emphasized.
 const segments = computed(() => {
@@ -102,7 +100,7 @@ const doDelete = () => {
 const attachmentIds = computed(() => props.message.attachmentIds ?? []);
 const hasAttachments = computed(() => attachmentIds.value.length > 0);
 const { attachments } = useChatAttachmentDetails(() =>
-	hasAttachments.value ? props.message._id : null,
+	hasAttachments.value ? props.message._id : null
 );
 
 // AI assistant reply rendering (@assistant messages).
@@ -111,7 +109,7 @@ const aiToolCalls = computed(() => props.message.toolCalls ?? []);
 const aiStreaming = computed(() => props.message.aiStatus === 'streaming');
 const aiHasText = computed(() => props.message.text.trim().length > 0);
 const aiTyping = computed(
-	() => aiStreaming.value && !aiHasText.value && aiToolCalls.value.length === 0,
+	() => aiStreaming.value && !aiHasText.value && aiToolCalls.value.length === 0
 );
 </script>
 
@@ -152,26 +150,36 @@ const aiTyping = computed(
 					@keydown.escape.prevent="cancelEdit"
 				/>
 				<div class="flex gap-2 mt-1">
-					<button class="btn btn-secondary btn-sm" @click="cancelEdit">Cancel</button>
-					<button class="btn btn-primary btn-sm" @click="saveEdit">Save</button>
+					<UiButton variant="secondary" size="sm" @click="cancelEdit">Cancel</UiButton>
+					<UiButton size="sm" @click="saveEdit">Save</UiButton>
 				</div>
 			</div>
 
 			<!-- Display mode -->
 			<template v-else>
-				<div
-					v-if="message.deletedAt"
-					class="text-sm text-text-tertiary italic"
-				>
+				<div v-if="message.deletedAt" class="text-sm text-text-tertiary italic">
 					(this message was deleted)
 				</div>
 				<!-- AI assistant reply: tool cards + streamed Markdown -->
 				<div v-else-if="isAssistant">
 					<AssistantToolCalls v-if="aiToolCalls.length > 0" :tool-calls="aiToolCalls" />
-					<div v-if="aiTyping" class="flex items-center gap-1 py-1" aria-label="Assistant is typing">
-						<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 0ms" />
-						<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 150ms" />
-						<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 300ms" />
+					<div
+						v-if="aiTyping"
+						class="flex items-center gap-1 py-1"
+						aria-label="Assistant is typing"
+					>
+						<span
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							style="animation-delay: 0ms"
+						/>
+						<span
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							style="animation-delay: 150ms"
+						/>
+						<span
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							style="animation-delay: 300ms"
+						/>
 					</div>
 					<div v-else-if="aiHasText" class="relative">
 						<AssistantMarkdown :source="message.text" />
@@ -189,7 +197,8 @@ const aiTyping = computed(
 						<span
 							v-if="segment.kind === 'mention'"
 							class="px-1 py-0.5 rounded bg-brand-subtle text-brand font-medium"
-						>{{ segment.value }}</span>
+							>{{ segment.value }}</span
+						>
 						<template v-else>{{ segment.value }}</template>
 					</template>
 				</div>

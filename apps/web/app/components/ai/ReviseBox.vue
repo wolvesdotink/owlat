@@ -67,15 +67,17 @@ async function discard() {
 
 <template>
 	<div v-if="aiEnabled" class="ai-revise">
-		<button
+		<UiButton
+			variant="ghost"
+			size="sm"
 			type="button"
-			class="btn btn-ghost btn-sm gap-1"
+			class="gap-1"
 			:aria-expanded="open"
 			@click="toggle"
 		>
 			<Icon name="lucide:wand-2" class="w-3 h-3" />
 			Revise…
-		</button>
+		</UiButton>
 
 		<div v-if="open" class="ai-revise__panel mt-2 flex flex-col gap-2">
 			<div class="flex items-center gap-2">
@@ -88,14 +90,14 @@ async function discard() {
 					:disabled="revise.isStreaming.value"
 					@keydown.enter.prevent="submit"
 				/>
-				<button
+				<UiButton
+					size="sm"
 					type="button"
-					class="btn btn-primary btn-sm"
 					:disabled="revise.isStreaming.value || instruction.trim().length === 0"
 					@click="submit"
 				>
 					{{ revise.isStreaming.value ? 'Revising…' : 'Revise' }}
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Progressive streamed output / final result -->
@@ -103,16 +105,18 @@ async function discard() {
 				v-if="revise.isStreaming.value || revise.hasResult.value"
 				class="ai-revise__output rounded-md border border-border bg-bg-surface p-2 text-sm whitespace-pre-wrap"
 			>
-				{{ revise.displayText.value }}<span v-if="revise.isStreaming.value" class="ai-revise__caret">▍</span>
+				{{ revise.displayText.value
+				}}<span v-if="revise.isStreaming.value" class="ai-revise__caret">▍</span>
 			</div>
 
 			<p v-if="revise.injectionFlagged.value" class="text-xs text-warning">
-				This revision contains text that looks like an embedded instruction — review it before sending.
+				This revision contains text that looks like an embedded instruction — review it before
+				sending.
 			</p>
 
 			<div v-if="revise.hasResult.value" class="flex items-center gap-2">
-				<button type="button" class="btn btn-primary btn-sm" @click="apply">Apply</button>
-				<button type="button" class="btn btn-ghost btn-sm" @click="discard">Discard</button>
+				<UiButton size="sm" type="button" @click="apply">Apply</UiButton>
+				<UiButton variant="ghost" size="sm" type="button" @click="discard">Discard</UiButton>
 			</div>
 		</div>
 	</div>

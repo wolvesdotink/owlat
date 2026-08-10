@@ -6,10 +6,10 @@ export interface SectionState {
 	chat: boolean;
 	assistant: boolean;
 	send: boolean;
-	delivery: boolean;
 	knowledge: boolean;
 	audience: boolean;
-	settings: boolean;
+	administration: boolean;
+	preferences: boolean;
 }
 
 export type SectionKey = keyof SectionState;
@@ -29,10 +29,10 @@ const defaultSectionState: SectionState = {
 	chat: true,
 	assistant: true,
 	send: true,
-	delivery: true,
 	knowledge: true,
 	audience: true,
-	settings: true,
+	administration: true,
+	preferences: true,
 };
 
 // Use module-level storage to maintain singleton pattern across component instances

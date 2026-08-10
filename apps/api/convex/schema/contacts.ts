@@ -43,6 +43,9 @@ export const contactTables = {
 		timezone: v.optional(v.string()),
 		// Preferred language for email content (e.g., "en", "de", "fr")
 		language: v.optional(v.string()),
+		// Internal customer notes. Editors may update this narrow interaction-
+		// shaped field through contacts:annotate; full profile edits stay admin-only.
+		notes: v.optional(v.string()),
 		// Denormalized search field: "email firstname lastname" for full-text search
 		searchableText: v.optional(v.string()),
 		// Denormalized email-engagement flags, set monotonically by the contact

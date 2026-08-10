@@ -8,7 +8,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation, publicQuery } from '../lib/authedFunctions';
+import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -16,29 +16,80 @@ import {
 	type OrganizationRole,
 } from '../lib/sessionOrganization';
 
-
 // ============================================================
 // Default Card Definitions
 // ============================================================
 
 const DEFAULT_CARDS = [
-	{ type: 'verification_queue', label: 'Review Queue', description: 'Pending agent drafts needing review' },
-	{ type: 'campaign_performance', label: 'Campaign Performance', description: 'Recent campaign metrics' },
-	{ type: 'channel_health', label: 'Channel Health', description: 'Status of all communication channels' },
+	{
+		type: 'verification_queue',
+		label: 'Review Queue',
+		description: 'Pending agent drafts needing review',
+	},
+	{
+		type: 'campaign_performance',
+		label: 'Campaign Performance',
+		description: 'Recent campaign metrics',
+	},
+	{
+		type: 'channel_health',
+		label: 'Channel Health',
+		description: 'Status of all communication channels',
+	},
 	{ type: 'agent_health', label: 'Agent Health', description: 'AI agent pipeline metrics' },
-	{ type: 'recent_contacts', label: 'Recent Contacts', description: 'Newly added or active contacts' },
-	{ type: 'recent_activity', label: 'Recent Activity', description: 'Org-wide audit log and contact activity feed' },
+	{
+		type: 'recent_contacts',
+		label: 'Recent Contacts',
+		description: 'Newly added or active contacts',
+	},
+	{
+		type: 'recent_activity',
+		label: 'Recent Activity',
+		description: 'Org-wide audit log and contact activity feed',
+	},
 	{ type: 'queue_depth', label: 'Queue Depth', description: 'Inbound message processing queue' },
 	{ type: 'delivery_rates', label: 'Delivery Rates', description: 'Email delivery success rates' },
-	{ type: 'pinned_visualizations', label: 'Visualizations', description: 'Pinned data visualizations' },
+	{
+		type: 'pinned_visualizations',
+		label: 'Visualizations',
+		description: 'Pinned data visualizations',
+	},
 	{ type: 'knowledge_graph', label: 'Knowledge', description: 'Recent knowledge entries' },
 	{ type: 'upcoming_campaigns', label: 'Upcoming Campaigns', description: 'Scheduled campaigns' },
-	{ type: 'cost_by_step', label: 'LLM Cost by Step', description: 'Token cost per agent-pipeline step' },
-	{ type: 'accuracy_trend', label: 'Accuracy Trend', description: 'Auto-approve vs. rejection over time' },
+	{
+		type: 'cost_by_step',
+		label: 'LLM Cost by Step',
+		description: 'Token cost per agent-pipeline step',
+	},
+	{
+		type: 'accuracy_trend',
+		label: 'Accuracy Trend',
+		description: 'Auto-approve vs. rejection over time',
+	},
 	// Every type here must have a renderer in apps/web's DashboardCardRenderer.vue
 	// `cardComponents` map — a type with no renderer shows "Unknown card type" once
 	// added.
 ] as const;
+
+/** Task/data cards editors can use without exposing organization operations. */
+const EDITOR_CARD_TYPES = new Set([
+	'campaign_performance',
+	'recent_contacts',
+	'pinned_visualizations',
+	'upcoming_campaigns',
+]);
+
+function canViewCard(type: string, role: OrganizationRole | null): boolean {
+	if (role === 'owner' || role === 'admin') return true;
+	return EDITOR_CARD_TYPES.has(type);
+}
+
+function visibleCards<T extends { type: string }>(
+	cards: readonly T[],
+	role: OrganizationRole | null
+): T[] {
+	return cards.filter((card) => canViewCard(card.type, role));
+}
 
 // ============================================================
 // Queries
@@ -63,7 +114,7 @@ export const getLayout = authedQuery({
 			.first();
 
 		if (!layout) {
-			return getDefaultLayout();
+			return getDefaultLayout(role);
 		}
 
 		const now = new Date();
@@ -78,12 +129,13 @@ export const getLayout = authedQuery({
 				// Merge pinned cards with rule cards
 				const pinnedCards = layout.pinnedCards ?? [];
 				return {
-					cards: [
-						...pinnedCards.map((c) => ({ ...c, pinned: true })),
-						...rule.cards.filter(
-							(c) => !pinnedCards.some((p) => p.type === c.type)
-						),
-					],
+					cards: visibleCards(
+						[
+							...pinnedCards.map((c) => ({ ...c, pinned: true })),
+							...rule.cards.filter((c) => !pinnedCards.some((p) => p.type === c.type)),
+						],
+						role
+					),
 					matchedRule: rule,
 				};
 			}
@@ -96,7 +148,10 @@ export const getLayout = authedQuery({
 		// user with no saved row at all (handled above).
 		const pinnedCards = layout.pinnedCards ?? [];
 		return {
-			cards: pinnedCards.map((c) => ({ ...c, pinned: true })),
+			cards: visibleCards(
+				pinnedCards.map((c) => ({ ...c, pinned: true })),
+				role
+			),
 			matchedRule: null,
 		};
 	},
@@ -105,11 +160,12 @@ export const getLayout = authedQuery({
 /**
  * Get available card types
  */
-// public: soft-auth — returns empty/safe value for anonymous
-export const getAvailableCards = publicQuery({
+// all-members: card definitions are public metadata, filtered to the caller's organization role.
+export const getAvailableCards = authedQuery({
 	args: {},
-	handler: async () => {
-		return DEFAULT_CARDS;
+	handler: async (ctx) => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		return visibleCards(DEFAULT_CARDS, session?.role ?? null);
 	},
 });
 
@@ -140,25 +196,37 @@ export const saveLayout = authedMutation({
 	args: {
 		// Optional: callers that only update pinnedCards (the pin/unpin UI) omit
 		// rules so existing adaptive rules are preserved, not wiped.
-		rules: v.optional(v.array(v.object({
-			condition: v.object({
-				timeRange: v.optional(v.object({
-					start: v.string(),
-					end: v.string(),
-				})),
-				dayOfWeek: v.optional(v.array(v.number())),
-				role: v.optional(v.string()),
-			}),
-			cards: v.array(v.object({
-				type: v.string(),
-				size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
-			})),
-			priority: v.number(),
-		}))),
-		pinnedCards: v.optional(v.array(v.object({
-			type: v.string(),
-			size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
-		}))),
+		rules: v.optional(
+			v.array(
+				v.object({
+					condition: v.object({
+						timeRange: v.optional(
+							v.object({
+								start: v.string(),
+								end: v.string(),
+							})
+						),
+						dayOfWeek: v.optional(v.array(v.number())),
+						role: v.optional(v.string()),
+					}),
+					cards: v.array(
+						v.object({
+							type: v.string(),
+							size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
+						})
+					),
+					priority: v.number(),
+				})
+			)
+		),
+		pinnedCards: v.optional(
+			v.array(
+				v.object({
+					type: v.string(),
+					size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
+				})
+			)
+		),
 	},
 	handler: async (ctx, args) => {
 		const session = await getMutationContext(ctx);
@@ -191,16 +259,19 @@ export const saveLayout = authedMutation({
 // Helpers
 // ============================================================
 
-function getDefaultLayout() {
+function getDefaultLayout(role: OrganizationRole | null) {
 	return {
-		cards: [
-			{ type: 'verification_queue', size: 'large' as const },
-			{ type: 'campaign_performance', size: 'medium' as const },
-			{ type: 'channel_health', size: 'small' as const },
-			{ type: 'agent_health', size: 'small' as const },
-			{ type: 'delivery_rates', size: 'medium' as const },
-			{ type: 'recent_contacts', size: 'small' as const },
-		],
+		cards: visibleCards(
+			[
+				{ type: 'verification_queue', size: 'large' as const },
+				{ type: 'campaign_performance', size: 'medium' as const },
+				{ type: 'channel_health', size: 'small' as const },
+				{ type: 'agent_health', size: 'small' as const },
+				{ type: 'delivery_rates', size: 'medium' as const },
+				{ type: 'recent_contacts', size: 'small' as const },
+			],
+			role
+		),
 		matchedRule: null,
 	};
 }
@@ -213,7 +284,7 @@ function matchesCondition(
 	},
 	currentTime: string,
 	dayOfWeek: number,
-	role: OrganizationRole | null,
+	role: OrganizationRole | null
 ): boolean {
 	// Check time range
 	if (condition.timeRange) {

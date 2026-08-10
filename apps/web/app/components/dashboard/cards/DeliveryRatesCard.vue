@@ -64,7 +64,7 @@ const usagePercent = computed(() => {
 					<h3 class="text-sm font-semibold text-text-primary">Sending Capacity</h3>
 				</div>
 				<NuxtLink
-					to="/dashboard/delivery"
+					to="/dashboard/admin/delivery"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
 					Details

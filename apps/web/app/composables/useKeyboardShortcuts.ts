@@ -221,7 +221,7 @@ export function useKeyboardShortcuts() {
 		// g+s - Go to Settings
 		registerShortcut({
 			key: 'g+s',
-			handler: () => router.push('/dashboard/settings'),
+			handler: () => router.push('/dashboard/admin'),
 			description: 'Go to Settings',
 			ignoreInputs: true,
 		});

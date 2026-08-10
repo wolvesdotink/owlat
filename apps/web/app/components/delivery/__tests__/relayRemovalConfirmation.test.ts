@@ -15,7 +15,7 @@ import {
 	assessRelayRemoval,
 	RELAY_REMOVAL_CONFIRMATION,
 } from '@owlat/shared/deliverabilityIndependence';
-import IndependencePage from '~/pages/dashboard/delivery/independence.vue';
+import IndependencePage from '~/pages/dashboard/admin/delivery/advanced/independence.vue';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';

@@ -167,10 +167,10 @@ function getContactName(
 				<h1 class="text-2xl font-semibold text-text-primary">Audience</h1>
 				<p class="mt-1 text-text-secondary">Manage your contacts, topics, and segments.</p>
 			</div>
-			<NuxtLink to="/dashboard/audience/contacts?action=add" class="btn btn-primary gap-2">
+			<UiButton to="/dashboard/audience/contacts?action=add" class="gap-2">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Add Contact
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<!-- Stats Cards -->
@@ -306,13 +306,10 @@ function getContactName(
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 								Create a topic to organize your contacts.
 							</p>
-							<NuxtLink
-								to="/dashboard/audience/topics?action=create"
-								class="btn btn-primary mt-6 gap-2"
-							>
+							<UiButton to="/dashboard/audience/topics?action=create" class="mt-6 gap-2">
 								<Icon name="lucide:plus" class="w-4 h-4" />
 								Create Topic
-							</NuxtLink>
+							</UiButton>
 						</div>
 
 						<div v-else class="divide-y divide-border-subtle">
@@ -386,13 +383,10 @@ function getContactName(
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 								Add your first contact to get started.
 							</p>
-							<NuxtLink
-								to="/dashboard/audience/contacts?action=add"
-								class="btn btn-primary mt-6 gap-2"
-							>
+							<UiButton to="/dashboard/audience/contacts?action=add" class="mt-6 gap-2">
 								<Icon name="lucide:plus" class="w-4 h-4" />
 								Add Contact
-							</NuxtLink>
+							</UiButton>
 						</div>
 
 						<div v-else class="divide-y divide-border-subtle">

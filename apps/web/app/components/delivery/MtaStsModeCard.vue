@@ -118,7 +118,7 @@ async function selectMode(next: string) {
 					Add the <code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">_mta-sts</code> and
 					<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">mta-sts</code> DNS records on
 					the
-					<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline"
+					<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline"
 						>Domains page</NuxtLink
 					>
 					so senders can find and trust this policy.

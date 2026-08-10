@@ -9,7 +9,7 @@ const { public: config } = useRuntimeConfig();
 		<!-- Navigation -->
 		<nav class="flex items-center justify-between px-6 py-4 lg:px-12">
 			<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
-			<NuxtLink to="/auth/login" class="btn btn-ghost">Sign In</NuxtLink>
+			<UiButton variant="ghost" to="/auth/login">Sign In</UiButton>
 		</nav>
 
 		<!-- Content -->
@@ -19,9 +19,7 @@ const { public: config } = useRuntimeConfig();
 
 				<section class="space-y-8 text-text-secondary leading-relaxed">
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary mb-2">
-							Angaben gemäß § 5 TMG
-						</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-2">Angaben gemäß § 5 TMG</h2>
 						<p>
 							{{ config.companyName }}<br />
 							{{ config.companyStreet }}<br />
@@ -40,7 +38,9 @@ const { public: config } = useRuntimeConfig();
 						<p>
 							Telefon: {{ config.companyPhone }}<br />
 							E-Mail:
-							<a :href="`mailto:${config.companyEmail}`" class="text-brand hover:underline">{{ config.companyEmail }}</a>
+							<a :href="`mailto:${config.companyEmail}`" class="text-brand hover:underline">{{
+								config.companyEmail
+							}}</a>
 						</p>
 					</div>
 
@@ -59,7 +59,8 @@ const { public: config } = useRuntimeConfig();
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary mb-2">EU-Streitschlichtung</h2>
 						<p>
-							Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit:
+							Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS)
+							bereit:
 							<a
 								href="https://ec.europa.eu/consumers/odr/"
 								target="_blank"
@@ -81,8 +82,8 @@ const { public: config } = useRuntimeConfig();
 		<!-- Footer -->
 		<footer class="px-6 py-8 text-center text-text-tertiary text-sm">
 			<p>
-				&copy; {{ new Date().getFullYear() }}
-				<a href="https://wolves.ink">Wolves</a>. All rights reserved.
+				&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights
+				reserved.
 			</p>
 		</footer>
 	</div>

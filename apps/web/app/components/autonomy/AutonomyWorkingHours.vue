@@ -146,10 +146,10 @@ const handleSave = () => {
 		</div>
 
 		<div class="flex justify-end mt-5 pt-4 border-t border-border-subtle">
-			<button class="btn btn-primary gap-2" :disabled="busy" @click="handleSave">
+			<UiButton class="gap-2" :disabled="busy" @click="handleSave">
 				<Icon name="lucide:save" class="w-4 h-4" />
 				Save working hours
-			</button>
+			</UiButton>
 		</div>
 	</UiCard>
 </template>

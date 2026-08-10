@@ -86,16 +86,44 @@ const {
 	formatActivityTime,
 } = useActivityTimeline(contactId);
 
-// Tab navigation
-const activeTab = ref('activity');
-const tabOptions = [
-	{ value: 'activity', label: 'Activity' },
-	{ value: 'timeline', label: 'Timeline' },
-	{ value: 'knowledge', label: 'Knowledge' },
-	{ value: 'files', label: 'Files' },
-	{ value: 'identities', label: 'Identities' },
-	{ value: 'relationships', label: 'Relationships' },
-];
+const { canManageContacts, canAnnotateContacts, isAdmin } = usePermissions();
+
+// Members get a quiet two-tab profile. Admin-only CRM depth stays available
+// without leaking its affordances into the everyday customer view.
+const activeTab = ref('profile');
+const tabOptions = computed(() =>
+	isAdmin.value
+		? [
+				{ value: 'profile', label: 'Profile' },
+				{ value: 'activity', label: 'Activity' },
+				{ value: 'timeline', label: 'Timeline' },
+				{ value: 'knowledge', label: 'Knowledge' },
+				{ value: 'files', label: 'Files' },
+				{ value: 'identities', label: 'Identities' },
+				{ value: 'relationships', label: 'Relationships' },
+			]
+		: [
+				{ value: 'profile', label: 'Profile' },
+				{ value: 'timeline', label: 'Activity' },
+			]
+);
+
+const notesDraft = ref('');
+watch(
+	contact,
+	(value) => {
+		notesDraft.value = value?.notes ?? '';
+	},
+	{ immediate: true }
+);
+const { run: updateNotes, isLoading: isSavingNotes } = useBackendOperation(
+	api.contacts.contacts.updateNotes,
+	{ label: 'Save customer note' }
+);
+async function saveNotes() {
+	const result = await updateNotes({ contactId: contactId.value, notes: notesDraft.value });
+	if (result !== undefined) showToast('Customer note saved');
+}
 
 // Topics
 const { data: contactTopics } = useConvexQuery(api.topics.topics.getTopicsForContact, () => ({
@@ -159,7 +187,6 @@ const { showToast } = useToast();
 // The address is on the suppression list (blockedEmails) when getByEmail returns
 // a record. Removal is permission-gated in the UI (contacts:manage) and
 // re-checked on the backend.
-const { canManageContacts } = usePermissions();
 const { data: suppression } = useConvexQuery(api.blockedEmails.getByEmail, () =>
 	contact.value?.email ? { email: contact.value.email } : 'skip'
 );
@@ -183,7 +210,7 @@ async function handleRemoveSuppression() {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Contacts
+			Back to Customers
 		</NuxtLink>
 
 		<!-- Loading State -->
@@ -210,9 +237,9 @@ async function handleRemoveSuppression() {
 			<p class="text-sm text-text-tertiary mt-1">
 				This contact may have been deleted or you don't have access.
 			</p>
-			<NuxtLink to="/dashboard/audience/contacts" class="btn btn-secondary mt-6">
+			<UiButton variant="secondary" to="/dashboard/audience/contacts" class="mt-6">
 				Back to Contacts
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<!-- Contact Content -->
@@ -259,19 +286,20 @@ async function handleRemoveSuppression() {
 
 				<div class="flex items-center gap-2">
 					<template v-if="isEditing">
-						<button class="btn btn-ghost" :disabled="isSaving" @click="cancelEditing">
+						<UiButton variant="ghost" :disabled="isSaving" @click="cancelEditing">
 							Cancel
-						</button>
-						<button class="btn btn-primary gap-2" :disabled="isSaving" @click="saveChanges">
+						</UiButton>
+						<UiButton class="gap-2" :disabled="isSaving" @click="saveChanges">
 							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							Save Changes
-						</button>
+						</UiButton>
 					</template>
-					<template v-else>
-						<button
+					<template v-else-if="canManageContacts">
+						<UiButton
+							variant="secondary"
 							v-if="contact.doiStatus === 'pending'"
-							class="btn btn-secondary gap-2"
+							class="gap-2"
 							:disabled="isResendingDoi"
 							title="Re-send the double-opt-in confirmation email to this pending contact"
 							@click="handleResendDoi"
@@ -279,27 +307,29 @@ async function handleRemoveSuppression() {
 							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
 							{{ isResendingDoi ? 'Sending…' : 'Resend confirmation' }}
-						</button>
-						<button class="btn btn-secondary gap-2" @click="startEditing">
+						</UiButton>
+						<UiButton variant="secondary" class="gap-2" @click="startEditing">
 							<Icon name="lucide:pencil" class="w-4 h-4" />
 							Edit
-						</button>
-						<button
-							class="btn btn-secondary gap-2"
+						</UiButton>
+						<UiButton
+							variant="secondary"
+							class="gap-2"
 							:disabled="exportRequested"
 							title="Export this contact's personal data (GDPR access request)"
 							@click="handleExportData"
 						>
 							<Icon name="lucide:download" class="w-4 h-4" />
 							{{ exportRequested ? 'Exporting…' : 'Export data' }}
-						</button>
-						<button
-							class="btn btn-ghost text-error hover:bg-error-subtle"
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							class="text-error hover:bg-error-subtle"
 							@click="showDeleteConfirm = true"
 							aria-label="Delete"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</template>
 				</div>
 			</div>
@@ -313,11 +343,15 @@ async function handleRemoveSuppression() {
 				{{ saveError }}
 			</div>
 
+			<div class="mb-6">
+				<UiTabs v-model="activeTab" :tabs="tabOptions" />
+			</div>
+
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<!-- Main Info -->
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Contact Details Card -->
-					<div class="card">
+					<div v-if="isAdmin || activeTab === 'profile'" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">Contact Details</h2>
 
 						<div class="space-y-4">
@@ -420,7 +454,7 @@ async function handleRemoveSuppression() {
 					</div>
 
 					<!-- Custom Properties Card -->
-					<div v-if="properties && properties.length > 0" class="card">
+					<div v-if="isAdmin && properties && properties.length > 0" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">Custom Properties</h2>
 
 						<!-- Edit mode: one input per property -->
@@ -471,13 +505,23 @@ async function handleRemoveSuppression() {
 						</div>
 					</div>
 
-					<!-- Tab Navigation -->
-					<div class="mb-6">
-						<UiTabs v-model="activeTab" :tabs="tabOptions" />
+					<div v-if="(isAdmin || activeTab === 'profile') && canAnnotateContacts" class="card">
+						<div class="flex items-start justify-between gap-4 mb-3">
+							<div>
+								<h2 class="text-lg font-medium text-text-primary">Team note</h2>
+								<p class="text-sm text-text-secondary">Shared context for future conversations.</p>
+							</div>
+							<UiButton size="sm" :loading="isSavingNotes" @click="saveNotes">Save note</UiButton>
+						</div>
+						<UiTextarea
+							v-model="notesDraft"
+							:rows="4"
+							placeholder="Add a helpful note about this customer…"
+						/>
 					</div>
 
 					<!-- Activity Tab -->
-					<div v-if="activeTab === 'activity'" class="card">
+					<div v-if="isAdmin && activeTab === 'activity'" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">Activity Timeline</h2>
 
 						<!-- Loading State -->
@@ -552,8 +596,9 @@ async function handleRemoveSuppression() {
 
 							<!-- Load More Button -->
 							<div v-if="hasMoreActivities" class="pt-4 text-center">
-								<button
-									class="btn btn-secondary btn-sm"
+								<UiButton
+									variant="secondary"
+									size="sm"
 									:disabled="isLoadingMoreActivities"
 									@click="loadMoreActivities"
 								>
@@ -563,7 +608,7 @@ async function handleRemoveSuppression() {
 										class="w-4 h-4 animate-spin mr-2"
 									/>
 									{{ isLoadingMoreActivities ? 'Loading...' : 'Load More' }}
-								</button>
+								</UiButton>
 							</div>
 						</div>
 					</div>
@@ -572,33 +617,39 @@ async function handleRemoveSuppression() {
 					<ContactsUnifiedTimelineTab v-if="activeTab === 'timeline'" :contact-id="contactId" />
 
 					<!-- Knowledge Tab -->
-					<ContactsContactKnowledgeTab v-if="activeTab === 'knowledge'" :contact-id="contactId" />
+					<ContactsContactKnowledgeTab
+						v-if="isAdmin && activeTab === 'knowledge'"
+						:contact-id="contactId"
+					/>
 
 					<!-- Files Tab -->
-					<ContactsContactFilesTab v-if="activeTab === 'files'" :contact-id="contactId" />
+					<ContactsContactFilesTab
+						v-if="isAdmin && activeTab === 'files'"
+						:contact-id="contactId"
+					/>
 
 					<!-- Identities Tab -->
 					<ContactsIdentitiesTab
-						v-if="activeTab === 'identities'"
+						v-if="isAdmin && activeTab === 'identities'"
 						:contact-id="contactId"
 						@toast="showToast"
 					/>
 
 					<!-- Relationships Tab -->
 					<ContactsRelationshipsTab
-						v-if="activeTab === 'relationships'"
+						v-if="isAdmin && activeTab === 'relationships'"
 						:contact-id="contactId"
 						@toast="showToast"
 					/>
 				</div>
 
 				<!-- Sidebar -->
-				<div class="space-y-6">
+				<div v-if="isAdmin || activeTab === 'profile'" class="space-y-6">
 					<!-- Communication Stats Card -->
 					<ContactsTimelineStatsCard :contact-id="contactId" />
 
 					<!-- Metadata Card -->
-					<div class="card">
+					<div v-if="isAdmin" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">Details</h2>
 
 						<div class="space-y-4">
@@ -626,14 +677,16 @@ async function handleRemoveSuppression() {
 					</div>
 
 					<!-- Topics Card -->
-					<div class="card">
+					<div v-if="isAdmin" class="card">
 						<div class="flex items-center justify-between mb-4">
 							<h2 class="text-lg font-medium text-text-primary">Topics</h2>
 
 							<!-- Add to Topic Dropdown -->
 							<div ref="addToTopicDropdownRef" class="relative">
-								<button
-									class="btn btn-secondary btn-sm gap-1.5"
+								<UiButton
+									variant="secondary"
+									size="sm"
+									class="gap-1.5"
 									:disabled="availableTopicsToAdd.length === 0 || isAddingToTopic"
 									@click.stop="isAddToTopicDropdownOpen = !isAddToTopicDropdownOpen"
 								>
@@ -645,7 +698,7 @@ async function handleRemoveSuppression() {
 									<Icon v-else name="lucide:plus" class="w-3 h-3" />
 									Add to Topic
 									<Icon name="lucide:chevron-down" class="w-3 h-3" />
-								</button>
+								</UiButton>
 
 								<!-- Dropdown Menu -->
 								<Transition
@@ -778,21 +831,22 @@ async function handleRemoveSuppression() {
 						</p>
 
 						<div class="flex items-center justify-end gap-3">
-							<button
-								class="btn btn-secondary"
+							<UiButton
+								variant="secondary"
 								:disabled="isDeleting"
 								@click="showDeleteConfirm = false"
 							>
 								Cancel
-							</button>
-							<button
-								class="btn bg-error text-white hover:bg-error/90"
+							</UiButton>
+							<UiButton
+								variant="danger"
+								class="bg-error text-white hover:bg-error/90"
 								:disabled="isDeleting"
 								@click="confirmDelete"
 							>
 								<UiSpinner v-if="isDeleting" class="mr-2" size="xs" tone="inverse" />
 								{{ isDeleting ? 'Deleting...' : 'Delete Contact' }}
-							</button>
+							</UiButton>
 						</div>
 					</div>
 				</div>

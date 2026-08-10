@@ -190,7 +190,7 @@ const handleSettings = () => {
 				<Icon name="lucide:alert-circle" class="w-12 h-12 text-error mx-auto mb-4" />
 				<h2 class="text-xl font-semibold text-text-primary mb-2">Block not found</h2>
 				<p class="text-text-secondary mb-6">This saved block doesn't exist or has been deleted.</p>
-				<button class="btn btn-primary" @click="handleBack">Back to Blocks</button>
+				<UiButton @click="handleBack">Back to Blocks</UiButton>
 			</div>
 		</div>
 

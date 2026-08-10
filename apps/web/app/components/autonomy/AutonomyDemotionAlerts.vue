@@ -58,13 +58,15 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 						{{ incident.autoDemotedReason ?? 'Auto-demoted to draft-only after a bad outcome.' }}
 					</p>
 				</div>
-				<button
-					class="btn btn-secondary btn-sm shrink-0"
+				<UiButton
+					variant="secondary"
+					size="sm"
+					class="shrink-0"
 					:disabled="pendingId === incident._id"
 					@click="emit('acknowledge', { ruleId: incident._id })"
 				>
 					Dismiss
-				</button>
+				</UiButton>
 			</li>
 		</ul>
 	</UiCard>

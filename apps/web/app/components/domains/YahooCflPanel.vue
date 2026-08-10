@@ -207,17 +207,17 @@ async function reset() {
 
 		<!-- The controls that record what the operator actually did. -->
 		<div v-if="canManage" class="mt-3 flex flex-wrap items-center gap-2">
-			<button
+			<UiButton
 				v-if="canSubmit"
 				type="button"
-				class="btn btn-primary text-sm py-1.5 px-3"
+				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-submit"
 				:disabled="isBusy || submitBlockedByDkim"
 				:aria-describedby="submitBlockedByDkim ? 'yahoocfl-submit-blocked' : undefined"
 				@click="submit"
 			>
 				{{ isSubmitting ? 'Saving…' : "I submitted Yahoo's form" }}
-			</button>
+			</UiButton>
 			<!-- The reason a control is disabled must be VISIBLE: a `title` on a
 			     disabled button is neither focusable nor announced. -->
 			<p
@@ -229,26 +229,27 @@ async function reset() {
 				Verify this domain and its DKIM record first — Yahoo will not accept an enrollment for a
 				domain it cannot see our signature on.
 			</p>
-			<button
+			<UiButton
 				v-if="canConfirm"
 				type="button"
-				class="btn btn-primary text-sm py-1.5 px-3"
+				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-confirm"
 				:disabled="isBusy"
 				@click="confirm"
 			>
 				{{ isConfirming ? 'Saving…' : 'Yahoo accepted the domain' }}
-			</button>
-			<button
+			</UiButton>
+			<UiButton
+				variant="secondary"
 				v-if="canReset"
 				type="button"
-				class="btn btn-secondary text-sm py-1.5 px-3"
+				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-reset"
 				:disabled="isBusy"
 				@click="reset"
 			>
 				{{ isResetting ? 'Saving…' : 'Start over' }}
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- The measured silence, when there is one. The lapsed step states the

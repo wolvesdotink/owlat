@@ -29,9 +29,9 @@ export const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
 	assistant: 'shared',
 	send: 'marketing',
 	audience: 'marketing',
-	delivery: 'marketing',
 	knowledge: 'shared',
-	settings: 'shared',
+	administration: 'shared',
+	preferences: 'shared',
 };
 
 /**
@@ -46,7 +46,6 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
 		'/dashboard/automations',
 		'/dashboard/send',
 		'/dashboard/audience',
-		'/dashboard/delivery',
 	],
 };
 

@@ -6,7 +6,7 @@ import type { Id } from '@owlat/api/dataModel';
  * Full member management for one team inbox: add an org member, invite someone
  * new by email, and the roster with remove / transfer-ownership actions.
  *
- * Extracted from `pages/dashboard/postbox/settings/members/[mailboxId].vue` so
+ * Extracted from `pages/dashboard/preferences/members/[mailboxId].vue` so
  * the admin Settings → Team inboxes page can embed the exact same management
  * surface inline per inbox. Management affordances follow `myRole` — the
  * backend grants org owners/admins effective `owner` on every team inbox, so

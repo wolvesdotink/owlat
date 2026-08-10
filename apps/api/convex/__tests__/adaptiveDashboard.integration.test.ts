@@ -25,10 +25,9 @@ let mockUserId: string | null = 'user-A';
 let mockRole: OrganizationRole | null = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual =
-		await vi.importActual<typeof import('../lib/sessionOrganization')>(
-			'../lib/sessionOrganization'
-		);
+	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+		'../lib/sessionOrganization'
+	);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -36,6 +35,10 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn(async () => {
 			if (!mockUserId) throw new Error('Not authenticated');
 			return mockUserId;
+		}),
+		getBetterAuthSessionWithRole: vi.fn(async () => {
+			if (!mockUserId || !mockRole) return null;
+			return { userId: mockUserId, role: mockRole };
 		}),
 		getMutationContext: vi.fn(async () => {
 			if (!mockUserId || !mockRole) throw new Error('Not authenticated');

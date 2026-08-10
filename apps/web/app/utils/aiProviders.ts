@@ -1,6 +1,6 @@
 /**
  * Frontend catalog + pure helpers for the AI-provider settings page
- * (`pages/dashboard/settings/ai-provider.vue`).
+ * (`pages/dashboard/admin/instance/ai-provider.vue`).
  *
  * A presentational MIRROR of the backend adapter registry
  * (`apps/api/convex/lib/llmProviders/*`). The page runs in the browser and can't

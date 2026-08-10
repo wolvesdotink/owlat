@@ -107,7 +107,7 @@ export const READY_TO_SEND_STEP: Omit<GettingStartedStep, 'completed'> = {
 	description:
 		'Set up sending and verify your domain in one place — Delivery shows exactly what is left before mail can go out.',
 	icon: 'lucide:send',
-	href: '/dashboard/delivery',
+	href: '/dashboard/admin/delivery',
 	cta: 'Open delivery',
 };
 
@@ -151,7 +151,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		description:
 			'Send transactional email (receipts, password resets) programmatically via the API.',
 		icon: 'lucide:key',
-		href: '/dashboard/settings/api',
+		href: '/dashboard/admin/team/api',
 		cta: 'Create key',
 	},
 ];
@@ -166,7 +166,7 @@ export const BACKUPS_STEP: Omit<GettingStartedStep, 'completed'> = {
 	title: 'Set up backups',
 	description: 'Nothing is backed up until you turn it on — do this before you store real data.',
 	icon: 'lucide:database-backup',
-	href: '/dashboard/settings/backups',
+	href: '/dashboard/admin/backups',
 	cta: 'Set up backups',
 };
 

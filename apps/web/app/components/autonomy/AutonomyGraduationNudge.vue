@@ -82,13 +82,14 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">Match rate {{ pct(offer.matchRate) }}</p>
 				</div>
-				<button
-					class="btn btn-primary btn-sm shrink-0"
+				<UiButton
+					size="sm"
+					class="shrink-0"
 					:disabled="pendingKey === `${offer.category}::${offer.sender}`"
 					@click="emit('accept-offer', { category: offer.category, sender: offer.sender })"
 				>
 					Enable auto-send
-				</button>
+				</UiButton>
 			</li>
 
 			<!-- Category threshold-loosening suggestions -->
@@ -110,13 +111,14 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 						{{ pct(s.evidence.rejectionRate) }} rejection rate
 					</p>
 				</div>
-				<button
-					class="btn btn-primary btn-sm shrink-0"
+				<UiButton
+					size="sm"
+					class="shrink-0"
 					:disabled="pendingKey === s._id"
 					@click="emit('accept-suggestion', { suggestionId: s._id })"
 				>
 					Apply
-				</button>
+				</UiButton>
 			</li>
 		</ul>
 	</UiCard>

@@ -56,15 +56,16 @@ const { run: updateTrigger } = useBackendOperation(api.automations.automations.u
 });
 
 // Query for contact properties (for Contact Updated trigger)
-const { data: contactProperties } = useOrganizationQuery(api.contacts.properties.listByOrganization);
+const { data: contactProperties } = useOrganizationQuery(
+	api.contacts.properties.listByOrganization
+);
 
 // Query for topics (for Topic Subscribed trigger)
 const { results: topics } = useTopicsList();
 
 // Hydrate the form from the existing automation when editing its trigger.
-const { data: existingAutomation } = useConvexQuery(
-	api.automations.automations.get,
-	() => (editId.value ? { automationId: editId.value as Id<'automations'> } : 'skip')
+const { data: existingAutomation } = useConvexQuery(api.automations.automations.get, () =>
+	editId.value ? { automationId: editId.value as Id<'automations'> } : 'skip'
 );
 watch(
 	existingAutomation,
@@ -179,7 +180,9 @@ const handleTriggerSelect = (triggerType: TriggerKind) => {
 };
 
 // Check if current trigger requires additional configuration
-const currentTriggerRequiresConfig = computed(() => selectedTriggerModule.value?.requiresConfig ?? false);
+const currentTriggerRequiresConfig = computed(
+	() => selectedTriggerModule.value?.requiresConfig ?? false
+);
 
 // Check if trigger configuration is complete
 const isTriggerConfigComplete = computed(() => {
@@ -236,7 +239,8 @@ const getIconColorClass = (color: string) => {
 					<button
 						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="handleCancel"
-					 aria-label="Back">
+						aria-label="Back"
+					>
 						<Icon name="lucide:arrow-left" class="w-5 h-5" />
 					</button>
 					<div>
@@ -343,14 +347,23 @@ const getIconColorClass = (color: string) => {
 									@click="handleTriggerSelect(trigger.id)"
 								>
 									<!-- Icon -->
-									<div :class="['p-3 rounded-lg shrink-0 flex items-center justify-center', getIconColorClass(trigger.color)]">
+									<div
+										:class="[
+											'p-3 rounded-lg shrink-0 flex items-center justify-center',
+											getIconColorClass(trigger.color),
+										]"
+									>
 										<Icon :name="trigger.icon" class="w-5 h-5" />
 									</div>
 									<!-- Content -->
 									<div class="flex-1 min-w-0">
 										<div class="flex items-center gap-2">
 											<span class="font-medium text-text-primary">{{ trigger.label }}</span>
-											<Icon v-if="selectedTriggerType === trigger.id" name="lucide:check" class="w-4 h-4 text-brand" />
+											<Icon
+												v-if="selectedTriggerType === trigger.id"
+												name="lucide:check"
+												class="w-4 h-4 text-brand"
+											/>
 										</div>
 										<p class="text-sm text-text-secondary mt-1">
 											{{ trigger.description }}
@@ -366,7 +379,11 @@ const getIconColorClass = (color: string) => {
 
 						<!-- Trigger Configuration (per-kind editor module dispatch) -->
 						<div
-							v-if="selectedTriggerModule && selectedTriggerModule.requiresConfig && selectedTriggerModule.EditorComponent"
+							v-if="
+								selectedTriggerModule &&
+								selectedTriggerModule.requiresConfig &&
+								selectedTriggerModule.EditorComponent
+							"
 							class="p-4 bg-bg-surface border border-border-subtle rounded-lg"
 						>
 							<component
@@ -399,10 +416,10 @@ const getIconColorClass = (color: string) => {
 
 					<!-- Actions -->
 					<div class="flex items-center justify-between mt-8 pt-6 border-t border-border-subtle">
-						<button type="button" class="btn btn-secondary" @click="handleCancel">Cancel</button>
-						<button
+						<UiButton variant="secondary" type="button" @click="handleCancel">Cancel</UiButton>
+						<UiButton
 							type="submit"
-							class="btn btn-primary gap-2"
+							class="gap-2"
 							:disabled="
 								isSaving ||
 								!selectedTriggerType ||
@@ -413,7 +430,7 @@ const getIconColorClass = (color: string) => {
 							<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							{{ isSaving ? 'Creating...' : 'Continue to Workflow' }}
 							<Icon v-if="!isSaving" name="lucide:arrow-right" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</form>
 			</div>

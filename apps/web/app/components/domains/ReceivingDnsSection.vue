@@ -136,7 +136,7 @@ watch(
 				receiving feature.
 			</p>
 			<NuxtLink
-				to="/dashboard/settings/features"
+				to="/dashboard/admin/instance/features"
 				class="inline-flex items-center gap-1 text-sm text-brand hover:underline mt-2"
 			>
 				Turn on receiving in Settings → Features

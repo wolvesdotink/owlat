@@ -253,17 +253,13 @@ async function handleConfirm() {
 				</p>
 
 				<div class="space-y-3">
-					<button
-						class="btn btn-primary w-full h-12"
-						:disabled="isProcessing"
-						@click="handleConfirm"
-					>
+					<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleConfirm">
 						<span v-if="isProcessing" class="flex items-center justify-center gap-2">
 							<UiSpinner size="sm" tone="inverse" />
 							Confirming...
 						</span>
 						<span v-else>Confirm Subscription</span>
-					</button>
+					</UiButton>
 				</div>
 
 				<p class="text-text-tertiary text-xs mt-6">

@@ -94,130 +94,129 @@ const routeConfigs: Record<string, RouteConfig> = {
 		page: 'Suppressions',
 	},
 
-	// Settings section
-	'/dashboard/settings': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	// Administration section
+	'/dashboard/admin': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Overview',
 	},
-	'/dashboard/settings/workspace': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
-		subsection: 'Workspace',
-		subsectionHref: '/dashboard/settings/workspace',
+	'/dashboard/admin/instance': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
+		page: 'Instance',
 	},
-	'/dashboard/delivery': {
+	'/dashboard/admin/instance/general': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
+		subsection: 'Instance',
+		subsectionHref: '/dashboard/admin/instance',
+		page: 'General',
+	},
+	'/dashboard/admin/delivery': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		page: 'Health',
 	},
-	'/dashboard/delivery/setup': {
+	'/dashboard/admin/delivery/advanced/measurement': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
-		page: 'Setup',
-	},
-	'/dashboard/delivery/measurement': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		page: 'Measurement',
 	},
-	'/dashboard/delivery/independence': {
+	'/dashboard/admin/delivery/advanced/independence': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		page: 'Independence',
 	},
-	'/dashboard/delivery/cells': {
+	'/dashboard/admin/delivery/advanced/cells': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		page: 'Cells',
 	},
-	'/dashboard/delivery/controls': {
+	'/dashboard/admin/delivery/advanced/controls': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		page: 'Controls',
 	},
-	'/dashboard/delivery/config': {
+	'/dashboard/admin/delivery/transport': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		subsection: 'Setup',
-		subsectionHref: '/dashboard/delivery/setup',
+		subsectionHref: '/dashboard/admin/delivery',
 		page: 'Delivery provider',
 	},
-	'/dashboard/delivery/domains': {
+	'/dashboard/admin/delivery/domains': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		subsection: 'Setup',
-		subsectionHref: '/dashboard/delivery/setup',
+		subsectionHref: '/dashboard/admin/delivery',
 		page: 'Sending Domains',
 	},
-	'/dashboard/delivery/migrate': {
+	'/dashboard/admin/delivery/migrate': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		subsection: 'Setup',
-		subsectionHref: '/dashboard/delivery/setup',
+		subsectionHref: '/dashboard/admin/delivery',
 		page: 'Migrate from Mailchimp',
 	},
-	'/dashboard/delivery/provider-routing': {
+	'/dashboard/admin/delivery/provider-routing': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		subsection: 'Setup',
-		subsectionHref: '/dashboard/delivery/setup',
+		subsectionHref: '/dashboard/admin/delivery',
 		page: 'Provider Routing',
 	},
-	'/dashboard/delivery/webhooks': {
+	'/dashboard/admin/delivery/webhooks': {
 		section: 'Delivery',
-		sectionHref: '/dashboard/delivery',
+		sectionHref: '/dashboard/admin/delivery',
 		subsection: 'Setup',
-		subsectionHref: '/dashboard/delivery/setup',
+		subsectionHref: '/dashboard/admin/delivery',
 		page: 'Webhooks',
 	},
-	'/dashboard/settings/team': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
-		subsection: 'Workspace',
-		subsectionHref: '/dashboard/settings/workspace',
-		page: 'Team Members',
+	'/dashboard/admin/team': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
+		page: 'Team & access',
 	},
-	'/dashboard/settings/email-theme': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
-		subsection: 'Workspace',
-		subsectionHref: '/dashboard/settings/workspace',
+	'/dashboard/admin/instance/email-theme': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
+		subsection: 'Instance',
+		subsectionHref: '/dashboard/admin/instance',
 		page: 'Email Theme',
 	},
-	'/dashboard/settings/api': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/team/api': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'API Keys',
 	},
-	'/dashboard/settings/campaign-senders': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/team/senders': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Campaign senders',
 	},
-	'/dashboard/settings/team-inboxes': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/team/inboxes': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Team Inboxes',
 	},
-	'/dashboard/settings/forms': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/instance/forms': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Form Endpoints',
 	},
-	'/dashboard/settings/audit': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/team/audit': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Audit Log',
 	},
-	'/dashboard/settings/account': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/preferences/account': {
+		section: 'Preferences',
+		sectionHref: '/dashboard/preferences',
 		page: 'Account',
 	},
-	'/dashboard/settings/properties': {
-		section: 'Settings',
-		sectionHref: '/dashboard/settings',
+	'/dashboard/admin/instance/properties': {
+		section: 'Administration',
+		sectionHref: '/dashboard/admin',
 		page: 'Contact Properties',
 	},
 

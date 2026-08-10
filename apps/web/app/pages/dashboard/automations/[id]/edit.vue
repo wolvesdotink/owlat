@@ -345,41 +345,43 @@ onUnmounted(() => {
 						</span>
 
 						<!-- Save Draft Button (only for draft status) -->
-						<button
+						<UiButton
+							variant="secondary"
 							v-if="automation.status === 'draft'"
-							class="btn btn-secondary gap-2"
+							class="gap-2"
 							:disabled="isSavingDraft"
 							@click="handleSaveDraft"
 						>
 							<Icon v-if="isSavingDraft" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							Save Draft
-						</button>
+						</UiButton>
 
 						<!-- Activate/Pause Button -->
-						<button
+						<UiButton
+							variant="secondary"
 							v-if="automation.status === 'active'"
-							class="btn btn-secondary gap-2"
+							class="gap-2"
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:pause" class="w-4 h-4" />
 							Pause
-						</button>
-						<button
+						</UiButton>
+						<UiButton
 							v-else-if="automation.status === 'paused'"
-							class="btn btn-primary gap-2"
+							class="gap-2"
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							Resume
-						</button>
-						<button
+						</UiButton>
+						<UiButton
 							v-else
-							class="btn btn-primary gap-2"
+							class="gap-2"
 							:disabled="isActivating || !canActivate.valid"
 							:title="
 								!canActivate.valid ? canActivate.reasons.join(', ') : 'Activate this automation'
@@ -389,7 +391,7 @@ onUnmounted(() => {
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							Activate
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>
@@ -431,9 +433,7 @@ onUnmounted(() => {
 				<Icon name="lucide:alert-circle" class="w-12 h-12 text-text-tertiary mx-auto mb-4" />
 				<h2 class="text-xl font-semibold text-text-primary mb-2">Automation not found</h2>
 				<p class="text-text-secondary mb-4">The automation you're looking for doesn't exist.</p>
-				<NuxtLink to="/dashboard/automations" class="btn btn-primary">
-					Back to Automations
-				</NuxtLink>
+				<UiButton to="/dashboard/automations"> Back to Automations </UiButton>
 			</div>
 		</div>
 
@@ -704,14 +704,14 @@ onUnmounted(() => {
 							Add steps to define what happens when the automation is triggered.
 						</p>
 						<div class="flex justify-center gap-3">
-							<button class="btn btn-primary gap-2" @click="handleAddStep('email')">
+							<UiButton class="gap-2" @click="handleAddStep('email')">
 								<Icon name="lucide:mail" class="w-4 h-4" />
 								Add Email Step
-							</button>
-							<button class="btn btn-secondary gap-2" @click="handleAddStep('delay')">
+							</UiButton>
+							<UiButton variant="secondary" class="gap-2" @click="handleAddStep('delay')">
 								<Icon name="lucide:clock" class="w-4 h-4" />
 								Add Delay Step
-							</button>
+							</UiButton>
 						</div>
 					</div>
 
@@ -834,18 +834,22 @@ onUnmounted(() => {
 
 							<!-- Buttons -->
 							<div class="flex gap-3">
-								<button class="btn btn-secondary flex-1" @click="showActivateConfirmModal = false">
+								<UiButton
+									variant="secondary"
+									class="flex-1"
+									@click="showActivateConfirmModal = false"
+								>
 									Cancel
-								</button>
-								<button
-									class="btn btn-primary flex-1 gap-2"
+								</UiButton>
+								<UiButton
+									class="flex-1 gap-2"
 									:disabled="isActivating"
 									@click="handleConfirmActivate"
 								>
 									<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 									<Icon v-else name="lucide:play" class="w-4 h-4" />
 									{{ isActivating ? 'Activating...' : 'Activate' }}
-								</button>
+								</UiButton>
 							</div>
 						</div>
 					</div>

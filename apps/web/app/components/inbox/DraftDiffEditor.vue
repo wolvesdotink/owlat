@@ -97,9 +97,10 @@ function onDiscard() {
 		</div>
 
 		<div class="flex items-center gap-2">
-			<button
+			<UiButton
+				size="sm"
 				type="button"
-				class="btn btn-primary btn-sm gap-1 disabled:cursor-not-allowed"
+				class="gap-1 disabled:cursor-not-allowed"
 				:disabled="saving || held"
 				:aria-disabled="held ? 'true' : undefined"
 				data-testid="draft-diff-apply"
@@ -107,16 +108,17 @@ function onDiscard() {
 			>
 				<Icon name="lucide:save" class="w-3 h-3" />
 				{{ applyLabel }}
-			</button>
-			<button
+			</UiButton>
+			<UiButton
+				variant="ghost"
+				size="sm"
 				type="button"
-				class="btn btn-ghost btn-sm"
 				:disabled="saving"
 				data-testid="draft-diff-discard"
 				@click="onDiscard"
 			>
 				Discard
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Soft-hold reason: a teammate is replying; releases on its own. -->

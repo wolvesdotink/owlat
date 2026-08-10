@@ -61,13 +61,7 @@ const copy = computed(() =>
 <template>
 	<TaskCardShell :spine="false" role="group" aria-label="Unavailable task">
 		<div class="flex items-start gap-3">
-			<UiIconBox
-				:icon="copy.icon"
-				size="md"
-				variant="surface"
-				rounded="lg"
-				class="flex-shrink-0"
-			/>
+			<UiIconBox :icon="copy.icon" size="md" variant="surface" rounded="lg" class="flex-shrink-0" />
 			<div class="min-w-0">
 				<p class="text-sm font-medium text-text-primary">
 					{{ copy.title }}
@@ -84,10 +78,11 @@ const copy = computed(() =>
 		</div>
 
 		<div class="mt-4 flex items-center gap-2">
-			<button
+			<UiButton
+				variant="secondary"
 				type="button"
 				data-testid="task-fallback-skip"
-				class="btn btn-secondary text-sm"
+				class="text-sm"
 				@click="emit('skip')"
 			>
 				Skip
@@ -95,7 +90,7 @@ const copy = computed(() =>
 					class="ml-1.5 text-[10px] px-1 py-px rounded border border-border-subtle text-text-tertiary"
 					>s</kbd
 				>
-			</button>
+			</UiButton>
 			<button
 				v-if="canOpen"
 				type="button"
