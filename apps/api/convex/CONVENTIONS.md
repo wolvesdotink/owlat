@@ -157,7 +157,9 @@ Never re-derive that context inside the handler. `getMutationContext(ctx)` /
 `requireOrgMember(ctx)` / `getBetterAuthSessionWithRole(ctx)` called under one of
 these builders is a SECOND BetterAuth session read plus a second `member`
 component query, on every execution of a function the dashboard may
-live-subscribe. `ctx` and `args` are untouched, and a handler declaring only
+live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
+baseline in `scripts/session-threading-baseline.txt`, both directions strict;
+`// session: <reason>` opts a handler out when the re-resolution is deliberate). `ctx` and `args` are untouched, and a handler declaring only
 `(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
 `authedIdentityMutation` (identity, not an org session) and `authedAction`
 (enforced in another function's context) have nothing to thread and keep the raw

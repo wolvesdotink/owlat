@@ -1,7 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 
 // Status type for transactional email sends. Per ADR-0006 transactional
@@ -38,7 +37,6 @@ export const listByTransactionalEmail = authedQuery({
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		await getOrThrow(ctx, args.transactionalEmailId, 'Transactional email');
 
 		const offset = args.offset || 0;
@@ -104,7 +102,6 @@ export const listAll = authedQuery({
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const offset = args.offset || 0;
 		const limit = args.limit || 50;
 
@@ -173,7 +170,6 @@ export const listAll = authedQuery({
 export const get = authedQuery({
 	args: { id: v.id('transactionalSends') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const send = await ctx.db.get(args.id);
 		// Honor the soft-delete contract: an erased (GDPR) send reads as absent.
 		if (!send || send.deletedAt !== undefined) return null;
@@ -219,7 +215,6 @@ export const get = authedQuery({
 export const getCounts = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
 		const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: per-deployment template set is small
 
 		const counts: Record<string, number> = {};
@@ -268,7 +263,6 @@ export const getByEmail = authedQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const limit = args.limit || 10;
 		const sends = await ctx.db
 			.query('transactionalSends')
