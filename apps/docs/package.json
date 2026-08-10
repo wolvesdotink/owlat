@@ -19,7 +19,7 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@takumi-rs/core": "^1.1.2",
+		"@takumi-rs/core": "^2.5.10",
 		"nuxt": "catalog:vue",
 		"vue": "catalog:vue"
 	},
