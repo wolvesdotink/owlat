@@ -51,6 +51,7 @@ export function adminIsValid(admin: AdminDraft): boolean {
 export interface EmailStepErrors {
 	provider?: string;
 	resendKey?: string;
+	emailitKey?: string;
 	mandrillKey?: string;
 	ses?: string;
 	smtp?: string;
@@ -76,6 +77,9 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	}
 	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
 		errors.resendKey = 'Enter your Resend API key.';
+	}
+	if (draft.provider === 'emailit' && (draft.emailitKey ?? '').trim() === '') {
+		errors.emailitKey = 'Enter your Emailit API key.';
 	}
 	if (draft.provider === 'mandrill' && draft.mandrillKey.trim() === '') {
 		errors.mandrillKey = 'Enter your Mailchimp Transactional (Mandrill) API key.';
@@ -111,6 +115,51 @@ export function emailStepIsValid(draft: EmailStepDraft): boolean {
 }
 
 /**
+ * WHICH ERRORS ARE ABOUT THE CREDENTIALS — the one question both credential
+ * surfaces ask, answered here rather than twice in their templates.
+ *
+ * `satisfies Record<keyof EmailStepErrors, boolean>` for the same reason
+ * {@link TRANSPORT_EDITOR_OWNED_ERRORS} does it: the NEXT credential key this
+ * step gains has to be classified here or the build fails. The alternative —
+ * the `errors.resendKey ?? errors.mandrillKey ?? …` chain both components used
+ * to spell out — was per-vendor knowledge in a `.vue` file (the seams plan's
+ * D5), in TWO copies, and silently non-exhaustive: a new key rendered nowhere
+ * while Apply refused, which is a button that does nothing with no sentence
+ * saying why.
+ *
+ * ORDER IS THE DECLARATION ORDER of `EmailStepErrors`, and it does not matter:
+ * `validateEmailStep` reports at most ONE credential error, because each rule is
+ * gated on the selected provider.
+ */
+const CREDENTIAL_ERRORS = {
+	resendKey: true,
+	emailitKey: true,
+	mandrillKey: true,
+	ses: true,
+	smtp: true,
+	// Not credentials: which transport to use, the wizard's own MTA identity
+	// step, and the optional From address.
+	provider: false,
+	mtaIdentity: false,
+	fromEmail: false,
+} as const satisfies Record<keyof EmailStepErrors, boolean>;
+
+/**
+ * The ONE credential error the selected kind can raise, whichever field set it
+ * belongs to — or `undefined` when the credentials are fine.
+ *
+ * Lives beside the rules that PRODUCE those keys so the two cannot be edited a
+ * package apart from each other; the descriptor renderer then decides where the
+ * message is announced, which is a question about the FORM, not about a vendor.
+ */
+export function credentialErrorFor(errors: EmailStepErrors): string | undefined {
+	for (const key of Object.keys(CREDENTIAL_ERRORS) as (keyof EmailStepErrors)[]) {
+		if (CREDENTIAL_ERRORS[key] && errors[key] !== undefined) return errors[key];
+	}
+	return undefined;
+}
+
+/**
  * WHICH OF THE EMAIL STEP'S RULES A TRANSPORT-ONLY SCREEN CAN MEET.
  *
  * The in-app transport editor swaps the transport on a RUNNING instance. It
@@ -130,6 +179,7 @@ export function emailStepIsValid(draft: EmailStepDraft): boolean {
 const TRANSPORT_EDITOR_OWNED_ERRORS = {
 	provider: true,
 	resendKey: true,
+	emailitKey: true,
 	mandrillKey: true,
 	ses: true,
 	smtp: true,

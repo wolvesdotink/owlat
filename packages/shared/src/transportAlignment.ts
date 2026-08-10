@@ -24,21 +24,27 @@
  * the verdict is `unknown`, never a claimed problem we didn't verify.
  */
 
+import { isOwnSendProviderKind, type SendTransportKind } from './sendProviderCatalog';
 import { isSpfAligned } from './spfAlignment';
 
 /**
- * The send-transport kinds Owlat supports, as a runtime `as const` tuple so the
- * `SendTransportKind` type derives from ONE source. This is the canonical list:
- * the backend's `SEND_PROVIDER_KINDS` / `SendProviderKind`
- * (`apps/api/convex/lib/sendProviders/types.ts`) re-export it, so a new provider
- * kind can't be added on the backend and silently drift past this alignment guard.
+ * The send-transport kinds Owlat supports — DERIVED from the send-provider
+ * catalog (`./sendProviderCatalog`, the seams plan's D1), not declared here.
+ *
+ * This was one of the five places the same union was written out. It is
+ * re-exported rather than moved so every consumer keeps importing it from
+ * `@owlat/shared` unchanged, and so the alignment guard below still reads the
+ * canonical list: a new provider kind cannot be added to the catalog and
+ * silently drift past it.
  */
-export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp', 'mandrill'] as const;
+export { SEND_TRANSPORT_KINDS } from './sendProviderCatalog';
 
-/** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp' | 'mandrill'`). */
-export type CoreSendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
-export type HostedSendTransportKind = `plugin.${string}.${string}`;
-export type SendTransportKind = CoreSendTransportKind | HostedSendTransportKind;
+export type {
+	/** A send-transport kind — the catalog's own union. */
+	CoreSendProviderKind as CoreSendTransportKind,
+	HostedSendTransportKind,
+	SendTransportKind,
+} from './sendProviderCatalog';
 
 /**
  * A single From-domain's alignment against the active transport:
@@ -133,7 +139,12 @@ export function checkFromAlignment(
 	// undeclared DKIM domain aligns. Its return-path is a SHARED VERP bounce
 	// domain that does NOT align per From-domain, so an undeclared return-path is
 	// always `null` (unknown) — never a claimed alignment we didn't verify.
-	const dkimPerFromDomain = facts.kind === 'mta';
+	//
+	// The question is "is this OUR arm" (D3), not "is this kind spelled 'mta'":
+	// what makes the assumption safe is that we run the signer. Asked through the
+	// catalog's own declaration so it moves with the catalog rather than being
+	// restated here.
+	const dkimPerFromDomain = isOwnSendProviderKind(facts.kind);
 	const dkim = identityAlignment(facts.dkimDomain, from, dkimPerFromDomain);
 	const returnPath = identityAlignment(facts.returnPathDomain, from, false);
 

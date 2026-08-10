@@ -18,6 +18,7 @@ import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize } from '../analytics/sendingReputation';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { getOptional } from '../lib/env';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 
 /** Traffic-light level for the Delivery status dot. */
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
@@ -143,9 +144,11 @@ export const getDeliveryHealth = authedQuery({
 		const canSend = await isDeliveryConfigured(ctx);
 		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
 		const usesMta =
-			getOptional('EMAIL_PROVIDER') === 'mta' ||
+			getOptional('EMAIL_PROVIDER') === OWN_ARM_TRANSPORT_KIND ||
 			routes.some((route) =>
-				route.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+				route.providers.some(
+					(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
+				)
 			);
 		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 		const snapshot = settings?.mtaHealth;

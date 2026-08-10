@@ -26,11 +26,29 @@ vi.mock('@owlat/smtp-client', () => ({
 	isSmtpError: () => false,
 }));
 
-// A bundled plugin transport, with the EMPTY `requiredEnvVars` a plugin catalog
-// entry legitimately has (its configuration lives in the plugin's own
-// deployment-wide environment, not in per-instance variables). That shape is
-// exactly what a vacuous "every required variable is present" check would wave
-// through, so it is the shape this file pins.
+// FOUR bundled plugin transports, because the fail-closed rules differ by what
+// each DECLARES rather than by which tier it belongs to (the seams plan's P3.1).
+//
+//  - `postmark` declares EMPTY `requiredEnvVars` and no `instanceEnvVars` — the
+//    shape a plugin transport whose configuration lives in the plugin's own
+//    deployment-wide environment legitimately has. It is exactly what a vacuous
+//    "every required variable is present" check would wave through, and it is
+//    still refused named instances: a suffix reaches none of that configuration,
+//    so an instance of it could only ever send with the default's credentials.
+//  - `sendbird` declares its own instance-scoped variables, so the host resolves
+//    them per instance and hands them over — and named instances become as
+//    ordinary for it as they are for `smtp`.
+//  - `mailhawk` is the ARTIFACT a validator never saw: instance-scoped variables
+//    with none of them REQUIRED. The manifest validator refuses that declaration
+//    and the codegen withholds `instanceEnvVars` from it, so it can only arrive
+//    by hand edit, bad merge or partial regeneration — and the resolver must
+//    still answer `instances_unsupported` rather than `revoked`, which would name
+//    a configuration this deployment removed for an instance that was never
+//    resolvable.
+//  - `heron` is the shape codegen actually renders for an instance-scoped
+//    transport: the presence gate is the UNION of the plugin's deployment-wide
+//    flag variable and the transport's own credential, and only the second half
+//    takes an instance suffix.
 vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
 		Object.freeze({
@@ -42,6 +60,41 @@ vi.mock('../../../plugins/sendTransportCatalog.generated', () => ({
 			requiredEnvVars: Object.freeze([]),
 			requiredCapability: 'send:transport',
 		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			localId: 'sendbird',
+			label: 'Sendbird',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			instanceEnvVars: Object.freeze(['PLUGIN_SENDBIRD_TOKEN']),
+			requiredCapability: 'send:transport',
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.mailhawk',
+			pluginId: 'mail-pack',
+			localId: 'mailhawk',
+			label: 'Mailhawk',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['MAIL_PACK_ENABLED']),
+			instanceEnvVars: Object.freeze(['PLUGIN_MAILHAWK_REGION']),
+			requiredCapability: 'send:transport',
+		}),
+		/**
+		 * THE UNION GATE, as codegen actually renders it (the seams plan's P3.1):
+		 * the contributing plugin's deployment-wide flag variable AND the
+		 * transport's own credential, with only the second instance-scoped.
+		 */
+		Object.freeze({
+			kind: 'plugin.mail-pack.heron',
+			pluginId: 'mail-pack',
+			localId: 'heron',
+			label: 'Heron',
+			retryDelays: Object.freeze([0]),
+			requiredEnvVars: Object.freeze(['MAIL_PACK_ENABLED', 'PLUGIN_HERON_TOKEN']),
+			instanceEnvVars: Object.freeze(['PLUGIN_HERON_TOKEN']),
+			requiredCapability: 'send:transport',
+		}),
 	]),
 }));
 
@@ -49,6 +102,30 @@ vi.mock('../../../plugins/sendTransportModules.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES: Object.freeze([
 		Object.freeze({
 			kind: 'plugin.mail-pack.postmark',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: () => pluginSendMock(),
+			},
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.sendbird',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: () => pluginSendMock(),
+			},
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.mailhawk',
+			pluginId: 'mail-pack',
+			module: {
+				parseExtras: (input: unknown) => input,
+				send: () => pluginSendMock(),
+			},
+		}),
+		Object.freeze({
+			kind: 'plugin.mail-pack.heron',
 			pluginId: 'mail-pack',
 			module: {
 				parseExtras: (input: unknown) => input,
@@ -72,6 +149,8 @@ vi.mock('../../../plugins/plugins.generated', () => ({
 	]),
 }));
 
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
+import { providerKindConfigured } from '../capability';
 import { sendProviderDispatch } from '../dispatch';
 import {
 	SendTransportResolutionError,
@@ -80,6 +159,13 @@ import {
 	resolveSendTransport,
 	type SendTransportId,
 } from '../transports';
+
+/**
+ * Built through the kit's own grammar rather than written out: the plugin kind is
+ * a security boundary, so a test that spelled it by hand could drift from the one
+ * codegen emits.
+ */
+const HERON_KIND = pluginNamespacedKind(parsePluginId('mail-pack'), 'heron');
 
 const params = {
 	to: 'to@example.com',
@@ -163,17 +249,126 @@ describe('resolution failure modes', () => {
 		});
 	});
 
-	it('rejects a NAMED instance of a plugin kind instead of borrowing the default plugin credentials', () => {
-		// Declaring it changes nothing: a plugin transport's configuration comes
-		// from the plugin's own deployment-wide environment, which no `__ALT`
-		// suffix reaches, so `plugin.mail-pack.postmark#alt` could only ever send
-		// with the DEFAULT instance's credentials. Two ids, one credential set is
-		// precisely the silent borrow this module forbids.
+	it('rejects a NAMED instance of a plugin kind that declares no configuration of its own', () => {
+		// Declaring it changes nothing: this transport's configuration comes from the
+		// plugin's own deployment-wide environment, which no `__ALT` suffix reaches,
+		// so `plugin.mail-pack.postmark#alt` could only ever send with the DEFAULT
+		// instance's credentials. Two ids, one credential set is precisely the silent
+		// borrow this module forbids.
 		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.postmark#alt');
 		_resetSendTransportCacheForTests();
 		expect(reasonFor('plugin.mail-pack.postmark#alt')).toBe('instances_unsupported');
 		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
 			'plugin.mail-pack.postmark#alt'
+		);
+	});
+
+	it('refuses instances of a kind whose instance-scoped variables are all OPTIONAL', () => {
+		// `instances_unsupported`, not `revoked`. With no REQUIRED instance-scoped
+		// variable there is nothing an instance's presence could be checked against,
+		// so admitting the kind and then failing every instance would report a
+		// revocation that never happened — and would do it even with
+		// `PLUGIN_MAILHAWK_REGION__EU` set.
+		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.mailhawk#eu');
+		vi.stubEnv('PLUGIN_MAILHAWK_REGION__EU', 'eu-central');
+		vi.stubEnv('MAIL_PACK_ENABLED', 'true');
+		_resetSendTransportCacheForTests();
+
+		expect(reasonFor('plugin.mail-pack.mailhawk#eu')).toBe('instances_unsupported');
+		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
+			'plugin.mail-pack.mailhawk#eu'
+		);
+		// The DEFAULT instance is unaffected: its gate is the plugin's flag variable.
+		expect(resolveSendTransport('plugin.mail-pack.mailhawk').instanceKey).toBeNull();
+	});
+
+	it('resolves a NAMED instance of a plugin kind that DOES declare its own configuration', () => {
+		// The parity the piece exists for (P3.1): the answer follows the declared
+		// configuration, not the tier. `PLUGIN_SENDBIRD_TOKEN__EU` is a variable the
+		// host resolves and hands to the module, so this id names a credential set of
+		// its own and is not borrowing anything.
+		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.sendbird#eu');
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN__EU', 'eu-token');
+		_resetSendTransportCacheForTests();
+
+		expect(resolveSendTransport('plugin.mail-pack.sendbird#eu')).toMatchObject({
+			kind: 'plugin.mail-pack.sendbird',
+			instanceKey: 'eu',
+			pluginId: 'mail-pack',
+			requiredEnvVars: ['PLUGIN_SENDBIRD_TOKEN__EU'],
+		});
+		expect(listSendTransports().map((transport) => transport.id)).toContain(
+			'plugin.mail-pack.sendbird#eu'
+		);
+	});
+
+	/**
+	 * THE PRESENCE GATE IS THE UNION, AND ONLY HALF OF IT TAKES A SUFFIX.
+	 *
+	 * A plugin transport's own credential is instance-scoped; the plugin's
+	 * `flag.requiredEnvVars` is a deployment-wide switch the authorization path
+	 * checks unsuffixed and no `__<INSTANCEKEY>` reaches. Gating a named instance
+	 * on the transport's list alone would report it configured inside a plugin
+	 * nobody enabled — a route the dispatch path then refuses forever; demanding a
+	 * suffixed COPY of the flag would make every named instance permanently
+	 * `revoked`. Both halves are asserted here because either mistake is silent.
+	 */
+	it('gates a plugin instance on the flag AND the transport credential', () => {
+		vi.stubEnv('SEND_TRANSPORT_INSTANCES', 'plugin.mail-pack.heron#eu');
+		vi.stubEnv('PLUGIN_HERON_TOKEN__EU', 'eu-token');
+		vi.stubEnv('MAIL_PACK_ENABLED', '');
+		_resetSendTransportCacheForTests();
+
+		// The credential is there; the plugin is off. Not a transport to route to.
+		expect(reasonFor('plugin.mail-pack.heron#eu')).toBe('revoked');
+
+		vi.stubEnv('MAIL_PACK_ENABLED', 'true');
+		_resetSendTransportCacheForTests();
+
+		expect(resolveSendTransport('plugin.mail-pack.heron#eu')).toMatchObject({
+			instanceKey: 'eu',
+			// The flag variable UNSUFFIXED beside the suffixed credential — a named
+			// instance never has to have its own copy of a deployment-wide switch.
+			requiredEnvVars: ['MAIL_PACK_ENABLED', 'PLUGIN_HERON_TOKEN__EU'],
+		});
+	});
+
+	it('reports the same union on the ENV-ONLY readiness path', () => {
+		// `providerKindConfigured` is what `configuredSendProviderKinds` feeds to the
+		// campaign cell seam, which records an assignment row from it without
+		// resolving the mutable capability grant. That omission is documented as a
+		// TRANSIENT staleness (a grant revoked between enqueue and dispatch); a
+		// plugin that is simply never enabled is not transient, so the flag variable
+		// has to be inside this answer rather than only inside the authorization
+		// path that refuses the send later.
+		vi.stubEnv('PLUGIN_HERON_TOKEN', 'default-token');
+		vi.stubEnv('MAIL_PACK_ENABLED', '');
+		expect(providerKindConfigured(HERON_KIND)).toBe(false);
+
+		vi.stubEnv('MAIL_PACK_ENABLED', 'true');
+		expect(providerKindConfigured(HERON_KIND)).toBe(true);
+
+		vi.stubEnv('PLUGIN_HERON_TOKEN', '');
+		expect(providerKindConfigured(HERON_KIND)).toBe(false);
+	});
+
+	it.each([
+		['undeclared', 'unregistered_instance'],
+		['revoked', 'revoked'],
+	])('fails a plugin instance closed when it is %s', (state, reason) => {
+		vi.stubEnv(
+			'SEND_TRANSPORT_INSTANCES',
+			state === 'undeclared' ? '' : 'plugin.mail-pack.sendbird#eu'
+		);
+		// Revoked = declared, but its credential is gone. Neither state may fall
+		// through to the default instance's token.
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN__EU', state === 'undeclared' ? 'eu-token' : '');
+		vi.stubEnv('PLUGIN_SENDBIRD_TOKEN', 'default-token');
+		_resetSendTransportCacheForTests();
+
+		expect(reasonFor('plugin.mail-pack.sendbird#eu')).toBe(reason);
+		expect(listSendTransports().map((transport) => transport.id)).not.toContain(
+			'plugin.mail-pack.sendbird#eu'
 		);
 	});
 

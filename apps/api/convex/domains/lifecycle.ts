@@ -70,6 +70,11 @@ import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mai
 import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
 import {
+	enabledFallbackRelayKinds,
+	ensureRelayIdentities,
+	relayIdentityBackfills,
+} from '../lib/sendProviders/fallbackRelays';
+import {
 	isSendingDomainProviderKind,
 	providerFor,
 	type ProviderIdentity,
@@ -310,9 +315,15 @@ type Effect =
 			// identity on a domain whose primary provider is our own MTA). Named
 			// for the capability rather than for one provider since P3.1 added the
 			// second one.
+			//
+			// THE ID ONLY. This variant used to carry the reducer's `providerType`
+			// as well, and the handler gated on it; since P0.4 the own-MTA-primary
+			// gate lives in `ensureRelayIdentities` and reads the DOC, so a
+			// `providerType` here would be a payload nothing dereferences — read by
+			// the next author as "the gate is applied at construction time", which
+			// is the two-subjects-for-one-rule seam the move removed.
 			kind: 'provision_relay_identity_if_enabled';
 			domainId: Id<'domains'>;
-			providerType: SendingDomainProviderKind | null;
 	  };
 
 type ReducerResult = {
@@ -467,11 +478,7 @@ function buildEffects(
 	// pre-verification for invitees who already accepted.
 	if (input.to === 'verified') {
 		effects.push({ kind: 'claim_reserved_mailboxes', domain: domain.domain });
-		effects.push({
-			kind: 'provision_relay_identity_if_enabled',
-			domainId: domain._id,
-			providerType: providerKind,
-		});
+		effects.push({ kind: 'provision_relay_identity_if_enabled', domainId: domain._id });
 	}
 
 	return effects;
@@ -565,30 +572,35 @@ async function applyEffects(
 				break;
 			}
 			case 'provision_relay_identity_if_enabled': {
-				if (effect.providerType !== 'mta') break;
-				// Bounded by the fixed message-type enum (campaign, transactional,
-				// automation); take one spare row so a malformed duplicate still cannot
-				// turn the verified-domain transition into an unbounded scan.
-				const routes = await ctx.db.query('providerRoutes').take(4);
-				const relayKinds = new Set(
-					routes
-						.filter((route) => route.deliverabilityFallback?.isEnabled)
-						.map((route) => route.deliverabilityFallback?.relayProviderType)
-				);
-				// One line per relay kind that provisions an identity on OUR domain
-				// while another provider stays primary. Both are scheduled, not
-				// inline: a provider outage must never roll back the domain's
-				// → verified transition (same reasoning as `register_with_provider`).
-				if (relayKinds.has('ses')) {
-					await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
-						domainId: effect.domainId,
-					});
-				}
-				if (relayKinds.has('mandrill')) {
-					await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
-						domainId: effect.domainId,
-					});
-				}
+				// THE FORWARD HALF OF A PAIR, and the pair shares ONE implementation:
+				// `enabledFallbackRelayKinds` → `relayIdentityBackfills` →
+				// `ensureRelayIdentities` is the whole rule, and the catch-up drain
+				// (`providerRoutes.provisionDeliverabilityRelayBatch`) walks the same
+				// three. Neither the "which relay" reading, nor the registry filter,
+				// nor the own-MTA-primary gate is restated here — two spellings of
+				// "every domain gets an identity exactly once" is how one half starts
+				// provisioning a domain the other half skips, with the only symptom a
+				// relay refusing a real send.
+				const backfills = relayIdentityBackfills(await enabledFallbackRelayKinds(ctx));
+				if (backfills.length === 0) break;
+				// The doc is re-read rather than taken from the effect: the status
+				// patch has already landed, and the own-MTA gate downstream reads the
+				// same subject the drain reads.
+				const domain = await ctx.db.get(effect.domainId);
+				if (!domain) break;
+				// `reprovision: true` — this edge shipped UNCONDITIONAL and stays so.
+				// It fires only on a real `→ verified` transition, which an operator
+				// reaches by taking the domain out of `verified` and putting it back,
+				// and that deliberate act is their only lever for re-registering an
+				// identity deleted or disabled at the provider while our sibling row
+				// survived. The drain converges instead (`reprovision: false`); see
+				// `EnsureRelayIdentityOptions`.
+				//
+				// Adapters SCHEDULE the provider call rather than making it, and
+				// `ensureRelayIdentities` swallows a throw from any read they make
+				// first: nothing in this effect may roll back the domain's → verified
+				// transition (the same reasoning as `register_with_provider`).
+				await ensureRelayIdentities(ctx, domain, backfills, { reprovision: true });
 				break;
 			}
 		}

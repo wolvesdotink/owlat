@@ -38,7 +38,7 @@ const T0 = Date.UTC(2026, 6, 1);
 /**
  * The complaint-signal half of the guide, inlined.
  *
- * `yahooComplaintSubstitution` lives in `apps/api/convex/delivery/ramp/` — next
+ * `yahooComplaintSubstitution` lives in `apps/api/convex/delivery/signals/` — next
  * to the ONE declaration of gate 3's threshold, which is the only place that
  * number is allowed to exist — and the web app cannot import from `apps/api`.
  * So this fixture states the WIRE SHAPE the query serves rather than re-running

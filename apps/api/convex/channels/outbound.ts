@@ -4,7 +4,7 @@
  * Outbound channel dispatch + credential encryption (NODE RUNTIME).
  *
  * This file is `'use node'` because it imports `lib/credentialCrypto`
- * (which pulls in `node:crypto`) and the `@owlat/channels` provider adapters.
+ * (which pulls in `node:crypto`) and the `./adapters` provider adapters.
  * Per the convention in lib/credentialCrypto.ts, anything that calls
  * encryptSecret/decryptSecret MUST live in a `'use node'` action file — never
  * a v8 query/mutation. Reached as `internal.channels.outbound.*`.
@@ -32,27 +32,34 @@ import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { outboundChannelValidator } from '../lib/convexValidators';
 import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
-import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from '@owlat/channels';
-import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from '@owlat/channels';
-import {
-	unifiedMessageChannelValidator as channelValidator,
-} from '../lib/convexValidators';
+import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from './adapters';
+import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from './adapters';
+import { unifiedMessageChannelValidator as channelValidator } from '../lib/convexValidators';
 import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValidators';
 
-/** Shape of the plaintext credential blob entered in the channel config form. */
+/**
+ * Shape of the plaintext credential blob entered in the channel config form
+ * (`apps/web/app/components/channels/ChannelConfigForm.vue`). This mirrors that
+ * form exactly — every key the form can write is listed and nothing else, so a
+ * field with no writer cannot masquerade as a stored credential. Only the keys
+ * `buildAdapter` reads below reach a provider; the one that does not is marked
+ * and explained in the note there.
+ *
+ * A pre-existing row may still carry a `secretKey` from before D10 removed the
+ * field; it is deliberately absent here, so nothing reads it and re-saving the
+ * channel drops it. See the note on `buildAdapter`.
+ */
 interface ChannelCreds {
 	// sms (Twilio)
 	accountSid?: string;
 	authToken?: string;
 	phoneNumber?: string;
 	// whatsapp (Meta Cloud API)
-	businessAccountId?: string;
+	businessAccountId?: string; // stored only — the send call is keyed on phoneNumberId
 	accessToken?: string;
 	phoneNumberId?: string;
-	verifyToken?: string;
 	// generic webhook
 	endpointUrl?: string;
-	secretKey?: string;
 }
 
 /**
@@ -78,7 +85,7 @@ export const encryptAndPersistConfig = internalAction({
 			// Never throw out of the scheduled job — leave the prior config intact.
 			// eslint-disable-next-line no-console
 			console.error(
-				`[channels] failed to encrypt config for ${args.channel}: ${error instanceof Error ? error.message : String(error)}`,
+				`[channels] failed to encrypt config for ${args.channel}: ${error instanceof Error ? error.message : String(error)}`
 			);
 		}
 		return null;
@@ -111,7 +118,11 @@ export const dispatchOutbound = internalAction({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const record = async (status: 'sent' | 'failed', externalMessageId?: string, error?: string) => {
+		const record = async (
+			status: 'sent' | 'failed',
+			externalMessageId?: string,
+			error?: string
+		) => {
 			// Recording the timeline row requires a thread (unifiedMessages.threadId
 			// is non-null in the schema). The autonomy/routing + agent-reply callers
 			// always supply one; if absent we log and skip the row.
@@ -127,7 +138,9 @@ export const dispatchOutbound = internalAction({
 				});
 			} else {
 				// eslint-disable-next-line no-console
-				console.warn(`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`);
+				console.warn(
+					`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`
+				);
 			}
 
 			// Completion for an approved agent reply: flip the inbound message off
@@ -358,7 +371,7 @@ export const probeChannelHealth = internalAction({
  */
 async function loadAdapter(
 	ctx: ActionCtx,
-	channel: UnifiedMessageChannel,
+	channel: UnifiedMessageChannel
 ): Promise<{ adapter: ChannelAdapter; error?: undefined } | { adapter: null; error: string }> {
 	const config = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
 		channel,
@@ -392,6 +405,28 @@ async function loadAdapter(
  * Returns null for channels with no outbound provider here (email is owned by
  * the MTA send pipeline; chat is native). Missing fields yield a configured
  * adapter that simply returns a failed SendResult — the fail-safe path.
+ *
+ * ONE STORED FIELD DELIBERATELY REACHES NO PROVIDER, and the config form says so
+ * on it (`ChannelConfigForm.vue`, `1.guide/38.channels.md`) so an operator is
+ * never told a value is in force when it is not: `creds.businessAccountId` is
+ * operator reference data, because the Meta Cloud API send and health calls are
+ * keyed on the phone number ID, so WhatsAppAdapter never needs it.
+ *
+ * THE GENERIC CHANNEL'S `secretKey` IS GONE, not merely unread. It was an
+ * INBOUND credential (the shared secret an external system echoes back to us)
+ * whose only consumer was `WebhookAdapter.validateSignature` — the caller-less
+ * verifier D10 deleted. The shipped inbound route verifies generic webhooks in
+ * `webhooks/adapters/generic.ts` against the `GENERIC_WEBHOOK_SECRET`
+ * deployment variable, and the outbound POST carries no secret header at all,
+ * so keeping the form field would have sealed a real shared secret into the
+ * AES-256-GCM envelope with nothing able to answer with it. Making a stored
+ * per-channel secret the one the inbound route trusts is a real change to who
+ * can post to Owlat, not a refactor — it needs its own piece, and that piece
+ * re-adds the field.
+ *
+ * (Meta's `hub.verify_token` is not in `ChannelCreds` at all — the form never
+ * collected it, so no row ever carried one. The subscription challenge is
+ * answered from `META_VERIFY_TOKEN` in `webhooks/adapters/meta.ts`.)
  */
 function buildAdapter(channel: string, creds: ChannelCreds): ChannelAdapter | null {
 	switch (channel) {
@@ -409,16 +444,12 @@ function buildAdapter(channel: string, creds: ChannelCreds): ChannelAdapter | nu
 			adapter.configure({
 				phoneNumberId: creds.phoneNumberId ?? '',
 				accessToken: creds.accessToken ?? '',
-				verifyToken: creds.verifyToken ?? '',
 			});
 			return adapter;
 		}
 		case 'generic': {
 			const adapter = new WebhookAdapter();
-			adapter.configure({
-				outboundUrl: creds.endpointUrl ?? '',
-				secret: creds.secretKey ?? '',
-			});
+			adapter.configure({ outboundUrl: creds.endpointUrl ?? '' });
 			return adapter;
 		}
 		default:

@@ -14,6 +14,9 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import type { InboundEventOf } from './types';
 import { recordUnresolvedBounce } from './unresolvedBounce';
 import { observeYahooCflReport } from './yahooCflObservation';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
+import { tagsFeedbackProvenanceFor } from '../lib/sendProviders/catalog';
+import { isSendProviderKind } from '../lib/sendProviders/types';
 
 /**
  * SUPPRESSION FIRST, bookkeeping second. A complaint must always reach the
@@ -28,8 +31,31 @@ export async function dispatchComplaint(
 	// original Message-ID (e.g. Gmail), so there's no send to transition.
 	// Suppress the complainer directly by email — a complaint must always
 	// reach the blocklist, never evaporate into a metric.
+	//
+	// ASK WHETHER THE SOURCE TAGS ITS FEEDBACK, don't name the provider. This
+	// used to read `e.providerType === 'ses' || e.deliveryDomain === 'production'`
+	// — SES by name, for a property SES shares with every third-party ESP: nobody
+	// annotates their webhook with our `deliveryDomain`, because that tag is
+	// written on the way out of our own infrastructure and nothing else. So a
+	// byte-identical redacted complaint from Mandrill, an SMTP relay's FBL or a
+	// plugin ESP was DROPPED, and the complainer stayed mailable.
+	//
+	// Both directions are load-bearing. A tagged source must show `production`:
+	// the tag's one writer stamps it only on an exactly-VERP-attributed report
+	// and drops the effect list on `unknown` provenance, so it is the evidence
+	// that this complaint is about real production mail rather than member-preview
+	// mail or an unattributed guess. An untagged source has no tag to show, so
+	// requiring one would suppress nothing it ever reports.
+	//
+	// A SOURCE WE CANNOT IDENTIFY is neither, and requires the tag. An event with
+	// no `providerType` (or one naming a kind this deployment does not have)
+	// carries no evidence about who observed it, and blocklisting an address on
+	// an unattributable report is the one error here that is invisible and
+	// permanent — the recipient simply stops receiving mail.
 	if (!e.providerMessageId) {
-		if (e.recipient && (e.providerType === 'ses' || e.deliveryDomain === 'production')) {
+		const source = isSendProviderKind(e.providerType) ? e.providerType : null;
+		const needsProvenanceTag = source === null || tagsFeedbackProvenanceFor(source);
+		if (e.recipient && (!needsProvenanceTag || e.deliveryDomain === 'production')) {
 			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
 				email: e.recipient,
 				reason: 'complained',
@@ -44,7 +70,7 @@ export async function dispatchComplaint(
 		return;
 	} else {
 		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
+			e.providerType === OWN_ARM_TRANSPORT_KIND
 				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
 				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{

@@ -3,7 +3,7 @@
 import { domainToASCII } from 'node:url';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { DestinationProviderKey } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
 import { resolveMxDestination, type MxDnsLookup, type MxResolution } from './mxResolver.js';
 

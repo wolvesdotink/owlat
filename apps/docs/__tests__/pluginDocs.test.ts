@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+// The one markdown section parser (`./markdownDocs`) — this file used to carry a
+// line-for-line copy of it, which is exactly the duplication that module was
+// extracted to remove: the next fix to terminator handling would have landed
+// there and not here, and this suite would have gone on parsing a differently
+// shaped section, greenly.
+import { section } from './markdownDocs';
 
 /**
  * Docs-lint for the plugin-platform chapter (PP-30).
@@ -41,6 +47,7 @@ const PAGES = {
 	connectedApps: '46.plugin-connected-apps.md',
 	sandboxedJobs: '47.plugin-sandboxed-jobs.md',
 	troubleshooting: '48.plugin-troubleshooting.md',
+	sendProviders: '49.plugin-send-providers.md',
 } as const;
 
 const docs = Object.fromEntries(
@@ -59,7 +66,10 @@ const REGION_MAP: ReadonlyArray<{ region: string; page: keyof typeof PAGES }> = 
 	{ region: 'contribution-manifest', page: 'authoring' },
 	{ region: 'gate-module', page: 'authoring' },
 	{ region: 'cron-module', page: 'authoring' },
+	{ region: 'send-provider-manifest', page: 'sendProviders' },
 	{ region: 'send-transport-module', page: 'contributions' },
+	{ region: 'send-transport-webhook-module', page: 'contributions' },
+	{ region: 'send-transport-domain-identity-module', page: 'contributions' },
 	{ region: 'agent-step-module', page: 'contributions' },
 	{ region: 'automation-step-module', page: 'contributions' },
 	{ region: 'import-provider-module', page: 'contributions' },
@@ -70,20 +80,6 @@ function regionSource(name: string): string {
 	const end = samplesSource.indexOf(`// #endregion ${name}`);
 	if (start === -1 || end === -1) throw new Error(`docsSamples has no region "${name}"`);
 	return samplesSource.slice(start + `// #region ${name}\n`.length, end).trimEnd();
-}
-
-/**
- * The body of one markdown section, from its heading up to the next heading of
- * the same or a higher level. Lets an assertion pin what a specific section
- * says instead of accepting the word appearing anywhere on the page.
- */
-function section(markdown: string, heading: string): string {
-	const start = markdown.indexOf(`${heading}\n`);
-	if (start === -1) throw new Error(`no section "${heading}"`);
-	const level = heading.indexOf(' ');
-	const rest = markdown.slice(start + heading.length);
-	const next = rest.search(new RegExp(`\\n#{1,${level}} `));
-	return next === -1 ? rest : rest.slice(0, next);
 }
 
 /**
@@ -856,6 +852,88 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		});
 	});
 
+	it('documents both feedback-webhook delivery limits', () => {
+		// These two are the only host bounds a plugin author cannot discover from a
+		// failure: an over-limit delivery is answered 413 and redelivered
+		// identically, so the feedback in it is lost unless the author knew the
+		// number and configured the provider to chunk. Derived from the
+		// declaration, so adding a third bound fails until the table names it.
+		expectDocumentedLimits({
+			// The feedback plane is its own kit module (`sendTransportFeedback.ts`) —
+			// the event vocabulary, these two bounds and the parse-only module
+			// contract — split from the send contract when the transport definition
+			// grew its capability fields.
+			sources: [read('packages/plugin-kit/src/sendTransportFeedback.ts')],
+			declaredPattern: /^export const (PLUGIN_WEBHOOK_MAX_\w+) = /gm,
+			section: section(docs.contributions, '### Feedback webhook'),
+			proseFailure: 'has no table row',
+			rendered: {
+				PLUGIN_WEBHOOK_MAX_BODY_BYTES: {
+					literal: '1_048_576',
+					prose: '| Request body (`PLUGIN_WEBHOOK_MAX_BODY_BYTES`) | 1 048 576 bytes of UTF-8 |',
+				},
+				PLUGIN_WEBHOOK_MAX_BATCH_EVENTS: {
+					literal: '5_000',
+					prose: '| Events returned per delivery (`PLUGIN_WEBHOOK_MAX_BATCH_EVENTS`) | 5 000 |',
+				},
+			},
+		});
+	});
+
+	it('documents the three sending-domain identity bounds', () => {
+		// The DNS-fact bounds are silent truncations, which is the direction an
+		// author cannot discover from a failure: a provider returning nine selectors
+		// gets eight stored and a pre-flight that compares the wrong set. Derived
+		// from the declaration, so a fourth bound fails until the prose names it.
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/sendTransportDomainIdentity.ts')],
+			declaredPattern: /^export const (PLUGIN_DOMAIN_IDENTITY_MAX_\w+) = /gm,
+			section: section(docs.contributions, '### Sending-domain identity'),
+			rendered: {
+				PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS: {
+					literal: '8',
+					prose: 'At most 8 of each (`PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS`)',
+				},
+				PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH: {
+					literal: '255',
+					prose: 'at most 255 characters (`PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH`)',
+				},
+				PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH: {
+					literal: '500',
+					prose: 'truncated at 500 characters (`PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH`)',
+				},
+			},
+		});
+	});
+
+	/**
+	 * The two DERIVED catalog fields, pinned as prose.
+	 *
+	 * This page is the only published reference for the tier, and it spent a
+	 * release telling authors that `domainVerification: 'api'` was refused at
+	 * authoring time — true when the tier had no identity contract, and silently
+	 * false the day it got one, because nothing pinned the sentence. Both
+	 * derivations are asserted against the contract that performs them, so the next
+	 * capability to become derivable fails here rather than shipping a page that
+	 * refuses it.
+	 */
+	it('states both derived transport capabilities the way the contract derives them', () => {
+		const capabilities = section(docs.contributions, '### Capabilities');
+		expect(capabilities).toContain(
+			'`hasProviderFeedback` is true exactly when the contribution carries a `webhook`'
+		);
+		expect(capabilities).toContain(
+			'`domainVerification` is `api` exactly when it carries a `domainIdentity`'
+		);
+		// And the page must NOT still list either one as unavailable.
+		expect(capabilities).not.toContain("`domainVerification: 'api'` — are not available");
+		const definition = read('packages/plugin-kit/src/sendTransport.ts');
+		expect(definition).toContain('readonly webhook?: PluginSendTransportWebhookDefinition;');
+		expect(definition).toContain(
+			'readonly domainIdentity?: PluginSendTransportDomainIdentityDefinition;'
+		);
+	});
+
 	it('documents the plugin-id length ceiling on both pages that state it', () => {
 		const pluginId = read('packages/plugin-kit/src/pluginId.ts');
 		const declaredPattern = /^const (MAX_PLUGIN_ID_LENGTH) = /gm;
@@ -1058,8 +1136,16 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 	});
 
 	it('lists exactly the files the scaffold writes', () => {
-		const scaffold = read('packages/plugin-cli/src/scaffold.ts');
-		const written = [...scaffold.matchAll(/files\.set\('([^']+)'/g)].map((match) => match[1]!);
+		// The DEFAULT template's output, which is what the authoring page draws: the
+		// package skeleton every template shares (`scaffold.ts`) plus the minimal
+		// template's own four files. They sit in two modules because each template's
+		// content now lives beside the others' — `scaffoldSendProvider.ts` holds the
+		// send-provider bundle and is deliberately not read here.
+		const written = ['scaffold', 'scaffoldMinimal'].flatMap((module) =>
+			[...read(`packages/plugin-cli/src/${module}.ts`).matchAll(/files\.set\('([^']+)'/g)].map(
+				(match) => match[1]!
+			)
+		);
 		expect(written.length).toBeGreaterThan(5);
 		// The authoring guide draws `src/` as a directory node, so its leaves are
 		// the scaffold paths with that prefix removed.
@@ -1302,11 +1388,23 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		// dropped from the list is caught by the contribution-bucket assertion,
 		// which requires every declared kind to be documented somewhere.
 		const reserved = section(docs.contributions, '## Reserved names');
+		// ONLY the list paragraph. The rest of the section is prose about a
+		// WITHDRAWN reservation, and it names buckets that are wired
+		// (`sendTransports`, `inboundAdapters`) — sweeping those into the loop
+		// below would assert that codegen must never mention a bucket it is
+		// entitled to read, and would fail on an unrelated codegen refactor.
+		const list = reserved
+			.split('\n\n')
+			.find((paragraph) => paragraph.includes('`PLUGIN_CONTRIBUTION_KINDS` also contains'));
+		expect(list, 'the Reserved names section no longer lists the reserved buckets').toBeDefined();
 		const kinds = new Set(contributionKinds());
-		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
+		const buckets = [...list!.matchAll(/`([a-zA-Z]+)`/g)]
 			.map((match) => match[1]!)
 			.filter((name) => kinds.has(name));
-		expect(buckets.length).toBeGreaterThan(8);
+		// Exact, so a name dropped from the list is caught on the first drop:
+		// eight kinds are reserved today. Wiring one up means editing the
+		// sentence and this number together, which is the point.
+		expect(buckets.length, `reserved buckets: ${buckets.join(', ')}`).toBe(8);
 		const generate = read('packages/plugin-codegen/src/generate.ts');
 		for (const bucket of buckets) {
 			expect(

@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 import {
 	DELIVERABILITY_CHECKLIST,
 	isDeliverabilityEvidenceFresh,
@@ -80,7 +81,7 @@ export const getStartContext = internalQuery({
 	handler: async (ctx, args): Promise<LoopbackStartContext> => {
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return { allowed: false as const, reason: 'domain_not_found' as const };
-		if (domain.providerType !== 'mta') {
+		if (domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND) {
 			return { allowed: false as const, reason: 'mta_unavailable' as const };
 		}
 		const required = DELIVERABILITY_CHECKLIST.filter((item) => item.severity === 'blocking');

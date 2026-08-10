@@ -27,18 +27,8 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
-import type { Doc, Id } from '../../../_generated/dataModel';
-import {
-	createTestCampaign,
-	createTestContact,
-	createTestEmailSend,
-} from '../../../__tests__/factories';
 import { modules } from '../../../__tests__/testModules';
-import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import {
-	drainOutcomeWrites,
-	sumCounters,
-} from '../../../analytics/__tests__/transportOutcomesFixtures';
+import { drainOutcomeWrites } from '../../../analytics/__tests__/transportOutcomesFixtures';
 import { loadStreamlessRouteState } from '../../../lib/deliverabilityRouteState';
 import { summarizeSeedPlacementSweeps } from '../../../analytics/seedPlacement';
 import { loadRampCapacityContext } from '../../rampCapacityInputs';
@@ -47,11 +37,18 @@ import { loadRampDeploymentPresence } from '../../rampIntegrationPresence';
 import { loadRampPresets } from '../../rampPresets';
 import { configuredRelayKinds } from '../../relayConfiguration';
 import {
+	armOutcomeTotals,
 	connectRelay,
+	RAMP_FIXTURE_CELL,
+	RAMP_FIXTURE_GATE_BREACHING_BURST,
+	RAMP_FIXTURE_SHARE,
 	readManagedCell,
+	readMixDecision,
+	runRampControllerTick,
 	seedArmOutcomes,
-	seedGreenWindows,
+	seedAssignedSend,
 	seedRampCell,
+	seedRelayMigration,
 	type Harness,
 } from '../../__tests__/rampCronFixtures';
 
@@ -65,18 +62,6 @@ vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
 	};
 });
 
-const CELL = { stream: 'campaign', destinationProvider: 'gmail' } as const;
-const CELL_KEY = deliverabilityCellKey(CELL);
-
-/** The mid-ramp share the migration fixtures below start from. */
-const MID_RAMP_SHARE = 0.5;
-
-/** A burst big enough to breach every ratio ceiling the gates carry. */
-const BURST = {
-	sent: 5_000,
-	counters: { delivered: 2_000, hardBounced: 2_500, complained: 400, deferred: 2_500 },
-} as const;
-
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
@@ -85,71 +70,13 @@ afterEach(() => {
  * A DEPLOYMENT MID-MIGRATION: half the cell's traffic still going through
  * Mandrill, a healthy history on both arms, and Mandrill named as the relay in
  * `providerRoutes` under the one strategy that splits by the cell's share.
+ *
+ * The state itself is the shared fixture's — this only says which relay kind the
+ * reference arm is here, so the plugin suite's identical opening cannot drift from
+ * this one.
  */
 async function seedMandrillMigration(t: Harness): Promise<void> {
-	// The relay is expressed through the route row, never through an ambient
-	// single-transport env that would hand the fixture a sender it never named.
-	vi.stubEnv('EMAIL_PROVIDER', 'mta');
-	await seedRampCell(t, { organizationId: ORG, ownShare: MID_RAMP_SHARE, cleanStreak: 3 });
-	await connectRelay(t, 'adaptive_mix', 'mandrill');
-	await seedGreenWindows(t, { organizationId: ORG });
-}
-
-async function runTick(t: Harness): Promise<void> {
-	await t.mutation(internal.delivery.rampControllerCron.runRampController, {});
-}
-
-/** The tick's decision row for the managed cell. */
-async function decision(t: Harness): Promise<Doc<'mixDecisions'> | undefined> {
-	const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
-	return rows.find((row) => row.cell === CELL_KEY);
-}
-
-/** Every counter of one arm, summed across shards and days. */
-async function armTotals(t: Harness, arm: 'own' | 'reference') {
-	return await t.run(async (ctx) => {
-		const rows = await ctx.db.query('transportOutcomes').collect();
-		return sumCounters(rows.filter((row) => row.cell === CELL_KEY && row.arm === arm));
-	});
-}
-
-/**
- * A send WITH its assignment row — the join the outcome recorder reads the arm
- * and the cell off. `transport` is the provider kind, so this is where
- * 'mandrill' actually appears in the measurement plane.
- */
-async function seedAssignedMandrillSend(
-	t: Harness,
-	args: { providerMessageId: string; transport: string; arm: 'own' | 'reference' }
-): Promise<Id<'emailSends'>> {
-	return await t.run(async (ctx) => {
-		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-		const contact = createTestContact();
-		const contactId = await ctx.db.insert('contacts', contact);
-		const sendId = await ctx.db.insert(
-			'emailSends',
-			createTestEmailSend({
-				campaignId,
-				contactId,
-				contactEmail: contact.email ?? 'reference@example.com',
-				status: 'sent',
-				providerType: args.transport,
-				providerMessageId: args.providerMessageId,
-			})
-		);
-		await ctx.db.insert('sendAssignments', {
-			organizationId: ORG,
-			sendId,
-			sendKind: 'campaign',
-			cell: CELL_KEY,
-			transport: args.transport,
-			arm: args.arm,
-			isCalibration: false,
-			mixVersion: 2,
-			assignedAt: Date.now(),
-		});
-		return sendId;
-	});
+	await seedRelayMigration(t, { organizationId: ORG, relayKind: 'mandrill' });
 }
 
 /** The substitution table's resolution for this cell, read the way the cron reads it. */
@@ -159,7 +86,7 @@ async function degradationFor(t: Harness) {
 		const presets = await loadRampPresets(ctx, ORG);
 		const loaded = await loadCellInput(ctx, {
 			organizationId: ORG,
-			cell: CELL,
+			cell: RAMP_FIXTURE_CELL,
 			pool: await loadStreamlessRouteState(ctx, ORG, 'all'),
 			capacity: async () => await loadRampCapacityContext(ctx, { organizationId: ORG, now }),
 			seeds: async () => await summarizeSeedPlacementSweeps(ctx.db, ORG, now),
@@ -191,12 +118,16 @@ describe('Mandrill is the reference arm by configuration and by attribution', ()
 	it('lands a Mandrill relay deferral on the reference arm, not the own arm', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedAssignedMandrillSend(t, {
+		await seedAssignedSend(t, {
+			organizationId: ORG,
 			providerMessageId: 'mandrill-msg-deferred',
 			transport: 'mandrill',
 			arm: 'reference',
 		});
-		const before = { own: await armTotals(t, 'own'), reference: await armTotals(t, 'reference') };
+		const before = {
+			own: await armOutcomeTotals(t, 'own'),
+			reference: await armOutcomeTotals(t, 'reference'),
+		};
 
 		// The exact mutation `DISPATCH['email.deferred']` runs for a Mandrill
 		// `deferral` webhook (P2.1's relay-deferral writer).
@@ -207,10 +138,10 @@ describe('Mandrill is the reference arm by configuration and by attribution', ()
 		await drainOutcomeWrites(t);
 
 		expect(result).toBe('observed');
-		expect((await armTotals(t, 'reference')).deferred).toBe(before.reference.deferred + 1);
+		expect((await armOutcomeTotals(t, 'reference')).deferred).toBe(before.reference.deferred + 1);
 		// THE POINT: gate 2 divides the OWN arm's deferrals, and a relay holding its
 		// own mail must never enter that numerator.
-		expect((await armTotals(t, 'own')).deferred).toBe(before.own.deferred);
+		expect((await armOutcomeTotals(t, 'own')).deferred).toBe(before.own.deferred);
 	});
 
 	// THE CONTROL for the case above — the same writer, the same cell, the only
@@ -219,12 +150,16 @@ describe('Mandrill is the reference arm by configuration and by attribution', ()
 	it('lands an own-MTA deferral on the own arm', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedAssignedMandrillSend(t, {
+		await seedAssignedSend(t, {
+			organizationId: ORG,
 			providerMessageId: 'mta-msg-deferred',
 			transport: 'mta',
 			arm: 'own',
 		});
-		const before = { own: await armTotals(t, 'own'), reference: await armTotals(t, 'reference') };
+		const before = {
+			own: await armOutcomeTotals(t, 'own'),
+			reference: await armOutcomeTotals(t, 'reference'),
+		};
 
 		await t.mutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
 			providerMessageId: 'mta-msg-deferred',
@@ -232,8 +167,8 @@ describe('Mandrill is the reference arm by configuration and by attribution', ()
 		});
 		await drainOutcomeWrites(t);
 
-		expect((await armTotals(t, 'own')).deferred).toBe(before.own.deferred + 1);
-		expect((await armTotals(t, 'reference')).deferred).toBe(before.reference.deferred);
+		expect((await armOutcomeTotals(t, 'own')).deferred).toBe(before.own.deferred + 1);
+		expect((await armOutcomeTotals(t, 'reference')).deferred).toBe(before.reference.deferred);
 	});
 });
 
@@ -245,12 +180,12 @@ describe('a burst on the Mandrill arm does not move the own arm', () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
 
-		await runTick(t);
+		await runRampControllerTick(t);
 
 		const row = await readManagedCell(t);
-		expect(row?.ownShare).toBeGreaterThan(MID_RAMP_SHARE);
+		expect(row?.ownShare).toBeGreaterThan(RAMP_FIXTURE_SHARE);
 		expect(row?.frozenUntil).toBeUndefined();
-		expect(await decision(t)).toMatchObject({ direction: 'increase', verdict: 'pass' });
+		expect(await readMixDecision(t)).toMatchObject({ direction: 'increase', verdict: 'pass' });
 	});
 
 	// The migration's day-1 fear, in one fixture: Mandrill has a terrible day —
@@ -259,18 +194,22 @@ describe('a burst on the Mandrill arm does not move the own arm', () => {
 	it('neither freezes nor decreases the own share on a reference-arm burst', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', ...BURST });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'reference',
+			...RAMP_FIXTURE_GATE_BREACHING_BURST,
+		});
 
-		await runTick(t);
+		await runRampControllerTick(t);
 
 		const row = await readManagedCell(t);
 		// The SAME decision the control took, not merely "not a retreat": the ramp
 		// carries on climbing as though the relay's bad day had not happened,
 		// because for the own arm it did not.
-		expect(row?.ownShare).toBeGreaterThan(MID_RAMP_SHARE);
+		expect(row?.ownShare).toBeGreaterThan(RAMP_FIXTURE_SHARE);
 		expect(row?.frozenUntil).toBeUndefined();
 		expect(row?.freezeReason).toBeUndefined();
-		const audited = await decision(t);
+		const audited = await readMixDecision(t);
 		// No own-arm gate broke, because no own-arm number changed.
 		expect(audited).toMatchObject({ direction: 'increase', verdict: 'pass' });
 		expect(audited?.failedGate).toBeUndefined();
@@ -289,10 +228,10 @@ describe('a burst on the Mandrill arm does not move the own arm', () => {
 			counters: { delivered: 1_000, deferred: 4_000 },
 		});
 
-		await runTick(t);
+		await runRampControllerTick(t);
 
-		expect((await decision(t))?.failedGate).not.toBe('deferral');
-		expect((await readManagedCell(t))?.ownShare).toBeGreaterThan(MID_RAMP_SHARE);
+		expect((await readMixDecision(t))?.failedGate).not.toBe('deferral');
+		expect((await readManagedCell(t))?.ownShare).toBeGreaterThan(RAMP_FIXTURE_SHARE);
 	});
 });
 
@@ -300,17 +239,24 @@ describe('a burst on the own arm retreats, and leaves Mandrill alone', () => {
 	it('freezes and decreases the own share, naming the own-arm gate', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', ...BURST });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			...RAMP_FIXTURE_GATE_BREACHING_BURST,
+		});
 
-		await runTick(t);
+		await runRampControllerTick(t);
 
 		const row = await readManagedCell(t);
-		expect(row?.ownShare).toBeLessThan(MID_RAMP_SHARE);
+		expect(row?.ownShare).toBeLessThan(RAMP_FIXTURE_SHARE);
 		expect(row?.frozenUntil).toBeGreaterThan(Date.now());
 		expect(row?.freezeReason).toBe('gate_breach');
 		// The gate that broke is named, and it is the OWN arm's hard-bounce
 		// ceiling — the one instrument that actually changed.
-		expect(await decision(t)).toMatchObject({ direction: 'decrease', failedGate: 'hard_bounce' });
+		expect(await readMixDecision(t)).toMatchObject({
+			direction: 'decrease',
+			failedGate: 'hard_bounce',
+		});
 	});
 
 	// THE OTHER HALF OF THE PROMISE. A retreat is a decision about the OWN arm,
@@ -319,13 +265,17 @@ describe('a burst on the own arm retreats, and leaves Mandrill alone', () => {
 	it('leaves every reference-arm counter exactly as it found it', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', ...BURST });
-		const before = await armTotals(t, 'reference');
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'own',
+			...RAMP_FIXTURE_GATE_BREACHING_BURST,
+		});
+		const before = await armOutcomeTotals(t, 'reference');
 
-		await runTick(t);
+		await runRampControllerTick(t);
 		await drainOutcomeWrites(t);
 
-		expect(await armTotals(t, 'reference')).toEqual(before);
+		expect(await armOutcomeTotals(t, 'reference')).toEqual(before);
 	});
 });
 
@@ -338,7 +288,11 @@ describe('reference-arm PRESENCE is what the substitution table reads (shipped s
 	it('keeps the reference-arm evaluator for a sick but busy Mandrill arm', async () => {
 		const t = convexTest(schema, modules);
 		await seedMandrillMigration(t);
-		await seedArmOutcomes(t, { organizationId: ORG, arm: 'reference', ...BURST });
+		await seedArmOutcomes(t, {
+			organizationId: ORG,
+			arm: 'reference',
+			...RAMP_FIXTURE_GATE_BREACHING_BURST,
+		});
 
 		const degradation = await degradationFor(t);
 		expect(degradation.actuator).toBe('share');
@@ -353,7 +307,7 @@ describe('reference-arm PRESENCE is what the substitution table reads (shipped s
 	it('degrades to the standalone twin when the Mandrill arm sends nothing', async () => {
 		const t = convexTest(schema, modules);
 		vi.stubEnv('EMAIL_PROVIDER', 'mta');
-		await seedRampCell(t, { organizationId: ORG, ownShare: MID_RAMP_SHARE, cleanStreak: 3 });
+		await seedRampCell(t, { organizationId: ORG, ownShare: RAMP_FIXTURE_SHARE, cleanStreak: 3 });
 		await connectRelay(t, 'adaptive_mix', 'mandrill');
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5_000 });
 

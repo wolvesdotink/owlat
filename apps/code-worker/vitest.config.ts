@@ -8,6 +8,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@owlat/plugin-kit': resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '../../packages/provider-kit/src/index.ts'),
 		},
 	},
 	test: {

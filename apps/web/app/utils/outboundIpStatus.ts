@@ -4,7 +4,7 @@ import {
 	reverseDnsGuidance,
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
-import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadinessSync';
+import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
 import type { HealthTone } from './healthTone';
 
 export interface OutboundIpIdentityInput {

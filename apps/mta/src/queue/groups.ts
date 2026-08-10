@@ -2,8 +2,11 @@
  * GroupMQ group key helpers and ISP classification
  */
 
-import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
-import type { DestinationProviderKey, IpPoolType } from '../types.js';
+import {
+	destinationProviderForDomain,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
+import type { IpPoolType } from '../types.js';
 
 export { extractDomain } from '@owlat/shared';
 

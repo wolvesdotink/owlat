@@ -4,29 +4,25 @@
  * Send provider adapter (module) — registry + dispatch.
  *
  * Per ADR-0020. Mirrors `convex/domains/providers/index.ts` (ADR-0018) shape.
- * Adding another send provider is a one-folder change:
- *   1. Create `convex/lib/sendProviders/<kind>/index.ts` with the adapter.
- *   2. Add the literal to `SendProviderKind` in `types.ts`.
- *   3. Add one entry to `SEND_PROVIDERS` below.
- *
- * The compile-time `satisfies` check on the registry catches missing methods.
+ * Executable transports are composed in `convex/providers/composition.ts`.
+ * `SEND_PROVIDERS` below is the compatibility view for callers that still need
+ * the closed core map; dispatch itself asks the composed bundle registry.
+ * `__tests__/catalogConsistency.test.ts` restates that guard against the union
+ * imported straight from `@owlat/shared`, so the chain cannot quietly be rebuilt
+ * on a union local to this app.
  * The **Send dispatch (helper)** in `./dispatch.ts` never branches on `kind`.
  */
 
-import { mtaSendProvider } from './mta';
-import { sesSendProvider } from './ses';
-import { resendSendProvider } from './resend';
-import { smtpSendProvider } from './smtp';
-import { mandrillSendProvider } from './mandrill';
-import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
-import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
-import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
+import { isCoreSendProviderKind } from './catalog';
+import type { HostedSendProviderModule } from './pluginProvider';
+import { SEND_PROVIDER_BUNDLES, runtimeTransportFor } from '../../providers/composition';
 import type {
 	CoreSendProviderKind,
 	DispatchExtrasInput,
 	SendProviderExtras,
 	SendProviderKind,
 	SendProviderModule,
+	SystemMailExtrasInput,
 } from './types';
 
 export type {
@@ -39,6 +35,7 @@ export type {
 	MtaIpPool,
 	SesExtras,
 	ResendExtras,
+	EmailitExtras,
 	SmtpExtras,
 	MandrillExtras,
 	EmailSendAttempt,
@@ -46,6 +43,7 @@ export type {
 	EmailAttachment,
 	DispatchResult,
 	SendProviderExtras,
+	SystemMailExtrasInput,
 } from './types';
 export { EmailErrorCode, isRetryableErrorCode, isSendProviderKind } from './types';
 export type {
@@ -65,47 +63,16 @@ export {
 
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
-export const SEND_PROVIDERS = {
-	mta: mtaSendProvider,
-	ses: sesSendProvider,
-	resend: resendSendProvider,
-	smtp: smtpSendProvider,
-	mandrill: mandrillSendProvider,
-} as const;
+export const SEND_PROVIDERS = Object.fromEntries(
+	SEND_PROVIDER_BUNDLES.filter(({ descriptor }) => isCoreSendProviderKind(descriptor.kind)).map(
+		({ descriptor, transport }) => [descriptor.kind, transport]
+	)
+) as { [K in CoreSendProviderKind]: SendProviderModule<K> };
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`.
 const _typecheck: { [K in CoreSendProviderKind]: SendProviderModule<K> } = SEND_PROVIDERS;
 void _typecheck;
-
-interface GeneratedSendTransportModule {
-	readonly kind: SendProviderKind;
-	readonly pluginId: string;
-	readonly module: unknown;
-}
-
-const hostedProviders = new Map<SendProviderKind, HostedSendProviderModule>();
-for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly GeneratedSendTransportModule[]) {
-	const catalogEntry = sendProviderCatalogEntry(generated.kind);
-	if (
-		isCoreSendProviderKind(generated.kind) ||
-		catalogEntry.pluginId !== generated.pluginId ||
-		hostedProviders.has(generated.kind)
-	) {
-		throw new TypeError('Invalid bundled send transport registry');
-	}
-	hostedProviders.set(
-		generated.kind,
-		createHostedSendProvider(generated.kind, catalogEntry.retryDelays, generated.module)
-	);
-}
-if (
-	SEND_PROVIDER_CATALOG.some(
-		(entry) => entry.pluginId !== undefined && !hostedProviders.has(entry.kind)
-	)
-) {
-	throw new TypeError('Bundled send transport catalog is missing an executable module');
-}
 
 /**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
@@ -124,10 +91,7 @@ export function providerFor(
 export function providerFor(
 	kind: SendProviderKind
 ): SendProviderModule<SendProviderKind> | HostedSendProviderModule {
-	const mod: SendProviderModule<SendProviderKind> | HostedSendProviderModule | undefined =
-		isCoreSendProviderKind(kind) ? SEND_PROVIDERS[kind] : hostedProviders.get(kind);
-	if (!mod) throw new TypeError('Unknown send provider');
-	return mod;
+	return runtimeTransportFor(kind);
 }
 
 /**
@@ -139,14 +103,60 @@ export function providerFor(
  * replaced, a `providerKind === 'mta' ? … : 'resend' ? …` chain inside
  * `delivery/governedDispatch.ts` that every new kind had to edit.
  *
- * A module with no builder — and every hosted (plugin) transport, which parses
- * its own extras from a data-only value the host hands it and takes nothing
- * from this boundary — yields the empty extras the governed path always sent.
+ * A module with no builder yields the empty extras the governed path always
+ * sent. That is now the only reason a kind gets none: since plugin-tier parity
+ * (the seams plan's P3.1) a hosted module may export the same builder, so this
+ * boundary asks BOTH tiers the same question and the `?? {}` — not a tier test —
+ * is what answers for a module that declines.
+ *
+ * The cast is the tier seam: a hosted builder's return value is the plugin's own
+ * extras shape, which is `unknown` to this app by construction (it is re-parsed
+ * at the adapter's `parseExtras` boundary before any send sees it), while
+ * `SendProviderExtras` is the union of the CORE kinds' shapes. Neither the
+ * dispatch helper nor the governed boundary reads inside the value.
  */
 export function buildDispatchExtrasFor(
 	kind: SendProviderKind,
 	input: DispatchExtrasInput
 ): SendProviderExtras {
-	if (!isCoreSendProviderKind(kind)) return {};
-	return providerFor(kind).buildDispatchExtras?.(input) ?? {};
+	return (extrasModuleFor(kind)?.buildDispatchExtras?.(input) ?? {}) as SendProviderExtras;
+}
+
+/**
+ * The module a kind's extras come from, or `null` for a kind this composition
+ * has none for.
+ *
+ * DELIBERATELY NOT `providerFor`, which throws: asking for extras is not
+ * dispatching. Every send resolves its transport first and fails closed there on
+ * an unknown kind, loudly and before any attempt, so a throw HERE could only ever
+ * fire on a path that is not sending — and the honest answer on such a path is
+ * the empty extras the governed boundary has always passed, not an exception
+ * raised inside somebody else's error handling.
+ */
+function extrasModuleFor(
+	kind: SendProviderKind
+): SendProviderModule<SendProviderKind> | HostedSendProviderModule | null {
+	if (isCoreSendProviderKind(kind)) return SEND_PROVIDERS[kind];
+	try {
+		return runtimeTransportFor(kind);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The same question for the SYSTEM/AUTH mail path (`systemMail.ts`).
+ *
+ * Split from {@link buildDispatchExtrasFor} because the INPUTS are genuinely
+ * different — the system intake has no durable Send row and therefore none of
+ * the governance identities the dispatch input requires (see
+ * `SystemMailExtrasInput`) — while the rule about branching is identical: the
+ * boundary supplies the facts, the module decides what to make of them, and
+ * nothing here knows which provider it is talking to.
+ */
+export function buildSystemMailExtrasFor(
+	kind: SendProviderKind,
+	input: SystemMailExtrasInput
+): SendProviderExtras {
+	return (extrasModuleFor(kind)?.buildSystemMailExtras?.(input) ?? {}) as SendProviderExtras;
 }

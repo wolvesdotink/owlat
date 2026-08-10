@@ -271,7 +271,11 @@ jobs:
           # Both must be set together or the leg silently collapses.
           OWLAT_RAMP_GATE_MATRIX: '1'
           OWLAT_RAMP_GATE_MATRIX_MODE: ${{ matrix.mode }}
-        run: bunx vitest run convex/delivery/ramp
+        # `convex/delivery/signals` holds the registry the gate evaluators fold
+        # (seams plan D9): the list of measurements and which arm evaluates each
+        # moved there, so the standalone leg has to cover it or the degraded path
+        # loses the half of the gate suite that says which gates it even runs.
+        run: bunx vitest run convex/delivery/ramp convex/delivery/signals
 
   lint:
     name: Lint & Typecheck

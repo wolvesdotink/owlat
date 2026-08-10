@@ -12,9 +12,20 @@ import {
 	extractDomainOrNull,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
 	ROUTING_LEASE_UNREADABLE_CODE,
-	type DeliveryDomain,
-	type GovernedMessageType,
 } from '@owlat/shared';
+import {
+	MTA_RELAY_ALLOWED_REASON,
+	isMtaRelayDecisionReason,
+	mtaDeferReasonOrigin,
+	type MtaRoutingDecision,
+	type MtaRoutingDecisionRequest,
+} from '@owlat/mta-protocol/routingDecision';
+import {
+	isMtaSendErrorCode,
+	type MtaSendAccepted,
+	type MtaSendRefused,
+	type MtaSendRequestDraft,
+} from '@owlat/mta-protocol/send';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -24,81 +35,14 @@ import {
 	type MtaExtras,
 	type MtaIpPool,
 	type SendProviderModule,
+	type SystemMailExtrasInput,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
 import { sendTransportEnvName, type SendTransportRecord } from '../transports';
 
-/**
- * Default retry schedule. The **Send dispatch (helper)** consumes this; the
- * provider does not retry internally.
- */
-const MTA_RETRY_DELAYS = [1000, 5000] as const;
-
 const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
-
-export type MtaRoutingDecision =
-	| { kind: 'mta'; leaseToken: string; isProviderProbe: boolean; isGlobalProbe: boolean }
-	| {
-			kind: 'relay';
-			reason:
-				| 'relay_allowed'
-				| 'provider_breaker'
-				| 'provider_probe_limit'
-				| 'provider_hysteresis'
-				| 'warmup_overflow';
-	  }
-	| {
-			kind: 'defer';
-			retryAfterMs: number;
-			/**
-			 * WHO DECIDED TO DEFER — the MTA's routing governance, or a fault on our
-			 * own side. Both shapes are `defer` to the caller (the message waits
-			 * either way), but only `governed` is a statement about whether this
-			 * sending identity may send. An unconfigured, unreachable, slow or
-			 * malformed decision endpoint is `local`, and so is an ANSWER that
-			 * reports our own infrastructure failing rather than the identity's
-			 * standing (`MTA_DEFER_REASON_ORIGIN`) — the receiver saw neither.
-			 * `delivery/deferralOutcome.ts` counts the first and skips the second, so
-			 * an outage on our side cannot halt a cell for a fortnight.
-			 */
-			origin: 'governed' | 'local';
-	  };
-
-/**
- * EVERY defer reason the MTA may answer, each paired with WHOSE FAULT IT IS.
- *
- * One table, two jobs, so the accept-list and the classification cannot drift
- * apart: a reason absent here is an answer we did not understand and falls
- * through to the unrecognised-body return, and a reason added here cannot be
- * added without naming an origin.
- *
- * `governed` is the MTA declining this SENDING IDENTITY — an open global safety
- * circuit, a probe budget, no warmed IP to send from. `lease_persistence` is
- * none of those: it is ANY REDIS FAILURE WHILE TAKING THE LEASE — reserving a
- * half-open probe, writing the lease record, whatever the one catch in
- * `apps/mta/src/routes/routingDecision.ts` covers — so it is our own storage
- * layer failing and no receiver ever refused the mail. Gate 2 halts a cell at
- * 25% of `governed` deferrals; a Redis outage on our own MTA must not be able to
- * spend that budget.
- *
- * Exported so the adapter's own suite can assert its case list covers every key
- * — the drift this table exists to stop is a reason added here and nowhere else.
- */
-export const MTA_DEFER_REASON_ORIGIN = {
-	global_safety: 'governed',
-	global_probe: 'governed',
-	no_owned_ip: 'governed',
-	lease_persistence: 'local',
-} as const satisfies Record<string, 'governed' | 'local'>;
-
-type MtaDeferReason = keyof typeof MTA_DEFER_REASON_ORIGIN;
-
-function deferReasonOrigin(reason: unknown): 'governed' | 'local' | undefined {
-	if (typeof reason !== 'string') return undefined;
-	if (!Object.prototype.hasOwnProperty.call(MTA_DEFER_REASON_ORIGIN, reason)) return undefined;
-	return MTA_DEFER_REASON_ORIGIN[reason as MtaDeferReason];
-}
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -108,24 +52,19 @@ function deferReasonOrigin(reason: unknown): 'governed' | 'local' | undefined {
  * from the default instance and then presenting it to `mta#secondary` would be
  * presenting one server's decision to another. The caller passes the transport
  * it is about to send through.
+ *
+ * `input` IS the request body, typed against its one declaration (D7) rather
+ * than restated field by field: the MTA's `validRequest` checks an EXACT key
+ * list, so a field added to `MtaRoutingDecisionRequest` and honoured there while
+ * this producer still emitted the old body would be answered 400 — and a 400 is
+ * indistinguishable here from an unreachable endpoint, so every governed
+ * own-MTA send would defer with nothing failing to compile. The one divergence
+ * is `ipPool`: the wire requires it, this caller may omit it, and the `??`
+ * below is where the default has always been applied.
  */
 export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
-	input: {
-		messageId: string;
-		workAttemptId: string;
-		routingReentryToken: string;
-		startedAt: number;
-		deliveryDomain: DeliveryDomain;
-		messageType: GovernedMessageType;
-		organizationId: string;
-		recipient: string;
-		from: string;
-		candidateProvider: 'mta' | 'relay';
-		ipPool?: MtaExtras['ipPool'];
-		allowWarmupOverflow: boolean;
-		requireProviderProbe?: boolean;
-	}
+	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] }
 ): Promise<MtaRoutingDecision> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
@@ -168,13 +107,16 @@ export async function resolveMtaRoutingDecision(
 				};
 			}
 		}
+		// The accept-list is the package's constant, never a mirror of it: a relay
+		// reason the emitter may legally send but this reader does not recognise
+		// falls through to the unrecognised-answer return below and becomes a
+		// 60-second defer that `delivery/deferralOutcome.ts` never counts — a
+		// failover silently turned into a wait. The defer half is derived the same
+		// way, one line down.
 		if (
 			result['decision'] === 'relay' &&
 			Object.keys(result).length === 2 &&
-			(result['reason'] === 'provider_breaker' ||
-				result['reason'] === 'provider_probe_limit' ||
-				result['reason'] === 'provider_hysteresis' ||
-				result['reason'] === 'warmup_overflow')
+			isMtaRelayDecisionReason(result['reason'])
 		) {
 			return { kind: 'relay', reason: result['reason'] };
 		}
@@ -183,9 +125,9 @@ export async function resolveMtaRoutingDecision(
 			Object.keys(result).length === 1 &&
 			input.candidateProvider === 'relay'
 		) {
-			return { kind: 'relay', reason: 'relay_allowed' };
+			return { kind: 'relay', reason: MTA_RELAY_ALLOWED_REASON };
 		}
-		const deferOrigin = deferReasonOrigin(result['reason']);
+		const deferOrigin = mtaDeferReasonOrigin(result['reason']);
 		if (
 			result['decision'] === 'defer' &&
 			Object.keys(result).length === 3 &&
@@ -224,7 +166,7 @@ export async function resolveMtaRoutingDecision(
 
 export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
-	retryDelays: MTA_RETRY_DELAYS,
+	retryDelays: sendProviderCatalogEntry('mta').retryDelays,
 
 	/**
 	 * The governed last mile's per-send extras.
@@ -258,6 +200,31 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 		};
 	},
 
+	/**
+	 * The SYSTEM/AUTH mail intake — password reset, invitation, double opt-in.
+	 *
+	 * Three constants and one fact. `intakePath: 'system'` and `organizationId:
+	 * 'system'` are what make this a fixed-scope `/send/system` post rather than a
+	 * governed campaign send, and `ipPool: 'transactional'` is the pool auth mail
+	 * belongs in — none of them is a routing decision, which is exactly why they
+	 * are the MTA's business and not the caller's. The fact is the caller's
+	 * idempotency key, carried as the MTA's `messageId` because that is the id its
+	 * intake dedups on (`deduplicatesOnIdempotencyKey: true` in the catalog is the
+	 * same statement, read by the retry-disposition rule). Absent ⇒ omitted, and
+	 * the MTA mints a random one.
+	 *
+	 * Lifted verbatim out of `systemMail.ts`'s `if (provider === 'mta')` arm, so
+	 * the /send/system body is byte-for-byte what it has always been.
+	 */
+	buildSystemMailExtras(input: SystemMailExtrasInput): MtaExtras {
+		return {
+			ipPool: 'transactional',
+			organizationId: 'system',
+			intakePath: 'system',
+			...(input.idempotencyKey ? { messageId: input.idempotencyKey } : {}),
+		};
+	},
+
 	async sendEmail(
 		transport: SendTransportRecord,
 		params: EmailSendParams,
@@ -282,7 +249,11 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 		const fromDomain = extractDomainOrNull(params.from) ?? '';
 
-		const body = {
+		// The intake wire, typed against its one declaration (D7). Every key here
+		// is a field the MTA's handler reads off `MtaSendRequest`; `JSON.stringify`
+		// drops the undefined ones exactly as it always has, so the bytes are
+		// unchanged and a field renamed on either side no longer compiles on both.
+		const body: MtaSendRequestDraft = {
 			messageId: extras?.messageId ?? crypto.randomUUID(),
 			workAttemptId: extras?.workAttemptId,
 			routingReentryToken: extras?.routingReentryToken,
@@ -327,7 +298,12 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				if (response.status === 409) {
 					try {
 						const parsed = JSON.parse(errorText) as Record<string, unknown>;
-						intakePending = parsed['code'] === 'INTAKE_PENDING';
+						// Narrowed through the package's accept-list, not compared against
+						// a copy of one of its strings: drop `INTAKE_PENDING` from
+						// `MTA_SEND_ERROR_CODES` and this comparison stops compiling
+						// rather than silently never matching again.
+						const code = isMtaSendErrorCode(parsed['code']) ? parsed['code'] : undefined;
+						intakePending = code === 'INTAKE_PENDING';
 						if (typeof parsed['retryAfterMs'] === 'number') {
 							retryAfterMs = Math.min(Math.max(parsed['retryAfterMs'], 1_000), 3_600_000);
 						}
@@ -346,7 +322,16 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				};
 			}
 
-			const result = (await response.json()) as { success: boolean; id?: string; error?: string };
+			// Read through a PARTIAL of both answer shapes rather than narrowing the
+			// union with `in`. `in` THROWS on a primitive right-hand side, so a 2xx
+			// body that is a JSON scalar (`123`, `true`, `"queued"`) would land in
+			// the outer catch and be reported `acceptanceUnknown` — a definite
+			// refusal turned into a reconciliation replay by
+			// `delivery/governedDispatch.ts`. Plain property access reads `undefined`
+			// off a scalar and still throws on `null`, which is exactly what this
+			// path did before it was typed: same narrowing at the call sites, same
+			// runtime behaviour on every body.
+			const result = (await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>;
 
 			if (result.success && result.id) {
 				return { success: true, id: result.id };
@@ -380,14 +365,19 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
-		// FIRST, AND SEPARATELY FROM THE PREFIX MATCH BELOW. This 409 reports the
-		// MTA's own lease store failing to give back a record it wrote — no
-		// receiver saw the message and nothing was decided about the sending
-		// identity — so it must not be folded into the governance bucket gate 2
-		// counts (issue #505). It reschedules identically; only the origin differs.
+		// The unreadable code is a narrower routing deferral whose origin must not be
+		// folded into the receiver-governance bucket counted by gate 2 (issue #505).
 		if (httpStatus === 409 && message.includes(ROUTING_LEASE_UNREADABLE_CODE)) {
 			return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
 		}
+
+		// Substring-matched on the free-text 409 body on purpose, and NOT compared
+		// against `MTA_SEND_ERROR_CODES`: this must classify any `ROUTING_DECISION_*`
+		// refusal, including one a newer MTA build knows and this reader does not.
+		// An accept-list here would send an unrecognised routing refusal down the
+		// generic 409 path instead of back to the worker for a fresh decision. The
+		// codes ARE derived from the package where a miss is safe — the
+		// `INTAKE_PENDING` read above.
 		if (
 			httpStatus === 409 &&
 			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))

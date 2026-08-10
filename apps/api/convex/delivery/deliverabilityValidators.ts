@@ -1,14 +1,19 @@
+/** Convex validators for the shared, fixed deliverability taxonomy. */
+
 import { v, type Infer } from 'convex/values';
 import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
+import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 
-/** Convex validators for the shared, fixed deliverability taxonomy. */
+/**
+ * The destination-provider cell axis. DERIVED from `DESTINATION_PROVIDER_KEYS`
+ * (D8) rather than restated: a hand-written union here compiles fine after a
+ * sixth provider joins the taxonomy and then throws `ArgumentValidationError`
+ * on the first write of that provider — a runtime failure where the one
+ * declaration is supposed to buy a build failure.
+ */
 export const destinationProviderValidator = v.union(
-	v.literal('gmail'),
-	v.literal('microsoft'),
-	v.literal('yahoo'),
-	v.literal('apple'),
-	v.literal('other')
+	...DESTINATION_PROVIDER_KEYS.map((providerKey) => v.literal(providerKey))
 );
 
 /**

@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { buildDeliveryEnvSnippet } from '~/utils/deliveryEnvSnippet';
+import { SEND_TRANSPORT_KINDS } from '@owlat/shared/sendProviderCatalog';
+import { buildProviderEnvSkeleton } from '~/utils/deliveryEnvSnippet';
+import {
+	providerFeedbackPanel,
+	providerFeedbackSigningKeyEnvVar,
+	providerFeedbackWebhookUrl,
+} from '~/utils/providerFeedbackPanel';
+import { transportKindLabel } from '~/utils/transportState';
 
 useHead({ title: 'Delivery provider — Owlat' });
 
@@ -20,44 +27,54 @@ const {
 
 const canSend = computed(() => status.value?.canSend === true);
 
-// SES feedback loop --------------------------------------------------------
-// Only relevant when SES is the active provider. The webhook URL and the live
-// "last event received" line let an admin wire up and confirm the SNS topic.
-const isSes = computed(() => status.value?.provider === 'ses');
+// Provider feedback loop -----------------------------------------------------
+// WHICH panel (if any) this transport's feedback channel needs, and where the
+// provider posts — both are declarations on its catalog entry, resolved by
+// `providerFeedbackPanel` (the seams plan's D2: capabilities, not identity). The
+// page therefore names no provider: a sixth one gets the panel its declaration
+// earns, and a kind whose channel needs nothing from the operator — our own MTA,
+// which we wire ourselves — renders none, exactly as before.
+const feedbackPanel = computed(() => providerFeedbackPanel(status.value?.provider));
 
 const runtimeConfig = useRuntimeConfig();
-// Absolute HTTPS endpoint SNS subscribes to. When the site URL is unknown we
-// return '' (never a relative path — an SNS HTTPS subscription can't use one)
-// so the copy block hides behind a "site URL not configured" hint instead of
-// handing the operator a broken value. Mirrors the useFormSettings precedent.
-const sesWebhookUrl = computed(() => {
-	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
-	return base ? `${base.replace(/\/$/, '')}/webhooks/ses` : '';
-});
+// Absolute HTTPS endpoint the provider posts to: this deployment's site URL plus
+// the path the entry declares. When the site URL is unknown it is '' (never a
+// relative path — an SNS HTTPS subscription can't use one) so the copy block
+// hides behind a "site URL not configured" hint instead of handing the operator
+// a broken value. Mirrors the useFormSettings precedent.
+const feedbackWebhookUrl = computed(() =>
+	providerFeedbackWebhookUrl(
+		status.value?.provider,
+		runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl
+	)
+);
 
-// Live "last event received" — enabled only for SES so we don't poll otherwise.
-const { data: lastSesEventAt } = useOrganizationQuery(api.delivery.status.getLastSesEventAt, () =>
-	isSes.value ? {} : undefined
+// The two vendor facts the signed-webhook panel prints — the provider's NAME and
+// the NAME of the variable its signing key goes in — both read off the ACTIVE
+// kind's catalog entry. The card is the CEREMONY's, not one vendor's: it used to
+// spell the first provider's variable for every kind declaring the ceremony, so
+// the second one's operator set a variable the backend does not read and watched
+// a "missing" chip (fed by the backend's own list) that could never clear.
+const feedbackProviderLabel = computed(() => transportKindLabel(status.value?.provider ?? ''));
+const feedbackSigningKeyEnvVar = computed(
+	() => providerFeedbackSigningKeyEnvVar(status.value?.provider) ?? ''
+);
+
+// One provider-bundle status read serves every feedback ceremony. The query is
+// keyed by transport id and returns presence-only configuration facts plus the
+// newest retained event timestamp; it never exposes a verifier secret or body.
+const { data: feedbackStatus } = useOrganizationQuery(
+	api.delivery.status.getProviderFeedbackStatus,
+	() =>
+		feedbackPanel.value && status.value?.provider
+			? { transportId: status.value.provider }
+			: undefined
 );
 const lastSesEventLabel = computed(() => {
-	const at = lastSesEventAt.value;
+	const at = feedbackStatus.value?.lastEventAt;
 	if (!at) return null;
 	return new Date(at).toLocaleString();
 });
-
-// Mandrill feedback loop -----------------------------------------------------
-// Same shape as the SES block: the endpoint Mandrill posts to, and — because the
-// SIGNING key is not part of what the transport needs to SEND — a presence check
-// for `MANDRILL_WEBHOOK_KEY` that `getStatus.requiredEnv` cannot answer.
-const isMandrill = computed(() => status.value?.provider === 'mandrill');
-const mandrillWebhookUrl = computed(() => {
-	const base = runtimeConfig.public.convexSiteUrl || runtimeConfig.public.convexUrl;
-	return base ? `${base.replace(/\/$/, '')}/webhooks/mandrill` : '';
-});
-const { data: mandrillFeedback } = useOrganizationQuery(
-	api.delivery.status.getMandrillFeedbackStatus,
-	() => (isMandrill.value ? {} : undefined)
-);
 
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
@@ -66,8 +83,11 @@ const missingEnvNames = computed(() =>
 );
 
 // Paste-ready `.env` skeleton for the missing vars (one `NAME=` line, empty
-// values). Empty string when nothing is missing → the snippet block hides.
-const envSnippet = computed(() => buildDeliveryEnvSnippet(missingEnvNames.value));
+// values), in the order the ACTIVE KIND'S CATALOG ENTRY declares them. Empty
+// string when nothing is missing → the snippet block hides.
+const envSnippet = computed(() =>
+	buildProviderEnvSkeleton(status.value?.provider, missingEnvNames.value)
+);
 
 // CLI command to set the first missing var, as a concrete example the operator
 // can adapt. Falls back to the generic form when the list is empty.
@@ -205,8 +225,7 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre
-								>
+									>{{ envSnippet }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Values are left blank — fill in your real credentials. They are never displayed
 									here.
@@ -233,8 +252,7 @@ const {
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre
-								>
+									>{{ envSetCommand }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
 									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
 									variable your current configuration needs. See the
@@ -336,13 +354,16 @@ const {
 							Only the presence of each variable is shown — secret values never leave the backend.
 						</p>
 					</div>
+					<!-- The kinds this build carries, from the catalog: a provider added
+					     there is offered here without an edit (plan D1). -->
 					<p v-else class="text-sm text-text-tertiary border-t border-border-subtle pt-5">
 						Select a delivery provider (set <code class="text-text-primary">EMAIL_PROVIDER</code> to
-						<code class="text-text-primary">mta</code>,
-						<code class="text-text-primary">ses</code>,
-						<code class="text-text-primary">resend</code>,
-						<code class="text-text-primary">smtp</code>, or
-						<code class="text-text-primary">mandrill</code>) to see its required variables.
+						<template v-for="(kind, index) in SEND_TRANSPORT_KINDS" :key="kind"
+							><span v-if="index > 0">{{
+								index === SEND_TRANSPORT_KINDS.length - 1 ? ', or ' : ', '
+							}}</span
+							><code class="text-text-primary">{{ kind }}</code></template
+						>) to see its required variables.
 					</p>
 				</div>
 			</UiCard>
@@ -353,16 +374,19 @@ const {
 				:last-test-succeeded-at="status?.lastTestSucceededAt"
 			/>
 
-			<!-- Mandrill feedback webhook (only when Mandrill is the provider) -->
-			<DeliveryMandrillWebhookCard
-				v-if="isMandrill"
-				:webhook-url="mandrillWebhookUrl"
-				:is-webhook-key-present="mandrillFeedback?.isWebhookKeyPresent === true"
-				:last-event-at="mandrillFeedback?.lastEventAt ?? null"
+			<!-- Signed-webhook feedback (a provider that posts events with a key) -->
+			<DeliverySignedWebhookCard
+				v-if="feedbackPanel === 'signed-webhook'"
+				:provider-kind="status?.provider ?? ''"
+				:provider-label="feedbackProviderLabel"
+				:signing-key-env-var="feedbackSigningKeyEnvVar"
+				:webhook-url="feedbackWebhookUrl"
+				:is-webhook-key-present="feedbackStatus?.missingVariables.length === 0"
+				:last-event-at="feedbackStatus?.lastEventAt ?? null"
 			/>
 
-			<!-- SES bounce & complaint feedback (only when SES is the provider) -->
-			<UiCard v-if="isSes" padding="none" overflow="hidden">
+			<!-- SNS-topic feedback (bounces & complaints delivered through a topic) -->
+			<UiCard v-if="feedbackPanel === 'sns-topic'" padding="none" overflow="hidden">
 				<template #header>
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
@@ -386,14 +410,14 @@ const {
 					</p>
 
 					<!-- Webhook endpoint -->
-					<div v-if="sesWebhookUrl">
+					<div v-if="feedbackWebhookUrl">
 						<div class="flex items-center justify-between mb-2">
 							<p class="text-xs font-medium text-text-primary">SNS subscription endpoint</p>
 							<button
 								type="button"
 								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								:title="isCopied('ses-url') ? 'Copied' : 'Copy endpoint URL'"
-								@click="copy(sesWebhookUrl, 'ses-url')"
+								@click="copy(feedbackWebhookUrl, 'ses-url')"
 							>
 								<Icon
 									:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
@@ -405,8 +429,7 @@ const {
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ sesWebhookUrl }}</pre
-						>
+							>{{ feedbackWebhookUrl }}</pre>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
 						Set your site URL to see the endpoint SNS should subscribe to.

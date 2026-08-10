@@ -9,11 +9,18 @@
  *   - SES behaves EXACTLY as before (the shipped relay must not notice);
  *   - an unconfigured kind still fails closed, with the same error code;
  *   - a CONFIGURED non-SES kind now passes, with no edit to `routing.ts`.
+ *
+ * P0.2 adds the half a capability gate is not finished without: what the
+ * REFUSAL says. A gate that admits every kind but explains itself by naming one
+ * of them still sends the operator of a Resend/SMTP/Mandrill route off to
+ * configure Amazon SES, so the copy is pinned here against the catalog rather
+ * than against a remembered string.
  */
 
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { isFallbackRelayEligible } from '../fallbackEligibility';
 import { providerKindConfigured } from '../capability';
+import { SEND_PROVIDER_CATALOG } from '../catalog';
 import { DeliverabilityRouteError, resolveRoute, type ProviderRouteConfig } from '../routing';
 import type { SendProviderKind } from '../types';
 
@@ -88,6 +95,77 @@ describe('isFallbackRelayEligible', () => {
 		expect(isFallbackRelayEligible('resend', providerKindConfigured)).toBe(true);
 		// …and configuring one relay says nothing about another.
 		expect(isFallbackRelayEligible('ses', providerKindConfigured)).toBe(false);
+	});
+});
+
+describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
+	/**
+	 * Tokenize on word boundaries rather than substrings, so "unverified" is not
+	 * read as naming `resend` and a namespaced plugin kind (`plugin.acme.esp`)
+	 * survives as one token — hence `.` inside the token but STRIPPED at its
+	 * edges. Without that trim, "…enable the relay for ses." tokenizes as `ses.`
+	 * and a kind at the end of a clause would walk straight past this guard.
+	 */
+	function wordsOf(message: string): Set<string> {
+		return new Set(
+			message
+				.toLowerCase()
+				.split(/[^a-z0-9.]+/)
+				.map((token) => token.replace(/^\.+|\.+$/g, ''))
+				.filter(Boolean)
+		);
+	}
+
+	it('tokenizes clause-final and namespaced kinds the way the guard below needs', () => {
+		// The guard is only as good as this: a self-test, because a tokenizer that
+		// silently stopped seeing kinds would make every assertion below vacuous.
+		const words = wordsOf('Configure the relay for ses. Or plugin.acme.esp, or resend!');
+		expect(words.has('ses')).toBe(true);
+		expect(words.has('plugin.acme.esp')).toBe(true);
+		expect(words.has('resend')).toBe(true);
+		// Substrings are not matches: "unverified" must not read as `resend`.
+		expect(wordsOf('unverified').has('resend')).toBe(false);
+	});
+
+	it('names no provider in either refusal', () => {
+		// The `unavailable` message used to read "enable the verified Amazon SES
+		// transport" — true only while the gate above it WAS `!== 'ses'`. Asserted
+		// against the catalog rather than against a literal, so the day a sixth
+		// kind lands its label cannot be pasted into this copy either.
+		for (const reason of ['unverified', 'unavailable'] as const) {
+			const { message } = new DeliverabilityRouteError(reason);
+			const words = wordsOf(message);
+			for (const entry of SEND_PROVIDER_CATALOG) {
+				expect(message).not.toContain(entry.label);
+				expect(words.has(entry.kind)).toBe(false);
+				// Belt and braces for the kinds whose names are also English words
+				// or live at a clause boundary: the raw message, on word boundaries.
+				expect(message.toLowerCase()).not.toMatch(
+					new RegExp(`(^|[^a-z0-9.])${entry.kind.replace(/\./g, '\\.')}([^a-z0-9.]|$)`)
+				);
+			}
+			// The vendor names behind the labels, spelled out: a future rewording
+			// that says "Amazon" or "Mailchimp" without the exact label would slip
+			// past the loop above. Only names that are NOT catalog kinds belong
+			// here — the loop owns `mandrill` and `resend`, on word boundaries, and
+			// substring-matching `resend` would fail an innocent "before resending".
+			expect(message).not.toMatch(/amazon|mailchimp|postmark|sendgrid/i);
+		}
+	});
+
+	it('still tells the operator what to do, and keeps the codes', () => {
+		// Kind-agnostic must not mean contentless — the refusal is the only thing
+		// an operator sees when a fallback stops relaying.
+		const unavailable = new DeliverabilityRouteError('unavailable');
+		expect(unavailable.message).toMatch(/relay/i);
+		expect(unavailable.message).toMatch(/disable automatic fallback/i);
+		expect(unavailable.code).toBe('DELIVERABILITY_RELAY_UNAVAILABLE');
+
+		const unverified = new DeliverabilityRouteError('unverified');
+		expect(unverified.message).toMatch(/verify this sending domain/i);
+		expect(unverified.code).toBe('DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED');
+		// The default arm is the domain proof, unchanged.
+		expect(new DeliverabilityRouteError().code).toBe('DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED');
 	});
 });
 

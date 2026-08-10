@@ -4,7 +4,7 @@
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
-	"description": "Owlat communication channel adapters — email, SMS, WhatsApp, webhooks, native chat",
+	"description": "Owlat inbound mail normalization — source-keyed adapters onto one canonical inbound message",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",

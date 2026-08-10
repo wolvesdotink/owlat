@@ -11,7 +11,7 @@ import type { DeliveryDomain } from '@owlat/shared';
 import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
@@ -22,6 +22,71 @@ export type NormalizedInboundMail = InboundEmailMessage;
 
 /** Provider-agnostic discriminator for non-email customer channels. */
 export type ChannelKind = 'sms' | 'whatsapp' | 'generic';
+
+/**
+ * THE CLOSED VOCABULARY A PROVIDER'S OWN SUPPRESSION POLICY SPEAKS.
+ *
+ * Every send provider that keeps a suppression list has its own words for why
+ * an address is on it — Mandrill reports ten `reject_reason`s, Emailit a free
+ * text `status`, a plugin whatever its provider publishes. Those words are
+ * VENDOR SPELLINGS, and they are translated exactly once, in the adapter that
+ * knows the vendor. What crosses into the host is one of these members, and the
+ * host decides the CONSEQUENCE from it (`webhooks/providerSuppression.ts`).
+ *
+ * That split is the whole point: an adapter says what its provider observed, the
+ * host says what Owlat does about it. A provider cannot invent a consequence,
+ * and adding the next provider's suppression policy is a table in ITS adapter
+ * plus (at most) a member here — never a branch in the dispatch table.
+ *
+ * A member is added only when it means something DIFFERENT to the recipient, not
+ * merely something different to the provider: two vendor reasons that both mean
+ * "this mailbox is permanently gone" share `hard_bounce` rather than earning a
+ * spelling each. Members that describe OUR account, OUR sending domain or OUR
+ * message have no place here at all — an adapter drops them, because
+ * suppressing on them would let one misconfiguration blocklist a whole audience
+ * one send at a time.
+ *
+ * The array is the single declaration: the union is derived from it, and the
+ * host-side revalidation of a plugin batch (`webhooks/pluginFeedbackEvents.ts`)
+ * reads the same array, so a member cannot exist for core adapters and be
+ * unspeakable by a plugin.
+ */
+export const PROVIDER_SUPPRESSION_REASONS = [
+	/** The provider refused this specific address for this send. */
+	'recipient_rejected',
+	/** The address sits on the provider's own blacklist. */
+	'recipient_blacklisted',
+	/** The mailbox does not exist. */
+	'invalid_recipient',
+	/** The address failed permanently, repeatedly enough for the provider to stop. */
+	'hard_bounce',
+	/** The address failed transiently, but for long enough for the provider to stop. */
+	'soft_bounce',
+	/** This person reported the mail as spam. */
+	'spam_complaint',
+	/** An operator (or an account rule) curated this address onto the list by hand. */
+	'operator_suppressed',
+	/** This person unsubscribed through the provider's own surface. */
+	'unsubscribed',
+] as const;
+
+export type ProviderSuppressionReason = (typeof PROVIDER_SUPPRESSION_REASONS)[number];
+
+/**
+ * One provider's suppression fact about one recipient.
+ *
+ * `evidence` is the provider's OWN reason code, carried verbatim into the
+ * blocklist provenance so an operator reading the suppression screen sees what
+ * the provider actually said (`MANDRILL_REJECT_SOFT_BOUNCE`) rather than the
+ * host's translation of it. Optional: a provider that publishes no code gets the
+ * host's derived one. It is provider free text on a persisted field, so an
+ * adapter normalizes it before it is minted, and the plugin lane does not accept
+ * one at all.
+ */
+export interface ProviderSuppression {
+	readonly reason: ProviderSuppressionReason;
+	readonly evidence?: string;
+}
 
 /**
  * Channel content payload — the customer-message shape inside a
@@ -84,14 +149,32 @@ export type InboundEvent =
 			/**
 			 * The address the terminal failure names, when the provider reports one.
 			 *
-			 * Set by the Mandrill adapter for a `reject` event (plan D9/D10): a
-			 * reject is Mandrill's own blacklist refusing the address, and P2.2's
-			 * suppression sync needs the address to mirror that hit into
-			 * `blockedEmails`. Untrusted telemetry, exactly like the `recipient` on
-			 * `email.delivered` — any handler that suppresses on it must decide
-			 * that on the provider identity, never on the wire value alone.
+			 * Set by an adapter whose provider names the address it refused (the
+			 * Mandrill `reject`, plan D9/D10): mirroring that hit into
+			 * `blockedEmails` needs the address. Untrusted telemetry, exactly like
+			 * the `recipient` on `email.delivered` — it is acted on because the
+			 * SIGNED callback said so and the adapter minted a {@link suppression}
+			 * from it, never because the field was present.
 			 */
 			recipient?: string;
+			/**
+			 * The recipient consequence the PROVIDER'S OWN policy attached to this
+			 * terminal failure, when it attached one.
+			 *
+			 * A relay refusing an address off its own suppression list reports one
+			 * fact that carries two: the send is over (the lifecycle half, which
+			 * every provider's failure shares) and the address is refused (the
+			 * policy half, which only some providers have). The ADAPTER that knows
+			 * the vendor mints this field out of the vendor's own reason code; the
+			 * generic handler applies it, suppression first and bookkeeping second.
+			 *
+			 * Absent means "this failure says nothing about the recipient", which is
+			 * the reading every failure gets unless its adapter says otherwise — so
+			 * a new provider's suppression policy is data on this field, not a
+			 * branch in the dispatch table. A failure naming no `recipient`
+			 * suppresses nobody either.
+			 */
+			suppression?: ProviderSuppression;
 	  }
 	| {
 			// Transient RELAY-side deferral (Mandrill `deferral`, plan D10). The
@@ -118,6 +201,19 @@ export type InboundEvent =
 			at: number;
 			providerMessageId?: string;
 			providerType?: string;
+	  }
+	| {
+			// A signed provider callback reported a recipient-specific suppression.
+			// The reason is a closed host vocabulary; account/sender failures cannot
+			// reach this event and therefore cannot suppress an address.
+			kind: 'email.provider_suppressed';
+			recipient: string;
+			at: number;
+			reason: ProviderSuppressionReason;
+			/** The provider's own reason code; the host derives one when absent. */
+			evidence?: string;
+			providerMessageId?: string;
+			providerType: string;
 	  }
 	| {
 			kind: 'email.bounced';

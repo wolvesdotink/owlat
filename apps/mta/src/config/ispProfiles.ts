@@ -11,7 +11,13 @@
 
 import type Redis from 'ioredis';
 import { isOutboundTlsMode, strictestOutboundTlsMode } from '@owlat/shared';
-import type { DestinationProviderKey, DestinationProviderProfile } from '../types.js';
+import {
+	destinationProviderForDomain,
+	isDestinationProviderKey,
+	normalizeDestinationDomain,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
+import type { DestinationProviderProfile } from '../types.js';
 import { DESTINATION_PROVIDER_PROFILES } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -19,29 +25,61 @@ const PROFILE_PREFIX = 'mta:isp-profile:';
 const PROFILE_LIST_KEY = 'mta:isp-profiles';
 const MAX_RATE_PER_MINUTE = 1_000_000;
 const MAX_RECOVERY_FACTOR = 100;
-export const DESTINATION_PROVIDER_KEYS = [
-	'gmail',
-	'microsoft',
-	'yahoo',
-	'apple',
-	'other',
-] as const satisfies readonly DestinationProviderKey[];
 
-export function isDestinationProviderKey(value: string): value is DestinationProviderKey {
-	return DESTINATION_PROVIDER_KEYS.some((providerKey) => providerKey === value);
-}
-
-function canonicalProfileKey(value: string): string {
-	const key = value.toLowerCase();
-	if (key === 'gmail.com' || key === 'googlemail.com') return 'gmail';
-	if (key === 'outlook.com' || key === 'hotmail.com' || key === 'live.com' || key === 'msn.com') {
-		return 'microsoft';
-	}
-	if (key === 'yahoo.com' || key === 'aol.com' || key === 'ymail.com' || key === 'yahoo.co.uk') {
-		return 'yahoo';
-	}
-	if (key === 'icloud.com' || key === 'me.com' || key === 'mac.com') return 'apple';
-	return key;
+/**
+ * PINNED DIVERGENCE (D8) — profile-key selection is NOT the taxonomy.
+ *
+ * `destinationProviderForDomain` answers "which cell of the destination-provider
+ * taxonomy is this RECIPIENT DOMAIN in?", and every unrecognised domain is
+ * `other` by design: the cell axis is a fixed, bounded set that the ramp's
+ * matrix, the warming dimensions and the ISP metric labels are all keyed by.
+ *
+ * This function answers a different question — "which Redis row shapes the
+ * connection to this destination?" — and the reason it cannot BE the classifier
+ * is the input every shipped caller actually hands it: A BARE PROVIDER KEY.
+ * `smtp/sender.ts` passes `destination.providerKey` and `routeProvider`, the
+ * dispatch phases pass `ctx.destination.providerKey`, the throttle effects pass
+ * `effect.providerKey`, and the admin routes pass a parameter already validated
+ * with `isDestinationProviderKey`. `'gmail'` is not a domain, so the shared
+ * classifier correctly answers `other` for it — folding it would retarget every
+ * gmail shaping read from `mta:isp-profile:gmail` to the generic row. That is
+ * the live, load-bearing half of the divergence.
+ *
+ * The other half is a capability rather than a live path: `acquireSlot`,
+ * `recordSuccess` and `recordDefer` DEFAULT `providerKey` to the `throttleKey`
+ * from `smtp/destinationProvider.ts`, which is deliberately the DOMAIN for
+ * operators outside the taxonomy ("known providers share a budget; unknown
+ * operators remain domain scoped"). No shipped caller currently takes that
+ * default — all four pass `providerKey` explicitly — so per-operator rows such
+ * as `mta:isp-profile:example.com` are reachable from the signature but not
+ * written or read in production today. Keeping the passthrough is what lets a
+ * caller take the default again without silently merging every unknown operator
+ * into one shaping row.
+ *
+ * So the two mappers stay, and the ALIAS TABLE — the part that could drift —
+ * does not: the domain→provider folding is delegated to the shared classifier,
+ * and the only thing left here is the unknown-input branch. The suite
+ * `__tests__/destinationTaxonomy.test.ts` pins exactly that: agreement on every
+ * domain the taxonomy names, and the domain-scoped passthrough everywhere else.
+ *
+ * NORMALIZATION is delegated too, to the same module's
+ * `normalizeDestinationDomain`, and it is deliberately applied ONCE at the top
+ * so the branch that FOLDS and the branch that PASSES THROUGH are decided and
+ * answered on the identical string. Restating the transform here would re-arm
+ * the drift the delegation just closed: the day the shared normalizer gains a
+ * step — IDNA folding is the obvious candidate — a unicode domain would be
+ * classified in its punycode form and returned in its unicode form, giving one
+ * operator two rows that each see half the traffic. Two inputs answer
+ * differently from the pre-D8 implementation, both unreachable from production
+ * because every shipped caller hands over either an already-normalized
+ * `throttleKey` or a validated provider key: `'gmail.com.'` now folds to
+ * `gmail` instead of naming its own row, and `'example.com.'` now shares the
+ * `example.com` row instead of splitting one operator across two.
+ */
+export function canonicalProfileKey(value: string): string {
+	const normalized = normalizeDestinationDomain(value);
+	const provider = destinationProviderForDomain(normalized);
+	return provider === 'other' ? normalized : provider;
 }
 
 /**

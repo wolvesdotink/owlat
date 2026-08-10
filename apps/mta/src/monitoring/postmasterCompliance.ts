@@ -17,7 +17,7 @@ import type Redis from 'ioredis';
 import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import type { MtaConfig } from '../config.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {

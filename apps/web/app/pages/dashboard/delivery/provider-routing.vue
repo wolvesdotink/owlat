@@ -283,8 +283,6 @@ async function handleReset() {
 
 			<DeliveryRelayDomainStatus />
 
-			<DeliveryMandrillDomainStatus />
-
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">
 				<div v-for="type in MESSAGE_TYPES" :key="type.value" class="card p-6">

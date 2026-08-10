@@ -11,7 +11,8 @@
  * 6. Deletes the draft row
  *
  * MTA delivery webhooks (sent/bounced) flow back to /webhooks/mta and
- * update mailMessages.outbound.state — see mtaWebhook.ts P2 extension.
+ * update mailMessages.outbound.state — see webhooks/adapters/mta.ts and the
+ * `pb-` branch of webhooks/dispatcher.ts.
  */
 
 import { v } from 'convex/values';
@@ -26,6 +27,7 @@ import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClien
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
 import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
+import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { decideSeal, type OutboundEncryptionInfo } from './sealPolicy';
 import { sealMime, type SealedMime } from '../e2ee/seal';
 import { openPrivateKey } from '../e2ee/sealing';
@@ -583,13 +585,10 @@ export const dispatchDraft = internalAction({
 		// unchanged; the placeholder Subject and ciphertext body are already inside
 		// that envelope. When not sealed, the classic structured fields ride exactly
 		// as before. The external worker fetches the same stored `.eml` directly.
-		const wireContent: {
-			subject: string;
-			html: string;
-			text?: string;
-			amp?: string;
-			sealedMimeBase64?: string;
-		} = sealed
+		const wireContent: Pick<
+			MtaSendRequest,
+			'subject' | 'html' | 'text' | 'amp' | 'sealedMimeBase64'
+		> = sealed
 			? {
 					subject: sealed.outerSubject,
 					html: ' ',
@@ -604,9 +603,10 @@ export const dispatchDraft = internalAction({
 
 		if (mta) {
 			for (let i = 0; i < recipients.length; i++) {
-				const to = recipients[i];
-				// Prefix lets mtaWebhook parse the Convex mailMessages id from
-				// `payload.messageId` on sent/bounced events. Matches the
+				const to = recipients[i]!;
+				// Prefix lets the `pb-` branch of webhooks/dispatcher.ts parse the
+				// Convex mailMessages id out of the `payload.messageId` that
+				// webhooks/adapters/mta.ts reports on sent/bounced events. Matches the
 				// recipients[idx].mtaJobId written by the lifecycle's
 				// insert_mail_message effect.
 				const mtaMessageId = `pb-${mailMessageId}-${i}`;
@@ -617,6 +617,13 @@ export const dispatchDraft = internalAction({
 							'Content-Type': 'application/json',
 							Authorization: `Bearer ${mta.apiKey}`,
 						},
+						// The postbox intake wire, typed against its one declaration (D7).
+						// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
+						// `MtaSendRequest` for THIS producer and the two in
+						// `deliveryHooks.ts` only, so without the annotation they had no
+						// compile-time producer at all: renaming one on the MTA side would
+						// leave this literal emitting the old key, and the MTA silently
+						// dropping the ciphertext / the AMP part / the From allow-list.
 						body: JSON.stringify({
 							messageId: mtaMessageId,
 							from: draft.fromAddress,
@@ -631,7 +638,7 @@ export const dispatchDraft = internalAction({
 							organizationId: 'postbox',
 							dkimDomain,
 							allowedFromAddresses,
-						}),
+						} satisfies MtaSendRequest),
 					});
 					if (!res.ok) {
 						const body = await res.text().catch(() => '');

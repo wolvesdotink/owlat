@@ -13,17 +13,28 @@
  * Per ADR-0018.
  */
 
+import { internal } from '../../../_generated/api';
 import { createSESIdentityManager } from '../../../lib/emailProviders/sesIdentity';
 import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
+import { sesRelayIdentityFacts } from './relayIdentityView';
 import { sesRelayDomainVerified } from './relayVerification';
 import type { DnsRecord, DnsRecords } from '../../domains';
-import type { ProviderCheckResult, SendingDomainProviderModule, SesIdentity } from '../types';
+import type {
+	ProviderCheckResult,
+	ProviderVerificationStatusFields,
+	RelayProvingProviderModule,
+	SesIdentity,
+} from '../types';
 
-export const sesProvider: SendingDomainProviderModule<'ses'> = {
+// `RelayProvingProviderModule`, not the plain module type: the catalog declares
+// `domainVerification: 'api'` for this kind, and that promise is only worth
+// something if the three relay seams below are REQUIRED here (see the type's
+// own comment, and `../index.ts`'s `_relayProofTypecheck`).
+export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	kind: 'ses',
 
 	async registerDomain(domain, options) {
@@ -122,15 +133,70 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 		}
 	},
 
-	// The relay-verification read seam (D6). SES is the one shipped kind that
+	/**
+	 * SES's verdict as `verificationResults.sesStatus` has always held it — the
+	 * ONE statement of that spelling, shared with the relay-identity refresher in
+	 * `domains/sesRelayVerification.ts`. It lived in `domains/dnsVerification.ts`
+	 * behind `providerType === 'ses'`, which made "does this provider have a
+	 * verdict worth recording?" a question about a name rather than about the
+	 * provider.
+	 *
+	 * The field is persisted and currently read by nothing in `apps/web` — see
+	 * {@link ProviderVerificationStatusFields}; implementing this keeps the
+	 * verdict in the domain's record, it does not put anything on a screen.
+	 */
+	verificationStatusFields(check: ProviderCheckResult): ProviderVerificationStatusFields {
+		return { sesStatus: check.verified ? 'Success' : 'Pending' };
+	},
+
+	// The relay-verification read seam (Mandrill plan D6). SES is the one shipped kind that
 	// declares `domainVerification: 'api'`, so it is the one kind that can
 	// answer this; see `./relayVerification.ts` for the proof it requires.
 	relayDomainVerified: sesRelayDomainVerified,
+
+	// The operator surface's arm (see `./relayIdentityView.ts`). SES is the one
+	// kind that MUST implement it: its identities live in the frozen sibling
+	// table, so the generic read of `sendingDomainRelayIdentities` — which
+	// answers for every kind that omits this — would find nothing for SES.
+	describeRelayIdentity: sesRelayIdentityFacts,
 
 	// The alignment pre-flight's second arm (see `./referenceArm.ts`) — the same
 	// arm this deployment has always compared against, now answered through the
 	// registry instead of an `=== 'ses'` branch in the pre-flight.
 	describeReferenceArm: sesReferenceArm,
+
+	/**
+	 * The relay-identity backfill. What the drain in `providerRoutes.ts` used to
+	 * do inline — the same indexed read on the frozen
+	 * `sendingDomainSesIdentities` sibling, the same scheduled
+	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
+	 * of whichever kind the route actually named (the seams plan's D2 —
+	 * capabilities, not identity).
+	 *
+	 * THE EXISTENCE CHECK IS CONDITIONAL ON THE CALLER'S INTENT, not on this
+	 * adapter's taste — see {@link EnsureRelayIdentityOptions}. The drain asks
+	 * `reprovision: false` and an existing row ends the call; the lifecycle's
+	 * `→ verified` edge asks `reprovision: true` and re-registers regardless,
+	 * exactly as the effect it replaced did. That edge is the operator's only
+	 * repair lever for an identity deleted or disabled on the AWS side while this
+	 * row survived, and nothing in the stored state can detect that case for
+	 * them: `verificationStatusFields` collapses every non-`Success` status to
+	 * `Pending`, so a check clever enough to notice would also re-register every
+	 * domain still waiting for its CNAMEs, on every drain page.
+	 *
+	 * Re-registering is safe to repeat: `sesRelay.provision` re-asks SES for the
+	 * identity's tokens and upserts the sibling through `storeProvisioning`.
+	 */
+	async ensureRelayIdentity(ctx, domain, options) {
+		if (!options.reprovision) {
+			const existing = await ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+				.first();
+			if (existing) return;
+		}
+		await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, { domainId: domain._id });
+	},
 
 	async writeIdentity(ctx, domainId, identity) {
 		const existing = await ctx.db

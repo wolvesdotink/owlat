@@ -36,7 +36,8 @@ import {
 } from '../../../intelligence/warmingCapWindow.js';
 import { warmingProviderStateKey } from '../../../intelligence/warmingKeys.js';
 import type { CtxWithIp, PhaseDeps } from '../../types.js';
-import type { DestinationProviderKey, EmailJob, IpPoolType } from '../../../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJob, IpPoolType } from '../../../types.js';
 import type { MtaConfig } from '../../../config.js';
 
 const IP = '10.0.0.7';

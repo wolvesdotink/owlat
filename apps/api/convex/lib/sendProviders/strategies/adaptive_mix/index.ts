@@ -25,6 +25,7 @@
  * handle is better than a confident wrong one.
  */
 
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared';
 import type { ProviderEntry, SendRouteStrategyModule } from '../types';
 import { decideMixAssignment } from './mix';
 import type { MixArm } from './mix';
@@ -53,8 +54,80 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
 /**
  * The transport kind that IS the own arm. Every other catalog transport (SES,
  * Resend, an SMTP relay, a plugin transport) is a reference arm.
+ *
+ * THE ONE IDENTITY THE SEAMS PLAN SANCTIONS (its D3): own vs. not-own is a
+ * definition, not a branch on a provider's name, and this name plus its
+ * domain-provider twin (`OWN_SENDING_DOMAIN_PROVIDER_KIND`, pinned equal to it
+ * at build time) are where that definition lives for backend code. The rule is
+ * that every other "is this our own MTA?" test READS one of the two rather than
+ * restating the literal.
+ *
+ * IT IS NOT A DECLARATION — it is a RE-EXPORT of the catalog's `tier: 'own'`
+ * (`OWN_SEND_PROVIDER_KIND` in `@owlat/shared`, the seams plan's P1.1), which
+ * DERIVES the same fact from the entry declaring that tier. Before the catalog
+ * moved, `apps/web`, `apps/setup-cli` and `packages/shared` — none of which may
+ * import backend code — had no declaration to read and restated `=== 'mta'` in
+ * seven places; those are gone, and so is the last backend literal, because the
+ * shared constant is typed `OwnSendProviderKind` (`Extract<…, { tier: 'own'
+ * }>['kind']`). That is a LITERAL type, which is what the three compile-time
+ * guards keying off `typeof OWN_ARM_TRANSPORT_KIND` need, so moving the tier to
+ * another entry now fails the BUILD instead of waiting for the runtime pin in
+ * `lib/sendProviders/__tests__/registry.test.ts`.
+ *
+ * The name survives the move because it says which VOCABULARY it belongs to:
+ * send-transport kinds, as opposed to the sending-domain provider kinds its twin
+ * lives in. Same string, two unions.
+ *
+ * THE OWN-ARM SWEEP IS DONE (the seams plan's P0.4). Every site outside the
+ * adapter folders that asked "is this our own MTA?" now reads this constant or
+ * its domain-provider twin — the send lifecycle, the webhook dispatcher and the
+ * complaint handler, delivery status, the seed-probe arm attribution in the
+ * worker, last-mile routing, the checklist and its loopback gates, delivery
+ * health, the relay-kind definition in `delivery/relayConfiguration.ts`, the
+ * hybrid detection in `route.ts`/`routing.ts` (through
+ * `fallbackEligibility.routeCarriesOwnArm`), the stream-subdomain wizard, the dev
+ * force-verify shortcut and SES's relay provisioning action. So does the
+ * measurement plane: `delivery/worker.ts` files a seed probe's arm through
+ * `armForTransport`, the same function `sendAssignments` records with, rather
+ * than through a second copy of the split.
+ *
+ * WHAT STILL SPELLS A KIND is DATA IN THREE PLACES, none of them this docblock,
+ * and none of them derived from another — prose here would go stale the first
+ * time a family cleared, with nothing failing:
+ *
+ *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
+ *     `SURVIVING_KIND_LITERALS` in
+ *     `lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, each entry with
+ *     its family and its owner, asserted in both directions. This file is no
+ *     longer in it: the `definitional` entry it used to hold went when the
+ *     constant below became a re-export. `domains/providers/mta/index.ts`'s
+ *     `kind` still spells one, inside an adapter folder the rule does not reach.
+ *     That map holds declarations ONLY.
+ *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
+ *     read by `bun run lint:providers` over `apps/`, `packages/` and
+ *     `examples/`. Each entry sits under a family header naming the piece that
+ *     deletes it; the count is what acceptance criterion A1 measures, and the
+ *     gate fails on an entry that no longer excuses anything.
+ *   * COMPARISONS that are NOT debt — `scripts/provider-identity-collisions.txt`,
+ *     for a spelling that belongs to another alphabet: the MTA routing API's
+ *     `'mta' | 'relay' | 'defer'` answer (`delivery/lastMileRouting.ts`), a
+ *     docker compose profile, the contact-import source registry. Permanent, and
+ *     `path:literal`-qualified so the licence covers that spelling and nothing
+ *     else. Rewriting one of these would change a protocol, not remove a
+ *     coupling, so it must NOT go in the allowlist — that is what lets the
+ *     allowlist reach zero.
+ *
+ * Read those three, not this list. For orientation only, the surviving families
+ * as of P0.5: the RETURN-PATH pair (`domains/lifecycle.ts`,
+ * `delivery/checklistDomainValidators.ts`), waiting on a capability that has no
+ * home on the sending-domain adapter interface yet; the FROZEN-SIBLING READ
+ * that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay
+ * panel's query, now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living
+ * beside an adapter rather than inside it (`domains/mandrillRelay*.ts`,
+ * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches
+ * in `apps/web`, which P1.2 and its follow-up delete.
  */
-export const OWN_ARM_TRANSPORT_KIND = 'mta';
+export const OWN_ARM_TRANSPORT_KIND = OWN_SEND_PROVIDER_KIND;
 
 /** Both arms of a route, found in one pass so neither lookup can drift. */
 function armEntries(entries: readonly ProviderEntry[]): {

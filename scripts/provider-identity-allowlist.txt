@@ -1,0 +1,436 @@
+# Provider-identity allowlist — scripts/check-provider-identity.sh.
+#
+# The sites that may still compare a send-provider kind against a literal.
+# Everything else asks the capability catalog. One `path:literal` per line — a
+# repo-relative path, a colon, and the ONE kind spelling that line excuses; a
+# trailing `#` note and blank lines are ignored.
+#
+# EVERY ENTRY IS QUALIFIED, and the coarse form the script also accepts — a bare
+# path, which licenses every kind literal in the file — is not used here. The
+# script's docblock says a debt entry "can be either: they are on their way out,
+# so the coarse form costs nothing". It cost something. While these twelve files
+# were licensed by bare path, ANY new vendor's branches could be added to any of
+# them and the gate stayed green: ten `emailit` comparisons landed across seven
+# of them without the ratchet saying a word, because a bare path licenses not
+# just the literals a sweep found there but every literal a later commit adds.
+# Enumerating the spellings makes each file's debt a fixed, countable list — the
+# sixth kind's branch in a licensed file FAILS exactly as it does in an
+# unlicensed one — and it makes the licence shrink one literal at a time instead
+# of one file at a time.
+#
+# ONE PLACE PER ENTRY. Each family below is a comment header naming its OWNER,
+# then the entries themselves — the paths are written exactly once, in the list
+# the ratchet reads, with their note on the same line. An earlier draft repeated
+# every path in the family prose as well, which meant a sweep had to delete two
+# lines and the gate only ever checked one of them: the file would then still
+# document debt, with an owner, for a site that had already been cleared.
+#
+# THIS LIST ONLY SHRINKS. That is a review convention, not a suggestion: a pull
+# request that ADDS a line is asking to reintroduce the coupling the seams plan
+# exists to remove, and has to argue why the seam cannot read a declaration
+# instead. The ratchet enforces the other direction mechanically — an entry that
+# excuses no kind literal FAILS the gate, so a cleanup cannot leave its licence
+# behind for the next restatement to inherit.
+#
+# WHAT P1.1 DID HERE, for the record: it moved the catalog into packages/shared,
+# which put `OWN_SEND_PROVIDER_KIND` / `isOwnSendProviderKind` — the D3 own-arm
+# declaration — where the CLI, the web app and this package can all read it, and
+# repointed the kind parser at the top of check-provider-identity.sh at the same
+# time (SEND_TRANSPORT_KINDS is a derivation now, so there is no literal array
+# left for it to read).
+#
+# EVERY ENTRY IS DEBT WITH AN OWNER. A file whose kind-shaped literal belongs to
+# a DIFFERENT vocabulary — the MTA routing API's answer, a docker compose
+# profile, the contact-import registry — is not debt and is not licensed here.
+# It lives in scripts/provider-identity-collisions.txt, so that this list can
+# reach zero. THE ENTRY COUNT BELOW IS WHAT ACCEPTANCE CRITERION A1 MEASURES,
+# and since P0.5 wrote that sentence the unit has got finer: an entry is one
+# LICENSED SPELLING, not one file, and the number the ratchet prints on a green
+# run is the number of lines here. Twelve files, 38 spellings.
+#
+# SCOPE NOTE — WIDER THAN P0.5'S CARD READS, AND SO IS A1. The card names the D3
+# definitional sites — the own-arm constant, delivery/relayConfiguration.ts, the
+# hybrid detection in route.ts / routing.ts — as the expected contents. After the
+# P0.1–P0.4 sweep none of those four files COMPARES a kind any more: the own-arm
+# site is a declaration, `export const OWN_ARM_TRANSPORT_KIND = 'mta'`, which the
+# backend's kindLiteralCustody.test.ts owns, and the other three retain the
+# literal only in the prose explaining what replaced it. Listing any of them
+# would trip the stale-entry check and turn the gate red. So the scan was widened
+# to all of apps/, packages/ and examples/ instead of stopping at the backend,
+# and what it found — the setup wizard, the transport editor, the CLI and the
+# shared validators, none of which any Wave-0 piece touched — is carried here as
+# named debt rather than left invisible. That is the ecosystem goal's real
+# surface: while these branches exist, a provider that needs no backend edit
+# still cannot ship without a host edit.
+#
+# SO A1 IS NOT REACHABLE AS WRITTEN, AND THIS FILE IS WHERE THAT BECOMES
+# VISIBLE — the plan owner's call, not P0.5's to make silently. Two things are
+# true at once. The definitional sites A1 names are not in this file at all,
+# because after P0.1–P0.4 they are declarations rather than comparisons (listing
+# them would trip the stale-entry check and turn the gate red). And ALL FOUR of
+# the families below carry no owning card in this plan: `return-path` (waiting on
+# the capability reaching SendingDomainProviderModule), `adapter-adjacent` (the
+# Mandrill provisioning action's own literals — the sweep prediction fired in
+# P3.2, see that family's header), `provider-shaped-ui-followup` (waiting on the
+# wizard-descriptor follow-up after P1.2) and `credentials-and-probes` (the
+# CLI/endpoint half of the descriptor rollout — see that family's own header for
+# why P1.1 was the wrong owner for it).
+#
+# AND THAT COUNT IS AN UNDERCOUNT BY ONE SITE — two spellings — deliberately and
+# visibly. P1.2 introduced kind literals that this file CANNOT license, because
+# the ratchet's own KNOWN LIMIT (a named array plus a membership test, outside
+# apps/api/convex) does not see them and an entry that excuses nothing fails the
+# gate: the answering set in `apps/web/app/utils/providerFeedbackPanel.ts` (two
+# spellings). It exists because a UI gate cannot be more general than the
+# per-vendor BACKEND READ behind it, it is argued in its own family below, and it
+# is retired by a named backend change rather than by a UI edit. Read the 38 as
+# "38 licensed spellings plus those two, all with owners".
+#
+# IT WAS TWO SITES AND THREE SPELLINGS. The other was
+# `RelayDomainStatus.vue`'s `ANSWERS_FOR_KINDS = ['ses']`, and it is GONE — not
+# by deleting the array, which would have made the panel claim relays it could
+# not see, but by making the backend read answer for every kind the
+# domain-provider registry proves (`providerRoutes.listRelayDomainIdentities`,
+# `describeRelayIdentity` on the relay-identity contract). The panel now reads
+# its labels off the rows, `MandrillDomainStatus.vue` is retired into it, and a
+# bundled plugin relay — whose rows no surface could render — appears with no
+# UI edit at all. That is what "retired by a named backend change" looks like
+# when it lands; the same sentence is still owed to the feedback panel below.
+#
+# ── DECISION REQUESTED OF THE PLAN OWNER, at the Wave-1 gate ──
+#
+# P1.1 re-attributed one family (`credentials-and-probes`) away from itself,
+# because P1.1's card is the catalog's DATA half and no existing card covers the
+# CLI prompts, the config writer, the two validate endpoints or
+# setupValidators.ts. That is an honest correction, but it is also a PLAN-LEVEL
+# ownership change made inside a build piece, and its consequence is that no
+# family in this file has an owner inside the plan. The ask is one of two things,
+# at the gate rather than at A1:
+#
+#   (a) give those six files a card in Wave 2 — "the descriptor rollout outside
+#       apps/web" — which is the smaller of the two changes and keeps A1 as
+#       written reachable at the end of that wave; or
+#   (b) restate A1 as "the allowlist contains only entries with a named owner",
+#       which is what the file already enforces mechanically.
+#
+# Not P1.1's call either way. Recorded here AND in the piece summary so it is
+# decided rather than discovered.
+#
+# ANSWERED FOR ONE FAMILY, IN THE (a) DIRECTION, BY DOING THE WORK RATHER THAN
+# BY CARDING IT. `relay-identity-panel` — "owner: the relay-identity read,
+# backend — no card yet" — is cleared above: the read now walks the
+# domain-provider registry, one panel renders every kind, and the ownerless
+# family is a CLEARED note instead of a debt with nobody's name on it. That is
+# the smaller of the two changes for the family it applies to, and it is the
+# precedent the ask was really about: an ownerless family is fixed by someone
+# picking it up, not by the file being rephrased around it.
+#
+# THE ASK STANDS, UNCHANGED IN SUBSTANCE. The same four families still carry no
+# owning card in this plan — `return-path`, `adapter-adjacent`,
+# `provider-shaped-ui-followup`, `credentials-and-probes` — and whether they get
+# cards (a) or A1 gets restated (b) is still not a build piece's call. What has
+# changed is only that `feedback-panel-answering-sets`, which DOES have an owner
+# (P2.1) and whose unblocking change is the same shape as the one just landed —
+# one read that answers for the ACTIVE transport instead of one read per vendor —
+# now has a worked example to copy rather than a description to work from.
+#
+# THE OWNING PIECE MUST DELETE ITS LINES. Each family names the piece that clears
+# it; because the ratchet fails on an entry that excuses nothing, that piece's
+# diff has to include the deletion here or the lint job goes red. A file whose
+# per-kind branching is only PARTLY removed deletes only the spellings it
+# cleared, and the ratchet checks that too — a licence for a literal the file no
+# longer compares is stale and fails. AND IT MUST CORRECT THIS PROSE WHEN THE
+# OWNERSHIP IS WRONG: a family whose named owner has already merged is a family
+# nobody is coming back for, which is the one state this file must never be left
+# in. Four families have no owning piece INSIDE this plan and say so.
+#
+# Kind DECLARATIONS inside apps/api/convex are a different rule with a different
+# list: SURVIVING_KIND_LITERALS in
+# apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts. That
+# test carries declarations only and does not restate anything from this file;
+# comparisons are this ratchet's rule alone, everywhere.
+
+
+# ── return-path (owner: no piece in this plan — the sending-domain adapter interface) ──
+#
+# Which `mailFrom` bundle a custom return-path host publishes, and which kinds
+# accept one at all, is branched on 'mta'/'ses' while the catalog already
+# declares `supportsCustomReturnPath`. The capability has no home on
+# `SendingDomainProviderModule` yet; domains/providers/index.ts states the gap in
+# full. No wave-0 or wave-1 piece clears this one — whichever piece finally grows
+# that capability, D1's field reaching the module contract, deletes all three
+# lines.
+
+apps/api/convex/domains/lifecycle.ts:mta  # the record-set derivation: which kinds publish a MAIL FROM at all
+apps/api/convex/domains/lifecycle.ts:ses  # …and the one that resolves a custom return-path host
+apps/api/convex/delivery/checklistDomainValidators.ts:ses  # restates the same question as a checklist item
+
+
+# ── adapter-adjacent (owner: no piece in this plan — one kind's scheduled work moving beside it) ──
+#
+# Mandrill adapter code that cannot sit in domains/providers/mandrill/: this is a
+# scheduled action, so the module path IS the Convex function path. Its literals
+# ask "is this domain mine?" of the deliberately kind-agnostic
+# sendingDomainRelayIdentities table.
+#
+# THE PREDICTION IN THIS HEADER FIRED, AND WAS PAID. It used to read "when a
+# second kind wants the same sweep, that question becomes the table's own
+# dispatch", and license the mutation half (mandrillRelayMutations.ts) as well.
+# The seams plan's P3.2 brought the second kind — the bundled plugin tier — and
+# the due-check sweep now asks the relay-identity registry for the arm that
+# re-asks a row's provider (`scheduleRelayIdentityRefresh`) instead of comparing
+# the kind, so that entry is gone and a third kind adds no line to it. What is
+# left is one file and one question: the sweep's MUTATION half still lives in a
+# Mandrill-named module, which is a name rather than a coupling (nothing in it
+# knows a provider), and moving it would rename a cron'd scheduled function.
+# The remaining entry below is the ACTION half, whose one literal is Mandrill's
+# own provisioning path — and being qualified, it stays one: a second kind
+# reaching this file fails the gate rather than inheriting the licence.
+
+apps/api/convex/domains/mandrillRelay.ts:mandrill  # the scheduled provisioning sweep's own-domain question
+
+
+# ── provider-shaped-ui — CLEARED by P1.2 (the UI renders descriptors, D5) ─────
+#
+# Kept as a note rather than as entries, because the entries are gone: the
+# transport editor, the wizard's credential step, the shared relay draft, the
+# setup wizard's env/label derivations and the delivery config page all read the
+# catalog now. `TransportCredentialFields.vue` renders whatever the selected
+# entry's `credentialFields` declare, `buildProviderEnv` writes whatever those
+# descriptors own, and the config page's feedback panel is chosen by the entry's
+# own `providerFeedback` declaration (ceremony + route), not by a kind.
+#
+# WHAT APPS/WEB STILL SPELLS PER VENDOR, stated exactly rather than waved at,
+# because the first version of this note claimed "all of it is optional" and that
+# was false for two tables:
+#
+#   utils/transportState.ts        TRANSPORT_LABEL / TRANSPORT_DESCRIPTION.
+#                                  Were exhaustive `Record<DeliveryProviderKind,
+#                                  …>` — a sixth kind was a COMPILE ERROR in a
+#                                  file outside its bundle, which is what A3
+#                                  forbids. P1.2 made both `Partial` overrides
+#                                  over a catalog-derived fallback, so the
+#                                  mechanism is now one declaration. The rows
+#                                  that remain are WORDING: the hub says "Owlat
+#                                  mail server" where the catalog says "Owlat
+#                                  MTA", and drops Mandrill's parenthetical.
+#   utils/transportDnsGuidance.ts  the DNS paragraph each incumbent earned, over
+#                                  a `tier` / `domainVerification` fallback that
+#                                  a new kind reaches (and that a test drives,
+#                                  since no shipped kind does).
+#   useRelayCredentialDraft.ts     picker hints and icons, plus ONE label: the
+#                                  editor's own-arm option reads "Run your own
+#                                  MTA", an instruction rather than a name.
+#   useSetupWizard.ts              the review step's "Owlat MTA (self-hosted)",
+#                                  keyed by OWN_SEND_PROVIDER_KIND.
+#
+# Every one of those is optional per kind — a provider with no row renders, with
+# the catalog's label — and none is keyed by a vendor literal, so lint:providers
+# stays quiet and A3 holds. What is NOT resolved is A2 for the own arm: four
+# surfaces word it four ways, exactly as they shipped. Unifying that copy is a
+# WORDING DECISION for the plan owner (it changes three live screens), and P1.2
+# deliberately did not take it: waves 0–2 ship no user-visible change.
+#
+# ── COPY THE PLAN OWNER SHOULD RATIFY AT THE WAVE-1 GATE ──
+#
+# P1.2 changed FOUR operator-facing strings. Three are what a descriptor costs —
+# the editor and the wizard step worded the same field differently, and one
+# descriptor cannot say two things — and one is a per-vendor list that was a
+# second declaration of a capability:
+#
+#   1. the transport editor's and wizard step's "cannot be tested" notice used
+#      to list the vendors without a probe ("SES, Mailchimp Transactional and
+#      your own MTA can't be tested before applying"); it now names the SELECTED
+#      transport ("This transport can't be tested before applying"), because the
+#      line only ever renders for one kind and the list was a second declaration
+#      of `setupProbe`;
+#   2. `RelayDomainStatus.vue` stopped rendering for deployments the query
+#      cannot speak for — see the note in that family below;
+#   3. Mandrill's API-key note. Both surfaces shipped it, worded slightly
+#      differently, and both closed by POINTING AT THE CARD that issues the
+#      second variable ("the webhook card below has the URL and the events to
+#      enable" / "the delivery page has the URL and the event list"). The
+#      descriptor carries one sentence: the wizard's fuller opening, closing with
+#      "the webhook card on the delivery page has the URL and the events to
+#      enable" — the pointer names the page rather than "below", because a
+#      descriptor does not know where it is rendered. Dropping the pointer, which
+#      the first revision did, left the operator told they need
+#      `MANDRILL_WEBHOOK_KEY` and given nowhere to get it;
+#   4. the relay host's placeholder ("smtp.mailgun.org"). The in-app editor
+#      showed it and the wizard's step did not, so making the step render the
+#      descriptor ADDS a hint to one empty, disabled-on-a-named-preset input.
+#      The `host-port` composite's docblock argues the pair must hint together —
+#      the port input beside it always showed its declared default.
+#
+# Everything else the refactor touched keeps its shipped wording, pinned as
+# literals in `composables/__tests__/setupWizardCredentials.test.ts` (labels,
+# descriptions AND placeholders — the first revision pinned only the labels,
+# which is how 3 and 4 above got in unremarked) and `relayCredentialDraft.test.ts`
+# rather than asserted against the catalog (an assertion that a label equals
+# `entry.label` agrees with any rename).
+#
+# TWO RENDERING DIFFERENCES, neither a string:
+#
+#   a. the variable names inside a descriptor's `description` are typeset as
+#      `<code>`, which is what both hand-written blocks did. Matched by SHAPE
+#      (`WORD_WORD`) in `TransportCredentialFields.vue`, so no provider is named
+#      to get it;
+#   b. the credential group's vertical rhythm is `space-y-4` for every kind on
+#      both surfaces. The shipped spellings disagreed with each other — the
+#      editor used `space-y-4` for SES and SMTP and `space-y-3` for Mandrill and
+#      the own arm, the wizard step `space-y-3` throughout — and one component
+#      has one answer. It is the editor's spelling for its two multi-field forms,
+#      i.e. the majority of the fields an operator actually fills in. What is NOT
+#      normalised away is layout that changes a control's WIDTH: the endpoint's
+#      port/TLS row only becomes a two-column grid when the toggle is drawn, so
+#      the wizard step (which withholds it) keeps its full-width Port input,
+#      pinned in `__tests__/TransportCredentialFields.test.ts`.
+
+
+# ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
+#
+# The same family, in files P1.2's card does NOT name: the step validator and the
+# two standalone setup pages. They fall out of the descriptor work only if it is
+# carried all the way through the WIZARD DRAFT — `EmailStepDraft` still spells
+# its credential half per vendor (`resendKey`, `ses.region`, `smtp.host`), which
+# is what these three read — so they are recorded here with an honest owner
+# rather than filed under a card that will merge without them and leave the count
+# unattended. P1.2 left ONE bridge in place for them,
+# `apps/web/app/composables/setupWizardCredentials.ts`, which projects between
+# that draft and the env-keyed descriptor values in both directions and is
+# exhaustive over `TransportCredentialEnvKey`; it holds no kind literal, and it
+# is deleted by whichever piece makes the draft the values map itself.
+#
+# THREE FILES, FIFTEEN SPELLINGS — which is the shape of the debt, not an
+# accident of counting: each of these files answers "what does this vendor need"
+# once per vendor, so the sixth kind costs three more lines here and the gate
+# now says so instead of absorbing them.
+
+apps/web/app/composables/setupWizardValidation.ts:emailit  # per-kind required-field rules, one branch per vendor
+apps/web/app/composables/setupWizardValidation.ts:mandrill
+apps/web/app/composables/setupWizardValidation.ts:mta
+apps/web/app/composables/setupWizardValidation.ts:resend
+apps/web/app/composables/setupWizardValidation.ts:ses
+apps/web/app/composables/setupWizardValidation.ts:smtp
+apps/web/app/pages/desktop/setup.vue:mta  # the desktop wizard's own copy: the own-arm branch…
+apps/web/app/pages/desktop/setup.vue:resend  # …and a credential block per kind it offers
+apps/web/app/pages/desktop/setup.vue:ses
+apps/web/app/pages/setup/email.vue:emailit  # the hosted wizard's copy of the same per-kind fields
+apps/web/app/pages/setup/email.vue:mandrill
+apps/web/app/pages/setup/email.vue:mta  # NOT a kind question: getActiveProfiles(…).includes('mta') reads a docker compose profile, so this ONE line MOVES to the collisions list when the five beside it go
+apps/web/app/pages/setup/email.vue:resend
+apps/web/app/pages/setup/email.vue:ses
+apps/web/app/pages/setup/email.vue:smtp
+
+
+# ── relay-identity-panel — CLEARED by the registry-backed relay read ──────────
+#
+# Kept as a note rather than as a family, because there is nothing left to own.
+# It carried NO ENTRY THE RATCHET COULD LICENSE and one kind literal the ratchet
+# cannot see: `RelayDomainStatus.vue`'s `const ANSWERS_FOR_KINDS = ['ses'] as
+# const` plus `includes(kind)`, the named-array-and-membership shape
+# `check-provider-identity.sh` documents as its KNOWN LIMIT.
+#
+# WHAT IT WAS WAITING FOR, and what landed. The panel was worded for SES
+# throughout because every string was downstream of a query that point-read the
+# frozen `sendingDomainSesIdentities` sibling — so generalising the COPY without
+# generalising the READ would have claimed to cover relays whose rows the panel
+# could not see, and the answering set existed to stop exactly that (a
+# Mandrill-only deployment shown "SES status: provisioning" beside the Mandrill
+# panel already rendering its real rows). The unblocking change was named here as
+# one query, and it is what shipped:
+#
+#   * `providerRoutes.listRelayDomainIdentities` walks the relay-identity
+#     registry (`relayIdentityProviders()`) and returns one row per (domain,
+#     relay kind) — kind, catalog LABEL, status, the records to publish, the
+#     provider's own verdicts, and the freshness bound routing applies;
+#   * each kind answers through `describeRelayIdentity`, or through the generic
+#     read of its `sendingDomainRelayIdentities` row when it implements none, so
+#     registering a kind is what makes it visible;
+#   * `MandrillDomainStatus.vue` is retired into the one panel, whose only
+#     per-kind copy is a map keyed by kind for a console flow that cannot be
+#     described generically — the `SignedWebhookCard.vue` pattern;
+#   * `utils/relayIdentityPanel.ts` is deleted: the browser no longer gates
+#     rows it was handed regardless, because the query returns rows only where
+#     there is something true to say.
+#
+# THE BUNDLED PLUGIN RELAY TIER IS WHY THIS COULD NOT WAIT. It writes the same
+# generic table Mandrill does, and no surface could render a single one of its
+# rows — an operator relaying through a plugin transport was told provisioning
+# was queued, forever, about a run that had already finished. A per-vendor read
+# surface does not merely cost the sixth vendor an edit; it makes the tier whose
+# whole promise is "no host edit" invisible.
+
+
+# ── feedback-panel-answering-sets (owner: the webhook registry, P2.1) ──
+#
+# NO ENTRY THE RATCHET CAN LICENSE, and — as above — one more site in its array
+# blind spot, recorded here so the A1 count is read with the caveat:
+# `apps/web/app/utils/providerFeedbackPanel.ts` holds
+# `PANEL_ANSWERS_FOR_KINDS = { 'sns-topic': ['ses'], 'signed-webhook':
+# ['mandrill'] }` and asks `includes(entry.kind)`.
+#
+# WHICH panel the delivery config page draws is a MECHANISM question, and P1.2
+# made it one: `providerFeedback.setupPanel` on the entry, replacing
+# `status.provider === 'ses'` / `=== 'mandrill'`. What P1.2 could NOT make a
+# declaration is the DATA each panel then reports, because both reads are
+# per-kind backend queries: `getMandrillFeedbackStatus` is a
+# `MANDRILL_WEBHOOK_KEY` presence check, and `getLastSesEventAt` reads SES's own
+# event table. A sixth kind declaring either panel would therefore have another
+# provider's key presence and another provider's last-event timestamp reported
+# under its own name — plausible, wrong, and green in every suite.
+#
+# So each panel names the kinds its read can answer for, and a kind outside the
+# set draws NO panel: a visible gap a provider author chases, rather than an
+# invisible lie. THE UNBLOCKING CHANGE is the same shape as the relay-identity
+# read cleared above, which has now LANDED and can be copied rather than
+# described — one read that answers "the ACTIVE transport's feedback health"
+# (signing-key presence, last event) instead of one read per vendor — after which
+# both sets become "every kind that declares this panel" and this block goes. It
+# is step 4's caveat in the providers doc.
+
+
+# ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
+#
+# Which env vars a kind needs, which kinds can be live-checked before saving, and
+# what a validator asks of each — all of it restated per vendor outside the
+# catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
+# catalog entry are the declarations these read; P1.1 landed them, and the file
+# it CLEARED from this family was packages/shared/src/featureFlags.ts, whose
+# `=== 'mta'` was an own-arm question wearing this family's label.
+#
+# THE OWNER MOVED, DELIBERATELY. This family said "owner: P1.1" while P1.1's card
+# is the catalog's DATA HALF; declaring a field is not the same as rewriting the
+# six surfaces that render it, and the pieces that do exist stop short of these
+# files: P1.2 is `apps/web/app/**` (its card names four components and
+# composables, none of them below), and P1.3 is TESTS — it pins that every
+# `setupProbe.validator` names a real export, which is a guard on the declaration,
+# not a rewrite of the switch that dispatches it. So the CLI's prompts and
+# config writer, the two validate endpoints and the probe dispatch itself have no
+# owning card in this plan. Recorded with an honest owner rather than left
+# attributed to a piece that has merged — an owner who has shipped is how a
+# family becomes nobody's.
+#
+# THIS IS WHERE A NEW VENDOR LANDS, which is why the bare-path form had to go:
+# six files, nineteen spellings, and every kind added to the product adds a line
+# to most of them. Under a file-granular licence that arrival was silent.
+
+apps/setup-cli/src/commands/setupNonInteractive.ts:emailit  # the non-interactive env table
+apps/setup-cli/src/commands/setupNonInteractive.ts:resend
+apps/setup-cli/src/commands/setupNonInteractive.ts:ses
+apps/setup-cli/src/commands/setupSendingProvider.ts:emailit  # the interactive prompts
+apps/setup-cli/src/commands/setupSendingProvider.ts:mta
+apps/setup-cli/src/commands/setupSendingProvider.ts:resend
+apps/setup-cli/src/commands/setupSendingProvider.ts:ses
+apps/setup-cli/src/commands/setupSendingProvider.ts:smtp
+apps/setup-cli/src/lib/setupConfig.ts:emailit  # the written config's per-kind keys
+apps/setup-cli/src/lib/setupConfig.ts:mta
+apps/setup-cli/src/lib/setupConfig.ts:resend
+apps/setup-cli/src/lib/setupConfig.ts:ses
+apps/setup-cli/src/lib/setupConfig.ts:smtp
+apps/web/server/api/delivery/validate-transport.post.ts:emailit  # per-kind live checks
+apps/web/server/api/delivery/validate-transport.post.ts:resend
+apps/web/server/api/delivery/validate-transport.post.ts:smtp
+apps/web/server/api/setup/validate-provider.post.ts:smtp  # the wizard's copy of them
+packages/shared/src/setupValidators.ts:emailit  # the probes themselves
+packages/shared/src/setupValidators.ts:resend

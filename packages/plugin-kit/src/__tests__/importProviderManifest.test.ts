@@ -95,6 +95,15 @@ describe('plugin import provider contributions', () => {
 			{ secretEnvVar: 'PLUGIN_' },
 			'$.contributes.importProviders[0].signature.secretEnvVar',
 		],
+		// THE SCHEME VOCABULARY IS THE ENDPOINT-GATING FORM'S ALONE. This contract
+		// gates no HTTP surface and its verifier enforces no freshness, so a word
+		// whose whole meaning is a replay-bound scheme must not be sayable here —
+		// otherwise `svix` would read as protection this side never applies.
+		[
+			'a scheme it has no vocabulary for',
+			{ scheme: 'svix' },
+			'$.contributes.importProviders[0].signature.scheme',
+		],
 	] as const)('rejects a signature contract with %s', (_label, override, path) => {
 		const provider = validProvider();
 		const issues = issuesFor(

@@ -291,6 +291,8 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'storage.get': 'Storage read',
 	'storage.list': 'Storage list',
 	'storage.set': 'Storage write',
+	'transport.domain_identity': 'Email transport domain identity',
+	'transport.feedback': 'Email transport feedback',
 	'transport.send': 'Email transport send',
 	'webhook.publish': 'Webhook event publish',
 	'worker.enqueue': 'Sandboxed job enqueue',

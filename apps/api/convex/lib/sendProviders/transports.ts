@@ -27,13 +27,19 @@
  * configured" — silently borrowing another transport's credentials would be
  * both a routing and a security regression.
  *
- * Named instances are a CORE-KIND feature. A plugin-contributed kind's
- * configuration is resolved by the plugin host from the plugin's own declared
- * deployment-wide environment, which the `__<INSTANCEKEY>` suffix does not
- * reach; a named instance of such a kind would therefore resolve and then send
- * with the DEFAULT plugin instance's credentials. That is exactly the silent
- * credential borrow this module promises cannot happen, so it is rejected with
- * `instances_unsupported` instead.
+ * Named instances follow the CONFIGURATION, not the tier (the seams plan's D4 —
+ * "two relay tiers, one contract"). A kind can have them when it declares
+ * variables that are its own and instance-scoped: for a core kind that is every
+ * variable it declares, resolved inside the adapter through `transportEnv.ts`;
+ * for a plugin kind it is `instanceEnvVars`, which the host resolves under the
+ * same `__<INSTANCEKEY>` suffix and hands to the plugin's module.
+ *
+ * A plugin transport that declares NO configuration of its own is still refused
+ * `instances_unsupported`, and for the original reason: its module reads the
+ * plugin's deployment-wide environment, which no suffix reaches, so a named
+ * instance would resolve and then send with the DEFAULT instance's credentials.
+ * That is exactly the silent credential borrow this module promises cannot
+ * happen.
  *
  * Isolate-safe: no `'use node'` dependencies, so the routing/read seams can
  * import it.
@@ -80,6 +86,17 @@ const MAX_TRANSPORT_ID_LENGTH =
 	SEND_TRANSPORT_INSTANCE_SEPARATOR.length +
 	MAX_INSTANCE_KEY_LENGTH;
 
+/**
+ * ONE RESOLVED INSTANCE — its identity, its label and the names that configure
+ * it. Deliberately NOT the kind's whole catalog entry: a record carries only
+ * what is INSTANCE-SPECIFIC, and anything a reader wants about the kind itself
+ * is one `sendProviderCatalogEntry(record.kind)` away.
+ *
+ * The retry schedule is the worked example. It used to be copied onto every
+ * record and read by nobody: the dispatch loop drives retries off the resolved
+ * MODULE's `retryDelays`, which is the catalog entry's own array in both tiers.
+ * A second copy here could only ever have disagreed with it.
+ */
 export interface SendTransportRecord {
 	readonly id: SendTransportId;
 	/** The provider kind this transport is an instance of. */
@@ -87,8 +104,13 @@ export interface SendTransportRecord {
 	/** `null` for the deployment-default instance (unsuffixed variables). */
 	readonly instanceKey: string | null;
 	readonly label: string;
-	readonly retryDelays: readonly number[];
-	/** Instance-resolved names of the variables this transport's config lives in. */
+	/**
+	 * The names whose presence makes THIS instance configured, resolved for it.
+	 *
+	 * Instance-scoped variables carry the `__<INSTANCEKEY>` suffix; a plugin
+	 * entry's deployment-wide flag variables do not, because a flag gates whether
+	 * the PLUGIN may run at all and no suffix reaches it (see `buildRecord`).
+	 */
 	readonly requiredEnvVars: readonly string[];
 	readonly pluginId?: PluginId;
 }
@@ -100,7 +122,7 @@ export type SendTransportResolutionReason =
 	| 'unknown_kind'
 	/** A named instance that `SEND_TRANSPORT_INSTANCES` does not declare. */
 	| 'unregistered_instance'
-	/** A named instance of a kind that cannot have instances (a plugin kind). */
+	/** A named instance of a kind with no instance-scoped configuration of its own. */
 	| 'instances_unsupported'
 	/** A declared instance whose configuration has been removed. */
 	| 'revoked';
@@ -216,6 +238,30 @@ function declaredInstances(): readonly SendTransportInstanceDeclaration[] {
 	return cachedDeclarations;
 }
 
+/**
+ * ONLY AN INSTANCE-SCOPED NAME TAKES THE SUFFIX.
+ *
+ * A core entry declares nothing else — every variable it has is its own, read
+ * inside the adapter through `transportEnv.ts` — so `instanceEnvVars` is absent
+ * and the whole list is suffixed, exactly as before. A plugin entry's presence
+ * gate is the UNION of the contributing plugin's deployment-wide
+ * `flag.requiredEnvVars` and the transport's own configuration; a flag is a
+ * deployment-wide switch the host's authorization path checks unsuffixed, so
+ * demanding a `__<INSTANCEKEY>` copy of it before a named instance could resolve
+ * would make every second instance of a plugin transport permanently `revoked`.
+ */
+function instanceResolvedRequiredEnvVars(
+	entry: SendProviderCatalogEntry,
+	instanceKey: string | null
+): readonly string[] {
+	const instanceEnvVars = entry.instanceEnvVars;
+	return entry.requiredEnvVars.map((name) =>
+		instanceEnvVars === undefined || instanceEnvVars.includes(name)
+			? sendTransportEnvName(name, instanceKey)
+			: name
+	);
+}
+
 function buildRecord(
 	entry: SendProviderCatalogEntry,
 	instanceKey: string | null
@@ -228,10 +274,7 @@ function buildRecord(
 		kind: entry.kind,
 		instanceKey,
 		label: instanceKey === null ? entry.label : `${entry.label} (${instanceKey})`,
-		retryDelays: entry.retryDelays,
-		requiredEnvVars: Object.freeze(
-			entry.requiredEnvVars.map((name) => sendTransportEnvName(name, instanceKey))
-		),
+		requiredEnvVars: Object.freeze(instanceResolvedRequiredEnvVars(entry, instanceKey)),
 		...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
 	});
 }
@@ -252,9 +295,30 @@ function isNamedInstanceConfigured(record: SendTransportRecord): boolean {
 	return record.requiredEnvVars.every((name) => isEnvPresent(name));
 }
 
-/** Whether a kind supports named instances at all (see the module docblock). */
+/**
+ * Whether a kind supports named instances at all (see the module docblock).
+ *
+ * A CAPABILITY QUESTION, not a tier one: the answer is "does this kind have
+ * configuration of its own that an instance suffix reaches?". Core kinds always
+ * do. A plugin kind does exactly when it declared a REQUIRED instance-scoped
+ * variable, which is also what the host resolves and hands to its module — so a
+ * kind that can be addressed per instance is, by construction, a kind that is
+ * SENT per instance.
+ *
+ * REQUIRED, not merely declared, so that this answer and
+ * {@link isNamedInstanceConfigured} can never disagree. That one fails closed on
+ * an empty requirement list, so a kind admitted here on optional variables alone
+ * would report every named instance `revoked` — a reason that names a
+ * configuration this deployment removed, for an instance that was never
+ * resolvable in the first place. The manifest validator refuses an optional-only
+ * declaration and the codegen withholds `instanceEnvVars` from one, so this is
+ * the third statement of the same rule and the one that holds for an artifact no
+ * validator saw.
+ */
 function supportsNamedInstances(entry: SendProviderCatalogEntry): boolean {
-	return entry.pluginId === undefined;
+	if (entry.pluginId === undefined) return true;
+	const instanceEnvVars = entry.instanceEnvVars ?? [];
+	return entry.requiredEnvVars.some((name) => instanceEnvVars.includes(name));
 }
 
 /**

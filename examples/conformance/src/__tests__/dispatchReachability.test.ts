@@ -9,8 +9,9 @@
  * legitimate; silently mixing them is not, because the docs, the ADRs and the
  * reference READMEs all describe buckets as working effects.
  *
- * This suite binds the class to the repository. For each bucket it names the ONE
- * symbol a host path has to reach for the bucket to run, and then asserts:
+ * This suite binds the class to the repository. For each MODULE EXPORT a bucket
+ * carries it names the ONE symbol a host path has to reach for that export to
+ * run, and then asserts:
  *
  *   - `'wired'`    — at least one non-test, non-generated production module
  *                    outside the symbol's own definition references it;
@@ -19,15 +20,25 @@
  * So wiring a declared bucket fails here until its row moves to `'wired'`, and
  * deleting the last consumer of a wired bucket fails here too. Every bucket must
  * have a row: a new bucket with no entry fails the coverage case below.
+ *
+ * MOST buckets carry exactly one executable module, so the seam key is the
+ * bucket name. A bucket that carries MORE — today only `sendTransports`, whose
+ * contributions may declare a feedback `webhook` (D6/P2.2) and a sending-domain
+ * `domainIdentity` (D5/P3.2) — declares each in the kernel's `moduleExports` and
+ * gets its own seam entry keyed `<bucket>.<role>`. Their reachability is a
+ * genuinely separate question per half: the send half can be wired while the
+ * feedback half is a contract nothing dispatches, and a per-bucket answer would
+ * hide exactly that.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
+	PLUGIN_CONTRIBUTION_MODULE_EXPORTS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
-	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
+	pluginContributionModules,
+	type PluginManifest,
 } from '@owlat/plugin-kit';
 import { REPOSITORY_ROOT } from '../repository';
 
@@ -45,6 +56,18 @@ const SEAMS: Readonly<Record<string, DispatchSeam>> = Object.freeze({
 		symbol: 'BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES',
 		definedIn: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
 		because: 'the send dispatch registry must adapt plugin transports to SendProviderModule',
+	},
+	'sendTransports.webhook': {
+		symbol: 'BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES',
+		definedIn: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
+		because:
+			'the /webhooks/plugin/<pluginId> route must resolve the plugin’s parse half to dispatch its feedback',
+	},
+	'sendTransports.domainIdentity': {
+		symbol: 'BUNDLED_PLUGIN_SEND_TRANSPORT_DOMAIN_IDENTITY_MODULES',
+		definedIn: 'apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts',
+		because:
+			'the relay-identity action must resolve the plugin’s provider calls to register and re-check a sending domain',
 	},
 	agentSteps: {
 		symbol: 'BUNDLED_PLUGIN_AGENT_STEP_MODULES',
@@ -149,14 +172,90 @@ function consumersOf(seam: DispatchSeam): readonly string[] {
 	);
 }
 
+/** The seam key for one module export: the bucket, or `<bucket>.<role>`. */
+function seamKey(moduleExport: (typeof PLUGIN_CONTRIBUTION_MODULE_EXPORTS)[number]): string {
+	return moduleExport.role === 'module'
+		? moduleExport.bucket
+		: `${moduleExport.bucket}.${moduleExport.role}`;
+}
+
+const DISPATCHED = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter(
+	(moduleExport) => moduleExport.dispatch === 'wired'
+);
+const UNDISPATCHED = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter(
+	(moduleExport) => moduleExport.dispatch === 'declared'
+);
+
+/**
+ * A manifest that carries every executable half the platform knows about: one
+ * contribution per capability-enforced bucket, each with its own `module`, plus
+ * every NESTED module descriptor a contribution may declare — today only the
+ * send transport's feedback `webhook`.
+ *
+ * Hand-maintained on purpose, and the one hand-maintained thing the case below
+ * needs: `pluginContributionModules` walks nested fields structurally, so it
+ * would happily discover a second half nobody declared in the kernel's table.
+ * Adding one to the manifest types therefore means adding it here, where the
+ * assertion turns it into a required table row.
+ */
+const MAXIMAL_NESTED_MODULES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+	sendTransports: ['domainIdentity', 'webhook'],
+});
+
+function maximalManifest(): PluginManifest {
+	const contributes: Record<string, unknown[]> = {};
+	for (const bucket of PLUGIN_LIVE_CONTRIBUTION_KINDS) {
+		const nested = MAXIMAL_NESTED_MODULES[bucket] ?? [];
+		contributes[bucket] = [
+			{
+				id: 'fixture',
+				module: { exportPath: `./${bucket}` },
+				...Object.fromEntries(
+					nested.map((field) => [field, { module: { exportPath: `./${bucket}-${field}` } }])
+				),
+			},
+		];
+	}
+	// Cast rather than validated: this fixture is deliberately WIDER than any
+	// manifest a real plugin could ship (every bucket at once, capabilities it
+	// does not hold), and `pluginContributionModules` is a structural walk that
+	// runs before validation anyway — which is exactly why its output needs a
+	// declaration to be checked against.
+	return {
+		id: 'fixture',
+		version: '1.0.0',
+		capabilities: [],
+		contributes,
+	} as unknown as PluginManifest;
+}
+
 describe('contribution dispatch reachability', () => {
-	it('names a dispatch seam for every capability-enforced bucket', () => {
-		expect([...PLUGIN_LIVE_CONTRIBUTION_KINDS].sort()).toEqual(Object.keys(SEAMS).sort());
-		expect(PLUGIN_DISPATCHED_CONTRIBUTION_KINDS.length).toBeGreaterThan(0);
-		expect(PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS.length).toBeGreaterThan(0);
+	it('declares every module export the composition walker can find', () => {
+		// The other direction of the same honesty: the table above says which
+		// executable halves exist, and this asserts that a manifest carrying all of
+		// them yields exactly those (bucket, role) pairs — so a second half wired
+		// into codegen and a host path, but never given a row, has nowhere to hide.
+		const found = pluginContributionModules(maximalManifest()).map(
+			(reference) => `${reference.bucket}.${reference.role ?? 'module'}`
+		);
+		const declared = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.map(
+			(moduleExport) => `${moduleExport.bucket}.${moduleExport.role}`
+		);
+		expect([...found].sort()).toEqual([...declared].sort());
+	});
+
+	it('names a dispatch seam for every capability-enforced module export', () => {
+		expect(PLUGIN_CONTRIBUTION_MODULE_EXPORTS.map(seamKey).sort()).toEqual(
+			Object.keys(SEAMS).sort()
+		);
+		expect(DISPATCHED.length).toBeGreaterThan(0);
+		expect(UNDISPATCHED.length).toBeGreaterThan(0);
+		// A second module export on a bucket is the case this file grew for: assert
+		// one exists, so a refactor that collapsed the table back to one-per-bucket
+		// fails here rather than quietly stopping asking the question.
 		expect(
-			[...PLUGIN_DISPATCHED_CONTRIBUTION_KINDS, ...PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS].sort()
-		).toEqual([...PLUGIN_LIVE_CONTRIBUTION_KINDS].sort());
+			PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter((entry) => entry.role !== 'module').length
+		).toBeGreaterThan(0);
 	});
 
 	it('finds a real host tree to search, and every seam still exists', async () => {
@@ -167,24 +266,26 @@ describe('contribution dispatch reachability', () => {
 		}
 	});
 
-	for (const bucket of PLUGIN_DISPATCHED_CONTRIBUTION_KINDS) {
-		it(`${bucket} is reachable from a production host path`, () => {
-			const seam = SEAMS[bucket]!;
+	for (const moduleExport of DISPATCHED) {
+		const key = seamKey(moduleExport);
+		it(`${key} is reachable from a production host path`, () => {
+			const seam = SEAMS[key]!;
 			const consumers = consumersOf(seam);
 			expect(
 				consumers.length,
-				`${bucket} is declared 'wired' but nothing references ${seam.symbol} — ${seam.because}`
+				`${key} is declared 'wired' but nothing references ${seam.symbol} — ${seam.because}`
 			).toBeGreaterThan(0);
 		});
 	}
 
-	for (const bucket of PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS) {
-		it(`${bucket} is honestly declared as not dispatched`, () => {
-			const seam = SEAMS[bucket]!;
+	for (const moduleExport of UNDISPATCHED) {
+		const key = seamKey(moduleExport);
+		it(`${key} is honestly declared as not dispatched`, () => {
+			const seam = SEAMS[key]!;
 			const consumers = consumersOf(seam);
 			expect(
 				consumers,
-				`${bucket} now has a consumer (${consumers.join(', ')}): move its row in CONTRIBUTION_CAPABILITY_REQUIREMENTS to dispatch: 'wired' and update the contribution reference`
+				`${key} now has a consumer (${consumers.join(', ')}): move its row in CONTRIBUTION_CAPABILITY_REQUIREMENTS to dispatch: 'wired' and update the contribution reference`
 			).toEqual([]);
 		});
 	}

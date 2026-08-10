@@ -7,7 +7,8 @@
 
 import type Redis from 'ioredis';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import type { DestinationProviderKey, MetricOutcome } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { MetricOutcome } from '../types.js';
 import { classifyIsp } from '../queue/groups.js';
 
 // Redis metric keys
@@ -173,7 +174,14 @@ export async function record(
 	pool: string,
 	outcome: MetricOutcome,
 	durationMs?: number,
-	providerKey?: string
+	// The ISP axis is a taxonomy key on BOTH ends or it is nothing: `getIspMetrics`
+	// reads by `DestinationProviderKey` and the reputation snapshot enumerates
+	// `DESTINATION_PROVIDER_KEYS`. Typed as `string` this used to accept the
+	// adjacent `throttleKey` — a raw recipient domain for operators outside the
+	// taxonomy — which compiles clean, writes a `mta:isp-metrics:<domain>:<date>`
+	// row nothing ever enumerates, and gives the Prometheus `isp` label unbounded
+	// cardinality.
+	providerKey?: DestinationProviderKey
 ): Promise<void> {
 	const isp = providerKey ?? classifyIsp(domain);
 	const today = new Date().toISOString().split('T')[0]!;

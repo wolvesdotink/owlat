@@ -812,11 +812,13 @@ describe('featureFlags — getSendPathRequiredEnv', () => {
 		}
 	});
 
-	it('isDeliveryProviderKind recognizes only mta|resend|ses|smtp', () => {
-		expect(isDeliveryProviderKind('mta')).toBe(true);
-		expect(isDeliveryProviderKind('resend')).toBe(true);
-		expect(isDeliveryProviderKind('ses')).toBe(true);
-		expect(isDeliveryProviderKind('smtp')).toBe(true);
+	// Hand-listing the kinds here made the title a claim about a list nobody
+	// updates: `emailit` and `mandrill` joined the catalog and this test kept
+	// passing while still saying "only mta|resend|ses|smtp". Read the catalog.
+	it('isDeliveryProviderKind recognizes exactly the declared catalog kinds', () => {
+		for (const kind of DELIVERY_PROVIDER_KINDS) {
+			expect(isDeliveryProviderKind(kind)).toBe(true);
+		}
 		expect(isDeliveryProviderKind('sendgrid')).toBe(false);
 		expect(isDeliveryProviderKind(undefined)).toBe(false);
 	});

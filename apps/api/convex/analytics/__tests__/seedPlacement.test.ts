@@ -12,6 +12,7 @@ import {
 	SEED_PROBE_HEADER,
 	type SeedPlacement,
 } from '@owlat/shared/seedPlacement';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 /**
  * (a) Folder classification across fixture mailboxes: INBOX, Spam, Junk, a
@@ -65,7 +66,7 @@ describe('classifySeedFolder — the four outcomes', () => {
 
 describe('classifySeedFolder — provider-specific folder naming', () => {
 	const cases: {
-		provider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+		provider: DestinationProviderKey;
 		folder: string;
 		placement: SeedPlacement;
 	}[] = [

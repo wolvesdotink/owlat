@@ -3,6 +3,7 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from './providers';
 import { sesProvider } from './providers/ses';
 import { mergeSpfRecords } from './spf';
 import type { DnsRecords } from './domains';
@@ -32,7 +33,8 @@ export const provision = internalAction({
 	args: { domainId: v.id('domains') },
 	handler: async (ctx, args) => {
 		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, args);
-		if (!domain || domain.providerType !== 'mta') return { provisioned: false };
+		if (!domain || domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND)
+			return { provisioned: false };
 		const { dnsRecords: sesDnsRecords, identity } = await sesProvider.registerDomain(
 			domain.domain,
 			{

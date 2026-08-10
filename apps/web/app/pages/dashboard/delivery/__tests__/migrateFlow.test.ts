@@ -25,7 +25,7 @@ const stubs = {
 		props: ['catalog', 'routes', 'isApplied', 'isBlocked', 'blockedReason'],
 		template: '<div data-testid="preset-step-stub" :data-blocked="String(isBlocked)" />',
 	},
-	DeliveryMandrillDomainStatus: { template: '<div data-testid="domain-status-stub" />' },
+	DeliveryRelayDomainStatus: { template: '<div data-testid="domain-status-stub" />' },
 };
 
 interface Identity {

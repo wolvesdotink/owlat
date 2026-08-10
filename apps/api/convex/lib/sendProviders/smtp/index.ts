@@ -41,8 +41,8 @@ import {
 	type SendProviderModule,
 	type SmtpExtras,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import type { SendTransportRecord } from '../transports';
-import { RETRY_DELAYS_MS } from '../../constants';
 import { getClientConfig, type RelayClientConfig } from './config';
 import { resolveRelayEnvelopeSender } from './returnPath';
 
@@ -310,7 +310,7 @@ export async function sendViaRelay(
 
 export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	kind: 'smtp',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('smtp').retryDelays,
 
 	/**
 	 * Relay arm (plan G-08): stamp OUR VERP envelope sender at the return-path

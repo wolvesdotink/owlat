@@ -14,6 +14,8 @@
  * no snippet at all.
  */
 
+import { coreSendProviderCatalogEntry } from '@owlat/shared/sendProviderCatalog';
+
 /**
  * Build a `.env` skeleton (one `NAME=` line per missing variable, empty values)
  * from a list of missing env var names. Returns `''` when nothing is missing so
@@ -31,4 +33,34 @@ export function buildDeliveryEnvSnippet(missingVarNames: readonly string[]): str
 		lines.push(`${name}=`);
 	}
 	return lines.join('\n');
+}
+
+/**
+ * The same skeleton, ORDERED BY THE CATALOG ENTRY (the seams plan's D1/D5):
+ * the active kind's `requiredEnvVars`, in the order it declares them, filtered
+ * to the ones the status query reports missing.
+ *
+ * The two lists are the same fact reached two ways — the backend's
+ * `requiredEnv` is itself derived from the entry — so ordering by the entry
+ * changes nothing today and keeps the operator's remedy in the order the
+ * provider's own documentation and the `.env.example` list them, rather than in
+ * whatever order a query happened to answer in.
+ *
+ * ANY REPORTED NAME THE ENTRY DOES NOT DECLARE IS STILL EMITTED, after the
+ * declared ones. That is deliberately the fail-OPEN direction, and it is the
+ * right one here: this is a remedy list, and dropping a variable the deployment
+ * genuinely needs would leave an operator pasting a block that still cannot
+ * send, with nothing on the page saying what is missing. An unknown kind — a
+ * transport this build does not carry — falls back to the reported list whole,
+ * for the same reason.
+ */
+export function buildProviderEnvSkeleton(
+	kind: string | null | undefined,
+	missingVarNames: readonly string[]
+): string {
+	const declared = coreSendProviderCatalogEntry(kind ?? undefined)?.requiredEnvVars ?? [];
+	const missing = new Set(missingVarNames.map((name) => name.trim()).filter((name) => name !== ''));
+	const ordered = declared.filter((name) => missing.has(name));
+	const undeclared = [...missing].filter((name) => !declared.includes(name));
+	return buildDeliveryEnvSnippet([...ordered, ...undeclared]);
 }

@@ -16,6 +16,7 @@ import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 import { dispatchGovernedEmail } from './governedDispatch';
+import { armForTransport } from './sendAssignments';
 import {
 	envelopeInputValidator,
 	isSeedShadowEnvelope,
@@ -462,7 +463,12 @@ export const sendSingleEmail = internalAction({
 			await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
 				organizationId: envelopeInput.organizationId,
 				probeRef: envelopeInput.seedProbeRef,
-				transportArm: dispatchResult.providerType === 'mta' ? 'own' : 'reference',
+				// ONE arm split, not a second copy of it. The measurement plane is
+				// keyed by arm, so a probe filed under a different rule than the
+				// assignment rows use would compare two populations; `armForTransport`
+				// is the same function `sendAssignments` records with, reading D3's
+				// single own-arm declaration.
+				transportArm: armForTransport(dispatchResult.providerType),
 				now: Date.now(),
 			});
 		}

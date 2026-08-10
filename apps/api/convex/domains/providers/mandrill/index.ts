@@ -3,7 +3,7 @@
  *
  * Owns the Mandrill-side surface of one **Sending domain** — the provider API
  * calls (`registerDomain`, `runProviderCheck`) and the rows this kind keeps in
- * the GENERIC `sendingDomainRelayIdentities` table (plan D7: the per-provider
+ * the GENERIC `sendingDomainRelayIdentities` table (Mandrill plan D7: the per-provider
  * sibling pattern stopped at `sendingDomainMtaIdentities` /
  * `sendingDomainSesIdentities`, and Mandrill is the first kind after it).
  *
@@ -21,19 +21,27 @@
  *    (`senders/*` is add / check / verify / list), so `deleteFromProvider` is a
  *    documented no-op rather than a best-effort call that would always fail.
  *
- * Per ADR-0018, extended by plan D6/D7.
+ * Per ADR-0018, extended by Mandrill plan D6/D7 (plan numbers in this folder
+ * are the Mandrill plan's — qualified in `../index.ts`).
  */
 
+import { internal } from '../../../_generated/api';
 import { logError } from '../../../lib/runtimeLog';
 import { getSingletonOrganizationId } from '../../../lib/sessionOrganization';
+import { relayIdentityProvisioningIsSettled } from '../relayIdentityPersistence';
 import { addSenderDomain, checkSenderDomain } from './api';
 import { buildMandrillIdentity, describeMandrillIdentity } from './identity';
 import { loadMandrillRow, resolveDomainName, upsertMandrillIdentity } from './persistence';
 import { buildMandrillDnsRecords } from './records';
+import { mandrillRelayIdentityFacts } from './relayIdentityView';
 import { mandrillReferenceArm, mandrillRelayDomainVerified } from './relayVerification';
-import type { ProviderCheckResult, SendingDomainProviderModule } from '../types';
+import type { ProviderCheckResult, RelayProvingProviderModule } from '../types';
 
-export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
+// `RelayProvingProviderModule`, not the plain module type: the catalog declares
+// `domainVerification: 'api'` for this kind, and that promise is only worth
+// something if the three relay seams below are REQUIRED here (see the type's
+// own comment, and `../index.ts`'s `_relayProofTypecheck`).
+export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	kind: 'mandrill',
 
 	/**
@@ -98,11 +106,57 @@ export const mandrillProvider: SendingDomainProviderModule<'mandrill'> = {
 		return { verified: false, lastError: `Mandrill check error: ${result.error}` };
 	},
 
-	// The relay-verification read seam (D6) and the alignment pre-flight's
-	// second arm (P3.1) — both pure reads of the identity row; see
+	// The relay-verification read seam (Mandrill D6) and the alignment pre-flight's
+	// second arm (Mandrill P3.1) — both pure reads of the identity row; see
 	// `./relayVerification.ts`.
 	relayDomainVerified: mandrillRelayDomainVerified,
 	describeReferenceArm: mandrillReferenceArm,
+
+	// The operator surface's arm: the shared row plus the two things only this
+	// adapter knows — the derived record set and the ownership ceremony (see
+	// `./relayIdentityView.ts`).
+	describeRelayIdentity: mandrillRelayIdentityFacts,
+
+	/**
+	 * The relay-identity backfill for the domains that predate the fallback
+	 * being switched to Mandrill. The existence read is on the GENERIC
+	 * `sendingDomainRelayIdentities` row (Mandrill D7) rather than on a sibling table of
+	 * its own, which is the only thing that differs from the SES adapter's
+	 * implementation of the same contract.
+	 *
+	 * The caller hands over the whole domain doc, so the name this table keys on
+	 * is read straight off it — no `resolveDomainName` round-trip per drained
+	 * domain, and no "the row vanished" branch to reason about.
+	 *
+	 * WHEN to schedule is not a fact about Mandrill. `reprovision`, the existence
+	 * read, and the lowercasing that read needs (nothing in the schema forces a
+	 * `domains` row's name lowercase, and every row in this table is keyed on the
+	 * lowercased one) are one rule about the SHARED row, so it is asked of
+	 * {@link relayIdentityProvisioningIsSettled} — where it is argued in full and
+	 * where the bundled plugin tier asks exactly the same question. Repeating is
+	 * safe: `mandrillRelay.provision` re-registers and `storeIdentity` upserts.
+	 */
+	async ensureRelayIdentity(ctx, domain, options) {
+		if (await relayIdentityProvisioningIsSettled(ctx, 'mandrill', domain.domain, options)) return;
+		await ctx.scheduler.runAfter(0, internal.domains.mandrillRelay.provision, {
+			domainId: domain._id,
+		});
+	},
+
+	/**
+	 * The due-check sweep's dispatch arm for this kind — re-ask Mandrill about one
+	 * domain whose row `by_next_check_due` says is due.
+	 *
+	 * Registered rather than branched on: the sweep walks a table shared by every
+	 * relay kind after SES, and it asks the registry which action to schedule. That
+	 * is what stops the second kind to want the sweep (the bundled plugin tier)
+	 * from being a second `providerKind === '…'` line in it.
+	 */
+	async scheduleRelayIdentityRefresh(ctx, delayMs, domainName) {
+		await ctx.scheduler.runAfter(delayMs, internal.domains.mandrillRelay.refreshIdentity, {
+			domain: domainName,
+		});
+	},
 
 	/**
 	 * Persist the identity the lifecycle just registered. The `domainId` is

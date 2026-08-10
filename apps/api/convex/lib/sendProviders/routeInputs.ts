@@ -112,6 +112,15 @@ export async function readySendProviderKinds(
  * sends elsewhere. That is a slightly stale measurement row, which is the same
  * trade already accepted there for `providerHealth`. A stale row is cheap; a
  * failed enqueue transaction is not.
+ *
+ * THE OMISSION IS ONLY THE MUTABLE GRANT, and it has to stay that way. The
+ * plugin's `flag.requiredEnvVars` is env-only, so a plugin entry's
+ * `requiredEnvVars` carries it (the codegen renders the UNION of the flag's
+ * variables and the transport's own) and `providerKindConfigured` therefore
+ * answers `false` for a transport inside a plugin this deployment never enabled.
+ * Without that, the mis-assignment above would be PERMANENT rather than
+ * transient — the dispatch path refuses an unflagged plugin on every send — and
+ * "slightly stale" would stop being an honest description.
  */
 export function configuredSendProviderKinds(
 	routeConfig: Doc<'providerRoutes'> | null

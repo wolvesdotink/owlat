@@ -1,3 +1,4 @@
+import { isOwnSendProviderKind } from '@owlat/shared';
 import type { ProviderRouteStrategy } from './providerRouteOptions';
 
 export interface TransportCatalogOption {
@@ -113,7 +114,9 @@ export function routeProvidersForWrite(
 export function eligibleFallbackRelays(
 	providers: readonly RouteProviderEntry[]
 ): RouteProviderEntry[] {
-	return providers.filter((provider) => provider.isEnabled && provider.providerType !== 'mta');
+	return providers.filter(
+		(provider) => provider.isEnabled && !isOwnSendProviderKind(provider.providerType)
+	);
 }
 
 /**
@@ -130,13 +133,13 @@ export function fallbackRelayIssue(
 	providers: readonly RouteProviderEntry[],
 	relayProviderType: string
 ): string | null {
-	if (relayProviderType === '' || relayProviderType === 'mta') {
+	if (relayProviderType === '' || isOwnSendProviderKind(relayProviderType)) {
 		return 'Deliverability fallback relay must be a configured non-MTA transport';
 	}
 	if (!eligibleFallbackRelays(providers).some((p) => p.providerType === relayProviderType)) {
 		return 'Deliverability fallback relay must be enabled in this route';
 	}
-	if (!providers.some((p) => p.isEnabled && p.providerType === 'mta')) {
+	if (!providers.some((p) => p.isEnabled && isOwnSendProviderKind(p.providerType))) {
 		return 'Deliverability fallback requires an enabled owned-MTA route';
 	}
 	return null;

@@ -17,8 +17,7 @@ const router = useRouter();
 const { env, flags, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
 
-// Seed the local draft from any previously-entered values so going Back and
-// returning doesn't wipe the operator's input.
+// Seed from prior values so navigating back does not wipe operator input.
 const initialProvider = (env.value['EMAIL_PROVIDER'] as ProviderChoice | undefined) ?? null;
 const provider = ref<ProviderChoice>(initialProvider ?? (requiresProvider.value ? 'mta' : 'none'));
 const mtaProfileEnabled = computed(() =>
@@ -29,6 +28,7 @@ const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
 const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
 const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
 const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
+const emailitKey = ref(env.value['EMAILIT_API_KEY'] ?? '');
 const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
 const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
 const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
@@ -36,8 +36,7 @@ const sesSecret = ref(env.value['AWS_SES_SECRET_ACCESS_KEY'] ?? '');
 const fromEmail = ref(env.value['DEFAULT_FROM_EMAIL'] ?? '');
 const fromName = ref(env.value['DEFAULT_FROM_NAME'] ?? '');
 
-// SMTP relay — seed the preset from a matching known host so returning to the
-// step restores what the operator chose, else fall back to Custom.
+// Restore a matching relay preset, otherwise fall back to Custom.
 const initialSmtpHost = env.value['SMTP_RELAY_HOST'] ?? '';
 const initialSmtpPreset: SmtpPreset = (() => {
 	if (!initialSmtpHost) return 'mailgun';
@@ -62,7 +61,6 @@ const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map(
 	label: SMTP_RELAY_PRESETS[key].label,
 }));
 
-// Choosing a named preset prefills host/port/TLS; Custom leaves them editable.
 watch(smtpPreset, (preset) => {
 	if (preset === 'custom') return;
 	const cfg = SMTP_RELAY_PRESETS[preset];
@@ -79,6 +77,7 @@ const draft = computed<EmailStepDraft>(() => ({
 	provider: provider.value,
 	requiresProvider: requiresProvider.value,
 	resendKey: resendKey.value,
+	emailitKey: emailitKey.value,
 	mandrillKey: mandrillKey.value,
 	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
 	smtp: {
@@ -100,14 +99,13 @@ const draft = computed<EmailStepDraft>(() => ({
 	fromName: fromName.value,
 }));
 
-// Inline field errors only surface after an advance attempt (or, for the
-// optional From address, once the user has typed something into it).
+// Inline field errors surface after an advance attempt.
 const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 // A live provider check (Resend / SMTP) calls a privileged setup endpoint, which
 // requires the one-time setup token echoed in the X-Setup-Token header.
-const needsLiveCheck = computed(() => provider.value === 'resend' || provider.value === 'smtp');
+const needsLiveCheck = computed(() => ['resend', 'emailit', 'smtp'].includes(provider.value));
 
 const providerOptions = computed(() => {
 	const base: { value: ProviderChoice; label: string; hint: string; icon: string }[] = [
@@ -140,6 +138,12 @@ const providerOptions = computed(() => {
 			label: 'Mailchimp Transactional (Mandrill)',
 			hint: 'Coming from Mailchimp? Keep the sending reputation you already have, then move onto your own MTA at your own pace.',
 			icon: 'lucide:shuffle',
+		},
+		{
+			value: 'emailit',
+			label: 'Emailit',
+			hint: 'Managed email API with signed delivery feedback and idempotent sends.',
+			icon: 'lucide:send',
 		},
 	];
 	if (!requiresProvider.value) {
@@ -177,6 +181,17 @@ async function next() {
 				method: 'POST',
 				headers: setupHeaders,
 				body: { provider: 'resend', apiKey: resendKey.value },
+			});
+			if (!res.ok) {
+				generalError.value = res.message;
+				return;
+			}
+		}
+		if (provider.value === 'emailit') {
+			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+				method: 'POST',
+				headers: setupHeaders,
+				body: { provider: 'emailit', apiKey: emailitKey.value },
 			});
 			if (!res.ok) {
 				generalError.value = res.message;
@@ -303,6 +318,17 @@ async function next() {
 							placeholder="re_..."
 							autocomplete="off"
 							:error="showErrors ? errors.resendKey : undefined"
+						/>
+					</div>
+
+					<div v-if="provider === 'emailit'" class="mt-5">
+						<UiInput
+							v-model="emailitKey"
+							type="password"
+							label="Emailit API key"
+							placeholder="em_..."
+							autocomplete="off"
+							:error="showErrors ? errors.emailitKey : undefined"
 						/>
 					</div>
 

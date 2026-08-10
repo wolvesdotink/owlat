@@ -93,6 +93,43 @@ export function validateDescriptorSafeArray(
 	return items;
 }
 
+interface FormattedStringArrayOptions {
+	readonly path: string;
+	readonly format: RegExp;
+	readonly formatMessage: string;
+	readonly duplicateLabel: string;
+}
+
+export function validateUniqueFormattedStringArray(
+	value: unknown,
+	issues: PluginManifestIssue[],
+	options: FormattedStringArrayOptions
+): readonly DataProperty[] | undefined {
+	const items = validateDescriptorSafeArray(value, options.path, issues);
+	if (!items) return undefined;
+
+	const seen = new Set<string>();
+	for (const [index, item] of items.entries()) {
+		if (item.kind !== 'value') continue;
+		const path = `${options.path}[${index}]`;
+		if (typeof item.value !== 'string') {
+			addManifestIssue(issues, 'invalid_type', path, 'must be a string');
+		} else if (!options.format.test(item.value)) {
+			addManifestIssue(issues, 'invalid_format', path, options.formatMessage);
+		} else if (seen.has(item.value)) {
+			addManifestIssue(
+				issues,
+				'duplicate',
+				path,
+				`duplicates ${options.duplicateLabel} ${item.value}`
+			);
+		} else {
+			seen.add(item.value);
+		}
+	}
+	return items;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
 	const prototype = Object.getPrototypeOf(value);

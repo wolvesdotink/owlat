@@ -24,6 +24,7 @@ import { modules } from './testModules';
 import { assessCampaignCapacity } from '../campaigns/capacityPreflight';
 import { buildCapacitySchedule } from '../campaigns/capacityPlan';
 import { PACE_AIMD } from '../delivery/ramp/paceConfig';
+import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import { createTestContact, createTestTopic } from './factories';
 import {
 	MIDNIGHT,
@@ -47,10 +48,16 @@ const AUDIENCE_SIZE = 600;
 
 useMtaPreflightEnv();
 
-/** A retreated dial on every campaign cell — the half that reaches production. */
+/**
+ * A retreated dial on every campaign cell — the half that reaches production.
+ *
+ * Iterates the WHOLE taxonomy (D8), not a copy of it: a sixth destination
+ * provider has to be seeded and asserted here too, rather than leaving its
+ * preflight path silently unexercised while the suite stays green.
+ */
 async function seedRetreatedDial(t: TestRunner): Promise<void> {
 	await t.run(async (ctx) => {
-		for (const destinationProvider of ['gmail', 'microsoft', 'yahoo', 'apple', 'other'] as const) {
+		for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
 			await ctx.db.insert('deliverabilityRouteStates', {
 				organizationId: ORG,
 				destinationProvider,

@@ -2,33 +2,133 @@ import { describe, it, expect } from 'vitest';
 import {
 	providerFor,
 	isSendProviderKind,
-	SEND_PROVIDERS,
 	EmailErrorCode,
 	isRetryableErrorCode,
 	type SendProviderKind,
 } from '../index';
+import {
+	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+	OWN_SEND_PROVIDER_KIND,
+	isOwnSendProviderKind,
+} from '@owlat/shared';
 import { SEND_PROVIDER_CATALOG } from '../catalog';
+import { OWN_ARM_TRANSPORT_KIND } from '../strategies/adaptive_mix';
 
 describe('Send provider registry', () => {
-	it('providerFor returns the module for each kind', () => {
-		expect(providerFor('mta').kind).toBe('mta');
-		expect(providerFor('ses').kind).toBe('ses');
-		expect(providerFor('resend').kind).toBe('resend');
-		expect(providerFor('smtp').kind).toBe('smtp');
-		expect(providerFor('mandrill').kind).toBe('mandrill');
-	});
-
+	/**
+	 * Registry COMPLETENESS — "every catalog kind resolves to a module that names
+	 * itself", and "`SEND_PROVIDERS` has exactly the catalog's kinds" — is asserted
+	 * in `catalogConsistency.test.ts`, derived from the catalog rather than from a
+	 * five-kind literal restated here. What remains below is what this file owns:
+	 * the negative case, and the composed catalog's own values.
+	 */
 	it('providerFor throws on unknown kinds', () => {
 		expect(() => providerFor('postmark' as SendProviderKind)).toThrow(/Unknown send provider/);
 	});
 
-	it('SEND_PROVIDERS keys match the SendProviderKind union exactly', () => {
-		const keys = Object.keys(SEND_PROVIDERS).sort();
-		expect(keys).toEqual(['mandrill', 'mta', 'resend', 'ses', 'smtp']);
+	/**
+	 * The fields this pin is about — "ordering, credentials, and retry behavior",
+	 * plus the capability declarations the governed boundary reads.
+	 *
+	 * A PROJECTION rather than the whole entry since P1.1 moved the entries into
+	 * `@owlat/shared`: they also carry `tier`, `optionalEnvVars`, the D5
+	 * `credentialFields` descriptors and `setupProbe`, and restating a form
+	 * descriptor here would be a second copy of a pin that already exists in that
+	 * package's own suite (`sendProviderCatalog.test.ts`) — the exact duplication
+	 * the catalog move exists to end. What THIS file owns is the COMPOSED catalog:
+	 * that the five built-ins come first, in this order, with these values, before
+	 * any bundled plugin entry. The identity assertion below closes the gap a
+	 * projection would otherwise leave (a backend copy that drifted from the
+	 * shared declaration would still project correctly).
+	 */
+	const PINNED_FIELDS = [
+		'kind',
+		'label',
+		'retryDelays',
+		'requiredEnvVars',
+		'supportsCustomReturnPath',
+		'hasProviderFeedback',
+		'domainVerification',
+		'acceptanceSemantics',
+		'messageIdSource',
+		'deduplicatesOnIdempotencyKey',
+		'tagsFeedbackProvenance',
+	] as const;
+
+	/**
+	 * The fields deliberately left OUT of the projection — each one pinned by
+	 * `packages/shared/src/__tests__/sendProviderCatalog.test.ts` instead, where the
+	 * declaration lives.
+	 *
+	 * Named rather than implied, because a hand-written projection defaults to
+	 * "unchecked": a capability field added to the catalog after P1.1 would be in
+	 * neither the list above nor the expectations below, and this test — the one
+	 * whose name promises it pins the composed catalog's values — would stay green
+	 * with a wrong value in it. The coverage assertion under these two lists is
+	 * what inverts that default: an unclassified field fails, so pinning is what
+	 * happens unless someone deliberately excludes it here.
+	 */
+	const EXCLUDED_FIELDS = new Set([
+		'tier',
+		'optionalEnvVars',
+		'credentialFields',
+		'setupProbe',
+		// The feedback channel descriptor (route path, signing key, setup panel):
+		// pinned per kind, as literals, by the shared catalog suite — restating a
+		// route here would be the second copy that suite exists to prevent.
+		'providerFeedback',
+		// Bundled plugin entries only; the built-ins carry neither.
+		'pluginId',
+		'requiredCapability',
+	]);
+
+	function pinned(entry: (typeof SEND_PROVIDER_CATALOG)[number]): Record<string, unknown> {
+		const record = entry as unknown as Record<string, unknown>;
+		return Object.fromEntries(PINNED_FIELDS.map((field) => [field, record[field]]));
+	}
+
+	it('classifies every field a built-in entry declares as pinned or deliberately excluded', () => {
+		const classified = new Set<string>([...PINNED_FIELDS, ...EXCLUDED_FIELDS]);
+		for (const entry of SEND_PROVIDER_CATALOG.slice(0, 5)) {
+			const unclassified = Object.keys(entry).filter((key) => !classified.has(key));
+			expect(
+				unclassified,
+				`${entry.kind} declares a field this pin neither checks nor excludes — add it to ` +
+					'PINNED_FIELDS (with its value in the expectation below) or, if the shared ' +
+					'catalog suite already owns it, to EXCLUDED_FIELDS'
+			).toEqual([]);
+		}
+	});
+
+	it('reads the own arm from ONE declaration, in both packages', () => {
+		// Two names, one declaration. `OWN_ARM_TRANSPORT_KIND` is a RE-EXPORT of
+		// `OWN_SEND_PROVIDER_KIND`, which is derived from the entry declaring
+		// `tier: 'own'` — so this pair can no longer drift at all, and the type-level
+		// half (`OwnSendProviderKind`, which the compile-time guards key off) fails
+		// the build rather than a test. What is still worth asserting at run time is
+		// the OTHER end: that the own arm is the kind the backend's composed catalog
+		// actually carries, and that the capability-shaped reading agrees with the
+		// constant — a catalog whose `own` tier moved would answer differently here
+		// before it reached production, where it would mean the ramp and the UI
+		// disagree about which arm is ours.
+		expect(OWN_ARM_TRANSPORT_KIND).toBe(OWN_SEND_PROVIDER_KIND);
+		expect(SEND_PROVIDER_CATALOG.find((entry) => entry.tier === 'own')?.kind).toBe(
+			OWN_ARM_TRANSPORT_KIND
+		);
+		expect(isOwnSendProviderKind(OWN_ARM_TRANSPORT_KIND)).toBe(true);
+	});
+
+	it('composes the shared catalog entries themselves, never a copy of them', () => {
+		// The backend joins adapters to the catalog; it does not re-declare it
+		// (P1.1 / D1). Reference identity is the cheapest proof that no second
+		// literal crept back in.
+		for (const [index, entry] of CORE_SEND_PROVIDER_CATALOG_ENTRIES.entries()) {
+			expect(SEND_PROVIDER_CATALOG[index]).toBe(entry);
+		}
 	});
 
 	it('pins built-in ordering, credentials, and retry behavior before plugin entries', () => {
-		expect(SEND_PROVIDER_CATALOG.slice(0, 5)).toEqual([
+		expect(SEND_PROVIDER_CATALOG.slice(0, 5).map(pinned)).toEqual([
 			{
 				kind: 'mta',
 				label: 'Owlat MTA',
@@ -37,6 +137,18 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'yes',
 				hasProviderFeedback: true,
 				domainVerification: 'none',
+				// The two dispatch semantics the governed boundary used to spell as
+				// `providerKind === 'mta'` (plan P0.1/D2). Only the own MTA takes
+				// custody, and only its message id is one we minted ourselves.
+				acceptanceSemantics: 'accepted',
+				messageIdSource: 'idempotency-key',
+				// The dedup surface the SYSTEM/AUTH mail path asks about (P0.4). Not a
+				// derivation of the pair above: `resend` declares it true without taking
+				// custody, and every other kind declares it false.
+				deduplicatesOnIdempotencyKey: true,
+				// The one transport whose feedback carries OUR provenance tag: mail
+				// leaving our own infrastructure is VERP-attributed on the way out.
+				tagsFeedbackProvenance: true,
 			},
 			{
 				kind: 'ses',
@@ -46,6 +158,10 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
 				domainVerification: 'api',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'resend',
@@ -55,6 +171,12 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'no',
 				hasProviderFeedback: true,
 				domainVerification: 'none',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
+				// The `Idempotency-Key` header Resend threads — a dedup surface without
+				// custody, which is why this is its own field.
+				deduplicatesOnIdempotencyKey: true,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'smtp',
@@ -64,6 +186,12 @@ describe('Send provider registry', () => {
 				supportsCustomReturnPath: 'probe',
 				hasProviderFeedback: false,
 				domainVerification: 'none',
+				acceptanceSemantics: 'unknown-on-timeout',
+				// A relay assigns no id of its own — the adapter reports the
+				// `Message-ID` the composer minted.
+				messageIdSource: 'composed',
+				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 			{
 				kind: 'mandrill',
@@ -77,6 +205,10 @@ describe('Send provider registry', () => {
 				hasProviderFeedback: true,
 				// P3.1 flipped this once `domains/providers/mandrill` registered.
 				domainVerification: 'api',
+				acceptanceSemantics: 'unknown-on-timeout',
+				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
+				tagsFeedbackProvenance: false,
 			},
 		]);
 	});

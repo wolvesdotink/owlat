@@ -16,10 +16,11 @@ import {
 	type EmailSendParams,
 	type ResendExtras,
 	type SendProviderModule,
+	type SystemMailExtrasInput,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
-import { RETRY_DELAYS_MS } from '../../constants';
 const RESEND_TIMEOUT_MS = 30_000;
 
 // One client per CONFIGURED TRANSPORT, not one per deployment: two `resend`
@@ -37,7 +38,7 @@ function getResendClient(transport: SendTransportRecord): Resend {
 
 export const resendSendProvider: SendProviderModule<'resend'> = {
 	kind: 'resend',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('resend').retryDelays,
 
 	/**
 	 * Resend's one per-send knob: the stable idempotency key, forwarded as the
@@ -47,6 +48,16 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 	 */
 	buildDispatchExtras(input: DispatchExtrasInput): ResendExtras {
 		return { idempotencyKey: input.idempotencyKey };
+	},
+
+	/**
+	 * The same knob on the system/auth mail path, where the key is the CALLER's
+	 * and may be absent. Forwarding it is what makes this kind's catalog
+	 * `deduplicatesOnIdempotencyKey: true` true in practice: without the header,
+	 * a repeat after an ambiguous timeout is simply a second mail.
+	 */
+	buildSystemMailExtras(input: SystemMailExtrasInput): ResendExtras | undefined {
+		return input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined;
 	},
 
 	async sendEmail(

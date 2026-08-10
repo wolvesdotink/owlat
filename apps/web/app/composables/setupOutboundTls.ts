@@ -1,12 +1,20 @@
 /**
  * Outbound-TLS selector surface for the setup wizard and the transport editor.
  *
- * The {@link OutboundTlsMode} values are the shared env contract
- * (`@owlat/shared`); the label/hint copy and the seeding helper are UI-only and
- * live here — split out of `useSetupWizard.ts` to keep that file under the
- * file-size ratchet.
+ * The {@link OutboundTlsMode} values AND their labels are the shared
+ * declaration: the catalog's own-MTA entry describes the floor as a `select`
+ * credential field (the seams plan's D5), and this module maps that descriptor
+ * rather than restating it. Only the `hint` paragraph is written here — a
+ * descriptor carries the label a form needs, not the prose a page writes around
+ * it — so renaming a mode's label is one edit in
+ * `packages/shared/src/sendProviderCatalog.ts`, not two that have to stay equal.
+ *
+ * The seeding helper is UI-only and lives here for the same reason it always
+ * did: split out of `useSetupWizard.ts` to keep that file under the file-size
+ * ratchet.
  */
 
+import { OUTBOUND_TLS_MODE_OPTIONS as CATALOG_OUTBOUND_TLS_MODE_OPTIONS } from '@owlat/shared/sendProviderCatalog';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 
 // Re-export the shared outbound-TLS union so the setup step and its tests import
@@ -14,31 +22,32 @@ import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 export type { OutboundTlsMode };
 
 /**
- * Human-facing option list for the outbound-TLS selector. The {@link OutboundTlsMode}
- * values are the shared env contract (`@owlat/shared`); the label/hint copy is
- * UI-only and lives here beside the setup wizard.
+ * The one sentence of guidance per mode — the copy this surface owns, keyed by
+ * the shared value so a mode with no hint is a compile error rather than a blank
+ * caption.
+ */
+const OUTBOUND_TLS_MODE_HINTS: Record<OutboundTlsMode, string> = {
+	opportunistic:
+		'Encrypt whenever the receiving server offers it, but still deliver if it doesn’t. Safest for reaching everyone.',
+	require:
+		'Refuse to deliver over an unencrypted connection. A receiver that can’t do TLS won’t get the mail.',
+	'require-verified':
+		'Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate.',
+};
+
+/**
+ * Human-facing option list for the outbound-TLS selector — the catalog's
+ * descriptor, in its order, with this surface's hint attached.
  */
 export const OUTBOUND_TLS_MODE_OPTIONS: {
 	value: OutboundTlsMode;
 	label: string;
 	hint: string;
-}[] = [
-	{
-		value: 'opportunistic',
-		label: 'Opportunistic (recommended)',
-		hint: 'Encrypt whenever the receiving server offers it, but still deliver if it doesn’t. Safest for reaching everyone.',
-	},
-	{
-		value: 'require',
-		label: 'Always encrypt',
-		hint: 'Refuse to deliver over an unencrypted connection. A receiver that can’t do TLS won’t get the mail.',
-	},
-	{
-		value: 'require-verified',
-		label: 'Always encrypt and verify',
-		hint: 'Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate.',
-	},
-];
+}[] = CATALOG_OUTBOUND_TLS_MODE_OPTIONS.map((option) => ({
+	value: option.value,
+	label: option.label,
+	hint: OUTBOUND_TLS_MODE_HINTS[option.value],
+}));
 
 /**
  * Narrow the active (non-secret) `OUTBOUND_TLS_MODE` — as reported by the status

@@ -217,6 +217,29 @@ describe('plugin manifest validation', () => {
 		}
 	});
 
+	it('rejects the withdrawn channelAdapters bucket as an unknown contribution kind', () => {
+		// D10 withdrew the reservation with the stub `ChannelAdapter` surface it
+		// named. A reservation is only free while it points at something real, so
+		// the name must now fail the same way any typo does — a manifest that
+		// declares it learns immediately rather than shipping an inert bucket.
+		expect(PLUGIN_CONTRIBUTION_KINDS).not.toContain('channelAdapters');
+
+		const result = validatePluginManifest({
+			...validManifest(),
+			contributes: { channelAdapters: [] },
+		});
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.issues).toContainEqual(
+				expect.objectContaining({
+					code: 'unknown_field',
+					path: '$.contributes.channelAdapters',
+				})
+			);
+		}
+	});
+
 	it('accepts every contribution kind in the shared catalog', () => {
 		for (const kind of PLUGIN_CONTRIBUTION_KINDS) {
 			expect(

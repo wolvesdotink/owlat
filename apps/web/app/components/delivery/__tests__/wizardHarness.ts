@@ -126,12 +126,20 @@ export const wizardStubs = {
 		template: `<span>
 			<label :for="fieldId(label)">{{ label }}</label>
 			<input :id="fieldId(label)" :type="type || 'text'" :value="modelValue" :disabled="disabled"
+				:placeholder="placeholder"
 				@input="$emit('update:modelValue', $event.target.value)" />
 			<span v-if="error" role="alert">{{ error }}</span>
 		</span>`,
 	},
+	/**
+	 * `error` is part of the stub because it is part of the real control:
+	 * `packages/ui/components/ui/Select.vue` renders `<p v-if="error">` under the
+	 * trigger exactly as `Input.vue` does. Marked `role="alert"` here for the same
+	 * reason the input stub is — neither shipped component sets it, and the
+	 * attribute is how these suites find "the one message on screen".
+	 */
 	UiSelect: {
-		props: ['modelValue', 'label', 'options'],
+		props: ['modelValue', 'label', 'options', 'error'],
 		emits: ['update:modelValue'],
 		methods: { fieldId },
 		template: `<span>
@@ -140,6 +148,7 @@ export const wizardStubs = {
 				@change="$emit('update:modelValue', $event.target.value)">
 				<option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
 			</select>
+			<span v-if="error" role="alert">{{ error }}</span>
 		</span>`,
 	},
 	UiErrorAlert: {

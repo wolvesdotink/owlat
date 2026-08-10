@@ -42,6 +42,10 @@ export default defineConfig({
 				find: '@owlat/plugin-kit',
 				replacement: resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
 			},
+			{
+				find: '@owlat/provider-kit',
+				replacement: resolve(__dirname, '../../packages/provider-kit/src/index.ts'),
+			},
 		],
 	},
 });

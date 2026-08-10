@@ -40,6 +40,7 @@ import {
 	selectRuntimeEnvVars,
 	looksLikeRealAdminKey,
 } from '../lib/convexDeploy';
+import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { createReporter, progressSpinner, SetupStep, type Reporter } from '../lib/progress';
 import { resolveLocalUrls } from '../lib/localHost';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
@@ -480,7 +481,9 @@ export function dnsInstructions(config: SetupConfig): string[] {
 		"DNS records required for public access (point them at this server's public IP):",
 		...hosts.map((h) => `  ${h.padEnd(pad)}A    <server IP>`),
 	];
-	if (config.sending?.provider === 'mta' && config.domain) {
+	// The OWN arm (D3), asked through the catalog rather than spelled again: only
+	// our own MTA needs an EHLO A record and a bounce-domain MX pointed here.
+	if (isOwnSendProviderKind(config.sending?.provider) && config.domain) {
 		lines.push(
 			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>  (+ matching PTR via your host)`,
 			...(config.domain.bounceDomain

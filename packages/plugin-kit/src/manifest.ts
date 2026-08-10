@@ -15,10 +15,18 @@ import {
 } from './navContributionManifest';
 import { validateWebhookEventContributions } from './webhookEventManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
+import {
+	refuseFlagVariablesAsTransportConfig,
+	requireWebhookSecretsAreFlagRequirements,
+	validateFlag,
+} from './flagManifest';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
-import { validateSendTransportContributions } from './sendTransportManifest';
+import {
+	validateSendTransportContributions,
+	type SendTransportContributionFacts,
+} from './sendTransportManifest';
 import type { PluginSettingsSchema } from './settingsSchema';
 import { validateSettingsSchema } from './settingsSchemaManifest';
 import { isSafeStaticExportPath } from './staticExportPath';
@@ -28,14 +36,17 @@ import {
 	type DataProperty,
 	validateDescriptorSafeArray,
 	validateKnownFields,
+	validateUniqueFormattedStringArray,
 } from './manifestValue';
 
 export { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
 export {
+	PLUGIN_CONTRIBUTION_MODULE_EXPORTS,
 	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
 	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
 } from './contributionRequirements';
+export type { ContributionModuleExport } from './contributionRequirements';
 export type { PluginContributionKind, PluginContributions } from './contributions';
 export type { PluginManifestIssue, PluginManifestIssueCode } from './manifestIssues';
 
@@ -72,7 +83,6 @@ export type PluginManifestValidation =
 const SEMVER =
 	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const CAPABILITY = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*:[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
-const ENV_VAR = /^[A-Z][A-Z0-9_]*$/;
 const TOP_LEVEL_FIELDS = new Set([
 	'id',
 	'version',
@@ -154,12 +164,22 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		capabilityItems !== undefined &&
 		!issues.some((issue) => issue.path.startsWith('$.capabilities'));
 	const contributions = readDataProperty(manifest, 'contributes', issues);
-	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
+	const transportFacts =
+		contributions.kind === 'value'
+			? validateContributions(contributions.value, issues)
+			: { webhookSecretEnvVars: [], configEnvVars: [] };
 	const flag = readDataProperty(manifest, 'flag', issues);
 	const flagIssueCount = issues.length;
-	if (flag.kind === 'value') validateFlag(flag.value, issues);
+	const flagRequiredEnvVars =
+		flag.kind === 'value' ? validateFlag(flag.value, issues) : new Set<string>();
 	const hasValidFlag =
 		flag.kind === 'value' && isRecord(flag.value) && issues.length === flagIssueCount;
+	requireWebhookSecretsAreFlagRequirements(
+		transportFacts.webhookSecretEnvVars,
+		flagRequiredEnvVars,
+		issues
+	);
+	refuseFlagVariablesAsTransportConfig(transportFacts.configEnvVars, flagRequiredEnvVars, issues);
 	if (declaresPluginStorage(capabilityItems) && !hasValidFlag) {
 		if (flag.kind === 'missing') {
 			addManifestIssue(
@@ -303,12 +323,24 @@ function declaresContributions(
 	);
 }
 
-function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
-	if (value === undefined) return;
+/**
+ * Validate every declared bucket, and report back the send-transport facts whose
+ * rules live outside `$.contributes` — the feedback-webhook signing secrets and
+ * the transports' own configuration variables (see
+ * `requireWebhookSecretsAreFlagRequirements` and
+ * `refuseFlagVariablesAsTransportConfig`).
+ */
+function validateContributions(
+	value: unknown,
+	issues: PluginManifestIssue[]
+): SendTransportContributionFacts {
+	const none: SendTransportContributionFacts = { webhookSecretEnvVars: [], configEnvVars: [] };
+	if (value === undefined) return none;
 	if (!isRecord(value)) {
 		addManifestIssue(issues, 'invalid_type', '$.contributes', 'must be a plain object');
-		return;
+		return none;
 	}
+	let transportFacts: SendTransportContributionFacts = none;
 	for (const key of Reflect.ownKeys(value)) {
 		if (typeof key !== 'string') {
 			addManifestIssue(
@@ -327,7 +359,9 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 		const contribution = readDataProperty(value, key, issues);
 		if (contribution.kind === 'value') {
 			const items = validateDescriptorSafeArray(contribution.value, path, issues);
-			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
+			if (key === 'sendTransports' && items) {
+				transportFacts = validateSendTransportContributions(items, issues);
+			}
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
 			if (key === 'sendGates' && items) validateAutonomyGateContributions(items, issues);
@@ -346,28 +380,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			if (key === 'settingsPanels' && items) validateSettingsPanelContributions(items, issues);
 		}
 	}
-}
-
-function validateFlag(value: unknown, issues: PluginManifestIssue[]): void {
-	if (value === undefined) return;
-	if (!isRecord(value)) {
-		addManifestIssue(issues, 'invalid_type', '$.flag', 'must be a plain object');
-		return;
-	}
-	validateKnownFields(value, '$.flag', new Set(['default', 'requiredEnvVars']), issues);
-	const defaultValue = readDataProperty(value, 'default', issues, true, '$.flag');
-	if (defaultValue.kind === 'value' && typeof defaultValue.value !== 'boolean') {
-		addManifestIssue(issues, 'invalid_type', '$.flag.default', 'must be a boolean');
-	}
-	const requiredEnvVars = readDataProperty(value, 'requiredEnvVars', issues, false, '$.flag');
-	if (requiredEnvVars.kind === 'value') {
-		validateUniqueFormattedStringArray(requiredEnvVars.value, issues, {
-			path: '$.flag.requiredEnvVars',
-			format: ENV_VAR,
-			formatMessage: 'must be an uppercase environment variable name',
-			duplicateLabel: 'environment variable',
-		});
-	}
+	return transportFacts;
 }
 
 function validateLlmBudget(value: unknown, issues: PluginManifestIssue[]): void {
@@ -393,41 +406,4 @@ function validateLlmBudget(value: unknown, issues: PluginManifestIssue[]): void 
 			'must be between 0 and 1,000,000 USD with at most six decimal places'
 		);
 	}
-}
-
-interface FormattedStringArrayOptions {
-	readonly path: string;
-	readonly format: RegExp;
-	readonly formatMessage: string;
-	readonly duplicateLabel: string;
-}
-
-function validateUniqueFormattedStringArray(
-	value: unknown,
-	issues: PluginManifestIssue[],
-	options: FormattedStringArrayOptions
-): readonly DataProperty[] | undefined {
-	const items = validateDescriptorSafeArray(value, options.path, issues);
-	if (!items) return undefined;
-
-	const seen = new Set<string>();
-	for (const [index, item] of items.entries()) {
-		if (item.kind !== 'value') continue;
-		const path = `${options.path}[${index}]`;
-		if (typeof item.value !== 'string') {
-			addManifestIssue(issues, 'invalid_type', path, 'must be a string');
-		} else if (!options.format.test(item.value)) {
-			addManifestIssue(issues, 'invalid_format', path, options.formatMessage);
-		} else if (seen.has(item.value)) {
-			addManifestIssue(
-				issues,
-				'duplicate',
-				path,
-				`duplicates ${options.duplicateLabel} ${item.value}`
-			);
-		} else {
-			seen.add(item.value);
-		}
-	}
-	return items;
 }

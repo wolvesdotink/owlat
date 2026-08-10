@@ -1,36 +1,25 @@
 /**
- * @owlat/channels — communication channel adapters
+ * @owlat/channels — inbound mail normalization
  *
- * Each adapter normalizes a different transport (email/MTA, SMS/Twilio,
- * WhatsApp/Meta, generic webhooks, native Convex chat) into the unified
- * ChannelAdapter interface defined in ./types.
+ * One job: turn a vendor's inbound-mail webhook envelope into the canonical
+ * `InboundEmailMessage` that `internal.inbound.receiveMessage` persists. The
+ * registry is keyed by source (`mta`, `resend`, …), so adding a source is one
+ * adapter plus one `registerInboundChannelAdapter()` call and no handler edit.
+ *
+ * The package once also carried a bidirectional `ChannelAdapter` surface with
+ * five implementations. Per D10 that half is gone: the two that faked their
+ * answers (`EmailAdapter`, `ChatAdapter`) are deleted outright, and the three
+ * that really talk to a provider — Twilio SMS, Meta WhatsApp, generic outbound
+ * webhook — moved to `apps/api/convex/channels/adapters/`, next to the single
+ * action that has ever constructed one.
  *
  * @example
  * ```typescript
- * import { EmailAdapter, SmsAdapter, type ChannelAdapter } from '@owlat/channels';
+ * import { getInboundChannelAdapter } from '@owlat/channels';
  *
- * const adapters: ChannelAdapter[] = [
- *   new EmailAdapter(),
- *   new SmsAdapter(),
- * ];
+ * const mail = getInboundChannelAdapter('mta').parseInbound(payload);
  * ```
  */
-
-export type {
-	ChannelType,
-	OutboundMessage,
-	SendResult,
-	ParsedMessage,
-	DeliveryStatus,
-	ChannelHealth,
-	ChannelAdapter,
-} from './types';
-
-export { EmailAdapter } from './email';
-export { SmsAdapter } from './sms';
-export { WhatsAppAdapter } from './whatsapp';
-export { WebhookAdapter } from './webhook';
-export { ChatAdapter } from './chat';
 
 export {
 	type InboundEmailMessage,

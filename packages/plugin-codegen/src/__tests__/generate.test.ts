@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
+	copyFile,
 	mkdtemp,
 	mkdir,
 	readFile,
@@ -196,6 +197,7 @@ describe('generated composition freshness', () => {
 		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
 		const nuxtPath = join(root, 'apps/web/app/plugins/plugin-composition.generated.ts');
 		const catalogPath = join(root, 'apps/api/convex/plugins/sendTransportCatalog.generated.ts');
+		const webCatalogPath = join(root, 'apps/web/app/generated/sendTransportCatalog.generated.ts');
 		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
 		const agentCatalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
 		const agentModulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
@@ -227,6 +229,7 @@ describe('generated composition freshness', () => {
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
 		expect(await readFile(catalogPath, 'utf8')).toContain('Object.freeze([])');
+		expect(await readFile(webCatalogPath, 'utf8')).toBe(await readFile(catalogPath, 'utf8'));
 		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
 		expect(await readFile(agentCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(agentModulesPath, 'utf8')).toContain("'use node';");
@@ -442,7 +445,12 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/components.generated.ts',
 				'apps/web/app/plugins/plugin-composition.generated.ts',
 				'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+				'apps/web/app/generated/sendTransportCatalog.generated.ts',
 				'apps/api/convex/plugins/sendTransportModules.generated.ts',
+				'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
+				'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
+				'apps/api/convex/plugins/sendTransportDomainIdentityCatalog.generated.ts',
+				'apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts',
 				'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 				'apps/api/convex/plugins/agentStepModules.generated.ts',
 				'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
@@ -496,9 +504,36 @@ describe('generated composition freshness', () => {
 
 	it('supports concurrent generation in separate Bun processes', async () => {
 		const root = await createZeroPluginWorkspace();
+		const subprocessBundleRoot = await mkdtemp(join(dirname(cliPath), '.subprocess-cli-'));
+		temporaryRoots.push(subprocessBundleRoot);
+		const subprocessCli = join(subprocessBundleRoot, 'plugin-codegen-cli.mjs');
+		// Bundle the checked-in CLI and contract sources once, then exercise four
+		// real Bun processes. The process-isolation proof must not read shared dist
+		// directories that clean-checkout and package-build gates deliberately wipe.
+		await build({
+			entryPoints: [cliPath],
+			bundle: true,
+			platform: 'node',
+			format: 'esm',
+			packages: 'external',
+			outfile: subprocessCli,
+			alias: {
+				'@owlat/plugin-host': join(repositoryRoot, 'packages/plugin-host/src/index.ts'),
+				'@owlat/plugin-kit': join(repositoryRoot, 'packages/plugin-kit/src/index.ts'),
+				'@owlat/provider-kit': join(repositoryRoot, 'packages/provider-kit/src/index.ts'),
+			},
+		});
+		await copyFile(
+			join(dirname(cliPath), 'atomicCommit.mjs'),
+			join(subprocessBundleRoot, 'atomicCommit.mjs')
+		);
+		await copyFile(
+			join(dirname(cliPath), 'writeFully.mjs'),
+			join(subprocessBundleRoot, 'writeFully.mjs')
+		);
 
 		await Promise.all(
-			Array.from({ length: 4 }, () => execFileAsync('bun', [cliPath], { cwd: root }))
+			Array.from({ length: 4 }, () => execFileAsync('bun', [subprocessCli], { cwd: root }))
 		);
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();

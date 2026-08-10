@@ -32,6 +32,8 @@ import {
 import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
+import { routeCarriesOwnArm } from './fallbackEligibility';
+import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
 import type { SendProviderKind } from './types';
 import {
 	candidateSendProviderKinds,
@@ -327,8 +329,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			? undefined
 			: await relayReturnPathHostFor(ctx, relayCandidateKind, addressContext.from, now);
 	const isHybrid = Boolean(
-		routeConfig?.deliverabilityFallback?.isEnabled &&
-		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+		routeConfig?.deliverabilityFallback?.isEnabled && routeCarriesOwnArm(routeConfig.providers)
 	);
 	try {
 		// TWO resolutions of ONE message: the governed route and the base route
@@ -357,7 +358,7 @@ export async function resolveLastMileRoutePlanFromDb(
 		return {
 			route,
 			baseRoute,
-			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
+			isMtaGoverned: isHybrid || baseRoute?.providerType === OWN_ARM_TRANSPORT_KIND,
 			relayReturnPathHost,
 		};
 	} catch (error) {

@@ -1,36 +1,36 @@
 /**
- * Connection presets for the generic SMTP relay transport — the single source
- * of truth both the web setup wizard (`apps/web/app/pages/setup/email.vue`) and
- * the setup CLI (`apps/setup-cli`) prefill from, so the two can never drift.
+ * The delivery-transport ENV SURFACE: which variables a transport swap owns, and
+ * the clear-vs-preserve rule `POST /api/delivery/apply-transport` applies to a
+ * patch of them.
  *
- * There is deliberately no per-provider API adapter: every one of these speaks
- * plain SMTP submission, so a single set of `SMTP_RELAY_*` env vars drives them
- * all. Ports/TLS mirror each provider's documented submission endpoint; every
- * one defaults to STARTTLS on 587, which the backend `smtp` adapter upgrades and
- * enforces (`requireTLS`). `custom` carries the same safe default so the fields
- * are never empty.
+ * The per-provider DATA this used to declare beside that rule — the SMTP relay
+ * presets and the env-key allowlist — is now derived from the send-provider
+ * catalog (`./sendProviderCatalog`, the seams plan's D1). What stays here is the
+ * POLICY: the allowlist's two ends, the From-identity exception, and
+ * {@link planTransportEnvChange}.
  */
 
-/** Which well-known relay a "SMTP relay" install points at; `custom` leaves the
- * fields for the operator. */
-export type SmtpRelayPreset = 'mailgun' | 'postmark' | 'sendgrid' | 'brevo' | 'custom';
+import {
+	TRANSPORT_CREDENTIAL_ENV_KEYS,
+	type TransportCredentialEnvKey,
+} from './sendProviderCatalog';
 
-export interface SmtpRelayPresetConfig {
-	label: string;
-	/** Blank for `custom` ⇒ the operator fills it in. */
-	host: string;
-	/** String because it feeds a form field. */
-	port: string;
-	secure: boolean;
-}
-
-export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> = {
-	mailgun: { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', secure: false },
-	postmark: { label: 'Postmark', host: 'smtp.postmarkapp.com', port: '587', secure: false },
-	sendgrid: { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
-	brevo: { label: 'Brevo', host: 'smtp-relay.brevo.com', port: '587', secure: false },
-	custom: { label: 'Custom SMTP server', host: '', port: '587', secure: false },
-};
+/**
+ * The SMTP relay presets moved to `./sendProviderCredentialFields` when the
+ * catalog became the single declaration (the seams plan's P1.1: "SMTP presets
+ * become catalog-attached data") — they are the data of ONE field descriptor,
+ * the `smtp` entry's `host-port` endpoint, and nothing else ever needed them
+ * apart from it.
+ *
+ * Re-exported here because the web setup wizard
+ * (`apps/web/app/pages/setup/email.vue`) and the setup CLI (`apps/setup-cli`)
+ * both import them from this module.
+ */
+export {
+	SMTP_RELAY_PRESETS,
+	type SmtpRelayPreset,
+	type SmtpRelayPresetConfig,
+} from './sendProviderCredentialFields';
 
 /**
  * The env keys the delivery-transport configuration owns — the provider kind,
@@ -44,34 +44,47 @@ export const SMTP_RELAY_PRESETS: Record<SmtpRelayPreset, SmtpRelayPresetConfig> 
  *    ALLOWLIST of keys a client is permitted to patch (so a transport change can
  *    never inject an unrelated env var such as `INSTANCE_SECRET`) and as the set
  *    of keys to clear in the Convex deployment when they are dropped.
+ *
+ * DERIVED, per the seams plan's D1: the per-provider middle is every env
+ * variable the catalog's `credentialFields` declare, in catalog × field order.
+ * The three keys around them are this list's own — `EMAIL_PROVIDER` names which
+ * kind is active (it belongs to no kind) and the two From-identity keys are the
+ * transport form's, not a provider's.
+ *
+ * WHAT THE DERIVATION KEEPS OUT, and why the catalog can be trusted to: a
+ * variable that is required to SEND but is not a form FIELD stays out. The
+ * installer writes `MTA_API_URL` / `MTA_API_KEY`; Mandrill issues
+ * `MANDRILL_WEBHOOK_KEY` after the operator creates the webhook, later than and
+ * independently of connecting the transport. This list is cleared-then-set on
+ * every apply, so admitting either would let an unrelated key rotation unset a
+ * working MTA or a working feedback loop. The entries declare them as
+ * `requiredEnvVars` / `optionalEnvVars` WITHOUT a matching field, which is
+ * exactly that distinction.
+ *
+ * ORDER IS NOT SEMANTIC. Both consumers key by NAME — one is a membership check,
+ * the other iterates and hands the result back as pairs a caller reads by key —
+ * so the derived order (catalog order) differs from the hand-written one it
+ * replaced while the SET is identical, which `sendProviderCatalog.test.ts` pins
+ * against the pre-move literal.
+ *
+ * ONE PLACE THE ORDER IS OBSERVABLE, so that "not semantic" is not read as "not
+ * visible": {@link planTransportEnvChange} builds `merged` by iterating this
+ * list, and `writeEnvFile` (`./setupEnv`) serialises a map with
+ * `Object.entries`, i.e. in insertion order. A transport swap that introduces
+ * credential keys the existing `.env` did not already carry therefore writes
+ * those NEW lines in catalog order rather than in the historic hand-written one.
+ * Cosmetic and deliberately unpinned — no key is added, dropped or mis-valued,
+ * and keys already present keep their position — but it is a real difference a
+ * reader may notice in a generated file.
  */
-export const PROVIDER_ENV_KEYS = [
+export const PROVIDER_ENV_KEYS: readonly ProviderEnvKey[] = Object.freeze([
 	'EMAIL_PROVIDER',
-	'RESEND_API_KEY',
-	// Mandrill's SENDING credential only. `MANDRILL_WEBHOOK_KEY`,
-	// `MANDRILL_SUBACCOUNT` and `MANDRILL_IP_POOL` are deliberately NOT here:
-	// this list is cleared-then-set on every transport apply, and the webhook key
-	// is issued by Mandrill after the operator creates the webhook — later than,
-	// and independently of, connecting the transport. Listing it would let an
-	// unrelated key rotation silently unset a working feedback loop.
-	'MANDRILL_API_KEY',
-	'AWS_SES_REGION',
-	'AWS_SES_ACCESS_KEY_ID',
-	'AWS_SES_SECRET_ACCESS_KEY',
-	'SMTP_RELAY_HOST',
-	'SMTP_RELAY_PORT',
-	'SMTP_RELAY_SECURE',
-	'SMTP_RELAY_USERNAME',
-	'SMTP_RELAY_PASSWORD',
-	// Outbound TLS posture for the built-in MTA's direct-MX delivery. Only the
-	// `mta` transport emits it; cleared for the relay/API transports (their TLS is
-	// the provider's concern).
-	'OUTBOUND_TLS_MODE',
+	...TRANSPORT_CREDENTIAL_ENV_KEYS,
 	'DEFAULT_FROM_EMAIL',
 	'DEFAULT_FROM_NAME',
-] as const;
+] as const);
 
-export type ProviderEnvKey = (typeof PROVIDER_ENV_KEYS)[number];
+export type ProviderEnvKey = 'EMAIL_PROVIDER' | TransportCredentialEnvKey | FromIdentityEnvKey;
 
 /**
  * The From-identity keys within `PROVIDER_ENV_KEYS`. Unlike a credential, the
@@ -108,7 +121,17 @@ export interface TransportEnvPlan {
 	 * identity is pushed ONLY when the patch supplies it, so an omitted (blank)
 	 * From field leaves the current default untouched.
 	 */
-	changes: Array<[ProviderEnvKey, string]>;
+	changes: Array<[string, string]>;
+}
+
+export interface TransportEnvPlanOptions {
+	/**
+	 * Build-owned plugin credential keys, derived from the generated catalog by
+	 * the caller. This is host authority, never request data: it widens both the
+	 * patch allowlist and the clear-then-set set without letting a browser invent
+	 * an arbitrary environment variable.
+	 */
+	readonly additionalCredentialKeys?: readonly string[];
 }
 
 /**
@@ -116,7 +139,8 @@ export interface TransportEnvPlan {
  * (`existing`) and the provider-key `patch` the editor built with
  * `buildProviderEnv` (SET keys only).
  *
- *  - Only `PROVIDER_ENV_KEYS` may appear in the patch — any other key throws
+ *  - Only `PROVIDER_ENV_KEYS` plus build-owned plugin credential keys supplied
+ *    by the host may appear in the patch — any other key throws
  *    `UnexpectedTransportEnvKeyError`, so a browser request can never inject an
  *    unrelated env var such as `INSTANCE_SECRET`.
  *  - CREDENTIALS are clear-then-set: each is unset first (pushed as `''` live)
@@ -127,18 +151,23 @@ export interface TransportEnvPlan {
  */
 export function planTransportEnvChange(
 	existing: Record<string, string>,
-	patch: Record<string, string>
+	patch: Record<string, string>,
+	options: TransportEnvPlanOptions = {}
 ): TransportEnvPlan {
+	const ownedKeys = Object.freeze([
+		...new Set([...PROVIDER_ENV_KEYS, ...(options.additionalCredentialKeys ?? [])]),
+	]);
+	const ownedKeySet = new Set(ownedKeys);
 	for (const key of Object.keys(patch)) {
-		if (!(PROVIDER_ENV_KEYS as readonly string[]).includes(key)) {
+		if (!ownedKeySet.has(key)) {
 			throw new UnexpectedTransportEnvKeyError(key);
 		}
 	}
 
 	const merged: Record<string, string> = { ...existing };
-	const changes: Array<[ProviderEnvKey, string]> = [];
+	const changes: Array<[string, string]> = [];
 
-	for (const key of PROVIDER_ENV_KEYS) {
+	for (const key of ownedKeys) {
 		const supplied = patch[key];
 		if (isFromIdentityKey(key)) {
 			// Preserve on omission; only touch when the patch sets it.

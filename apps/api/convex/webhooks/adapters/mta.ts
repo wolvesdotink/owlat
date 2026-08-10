@@ -1,7 +1,12 @@
 /**
- * MTA webhook adapter — verifies HMAC-SHA256 over `${timestamp}.${body}` and
- * parses owlat-mta service events into InboundEvent. See CONTEXT.md
- * "Inbound adapter".
+ * MTA webhook parser — turns owlat-mta service events into InboundEvent. See
+ * CONTEXT.md "Inbound adapter".
+ *
+ * Authentication is NOT this module's decision: the bundle declares the
+ * `hmac-timestamp-body` scheme and the host verifier registry enforces it
+ * (`../providerVerifierRegistry.ts`). `verifyMtaHeaders` below is the scheme's
+ * reusable inner half, and the mailbox route `/webhooks/mta-mailbox` — which is
+ * not a provider-feedback surface and so has no bundle — calls it directly.
  *
  * MTA pre-classifies bounces on the sending side (DSN status codes → hard/
  * soft) so the adapter trusts `payload.bounceType` and does no further
@@ -11,14 +16,23 @@
  * Inbound mail (`inbound.received`) delegates parsing to the existing
  * `@owlat/channels` inbound adapter so the MTA SMTP server and the
  * webhook share the same envelope-to-NormalizedInboundMail translation.
+ *
+ * Events carried by `POST /webhooks/mta` (parsed here, routed by the
+ * dispatcher):
+ *   email.sent / email.bounced / email.complained          — Send lifecycle
+ *   email.sent / email.bounced (with `pb-` messageId)      — Postbox outbound state
+ *   inbound.received                                       — inbox.messages
+ *   internal.circuit_breaker_tripped                       — org abuse status
+ *   internal.campaign_complaint_rate                       — org abuse status
+ *   internal.ip_event (blocklisted/delisted/warming_complete/all_blocked)
+ *                                                          — warmingSync + log
  */
 
 import { getInboundChannelAdapter } from '@owlat/channels';
-import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
-import type { InboundAdapter } from '../pipeline';
+import { constantTimeEqual, hmacSha256Hex } from '../security';
+import type { InboundParser } from '../pipeline';
 import { type InboundEvent, postmasterStatsMetrics } from '../types';
-import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,38 +110,9 @@ export async function verifyMtaHeaders(
 	return constantTimeEqual(signature, expected);
 }
 
-export const mtaAdapter: InboundAdapter = {
+export const mtaAdapter: InboundParser<'mta'> = {
 	source: 'mta',
 	shouldStoreRawPayload: (rawBody) => !isSensitiveInternalPayload(rawBody),
-
-	async verifySignature(request, rawBody) {
-		const secret = getOptional('MTA_WEBHOOK_SECRET');
-		if (!secret) {
-			return missingSecretResult('MTA_WEBHOOK_SECRET');
-		}
-
-		const signature = request.headers.get('x-mta-signature');
-		const timestamp = request.headers.get('x-mta-timestamp');
-
-		if (!signature || !timestamp) {
-			return {
-				ok: false,
-				status: 401,
-				reason: 'Missing X-MTA-Signature or X-MTA-Timestamp header',
-			};
-		}
-
-		const isValid = await verifyMtaHeaders(rawBody, signature, timestamp, secret);
-		if (!isValid) {
-			return {
-				ok: false,
-				status: 401,
-				reason: 'Invalid MTA signature or stale timestamp',
-			};
-		}
-
-		return { ok: true };
-	},
 
 	parseEvent(rawBody): InboundEvent | null {
 		const parsed: unknown = JSON.parse(rawBody);

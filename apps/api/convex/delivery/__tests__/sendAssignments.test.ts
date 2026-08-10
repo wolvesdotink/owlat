@@ -915,15 +915,21 @@ describe('sendAssignments — campaign write path', () => {
 		expect(configuredPredicate, 'providerKindConfigured must be env-only').not.toMatch(
 			/\bctx\b|\bdb\b|await/
 		);
-		// Both halves of the relay-verification seam: the dispatcher, and the
+		// Both halves of the relay-verification seam: the dispatcher, and every
 		// registered per-provider proof it dispatches to (D6/D7 moved the reads
 		// behind `domains/providers/<kind>`, and a guard that only reads the
 		// dispatcher would have stopped guarding anything the moment they moved).
+		// THE LIST FOLLOWS THE CODE: the shared row read and freshness rule the two
+		// generic-table tiers now call (`relayIdentityProof.ts`) and the bundled
+		// plugin tier's adapter (`plugin/index.ts`) are both on this path, so both
+		// are inventoried here rather than being the first hot read nothing guards.
 		const relayVerificationSources = await Promise.all(
 			[
 				'../../lib/sendProviders/relayDomainVerification.ts',
+				'../../domains/providers/relayIdentityProof.ts',
 				'../../domains/providers/ses/relayVerification.ts',
 				'../../domains/providers/mandrill/relayVerification.ts',
+				'../../domains/providers/plugin/index.ts',
 			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 		);
 		for (const source of relayVerificationSources) {

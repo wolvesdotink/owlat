@@ -2,6 +2,8 @@
  * Core types for the owlat-mta service
  */
 
+import type { MtaRoutingReentry } from '@owlat/mta-protocol';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
 // ============ Email Job Types ============
@@ -84,17 +86,12 @@ export interface EmailJob {
 	};
 	/** Opaque handle to server-side Convex state; contains no tenant content. */
 	routingReentryToken?: string;
-	/** Callback material whose canonical digest is authenticated by the token. */
-	routingReentry?: {
-		envelopeInput: unknown;
-		retryState: {
-			attempt: number;
-			startedAt: number;
-			idempotencyKey: string;
-			workAttemptId?: string;
-			acceptanceReconciliation?: boolean;
-		};
-	};
+	/**
+	 * Callback material whose canonical digest is authenticated by the token.
+	 * Carried verbatim from the intake wire, so it IS the wire's declaration
+	 * (`@owlat/mta-protocol`) rather than a structural copy of it.
+	 */
+	routingReentry?: MtaRoutingReentry;
 }
 
 export type IpPoolType = 'transactional' | 'campaign';
@@ -362,4 +359,17 @@ export interface BounceClassification {
 
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
-export type DestinationProviderKey = 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+/*
+ * DestinationProviderKey is NOT exported from this module — deliberately (D8).
+ *
+ * It used to be spelled out here as a second union, so a provider added to the
+ * shared taxonomy widened the ramp's cell axis on the Convex side while the
+ * MTA's own consumers — cell keys, warming dimensions, ISP metrics, profile
+ * shaping — kept the old five and never failed to compile. A re-export would
+ * have fixed the divergence but left ONE taxonomy behind TWO doors, with no
+ * rule for which to use: the next person widening the taxonomy greps
+ * `@owlat/shared/deliverabilityRouting` for its consumers and silently misses
+ * every file that typed itself through `types.js`. So every MTA consumer now
+ * imports the type from the one module that declares it, and this file only
+ * consumes it (`MtaRoutingSignal.destinationProvider`) like any other.
+ */

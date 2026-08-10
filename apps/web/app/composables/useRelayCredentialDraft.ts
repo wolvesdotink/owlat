@@ -3,33 +3,61 @@
  * (`components/delivery/TransportEditor.vue`) and by step 1 of the transport
  * connection wizard (`components/delivery/TransportCredentialsStep.vue`).
  *
- * Both surfaces ask for the same three kinds of relay credential, validate them
- * with the same shipped validators, offer the same pre-apply live handshake and
- * write the same sealed env patch through the same endpoint. Holding that in one
- * place is not a tidiness exercise: two copies had already drifted apart in the
- * operator-facing provider hints, which is the failure mode this prevents.
+ * Both surfaces ask for the same relay credentials, validate them with the same
+ * shipped validators, offer the same pre-apply live handshake and write the same
+ * sealed env patch through the same endpoint. Holding that in one place is not a
+ * tidiness exercise: two copies had already drifted apart in the operator-facing
+ * provider hints, which is the failure mode this prevents.
+ *
+ * IT NO LONGER KNOWS ANY PROVIDER (the seams plan's D5). The draft used to hold
+ * one named ref per vendor field (`resendKey`, `sesRegion`, `smtpHost`, …), a
+ * hand-written option table, and two `provider === '<kind>'` questions. It now
+ * holds ONE map keyed by deployment env variable, seeded and rendered from the
+ * catalog's `credentialFields` descriptors, and asks the catalog which kinds can
+ * be checked before they are applied. Adding a provider adds nothing here.
  *
  * Values are WRITE-ONLY. They are never rendered back, never returned by the
  * server, and {@link RelayCredentialDraft.clearEnteredSecrets} drops them from
- * memory the moment a patch is accepted.
+ * memory the moment a patch is accepted — for every `secret` field the catalog
+ * declares, so a new provider's key is covered by the same rule rather than by
+ * remembering to add it to a list.
  */
 
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
-	SMTP_RELAY_PRESETS,
+	OWN_SEND_PROVIDER_KIND,
+	isOwnSendProviderKind,
+	type OwnSendProviderKind,
+	type SendProviderHostPortField,
+} from '@owlat/shared/sendProviderCatalog';
+import {
+	draftCredentialsFromValues,
+	firstPreset,
+	hostPortFieldFor,
+	seedCredentialValues,
+	secretEnvKeys,
+	requiredCredentialError,
+	type DraftCredentials,
+	type TransportCredentialValues,
+} from '~/composables/setupWizardCredentials';
+import {
 	buildProviderEnv,
 	type EmailStepDraft,
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import {
+	COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES,
+	COMPOSED_SEND_TRANSPORT_KINDS,
+	composedSendProviderCatalogEntry,
+} from '~/utils/composedSendProviderCatalog';
 
 /**
- * The transports you CONNECT. Derived from the shipped {@link ProviderChoice}
- * rather than re-declared, so a new relay kind reaches this list — and its
- * absence from the option table below becomes a compile error — instead of
- * silently going missing from both surfaces.
+ * The transports you CONNECT: every catalog kind except the own arm (D3's one
+ * legitimate identity — a relay is what the own MTA is an alternative TO) and
+ * except the receive-only answer, which is not a transport at all.
  */
-export type RelayProviderChoice = Exclude<ProviderChoice, 'mta' | 'none'>;
+export type RelayProviderChoice = Exclude<ProviderChoice, OwnSendProviderKind | 'none'>;
 
 export interface RelayProviderOption {
 	readonly value: RelayProviderChoice;
@@ -38,57 +66,105 @@ export interface RelayProviderOption {
 	readonly icon: string;
 }
 
-/** One copy of the operator-facing provider copy, in the shipped editor's order. */
-export const RELAY_PROVIDER_OPTIONS: readonly RelayProviderOption[] = [
+/**
+ * The picker's COPY — one sentence and one icon per transport, in the order the
+ * shipped screens list them.
+ *
+ * Deliberately not in the catalog, which states so itself: a descriptor carries
+ * the label a form needs, and "hints, icons and per-vendor prose" stay where the
+ * copy is written. What is NOT here any more is the KIND LIST — it is read from
+ * the catalog below, so this table can only ever ADD copy to a provider that
+ * already exists, and the one `label` it still carries is the own arm's (see
+ * that row).
+ *
+ * A kind with no row still appears, with the catalog's label, a neutral icon and
+ * no sentence: a provider must never be missing from the picker because nobody
+ * wrote a hint for it. Rows in this table lead, in their order (which is the
+ * order the four incumbents have always been shown in — deliberately not catalog
+ * order, which would reorder a shipped form); anything else follows in catalog
+ * order.
+ */
+const TRANSPORT_PICKER_COPY: readonly {
+	kind: string;
+	hint: string;
+	icon: string;
+	label?: string;
+}[] = [
 	{
-		value: 'ses',
-		label: 'Amazon SES',
+		kind: OWN_SEND_PROVIDER_KIND,
+		// THE ONE `label` OVERRIDE, and it is on the one kind D3 calls special by
+		// definition: this picker's own-arm option is an INSTRUCTION ("Run your own
+		// MTA"), not the transport's name, and it is what the shipped editor says.
+		// Every relay takes the catalog's label — none of the four incumbents
+		// needed an override, and a new provider cannot need one either, because
+		// the fallback is the entry's own label.
+		label: 'Run your own MTA',
+		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
+		icon: 'lucide:server',
+	},
+	{
+		kind: 'ses',
 		hint: 'Managed deliverability, cheap at scale. Needs an AWS account.',
 		icon: 'lucide:cloud',
 	},
 	{
-		value: 'smtp',
-		label: 'SMTP relay',
+		kind: 'smtp',
 		hint: 'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
 		icon: 'lucide:route',
 	},
+	{ kind: 'resend', hint: 'Managed API with a generous free tier.', icon: 'lucide:zap' },
 	{
-		value: 'resend',
-		label: 'Resend',
-		hint: 'Managed API with a generous free tier.',
-		icon: 'lucide:zap',
-	},
-	{
-		value: 'mandrill',
-		label: 'Mailchimp Transactional (Mandrill)',
+		kind: 'mandrill',
 		hint: 'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
 		icon: 'lucide:shuffle',
 	},
+	{
+		kind: 'emailit',
+		hint: 'Managed email API with signed delivery feedback and idempotent sends.',
+		icon: 'lucide:send',
+	},
 ];
+
+/** The catalog's kinds, ordered by the copy table above and then by the catalog. */
+function pickerOrderedKinds(): readonly string[] {
+	const copyOrder = TRANSPORT_PICKER_COPY.map((row) => row.kind).filter((kind) =>
+		COMPOSED_SEND_TRANSPORT_KINDS.includes(kind as never)
+	);
+	return [
+		...copyOrder,
+		...COMPOSED_SEND_TRANSPORT_KINDS.filter((kind) => !copyOrder.includes(kind)),
+	];
+}
+
+function pickerOption(kind: string): RelayProviderOption {
+	const copy = TRANSPORT_PICKER_COPY.find((row) => row.kind === kind);
+	return {
+		value: kind as RelayProviderChoice,
+		label: copy?.label ?? composedSendProviderCatalogEntry(kind)?.label ?? kind,
+		hint: copy?.hint ?? '',
+		icon: copy?.icon ?? 'lucide:send',
+	};
+}
+
+/** One copy of the operator-facing relay copy, in the shipped editor's order. */
+export const RELAY_PROVIDER_OPTIONS: readonly RelayProviderOption[] = pickerOrderedKinds()
+	.filter((kind) => !isOwnSendProviderKind(kind))
+	.map(pickerOption);
 
 /**
  * The in-app transport editor's picker: the relays above, plus the built-in MTA.
  *
  * The MTA is not a relay — it is the thing a relay is an alternative TO — so it
  * cannot live in `RELAY_PROVIDER_OPTIONS` (which types the connect-a-relay
- * surfaces). It sits here rather than in the editor component so the two lists
- * are declared in one file and a new relay kind reaches both by being added
- * once.
+ * surfaces). It leads this list because the own arm is the deployment's default
+ * answer, which is exactly what `tier: 'own'` declares.
  */
 export const TRANSPORT_EDITOR_PROVIDER_OPTIONS: readonly {
 	readonly value: ProviderChoice;
 	readonly label: string;
 	readonly hint: string;
 	readonly icon: string;
-}[] = [
-	{
-		value: 'mta',
-		label: 'Run your own MTA',
-		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
-		icon: 'lucide:server',
-	},
-	...RELAY_PROVIDER_OPTIONS,
-];
+}[] = [pickerOption(OWN_SEND_PROVIDER_KIND), ...RELAY_PROVIDER_OPTIONS];
 
 /** The apply endpoint's contract, shared so both callers read the same fields. */
 export interface ApplyTransportResponse {
@@ -118,143 +194,185 @@ export interface ValidateTransportResponse {
 }
 
 /** The credential fields of an {@link EmailStepDraft} — everything but identity. */
-export type RelayCredentialFields = Pick<
-	EmailStepDraft,
-	'resendKey' | 'mandrillKey' | 'ses' | 'smtp'
->;
+export type RelayCredentialFields = DraftCredentials;
+
+/**
+ * THE PRE-APPLY HANDSHAKE'S REQUEST SHAPE, per probe.
+ *
+ * Which kinds can be checked before they are applied is the CATALOG's answer
+ * (`setupProbe` — absent for SES, Mandrill and our own MTA, whose real proof is
+ * the live send test after applying). What the check has to SEND is the shipped
+ * endpoint's contract, and `/api/delivery/validate-transport` still takes one
+ * hand-shaped body per probe. So the body builders are keyed by the probe's own
+ * `validator` name — never by the provider kind — and a probe with no builder
+ * here reads as "cannot be checked", which is the fail-closed answer rather than
+ * a request the endpoint would reject.
+ *
+ * This table is the browser half of the descriptor rollout the seams plan leaves
+ * outside `apps/web/app/**` (the CLI prompts, the two validate endpoints and
+ * `setupValidators.ts`); when that endpoint takes descriptor values directly,
+ * this collapses into one generic body.
+ */
+export type ProbeRequestBuilder = (
+	values: TransportCredentialValues,
+	endpoint: SendProviderHostPortField | undefined
+) => Record<string, unknown>;
+
+const PROBE_REQUEST_BODIES: Record<string, ProbeRequestBuilder> = {
+	validateResendKey: (values) => ({ apiKey: values['RESEND_API_KEY'] ?? '' }),
+	validateEmailitKey: (values) => ({ apiKey: values['EMAILIT_API_KEY'] ?? '' }),
+	validateSmtpRelay: (values, endpoint) => {
+		const port = (values['SMTP_RELAY_PORT'] ?? '').trim();
+		// The BLANK-PORT fallback is the descriptor's `portDefault`, not a literal
+		// repeated here: the env patch already writes that same declared default,
+		// so a probe with its own number would hand the operator a successful
+		// handshake against a port the applied transport does not use.
+		const declaredPort = (endpoint?.portDefault ?? '').trim();
+		return {
+			smtp: {
+				host: (values['SMTP_RELAY_HOST'] ?? '').trim(),
+				port: Number.parseInt(port || declaredPort || '587', 10),
+				secure: values['SMTP_RELAY_SECURE'] === 'true',
+				username: values['SMTP_RELAY_USERNAME'] ?? '',
+				password: values['SMTP_RELAY_PASSWORD'] ?? '',
+			},
+		};
+	},
+};
+
+/**
+ * The builder a probe's live check sends its body with, or `undefined` when the
+ * probe has none — the ONE reading of the table above.
+ *
+ * Exported so the endpoint's own suite (`server/api/delivery/__tests__/
+ * validate-transport-probes.test.ts`) can post the body the SHIPPED editor
+ * posts. That suite asks whether `/api/delivery/validate-transport` accepts what
+ * each declared probe sends; with a fixture of its own it would only ever have
+ * proved that the endpoint accepts what its author wrote, leaving a rename of a
+ * key here green on both sides and 400 on every "Test connection" click.
+ */
+export function probeRequestBuilder(
+	validator: string | undefined
+): ProbeRequestBuilder | undefined {
+	return validator === undefined ? undefined : PROBE_REQUEST_BODIES[validator];
+}
 
 export interface RelayCredentialDraft {
 	readonly provider: Ref<ProviderChoice>;
-	readonly resendKey: Ref<string>;
-	readonly mandrillKey: Ref<string>;
-	readonly sesRegion: Ref<string>;
-	readonly sesAccess: Ref<string>;
-	readonly sesSecret: Ref<string>;
-	readonly smtpPreset: Ref<SmtpPreset>;
-	readonly smtpHost: Ref<string>;
-	readonly smtpPort: Ref<string>;
-	readonly smtpSecure: Ref<boolean>;
-	readonly smtpUsername: Ref<string>;
-	readonly smtpPassword: Ref<string>;
-	readonly smtpPresetOptions: { value: SmtpPreset; label: string }[];
+	/**
+	 * Every credential the form holds, keyed by the deployment variable it will be
+	 * written to. The generic field renderer reads and writes this map directly;
+	 * nothing else needs to know which key belongs to which provider.
+	 */
+	readonly credentialValues: TransportCredentialValues;
+	/** Which well-known endpoint a `host-port` field is prefilled from. */
+	readonly preset: Ref<SmtpPreset>;
+	readonly presetOptions: ComputedRef<{ value: SmtpPreset; label: string }[]>;
 	/** The credential half of the shipped draft shape. */
 	readonly credentialFields: ComputedRef<RelayCredentialFields>;
 	/** Every secret currently held in memory — the redaction list, in one place. */
 	readonly enteredSecrets: ComputedRef<string[]>;
-	/** Only Resend and SMTP have a pre-apply network handshake. */
+	/** True only for a kind whose catalog entry declares a pre-apply probe. */
 	readonly canValidateLive: ComputedRef<boolean>;
+	/** Missing required descriptor value, for every core or plugin transport. */
+	readonly requiredCredentialError: ComputedRef<string | undefined>;
 	clearEnteredSecrets(): void;
 	/** The shipped live handshake, or null when this kind has none. */
 	validateLive(): Promise<ValidateTransportResponse | null>;
+}
+
+/** The blank form for every kind at once, so switching provider keeps input. */
+function seedAllCredentialValues(): TransportCredentialValues {
+	const values: TransportCredentialValues = {};
+	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
+		Object.assign(values, seedCredentialValues(entry.kind));
+	}
+	return values;
+}
+
+/** The preset a `host-port` field starts on: the first the descriptor offers. */
+function seedPreset(): SmtpPreset {
+	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
+		const field = hostPortFieldFor(entry.kind);
+		const preset = field === undefined ? undefined : firstPreset(field);
+		if (preset !== undefined) return preset.key;
+	}
+	return 'custom';
 }
 
 export function useRelayCredentialDraft(
 	initialProvider: ProviderChoice = 'resend'
 ): RelayCredentialDraft {
 	const provider = ref<ProviderChoice>(initialProvider);
-	const resendKey = ref('');
-	const mandrillKey = ref('');
-	const sesRegion = ref('us-east-1');
-	const sesAccess = ref('');
-	const sesSecret = ref('');
-	const smtpPreset = ref<SmtpPreset>('mailgun');
-	const smtpHost = ref(SMTP_RELAY_PRESETS['mailgun'].host);
-	const smtpPort = ref(SMTP_RELAY_PRESETS['mailgun'].port);
-	const smtpSecure = ref(SMTP_RELAY_PRESETS['mailgun'].secure);
-	const smtpUsername = ref('');
-	const smtpPassword = ref('');
+	const credentialValues = reactive<TransportCredentialValues>(seedAllCredentialValues());
+	const preset = ref<SmtpPreset>(seedPreset());
 
-	const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-		value: key,
-		label: SMTP_RELAY_PRESETS[key].label,
-	}));
+	const hostPortField = computed(() => hostPortFieldFor(provider.value));
+
+	const presetOptions = computed(() =>
+		Object.entries(hostPortField.value?.presets ?? {}).map(([key, config]) => ({
+			value: key as SmtpPreset,
+			label: config.label,
+		}))
+	);
 
 	// Choosing a named preset prefills host/port/TLS; Custom leaves them editable.
-	watch(smtpPreset, (preset) => {
-		if (preset === 'custom') return;
-		const cfg = SMTP_RELAY_PRESETS[preset];
-		smtpHost.value = cfg.host;
-		smtpPort.value = cfg.port;
-		smtpSecure.value = cfg.secure;
+	watch(preset, (chosen) => {
+		const field = hostPortField.value;
+		const config = field?.presets?.[chosen];
+		if (field === undefined || config === undefined || config.host === '') return;
+		credentialValues[field.envVar] = config.host;
+		credentialValues[field.portEnvVar] = config.port;
+		credentialValues[field.secureEnvVar] = String(config.secure);
 	});
 
-	const credentialFields = computed<RelayCredentialFields>(() => ({
-		resendKey: resendKey.value,
-		mandrillKey: mandrillKey.value,
-		ses: {
-			region: sesRegion.value,
-			accessKeyId: sesAccess.value,
-			secretAccessKey: sesSecret.value,
-		},
-		smtp: {
-			preset: smtpPreset.value,
-			host: smtpHost.value,
-			port: smtpPort.value,
-			secure: smtpSecure.value,
-			username: smtpUsername.value,
-			password: smtpPassword.value,
-		},
-	}));
+	const credentialFields = computed<RelayCredentialFields>(() =>
+		draftCredentialsFromValues({ ...credentialValues }, preset.value)
+	);
 
-	const enteredSecrets = computed(() => [
-		resendKey.value,
-		mandrillKey.value,
-		sesSecret.value,
-		smtpPassword.value,
-	]);
+	// Every `secret` field the catalog declares, across every kind: the draft can
+	// hold a key for a provider the operator moved away from, and the redaction
+	// list has to cover it.
+	const secretKeys = secretEnvKeys(
+		COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind)
+	);
 
-	// Mandrill sits with SES here, not with Resend: there is no pre-apply
-	// handshake endpoint for it, and offering a check that always passes would be
-	// worse than offering none. The transport wizard's live TEST SEND is the real
-	// proof for both.
-	const canValidateLive = computed(() => provider.value === 'resend' || provider.value === 'smtp');
+	const enteredSecrets = computed(() => secretKeys.map((key) => credentialValues[key] ?? ''));
+
+	const activeProbe = computed(() => composedSendProviderCatalogEntry(provider.value)?.setupProbe);
+	const missingRequiredCredential = computed(() =>
+		requiredCredentialError(provider.value, credentialValues)
+	);
+
+	const canValidateLive = computed(
+		() => probeRequestBuilder(activeProbe.value?.validator) !== undefined
+	);
 
 	function clearEnteredSecrets(): void {
-		resendKey.value = '';
-		mandrillKey.value = '';
-		sesSecret.value = '';
-		smtpPassword.value = '';
+		for (const key of secretKeys) credentialValues[key] = '';
 	}
 
 	async function validateLive(): Promise<ValidateTransportResponse | null> {
-		if (!canValidateLive.value) return null;
-		const trimmedPort = smtpPort.value.trim();
-		const body =
-			provider.value === 'resend'
-				? { provider: 'resend' as const, apiKey: resendKey.value }
-				: {
-						provider: 'smtp' as const,
-						smtp: {
-							host: smtpHost.value.trim(),
-							port: trimmedPort ? Number.parseInt(trimmedPort, 10) : 587,
-							secure: smtpSecure.value,
-							username: smtpUsername.value,
-							password: smtpPassword.value,
-						},
-					};
+		const buildBody = probeRequestBuilder(activeProbe.value?.validator);
+		if (buildBody === undefined) return null;
 		return await $fetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
 			method: 'POST',
-			body,
+			body: {
+				provider: provider.value,
+				...buildBody({ ...credentialValues }, hostPortField.value),
+			},
 		});
 	}
 
 	return {
 		provider,
-		resendKey,
-		mandrillKey,
-		sesRegion,
-		sesAccess,
-		sesSecret,
-		smtpPreset,
-		smtpHost,
-		smtpPort,
-		smtpSecure,
-		smtpUsername,
-		smtpPassword,
-		smtpPresetOptions,
+		credentialValues,
+		preset,
+		presetOptions,
 		credentialFields,
 		enteredSecrets,
 		canValidateLive,
+		requiredCredentialError: missingRequiredCredential,
 		clearEnteredSecrets,
 		validateLive,
 	};
@@ -272,11 +390,12 @@ export function useRelayCredentialDraft(
  */
 export async function applyTransportEnv(
 	draft: EmailStepDraft,
-	relayRemovalConfirmation?: string
+	relayRemovalConfirmation?: string,
+	credentialValues?: TransportCredentialValues
 ): Promise<ApplyTransportResponse> {
 	// An empty base, so only the transport keys are sent; the backend allowlists
 	// and clears the rest.
-	const providerEnv = buildProviderEnv({}, draft);
+	const providerEnv = buildProviderEnv({}, draft, credentialValues);
 	return await $fetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
 		method: 'POST',
 		body: { providerEnv, relayRemovalConfirmation },

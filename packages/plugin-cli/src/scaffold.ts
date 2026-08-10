@@ -1,51 +1,152 @@
 import { relative } from 'node:path';
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import { PluginCliError } from './errors';
 import { toPosix } from './paths';
+import { minimalFiles } from './scaffoldMinimal';
+import {
+	SEND_PROVIDER_MODULE_EXPORTS,
+	sendProviderFiles,
+	sendProviderNames,
+} from './scaffoldSendProvider';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
 
 /**
+ * The templates `create` can emit.
+ *
+ *  - `minimal`       an empty manifest declaring nothing. The default, because
+ *                    most plugins contribute something other than a transport
+ *                    and every bucket is one `contributes` key away.
+ *  - `send-provider` a complete send-transport bundle (the seams plan's D4/P3.4):
+ *                    send module, feedback webhook, sending-domain identity,
+ *                    capability declarations, credential form and test stubs.
+ *                    Emitted whole rather than in pieces because the halves are
+ *                    joined — a webhook without its signature contract, or an
+ *                    identity without a required variable, is refused at manifest
+ *                    validation, so a partial skeleton would not compose.
+ */
+export const SCAFFOLD_TEMPLATES = ['minimal', 'send-provider'] as const;
+
+export type ScaffoldTemplate = (typeof SCAFFOLD_TEMPLATES)[number];
+
+export const DEFAULT_SCAFFOLD_TEMPLATE: ScaffoldTemplate = 'minimal';
+
+/**
+ * Everything that differs between templates, in ONE record per template.
+ *
+ * A template used to be three comparisons in two modules — which module exports
+ * to merge, which file set to emit, and which completion hint `create` prints —
+ * so adding a third meant finding all three, and missing the hint printed the
+ * minimal one for a bundle while missing the exports emitted a manifest naming
+ * export paths the `package.json` does not declare (a failure that surfaces only
+ * at install-time provenance verification, nowhere in this repository's tests).
+ * The record is typed `Record<ScaffoldTemplate, …>`, so a template added to the
+ * list above does not compile until it answers all three questions here.
+ */
+interface ScaffoldTemplateDefinition {
+	/**
+	 * The package's non-root `exports`, one per contribution module the template's
+	 * manifest names. Codegen imports a contribution's executable half through a
+	 * condition-independent package export STRING, so the module map and the
+	 * package's `exports` have to be one declaration.
+	 */
+	readonly moduleExports: Readonly<Record<string, string>>;
+	/** The files this template adds on top of the shared package skeleton. */
+	readonly files: (id: PluginId, packageName: PluginPackageName) => ReadonlyMap<string, string>;
+	/** What `create` prints once the package is on disk. */
+	readonly completionHint: string;
+}
+
+export const SCAFFOLD_TEMPLATE_DEFINITIONS: Readonly<
+	Record<ScaffoldTemplate, ScaffoldTemplateDefinition>
+> = Object.freeze({
+	minimal: {
+		moduleExports: {},
+		files: minimalFiles,
+		completionHint:
+			'Declare capabilities and contributions in src/manifest.ts, then run its tests.',
+	},
+	'send-provider': {
+		moduleExports: SEND_PROVIDER_MODULE_EXPORTS,
+		files: (id, packageName) => sendProviderFiles(sendProviderNames(id), packageName),
+		completionHint:
+			'Fill in the TODOs in src/convex/, then run its tests. See /developer/plugin-send-providers.',
+	},
+});
+
+/** Narrow a `--template` argument, naming the accepted set on a miss. */
+export function parseScaffoldTemplate(input: string): ScaffoldTemplate {
+	if ((SCAFFOLD_TEMPLATES as readonly string[]).includes(input)) return input as ScaffoldTemplate;
+	throw new PluginCliError(`Unknown template: ${input}`, [
+		`Run one of: ${SCAFFOLD_TEMPLATES.join(', ')}`,
+	]);
+}
+
+/**
  * Build the deterministic file set for a new plugin package. Content is a pure
- * function of the plugin id, package name, and the target directory's position
- * within the workspace (which fixes the relative paths to the shared tsconfig,
- * lint config, and `@owlat/plugin-kit` source) — no timestamps or randomness —
- * so re-running `create` on an unchanged input yields byte-identical files.
+ * function of the plugin id, package name, chosen template, and the target
+ * directory's position within the workspace (which fixes the relative paths to
+ * the shared tsconfig, lint config, and `@owlat/plugin-kit` source) — no
+ * timestamps or randomness — so re-running `create` on an unchanged input yields
+ * byte-identical files.
  */
 export function buildScaffold(
 	workspaceRoot: string,
 	targetDir: string,
 	id: PluginId,
-	packageName: PluginPackageName
+	packageName: PluginPackageName,
+	template: ScaffoldTemplate = DEFAULT_SCAFFOLD_TEMPLATE
 ): ScaffoldFiles {
 	const toRoot = toPosix(relative(targetDir, workspaceRoot)) || '.';
-	const exportName = `${toCamelCase(id)}Plugin`;
+	const definition = SCAFFOLD_TEMPLATE_DEFINITIONS[template];
 	const files = new Map<string, string>();
 
-	files.set('package.json', `${JSON.stringify(packageJson(packageName, toRoot), null, '\t')}\n`);
+	const manifestJson = JSON.stringify(
+		packageJson(packageName, toRoot, definition.moduleExports),
+		null,
+		'\t'
+	);
+
+	// THE PACKAGE SKELETON, identical at every template: the build wiring, and
+	// nothing a template's content decides. The authoring guide's file table names
+	// these three as the skeleton and lists the template's own files separately, so
+	// what is emitted here and what is emitted below stay distinguishable.
+	files.set('package.json', `${manifestJson}\n`);
 	files.set('tsconfig.json', `${JSON.stringify(tsconfig(toRoot), null, '\t')}\n`);
 	files.set('vitest.config.ts', vitestConfig(toRoot));
-	files.set('README.md', readme(id, packageName));
-	files.set('src/manifest.ts', manifestSource(id, exportName));
-	files.set('src/index.ts', indexSource(exportName));
-	files.set('src/__tests__/manifest.test.ts', manifestTest(id, exportName));
+
+	for (const [path, content] of definition.files(id, packageName)) {
+		files.set(path, content);
+	}
 
 	return files;
 }
 
-/** Derive a lowerCamelCase identifier from a validated kebab-case plugin id. */
-export function toCamelCase(id: string): string {
-	return id.replace(/-([a-z0-9])/g, (_, char: string) => char.toUpperCase());
-}
-
-function packageJson(packageName: PluginPackageName, toRoot: string): Record<string, unknown> {
+function packageJson(
+	packageName: PluginPackageName,
+	toRoot: string,
+	moduleExports: Readonly<Record<string, string>>
+): Record<string, unknown> {
 	return {
 		name: packageName,
 		version: '0.0.0',
+		// PRIVATE AT EVERY TEMPLATE, because every template scaffolds INTO THIS
+		// WORKSPACE: `create` defaults to `examples/plugins/<id>` and `resolveTargetDir`
+		// refuses a directory outside the repository, so what the generator writes is
+		// always a workspace member. A non-private one would be rewritten by
+		// `release:cut` and published by `changeset publish` alongside the real
+		// packages — a half-finished scaffold on npm under the workspace scope.
+		//
+		// It is also the honest state of the artifact: the manifest below carries
+		// `workspace:*` and `catalog:` specifiers, and the tsconfig and lint script
+		// reach back into this checkout by relative path. Publishing is the last step
+		// of MOVING THE PACKAGE OUT, and the emitted README says so at the line that
+		// tells an author to publish.
 		private: true,
 		type: 'module',
-		exports: { '.': './src/index.ts' },
+		exports: { '.': './src/index.ts', ...moduleExports },
 		scripts: {
 			test: 'vitest run',
 			'test:watch': 'vitest watch',
@@ -69,7 +170,10 @@ function tsconfig(toRoot: string): Record<string, unknown> {
 			types: ['node'],
 			lib: ['ES2023', 'DOM'],
 			noEmit: true,
-			paths: { '@owlat/plugin-kit': [`${toRoot}/packages/plugin-kit/src/index.ts`] },
+			paths: {
+				'@owlat/plugin-kit': [`${toRoot}/packages/plugin-kit/src/index.ts`],
+				'@owlat/provider-kit': [`${toRoot}/packages/provider-kit/src/index.ts`],
+			},
 		},
 		include: ['src/**/*.ts'],
 		exclude: ['node_modules', 'dist'],
@@ -88,68 +192,9 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@owlat/plugin-kit': resolve(__dirname, '${toRoot}/packages/plugin-kit/src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '${toRoot}/packages/provider-kit/src/index.ts'),
 		},
 	},
 });
-`;
-}
-
-function manifestSource(id: PluginId, exportName: string): string {
-	return `import { definePlugin } from '@owlat/plugin-kit';
-
-/**
- * The ${id} plugin manifest: one \`definePlugin\` declaration that names every
- * capability this plugin may ever exercise and every contribution it makes.
- * The host derives permissions and the generated composition from this data
- * WITHOUT executing plugin code, so keep it a static, data-only declaration.
- */
-export const ${exportName} = definePlugin({
-	id: '${id}',
-	version: '0.0.0',
-	capabilities: [],
-});
-`;
-}
-
-function indexSource(exportName: string): string {
-	return `export { ${exportName} } from './manifest';
-`;
-}
-
-function manifestTest(id: PluginId, exportName: string): string {
-	return `import { parsePluginManifest } from '@owlat/plugin-kit';
-import { describe, expect, it } from 'vitest';
-import { ${exportName} } from '../manifest';
-
-describe('${id} manifest', () => {
-	it('is a valid plugin manifest declaring the ${id} id', () => {
-		expect(parsePluginManifest(${exportName}).id).toBe('${id}');
-	});
-});
-`;
-}
-
-function readme(id: PluginId, packageName: PluginPackageName): string {
-	return `# ${packageName}
-
-The \`${id}\` Owlat plugin.
-
-The manifest in \`src/manifest.ts\` is the plugin's contract: declare each
-capability and contribution there. Every contribution's executable half lives at
-its \`module.exportPath\`; the host imports the manifest at build time but never
-runs contribution code during codegen.
-
-## Development
-
-\`\`\`sh
-# Type-check, lint, and test this package
-bun run --cwd <path-to-this-package> typecheck
-bun run --cwd <path-to-this-package> lint
-bun run --cwd <path-to-this-package> test
-\`\`\`
-
-To bundle this plugin into a deployment, publish it and add its package name to
-the workspace \`plugins.config.ts\` with \`owlat plugins add ${packageName}\`,
-then regenerate the composition with \`owlat plugins codegen\`.
 `;
 }

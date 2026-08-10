@@ -3,14 +3,17 @@
  *
  * Per ADR-0020. Looks up the strategy module by `routeConfig.strategy` and
  * calls its `select()`. Owns the fallback semantics for null configs, empty
- * enabled-provider sets, and the env-var → `'mta'` default chain.
+ * enabled-provider sets, and the env-var fallback — which resolves to `null`,
+ * meaning UNCONFIGURED, when neither a route nor `EMAIL_PROVIDER` names a
+ * provider. There is no implicit `'mta'` default; see `resolveRoute`'s own
+ * docblock for what callers must do with the null.
  *
  * The strategy switch lives behind `strategyFor()` — adding a new strategy
  * is a one-folder change in `./strategies/`.
  */
 
 import { getOptional } from '../env';
-import { isFallbackRelayEligible } from './fallbackEligibility';
+import { isFallbackRelayEligible, routeCarriesOwnArm } from './fallbackEligibility';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
@@ -53,6 +56,19 @@ export interface DeliverabilityRouteInput {
 	isGlobalBreakerOpen?: boolean;
 }
 
+/**
+ * The two ways a configured deliverability fallback refuses to relay.
+ *
+ * NEITHER MESSAGE NAMES A PROVIDER (plan D2). The `unavailable` copy used to
+ * read "enable the verified Amazon SES transport", which was accurate only
+ * while the gate above it was `relayProviderType !== 'ses'`: it told an
+ * operator whose route names Resend, an SMTP relay or Mandrill to go configure
+ * a transport their deployment has nothing to do with. The instruction that
+ * survives every kind is the one the gate actually checks — configure and
+ * enable the relay THIS route falls back to — and it stays true for provider
+ * N+1 without an edit. The error CODES are the stable contract for callers and
+ * are unchanged.
+ */
 export class DeliverabilityRouteError extends Error {
 	readonly code: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' | 'DELIVERABILITY_RELAY_UNAVAILABLE';
 
@@ -60,7 +76,7 @@ export class DeliverabilityRouteError extends Error {
 		super(
 			reason === 'unverified'
 				? 'Deliverability relay refused: verify this sending domain for the configured relay provider before enabling automatic fallback.'
-				: 'Deliverability relay unavailable: enable the verified Amazon SES transport or disable automatic fallback.'
+				: 'Deliverability relay unavailable: configure and enable the relay transport this route falls back to, or disable automatic fallback.'
 		);
 		this.code =
 			reason === 'unverified'
@@ -124,7 +140,7 @@ export function resolveRoute(
 	const isHybridRelaySelection = Boolean(
 		fallbackConfig?.isEnabled &&
 		resolved.providerType === fallbackConfig.relayProviderType &&
-		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+		routeCarriesOwnArm(routeConfig.providers)
 	);
 	if (isHybridRelaySelection && !deliverability?.isRelayDomainVerified) {
 		throw new DeliverabilityRouteError();

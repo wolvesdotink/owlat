@@ -1,5 +1,7 @@
 import { isPluginContributionKind } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
+import { PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
+import { PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS } from './sendTransportCredentials';
 import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchema';
 
 // Manifests are static declarations: these limits leave ample composition room
@@ -61,8 +63,69 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 				if (field === 'module' || field === 'schedule' || field === 'signature') {
 					return snapshotRecord(fieldValue);
 				}
+				// The send transport's feedback webhook is the one nested descriptor
+				// carrying descriptors of its own (`module`, and a `signature` that
+				// carries `replay`). Snapshotting only the outer record would leave
+				// the inner ones live on the caller's object — the exact
+				// time-of-check/time-of-use gap this pass exists to close, on the
+				// fields that gate an internet-facing endpoint.
+				if (field === 'webhook') {
+					return snapshotRecord(fieldValue, (webhookField, webhookValue) =>
+						webhookField === 'module' || webhookField === 'signature'
+							? snapshotRecord(webhookValue, (signatureField, signatureValue) =>
+									signatureField === 'replay' ? snapshotRecord(signatureValue) : signatureValue
+								)
+							: webhookValue
+					);
+				}
+				// The sending-domain identity (P3.2) carries one nested descriptor of
+				// its own, and it is an export path codegen imports into generated
+				// Convex code — the same time-of-check/time-of-use gap the webhook's
+				// `module` has, so it is snapshotted for the same reason.
+				if (field === 'domainIdentity') {
+					return snapshotRecord(fieldValue, (identityField, identityValue) =>
+						identityField === 'module' ? snapshotRecord(identityValue) : identityValue
+					);
+				}
 				if (field === 'retryDelays') {
 					return snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues);
+				}
+				// A send transport's own configuration variables (the seams plan's
+				// P3.1). Snapshotted for the same reason as everything else here: the
+				// validator checks these names and the composer later hands the host
+				// the values behind them, so a live array could pass validation and
+				// then name a different variable.
+				if (field === 'requiredEnvVars' || field === 'optionalEnvVars') {
+					return snapshotArray(
+						fieldValue,
+						`${path}[${index}].${field}`,
+						PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
+						issues
+					);
+				}
+				// The credential form (D5). Each descriptor is a record whose `options`
+				// is a nested array of records, so the snapshot has to go two levels
+				// down for the same reason the webhook's does — a live inner array
+				// could pass validation and then render something else.
+				if (field === 'credentialFields') {
+					return snapshotArray(
+						fieldValue,
+						`${path}[${index}].credentialFields`,
+						PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+						issues,
+						(credentialField, fieldIndex) =>
+							snapshotRecord(credentialField, (descriptorField, descriptorValue) =>
+								descriptorField === 'options'
+									? snapshotArray(
+											descriptorValue,
+											`${path}[${index}].credentialFields[${fieldIndex}].options`,
+											MAX_SETTINGS_OPTIONS,
+											issues,
+											(option) => snapshotRecord(option)
+										)
+									: descriptorValue
+							)
+					);
 				}
 				if (field === 'lifecycleEdges') {
 					return snapshotArray(fieldValue, `${path}[${index}].lifecycleEdges`, 12, issues, (edge) =>

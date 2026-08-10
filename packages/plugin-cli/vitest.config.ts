@@ -20,6 +20,7 @@ export default defineConfig({
 			'@owlat/plugin-codegen': resolve(__dirname, '../plugin-codegen/src/index.ts'),
 			'@owlat/plugin-host': resolve(__dirname, '../plugin-host/src/index.ts'),
 			'@owlat/plugin-kit': resolve(__dirname, '../plugin-kit/src/index.ts'),
+			'@owlat/provider-kit': resolve(__dirname, '../provider-kit/src/index.ts'),
 		},
 	},
 });

@@ -10,6 +10,7 @@ import type { MtaConfig } from '../config.js';
 import * as ispProfiles from '../config/ispProfiles.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { isOutboundTlsMode } from '@owlat/shared';
+import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DestinationProviderProfile } from '../types.js';
 
 const PROFILE_FIELDS = new Set([
@@ -77,7 +78,7 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 	// GET /isp-profiles/:provider — get one destination-provider profile
 	app.get('/:provider', async (c) => {
 		const rawProvider = c.req.param('provider');
-		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+		if (!isDestinationProviderKey(rawProvider)) {
 			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
 		}
 		const provider = rawProvider;
@@ -88,7 +89,7 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 	// PUT /isp-profiles/:provider — update a known provider profile
 	app.put('/:provider', async (c) => {
 		const rawProvider = c.req.param('provider');
-		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+		if (!isDestinationProviderKey(rawProvider)) {
 			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
 		}
 		const provider = rawProvider;
@@ -112,7 +113,7 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 	// DELETE /isp-profiles/:provider — remove custom profile (reverts to default)
 	app.delete('/:provider', async (c) => {
 		const rawProvider = c.req.param('provider');
-		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+		if (!isDestinationProviderKey(rawProvider)) {
 			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
 		}
 		const provider = rawProvider;

@@ -15,7 +15,7 @@
  * The h3/Nuxt request helpers are stubbed and the shared env/push modules
  * mocked, so the route's own control flow is exercised in isolation.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
@@ -50,12 +50,20 @@ interface ApplyResult {
 }
 
 let body: unknown;
+let routeHandler: (event: unknown) => Promise<ApplyResult>;
 
 async function callRoute(): Promise<ApplyResult> {
-	const mod = await import('../apply-transport.post');
-	const handler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-	return handler({});
+	return await routeHandler({});
 }
+
+beforeAll(async () => {
+	// Nuxt transforms this route on first import. Keep that one-time harness cost
+	// outside the behavioral test timeout; a repository-wide parallel run can
+	// otherwise spend the entire default five seconds waiting for a transform.
+	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
+	const mod = await import('../apply-transport.post');
+	routeHandler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
+}, 30_000);
 
 /** The draft an operator applies to stop paying the relay. */
 function ownMtaPatch(): Record<string, string> {
@@ -107,7 +115,6 @@ beforeEach(() => {
 	requireOrgAdminMock.mockReset().mockResolvedValue({ query: queryMock });
 	body = { providerEnv: ownMtaPatch() };
 
-	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	vi.stubGlobal(
 		'readBody',
 		vi.fn(async () => body)

@@ -1,0 +1,370 @@
+/**
+ * The plugin webhook registry refuses to LOAD when its two generated halves
+ * disagree (the seams plan's D6/P2.2).
+ *
+ * Every other check in this piece runs per request. This one runs once, at
+ * module load, and it is the only one that can still be made to run before a
+ * deployment serves anything — which is why the failures it catches are the ones
+ * that must never become a runtime surprise: a catalog entry whose module was
+ * never emitted (a route that 500s a retrying provider until it disables the
+ * endpoint), a module for a transport the send catalog does not hold or another
+ * plugin owns (events attributed to an arm the measurement plane does not have),
+ * two webhooks under one plugin id (the route is keyed by that id, so one of
+ * them would silently never be reachable), two webhooks sharing a signing secret
+ * (a body signed for one would verify at the other's route), and a contract this
+ * host could not honestly verify with — a secret outside the `PLUGIN_` namespace
+ * (an HMAC oracle over an unrelated host secret) or replay provisions that are
+ * missing or unbounded.
+ *
+ * Each case swaps the generated modules and re-imports, so what is under test is
+ * the guard in `sendTransportWebhookCatalog.ts`, not a copy of it.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const CATALOG = '../sendTransportWebhookCatalog.generated';
+const MODULES = '../sendTransportWebhookModules.generated';
+const SEND_CATALOG = '../sendTransportCatalog.generated';
+
+function signature() {
+	return Object.freeze({
+		header: 'x-postmark-signature',
+		algorithm: 'hmac-sha256',
+		encoding: 'hex',
+		secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+		replay: Object.freeze({ timestampHeader: 'x-postmark-timestamp', toleranceSeconds: 300 }),
+	});
+}
+
+function sendEntry(kind: string, pluginId: string) {
+	return Object.freeze({
+		kind,
+		pluginId,
+		localId: kind.split('.').pop(),
+		label: 'Relay',
+		retryDelays: Object.freeze([0]),
+		requiredEnvVars: Object.freeze([]),
+		requiredCapability: 'send:transport',
+	});
+}
+
+function webhookEntry(kind: string, pluginId: string, overrides: Record<string, unknown> = {}) {
+	return Object.freeze({
+		kind,
+		pluginId,
+		localId: kind.split('.').pop(),
+		signature: signature(),
+		storeRawPayload: false,
+		requiredCapability: 'send:transport',
+		...overrides,
+	});
+}
+
+function moduleEntry(kind: string, pluginId: string, module: unknown = { parseEvents: () => [] }) {
+	return Object.freeze({ kind, pluginId, module });
+}
+
+interface Composition {
+	readonly send: readonly unknown[];
+	readonly catalog: readonly unknown[];
+	readonly modules: readonly unknown[];
+}
+
+async function load(composition: Composition) {
+	vi.resetModules();
+	vi.doMock(SEND_CATALOG, () => ({
+		BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze(composition.send),
+	}));
+	vi.doMock(CATALOG, () => ({
+		BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_CATALOG: Object.freeze(composition.catalog),
+	}));
+	vi.doMock(MODULES, () => ({
+		BUNDLED_PLUGIN_SEND_TRANSPORT_WEBHOOK_MODULES: Object.freeze(composition.modules),
+	}));
+	return import('../sendTransportWebhookCatalog');
+}
+
+const KIND = 'plugin.mail-pack.postmark';
+const WELL_FORMED: Composition = {
+	send: [sendEntry(KIND, 'mail-pack')],
+	catalog: [webhookEntry(KIND, 'mail-pack')],
+	modules: [moduleEntry(KIND, 'mail-pack')],
+};
+
+beforeEach(() => {
+	vi.resetModules();
+});
+
+afterEach(() => {
+	vi.doUnmock(SEND_CATALOG);
+	vi.doUnmock(CATALOG);
+	vi.doUnmock(MODULES);
+	vi.resetModules();
+});
+
+describe('a well-formed composition', () => {
+	it('resolves the surface by plugin id and nothing else by anything else', async () => {
+		const registry = await load(WELL_FORMED);
+		const resolved = registry.pluginSendTransportWebhookFor('mail-pack');
+
+		expect(resolved?.definition.kind).toBe(KIND);
+		expect(typeof resolved?.module.parseEvents).toBe('function');
+		// The route's 404 arm: an id nobody claims, and the prototype keys a plain
+		// object lookup would have answered.
+		for (const absent of ['other-pack', '__proto__', 'constructor', 'toString', '']) {
+			expect(registry.pluginSendTransportWebhookFor(absent)).toBeUndefined();
+		}
+	});
+
+	it('accepts a webhook on the svix arm, whose replay defense is the scheme’s', async () => {
+		// The second host-verified word. It carries no `replay` record because the
+		// binding is inside `<id>.<timestamp>.<body>`; what it does carry is the
+		// window, held to the same ceiling by the same predicate.
+		const registry = await load({
+			...WELL_FORMED,
+			catalog: [
+				webhookEntry(KIND, 'mail-pack', {
+					signature: Object.freeze({
+						scheme: 'svix',
+						secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						toleranceSeconds: 300,
+					}),
+				}),
+			],
+		});
+		expect(registry.pluginSendTransportWebhookFor('mail-pack')?.definition.signature).toMatchObject(
+			{ scheme: 'svix' }
+		);
+	});
+
+	it('holds two plugins whose webhooks name their own signing variables', async () => {
+		const registry = await load({
+			send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.other-pack.relay', 'other-pack')],
+			catalog: [
+				webhookEntry(KIND, 'mail-pack'),
+				webhookEntry('plugin.other-pack.relay', 'other-pack', {
+					signature: { ...signature(), secretEnvVar: 'PLUGIN_OTHER_WEBHOOK_SECRET' },
+				}),
+			],
+			modules: [
+				moduleEntry(KIND, 'mail-pack'),
+				moduleEntry('plugin.other-pack.relay', 'other-pack'),
+			],
+		});
+
+		expect(registry.pluginSendTransportWebhookFor('mail-pack')?.definition.kind).toBe(KIND);
+		expect(registry.pluginSendTransportWebhookFor('other-pack')?.definition.kind).toBe(
+			'plugin.other-pack.relay'
+		);
+	});
+
+	it('exposes the transport definition the authorization seam resolves by kind', async () => {
+		const registry = await load(WELL_FORMED);
+		expect(registry.pluginSendTransportWebhookDefinition(KIND)?.pluginId).toBe('mail-pack');
+		expect(registry.pluginSendTransportWebhookDefinition('ses')).toBeUndefined();
+	});
+});
+
+describe('a composition that cannot be trusted fails at load', () => {
+	it.each([
+		[
+			'a catalog entry with no module',
+			{ ...WELL_FORMED, modules: [] },
+			/missing an executable module/,
+		],
+		[
+			'a module with no catalog entry',
+			{ ...WELL_FORMED, catalog: [] },
+			/Invalid bundled send transport webhook registry/,
+		],
+		[
+			'a module whose owner is not the entry’s',
+			{ ...WELL_FORMED, modules: [moduleEntry(KIND, 'other-pack')] },
+			/Invalid bundled send transport webhook registry/,
+		],
+		[
+			'a webhook for a transport the send catalog does not hold',
+			{ ...WELL_FORMED, send: [] },
+			/unknown transport kind/,
+		],
+		[
+			'a webhook whose transport another plugin owns',
+			{ ...WELL_FORMED, send: [sendEntry(KIND, 'other-pack')] },
+			/not owned by its transport/,
+		],
+		[
+			'two webhooks under one plugin id',
+			{
+				send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.mail-pack.eu', 'mail-pack')],
+				catalog: [
+					webhookEntry(KIND, 'mail-pack'),
+					webhookEntry('plugin.mail-pack.eu', 'mail-pack'),
+				],
+				modules: [moduleEntry(KIND, 'mail-pack'), moduleEntry('plugin.mail-pack.eu', 'mail-pack')],
+			},
+			/Invalid bundled send transport webhook registry/,
+		],
+		[
+			// Two plugins, one signing variable: a body signed for either verifies at
+			// BOTH routes, so one provider's bounce can be dispatched under the
+			// other's kind — feedback graded against the wrong measurement arm. No
+			// upstream check catches it: the manifest validator sees one manifest at
+			// a time and only requires the `PLUGIN_` prefix.
+			'two webhooks sharing a signing secret',
+			{
+				send: [sendEntry(KIND, 'mail-pack'), sendEntry('plugin.other-pack.relay', 'other-pack')],
+				catalog: [
+					webhookEntry(KIND, 'mail-pack'),
+					webhookEntry('plugin.other-pack.relay', 'other-pack'),
+				],
+				modules: [
+					moduleEntry(KIND, 'mail-pack'),
+					moduleEntry('plugin.other-pack.relay', 'other-pack'),
+				],
+			},
+			/share a signing secret/,
+		],
+		[
+			// The namespace is what stops a manifest from designating an unrelated
+			// host secret as its signing key: `getPluginSecret` reads whatever key it
+			// is given, so an artifact naming one would make this route an HMAC oracle
+			// over that secret, under bodies the caller chooses.
+			'a webhook signing with a secret outside the plugin namespace',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: { ...signature(), secretEnvVar: 'CONVEX_DEPLOY_KEY' },
+					}),
+				],
+			},
+			/non-plugin secret/,
+		],
+		[
+			// Not a security hole but a deployment that cannot work: the verifier
+			// dereferences `replay.timestampHeader`, so every delivery would be an
+			// opaque 500 at request time instead of a failure at load.
+			'a webhook with no replay provisions',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: {
+							header: 'x-postmark-signature',
+							algorithm: 'hmac-sha256',
+							encoding: 'hex',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						},
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			'a webhook whose freshness window is unbounded',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: {
+							...signature(),
+							replay: { timestampHeader: 'x-postmark-timestamp', toleranceSeconds: 86_400 },
+						},
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			// The Svix arm keeps its window in one flat field, so the SAME ceiling is
+			// re-asserted against a different shape. An artifact that widened it would
+			// keep a captured request valid for as long as it claimed.
+			'a svix webhook whose freshness window is unbounded',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({
+							scheme: 'svix',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+							toleranceSeconds: 86_400,
+						}),
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			'a svix webhook with no freshness window at all',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({
+							scheme: 'svix',
+							secretEnvVar: 'PLUGIN_POSTMARK_WEBHOOK_SECRET',
+						}),
+					}),
+				],
+			},
+			/bounded replay window/,
+		],
+		[
+			// The route reads anything that is not `svix` as the parameterized HMAC —
+			// the safe fallback, but not what an artifact naming a host-infrastructure
+			// scheme asked for. Verifying under a scheme nobody declared is how a
+			// webhook ends up rejecting every real delivery with no explanation.
+			'a webhook naming a scheme this tier does not have',
+			{
+				...WELL_FORMED,
+				catalog: [
+					webhookEntry(KIND, 'mail-pack', {
+						signature: Object.freeze({ ...signature(), scheme: 'aws-sns' }),
+					}),
+				],
+			},
+			/unknown signature scheme/,
+		],
+		[
+			'a duplicated kind',
+			{
+				send: [sendEntry(KIND, 'mail-pack')],
+				catalog: [webhookEntry(KIND, 'mail-pack'), webhookEntry(KIND, 'mail-pack')],
+				modules: [moduleEntry(KIND, 'mail-pack')],
+			},
+			/kinds must be unique/,
+		],
+	] as const)('%s', async (_label, composition, message) => {
+		await expect(load(composition)).rejects.toThrow(message);
+	});
+
+	it.each([
+		['no parseEvents', {}],
+		['a non-function parseEvents', { parseEvents: 'nope' }],
+		[
+			'a getter instead of a data property',
+			Object.defineProperty({}, 'parseEvents', { get: () => () => [], enumerable: true }),
+		],
+		[
+			'an extra export the contract does not name',
+			{ parseEvents: () => [], verifySignature: () => true },
+		],
+		[
+			'a class instance rather than a plain object',
+			new (class {
+				parseEvents() {
+					return [];
+				}
+			})(),
+		],
+		['an array', []],
+		['null', null],
+	] as const)('refuses a module with %s', async (_label, module) => {
+		// A module the type describes but the package does not produce would fail on
+		// `parseEvents is not a function` INSIDE a live webhook — one frame after the
+		// route resolved, with a provider waiting.
+		await expect(
+			load({ ...WELL_FORMED, modules: [moduleEntry(KIND, 'mail-pack', module)] })
+		).rejects.toThrow(/Invalid bundled send transport webhook module/);
+	});
+});

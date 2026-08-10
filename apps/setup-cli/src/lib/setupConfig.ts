@@ -9,9 +9,6 @@
  * missing piece: a typed JSON schema plus a PURE mapper from that schema to the
  * exact `.env` + flag state the interactive wizard would have produced.
  *
- * Keeping the mapping here (and importing it from `setup.ts`) guarantees the two
- * paths cannot drift: the interactive prompts and the config file feed the same
- * `applySetupDefaults` / env-key shape.
  */
 
 import {
@@ -37,6 +34,7 @@ export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 export type SendingConfig =
 	| { provider: 'mta' }
 	| { provider: 'resend'; apiKey: string }
+	| { provider: 'emailit'; apiKey: string }
 	| { provider: 'ses'; region: string; accessKeyId: string; secretAccessKey: string }
 	| {
 			provider: 'smtp';
@@ -215,7 +213,7 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 	// Closes the silent "campaigns:true but no provider" CI/SSH path.
 	if (config.sending === undefined && needsDeliveryProvider(resolveSetupFlags(config))) {
 		throw new SetupConfigError(
-			'config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to mta, resend, ses, or smtp, or disable bulk sending.'
+			'config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to mta, resend, emailit, ses, or smtp, or disable bulk sending.'
 		);
 	}
 
@@ -228,6 +226,7 @@ function parseSending(value: unknown): void {
 		case 'mta':
 			return;
 		case 'resend':
+		case 'emailit':
 			asString(sending['apiKey'], 'config.sending.apiKey');
 			return;
 		case 'ses':
@@ -247,7 +246,9 @@ function parseSending(value: unknown): void {
 			}
 			return;
 		default:
-			throw new SetupConfigError('config.sending.provider must be one of mta, resend, ses, smtp');
+			throw new SetupConfigError(
+				'config.sending.provider must be one of mta, resend, emailit, ses, smtp'
+			);
 	}
 }
 
@@ -308,6 +309,10 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 				patch['EMAIL_PROVIDER'] = 'resend';
 				patch['RESEND_API_KEY'] = config.sending.apiKey;
 				break;
+			case 'emailit':
+				patch['EMAIL_PROVIDER'] = 'emailit';
+				patch['EMAILIT_API_KEY'] = config.sending.apiKey;
+				break;
 			case 'ses':
 				patch['EMAIL_PROVIDER'] = 'ses';
 				patch['AWS_SES_REGION'] = config.sending.region;
@@ -315,8 +320,7 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 				patch['AWS_SES_SECRET_ACCESS_KEY'] = config.sending.secretAccessKey;
 				break;
 			case 'smtp':
-				// Generic relay: host + credentials are required; port/TLS have safe
-				// backend defaults (587 / STARTTLS), so only emit them when set.
+				// Port/TLS have safe backend defaults, so emit them only when set.
 				patch['EMAIL_PROVIDER'] = 'smtp';
 				patch['SMTP_RELAY_HOST'] = config.sending.host;
 				patch['SMTP_RELAY_USERNAME'] = config.sending.username;

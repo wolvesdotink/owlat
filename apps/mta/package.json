@@ -2,9 +2,9 @@
 	"name": "@owlat/mta",
 	"version": "0.4.1",
 	"private": true,
-	"license": "Apache-2.0",
-	"homepage": "https://owlat.app",
 	"description": "Owlat custom MTA - direct SMTP delivery with intelligent rate control",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
@@ -22,6 +22,7 @@
 		"@owlat/email-scanner": "workspace:*",
 		"@owlat/mail-auth": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
+		"@owlat/mta-protocol": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/smtp-listener": "workspace:*",
@@ -32,15 +33,15 @@
 		"prom-client": "^15.1.0"
 	},
 	"devDependencies": {
+		"@types/mailparser": "^3.4.5",
 		"@types/node": "catalog:",
 		"@types/smtp-server": "^3.5.10",
-		"@types/mailparser": "^3.4.5",
-		"typescript": "catalog:",
-		"tsx": "^4.19.0",
-		"vitest": "catalog:",
 		"ioredis-mock": "^8.9.0",
 		"mailauth": "^4.13.3",
 		"mailparser": "^3.7.0",
-		"smtp-server": "^3.13.0"
+		"smtp-server": "^3.13.0",
+		"tsx": "^4.19.0",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	}
 }

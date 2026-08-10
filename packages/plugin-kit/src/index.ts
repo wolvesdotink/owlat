@@ -1,4 +1,27 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
+// Provider authors may adopt the universal vocabulary through plugin-kit while
+// existing PluginSendTransport* names remain source compatible.
+export {
+	composeProviderBundles,
+	defineSendProviderBundle,
+	ProviderBundleCompositionError,
+} from '@owlat/provider-kit';
+export type {
+	ComposedSendProviderBundle,
+	HmacTimestampBodyVerifier,
+	ProviderBundleSource,
+	ProviderFeedbackContribution,
+	ProviderFeedbackEvent,
+	ProviderFeedbackParserModule,
+	ProviderFeedbackVerifier,
+	ProviderModuleExport,
+	ProviderSetupContribution,
+	ProviderSetupProbeModule,
+	ProviderStaticModuleExport,
+	SendProviderBundle,
+	SendProviderDescriptor,
+	SourceAssignedProviderBundle,
+} from '@owlat/provider-kit';
 export {
 	PLUGIN_AUTONOMY_GATE_CAPABILITY,
 	PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS,
@@ -139,6 +162,7 @@ export {
 	isPluginManifest,
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
+	PLUGIN_CONTRIBUTION_MODULE_EXPORTS,
 	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
 	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
@@ -177,21 +201,82 @@ export type {
 	PluginInboundSignatureContract,
 	PluginInboundSignatureEncoding,
 } from './importProvider';
-export { PLUGIN_SEND_FAILURE_CODES, PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
+export {
+	isBoundedReplayToleranceSeconds,
+	isPluginSecretEnvVar,
+	isPluginSvixSignatureContract,
+	PLUGIN_INBOUND_MAX_NAME_LENGTH,
+	PLUGIN_INBOUND_REPLAY_MAX_TOLERANCE_SECONDS,
+} from './inboundSignature';
+export type {
+	PluginReplayBoundSignatureContract,
+	PluginSvixSignatureContract,
+	PluginWebhookSignatureContract,
+} from './inboundSignature';
+export {
+	isPluginSendTransportEnvVar,
+	PLUGIN_SEND_FAILURE_CODES,
+	PLUGIN_SEND_TRANSPORT_CAPABILITY,
+	PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH,
+	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
+} from './sendTransport';
 export type {
 	PluginSendAttachment,
 	PluginSendAttempt,
+	PluginSendDispatchContext,
 	PluginSendFailureCode,
+	PluginSendSystemMailContext,
 	PluginSendTransportCapability,
+	PluginSendTransportConfig,
+	PluginSendTransportCustomReturnPathSupport,
 	PluginSendTransportDefinition,
 	PluginSendTransportKind,
+	PluginSendTransportMessageIdSource,
 	PluginSendTransportModule,
 	PluginSendTransportParams,
+	PluginSendTransportWebhookDefinition,
 	PluginStaticModuleExport,
 } from './sendTransport';
+export {
+	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACT_LENGTH,
+	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
+	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
+} from './sendTransportDomainIdentity';
+export type {
+	PluginDomainIdentityResult,
+	PluginDomainIdentityState,
+	PluginDomainRecordVerdict,
+	PluginSendTransportDomainIdentityDefinition,
+	PluginSendTransportDomainIdentityModule,
+} from './sendTransportDomainIdentity';
+export {
+	PLUGIN_SEND_TRANSPORT_CREDENTIAL_FIELD_KINDS,
+	PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS,
+} from './sendTransportCredentials';
+export type {
+	PluginSendTransportBooleanCredentialField,
+	PluginSendTransportCredentialField,
+	PluginSendTransportCredentialFieldKind,
+	PluginSendTransportCredentialFieldOption,
+	PluginSendTransportNumberCredentialField,
+	PluginSendTransportSecretCredentialField,
+	PluginSendTransportSelectCredentialField,
+	PluginSendTransportStringCredentialField,
+} from './sendTransportCredentials';
+export {
+	PLUGIN_WEBHOOK_FEEDBACK_KINDS,
+	PLUGIN_WEBHOOK_MAX_BATCH_EVENTS,
+	PLUGIN_WEBHOOK_MAX_BODY_BYTES,
+} from './sendTransportFeedback';
+export type {
+	PluginSendTransportWebhookModule,
+	PluginWebhookFeedbackEvent,
+	PluginWebhookFeedbackKind,
+} from './sendTransportFeedback';
 export { pluginContributionExportPaths, pluginContributionModules } from './contributionModules';
 export type { PluginContributionModuleReference } from './contributionModules';
 export type {
+	ContributionModuleExport,
 	PluginComponentDefinition,
 	PluginContributionKind,
 	PluginContributions,

@@ -14,7 +14,8 @@
 import type { ReservedJob } from 'groupmq';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { DestinationProviderKey, EmailJob } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJob } from '../types.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DispatchEffect } from '../dispatch/effects.js';
 import { applyEffects } from '../dispatch/effects.js';

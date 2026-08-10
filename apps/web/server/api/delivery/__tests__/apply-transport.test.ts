@@ -14,12 +14,43 @@ import {
  * modules mocked so the route's own control flow is exercised in isolation.
  */
 
-const { pushMock, readMock, writeMock, requireOrgAdminMock } = vi.hoisted(() => ({
-	pushMock: vi.fn(),
-	readMock: vi.fn(),
-	writeMock: vi.fn(),
-	requireOrgAdminMock: vi.fn(),
-}));
+const {
+	pushMock,
+	readMock,
+	writeMock,
+	requireOrgAdminMock,
+	PLUGIN_KIND,
+	PLUGIN_TOKEN_ENV,
+	pluginCatalog,
+} = vi.hoisted(() => {
+	const kind = 'plugin.mock-esp.relay';
+	const tokenEnv = 'PLUGIN_MOCK_ESP_TOKEN';
+	return {
+		pushMock: vi.fn(),
+		readMock: vi.fn(),
+		writeMock: vi.fn(),
+		requireOrgAdminMock: vi.fn(),
+		PLUGIN_KIND: kind,
+		PLUGIN_TOKEN_ENV: tokenEnv,
+		pluginCatalog: Object.freeze([
+			Object.freeze({
+				kind,
+				label: 'Mock ESP',
+				retryDelays: Object.freeze([]),
+				requiredEnvVars: Object.freeze([tokenEnv]),
+				credentialFields: Object.freeze([
+					Object.freeze({
+						kind: 'secret',
+						key: 'token',
+						label: 'API token',
+						required: true,
+						envVar: tokenEnv,
+					}),
+				]),
+			}),
+		]),
+	};
+});
 
 vi.mock('~~/server/utils/requireOrgAdmin', () => ({
 	requireOrgAdmin: requireOrgAdminMock,
@@ -31,6 +62,18 @@ vi.mock('@owlat/shared/setupEnv', () => ({
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
+});
+vi.mock('~/generated/sendTransportCatalog.generated', () => ({
+	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: pluginCatalog,
+}));
+vi.mock('~/utils/composedSendProviderCatalog', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('~/utils/composedSendProviderCatalog')>();
+	return {
+		...actual,
+		COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS: [PLUGIN_TOKEN_ENV],
+		isComposedSendProviderKind: (value: string | undefined) =>
+			value === PLUGIN_KIND || actual.isComposedSendProviderKind(value),
+	};
 });
 
 const INSTANCE_SECRET = 'e'.repeat(64);
@@ -85,6 +128,34 @@ function writtenEnv(): Record<string, string> {
 }
 
 describe('apply-transport secrets at rest', () => {
+	it('accepts only generated plugin credential keys and pushes them live', async () => {
+		readMock.mockResolvedValue({
+			CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',
+			CONVEX_SITE_URL: 'http://convex:3211',
+			RESEND_API_KEY: 'stale-core-key',
+		});
+		body = {
+			providerEnv: {
+				EMAIL_PROVIDER: PLUGIN_KIND,
+				[PLUGIN_TOKEN_ENV]: 'tok-live',
+			},
+		};
+
+		const res = await callRoute();
+		expect(res.ok).toBe(true);
+		const changes = pushMock.mock.calls[0]![2] as Array<[string, string]>;
+		const liveMap = Object.fromEntries(changes);
+		expect(liveMap).toMatchObject({
+			EMAIL_PROVIDER: PLUGIN_KIND,
+			[PLUGIN_TOKEN_ENV]: 'tok-live',
+			RESEND_API_KEY: '',
+		});
+		expect(writtenEnv()).toMatchObject({
+			EMAIL_PROVIDER: PLUGIN_KIND,
+			[PLUGIN_TOKEN_ENV]: 'tok-live',
+		});
+	}, 15_000);
+
 	it('pushes the PLAINTEXT relay password live but writes the SEALED form to the .env backup', async () => {
 		readMock.mockResolvedValue({
 			CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',

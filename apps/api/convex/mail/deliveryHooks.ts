@@ -11,6 +11,7 @@
 import { v } from 'convex/values';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
+import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
@@ -56,6 +57,10 @@ export async function forwardToTarget(
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${mta.apiKey}`,
 		},
+		// Typed against the wire's one declaration (D7): this is the same
+		// `/send/postbox` body `mail/outbound.ts` posts, and `allowedFromAddresses`
+		// is the field the MTA enforces From ownership with — a rename that left
+		// this literal behind would refuse every forward with a 403.
 		body: JSON.stringify({
 			messageId: `pb-fwd-${args.mailboxId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			from: args.mailboxAddress,
@@ -80,7 +85,7 @@ export async function forwardToTarget(
 			organizationId: 'postbox',
 			dkimDomain: selfLower.split('@')[1] ?? 'localhost',
 			allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
-		}),
+		} satisfies MtaSendRequest),
 	});
 }
 
@@ -296,6 +301,8 @@ export const runPostDelivery = internalAction({
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${mta.apiKey}`,
 				},
+				// The third `/send/postbox` producer, bound to the same declaration
+				// (D7) as the forward above and `mail/outbound.ts`.
 				body: JSON.stringify({
 					messageId: `pb-vac-${args.mailboxId}-${now}-${Math.random().toString(36).slice(2, 8)}`,
 					from: args.mailboxAddress,
@@ -317,7 +324,7 @@ export const runPostDelivery = internalAction({
 					organizationId: 'postbox',
 					dkimDomain: selfLower.split('@')[1] ?? 'localhost',
 					allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
-				}),
+				} satisfies MtaSendRequest),
 			});
 			await ctx.runMutation(internal.mail.vacation.internalRecordReply, {
 				mailboxId: args.mailboxId,

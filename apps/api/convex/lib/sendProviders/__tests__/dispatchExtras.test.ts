@@ -13,6 +13,19 @@
  * key set included, because an extra `undefined`-valued key is invisible to
  * `toEqual` and visible to `JSON.stringify`, which is what actually reaches the
  * MTA.
+ *
+ * The second half of P0.1 finished the same job for the four behaviours that
+ * were still spelled `providerKind === 'mta'` — identity binding, message-id
+ * substitution, acceptance, and the reconciliation of an ambiguous acceptance.
+ * They are now declared on the catalog entry (`acceptanceSemantics`,
+ * `messageIdSource`); `describe('declared dispatch semantics')` below checks the
+ * INVARIANTS over those declarations against the real, unmocked catalog (the
+ * per-kind values themselves are pinned once, by `registry.test.ts`'s
+ * whole-catalog assertion), and the proof that the
+ * governed boundary obeys the declaration rather than the kind name lives beside
+ * the function it tests, in
+ * `delivery/__tests__/governedDispatch.test.ts` → `describe('reads the declared
+ * dispatch semantics, not the kind')`.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -20,7 +33,15 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDispatchExtrasFor, providerFor } from '../index';
-import { SEND_PROVIDER_CATALOG } from '../catalog';
+import {
+	acceptanceSemanticsFor,
+	isCoreSendProviderKind,
+	messageIdSourceFor,
+	preassignsProviderMessageId,
+	SEND_PROVIDER_CATALOG,
+	SEND_PROVIDER_KINDS,
+	takesCustodyOnAcceptance,
+} from '../catalog';
 import type {
 	DispatchExtrasInput,
 	MandrillExtras,
@@ -122,7 +143,7 @@ function expectMatchesLegacy(kind: SendProviderKind, input: DispatchExtrasInput)
  */
 const LEGACY_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
 
-const CORE_KINDS = [...LEGACY_KINDS, 'mandrill'] as const;
+const CORE_KINDS = [...LEGACY_KINDS, 'mandrill', 'emailit'] as const;
 
 /**
  * Representative routing situations, each one a shape the routing pass really
@@ -357,17 +378,73 @@ describe('the module contract', () => {
 	});
 });
 
+/**
+ * THE RULES OVER WHAT EACH SHIPPED KIND DECLARES — checked against the REAL
+ * catalog. Nothing in this file mocks anything, deliberately: a steerable
+ * accessor here could report whatever a test had last set and these pins would
+ * then pass for any catalog content. The two suites that DO need something the
+ * shipped catalog cannot produce keep their mocks to themselves —
+ * `delivery/__tests__/governedDispatch.test.ts` steers what a kind declares, and
+ * `undeclaredSemanticsFailClosed.test.ts` supplies the generated plugin entries
+ * that declare nothing (the only way the fail-closed defaults are reachable).
+ */
+describe('declared dispatch semantics', () => {
+	/*
+	 * WHAT each kind declares is pinned ONCE, in `registry.test.ts`, whose
+	 * whole-catalog `toEqual` already carries both fields for all five kinds.
+	 * Restating the 5×2 table here would make a sixth core kind a two-file edit
+	 * for one fact — the shotgun surgery this piece exists to remove — and would
+	 * fail against a hand-maintained fixture rather than against the catalog.
+	 * What lives here instead are the RULES over those values, which no snapshot
+	 * can express: the pairing invariant, and that nothing shipped leans on a
+	 * fail-closed default.
+	 */
+
+	it('pairs custody with an id of its own in BOTH directions, for every core kind', () => {
+		// The coupling is not decorative: the ambiguous-acceptance arm resolves by
+		// REPLAYING the attempt, which is only safe because the replay carries the
+		// same idempotency key. A kind that claimed custody without owning its
+		// message id would double-deliver on every lost response (D4) — and one
+		// that owned its id without claiming custody would pay for the pre-dispatch
+		// identity binding and still refuse to reconcile. `CoreSendProviderCatalogEntry`
+		// makes both a build break; this executes the same rule against the values.
+		const coreKinds = SEND_PROVIDER_KINDS.filter(isCoreSendProviderKind);
+		expect([...coreKinds].sort()).toEqual([...CORE_KINDS].sort());
+		for (const kind of coreKinds) {
+			const acceptance = acceptanceSemanticsFor(kind);
+			const messageId = messageIdSourceFor(kind);
+			if (takesCustodyOnAcceptance(acceptance)) expect(messageId).toBe('idempotency-key');
+			if (preassignsProviderMessageId(messageId)) expect(acceptance).toBe('accepted');
+		}
+	});
+
+	it('leaves no shipped kind on a fail-closed default — every core entry declares both', () => {
+		// The defaults THEMSELVES cannot be exercised from the real catalog: core
+		// entries must declare both fields and the generated plugin catalog is empty
+		// in this build, so a loop here would assert nothing. They are pinned
+		// against a mocked generated entry in `undeclaredSemanticsFailClosed.test.ts`
+		// instead. What this pins is the other half — that nothing shipped is
+		// relying on them.
+		const coreEntries = SEND_PROVIDER_CATALOG.filter((entry) => isCoreSendProviderKind(entry.kind));
+		expect(coreEntries).toHaveLength(CORE_KINDS.length);
+		for (const entry of coreEntries) {
+			expect(entry.acceptanceSemantics).toBeDefined();
+			expect(entry.messageIdSource).toBeDefined();
+		}
+	});
+});
+
 describe('the seam stays closed', () => {
-	it('governed dispatch names no relay provider kind', () => {
-		// The point of P0.1: extras are the module's business, so the governed send
-		// path must not know that `resend`, `smtp` or `ses` exist. `'mta'` still
-		// appears there for provider-identity binding and MTA acceptance semantics
-		// — a different concern, and one the plan leaves in place.
+	it('governed dispatch compares no provider kind to a literal (D2)', () => {
+		// The point of P0.1, both halves: extras belong to the module and the
+		// acceptance/identity semantics belong to the catalog, so the governed send
+		// path must not know that ANY particular kind exists — `'mta'` included,
+		// which is what the second half of the piece removed.
 		const source = readFileSync(
 			join(dirname(fileURLToPath(import.meta.url)), '../../../delivery/governedDispatch.ts'),
 			'utf8'
 		);
-		for (const kind of ['resend', 'smtp', 'ses'] as const) {
+		for (const kind of SEND_PROVIDER_KINDS) {
 			expect(source).not.toContain(`'${kind}'`);
 		}
 	});

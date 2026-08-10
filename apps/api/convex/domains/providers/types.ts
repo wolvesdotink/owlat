@@ -1,10 +1,24 @@
 /**
  * Sending domain provider adapter (module) — shared types.
  *
- * One TypeScript interface, two concrete implementations (MTA and SES). The
- * **Sending domain lifecycle (module)** dispatches per-provider work through
- * `providerFor(kind)` in `./index.ts`; provider variation lives entirely
- * behind this seam.
+ * One TypeScript interface, one concrete implementation per registered kind
+ * (`SendingDomainIdentityRegistry` below). The **Sending domain lifecycle
+ * (module)** dispatches per-provider work through `providerFor(kind)` in
+ * `./index.ts`; provider variation lives entirely behind this seam — with the
+ * RETURN-PATH branches the lifecycle still carries of its own as the stated
+ * exception (`./index.ts`'s header says what they cost a new kind). The seams
+ * plan's P0.4 cleared the identity ones: both relay-identity provisioning paths
+ * now walk the registry through
+ * {@link SendingDomainProviderModule.ensureRelayIdentity}.
+ *
+ * THE PRIMARY CONTRACT ONLY. The smaller "can this RELAY kind prove a domain?"
+ * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
+ * that file's header says why the two are not one type.
+ *
+ * PLAN NUMBERS: every D-/P-number in this file names its plan, because more
+ * than one plan's numbering reaches this seam — the Mandrill provider plan's
+ * for the registry and the relay seams, the seams plan's for P0.3/P0.4, and
+ * the per-domain return-path work (#408) for `returnPathHost`.
  *
  * Per ADR-0018:
  * - Each adapter owns its per-provider sibling identity table
@@ -22,6 +36,8 @@ import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignmen
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
+import type { EnsureRelayIdentityOptions } from './relayIdentityTypes';
+import type { RelayDomainIdentityFacts } from './relayIdentityView';
 
 // ─── Per-provider identity shapes ──────────────────────────────────────────
 
@@ -38,7 +54,7 @@ export type SesIdentity = {
 
 /**
  * A Mandrill sending-domain identity, as `senders/add-domain` /
- * `senders/check-domain` last described it (P3.1).
+ * `senders/check-domain` last described it (Mandrill P3.1).
  *
  * It carries STATE rather than secrets or per-domain tokens, which is the whole
  * difference from SES: Mandrill signs every account's mail with one shared,
@@ -80,7 +96,7 @@ export type MandrillIdentity = {
 export type RelayIdentityStatus = 'unverified' | 'pending_dns' | 'verified' | 'failed';
 
 /**
- * The REGISTRY of sending-domain provider kinds, keyed by kind (D7). One line
+ * The REGISTRY of sending-domain provider kinds, keyed by kind (Mandrill D7). One line
  * per provider, mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`:
  * the kind union, the per-kind identity payload and the module registry's
  * completeness guard all derive from this single map, so adding a provider is
@@ -112,6 +128,33 @@ export type ProviderCheckResult = {
 	lastError?: string;
 };
 
+/**
+ * The slice of `domains.verificationResults` a provider may write about ITSELF
+ * — its own verdict, mirrored into the record bundle that travels with the
+ * domain's DNS results.
+ *
+ * PERSISTED, AND CURRENTLY UNREAD BY THE WEB APP. `sesStatus` is written here
+ * and by `domains/sesRelayVerification.ts`, validated in
+ * `lib/convexValidators.ts`, and read by nothing in `apps/web` — the
+ * domain-records screen renders spf/dkim/dmarc/mailFrom only. The seam is
+ * therefore about WHO DECIDES the projection, not about a pill on a screen: a
+ * developer adding provider #4 should implement it to keep the provider's own
+ * verdict in the domain's record, and should not expect it to appear anywhere
+ * until the domain-records UI grows a consumer (P1.2 territory).
+ *
+ * The key is SES-named because the PERSISTED FIELD is (rows written since long
+ * before this seam existed). That is schema vocabulary, not an identity check:
+ * per D10 persisted shapes stay additive, so a second provider that wants a
+ * status of its own adds its OWN optional key here and fills it from its OWN
+ * adapter. What the seam removes is the `providerType === 'ses'` branch that
+ * used to decide, in `domains/dnsVerification.ts`, which provider was allowed
+ * to have a verdict worth recording.
+ */
+export type ProviderVerificationStatusFields = {
+	/** SES's `verificationStatus`, spelled as the persisted field has always held it. */
+	readonly sesStatus?: string;
+};
+
 // ─── Adapter interface ─────────────────────────────────────────────────────
 
 export interface SendingDomainProviderModule<K extends SendingDomainProviderKind> {
@@ -126,7 +169,8 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * and translates to a `→ failed` lifecycle transition.
 	 *
 	 * `options.returnPathHost` is the domain's per-domain VERP return-path host
-	 * (D1/D2). When set, the MTA adapter reflects it to the MTA and builds the
+	 * (the return-path work's D1/D2 — #408). When set, the MTA adapter reflects
+	 * it to the MTA and builds the
 	 * `mailFrom` SPF record on that host; when absent it falls back to the
 	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
 	 * no return-path concept and ignores it.
@@ -153,19 +197,51 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	describeIdentity(identity: ProviderIdentityFor<K>): string;
 
 	/**
-	 * Optional per-provider verification check. Today only SES has one
-	 * (live `getVerificationStatus` call); MTA omits it (the lifecycle
-	 * treats absent as `{ verified: true }`). Called by the DNS verifier
+	 * Optional per-provider verification check, called by the DNS verifier
 	 * action before `recordVerification`.
+	 *
+	 * A capability, not a kind: whichever kinds hold a provider-side opinion
+	 * about whether the domain is verified implement it (today SES's live
+	 * `getVerificationStatus` and Mandrill's `check-domain`). A kind with no
+	 * such API omits it — our own MTA does — and the lifecycle treats absent as
+	 * `{ verified: true }`, i.e. the DNS evidence stands alone.
 	 */
 	runProviderCheck?(domain: string): Promise<ProviderCheckResult>;
 
+	/**
+	 * Optional: this provider's own verdict, projected into the shared
+	 * `domains.verificationResults` bundle that is persisted beside the DNS
+	 * results (see {@link ProviderVerificationStatusFields}, which says plainly
+	 * what does and does not read the projection today).
+	 *
+	 * Pure and synchronous: the verdict is already in hand — the verifier has just
+	 * awaited {@link runProviderCheck} — and this only decides how to SPELL it.
+	 *
+	 * OPTIONAL, and absence is a real answer: a kind with no provider verdict to
+	 * record (our own MTA has none at all; Mandrill keeps its state on its own
+	 * identity row) omits it and the verifier writes nothing extra,
+	 * which is exactly what the `providerType === 'ses'` branch this replaced
+	 * achieved for every kind that was not SES.
+	 */
+	verificationStatusFields?(check: ProviderCheckResult): ProviderVerificationStatusFields;
+
 	// ── Relay-domain verification (runs inside queries/mutations) ─────────
+	//
+	// THE NEXT THREE ARE ALL-OR-NOTHING. Each is optional because most kinds
+	// answer none of them, but the relay-identity registry
+	// (`relayIdentityProviderFor` in ./index.ts) is composed from adapters that
+	// implement ALL THREE, and one implementing a subset would be dropped from it
+	// entirely: registered, compiling clean, and silently never backfilled, with
+	// the only symptom a relay refusing From domains once the deliverability
+	// fallback opened. So a partial implementation THROWS at composition time
+	// rather than registering half a relay. The three are one promise, not three —
+	// a proof nothing provisions is always false, a backfill nothing reads is dead
+	// work, and an arm without a proof describes DNS the router may not use.
 
 	/**
 	 * Does this provider hold a fresh, complete proof that `domainName` may be
 	 * RELAYED through it right now? The read half of the deliverability
-	 * fallback (D6), called by `lib/sendProviders/relayDomainVerification.ts`
+	 * fallback (Mandrill D6), called by `lib/sendProviders/relayDomainVerification.ts`
 	 * once the configured relay kind has been resolved to its provider.
 	 *
 	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
@@ -210,6 +286,106 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 		now: number
 	): Promise<ReferenceAlignmentArm | null>;
 
+	/**
+	 * BACKFILL: make sure this provider holds a relay identity for `domain`,
+	 * whose PRIMARY provider is somebody else (in practice our own MTA).
+	 *
+	 * The write half of what {@link relayDomainVerified} later reads, and the
+	 * catch-up path for the domains that already existed when an operator
+	 * switched the deliverability fallback on —
+	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
+	 * this of the kind the route named.
+	 *
+	 * BOTH HALVES ASK THIS METHOD (the seams plan's P0.4). Domains verified after
+	 * the operator switched the fallback on get theirs from the lifecycle's
+	 * `provision_relay_identity_if_enabled` effect, which walks the same registry
+	 * with the same relay kinds — so the two paths together cover every domain
+	 * exactly once, and a NEW `domainVerification: 'api'` kind is on both the
+	 * moment it registers. The forward path used to be a hand-written if-chain
+	 * naming `ses` and `mandrill`, which gave a newly registered kind the backfill
+	 * and NOT the forward path: its domains verified, silently received no relay
+	 * identity, and its fallback then refused to relay them, with the only symptom
+	 * a runtime refusal on a real send.
+	 *
+	 * Implementations SCHEDULE the provider call rather than making it: this
+	 * runs inside the drain's transaction, and a provider outage must not roll
+	 * back a batch (the same reasoning as `register_with_provider`). They also
+	 * own the "already have one?" check, because where that identity lives is
+	 * per-provider knowledge — the frozen `sendingDomainSesIdentities` sibling
+	 * for SES, the generic `sendingDomainRelayIdentities` row for every kind
+	 * after it (Mandrill D7).
+	 *
+	 * Takes the whole `domains` DOC, not an id: the caller is a paginated drain
+	 * that already holds the row (it filters on `providerType` a line earlier),
+	 * and a name-keyed implementation re-reading it would cost one extra
+	 * document read per domain per page — plus a "the row vanished mid-drain"
+	 * branch that cannot happen when the doc was in hand.
+	 *
+	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
+	 * identity API to register at (`domainVerification: 'none'` — our own MTA,
+	 * Resend, a bring-your-own SMTP relay) has no relay identity to backfill,
+	 * and the drain then does nothing at all rather than provisioning some other
+	 * kind's. Every kind declaring `domainVerification: 'api'` implements it —
+	 * pinned by `./__tests__/registry.test.ts`, beside the same completeness rule
+	 * for {@link relayDomainVerified}, because a kind that promises a proof and
+	 * never provisions the identity that proof is read from reports every domain
+	 * unverified and its fallback never relays.
+	 *
+	 * The CALLER'S INTENT travels with the call — see
+	 * {@link EnsureRelayIdentityOptions}. The two halves genuinely want different
+	 * things from "ensure", and the parameter is what keeps sharing one
+	 * implementation from silently picking one of them.
+	 */
+	ensureRelayIdentity?(
+		ctx: MutationCtx,
+		domain: Doc<'domains'>,
+		options: EnsureRelayIdentityOptions
+	): Promise<void>;
+
+	/**
+	 * The due-check sweep's dispatch arm: re-ask this provider about ONE domain
+	 * whose `sendingDomainRelayIdentities` row is due for a re-check, by
+	 * scheduling the action that makes the call.
+	 *
+	 * SEPARATE FROM THE THREE ABOVE, and separately optional, because it asks a
+	 * different question: not "can this kind prove a domain?" but "does this kind
+	 * keep its rows in the SHARED table, whose deployment-wide due index is what
+	 * the sweep walks?". SES proves domains and is absent here — its identities
+	 * live in the frozen `sendingDomainSesIdentities` sibling with a refresh path
+	 * of their own.
+	 *
+	 * Implementations SCHEDULE rather than call: the sweep is a mutation walking a
+	 * page of due rows, and a provider conversation cannot happen inside it. The
+	 * delay is the sweep's stagger, so one tick does not fire a page of provider
+	 * calls at once.
+	 */
+	scheduleRelayIdentityRefresh?(
+		ctx: MutationCtx,
+		delayMs: number,
+		domainName: string
+	): Promise<void>;
+
+	/**
+	 * The OPERATOR SURFACE's arm: what this relay says about one sending domain,
+	 * in the one shape every kind answers in
+	 * ({@link RelayDomainIdentityFacts} — `./relayIdentityView.ts`).
+	 *
+	 * Separately optional for the same reason the sweep arm above is: it asks
+	 * neither "can this kind prove a domain?" nor "does it keep rows in the shared
+	 * table?", but "what can we TELL an operator about it?". The generic read of
+	 * the shared row answers that for any kind that omits this; what an
+	 * implementation adds is the part no generic read can reach — SES's frozen
+	 * sibling and its remembered DNS bundle, Mandrill's derived records and its
+	 * ownership token.
+	 *
+	 * Passed through to the relay-identity registry by `./relaySurface.ts`, which
+	 * is what the panel's query walks.
+	 */
+	describeRelayIdentity?(
+		ctx: QueryCtx | MutationCtx,
+		domain: Doc<'domains'>
+	): Promise<RelayDomainIdentityFacts | null>;
+
 	// ── Sibling-row persistence (run inside mutations) ────────────────────
 
 	/**
@@ -231,3 +407,38 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 */
 	clearIdentity(ctx: MutationCtx, domainId: Id<'domains'>): Promise<void>;
 }
+
+/**
+ * The module shape a kind declaring `domainVerification: 'api'` must have —
+ * every optional relay seam above, made REQUIRED.
+ *
+ * The catalog entry is a PROMISE ("this relay can prove a sending domain"), and
+ * three separate pieces of the system read it: the enqueue-path proof
+ * (`relayDomainVerified`), the backfill that writes the identity that proof is
+ * read from (`ensureRelayIdentity`), and the alignment pre-flight's second arm
+ * (`describeReferenceArm`). A provider that is REGISTERED but implements none of
+ * them satisfies the registry's completeness guard and still breaks all three:
+ * every domain reports unverified, the fallback refuses to relay any of them,
+ * and the ramp holds at s=0 — with the only symptom a runtime refusal on a real
+ * send, in a deployment that had just been told its relay was ready.
+ *
+ * The methods stay OPTIONAL on {@link SendingDomainProviderModule} because
+ * absence is a real answer for a kind that declares `domainVerification: 'none'`
+ * (our own MTA, Resend, a bring-your-own SMTP relay): it keeps the seam's honest
+ * "unverifiable" posture rather than being a gap. This type is how the two
+ * readings are kept apart — the same field being absent is legitimate for one
+ * kind and a build failure for another, and which one it is comes from the
+ * catalog rather than from a reviewer noticing.
+ *
+ * Annotate an `api` kind's adapter with this (see `../ses/index.ts`,
+ * `../mandrill/index.ts`). The registry's `_relayProofTypecheck` in `./index.ts`
+ * is what makes forgetting to a compile error rather than a convention.
+ */
+export type RelayProvingProviderModule<K extends SendingDomainProviderKind> =
+	SendingDomainProviderModule<K> &
+		Required<
+			Pick<
+				SendingDomainProviderModule<K>,
+				'relayDomainVerified' | 'ensureRelayIdentity' | 'describeReferenceArm'
+			>
+		>;

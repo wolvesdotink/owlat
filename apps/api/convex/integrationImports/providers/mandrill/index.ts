@@ -21,10 +21,13 @@
  *    `IntegrationProviderConfig`'s `mandrill` branch has no fields. It also
  *    means the run is authorized by whoever configured the deployment, which is
  *    the same trust boundary sending through Mandrill already has.
- *  - **The policy table is the webhook's, not a copy.** `rejects/list` and the
- *    `reject` webhook event report the same reasons about the same addresses,
- *    so both go through `mandrillRejectDisposition`. A private mapping here
- *    would be a second table to keep in sync with the first, and the drift
+ *  - **The policy tables are the webhook's, not a copy.** `rejects/list` and the
+ *    `reject` webhook event report the same reasons about the same addresses, so
+ *    both read the same two tables: the vendor half in the inbound adapter
+ *    (`mandrillRejectSuppression` — which reject reason is a recipient truth)
+ *    and the host half in `webhooks/providerSuppression.ts`
+ *    (`providerSuppressionEffect` — what Owlat does about one). A private
+ *    mapping here would be a table to keep in sync with those, and the drift
  *    would be silent: an address carried over as `manual` and later re-reported
  *    as `complained` reads as an operator's decision forever.
  *  - **`rejects/list` has no pagination.** Mandrill answers with the whole list
@@ -43,10 +46,8 @@ import {
 	type SuppressionRow,
 } from '../../_common';
 import { getOptional } from '../../../lib/env';
-import {
-	mandrillRejectCode,
-	mandrillRejectDisposition,
-} from '../../../webhooks/mandrillRejectSuppression';
+import { mandrillRejectCode, mandrillRejectSuppression } from '../../../webhooks/adapters/mandrill';
+import { providerSuppressionEffect } from '../../../webhooks/providerSuppression';
 
 const MANDRILL_REJECTS_LIST_URL = 'https://mandrillapp.com/api/1.0/rejects/list';
 
@@ -175,23 +176,24 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 				continue;
 			}
 			const evidence = mandrillRejectCode(entry.reason);
-			const disposition = mandrillRejectDisposition(evidence);
-			// `ignore` is every reason that describes OUR account, OUR sending domain
-			// or OUR message — `invalid-sender`, `invalid`, `test-mode-limit`,
+			const suppression = mandrillRejectSuppression(evidence);
+			// No suppression is every reason that describes OUR account, OUR sending
+			// domain or OUR message — `invalid-sender`, `invalid`, `test-mode-limit`,
 			// `unsigned` — plus any reason Mandrill adds after this was written. A new
 			// reason cannot start suppressing addresses by surprise.
-			if (disposition.kind === 'ignore') {
+			if (!suppression) {
 				suppressionsSkipped++;
 				continue;
 			}
-			if (disposition.kind === 'unsubscribe') {
+			const effect = providerSuppressionEffect(suppression.reason);
+			if (effect.kind === 'unsubscribe') {
 				suppressions.push({ email, reason: 'unsubscribe', evidence });
 				continue;
 			}
 			suppressions.push({
 				email,
-				reason: disposition.reason,
-				...(disposition.reason === 'bounced' ? { bounceType: disposition.bounceType } : {}),
+				reason: effect.reason,
+				...(effect.reason === 'bounced' ? { bounceType: effect.bounceType } : {}),
 				evidence,
 			});
 		}

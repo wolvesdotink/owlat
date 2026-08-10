@@ -32,11 +32,12 @@ AS BUILT, including the two places the plan's intent and the shipped code differ
 
 ### The catalog answers capability questions; nothing names a kind
 
-Four fields on `SendProviderCatalogEntry` carry everything the rest of the
+Six fields on `SendProviderCatalogEntry` carry everything the rest of the
 system needs: `requiredEnvVars`, `hasProviderFeedback`,
-`supportsCustomReturnPath`, and the new `domainVerification: 'api' | 'none'`.
+`supportsCustomReturnPath`, `domainVerification: 'api' | 'none'`, and the two
+dispatch semantics below.
 
-Two former identity checks now read them:
+Three former identity checks now read them:
 
 - **Fallback eligibility** — a kind may be the deliverability-fallback relay iff
   it is configured and is not `mta`. The MTA is the arm a fallback moves traffic
@@ -51,6 +52,8 @@ Two former identity checks now read them:
 - **Relay domain verification** — a relay's From domain is verified iff a
   registered sending-domain provider for that kind says so. Kinds with no such
   provider keep an honest "unverifiable" posture and fail closed.
+- **Governed dispatch** — see "What a dispatch means is declared, not
+  recognized" below.
 
 ### Per-send extras belong to the adapter
 
@@ -59,6 +62,56 @@ carry a ternary chain of per-kind extras, which is a seam leak by construction:
 every new kind edited a file that has nothing to do with it. The refactor was
 behaviour-identical and gated on the existing dispatch integration suite running
 unmodified.
+
+### What a dispatch MEANS is declared, not recognized
+
+Moving the extras left four behaviours in `delivery/governedDispatch.ts` still
+spelled `providerKind === 'mta'`: the pre-dispatch identity binding, the
+substitution of our own id for the one the response carried, the
+`acceptedForDelivery` verdict, and the replay-reconciliation arm of an ambiguous
+acceptance. Those are two questions, so they became two declared fields on the
+catalog entry:
+
+- `acceptanceSemantics: 'accepted' | 'unknown-on-timeout'` — does a successful
+  send mean the transport took CUSTODY (delivery still pending, the Send stays
+  `queued` for feedback), or is the send itself the handoff? `accepted` is also
+  what makes an ambiguous outcome re-askable by replay.
+- `messageIdSource: 'provider' | 'idempotency-key' | 'composed'` — where the
+  recorded `providerMessageId` comes from, and therefore whether it exists
+  *before* the network crossing. Only `idempotency-key` gets an identity bound
+  pre-dispatch and gets our value substituted for whatever came back.
+
+Both fail closed when absent (`unknown-on-timeout` / `provider`), because
+claiming custody we were never granted parks a Send against feedback that never
+arrives, and claiming re-askability double-delivers. After this,
+`governedDispatch.ts` compares no provider kind to a literal at all — a test
+reads the file and asserts it.
+
+For a core kind the pairing is a compile-time union rather than two independent
+fields, constrained in both directions: `accepted` only with `idempotency-key`
+(a replay is safe only when it carries the id we minted) and `idempotency-key`
+only with `accepted`. The governed boundary still reads the two fields
+INDEPENDENTLY rather than deriving one from the other, so widening that union
+later is a type change, not a behaviour change.
+
+Bundled plugin entries are generated and reach the catalog through a cast, so
+the union does not constrain them. The half of the rule that is about safety
+rather than tidiness is enforced for that tier at COMPOSITION time instead:
+building a catalog whose plugin entry declares `accepted` or `idempotency-key`
+throws, naming the entry. A prose note is not a control, and the failure mode it
+would otherwise guard is silent — a plugin's sends attributed to the own arm in
+every measurement row, or its ambiguous outcomes deferred until the delivery
+deadline calls them failures. Plugin parity (P3.1) gave plugin transports the
+capability fields and deliberately did NOT relax this — see "Parity did not
+relax the custody refusal" below.
+
+What is NOT yet general is `accepted` itself: three sites outside the catalog
+still spell the custody arm as the own MTA, and a second kind declaring custody
+must generalize all three in the same change. **Which three, and what breaks if
+one is missed, is written out once** — in the PREREQUISITES note on
+`AcceptanceSemantics` in `packages/shared/src/sendProviderCatalogTypes.ts`, the
+declaration site. This ADR deliberately does not restate it, so generalizing
+those sites stays a single-file edit.
 
 ### The sibling-table pattern stops at two
 
@@ -133,6 +186,187 @@ with two there is no single second arm to compare against. That case reports
 relays — not as a fourth DNS finding, because the remedy is "pick one", not
 "verify something".
 
+## Decisions added after Mandrill (waves 2–3 of the seams plan)
+
+The four sections above were written while Mandrill was the forcing function.
+Three more decisions were taken in the same seam afterwards, and they are
+recorded here rather than in a second ADR because they answer the same question
+this document exists to answer — what a provider is, and what the rest of the
+system may ask it.
+
+### The feedback plane is a registry; its ROUTES deliberately are not
+
+D6 asked for the hand-registered webhook wiring to become a registry keyed by
+kind. Half of that shipped, and the other half was refused on purpose.
+
+What became a registry is the **handler**. `webhooks/adapters/index.ts` maps kind
+→ adapter with two completeness guards in opposite directions: a mapped type
+requiring an adapter for every core kind declaring `hasProviderFeedback: true`
+*and* requiring that adapter to identify itself by that key, and a second guard
+refusing an adapter registered for a kind that declares no feedback. Both
+mistakes are silent otherwise. `adapter.source` is the per-provider rate-limit
+bucket and the label on every retained payload, so a registry entry keyed
+`resend` holding the SES adapter would serve one provider's traffic out of
+another's bucket while every per-adapter suite stayed green — they test adapters,
+not wiring. And an adapter registered for a silent kind produces events the
+measurement plane grades against the wrong tolerance, because
+`hasProviderFeedback` is what tells it whether that arm's bounces arrive out of
+band at all. Registering is not the decision; declaring in the catalog is.
+
+What did NOT become a registry is the **route**. Each core kind keeps its own
+`http.route({ path: '/webhooks/<kind>' })` literal, never a loop over the
+registry and never a path derived from a kind. Those URLs are pasted into
+provider consoles we do not own. A derived route is a route that can move
+itself, and a moved webhook URL is silent on our side and total on theirs —
+events simply stop, with no error anywhere. The four thin per-kind `httpAction`
+files that each did nothing but name an adapter are gone; one dispatcher
+(`providerFeedbackWebhook(kind)`) serves them all, and a test walks the real
+router so a declared-but-unrouted kind fails CI.
+
+A plugin transport's feedback arrives on **one** generated surface,
+`POST /webhooks/plugin/<pluginId>`, contributed as a second module export on the
+same `sendTransports` bundle rather than as a new contribution bucket — the
+bundle is the unit, and a second bucket would let a plugin declare feedback it
+has no send path for. It is the most exposed surface the platform has:
+unauthenticated and internet-facing by design, because the caller is a
+third-party ESP that will never hold a session. So it is a sequence of gates
+that each fail closed, ordered so that nothing but a rate-limit token is spent
+on behalf of a caller who has not proved possession of the secret — no audit
+row, no delivery claim, no retained payload. A signature verifier is mandatory
+in the contract: a webhook export without one fails manifest validation, so
+"unverified plugin webhook" is not a state a composition can reach. Verification
+is the HOST's, never the plugin's; the plugin's half is parse-only and its
+output is revalidated before anything is trusted.
+
+The reserved `inboundAdapters` bucket stays reserved for genuine inbound-MAIL
+sources. It is not the webhook seam, and conflating the two is exactly the
+mistake that would make a provider's bounce feed and a customer's inbound mail
+share a contract.
+
+### A plugin transport is the same bundle, and provider N+1 is one
+
+After parity, `core` and `plugin` are an INTEGRATION difference and nothing else
+(D4). A plugin kind declares the same capability fields, builds the same typed
+per-send extras, registers a sending-domain identity into the same registry, and
+gets named instances. Named instances follow the CONFIGURATION, not the tier: a
+transport can have `#eu` when it has variables of its own to scope, which for a
+plugin kind is its declared `instanceEnvVars`. The own MTA is the one kind that
+cannot, and for the original reason — its module reads deployment-wide MTA
+settings, so a named instance would resolve and then send with the default
+instance's credentials.
+
+The policy that follows is the one D4 names: **new providers ship as plugins**
+unless they need something only core can give. The four incumbents — the own MTA
+plus the three `core` relays — and Mandrill stay in-repo; migrating them would be
+churn without benefit. (In-repo, not `core`: `mta` declares `tier: 'own'`, so the
+tier literal is not what they have in common.) What makes the policy
+honest rather than aspirational is that the claim is executed in CI — a fixture
+ESP built entirely through the plugin contract sends under every strategy,
+serves as the reference arm with correct arm attribution, receives feedback on
+its plugin route, verifies a sending domain and resolves a named instance, with
+no core edits.
+
+That claim now includes the web half. Plugin codegen emits the same data-only
+transport catalog into `apps/api` and `apps/web`; the latter composes it with the
+shared core entries without either app importing through the other. The picker,
+generic credential renderer, required-field gate, env patch, server allowlist
+and capability-derived DNS guidance therefore all see a bundled plugin kind.
+`apps/web/app/composables/__tests__/pluginTransportCredentials.test.ts` is the
+positive receipt, while the server and artifact-guard suites pin the fail-closed
+env-write boundary.
+
+### Parity did not relax the custody refusal
+
+`acceptanceSemantics: 'accepted'` and `messageIdSource: 'idempotency-key'` are
+still refused for a plugin entry, and that is deliberate rather than unfinished.
+The prerequisites those values have are three BACKEND sites (listed once, at the
+declaration in `packages/shared/src/sendProviderCatalogTypes.ts`), not contract
+surface — so generalizing them is its own change with its own gates, and parity
+was not it.
+
+What parity added is a second, EARLIER enforcement of the same rule: the plugin
+tier's own `messageIdSource` union does not contain the word, so an author is
+told at `definePlugin` rather than at deployment boot. The composition-time
+throw stays as the artifact-level backstop, because a generated entry reaches
+the catalog through a cast and the manifest is not the only way bytes get there.
+The same shape applies to `supportsCustomReturnPath`: only `no` is true of a
+bundled transport, because the other two values need an envelope sender signed
+with a deployment secret and a bundled module is handed configuration, never
+signing keys. It is refused rather than ignored — ignoring it is invisible,
+and `yes` read as "supported" hands the ramp controller the comparable bounce
+tolerance for an arm whose bounces we cannot attribute.
+
+### Persisted kind fields stay strings (D10)
+
+Every column that stores a provider KIND is a plain `v.string()`. The audited
+set, as of this ADR, is nine:
+
+| Column | Schema file | What the string is |
+| --- | --- | --- |
+| `providerRoutes.providers[].providerType` | `schema/delivery.ts` | a `SendTransportKind` |
+| `providerHealth.providerType` | `schema/delivery.ts` | a `SendTransportKind` |
+| `emailSends.providerType` | `schema/campaigns.ts` | a `SendTransportKind`, post-hoc |
+| `transactionalSends.providerType` | `schema/templates.ts` | a `SendTransportKind`, post-hoc |
+| `sendAssignments.transport` | `schema/sendAssignments.ts` | a `SendTransportKind`, pre-declared |
+| `sendingDomainRelayIdentities.providerKind` | `schema/relayIdentities.ts` | a `SendTransportKind` |
+| `pluginWebhookDeliveries.transportKind` | `schema/webhooks.ts` | a `plugin.<pluginId>.<localId>` kind only |
+| `webhookPayloads.source` | `schema/webhooks.ts` | an inbound route source — WIDER than the send path |
+| `domains.providerType` | `schema/domains.ts` | a `SendingDomainProviderKind` — a CLOSED union, stored open |
+
+Two neighbours are deliberately NOT on that list, because they are not kinds:
+`sendTransportReturnPathProbes.transportId` (`schema/returnPath.ts`) holds a
+`SendTransportId` — `<kind>` or `<kind>#<instanceKey>`, a different vocabulary —
+and the `arm` columns on `sendAssignments` / `transportOutcomes` are closed
+`own | reference` unions, because an arm is a fixed two-valued question rather
+than an extension point.
+
+The last two rows of the table are the ones a sweep gets wrong. A
+`webhookPayloads.source` names whichever inbound route accepted the request: an
+`InboundAdapter['source']` for built-in provider/channel adapters, or a
+namespaced transport kind for the plugin feedback route. It therefore includes
+CHANNEL adapters (`webhooks/adapters/twilio|meta|generic.ts`) that have nothing
+to do with sending mail. Built-in/channel adapters retain raw payloads unless
+they opt out; plugin transports retain them only when their manifest opts in.
+`domains.providerType`, meanwhile, is the one kind column whose union is
+deliberately closed to core kinds
+(`isSendingDomainProviderKind`), open `v.string()` at the database boundary for
+forward-compat only. A bundled plugin transport proves a domain through
+`sendingDomainRelayIdentities.providerKind`, never through `domains`, so a
+comment there that reads "plugin kinds included" sends an author into a
+`providerFor()` throw.
+
+Those columns carry a comment naming the TYPE — the third column of the table
+above — rather than re-listing the kinds, and that is not a style preference. It
+is the correction this ADR forced. SEVEN of the nine re-listed kinds, and all
+seven lists were wrong, in five different vintages: two restated
+`'mta' | 'ses' | 'resend' | 'smtp'`, a union that predated both Mandrill and the
+plugin tier; the two send-row columns restated an even older `(mta, ses,
+resend)`; `domains.providerType` named the original pair; `sendAssignments.transport`
+named four core kinds plus the plugin shape, missing only Mandrill; and
+`webhookPayloads.source` named three core kinds plus the plugin shape while the
+column had, in fact, been holding four sources it does not name (`mandrill`, and
+the three channel adapters) for as long as the shared pipeline has existed. (The
+two that re-listed nothing —
+`sendingDomainRelayIdentities.providerKind`, which cited its sibling columns,
+was touched only to name the type; `pluginWebhookDeliveries.transportKind`,
+which holds one shape, also had its attribution comment tightened.) So a reader
+establishing what may legally land in any of the seven got the opposite of the
+policy below. A comment that restates a union rots
+exactly as a second declaration does; this is recorded here as policy so no
+comment is the only witness again — and a duplicated comment rots twice, which is
+why the mutation argument that feeds `webhookPayloads.source`
+(`webhooks/payloads.ts`) points at the column instead of repeating it.
+
+A new kind must be **rows, not columns**. A closed validator union would make
+adding a provider a schema migration, and — worse — would make a row written by
+a newer deployment unreadable by an older one during a rolling update, which is
+precisely when a delivery row must still be readable. The cost is real and
+accepted: nothing at the database boundary rejects a kind that no longer exists.
+So the readers fail closed on an unrecognised kind instead (the registry lookups
+throw by name rather than returning an inherited member; the catalog accessors
+apply the conservative default), which is where the check belongs anyway,
+because that is the layer that knows what the kind was going to be used for.
+
 ## Deviations from the plan, as built
 
 Two decisions changed shape during implementation. Both are recorded here rather
@@ -174,10 +408,28 @@ own feedback is what usually makes it moot.
 
 - Adding provider N+1 is a bounded checklist: kind literal, env keys, catalog
   entry, adapter, plus a webhook adapter and a domain-identity provider only if
-  the declared capabilities say so. Four of those steps are compile-time
+  the declared capabilities say so. Five of those steps are compile-time
   enforced and the rest are covered by conformance suites that iterate every
   catalog kind, so a new kind joins them by existing. The checklist is
-  documented in `apps/docs/content/3.developer/15.providers.md`.
+  documented in `apps/docs/content/3.developer/15.providers.md`, and its plugin
+  column in `apps/docs/content/3.developer/49.plugin-send-providers.md`.
+- The webhook seam is now claimed AND wired, which is a single fact in CI: the
+  plugin platform's reachability suite fails if a declared contribution has no
+  production consumer, so the contract change and the wiring had to land
+  together. The price is that a core kind's feedback URL is still a literal a
+  human writes — one line in `http.ts`, enforced by a test that walks the real
+  router rather than by a type.
+- No shipped code branches on `tier === 'plugin'`, which means the failure mode
+  to watch for is a new one that reintroduces the distinction. `lint:providers`
+  catches kind literals, not tier comparisons, so this one stays a review
+  obligation. (The `tier === 'own'` reads are the D3 identity — own vs. not-own
+  — and are exactly the comparisons that are meant to exist.)
+- The custody/message-id declaration widened what a catalog entry is responsible
+  for, and one of its values has prerequisites outside the catalog. Until those
+  are met, `acceptanceSemantics: 'accepted'` is the own MTA's alone — declared
+  honestly rather than hidden, so the next author reads the constraint at the
+  field (the PREREQUISITES note in `packages/shared/src/sendProviderCatalogTypes.ts`, which is where it lives) instead
+  of discovering it from a deferred send.
 - `sendingDomainRelayIdentities` is now the growth point for provider identity
   state. Its `providerKind` is a string and its `providerDetails` blob is
   versioned, so the next kind adds rows rather than columns — but that also

@@ -13,7 +13,13 @@ export const PAGE_SIZE_LARGE = 50;
 export const API_RATE_LIMIT_PER_SECOND = 10;
 export const RATE_LIMIT_WINDOW_MS = 1000;
 
-// Retry configuration
+// Retry configuration for the generic worker loops (automation steps, inbox
+// processing). DELIBERATELY NOT the send path's schedule: a send transport
+// retries on the schedule ITS CATALOG ENTRY declares
+// (`retryDelays` in packages/shared/src/sendProviderCatalog.ts, read straight by
+// each adapter and by `createHostedSendProvider` for the plugin tier), because a
+// per-kind number restated in a shared constant is a second source of truth that
+// only parallel maintenance keeps honest.
 export const MAX_RETRY_ATTEMPTS = 3;
 export const RETRY_DELAYS_MS = [1000, 5000, 30000] as const;
 
