@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { extractFirstPartByType } from '@owlat/shared/mailMime';
-import { parseICalendar, buildReplyICalendar, type ICalEvent, type Partstat } from '@owlat/shared/ical';
+import {
+	parseICalendar,
+	buildReplyICalendar,
+	type ICalEvent,
+	type Partstat,
+} from '@owlat/shared/ical';
 import { escapeHtml } from '@owlat/shared/html';
 
 /**
@@ -40,9 +45,12 @@ function formatWhen(): string {
 	const e = event.value;
 	if (!e?.start?.date) return '';
 	const start = e.start.date;
-	let s = start.toLocaleString('en-US', e.start.allDay
-		? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
-		: { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+	let s = start.toLocaleString(
+		'en-US',
+		e.start.allDay
+			? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
+			: { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+	);
 	if (e.end?.date && !e.start.allDay) {
 		s += ` – ${e.end.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 	}
@@ -62,8 +70,14 @@ function rsvp(status: Partstat) {
 		contentType: 'text/calendar; method=REPLY; charset=utf-8',
 		content: reply,
 	});
-	const prefix = status === 'ACCEPTED' ? 'Accepted' : status === 'DECLINED' ? 'Declined' : 'Tentative';
-	const verb = status === 'ACCEPTED' ? 'accepted' : status === 'DECLINED' ? 'declined' : 'tentatively accepted';
+	const prefix =
+		status === 'ACCEPTED' ? 'Accepted' : status === 'DECLINED' ? 'Declined' : 'Tentative';
+	const verb =
+		status === 'ACCEPTED'
+			? 'accepted'
+			: status === 'DECLINED'
+				? 'declined'
+				: 'tentatively accepted';
 	stack.open({
 		mailboxId: props.mailboxId as Id<'mailboxes'>,
 		prefillTo: [e.organizer.email],
@@ -95,15 +109,15 @@ function rsvp(status: Partstat) {
 			</div>
 		</div>
 		<div v-if="canRsvp" class="flex items-center gap-2 mt-3">
-			<button type="button" class="btn btn-ghost text-success" @click="rsvp('ACCEPTED')">
+			<UiButton variant="ghost" type="button" class="text-success" @click="rsvp('ACCEPTED')">
 				<Icon name="lucide:check" class="w-4 h-4 mr-1" /> Accept
-			</button>
-			<button type="button" class="btn btn-ghost text-warning" @click="rsvp('TENTATIVE')">
+			</UiButton>
+			<UiButton variant="ghost" type="button" class="text-warning" @click="rsvp('TENTATIVE')">
 				<Icon name="lucide:help-circle" class="w-4 h-4 mr-1" /> Maybe
-			</button>
-			<button type="button" class="btn btn-ghost text-error" @click="rsvp('DECLINED')">
+			</UiButton>
+			<UiButton variant="ghost" type="button" class="text-error" @click="rsvp('DECLINED')">
 				<Icon name="lucide:x" class="w-4 h-4 mr-1" /> Decline
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

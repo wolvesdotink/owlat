@@ -10,10 +10,11 @@ definePageMeta({
 	requiresFeature: 'inbox.codeTasks',
 });
 
-const { data: tasks, isLoading, error } = useConvexQuery(
-	api.codeWorkTasks.listRecent,
-	() => ({ limit: 50 }),
-);
+const {
+	data: tasks,
+	isLoading,
+	error,
+} = useConvexQuery(api.codeWorkTasks.listRecent, () => ({ limit: 50 }));
 
 // Manual code-task creation. The backend mutation (api.codeWorkTasks.create) is
 // permission-gated on `organization:manage`; this is the admin UI for filing a
@@ -69,14 +70,15 @@ const handleCreate = async () => {
 				<div>
 					<h1 class="text-2xl font-semibold text-text-primary">Code Tasks</h1>
 					<p class="text-text-secondary mt-1">
-						Code tasks: feature requests, bug fixes, and improvements tracked from request through merge.
+						Code tasks: feature requests, bug fixes, and improvements tracked from request through
+						merge.
 					</p>
 				</div>
 			</div>
-			<button class="btn btn-primary gap-2 shrink-0" @click="createModal.open()">
+			<UiButton class="gap-2 shrink-0" @click="createModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				New code task
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Loading -->
@@ -103,22 +105,18 @@ const handleCreate = async () => {
 			<UiIconBox icon="lucide:code-2" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">No code tasks yet</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Code tasks appear here when the AI agent files feature requests or fixes — or
-				you can create one by hand.
+				Code tasks appear here when the AI agent files feature requests or fixes — or you can create
+				one by hand.
 			</p>
-			<button class="btn btn-secondary gap-2 mt-4" @click="createModal.open()">
+			<UiButton variant="secondary" class="gap-2 mt-4" @click="createModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				New code task
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Task list -->
 		<div v-else class="space-y-4">
-			<CodeTasksCodeTaskCard
-				v-for="task in tasks"
-				:key="task._id"
-				:task="task"
-			/>
+			<CodeTasksCodeTaskCard v-for="task in tasks" :key="task._id" :task="task" />
 		</div>
 
 		<!-- Create modal -->
@@ -133,8 +131,11 @@ const handleCreate = async () => {
 							id="code-task-description"
 							v-model="createForm.description"
 							rows="5"
-							:class="['input w-full resize-y', validation.hasError('description') && 'input-error']"
-							placeholder="Describe the feature request or fix for the coding agent, e.g. &quot;Add a CSV export button to the contacts list.&quot;"
+							:class="[
+								'input w-full resize-y',
+								validation.hasError('description') && 'input-error',
+							]"
+							placeholder='Describe the feature request or fix for the coding agent, e.g. "Add a CSV export button to the contacts list."'
 							:disabled="createModal.isLoading.value"
 							@blur="validation.touch('description')"
 						/>
@@ -148,15 +149,15 @@ const handleCreate = async () => {
 				</div>
 
 				<div class="flex justify-end gap-3 mt-6">
-					<button
+					<UiButton
+						variant="secondary"
 						type="button"
-						class="btn btn-secondary"
 						:disabled="createModal.isLoading.value"
 						@click="createModal.close()"
 					>
 						Cancel
-					</button>
-					<button type="submit" class="btn btn-primary gap-2" :disabled="createModal.isLoading.value">
+					</UiButton>
+					<UiButton type="submit" class="gap-2" :disabled="createModal.isLoading.value">
 						<Icon
 							v-if="createModal.isLoading.value"
 							name="lucide:loader-2"
@@ -164,7 +165,7 @@ const handleCreate = async () => {
 						/>
 						<Icon v-else name="lucide:plus" class="w-4 h-4" />
 						{{ createModal.isLoading.value ? 'Creating...' : 'Create code task' }}
-					</button>
+					</UiButton>
 				</div>
 			</form>
 		</UiModal>

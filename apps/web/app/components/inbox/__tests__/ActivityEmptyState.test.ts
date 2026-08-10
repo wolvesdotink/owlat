@@ -30,7 +30,7 @@ describe('ActivityEmptyState', () => {
 		const wrapper = mount(ActivityEmptyState, { ...mountOpts, props: { canManage: true } });
 		const cta = wrapper.find('[data-testid="connect-channel-cta"]');
 		expect(cta.exists()).toBe(true);
-		expect(cta.attributes('href')).toBe('/dashboard/settings/channels');
+		expect(cta.attributes('href')).toBe('/dashboard/admin/instance/channels');
 		expect(wrapper.text()).toContain('once a channel is connected');
 	});
 

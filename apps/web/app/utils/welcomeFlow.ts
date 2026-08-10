@@ -88,7 +88,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'mailboxReady',
 		title: 'Set up your mailbox',
 		description: 'Add a personal mailbox so you can send and receive mail here.',
-		href: '/dashboard/postbox/settings/add-account',
+		href: '/dashboard/preferences/add-account',
 		cta: 'Set up',
 		icon: 'lucide:mailbox',
 		migrationOnly: false,
@@ -97,7 +97,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'aiConnected',
 		title: 'Connect your AI',
 		description: 'Point Owlat at an AI provider so drafting, replies, and search light up.',
-		href: '/dashboard/settings/ai-provider',
+		href: '/dashboard/admin/instance/ai-provider',
 		cta: 'Connect',
 		icon: 'lucide:sparkles',
 		migrationOnly: false,
@@ -124,7 +124,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'sendingSwitched',
 		title: 'Switch sending to this instance',
 		description: 'Start sending outbound mail from Owlat once your domain is verified.',
-		href: '/dashboard/postbox/settings#postbox-sending-heading',
+		href: '/dashboard/preferences#postbox-sending-heading',
 		cta: 'Switch',
 		icon: 'lucide:refresh-cw',
 		migrationOnly: true,
@@ -177,5 +177,10 @@ export function shouldRouteToWelcome(opts: { welcomedAt: number | null }): boole
  */
 export function isWelcomeTriggerPath(path: string): boolean {
 	if (path === '/dashboard') return true;
-	return path === '/dashboard/postbox' || path.startsWith('/dashboard/postbox/');
+	return (
+		path === '/dashboard/postbox' ||
+		path.startsWith('/dashboard/postbox/') ||
+		path === '/dashboard/preferences' ||
+		path.startsWith('/dashboard/preferences/')
+	);
 }

@@ -36,9 +36,9 @@ const { data: send, isLoading } = useConvexQuery(api.transactional.sends.get, ()
 			<p class="text-sm text-text-tertiary mt-1">
 				This email send may have been deleted or you don't have access to it.
 			</p>
-			<NuxtLink :to="'/dashboard/send/transactional'" class="btn btn-secondary mt-6">
+			<UiButton variant="secondary" :to="'/dashboard/send/transactional'" class="mt-6">
 				Back to Transactional Emails
-			</NuxtLink>
+			</UiButton>
 		</div>
 
 		<!-- Send Detail -->

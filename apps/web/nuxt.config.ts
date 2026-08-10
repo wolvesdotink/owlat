@@ -172,23 +172,12 @@ export default defineNuxtConfig({
 		// standalone list is gone; send its old deep link to the command center.
 		'/dashboard/campaigns/ab-results': { redirect: '/dashboard/campaigns' },
 
-		// IA restructure (part 2): deliverability is promoted out of the hidden
-		// Settings → Technical hub into its own first-class "Delivery" section at
-		// /dashboard/delivery/*. Redirect the old settings paths so bookmarks and
-		// deep links keep working; splat forwarding preserves trailing paths.
-		// (settings/api stays under Settings — it's app-level and only cross-linked
-		// from here. settings/blocklist re-homes under Audience; see below.)
-		'/dashboard/settings/reputation': { redirect: '/dashboard/delivery' },
-		'/dashboard/settings/domains': { redirect: '/dashboard/delivery/domains' },
-		'/dashboard/settings/domains/**': { redirect: '/dashboard/delivery/domains/**' },
-		'/dashboard/settings/provider-routing': { redirect: '/dashboard/delivery/provider-routing' },
-		'/dashboard/settings/webhooks': { redirect: '/dashboard/delivery/webhooks' },
-		'/dashboard/settings/delivery': { redirect: '/dashboard/delivery/config' },
-		// Technical hub dissolved: its non-delivery cards re-home under Settings.
-		'/dashboard/settings/technical': { redirect: '/dashboard/settings' },
-		// Blocklist re-homed as "Suppressions" under Audience (it is audience data,
-		// not delivery config). Redirect the old Settings path so bookmarks work.
-		'/dashboard/settings/blocklist': { redirect: '/dashboard/audience/suppressions' },
+		// NOTE: pre-release `/dashboard/settings/*` and `/dashboard/delivery/*` URLs
+		// intentionally 404 — the app never shipped, so no compatibility redirects
+		// are kept. Do not add `/dashboard/admin/**` redirect rules here:
+		// those paths are the real pages of the new IA and a rule would shadow them
+		// (a `/dashboard/admin/delivery` rule 307'd every hard load of the Delivery
+		// hub to a sub-page).
 	},
 
 	icon: {

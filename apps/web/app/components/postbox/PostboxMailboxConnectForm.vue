@@ -73,7 +73,7 @@ const formError = ref<string | null>(null);
 // The server fields stop autofilling once the user (or a preset) has set them.
 const serverFieldsTouched = ref(false);
 // Guided providers hide the server settings; this reveals them on demand.
-const showAdvanced = ref(props.provider.manualServer || props.mode === 'update');
+const showAdvanced = ref(props.mode === 'update');
 
 type TestResult = FunctionReturnType<typeof api.mail.externalAccountsActions.testConnection>;
 const testResult = ref<TestResult | null>(null);
@@ -275,103 +275,102 @@ const submitLabel = computed(() =>
 			required
 		/>
 
-		<!-- Server settings: shown up front for generic IMAP, tucked away for guided providers. -->
-		<div v-if="!provider.manualServer && mode === 'connect'">
-			<button
-				type="button"
-				class="text-xs text-text-secondary hover:text-text-primary inline-flex items-center gap-1"
-				@click="showAdvanced = !showAdvanced"
-			>
-				<Icon
-					:name="showAdvanced ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-					class="w-3.5 h-3.5"
-				/>
-				Server settings
-			</button>
-		</div>
-
 		<!-- Raw inputs (not UiInput) so a native `input` event fires only on real
 		     typing — a programmatic autodiscover fill must not mark the fields
 		     "touched" and switch autofill off. -->
-		<div v-if="showAdvanced" class="space-y-4">
-			<div class="grid grid-cols-2 gap-4">
-				<div>
-					<label for="connect-imaphost" class="text-sm font-medium block mb-1">IMAP host</label>
-					<input
-						id="connect-imaphost"
-						v-model="form.imapHost"
-						type="text"
-						placeholder="imap.example.com"
-						class="input w-full"
-						@input="markServerFieldsTouched"
-					/>
-				</div>
-				<div class="flex gap-2">
-					<div class="flex-1">
-						<label for="connect-imapport" class="text-sm font-medium block mb-1">IMAP port</label>
+		<UiDisclosure
+			v-model="showAdvanced"
+			controls="mail-server-settings"
+			label="Advanced server settings"
+		>
+			<div class="space-y-4">
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="connect-imaphost" class="text-sm font-medium block mb-1">IMAP host</label>
 						<input
-							id="connect-imapport"
-							v-model.number="form.imapPort"
-							type="number"
+							id="connect-imaphost"
+							v-model="form.imapHost"
+							type="text"
+							placeholder="imap.example.com"
 							class="input w-full"
 							@input="markServerFieldsTouched"
 						/>
 					</div>
-					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input v-model="form.isImapSecure" type="checkbox" @change="markServerFieldsTouched" />
-						SSL
-					</label>
+					<div class="flex gap-2">
+						<div class="flex-1">
+							<label for="connect-imapport" class="text-sm font-medium block mb-1">IMAP port</label>
+							<input
+								id="connect-imapport"
+								v-model.number="form.imapPort"
+								type="number"
+								class="input w-full"
+								@input="markServerFieldsTouched"
+							/>
+						</div>
+						<label class="flex items-center gap-1.5 text-sm self-end pb-2">
+							<input
+								v-model="form.isImapSecure"
+								type="checkbox"
+								@change="markServerFieldsTouched"
+							/>
+							SSL
+						</label>
+					</div>
 				</div>
-			</div>
-			<div class="grid grid-cols-2 gap-4">
-				<div>
-					<label for="connect-smtphost" class="text-sm font-medium block mb-1">SMTP host</label>
-					<input
-						id="connect-smtphost"
-						v-model="form.smtpHost"
-						type="text"
-						placeholder="smtp.example.com"
-						class="input w-full"
-						@input="markServerFieldsTouched"
-					/>
-				</div>
-				<div class="flex gap-2">
-					<div class="flex-1">
-						<label for="connect-smtpport" class="text-sm font-medium block mb-1">SMTP port</label>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="connect-smtphost" class="text-sm font-medium block mb-1">SMTP host</label>
 						<input
-							id="connect-smtpport"
-							v-model.number="form.smtpPort"
-							type="number"
+							id="connect-smtphost"
+							v-model="form.smtpHost"
+							type="text"
+							placeholder="smtp.example.com"
 							class="input w-full"
 							@input="markServerFieldsTouched"
 						/>
 					</div>
-					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input v-model="form.isSmtpSecure" type="checkbox" @change="markServerFieldsTouched" />
-						SSL
-					</label>
+					<div class="flex gap-2">
+						<div class="flex-1">
+							<label for="connect-smtpport" class="text-sm font-medium block mb-1">SMTP port</label>
+							<input
+								id="connect-smtpport"
+								v-model.number="form.smtpPort"
+								type="number"
+								class="input w-full"
+								@input="markServerFieldsTouched"
+							/>
+						</div>
+						<label class="flex items-center gap-1.5 text-sm self-end pb-2">
+							<input
+								v-model="form.isSmtpSecure"
+								type="checkbox"
+								@change="markServerFieldsTouched"
+							/>
+							SSL
+						</label>
+					</div>
+				</div>
+				<div>
+					<label for="connect-username" class="text-sm font-medium block mb-1">Username</label>
+					<input
+						id="connect-username"
+						v-model="form.username"
+						type="text"
+						placeholder="Defaults to your email address"
+						class="input w-full"
+					/>
 				</div>
 			</div>
-			<div>
-				<label for="connect-username" class="text-sm font-medium block mb-1">Username</label>
-				<input
-					id="connect-username"
-					v-model="form.username"
-					type="text"
-					placeholder="Defaults to your email address"
-					class="input w-full"
-				/>
-			</div>
-		</div>
+		</UiDisclosure>
 
 		<div v-if="testResult" class="text-sm space-y-1">
 			<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				IMAP {{ testResult.imap.ok ? 'reachable' : (testResult.imap.error ?? 'failed') }}
+				Incoming mail {{ testResult.imap.ok ? 'reachable' : (testResult.imap.error ?? 'failed') }}
 			</p>
 			<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				SMTP {{ testResult.smtp.ok ? 'reachable' : (testResult.smtp.error ?? 'failed') }}
+				Outgoing mail {{ testResult.smtp.ok ? 'reachable' : (testResult.smtp.error ?? 'failed') }}
 			</p>
 		</div>
 

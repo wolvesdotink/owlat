@@ -578,17 +578,18 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			</div>
 
 			<template #footer>
-				<button class="btn btn-secondary" :disabled="isDeleting" @click="closeDeleteModal">
+				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
 					Cancel
-				</button>
-				<button
-					class="btn bg-error text-white hover:bg-error/90 gap-2"
+				</UiButton>
+				<UiButton
+					variant="danger"
+					class="bg-error text-white hover:bg-error/90 gap-2"
 					:disabled="isDeleting || automationToDelete?.status === 'active'"
 					@click="handleDelete"
 				>
 					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					{{ isDeleting ? 'Deleting...' : 'Delete Automation' }}
-				</button>
+				</UiButton>
 			</template>
 		</UiModal>
 	</div>

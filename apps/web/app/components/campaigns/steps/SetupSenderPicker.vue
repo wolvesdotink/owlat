@@ -222,7 +222,7 @@ defineExpose({ validate, isReady });
 			<p class="text-text-secondary">No campaign senders have been set up yet.</p>
 			<NuxtLink
 				v-if="canManageSenders"
-				to="/dashboard/settings/campaign-senders"
+				to="/dashboard/admin/team/senders"
 				class="mt-2 inline-flex items-center gap-1.5 font-medium text-brand hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />

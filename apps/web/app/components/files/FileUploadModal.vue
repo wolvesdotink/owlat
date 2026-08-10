@@ -244,9 +244,9 @@ watch(
 		</div>
 
 		<template #footer>
-			<button class="btn btn-secondary" @click="close">Cancel</button>
-			<button
-				class="btn bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
+			<UiButton variant="secondary" @click="close">Cancel</UiButton>
+			<UiButton
+				class="bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
 				:disabled="!selectedFile || isUploading"
 				@click="handleSubmit"
 			>
@@ -257,7 +257,7 @@ watch(
 				<template v-else>
 					{{ isNewVersion ? 'Upload Version' : 'Upload' }}
 				</template>
-			</button>
+			</UiButton>
 		</template>
 	</UiModal>
 </template>

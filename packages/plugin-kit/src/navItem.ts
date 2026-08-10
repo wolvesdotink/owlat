@@ -39,7 +39,7 @@ export interface PluginNavItemDefinition {
 	 * A plugin cannot ship a page: no arbitrary browser code is loaded at runtime
 	 * and codegen emits no Nuxt routes, so this must resolve to a route the
 	 * dashboard build already has or the link renders and then 404s. Every plugin
-	 * gets `/dashboard/settings/plugins/<pluginId>` — its schema-rendered settings
+	 * gets `/dashboard/admin/instance/plugins/<pluginId>` — its schema-rendered settings
 	 * page — for free; anything else must be a core route, or one the operator's
 	 * own build provides.
 	 */

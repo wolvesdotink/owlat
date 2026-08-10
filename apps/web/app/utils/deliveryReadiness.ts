@@ -182,8 +182,8 @@ export function readinessInputFromSources(
 	};
 }
 
-const DOMAINS_HREF = '/dashboard/delivery/domains';
-const CONFIG_HREF = '/dashboard/delivery/config';
+const DOMAINS_HREF = '/dashboard/admin/delivery/domains';
+const CONFIG_HREF = '/dashboard/admin/delivery/transport';
 
 /** The transport gate: reads the same `canSend` the send path itself uses. */
 function transportGate(input: ReadinessInput): ReadinessGate {

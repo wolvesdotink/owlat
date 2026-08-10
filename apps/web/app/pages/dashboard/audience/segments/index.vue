@@ -429,10 +429,16 @@ onMounted(() => {
 				<div class="mb-6">
 					<div class="flex items-center justify-between mb-3">
 						<label class="label mb-0">Conditions</label>
-						<button type="button" class="btn btn-secondary btn-sm gap-1" @click="addCondition">
+						<UiButton
+							variant="secondary"
+							size="sm"
+							type="button"
+							class="gap-1"
+							@click="addCondition"
+						>
 							<Icon name="lucide:plus" class="w-3 h-3" />
 							Add Condition
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- Conditions Error -->

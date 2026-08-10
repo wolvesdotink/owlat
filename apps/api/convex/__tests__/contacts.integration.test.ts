@@ -158,11 +158,14 @@ describe('contacts.update', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'update@example.com',
-				firstName: 'Old',
-				lastName: 'Name',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'update@example.com',
+					firstName: 'Old',
+					lastName: 'Name',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -185,9 +188,12 @@ describe('contacts.update', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'original@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'original@example.com',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -207,12 +213,18 @@ describe('contacts.update', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'existing@example.com',
-			}));
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'willchange@example.com',
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'existing@example.com',
+				})
+			);
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'willchange@example.com',
+				})
+			);
 		});
 
 		await expect(
@@ -229,11 +241,14 @@ describe('contacts.update', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'search@example.com',
-				firstName: 'Old',
-				lastName: 'Name',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'search@example.com',
+					firstName: 'Old',
+					lastName: 'Name',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -253,9 +268,12 @@ describe('contacts.update', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'tz@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'tz@example.com',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.contacts.update, {
@@ -281,9 +299,12 @@ describe('contacts.remove', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'todelete@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'todelete@example.com',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.contacts.remove, {
@@ -304,11 +325,13 @@ describe('contacts.remove', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'withrelations@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'withrelations@example.com',
+				})
+			);
 			const topicId = await ctx.db.insert('topics', {
-	
 				name: 'Test Topic',
 				createdAt: Date.now(),
 			});
@@ -344,9 +367,12 @@ describe('contacts.bulkDelete', () => {
 
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 3; i++) {
-				const id = await ctx.db.insert('contacts', createTestContact({
-					email: `bulk${i}@example.com`,
-				}));
+				const id = await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `bulk${i}@example.com`,
+					})
+				);
 				contactIds.push(id);
 			}
 		});
@@ -373,9 +399,12 @@ describe('contacts.bulkDelete', () => {
 		let validId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			validId = await ctx.db.insert('contacts', createTestContact({
-				email: 'valid@example.com',
-			}));
+			validId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'valid@example.com',
+				})
+			);
 		});
 
 		// Delete the valid contact first so it becomes "not found"
@@ -399,9 +428,12 @@ describe('contacts.bulkDelete', () => {
 		let deletedId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			deletedId = await ctx.db.insert('contacts', createTestContact({
-				email: 'other@example.com',
-			}));
+			deletedId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'other@example.com',
+				})
+			);
 			await ctx.db.delete(deletedId);
 		});
 
@@ -422,9 +454,12 @@ describe('contacts.list', () => {
 
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
-				await ctx.db.insert('contacts', createTestContact({
-					email: `list${i}@example.com`,
-				}));
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `list${i}@example.com`,
+					})
+				);
 			}
 		});
 
@@ -441,9 +476,12 @@ describe('contacts.list', () => {
 
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 10; i++) {
-				await ctx.db.insert('contacts', createTestContact({
-					email: `page${i}@example.com`,
-				}));
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `page${i}@example.com`,
+					})
+				);
 			}
 		});
 
@@ -459,12 +497,18 @@ describe('contacts.list', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'mine@example.com',
-			}));
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'also-mine@example.com',
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'mine@example.com',
+				})
+			);
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'also-mine@example.com',
+				})
+			);
 		});
 
 		const result = await t.query(api.contacts.contacts.list, {
@@ -495,11 +539,14 @@ describe('contacts.listByTeam', () => {
 		// Seed more rows than a single page so the cursor must advance.
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 12; i++) {
-				await ctx.db.insert('contacts', createTestContact({
-					email: `cursor${String(i).padStart(2, '0')}@example.com`,
-					// Distinct creation timestamps so by_created_at order is stable.
-					createdAt: 1_700_000_000_000 + i,
-				}));
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `cursor${String(i).padStart(2, '0')}@example.com`,
+						// Distinct creation timestamps so by_created_at order is stable.
+						createdAt: 1_700_000_000_000 + i,
+					})
+				);
 			}
 		});
 
@@ -527,7 +574,7 @@ describe('contacts.listByTeam', () => {
 
 		// Every contact reachable exactly once across the three pages.
 		const ids = new Set(
-			[...first.contacts, ...second.contacts, ...third.contacts].map((c) => c._id),
+			[...first.contacts, ...second.contacts, ...third.contacts].map((c) => c._id)
 		);
 		expect(ids.size).toBe(12);
 	});
@@ -536,9 +583,12 @@ describe('contacts.listByTeam', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('instanceSettings', createTestInstanceSettings({
-				contactCount: 9999,
-			}));
+			await ctx.db.insert(
+				'instanceSettings',
+				createTestInstanceSettings({
+					contactCount: 9999,
+				})
+			);
 			await ctx.db.insert('contacts', createTestContact({ email: 'only@example.com' }));
 		});
 
@@ -557,10 +607,13 @@ describe('contacts.listByTeam', () => {
 
 		await t.run(async (ctx) => {
 			await ctx.db.insert('contacts', createTestContact({ email: 'live@example.com' }));
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'gone@example.com',
-				deletedAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'gone@example.com',
+					deletedAt: Date.now(),
+				})
+			);
 		});
 
 		const result = await t.query(internal.contacts.contacts.listByTeam, {
@@ -576,19 +629,25 @@ describe('contacts.listByTeam', () => {
 
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 6; i++) {
-				await ctx.db.insert('contacts', createTestContact({
-					email: `jane${i}@example.com`,
-					firstName: 'Jane',
-					lastName: `Doe${i}`,
-					searchableText: `jane${i}@example.com jane doe${i}`,
-				}));
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `jane${i}@example.com`,
+						firstName: 'Jane',
+						lastName: `Doe${i}`,
+						searchableText: `jane${i}@example.com jane doe${i}`,
+					})
+				);
 			}
 			// A non-matching contact that must not appear in search results.
-			await ctx.db.insert('contacts', createTestContact({
-				email: 'bob@example.com',
-				firstName: 'Bob',
-				searchableText: 'bob@example.com bob',
-			}));
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'bob@example.com',
+					firstName: 'Bob',
+					searchableText: 'bob@example.com bob',
+				})
+			);
 		});
 
 		const first = await t.query(internal.contacts.contacts.listByTeam, {
@@ -621,6 +680,30 @@ describe('contacts.count', () => {
 	});
 });
 
+// ============ contacts.updateNotes ============
+
+describe('contacts.updateNotes', () => {
+	it('stores a trimmed shared note without granting profile edits', async () => {
+		const t = convexTest(schema, modules);
+		let contactId!: Id<'contacts'>;
+		await t.run(async (ctx) => {
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'annotate@example.com', firstName: 'Original' })
+			);
+		});
+
+		await t.mutation(api.contacts.contacts.updateNotes, {
+			contactId,
+			notes: '  Prefers a phone call after 3pm.  ',
+		});
+
+		const contact = await t.query(api.contacts.contacts.get, { contactId });
+		expect(contact?.notes).toBe('Prefers a phone call after 3pm.');
+		expect(contact?.firstName).toBe('Original');
+	});
+});
+
 // ============ contacts.get ============
 
 describe('contacts.get', () => {
@@ -630,11 +713,14 @@ describe('contacts.get', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'getme@example.com',
-				firstName: 'Get',
-				lastName: 'Me',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'getme@example.com',
+					firstName: 'Get',
+					lastName: 'Me',
+				})
+			);
 		});
 
 		const contact = await t.query(api.contacts.contacts.get, { contactId: contactId! });
@@ -651,9 +737,12 @@ describe('contacts.get', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'deleted@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'deleted@example.com',
+				})
+			);
 			await ctx.db.delete(contactId);
 		});
 
@@ -668,14 +757,17 @@ describe('contacts.get', () => {
 		let contactId: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'full@example.com',
-				firstName: 'Full',
-				lastName: 'Fields',
-				timezone: 'Europe/Amsterdam',
-				language: 'nl',
-				source: 'import',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'full@example.com',
+					firstName: 'Full',
+					lastName: 'Fields',
+					timezone: 'Europe/Amsterdam',
+					language: 'nl',
+					source: 'import',
+				})
+			);
 		});
 
 		const contact = await t.query(api.contacts.contacts.get, { contactId: contactId! });

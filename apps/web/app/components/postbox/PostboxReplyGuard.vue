@@ -68,17 +68,12 @@ defineExpose({ guard });
 			</p>
 		</div>
 		<div class="mt-4 flex justify-end gap-2">
-			<button type="button" class="btn btn-ghost" data-testid="reply-guard-cancel" @click="cancel">
+			<UiButton variant="ghost" type="button" data-testid="reply-guard-cancel" @click="cancel">
 				Cancel
-			</button>
-			<button
-				type="button"
-				class="btn btn-primary"
-				data-testid="reply-guard-confirm"
-				@click="proceed"
-			>
+			</UiButton>
+			<UiButton type="button" data-testid="reply-guard-confirm" @click="proceed">
 				Reply anyway
-			</button>
+			</UiButton>
 		</div>
 	</UiModal>
 </template>

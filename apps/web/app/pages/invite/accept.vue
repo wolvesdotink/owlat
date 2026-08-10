@@ -6,6 +6,7 @@ useHead({ title: 'Accept Invitation \u2014 Owlat' });
 
 definePageMeta({
 	// No layout - standalone page
+
 });
 
 const route = useRoute();
@@ -151,12 +152,10 @@ function redirectToRegister() {
 						Sign in or create an account to accept this team invitation.
 					</p>
 					<div class="flex flex-col gap-3">
-						<button class="btn btn-primary w-full" @click="redirectToLogin">
-							Sign In to Accept
-						</button>
-						<button class="btn btn-secondary w-full" @click="redirectToRegister">
+						<UiButton full-width @click="redirectToLogin"> Sign In to Accept </UiButton>
+						<UiButton variant="secondary" full-width @click="redirectToRegister">
 							Create Account
-						</button>
+						</UiButton>
 					</div>
 				</template>
 
@@ -187,7 +186,7 @@ function redirectToRegister() {
 						is in your sidebar.
 					</p>
 					<p class="text-text-tertiary text-sm mb-6">Taking you in...</p>
-					<NuxtLink to="/welcome" class="btn btn-primary w-full"> Get started </NuxtLink>
+					<UiButton full-width to="/welcome"> Get started </UiButton>
 				</template>
 
 				<!-- Error State -->
@@ -202,8 +201,8 @@ function redirectToRegister() {
 						{{ errorMessage }}
 					</p>
 					<div class="flex flex-col gap-3">
-						<NuxtLink to="/dashboard" class="btn btn-primary w-full"> Go to Dashboard </NuxtLink>
-						<NuxtLink to="/" class="btn btn-secondary w-full"> Back to Home </NuxtLink>
+						<UiButton full-width to="/dashboard"> Go to Dashboard </UiButton>
+						<UiButton variant="secondary" full-width to="/"> Back to Home </UiButton>
 					</div>
 				</template>
 			</div>

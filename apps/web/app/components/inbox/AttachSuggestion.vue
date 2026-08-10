@@ -52,16 +52,18 @@ function label(candidate: AttachmentCandidate): string {
 		</div>
 
 		<!-- Single confident suggestion → one-tap attach. -->
-		<button
+		<UiButton
+			variant="secondary"
+			size="sm"
 			v-if="!props.suggestions.ambiguous && props.suggestions.candidates.length === 1"
 			type="button"
-			class="btn btn-secondary btn-sm gap-1"
+			class="gap-1"
 			data-testid="attach-suggestion"
 			@click="emit('attach', props.suggestions.candidates[0]!)"
 		>
 			<Icon name="lucide:paperclip" class="w-3 h-3" />
 			Attach {{ label(props.suggestions.candidates[0]!) }}
-		</button>
+		</UiButton>
 
 		<!-- Ambiguous → the owner picks which file (no guessing). -->
 		<div v-else class="flex flex-col gap-2">
@@ -69,17 +71,19 @@ function label(candidate: AttachmentCandidate): string {
 				Several files could match — choose the one to attach:
 			</p>
 			<div class="flex flex-wrap gap-2">
-				<button
+				<UiButton
+					variant="secondary"
+					size="sm"
 					v-for="candidate in props.suggestions.candidates"
 					:key="candidate.fileId"
 					type="button"
-					class="btn btn-secondary btn-sm gap-1"
+					class="gap-1"
 					data-testid="attach-suggestion"
 					@click="emit('attach', candidate)"
 				>
 					<Icon name="lucide:paperclip" class="w-3 h-3" />
 					{{ label(candidate) }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 	</div>

@@ -34,26 +34,28 @@ const reasonPhrase = computed(() => presentation.value.phrase(props.dateLabel));
 // replies. Presenting it as "not receiving mail" would read like a hard block
 // and invite a manual removal the operator does not need.
 const headline = computed(() => presentation.value.headline);
+const detailOpen = ref(false);
 </script>
 
 <template>
-	<div
-		class="flex items-center gap-2.5 rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm"
-		role="status"
-	>
-		<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
-		<p class="text-text-secondary">
-			<span class="font-medium text-text-primary">{{ headline }}</span>
-			— {{ reasonPhrase }}.
-			<button
-				v-if="canManage"
-				type="button"
-				class="-my-2 -mx-1 px-1 py-2 font-medium text-brand hover:underline disabled:opacity-60"
-				:disabled="removing"
-				@click="emit('remove')"
-			>
-				{{ removing ? 'Removing…' : 'Remove suppression?' }}
-			</button>
-		</p>
+	<div class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm" role="status">
+		<div class="flex items-center gap-2.5">
+			<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
+			<p class="font-medium text-text-primary">Unsubscribed</p>
+			<UiDisclosure v-model="detailOpen" controls="suppression-detail" label="Why?">
+				<p class="text-text-secondary">
+					<span class="font-medium text-text-primary">{{ headline }}</span> — {{ reasonPhrase }}.
+					<button
+						v-if="canManage"
+						type="button"
+						class="ml-1 font-medium text-brand hover:underline disabled:opacity-60"
+						:disabled="removing"
+						@click="emit('remove')"
+					>
+						{{ removing ? 'Removing…' : 'Remove suppression?' }}
+					</button>
+				</p>
+			</UiDisclosure>
+		</div>
 	</div>
 </template>

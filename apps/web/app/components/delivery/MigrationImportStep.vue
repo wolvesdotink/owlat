@@ -201,7 +201,9 @@ const progressText = computed(() => {
 		>
 			Both integration imports are switched off for this workspace. Turn on
 			<strong>Mailchimp import</strong> and <strong>Mandrill suppression import</strong> under
-			<NuxtLink to="/dashboard/settings/features" class="underline">Settings → Features</NuxtLink>
+			<NuxtLink to="/dashboard/admin/instance/features" class="underline"
+				>Settings → Features</NuxtLink
+			>
 			to carry your history across.
 		</p>
 

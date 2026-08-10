@@ -10,7 +10,7 @@ export class SettingsTeamPage extends BasePage {
 	}
 
 	async goto() {
-		await this.page.goto('/dashboard/settings/team');
+		await this.page.goto('/dashboard/admin/team');
 		await this.waitForHeading();
 	}
 

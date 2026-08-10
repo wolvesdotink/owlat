@@ -662,7 +662,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'webhooks/endpoints.ts#enable',
 	'webhooks/endpoints.ts#get',
 	'webhooks/endpoints.ts#listDeliveryLogsByOrganization',
-	'workspaces/featureFlags.ts#setAllFeatureFlags',
 ];
 
 describe('the wiring guard is looking at production', () => {
@@ -686,7 +685,7 @@ describe('the wiring guard is looking at production', () => {
 		// ledger line: the Nuxt app, a Nuxt server route, and an out-of-process
 		// worker that addresses functions by string path.
 		expect([...CLIENT_SOURCES.keys()]).toContain(
-			'apps/web/app/pages/dashboard/delivery/controls.vue'
+			'apps/web/app/pages/dashboard/admin/delivery/advanced/controls.vue'
 		);
 		expect([...CLIENT_SOURCES.keys()]).toContain('apps/web/server/api/system/update.post.ts');
 		expect([...CLIENT_SOURCES.keys()]).toContain('apps/mail-sync/src/convex.ts');
@@ -939,7 +938,7 @@ describe('the walk fails an entry nothing can start', () => {
 	const clients: ReadonlyMap<string, string> = new Map(
 		[
 			[
-				'apps/web/app/pages/dashboard/delivery/controls.vue',
+				'apps/web/app/pages/dashboard/admin/delivery/advanced/controls.vue',
 				// An HTML comment naming the orphan, in the file that holds the real
 				// operator door: this is how a `.vue` template retires a control, and
 				// the client half of the walk is largely `.vue`.
@@ -984,7 +983,7 @@ describe('the walk fails an entry nothing can start', () => {
 
 	it('credits the entry the web client calls on api', () => {
 		expect(callersOf(CLIENT, convex, clients)).toEqual([
-			'client:apps/web/app/pages/dashboard/delivery/controls.vue',
+			'client:apps/web/app/pages/dashboard/admin/delivery/advanced/controls.vue',
 		]);
 	});
 

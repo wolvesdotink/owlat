@@ -345,7 +345,7 @@ async function switchTo(id: string, opts?: { destination?: string }): Promise<vo
 		}, SWITCH_FLAG_TTL_MS);
 	}
 	// `destination` lets callers land somewhere specific after the re-seeding
-	// reload (e.g. /desktop/settings → "Workspace settings" → /dashboard/settings).
+	// reload (e.g. /desktop/settings → "Workspace settings" → /dashboard/admin).
 	window.location.assign(opts?.destination ?? '/dashboard');
 }
 

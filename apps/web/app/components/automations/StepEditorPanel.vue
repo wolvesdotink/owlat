@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor } from '~/composables/automations/steps';
-import type {
-	StepConfigByKind,
-	StepKind,
-} from '~/composables/automations/steps';
+import type { StepConfigByKind, StepKind } from '~/composables/automations/steps';
 import type { StepCurrentConfig } from '~/composables/useAutomationStepConfig';
 
 const props = defineProps<{
@@ -43,7 +40,8 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 				<button
 					class="p-1.5 text-text-tertiary hover:text-text-primary transition-colors"
 					@click="emit('close')"
-				 aria-label="Close">
+					aria-label="Close"
+				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
 			</div>
@@ -60,21 +58,23 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 			/>
 
 			<div class="mt-8 pt-6 border-t border-border-subtle">
-				<button class="btn btn-primary w-full gap-2" :disabled="isSaving" @click="emit('save')">
+				<UiButton full-width class="gap-2" :disabled="isSaving" @click="emit('save')">
 					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:save" class="w-4 h-4" />
 					{{ isSaving ? 'Saving...' : 'Save Changes' }}
-				</button>
+				</UiButton>
 			</div>
 
 			<div class="mt-4">
-				<button
-					class="btn btn-ghost w-full gap-2 text-error hover:bg-error/10"
+				<UiButton
+					variant="ghost"
+					full-width
+					class="gap-2 text-error hover:bg-error/10"
 					@click="emit('delete', selectedStep._id)"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 					Delete Step
-				</button>
+				</UiButton>
 			</div>
 		</div>
 
@@ -83,9 +83,7 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 				<Icon name="lucide:chevron-down" class="w-8 h-8 text-text-tertiary" />
 			</div>
 			<h3 class="text-lg font-semibold text-text-primary mb-2">Select a Step</h3>
-			<p class="text-text-secondary">
-				Click on a step in the workflow to configure its settings.
-			</p>
+			<p class="text-text-secondary">Click on a step in the workflow to configure its settings.</p>
 		</div>
 	</div>
 </template>

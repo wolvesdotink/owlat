@@ -75,21 +75,19 @@ const CATEGORY_DOT: Record<string, string> = {
 <template>
 	<div v-if="eligible" class="mt-2" data-testid="postbox-coach">
 		<div class="flex items-center gap-2">
-			<button
+			<UiButton
+				variant="ghost"
+				size="sm"
 				type="button"
-				class="btn btn-ghost btn-sm gap-1"
+				class="gap-1"
 				:disabled="coach.isLoading()"
 				data-testid="postbox-coach-run"
 				@click="onCoachClick"
 			>
-				<Icon
-					v-if="coach.isLoading()"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin"
-				/>
+				<Icon v-if="coach.isLoading()" name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
 				<Icon v-else name="lucide:graduation-cap" class="w-3.5 h-3.5" />
 				<span>Coach my draft</span>
-			</button>
+			</UiButton>
 			<span class="text-xs text-text-tertiary">Reviews your wording — never rewrites it.</span>
 		</div>
 
@@ -109,17 +107,15 @@ const CATEGORY_DOT: Record<string, string> = {
 			class="mt-2 space-y-1.5"
 			data-testid="postbox-coach-suggestions"
 		>
-			<li
-				v-for="(s, i) in coach.suggestions.value"
-				:key="i"
-				class="flex items-start gap-2 text-xs"
-			>
+			<li v-for="(s, i) in coach.suggestions.value" :key="i" class="flex items-start gap-2 text-xs">
 				<span
 					class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
 					:class="CATEGORY_DOT[s.category] ?? 'bg-info'"
 				/>
 				<span>
-					<span class="font-medium text-text-secondary">{{ COACH_CATEGORY_LABELS[s.category] }}:</span>
+					<span class="font-medium text-text-secondary"
+						>{{ COACH_CATEGORY_LABELS[s.category] }}:</span
+					>
 					<span class="text-text-secondary"> {{ s.message }}</span>
 				</span>
 			</li>

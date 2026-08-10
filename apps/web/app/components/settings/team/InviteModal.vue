@@ -336,7 +336,7 @@ defineExpose({ open: openInviteModal });
 							<span v-else-if="postboxEnabled" class="block text-xs text-text-secondary mt-0.5">
 								Add a sending domain to reserve mailboxes for new members — you can invite them now
 								and their mailbox activates when the domain verifies.
-								<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline">
+								<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
 									Add a domain
 								</NuxtLink>
 							</span>
@@ -381,7 +381,7 @@ defineExpose({ open: openInviteModal });
 							>
 								<code>{{ mailboxPreviewAddress }}</code> is reserved now and activates automatically
 								once <span class="font-medium">{{ inviteForm.mailboxDomain }}</span> verifies.
-								<NuxtLink to="/dashboard/delivery/domains" class="text-brand hover:underline">
+								<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
 									Finish verifying
 								</NuxtLink>
 							</p>

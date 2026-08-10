@@ -11,9 +11,8 @@ function handleClick(mailboxId: Id<'mailboxes'>) {
 </script>
 
 <template>
-	<button
+	<UiButton
 		type="button"
-		class="btn btn-primary"
 		:class="collapsed ? 'w-9 h-9 !px-0 justify-center' : 'w-full'"
 		:title="collapsed ? 'Compose' : undefined"
 		:aria-label="collapsed ? 'Compose' : undefined"
@@ -21,5 +20,5 @@ function handleClick(mailboxId: Id<'mailboxes'>) {
 	>
 		<Icon name="lucide:pen-line" class="w-4 h-4" :class="{ 'mr-1.5': !collapsed }" />
 		<span v-if="!collapsed">Compose</span>
-	</button>
+	</UiButton>
 </template>

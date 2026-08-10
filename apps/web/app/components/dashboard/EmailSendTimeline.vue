@@ -279,10 +279,10 @@ const copyMessageId = async () => {
 						<p class="text-sm text-text-secondary font-mono truncate">{{ providerMessageId }}</p>
 					</div>
 				</div>
-				<button class="btn btn-secondary text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
+				<UiButton variant="secondary" class="text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
 					<Icon :name="messageIdCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
 					{{ messageIdCopied ? 'Copied' : 'Copy' }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 

@@ -23,14 +23,16 @@ describe('normalizeDashboardUrl — fail-soft validation', () => {
 
 	it('accepts and normalizes http(s) URLs', () => {
 		expect(normalizeDashboardUrl('http://localhost:6791')).toBe('http://localhost:6791/');
-		expect(normalizeDashboardUrl('  https://admin.example.com/  ')).toBe('https://admin.example.com/');
+		expect(normalizeDashboardUrl('  https://admin.example.com/  ')).toBe(
+			'https://admin.example.com/'
+		);
 	});
 });
 
 describe('deriveConvexDashboardUrl — port-swap heuristic', () => {
 	it('swaps the port to 6791 and strips path/query/hash', () => {
 		expect(deriveConvexDashboardUrl('https://app.example.com/dashboard?x=1#y')).toBe(
-			`https://app.example.com:${CONVEX_DASHBOARD_PORT}/`,
+			`https://app.example.com:${CONVEX_DASHBOARD_PORT}/`
 		);
 	});
 
@@ -52,7 +54,7 @@ describe('resolveConvexDashboardUrl — source priority', () => {
 				override: 'https://tunnel.example.com/',
 				configured: 'https://configured.example.com/',
 				currentHref: 'https://app.example.com/dashboard',
-			}),
+			})
 		).toEqual({ url: 'https://tunnel.example.com/', source: 'override' });
 	});
 
@@ -62,7 +64,7 @@ describe('resolveConvexDashboardUrl — source priority', () => {
 				override: '',
 				configured: 'https://configured.example.com/',
 				currentHref: 'https://app.example.com/dashboard',
-			}),
+			})
 		).toEqual({ url: 'https://configured.example.com/', source: 'configured' });
 	});
 
@@ -71,8 +73,8 @@ describe('resolveConvexDashboardUrl — source priority', () => {
 			resolveConvexDashboardUrl({
 				override: '',
 				configured: '',
-				currentHref: 'https://mail.acme.io/dashboard/settings',
-			}),
+				currentHref: 'https://mail.acme.io/dashboard/admin',
+			})
 		).toEqual({ url: `https://mail.acme.io:${CONVEX_DASHBOARD_PORT}/`, source: 'derived' });
 	});
 
@@ -82,7 +84,7 @@ describe('resolveConvexDashboardUrl — source priority', () => {
 				override: 'javascript:alert(1)',
 				configured: 'not a url',
 				currentHref: 'http://localhost:3000/',
-			}),
+			})
 		).toEqual({ url: 'http://localhost:6791/', source: 'derived' });
 	});
 });

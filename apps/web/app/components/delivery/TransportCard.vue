@@ -141,12 +141,12 @@ const infrastructureChecks = computed(() => {
 
 			<!-- Actions -->
 			<div class="flex flex-wrap items-center gap-3 pt-1">
-				<NuxtLink to="/dashboard/delivery/config" class="btn btn-primary">
+				<UiButton to="/dashboard/admin/delivery/transport">
 					<Icon name="lucide:settings-2" class="w-4 h-4" />
 					{{ display.isConfigured ? 'Change transport' : 'Set up sending' }}
-				</NuxtLink>
+				</UiButton>
 				<NuxtLink
-					to="/dashboard/delivery/provider-routing"
+					to="/dashboard/admin/delivery/provider-routing"
 					class="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-brand transition-colors duration-(--motion-fast)"
 				>
 					<Icon name="lucide:route" class="w-4 h-4" />

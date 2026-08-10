@@ -281,6 +281,7 @@ import type * as delivery_mtaHealth from '../delivery/mtaHealth.js';
 import type * as delivery_messageIdRouting from '../delivery/messageIdRouting.js';
 import type * as delivery_observationFreshness from '../delivery/observationFreshness.js';
 import type * as delivery_observationRetention from '../delivery/observationRetention.js';
+import type * as delivery_observabilityStatus from '../delivery/observabilityStatus.js';
 import type * as delivery_preferences from '../delivery/preferences.js';
 import type * as delivery_preferencesHttp from '../delivery/preferencesHttp.js';
 import type * as delivery_preferencesQueries from '../delivery/preferencesQueries.js';
@@ -1256,6 +1257,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/messageIdRouting': typeof delivery_messageIdRouting;
 	'delivery/observationFreshness': typeof delivery_observationFreshness;
 	'delivery/observationRetention': typeof delivery_observationRetention;
+	'delivery/observabilityStatus': typeof delivery_observabilityStatus;
 	'delivery/preferences': typeof delivery_preferences;
 	'delivery/preferencesHttp': typeof delivery_preferencesHttp;
 	'delivery/preferencesQueries': typeof delivery_preferencesQueries;

@@ -285,9 +285,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				This topic may have been deleted or doesn't exist.
 			</p>
-			<NuxtLink to="/dashboard/audience/topics" class="btn btn-primary mt-6">
-				Back to Topics
-			</NuxtLink>
+			<UiButton to="/dashboard/audience/topics" class="mt-6"> Back to Topics </UiButton>
 		</div>
 
 		<!-- Main Content -->
@@ -367,9 +365,9 @@ const viewContact = (contactId: Id<'contacts'>) => {
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						Add contacts to this topic from the contact detail page.
 					</p>
-					<NuxtLink to="/dashboard/audience/contacts" class="btn btn-primary gap-2 mt-6">
+					<UiButton to="/dashboard/audience/contacts" class="gap-2 mt-6">
 						Browse Contacts
-					</NuxtLink>
+					</UiButton>
 				</div>
 
 				<!-- Empty State (no search results) -->
@@ -382,15 +380,16 @@ const viewContact = (contactId: Id<'contacts'>) => {
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						No contacts match "{{ debouncedSearch }}". Try a different search term.
 					</p>
-					<button
-						class="btn btn-secondary mt-6"
+					<UiButton
+						variant="secondary"
+						class="mt-6"
 						@click="
 							searchQuery = '';
 							debouncedSearch = '';
 						"
 					>
 						Clear search
-					</button>
+					</UiButton>
 				</div>
 
 				<!-- Data Table -->

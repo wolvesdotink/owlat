@@ -22,6 +22,7 @@ import {
 } from '@owlat/plugin-host';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { SectionKey } from '~/composables/useSidebarState';
+import type { OrganizationRole } from '~/composables/useOrganization';
 
 export interface NavigationItem {
 	name: string;
@@ -44,10 +45,11 @@ export interface NavigationSection {
 	items: NavigationItem[];
 }
 
-/** The environment the pure builder reads: resolved flags and desktop context. */
+/** The environment the pure builder reads: role, resolved flags, and desktop context. */
 export interface NavigationEnvironment {
 	isFeatureEnabled(flag: FeatureFlagKey): boolean;
 	isDesktop: boolean;
+	role: OrganizationRole | null;
 }
 
 type Gate = (env: NavigationEnvironment) => boolean;
@@ -62,6 +64,13 @@ const anyFlag =
 	(env) =>
 		keys.some((key) => env.isFeatureEnabled(key));
 const desktopOnly: Gate = (env) => env.isDesktop;
+const ROLE_RANK: Record<OrganizationRole, number> = { editor: 0, admin: 1, owner: 2 };
+export const minRole =
+	(minimum: OrganizationRole): Gate =>
+	(env) =>
+		env.role !== null && ROLE_RANK[env.role] >= ROLE_RANK[minimum];
+const adminOnly = minRole('admin');
+const editorOnly: Gate = (env) => env.role === 'editor';
 
 interface CoreItem extends NavigationItem {
 	readonly gate?: Gate;
@@ -90,19 +99,29 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		items: [
 			{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
 			{ name: 'All activity', href: '/dashboard/inbox/activity', icon: 'lucide:activity' },
-			{ name: 'Review Queue', href: '/dashboard/inbox/review', icon: 'lucide:check-circle' },
+			{
+				name: 'Review Queue',
+				href: '/dashboard/inbox/review',
+				icon: 'lucide:check-circle',
+				gate: adminOnly,
+			},
 			{
 				name: 'Code Tasks',
 				href: '/dashboard/inbox/code-tasks',
 				icon: 'lucide:code',
-				gate: flag('inbox.codeTasks'),
+				gate: (env) => adminOnly(env) && flag('inbox.codeTasks')(env),
 			},
-			{ name: 'Quarantine', href: '/dashboard/inbox/quarantine', icon: 'lucide:shield-alert' },
+			{
+				name: 'Quarantine',
+				href: '/dashboard/inbox/quarantine',
+				icon: 'lucide:shield-alert',
+				gate: adminOnly,
+			},
 		],
 	},
 	{
 		key: 'postbox',
-		name: 'Postbox',
+		name: 'Mail',
 		icon: 'lucide:mailbox',
 		href: '/dashboard/postbox',
 		gate: anyFlag('postbox', 'mail.external'),
@@ -114,7 +133,7 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 			{ name: 'Drafts', href: '/dashboard/postbox/drafts', icon: 'lucide:file-edit' },
 			{ name: 'Spam', href: '/dashboard/postbox/spam', icon: 'lucide:shield-alert' },
 			{ name: 'Trash', href: '/dashboard/postbox/trash', icon: 'lucide:trash' },
-			{ name: 'Settings', href: '/dashboard/postbox/settings', icon: 'lucide:settings' },
+			{ name: 'Preferences', href: '/dashboard/preferences', icon: 'lucide:settings' },
 		],
 	},
 	{
@@ -122,7 +141,7 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'Chat',
 		icon: 'lucide:message-circle',
 		href: '/dashboard/chat',
-		gate: flag('chat'),
+		gate: (env) => adminOnly(env) && flag('chat')(env),
 		items: [{ name: 'Messages', href: '/dashboard/chat', icon: 'lucide:message-circle' }],
 	},
 	{
@@ -130,7 +149,7 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'Assistant',
 		icon: 'lucide:sparkles',
 		href: '/dashboard/assistant',
-		gate: flag('ai.assistant'),
+		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
 		items: [{ name: 'Chat', href: '/dashboard/assistant', icon: 'lucide:sparkles' }],
 	},
 	{
@@ -149,54 +168,57 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 				name: 'Automations',
 				href: '/dashboard/automations',
 				icon: 'lucide:zap',
-				gate: flag('automations'),
+				gate: (env) => adminOnly(env) && flag('automations')(env),
 			},
 			{
 				name: 'Transactional',
 				href: '/dashboard/send/transactional',
 				icon: 'lucide:file-code',
-				gate: flag('transactional'),
+				gate: (env) => adminOnly(env) && flag('transactional')(env),
 			},
-			{ name: 'Templates & blocks', href: '/dashboard/send', icon: 'lucide:layout-grid' },
+			{
+				name: 'Templates & blocks',
+				href: '/dashboard/send',
+				icon: 'lucide:layout-grid',
+				gate: adminOnly,
+			},
 		],
 	},
 	{
-		// Audience sits directly under Send: who you're writing to.
 		key: 'audience',
 		name: 'Audience',
 		icon: 'lucide:users',
+		href: undefined,
 		items: [
-			{ name: 'Overview', href: '/dashboard/audience', icon: 'lucide:layout-dashboard' },
-			{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
-			{ name: 'Topics', href: '/dashboard/audience/topics', icon: 'lucide:list-filter' },
-			{ name: 'Segments', href: '/dashboard/audience/segments', icon: 'lucide:user-plus' },
-			{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
-		],
-	},
-	{
-		// Delivery: deliverability promoted to its own first-class section.
-		key: 'delivery',
-		name: 'Delivery',
-		icon: 'lucide:truck',
-		items: [
-			{ name: 'Health', href: '/dashboard/delivery', icon: 'lucide:activity' },
 			{
-				name: 'Deliverability',
-				href: '/dashboard/delivery/deliverability',
-				icon: 'lucide:shield-check',
+				name: 'Overview',
+				href: '/dashboard/audience',
+				icon: 'lucide:layout-dashboard',
+				gate: adminOnly,
 			},
-			{ name: 'Setup', href: '/dashboard/delivery/setup', icon: 'lucide:settings-2' },
+			{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
+			{
+				name: 'Topics',
+				href: '/dashboard/audience/topics',
+				icon: 'lucide:list-filter',
+				gate: adminOnly,
+			},
+			{
+				name: 'Segments',
+				href: '/dashboard/audience/segments',
+				icon: 'lucide:user-plus',
+				gate: adminOnly,
+			},
+			{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
 		],
 	},
 	{
 		key: 'knowledge',
 		name: 'Knowledge',
 		icon: 'lucide:brain',
-		gate: flag('ai.knowledge'),
+		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
 		items: [
 			{ name: 'Explorer', href: '/dashboard/knowledge', icon: 'lucide:brain' },
-			// Graph dashboard — gated on the analytics flag, which also drives the
-			// cron that fills the snapshot.
 			{
 				name: 'Graph',
 				href: '/dashboard/knowledge/graph',
@@ -206,42 +228,47 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		],
 	},
 	{
-		key: 'settings',
-		name: 'Settings',
-		icon: 'lucide:settings',
+		key: 'administration',
+		name: 'Administration',
+		icon: 'lucide:shield-check',
+		gate: adminOnly,
 		items: [
-			{ name: 'Overview', href: '/dashboard/settings', icon: 'lucide:settings' },
-			{ name: 'Workspace', href: '/dashboard/settings/workspace', icon: 'lucide:building-2' },
-			{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
-			{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
 			{
-				name: 'AI Agent',
-				href: '/dashboard/settings/agent',
-				icon: 'lucide:bot',
-				gate: flag('ai.agent'),
+				name: 'Overview',
+				href: '/dashboard/admin',
+				icon: 'lucide:gauge',
 			},
+			{ name: 'Delivery', href: '/dashboard/admin/delivery', icon: 'lucide:truck' },
+			{ name: 'Team & access', href: '/dashboard/admin/team', icon: 'lucide:users-round' },
+			{ name: 'Instance', href: '/dashboard/admin/instance', icon: 'lucide:server-cog' },
+		],
+	},
+	{
+		key: 'preferences',
+		name: 'Preferences',
+		icon: 'lucide:settings',
+		href: '/dashboard/preferences',
+		items: [
+			{ name: 'Overview', href: '/dashboard/preferences', icon: 'lucide:settings' },
+			{ name: 'Account', href: '/dashboard/preferences/account', icon: 'lucide:user-cog' },
 			{
-				name: 'Agent Health',
-				href: '/dashboard/settings/agent-health',
-				icon: 'lucide:activity',
-				gate: flag('ai.agent'),
-			},
-			{
-				name: 'Autonomy',
-				href: '/dashboard/settings/autonomy',
-				icon: 'lucide:sliders-horizontal',
-				gate: flag('ai.autonomy'),
-			},
-			{ name: 'Messaging', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
-			// Admin management surface for shared Postbox inboxes — the page itself
-			// shows an admins-only gate.
-			{
-				name: 'Team Inboxes',
-				href: '/dashboard/settings/team-inboxes',
-				icon: 'lucide:mails',
+				name: 'Filters',
+				href: '/dashboard/preferences/filters',
+				icon: 'lucide:list-filter',
 				gate: anyFlag('postbox', 'mail.external'),
 			},
-			{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
+			{
+				name: 'Signatures',
+				href: '/dashboard/preferences/signatures',
+				icon: 'lucide:signature',
+				gate: anyFlag('postbox', 'mail.external'),
+			},
+			{
+				name: 'Connected mailboxes',
+				href: '/dashboard/preferences/external-account',
+				icon: 'lucide:mail-plus',
+				gate: anyFlag('postbox', 'mail.external'),
+			},
 			{ name: 'Desktop', href: '/desktop/settings', icon: 'lucide:monitor', gate: desktopOnly },
 		],
 	},
@@ -249,6 +276,20 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 
 /** Which core section a plugin nav item may attach to. */
 const CORE_SECTION_KEYS = new Set<string>(CORE_SECTIONS.map((section) => section.key));
+
+/**
+ * Section keys that existed before the IA restructure and that third-party
+ * manifests may still target. The manifest validator only checks the shape of
+ * `section` (kebab-case), so a published plugin can legitimately carry a key
+ * that no longer exists here; without an alias its destination would be
+ * silently dropped by the fail-closed filter below. Both retired keys folded
+ * into Administration: `settings` (the Settings section) and `delivery` (the
+ * first-class Delivery section, now Administration → Delivery).
+ */
+const RETIRED_SECTION_ALIASES: Readonly<Record<string, SectionKey>> = Object.freeze({
+	settings: 'administration',
+	delivery: 'administration',
+});
 
 /** A plugin's sidebar destination resolved against a target core section. */
 export interface PluginNavContribution extends HostedPluginNavEntry<NavigationItem> {
@@ -343,9 +384,13 @@ export function buildNavigationSections(
 	env: NavigationEnvironment,
 	contributions: PluginNavigationContributions = EMPTY_CONTRIBUTIONS
 ): NavigationSection[] {
-	const sectionTargetedNavItems = contributions.navItems.filter((item) =>
-		CORE_SECTION_KEYS.has(item.section)
-	);
+	const sectionTargetedNavItems = contributions.navItems
+		.map((item) =>
+			RETIRED_SECTION_ALIASES[item.section] === undefined
+				? item
+				: { ...item, section: RETIRED_SECTION_ALIASES[item.section]! }
+		)
+		.filter((item) => CORE_SECTION_KEYS.has(item.section));
 
 	const sections = mergeHostedNavigation<CoreSection>({
 		core: CORE_SECTIONS.map((section) => ({
@@ -355,26 +400,36 @@ export function buildNavigationSections(
 		})),
 	});
 
-	return sections.map((section) => {
-		const coreItems: HostedNavEntry<NavigationItem>[] = section.items.map((item) => ({
-			id: item.href,
-			enabled: (item.gate ?? always)(env),
-			value: { name: item.name, href: item.href, icon: item.icon },
-		}));
+	return sections
+		.map((section) => {
+			const coreItems: HostedNavEntry<NavigationItem>[] = section.items.map((item) => ({
+				id: item.href,
+				enabled: (item.gate ?? always)(env),
+				value: { name: item.name, href: item.href, icon: item.icon },
+			}));
 
-		const pluginItems: HostedPluginNavEntry<NavigationItem>[] = sectionTargetedNavItems.filter(
-			(item) => item.section === section.key
-		);
-		if (section.key === 'settings') pluginItems.push(...contributions.settingsPanels);
+			const pluginItems: HostedPluginNavEntry<NavigationItem>[] = sectionTargetedNavItems.filter(
+				(item) => item.section === section.key
+			);
+			if (section.key === 'administration') pluginItems.push(...contributions.settingsPanels);
 
-		const items = mergeHostedNavigation<NavigationItem>({ core: coreItems, plugins: pluginItems });
+			const items = mergeHostedNavigation<NavigationItem>({
+				core: coreItems,
+				plugins: pluginItems,
+			});
 
-		return {
-			key: section.key,
-			name: section.name,
-			icon: section.icon,
-			...(section.href === undefined ? {} : { href: section.href }),
-			items: [...items],
-		};
-	});
+			const isMemberAudience = section.key === 'audience' && editorOnly(env);
+			return {
+				key: section.key,
+				name: isMemberAudience ? 'Customers' : section.name,
+				icon: section.icon,
+				...(isMemberAudience
+					? { href: '/dashboard/audience/contacts' }
+					: section.href === undefined
+						? {}
+						: { href: section.href }),
+				items: [...items],
+			};
+		})
+		.filter((section) => section.items.length > 0);
 }

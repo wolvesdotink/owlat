@@ -46,6 +46,9 @@ export function usePermissions() {
 	 */
 	const canManageContacts = computed(() => isAdmin.value);
 
+	/** Every organization member may add shared notes to a customer. */
+	const canAnnotateContacts = computed(() => role.value !== null);
+
 	/**
 	 * Only owner and admin can manage settings
 	 */
@@ -75,6 +78,7 @@ export function usePermissions() {
 		canSendCampaigns,
 		canManageOrganization,
 		canManageContacts,
+		canAnnotateContacts,
 		canManageSettings,
 		canDeleteOrganization,
 		showAdminGate,

@@ -20,7 +20,7 @@ const { cards, availableCards, savedRules, isLoading, isEditing, saveLayout } =
 	useAdaptiveDashboard();
 
 // Default cards to show when no adaptive layout is available
-const defaultCards = [
+const adminDefaultCards = [
 	{ type: 'verification_queue', size: 'large' as const },
 	{ type: 'campaign_performance', size: 'medium' as const },
 	{ type: 'delivery_rates', size: 'medium' as const },
@@ -30,9 +30,15 @@ const defaultCards = [
 	{ type: 'upcoming_campaigns', size: 'small' as const },
 ];
 
+const memberDefaultCards = [
+	{ type: 'campaign_performance', size: 'medium' as const },
+	{ type: 'recent_contacts', size: 'small' as const },
+	{ type: 'upcoming_campaigns', size: 'small' as const },
+];
+
 const displayCards = computed(() => {
 	if (cards.value.length > 0) return cards.value;
-	return defaultCards;
+	return isAdmin.value ? adminDefaultCards : memberDefaultCards;
 });
 
 function openEditor() {
@@ -59,7 +65,13 @@ async function handleSave(
 				<h1 class="text-2xl font-semibold text-text-primary">
 					Welcome back{{ user?.name ? `, ${user.name.split(' ')[0]}` : '' }}
 				</h1>
-				<p class="mt-1 text-text-secondary">Here's what's happening with your email marketing.</p>
+				<p class="mt-1 text-text-secondary">
+					{{
+						isAdmin
+							? "Here's what needs attention across your organization."
+							: "Here's what's happening with your customers and sends."
+					}}
+				</p>
 			</div>
 			<UiButton variant="outline" size="sm" @click="openEditor">
 				<template #iconLeft>
@@ -108,7 +120,13 @@ async function handleSave(
 			</div>
 		</UiErrorBoundary>
 
-		<!-- Dashboard Editor -->
+		<!--
+			Dashboard Editor — available to every role, matching the "Customize"
+			button above. The backend role-filters `getAvailableCards` and
+			`saveLayout` is an authed (not admin) mutation, so a member customizing
+			their own layout only ever sees and pins cards they may read. Gating this
+			on `isAdmin` would leave members with a button that does nothing.
+		-->
 		<DashboardEditor
 			:is-open="isEditing"
 			:cards="displayCards"

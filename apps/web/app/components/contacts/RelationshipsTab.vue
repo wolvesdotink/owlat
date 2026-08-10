@@ -78,10 +78,10 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 		<div class="card">
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-lg font-medium text-text-primary">Relationships</h2>
-				<button class="btn btn-secondary btn-sm gap-1" @click="showAddForm = !showAddForm">
+				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
 					{{ showAddForm ? 'Cancel' : 'Add Relationship' }}
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Add Form -->
@@ -105,7 +105,8 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					</div>
 					<!-- Otherwise search and pick a contact by name or email. -->
 					<div v-else class="relative">
-						<input id="addform-tocontact"
+						<input
+							id="addform-tocontact"
 							v-model="targetSearch"
 							type="text"
 							class="input w-full"
@@ -126,7 +127,9 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 									<span
 										v-if="(candidate.firstName || candidate.lastName) && candidate.email"
 										class="text-text-tertiary"
-									> · {{ candidate.email }}</span>
+									>
+										· {{ candidate.email }}</span
+									>
 								</button>
 							</li>
 						</ul>
@@ -167,13 +170,9 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</div>
 					</div>
 				</div>
-				<button
-					class="btn btn-primary btn-sm"
-					:disabled="!addForm.toContactId || isAdding"
-					@click="onAdd"
-				>
+				<UiButton size="sm" :disabled="!addForm.toContactId || isAdding" @click="onAdd">
 					{{ isAdding ? 'Adding...' : 'Add Relationship' }}
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Loading -->
@@ -183,7 +182,13 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 
 			<!-- Empty -->
 			<div v-else-if="!relationships || relationships.length === 0" class="py-6 text-center">
-				<UiIconBox icon="lucide:users" size="lg" variant="surface" rounded="full" class="mb-3 mx-auto" />
+				<UiIconBox
+					icon="lucide:users"
+					size="lg"
+					variant="surface"
+					rounded="full"
+					class="mb-3 mx-auto"
+				/>
 				<p class="text-text-tertiary text-sm">No relationships found.</p>
 				<p class="text-text-tertiary text-xs mt-1">
 					Add a relationship to map how this contact connects to others.
@@ -209,9 +214,10 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								:to="`/dashboard/audience/contacts/${rel.relatedContact._id}`"
 								class="text-text-primary text-sm font-medium truncate hover:text-brand transition-colors"
 							>
-								{{ rel.relatedContact.firstName || rel.relatedContact.lastName
-									? `${rel.relatedContact.firstName ?? ''} ${rel.relatedContact.lastName ?? ''}`.trim()
-									: rel.relatedContact.email
+								{{
+									rel.relatedContact.firstName || rel.relatedContact.lastName
+										? `${rel.relatedContact.firstName ?? ''} ${rel.relatedContact.lastName ?? ''}`.trim()
+										: rel.relatedContact.email
 								}}
 							</NuxtLink>
 							<span v-else class="text-text-tertiary text-sm">Unknown contact</span>
@@ -220,8 +226,15 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							<span class="text-xs text-text-tertiary">
 								{{ getDirectionLabel(rel.direction) }}
 							</span>
-							<span class="text-xs px-1.5 py-0.5 rounded bg-bg-elevated text-text-secondary capitalize">
-								{{ (('displayRelationship' in rel ? rel.displayRelationship : undefined) || rel.relationship).replace(/_/g, ' ') }}
+							<span
+								class="text-xs px-1.5 py-0.5 rounded bg-bg-elevated text-text-secondary capitalize"
+							>
+								{{
+									(
+										('displayRelationship' in rel ? rel.displayRelationship : undefined) ||
+										rel.relationship
+									).replace(/_/g, ' ')
+								}}
 							</span>
 							<!-- Inline confidence editor: percentage is a button that
 							     reveals the same slider the Add form uses. -->

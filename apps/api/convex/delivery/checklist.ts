@@ -19,7 +19,7 @@ import {
 import { adminQuery } from '../lib/authedFunctions';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { v } from 'convex/values';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
 import {
 	evidenceDto,
 	loopbackResult,
@@ -143,8 +143,14 @@ export function loopbackDomains(
 	});
 }
 
-async function buildCenter(ctx: QueryCtx) {
-	const session = await requireOrgPermission(ctx, 'organization:manage');
+/**
+ * The Center read model, over the admin session its caller's floor resolved.
+ * `getCenter` is an `adminQuery`, so `organization:manage` is already decided and
+ * the org id is already known when this runs — re-deriving either would be a
+ * second BetterAuth session + `member` lookup on a query the Deliverability
+ * Center live-subscribes.
+ */
+async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	const organizationId = session.activeOrganizationId;
 	const domains = await loadCenterDomains(ctx);
 	const targetKeys = [
@@ -357,7 +363,7 @@ async function buildCenter(ctx: QueryCtx) {
 
 export const getCenter = adminQuery({
 	args: {},
-	handler: buildCenter,
+	handler: (ctx, _args, session) => buildCenter(ctx, session),
 });
 
 /** Inherited-identity admin scope for Node actions. */

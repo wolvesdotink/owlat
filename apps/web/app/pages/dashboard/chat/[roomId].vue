@@ -117,10 +117,10 @@ const handleLeave = async () => {
 				<p class="text-sm text-text-secondary mt-1">
 					This room may have been archived or you no longer have access.
 				</p>
-				<button class="mt-4 btn btn-secondary gap-2" @click="router.push('/dashboard/chat')">
+				<UiButton variant="secondary" class="mt-4 gap-2" @click="router.push('/dashboard/chat')">
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 					Back to chat
-				</button>
+				</UiButton>
 			</div>
 
 			<!-- Room view -->
@@ -147,10 +147,10 @@ const handleLeave = async () => {
 					<p class="text-sm text-text-secondary flex-1">
 						You're previewing this channel. Join to send messages.
 					</p>
-					<button class="btn btn-primary btn-sm gap-2" @click="joinChannel">
+					<UiButton size="sm" class="gap-2" @click="joinChannel">
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 						Join
-					</button>
+					</UiButton>
 				</div>
 
 				<div class="flex-1 flex min-h-0">

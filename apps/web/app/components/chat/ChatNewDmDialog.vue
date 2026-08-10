@@ -77,16 +77,16 @@ const handleSubmit = async () => {
 		</div>
 
 		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-			<button class="btn btn-secondary" @click="emit('close')">Cancel</button>
-			<button
-				class="btn btn-primary gap-2"
+			<UiButton variant="secondary" @click="emit('close')">Cancel</UiButton>
+			<UiButton
+				class="gap-2"
 				:disabled="selectedMembers.length === 0 || isCreating"
 				@click="handleSubmit"
 			>
 				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
 				Start chat
-			</button>
+			</UiButton>
 		</div>
 	</ChatDialogShell>
 </template>

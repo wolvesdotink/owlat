@@ -24,7 +24,7 @@ import RampConfirmDialog from '../RampConfirmDialog.vue';
 import RampDecreaseNotices from '../RampDecreaseNotices.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
 import RampPresetPicker from '../RampPresetPicker.vue';
-import ControlsPage from '~/pages/dashboard/delivery/controls.vue';
+import ControlsPage from '~/pages/dashboard/admin/delivery/advanced/controls.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	rampRefusalSentence,

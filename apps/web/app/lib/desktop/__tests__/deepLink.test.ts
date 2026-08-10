@@ -26,7 +26,11 @@ describe('handleDeepLink', () => {
 		assign = vi.fn();
 		// happy-dom's window.location.assign is a no-op; replace it so we can
 		// observe the navigation target.
-		Object.defineProperty(window.location, 'assign', { value: assign, configurable: true, writable: true });
+		Object.defineProperty(window.location, 'assign', {
+			value: assign,
+			configurable: true,
+			writable: true,
+		});
 	});
 
 	afterEach(() => {
@@ -122,7 +126,7 @@ describe('handleDeepLink', () => {
 
 		it('falls back to /dashboard/{rest} for an unrecognised host', async () => {
 			await handleDeepLink('owlat://settings/profile');
-			expect(assign).toHaveBeenCalledWith('/dashboard/settings/profile');
+			expect(assign).toHaveBeenCalledWith('/dashboard/preferences/profile');
 		});
 	});
 

@@ -53,7 +53,7 @@ describe('pathRule — path-derived feature gate', () => {
 		expect(pathRule('/dashboard/send/emails/abc/edit')).toBeUndefined();
 		expect(pathRule('/dashboard/files/abc')).toBeUndefined();
 		expect(pathRule('/dashboard/audience/contacts')).toBeUndefined();
-		expect(pathRule('/dashboard/settings/api')).toBeUndefined();
+		expect(pathRule('/dashboard/admin/team/api')).toBeUndefined();
 	});
 
 	it('does not match a prefix that is only a partial path segment', () => {

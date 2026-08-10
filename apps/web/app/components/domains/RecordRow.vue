@@ -154,9 +154,9 @@ const registrationSettled = computed(
 			</div>
 
 			<div class="flex items-center gap-2">
-				<button
+				<UiButton
 					v-if="canForceVerify && domain.status !== 'verified'"
-					class="btn gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+					class="gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
 					title="Skip DNS verification and mark this domain as verified — dev/selfhost only"
 					:disabled="isForcing"
 					@click.stop="emit('forceVerify')"
@@ -169,9 +169,10 @@ const registrationSettled = computed(
 					>
 						Dev
 					</span>
-				</button>
-				<button
-					class="btn btn-secondary gap-1.5 text-sm py-1.5 px-3"
+				</UiButton>
+				<UiButton
+					variant="secondary"
+					class="gap-1.5 text-sm py-1.5 px-3"
 					:title="
 						domain.status === 'registering' ? 'Waiting for registration...' : 'Verify DNS records'
 					"
@@ -193,15 +194,16 @@ const registrationSettled = computed(
 						>Retry</template
 					>
 					<template v-else>{{ isVerifying ? 'Verifying...' : 'Verify' }}</template>
-				</button>
-				<button
-					class="btn btn-ghost p-2 text-error hover:bg-error/10"
+				</UiButton>
+				<UiButton
+					variant="ghost"
+					class="p-2 text-error hover:bg-error/10"
 					title="Remove domain"
 					aria-label="Remove domain"
 					@click.stop="emit('delete')"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
-				</button>
+				</UiButton>
 				<div
 					:class="[
 						'w-5 h-5 flex items-center justify-center transition-transform',
@@ -252,10 +254,10 @@ const registrationSettled = computed(
 								{{ domain.lastRegistrationError }}
 							</p>
 						</div>
-						<button class="btn btn-primary gap-2" @click="emit('retryRegistration')">
+						<UiButton class="gap-2" @click="emit('retryRegistration')">
 							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
 							Retry Registration
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- DNS records (normal state) -->

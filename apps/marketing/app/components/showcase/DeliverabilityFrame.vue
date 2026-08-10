@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* In-code mock of the deliverability dashboard (mirrors
- * apps/web/app/pages/dashboard/delivery/deliverability.vue anatomy: health
+ * apps/web/app/pages/dashboard/admin/delivery/deliverability.vue anatomy: health
  * summary, DNS authentication checks, ramp + placement). The domain reuses
  * acme.io from the marketing SDK snippet; numbers are modest illustrative
  * stats. Decorative only — aria-hidden is carried by the parent section.
@@ -14,7 +14,7 @@ const checks = [
 </script>
 
 <template>
-	<ShowcaseWindowFrame url="app.owlat.app/dashboard/delivery">
+	<ShowcaseWindowFrame url="app.owlat.app/dashboard/admin/delivery">
 		<div class="h-[340px] bg-surface-2 p-4 text-left overflow-hidden">
 			<!-- Header -->
 			<div class="flex items-center justify-between">

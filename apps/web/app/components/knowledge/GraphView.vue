@@ -38,11 +38,10 @@ const typeFilters = computed(() => [
 
 <template>
 	<!-- Flag gate: the view renders only when ai.knowledge.analytics is on. -->
-	<div
-		v-if="!analyticsEnabled"
-		class="flex flex-col items-center justify-center py-20 text-center"
-	>
-		<div class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4">
+	<div v-if="!analyticsEnabled" class="flex flex-col items-center justify-center py-20 text-center">
+		<div
+			class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
+		>
 			<Icon name="lucide:bar-chart-3" class="w-7 h-7 text-text-tertiary" />
 		</div>
 		<h3 class="text-base font-medium text-text-primary">Graph analytics are off</h3>
@@ -77,10 +76,14 @@ const typeFilters = computed(() => [
 			<!-- depth toggle -->
 			<div class="flex items-center gap-1 rounded-lg border border-border-subtle p-0.5">
 				<button
-					v-for="d in ([1, 2] as const)"
+					v-for="d in [1, 2] as const"
 					:key="d"
 					class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-					:class="depth === d ? 'bg-brand-subtle text-brand' : 'text-text-secondary hover:text-text-primary'"
+					:class="
+						depth === d
+							? 'bg-brand-subtle text-brand'
+							: 'text-text-secondary hover:text-text-primary'
+					"
 					@click="depth = d"
 				>
 					{{ d }} hop{{ d === 1 ? '' : 's' }}
@@ -91,7 +94,10 @@ const typeFilters = computed(() => [
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 			<!-- Canvas -->
 			<div class="lg:col-span-2 space-y-3">
-				<div v-if="isLoading && graph.nodes.length === 0" class="flex items-center justify-center py-24">
+				<div
+					v-if="isLoading && graph.nodes.length === 0"
+					class="flex items-center justify-center py-24"
+				>
 					<UiSpinner />
 				</div>
 				<KnowledgeGraphCanvas
@@ -105,15 +111,38 @@ const typeFilters = computed(() => [
 				<!-- Edge legend -->
 				<div class="flex flex-wrap items-center gap-4 text-[11px] text-text-tertiary px-1">
 					<span class="flex items-center gap-1.5">
-						<svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.5" /></svg>
+						<svg width="22" height="8">
+							<line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.5" />
+						</svg>
 						Extracted
 					</span>
 					<span class="flex items-center gap-1.5">
-						<svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="6 4" /></svg>
+						<svg width="22" height="8">
+							<line
+								x1="0"
+								y1="4"
+								x2="22"
+								y2="4"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-dasharray="6 4"
+							/>
+						</svg>
 						Inferred
 					</span>
 					<span class="flex items-center gap-1.5">
-						<svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1" stroke-dasharray="2 5" opacity="0.5" /></svg>
+						<svg width="22" height="8">
+							<line
+								x1="0"
+								y1="4"
+								x2="22"
+								y2="4"
+								stroke="currentColor"
+								stroke-width="1"
+								stroke-dasharray="2 5"
+								opacity="0.5"
+							/>
+						</svg>
 						Ambiguous
 					</span>
 					<span class="flex items-center gap-1.5 ml-auto">
@@ -125,10 +154,7 @@ const typeFilters = computed(() => [
 			<!-- Sidebar: selection (click-through) + insights -->
 			<div class="space-y-4">
 				<!-- Click-through side panel -->
-				<div
-					v-if="selectedEntry"
-					class="rounded-xl border border-border-subtle bg-bg-elevated p-5"
-				>
+				<div v-if="selectedEntry" class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<div class="flex items-start justify-between gap-2 mb-3">
 						<div class="flex items-center gap-2 min-w-0">
 							<div
@@ -136,16 +162,22 @@ const typeFilters = computed(() => [
 								:class="{
 									'bg-brand-subtle text-brand': typeVariant(selectedEntry.entryType) === 'default',
 									'bg-warning/10 text-warning': typeVariant(selectedEntry.entryType) === 'warning',
-									'bg-bg-surface text-text-secondary': typeVariant(selectedEntry.entryType) === 'neutral',
-									'bg-success-subtle text-success': typeVariant(selectedEntry.entryType) === 'success',
+									'bg-bg-surface text-text-secondary':
+										typeVariant(selectedEntry.entryType) === 'neutral',
+									'bg-success-subtle text-success':
+										typeVariant(selectedEntry.entryType) === 'success',
 									'bg-error/10 text-error': typeVariant(selectedEntry.entryType) === 'error',
 								}"
 							>
 								<Icon :name="typeIcon(selectedEntry.entryType)" class="w-4 h-4" />
 							</div>
 							<div class="min-w-0">
-								<p class="text-sm font-semibold text-text-primary truncate">{{ selectedEntry.title }}</p>
-								<p class="text-[11px] text-text-tertiary">{{ typeLabel(selectedEntry.entryType) }}</p>
+								<p class="text-sm font-semibold text-text-primary truncate">
+									{{ selectedEntry.title }}
+								</p>
+								<p class="text-[11px] text-text-tertiary">
+									{{ typeLabel(selectedEntry.entryType) }}
+								</p>
 							</div>
 						</div>
 						<button
@@ -161,18 +193,25 @@ const typeFilters = computed(() => [
 					<p class="text-sm text-text-secondary line-clamp-4 mb-3">{{ selectedEntry.content }}</p>
 
 					<div class="flex items-center gap-2 mb-4">
-						<button
+						<UiButton
+							variant="secondary"
+							size="sm"
 							type="button"
-							class="btn btn-secondary btn-sm gap-1.5 flex-1"
+							class="gap-1.5 flex-1"
 							@click="focusNode(selectedEntry._id)"
 						>
 							<Icon name="lucide:crosshair" class="w-3.5 h-3.5" />
 							Center here
-						</button>
-						<NuxtLink :to="`/dashboard/knowledge/${selectedEntry._id}`" class="btn btn-secondary btn-sm gap-1.5 flex-1">
+						</UiButton>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:to="`/dashboard/knowledge/${selectedEntry._id}`"
+							class="gap-1.5 flex-1"
+						>
 							<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
 							Open
-						</NuxtLink>
+						</UiButton>
 					</div>
 
 					<KnowledgeRelationsList

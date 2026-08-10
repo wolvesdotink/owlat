@@ -115,16 +115,17 @@ function formatJson(value: unknown) {
 				Back to logs
 			</button>
 			<span v-else />
-			<button
+			<UiButton
+				variant="secondary"
 				v-if="!selectedLogId"
-				class="btn btn-secondary gap-2 text-sm"
+				class="gap-2 text-sm"
 				:disabled="isSendingTest"
 				@click="emit('sendTest')"
 			>
 				<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
 				{{ isSendingTest ? 'Sending...' : 'Send Test' }}
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Stats Bar -->
@@ -267,15 +268,11 @@ function formatJson(value: unknown) {
 				<p class="text-sm text-text-tertiary mt-1">
 					Send a test webhook to see delivery logs here.
 				</p>
-				<button
-					class="btn btn-primary gap-2 mt-4"
-					:disabled="isSendingTest"
-					@click="emit('sendTest')"
-				>
+				<UiButton class="gap-2 mt-4" :disabled="isSendingTest" @click="emit('sendTest')">
 					<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:send" class="w-4 h-4" />
 					{{ isSendingTest ? 'Sending...' : 'Send Test Webhook' }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 	</UiModal>

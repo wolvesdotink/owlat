@@ -197,14 +197,14 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					</p>
 				</div>
 				<div class="flex items-center gap-2">
-					<button class="btn btn-secondary gap-2" @click="blocklistImport.open()">
+					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
 						<Icon name="lucide:file-up" class="w-4 h-4" />
 						Import
-					</button>
-					<button class="btn btn-primary gap-2" @click="addModal.open()">
+					</UiButton>
+					<UiButton class="gap-2" @click="addModal.open()">
 						<Icon name="lucide:plus" class="w-4 h-4" />
 						Add suppression
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>
@@ -408,13 +408,14 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 									</span>
 								</td>
 								<td class="px-6 py-4 text-right">
-									<button
-										class="btn btn-ghost p-2 text-error hover:bg-error/10"
+									<UiButton
+										variant="ghost"
+										class="p-2 text-error hover:bg-error/10"
 										title="Remove suppression"
 										@click="emailToDelete = blockedEmail"
 									>
 										<Icon name="lucide:trash-2" class="w-4 h-4" />
-									</button>
+									</UiButton>
 								</td>
 							</tr>
 						</tbody>

@@ -254,17 +254,13 @@ async function handleUnsubscribe() {
 				</p>
 
 				<div class="space-y-3">
-					<button
-						class="btn btn-primary w-full h-12"
-						:disabled="isProcessing"
-						@click="handleUnsubscribe"
-					>
+					<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleUnsubscribe">
 						<span v-if="isProcessing" class="flex items-center justify-center gap-2">
 							<UiSpinner size="sm" tone="inverse" />
 							Processing...
 						</span>
 						<span v-else>Yes, Unsubscribe Me</span>
-					</button>
+					</UiButton>
 				</div>
 
 				<p class="text-text-tertiary text-xs mt-6">

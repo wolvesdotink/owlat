@@ -261,9 +261,9 @@ const loadPrevClicked = () => {
 				<p class="text-sm text-text-tertiary mt-1">
 					This campaign may have been deleted or you don't have access to it.
 				</p>
-				<NuxtLink to="/dashboard/campaigns" class="btn btn-secondary mt-6">
+				<UiButton variant="secondary" to="/dashboard/campaigns" class="mt-6">
 					Back to Campaigns
-				</NuxtLink>
+				</UiButton>
 			</div>
 
 			<!-- Report Content -->
@@ -297,15 +297,16 @@ const loadPrevClicked = () => {
 							<CampaignSendPlanLine :progress="sendPlan" class="mt-1" />
 						</div>
 						<div class="flex items-center gap-3">
-							<button
-								class="btn btn-secondary gap-2"
+							<UiButton
+								variant="secondary"
+								class="gap-2"
 								:disabled="isDuplicating"
 								@click="handleDuplicate"
 							>
 								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:copy" class="w-4 h-4" />
 								{{ isDuplicating ? 'Duplicating...' : 'Duplicate' }}
-							</button>
+							</UiButton>
 							<span
 								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
 							>
@@ -326,10 +327,10 @@ const loadPrevClicked = () => {
 								<p class="text-xs text-text-tertiary truncate max-w-md">{{ archiveUrl }}</p>
 							</div>
 						</div>
-						<button class="btn btn-secondary text-sm gap-1.5" @click="copyArchiveLink">
+						<UiButton variant="secondary" class="text-sm gap-1.5" @click="copyArchiveLink">
 							<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
 							{{ archiveCopied ? 'Copied' : 'Copy Link' }}
-						</button>
+						</UiButton>
 					</div>
 				</div>
 
@@ -541,26 +542,28 @@ const loadPrevClicked = () => {
 								v-if="openedContacts.total > pageSize"
 								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
 							>
-								<button
-									class="btn btn-secondary text-sm"
+								<UiButton
+									variant="secondary"
+									class="text-sm"
 									:disabled="openedOffset === 0"
 									@click="loadPrevOpened"
 								>
 									Previous
-								</button>
+								</UiButton>
 								<span class="text-sm text-text-tertiary tabular-nums">
 									{{ openedOffset + 1 }}-{{
 										Math.min(openedOffset + pageSize, openedContacts.total)
 									}}
 									of {{ openedContacts.total }}
 								</span>
-								<button
-									class="btn btn-secondary text-sm"
+								<UiButton
+									variant="secondary"
+									class="text-sm"
 									:disabled="!openedContacts.hasMore"
 									@click="loadMoreOpened"
 								>
 									Next
-								</button>
+								</UiButton>
 							</div>
 						</div>
 					</div>
@@ -649,26 +652,28 @@ const loadPrevClicked = () => {
 								v-if="clickedContacts.total > pageSize"
 								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
 							>
-								<button
-									class="btn btn-secondary text-sm"
+								<UiButton
+									variant="secondary"
+									class="text-sm"
 									:disabled="clickedOffset === 0"
 									@click="loadPrevClicked"
 								>
 									Previous
-								</button>
+								</UiButton>
 								<span class="text-sm text-text-tertiary tabular-nums">
 									{{ clickedOffset + 1 }}-{{
 										Math.min(clickedOffset + pageSize, clickedContacts.total)
 									}}
 									of {{ clickedContacts.total }}
 								</span>
-								<button
-									class="btn btn-secondary text-sm"
+								<UiButton
+									variant="secondary"
+									class="text-sm"
 									:disabled="!clickedContacts.hasMore"
 									@click="loadMoreClicked"
 								>
 									Next
-								</button>
+								</UiButton>
 							</div>
 						</div>
 					</div>

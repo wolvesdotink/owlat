@@ -96,7 +96,7 @@ describe('plugin manifest validation', () => {
 					{
 						id: 'reports',
 						name: 'Reports',
-						href: '/dashboard/settings/reports',
+						href: '/dashboard/admin/reports',
 						icon: 'lucide:chart-bar',
 					},
 				],
@@ -121,7 +121,7 @@ describe('plugin manifest validation', () => {
 		};
 
 		const parsed = parsePluginManifest(manifest);
-		manifest.contributes.navItems[0]!.href = '/dashboard/settings';
+		manifest.contributes.navItems[0]!.href = '/dashboard/admin';
 		manifest.contributes.importProviders[0]!.module.exportPath = './mutated';
 
 		expect(parsed.contributes?.navItems?.[0]?.href).toBe('/dashboard/audience/reports');

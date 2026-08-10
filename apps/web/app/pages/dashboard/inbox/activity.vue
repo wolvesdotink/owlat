@@ -183,32 +183,38 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 					<div
 						class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 					>
-						<NuxtLink
+						<UiButton
+							variant="ghost"
+							size="sm"
 							:to="`/dashboard/inbox/${item.threadId}`"
-							class="btn btn-ghost btn-sm !px-2"
+							class="!px-2"
 							title="Open conversation"
 							aria-label="Open conversation"
 						>
 							<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
-						</NuxtLink>
-						<NuxtLink
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
 							:to="`/dashboard/inbox/${item.threadId}`"
-							class="btn btn-ghost btn-sm !px-2"
+							class="!px-2"
 							title="Assign to a teammate"
 							aria-label="Assign to a teammate"
 						>
 							<Icon name="lucide:user-plus" class="w-4 h-4" />
-						</NuxtLink>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
 							type="button"
-							class="btn btn-ghost btn-sm !px-2"
+							class="!px-2"
 							:disabled="resolvingId === item.threadId"
 							title="Mark as resolved"
 							aria-label="Mark as resolved"
 							@click="handleResolve(item.threadId)"
 						>
 							<Icon name="lucide:check-circle" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</li>
 			</ul>

@@ -29,15 +29,16 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; label: string }> = [
 	<div>
 		<div class="flex items-center justify-between mb-2">
 			<label class="label mb-0">Fields</label>
-			<button
+			<UiButton
+				variant="ghost"
 				type="button"
-				class="btn btn-ghost gap-1.5 text-sm py-1 px-2"
+				class="gap-1.5 text-sm py-1 px-2"
 				:disabled="disabled"
 				@click="editor.addField()"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
 				Add field
-			</button>
+			</UiButton>
 		</div>
 
 		<p class="mb-3 text-xs text-text-tertiary">
@@ -107,33 +108,36 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; label: string }> = [
 					</div>
 
 					<div class="flex items-center gap-1">
-						<button
+						<UiButton
+							variant="ghost"
 							type="button"
-							class="btn btn-ghost p-1.5"
+							class="p-1.5"
 							title="Move up"
 							:disabled="disabled || index === 0"
 							@click="editor.moveField(index, -1)"
 						>
 							<Icon name="lucide:arrow-up" class="w-4 h-4" />
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
 							type="button"
-							class="btn btn-ghost p-1.5"
+							class="p-1.5"
 							title="Move down"
 							:disabled="disabled || index === fields.length - 1"
 							@click="editor.moveField(index, 1)"
 						>
 							<Icon name="lucide:arrow-down" class="w-4 h-4" />
-						</button>
-						<button
+						</UiButton>
+						<UiButton
+							variant="ghost"
 							type="button"
-							class="btn btn-ghost p-1.5 text-error hover:bg-error/10"
+							class="p-1.5 text-error hover:bg-error/10"
 							title="Remove field"
 							:disabled="disabled || fields.length === 1"
 							@click="editor.removeField(index)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>

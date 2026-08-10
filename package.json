@@ -85,6 +85,8 @@
 		"lint:format": "vitest run scripts/__tests__/check-format.test.ts && bash scripts/check-format.sh",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
 		"lint:providers": "vitest run scripts/__tests__/check-provider-identity.test.ts && bash scripts/check-provider-identity.sh",
+		"lint:ui-buttons": "vitest run scripts/__tests__/check-ui-buttons.test.ts && bun scripts/check-ui-buttons.ts",
+		"lint:member-jargon": "vitest run scripts/__tests__/check-member-jargon.test.ts && bun scripts/check-member-jargon.ts",
 		"lint:docker-workspaces": "bash scripts/check-docker-workspaces.sh",
 		"lint:plugin-imports": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --boundaries-only",
 		"plugins:prepare": "bun run --cwd packages/provider-kit build && bun run --cwd packages/plugin-kit build",
@@ -99,11 +101,11 @@
 		"ox:lint:fix": "oxlint --config oxlintrc.json --fix",
 		"ox:fmt": "oxfmt --config oxfmtrc.json .",
 		"ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
-		"ci:lint": "bun run plugins:check && turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:providers && bun run lint:docker-workspaces && bun run lint:plugin-imports",
+		"ci:lint": "bun run plugins:check && turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:providers && bun run lint:ui-buttons && bun run lint:member-jargon && bun run lint:docker-workspaces && bun run lint:plugin-imports",
 		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
 		"ci:test": "turbo test --filter='!@owlat/desktop'",
 		"ci:test:coverage": "turbo test:coverage --filter='!@owlat/desktop'",
-		"ci:verify": "bun run plugins:test-api-graph && bun run plugins:check && turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:providers && bun run lint:docker-workspaces && bun run lint:plugin-imports",
+		"ci:verify": "bun run plugins:test-api-graph && bun run plugins:check && turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:providers && bun run lint:ui-buttons && bun run lint:member-jargon && bun run lint:docker-workspaces && bun run lint:plugin-imports",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
@@ -149,11 +151,11 @@
 		"ws": "^8.21.0"
 	},
 	"packageManager": "bun@1.3.11",
+	"patchedDependencies": {
+		"image-size@2.0.2": "patches/image-size@2.0.2.patch"
+	},
 	"trustedDependencies": [
 		"@owlat/ui",
 		"better-sqlite3"
-	],
-	"patchedDependencies": {
-		"image-size@2.0.2": "patches/image-size@2.0.2.patch"
-	}
+	]
 }
