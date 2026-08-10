@@ -26,7 +26,7 @@
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
-		"mailauth": "^4.13.3",
+		"mailauth": "^5.0.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
