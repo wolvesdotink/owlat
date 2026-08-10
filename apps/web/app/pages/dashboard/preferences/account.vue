@@ -315,13 +315,7 @@ const daysRemaining = computed(() => {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/preferences"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Preferences
-			</NuxtLink>
+			<PreferencesBackLink />
 			<h1 class="text-2xl font-semibold text-text-primary">Account Management</h1>
 			<p class="mt-1 text-text-secondary">Manage your profile, password, data, and account</p>
 		</div>

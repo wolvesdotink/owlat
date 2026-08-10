@@ -110,6 +110,25 @@ const groups = computed(() => [
 					href: '/dashboard/admin/instance/agent',
 					icon: 'lucide:bot',
 				},
+				{
+					title: 'Agent health',
+					description: 'Live accuracy, escalations, and recent agent runs.',
+					href: '/dashboard/admin/instance/agent-health',
+					icon: 'lucide:activity',
+				},
+			]
+		: []),
+	// Autonomy carries the kill switch, so it must stay one click from here
+	// whenever the flag that unlocks the page is on (the page mirrors this gate
+	// with `requiresFeature: 'ai.autonomy'`).
+	...(isEnabled('ai.autonomy')
+		? [
+				{
+					title: 'Autonomy',
+					description: 'How much the agent may act on its own, and the switch that stops it.',
+					href: '/dashboard/admin/instance/autonomy',
+					icon: 'lucide:sliders-horizontal',
+				},
 			]
 		: []),
 	...(isEnabled('sealedMail')

@@ -3,343 +3,45 @@
  * Maps the new navigation structure to breadcrumb trails.
  * Supports dynamic breadcrumb overrides for pages that need to show fetched data.
  */
+import { patternConfigs } from '~/lib/breadcrumbPatterns';
+import { routeConfigs, type RouteConfig } from '~/lib/breadcrumbRoutes';
+
 export interface BreadcrumbItem {
 	label: string;
 	href?: string;
 }
 
-// Route configuration mapping paths to breadcrumb structure
-interface RouteConfig {
-	section: string;
-	sectionHref: string;
-	subsection?: string;
-	subsectionHref?: string;
-	page?: string;
-}
-
 // Shared state for dynamic breadcrumb overrides
 const dynamicBreadcrumbState = ref<BreadcrumbItem[] | null>(null);
 
-// Define route configurations for the new navigation structure
-const routeConfigs: Record<string, RouteConfig> = {
-	// Dashboard
-	'/dashboard': {
-		section: 'Dashboard',
-		sectionHref: '/dashboard',
-	},
+/**
+ * Members (role `editor`) see the Audience section as "Customers", landing on the
+ * customer list rather than the admin-only overview — see the `isMemberAudience`
+ * remap in `lib/dashboardNavigation.ts`. Breadcrumbs mirror it so the trail can't
+ * disagree with the sidebar the viewer is looking at.
+ */
+const MEMBER_AUDIENCE_HREF = '/dashboard/audience/contacts';
 
-	// Send section
-	'/dashboard/send': {
-		section: 'Send',
-		sectionHref: '/dashboard/send',
-		page: 'Templates & blocks',
-	},
-	'/dashboard/send/marketing': {
-		section: 'Send',
-		sectionHref: '/dashboard/send',
-		page: 'Marketing',
-	},
-	'/dashboard/send/transactional': {
-		section: 'Send',
-		sectionHref: '/dashboard/send',
-		page: 'Transactional',
-	},
-	'/dashboard/send/blocks': {
-		section: 'Send',
-		sectionHref: '/dashboard/send',
-		page: 'Blocks',
-	},
-	'/dashboard/send/media': {
-		section: 'Send',
-		sectionHref: '/dashboard/send',
-		page: 'Media',
-	},
-
-	// Campaigns section
-	'/dashboard/campaigns': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'Campaigns',
-	},
-	'/dashboard/campaigns/new': {
-		section: 'Campaigns',
-		sectionHref: '/dashboard/campaigns',
-		page: 'New Campaign',
-	},
-
-	// Audience section
-	'/dashboard/audience': {
-		section: 'Audience',
-		sectionHref: '/dashboard/audience',
-		page: 'Overview',
-	},
-	'/dashboard/audience/contacts': {
-		section: 'Audience',
-		sectionHref: '/dashboard/audience',
-		page: 'Contacts',
-	},
-	'/dashboard/audience/topics': {
-		section: 'Audience',
-		sectionHref: '/dashboard/audience',
-		page: 'Topics',
-	},
-	'/dashboard/audience/segments': {
-		section: 'Audience',
-		sectionHref: '/dashboard/audience',
-		page: 'Segments',
-	},
-	'/dashboard/audience/suppressions': {
-		section: 'Audience',
-		sectionHref: '/dashboard/audience',
-		page: 'Suppressions',
-	},
-
-	// Administration section
-	'/dashboard/admin': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Overview',
-	},
-	'/dashboard/admin/instance': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Instance',
-	},
-	'/dashboard/admin/instance/general': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'Instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'General',
-	},
-	'/dashboard/admin/delivery': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'Health',
-	},
-	'/dashboard/admin/delivery/advanced/measurement': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'Measurement',
-	},
-	'/dashboard/admin/delivery/advanced/independence': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'Independence',
-	},
-	'/dashboard/admin/delivery/advanced/cells': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'Cells',
-	},
-	'/dashboard/admin/delivery/advanced/controls': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'Controls',
-	},
-	'/dashboard/admin/delivery/transport': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'Setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'Delivery provider',
-	},
-	'/dashboard/admin/delivery/domains': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'Setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'Sending Domains',
-	},
-	'/dashboard/admin/delivery/migrate': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'Setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'Migrate from Mailchimp',
-	},
-	'/dashboard/admin/delivery/provider-routing': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'Setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'Provider Routing',
-	},
-	'/dashboard/admin/delivery/webhooks': {
-		section: 'Delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'Setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'Webhooks',
-	},
-	'/dashboard/admin/team': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Team & access',
-	},
-	'/dashboard/admin/instance/email-theme': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'Instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'Email Theme',
-	},
-	'/dashboard/admin/team/api': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'API Keys',
-	},
-	'/dashboard/admin/team/senders': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Campaign senders',
-	},
-	'/dashboard/admin/team/inboxes': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Team Inboxes',
-	},
-	'/dashboard/admin/instance/forms': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Form Endpoints',
-	},
-	'/dashboard/admin/team/audit': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Audit Log',
-	},
-	'/dashboard/preferences/account': {
-		section: 'Preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'Account',
-	},
-	'/dashboard/admin/instance/properties': {
-		section: 'Administration',
-		sectionHref: '/dashboard/admin',
-		page: 'Contact Properties',
-	},
-
-	// Automations section
-	'/dashboard/automations': {
-		section: 'Automations',
-		sectionHref: '/dashboard/automations',
-	},
-};
-
-// Pattern configs for dynamic routes
-interface PatternConfig {
-	pattern: RegExp;
-	getConfig: (match: RegExpMatchArray) => RouteConfig;
+function applyMemberAudienceLabel(config: RouteConfig, path: string): RouteConfig {
+	if (config.section !== 'Audience') return config;
+	// On the customer list itself the section crumb *is* the page.
+	if (path === MEMBER_AUDIENCE_HREF) {
+		return { section: 'Customers', sectionHref: MEMBER_AUDIENCE_HREF };
+	}
+	const { subsection, subsectionHref, ...rest } = config;
+	// A "Contacts" subsection would repeat the (renamed) section destination.
+	const keepSubsection = subsection !== undefined && subsectionHref !== MEMBER_AUDIENCE_HREF;
+	return {
+		...rest,
+		section: 'Customers',
+		sectionHref: MEMBER_AUDIENCE_HREF,
+		...(keepSubsection ? { subsection, subsectionHref } : {}),
+	};
 }
-
-const patternConfigs: PatternConfig[] = [
-	// Email template edit
-	{
-		pattern: /^\/dashboard\/send\/emails\/([^/]+)\/edit$/,
-		getConfig: () => ({
-			section: 'Send',
-			sectionHref: '/dashboard/send',
-			subsection: 'Marketing',
-			subsectionHref: '/dashboard/send/marketing',
-			page: 'Edit Template',
-		}),
-	},
-	// Transactional template edit
-	{
-		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/edit$/,
-		getConfig: () => ({
-			section: 'Send',
-			sectionHref: '/dashboard/send',
-			subsection: 'Transactional',
-			subsectionHref: '/dashboard/send/transactional',
-			page: 'Edit Template',
-		}),
-	},
-	// Campaign edit
-	{
-		pattern: /^\/dashboard\/campaigns\/([^/]+)\/edit$/,
-		getConfig: () => ({
-			section: 'Campaigns',
-			sectionHref: '/dashboard/campaigns',
-			page: 'Edit Campaign',
-		}),
-	},
-	// Campaign report
-	{
-		pattern: /^\/dashboard\/campaigns\/([^/]+)\/report$/,
-		getConfig: () => ({
-			section: 'Campaigns',
-			sectionHref: '/dashboard/campaigns',
-			page: 'Campaign Report',
-		}),
-	},
-	// Automation edit
-	{
-		pattern: /^\/dashboard\/automations\/([^/]+)\/edit$/,
-		getConfig: () => ({
-			section: 'Automations',
-			sectionHref: '/dashboard/automations',
-			page: 'Edit Automation',
-		}),
-	},
-	// Automation new
-	{
-		pattern: /^\/dashboard\/automations\/new$/,
-		getConfig: () => ({
-			section: 'Automations',
-			sectionHref: '/dashboard/automations',
-			page: 'New Automation',
-		}),
-	},
-	// Contact detail
-	{
-		pattern: /^\/dashboard\/audience\/contacts\/([^/]+)$/,
-		getConfig: () => ({
-			section: 'Audience',
-			sectionHref: '/dashboard/audience',
-			subsection: 'Contacts',
-			subsectionHref: '/dashboard/audience/contacts',
-			page: 'Contact Details',
-		}),
-	},
-	// Topic detail
-	{
-		pattern: /^\/dashboard\/audience\/topics\/([^/]+)$/,
-		getConfig: () => ({
-			section: 'Audience',
-			sectionHref: '/dashboard/audience',
-			subsection: 'Topics',
-			subsectionHref: '/dashboard/audience/topics',
-			page: 'Topic Details',
-		}),
-	},
-	// Contact in topic detail
-	{
-		pattern: /^\/dashboard\/audience\/topics\/([^/]+)\/contacts\/([^/]+)$/,
-		getConfig: () => ({
-			section: 'Audience',
-			sectionHref: '/dashboard/audience',
-			subsection: 'Topics',
-			subsectionHref: '/dashboard/audience/topics',
-			page: 'Contact in Topic',
-		}),
-	},
-	// Segment detail
-	{
-		pattern: /^\/dashboard\/audience\/segments\/([^/]+)$/,
-		getConfig: () => ({
-			section: 'Audience',
-			sectionHref: '/dashboard/audience',
-			subsection: 'Segments',
-			subsectionHref: '/dashboard/audience/segments',
-			page: 'Segment Details',
-		}),
-	},
-];
 
 export function useBreadcrumbs() {
 	const route = useRoute();
+	const { role } = useOrganizationContext();
 
 	const breadcrumbs = computed<BreadcrumbItem[]>(() => {
 		// If dynamic breadcrumbs are set, use them
@@ -384,6 +86,11 @@ export function useBreadcrumbs() {
 				}
 			}
 			return items;
+		}
+
+		// Role-aware section labels (keep the trail in step with the sidebar).
+		if (role.value === 'editor') {
+			config = applyMemberAudienceLabel(config, path);
 		}
 
 		// Build breadcrumbs from config

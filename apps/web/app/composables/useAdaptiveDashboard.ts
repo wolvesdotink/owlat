@@ -25,9 +25,13 @@ export function useAdaptiveDashboard() {
 		() => (isAuthed.value ? {} : 'skip')
 	);
 
+	// Authed on the server (the catalog is role-filtered), so it carries the same
+	// skip-gate as its siblings — an unconditional subscription throws server-side
+	// when the session is gone (e.g. logout while the dashboard is mounted) and the
+	// catalog would silently degrade to an empty list.
 	const { data: availableCardsData, isLoading: availableCardsLoading } = useConvexQuery(
 		api.analytics.adaptiveDashboard.getAvailableCards,
-		{}
+		() => (isAuthed.value ? {} : 'skip')
 	);
 
 	// Raw saved layout (includes adaptive rules) — only the editor needs it, so
@@ -39,7 +43,7 @@ export function useAdaptiveDashboard() {
 
 	const { run: saveLayoutMutation } = useBackendOperation(
 		api.analytics.adaptiveDashboard.saveLayout,
-		{ label: 'Save dashboard layout' },
+		{ label: 'Save dashboard layout' }
 	);
 
 	const isEditing = ref(false);

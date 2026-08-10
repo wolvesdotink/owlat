@@ -42,8 +42,12 @@ definePageMeta({
 	middleware: ['auth', 'admin'],
 });
 
-const { canManageOrganization, showAdminGate } = usePermissions();
-
+// Every write this page offers — the history import, the routing preset, the ramp
+// pace — is an adminMutation, and the `admin` route middleware above is what keeps
+// a non-admin away from them: it waits for the role and redirects to /dashboard
+// before this page renders. So the steps below are written for an admin reader,
+// with no in-page permission read and no "owners and admins only" card that
+// nobody could reach.
 const { data: catalog } = useOrganizationQuery(api.providerRoutes.listTransportCatalog);
 const { data: routes } = useOrganizationQuery(api.providerRoutes.listRoutes);
 const { data: identities } = useOrganizationQuery(api.domains.mandrillRelayQueries.listIdentities);
@@ -113,14 +117,6 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 			</p>
 		</div>
 
-		<UiCard v-if="showAdminGate" class="mb-6">
-			<p class="text-sm text-text-secondary" data-testid="migrate-admin-only">
-				Running the migration — importing history, applying the routing preset, choosing a ramp pace
-				— is limited to workspace owners and admins. The steps below still show you where the
-				migration currently stands.
-			</p>
-		</UiCard>
-
 		<ol class="space-y-4" data-testid="migration-steps">
 			<li
 				v-for="step in steps"
@@ -170,7 +166,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 
 						<!-- 2 · Carry over history ------------------------------------- -->
 						<DeliveryMigrationImportStep
-							v-else-if="step.id === 'history' && canManageOrganization"
+							v-else-if="step.id === 'history'"
 							:is-blocked="stepByIdState('history') === 'blocked'"
 							:blocked-reason="blockedReason('history')"
 							@carried="(value: boolean) => (isHistoryCarried = value)"
@@ -215,7 +211,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 
 						<!-- 4 · The preset --------------------------------------------- -->
 						<DeliveryMigrationPresetStep
-							v-else-if="step.id === 'preset' && canManageOrganization"
+							v-else-if="step.id === 'preset'"
 							:catalog="catalog ?? null"
 							:routes="routes ?? null"
 							:is-applied="isPresetApplied"
@@ -254,13 +250,6 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 								</NuxtLink>
 							</div>
 						</template>
-
-						<p
-							v-if="step.blockedBy && step.id !== 'watch' && !canManageOrganization"
-							class="text-sm text-warning"
-						>
-							{{ step.blockedBy }}
-						</p>
 					</div>
 				</div>
 			</li>

@@ -135,13 +135,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 
 <template>
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<NuxtLink
-			to="/dashboard/preferences"
-			class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
-		>
-			<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-			Back to settings
-		</NuxtLink>
+		<PreferencesBackLink />
 
 		<h1 class="text-2xl font-semibold">Add mail account</h1>
 
@@ -362,7 +356,11 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					Manage members
 				</UiButton>
 				<UiButton v-else to="/dashboard/postbox/inbox"> Open inbox </UiButton>
-				<UiButton variant="ghost" to="/dashboard/preferences"> Back to settings </UiButton>
+				<!-- Stays a button, not the shared PreferencesBackLink: this is the
+				     secondary half of a two-button row, and a text link beside a
+				     primary button reads as a footnote rather than the other choice.
+				     Only the stale "settings" wording is corrected. -->
+				<UiButton variant="ghost" to="/dashboard/preferences"> Back to Preferences </UiButton>
 			</div>
 		</section>
 	</div>

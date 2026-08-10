@@ -122,6 +122,21 @@ describe('buildNavigationSections — plugin contributions', () => {
 		expect(sections.flatMap((s) => s.items.map((i) => i.href))).not.toContain('/dashboard/x');
 	});
 
+	it.each([
+		['settings', '/dashboard/admin/legacy-settings-panel'],
+		['delivery', '/dashboard/admin/delivery/legacy-warmup'],
+	])('remaps a retired section key (%s) onto Administration', (section, href) => {
+		// Both keys were valid targets before the IA restructure and the manifest
+		// validator only checks that `section` is kebab-case, so a published
+		// third-party plugin can still ship them. They must land in Administration
+		// rather than be dropped by the fail-closed unknown-section filter.
+		const sections = buildNavigationSections(
+			alwaysOn,
+			contributions({ navItems: [pluginNav('deals', section, href)] })
+		);
+		expect(sections.find((s) => s.key === 'administration')?.items.at(-1)?.href).toBe(href);
+	});
+
 	it('drops a plugin item whose target section is feature-off', () => {
 		const env = {
 			isFeatureEnabled: (f: FeatureFlagKey) => f !== 'ai.knowledge',

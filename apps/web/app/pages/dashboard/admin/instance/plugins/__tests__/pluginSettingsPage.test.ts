@@ -54,7 +54,6 @@ beforeAll(() => {
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('useRoute', () => ({ params: { id: 'slack-approvals' } }));
-	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(true), showAdminGate: ref(false) }));
 	vi.stubGlobal('useConvexQuery', () => ({
 		data: overview,
 		isLoading: ref(false),

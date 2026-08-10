@@ -7,6 +7,7 @@ import type {
 } from '~/composables/useOrganization';
 import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
 import { formatShortDate } from '~/utils/formatters';
+import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
 useHead({ title: 'Team Management — Owlat' });
 
@@ -77,7 +78,20 @@ const inviteToCancel = ref<OrganizationInvitation | null>(null);
 const isCancelling = ref(false);
 
 // Delete organization (owner-only Danger Zone)
-const { canDeleteOrganization } = usePermissions();
+const { canDeleteOrganization, isAdmin } = usePermissions();
+
+// Connected apps (Tier-2 external integrations) bind to a bundled plugin, so the
+// card shows whenever plugins are bundled. It must also stay reachable when a
+// plugin is removed from the build but connected-app records remain, so admins
+// can still revoke/delete them: query the (owner/admin-gated) list only in that
+// empty-build case, and skip it for anyone who couldn't read it anyway.
+const { data: connectedAppsForNav } = useConvexQuery(api.connectedApps.queries.listByTeam, () =>
+	isAdmin.value && bundledPluginComposition.length === 0 ? {} : 'skip'
+);
+const hasConnectedApps = computed(() => (connectedAppsForNav.value?.length ?? 0) > 0);
+const showConnectedApps = computed(
+	() => bundledPluginComposition.length > 0 || hasConnectedApps.value
+);
 const { signOut } = useAuth();
 const showDeleteOrgModal = ref(false);
 const deleteOrgConfirmText = ref('');
@@ -280,6 +294,17 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<Icon name="lucide:clipboard-list" class="w-5 h-5 text-brand" />
 				<p class="mt-2 font-medium text-text-primary">Audit log</p>
 				<p class="text-xs text-text-secondary">Workspace activity</p>
+			</NuxtLink>
+			<!-- Shown while plugins are bundled, and while records from a removed
+			     plugin remain, so external access stays revocable. -->
+			<NuxtLink
+				v-if="showConnectedApps"
+				to="/dashboard/admin/team/connected-apps"
+				class="card !p-4 hover:bg-bg-surface"
+			>
+				<Icon name="lucide:plug" class="w-5 h-5 text-brand" />
+				<p class="mt-2 font-medium text-text-primary">Connected apps</p>
+				<p class="text-xs text-text-secondary">External integrations</p>
 			</NuxtLink>
 		</nav>
 

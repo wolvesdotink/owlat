@@ -155,9 +155,9 @@ describe('pages wire the gate in (source guard)', () => {
 		expect(source).toContain('@confirm="confirmBlock"');
 	});
 
-	it('the retired postbox address book redirects to the guarded Customers store', () => {
+	it('postbox contact removal routes through a handler with an undo toast', () => {
 		const source = readPage('dashboard/postbox/contacts.vue');
-		expect(source).toContain("navigateTo('/dashboard/audience/contacts'");
-		expect(source).not.toContain('removeContact');
+		expect(source).toContain('@click="removeContact(c)"');
+		expect(source).toMatch(/showToast\([\s\S]*label: 'Undo'/);
 	});
 });

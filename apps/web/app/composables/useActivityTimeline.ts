@@ -1,10 +1,7 @@
 import { ref, computed, watch, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import {
-	ACTIVITY_EDITOR_MODULES,
-	type ContactActivityType,
-} from './contactActivities';
+import { ACTIVITY_EDITOR_MODULES, type ContactActivityType } from './contactActivities';
 
 // Type for activity items
 export interface ActivityItem {
@@ -32,7 +29,14 @@ function moduleForType(type: string) {
 /**
  * Composable for contact activity timeline: pagination, parsing, formatting.
  */
-export function useActivityTimeline(contactId: ComputedRef<Id<'contacts'>>) {
+export function useActivityTimeline(
+	contactId: ComputedRef<Id<'contacts'>>,
+	// Optional subscription gate. While it reads false the Convex subscription is
+	// skipped entirely — callers that render the timeline behind a tab (or behind a
+	// permission) pass that condition so a surface nobody opens costs no
+	// subscription. Omit it to subscribe eagerly, as before.
+	enabled?: () => boolean
+) {
 	// Pagination state
 	const activityCursor = ref<number | undefined>(undefined);
 	const isLoadingMoreActivities = ref(false);
@@ -41,11 +45,14 @@ export function useActivityTimeline(contactId: ComputedRef<Id<'contacts'>>) {
 	// DATA: Convex query with pagination
 	const { data: activitiesData, isLoading: activitiesLoading } = useConvexQuery(
 		api.contacts.activities.listByContact,
-		() => ({
-			contactId: contactId.value,
-			limit: 20,
-			cursor: activityCursor.value,
-		})
+		() => {
+			if (enabled && !enabled()) return 'skip';
+			return {
+				contactId: contactId.value,
+				limit: 20,
+				cursor: activityCursor.value,
+			};
+		}
 	);
 
 	// Watch for new activity data and accumulate
@@ -87,8 +94,7 @@ export function useActivityTimeline(contactId: ComputedRef<Id<'contacts'>>) {
 	const getActivityIcon = (type: string) =>
 		moduleForType(type)?.displayConfig.icon ?? FALLBACK_DISPLAY.icon;
 
-	const getActivityLabel = (type: string) =>
-		moduleForType(type)?.displayConfig.label ?? type;
+	const getActivityLabel = (type: string) => moduleForType(type)?.displayConfig.label ?? type;
 
 	const getActivityColor = (type: string) =>
 		moduleForType(type)?.displayConfig.color ?? FALLBACK_DISPLAY.color;
@@ -121,8 +127,7 @@ export function useActivityTimeline(contactId: ComputedRef<Id<'contacts'>>) {
 		return (module.formatDescription as (m: unknown) => string)(blob);
 	};
 
-	const formatActivityTime = (timestamp: number): string =>
-		formatCompactRelativeTime(timestamp);
+	const formatActivityTime = (timestamp: number): string => formatCompactRelativeTime(timestamp);
 
 	return {
 		// Data

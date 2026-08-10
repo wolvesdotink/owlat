@@ -277,6 +277,20 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 /** Which core section a plugin nav item may attach to. */
 const CORE_SECTION_KEYS = new Set<string>(CORE_SECTIONS.map((section) => section.key));
 
+/**
+ * Section keys that existed before the IA restructure and that third-party
+ * manifests may still target. The manifest validator only checks the shape of
+ * `section` (kebab-case), so a published plugin can legitimately carry a key
+ * that no longer exists here; without an alias its destination would be
+ * silently dropped by the fail-closed filter below. Both retired keys folded
+ * into Administration: `settings` (the Settings section) and `delivery` (the
+ * first-class Delivery section, now Administration → Delivery).
+ */
+const RETIRED_SECTION_ALIASES: Readonly<Record<string, SectionKey>> = Object.freeze({
+	settings: 'administration',
+	delivery: 'administration',
+});
+
 /** A plugin's sidebar destination resolved against a target core section. */
 export interface PluginNavContribution extends HostedPluginNavEntry<NavigationItem> {
 	/** Core section key the destination attaches to. */
@@ -371,7 +385,11 @@ export function buildNavigationSections(
 	contributions: PluginNavigationContributions = EMPTY_CONTRIBUTIONS
 ): NavigationSection[] {
 	const sectionTargetedNavItems = contributions.navItems
-		.map((item) => (item.section === 'settings' ? { ...item, section: 'administration' } : item))
+		.map((item) =>
+			RETIRED_SECTION_ALIASES[item.section] === undefined
+				? item
+				: { ...item, section: RETIRED_SECTION_ALIASES[item.section]! }
+		)
 		.filter((item) => CORE_SECTION_KEYS.has(item.section));
 
 	const sections = mergeHostedNavigation<CoreSection>({

@@ -21,13 +21,7 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 
 <template>
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<NuxtLink
-			to="/dashboard/preferences"
-			class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
-		>
-			<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-			Back to settings
-		</NuxtLink>
+		<PreferencesBackLink />
 
 		<h1 class="text-2xl font-semibold">Team inbox members</h1>
 		<p v-if="mailbox" class="text-text-secondary mt-1">
@@ -46,8 +40,11 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 			<p class="text-text-secondary mt-2 text-sm">
 				It doesn't exist, or you don't have access to manage its members.
 			</p>
+			<!-- The empty state's own way out stays a button — it is the action this
+			     dead end offers, not the page's back-link (which is still above it).
+			     Only the stale "settings" wording is corrected. -->
 			<UiButton variant="secondary" to="/dashboard/preferences" class="mt-6">
-				Back to settings
+				Back to Preferences
 			</UiButton>
 		</div>
 

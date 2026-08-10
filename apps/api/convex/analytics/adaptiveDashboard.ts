@@ -8,11 +8,12 @@
  */
 
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { authedQuery, authedMutation, publicQuery } from '../lib/authedFunctions';
 import {
 	getUserIdFromSession,
 	getMutationContext,
 	getBetterAuthSessionWithRole,
+	requireOrgMember,
 	type OrganizationRole,
 } from '../lib/sessionOrganization';
 
@@ -158,14 +159,30 @@ export const getLayout = authedQuery({
 });
 
 /**
- * Get available card types
+ * Get available card types, filtered to what the caller's organization role may
+ * see.
+ *
+ * ONE session resolution per call. The card list is a 13-element constant, so
+ * the only real work is deciding the caller's role — and under `authedQuery`
+ * that was paid twice: the wrapper's floor (`requireOrgMember` →
+ * `getBetterAuthSessionWithRole`) resolved the session and looked the BetterAuth
+ * `member` row up, then the handler did it all again purely to read `role` off
+ * the result. `publicQuery` + the floor's own helper called ONCE in the handler
+ * collapses that to a single lookup while keeping the auth outcome identical.
  */
-// all-members: card definitions are public metadata, filtered to the caller's organization role.
-export const getAvailableCards = authedQuery({
+// public: NOT anonymous-reachable. `requireOrgMember` — the exact helper
+// `authedQuery`'s floor calls — is the first statement of the handler, so an
+// anonymous caller still gets `unauthenticated` and an authenticated non-member
+// still gets `forbidden`, with the same messages, before any card is returned.
+// The builder is `publicQuery` only so the role that gate resolves can be REUSED
+// instead of re-fetched. See the doc comment above.
+// all-members: card definitions are metadata every org member may read, filtered
+// to the caller's role.
+export const getAvailableCards = publicQuery({
 	args: {},
 	handler: async (ctx) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		return visibleCards(DEFAULT_CARDS, session?.role ?? null);
+		const { role } = await requireOrgMember(ctx);
+		return visibleCards(DEFAULT_CARDS, role);
 	},
 });
 

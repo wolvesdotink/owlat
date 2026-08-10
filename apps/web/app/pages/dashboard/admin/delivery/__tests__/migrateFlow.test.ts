@@ -63,7 +63,6 @@ interface PageState {
 		providers: { providerType: string; isEnabled: boolean }[];
 	}[];
 	identities: Identity[];
-	isAdmin: boolean;
 }
 
 function migrationRoutes(): PageState['routes'] {
@@ -85,15 +84,10 @@ async function mountPage(over: Partial<PageState> = {}) {
 		],
 		routes: [],
 		identities: [identity()],
-		isAdmin: true,
 		...over,
 	};
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('usePermissions', () => ({
-		canManageOrganization: ref(state.isAdmin),
-		showAdminGate: ref(!state.isAdmin),
-	}));
 	const answers = new Map<string, unknown>([
 		[getFunctionName(api.providerRoutes.listTransportCatalog), state.catalog],
 		[getFunctionName(api.providerRoutes.listRoutes), state.routes],
@@ -218,12 +212,21 @@ describe('the ramp pointer', () => {
 });
 
 describe('permissions', () => {
-	it('shows a member the state without the controls', async () => {
-		const wrapper = await mountPage({ isAdmin: false });
-		expect(wrapper.find('[data-testid="migrate-admin-only"]').exists()).toBe(true);
-		expect(wrapper.find('[data-testid="import-step-stub"]').exists()).toBe(false);
-		expect(wrapper.find('[data-testid="preset-step-stub"]').exists()).toBe(false);
-		// The read-only parts are still there.
+	/**
+	 * THE ROUTE IS THE GATE. Every write in the runbook is an `adminMutation`, and
+	 * the page declares `middleware: ['auth', 'admin']` — that middleware waits for
+	 * the role and redirects a non-admin to /dashboard before this page renders (the
+	 * app is `ssr: false`, so it always runs). A non-admin reader therefore does not
+	 * exist here, which is why the page carries no in-template "owners and admins
+	 * only" card: one used to, and it was unreachable. That the declaration is still
+	 * there is pinned repo-wide by app/__tests__/adminGatingParity.test.ts, which
+	 * fails if any Administration page loses it; what is left to pin here is that
+	 * the reader who does arrive is offered the whole runbook.
+	 */
+	it('offers every step of the runbook to the admin who reached it', async () => {
+		const wrapper = await mountPage();
+		expect(wrapper.find('[data-testid="import-step-stub"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="preset-step-stub"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="migration-domain-checklist"]').exists()).toBe(true);
 	});
 });

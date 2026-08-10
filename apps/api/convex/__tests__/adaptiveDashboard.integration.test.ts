@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
+import * as sessionOrganization from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 
 /**
@@ -30,7 +31,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 	);
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// Dynamic, not a fixed resolved value: this is BOTH the floor `authedQuery`
+		// runs and — for `getAvailableCards` — the gate the handler itself calls, so
+		// the "unauthenticated is refused" and "role decides the cards" cases have
+		// to be able to drive it.
+		requireOrgMember: vi.fn(async () => {
+			if (!mockUserId) throw new Error('Not authenticated');
+			if (!mockRole) throw new Error('You do not have access to this organization');
+			return { userId: mockUserId, role: mockRole, activeOrganizationId: 'org-1' };
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn(async () => {
 			if (!mockUserId) throw new Error('Not authenticated');
@@ -52,6 +61,11 @@ const modules = import.meta.glob('../**/*.*s');
 beforeEach(() => {
 	mockUserId = 'user-A';
 	mockRole = 'owner';
+	// Call COUNTS are asserted below (the point of C1's follow-up is that the
+	// session is resolved once per call), so the counters start clean.
+	// `mockClear` only drops recorded calls — the factory implementations above
+	// survive it.
+	vi.clearAllMocks();
 });
 
 describe('adaptiveDashboard.getLayout — auth', () => {
@@ -214,5 +228,49 @@ describe('adaptiveDashboard.getAvailableCards', () => {
 		const types = cards.map((c) => c.type);
 		expect(types).toContain('cost_by_step');
 		expect(types).toContain('accuracy_trend');
+	});
+
+	it('refuses an anonymous caller', async () => {
+		const t = convexTest(schema, modules);
+		mockUserId = null;
+		await expect(t.query(api.analytics.adaptiveDashboard.getAvailableCards, {})).rejects.toThrow(
+			/Not authenticated/
+		);
+	});
+
+	it('refuses an authenticated non-member', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = null;
+		await expect(t.query(api.analytics.adaptiveDashboard.getAvailableCards, {})).rejects.toThrow(
+			/do not have access to this organization/
+		);
+	});
+
+	it('filters an editor down to the task cards, and gives an admin all of them', async () => {
+		const t = convexTest(schema, modules);
+
+		mockRole = 'editor';
+		const editorCards = await t.query(api.analytics.adaptiveDashboard.getAvailableCards, {});
+		expect(editorCards.map((c) => c.type).sort()).toEqual([
+			'campaign_performance',
+			'pinned_visualizations',
+			'recent_contacts',
+			'upcoming_campaigns',
+		]);
+
+		mockRole = 'admin';
+		const adminCards = await t.query(api.analytics.adaptiveDashboard.getAvailableCards, {});
+		expect(adminCards).toHaveLength(RENDERABLE_CARD_TYPES.size);
+	});
+
+	it('resolves the session ONCE — the role comes out of the membership gate', async () => {
+		// The regression this pins: `authedQuery` + an in-handler
+		// `getBetterAuthSessionWithRole` meant two BetterAuth session/member
+		// resolutions on every run of a query the dashboard editor live-subscribes,
+		// all to filter a 13-element constant.
+		const t = convexTest(schema, modules);
+		await t.query(api.analytics.adaptiveDashboard.getAvailableCards, {});
+		expect(vi.mocked(sessionOrganization.requireOrgMember)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sessionOrganization.getBetterAuthSessionWithRole)).not.toHaveBeenCalled();
 	});
 });

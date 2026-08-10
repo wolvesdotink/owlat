@@ -7,13 +7,20 @@
  *    so the destructive reset mutation never fires on a single click; and
  *  - a save seeds the form synchronously from the mutation's returned redacted
  *    state, so an edit typed after the save survives a later live-query re-emit.
+ *
+ * ACCESS CONTROL LIVES ON THE ROUTE. The overview is an adminQuery and the page
+ * declares `middleware: ['auth', 'admin']`, which waits for the role and redirects
+ * a non-admin to /dashboard before the page renders (the app is `ssr: false`, so it
+ * always runs). The page therefore has no editor reader to skip the query for and
+ * no in-template "Admins only" card to show one — it used to carry both,
+ * unreachably. app/__tests__/adminGatingParity.test.ts is what fails if the
+ * middleware declaration ever goes missing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 
 const routeId = ref('policy-pack');
-const role = ref<'owner' | 'editor'>('owner');
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([
@@ -49,12 +56,11 @@ const resetPluginSettings = vi.fn();
 const showToast = vi.fn();
 let operationCall = 0;
 // The reactive args factory the page passes to the overview query: `{}` for an
-// admin, `'skip'` for an editor. Captured so tests can prove the query is skipped.
+// Captured so a test can prove it never answers `'skip'`.
 let overviewQueryArgs: (() => unknown) | undefined;
 
 beforeEach(() => {
 	routeId.value = 'policy-pack';
-	role.value = 'owner';
 	overview.value = { plugins: [], orphaned: [] };
 	operationCall = 0;
 	overviewQueryArgs = undefined;
@@ -63,10 +69,6 @@ beforeEach(() => {
 	showToast.mockReset();
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('usePermissions', () => ({
-		isAdmin: computed(() => role.value !== 'editor'),
-		showAdminGate: computed(() => role.value === 'editor'),
-	}));
 	vi.stubGlobal('useRoute', () => ({
 		params: {
 			get id() {
@@ -215,26 +217,27 @@ describe('plugin detail — save seeds from the returned redacted state', () => 
 	});
 });
 
-describe('plugin detail — admins-only gate', () => {
+describe('plugin detail — gated by the route, not by the template', () => {
 	beforeEach(() => {
 		overview.value = { plugins: [installedEntry('https://api.test')], orphaned: [] };
 	});
 
-	it('renders the gate and skips the query for an editor', () => {
-		role.value = 'editor';
+	it('runs the overview query and renders the surface for the admin who reached it', () => {
 		const wrapper = mountPage();
-		expect(wrapper.text()).toContain('Admins only');
-		// The settings form (an admin surface) is not rendered.
-		expect(wrapper.find('input[type="text"]').exists()).toBe(false);
-		// The overview query is skipped for the non-admin, so no gated `forbidden`
-		// throw can render as a "Failed to load" error.
-		expect(overviewQueryArgs?.()).toBe('skip');
+		expect(wrapper.find('input[type="text"]').exists()).toBe(true);
+		expect(overviewQueryArgs?.()).toEqual({});
 	});
 
-	it('runs the query and renders the surface for an admin', () => {
-		role.value = 'owner';
+	it('never answers the query args with a skip', () => {
+		// The `'skip'` branch existed only for the editor the middleware now turns
+		// away; left behind, it would be an unreachable condition that could only
+		// ever strand an admin on a page with no form.
+		mountPage();
+		expect(overviewQueryArgs?.()).not.toBe('skip');
+	});
+
+	it('shows no "Admins only" card to the only role that can read the page', () => {
 		const wrapper = mountPage();
 		expect(wrapper.text()).not.toContain('Admins only');
-		expect(overviewQueryArgs?.()).toEqual({});
 	});
 });

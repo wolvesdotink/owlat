@@ -43,6 +43,12 @@ const sendTitle = computed(() =>
 const fileInput = ref<HTMLInputElement | null>(null);
 const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 
+// The follow-up toggle sits inside the ⋯ panel, but the picker dialog it opens
+// is rendered here, outside the panel: the panel is `v-if`-ed and closes on the
+// first click outside it — which includes clicks inside the teleported dialog —
+// so a dialog owned by the slot would be unmounted mid-interaction.
+const followUpPickerOpen = ref(false);
+
 async function onAttachClick() {
 	if (isDesktop.value) {
 		const files = await pickNativeFiles({ title: 'Attach files', multiple: true });
@@ -81,7 +87,11 @@ function onPickFiles(event: Event) {
 			<PostboxOverflowMenu label="More compose options" align="left" direction="up">
 				<template #default="{ close }">
 					<div class="px-3 py-1.5">
-						<PostboxComposerFollowUp v-model:remind-at="followUpRemindAt" :disabled="isScheduled" />
+						<PostboxComposerFollowUp
+							v-model:remind-at="followUpRemindAt"
+							v-model:picker-open="followUpPickerOpen"
+							:disabled="isScheduled"
+						/>
 					</div>
 					<label
 						v-if="showSignaturePicker"
@@ -127,6 +137,13 @@ function onPickFiles(event: Event) {
 					</div>
 				</template>
 			</PostboxOverflowMenu>
+			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
+			     must survive the panel closing (see followUpPickerOpen above). -->
+			<PostboxFollowUpDialog
+				:open="followUpPickerOpen"
+				@update:open="followUpPickerOpen = $event"
+				@confirm="(ts) => (followUpRemindAt = ts)"
+			/>
 		</div>
 		<span class="text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
 	</footer>

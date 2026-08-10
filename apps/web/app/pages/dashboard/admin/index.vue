@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
+
 useHead({ title: 'Administration — Owlat' });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
@@ -30,6 +32,36 @@ const areas = [
 		description: 'Workspace defaults, operating mode, features, AI, channels, and plugins.',
 		href: '/dashboard/admin/instance',
 		icon: 'lucide:server-cog',
+	},
+] as const;
+
+// Operator tooling and deployment maintenance are scoped to this deployment's
+// platform admin (each destination also carries the `platform-admin` route
+// middleware), so the group only appears for them — same gate the old Settings
+// hub used, and the same note for everyone else explaining the absence.
+const { data: isPlatformAdmin } = useConvexQuery(
+	api.platformAdmin.platformAdmin.isPlatformAdmin,
+	() => ({})
+);
+
+const platformAreas = [
+	{
+		title: 'Operator console',
+		description: 'Review held content, workspace sending status, and platform admins.',
+		href: '/dashboard/admin/operator',
+		icon: 'lucide:shield-alert',
+	},
+	{
+		title: 'System & updates',
+		description: 'Stack version, container health, and in-app updates.',
+		href: '/dashboard/admin/system',
+		icon: 'lucide:cpu',
+	},
+	{
+		title: 'Backups',
+		description: 'Schedule daily backups, run one now, and find the restore command.',
+		href: '/dashboard/admin/backups',
+		icon: 'lucide:database-backup',
 	},
 ] as const;
 </script>
@@ -73,6 +105,44 @@ const areas = [
 					</span>
 				</UiCard>
 			</NuxtLink>
+		</div>
+
+		<!-- Platform: deployment-level tooling, platform admin only -->
+		<section v-if="isPlatformAdmin === true" class="mt-10">
+			<h2 class="mb-4 text-lg font-semibold text-text-primary">Platform</h2>
+			<div class="grid gap-4 md:grid-cols-3">
+				<NuxtLink v-for="area in platformAreas" :key="area.href" :to="area.href" class="group">
+					<UiCard hoverable class="h-full">
+						<div class="flex items-start gap-3">
+							<UiIconBox :icon="area.icon" size="sm" variant="surface" rounded="lg" />
+							<div>
+								<h3 class="font-semibold text-text-primary">{{ area.title }}</h3>
+								<p class="mt-1 text-sm text-text-secondary">{{ area.description }}</p>
+							</div>
+						</div>
+					</UiCard>
+				</NuxtLink>
+			</div>
+		</section>
+
+		<!-- Everyone else: explain what is missing and who holds it -->
+		<div
+			v-else-if="isPlatformAdmin === false"
+			class="mt-10 flex items-start gap-3 rounded-lg border border-border-subtle bg-bg-surface p-4"
+		>
+			<Icon name="lucide:shield" class="w-5 h-5 shrink-0 mt-0.5 text-text-tertiary" />
+			<p class="text-sm text-text-secondary">
+				Operator tools, system updates, and backups are held by this deployment's platform admin and
+				aren't shown here.
+				<a
+					href="https://docs.owlat.app/developer/self-hosting-maintenance"
+					target="_blank"
+					rel="noopener"
+					class="text-brand hover:underline whitespace-nowrap"
+				>
+					Learn more →
+				</a>
+			</p>
 		</div>
 	</div>
 </template>

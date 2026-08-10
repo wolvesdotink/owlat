@@ -1,15 +1,19 @@
 // @vitest-environment happy-dom
 /**
- * Plugin settings index page (index.vue) — the overview is an adminQuery, so an
- * editor-role member must see the established "Admins only" gate rather than the
- * gated query's `forbidden` throw rendered as a "Failed to load" error, and the
- * query must be skipped for them.
+ * Plugin settings index page (index.vue) — the overview is an adminQuery, and the
+ * page's `middleware: ['auth', 'admin']` is what keeps a non-admin away from it:
+ * the middleware waits for the role and redirects to /dashboard before the page
+ * renders (the app is `ssr: false`, so it always runs). The page therefore has no
+ * editor reader to skip the query for and no in-template "Admins only" card to
+ * show one — it used to carry both, unreachably. app/__tests__/adminGatingParity
+ * .test.ts is what fails if the middleware declaration ever goes missing.
+ *
+ * What is pinned here is the consequence: the overview query runs UNCONDITIONALLY,
+ * with no `'skip'` branch left to strand the page on an empty list.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { computed, ref } from 'vue';
-
-const role = ref<'owner' | 'editor'>('owner');
+import { ref } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([
@@ -33,12 +37,11 @@ const overview = ref<{
 	orphaned: Array<{ flagKey: string; pluginId: string }>;
 }>({ plugins: [], orphaned: [] });
 
-// The reactive args factory the page passes to the overview query: `{}` for an
-// admin, `'skip'` for an editor. Captured so tests can prove the query is skipped.
+// The reactive args factory the page passes to the overview query. Captured so a
+// test can prove it never answers `'skip'`.
 let overviewQueryArgs: (() => unknown) | undefined;
 
 beforeEach(() => {
-	role.value = 'owner';
 	overview.value = {
 		plugins: [
 			{
@@ -59,10 +62,6 @@ beforeEach(() => {
 
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('usePermissions', () => ({
-		isAdmin: computed(() => role.value !== 'editor'),
-		showAdminGate: computed(() => role.value === 'editor'),
-	}));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: (() => unknown) | undefined) => {
@@ -94,23 +93,23 @@ function mountPage() {
 
 const PLUGIN_HREF = 'a[href="/dashboard/admin/instance/plugins/policy-pack"]';
 
-describe('Plugins index — admins-only gate', () => {
-	it('renders the gate and skips the query for an editor', () => {
-		role.value = 'editor';
+describe('Plugins index — gated by the route, not by the template', () => {
+	it('runs the overview query and lists plugins for the admin who reached it', () => {
 		const wrapper = mountPage();
-		expect(wrapper.text()).toContain('Admins only');
-		// The plugin list (an admin surface) is not rendered.
-		expect(wrapper.find(PLUGIN_HREF).exists()).toBe(false);
-		// The overview query is skipped for the non-admin, so no gated `forbidden`
-		// throw can render as a "Failed to load" error.
-		expect(overviewQueryArgs?.()).toBe('skip');
-	});
-
-	it('runs the query and lists plugins for an admin', () => {
-		role.value = 'owner';
-		const wrapper = mountPage();
-		expect(wrapper.text()).not.toContain('Admins only');
 		expect(wrapper.find(PLUGIN_HREF).exists()).toBe(true);
 		expect(overviewQueryArgs?.()).toEqual({});
+	});
+
+	it('never answers the query args with a skip', () => {
+		// The `'skip'` branch existed only for the editor the middleware now turns
+		// away; left behind, it would be an unreachable condition that could only
+		// ever strand an admin on an empty page.
+		mountPage();
+		expect(overviewQueryArgs?.()).not.toBe('skip');
+	});
+
+	it('shows no "Admins only" card to the only role that can read the page', () => {
+		const wrapper = mountPage();
+		expect(wrapper.text()).not.toContain('Admins only');
 	});
 });

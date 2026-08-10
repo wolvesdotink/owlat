@@ -120,9 +120,14 @@ async function handleSave(
 			</div>
 		</UiErrorBoundary>
 
-		<!-- Dashboard Editor -->
+		<!--
+			Dashboard Editor — available to every role, matching the "Customize"
+			button above. The backend role-filters `getAvailableCards` and
+			`saveLayout` is an authed (not admin) mutation, so a member customizing
+			their own layout only ever sees and pins cards they may read. Gating this
+			on `isAdmin` would leave members with a button that does nothing.
+		-->
 		<DashboardEditor
-			v-if="isAdmin"
 			:is-open="isEditing"
 			:cards="displayCards"
 			:available-cards="availableCards"

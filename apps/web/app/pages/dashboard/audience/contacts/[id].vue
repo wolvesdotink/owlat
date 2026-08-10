@@ -72,20 +72,6 @@ const {
 	getDoiStatusIcon,
 } = useContactDetail(contactId);
 
-// Activity Timeline
-const {
-	accumulatedActivities,
-	activitiesLoading,
-	hasMoreActivities,
-	isLoadingMoreActivities,
-	loadMoreActivities,
-	getActivityIcon,
-	getActivityLabel,
-	getActivityColor,
-	getActivityDescription,
-	formatActivityTime,
-} = useActivityTimeline(contactId);
-
 const { canManageContacts, canAnnotateContacts, isAdmin } = usePermissions();
 
 // Members get a quiet two-tab profile. Admin-only CRM depth stays available
@@ -107,6 +93,24 @@ const tabOptions = computed(() =>
 				{ value: 'timeline', label: 'Activity' },
 			]
 );
+
+// Activity Timeline — the Activity tab is admin-only and 'profile' is the default
+// tab, so the subscription is gated on the tab actually being open. Without the
+// gate every contact page paid for a listByContact subscription that members can
+// never surface and admins usually don't open.
+const isActivityTabActive = computed(() => isAdmin.value && activeTab.value === 'activity');
+const {
+	accumulatedActivities,
+	activitiesLoading,
+	hasMoreActivities,
+	isLoadingMoreActivities,
+	loadMoreActivities,
+	getActivityIcon,
+	getActivityLabel,
+	getActivityColor,
+	getActivityDescription,
+	formatActivityTime,
+} = useActivityTimeline(contactId, () => isActivityTabActive.value);
 
 const notesDraft = ref('');
 watch(

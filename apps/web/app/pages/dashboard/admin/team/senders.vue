@@ -14,10 +14,10 @@ definePageMeta({
 // Curating the campaign-sender list is an admin surface (backend floor:
 // settings:manage). Editors can build and send campaigns FROM this list but do
 // not decide what is on it, so this page stays owner/admin-only even though d4
-// opened the campaign pipeline to editors. Gate the whole page on the same
-// owner/admin floor the backend enforces, and avoid flashing the gate before
-// the role resolves.
-const { showAdminGate } = usePermissions();
+// opened the campaign pipeline to editors. The `admin` route middleware above is
+// the whole gate: it waits for the role and redirects a non-admin to /dashboard
+// before this page renders, so there is no in-template "Admins only" branch to
+// reach — one that existed here was dead code reachable by nobody.
 const { hasActiveOrganization } = useOrganizationContext();
 
 const {
@@ -202,21 +202,9 @@ async function onSubmitAdd() {
 			</p>
 		</div>
 
-		<!-- Admins-only gate -->
-		<div
-			v-if="showAdminGate"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Admins only</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Campaign senders can be managed by workspace owners and admins.
-			</p>
-		</div>
-
 		<!-- No organization -->
 		<div
-			v-else-if="!hasActiveOrganization"
+			v-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />

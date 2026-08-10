@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 
@@ -13,6 +14,16 @@ definePageMeta({
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+
+/**
+ * The connected-workspaces manager is a DESKTOP-ONLY surface: the Slack-style
+ * list of Owlat instances this device is signed in to, which only exists inside
+ * the Tauri shell. It arrived here with the old Workspace settings page, whose
+ * sections this page absorbed, and it is deliberately outside the
+ * `hasActiveOrganization` branch below — the workspaces on this device are a
+ * property of the device, not of whichever organization is active.
+ */
+const isDesktop = isDesktopRuntime();
 
 // Get BetterAuth organization for name updates
 const { organization, update: updateOrganization } = useOrganization();
@@ -436,6 +447,17 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 				</UiCard>
 			</div>
 		</UiQueryBoundary>
+
+		<!-- Connected workspaces (desktop only) -->
+		<div v-if="isDesktop" class="mt-8">
+			<div class="mb-4">
+				<h2 class="text-lg font-medium text-text-primary">Connected workspaces</h2>
+				<p class="text-sm text-text-secondary mt-0.5">
+					Switch between the Owlat workspaces you've connected on this device, or connect another.
+				</p>
+			</div>
+			<SettingsConnectedWorkspaces />
+		</div>
 
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog

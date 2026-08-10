@@ -5,7 +5,9 @@ import { api } from '@owlat/api';
  * Sealed Mail settings (E5, flag `sealedMail`). The org-level sealing policy
  * (locked decision D2): `auto` seals whenever every recipient can receive sealed
  * mail; `ask` keeps sealing available but never seals automatically; `off` never
- * seals. Owner/admin only — the backend floor is `settings:manage`.
+ * seals. Owner/admin only — the backend floor is `settings:manage`, and the
+ * `admin` route middleware below redirects a non-admin to /dashboard before this
+ * page renders, so the page itself never has to say "owners and admins only".
  */
 useHead({ title: 'Sealed Mail — Owlat' });
 
@@ -14,7 +16,6 @@ definePageMeta({
 	middleware: ['auth', 'admin'],
 });
 
-const { showAdminGate } = usePermissions();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { showToast } = useToast();
@@ -175,11 +176,8 @@ async function runReSeal() {
 			</p>
 		</div>
 
-		<div v-if="showAdminGate" class="rounded border border-border-subtle p-6 text-text-secondary">
-			Only owners and admins can change the sealing policy.
-		</div>
 		<div
-			v-else-if="!hasActiveOrganization"
+			v-if="!hasActiveOrganization"
 			class="rounded border border-border-subtle p-6 text-text-secondary"
 		>
 			Select a workspace to manage its sealing policy.

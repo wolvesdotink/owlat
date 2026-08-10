@@ -21,15 +21,14 @@
  * (nothing else ever writes a cell's first share) and PROMOTING a phase, which is
  * the one door a ceiling rises through. A reset can only take a rung down.
  *
- * READING IS EVERYONE'S, WRITING IS THE ADMINS'. Both queries behind this screen
- * are all-members — what the ramp is doing and what it pulled back is not
- * privileged information — but every one of the writes is an `adminMutation`,
- * enrolment and promotion included. Offering the controls to an editor is
- * therefore offering a button whose only possible answer is `forbidden`, so they
- * are not rendered and the screen says why instead. The cell picker is the
- * selector for those writes, so it goes with them — which is why the copy on this
- * screen points a member at the cells screen, where the same shares and every
- * decision are all-members.
+ * WRITING IS THE ADMINS', AND THE ROUTE IS WHAT SAYS SO. Every write here is an
+ * `adminMutation`, enrolment and promotion included, and the `admin` route
+ * middleware below is what enforces that on the way in: it waits for the role and
+ * redirects a non-admin to /dashboard before this page renders. So this screen is
+ * written for an admin reader throughout — an in-template "admins only" branch
+ * would be unreachable, and the copy does not have to hedge about controls that
+ * are always offered. The all-members view of the same shares and decisions lives
+ * on the cells screen, which is where a member who followed a link here lands.
  */
 import { api } from '@owlat/api';
 import {
@@ -52,14 +51,6 @@ import {
 useHead({ title: 'Delivery controls — Owlat' });
 
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
-
-/**
- * TWO PERMISSION READS, DELIBERATELY. `canManageOrganization` is false until the
- * role RESOLVES — the safe direction for a control, because a member never sees a
- * write button flash before it is taken away. `showAdminGate` only asserts once the
- * role has resolved to a non-admin, so an admin does not read it during first paint.
- */
-const { canManageOrganization, showAdminGate } = usePermissions();
 
 const {
 	data: controls,
@@ -280,18 +271,13 @@ async function changePreset(
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
 			<h1 class="text-2xl font-semibold text-text-primary">Delivery controls</h1>
-			<!-- The action clause is the header's half of the admin gate: promising
-			     "hold a cell, cap it, push it" to a member who is about to read that
-			     they may do none of those leaves the lede as the last surface still
-			     offering the buttons the gate takes away. The neutral sentence is
-			     true for everyone, so the clause is ADDED for an admin rather than
-			     swapped — an unresolved role never watches the lede rewrite itself.
-			     The neutral sentence therefore covers the pull-backs ONLY: every
-			     per-cell share lives in the cell picker, which is behind the same
-			     gate, so promising them to a member promises a list they cannot see. -->
+			<!-- The action clause used to be conditional, as the header's half of an
+			     in-template admin gate. The `admin` route middleware means every
+			     reader of this page is an admin, so the lede promises the controls
+			     unconditionally — and cannot rewrite itself mid-paint. -->
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
 				What the ramp pulled back on its own, and why.
-				<span v-if="canManageOrganization" data-testid="ramp-controls-lede-actions">
+				<span data-testid="ramp-controls-lede-actions">
 					What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it,
 					push it, or start it over, and choose how hard each stream ramps.
 				</span>
@@ -324,30 +310,7 @@ async function changePreset(
 					</p>
 				</UiCard>
 
-				<!-- Not a nag and not an error: what an editor is missing is the hand on
-				     the ramp, not the sight of it. The gate takes the cell picker with
-				     it, though, so the sentence claims only what is left HERE and sends
-				     the reader to the screen that shows every cell's share and decision
-				     history to all members — the mirror of the cells screen's own link
-				     to this one. "Everything the controller is doing is shown below"
-				     would be true of the admin's page and false of the one being read. -->
-				<UiCard v-if="showAdminGate">
-					<p class="text-sm text-text-secondary" data-testid="ramp-controls-admin-only">
-						Changing the ramp — putting a cell on it, holding one, capping it, pushing it, or
-						choosing a pace — is limited to workspace owners and admins. What the controller pulled
-						back on its own is still shown below.
-					</p>
-					<NuxtLink
-						to="/dashboard/admin/delivery/advanced/cells"
-						class="mt-3 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:text-brand"
-						data-testid="ramp-controls-cells-link"
-					>
-						<Icon name="lucide:grid-3x3" class="h-4 w-4" />
-						See what each cell is carrying
-					</NuxtLink>
-				</UiCard>
-
-				<UiCard v-if="canManageOrganization">
+				<UiCard>
 					<h2 class="text-base font-semibold text-text-primary">Pick a cell</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
 						<button
@@ -364,7 +327,7 @@ async function changePreset(
 					</div>
 				</UiCard>
 
-				<UiCard v-if="canManageOrganization && selectedCell">
+				<UiCard v-if="selectedCell">
 					<!--
 						KEYED BY CELL. Without it Vue reuses the instance across a change of
 						selection and the pin/force number inputs keep the previous cell's
@@ -426,7 +389,7 @@ async function changePreset(
 					</ul>
 				</UiCard>
 
-				<UiCard v-if="canManageOrganization">
+				<UiCard>
 					<h2 class="text-base font-semibold text-text-primary">How hard to ramp</h2>
 					<div class="mt-3 space-y-5">
 						<DeliveryRampPresetPicker

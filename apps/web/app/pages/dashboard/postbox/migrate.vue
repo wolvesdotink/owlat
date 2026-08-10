@@ -187,13 +187,7 @@ const steps = computed(() =>
 
 <template>
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<NuxtLink
-			to="/dashboard/preferences"
-			class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
-		>
-			<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-			Back to settings
-		</NuxtLink>
+		<PreferencesBackLink />
 
 		<header class="flex items-center gap-3">
 			<UiIconBox icon="lucide:mail" size="lg" variant="brand" rounded="2xl" />

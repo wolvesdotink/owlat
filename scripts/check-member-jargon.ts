@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 const workspace = join(import.meta.dirname, '..');
@@ -25,6 +25,45 @@ async function vueFiles(path: string): Promise<string[]> {
 		})
 	);
 	return nested.flat();
+}
+
+async function exists(path: string): Promise<boolean> {
+	return access(path).then(
+		() => true,
+		() => false
+	);
+}
+
+/**
+ * EVERY PATH THIS SCRIPT NAMES HAS TO BE REAL.
+ *
+ * Both halves of the configuration fail SILENTLY when a file moves: a root that
+ * no longer exists walks to an empty list (`readdir` is caught and returns
+ * `[]`), and an allowlist entry that no longer exists excuses nothing while
+ * still reading like sanctioned debt. Either way the gate keeps printing
+ * nothing, so a rename is indistinguishable from a clean surface — which is the
+ * one failure mode a lint gate must not have. Checking existence is what makes
+ * a rename a build failure that names the stale line instead.
+ */
+const stale = [
+	...(await Promise.all(
+		roots.map(async (root) =>
+			(await exists(root)) ? null : `member-visible root: ${relative(workspace, root)}`
+		)
+	)),
+	...(await Promise.all(
+		[...allowlisted].map(async (name) =>
+			(await exists(join(workspace, name))) ? null : `allowlist entry: ${name}`
+		)
+	)),
+].filter((entry): entry is string => entry !== null);
+
+if (stale.length > 0) {
+	console.error(
+		'Stale member-jargon configuration — these paths do not exist. Point the line at where the surface moved, or delete it:'
+	);
+	console.error(stale.join('\n'));
+	process.exit(1);
 }
 
 const violations: string[] = [];

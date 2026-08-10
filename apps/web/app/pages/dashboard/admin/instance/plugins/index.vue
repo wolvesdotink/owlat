@@ -9,20 +9,16 @@ definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 // capabilities, and settings schemas. The server overrides only mutable state.
 const manifests = bundledPluginComposition;
 
-// Plugin settings require `organization:manage` (the overview is an adminQuery).
-// Surface the established "Admins only" gate for editors and skip the query for
-// them, instead of letting the gated query's `forbidden` throw render as a
-// misleading "Failed to load" with a useless Retry. `showAdminGate` only asserts
-// once the role has resolved, so an admin sees no flash of the gated state.
-const { isAdmin, showAdminGate } = usePermissions();
-
+// Plugin settings require `organization:manage` (the overview is an adminQuery),
+// and the `admin` route middleware above is what enforces it here: it waits for
+// the role and redirects a non-admin to /dashboard before this page renders. So
+// there is no non-admin reader to skip the query for and no "Admins only" card to
+// show one — every reader of this page is an owner or admin.
 const {
 	data: overview,
 	isLoading,
 	error,
-} = useConvexQuery(api.plugins.settings.getPluginSettingsOverview, () =>
-	isAdmin.value ? {} : 'skip'
-);
+} = useConvexQuery(api.plugins.settings.getPluginSettingsOverview, () => ({}));
 
 const { showToast } = useToast();
 const { run: resetPluginSettings, isLoading: isPurging } = useBackendOperation(
@@ -58,20 +54,7 @@ async function confirmPurge() {
 			</p>
 		</div>
 
-		<!-- Admins-only gate: editors lack organization:manage. -->
-		<UiCard
-			v-if="showAdminGate"
-			class="flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Admins only</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Plugin settings can be managed by workspace owners and admins. Ask an admin if a plugin
-				needs configuring.
-			</p>
-		</UiCard>
-
-		<UiQueryBoundary v-else :loading="isLoading && !overview" :error="error">
+		<UiQueryBoundary :loading="isLoading && !overview" :error="error">
 			<div class="space-y-8">
 				<UiCard v-if="manifests.length === 0">
 					<UiEmptyState
