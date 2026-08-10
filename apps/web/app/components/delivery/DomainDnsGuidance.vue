@@ -8,73 +8,18 @@
  * tells the operator, in plain language, what to check for the transport that’s
  * actually live — no new DNS machinery, just the right pointer. Reads the
  * member-safe `getTransportSummary` for the active kind.
+ *
+ * THE COPY AND THE DERIVATION LIVE IN `~/utils/transportDnsGuidance`, which
+ * answers from the catalog entry's capabilities and falls back to a per-vendor
+ * override where one exists. This file is the disclosure around it, and holds no
+ * provider knowledge at all (the seams plan's D5).
  */
-import { type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
 import { api } from '@owlat/api';
-import { TRANSPORT_LABEL } from '~/utils/transportState';
+import { transportDnsGuidance } from '~/utils/transportDnsGuidance';
 
 const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportSummary);
 
-interface Guidance {
-	lead: string;
-	points: string[];
-}
-
-// Copy keyed by transport kind. Static, plain-language, deliberately no DNS
-// generation — the records themselves live in the table below (MTA) or in the
-// provider’s own console (SES / SMTP / Resend). Keyed by DeliveryProviderKind so
-// a new transport is a compile error here, not a silently missing entry; the
-// human name comes from the shared TRANSPORT_LABEL.
-const GUIDANCE: Record<DeliveryProviderKind, Guidance> = {
-	mta: {
-		lead: 'Owlat manages the DNS for you.',
-		points: [
-			'The SPF, DKIM, and DMARC records shown for each domain below are the managed records — add them exactly as displayed, then verify.',
-			'Once verified, Owlat signs your mail as your domain automatically.',
-		],
-	},
-	ses: {
-		lead: 'SES signs your mail with its own DKIM identity tokens.',
-		points: [
-			'In the SES console, open Verified identities → your domain → and add the three DKIM CNAME records SES generates for the identity.',
-			'Keep an SPF record that authorizes SES (include amazonses.com) and a DMARC record so receivers can check alignment.',
-		],
-	},
-	smtp: {
-		lead: 'Your relay provider handles SPF and DKIM for you.',
-		points: [
-			'Follow your provider’s setup guide to add their SPF include and DKIM records for this domain.',
-			'Then confirm two things: your domain’s SPF authorizes the relay, and mail from the relay carries a DKIM signature that validates for your domain.',
-		],
-	},
-	resend: {
-		lead: 'Resend signs your mail once your domain is verified there.',
-		points: [
-			'In the Resend dashboard, add the SPF and DKIM records it shows for this domain.',
-			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
-		],
-	},
-	// Three items, not two — and the third is the one that surprises people. A
-	// domain with flawless SPF and DKIM but no completed ownership check is one
-	// Mandrill still rejects (`unsigned`). The EXACT records are derived from the
-	// domain name and rendered right below this card by the Mandrill status
-	// panel, which is why this entry points at them instead of restating a DKIM
-	// key that would immediately be a second copy.
-	mandrill: {
-		lead: 'Mailchimp Transactional signs with one shared key, so your records are the same every time.',
-		points: [
-			'Publish the two records shown under “Mailchimp Transactional sending domains” below: the SPF include that authorizes Mandrill’s IPs, and the DKIM TXT at mandrill._domainkey. They are derived from your domain name, so they are exactly what Owlat registered.',
-			'Then complete Mandrill’s own domain verification — the TXT token shown beside the records, or the confirmation flow in Settings → Domains → Sending Domains. Until that clears, Mandrill rejects mail from this domain no matter how good the DNS is.',
-			'Keep a DMARC record on the domain so receivers can check that SPF or DKIM aligns; your existing policy stays authoritative.',
-		],
-	},
-};
-
-const guidance = computed<{ label: string; lead: string; points: string[] } | null>(() => {
-	const kind = summary.value?.provider ?? undefined;
-	if (!isDeliveryProviderKind(kind)) return null;
-	return { label: TRANSPORT_LABEL[kind], ...GUIDANCE[kind] };
-});
+const guidance = computed(() => transportDnsGuidance(summary.value?.provider ?? undefined));
 
 const open = ref(false);
 </script>

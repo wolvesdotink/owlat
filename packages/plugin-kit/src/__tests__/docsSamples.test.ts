@@ -157,6 +157,7 @@ export const cron: PluginCronModule = {
 // #region send-transport-module
 import type {
 	PluginSendAttempt,
+	PluginSendTransportConfig,
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 } from '@owlat/plugin-kit';
@@ -178,10 +179,20 @@ export const transport: PluginSendTransportModule<RelayExtras> = {
 		return { endpoint };
 	},
 
-	async send(params: PluginSendTransportParams, extras: RelayExtras): Promise<PluginSendAttempt> {
+	async send(
+		params: PluginSendTransportParams,
+		extras: RelayExtras,
+		// THIS INSTANCE's credentials, keyed by the name the manifest declared.
+		// Never `process.env`: that reads the deployment-default instance's token
+		// whichever transport id the send was addressed to.
+		config: PluginSendTransportConfig
+	): Promise<PluginSendAttempt> {
 		const response = await fetch(extras.endpoint, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json' },
+			headers: {
+				'content-type': 'application/json',
+				authorization: `Bearer ${config.env['PLUGIN_ACME_TOKEN'] ?? ''}`,
+			},
 			body: JSON.stringify({ to: params.to, from: params.from, subject: params.subject }),
 		});
 		if (response.status === 429) return { success: false, code: 'rate_limited' };
@@ -190,6 +201,74 @@ export const transport: PluginSendTransportModule<RelayExtras> = {
 	},
 };
 // #endregion send-transport-module
+
+// #region send-transport-webhook-module
+import type {
+	PluginSendTransportWebhookModule,
+	PluginWebhookFeedbackEvent,
+} from '@owlat/plugin-kit';
+
+/** Parse ONLY: these bytes are already verified, fresh, and not a replay. */
+export const webhook: PluginSendTransportWebhookModule = {
+	parseEvents(rawBody: string): readonly PluginWebhookFeedbackEvent[] {
+		const batch = JSON.parse(rawBody) as { readonly records?: readonly unknown[] };
+		return (batch.records ?? []).flatMap((record) => {
+			const { type, id, at } = record as { type?: string; id?: string; at?: number };
+			if (type !== 'HardBounce' || typeof id !== 'string' || typeof at !== 'number') return [];
+			return [{ kind: 'bounced', providerMessageId: id, at, bounceType: 'hard' } as const];
+		});
+	},
+};
+// #endregion send-transport-webhook-module
+
+// #region send-transport-domain-identity-module
+import type {
+	PluginDomainIdentityResult,
+	PluginSendTransportDomainIdentityModule,
+} from '@owlat/plugin-kit';
+
+/** Observations ONLY: the host derives the status and owns the freshness bound. */
+export const domainIdentity: PluginSendTransportDomainIdentityModule = {
+	// The credential comes from the resolved configuration, never from
+	// `process.env`: an environment read resolves the deployment-default instance
+	// whichever instance the host meant.
+	registerDomain: (domain, config) => askProvider('POST', domain, config.env['PLUGIN_ACME_TOKEN']),
+	checkDomain: (domain, config) => askProvider('GET', domain, config.env['PLUGIN_ACME_TOKEN']),
+};
+
+async function askProvider(
+	method: 'GET' | 'POST',
+	domain: string,
+	token: string | undefined
+): Promise<PluginDomainIdentityResult> {
+	const response = await fetch(`https://api.example.net/domains/${domain}`, {
+		method,
+		headers: { Authorization: `Bearer ${token ?? ''}` },
+	});
+	// Three distinguishable answers, because the host writes each one differently:
+	// only `ok` refreshes the proof's age, and only `auth_failed` condemns a key.
+	if (response.status === 401 || response.status === 403) {
+		return { outcome: 'auth_failed', error: 'the provider rejected the token' };
+	}
+	if (!response.ok) return { outcome: 'unavailable', error: `HTTP ${response.status}` };
+	const body = (await response.json()) as {
+		readonly owned?: boolean;
+		readonly spf?: boolean;
+		readonly dkim?: boolean;
+		readonly selector?: string;
+	};
+	return {
+		outcome: 'ok',
+		state: {
+			isOwnershipVerified: body.owned === true,
+			spf: { isValid: body.spf === true },
+			dkim: { isValid: body.dkim === true },
+			dkimSelectors: body.selector ? [body.selector] : [],
+			spfMechanisms: ['include:spf.example.net'],
+		},
+	};
+}
+// #endregion send-transport-domain-identity-module
 
 // #region agent-step-module
 import type {
@@ -269,6 +348,90 @@ export const importProvider: PluginImportProviderModule = {
 };
 // #endregion import-provider-module
 
+/*
+ * The send-provider authoring guide's centrepiece: ONE manifest declaring all
+ * three executable halves of a bundle. It grows the same file, so it imports only
+ * the capability constant it adds — `definePlugin` is already in scope from the
+ * minimal manifest above, and the guide says so in the sentence above its fence.
+ *
+ * EVERY NAME HERE IS THE ONE THE SCAFFOLD EMITS for this plugin id
+ * (`owlat plugins create acme-relay --template send-provider`): the variable
+ * names, the two signature headers and the credential keys. A reader diffing the
+ * page against their scaffolded package is the most common way this sample is
+ * read, and a sample that named variables no scaffolded bundle has would make
+ * that diff noise. `scaffoldedProviderConformance.test.ts` binds the two.
+ */
+// #region send-provider-manifest
+import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
+
+export const acmeRelayPlugin = definePlugin({
+	id: 'acme-relay',
+	version: '1.0.0',
+	capabilities: [PLUGIN_SEND_TRANSPORT_CAPABILITY],
+	// Deployment-wide: the plugin is off until both are set. The signing secret
+	// belongs HERE and not on the transport — without it the feedback route can
+	// verify nothing and answers every delivery 503.
+	flag: {
+		default: false,
+		requiredEnvVars: ['ACME_RELAY_ENABLED', 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET'],
+	},
+	contributes: {
+		sendTransports: [
+			{
+				id: 'relay',
+				label: 'Acme Relay',
+				module: { exportPath: './convex/transport' },
+				retryDelays: [1_000, 5_000],
+				// THIS TRANSPORT's own configuration: resolved per named instance
+				// (`PLUGIN_ACME_RELAY_API_KEY__EU` for `plugin.acme-relay.relay#eu`) and
+				// handed to `send` keyed by the base name.
+				requiredEnvVars: ['PLUGIN_ACME_RELAY_API_KEY'],
+				optionalEnvVars: ['PLUGIN_ACME_RELAY_REGION'],
+				credentialFields: [
+					{
+						kind: 'secret',
+						key: 'apiKey',
+						label: 'API key',
+						required: true,
+						envVar: 'PLUGIN_ACME_RELAY_API_KEY',
+					},
+					{
+						kind: 'select',
+						key: 'region',
+						label: 'Sending region',
+						options: [
+							{ value: 'eu', label: 'Europe' },
+							{ value: 'us', label: 'United States' },
+						],
+						default: 'eu',
+						envVar: 'PLUGIN_ACME_RELAY_REGION',
+					},
+				],
+				// `no` is the only value this tier may declare.
+				supportsCustomReturnPath: 'no',
+				messageIdSource: 'provider',
+				deduplicatesOnIdempotencyKey: false,
+				// Declaring a webhook IS `hasProviderFeedback: true` for this kind.
+				webhook: {
+					module: { exportPath: './convex/webhook' },
+					signature: {
+						header: 'x-acme-relay-signature',
+						algorithm: 'hmac-sha256',
+						encoding: 'hex',
+						secretEnvVar: 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET',
+						// REQUIRED: without replay provisions a captured request verifies
+						// forever. The host signs `<timestamp>.<rawBody>`.
+						replay: { timestampHeader: 'x-acme-relay-timestamp', toleranceSeconds: 300 },
+					},
+				},
+				// Declaring an identity IS `domainVerification: 'api'` for this kind.
+				domainIdentity: { module: { exportPath: './convex/domainIdentity' } },
+			},
+		],
+	},
+});
+// #endregion send-provider-manifest
+
 describe('docs samples: the manifests validate through the shipped validator', () => {
 	it('accepts the minimal manifest', () => {
 		expect(helloPlugin.id).toBe('hello-owlat');
@@ -311,6 +474,22 @@ describe('docs samples: the manifests validate through the shipped validator', (
 				},
 			})
 		).toThrow(PluginManifestError);
+	});
+
+	/**
+	 * The send-provider bundle's two DERIVED capability words, and the two halves
+	 * that derive them. The guide's whole framing rests on this: an author deletes
+	 * a half they do not need and loses the promise with it, rather than leaving a
+	 * boolean behind that says a parser exists when none does.
+	 */
+	it('derives the bundle capability words from the halves that implement them', () => {
+		const transport = acmeRelayPlugin.contributes.sendTransports[0];
+		expect(transport.webhook.module.exportPath).toBe('./convex/webhook');
+		expect(transport.domainIdentity.module.exportPath).toBe('./convex/domainIdentity');
+		expect(transport.supportsCustomReturnPath).toBe('no');
+		// The declared form writes only variables the transport reads.
+		const declared = new Set<string>([...transport.requiredEnvVars, ...transport.optionalEnvVars]);
+		for (const field of transport.credentialFields) expect(declared.has(field.envVar)).toBe(true);
 	});
 
 	it('rejects contributions declared without a feature flag', () => {
@@ -411,12 +590,52 @@ describe('docs samples: modules behave as the chapter describes', () => {
 		try {
 			globalThis.fetch = (async () =>
 				new Response(null, { status: 429 })) as unknown as typeof fetch;
+			// The sample declares no configuration variables of its own, so the host
+			// resolves the empty record for it — the shape every default instance of
+			// a transport that keeps its endpoint in extras receives.
 			const attempt = await transport.send(
 				{ to: 'b@x', from: 'a@x', subject: 's', html: '<p></p>' },
-				{ endpoint: 'https://relay.example' }
+				{ endpoint: 'https://relay.example' },
+				{ instanceKey: null, env: {} }
 			);
 			expect(attempt.success).toBe(false);
 			if (!attempt.success) expect(PLUGIN_SEND_FAILURE_CODES).toContain(attempt.code);
+		} finally {
+			globalThis.fetch = original;
+		}
+	});
+
+	it('the domain identity reports observations, and never a status', async () => {
+		const original = globalThis.fetch;
+		const answer = (status: number, body: unknown): typeof fetch =>
+			(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+		const config = { instanceKey: null, env: { PLUGIN_ACME_TOKEN: 'token' } };
+		try {
+			globalThis.fetch = answer(403, {});
+			await expect(domainIdentity.checkDomain('example.com', config)).resolves.toEqual({
+				outcome: 'auth_failed',
+				error: 'the provider rejected the token',
+			});
+
+			globalThis.fetch = answer(503, {});
+			await expect(domainIdentity.checkDomain('example.com', config)).resolves.toMatchObject({
+				outcome: 'unavailable',
+			});
+
+			globalThis.fetch = answer(200, { owned: true, spf: true, dkim: true, selector: 'acme' });
+			const observed = await domainIdentity.registerDomain('example.com', config);
+			// No `status` anywhere in what a module may return: the host derives it, so
+			// "verified" means the same thing at every relay tier.
+			expect(observed).toEqual({
+				outcome: 'ok',
+				state: {
+					isOwnershipVerified: true,
+					spf: { isValid: true },
+					dkim: { isValid: true },
+					dkimSelectors: ['acme'],
+					spfMechanisms: ['include:spf.example.net'],
+				},
+			});
 		} finally {
 			globalThis.fetch = original;
 		}

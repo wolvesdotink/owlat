@@ -1,7 +1,7 @@
 /**
  * Inbound channel adapter registry.
  *
- * Webhook handlers (mtaWebhook, resendWebhook, future Postmark/Mailgun/IMAP)
+ * Webhook adapters (the MTA's, and future Postmark/Mailgun/IMAP sources)
  * delegate payload parsing to a source-keyed adapter. Each adapter normalizes
  * the vendor-specific raw payload into a canonical `InboundEmailMessage` shape
  * so the persistence layer stays source-agnostic.
@@ -9,14 +9,14 @@
  * Adding a new inbound source is a single new adapter file plus a
  * `registerInboundChannelAdapter()` call — no handler edits required.
  *
- * Sits one level above the per-channel `EmailAdapter` in `./email.ts`:
- * EmailAdapter normalizes a single MTA-shaped payload; this registry normalizes
- * the vendor envelope (Resend / Postmark / Mailgun all have different shells)
- * and then optionally delegates to EmailAdapter for the inner field extraction.
+ * Each adapter owns the whole translation for its source: the vendor envelope
+ * (Resend / Postmark / Mailgun all have different shells) and the inner field
+ * extraction. Until the D10 honesty pass, the Resend adapter borrowed the inner
+ * half from a bidirectional `EmailAdapter` whose other three methods were
+ * fictions (a `send` that hard-returned failure, a `healthCheck` that
+ * hard-returned healthy, a `validateSignature` that hard-returned true); that
+ * class is gone and its one real method is inlined below, unchanged.
  */
-
-import { EmailAdapter } from './email';
-import type { ParsedMessage } from './types';
 
 /**
  * Canonical inbound email shape consumed by `internal.inbound.receiveMessage`.
@@ -54,11 +54,14 @@ export interface InboundEmailMessage {
 export type InboundSource = 'mta' | 'resend' | 'ses' | 'postmark' | 'mailgun';
 
 /**
- * Inbound channel adapter contract.
+ * Inbound channel adapter contract — the whole of it.
  *
- * Lighter than the full `ChannelAdapter` (which is bidirectional). This one is
- * inbound-only and produces a typed result instead of the looser
- * `ParsedMessage`.
+ * A source key and one translation function producing the canonical, fully
+ * typed `InboundEmailMessage`. There is no outbound half, no health probe and
+ * no signature check: sending belongs to the send-provider seam, and verifying
+ * an inbound request belongs to the caller's own route handler
+ * (`apps/api/convex/webhooks/adapters/`), which does it against a real secret
+ * before it ever asks this registry to parse.
  */
 export interface InboundChannelAdapter {
 	source: InboundSource;
@@ -67,7 +70,8 @@ export interface InboundChannelAdapter {
 
 /**
  * MTA adapter — owlat-mta service forwards inbound mail via the
- * `inbound.received` event shape used by `mtaWebhook.ts`.
+ * `inbound.received` event shape parsed by the backend's
+ * `webhooks/adapters/mta.ts`.
  */
 export class MtaInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'mta';
@@ -119,30 +123,47 @@ export class MtaInboundAdapter implements InboundChannelAdapter {
 	}
 }
 
+/** Flat inbound-mail payload shape the Resend adapter reads. */
+interface ResendInboundPayload {
+	from?: string;
+	to?: string;
+	subject?: string;
+	textBody?: string;
+	htmlBody?: string;
+	messageId?: string;
+	timestamp?: number;
+	inReplyTo?: string;
+	references?: string;
+}
+
 /**
  * Stub adapter for Resend inbound webhooks. Resend doesn't ship inbound mail
  * routing today; included so callers can detect "source registered but not
  * implemented" vs "unknown source".
+ *
+ * The field mapping is the one the deleted `EmailAdapter.parseInbound` applied,
+ * inlined verbatim — including that a missing `messageId` falls back to
+ * `unknown-<timestamp>` using the ALREADY-DEFAULTED timestamp, so the two
+ * fields can never disagree about which clock produced them.
  */
 export class ResendInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'resend';
-	private readonly emailAdapter = new EmailAdapter();
 
 	parseInbound(raw: unknown): InboundEmailMessage {
-		const parsed: ParsedMessage = this.emailAdapter.parseInbound(raw);
-		const env = raw as { to?: string; timestamp?: number };
+		const payload = raw as ResendInboundPayload;
+		const timestamp = payload.timestamp ?? Date.now();
 		return {
-			from: parsed.from,
-			to: env.to ?? '',
-			subject: parsed.content.subject ?? '',
-			textBody: parsed.content.text,
-			htmlBody: parsed.content.html,
+			from: payload.from ?? '',
+			to: payload.to ?? '',
+			subject: payload.subject ?? '',
+			textBody: payload.textBody,
+			htmlBody: payload.htmlBody,
 			headers: {},
-			messageId: parsed.externalMessageId ?? `unknown-${parsed.timestamp}`,
-			inReplyTo: parsed.metadata?.['inReplyTo'],
-			references: parsed.metadata?.['references'],
+			messageId: payload.messageId ?? `unknown-${timestamp}`,
+			inReplyTo: payload.inReplyTo,
+			references: payload.references,
 			attachments: [],
-			timestamp: parsed.timestamp ?? env.timestamp ?? Date.now(),
+			timestamp,
 		};
 	}
 }

@@ -1,51 +1,69 @@
+/**
+ * The relay-identity panel's PAGE WIRING and its two source-level invariants.
+ *
+ * WHAT THIS FILE USED TO BE: a grep over an SES-shaped panel — `SES status: {{
+ * domain.status }}`, `domain.spfProofState === 'not_applicable_manual_primary'`,
+ * "Apex SPF: not applicable to SES relay proof". Every one of those strings was
+ * downstream of a query that point-read the frozen `sendingDomainSesIdentities`
+ * sibling, and pinning them was pinning the coupling. The rendering cases moved
+ * to `components/delivery/__tests__/RelayDomainStatus.test.ts`, which mounts the
+ * component against rows of three different kinds rather than reading its source.
+ *
+ * WHAT IS LEFT IS WHAT ONLY A SOURCE READ CAN SAY: that the three delivery pages
+ * embed the panel as one tag, that its safety prose about the operator's
+ * existing SPF record survives an edit, and that NO KIND LITERAL comes back.
+ * That last one is the guard that replaces `ANSWERS_FOR_KINDS = ['ses']` — a
+ * panel that starts asking which vendor it is looking at is a panel whose query
+ * has stopped answering for all of them.
+ */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pageSource = readFileSync(resolve(here, '../provider-routing.vue'), 'utf8');
 const source = readFileSync(
 	resolve(here, '../../../../components/delivery/RelayDomainStatus.vue'),
 	'utf8'
 );
+const page = (name: string): string => readFileSync(resolve(here, `../${name}`), 'utf8');
 
-describe('provider-routing SES relay operations surface', () => {
-	it('keeps the operational SES identity panel as a cohesive page component', () => {
-		expect(pageSource).toContain('<DeliveryRelayDomainStatus />');
-	});
+describe('the relay-identity panel on the delivery pages', () => {
+	it.each(['provider-routing.vue', 'domains.vue', 'migrate.vue'])(
+		'is embedded in %s as one self-querying tag',
+		(name) => {
+			expect(page(name)).toContain('<DeliveryRelayDomainStatus />');
+		}
+	);
 
-	it('loads the protected relay-domain query and wires the existing DNS verifier', () => {
-		expect(source).toContain('api.providerRoutes.listDeliverabilityRelayDomains');
+	it('loads the kind-agnostic relay-domain query and wires the existing DNS verifier', () => {
+		expect(source).toContain('api.providerRoutes.listRelayDomainIdentities');
 		expect(source).toContain('api.domains.dnsVerification.verifyDomain');
 		expect(source).toMatch(/verifyRelayDomain\(\{ domainId \}\)/);
-	});
-
-	it('renders exact DNS values and provider verification status', () => {
-		expect(source).toContain('data-testid="relay-domain-status"');
-		expect(source).toContain('SES status: {{ domain.status }}');
-		expect(source).toMatch(
-			/\{\{ record\.type \}\}\s+\{\{ record\.host \?\? record\.hostname\s*\}\}/
-		);
-		expect(source).toContain('{{ record.value }}');
-		expect(source).toContain('Verify DNS');
-	});
-
-	it('states the merged-SPF and unchanged-DMARC requirements without claiming instant readiness', () => {
-		expect(source).toContain('preserve your');
-		expect(source).toContain('never replace it with an');
-		expect(source).not.toContain('replaces the existing SPF record');
-		expect(source).toContain('Your primary DMARC record remains unchanged');
-		expect(source).toContain('Provisioning is queued');
-		expect(source).toContain('Verify the primary owned-MTA domain first');
 		expect(source).toContain('usePaginatedQuery');
 		expect(source).toContain('Load more domains');
 		expect(source).not.toContain('Showing the first 512 owned-MTA domains');
 	});
 
-	it('renders the explicit manual-primary SPF not-applicable proof state', () => {
-		expect(source).toContain('data-testid="relay-spf-not-applicable"');
-		expect(source).toContain("domain.spfProofState === 'not_applicable_manual_primary'");
-		expect(source).toContain('Apex SPF: not applicable to SES relay proof');
+	it('states the merged-SPF and unchanged-DMARC requirements without claiming instant readiness', () => {
+		expect(source).toContain('preserve your');
+		expect(source).toContain('never replace it with a');
+		expect(source).not.toContain('replaces the existing SPF record');
+		expect(source).toContain('Your primary DMARC record remains unchanged');
+	});
+
+	it('asks no question about WHICH provider it is rendering', () => {
+		// The one permitted mention of a kind is the per-kind copy map, which is
+		// keyed by kind and colocated with the markup it feeds — the
+		// `SignedWebhookCard.vue` pattern. What must not come back is a gate: a
+		// kind compared, or a set of kinds the panel believes it can speak for.
+		// The DECLARATION, not the mention: the file's header explains at length
+		// what `ANSWERS_FOR_KINDS` was and why the generic read retired it, and
+		// that paragraph is the reason nobody reintroduces it.
+		expect(source).not.toMatch(/const ANSWERS_FOR_KINDS/);
+		expect(source).not.toMatch(/kind\s*===\s*'/);
+		expect(source).not.toMatch(/\.includes\((?:entry\.)?row?\.?kind\)/);
+		// Labels come from the row, never from a literal beside it.
+		expect(source).toContain('kindLabel');
 	});
 });

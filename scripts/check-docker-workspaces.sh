@@ -139,6 +139,37 @@ while IFS= read -r dockerfile; do
 			failures=$((failures + 1))
 		fi
 	done
+
+	# plugin-kit re-exports provider-kit and its package entry points at dist/.
+	# Any image that builds or ships plugin-kit must therefore build provider-kit
+	# first and ship its dist beside it; a manifest-only guard cannot see this.
+	if printf '%s\n' "$joined" | grep -q 'packages/plugin-kit'; then
+		provider_build_line=$(
+			printf '%s\n' "$joined" \
+				| grep -nE 'RUN (bun run --cwd packages/provider-kit build|cd packages/provider-kit && bun run build)' \
+				| head -1 \
+				| cut -d: -f1
+		)
+		plugin_build_line=$(
+			printf '%s\n' "$joined" \
+				| grep -nE 'RUN (bun run --cwd packages/plugin-kit build|cd packages/plugin-kit && bun run build)' \
+				| head -1 \
+				| cut -d: -f1
+		)
+		if [ -z "$provider_build_line" ] || [ -z "$plugin_build_line" ]; then
+			echo "FAIL: $dockerfile uses plugin-kit but does not build both provider-kit and plugin-kit"
+			failures=$((failures + 1))
+		elif [ "$provider_build_line" -ge "$plugin_build_line" ]; then
+			echo "FAIL: $dockerfile must build provider-kit before plugin-kit"
+			failures=$((failures + 1))
+		fi
+
+		if printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/plugin-kit/dist' \
+			&& ! printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/provider-kit/dist'; then
+			echo "FAIL: $dockerfile ships plugin-kit dist without provider-kit dist"
+			failures=$((failures + 1))
+		fi
+	fi
 done < <(git ls-files '*Dockerfile' '*.Dockerfile')
 
 if [ "$checked" -eq 0 ]; then

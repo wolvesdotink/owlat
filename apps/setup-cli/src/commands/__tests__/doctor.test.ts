@@ -5,7 +5,7 @@ import {
 	evaluateMtaIdentityHealth,
 	evaluateSendPath,
 } from '../doctor';
-import type { FeatureFlagState } from '@owlat/shared/featureFlags';
+import { DELIVERY_PROVIDER_KINDS, type FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
  * `evaluateSendPath` is the pure decision that drives doctor's SEND-PATH check
@@ -58,6 +58,22 @@ describe('doctor — evaluateSendPath', () => {
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(false);
 		expect(findings[0]?.message).toContain('sendgrid');
+	});
+
+	// The two rejection messages name the choices, and the guard that rejected is
+	// `DELIVERY_PROVIDER_KINDS` membership — so the message must name that whole
+	// list, derived. Asserted against the catalog rather than against a hand-typed
+	// string: a provider added to the catalog then fails HERE instead of shipping
+	// a doctor that refuses a kind it also accepts.
+	it.each([
+		['unknown provider', { EMAIL_PROVIDER: 'sendgrid' }],
+		['unset provider', {}],
+	])('names every delivery provider kind when rejecting an %s', (_label, env) => {
+		const message = evaluateSendPath(sending, env)[0]?.message ?? '';
+		for (const kind of DELIVERY_PROVIDER_KINDS) {
+			expect(message).toContain(kind);
+		}
+		expect(message).toContain(DELIVERY_PROVIDER_KINDS.join('|'));
 	});
 
 	it('FAILS when provider=ses is missing a required credential', () => {

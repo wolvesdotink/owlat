@@ -2,7 +2,7 @@
 	"name": "@owlat/plugin-conformance",
 	"version": "0.1.0",
 	"private": true,
-	"description": "The plugin-platform conformance gallery: lifecycle (install/add/remove/disable/upgrade) and full-pipeline replay suites driving the three maintained reference plugins through the real host, codegen and CLI.",
+	"description": "The plugin-platform conformance gallery: lifecycle (install/add/remove/disable/upgrade) and full-pipeline replay suites driving the three maintained reference plugins through the real host, codegen and CLI, plus the plugin-provider parity proof — a fixture ESP bundle driven through the shipped routing, dispatch, measurement, return-path and credential-form modules.",
 	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
@@ -14,6 +14,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@owlat/api": "workspace:*",
 		"@owlat/code-worker": "workspace:*",
 		"@owlat/example-deliverability-lab": "workspace:*",
 		"@owlat/example-escalation-guard": "workspace:*",
@@ -22,6 +23,7 @@
 		"@owlat/plugin-codegen": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
+		"@owlat/shared": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",

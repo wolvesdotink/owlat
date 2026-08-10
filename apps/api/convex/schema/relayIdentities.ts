@@ -34,9 +34,10 @@ export const relayIdentitiesTables = {
 		// primary provider row is owned by another provider entirely, and the
 		// verification seam looks up by name.
 		domain: v.string(),
-		// A plain string, not a closed union: new relay kinds are then purely
-		// ADDITIVE (D7), the same choice every other hot-path column already
-		// makes (`sendAssignments.transport`, `emailSends.providerType`,
+		// A `SendTransportKind` (`@owlat/shared`) held as a plain string, not a
+		// closed union: new relay kinds are then purely ADDITIVE (D7), the same
+		// choice every other hot-path column already makes
+		// (`sendAssignments.transport`, `emailSends.providerType`,
 		// `providerHealth.providerType`).
 		providerKind: v.string(),
 		// The named transport instance this identity was registered with

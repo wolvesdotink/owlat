@@ -3,10 +3,12 @@
  */
 
 import type { Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
 import type { AuthContext } from '../server.js';
+import type { MtaSendAccepted, MtaSendRefused, MtaSendRequest } from '@owlat/mta-protocol';
 import {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 	isDeliveryDomain,
@@ -34,44 +36,24 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
-interface SendRequest {
-	messageId: string;
-	workAttemptId?: string;
-	routingReentryToken?: string;
-	routingReentry?: EmailJob['routingReentry'];
-	to: string;
-	from: string;
-	subject: string;
-	html: string;
-	text?: string;
-	/** Postbox-only complete PGP/MIME bytes, base64-encoded. */
-	sealedMimeBase64?: string;
-	/** AMP4Email body — delivered as a `text/x-amp-html` alternative part. */
-	amp?: string;
-	replyTo?: string;
-	headers?: Record<string, string>;
-	ipPool: 'transactional' | 'campaign';
-	organizationId: string;
-	messageType?: 'campaign' | 'transactional' | 'automation';
-	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
-	/** Unvalidated JSON — read it through `readEngagementScore`, never raw. */
-	engagementScore?: unknown;
-	dkimDomain: string;
-	/**
-	 * Postbox-only: the allowed-from set for the originating mailbox.
-	 * Convex computes this at dispatch time (`resolveAllowedFromAddresses`)
-	 * and passes it in so the MTA can refuse forged-From requests without
-	 * a Convex round-trip. Lowercase canonical addresses.
-	 *
-	 * Shared-inbox send-as (a teammate replying under their own personal
-	 * identity) is covered automatically: Convex keys this set on the SENDING
-	 * mailbox, so the sanctioned cross-mailbox identity is already present here
-	 * and every other address stays blocked. No MTA-side special-casing needed.
-	 */
-	allowedFromAddresses?: string[];
-	/** Opaque lease token returned by POST /send/decision. */
-	routingLease?: string;
-	allowWarmupOverflow?: boolean;
+/**
+ * The two answers the intake may give, each bound to its one declaration (D7).
+ *
+ * Every `return` in the handler goes through one of these, for the same reason
+ * `/send/decision`'s `decide()` exists: the request half of this wire was typed
+ * against `MtaSendRequest` while the response half stayed bare object literals,
+ * so a field renamed in `MtaSendAccepted` or a code dropped from
+ * `MTA_SEND_ERROR_CODES` still compiled here and kept the old bytes flowing to a
+ * Convex reader that had moved. Now it stops compiling on this side too.
+ *
+ * `c.json` walks the literal's own key order, so the bytes are unchanged.
+ */
+function accepted(c: Context, answer: MtaSendAccepted) {
+	return c.json(answer);
+}
+
+function refuse(c: Context, answer: MtaSendRefused, status: ContentfulStatusCode) {
+	return c.json(answer, status);
 }
 
 /**
@@ -86,27 +68,31 @@ export function createSendHandler(
 		// Check system health
 		const health = await checkSystemHealth(redis);
 		if (!health.redisHealthy) {
-			return c.json({ error: 'Service temporarily unavailable' }, 503);
+			return refuse(c, { error: 'Service temporarily unavailable' }, 503);
 		}
 		if (health.backpressure) {
-			return c.json({ error: 'Queue backpressure — try again later' }, 429);
+			return refuse(c, { error: 'Queue backpressure — try again later' }, 429);
 		}
 
 		// Parse and validate request
-		let body: SendRequest;
+		let body: MtaSendRequest;
 		try {
-			body = await c.req.json<SendRequest>();
+			body = await c.req.json<MtaSendRequest>();
 		} catch {
-			return c.json({ error: 'Invalid JSON body' }, 400);
+			return refuse(c, { error: 'Invalid JSON body' }, 400);
 		}
 
 		if (!body.messageId || !body.to || !body.from || !body.subject || !body.html) {
-			return c.json({ error: 'Missing required fields: messageId, to, from, subject, html' }, 400);
+			return refuse(
+				c,
+				{ error: 'Missing required fields: messageId, to, from, subject, html' },
+				400
+			);
 		}
 
 		// Validate email format (reject malformed addresses early)
 		if (!isValidEmail(body.to)) {
-			return c.json({ error: 'Invalid "to" email address format' }, 400);
+			return refuse(c, { error: 'Invalid "to" email address format' }, 400);
 		}
 		// `from` may be a display-name form ("Owlat <noreply@mail.example.com>")
 		// — composers build it via formatFromAddress with defaultFromName, so the
@@ -115,25 +101,25 @@ export function createSendHandler(
 		// header injection), then validate the angle-addr the same way
 		// extractDomainFromEmail does (parseAddress unwraps `Name <addr>`).
 		if (/[\r\n]/.test(body.from)) {
-			return c.json({ error: 'Invalid "from" email address format' }, 400);
+			return refuse(c, { error: 'Invalid "from" email address format' }, 400);
 		}
 		const parsedFrom = parseAddress(body.from);
 		if (!parsedFrom || !isValidEmail(parsedFrom.address)) {
-			return c.json({ error: 'Invalid "from" email address format' }, 400);
+			return refuse(c, { error: 'Invalid "from" email address format' }, 400);
 		}
 		if (body.replyTo && !isValidEmail(body.replyTo)) {
-			return c.json({ error: 'Invalid "replyTo" email address format' }, 400);
+			return refuse(c, { error: 'Invalid "replyTo" email address format' }, 400);
 		}
 
 		if (!body.organizationId) {
-			return c.json({ error: 'Missing required field: organizationId' }, 400);
+			return refuse(c, { error: 'Missing required field: organizationId' }, 400);
 		}
 
 		// Enforce org scoping for per-org credentials
 		const auth = c.get('auth') as AuthContext;
 		if (mode === 'postbox') {
 			if (!auth.isMasterKey || body.organizationId !== 'postbox') {
-				return c.json({ error: 'Postbox intake requires the master credential' }, 403);
+				return refuse(c, { error: 'Postbox intake requires the master credential' }, 403);
 			}
 			if (
 				body.routingLease ||
@@ -141,11 +127,11 @@ export function createSendHandler(
 				body.routingReentry ||
 				body.workAttemptId
 			) {
-				return c.json({ error: 'Postbox intake does not accept tenant routing leases' }, 400);
+				return refuse(c, { error: 'Postbox intake does not accept tenant routing leases' }, 400);
 			}
 		} else if (mode === 'system') {
 			if (!auth.isMasterKey || body.organizationId !== 'system') {
-				return c.json({ error: 'System intake requires the master credential' }, 403);
+				return refuse(c, { error: 'System intake requires the master credential' }, 403);
 			}
 			if (
 				body.routingLease ||
@@ -153,20 +139,21 @@ export function createSendHandler(
 				body.routingReentry ||
 				body.workAttemptId
 			) {
-				return c.json({ error: 'System intake does not accept tenant routing leases' }, 400);
+				return refuse(c, { error: 'System intake does not accept tenant routing leases' }, 400);
 			}
 		} else {
 			if (body.organizationId === 'postbox') {
-				return c.json({ error: 'Postbox mail must use /send/postbox' }, 400);
+				return refuse(c, { error: 'Postbox mail must use /send/postbox' }, 400);
 			}
 			if (!isGovernedMessageType(body.messageType)) {
-				return c.json({ error: 'Missing or invalid governed messageType' }, 400);
+				return refuse(c, { error: 'Missing or invalid governed messageType' }, 400);
 			}
 			if (!isDeliveryDomain(body.deliveryDomain)) {
-				return c.json({ error: 'Missing or invalid governed deliveryDomain' }, 400);
+				return refuse(c, { error: 'Missing or invalid governed deliveryDomain' }, 400);
 			}
 			if (!body.routingLease) {
-				return c.json(
+				return refuse(
+					c,
 					{ error: 'A current routing lease is required', code: 'ROUTING_LEASE_REQUIRED' },
 					409
 				);
@@ -190,12 +177,12 @@ export function createSendHandler(
 				Date.now() - body.routingReentry.retryState.startedAt >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS ||
 				body.routingReentry.retryState.idempotencyKey !== body.messageId
 			) {
-				return c.json({ error: 'Missing or invalid routing re-entry context' }, 400);
+				return refuse(c, { error: 'Missing or invalid routing re-entry context' }, 400);
 			}
 		}
 		if (!auth.isMasterKey && auth.orgCredential) {
 			if (body.organizationId !== auth.orgCredential.organizationId) {
-				return c.json({ error: 'Credential not authorized for this organization' }, 403);
+				return refuse(c, { error: 'Credential not authorized for this organization' }, 403);
 			}
 		}
 
@@ -221,12 +208,12 @@ export function createSendHandler(
 					{ messageId: body.messageId, from: body.from, allowed: body.allowedFromAddresses },
 					'Postbox /send rejected — From address not in allowed set'
 				);
-				return c.json({ error: 'From address not authorized for this mailbox' }, 403);
+				return refuse(c, { error: 'From address not authorized for this mailbox' }, 403);
 			}
 		}
 
 		if (!body.dkimDomain) {
-			return c.json({ error: 'Missing required field: dkimDomain' }, 400);
+			return refuse(c, { error: 'Missing required field: dkimDomain' }, 400);
 		}
 
 		let routingLease: EmailJob['routingLease'];
@@ -248,24 +235,29 @@ export function createSendHandler(
 				allowWarmupOverflow: body.allowWarmupOverflow === true,
 			});
 			if (!revalidated.ok) {
-				return c.json({ error: revalidated.error, code: revalidated.code }, 409);
+				// Through `refuse()` like every other answer: the code union now carries
+				// `ROUTING_LEASE_UNREADABLE`, so a rejection code this wire has not
+				// declared stops compiling here instead of reaching Convex — which
+				// matches these by substring and therefore cannot report a miss. The
+				// bytes are the same two keys in the same order.
+				return refuse(c, { error: revalidated.error, code: revalidated.code }, 409);
 			}
 			routingLease = revalidated.routingLease;
 		}
 
 		if (body.sealedMimeBase64) {
 			if (body.organizationId !== 'postbox') {
-				return c.json({ error: 'sealedMimeBase64 is restricted to Postbox mail' }, 400);
+				return refuse(c, { error: 'sealedMimeBase64 is restricted to Postbox mail' }, 400);
 			}
 			if (
 				!/^[A-Za-z0-9+/]+={0,2}$/.test(body.sealedMimeBase64) ||
 				body.sealedMimeBase64.length % 4 !== 0
 			) {
-				return c.json({ error: 'sealedMimeBase64 must be valid base64' }, 400);
+				return refuse(c, { error: 'sealedMimeBase64 must be valid base64' }, 400);
 			}
 			const rawBytes = Buffer.from(body.sealedMimeBase64, 'base64');
 			if (rawBytes.length > MAX_SEALED_MIME_BYTES) {
-				return c.json({ error: 'sealedMimeBase64 exceeds the 25 MiB limit' }, 400);
+				return refuse(c, { error: 'sealedMimeBase64 exceeds the 25 MiB limit' }, 400);
 			}
 			const raw = rawBytes.toString('utf8');
 			const headerBlock = raw.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, ' ') ?? '';
@@ -279,12 +271,12 @@ export function createSendHandler(
 				!/^multipart\/encrypted\b/i.test(contentType) ||
 				!/[;\s]protocol="?application\/pgp-encrypted"?/i.test(contentType)
 			) {
-				return c.json({ error: 'sealedMimeBase64 is not an authorized PGP/MIME message' }, 400);
+				return refuse(c, { error: 'sealedMimeBase64 is not an authorized PGP/MIME message' }, 400);
 			}
 		}
 
 		if (body.ipPool !== 'transactional' && body.ipPool !== 'campaign') {
-			return c.json({ error: 'ipPool must be "transactional" or "campaign"' }, 400);
+			return refuse(c, { error: 'ipPool must be "transactional" or "campaign"' }, 400);
 		}
 
 		// Provider/VERP identity is stable, but each bounded routing attempt must
@@ -318,7 +310,7 @@ export function createSendHandler(
 					{ messageId: body.messageId, workAttemptId: queueIdentity },
 					'Duplicate work attempt — skipping'
 				);
-				return c.json({ success: true, id: body.messageId, deduplicated: true });
+				return accepted(c, { success: true, id: body.messageId, deduplicated: true });
 			}
 			const queued = typeof queue.getJob === 'function' ? await queue.getJob(queueIdentity) : null;
 			if (queued && (!existing || existing.messageId === body.messageId)) {
@@ -330,7 +322,7 @@ export function createSendHandler(
 					{ messageId: body.messageId, workAttemptId: queueIdentity },
 					'Duplicate work attempt — skipping'
 				);
-				return c.json({ success: true, id: body.messageId, deduplicated: true });
+				return accepted(c, { success: true, id: body.messageId, deduplicated: true });
 			}
 			const stale =
 				!existing ||
@@ -356,7 +348,8 @@ export function createSendHandler(
 						)) === 'OK';
 			}
 			if (!ownsReservation) {
-				return c.json(
+				return refuse(
+					c,
 					{
 						error: 'Intake reservation is still pending',
 						code: 'INTAKE_PENDING',
@@ -420,19 +413,19 @@ export function createSendHandler(
 				'Email queued'
 			);
 
-			return c.json({ success: true, id: body.messageId, workAttemptId: result.id });
+			return accepted(c, { success: true, id: body.messageId, workAttemptId: result.id });
 		} catch (err) {
 			// queue.add may have committed before its client observed an error. The
 			// deterministic job id is authoritative in that ambiguity window.
 			const queued = await queue.getJob(queueIdentity).catch(() => null);
 			if (queued) {
 				await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
-				return c.json({ success: true, id: body.messageId, workAttemptId: queueIdentity });
+				return accepted(c, { success: true, id: body.messageId, workAttemptId: queueIdentity });
 			}
 			// A fast worker may have completed and been trimmed before queue.add's
 			// client observed its response. Its receipt promotion is authoritative.
 			if (await hasAcceptedIntakeReceipt(redis, dedupKey, body.messageId)) {
-				return c.json({ success: true, id: body.messageId, workAttemptId: queueIdentity });
+				return accepted(c, { success: true, id: body.messageId, workAttemptId: queueIdentity });
 			}
 			await redis.eval(
 				"if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
@@ -441,7 +434,7 @@ export function createSendHandler(
 				reservedReceipt
 			);
 			logger.error({ err, messageId: body.messageId }, 'Failed to enqueue email');
-			return c.json({ error: 'Failed to queue email' }, 500);
+			return refuse(c, { error: 'Failed to queue email' }, 500);
 		}
 	};
 }

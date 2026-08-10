@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	classifyResendBounce,
-	verifySvixHeaders,
-} from '../resend';
+import { classifyResendBounce, verifySvixHeaders } from '../resend';
 
 describe('classifyResendBounce', () => {
 	it('classifies user-unknown patterns as hard', () => {
@@ -52,9 +49,7 @@ async function signWithTestSecret(
 	body: string
 ): Promise<string> {
 	const signedContent = `${svixId}.${timestamp}.${body}`;
-	const secretBytes = Uint8Array.from(atob(TEST_SECRET_BASE64), (c) =>
-		c.charCodeAt(0)
-	);
+	const secretBytes = Uint8Array.from(atob(TEST_SECRET_BASE64), (c) => c.charCodeAt(0));
 	const key = await crypto.subtle.importKey(
 		'raw',
 		secretBytes as BufferSource,
@@ -62,11 +57,7 @@ async function signWithTestSecret(
 		false,
 		['sign']
 	);
-	const sig = await crypto.subtle.sign(
-		'HMAC',
-		key,
-		new TextEncoder().encode(signedContent)
-	);
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedContent));
 	return btoa(String.fromCharCode(...new Uint8Array(sig)));
 }
 
@@ -78,28 +69,14 @@ describe('verifySvixHeaders', () => {
 	it('accepts a valid signature', async () => {
 		const ts = String(now);
 		const sig = await signWithTestSecret(svixId, ts, body);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			ts,
-			`v1,${sig}`,
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, ts, `v1,${sig}`, TEST_SECRET, now);
 		expect(ok).toBe(true);
 	});
 
 	it('accepts when one of multiple signatures matches', async () => {
 		const ts = String(now);
 		const sig = await signWithTestSecret(svixId, ts, body);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			ts,
-			`v1,wrongsig v1,${sig}`,
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, ts, `v1,wrongsig v1,${sig}`, TEST_SECRET, now);
 		expect(ok).toBe(true);
 	});
 
@@ -121,14 +98,7 @@ describe('verifySvixHeaders', () => {
 		const old = now - 400; // 6m40s ago
 		const ts = String(old);
 		const sig = await signWithTestSecret(svixId, ts, body);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			ts,
-			`v1,${sig}`,
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, ts, `v1,${sig}`, TEST_SECRET, now);
 		expect(ok).toBe(false);
 	});
 
@@ -136,40 +106,19 @@ describe('verifySvixHeaders', () => {
 		const future = now + 400;
 		const ts = String(future);
 		const sig = await signWithTestSecret(svixId, ts, body);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			ts,
-			`v1,${sig}`,
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, ts, `v1,${sig}`, TEST_SECRET, now);
 		expect(ok).toBe(false);
 	});
 
 	it('rejects unparseable timestamp', async () => {
 		const sig = await signWithTestSecret(svixId, 'not-a-number', body);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			'not-a-number',
-			`v1,${sig}`,
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, 'not-a-number', `v1,${sig}`, TEST_SECRET, now);
 		expect(ok).toBe(false);
 	});
 
 	it('rejects an invalid signature value', async () => {
 		const ts = String(now);
-		const ok = await verifySvixHeaders(
-			body,
-			svixId,
-			ts,
-			'v1,definitelynotvalid',
-			TEST_SECRET,
-			now
-		);
+		const ok = await verifySvixHeaders(body, svixId, ts, 'v1,definitelynotvalid', TEST_SECRET, now);
 		expect(ok).toBe(false);
 	});
 
@@ -185,6 +134,23 @@ describe('verifySvixHeaders', () => {
 			now
 		);
 		expect(ok).toBe(false);
+	});
+
+	it('enforces the tolerance it is given rather than its own default', async () => {
+		// The host verifier registry passes the window the `svix` bundle DECLARES.
+		// A declaration narrower than the 5-minute default must reject inside it…
+		const recent = String(now - 120);
+		const recentSig = await signWithTestSecret(svixId, recent, body);
+		expect(
+			await verifySvixHeaders(body, svixId, recent, `v1,${recentSig}`, TEST_SECRET, now, 60)
+		).toBe(false);
+
+		// …and a wider one must accept outside it.
+		const old = String(now - 400);
+		const oldSig = await signWithTestSecret(svixId, old, body);
+		expect(await verifySvixHeaders(body, svixId, old, `v1,${oldSig}`, TEST_SECRET, now, 600)).toBe(
+			true
+		);
 	});
 
 	it('rejects a malformed secret (invalid base64)', async () => {

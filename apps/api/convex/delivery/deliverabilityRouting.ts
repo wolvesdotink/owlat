@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { extractDomainOrNull } from '@owlat/shared';
 import {
 	DESTINATION_PROVIDER_KEYS,
@@ -142,7 +143,7 @@ export const recordDestinationProviderDomain = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { recorded: false };
 		const send = await loadSend(ctx, ref);
-		if (!send || send.providerType !== 'mta') return { recorded: false };
+		if (!send || send.providerType !== OWN_ARM_TRANSPORT_KIND) return { recorded: false };
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const domain = extractDomainOrNull(contactEmailOf(send));
 		if (!domain) return { recorded: false };

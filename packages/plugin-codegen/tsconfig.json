@@ -8,7 +8,8 @@
 		"declarationMap": true,
 		"paths": {
 			"@owlat/plugin-host": ["../plugin-host/src/index.ts"],
-			"@owlat/plugin-kit": ["../plugin-kit/src/index.ts"]
+			"@owlat/plugin-kit": ["../plugin-kit/src/index.ts"],
+			"@owlat/provider-kit": ["../provider-kit/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.ts", "scripts/**/*.ts"],

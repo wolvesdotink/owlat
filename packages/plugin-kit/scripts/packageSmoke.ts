@@ -1,7 +1,7 @@
 /**
- * Smoke-tests the *packaged* `@owlat/plugin-kit`: packs the tarball, installs it
- * into a throwaway consumer, and exercises the built artifact at runtime and
- * through `tsc`.
+ * Smoke-tests the *packaged* `@owlat/plugin-kit`: packs it and its unpublished
+ * workspace dependency, installs both tarballs into a throwaway consumer, and
+ * exercises the built artifact at runtime and through `tsc`.
  *
  * It packs the dist/ that `@owlat/plugin-kit#build` already produced instead of
  * rebuilding it. `bun pm pack` would otherwise run `prepack`, which is
@@ -33,14 +33,27 @@ import {
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = resolve(packageRoot, '../..');
+const providerPackageRoot = resolve(packageRoot, '../provider-kit');
 const temporaryRoot = mkdtempSync(join(tmpdir(), 'owlat-plugin-kit-'));
-const packageMetadata = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+type PackageMetadata = {
 	name: string;
 	version: string;
 	scripts?: Record<string, string>;
 };
-const archiveName = `${packageMetadata.name.replace(/^@/, '').replaceAll('/', '-')}-${packageMetadata.version}.tgz`;
-const archivePath = join(temporaryRoot, archiveName);
+
+function readPackageMetadata(root: string): PackageMetadata {
+	return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageMetadata;
+}
+
+function archivePathFor(metadata: PackageMetadata): string {
+	const archiveName = `${metadata.name.replace(/^@/, '').replaceAll('/', '-')}-${metadata.version}.tgz`;
+	return join(temporaryRoot, archiveName);
+}
+
+const packageMetadata = readPackageMetadata(packageRoot);
+const providerPackageMetadata = readPackageMetadata(providerPackageRoot);
+const archivePath = archivePathFor(packageMetadata);
+const providerArchivePath = archivePathFor(providerPackageMetadata);
 const consumerRoot = join(temporaryRoot, 'consumer');
 
 function run(command: string, args: string[], cwd: string): string {
@@ -59,12 +72,19 @@ function runBytes(command: string, args: string[], cwd: string): Buffer {
 }
 
 const distEntry = join(packageRoot, 'dist/index.js');
+const providerDistEntry = join(providerPackageRoot, 'dist/index.js');
 if (!existsSync(distEntry)) {
 	throw new Error(
 		'packages/plugin-kit/dist is missing. This smoke packs the artifact `@owlat/plugin-kit#build` produced; run `turbo run build --filter=@owlat/plugin-kit` first.'
 	);
 }
+if (!existsSync(providerDistEntry)) {
+	throw new Error(
+		'packages/provider-kit/dist is missing. This smoke installs the same publishable dependency graph as @owlat/plugin-kit; run `turbo run build --filter=@owlat/plugin-kit` first.'
+	);
+}
 const distSignatureBeforePack = statSync(distEntry).mtimeMs;
+const providerDistSignatureBeforePack = statSync(providerDistEntry).mtimeMs;
 
 // The pack below runs with --ignore-scripts, so assert the publish-time hooks it
 // stands in for still do what this smoke simulates: stage the legal files, build
@@ -82,6 +102,20 @@ for (const [script, expected] of [
 }
 
 try {
+	// npm cannot resolve the workspace-only provider package from the public
+	// registry before its first release. Pack and install that exact artifact so
+	// this smoke remains a faithful test of plugin-kit's published dependency.
+	run(
+		'bun',
+		['pm', 'pack', '--ignore-scripts', '--destination', temporaryRoot],
+		providerPackageRoot
+	);
+	if (statSync(providerDistEntry).mtimeMs !== providerDistSignatureBeforePack) {
+		throw new Error(
+			'Packing rebuilt packages/provider-kit/dist. This smoke must never write shared build artifacts.'
+		);
+	}
+
 	stagePackageLegalFiles();
 	run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', temporaryRoot], packageRoot);
 	if (statSync(distEntry).mtimeMs !== distSignatureBeforePack) {
@@ -118,7 +152,11 @@ try {
 		join(consumerRoot, 'package.json'),
 		JSON.stringify({ name: 'plugin-kit-smoke', private: true, type: 'module' })
 	);
-	run('npm', ['install', '--ignore-scripts', '--no-package-lock', archivePath], consumerRoot);
+	run(
+		'npm',
+		['install', '--ignore-scripts', '--no-package-lock', providerArchivePath, archivePath],
+		consumerRoot
+	);
 
 	writeFileSync(
 		join(consumerRoot, 'runtime.mjs'),

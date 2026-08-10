@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
-import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import type { MtaWebhookEvent } from '../types.js';

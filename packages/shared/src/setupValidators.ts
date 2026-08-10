@@ -15,15 +15,19 @@
 
 import { connect as netConnect, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import { validateEmailitKey } from './emailitSetupValidator';
+import { fetchSetupProvider, type ValidationResult } from './setupValidationHttp';
 
-export interface ValidationResult {
-	ok: boolean;
-	message: string;
-}
+export type { ValidationResult } from './setupValidationHttp';
+export { validateEmailitKey } from './emailitSetupValidator';
 
-export type SetupProvider = 'resend' | 'openai' | 'openrouter' | 'posthog' | 'safebrowsing';
-
-const TIMEOUT_MS = 8_000;
+export type SetupProvider =
+	| 'resend'
+	| 'emailit'
+	| 'openai'
+	| 'openrouter'
+	| 'posthog'
+	| 'safebrowsing';
 
 /**
  * Block hosts that resolve to private, loopback, link-local, or cloud-metadata
@@ -66,22 +70,12 @@ function isBlockedSsrfHost(hostname: string): boolean {
 	return false;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-	try {
-		return await fetch(url, { ...init, signal: controller.signal });
-	} finally {
-		clearTimeout(timer);
-	}
-}
-
 export async function validateOpenAIKey(
 	apiKey: string,
 	baseUrl = 'https://api.openai.com/v1'
 ): Promise<ValidationResult> {
 	try {
-		const res = await fetchWithTimeout(`${baseUrl}/models`, {
+		const res = await fetchSetupProvider(`${baseUrl}/models`, {
 			headers: { Authorization: `Bearer ${apiKey}` },
 		});
 		if (res.status === 200) return { ok: true, message: 'OpenAI key accepted.' };
@@ -95,7 +89,7 @@ export async function validateOpenAIKey(
 
 export async function validateOpenRouterKey(apiKey: string): Promise<ValidationResult> {
 	try {
-		const res = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
+		const res = await fetchSetupProvider('https://openrouter.ai/api/v1/models', {
 			headers: { Authorization: `Bearer ${apiKey}` },
 		});
 		if (res.status === 200) return { ok: true, message: 'OpenRouter key accepted.' };
@@ -109,7 +103,7 @@ export async function validateOpenRouterKey(apiKey: string): Promise<ValidationR
 
 export async function validateResendKey(apiKey: string): Promise<ValidationResult> {
 	try {
-		const res = await fetchWithTimeout('https://api.resend.com/domains', {
+		const res = await fetchSetupProvider('https://api.resend.com/domains', {
 			headers: { Authorization: `Bearer ${apiKey}` },
 		});
 		if (res.status === 200) return { ok: true, message: 'Resend key accepted.' };
@@ -142,7 +136,7 @@ export async function validatePostHogHost(
 	}
 	try {
 		const url = new URL('/decide', base);
-		const res = await fetchWithTimeout(url.toString(), {
+		const res = await fetchSetupProvider(url.toString(), {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ token: apiKey ?? 'health-check', distinct_id: 'owlat-setup' }),
@@ -159,7 +153,7 @@ export async function validatePostHogHost(
 
 export async function validateGoogleSafeBrowsingKey(apiKey: string): Promise<ValidationResult> {
 	try {
-		const res = await fetchWithTimeout(
+		const res = await fetchSetupProvider(
 			`https://safebrowsing.googleapis.com/v4/threatLists?key=${encodeURIComponent(apiKey)}`,
 			{}
 		);
@@ -485,6 +479,8 @@ export async function validateProvider(
 	switch (provider) {
 		case 'resend':
 			return validateResendKey(apiKey);
+		case 'emailit':
+			return validateEmailitKey(apiKey);
 		case 'openai':
 			return validateOpenAIKey(apiKey);
 		case 'openrouter':

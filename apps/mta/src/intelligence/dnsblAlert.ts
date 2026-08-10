@@ -6,11 +6,11 @@
  * CONSTRUCTION rather than by hoping it stays short.
  */
 
-import { MTA_WEBHOOK_MESSAGE_MAX_LENGTH } from '@owlat/shared/mtaWebhookEvent';
+import { MTA_WEBHOOK_MESSAGE_MAX_LENGTH } from '@owlat/mta-protocol/webhookEvent';
 
 /**
  * Convex ingress validates `message` with `bounded(message, …)` and rejects the
- * ENTIRE webhook event when it is longer (see packages/shared/src/mtaWebhookEvent.ts).
+ * ENTIRE webhook event when it is longer (see packages/mta-protocol/src/webhookEvent.ts).
  * The bound is imported, not re-declared, so the two can never drift apart.
  */
 export const ALERT_MESSAGE_MAX_LENGTH = MTA_WEBHOOK_MESSAGE_MAX_LENGTH;

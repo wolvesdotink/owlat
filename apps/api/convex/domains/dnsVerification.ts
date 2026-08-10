@@ -21,7 +21,7 @@ import { api, internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
-import { isSendingDomainProviderKind, providerFor } from './providers';
+import { isOwnPrimarySendingDomain, isSendingDomainProviderKind, providerFor } from './providers';
 import type { ProviderCheckResult } from './providers';
 import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
 import {
@@ -413,11 +413,12 @@ export const verifyDomain = authedAction({
 			if (adapter.runProviderCheck) {
 				try {
 					providerCheck = await adapter.runProviderCheck(domain.domain);
-					// Mirror the provider verdict into verificationResults for the
-					// builder UI's per-record display (the SES status pill).
-					if (domain.providerType === 'ses') {
-						results.sesStatus = providerCheck.verified ? 'Success' : 'Pending';
-					}
+					// Mirror the provider verdict into the persisted
+					// `verificationResults` bundle. WHICH field carries it — and whether
+					// this provider has a verdict worth recording at all — is the
+					// adapter's own business; this used to be `providerType === 'ses'`
+					// followed by the SES field name spelled here.
+					Object.assign(results, adapter.verificationStatusFields?.(providerCheck));
 				} catch (error) {
 					logError('[DNS Verification] Failed to run provider check:', error);
 					providerCheck = {
@@ -439,13 +440,24 @@ export const verifyDomain = authedAction({
 			throwInternal(`Verification failed: ${outcome.reason}`);
 		}
 
-		// A primary MTA domain may also carry a coexisting SES escape-hatch
-		// identity. Verify that identity against its own records and provider
-		// verdict; never borrow the primary domain's status or DNS proof.
+		// A domain whose PRIMARY provider is our own MTA may also carry a
+		// coexisting relay identity. Verify that identity against its own records
+		// and provider verdict; never borrow the primary domain's status or DNS
+		// proof.
+		//
+		// The gate is D3's sanctioned own-vs-not-own identity, read from the
+		// domain-provider registry — it used to be `providerType !== 'ses'`, which
+		// named the RELAY rather than the rule and so had to be re-read every time
+		// a second relay kind landed. Same rows either way: the only writers of an
+		// SES sibling with DNS records are the ordinary lifecycle (SES-primary
+		// domains, excluded by both) and the relay provisioning pair, which
+		// provisions own-MTA-primary domains and nothing else. Legacy rows that
+		// never recorded a `providerType` are INCLUDED, exactly as `!== 'ses'`
+		// included them — see `isOwnPrimarySendingDomain`, which owns that reading.
 		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
 			domainId: args.domainId,
 		});
-		if (domain.providerType !== 'ses' && sesIdentity?.dnsRecords) {
+		if (isOwnPrimarySendingDomain(domain.providerType) && sesIdentity?.dnsRecords) {
 			await ctx.runAction(internal.domains.sesRelayVerification.refreshSesRelayIdentity, {
 				domainId: args.domainId,
 			});

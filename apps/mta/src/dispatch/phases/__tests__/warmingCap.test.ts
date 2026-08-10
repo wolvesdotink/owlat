@@ -21,7 +21,8 @@ import { PROVIDER_WARMING_POLICY } from '../../../intelligence/warmingProviderPo
 import { warmingBulkDailyKey, warmingProviderStateKey } from '../../../intelligence/warmingKeys.js';
 import { capDeferDelayMs } from '../../../intelligence/warmingCapWindow.js';
 import { INTRADAY_PACING_POLICY } from '../../../intelligence/warmingPacing.js';
-import type { DestinationProviderKey, EmailJob, IpPoolType } from '../../../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJob, IpPoolType } from '../../../types.js';
 import type { MtaConfig } from '../../../config.js';
 
 const IP = '10.0.0.7';

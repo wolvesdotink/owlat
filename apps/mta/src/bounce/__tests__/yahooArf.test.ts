@@ -47,6 +47,7 @@ import {
 	type FblSourceIspToken,
 } from '../fblProcessor.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
+import { FBL_OPERATOR_DOMAINS } from '../../__tests__/helpers/destinationDomainCorpus.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { reduce } from '../outcome.js';
 import type { BasePhaseCtx, BounceAttempt } from '../types.js';
@@ -225,34 +226,33 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 	// TABLE-DRIVEN over EVERY token `fblProcessor.isp()` can return, plus one it
 	// cannot: the ISP→cell map is the only thing standing between an FBL token and
 	// the ramp's cell axis, so an untested row is a typo that ships silently.
-	// `classifierDomain` pins the rows where the CELL must agree with the shipped
-	// address-domain classifier (`destinationProviderForDomain`) — a complaint that
-	// disagreed would land in a different cell than the send it complains about.
 	//
 	// The table is keyed BY THE TOKEN UNION, so a token added to `isp()` without a
 	// row here fails to compile — the same totality the ISP→cell map now gets from
-	// `satisfies`, applied to its coverage.
+	// `satisfies`, applied to its coverage. It carries only the branded
+	// `User-Agent` and the expected cell: where each operator's own mailboxes live
+	// is declared ONCE, in `__tests__/helpers/destinationDomainCorpus.ts` (D8), so
+	// a seventh token needs a domain in exactly one place.
 	const ISP_ROWS_BY_TOKEN: Record<
 		FblSourceIspToken,
-		{ userAgent: string; cell: DestinationProviderKey; classifierDomain?: string }
+		{ userAgent: string; cell: DestinationProviderKey }
 	> = {
 		microsoft: { userAgent: 'Microsoft Feedback-Loop Post/1.0', cell: 'microsoft' },
 		yahoo: { userAgent: 'Yahoo! Inc. Feedback-Loop/1.0', cell: 'yahoo' },
-		aol: { userAgent: 'AOL Feedback-Loop Post/1.0', cell: 'yahoo', classifierDomain: 'aol.com' },
-		google: {
-			userAgent: 'Google-Mail-Feedback/1.0',
-			cell: 'gmail',
-			classifierDomain: 'gmail.com',
-		},
+		aol: { userAgent: 'AOL Feedback-Loop Post/1.0', cell: 'yahoo' },
+		google: { userAgent: 'Google-Mail-Feedback/1.0', cell: 'gmail' },
 		comcast: { userAgent: 'Comcast Feedback-Loop Post/1.0', cell: 'other' },
 		mailru: { userAgent: 'mail.ru abuse reporter/1.0', cell: 'other' },
 	};
 
-	const ISP_ROWS = Object.entries(ISP_ROWS_BY_TOKEN).map(([token, row]) => ({ token, ...row }));
+	const ISP_ROWS = Object.entries(ISP_ROWS_BY_TOKEN).map(([token, row]) => ({
+		token: token as FblSourceIspToken,
+		...row,
+	}));
 
 	it.each(ISP_ROWS)(
 		'maps the FBL `$token` token onto the `$cell` cell',
-		({ userAgent, token, cell, classifierDomain }) => {
+		({ userAgent, token, cell }) => {
 			const { parsed, parts } = buildArf({
 				feedbackReport: [
 					'Feedback-Type: abuse',
@@ -271,9 +271,14 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 			if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
 			expect(notify.event.sourceIsp).toBe(cell);
 			expect(DESTINATION_PROVIDER_KEYS).toContain(notify.event.sourceIsp);
-			if (classifierDomain !== undefined) {
-				expect(destinationProviderForDomain(classifierDomain)).toBe(cell);
-			}
+			// The cell AGREES with the shipped address-domain classifier for the
+			// operator's own mailbox domain — for every token, not just the aliases.
+			// A complaint that disagreed would land in a different cell than the send
+			// it complains about.
+			const operatorDomain = FBL_OPERATOR_DOMAINS[token];
+			expect(destinationProviderForDomain(operatorDomain), `${token} (${operatorDomain})`).toBe(
+				cell
+			);
 		}
 	);
 

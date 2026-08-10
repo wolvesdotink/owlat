@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
-import type { DestinationProviderKey } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 const WARMING_PREFIX = 'mta:warming:';
 

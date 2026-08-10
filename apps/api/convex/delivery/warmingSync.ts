@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internalAction, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
-import { normalizeIpReputationPayload } from '@owlat/shared/ipReadinessSync';
+import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { ipReadinessFieldValidators } from './readinessValidators';

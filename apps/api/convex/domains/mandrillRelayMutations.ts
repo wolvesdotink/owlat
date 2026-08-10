@@ -13,6 +13,8 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { relayIdentityProviderFor } from './providers';
 import { mandrillProvider } from './providers/mandrill';
 import {
 	markMandrillIdentityFailed,
@@ -26,6 +28,29 @@ const MANDRILL_SWEEP_PAGE_SIZE = 100;
 
 /** Stagger between the per-domain refresh calls one tick schedules. */
 const MANDRILL_SWEEP_STAGGER_MS = 1_000;
+
+/**
+ * How long a row whose kind resolved to NO dispatch arm is pushed out of the due
+ * set for.
+ *
+ * `nextCheckDueAt` is the only thing that takes a row out of `by_next_check_due`,
+ * so a row the sweep merely skipped stays due forever: every tick from then on
+ * pages through it to schedule nothing. That state was unreachable while Mandrill
+ * was this table's only writer; it became reachable the moment a bundled plugin
+ * transport could write rows here, because a row can outlive its plugin. Drop a
+ * plugin that had provisioned two thousand identities and the hourly cron would
+ * otherwise re-page all two thousand, forever, with nothing that ever retires
+ * them.
+ *
+ * SIX HOURS, matching the slowest real cadence (`failed`) rather than being a
+ * deletion, because "no arm" is not the same as "no longer wanted": the usual way
+ * to reach it is a composition change, and a re-composition that restores the
+ * plugin must find its identities still on the sweep. So the cost of a
+ * permanently dropped plugin is one write per row per six hours instead of an
+ * unbounded read every tick, and the cost of a temporarily dropped one is at most
+ * one stale cycle.
+ */
+const ORPHANED_ROW_RETRY_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Persist a freshly provisioned identity for a domain we hold the id of (the
@@ -69,6 +94,29 @@ export const recordCheckFailure = internalMutation({
 });
 
 /**
+ * Schedule one due row's refresh, and say whether there was one to schedule.
+ *
+ * A row with no dispatch arm has nobody left to ask, and that is a real answer
+ * rather than a gap: `sendingDomainRelayIdentities` is written by whichever relay
+ * kinds a deployment configured, and a row can outlive its plugin (a composition
+ * that dropped the package), name a kind a later composition removed, or belong
+ * to a kind that proves domains without keeping its rows in this table. What the
+ * caller does with `false` is the other half of that answer — see
+ * {@link ORPHANED_ROW_RETRY_MS}.
+ */
+async function scheduleRefresh(
+	ctx: MutationCtx,
+	delayMs: number,
+	providerKind: string,
+	domain: string
+): Promise<boolean> {
+	const provider = relayIdentityProviderFor(providerKind);
+	if (!provider?.scheduleRelayIdentityRefresh) return false;
+	await provider.scheduleRelayIdentityRefresh(ctx, delayMs, domain);
+	return true;
+}
+
+/**
  * Schedule a bounded batch of the re-checks that are due, then continue from a
  * cursor while pages keep coming back full.
  *
@@ -78,10 +126,25 @@ export const recordCheckFailure = internalMutation({
  * the due set through `by_next_check_due` means a deployment whose identities
  * are all fresh pays one index range read per tick and schedules nothing.
  *
- * Rows of another provider kind are skipped rather than filtered in the index:
- * the due index is deliberately kind-agnostic (it is a deployment-wide work
- * queue), and Mandrill is simply the first kind to use this table. The next
- * kind to want a sweep adds its own dispatch line here.
+ * THE DISPATCH IS THE TABLE'S OWN, not a chain of kind literals (the seams
+ * plan's P3.2). The due index is deliberately kind-agnostic — it is a
+ * deployment-wide work queue — and Mandrill was simply the first kind to use it.
+ * When the second kind wanted the same sweep, the question "whose row is this?"
+ * became a registry lookup: every kind that keeps rows here registers the arm
+ * that re-asks its provider (`scheduleRelayIdentityRefresh`), so a bundled plugin
+ * transport is on this sweep the day it composes and a third kind adds no line
+ * here at all.
+ *
+ * EVERY ROW THE TICK TOUCHES LEAVES THE DUE SET, whether or not there was
+ * anything to schedule for it — see {@link ORPHANED_ROW_RETRY_MS}.
+ *
+ * The sweep is still spelled in this Mandrill-named file rather than moved to a
+ * neutral one, and that is now only a NAME: nothing below knows a provider. It
+ * stays because the module path IS the Convex function path — moving it renames
+ * a cron'd scheduled function and strands the paginating continuation any
+ * in-flight sweep is holding, which is a real (if small) operational cost for a
+ * rename. A later piece that touches the cron registration anyway is the cheap
+ * moment for it.
  */
 export const scheduleDueChecks = internalMutation({
 	args: { cursor: v.optional(v.string()) },
@@ -94,13 +157,24 @@ export const scheduleDueChecks = internalMutation({
 
 		let scheduled = 0;
 		for (const identity of page.page) {
-			if (identity.providerKind !== 'mandrill') continue;
-			await ctx.scheduler.runAfter(
+			const isScheduled = await scheduleRefresh(
+				ctx,
 				scheduled * MANDRILL_SWEEP_STAGGER_MS,
-				internal.domains.mandrillRelay.refreshIdentity,
-				{ domain: identity.domain }
+				identity.providerKind,
+				identity.domain
 			);
-			scheduled += 1;
+			if (isScheduled) {
+				scheduled += 1;
+				continue;
+			}
+			// The retry and `updatedAt`, and nothing else — exactly what every other
+			// non-answer writes (`scheduleRelayIdentityRetry`). `lastCheckedAt` is what
+			// the relay proof's age is measured from, and a sweep that could not even
+			// ask has observed nothing.
+			await ctx.db.patch(identity._id, {
+				nextCheckDueAt: now + ORPHANED_ROW_RETRY_MS,
+				updatedAt: now,
+			});
 		}
 
 		if (!page.isDone) {

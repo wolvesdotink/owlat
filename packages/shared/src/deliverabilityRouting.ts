@@ -16,9 +16,9 @@ export type DeliverabilitySignalProvider = DestinationProviderKey | 'all';
  *
  * The stream axis is not a new taxonomy: it IS the shipped governed message
  * type, which is what lets `route.ts` pass a `MessageType` straight into a cell
- * lookup. Aliasing rather than re-declaring is what makes that safe — a fifth
- * governed message type widens the stream axis with it instead of silently
- * missing every per-stream row.
+ * lookup. Aliasing rather than re-declaring is what makes that safe — a FOURTH
+ * governed message type (there are three) widens the stream axis with it
+ * instead of silently missing every per-stream row.
  */
 export const DELIVERABILITY_STREAM_KEYS = GOVERNED_MESSAGE_TYPES;
 export type DeliverabilityStream = GovernedMessageType;
@@ -335,11 +335,28 @@ export function normalizeDeliverabilityRoutingSnapshot(
 }
 
 /**
+ * The one normalization a destination domain passes through before it is
+ * compared to the taxonomy or used as a per-domain key (D8).
+ *
+ * It is exported because it is not private to the classifier: `canonicalProfileKey`
+ * in the MTA decides with `destinationProviderForDomain` but RETURNS the input
+ * for operators outside the taxonomy, so the value it hands back has to have
+ * been through exactly the transform the decision was made on. Restating the
+ * expression there would let the two drift the moment this one gains a step —
+ * IDNA folding being the obvious candidate, since `smtp/destinationProvider.ts`
+ * already applies `domainToASCII` upstream — and a drift splits one operator
+ * across two shaping rows that each see half its traffic.
+ */
+export function normalizeDestinationDomain(domain: string): string {
+	return domain.trim().toLowerCase().replace(/\.$/, '');
+}
+
+/**
  * Conservative address-domain classifier used before an MX-derived observation
  * exists. Custom-domain Google/Microsoft tenants deliberately remain `other`.
  */
 export function destinationProviderForDomain(domain: string): DestinationProviderKey {
-	const normalized = domain.trim().toLowerCase().replace(/\.$/, '');
+	const normalized = normalizeDestinationDomain(domain);
 	if (normalized === 'gmail.com' || normalized === 'googlemail.com') return 'gmail';
 	if (
 		normalized === 'outlook.com' ||

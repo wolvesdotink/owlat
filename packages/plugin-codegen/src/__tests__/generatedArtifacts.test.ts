@@ -16,8 +16,8 @@ import {
  * The codegen output set is ONE table.
  *
  * It used to be written three times — the fields of
- * `GeneratedPluginComposition`, twenty-two `*_OUTPUT_PATH` constants, and
- * twenty-two `{ path, source }` target entries — so adding a registry took six
+ * `GeneratedPluginComposition`, one path constant per output, and the same
+ * number of `{ path, source }` target entries — so adding a registry took six
  * coordinated edits and forgetting one silently dropped a file from both the
  * writer and the `--check` staleness gate, with nothing red.
  *

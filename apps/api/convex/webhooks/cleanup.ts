@@ -20,6 +20,32 @@ export const cleanupCampaignAlertReceipts = internalMutation({
 	},
 });
 
+/**
+ * Delete expired bundled-plugin replay claims (D6/P2.2).
+ *
+ * The claim mutation already ages rows out in bounded batches on its own hot
+ * path, and while deliveries keep arriving that sweep is what keeps the table at
+ * steady state. It cannot be the whole answer, because it only runs when a
+ * delivery is authorized: disable the plugin, revoke its grant, or simply let
+ * the provider go quiet after a burst, and whatever the last sweep left behind
+ * stays forever. The rows are tiny and carry no recipient data, so this is
+ * housekeeping rather than retention — but "no cron needed" was not true.
+ */
+export const cleanupPluginWebhookDeliveries = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const expired = await ctx.db
+			.query('pluginWebhookDeliveries')
+			.withIndex('by_expires_at', (q) => q.lt('expiresAt', Date.now()))
+			.take(CLEANUP_BATCH_SIZE);
+		for (const claim of expired) await ctx.db.delete(claim._id);
+		if (expired.length === CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(0, internal.webhooks.cleanup.cleanupPluginWebhookDeliveries, {});
+		}
+		return { deletedCount: expired.length };
+	},
+});
+
 // Clean up webhook delivery logs older than retention period in batches
 export const cleanupOldLogs = internalMutation({
 	args: {},

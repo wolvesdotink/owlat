@@ -1,6 +1,11 @@
 /**
- * Resend webhook adapter — verifies Svix HMAC signatures and parses
- * provider events into InboundEvent. See CONTEXT.md "Inbound adapter".
+ * Resend webhook parser — turns provider events into InboundEvent. See
+ * CONTEXT.md "Inbound adapter".
+ *
+ * Authentication is NOT this module's decision: the bundle declares the `svix`
+ * scheme (with its tolerance) and the host verifier registry enforces it
+ * (`../providerVerifierRegistry.ts`). `verifySvixHeaders` below is that scheme's
+ * reusable inner half, which the registry calls with the DECLARED tolerance.
  *
  * The adapter only emits InboundEvents for the events Owlat acts on today
  * (bounce + complaint). Other Resend events (sent/delivered/
@@ -11,10 +16,9 @@
  * decided to consume them; that's a future decision.
  */
 
-import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha256Base64, missingSecretResult } from '../security';
+import { constantTimeEqual, hmacSha256Base64 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
-import type { InboundAdapter } from '../pipeline';
+import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 
 type ResendEventType =
@@ -55,17 +59,25 @@ export function classifyResendBounce(bounceMessage: string): 'hard' | 'soft' {
 	return classifyBounceMessage(bounceMessage);
 }
 
+/**
+ * @param toleranceSeconds - How far the signed timestamp may sit from now, in
+ * either direction. The host verifier registry passes the tolerance the `svix`
+ * bundle DECLARES (clamped), so the declaration is what is enforced rather than
+ * a constant that happens to agree with it today; the default is Svix's own
+ * recommended window for a caller that declares nothing.
+ */
 export async function verifySvixHeaders(
 	body: string,
 	svixId: string,
 	svixTimestamp: string,
 	svixSignature: string,
 	secret: string,
-	nowSeconds: number = Math.floor(Date.now() / 1000)
+	nowSeconds: number = Math.floor(Date.now() / 1000),
+	toleranceSeconds: number = SVIX_TIMESTAMP_TOLERANCE_SECONDS
 ): Promise<boolean> {
 	const timestampSeconds = parseInt(svixTimestamp, 10);
 	if (isNaN(timestampSeconds)) return false;
-	if (Math.abs(nowSeconds - timestampSeconds) > SVIX_TIMESTAMP_TOLERANCE_SECONDS) {
+	if (Math.abs(nowSeconds - timestampSeconds) > toleranceSeconds) {
 		return false;
 	}
 
@@ -96,34 +108,8 @@ export async function verifySvixHeaders(
 	return false;
 }
 
-export const resendAdapter: InboundAdapter = {
+export const resendAdapter: InboundParser<'resend'> = {
 	source: 'resend',
-
-	async verifySignature(request, rawBody) {
-		const secret = getOptional('RESEND_WEBHOOK_SECRET');
-		if (!secret) {
-			return missingSecretResult('RESEND_WEBHOOK_SECRET');
-		}
-
-		const svixId = request.headers.get('svix-id');
-		const svixTimestamp = request.headers.get('svix-timestamp');
-		const svixSignature = request.headers.get('svix-signature');
-
-		if (!svixId || !svixTimestamp || !svixSignature) {
-			return {
-				ok: false,
-				status: 401,
-				reason: 'Missing Svix signature headers',
-			};
-		}
-
-		const isValid = await verifySvixHeaders(rawBody, svixId, svixTimestamp, svixSignature, secret);
-		if (!isValid) {
-			return { ok: false, status: 401, reason: 'Invalid webhook signature' };
-		}
-
-		return { ok: true };
-	},
 
 	parseEvent(rawBody): InboundEvent | null {
 		const payload = JSON.parse(rawBody) as ResendWebhookPayload;

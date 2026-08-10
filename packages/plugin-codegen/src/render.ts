@@ -12,6 +12,15 @@ import {
 	renderAutomationModules,
 } from './renderAutomation';
 import { renderCronCatalog, renderCronModules } from './renderCron';
+import { renderSendTransportCatalog, renderSendTransportModules } from './renderSendTransport';
+import {
+	renderSendTransportDomainIdentityCatalog,
+	renderSendTransportDomainIdentityModules,
+} from './renderSendTransportDomainIdentity';
+import {
+	renderSendTransportWebhookCatalog,
+	renderSendTransportWebhookModules,
+} from './renderSendTransportWebhook';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
 	importProvidersFor,
@@ -25,7 +34,12 @@ export interface GeneratedPluginComposition {
 	readonly components: string;
 	readonly nuxt: string;
 	readonly sendTransportCatalog: string;
+	readonly sendTransportWebCatalog: string;
 	readonly sendTransportModules: string;
+	readonly sendTransportWebhookCatalog: string;
+	readonly sendTransportWebhookModules: string;
+	readonly sendTransportDomainIdentityCatalog: string;
+	readonly sendTransportDomainIdentityModules: string;
 	readonly agentStepCatalog: string;
 	readonly agentStepModules: string;
 	readonly draftStrategyCatalog: string;
@@ -49,8 +63,8 @@ export interface GeneratedPluginComposition {
  * Every file codegen emits, as ONE table: artifact key -> repository path.
  *
  * The output set used to be spelled out three times — the fields of
- * `GeneratedPluginComposition`, twenty-two `*_OUTPUT_PATH` constants, and
- * twenty-two `{ path, source }` target entries — so adding one registry meant
+ * `GeneratedPluginComposition`, one path constant per output, and the same
+ * number of `{ path, source }` target entries — so adding one registry meant
  * six coordinated edits across two files and forgetting one silently dropped a
  * file from both the writer and the `--check` staleness gate. Typing this as a
  * `Record` over the composition's own keys makes the compiler demand a path for
@@ -62,7 +76,14 @@ export const GENERATED_ARTIFACT_PATHS: Readonly<Record<keyof GeneratedPluginComp
 		components: 'apps/api/convex/plugins/components.generated.ts',
 		nuxt: 'apps/web/app/plugins/plugin-composition.generated.ts',
 		sendTransportCatalog: 'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+		sendTransportWebCatalog: 'apps/web/app/generated/sendTransportCatalog.generated.ts',
 		sendTransportModules: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
+		sendTransportWebhookCatalog: 'apps/api/convex/plugins/sendTransportWebhookCatalog.generated.ts',
+		sendTransportWebhookModules: 'apps/api/convex/plugins/sendTransportWebhookModules.generated.ts',
+		sendTransportDomainIdentityCatalog:
+			'apps/api/convex/plugins/sendTransportDomainIdentityCatalog.generated.ts',
+		sendTransportDomainIdentityModules:
+			'apps/api/convex/plugins/sendTransportDomainIdentityModules.generated.ts',
 		agentStepCatalog: 'apps/api/convex/plugins/agentStepCatalog.generated.ts',
 		agentStepModules: 'apps/api/convex/plugins/agentStepModules.generated.ts',
 		draftStrategyCatalog: 'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
@@ -122,12 +143,21 @@ export function renderPluginComposition(
 		: 'export const bundledPluginComposition = composeBundledPlugins([]);\n';
 	const shared = `${GENERATED_HEADER}import { composeBundledPlugins } from '@owlat/plugin-host';\n${imports}${imports ? '\n' : ''}\n${composition}`;
 
+	const sendTransportCatalog = renderSendTransportCatalog(plugins);
 	return Object.freeze({
 		convex: shared,
 		components: renderConvexComponents(plugins),
 		nuxt: `${shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
-		sendTransportCatalog: renderSendTransportCatalog(plugins),
+		sendTransportCatalog,
+		// The same data-only artifact in the browser's package. Web must not reach
+		// across the package boundary into `apps/api`, and rendering this twice from
+		// one value makes the backend and credential UI views byte-identical.
+		sendTransportWebCatalog: sendTransportCatalog,
 		sendTransportModules: renderSendTransportModules(plugins),
+		sendTransportWebhookCatalog: renderSendTransportWebhookCatalog(plugins),
+		sendTransportWebhookModules: renderSendTransportWebhookModules(plugins),
+		sendTransportDomainIdentityCatalog: renderSendTransportDomainIdentityCatalog(plugins),
+		sendTransportDomainIdentityModules: renderSendTransportDomainIdentityModules(plugins),
 		agentStepCatalog: renderAgentStepCatalog(agentSteps),
 		agentStepModules: renderAgentStepModules(agentSteps),
 		draftStrategyCatalog: renderDraftStrategyCatalog(plugins),
@@ -297,68 +327,6 @@ function renderAgentStepModules(steps: readonly HostedAgentStepDefinition[]): st
 		? `Object.freeze([\n${entries}\n] as const)`
 		: 'Object.freeze([] as const)';
 	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AGENT_STEP_MODULES = ${modules};\n`;
-}
-
-interface RenderedSendTransport {
-	readonly packageName: string;
-	readonly pluginId: string;
-	readonly localId: string;
-	readonly kind: string;
-	readonly label: string;
-	readonly exportPath: string;
-	readonly retryDelays: readonly number[];
-	readonly requiredEnvVars: readonly string[];
-}
-
-function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly RenderedSendTransport[] {
-	return plugins.flatMap((plugin) =>
-		(plugin.manifest.contributes?.sendTransports ?? []).map((transport) => ({
-			packageName: parsePluginPackageName(plugin.packageName),
-			pluginId: parsePluginId(plugin.manifest.id),
-			localId: transport.id,
-			kind: pluginNamespacedKind(plugin.manifest.id, transport.id),
-			label: transport.label,
-			exportPath: transport.module.exportPath,
-			retryDelays: transport.retryDelays,
-			requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
-		}))
-	);
-}
-
-function renderSendTransportCatalog(plugins: readonly BundledPlugin[]): string {
-	const entries = sendTransportsFor(plugins)
-		.map(
-			(transport) => `\tObject.freeze({
-\t\tkind: ${JSON.stringify(transport.kind)},
-\t\tpluginId: ${JSON.stringify(transport.pluginId)},
-\t\tlocalId: ${JSON.stringify(transport.localId)},
-\t\tlabel: ${JSON.stringify(transport.label)},
-\t\tretryDelays: Object.freeze(${JSON.stringify(transport.retryDelays)}),
-\t\trequiredEnvVars: Object.freeze(${JSON.stringify(transport.requiredEnvVars)}),
-\t\trequiredCapability: 'send:transport',
-\t}),`
-		)
-		.join('\n');
-	const catalog = entries ? `Object.freeze([\n${entries}\n])` : 'Object.freeze([])';
-	return `${GENERATED_HEADER}export const BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG = ${catalog};\n`;
-}
-
-function renderSendTransportModules(plugins: readonly BundledPlugin[]): string {
-	const transports = sendTransportsFor(plugins);
-	const imports = transports
-		.map(
-			(transport, index) =>
-				`import bundledPluginSendTransport${index} from ${JSON.stringify(`${transport.packageName}${transport.exportPath.slice(1)}`)};`
-		)
-		.join('\n');
-	const entries = transports
-		.map(
-			(transport, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(transport.kind)}, pluginId: ${JSON.stringify(transport.pluginId)}, module: bundledPluginSendTransport${index} }),`
-		)
-		.join('\n');
-	const modules = entries ? `Object.freeze([\n${entries}\n])` : 'Object.freeze([])';
-	return `'use node';\n\n${GENERATED_HEADER}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES = ${modules};\n`;
 }
 
 function renderConvexComponents(plugins: readonly BundledPlugin[]): string {

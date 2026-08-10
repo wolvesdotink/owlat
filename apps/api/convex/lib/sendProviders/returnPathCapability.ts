@@ -31,6 +31,7 @@
  * Pure module: no db, no clock, no env. Every input is a parameter.
  */
 
+import { hasProviderFeedbackOf, supportsCustomReturnPathOf } from '@owlat/shared';
 import {
 	sendProviderCatalogEntry,
 	type DeclaredCustomReturnPathSupport,
@@ -96,7 +97,18 @@ export function resolveReturnPathCapability(
 	return resolveReturnPathCapabilityForEntry(sendProviderCatalogEntry(kind), probe, now);
 }
 
-/** The two catalog fields the resolution actually depends on. */
+/**
+ * The two catalog fields the resolution actually depends on.
+ *
+ * A PARTIAL declaration on purpose — see {@link resolveReturnPathCapabilityForEntry}
+ * — and both fields are read through `@owlat/shared`'s `…Of` accessors, which
+ * accept exactly the field they read for this reason. Neither default is spelled
+ * here: `supportsCustomReturnPath` absent ⇒ `no` and `hasProviderFeedback` absent
+ * ⇒ `false` are the catalog's rules, stated once in
+ * `packages/shared/src/sendProviderCapabilities.ts`, so tightening one there
+ * moves this fold with it instead of leaving the sweep grading a plugin-
+ * contributed transport by the old reading.
+ */
 export type ReturnPathCatalogDeclaration = Readonly<{
 	supportsCustomReturnPath?: DeclaredCustomReturnPathSupport;
 	hasProviderFeedback?: boolean;
@@ -116,8 +128,8 @@ export function resolveReturnPathCapabilityForEntry(
 	probe: ReturnPathProbeState | null,
 	now: number
 ): ResolvedReturnPathCapability {
-	const declared: DeclaredCustomReturnPathSupport = entry.supportsCustomReturnPath ?? 'no';
-	const hasProviderFeedback = entry.hasProviderFeedback ?? false;
+	const declared: DeclaredCustomReturnPathSupport = supportsCustomReturnPathOf(entry);
+	const hasProviderFeedback = hasProviderFeedbackOf(entry);
 
 	if (declared === 'yes') {
 		return grade('supported', declared, probe?.status ?? 'never_probed', 'declared_supported', {

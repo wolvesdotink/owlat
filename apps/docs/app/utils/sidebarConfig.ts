@@ -246,6 +246,10 @@ export const sidebarConfig: SidebarGroup[] = [
 				to: '/developer/plugin-operations',
 			},
 			{ label: 'Plugins CLI', to: '/developer/plugin-cli' },
+			{
+				label: 'Authoring a Send Provider',
+				to: '/developer/plugin-send-providers',
+			},
 			{ label: 'Connected Apps', to: '/developer/plugin-connected-apps' },
 			{
 				label: 'Sandboxed Jobs',

@@ -23,7 +23,8 @@
 
 import type Redis from 'ioredis';
 import type { Queue, ReservedJob } from 'groupmq';
-import type { DestinationProviderKey, EmailJob } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';

@@ -49,6 +49,11 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+# The send-provider scaffold's conformance gate materialises the generator's
+# output here (rather than under /tmp) so the emitted package resolves `vitest`
+# and runs its own suite the way an author's would. The suite removes it; this
+# keeps an interrupted run from dirtying the tree.
+/examples/conformance/.scaffolded/
 .auth/
 playwright-report/
 test-results/

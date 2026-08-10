@@ -14,5 +14,16 @@ export const SES_RELAY_PROOF_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
  * outage headroom: a multi-day Mandrill API outage does not strand a live relay,
  * a week-long one does (fail closed, which is the right direction for "may we
  * hand this From domain to a third party?").
+ *
+ * MANDRILL IS NO LONGER THE ONLY READER. Every bundled plugin relay's proof is
+ * bounded by this value too: `PLUGIN_RELAY_PROOF_MAX_AGE_MS` in
+ * `apps/api/convex/domains/providers/plugin/state.ts` is DEFINED as this constant,
+ * because that tier's evidence is renewed exactly the same way (one HTTP call a
+ * daily sweep repeats) and so has exactly the same argument behind its bound.
+ * Shortening this after a Mandrill incident therefore also shortens how long a
+ * third-party plugin relay may be handed a customer's From domain — which is
+ * usually the right direction, but it is a decision about both tiers rather than
+ * one. The alias is pinned by that file's own suite, so changing it deliberately
+ * is one edit and changing it accidentally is a test failure.
  */
 export const MANDRILL_RELAY_PROOF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

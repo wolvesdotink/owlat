@@ -33,8 +33,10 @@
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
         "@owlat/mail-message": "workspace:*",
+        "@owlat/mta-protocol": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
+        "@owlat/provider-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
         "ai": "catalog:ai",
@@ -182,6 +184,7 @@
         "@owlat/email-scanner": "workspace:*",
         "@owlat/mail-auth": "workspace:*",
         "@owlat/mail-message": "workspace:*",
+        "@owlat/mta-protocol": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
         "@owlat/smtp-listener": "workspace:*",
@@ -288,6 +291,7 @@
       "name": "@owlat/plugin-conformance",
       "version": "0.1.0",
       "devDependencies": {
+        "@owlat/api": "workspace:*",
         "@owlat/code-worker": "workspace:*",
         "@owlat/example-deliverability-lab": "workspace:*",
         "@owlat/example-escalation-guard": "workspace:*",
@@ -296,6 +300,7 @@
         "@owlat/plugin-codegen": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
+        "@owlat/shared": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "typescript": "catalog:",
@@ -469,6 +474,19 @@
         "vitest": "catalog:",
       },
     },
+    "packages/mta-protocol": {
+      "name": "@owlat/mta-protocol",
+      "version": "0.4.1",
+      "dependencies": {
+        "@owlat/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/plugin-cli": {
       "name": "@owlat/plugin-cli",
       "version": "0.4.1",
@@ -522,9 +540,22 @@
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
       "version": "0.4.1",
+      "dependencies": {
+        "@owlat/provider-kit": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
+        "tsup": "^8.5.1",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/provider-kit": {
+      "name": "@owlat/provider-kit",
+      "version": "0.4.1",
+      "devDependencies": {
+        "@types/node": "catalog:",
         "tsup": "^8.5.1",
         "typescript": "catalog:",
         "vitest": "catalog:",
@@ -1172,6 +1203,8 @@
 
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
 
+    "@owlat/mta-protocol": ["@owlat/mta-protocol@workspace:packages/mta-protocol"],
+
     "@owlat/plugin-cli": ["@owlat/plugin-cli@workspace:packages/plugin-cli"],
 
     "@owlat/plugin-codegen": ["@owlat/plugin-codegen@workspace:packages/plugin-codegen"],
@@ -1181,6 +1214,8 @@
     "@owlat/plugin-host": ["@owlat/plugin-host@workspace:packages/plugin-host"],
 
     "@owlat/plugin-kit": ["@owlat/plugin-kit@workspace:packages/plugin-kit"],
+
+    "@owlat/provider-kit": ["@owlat/provider-kit@workspace:packages/provider-kit"],
 
     "@owlat/sdk-js": ["@owlat/sdk-js@workspace:packages/sdk-js"],
 

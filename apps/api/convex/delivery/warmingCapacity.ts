@@ -123,7 +123,7 @@ function sumRemainingToday(campaignIps: readonly WarmingIp[]): number {
  * them placeable on the warming schedule. Index 0 (today's remainder) is summed
  * per-IP over that SAME list rather than taken from `warmingState.totalDailyCap`
  * / `totalSentToday` — those roll up every campaign-pool IP regardless of
- * `active` (`packages/shared/src/ipReadinessSync.ts` has no `active` test), so a
+ * `active` (`packages/mta-protocol/src/ipReputation.ts` has no `active` test), so a
  * deactivated campaign IP would inflate index 0 alone and the two halves of one
  * array would count different IPs. If any IP in the population cannot be placed
  * on the schedule (a non-finite `currentDay`), the projection would silently

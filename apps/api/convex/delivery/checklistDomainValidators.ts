@@ -7,6 +7,7 @@ import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
 import { fetchMtaStsPolicyBody, resolveMtaStsTxt } from '../domains/mtaStsVerify';
 import { resolveSesMailFrom } from '../domains/providers/ses/mailFrom';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 import { getOptional } from '../lib/env';
 import { assertMarketingOneClickSigningContract } from './marketingCompliance';
 import { detectDomainDnsProvider, dnsProviderObservation } from './checklistProviderDetection';
@@ -204,7 +205,7 @@ export async function observeDomainCheck(
 			const mailFromRecords = domain.dnsRecords.mailFrom ?? [];
 			const configuredReturnPath = domain.returnPathHost?.toLowerCase().replace(/\.$/, '');
 			const activeReturnPath =
-				domain.providerType === 'mta'
+				domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND
 					? (configuredReturnPath ??
 						getOptional('MTA_RETURN_PATH_DOMAIN')?.trim().toLowerCase().replace(/\.$/, ''))
 					: domain.providerType === 'ses'

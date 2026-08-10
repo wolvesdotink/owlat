@@ -15,18 +15,25 @@ import {
 	selectNextDeliverabilityItem,
 	type DeliverabilityChecklistItem,
 	type DeliverabilitySetupValue,
-	type DeliverabilityValidatorEvidence,
 } from '@owlat/shared';
 import { adminQuery } from '../lib/authedFunctions';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { v } from 'convex/values';
 import { requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	evidenceDto,
+	loopbackResult,
+	providerFromEvidence,
+	scopedItemKey,
+	summaryFor,
+} from './checklistCenterView';
 import { deliverabilityCheckIdValidator, deliverabilityTargetKey } from './checklistEvidence';
-import { guidanceForCheck, type DnsProvider, type VpsProvider } from './checklistGuidance';
+import { guidanceForCheck } from './checklistGuidance';
 import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
-import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
+import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -80,11 +87,8 @@ async function loadVerificationStatesForTarget(
 	return completeRowsOrThrow(rows, itemLimit, `verification states for ${targetKey}`);
 }
 
-async function loadRelayIdentities(
-	ctx: QueryCtx,
-	domain: Doc<'domains'> | null
-): Promise<Doc<'sendingDomainSesIdentities'>[]> {
-	const domains = domain ? [domain] : await loadCenterDomains(ctx);
+async function loadRelayIdentities(ctx: QueryCtx): Promise<Doc<'sendingDomainSesIdentities'>[]> {
+	const domains = await loadCenterDomains(ctx);
 	const identities = await Promise.all(
 		domains.map(async (candidate) => {
 			const rows = await ctx.db
@@ -117,7 +121,10 @@ export function loopbackDomains(
 			)
 			.every((item) => item.status === 'pass');
 		const eligible =
-			infrastructureHealthy && domain.providerType === 'mta' && deploymentReady && domainReady;
+			infrastructureHealthy &&
+			domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND &&
+			deploymentReady &&
+			domainReady;
 		return {
 			id: domain._id,
 			domain: domain.domain,
@@ -125,7 +132,7 @@ export function loopbackDomains(
 			...(!eligible
 				? {
 						blockedReason:
-							!infrastructureHealthy || domain.providerType !== 'mta'
+							!infrastructureHealthy || domain.providerType !== OWN_SENDING_DOMAIN_PROVIDER_KIND
 								? 'This proof requires a healthy built-in MTA domain.'
 								: !deploymentReady
 									? 'Verify every blocking server identity and delivery-path check first.'
@@ -134,88 +141,6 @@ export function loopbackDomains(
 				: {}),
 		};
 	});
-}
-
-function loopbackResult(row: Doc<'deliverabilityLoopbackAttempts'>) {
-	return {
-		status: row.status,
-		startedAt: row.startedAt,
-		...(row.completedAt ? { completedAt: row.completedAt } : {}),
-		domain: row.domain,
-		...(row.spf ? { spf: row.spf } : {}),
-		...(row.dkim ? { dkim: row.dkim } : {}),
-		...(row.dmarc ? { dmarc: row.dmarc } : {}),
-		...(row.dkimSelector ? { dkimSelector: row.dkimSelector } : {}),
-		...(row.tlsVersion ? { tlsVersion: row.tlsVersion } : {}),
-		...(row.sendingIp ? { sendingIp: row.sendingIp } : {}),
-		...(row.ptr ? { ptr: row.ptr } : {}),
-		...(row.detail ? { detail: row.detail } : {}),
-	};
-}
-
-function providerFromEvidence(values: readonly string[]): {
-	vps: VpsProvider | null;
-	dns: DnsProvider | null;
-} {
-	let vps: VpsProvider | null = null;
-	let dns: DnsProvider | null = null;
-	for (const value of values) {
-		if (
-			value === 'vps-provider=hetzner' ||
-			value === 'vps-provider=digitalocean' ||
-			value === 'vps-provider=ovh'
-		) {
-			vps = value.slice('vps-provider='.length) as VpsProvider;
-		}
-		if (
-			value === 'dns-provider=cloudflare' ||
-			value === 'dns-provider=hetzner_dns' ||
-			value === 'dns-provider=route53'
-		) {
-			dns = value.slice('dns-provider='.length) as DnsProvider;
-		}
-	}
-	return { vps, dns };
-}
-
-function compatibleObservedValues(row: Doc<'deliverabilityEvidence'>): string[] {
-	return row.observedValuesVersion === undefined ||
-		row.observedValuesVersion === CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION
-		? row.observedValues
-		: [];
-}
-
-function evidenceDto(
-	row: Doc<'deliverabilityEvidence'> | undefined
-): DeliverabilityValidatorEvidence | null {
-	if (!row) return null;
-	return {
-		provenance: 'validator',
-		validator: row.validator,
-		status: row.status,
-		observedAt: row.observedAt,
-		observedValues: compatibleObservedValues(row),
-		diagnostic: row.diagnostic,
-		attemptId: row.attemptId,
-	};
-}
-
-function scopedItemKey(targetKey: string, itemId: string): string {
-	return `${targetKey.length}:${targetKey}|${itemId}`;
-}
-
-function summaryFor(grade: 'ready' | 'needs_attention' | 'at_risk', recommended: number): string {
-	if (grade === 'ready') {
-		return recommended === 0
-			? 'Your mail setup is verified and ready.'
-			: `Your mail is deliverable. ${recommended} recommended improvement${
-					recommended === 1 ? '' : 's'
-				} available.`;
-	}
-	if (grade === 'at_risk') {
-		return 'Your mail is at risk. Fix the blocking item below before sending.';
-	}
-	return 'Your mail needs attention. Follow the next verified setup step below.';
 }
 
 async function buildCenter(ctx: QueryCtx) {
@@ -459,20 +384,22 @@ export const getVerificationContext = internalQuery({
 		const needsRelay = dependencies.includes('relay');
 		const needsTracking = dependencies.includes('tracking');
 		const needsPostmaster = dependencies.includes('postmaster');
-		const [settings, warming, routes, relayIdentities, tracking, postmaster] = await Promise.all([
-			needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
-			needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
-			needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
-			needsRelay ? loadRelayIdentities(ctx, null) : Promise.resolve([]),
-			needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),
-			domain && needsPostmaster
-				? ctx.db
-						.query('googlePostmasterStats')
-						.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain))
-						.order('desc')
-						.first()
-				: Promise.resolve(null),
-		]);
+		const [settings, warming, routes, relayIdentities, tracking, postmaster, readyRelayKinds] =
+			await Promise.all([
+				needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
+				needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
+				needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
+				needsRelay ? loadRelayIdentities(ctx) : Promise.resolve([]),
+				needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),
+				domain && needsPostmaster
+					? ctx.db
+							.query('googlePostmasterStats')
+							.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain))
+							.order('desc')
+							.first()
+					: Promise.resolve(null),
+				needsRelay ? readyFallbackRelayKinds(ctx) : Promise.resolve([]),
+			]);
 		return {
 			domain,
 			settings,
@@ -481,6 +408,12 @@ export const getVerificationContext = internalQuery({
 			relayIdentities,
 			tracking,
 			postmaster,
+			// THE READINESS HALF OF `deployment.relay`, resolved above because this
+			// is where a `ctx` exists — and asked of the module that owns "which
+			// relays is the fallback configured to use" rather than re-derived from
+			// the `routes` above, which are read under a different bound for a
+			// different question. See `lib/sendProviders/fallbackRelays.ts`.
+			readyRelayKinds,
 		};
 	},
 });

@@ -1,8 +1,9 @@
 /**
  * Mandrill's answers to the two questions asked ABOUT an identity rather than
  * of Mandrill: "may we hand this From domain to the relay right now?" (the
- * enqueue-path proof, D6) and "describe this domain's second arm" (the
- * dual-transport alignment pre-flight, P3.1).
+ * enqueue-path proof, Mandrill plan D6) and "describe this domain's second
+ * arm" (the dual-transport alignment pre-flight, Mandrill plan P3.1). Plan
+ * numbers in this folder are the Mandrill plan's — qualified in `../index.ts`.
  *
  * Both read the same row and both are pure reads, which is why they live
  * together and away from `./index.ts`: everything there is an HTTP call made
@@ -15,62 +16,34 @@
  */
 
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { isFreshRelayProof, loadRelayIdentityForDomain } from '../relayIdentityProof';
 import { MANDRILL_DKIM_SELECTOR, MANDRILL_SPF_MECHANISM } from './records';
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
 import type { Doc } from '../../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../../_generated/server';
 
 /**
- * The identity row for one (domain, Mandrill), or null.
- *
- * ONE indexed point read on `by_domain_provider`. Not org-leading, and that is
- * a property of the index rather than of this call — see the rationale on the
- * index itself in `schema/relayIdentities.ts`: the enqueue transaction has no
- * session, and resolving the deployment's singleton org would cost the
- * `ctx.runQuery` this path bans.
- */
-async function loadMandrillIdentity(
-	ctx: QueryCtx | MutationCtx,
-	domainName: string
-): Promise<Doc<'sendingDomainRelayIdentities'> | null> {
-	return await ctx.db
-		.query('sendingDomainRelayIdentities')
-		.withIndex('by_domain_provider', (q) =>
-			q.eq('domain', domainName.toLowerCase()).eq('providerKind', 'mandrill')
-		)
-		.first();
-}
-
-/**
  * True iff `domainName` carries a fresh, complete Mandrill proof: an identity
  * Mandrill itself reports as verified, with BOTH published records valid, read
  * no longer ago than {@link MANDRILL_RELAY_PROOF_MAX_AGE_MS}.
  *
- * `status === 'verified'` already implies the two record verdicts (see
- * `identity.ts`), and they are re-asserted here anyway: the status is a DERIVED
- * column and this is the read that licenses handing a customer's From domain to
- * a third party. A row patched by a future writer that forgot one of them
- * should fail closed, not relay.
+ * THE RULE IS `isFreshRelayProof`'S, not this file's, and deliberately: the
+ * bundled plugin tier writes rows to the same table and is read back by the same
+ * question, so a revision to what counts as proven that landed in only one of
+ * them would license a From domain at one relay that the other would refuse.
+ * What Mandrill keeps is the BOUND — see the constant for why seven days rather
+ * than SES's thirty.
  *
- * The freshness bound is deliberately measured from `lastCheckedAt`, which the
- * writer advances ONLY on a call that produced a verdict — a Mandrill outage
- * cannot extend the life of a proof by being unable to re-confirm it.
+ * The read is ONE indexed point read on `by_domain_provider`, which is what lets
+ * this be asked from inside the enqueue transaction.
  */
 export async function mandrillRelayDomainVerified(
 	ctx: QueryCtx | MutationCtx,
 	domainName: string,
 	now: number
 ): Promise<boolean> {
-	const identity = await loadMandrillIdentity(ctx, domainName);
-	if (!identity) return false;
-	const age = now - identity.lastCheckedAt;
-	return (
-		identity.status === 'verified' &&
-		identity.spf?.isValid === true &&
-		identity.dkim?.isValid === true &&
-		age >= 0 &&
-		age <= MANDRILL_RELAY_PROOF_MAX_AGE_MS
-	);
+	const identity = await loadRelayIdentityForDomain(ctx, 'mandrill', domainName);
+	return identity !== null && isFreshRelayProof(identity, now, MANDRILL_RELAY_PROOF_MAX_AGE_MS);
 }
 
 /**

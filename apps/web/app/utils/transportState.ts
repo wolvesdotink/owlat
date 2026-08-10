@@ -1,4 +1,5 @@
 import { capitalize, type DeliveryProviderKind, isDeliveryProviderKind } from '@owlat/shared';
+import { coreSendProviderCatalogEntry } from '@owlat/shared/sendProviderCatalog';
 import { parsePluginNamespacedKind } from '@owlat/plugin-kit';
 import type { HealthTone } from '~/utils/healthTone';
 
@@ -32,16 +33,42 @@ export interface TransportSummaryInput {
 }
 
 /**
- * Human name for each transport kind — what the operator picked, in their words.
- * Exported so the per-transport DNS guidance names each kind the same way.
+ * THE DELIVERY HUB'S NAME for a transport kind — the catalog's label, unless
+ * this surface has always worded it differently.
+ *
+ * OVERRIDES, NOT A TABLE OF KINDS (the seams plan's D1/A3). It used to be an
+ * exhaustive `Record<DeliveryProviderKind, string>`, which meant two things: a
+ * sixth kind declared in the catalog was a COMPILE ERROR in a file outside its
+ * bundle — precisely what "adding a provider touches nothing else" forbids —
+ * and the two rows below were a second declaration of a name the catalog
+ * already carries.
+ *
+ * The two that remain are this surface's own wording, kept because P1.2 is a
+ * rendering refactor and renaming a card on a live dashboard is a user-visible
+ * change: the hub says "Owlat mail server" where the catalog says "Owlat MTA",
+ * and it drops Mandrill's parenthetical. Whether to unify that copy is a
+ * wording decision for the plan owner (recorded in
+ * `scripts/provider-identity-allowlist.txt`), not something this piece decides
+ * silently. `ses`, `resend` and `smtp` needed no row: they already agreed with
+ * the catalog, and a new kind simply gets its label.
  */
-export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
+const TRANSPORT_LABEL_OVERRIDE: Partial<Record<DeliveryProviderKind, string>> = {
 	mta: 'Owlat mail server',
-	ses: 'Amazon SES',
-	resend: 'Resend',
-	smtp: 'SMTP relay',
 	mandrill: 'Mailchimp Transactional',
 };
+
+/**
+ * The name to print for a declared transport kind. One declaration behind it —
+ * the catalog — plus the overrides above.
+ *
+ * NOT called `transportLabel`: `~/utils/providerRouting` already exports that
+ * name for the id-against-a-catalog lookup, both are auto-imported, and
+ * whichever lost would be silently substituted for the other in every template.
+ */
+export function transportKindLabel(kind: string): string {
+	const override = isDeliveryProviderKind(kind) ? TRANSPORT_LABEL_OVERRIDE[kind] : undefined;
+	return override ?? coreSendProviderCatalogEntry(kind)?.label ?? kind;
+}
 
 /**
  * The operator's name for a stored transport id, wherever prose has to NAME the
@@ -68,13 +95,20 @@ export const TRANSPORT_LABEL: Record<DeliveryProviderKind, string> = {
  * whichever lost would be silently substituted for the other in every template.
  */
 export function transportIdLabel(kind: string): string {
-	if (isDeliveryProviderKind(kind)) return TRANSPORT_LABEL[kind];
+	if (isDeliveryProviderKind(kind)) return transportKindLabel(kind);
 	const plugin = parsePluginNamespacedKind(kind);
 	return plugin === undefined ? kind : capitalize(plugin.localId);
 }
 
-/** One-line description of how each transport delivers mail. */
-const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
+/**
+ * One-line description of how each transport delivers mail — per-vendor PROSE,
+ * which the catalog states it deliberately does not carry.
+ *
+ * Optional for the same reason the labels above are: a kind with no sentence of
+ * its own gets {@link genericTransportDescription} rather than a blank card or a
+ * build failure in a file its bundle has no business touching.
+ */
+const TRANSPORT_DESCRIPTION: Partial<Record<DeliveryProviderKind, string>> = {
 	mta: 'Owlat’s built-in mail server sends your mail directly and manages IP warm-up.',
 	ses: 'Mail goes out through your Amazon SES account.',
 	resend: 'Mail goes out through your Resend account.',
@@ -82,6 +116,15 @@ const TRANSPORT_DESCRIPTION: Record<DeliveryProviderKind, string> = {
 	mandrill:
 		'Mail goes out through your Mailchimp Transactional (Mandrill) account, so you keep the reputation you arrived with.',
 };
+
+/**
+ * What a transport with no sentence of its own says — the same sentence an
+ * unrecognized-but-labelled transport already got, because it answers the same
+ * question with the same confidence.
+ */
+function genericTransportDescription(label: string): string {
+	return `Mail goes out through ${label}. Check that transport’s authentication setup before sending.`;
+}
 
 export type ConfiguredTone = 'success' | 'error';
 
@@ -128,14 +171,14 @@ export function deriveTransportDisplay(summary: TransportSummaryInput): Transpor
 	const label = summary.providerLabel
 		? summary.providerLabel
 		: known
-			? TRANSPORT_LABEL[kind]
+			? transportKindLabel(kind)
 			: kind
 				? `Unrecognized transport (${kind})`
 				: 'No transport selected';
 	const description = known
-		? TRANSPORT_DESCRIPTION[kind]
+		? (TRANSPORT_DESCRIPTION[kind] ?? genericTransportDescription(transportKindLabel(kind)))
 		: kind && summary.providerLabel
-			? `Mail goes out through ${summary.providerLabel}. Check that transport’s authentication setup before sending.`
+			? genericTransportDescription(summary.providerLabel)
 			: kind
 				? 'The EMAIL_PROVIDER value isn’t one Owlat can send through. Choose a supported transport.'
 				: 'Pick how this instance sends mail to start delivering campaigns and replies.';

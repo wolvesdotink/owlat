@@ -1,31 +1,62 @@
 /**
  * Sending domain provider adapter (module) — registry + dispatch.
  *
- * Adding a third sending provider is a one-folder change:
+ * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
+ * gates, `D7` = one generic relay-identity table + this registry). The seams
+ * plan that owns the branch numbers those differently — its D6 is the webhook
+ * registry and its D7 is the `@owlat/mta-protocol` package — so the
+ * qualification is written out once here rather than left to the reader. This
+ * registry is the seams plan's P0.3.
+ *
+ * Adding a sending provider is a one-folder change:
  *   1. Create `convex/domains/providers/<kind>/index.ts` with the adapter.
  *   2. Add the kind and its identity payload to `SendingDomainIdentityRegistry`
  *      in `./types.ts`. Rows go in the generic, org-scoped
- *      `sendingDomainRelayIdentities` table (D7) — the per-provider sibling
- *      pattern stopped at `sendingDomainMtaIdentities` /
- *      `sendingDomainSesIdentities`, which stay frozen.
+ *      `sendingDomainRelayIdentities` table (Mandrill D7) — the per-provider
+ *      sibling pattern stopped at `sendingDomainMtaIdentities` /
+ *      `sendingDomainSesIdentities`, which stay frozen and keep the MTA's and
+ *      SES's rows.
  *   3. Add one entry to `SENDING_DOMAIN_PROVIDERS` below.
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
- * The **Sending domain lifecycle (module)** never branches on `providerType`.
  *
- * Per ADR-0018, extended by plan D6/D7.
+ * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
+ * paths now walk this registry (the seams plan's P0.4 routed the forward one
+ * here), so a registered kind is reached end to end for identities. What
+ * `domains/lifecycle.ts` still carries of its own is the RETURN-PATH family —
+ * `setReturnPathHost` and its post-registration reconcile branch on
+ * `providerType` to decide which bundle of `mailFrom` records to publish and
+ * which reflection action to schedule, so a newly registered kind silently gets
+ * neither. That is a separate capability from the identity seams below and it
+ * has no home on this interface yet.
+ *
+ * Per ADR-0018, extended by Mandrill plan D6/D7.
  */
 
-import { mandrillProvider } from './mandrill';
-import { mtaProvider } from './mta';
-import { sesProvider } from './ses';
+import {
+	PRIMARY_DOMAIN_IDENTITY_PROVIDERS,
+	RELAY_DOMAIN_IDENTITY_PROVIDERS,
+} from '../../providers/domainIdentity';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
-import type { SendingDomainProviderKind, SendingDomainProviderModule } from './types';
+import type { RelayIdentityProviderModule } from './relayIdentityTypes';
+import type {
+	RelayProvingProviderModule,
+	SendingDomainProviderKind,
+	SendingDomainProviderModule,
+} from './types';
 
+export type { RelayIdentityProviderModule } from './relayIdentityTypes';
+export type {
+	RelayDnsRecordView,
+	RelayDomainIdentityFacts,
+	RelayIdentityViewStatus,
+} from './relayIdentityView';
+export { describeSharedRelayIdentity } from './relayIdentityView';
 export type {
 	SendingDomainProviderKind,
 	SendingDomainIdentityRegistry,
 	SendingDomainProviderModule,
+	RelayProvingProviderModule,
 	ProviderIdentity,
 	ProviderIdentityFor,
 	MtaIdentity,
@@ -33,6 +64,7 @@ export type {
 	MandrillIdentity,
 	RelayIdentityStatus,
 	ProviderCheckResult,
+	ProviderVerificationStatusFields,
 } from './types';
 
 // Registry — keyed by `domains.providerType`. The lifecycle calls
@@ -40,11 +72,53 @@ export type {
 //
 // We use the `unknown` round-trip to satisfy TypeScript while keeping the
 // generic parameter narrowed at the call site of `providerFor`.
-export const SENDING_DOMAIN_PROVIDERS = {
-	mta: mtaProvider,
-	ses: sesProvider,
-	mandrill: mandrillProvider,
-} as const;
+export const SENDING_DOMAIN_PROVIDERS = PRIMARY_DOMAIN_IDENTITY_PROVIDERS;
+
+/**
+ * OUR OWN INFRASTRUCTURE, in the domain-provider type domain — the one kind
+ * whose sending domains we host ourselves, and therefore the one kind a relay
+ * identity may COEXIST on (a domain already hosted at some provider owns its
+ * identity through the ordinary lifecycle).
+ *
+ * D3 sanctions this identity check; it does not sanction restating it. Read
+ * from the adapter's own `kind` so the value has exactly one declaration —
+ * `domains/providers/mta/index.ts` — rather than a literal at each site that
+ * asks the question. `OWN_ARM_TRANSPORT_KIND` (lib/sendProviders/strategies) is
+ * the twin of this constant in the SEND-TRANSPORT type domain: same string,
+ * different union, each declared once.
+ */
+export const OWN_SENDING_DOMAIN_PROVIDER_KIND = SENDING_DOMAIN_PROVIDERS.mta.kind;
+
+/**
+ * Compile-time pin: the two names for our own infrastructure are ONE STRING.
+ *
+ * They are separately derived — this one from `mtaProvider.kind`, its twin from
+ * a literal in `strategies/adaptive_mix` — and that independence is the point
+ * of the type-level assertion below rather than a comment. Without it, renaming
+ * `mtaProvider.kind` (or introducing a second own-infrastructure kind) leaves
+ * `setRoute` still accepting a fallback route while the relay-identity drain
+ * beside it filters on the OTHER constant and matches zero domains: no relay
+ * identity is written, every pre-existing domain then fails `relayDomainVerified`
+ * and the fallback refuses to relay it, and the only symptom is a runtime
+ * refusal on a real send.
+ *
+ * A `typeof import(...)` in type position, so nothing at runtime imports the
+ * strategy barrel from the domain-provider registry — the constraint is paid
+ * for entirely at build time. Asserted in BOTH directions: each literal type
+ * must be assignable to the other, so widening either declaration fails here
+ * too. Its runtime twin is one line in `./__tests__/registry.test.ts`.
+ */
+type OwnArmTransportKind =
+	typeof import('../../lib/sendProviders/strategies/adaptive_mix').OWN_ARM_TRANSPORT_KIND;
+type AssertOwnKindsAgree<
+	_A extends OwnArmTransportKind,
+	_B extends OwnSendingDomainProviderKind,
+> = true;
+type OwnSendingDomainProviderKind = typeof OWN_SENDING_DOMAIN_PROVIDER_KIND;
+export type _OwnInfrastructureKindsAgree = AssertOwnKindsAgree<
+	OwnSendingDomainProviderKind,
+	OwnArmTransportKind
+>;
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`, so a
@@ -54,7 +128,7 @@ const _typecheck: { [K in SendingDomainProviderKind]: SendingDomainProviderModul
 void _typecheck;
 
 /**
- * Compile-time completeness guard (D6/D7): every send-transport kind whose
+ * Compile-time completeness guard (Mandrill D6/D7): every send-transport kind whose
  * catalog entry declares `domainVerification: 'api'` MUST have a registered
  * domain-identity provider here.
  *
@@ -68,6 +142,21 @@ void _typecheck;
  * One-directional on purpose: a registered provider whose kind declares `none`
  * (our MTA, whose domains are verified on the ordinary DNS path and which is
  * never a relay) is entirely legitimate.
+ *
+ * CORE KINDS ONLY. `ApiVerifiedSendProviderKind` is an `Extract` over the CORE
+ * catalog literal, and `domainVerification` is optional on the shared entry
+ * interface precisely so generated plugin entries can omit it — so a bundled
+ * plugin transport declaring `api` compiles clean through this guard and through
+ * `_relayProofTypecheck` below, and it always will: its kinds are decided by
+ * `plugins.config.ts` at composition time, which no literal type can see.
+ *
+ * THE PLUGIN TIER KEEPS THE SAME PROMISE BY CONSTRUCTION INSTEAD (the seams
+ * plan's P3.2). Its `domainVerification: 'api'` is DERIVED from whether the
+ * manifest contributed a `domainIdentity` module, and that same declaration is
+ * what puts the kind in {@link relayIdentityProviderFor} below — so a plugin
+ * cannot declare the promise without registering the code that keeps it, which is
+ * the property this mapped type buys for core kinds. The runtime walk over the
+ * COMPOSED catalog lives in `./__tests__/pluginDomainIdentity.test.ts`.
  */
 type ApiVerifiedKindMissingProvider = Exclude<
 	ApiVerifiedSendProviderKind,
@@ -78,25 +167,138 @@ export type _ApiVerifiedKindsHaveDomainProviders =
 	AssertEveryApiVerifiedKindHasProvider<ApiVerifiedKindMissingProvider>;
 
 /**
+ * The second half of the same promise: a registered provider for an `api` kind
+ * must actually IMPLEMENT the relay seams, not merely occupy the key.
+ *
+ * The guard above proves the kind is in this registry. It cannot prove the
+ * adapter answers anything — `relayDomainVerified`, `ensureRelayIdentity` and
+ * `describeReferenceArm` are optional on the module interface, because absence
+ * is the honest answer for a `domainVerification: 'none'` kind (our own MTA is
+ * registered here and implements none of the three). So a new `api` kind could
+ * register an adapter with an empty relay surface, compile green, and fail
+ * silently in the three ways {@link RelayProvingProviderModule} spells out.
+ *
+ * This mapped type closes that: for exactly the kinds the CATALOG declares
+ * `api`, the registered module must be relay-proving. Intersecting with
+ * `SendingDomainProviderKind` is not a weakening — an `api` kind that is not
+ * registered at all is already the guard above, which names it more directly
+ * than a missing-property error would.
+ *
+ * Runtime twin: the capability table in `./__tests__/registry.test.ts`, which
+ * also walks bundled plugin kinds the literal types above cannot see.
+ */
+type RelayProvingKind = ApiVerifiedSendProviderKind & SendingDomainProviderKind;
+const _relayProofTypecheck: { [K in RelayProvingKind]: RelayProvingProviderModule<K> } =
+	SENDING_DOMAIN_PROVIDERS;
+void _relayProofTypecheck;
+
+/**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
  * `domains.providerType` is validated as a literal union before this is
  * called, so a throw here means a data-integrity bug (or a brand-new provider
  * landed without a registry entry).
+ *
+ * REGISTRATION IS `hasOwnProperty`, not truthiness, for the same reason
+ * {@link isSendingDomainProviderKind} below spells it that way: `providerType`
+ * reaches us as a plain string (the schema keeps it `v.optional(v.string())`
+ * for forward-compat), and a string like `constructor` or `__proto__` finds an
+ * INHERITED member on any object literal. A truthiness check hands that
+ * inherited value back as if it were an adapter, and the caller then fails on
+ * `adapter.registerDomain is not a function` — a confusing error, one call
+ * later, instead of the accurate one here.
  */
 export function providerFor<K extends SendingDomainProviderKind>(
 	kind: K
 ): SendingDomainProviderModule<K> {
-	const mod = SENDING_DOMAIN_PROVIDERS[kind];
-	if (!mod) {
+	if (!Object.prototype.hasOwnProperty.call(SENDING_DOMAIN_PROVIDERS, kind)) {
 		throw new Error(`Unknown sending domain provider: ${kind}`);
 	}
-	return mod as unknown as SendingDomainProviderModule<K>;
+	return SENDING_DOMAIN_PROVIDERS[kind] as unknown as SendingDomainProviderModule<K>;
+}
+
+/**
+ * THE RELAY-IDENTITY REGISTRY (the seams plan's P3.2) — the same registry, asked
+ * the smaller of its two questions, and composed with the bundled plugin tier.
+ *
+ * "Can this RELAY kind prove a sending domain?" is a different question from "is
+ * this a PRIMARY sending-domain provider kind?", and {@link
+ * RelayIdentityProviderModule} says at length why they must not be conflated. The
+ * short version: the primary union governs `domains.providerType`, whose adapter
+ * owns a domain's whole lifecycle, and it stays CLOSED to core kinds. The relay
+ * question is about a proof that coexists on a domain our own MTA hosts, and a
+ * bundled plugin transport can now answer it.
+ *
+ * CORE MEMBERSHIP IS STRUCTURAL, not a second list: an adapter joins iff it
+ * implements all three seams, which is exactly what the three callers used to
+ * check for themselves (`provider.relayDomainVerified ? … : false`). So the core
+ * half of this map is byte-for-byte the set those callers already reached, and
+ * our own MTA — registered above, implementing none of the three — is correctly
+ * absent from it. A HALF-IMPLEMENTED adapter throws instead of being dropped
+ * quietly; see {@link toRelayIdentityProvider} for why silence there is the
+ * dangerous direction.
+ *
+ * PLUGIN MEMBERSHIP IS THE CATALOG'S: one entry per bundled transport that
+ * declared a `domainIdentity`, which is the same declaration that derives its
+ * `domainVerification: 'api'`. A kind cannot be in one and not the other.
+ *
+ * A `Map`, so a prototype key (`constructor`, `__proto__`) resolves to nothing
+ * rather than to an inherited member being handed back as an adapter — the same
+ * reason `providerFor` above asks `hasOwnProperty`.
+ */
+/**
+ * The relay-identity provider for `kind`, or `undefined` when the kind cannot
+ * prove a domain.
+ *
+ * `undefined` IS A REAL ANSWER, not an error, and every caller reads it as the
+ * fail-closed one: the routing gate reports the domain unverifiable and refuses
+ * to relay it, the backfill provisions nothing, and the alignment pre-flight
+ * resolves `unknown` and holds the ramp. That is the honest posture for a
+ * transport with no identity API at all (`smtp`, `resend`), for our own MTA
+ * (never a fallback relay), and for a retired kind a stored route still names.
+ */
+export function relayIdentityProviderFor(
+	kind: string | undefined | null
+): RelayIdentityProviderModule | undefined {
+	return typeof kind === 'string' ? RELAY_DOMAIN_IDENTITY_PROVIDERS.get(kind) : undefined;
+}
+
+/**
+ * EVERY kind that can prove a sending domain — the same registry, enumerated
+ * rather than asked about one kind.
+ *
+ * The one caller is the relay-domain-identity READ
+ * (`providerRoutes.listRelayDomainIdentities`), and enumerating is the whole
+ * point of it: the surface that reports "which of my domains are ready at my
+ * relay?" has to answer for whichever kinds this deployment composed, not for a
+ * list of vendors written into a query. Before it did, the answer was
+ * per-vendor in three places — an SES-shaped query over the frozen sibling, a
+ * `providerKind === 'mandrill'` query over the shared table, and one Vue panel
+ * above each — and a bundled plugin relay wrote rows that NOTHING could render.
+ *
+ * Derived, so registering a kind extends the answer: a new core adapter that
+ * implements the three relay seams, or a bundled plugin that contributes a
+ * `domainIdentity`, is on the panel the day it composes, with the generic read
+ * of its row (`./relayIdentityView.ts`) as its floor and
+ * {@link RelayIdentityProviderModule.describeRelayIdentity} as its ceiling.
+ *
+ * Insertion order — core adapters, then the bundled plugin tier — because that
+ * is the order the surface lists a domain's relays in, and a Map's order is the
+ * one stable thing to hang it on.
+ */
+export function relayIdentityProviders(): readonly RelayIdentityProviderModule[] {
+	return [...RELAY_DOMAIN_IDENTITY_PROVIDERS.values()];
 }
 
 /**
  * Type guard: is the given string a recognized provider kind? Useful when
  * narrowing `domains.providerType` (typed as `v.optional(v.string())` in
  * the schema for forward-compat) before dispatching.
+ *
+ * PRIMARY PROVIDERS ONLY — this is the closed core union, and deliberately NOT
+ * the relay question ({@link relayIdentityProviderFor}). Widening it would make
+ * `EMAIL_PROVIDER=plugin.<id>.<local>` produce `domains` rows whose registration,
+ * DNS bundle, sibling identity and return-path handling all run through code this
+ * repository does not contain.
  *
  * Answers from the REGISTRY rather than from a restated literal list, so a
  * newly registered provider is recognized by the guard the moment it is
@@ -109,4 +311,35 @@ export function isSendingDomainProviderKind(
 	return (
 		typeof kind === 'string' && Object.prototype.hasOwnProperty.call(SENDING_DOMAIN_PROVIDERS, kind)
 	);
+}
+
+/**
+ * Is this domain row's PRIMARY provider our own infrastructure — INCLUDING the
+ * legacy rows that never recorded one?
+ *
+ * `domains.providerType` is `v.optional(v.string())` (schema/domains.ts), and a
+ * row written before the field existed carries `undefined` while being, in
+ * fact, an own-MTA domain: `devShortcuts/forceVerifyDomain.ts` has always
+ * written the own-MTA identity sibling for exactly `'mta' | undefined`, and it
+ * is the only place that spelling was ever stated.
+ *
+ * SO THIS IS THE READ-SIDE PREDICATE, and deliberately WIDER than a bare
+ * comparison against {@link OWN_SENDING_DOMAIN_PROVIDER_KIND}. The gates that
+ * REFRESH a coexisting relay identity (`domains/dnsVerification.ts`,
+ * `domains/sesRelayVerification.ts`) were spelled `providerType !== 'ses'`
+ * before the leak sweep, which admitted the undefined row; answering them with
+ * the bare constant would have quietly dropped it, leaving a legacy domain's
+ * relay proof to go stale with no operator action that clears it.
+ *
+ * The WRITE side is not this predicate and must not become it:
+ * `ensureRelayIdentities` (lib/sendProviders/fallbackRelays.ts) provisions
+ * identities for `providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND` only,
+ * which is what the shipped drain did (`providerRoutes.ts`, `!== 'mta'`
+ * → skip). Refreshing a proof a domain already carries is a repair; minting a
+ * new provider-side identity for a row whose provider was never recorded is a
+ * guess, and the two questions are allowed to differ. `undefined` reaching
+ * here at all is the artifact — new rows always record a kind.
+ */
+export function isOwnPrimarySendingDomain(providerType: string | undefined): boolean {
+	return providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND || providerType === undefined;
 }

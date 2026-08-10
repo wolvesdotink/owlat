@@ -5,8 +5,9 @@
  * Body:    { address, password, scope: 'imap' | 'smtp' }
  * Returns: { ok: true, mailboxId, appPasswordId, organizationId, userId } | { ok: false }
  *
- * Uses the same MTA_WEBHOOK_SECRET HMAC pattern as mtaWebhook so we don't
- * have to ship the Convex admin key to the MTA.
+ * Uses the same MTA_WEBHOOK_SECRET HMAC pattern as the MTA feedback adapter
+ * (`webhooks/adapters/mta.ts`) so we don't have to ship the Convex admin key
+ * to the MTA.
  */
 
 import { httpAction } from '../_generated/server';
@@ -29,7 +30,7 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	const rateIp = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` },
+		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` }
 	);
 	if (!rateOk) {
 		return new Response(JSON.stringify({ error: 'Rate limited' }), {

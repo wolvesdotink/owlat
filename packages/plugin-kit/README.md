@@ -86,3 +86,10 @@ defined while leaving `flag` optional for plugins that request no storage.
 
 The package follows the Owlat repository version while both remain pre-1.0. Its
 major version is the compatibility line for public plugin contracts.
+
+Because the version is the repository's, a change that widens a contract does
+**not** bump `package.json` on its own: the release command cuts the version for
+every package at once, and a piece-local bump would be the version drift that
+blocks it (ADR-0049). A pre-1.0 breaking change to a contract is recorded in the
+changelog and in the contract's own docblock, not by editing this package's
+version.

@@ -8,7 +8,13 @@ import {
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { hasProviderFeedbackFor } from '../lib/sendProviders/catalog';
+import {
+	acceptanceSemanticsFor,
+	hasProviderFeedbackFor,
+	messageIdSourceFor,
+	preassignsProviderMessageId,
+	takesCustodyOnAcceptance,
+} from '../lib/sendProviders/catalog';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
@@ -71,7 +77,12 @@ export type GovernedDispatchResult<TEnvelope> =
 			providerMessageId: string;
 			providerType: SendProviderKind;
 			sendLatencyMs: number;
-			/** MTA intake accepted the work; delivery remains queued until its webhook. */
+			/**
+			 * The transport took CUSTODY of the message rather than delivering it
+			 * (its catalog entry declares `acceptanceSemantics: 'accepted'`):
+			 * intake accepted the work and delivery remains queued until the
+			 * transport's own feedback terminalizes the Send.
+			 */
 			acceptedForDelivery?: true;
 	  }
 	| {
@@ -101,13 +112,14 @@ export type GovernedDispatchResult<TEnvelope> =
 	/**
 	 * ACCEPTANCE IS OPEN AND CANNOT BE RE-ASKED (plan D4).
 	 *
-	 * The MTA arm above reconciles by REPLAYING the attempt: its idempotency key
-	 * IS the MTA message id, so a repeat dispatch either finds the existing work
-	 * or creates it, and no recipient can be mailed twice. A relay that has no
-	 * idempotency surface — Mandrill's `send-raw` has none — offers no such
-	 * question. The lost response may sit on top of an ACCEPTED and DELIVERED
-	 * message, so this arm carries no envelope and no message id: there is
-	 * deliberately nothing here a caller could re-dispatch from.
+	 * The custody arm above (`acceptanceSemantics: 'accepted'`) reconciles by
+	 * REPLAYING the attempt: its idempotency key IS the transport's message id, so
+	 * a repeat dispatch either finds the existing work or creates it, and no
+	 * recipient can be mailed twice. A relay that has no idempotency surface —
+	 * Mandrill's `send-raw` has none — offers no such question. The lost response
+	 * may sit on top of an ACCEPTED and DELIVERED message, so this arm carries no
+	 * envelope and no message id: there is deliberately nothing here a caller
+	 * could re-dispatch from.
 	 *
 	 * What it asks the completion callback for is a PARK, not a retry: keep the
 	 * Send `queued` — the state that says "we do not know yet", which is the
@@ -254,13 +266,37 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	}
 
 	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
+	// A CAPABILITY, NOT A KIND (plan D2). Both facts below are declared by the
+	// transport's catalog entry, so a new provider kind never edits this file:
+	//   · does its provider message id exist before the send (ours, not theirs)?
+	//   · does a successful dispatch mean CUSTODY rather than delivery?
+	// Both halves are read the same way — the catalog's own predicate applied to
+	// the catalog's own declaration — so neither question is ever spelled as a
+	// bare comparison here, and a second consumer joins by calling the same pair.
+	const providerMessageIdIsPreassigned = preassignsProviderMessageId(
+		messageIdSourceFor(providerKind)
+	);
+	const transportTakesCustody = takesCustodyOnAcceptance(acceptanceSemanticsFor(providerKind));
+	// Only a transport whose message id we minted ourselves can have an identity
+	// bound BEFORE the network crossing — for anyone else the id does not exist
+	// until the response carries it. Binding early is what lets a webhook that
+	// races the send response still be attributed to this Send.
+	//
 	// A seed probe has no Send row to bind a provider identity to — binding is
 	// the Send lifecycle's job, and a probe deliberately has no lifecycle (D18).
-	if (providerKind === 'mta' && request.sendRef.kind !== 'seedProbe') {
+	if (providerMessageIdIsPreassigned && request.sendRef.kind !== 'seedProbe') {
 		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
 			send: request.sendRef,
 			providerMessageId: idempotencyKey,
 		});
+		// THE LAST MTA-NAMED STRING HERE, AND IT IS NAMED FOR THE MUTATION ABOVE,
+		// NOT FOR THE KIND: an operator who greps `bindMtaProviderIdentity` finds
+		// this throw and vice versa. It moves WITH that rename — item 2 of the
+		// PREREQUISITES note on `AcceptanceSemantics` in
+		// `packages/shared/src/sendProviderCatalogTypes.ts`, which is what a second kind declaring
+		// `messageIdSource: 'idempotency-key'` must do before it can reach this
+		// line at all. Renaming the string on its own would break that grep and
+		// still leave the mutation stamping the own arm's kind onto the Send.
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
 	const engagementScore = normalizeEngagementScore(request.engagementScore);
@@ -302,13 +338,13 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	if (dispatched.result.success) {
 		return {
 			success: true,
-			providerMessageId:
-				providerKind === 'mta' && dispatched.result.id !== idempotencyKey
-					? idempotencyKey
-					: dispatched.result.id,
+			// A pre-assigned id is authoritative over whatever the response
+			// carried: a deduplicated MTA intake answers a sentinel id, and
+			// recording that would orphan the Send from every later report.
+			providerMessageId: providerMessageIdIsPreassigned ? idempotencyKey : dispatched.result.id,
 			providerType: dispatched.providerType,
 			sendLatencyMs: dispatched.latencyMs,
-			...(providerKind === 'mta' ? { acceptedForDelivery: true as const } : {}),
+			...(transportTakesCustody ? { acceptedForDelivery: true as const } : {}),
 		};
 	}
 	if (
@@ -336,7 +372,11 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		};
 	}
 	if (dispatched.result.acceptanceUnknown) {
-		if (providerKind === 'mta') {
+		// RE-ASKABLE, BY DECLARATION. A transport that takes custody under an
+		// idempotency key we minted answers the same question twice without
+		// mailing anyone twice, so the ambiguity is resolved by replaying the
+		// attempt rather than by guessing (plan D4).
+		if (transportTakesCustody) {
 			return {
 				success: false,
 				acceptanceUnknown: true,

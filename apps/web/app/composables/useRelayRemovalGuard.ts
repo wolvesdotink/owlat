@@ -18,6 +18,7 @@
 
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import { api } from '@owlat/api';
+import { isOwnSendProviderKind } from '@owlat/shared';
 import {
 	relayRemovalConsequenceCopy,
 	type RelayRemovalConsequence,
@@ -120,7 +121,8 @@ export function useRelayRemovalGuard(resultingProvider: Readonly<Ref<string>>): 
 			// too kept this dialog closed on an env-configured relay, whose id the
 			// route table does not know.
 			return (
-				(resulting === 'mta' || NO_PROVIDER.has(resulting)) && relayRemoval.value?.kind === 'unsafe'
+				(isOwnSendProviderKind(resulting) || NO_PROVIDER.has(resulting)) &&
+				relayRemoval.value?.kind === 'unsafe'
 			);
 		}),
 		removalConsequence: localConsequence,

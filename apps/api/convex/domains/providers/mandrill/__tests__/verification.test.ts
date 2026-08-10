@@ -1,5 +1,5 @@
 /**
- * The Mandrill sending-domain provider (P3.1), against a mocked sender-domain
+ * The Mandrill sending-domain provider (Mandrill plan P3.1), against a mocked sender-domain
  * API and real table writes.
  *
  * The contract this file pins is not "the HTTP call works" — it is the set of

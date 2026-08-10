@@ -19,7 +19,7 @@
  * is no confirmation dialog: a second pass over an unchanged Mandrill blacklist
  * carries nothing and says so.
  *
- * Self-querying and self-mutating, like `<DeliveryMandrillDomainStatus />`, so
+ * Self-querying and self-mutating, like `<DeliveryRelayDomainStatus />`, so
  * the flow page stays a composition of steps rather than a controller for them.
  */
 import { api } from '@owlat/api';

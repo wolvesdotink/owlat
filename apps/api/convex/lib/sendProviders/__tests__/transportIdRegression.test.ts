@@ -81,7 +81,9 @@ describe('single-transport deployment is unchanged', () => {
 			expect(transport.id).toBe(transport.kind);
 			expect(transport.instanceKey).toBeNull();
 			expect(transport.label).toBe(sendProviderCatalogEntry(transport.kind).label);
-			expect(transport.retryDelays).toEqual(sendProviderCatalogEntry(transport.kind).retryDelays);
+			// The retry schedule is deliberately absent from the record: it is the
+			// MODULE's, taken from this same catalog entry, and the composition suite
+			// pins that join. See the `SendTransportRecord` docblock.
 			expect(transport.requiredEnvVars).toEqual(
 				sendProviderCatalogEntry(transport.kind).requiredEnvVars
 			);

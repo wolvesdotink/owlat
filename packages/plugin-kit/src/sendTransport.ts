@@ -1,4 +1,16 @@
+// A VALUE import, and safe: `./inboundSignature` is a leaf that imports nothing.
+// `isPluginSecretEnvVar` is the one statement of the `PLUGIN_` namespace rule,
+// and the transport predicate below composes onto it rather than restating it.
+import { isPluginSecretEnvVar, type PluginWebhookSignatureContract } from './inboundSignature';
 import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+// TYPE-ONLY, and it has to stay that way: `./sendTransportDomainIdentity` reads
+// the module-export and config shapes declared below, so a value import here
+// would close a runtime cycle between two modules that only share a vocabulary.
+import type { PluginSendTransportDomainIdentityDefinition } from './sendTransportDomainIdentity';
+// TYPE-ONLY, and it has to stay that way: `./sendTransportCredentials` reads the
+// variable bound declared below, so a value import here would close a runtime
+// cycle between two modules that only share a vocabulary.
+import type { PluginSendTransportCredentialField } from './sendTransportCredentials';
 
 /** Capability assigned by the host to every bundled send transport. */
 export const PLUGIN_SEND_TRANSPORT_CAPABILITY = 'send:transport' as const;
@@ -15,13 +27,318 @@ export interface PluginStaticModuleExport {
 	readonly exportPath: string;
 }
 
-/** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
+/**
+ * The feedback half of a send-transport bundle: how the provider's bounces,
+ * complaints, deliveries and deferrals get back in (the seams plan's D6, wired
+ * by P2.2).
+ *
+ * It is a MODULE EXPORT ON THE SEND TRANSPORT, not a bucket of its own. A
+ * provider's send path and its feedback path are one integration — the same
+ * account, the same credentials, the same operator decision — and the reserved
+ * `inboundAdapters` bucket means something else entirely (genuine inbound MAIL
+ * sources). Keeping them apart is deliberate.
+ *
+ * THE SPLIT OF RESPONSIBILITY. The host owns authenticity: it verifies the
+ * declared `signature` contract against the raw body in constant time, enforces
+ * the timestamp freshness that contract declares, and refuses a delivery it has
+ * already accepted. The plugin owns only semantics — turning verified bytes into
+ * the events below. A webhook declared without a `signature` FAILS MANIFEST
+ * VALIDATION: this endpoint is unauthenticated and internet-facing by design, so
+ * an unverified one would be an open write path into the delivery record.
+ *
+ * WHAT THE PLUGIN CHOOSES IS THE SCHEME, NOT THE VERIFIER. `signature` is a
+ * discriminated union over the host-verified vocabulary this tier may name
+ * ({@link PluginWebhookSignatureContract}): the parameterized HMAC over
+ * `<timestamp>.<rawBody>` — the original shape, still what a contract spelling
+ * no `scheme` means — or `svix`, which a large share of real ESP consoles sign
+ * with. THE SPLIT IS UNCHANGED BY THAT WIDENING, because every arm ends at host
+ * code the CORE providers are verified by: the first at the same parameterized
+ * HMAC the `hmac-timestamp-body` bundles use, the second at the very same
+ * `verifySvixHeaders` the Resend path uses — secret read from the plugin's own
+ * `PLUGIN_`-scoped variable, declared tolerance clamped to the same ceiling. A
+ * plugin picks a word from a list the host wrote; it never supplies a verifier,
+ * never sees the secret, and cannot widen the list. The two host schemes left
+ * off that list, `aws-sns` and `mandrill-form`, are explained on
+ * `PluginSvixSignatureContract` in `./inboundSignature`. And the replay claim is
+ * scheme-independent: whichever arm proved the bytes, the host claims the
+ * delivery once. A claim is about the BATCH, not about how it was proved.
+ */
+export interface PluginSendTransportWebhookDefinition {
+	/** The parse-only module (isolate-safe: it runs inside the HTTP router). */
+	readonly module: PluginStaticModuleExport;
+	/** Required. Host-verified; a plugin can neither weaken nor bypass it. */
+	readonly signature: PluginWebhookSignatureContract;
+	/**
+	 * OPT-IN raw-payload retention. When true, the host stores the verified raw
+	 * request body in its webhook audit log, as it does for the core providers.
+	 * Default false: a third party's payload may carry recipient content this
+	 * deployment never asked to keep, so retention is the adapter's explicit
+	 * decision rather than the pipeline's default.
+	 */
+	readonly storeRawPayload?: boolean;
+}
+
+/**
+ * Does this transport let the host choose the RFC5321.MailFrom on a send — the
+ * catalog's `supportsCustomReturnPath` (the seams plan's D1), as a plugin may
+ * declare it.
+ *
+ *  - `no`  the transport owns the envelope sender. The fail-closed default, and
+ *          at this tier the ONLY value — the field exists so a manifest can spell
+ *          it, not so it can be varied.
+ *
+ * THE CORE VOCABULARY'S OTHER TWO VALUES, `yes` AND `probe`, ARE NOT AVAILABLE
+ * HERE, and their absence is the contract. Both assert the same thing — that this
+ * transport's bounces come back to an address OUR bounce processor can attribute
+ * — and both need the same wire the plugin transport contract does not have: an
+ * envelope sender whose LOCAL PART is a VERP token signed with a deployment
+ * secret (`buildVerpAddress` in
+ * `apps/api/convex/lib/sendProviders/smtp/returnPath.ts`, called inside the
+ * host's own relay adapter). A bundled module is handed configuration, never
+ * signing keys, so the most it could stamp is a bounce address nothing can
+ * attribute. `probe` needs one thing more still — `sendReturnPathProbe` on the
+ * adapter, which `createHostedSendProvider` in
+ * `apps/api/convex/lib/sendProviders/pluginProvider.ts` never populates — so a
+ * plugin kind declaring it would be settled `unsupported` without a send anyway.
+ *
+ * WHY THE TYPE REFUSES THE WORDS INSTEAD OF LETTING AN AUTHOR WRITE ONE: nothing
+ * downstream would report the gap. `resolveReturnPathCapabilityForEntry` reads
+ * `yes` as `capability: 'supported'`, which hands the ramp controller the
+ * COMPARABLE bounce tolerance for an arm whose bounces land at the provider —
+ * our VERP stream sees ~0 for it and the controller ramps its share against
+ * evidence that structurally cannot arrive. A measurement bias with no symptom is
+ * worse than a capability nobody has, so this tier keeps the honest `no` until
+ * the contract carries a complete envelope sender (a host-signed ADDRESS, not a
+ * host name) and a probe wire to prove it. The host re-asserts this on the
+ * generated artifact for the same reason it re-asserts the rest.
+ */
+export type PluginSendTransportCustomReturnPathSupport = 'no';
+
+/**
+ * Where the provider message id this transport reports comes from — the
+ * catalog's `messageIdSource`, as a plugin may declare it.
+ *
+ *  - `provider` the transport mints the id and returns it from `send`. The
+ *               fail-closed default.
+ *  - `composed` the transport echoes back the RFC 5322 `Message-ID` the composer
+ *               already minted, which is what an SMTP-speaking relay does.
+ *
+ * `idempotency-key` — the id the host derives BEFORE the network crossing — is
+ * deliberately not offered. It turns on a pre-dispatch identity binding that is
+ * still MTA-shaped; the canonical list of what generalizing it costs is the
+ * PREREQUISITES note on `AcceptanceSemantics` in
+ * `packages/shared/src/sendProviderCatalogTypes.ts`, and it is backend work no
+ * manifest can do. The host re-refuses it at composition time for the same
+ * reason it re-refuses `acceptanceSemantics: 'accepted'`, which for the same
+ * reason cannot be declared here either: the only value available to this tier
+ * is the fail-closed default the catalog already applies, so there is nothing
+ * to write.
+ */
+export type PluginSendTransportMessageIdSource = 'provider' | 'composed';
+
+/**
+ * Data-only manifest descriptor. Executable code lives at `module.exportPath`.
+ *
+ * CAPABILITY PARITY (the seams plan's D4/P3.1). The fields below are the catalog
+ * entry's own vocabulary, spelled identically, because a plugin kind is meant to
+ * be indistinguishable from a core kind to routing, dispatch, ramp and
+ * measurement. Every one is optional and every one has the SAME fail-closed
+ * default a core entry that omitted it would get, so a manifest written against
+ * the older contract composes exactly as it did.
+ *
+ * WHAT A PLUGIN STILL CANNOT DECLARE, and why — each is a promise whose other
+ * half lives outside a manifest:
+ *
+ *  - `supportsCustomReturnPath: 'yes'` / `'probe'` need an envelope sender the
+ *    host SIGNS, and a probe wire to settle the second — see
+ *    {@link PluginSendTransportCustomReturnPathSupport}. `no` is the only value
+ *    this tier has.
+ *  - `hasProviderFeedback` is DERIVED, not declared: it is true exactly when
+ *    {@link PluginSendTransportDefinition.webhook} is present, which is the same
+ *    fact stated once. A boolean beside it could only ever disagree.
+ *  - `domainVerification` is DERIVED the same way and for the same reason: it is
+ *    `'api'` exactly when {@link PluginSendTransportDefinition.domainIdentity} is
+ *    present (the seams plan's P3.2), and `'none'` otherwise.
+ *  - `tagsFeedbackProvenance` says our own MTA stamped the report on its way out
+ *    of our own infrastructure. It is never true of a third party.
+ *  - `setupProbe` names an exported validator in `@owlat/shared/setupValidators`,
+ *    which is host code a manifest cannot add to.
+ */
 export interface PluginSendTransportDefinition {
 	readonly id: PluginLocalId;
 	readonly label: string;
 	readonly module: PluginStaticModuleExport;
 	/** Host-owned delays after retryable failures; at most three bounded entries. */
 	readonly retryDelays: readonly number[];
+	/**
+	 * The deployment variables THIS TRANSPORT's own configuration lives in — the
+	 * catalog entry's `requiredEnvVars`, and the credentials the host resolves per
+	 * INSTANCE and hands to {@link PluginSendTransportModule.send} as
+	 * {@link PluginSendTransportConfig}.
+	 *
+	 * Declaring them is what makes named instances possible for a plugin kind
+	 * (`plugin.<id>.<local>#eu`, reading `PLUGIN_ACME_TOKEN__EU`): the host can
+	 * only resolve a per-instance credential set for variables it was told about.
+	 * A transport that declares none keeps the shipped behaviour exactly — its
+	 * presence gate stays the plugin's `flag.requiredEnvVars` and a named instance
+	 * of it is refused `instances_unsupported`, because there would be nothing
+	 * instance-scoped to read and the send would go out on the DEFAULT instance's
+	 * credentials.
+	 *
+	 * NAMES ARE HELD TO {@link isPluginSendTransportEnvVar}: the shared `PLUGIN_`
+	 * namespace fence (so a manifest cannot name — and so cannot be handed —
+	 * `MTA_API_KEY` or `AWS_SECRET_ACCESS_KEY`), plus the instance-suffix rule
+	 * that refuses a base name containing `__`. Both rules, and why each exists,
+	 * are on that predicate.
+	 */
+	readonly requiredEnvVars?: readonly string[];
+	/**
+	 * Variables the transport READS but does not need — refinements with a safe
+	 * default. Resolved and handed over exactly like the required ones (and under
+	 * the same naming rules), but absent from the presence gate, so a deployment
+	 * that never set one still counts as configured.
+	 *
+	 * ONLY MEANINGFUL BESIDE A REQUIRED ONE, and refused without one. A transport
+	 * whose entire configuration is optional has no credential of its own that a
+	 * deployment must set, so there is nothing an instance suffix could make
+	 * per-instance: every named instance of it would resolve against an empty
+	 * requirement list — configured by vacuous truth, or refused as revoked
+	 * depending on which side asked — while the send went out on the DEFAULT
+	 * instance's credentials. `instances_unsupported` is the honest answer, and
+	 * the manifest is refused rather than silently given it.
+	 */
+	readonly optionalEnvVars?: readonly string[];
+	/**
+	 * Declared envelope-sender control. `no` is the only value this tier may
+	 * declare and absent means the same — see
+	 * {@link PluginSendTransportCustomReturnPathSupport} for what the other two
+	 * words would promise and which wire is missing.
+	 */
+	readonly supportsCustomReturnPath?: PluginSendTransportCustomReturnPathSupport;
+	/** Where the reported message id comes from. Absent ⇒ `provider` (fail closed). */
+	readonly messageIdSource?: PluginSendTransportMessageIdSource;
+	/**
+	 * May the same request be sent twice under one idempotency key without
+	 * delivering twice? Absent ⇒ `false` (fail closed).
+	 *
+	 * Its consumer is the system/auth mail path, which asks whether an ambiguous
+	 * password reset may be sent again. A transport declaring `true` MUST also
+	 * implement {@link PluginSendTransportModule.buildSystemMailExtras} and carry
+	 * the key into its request — the host refuses the composition otherwise,
+	 * because a declaration without the wiring turns a double delivery into a
+	 * "safe" retry.
+	 */
+	readonly deduplicatesOnIdempotencyKey?: boolean;
+	/**
+	 * Optional feedback webhook. AT MOST ONE send transport per plugin may
+	 * declare one, because the route surface is keyed by plugin id
+	 * (`/webhooks/plugin/<pluginId>`) and a second declaration would have no way
+	 * to be addressed.
+	 *
+	 * Declaring one IS the catalog's `hasProviderFeedback: true` for this kind —
+	 * see the note on {@link PluginSendTransportDefinition}.
+	 */
+	readonly webhook?: PluginSendTransportWebhookDefinition;
+	/**
+	 * Optional sending-domain identity: how this provider proves that a customer's
+	 * own domain may be signed and relayed by it (the seams plan's P3.2).
+	 *
+	 * Declaring one IS the catalog's `domainVerification: 'api'` for this kind, and
+	 * registers this transport into the host's sending-domain provider registry at
+	 * composition time — see
+	 * {@link PluginSendTransportDomainIdentityDefinition} for what the host keeps
+	 * of that decision and what it hands the module.
+	 *
+	 * AT MOST ONE PER TRANSPORT and one per transport is the whole rule: unlike the
+	 * feedback webhook, whose route surface is keyed by plugin id, an identity is
+	 * scoped to the transport whose account and credentials it was registered
+	 * under.
+	 */
+	readonly domainIdentity?: PluginSendTransportDomainIdentityDefinition;
+	/**
+	 * The credential FORM for this transport's configuration, as typed descriptors
+	 * — the catalog entry's `credentialFields` (D5), spelled in the vocabulary the
+	 * plugin platform's `settingsSchema` already uses, so one renderer draws a
+	 * plugin's credential the same way it draws a core provider's.
+	 *
+	 * DESCRIPTIVE ONLY. A descriptor names a variable and says how to ASK an
+	 * operator for it; nothing here decides what a send reads. The presence gate
+	 * is {@link PluginSendTransportDefinition.requiredEnvVars} and the values come
+	 * from {@link PluginSendTransportConfig}, both of which hold whether or not a
+	 * form was declared.
+	 *
+	 * EVERY FIELD'S `envVar` MUST BE ONE THIS TRANSPORT DECLARED, matched to the
+	 * field's own `required`: a `required: true` field names a member of
+	 * `requiredEnvVars`, any other field names a member of `optionalEnvVars`. The
+	 * join is what keeps a rendered form from asking for a variable no send reads
+	 * (an operator filling in a field that does nothing) or from omitting one that
+	 * gates the transport (a transport that stays unconfigured with a complete-
+	 * looking form) — and it is why the namespace rule needs no restating here.
+	 */
+	readonly credentialFields?: readonly PluginSendTransportCredentialField[];
+}
+
+/**
+ * The most configuration variables one bundled transport may declare.
+ *
+ * Bounded because the host RESOLVES every one of them on every send: a manifest
+ * that listed thousands would turn each attempt into that many environment reads
+ * before a byte goes on the wire. Twelve is well past what a real ESP asks for
+ * (the widest core kind, the generic SMTP relay, declares five).
+ */
+export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS = 12;
+
+/** Longest configuration variable name a transport may declare. */
+export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH = 96;
+
+/**
+ * The instance-suffix separator, as the transport contract has to spell it: a
+ * named instance of a transport reads `<BASE>__<INSTANCEKEY>`.
+ *
+ * The host's own copy is `SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR` in
+ * `apps/api/convex/lib/sendProviders/transports.ts`, which is where the suffix is
+ * actually JOINED; a manifest-validating kit cannot import backend code, so the
+ * separator appears here as the thing a base name may not contain.
+ */
+const SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR = '__';
+
+/**
+ * Whether a value names a configuration variable a bundled send transport is
+ * allowed to declare (and therefore be handed the value of).
+ *
+ * THE NAMESPACE RULE IS NOT RESTATED HERE — it is {@link isPluginSecretEnvVar},
+ * the one predicate every manifest-declared variable whose VALUE the host reads
+ * already passes (a settings `secret`, a webhook signing key). Composing onto it
+ * rather than writing a second regex is deliberate: the two would otherwise be
+ * free to disagree about what "the `PLUGIN_` namespace" means, and this is the
+ * more dangerous of the two surfaces to have the weaker fence on.
+ *
+ * WHAT THIS PREDICATE ADDS is only what is true of a transport variable and of
+ * nothing else:
+ *
+ *  - A TIGHTER LENGTH CAP. A base name is read again with an instance suffix
+ *    appended, so it has to leave room for one.
+ *  - NO `__`. A named instance reads `<BASE>__<INSTANCEKEY>`, so a BASE name
+ *    containing the separator would make `PLUGIN_ACME_TOKEN__EU` addressable both
+ *    as the `eu` instance's credential and as some other transport's default one
+ *    — two transport ids sharing one credential set, which is exactly what
+ *    instance resolution refuses everywhere else. A TRAILING `_` is refused for
+ *    the same reason: it is half a separator, and a base ending in one leaves the
+ *    split between base and suffix ambiguous.
+ *
+ * Declared beside the contract and shared by everyone who upholds it: the
+ * manifest validator refuses a bad name at authoring time, and the host
+ * re-asserts it when it loads a generated artifact — because an artifact is
+ * exactly where the validator's guarantee may no longer hold (a hand edit, a bad
+ * merge, a partial regeneration, or a manifest validated by an older kit).
+ */
+export function isPluginSendTransportEnvVar(value: unknown): value is string {
+	return (
+		isPluginSecretEnvVar(value) &&
+		value.length <= PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH &&
+		!value.includes(SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR) &&
+		!value.endsWith('_')
+	);
 }
 
 export interface PluginSendAttachment {
@@ -61,13 +378,120 @@ export type PluginSendAttempt =
 	| { readonly success: false; readonly code: PluginSendFailureCode };
 
 /**
+ * THIS TRANSPORT INSTANCE's resolved configuration, handed to every `send`.
+ *
+ * The host resolves it from {@link PluginSendTransportDefinition.requiredEnvVars}
+ * and {@link PluginSendTransportDefinition.optionalEnvVars} for the instance the
+ * send was addressed to, and hands over NOTHING ELSE — not the rest of the
+ * deployment's environment, and not a variable this transport never declared.
+ *
+ * Read your credentials from here rather than from `process.env`. A module that
+ * reads the environment directly reads the DEPLOYMENT-DEFAULT instance's
+ * variables no matter which transport id the send was addressed to, so
+ * `plugin.acme.postmark#eu` would send with the default instance's token — the
+ * silent credential borrow named-instance resolution exists to prevent.
+ */
+export interface PluginSendTransportConfig {
+	/** `null` for the deployment-default instance; the instance key otherwise. */
+	readonly instanceKey: string | null;
+	/**
+	 * Declared variables' values, keyed by their BASE name — the name as the
+	 * manifest wrote it, never the `__<INSTANCEKEY>`-suffixed one, so a module
+	 * reads `env['PLUGIN_ACME_TOKEN']` for every instance. A required variable is
+	 * always present (the host fails the attempt before calling `send` otherwise);
+	 * an optional one is present only when the deployment set it.
+	 */
+	readonly env: Readonly<Record<string, string>>;
+}
+
+/**
+ * The facts the host knows about ONE GOVERNED SEND, offered to
+ * {@link PluginSendTransportModule.buildDispatchExtras} so the MODULE decides
+ * which of them become its own extras (the seams plan's P0.1 seam, at the plugin
+ * tier).
+ *
+ * DELIBERATELY NARROWER than the host's own dispatch input. The governance
+ * identities on that input — the work-attempt id, the re-entry snapshot handle
+ * and the routing lease — are capability handles the backend authenticates
+ * itself with, and a transport has no send to make with them. What is here is
+ * what a relay could act on.
+ *
+ * THE ROUTED RELAY'S RETURN-PATH HOST IS NOT HERE EITHER, and that one is a
+ * safety property rather than a tier one. The host resolves that value for ONE
+ * transport kind and only after checking that the host's published SPF authorises
+ * THAT relay's sending IPs (`relayReturnPathHostFor` in
+ * `apps/api/convex/delivery/relayReturnPath.ts`). Offering the same string to a
+ * different transport would invite it to stamp an envelope-sender domain whose
+ * SPF does not list its outbound IPs — an SPF failure on the bounce domain of
+ * every send it stamped, which degrades the very arm being measured. So the fact
+ * stops at the host boundary, which is the other half of why
+ * {@link PluginSendTransportCustomReturnPathSupport} has only `no`.
+ */
+export interface PluginSendDispatchContext {
+	/** The stable per-Send idempotency key, derived from the durable Send row. */
+	readonly idempotencyKey: string;
+	/** The governed message class this send belongs to. */
+	readonly messageType: string;
+	/** Which delivery domain of ours the message goes out under. */
+	readonly deliveryDomain: string;
+	/** The IP pool the resolved route names, when it named one. */
+	readonly ipPool?: string;
+	/** Whether the resolved route permits sending over the warm-up cap. */
+	readonly warmupOverflowEnabled?: boolean;
+	/** Normalized recipient engagement (0–100); absent for an unscored recipient. */
+	readonly engagementScore?: number;
+}
+
+/**
+ * The same question for SYSTEM/AUTH mail (password resets, invitations, double
+ * opt-in), which has no durable Send row and therefore none of the governance
+ * facts above — just the caller's idempotency key, and only when it had one.
+ */
+export interface PluginSendSystemMailContext {
+	readonly idempotencyKey?: string;
+}
+
+/**
  * Executable Node module exported by a bundled plugin.
  *
  * `parseExtras` is the sole unknown-input boundary and must either return the
  * transport's honest extras type or throw. `send` performs exactly one network
  * attempt; Owlat owns authorization, retries, health, and audit.
+ *
+ * THE TWO BUILDERS ARE PURE AND SYNCHRONOUS BY CONTRACT — no I/O, no clock, no
+ * environment. Every fact they may need is on their input, resolved once by the
+ * host, so the hot send path grows no round trip per message. What they return
+ * goes back through `parseExtras` before `send` sees it: a module's own output is
+ * re-validated at the same boundary a host-supplied value is, which is what keeps
+ * "extras are whatever `parseExtras` accepted" true of every send.
  */
 export interface PluginSendTransportModule<Extras = unknown> {
 	parseExtras(input: unknown): Extras;
-	send(params: PluginSendTransportParams, extras: Extras): Promise<PluginSendAttempt>;
+	send(
+		params: PluginSendTransportParams,
+		extras: Extras,
+		config: PluginSendTransportConfig
+	): Promise<PluginSendAttempt>;
+	/**
+	 * Turn one governed send's facts into this transport's extras.
+	 *
+	 * A THROW YIELDS NO EXTRAS and the send proceeds without them. This builder is
+	 * an optional refinement of a message the host had already decided to send, so
+	 * a third-party throw must not be able to take the governed path down; the
+	 * host records the failure against this kind instead.
+	 */
+	buildDispatchExtras?(context: PluginSendDispatchContext): unknown;
+	/**
+	 * The system/auth mail path's extras. REQUIRED of a transport whose manifest
+	 * declares `deduplicatesOnIdempotencyKey: true` — that is the half of the
+	 * promise that carries the key into the request.
+	 *
+	 * A THROW FAILS THE ATTEMPT, unlike the builder above, and that asymmetry is
+	 * the dedup promise: empty extras here are indistinguishable from extras that
+	 * carried the key, so a swallowed throw would let `systemMailRetryDisposition`
+	 * report an ambiguous password reset as safe to retry while the key never
+	 * reached the provider — and the "retry" is a second mail to a real person. A
+	 * failed attempt before any mail goes out is the fail-closed answer.
+	 */
+	buildSystemMailExtras?(context: PluginSendSystemMailContext): unknown;
 }

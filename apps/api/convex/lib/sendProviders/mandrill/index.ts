@@ -41,9 +41,9 @@ import {
 	type MandrillExtras,
 	type SendProviderModule,
 } from '../types';
+import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
-import { RETRY_DELAYS_MS } from '../../constants';
 import {
 	categorizeMandrillError,
 	isAmbiguousMandrillTimeout,
@@ -233,7 +233,7 @@ function withoutApiKey(text: string, apiKey: string): string {
 
 export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	kind: 'mandrill',
-	retryDelays: RETRY_DELAYS_MS,
+	retryDelays: sendProviderCatalogEntry('mandrill').retryDelays,
 
 	/**
 	 * Mandrill's two per-send knobs, both decided by the ROUTE.

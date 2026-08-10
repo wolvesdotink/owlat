@@ -38,6 +38,7 @@ import {
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -130,7 +131,7 @@ async function dispatch(
 	const isBoundQueuedMtaTerminal =
 		options.allowQueuedMtaTerminal === true &&
 		from === 'queued' &&
-		send.providerType === 'mta' &&
+		send.providerType === OWN_ARM_TRANSPORT_KIND &&
 		(input.to === 'bounced' || input.to === 'complained' || input.to === 'failed');
 	const isLegalEdge = legalEdges.has(input.to) || isBoundQueuedMtaTerminal;
 	const isSelfLoop = from === input.to;
@@ -400,7 +401,7 @@ export const bindMtaProviderIdentity = internalMutation({
 		const send = await loadSend(ctx, args.send);
 		if (!send) return { ok: false as const, reason: 'send_not_found' as const };
 		if (
-			send.providerType === 'mta' &&
+			send.providerType === OWN_ARM_TRANSPORT_KIND &&
 			send.providerMessageId &&
 			send.providerMessageId !== args.providerMessageId
 		) {
@@ -409,10 +410,10 @@ export const bindMtaProviderIdentity = internalMutation({
 		if (send.status !== 'queued') {
 			return { ok: false as const, reason: 'terminal' as const };
 		}
-		if (!send.providerMessageId || send.providerType !== 'mta') {
+		if (!send.providerMessageId || send.providerType !== OWN_ARM_TRANSPORT_KIND) {
 			await ctx.db.patch(args.send.id, {
 				providerMessageId: args.providerMessageId,
-				providerType: 'mta',
+				providerType: OWN_ARM_TRANSPORT_KIND,
 			});
 		}
 		return { ok: true as const };
@@ -427,7 +428,7 @@ export const bindMtaProviderIdentity = internalMutation({
  * VERP token decoded to (a bounce our own bounce server accepted). A send that
  * has since been re-dispatched carries a different id and is not matched.
  *
- * Deliberately NOT restricted to `providerType === 'mta'`. A relay send stamped
+ * Deliberately NOT restricted to the own arm. A relay send stamped
  * with our VERP envelope sender produces DSNs that land on OUR bounce server,
  * so the MTA reports them exactly like a direct-MX bounce — while the Send row
  * still records the transport it actually left through (`smtp`). Requiring the
@@ -449,7 +450,7 @@ export const transitionMtaByProviderMessageId = internalMutation({
 			return { ok: false, reason: 'send_not_found' };
 		}
 		return await dispatch(ctx, ref, args.transition, {
-			allowQueuedMtaTerminal: send.providerType === 'mta',
+			allowQueuedMtaTerminal: send.providerType === OWN_ARM_TRANSPORT_KIND,
 		});
 	},
 });
@@ -461,7 +462,11 @@ export const recordMtaRemoteAcceptance = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		const send = await loadSend(ctx, ref);
-		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+		if (
+			!send ||
+			send.providerType !== OWN_ARM_TRANSPORT_KIND ||
+			send.providerMessageId !== args.providerMessageId
+		) {
 			return { ok: false, reason: 'send_not_found' };
 		}
 		await dispatch(ctx, ref, {

@@ -53,6 +53,10 @@
 			"types": "./src/returnPathHost.ts",
 			"import": "./src/returnPathHost.ts"
 		},
+		"./sendProviderCatalog": {
+			"types": "./src/sendProviderCatalog.ts",
+			"import": "./src/sendProviderCatalog.ts"
+		},
 		"./setupSendingPresets": {
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"
@@ -109,9 +113,9 @@
 			"types": "./src/operationError.ts",
 			"import": "./src/operationError.ts"
 		},
-		"./mtaWebhookEvent": {
-			"types": "./src/mtaWebhookEvent.ts",
-			"import": "./src/mtaWebhookEvent.ts"
+		"./deliverabilityProbeFormat": {
+			"types": "./src/deliverabilityProbeFormat.ts",
+			"import": "./src/deliverabilityProbeFormat.ts"
 		},
 		"./deliverabilityProbeToken": {
 			"types": "./src/deliverabilityProbeToken.ts",
@@ -213,9 +217,9 @@
 			"types": "./src/ipReadiness.ts",
 			"import": "./src/ipReadiness.ts"
 		},
-		"./ipReadinessSync": {
-			"types": "./src/ipReadinessSync.ts",
-			"import": "./src/ipReadinessSync.ts"
+		"./routingDispatch": {
+			"types": "./src/routingDispatch.ts",
+			"import": "./src/routingDispatch.ts"
 		},
 		"./deliverabilityRouting": {
 			"types": "./src/deliverabilityRouting.ts",

@@ -1,5 +1,5 @@
 /**
- * Guards the one shared build artifact in this monorepo: `packages/plugin-kit/dist`.
+ * Guards the shared provider/plugin contract build artifacts in this monorepo.
  *
  * `@owlat/plugin-kit`'s build is `tsup --clean`, so it wipes and re-emits `dist/`
  * (index.js lands in ~150ms, index.d.ts 2-3s later). Anything reading that
@@ -22,8 +22,8 @@
  *     packages. Anything else at the root — including a new script wired into a
  *     turbo task — is an unordered writer and fails here. See ROOT_CWD_ALLOWLIST.
  *
- *  2. Every task that can read `packages/plugin-kit/dist` must reach
- *     `@owlat/plugin-kit#build` through turbo's dependency graph.
+ *  2. Every task that can read a guarded package's `dist` must reach that
+ *     package's build through turbo's dependency graph.
  *
  *  3. Inside the producing package itself, only the sanctioned scripts may drive
  *     the `tsup --clean`. `test:package` used to be `bun run build && bun
@@ -58,20 +58,25 @@ interface TurboDryRun {
 	readonly tasks: readonly TurboTask[];
 }
 
-const SHARED_ARTIFACT_PACKAGE = '@owlat/plugin-kit';
-const SHARED_ARTIFACT_PRODUCER = `${SHARED_ARTIFACT_PACKAGE}#build`;
-const SHARED_ARTIFACT_DIRECTORY = 'packages/plugin-kit';
+interface SharedArtifact {
+	readonly packageName: string;
+	readonly directory: string;
+}
+
+const SHARED_ARTIFACTS: readonly SharedArtifact[] = [
+	{ packageName: '@owlat/provider-kit', directory: 'packages/provider-kit' },
+	{ packageName: '@owlat/plugin-kit', directory: 'packages/plugin-kit' },
+];
 const ARTIFACT_READING_TASKS = new Set(['build', 'typecheck', 'test', 'test:coverage']);
 
 /**
- * Root scripts allowed to drive another workspace directory, and the single
- * directory each may target. `plugins:prepare` is the sanctioned producer of the
- * shared artifact; no other root script may name `packages/plugin-kit`.
+ * Root scripts allowed to drive other workspace directories. `plugins:prepare`
+ * is the sanctioned producer of both public contract packages.
  */
-const ROOT_CWD_ALLOWLIST: Readonly<Record<string, string>> = {
-	'plugins:prepare': SHARED_ARTIFACT_DIRECTORY,
-	'goldens:update': 'packages/mail-message',
-	setup: 'apps/setup-cli',
+const ROOT_CWD_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+	'plugins:prepare': SHARED_ARTIFACTS.map(({ directory }) => directory),
+	'goldens:update': ['packages/mail-message'],
+	setup: ['apps/setup-cli'],
 };
 
 /** Scripts in the producing package that may drive its `tsup --clean`. */
@@ -82,22 +87,20 @@ const manifests = readWorkspaceManifests();
 const failures = [
 	...findCrossPackageBuildScripts(manifests),
 	...findUnsanctionedRootScripts(),
-	...findUnsanctionedProducerScripts(manifests),
-	...findUnorderedArtifactReaders(manifests),
+	...SHARED_ARTIFACTS.flatMap((artifact) => findUnsanctionedProducerScripts(manifests, artifact)),
+	...findUnorderedArtifactReaders(manifests, SHARED_ARTIFACTS),
 ];
 
 if (failures.length > 0) {
 	console.error('Build-graph check failed:\n');
 	for (const failure of failures) console.error(`  - ${failure}`);
 	console.error(
-		`\n${SHARED_ARTIFACT_PACKAGE} builds with \`tsup --clean\`. Every task that reads its dist/ must be ordered after ${SHARED_ARTIFACT_PRODUCER} in turbo.json; no package script may rebuild it inline; and inside ${SHARED_ARTIFACT_PACKAGE} only ${[...SANCTIONED_PRODUCER_SCRIPTS].map((script) => `"${script}"`).join(', ')} may drive that build. The root manifest is checked too: only the scripts in ROOT_CWD_ALLOWLIST may reach into another workspace directory, and only "plugins:prepare" may target ${SHARED_ARTIFACT_DIRECTORY}.`
+		`\nGuarded contract packages build with \`tsup --clean\`. Every dist reader must be ordered after its package build in turbo.json; no package script may rebuild another workspace inline; and only ${[...SANCTIONED_PRODUCER_SCRIPTS].map((script) => `"${script}"`).join(', ')} may drive a guarded package build. The root manifest may reach workspace directories only through ROOT_CWD_ALLOWLIST.`
 	);
 	process.exit(1);
 }
 
-console.info(
-	`Build graph orders every reader of ${SHARED_ARTIFACT_PACKAGE}'s dist after ${SHARED_ARTIFACT_PRODUCER}.`
-);
+console.info('Build graph orders every guarded contract-package dist reader after its producer.');
 
 function readWorkspaceManifests(): ReadonlyMap<string, PackageManifest> {
 	const directories = ['apps', 'packages', 'examples/plugins']
@@ -149,19 +152,22 @@ function findUnsanctionedRootScripts(): readonly string[] {
 
 	const failures: string[] = [];
 	for (const [script, command] of Object.entries(manifest.scripts ?? {})) {
-		const target = /(?:^|\s)--cwd[\s=]+(\S+)/.exec(command)?.[1];
-		if (target === undefined) continue;
-		const normalized = target.replace(/^\.\//, '').replace(/\/$/, '');
+		const targets = [...command.matchAll(/(?:^|\s)--cwd[\s=]+(\S+)/g)].map((match) =>
+			match[1]!.replace(/^\.\//, '').replace(/\/$/, '')
+		);
+		if (targets.length === 0) continue;
 		const allowed = ROOT_CWD_ALLOWLIST[script];
 		if (allowed === undefined) {
 			failures.push(
-				`root script "${script}" drives another workspace package (\`--cwd ${normalized}\`) but is not in ROOT_CWD_ALLOWLIST — an unordered writer turbo cannot see: ${command}`
+				`root script "${script}" drives workspace package(s) (${targets.join(', ')}) but is not in ROOT_CWD_ALLOWLIST — an unordered writer turbo cannot see: ${command}`
 			);
 			continue;
 		}
-		if (allowed !== normalized) {
+		const unexpected = targets.filter((target) => !allowed.includes(target));
+		const missing = allowed.filter((target) => !targets.includes(target));
+		if (unexpected.length > 0 || missing.length > 0) {
 			failures.push(
-				`root script "${script}" is allowlisted for ${allowed} but targets ${normalized}: ${command}`
+				`root script "${script}" is allowlisted for ${allowed.join(', ')} but targets ${targets.join(', ')}: ${command}`
 			);
 		}
 	}
@@ -174,48 +180,47 @@ function findUnsanctionedRootScripts(): readonly string[] {
  * `prepack`.
  */
 function findUnsanctionedProducerScripts(
-	manifests: ReadonlyMap<string, PackageManifest>
+	manifests: ReadonlyMap<string, PackageManifest>,
+	artifact: SharedArtifact
 ): readonly string[] {
-	const manifest = manifests.get(SHARED_ARTIFACT_PACKAGE);
-	if (!manifest) return [`workspace manifest for ${SHARED_ARTIFACT_PACKAGE} was not found`];
+	const manifest = manifests.get(artifact.packageName);
+	if (!manifest) return [`workspace manifest for ${artifact.packageName} was not found`];
 
 	const failures: string[] = [];
 	for (const [script, command] of Object.entries(manifest.scripts ?? {})) {
 		if (SANCTIONED_PRODUCER_SCRIPTS.has(script)) continue;
 		if (/(?:^|\s|&&\s*)(?:bun|npm|pnpm|yarn)\s+run\s+build(?:\s|$)/.test(command)) {
 			failures.push(
-				`${SHARED_ARTIFACT_PACKAGE} script "${script}" rebuilds the shared artifact inline (\`run build\`): ${command}`
+				`${artifact.packageName} script "${script}" rebuilds the shared artifact inline (\`run build\`): ${command}`
 			);
 			continue;
 		}
 		if (/(?:^|\s)tsup(?:\s|$)/.test(command)) {
-			failures.push(
-				`${SHARED_ARTIFACT_PACKAGE} script "${script}" invokes tsup directly: ${command}`
-			);
+			failures.push(`${artifact.packageName} script "${script}" invokes tsup directly: ${command}`);
 			continue;
 		}
 		if (/\bpm\s+pack\b/.test(command) && !/--ignore-scripts(?:\s|$)/.test(command)) {
 			failures.push(
-				`${SHARED_ARTIFACT_PACKAGE} script "${script}" packs without \`--ignore-scripts\`, which fires prepack and rebuilds the shared artifact: ${command}`
+				`${artifact.packageName} script "${script}" packs without \`--ignore-scripts\`, which fires prepack and rebuilds the shared artifact: ${command}`
 			);
 		}
 	}
-	return [...failures, ...findProducerHelperRebuilds()];
+	return [...failures, ...findProducerHelperRebuilds(artifact)];
 }
 
 /**
  * Rule 3, second half: the sanctioned scripts are thin, so a rebuild can hide in
  * the helper sources they call. Scan them for the same three shapes.
  */
-function findProducerHelperRebuilds(): readonly string[] {
-	const scriptsRoot = join(workspaceRoot, SHARED_ARTIFACT_DIRECTORY, 'scripts');
+function findProducerHelperRebuilds(artifact: SharedArtifact): readonly string[] {
+	const scriptsRoot = join(workspaceRoot, artifact.directory, 'scripts');
 	if (!existsSync(scriptsRoot)) return [];
 
 	const failures: string[] = [];
 	for (const entry of readdirSync(scriptsRoot, { withFileTypes: true })) {
 		if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
 		const source = stripComments(readFileSync(join(scriptsRoot, entry.name), 'utf8'));
-		const location = `${SHARED_ARTIFACT_DIRECTORY}/scripts/${entry.name}`;
+		const location = `${artifact.directory}/scripts/${entry.name}`;
 		if (/(?:^|[^\w-])tsup(?:[^\w-]|$)/.test(source)) {
 			failures.push(
 				`${location} invokes tsup, rebuilding the shared artifact outside its producer`
@@ -243,9 +248,9 @@ function stripComments(source: string): string {
 
 /** Rule 2: turbo must order every consumer of the shared dist after its producer. */
 function findUnorderedArtifactReaders(
-	manifests: ReadonlyMap<string, PackageManifest>
+	manifests: ReadonlyMap<string, PackageManifest>,
+	artifacts: readonly SharedArtifact[]
 ): readonly string[] {
-	const consumers = collectArtifactConsumers(manifests);
 	const dryRun = spawnSync(
 		process.execPath,
 		['x', 'turbo', 'run', 'build', 'typecheck', 'test', 'test:coverage', '--dry=json'],
@@ -258,30 +263,34 @@ function findUnorderedArtifactReaders(
 
 	const graph = JSON.parse(dryRun.stdout) as TurboDryRun;
 	const edges = new Map(graph.tasks.map((task) => [task.taskId, task.dependencies]));
-	if (!edges.has(SHARED_ARTIFACT_PRODUCER)) {
-		return [`turbo graph does not contain ${SHARED_ARTIFACT_PRODUCER}`];
-	}
-
 	const failures: string[] = [];
-	for (const task of graph.tasks) {
-		// The producing package compiles from src (its tsconfig excludes dist and
-		// maps the package name onto src/index.ts), so it is never a dist reader.
-		if (task.package === SHARED_ARTIFACT_PACKAGE) continue;
-		if (!ARTIFACT_READING_TASKS.has(task.task)) continue;
-		if (!consumers.has(task.package)) continue;
-		if (reaches(edges, task.taskId, SHARED_ARTIFACT_PRODUCER)) continue;
-		failures.push(
-			`${task.taskId} reads ${SHARED_ARTIFACT_PACKAGE}'s dist but is not ordered after ${SHARED_ARTIFACT_PRODUCER}`
-		);
+	for (const artifact of artifacts) {
+		const producer = `${artifact.packageName}#build`;
+		if (!edges.has(producer)) {
+			failures.push(`turbo graph does not contain ${producer}`);
+			continue;
+		}
+		const consumers = collectArtifactConsumers(manifests, artifact.packageName);
+		for (const task of graph.tasks) {
+			// The producing package compiles from src, so it is never its own dist reader.
+			if (task.package === artifact.packageName) continue;
+			if (!ARTIFACT_READING_TASKS.has(task.task)) continue;
+			if (!consumers.has(task.package)) continue;
+			if (reaches(edges, task.taskId, producer)) continue;
+			failures.push(
+				`${task.taskId} reads ${artifact.packageName}'s dist but is not ordered after ${producer}`
+			);
+		}
 	}
 	return failures;
 }
 
-/** Every workspace package that can resolve `@owlat/plugin-kit`, directly or not. */
+/** Every workspace package that can resolve the artifact package, directly or not. */
 function collectArtifactConsumers(
-	manifests: ReadonlyMap<string, PackageManifest>
+	manifests: ReadonlyMap<string, PackageManifest>,
+	artifactPackage: string
 ): ReadonlySet<string> {
-	const consumers = new Set<string>([SHARED_ARTIFACT_PACKAGE]);
+	const consumers = new Set<string>([artifactPackage]);
 	let changed = true;
 	while (changed) {
 		changed = false;

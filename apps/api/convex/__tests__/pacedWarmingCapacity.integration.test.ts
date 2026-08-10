@@ -25,6 +25,7 @@ import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import { loadWarmingCapacity } from '../delivery/warmingCapacity';
 import { buildCapacitySchedule } from '../campaigns/capacityPlan';
 import { PACE_AIMD } from '../delivery/ramp/paceConfig';
+import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { StoredAudience } from '../campaigns/audience';
 import type { Id } from '../_generated/dataModel';
 
@@ -67,11 +68,17 @@ async function seedWarming(t: Harness): Promise<void> {
 	});
 }
 
-/** A retreated dial on every campaign cell — the half that reaches production. */
+/**
+ * A retreated dial on every campaign cell — the half that reaches production.
+ *
+ * Iterates the WHOLE taxonomy (D8), not a copy of it: a sixth destination
+ * provider has to be seeded and asserted here too, rather than leaving its
+ * paced-capacity path silently unexercised while the suite stays green.
+ */
 async function seedRetreatedDial(t: Harness, multiplier: number): Promise<void> {
 	const now = Date.now();
 	await t.run(async (ctx) => {
-		for (const destinationProvider of ['gmail', 'microsoft', 'yahoo', 'apple', 'other'] as const) {
+		for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
 			await ctx.db.insert('deliverabilityRouteStates', {
 				organizationId: ORG,
 				destinationProvider,

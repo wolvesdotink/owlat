@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import {
-	OUTBOUND_TLS_MODE_OPTIONS,
-	seedOutboundTlsMode,
-	type OutboundTlsMode,
-} from '~/composables/setupOutboundTls';
+import { OUTBOUND_TLS_MODE_OPTIONS, seedOutboundTlsMode } from '~/composables/setupOutboundTls';
 import type { EmailStepDraft, ProviderChoice } from '~/composables/useSetupWizard';
-import { transportStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
-import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import {
-	RELAY_PROVIDER_OPTIONS,
+	credentialErrorFor,
+	transportStepIsValid,
+	validateEmailStep,
+} from '~/composables/setupWizardValidation';
+import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { isComposedSendProviderKind } from '~/utils/composedSendProviderCatalog';
+import {
 	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
 	applyTransportEnv,
 	useRelayCredentialDraft,
 } from '~/composables/useRelayCredentialDraft';
 import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
+import { credentialEnvVarFor } from '~/composables/setupWizardCredentials';
+import TransportCredentialFields from './TransportCredentialFields.vue';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -62,48 +65,46 @@ const { showToast } = useToast();
 const isEditing = ref(false);
 
 // ── Draft (seeded from the active kind; credentials always blank) ────────────
-// Derived from the shared relay list rather than re-spelling the union: a kind
-// added there is seedable here without an edit, and an unknown/retired kind
-// still falls back to the MTA rather than to a transport this build cannot
-// render fields for.
+// Asked of the CATALOG rather than of a hand-kept list: a kind it declares is
+// seedable here without an edit, and an unknown/retired kind still falls back to
+// the own arm rather than to a transport this build cannot render fields for.
 function knownKind(kind: string | null): ProviderChoice {
-	if (kind === 'mta') return 'mta';
-	return RELAY_PROVIDER_OPTIONS.find((option) => option.value === kind)?.value ?? 'mta';
+	return kind !== null && isComposedSendProviderKind(kind) ? kind : OWN_SEND_PROVIDER_KIND;
 }
 
 // The SAME relay-credential draft the connection wizard's step 1 uses — one
 // provider list, one preset table, one live handshake, one env patch.
 const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
-const {
-	provider,
-	resendKey,
-	mandrillKey,
-	sesRegion,
-	sesAccess,
-	sesSecret,
-	smtpPreset,
-	smtpHost,
-	smtpPort,
-	smtpSecure,
-	smtpUsername,
-	smtpPassword,
-	smtpPresetOptions,
-} = relay;
+const { provider, credentialValues, preset, presetOptions, requiredCredentialError } = relay;
+
+// Outbound TLS posture for the built-in MTA (direct-MX) is one of that entry's
+// credential fields, so it is seeded into the same map every other credential
+// lives in. Seeded from the ACTIVE mode (via the shared `seedOutboundTlsMode`)
+// so re-applying an edit preserves a previously-chosen floor; falls back to the
+// `opportunistic` backend default (today's behaviour) when unset/unknown.
+//
+// The own arm's outbound-TLS descriptor, by KEY. The same key names the slot
+// this screen fills with that floor's guidance (`#outboundTlsMode`, below) —
+// both address the FIELD, which is why neither names an env variable.
+//
+// THE VARIABLE NAME IS READ FROM THE DESCRIPTOR, never spelled here. The values
+// map is keyed by `string`, so a hand-written `'OUTBOUND_TLS_MODE'` had no
+// compile-time link to the field that renders it: rename the variable in the
+// catalog and this write lands on a dead key, the select falls back to the
+// descriptor's default, and every apply silently lowers an operator's
+// `require-verified` floor back to `opportunistic` — with a green build.
+const OUTBOUND_TLS_FIELD_KEY = 'outboundTlsMode';
+const outboundTlsEnvVar = credentialEnvVarFor(OWN_SEND_PROVIDER_KIND, OUTBOUND_TLS_FIELD_KEY);
+if (outboundTlsEnvVar !== undefined) {
+	credentialValues[outboundTlsEnvVar] = seedOutboundTlsMode(props.currentOutboundTlsMode);
+}
 
 const fromEmail = ref('');
 const fromName = ref('');
-// Outbound TLS posture for the built-in MTA (direct-MX). Seeded from the active
-// mode (via the shared `seedOutboundTlsMode`) so re-applying an edit preserves a
-// previously-chosen floor; falls back to the `opportunistic` backend default
-// (today's behaviour) when unset/unknown.
-const outboundTlsMode = ref<OutboundTlsMode>(seedOutboundTlsMode(props.currentOutboundTlsMode));
-const outboundTlsModeOptions = OUTBOUND_TLS_MODE_OPTIONS.map((o) => ({
-	value: o.value,
-	label: o.label,
-}));
-const outboundTlsModeHint = computed(
-	() => OUTBOUND_TLS_MODE_OPTIONS.find((o) => o.value === outboundTlsMode.value)?.hint ?? ''
-);
+
+function outboundTlsHint(mode: string): string {
+	return OUTBOUND_TLS_MODE_OPTIONS.find((option) => option.value === mode)?.hint ?? '';
+}
 
 const providerOptions = TRANSPORT_EDITOR_PROVIDER_OPTIONS;
 
@@ -113,7 +114,6 @@ const draft = computed<EmailStepDraft>(() => ({
 	// shared validator is unreachable here.
 	requiresProvider: true,
 	...relay.credentialFields.value,
-	outboundTlsMode: outboundTlsMode.value,
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
 }));
@@ -123,6 +123,17 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 /**
+ * The ONE credential error the selected kind can raise, whichever field set it
+ * belongs to. Asked of `credentialErrorFor`, beside the rules that produce those
+ * keys and exhaustive over them, rather than re-derived from the draft's
+ * per-vendor field names here — the wizard's credential step asks the same
+ * question, and the two must not be able to answer it differently.
+ */
+const credentialError = computed(() =>
+	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
+);
+
+/**
  * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S — decided in
  * `setupWizardValidation`, beside the rules themselves, rather than by listing here the
  * one key to ignore. `transportStepIsValid` names the errors a transport-only
@@ -130,9 +141,12 @@ const showErrors = computed(() => submitted.value);
  * step gains must be classified there instead of silently gating this Apply
  * button on a field this screen does not render.
  */
-const isValid = computed(() => transportStepIsValid(draft.value));
+const isValid = computed(
+	() => transportStepIsValid(draft.value) && requiredCredentialError.value === undefined
+);
 
-// Only Resend + SMTP have a pre-apply network handshake (the wizard is the same).
+// Whether a pre-apply handshake exists at all is the catalog's `setupProbe`
+// (absent ⇒ no cheap check, and the button is not offered).
 const canTest = relay.canValidateLive;
 
 // ── Test ─────────────────────────────────────────────────────────────────────
@@ -197,7 +211,9 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	noteServerRefusal(null);
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
-		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
+		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation, {
+			...credentialValues,
+		});
 		if (!res.ok) {
 			// A FAIL-CLOSED REFUSAL IS NOT AN ERROR MESSAGE. The endpoint demands the
 			// phrase whenever it cannot establish that the removal is safe — which
@@ -304,88 +320,33 @@ function cancel() {
 				Existing credentials are never shown. Re-enter them to change the transport.
 			</p>
 
-			<div v-if="provider === 'resend'">
-				<UiInput
-					v-model="resendKey"
-					type="password"
-					label="Resend API key"
-					placeholder="re_..."
-					autocomplete="off"
-					:error="showErrors ? errors.resendKey : undefined"
-				/>
-			</div>
-
-			<div v-if="provider === 'mandrill'" class="space-y-3">
-				<UiInput
-					v-model="mandrillKey"
-					type="password"
-					label="Mailchimp Transactional API key"
-					placeholder="md-..."
-					autocomplete="off"
-					:error="showErrors ? errors.mandrillKey : undefined"
-				/>
-				<p class="text-xs text-text-tertiary">
-					Mailchimp Transactional &rarr; Settings &rarr; API keys. Feedback needs a second variable,
-					<code class="text-text-primary">MANDRILL_WEBHOOK_KEY</code> — the webhook card below has
-					the URL and the events to enable.
-				</p>
-			</div>
-
-			<div v-if="provider === 'ses'" class="space-y-4">
-				<UiInput v-model="sesRegion" label="Region" placeholder="us-east-1" />
-				<UiInput v-model="sesAccess" label="Access key ID" autocomplete="off" />
-				<UiInput v-model="sesSecret" type="password" label="Secret access key" autocomplete="off" />
-				<p v-if="showErrors && errors.ses" class="text-sm text-error">{{ errors.ses }}</p>
-			</div>
-
-			<div v-if="provider === 'smtp'" class="space-y-4">
-				<UiSelect v-model="smtpPreset" label="Provider preset" :options="smtpPresetOptions" />
-				<UiInput
-					v-model="smtpHost"
-					label="Server host"
-					placeholder="smtp.mailgun.org"
-					autocomplete="off"
-					:disabled="smtpPreset !== 'custom'"
-				/>
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<UiInput v-model="smtpPort" label="Port" placeholder="587" autocomplete="off" />
-					<label
-						class="flex items-center gap-3 rounded-lg border border-border-default p-3 cursor-pointer transition-colors hover:border-border-strong"
+			<!-- ONE form for every transport: the selected entry's `credentialFields`
+			     descriptors, rendered generically (plan D5). The only copy this screen
+			     adds is for the outbound-TLS floor, through the renderer's per-field
+			     slot — keyed by that field, not by the provider that declares it. -->
+			<TransportCredentialFields
+				:kind="provider"
+				:values="credentialValues"
+				:preset="preset"
+				:preset-options="presetOptions"
+				:error="credentialError"
+				@update:preset="preset = $event"
+			>
+				<template #outboundTlsMode="{ value }">
+					<p class="text-sm text-text-secondary">{{ outboundTlsHint(value) }}</p>
+					<p
+						v-if="value === 'require-verified'"
+						class="text-xs text-warning flex items-start gap-1.5"
 					>
-						<input
-							v-model="smtpSecure"
-							type="checkbox"
-							class="h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus-visible:ring-1 focus-visible:ring-brand"
-						/>
-						<span class="text-sm text-text-secondary">
-							Implicit TLS (port 465). Leave off for STARTTLS on 587.
+						<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+						<span>
+							“Always encrypt and verify” can bounce mail to receivers whose mail servers have a
+							misconfigured or self-signed certificate. Use it only if you know your recipients keep
+							valid certificates.
 						</span>
-					</label>
-				</div>
-				<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
-				<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
-				<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
-			</div>
-
-			<div v-if="provider === 'mta'" class="space-y-3">
-				<UiSelect
-					v-model="outboundTlsMode"
-					label="Connection security"
-					:options="outboundTlsModeOptions"
-				/>
-				<p class="text-sm text-text-secondary">{{ outboundTlsModeHint }}</p>
-				<p
-					v-if="outboundTlsMode === 'require-verified'"
-					class="text-xs text-warning flex items-start gap-1.5"
-				>
-					<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-					<span>
-						“Always encrypt and verify” can bounce mail to receivers whose mail servers have a
-						misconfigured or self-signed certificate. Use it only if you know your recipients keep
-						valid certificates.
-					</span>
-				</p>
-			</div>
+					</p>
+				</template>
+			</TransportCredentialFields>
 
 			<div class="border-t border-border-subtle pt-5">
 				<h3 class="font-medium text-text-primary">
@@ -415,10 +376,14 @@ function cancel() {
 				:message="testResult.message"
 			/>
 
+			<!-- Which transports can be checked BEFORE they are applied is the
+			     catalog's `setupProbe` (absent ⇒ no cheap pre-apply check exists).
+			     This line already only renders for the selected kind, so it names
+			     that one rather than listing the vendors that lack a probe. -->
 			<p v-if="!canTest" class="text-xs text-text-tertiary flex items-center gap-1.5">
 				<Icon name="lucide:info" class="w-3.5 h-3.5" />
-				SES, Mailchimp Transactional and your own MTA can't be tested before applying — apply, then
-				use "Send a test email" below to confirm delivery.
+				This transport can't be tested before applying — apply, then use "Send a test email" below
+				to confirm delivery.
 			</p>
 
 			<!-- Apply error / restart handoff -->
@@ -470,7 +435,10 @@ function cancel() {
 			>
 				<template #consequence>
 					<p data-testid="transport-removal-consequence">{{ dialogConsequence }}</p>
-					<p v-if="removalConsequence.safeDate !== null" data-testid="transport-removal-dialog-date">
+					<p
+						v-if="removalConsequence.safeDate !== null"
+						data-testid="transport-removal-dialog-date"
+					>
 						{{ removalConsequence.safeDate }}
 					</p>
 				</template>

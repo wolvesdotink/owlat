@@ -1,3 +1,4 @@
+import type { DestinationProviderKey } from './deliverabilityRouting';
 import type { OutboundTlsMode } from './outboundTlsMode';
 
 /**
@@ -50,10 +51,55 @@ export interface DestinationProviderProfile {
 	maxDeliveriesPerConnection: number;
 }
 
-/** Checked-in startup defaults; runtime operator overrides remain authoritative. */
-export const DESTINATION_PROVIDER_PROFILES: Readonly<
-	Record<string, Readonly<DestinationProviderProfile>>
-> = Object.freeze({
+/**
+ * The rows the checked-in shaping table is total over: every NAMED cell of the
+ * destination taxonomy, plus the generic row every other destination reads.
+ *
+ * `other` is deliberately absent, and the reason is PINNING THE STATUS QUO, not
+ * inertness — `mta:isp-profile:other` is a live, hot row. It is what
+ * `getProfile` reads for every destination whose MX set is not one of the four
+ * named operators (`smtp/sender.ts` passes `destination.providerKey`, which is
+ * `other` for the majority of B2B destinations), and it is operator-writable:
+ * `PUT /isp-profiles/other` passes `isDestinationProviderKey` and HSETs it.
+ *
+ * What the absence buys is that today that read finds no checked-in entry and
+ * falls through to `mta:isp-profile:__default__` — the Redis row seeded from
+ * this table's `__default__` values, which operators tune as "everything else".
+ * Adding an `other` row here would take over that fallback for all
+ * MX-unclassified traffic on the next boot while the `__default__` row kept
+ * shaping only the per-domain keys `canonicalProfileKey` passes through, so it
+ * is a shaping change to real traffic, not a completeness fix. If a considered
+ * `other` policy is ever wanted, it belongs in the same change that decides
+ * what `__default__` then means.
+ */
+type CheckedInProfileKey = Exclude<DestinationProviderKey, 'other'> | '__default__';
+
+/**
+ * Checked-in startup defaults; runtime operator overrides remain authoritative.
+ *
+ * TOTAL OVER THE TAXONOMY (D8), in BOTH directions. The explicit type argument
+ * on `Object.freeze` is what makes the object literal below checked against
+ * `CheckedInProfileKey` while it is still fresh, so a MISSING row and a STALE
+ * row are each a build failure: add a key to `DESTINATION_PROVIDER_KEYS` and
+ * this stops compiling until that provider gets a considered shaping row
+ * (instead of silently falling through to `__default__`, 30/min, opportunistic
+ * TLS, everywhere `getProfile` reads); remove or rename one and its orphaned
+ * row stops compiling too (instead of being HSETNX-ed into Redis by
+ * `seedProfiles` every boot forever). A trailing `satisfies` would only catch
+ * the first: freshness — and with it excess-property checking — is lost through
+ * the `Object.freeze` call.
+ *
+ * The EXPORTED alias below is string-keyed on purpose: `config/ispProfiles.ts`
+ * looks profiles up by `canonicalProfileKey`, whose result is deliberately
+ * WIDER than this table's key set — `other`, and a raw DOMAIN for operators
+ * outside the taxonomy (the pinned divergence documented there) — and a miss is
+ * the meaningful answer that starts the `__default__` fall-through. The docs
+ * table likewise iterates the object's own entries. Both are legitimate string
+ * reads of a table whose membership is nonetheless exhaustively checked here.
+ */
+const CHECKED_IN_DESTINATION_PROVIDER_PROFILES = Object.freeze<
+	Readonly<Record<CheckedInProfileKey, Readonly<DestinationProviderProfile>>>
+>({
 	gmail: Object.freeze({
 		defaultRate: 100,
 		ceiling: 300,
@@ -105,3 +151,7 @@ export const DESTINATION_PROVIDER_PROFILES: Readonly<
 		maxDeliveriesPerConnection: 100,
 	}),
 });
+
+export const DESTINATION_PROVIDER_PROFILES: Readonly<
+	Record<string, Readonly<DestinationProviderProfile>>
+> = CHECKED_IN_DESTINATION_PROVIDER_PROFILES;

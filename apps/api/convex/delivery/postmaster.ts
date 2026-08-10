@@ -7,7 +7,7 @@ import {
 	POSTMASTER_TOKEN,
 	type PostmasterComplianceCheck,
 	type PostmasterDeliveryError,
-} from '@owlat/shared/mtaWebhookEvent';
+} from '@owlat/mta-protocol/webhookEvent';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
@@ -15,10 +15,10 @@ import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 import {
-	derivePostmasterCards,
+	GOOGLE_POSTMASTER_SIGNAL_SOURCE,
 	type PostmasterCard,
 	type PostmasterDomainSignals,
-} from './postmasterCards';
+} from './signals/postmaster';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
@@ -339,16 +339,29 @@ export const getPostmasterStatus = authedQuery({
 					deliveryErrors: stats?.deliveryErrors ?? [],
 					checks: compliance?.checks ?? [],
 				};
+				// THROUGH THE REGISTERED SOURCE, not around it (plan D9). The value is
+				// unchanged either way — the source's absent branch is exactly the
+				// empty card list the derivation returns for a domain Google has said
+				// nothing about — but the cards now come from the one declared
+				// collector rather than from a direct call around it.
+				const reading = GOOGLE_POSTMASTER_SIGNAL_SOURCE.collect(signals);
 				return {
 					...signals,
 					periodStart: stats?.periodStart ?? null,
 					compliancePeriodStart: compliance?.periodStart ?? null,
-					cards: derivePostmasterCards(signals),
+					cards: reading.available ? reading.reading : [],
 				};
 			})
 		);
 
 		return {
+			// ROW EXISTENCE, deliberately: `connected` asks whether any Postmaster
+			// observation has ever been STORED, which the period timestamps answer
+			// directly. It is not the same question as the source's absence — that one
+			// asks whether the stored row has anything readable in it — and a stored
+			// row with nothing readable is still a connected Google account. Deriving
+			// this from `collect()` would turn a quiet-but-connected deployment into
+			// an invitation to connect the account it already has.
 			connected: statuses.some(
 				(status) => status.periodStart !== null || status.compliancePeriodStart !== null
 			),

@@ -8,6 +8,11 @@
  * source of truth, and adding to it is the only place TypeScript will allow.
  */
 
+// The kit's namespace predicate, imported rather than restated — see
+// `getPluginTransportEnv`. A leaf contract with no runtime of its own, which is
+// what lets this module stay importable from every isolate.
+import { isPluginSecretEnvVar } from '@owlat/plugin-kit';
+
 export type EnvKey =
 	// Auth & instance
 	| 'BETTER_AUTH_SECRET'
@@ -129,6 +134,9 @@ export type EnvKey =
 	// Provider: Resend
 	| 'RESEND_API_KEY'
 	| 'RESEND_WEBHOOK_SECRET'
+	// Provider: Emailit
+	| 'EMAILIT_API_KEY'
+	| 'EMAILIT_WEBHOOK_SECRET'
 	// Provider: AWS SES
 	| 'AWS_SES_ACCESS_KEY_ID'
 	| 'AWS_SES_REGION'
@@ -302,8 +310,10 @@ export function isEnvPresent(key: string): boolean {
 }
 
 /**
- * The one untyped-key read. Both escape hatches below delegate here so
- * "unset or empty means absent" has a single definition.
+ * The one untyped-key read. Every escape hatch below delegates here — each
+ * fencing its own key shape first — so "unset or empty means absent" has a
+ * single definition. Deliberately uncounted: the sentence went stale the first
+ * time a third one was added.
  */
 function readNonEmptyEnv(key: string): string | undefined {
 	const value = process.env[key];
@@ -335,6 +345,38 @@ const SEND_TRANSPORT_ENV_KEY_PATTERN = /^[A-Z0-9_]+__[A-Z0-9_]+$/;
  */
 export function getSendTransportEnv(key: string): string | undefined {
 	if (!SEND_TRANSPORT_ENV_KEY_PATTERN.test(key)) return undefined;
+	return readNonEmptyEnv(key);
+}
+
+/**
+ * Read one bundled SEND TRANSPORT's declared configuration variable.
+ *
+ * Accepts an arbitrary key (not the typed `EnvKey` union) because the names are
+ * declared in plugin manifests, not in this deployment's fixed union, and a named
+ * instance reads them under a runtime-derived `__<INSTANCEKEY>` suffix. Reading
+ * through this module keeps the no-raw-`process.env` lint satisfied.
+ *
+ * The value IS handed to plugin code — that is the point: a transport that reads
+ * the environment itself would read the deployment-default instance's variables
+ * no matter which transport id the send was addressed to. So the namespace fence
+ * is the security boundary, and it is checked here as well as at manifest
+ * validation, because the host's caller is a generated artifact rather than a
+ * validated manifest — the innermost of the three readings, and the one that has
+ * to hold for an artifact no validator ever saw. Returns `undefined` when unset,
+ * empty, or outside the namespace, so the caller fails closed.
+ *
+ * THE FENCE IS THE KIT'S OWN PREDICATE, not a fourth copy of the pattern.
+ * `isPluginSecretEnvVar` is where the `PLUGIN_` namespace is defined — the
+ * manifest validator and the catalog composition guard both compose onto it — and
+ * a private regex here would be free to disagree with it in the one direction
+ * nobody would notice: a tightening that lands on the two outer readings and not
+ * on this one still hands the value over. It accepts the instance-suffixed form
+ * (`PLUGIN_ACME_TOKEN__EU`) because that is one more name inside the same
+ * namespace; only a BASE name is held to the stricter no-`__` rule, and that is
+ * the manifest's business, not this read's.
+ */
+export function getPluginTransportEnv(key: string): string | undefined {
+	if (!isPluginSecretEnvVar(key)) return undefined;
 	return readNonEmptyEnv(key);
 }
 

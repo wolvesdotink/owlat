@@ -21,13 +21,25 @@
 import { v } from 'convex/values';
 import { adminQuery, authedAction, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type QueryCtx } from '../_generated/server';
 import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
-import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
+import {
+	isCoreSendProviderKind,
+	sendProviderCatalogEntry,
+	type SendProviderKind,
+} from '../lib/sendProviders/catalog';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
+import { providerFeedbackFor } from '../providers/feedback';
+import {
+	deriveProviderFeedbackStatus,
+	feedbackVerifierEnvVars,
+	providerKindFromTransportId,
+	type ProviderFeedbackStatus,
+} from '../providers/feedbackStatus';
 
 export type DeliveryTestStageKey =
 	| 'provider_configuration'
@@ -151,58 +163,67 @@ export const getStatus = adminQuery({
 			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
 			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
 			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
-			mtaHealth: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
+			mtaHealth: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
 		};
 	},
 });
 
 /**
- * Timestamp (ms) of the most recent SNS message received on `/webhooks/ses`, or
- * null if none. Powers the Delivery page's live "last event received" line so an
- * admin can confirm the SES → SNS feedback loop is actually delivering to this
- * instance. Reads only the audit-store's newest `ses` row via the
- * `by_source_and_received_at` index — never the payload body, so nothing
- * sensitive leaves the backend. Admin-gated (operational config).
+ * Generic feedback-channel status for any default or named transport.
+ *
+ * Feedback credentials remain deployment-wide in this migration, so a named
+ * transport intentionally reads the same verifier channel as its provider kind.
+ * Only environment-variable names and presence booleans influence the result;
+ * no secret or retained webhook body leaves the backend.
  */
-export const getLastSesEventAt = adminQuery({
-	args: {},
-	handler: async (ctx): Promise<number | null> => {
-		const latest = await ctx.db
-			.query('webhookPayloads')
-			.withIndex('by_source_and_received_at', (q) => q.eq('source', 'ses'))
-			.order('desc')
-			.first();
-		return latest?.receivedAt ?? null;
+export const getProviderFeedbackStatus = adminQuery({
+	args: { transportId: v.string() },
+	handler: async (ctx, { transportId }): Promise<ProviderFeedbackStatus | null> => {
+		const kind = providerKindFromTransportId(transportId);
+		if (!kind) return null;
+		const descriptor = sendProviderCatalogEntry(kind);
+		const feedback = providerFeedbackFor(kind);
+		const missingVariables = feedback
+			? feedbackVerifierEnvVars(feedback.verifier).filter((name) => !isEnvPresent(name))
+			: [];
+		return deriveProviderFeedbackStatus({
+			hasFeedback: feedback !== undefined,
+			ceremony: descriptor.providerFeedback?.setupPanel ?? 'none',
+			missingVariables,
+			lastEventAt: feedback ? await lastFeedbackEventAt(ctx, kind) : null,
+			now: Date.now(),
+		});
 	},
 });
 
 /**
- * Whether Mandrill's feedback loop is wired, as two non-secret facts.
+ * When this transport's feedback channel last delivered, by tier.
  *
- * The Mandrill sibling of {@link getLastSesEventAt}, and provider-specific for
- * the same reason it is: the SIGNING key is not part of what the transport needs
- * to SEND, so it never appears in `getStatus.requiredEnv`. Without it every
- * posted batch is rejected — bounces, complaints and reject-list hits silently
- * stop arriving while sending looks perfectly healthy — and that gap has to be
- * visible on the page where the webhook is set up.
+ * CORE KINDS read the raw-retention table, which they populate by default.
  *
- * Presence boolean only; the key's value never leaves the backend. The timestamp
- * comes from the audit store's newest `mandrill` row, never its body.
+ * PLUGIN KINDS CANNOT: raw retention is opt-in per adapter (`storeRawPayload`,
+ * default off), so grading a plugin channel by `webhookPayloads` reported a
+ * perfectly working non-retaining transport as `awaiting_event` forever. They
+ * read the durable marker the feedback route stamps on every completed batch
+ * instead. The replay-claim rows are NOT that signal: they expire inside the
+ * signature tolerance window (fifteen minutes at most) while this grading works
+ * over seven days.
  */
-export const getMandrillFeedbackStatus = adminQuery({
-	args: {},
-	handler: async (ctx): Promise<{ isWebhookKeyPresent: boolean; lastEventAt: number | null }> => {
-		const latest = await ctx.db
-			.query('webhookPayloads')
-			.withIndex('by_source_and_received_at', (q) => q.eq('source', 'mandrill'))
-			.order('desc')
+async function lastFeedbackEventAt(ctx: QueryCtx, kind: SendProviderKind): Promise<number | null> {
+	if (!isCoreSendProviderKind(kind)) {
+		const activity = await ctx.db
+			.query('pluginWebhookFeedbackActivity')
+			.withIndex('by_transport_kind', (q) => q.eq('transportKind', kind))
 			.first();
-		return {
-			isWebhookKeyPresent: isEnvPresent('MANDRILL_WEBHOOK_KEY'),
-			lastEventAt: latest?.receivedAt ?? null,
-		};
-	},
-});
+		return activity?.lastEventAt ?? null;
+	}
+	const latest = await ctx.db
+		.query('webhookPayloads')
+		.withIndex('by_source_and_received_at', (q) => q.eq('source', kind))
+		.order('desc')
+		.first();
+	return latest?.receivedAt ?? null;
+}
 
 /**
  * Non-secret transport summary for the Delivery hub's single transport card and
@@ -276,7 +297,7 @@ export const getTransportSummary = authedQuery({
 			canSend,
 			advancedRoutingActive,
 			health,
-			infrastructure: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
+			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,

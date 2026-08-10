@@ -14,14 +14,16 @@ COPY patches/ patches/
 # workspace shape (same idiom as apps/web/Dockerfile), examples/* and
 # examples/plugins/* included.
 COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
-# The worker imports the dist-shipping @owlat/plugin-kit workspace package, so it
-# is filtered in as well — that pulls in plugin-kit's build toolchain so we can
-# emit its dist before compiling the worker (tsc needs its types; the runtime
-# needs its JS).
-RUN bun install --frozen-lockfile --filter @owlat/code-worker --filter @owlat/plugin-kit
+# The worker imports the dist-shipping contract packages, so both are filtered
+# in — that pulls in their build toolchains before the worker compile.
+RUN bun install --frozen-lockfile --filter @owlat/code-worker --filter @owlat/provider-kit --filter @owlat/plugin-kit
 
-# Build @owlat/plugin-kit first: the worker's tsc build resolves it to dist/.
+# Build the source-neutral contract before plugin-kit re-exports it. The root
+# config is required by both package tsconfigs in this isolated build context.
+COPY tsconfig.base.json ./
+COPY packages/provider-kit/ packages/provider-kit/
 COPY packages/plugin-kit/ packages/plugin-kit/
+RUN cd packages/provider-kit && bun run build
 RUN cd packages/plugin-kit && bun run build
 
 COPY apps/code-worker/tsconfig.json apps/code-worker/
@@ -57,10 +59,11 @@ RUN npm install -g opencode 2>/dev/null || echo "OpenCode not available, using f
 COPY --from=builder /build/apps/code-worker/dist ./dist
 COPY --from=proddeps /build/node_modules ./node_modules
 COPY apps/code-worker/package.json ./
-# node_modules/@owlat/plugin-kit is a workspace symlink pointing back at
-# packages/plugin-kit; ship that package's built dist (+ manifest) at the path
-# the symlink resolves to so the worker's `import '@owlat/plugin-kit'` loads at
-# runtime.
+# The workspace packages in node_modules are symlinks. Ship both built contract
+# packages at their targets so plugin-kit's provider-kit re-export resolves in
+# the runtime image.
+COPY --from=builder /build/packages/provider-kit/package.json ./packages/provider-kit/package.json
+COPY --from=builder /build/packages/provider-kit/dist ./packages/provider-kit/dist
 COPY --from=builder /build/packages/plugin-kit/package.json ./packages/plugin-kit/package.json
 COPY --from=builder /build/packages/plugin-kit/dist ./packages/plugin-kit/dist
 

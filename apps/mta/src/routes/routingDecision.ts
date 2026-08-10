@@ -8,7 +8,6 @@ import {
 	isValidEmail,
 	parseAddress,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
-	type GovernedRoutingContext,
 } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
 import type { AuthContext } from '../server.js';
@@ -27,12 +26,17 @@ import {
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { resolvePool } from '../scaling/poolRules.js';
 import { selectIpWithLease } from '../scaling/ipPool.js';
-import type { DestinationProviderKey, IpPoolType } from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { IpPoolType } from '../types.js';
+import {
+	MTA_ROUTING_DECISION_REQUEST_KEYS,
+	MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS,
+	type MtaRoutingDecisionRequest,
+	type MtaRoutingDecisionResponse,
+} from '@owlat/mta-protocol';
 
 const ROUTING_LEASE_TTL_SECONDS = 15 * 60;
 const ROUTING_LEASE_PREFIX = 'mta:routing-lease:';
-
-type DecisionRequest = GovernedRoutingContext & { requireProviderProbe?: boolean };
 
 export interface RoutingLeaseRecord {
 	token: string;
@@ -40,12 +44,12 @@ export interface RoutingLeaseRecord {
 	workAttemptId: string;
 	routingReentryToken: string;
 	startedAt: number;
-	deliveryDomain: DecisionRequest['deliveryDomain'];
+	deliveryDomain: MtaRoutingDecisionRequest['deliveryDomain'];
 	organizationId: string;
 	recipient: string;
 	from: string;
-	messageType: DecisionRequest['messageType'];
-	candidateProvider: DecisionRequest['candidateProvider'];
+	messageType: MtaRoutingDecisionRequest['messageType'];
+	candidateProvider: MtaRoutingDecisionRequest['candidateProvider'];
 	ipPool: IpPoolType;
 	allowWarmupOverflow: boolean;
 	destinationProvider: DestinationProviderKey;
@@ -61,7 +65,7 @@ export interface RoutingLeaseRecord {
 
 export function isRoutingLeaseBoundTo(
 	lease: RoutingLeaseRecord | null,
-	request: DecisionRequest,
+	request: MtaRoutingDecisionRequest,
 	now = Date.now()
 ): lease is RoutingLeaseRecord {
 	return Boolean(
@@ -91,27 +95,27 @@ function authorizedForOrg(c: Context, organizationId: string): boolean {
 	return auth.isMasterKey || auth.orgCredential?.organizationId === organizationId;
 }
 
-function validRequest(value: unknown): value is DecisionRequest {
+/**
+ * Judge one decision request.
+ *
+ * The key list is the PACKAGE's, never a copy of it (D7). This check is exact —
+ * an unknown key is a 400 — and Convex's producer spreads a typed
+ * `MtaRoutingDecisionRequest` onto the wire, so a field added to the contract
+ * and honoured by that producer would be refused here the moment it was added
+ * there. Convex cannot distinguish that 400 from an unreachable endpoint, so it
+ * would defer EVERY governed own-MTA send as `local` — uncounted by gate 2 —
+ * with nothing failing to compile on either side. Deriving both lists from the
+ * declaration is what makes that a compile error instead.
+ */
+function validRequest(value: unknown): value is MtaRoutingDecisionRequest {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	const body = value as Record<string, unknown>;
-	const exact = [
-		'messageId',
-		'workAttemptId',
-		'routingReentryToken',
-		'startedAt',
-		'deliveryDomain',
-		'messageType',
-		'organizationId',
-		'recipient',
-		'from',
-		'candidateProvider',
-		'ipPool',
-		'allowWarmupOverflow',
-	];
+	const exact: readonly string[] = MTA_ROUTING_DECISION_REQUEST_KEYS;
+	const optional: readonly string[] = MTA_ROUTING_DECISION_REQUEST_OPTIONAL_KEYS;
 	return (
-		Object.keys(body).every((key) => [...exact, 'requireProviderProbe'].includes(key)) &&
+		Object.keys(body).every((key) => exact.includes(key) || optional.includes(key)) &&
 		Object.keys(body).length ===
-			exact.length + (body['requireProviderProbe'] === undefined ? 0 : 1) &&
+			exact.length + optional.filter((key) => body[key] !== undefined).length &&
 		exact.every((key) => key in body) &&
 		typeof body['messageId'] === 'string' &&
 		body['messageId'].length > 0 &&
@@ -206,6 +210,21 @@ export async function readRoutingLease(redis: Redis, token: string): Promise<Rou
 	return lease.expiresAt >= Date.now() ? { status: 'ok', lease } : { status: 'expired' };
 }
 
+/**
+ * Answer the decision request.
+ *
+ * Every `decision` answer this handler gives goes through here, so the shapes
+ * it may emit are exactly {@link MtaRoutingDecisionResponse} — the same
+ * declaration Convex validates them against (D7). A new defer reason therefore
+ * cannot be invented on this side alone: it has to be added to
+ * `MTA_DEFER_REASON_ORIGIN` with an origin beside it, which is the accept-list
+ * the other end reads. Refusals (`{ error }`) are not decisions and stay on
+ * `c.json` directly.
+ */
+function decide(c: Context, answer: MtaRoutingDecisionResponse) {
+	return c.json(answer);
+}
+
 export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 	return async (c: Context) => {
 		let input: unknown;
@@ -220,7 +239,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 
 		const global = await canSend(redis, input.organizationId);
 		if (!global.allowed) {
-			return c.json({
+			return decide(c, {
 				decision: 'defer',
 				reason: 'global_safety',
 				retryAfterMs: global.retryAfter ?? 60_000,
@@ -228,8 +247,8 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 		}
 		if (input.candidateProvider === 'relay') {
 			return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
-				? c.json({ decision: 'relay' })
-				: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+				? decide(c, { decision: 'relay' })
+				: decide(c, { decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 		}
 
 		const toDomain = extractDomainOrNull(input.recipient)!;
@@ -237,25 +256,25 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 		const provider = await canSendScope(redis, input.organizationId, destination.providerKey);
 		if (!provider.allowed) {
 			return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
-				? c.json({ decision: 'relay', reason: 'provider_breaker' })
-				: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+				? decide(c, { decision: 'relay', reason: 'provider_breaker' })
+				: decide(c, { decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 		}
 		if (input.requireProviderProbe === true && provider.state !== 'half-open') {
-			return c.json({ decision: 'relay', reason: 'provider_hysteresis' });
+			return decide(c, { decision: 'relay', reason: 'provider_hysteresis' });
 		}
 		// Re-read global after the provider check. A global breaker transition must
 		// dominate every provider-local fallback decision, including one racing
 		// this request; it is never safe to translate that transition into relay.
 		const currentGlobal = await canSend(redis, input.organizationId);
 		if (!currentGlobal.allowed) {
-			return c.json({
+			return decide(c, {
 				decision: 'defer',
 				reason: 'global_safety',
 				retryAfterMs: currentGlobal.retryAfter ?? 60_000,
 			});
 		}
 		if (currentGlobal.state === 'half-open' && global.state !== 'half-open') {
-			return c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
+			return decide(c, { decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
 		}
 
 		const fromDomain = extractDomainOrNull(input.from) ?? undefined;
@@ -273,15 +292,15 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			poolRule.dedicatedIp
 		);
 		if (!selected)
-			return c.json({ decision: 'defer', reason: 'no_owned_ip', retryAfterMs: 60_000 });
+			return decide(c, { decision: 'defer', reason: 'no_owned_ip', retryAfterMs: 60_000 });
 
 		let warmingReservation: WarmingReservation | undefined;
 		if (input.allowWarmupOverflow && input.deliveryDomain === 'production') {
 			const reserved = await reserveWarmingSlot(redis, selected.ip, input.messageId);
 			if (!reserved.allowed) {
 				return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
-					? c.json({ decision: 'relay', reason: 'warmup_overflow' })
-					: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+					? decide(c, { decision: 'relay', reason: 'warmup_overflow' })
+					: decide(c, { decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 			}
 			warmingReservation = reserved.reservation;
 		}
@@ -301,7 +320,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 				);
 				if (!globalProbe) {
 					if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
-					return c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
+					return decide(c, { decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
 				}
 			}
 			if (provider.state === 'half-open') {
@@ -324,8 +343,8 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 						);
 					if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
 					return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
-						? c.json({ decision: 'relay', reason: 'provider_probe_limit' })
-						: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+						? decide(c, { decision: 'relay', reason: 'provider_probe_limit' })
+						: decide(c, { decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 				}
 			}
 
@@ -355,7 +374,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 				...(warmingReservation ? { warmingReservation } : {}),
 			};
 			await writeLease(redis, lease);
-			return c.json({
+			return decide(c, {
 				decision: 'mta',
 				lease: { token: leaseToken, providerProbe, globalProbe },
 			});
@@ -382,7 +401,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			if (warmingReservation) {
 				await releaseWarmingSlot(redis, warmingReservation).catch(() => {});
 			}
-			return c.json({ decision: 'defer', reason: 'lease_persistence', retryAfterMs: 60_000 });
+			return decide(c, { decision: 'defer', reason: 'lease_persistence', retryAfterMs: 60_000 });
 		}
 	};
 }

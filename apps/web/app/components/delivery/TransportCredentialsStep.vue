@@ -26,7 +26,11 @@
  */
 import { computed, ref } from 'vue';
 import type { EmailStepDraft } from '~/composables/useSetupWizard';
-import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
+import {
+	credentialErrorFor,
+	emailStepIsValid,
+	validateEmailStep,
+} from '~/composables/setupWizardValidation';
 import {
 	RELAY_PROVIDER_OPTIONS,
 	applyTransportEnv,
@@ -34,6 +38,7 @@ import {
 	type ValidateTransportResponse,
 } from '~/composables/useRelayCredentialDraft';
 import { redactSecrets } from '~/utils/transportWizard';
+import TransportCredentialFields from './TransportCredentialFields.vue';
 
 /**
  * `settled` carries the outcome the wizard gates on; `applied` is the shipped
@@ -45,19 +50,12 @@ const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 const relay = useRelayCredentialDraft('resend');
 const {
 	provider,
-	resendKey,
-	mandrillKey,
-	sesRegion,
-	sesAccess,
-	sesSecret,
-	smtpPreset,
-	smtpHost,
-	smtpPort,
-	smtpUsername,
-	smtpPassword,
-	smtpPresetOptions,
+	credentialValues,
+	preset,
+	presetOptions,
 	enteredSecrets,
 	canValidateLive,
+	requiredCredentialError,
 } = relay;
 
 const providerOptions = RELAY_PROVIDER_OPTIONS;
@@ -73,6 +71,15 @@ const draft = computed<EmailStepDraft>(() => ({
 const submitted = ref(false);
 const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
+
+/**
+ * The ONE credential error the selected kind can raise — from
+ * `credentialErrorFor`, the same helper the in-app transport editor calls, so
+ * neither screen can be left announcing a key the other has learned about.
+ */
+const credentialFieldError = computed(() =>
+	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
+);
 const credentialError = ref('');
 const restartNotice = ref('');
 const validationResult = ref<ValidateTransportResponse | null>(null);
@@ -97,7 +104,7 @@ async function applyCredentials() {
 	credentialError.value = '';
 	restartNotice.value = '';
 	validationResult.value = null;
-	if (!emailStepIsValid(draft.value)) return;
+	if (!emailStepIsValid(draft.value) || requiredCredentialError.value !== undefined) return;
 	applying.value = true;
 	try {
 		// The SHIPPED pre-apply handshake first (Resend and SMTP have one), so a bad
@@ -111,7 +118,7 @@ async function applyCredentials() {
 				return;
 			}
 		}
-		const res = await applyTransportEnv(draft.value);
+		const res = await applyTransportEnv(draft.value, undefined, { ...credentialValues });
 		if (!res.ok) {
 			fail(res.message);
 			return;
@@ -171,57 +178,29 @@ async function applyCredentials() {
 			you switch back.
 		</p>
 
-		<div v-if="provider === 'resend'">
-			<UiInput
-				v-model="resendKey"
-				type="password"
-				label="Resend API key"
-				placeholder="re_..."
-				autocomplete="off"
-				:error="showErrors ? errors.resendKey : undefined"
-			/>
-		</div>
+		<!-- ONE form for every relay: the selected entry's `credentialFields`
+		     descriptors, rendered generically (plan D5).
 
-		<div v-if="provider === 'mandrill'" class="space-y-3" data-testid="mandrill-credentials">
-			<UiInput
-				v-model="mandrillKey"
-				type="password"
-				label="Mailchimp Transactional API key"
-				placeholder="md-..."
-				autocomplete="off"
-				:error="showErrors ? errors.mandrillKey : undefined"
-			/>
-			<p class="text-xs text-text-tertiary">
-				Mailchimp Transactional &rarr; Settings &rarr; API keys. Feedback (bounces, complaints,
-				rejects) needs a second variable, <code>MANDRILL_WEBHOOK_KEY</code>, which Mandrill issues
-				when you create the webhook — the delivery page has the URL and the event list.
-			</p>
-		</div>
+		     WITHOUT the endpoint's implicit-TLS toggle, which this step has never
+		     offered: every preset it can choose declares STARTTLS, and giving a
+		     shipped wizard a new control is an additive change this refactor does
+		     not get to make. The value is still written from the preset. -->
+		<TransportCredentialFields
+			:kind="provider"
+			:values="credentialValues"
+			:preset="preset"
+			:preset-options="presetOptions"
+			:error="credentialFieldError"
+			:endpoint-security-toggle="false"
+			@update:preset="preset = $event"
+		/>
 
-		<div v-if="provider === 'ses'" class="space-y-3">
-			<UiInput v-model="sesRegion" label="Region" placeholder="us-east-1" />
-			<UiInput v-model="sesAccess" label="Access key ID" autocomplete="off" />
-			<UiInput v-model="sesSecret" type="password" label="Secret access key" autocomplete="off" />
-			<p v-if="showErrors && errors.ses" class="text-sm text-error">{{ errors.ses }}</p>
-		</div>
-
-		<div v-if="provider === 'smtp'" class="space-y-3">
-			<UiSelect v-model="smtpPreset" label="Provider preset" :options="smtpPresetOptions" />
-			<UiInput
-				v-model="smtpHost"
-				label="Server host"
-				autocomplete="off"
-				:disabled="smtpPreset !== 'custom'"
-			/>
-			<UiInput v-model="smtpPort" label="Port" placeholder="587" autocomplete="off" />
-			<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
-			<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
-			<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
-		</div>
-
+		<!-- Which relays can be checked before they are applied is the catalog's
+		     `setupProbe`; this line renders only for the selected kind, so it names
+		     that one rather than listing the vendors that lack a probe. -->
 		<p v-if="!canValidateLive" class="text-xs text-text-tertiary">
-			Amazon SES and Mailchimp Transactional can’t be checked before applying — the live send test in
-			the next step confirms it.
+			This provider can’t be checked before applying — the live send test in the next step confirms
+			it.
 		</p>
 
 		<div v-if="validationResult && !validationResult.ok" role="alert">

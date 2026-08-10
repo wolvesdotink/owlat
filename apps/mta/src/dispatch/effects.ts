@@ -32,12 +32,8 @@ import { logDeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
-import type {
-	DestinationProviderKey,
-	IpPoolType,
-	MtaWebhookEvent,
-	MetricOutcome,
-} from '../types.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { IpPoolType, MtaWebhookEvent, MetricOutcome } from '../types.js';
 import {
 	recordProviderVolumePressure,
 	recordProviderWarmingOutcome,
@@ -137,7 +133,13 @@ export type DispatchEffect =
 			pool: string;
 			outcome: MetricOutcome;
 			durationMs: number | undefined;
-			providerKey: string;
+			/**
+			 * The ISP-metrics axis, not a free label: `outcome.ts` destructures
+			 * `{ throttleKey, providerKey }` together and threads both into adjacent
+			 * effects, and only the taxonomy key is a row the reputation snapshot
+			 * ever reads back.
+			 */
+			providerKey: DestinationProviderKey;
 	  }
 	| {
 			kind: 'metrics_counter_inc';

@@ -12,6 +12,7 @@ export {
 	validateOpenAIKey,
 	validateOpenRouterKey,
 	validateResendKey,
+	validateEmailitKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
 	validateSmtpRelay,

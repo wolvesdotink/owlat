@@ -86,6 +86,18 @@ crons.interval(
 	{}
 );
 
+// Sweep expired bundled-plugin replay claims (D6/P2.2). The claim mutation ages
+// its own table out on the hot path, but only while deliveries keep arriving:
+// disabling a plugin or a provider going quiet strands whatever the last sweep
+// left. Rows expire within the signature contract's tolerance (≤ 15 minutes), so
+// a daily pass leaves nothing behind for long.
+crons.interval(
+	'cleanup plugin webhook replay claims',
+	{ hours: 24 },
+	internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+	{}
+);
+
 // Clean up old connected-app hook delivery logs weekly. connectedAppHookDeliveryLogs
 // is written on every signed-hook invocation; without this cron its retention
 // never runs and the table grows unbounded. Ages rows out at AUDIT_LOG_RETENTION_MS.

@@ -1,0 +1,370 @@
+// @vitest-environment happy-dom
+/**
+ * THE ONE CREDENTIAL FORM, mounted for every kind the catalog declares.
+ *
+ * The suite iterates `CORE_SEND_PROVIDER_CATALOG_ENTRIES` rather than a list of
+ * vendor names, and asserts the rendered controls against the DESCRIPTORS — so
+ * it is the same assertion for a provider that does not exist yet, and it fails
+ * the day a form stops matching what its entry declares. That is the property
+ * P1.2 is actually claiming: the renderer knows field KINDS, never providers.
+ *
+ * The ids it finds inputs by (`#field-resend-api-key`) are derived from the
+ * LABEL by the shared stub, exactly as the shipped wizard suites do it — which
+ * is what makes "the label is the catalog's" a checkable statement rather than a
+ * comment.
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
+import TransportCredentialFields from '../TransportCredentialFields.vue';
+import {
+	credentialFieldsFor,
+	seedCredentialValues,
+	type TransportCredentialValues,
+} from '~/composables/setupWizardCredentials';
+import type { SmtpPreset } from '~/composables/useSetupWizard';
+import { wizardStubs } from './wizardHarness';
+
+/**
+ * PROVIDER N+1, INJECTED — the descriptor shapes the vocabulary allows and no
+ * shipped entry uses yet.
+ *
+ * The catalog is deep-frozen and the renderer reads it by kind, so the only way
+ * to mount a field shape nobody has declared is to hand the lookup one. Every
+ * real kind passes straight through to the actual implementation, so the suite
+ * above is unaffected; `NEXT_KIND` is the one name that resolves to this fixture.
+ *
+ * Worth the mock because the property under test is exactly the one the shipped
+ * catalog CANNOT prove: "adding a provider adds zero lines to a .vue file" is
+ * only true for the descriptor shapes this renderer actually draws, and a kind
+ * whose declared options were silently dropped would look perfect in every test
+ * that iterates the five entries we ship.
+ */
+const { NEXT_KIND, NEXT_FIELDS } = vi.hoisted(() => ({
+	NEXT_KIND: 'acme-post',
+	NEXT_FIELDS: [
+		{
+			kind: 'region-select' as const,
+			key: 'region',
+			label: 'Sending region',
+			envVar: 'ACME_REGION',
+			// The descriptor's own words: "present only when the provider's region
+			// set is closed and known to us".
+			options: [
+				{ value: 'eu', label: 'Europe' },
+				{ value: 'us', label: 'United States' },
+			],
+			default: 'eu',
+			required: true,
+		},
+	],
+}));
+
+vi.mock('~/composables/setupWizardCredentials', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('~/composables/setupWizardCredentials')>();
+	return {
+		...actual,
+		credentialFieldsFor: (kind: string | null | undefined) =>
+			kind === NEXT_KIND ? NEXT_FIELDS : actual.credentialFieldsFor(kind),
+	};
+});
+
+const KINDS = CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind);
+
+/** The id the stubbed input/label pair share — the harness's own derivation. */
+function fieldId(label: string): string {
+	return `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
+function mountFields(
+	kind: string,
+	options: {
+		values?: TransportCredentialValues;
+		preset?: SmtpPreset;
+		error?: string;
+	} = {}
+) {
+	const values = options.values ?? seedCredentialValues(kind);
+	const wrapper = mount(TransportCredentialFields, {
+		props: {
+			kind,
+			values,
+			preset: options.preset ?? 'mailgun',
+			presetOptions: [
+				{ value: 'mailgun' as SmtpPreset, label: 'Mailgun' },
+				{ value: 'custom' as SmtpPreset, label: 'Custom SMTP server' },
+			],
+			error: options.error,
+		},
+		global: { stubs: wizardStubs },
+	});
+	return { wrapper, values };
+}
+
+describe('TransportCredentialFields — one renderer, every kind', () => {
+	it.each(KINDS)('draws a labelled control for each field %s declares', (kind) => {
+		const { wrapper } = mountFields(kind);
+		for (const field of credentialFieldsFor(kind)) {
+			const control = wrapper.find(`#${fieldId(field.label)}`);
+			expect(control.exists()).toBe(true);
+			// Only a `secret` is masked; nothing else pretends to be one.
+			if (field.kind === 'secret') expect(control.attributes('type')).toBe('password');
+			else if (control.element.tagName === 'INPUT') {
+				expect(control.attributes('type')).not.toBe('password');
+			}
+		}
+	});
+
+	it.each(KINDS)('writes what is typed into %s straight onto its env variable', (kind) => {
+		const { wrapper, values } = mountFields(kind);
+		for (const field of credentialFieldsFor(kind)) {
+			if (field.kind !== 'string' && field.kind !== 'secret' && field.kind !== 'region-select') {
+				continue;
+			}
+			wrapper.find(`#${fieldId(field.label)}`).setValue(`typed-${field.key}`);
+			expect(values[field.envVar]).toBe(`typed-${field.key}`);
+		}
+	});
+
+	it('renders nothing at all for a transport this build does not carry', () => {
+		const { wrapper } = mountFields('postmark');
+		expect(wrapper.findAll('input')).toHaveLength(0);
+		expect(wrapper.findAll('select')).toHaveLength(0);
+	});
+
+	it('renders the entry’s own operator guidance where it declares one', () => {
+		// Mandrill's descriptor carries the note about the SIGNING key it does not
+		// collect here; it travels with the provider, not with this component.
+		const text = mountFields('mandrill').wrapper.text();
+		expect(text).toContain('MANDRILL_WEBHOOK_KEY');
+		// …including the POINTER at the card that issues it. Told they need a
+		// second variable and not where it comes from, an operator is stuck — which
+		// is why both hand-written blocks closed with this clause.
+		expect(text).toContain('the webhook card on the delivery page has the URL');
+	});
+
+	it('typesets the variable names inside that guidance as code', () => {
+		// Both shipped blocks wrapped the variable in a `<code>`: it is the one
+		// token in the sentence that has to be copied exactly. Matched by SHAPE, so
+		// the prose around it stays prose.
+		const wrapper = mountFields('mandrill').wrapper;
+		expect(wrapper.findAll('code').map((node) => node.text())).toEqual(['MANDRILL_WEBHOOK_KEY']);
+		// And the sentence still reads as declared — no space introduced where the
+		// runs were joined.
+		expect(wrapper.find('p.text-xs').text()).toBe(credentialFieldsFor('mandrill')[0]!.description);
+	});
+});
+
+describe('TransportCredentialFields — a descriptor shape no shipped kind uses yet', () => {
+	it('draws a region-select with a declared option set as a picker', () => {
+		// The silent failure this closes: `options` is part of the vocabulary, and a
+		// renderer whose only special cases were host-port/select/boolean dropped
+		// them on the floor and handed the operator a free-text box — with a green
+		// build and a green suite, because no shipped entry declares a closed region
+		// set.
+		const values: TransportCredentialValues = {};
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: NEXT_KIND,
+				values,
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+			},
+			global: { stubs: wizardStubs },
+		});
+		const select = wrapper.find('#field-sending-region');
+		expect(select.element.tagName).toBe('SELECT');
+		expect(wrapper.findAll('#field-sending-region option').map((o) => o.text())).toEqual([
+			'Europe',
+			'United States',
+		]);
+		// Seeded from the descriptor's default, and writing straight onto the
+		// declared variable.
+		expect((select.element as HTMLSelectElement).value).toBe('eu');
+		select.setValue('us');
+		expect(values['ACME_REGION']).toBe('us');
+	});
+
+	it('announces its credential error on that picker, rather than nowhere at all', () => {
+		// The silent failure this closes: the error placement asked the field's
+		// KIND, and a `region-select` is error-bearing — but with options declared
+		// it is drawn by the select branch, which was passed no error. A provider
+		// whose whole form is one closed region set therefore submitted empty, was
+		// refused by `validateEmailStep`, and got a button that did nothing with no
+		// sentence saying why.
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: NEXT_KIND,
+				values: {} as TransportCredentialValues,
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+				error: 'A sending region is required.',
+			},
+			global: { stubs: wizardStubs },
+		});
+		const alerts = wrapper.findAll('[role="alert"]');
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]!.text()).toBe('A sending region is required.');
+		// Beside the picker it is about, not as a set-level paragraph: the set and
+		// the field are the same thing on a one-control form.
+		expect(alerts[0]!.element.parentElement?.querySelector('select')?.id).toBe(
+			'field-sending-region'
+		);
+	});
+
+	it('leaves a region-select with no declared set as the free-text input SES ships', () => {
+		// SES's region list changes when AWS adds a region, so its descriptor
+		// deliberately declares none — and the shipped form is a text box.
+		const region = mountFields('ses').wrapper.find('#field-region');
+		expect(region.element.tagName).toBe('INPUT');
+		expect(region.attributes('placeholder')).toBe('us-east-1');
+	});
+});
+
+describe('TransportCredentialFields — the host-port composite', () => {
+	it('draws the endpoint as preset + host + port + implicit TLS', () => {
+		const { wrapper } = mountFields('smtp');
+		expect(wrapper.find('#field-provider-preset').exists()).toBe(true);
+		expect(wrapper.find('#field-server-host').exists()).toBe(true);
+		expect(wrapper.find('#field-port').exists()).toBe(true);
+		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true);
+	});
+
+	it('locks the host on a named preset and frees it on the custom endpoint', () => {
+		expect(mountFields('smtp').wrapper.find('#field-server-host').attributes('disabled')).toBe('');
+		const custom = mountFields('smtp', { preset: 'custom' });
+		expect(custom.wrapper.find('#field-server-host').attributes('disabled')).toBeUndefined();
+	});
+
+	it('writes the implicit-TLS toggle back as an explicit true/false', async () => {
+		const { wrapper, values } = mountFields('smtp');
+		const box = wrapper.find('input[type="checkbox"]');
+		await box.setValue(true);
+		expect(values['SMTP_RELAY_SECURE']).toBe('true');
+		await box.setValue(false);
+		expect(values['SMTP_RELAY_SECURE']).toBe('false');
+	});
+
+	it('hints the host with the descriptor’s example, as the shipped form did', () => {
+		const { wrapper } = mountFields('smtp', { preset: 'custom' });
+		expect(wrapper.find('#field-server-host').attributes('placeholder')).toBe('smtp.mailgun.org');
+		// Both halves of one endpoint hint, or neither: the port already showed its
+		// declared default.
+		expect(wrapper.find('#field-port').attributes('placeholder')).toBe('587');
+	});
+
+	it('withholds the implicit-TLS toggle from a surface that never offered it', () => {
+		// The connect-a-provider wizard's step rendered preset/host/port/user/pass
+		// and no TLS control; sharing this renderer must not hand it a new one.
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: 'smtp',
+				values: seedCredentialValues('smtp'),
+				preset: 'mailgun' as SmtpPreset,
+				presetOptions: [{ value: 'mailgun' as SmtpPreset, label: 'Mailgun' }],
+				endpointSecurityToggle: false,
+			},
+			global: { stubs: wizardStubs },
+		});
+		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+		// The rest of the endpoint is untouched.
+		expect(wrapper.find('#field-server-host').exists()).toBe(true);
+		expect(wrapper.find('#field-port').exists()).toBe(true);
+		// …INCLUDING ITS WIDTH. The toggle is the second cell of a two-column row,
+		// so withholding it while keeping the grid halved the shipped step's
+		// full-width Port input on every viewport ≥ sm.
+		expect(wrapper.find('[data-testid="endpoint-secondary-row"]').classes()).not.toContain(
+			'sm:grid-cols-2'
+		);
+	});
+
+	it('keeps port and toggle in one two-column row where the toggle IS drawn', () => {
+		const { wrapper } = mountFields('smtp');
+		expect(wrapper.find('[data-testid="endpoint-secondary-row"]').classes()).toContain(
+			'sm:grid-cols-2'
+		);
+	});
+
+	it('asks the parent to change preset rather than changing it behind its back', async () => {
+		const { wrapper } = mountFields('smtp');
+		await wrapper.find('#field-provider-preset').setValue('custom');
+		expect(wrapper.emitted('update:preset')).toEqual([['custom']]);
+	});
+});
+
+describe('TransportCredentialFields — where a credential error is announced', () => {
+	const ERROR = 'Credentials are required.';
+
+	it.each(['resend', 'mandrill'])(
+		'binds %s’s error to its one control, which is what its shipped block did',
+		(kind) => {
+			const only = credentialFieldsFor(kind)[0]!;
+			const { wrapper } = mountFields(kind, { error: ERROR });
+			const alerts = wrapper.findAll('[role="alert"]');
+			expect(alerts).toHaveLength(1);
+			expect(alerts[0]!.text()).toBe(ERROR);
+			// Inside the field's own wrapper, so the input beside it is the one a
+			// screen reader lands on.
+			expect(alerts[0]!.element.parentElement?.querySelector('input')?.id).toBe(
+				fieldId(only.label)
+			);
+		}
+	);
+
+	it.each(['ses', 'smtp'])(
+		'renders %s’s SET-level message after the group, bound to no single input',
+		(kind) => {
+			const { wrapper } = mountFields(kind, { error: ERROR });
+			const alerts = wrapper.findAll('[role="alert"]');
+			expect(alerts).toHaveLength(1);
+			expect(alerts[0]!.text()).toBe(ERROR);
+			// The regression this pins: bound to a control, "Port must be a whole
+			// number…" appeared under the DISABLED host input, and a filled-in SES
+			// region was marked invalid because the missing field was the secret
+			// below it. A set-level paragraph sits beside the group, not inside a
+			// field, so no input owns it.
+			expect(alerts[0]!.element.tagName).toBe('P');
+			expect(alerts[0]!.element.parentElement).toBe(wrapper.element);
+			expect(alerts[0]!.element.querySelector('input')).toBeNull();
+		}
+	);
+
+	it('announces nothing when the step has no credential error', () => {
+		expect(mountFields('ses').wrapper.findAll('[role="alert"]')).toHaveLength(0);
+		expect(mountFields('resend').wrapper.findAll('[role="alert"]')).toHaveLength(0);
+	});
+
+	it.each(KINDS)('never drops %s’s error on the floor', (kind) => {
+		// Whichever placement the form's shape earns, the message is on screen.
+		if (credentialFieldsFor(kind).length === 0) return;
+		expect(mountFields(kind, { error: ERROR }).wrapper.text()).toContain(ERROR);
+	});
+});
+
+describe('TransportCredentialFields — the per-field slot', () => {
+	it('renders a surface’s extra copy under the field it names, and only there', () => {
+		const wrapper = mount(TransportCredentialFields, {
+			props: {
+				kind: 'mta',
+				values: seedCredentialValues('mta'),
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+			},
+			slots: { outboundTlsMode: '<p data-testid="tls-hint">the floor’s guidance</p>' },
+			global: { stubs: wizardStubs },
+		});
+		expect(wrapper.find('[data-testid="tls-hint"]').exists()).toBe(true);
+
+		const other = mount(TransportCredentialFields, {
+			props: {
+				kind: 'resend',
+				values: seedCredentialValues('resend'),
+				preset: 'custom' as SmtpPreset,
+				presetOptions: [],
+			},
+			slots: { outboundTlsMode: '<p data-testid="tls-hint">the floor’s guidance</p>' },
+			global: { stubs: wizardStubs },
+		});
+		expect(other.find('[data-testid="tls-hint"]').exists()).toBe(false);
+	});
+});

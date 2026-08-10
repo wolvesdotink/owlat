@@ -297,8 +297,12 @@ export const templateTables = {
 		// Error information for failures (e.g., from provider error responses)
 		errorMessage: v.optional(v.string()),
 		errorCode: v.optional(v.string()),
-		// Provider routing metadata (multi-tenant sending platform)
-		providerType: v.optional(v.string()), // Which provider sent this email (mta, ses, resend)
+		// Provider routing metadata (multi-tenant sending platform).
+		// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
+		// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
+		// result — the same column, the same choice, as `emailSends.providerType`
+		// (`schema/campaigns.ts`). Stored open per ADR-0055 (D10).
+		providerType: v.optional(v.string()),
 		// Correlation ID for end-to-end traceability (API request → send → webhook)
 		correlationId: v.optional(v.string()),
 		// Storage IDs of attachment blobs, captured at queue time and cleaned

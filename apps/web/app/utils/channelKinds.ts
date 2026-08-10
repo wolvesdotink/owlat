@@ -11,7 +11,20 @@
  * what can be *added*.
  */
 
-export type ChannelKind = 'email' | 'sms' | 'whatsapp' | 'generic' | 'chat';
+import type { FunctionArgs } from 'convex/server';
+import type { api } from '@owlat/api';
+
+/**
+ * The unified-message channel discriminator — DERIVED, never restated.
+ *
+ * `unifiedMessageChannelValidator` (apps/api/convex/lib/convexValidators.ts) is
+ * the single declaration; this reads it back off the mutation every channel
+ * screen already calls. Adding a literal there therefore widens this type, and
+ * every exhaustive `Record<ChannelKind, …>` in the channel UI (the config
+ * form's credential-field and info-message tables) stops compiling until the
+ * new kind is handled — instead of silently rendering a channel with no fields.
+ */
+export type ChannelKind = FunctionArgs<typeof api.unifiedMessages.updateChannelConfig>['channel'];
 
 export interface AddableChannel {
 	kind: ChannelKind;

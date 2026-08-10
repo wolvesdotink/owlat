@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-
-type ChannelType = 'email' | 'sms' | 'whatsapp' | 'generic' | 'chat';
+// Derived from the backend contract, not restated here: adding a channel to
+// `unifiedMessageChannelValidator` must break the exhaustive Records below
+// rather than silently render a channel with no credential fields.
+import type { ChannelKind } from '~/utils/channelKinds';
 
 const props = defineProps<{
-	channel: ChannelType;
+	channel: ChannelKind;
 	currentConfig: string | null;
 	displayName: string;
 }>();
@@ -44,9 +46,16 @@ interface ConfigField {
 	label: string;
 	placeholder: string;
 	type: 'text' | 'password' | 'url';
+	/**
+	 * Optional clarifying line under the input, same treatment as the Display
+	 * Name hint. Used to say what a stored value actually does — a credential
+	 * the operator believes is in force but that nothing reads is the failure
+	 * mode this exists to prevent.
+	 */
+	hint?: string;
 }
 
-const channelFields: Record<ChannelType, ConfigField[]> = {
+const channelFields: Record<ChannelKind, ConfigField[]> = {
 	email: [],
 	sms: [
 		{ key: 'accountSid', label: 'Account SID', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', type: 'text' },
@@ -54,13 +63,18 @@ const channelFields: Record<ChannelType, ConfigField[]> = {
 		{ key: 'phoneNumber', label: 'Phone Number', placeholder: '+1234567890', type: 'text' },
 	],
 	whatsapp: [
-		{ key: 'businessAccountId', label: 'Business Account ID', placeholder: 'Enter your WhatsApp Business Account ID', type: 'text' },
+		{ key: 'businessAccountId', label: 'Business Account ID', placeholder: 'Enter your WhatsApp Business Account ID', type: 'text', hint: 'Recorded for reference. Outbound sends are keyed on the Phone Number ID below.' },
 		{ key: 'accessToken', label: 'Access Token', placeholder: 'Enter your access token', type: 'password' },
 		{ key: 'phoneNumberId', label: 'Phone Number ID', placeholder: 'Enter your phone number ID', type: 'text' },
 	],
+	// No Secret Key field: its only consumer was `WebhookAdapter.validateSignature`,
+	// a verifier the inbound route never called and that D10 deleted. Inbound
+	// generic webhooks are authenticated against the GENERIC_WEBHOOK_SECRET
+	// deployment variable (apps/api/convex/webhooks/adapters/generic.ts), and the
+	// outbound POST carries no secret header — so collecting one here would seal a
+	// real shared secret into the credential envelope with nothing able to use it.
 	generic: [
-		{ key: 'endpointUrl', label: 'Endpoint URL', placeholder: 'https://example.com/webhook', type: 'url' },
-		{ key: 'secretKey', label: 'Secret Key', placeholder: 'Shared secret the sender must echo in x-webhook-secret', type: 'password' },
+		{ key: 'endpointUrl', label: 'Endpoint URL', placeholder: 'https://example.com/webhook', type: 'url', hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).' },
 	],
 	chat: [],
 };
@@ -77,7 +91,7 @@ for (const field of channelFields[props.channel] ?? []) {
 // Channel info messages for the built-in channels (no per-channel credentials).
 // Email/chat are not offered in the Add-channel menu; these only render for an
 // existing email/chat config row. Email sending lives elsewhere — point there.
-const channelInfoMessages: Record<ChannelType, string> = {
+const channelInfoMessages: Record<ChannelKind, string> = {
 	email: 'Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.',
 	chat: 'Chat is natively integrated and requires no additional configuration.',
 	sms: '',
@@ -162,6 +176,9 @@ async function handleSave() {
 						/>
 					</button>
 				</div>
+				<p v-if="field.hint" class="text-xs text-text-tertiary mt-1">
+					{{ field.hint }}
+				</p>
 			</div>
 		</template>
 

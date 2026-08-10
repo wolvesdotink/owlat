@@ -34,7 +34,7 @@ import {
 	yahooComplaintSubstitution,
 	type YahooComplaintComparison,
 	type YahooComplaintSubstitution,
-} from '../yahooComplaintSignal';
+} from '../../signals/yahooCfl';
 import { arm, input, itEquipped } from './gateFixtures';
 
 const UNENROLLED_STATES: YahooCflEnrollmentState[] = ['not_started', 'awaiting_yahoo', 'lapsed'];

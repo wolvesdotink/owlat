@@ -33,6 +33,22 @@ import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
  * relaxing its capability check would widen the manifest ceiling for the day it
  * is wired. The split exists so the documentation and the conformance gate can
  * state which is which instead of implying that everything with a row runs.
+ *
+ * `moduleExports` says the same thing one level down. A contribution can carry a
+ * SECOND executable half on a named field, and that half has its own generated
+ * registry, its own host call site, and therefore its own reachability question —
+ * one a per-bucket answer cannot express. A bucket without the field carries
+ * exactly one module, whose class is the row's own `dispatch`.
+ *
+ * WHERE THE TWO MEET. A row that carries `moduleExports` states its class twice —
+ * once for the bucket, once per half — and the finer statement is the real one:
+ * `PLUGIN_DISPATCHED_/UNDISPATCHED_CONTRIBUTION_KINDS` are DERIVED from the
+ * halves (`bucketDispatch`), so a bucket counts as wired only when every half of
+ * it is. The row's own `dispatch` survives because the published Contribution
+ * Reference splits its bucket tables by it (`apps/docs/__tests__/pluginDocs.test.ts`
+ * reads this literal out of the source), and `contributionRequirements.test.ts`
+ * asserts the two agree — so a row cannot tell the docs one story and the
+ * reachability gate another.
  */
 export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 	{
@@ -40,6 +56,19 @@ export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		capability: PLUGIN_SEND_TRANSPORT_CAPABILITY,
 		noun: 'send transports',
 		dispatch: 'wired',
+		moduleExports: [
+			// The send half: `pluginProvider.ts` adapts it into the dispatch registry.
+			{ role: 'module', dispatch: 'wired' },
+			// The feedback half (D6/P2.2): `/webhooks/plugin/<pluginId>` verifies the
+			// declared signature, rejects a replay, reauthorizes the contribution and
+			// dispatches the parsed events into the inbound plane.
+			{ role: 'webhook', dispatch: 'wired' },
+			// The sending-domain identity half (D5/P3.2): the transport is registered
+			// into the host's relay-identity registry at composition time, and
+			// `domains/pluginRelay.ts` calls this module to register and re-check the
+			// identity whose row `relayDomainVerified` reads on the enqueue path.
+			{ role: 'domainIdentity', dispatch: 'wired' },
+		],
 	},
 	{
 		bucket: 'agentSteps',
@@ -122,27 +151,102 @@ export type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[n
 export type ContributionDispatch =
 	(typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['dispatch'];
 
+/**
+ * One executable module a bucket's contributions can carry, and whether a
+ * production host path runs it. `role` is the contribution field the module
+ * hangs off — `'module'` for the contribution's own, the field name for a second
+ * half — matching `PluginContributionModuleReference.role`.
+ */
+export interface ContributionModuleExport {
+	readonly role: string;
+	readonly dispatch: ContributionDispatch;
+}
+
+/**
+ * Every (bucket, module export) pair the platform claims, flattened.
+ *
+ * A bucket that declares no `moduleExports` contributes one pair for its own
+ * `module` at the bucket's dispatch class, so the reachability gate can iterate
+ * ONE list and never has to decide whether a missing field means "one module" or
+ * "none".
+ *
+ * THIS TABLE IS THE DECLARATION, not the discovery. Two conformance cases check
+ * it rather than trusting it: `dispatchReachability.test.ts` pins one named
+ * dispatch seam per row and asserts each row's `dispatch` class against the real
+ * host tree, and the same suite walks a manifest exercising every bucket and
+ * every nested module descriptor through `pluginContributionModules`, requiring
+ * the (bucket, role) pairs it finds to be exactly these rows. What neither can
+ * see is a nested descriptor the manifest types allow that no fixture exercises,
+ * so ADDING a second executable half to a contribution means adding its row here
+ * and its shape to that fixture — the same one edit, two files.
+ */
+export const PLUGIN_CONTRIBUTION_MODULE_EXPORTS: readonly (ContributionModuleExport & {
+	readonly bucket: PluginContributionKind;
+})[] = Object.freeze(
+	CONTRIBUTION_CAPABILITY_REQUIREMENTS.flatMap((requirement) =>
+		('moduleExports' in requirement
+			? (requirement.moduleExports as readonly ContributionModuleExport[])
+			: [{ role: 'module', dispatch: requirement.dispatch }]
+		).map((moduleExport) =>
+			Object.freeze({
+				bucket: requirement.bucket as PluginContributionKind,
+				role: moduleExport.role,
+				dispatch: moduleExport.dispatch,
+			})
+		)
+	)
+);
+
+/**
+ * Roll one bucket's module exports up into a single class.
+ *
+ * A bucket is only as dispatched as its LEAST dispatched half: a `sendTransports`
+ * whose send module runs but whose feedback webhook nothing routes is not an
+ * extension point that "works", and saying so at bucket level would be the more
+ * flattering of two available truths. Derived rather than read off the row so the
+ * two cannot drift — the row-level literal exists for the docs split, and
+ * `contributionRequirements.test.ts` pins it to this function.
+ */
+export function bucketDispatch(bucket: ContributionBucket): ContributionDispatch {
+	const moduleExports = PLUGIN_CONTRIBUTION_MODULE_EXPORTS.filter(
+		(moduleExport) => moduleExport.bucket === bucket
+	);
+	return moduleExports.length > 0 && moduleExports.every((entry) => entry.dispatch === 'wired')
+		? 'wired'
+		: 'declared';
+}
+
 function bucketsWithDispatch(dispatch: ContributionDispatch): readonly PluginContributionKind[] {
 	return Object.freeze(
-		CONTRIBUTION_CAPABILITY_REQUIREMENTS.filter(
-			(requirement) => requirement.dispatch === dispatch
-		).map((requirement): ContributionBucket => requirement.bucket)
+		CONTRIBUTION_CAPABILITY_REQUIREMENTS.map(
+			(requirement): ContributionBucket => requirement.bucket
+		).filter((bucket) => bucketDispatch(bucket) === dispatch)
 	);
 }
 
 /**
- * Buckets a production host path actually runs — the set a reader may treat as
- * an extension point that does something today.
+ * Buckets a production host path actually runs — every executable half of them —
+ * the set a reader may treat as an extension point that does something today.
+ *
+ * A bucket-level SUMMARY of `PLUGIN_CONTRIBUTION_MODULE_EXPORTS`, published on
+ * the kit's barrel for plugin authors and outside tooling. No host path consumes
+ * it: everything in this repository that asks the reachability question asks it
+ * per module export, which is the resolution the answer actually has.
  */
 export const PLUGIN_DISPATCHED_CONTRIBUTION_KINDS: readonly PluginContributionKind[] =
 	bucketsWithDispatch('wired');
 
 /**
  * Buckets whose contract, capability, codegen output and authorization seam are
- * all in place but which no host path invokes yet. Declaring one is inert at
- * runtime. The conformance reachability gate asserts this is EXACTLY the set
- * with no production consumer, so wiring one up fails until its row moves to
- * `'wired'`.
+ * all in place but at least one of whose executable halves no host path invokes
+ * yet. Declaring one is inert at runtime, in whole or in part.
+ *
+ * The conformance reachability gate now iterates
+ * `PLUGIN_CONTRIBUTION_MODULE_EXPORTS`, not this list — it asserts per MODULE
+ * EXPORT that a `'wired'` one has a production consumer and a `'declared'` one
+ * has none. This is the same fact rolled up to the bucket (see
+ * `PLUGIN_DISPATCHED_CONTRIBUTION_KINDS` for why it is published at all), so
+ * wiring a half up still fails that gate until its row moves to `'wired'`.
  */
 export const PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS: readonly PluginContributionKind[] =
 	bucketsWithDispatch('declared');

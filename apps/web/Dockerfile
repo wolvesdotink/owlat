@@ -24,11 +24,13 @@ COPY --parents apps/*/package.json packages/*/package.json examples/*/package.js
 
 RUN bun install --frozen-lockfile
 
-# Nuxt resolves plugin-host's public plugin-kit dependency during both SSR and
-# client builds. Materialize the published dist contract in the clean deps
-# stage instead of relying on a developer's ignored build output.
+# Nuxt resolves plugin-host's public contracts during both SSR and client
+# builds. Materialize both dist packages in dependency order instead of relying
+# on a developer's ignored build output.
 COPY tsconfig.base.json ./
+COPY packages/provider-kit/ packages/provider-kit/
 COPY packages/plugin-kit/ packages/plugin-kit/
+RUN bun run --cwd packages/provider-kit build
 RUN bun run --cwd packages/plugin-kit build
 
 # ── Stage 2: Build ──
@@ -45,6 +47,7 @@ COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
 
 # Copy full source (filtered by .dockerignore)
 COPY . .
+COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/
 COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
 
 ARG NITRO_PRESET=node-server

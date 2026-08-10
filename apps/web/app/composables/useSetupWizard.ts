@@ -25,9 +25,20 @@ import {
 	SMTP_RELAY_PRESETS,
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
+import { isOwnSendProviderKind, type SendTransportKind } from '@owlat/shared/sendProviderCatalog';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { buildMtaIdentityEnv, type MtaIdentityDraft } from '~/utils/setupMtaIdentity';
+import {
+	credentialValuesFromDraft,
+	transportCredentialEnv,
+	type TransportCredentialValues,
+} from './setupWizardCredentials';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
+import {
+	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
+	composedSendProviderCatalogEntry,
+	isComposedSendProviderKind,
+} from '~/utils/composedSendProviderCatalog';
 
 // Re-export the shared preset table and its key type so the setup step (and its
 // tests) keep importing them from this composable; the single source of truth
@@ -67,7 +78,18 @@ export function setupStepPath(stepId: SetupStepId): string {
 
 // ── Shared draft types ───────────────────────────────────────────────────────
 
-export type ProviderChoice = 'mta' | 'resend' | 'ses' | 'smtp' | 'mandrill' | 'none';
+/**
+ * What the wizard's provider picker can be set to: any kind the catalog
+ * declares, or the receive-only answer.
+ *
+ * DERIVED, per the seams plan's D1 — this used to be the fifth independent
+ * spelling of the kind union (the catalog, `SEND_TRANSPORT_KINDS`,
+ * `DELIVERY_PROVIDER_KINDS`, `RelayProviderChoice` and this one), so a provider
+ * had to be remembered here as well as declared. `'none'` is this surface's own
+ * word and belongs to no provider: it means "no delivery transport at all",
+ * which is a legal answer for a receive-only install and never a catalog entry.
+ */
+export type ProviderChoice = SendTransportKind | 'none';
 
 export interface AdminDraft {
 	email: string;
@@ -97,6 +119,8 @@ export interface EmailStepDraft {
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
 	resendKey: string;
+	/** Emailit API key. Optional for compatibility with persisted pre-Emailit drafts. */
+	emailitKey?: string;
 	/**
 	 * Mailchimp Transactional (Mandrill) API key. One field, because that is the
 	 * whole sending credential — the webhook signing key, the subaccount and the
@@ -131,49 +155,36 @@ export interface EmailStepDraft {
  * the existing env. Pure so it can be unit-tested and reused by the page's
  * `next()` handler. Resend keys are validated over the network in the page
  * before this is committed; this only assembles values.
+ *
+ * THE PER-PROVIDER IF-CHAIN IS GONE (the seams plan's D1/D5). This function used
+ * to restate, as imperative code, the same mapping the catalog declares: one
+ * `if (draft.provider === …)` per vendor, each naming that vendor's env
+ * variables and its normalisation rules. It now writes whatever the selected
+ * entry's `credentialFields` declare, through `transportCredentialEnv` — so a
+ * sixth provider reaches this patch by existing in the catalog, and the rules
+ * that used to be per-vendor (trim the relay host, default a blank port to 587,
+ * always emit the own MTA's TLS floor) are per FIELD KIND, stated once beside
+ * the descriptors they belong to.
  */
 export function buildProviderEnv(
 	existing: Record<string, string>,
-	draft: EmailStepDraft
+	draft: EmailStepDraft,
+	credentialValues: TransportCredentialValues = credentialValuesFromDraft(draft)
 ): Record<string, string> {
 	const next: Record<string, string> = { ...existing };
-	for (const key of PROVIDER_ENV_KEYS) delete next[key];
-
-	if (draft.provider !== 'none') {
-		next['EMAIL_PROVIDER'] = draft.provider;
-		if (draft.provider === 'mta') {
-			// Outbound TLS posture applies only to the built-in MTA's direct-MX
-			// delivery. Always emit it (default `opportunistic`) so switching TO the
-			// MTA writes an explicit value rather than leaving a stale one from a
-			// prior install. Other transports clear it (it is in PROVIDER_ENV_KEYS).
-			next['OUTBOUND_TLS_MODE'] = draft.outboundTlsMode ?? 'opportunistic';
-		}
-		if (draft.provider === 'resend') {
-			next['RESEND_API_KEY'] = draft.resendKey;
-		}
-		if (draft.provider === 'mandrill') {
-			next['MANDRILL_API_KEY'] = draft.mandrillKey;
-		}
-		if (draft.provider === 'ses') {
-			next['AWS_SES_REGION'] = draft.ses.region;
-			next['AWS_SES_ACCESS_KEY_ID'] = draft.ses.accessKeyId;
-			next['AWS_SES_SECRET_ACCESS_KEY'] = draft.ses.secretAccessKey;
-		}
-		if (draft.provider === 'smtp') {
-			const { host, port, secure, username, password } = draft.smtp;
-			next['SMTP_RELAY_HOST'] = host.trim();
-			// Always emit the port (and TLS mode) explicitly. apply.post.ts merges the
-			// patch over the on-disk .env, so omitting the key on a blank field would
-			// let a stale SMTP_RELAY_PORT from a prior install survive and diverge from
-			// the validated value — write the default 587 rather than leave a gap.
-			const trimmedPort = port.trim();
-			next['SMTP_RELAY_PORT'] = trimmedPort || '587';
-			next['SMTP_RELAY_SECURE'] = secure ? 'true' : 'false';
-			next['SMTP_RELAY_USERNAME'] = username;
-			next['SMTP_RELAY_PASSWORD'] = password;
-		}
+	for (const key of [...PROVIDER_ENV_KEYS, ...COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS]) {
+		delete next[key];
 	}
-	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
+
+	if (isComposedSendProviderKind(draft.provider)) {
+		next['EMAIL_PROVIDER'] = draft.provider;
+		Object.assign(next, transportCredentialEnv(draft.provider, credentialValues));
+	}
+	// The sending IPs and the EHLO identity are the OWN ARM's — D3's one
+	// legitimate identity question, asked through the catalog's `tier: 'own'`
+	// declaration rather than by comparing the choice to a literal. They are also
+	// collected when the MTA runs only as a receiving profile beside a relay.
+	if (isOwnSendProviderKind(draft.provider) || draft.mtaProfileEnabled) {
 		const identity = draft.mtaIdentity;
 		if (identity) {
 			Object.assign(next, buildMtaIdentityEnv(identity));
@@ -202,14 +213,37 @@ export interface SetupSummary {
 	missingProvider: boolean;
 }
 
-const PROVIDER_LABELS: Record<ProviderChoice, string> = {
-	mta: 'Owlat MTA (self-hosted)',
-	resend: 'Resend',
-	ses: 'Amazon SES',
-	smtp: 'SMTP relay',
-	mandrill: 'Mailchimp Transactional (Mandrill)',
-	none: 'None (receive-only)',
-};
+/**
+ * The operator's name for each choice on the REVIEW step — the catalog's label
+ * for every kind it declares, plus this surface's own words for the two answers
+ * no catalog entry carries.
+ *
+ * DERIVED (D1): the hand-written table this replaced restated `entry.label` for
+ * all four relays, so a provider had to be remembered here as well as declared.
+ * TWO STRINGS SURVIVE IT, and neither is a vendor's:
+ *
+ *  - `none` is this surface's own answer ("no transport at all"), legal for a
+ *    receive-only install and never a catalog entry;
+ *  - the OWN ARM's qualifier. This step summarises a CHOICE rather than naming a
+ *    product — "(self-hosted)" is what distinguishes it from the managed options
+ *    listed beside it — and it is the string the shipped review step has always
+ *    shown. Keyed by `OWN_SEND_PROVIDER_KIND`, D3's one definitional identity,
+ *    so it is not a vendor table and cannot grow one: any other kind, present or
+ *    future, reads its label from the entry.
+ *
+ * The delivery hub, the transport editor's picker and this step each still word
+ * the own MTA slightly differently, exactly as they shipped; unifying that copy
+ * is a deliberate wording decision for the plan owner, not something a rendering
+ * refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
+ */
+const RECEIVE_ONLY_LABEL = 'None (receive-only)';
+
+const OWN_ARM_REVIEW_LABEL = 'Owlat MTA (self-hosted)';
+
+function providerLabel(provider: ProviderChoice): string {
+	if (isOwnSendProviderKind(provider)) return OWN_ARM_REVIEW_LABEL;
+	return composedSendProviderCatalogEntry(provider)?.label ?? RECEIVE_ONLY_LABEL;
+}
 
 /**
  * Derive everything the review step renders from the collected config. Kept pure
@@ -224,15 +258,11 @@ export function buildSetupSummary(
 	const resolved = resolveFlags(flags);
 	const activeFeatures = (Object.keys(resolved) as FeatureFlagKey[]).filter((k) => resolved[k]);
 
+	// Any kind the catalog declares is a real choice; anything else — unset, or a
+	// transport this build does not carry — reads as no provider at all, which is
+	// the fail-closed answer the launch gate below depends on.
 	const rawProvider = env['EMAIL_PROVIDER'];
-	const provider: ProviderChoice =
-		rawProvider === 'mta' ||
-		rawProvider === 'resend' ||
-		rawProvider === 'ses' ||
-		rawProvider === 'smtp' ||
-		rawProvider === 'mandrill'
-			? rawProvider
-			: 'none';
+	const provider: ProviderChoice = isComposedSendProviderKind(rawProvider) ? rawProvider : 'none';
 
 	const fromEmail = env['DEFAULT_FROM_EMAIL'];
 	const fromName = env['DEFAULT_FROM_NAME'];
@@ -241,7 +271,7 @@ export function buildSetupSummary(
 	return {
 		activeFeatures,
 		provider,
-		providerLabel: PROVIDER_LABELS[provider],
+		providerLabel: providerLabel(provider),
 		fromIdentity,
 		adminEmail: admin.email,
 		adminName: admin.name,

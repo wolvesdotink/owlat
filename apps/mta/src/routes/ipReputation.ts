@@ -279,6 +279,16 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			dnsblUnmeasuredByIp,
 			now
 		);
+		// The consumer's half of this snapshot is declared once, in
+		// `@owlat/mta-protocol` (D7): `delivery/warmingSync.ts` normalizes what
+		// arrives here against `MtaIpReputationPayload`. This producer is
+		// deliberately WIDER than that contract and weaker in two places — `dnsbl`
+		// and `warmingPhase` are plain strings here, narrowed by the normalizer's
+		// own guards — so it is NOT bound to it at compile time. A TEST binds it
+		// instead: `__tests__/wireCompat.test.ts` drives this route and asserts its
+		// response text equals `IP_REPUTATION_SNAPSHOT_BYTES`, then feeds the same
+		// answer through the normalizer. Rename a field here and that fails; leave
+		// it unpinned and the warming plane goes stale in silence.
 		return c.json({ date: today, ips: summaries, routing: { generatedAt: now, signals } });
 	});
 

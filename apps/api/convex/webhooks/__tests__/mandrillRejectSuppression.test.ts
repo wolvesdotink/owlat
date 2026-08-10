@@ -19,6 +19,14 @@
  * means what, proven through the real adapter mapping and the real dispatch
  * table) and the WRITER (`blockedEmails.addFromEvent`'s dedupe, mirror and
  * audit behaviour, proven against a real database).
+ *
+ * THE DISPOSITION HALF IS ALSO A PARITY SUITE. The policy used to live in one
+ * vendor module the shared `email.failed` handler called by name; it now splits
+ * across the Mandrill adapter (which reason is a recipient truth) and one
+ * provider-agnostic effect table (what Owlat does about one). Every assertion
+ * below is stated in terms of the mutations the dispatcher runs, so it holds
+ * across that move unchanged — which is the point: a Mandrill deployment must
+ * not be able to tell the difference.
  */
 
 import { convexTest } from 'convex-test';
@@ -28,12 +36,12 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
-import { mapMandrillEvent } from '../adapters/mandrill';
-import { dispatchInboundEvent } from '../dispatcher';
 import {
 	MANDRILL_REJECT_CODE_PREFIX,
-	mandrillRejectDisposition,
-} from '../mandrillRejectSuppression';
+	mapMandrillEvent,
+	mandrillRejectSuppression,
+} from '../adapters/mandrill';
+import { dispatchInboundEvent } from '../dispatcher';
 
 const RECIPIENT = 'blocked@example.com';
 
@@ -175,23 +183,41 @@ describe('which reject reasons are recipient truths', () => {
 		expect(suppressions(await dispatchReject('hard-bounce', null))).toHaveLength(0);
 	});
 
-	// The guard is on the PROVIDER IDENTITY, not on the shape of the code: a
-	// non-Mandrill provider could carry any error string, and none of them are
-	// evidence that Mandrill's blacklist refused an address.
-	it('ignores a lookalike error code from another provider', async () => {
+	// MOVED WITH THE CODE (was: "ignores a lookalike error code from another
+	// provider", when the shared handler re-parsed `errorCode` and guarded itself
+	// on `providerType === 'mandrill'`). The dispatcher no longer reads a vendor
+	// code at all: it applies the suppression an ADAPTER minted. So the property
+	// that replaces the identity guard is stronger and provider-agnostic — a
+	// failure carrying a Mandrill-shaped code but no minted suppression, from any
+	// provider, suppresses nobody.
+	it('suppresses nobody on a lookalike error code no adapter minted a suppression for', async () => {
 		const { ctx, calls } = makeCtx();
-		await dispatchInboundEvent(ctx, {
-			...rejectEvent('hard-bounce'),
-			providerType: 'ses',
-		});
+		const { suppression: _minted, ...lookalike } = rejectEvent('hard-bounce');
+		await dispatchInboundEvent(ctx, { ...lookalike, providerType: 'ses' });
 		expect(suppressions(calls)).toHaveLength(0);
+		expect(unsubscribes(calls)).toHaveLength(0);
 	});
 
-	it('ignores an error code without the reject prefix', () => {
-		expect(mandrillRejectDisposition('PROVIDER_ACCEPTANCE_UNCONFIRMED')).toEqual({
-			kind: 'ignore',
+	// The adapter is what decides, so the decision is asserted where it now lives.
+	it('mints no suppression for an error code without the reject prefix', () => {
+		expect(mandrillRejectSuppression('PROVIDER_ACCEPTANCE_UNCONFIRMED')).toBeUndefined();
+		expect(mandrillRejectSuppression('MANDRILL_REJECT')).toBeUndefined();
+	});
+
+	// THE DATA, NOT THE DISPATCHER. Every consequence above is carried on the
+	// event the adapter emitted; the shared table applies it without knowing which
+	// provider minted it, which is what makes the next provider's suppression
+	// policy a table in its own adapter rather than a line in the dispatcher.
+	it('carries the whole decision on the event the adapter emits', () => {
+		expect(rejectEvent('hard-bounce').suppression).toEqual({
+			reason: 'hard_bounce',
+			evidence: 'MANDRILL_REJECT_HARD_BOUNCE',
 		});
-		expect(mandrillRejectDisposition('MANDRILL_REJECT')).toEqual({ kind: 'ignore' });
+		expect(rejectEvent('unsub').suppression).toEqual({
+			reason: 'unsubscribed',
+			evidence: 'MANDRILL_REJECT_UNSUB',
+		});
+		expect(rejectEvent('invalid-sender').suppression).toBeUndefined();
 	});
 
 	// The Send row still has to leave "sending" whatever the suppression decided,

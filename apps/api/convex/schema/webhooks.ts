@@ -78,7 +78,16 @@ export const webhookTables = {
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution
 	webhookPayloads: defineTable({
-		source: v.string(), // 'resend' | 'mta' | 'ses'
+		// Wire identifier of the route that accepted the request: an
+		// `InboundAdapter['source']` for built-in provider/channel adapters, or the
+		// namespaced `SendTransportKind` for a bundled-plugin feedback route. This is
+		// WIDER than the send path because channel vendor names live here too.
+		// Built-in/channel adapters retain by default and may opt out through
+		// `shouldStoreRawPayload`; plugin transports do the inverse and must opt in
+		// through their manifest's `storeRawPayload`. Deliberately NOT re-listed here
+		// (ADR-0055, D10): a fixed literal set silently drops new plugin transports
+		// and channels.
+		source: v.string(),
 		rawPayload: v.string(), // JSON string of the raw webhook body
 		receivedAt: v.number(),
 	})
@@ -86,6 +95,68 @@ export const webhookTables = {
 		// Newest payload for one provider — powers the Delivery page's live
 		// "last SES event received" line without scanning every source's rows.
 		.index('by_source_and_received_at', ['source', 'receivedAt']),
+
+	// Replay defense for the bundled-plugin feedback route
+	// (`/webhooks/plugin/<pluginId>`, the seams plan's D6/P2.2). One row per
+	// ACCEPTED delivery, named by a digest of the caller's signature — an HMAC
+	// over the signed timestamp and the exact body under a secret only the sender
+	// holds, so two requests share a digest exactly when they are the same signed
+	// bytes and nobody without the secret can mint a new one.
+	//
+	// The signature contract's timestamp tolerance is what makes this table small:
+	// a captured request stops verifying once it falls outside the tolerance, so a
+	// claim only has to outlive that window (`expiresAt`). The claim mutation ages
+	// expired rows out in bounded batches on its own hot path; because that only
+	// runs while deliveries arrive, a daily cron
+	// (`webhooks/cleanup.cleanupPluginWebhookDeliveries`) empties what an idle or
+	// disabled route leaves behind. A claim is released again when the delivery
+	// does not complete, so a provider's redelivery after our failure is accepted
+	// rather than mistaken for an attack.
+	pluginWebhookDeliveries: defineTable({
+		pluginId: v.string(),
+		// Namespaced `plugin.<pluginId>.<localId>` transport kind, for attribution.
+		transportKind: v.string(),
+		// SHA-256 hex of the contract-domain-separated signature; never the
+		// signature itself, which is a live MAC under a shared secret.
+		deliveryDigest: v.string(),
+		claimedAt: v.number(),
+		expiresAt: v.number(),
+		// WHETHER THE CLAIMED DELIVERY WAS EVER APPLIED. The claim is taken BEFORE
+		// dispatch, so "a row exists" alone cannot tell a batch that has landed from
+		// one still in flight — and the two must be answered differently. A second
+		// copy of a COMPLETED batch is a lost acknowledgement (200, `duplicate`); a
+		// second copy of an IN-FLIGHT one has to be answered retryably, because the
+		// first copy may still fail and release its claim, and a provider that has
+		// already been told 2xx never redelivers. Optional so rows written before
+		// this column existed still deserialize; a missing value reads as
+		// `in_flight`, the answer that can only cost a redelivery, never a batch.
+		status: v.optional(v.union(v.literal('in_flight'), v.literal('completed'))),
+		completedAt: v.optional(v.number()),
+	})
+		.index('by_delivery_digest', ['deliveryDigest'])
+		.index('by_expires_at', ['expiresAt']),
+
+	// Durable "this plugin feedback channel is alive" marker, one row per bundled
+	// transport kind, stamped when a batch finishes dispatching.
+	//
+	// WHY IT IS NOT `pluginWebhookDeliveries`: those rows are replay claims and
+	// expire inside the signature contract's tolerance window (at most fifteen
+	// minutes), swept by the claim hot path and the cleanup cron. Feedback health
+	// is graded over SEVEN DAYS (`PROVIDER_FEEDBACK_STALE_AFTER_MS`), so a claim
+	// row can never be the signal.
+	//
+	// WHY IT IS NOT `webhookPayloads`: that table is raw retention, which a plugin
+	// adapter must opt into (`storeRawPayload`, default off). Reading health from
+	// it left a working non-retaining channel reporting `awaiting_event` forever.
+	// This row holds a timestamp and an attribution — never payload content.
+	pluginWebhookFeedbackActivity: defineTable({
+		pluginId: v.string(),
+		// Namespaced `plugin.<pluginId>.<localId>` transport kind — the same value
+		// the send catalog grades an arm under, so the status query can look a
+		// transport up by the kind it already holds.
+		transportKind: v.string(),
+		lastEventAt: v.number(),
+	}).index('by_transport_kind', ['transportKind']),
 
 	// Transactional idempotency receipts for MTA campaign complaint alerts.
 	// The producer can retry after a lost HTTP response for up to its durable

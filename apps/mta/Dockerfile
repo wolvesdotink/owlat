@@ -22,6 +22,7 @@ COPY apps/mta/tsconfig.json apps/mta/
 COPY apps/mta/src/ apps/mta/src/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/shared/ packages/shared/
+COPY packages/mta-protocol/ packages/mta-protocol/
 COPY packages/mail-auth/ packages/mail-auth/
 COPY packages/mail-canon/ packages/mail-canon/
 COPY packages/mail-message/ packages/mail-message/

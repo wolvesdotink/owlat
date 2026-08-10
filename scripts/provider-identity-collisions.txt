@@ -1,0 +1,64 @@
+# Vocabulary collisions — scripts/check-provider-identity.sh.
+#
+# NOT the allowlist, and deliberately a separate file. Every entry here spells a
+# string that LOOKS like a send-provider kind but belongs to a different
+# vocabulary that happens to share the spelling. There is no coupling to remove,
+# so no piece owns them and no sweep clears them: carrying them as "debt with an
+# owner" would have made scripts/provider-identity-allowlist.txt permanently
+# non-empty, and acceptance criterion A1 unreachable by construction. Split out,
+# the debt list can actually reach zero and this one can stay honest about being
+# permanent.
+#
+# ONE ENTRY PER SPELLING, NOT PER FILE. `path:literal` licenses that literal and
+# nothing else; a bare path would license the whole file FOREVER, and these
+# entries never expire — a `kind === 'ses'` branch added to the setup-apply
+# handler next year would inherit a licence granted for a docker compose
+# profile. Anything in these files that is not the named other-alphabet word is
+# still a violation.
+#
+# ADDING a line here is a claim that needs evidence in review — name the other
+# alphabet and where it is declared. "It reads better this way" is not another
+# alphabet. The ratchet still enforces the other direction mechanically: an
+# entry that excuses nothing fails the gate, so a file that stops speaking the
+# other vocabulary loses its licence.
+#
+# ONE PLACE PER ENTRY. The note travels on the entry line (`path:literal  #
+# note`, `#` comments and blank lines ignored) and the alphabet is described in
+# the block header above it. Nothing here is written twice — a list that
+# restates its own entries in prose is a list where a sweep deletes one copy.
+
+
+# ── the MTA routing API's answer ──────────────────────────────────────────────
+#
+# 'mta' | 'relay' | 'defer' on the routing response: "who should carry this
+# message". Rewriting it would change the protocol, not remove a coupling.
+# (apps/mta itself is out of scan scope for the same reason.)
+
+apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candidateProvider in the same alphabet
+
+
+# ── docker compose profile names ──────────────────────────────────────────────
+#
+# A compose PROFILE (packages/shared/src/featureFlags.ts, `getActiveProfiles`)
+# is a deployment topology, not a transport kind. One more file asks the same
+# compose question (apps/web/app/pages/setup/email.vue); it is in the debt list
+# already for OTHER literals, and a whole-file licence there covers this too.
+# When its real leaks are swept, the compose question is what moves here — as
+# quickstart.ts's did when P1.1 swept its own-arm branch.
+#
+# `getActiveProfiles` itself is no longer listed anywhere: the own-arm QUESTION
+# in front of it now reads the catalog (`isOwnSendProviderKind`) and the profile
+# name it adds is written, never compared, so the ratchet has nothing to match.
+
+apps/setup-cli/src/commands/quickstart.ts:mta  # composeProfilesUnion.includes('mta') — the profile the default self-host ships
+apps/web/server/api/setup/apply.post.ts:mta  # profiles.includes('mta') gates the outbound-IP preflight
+
+
+# ── the contact-import source registry ────────────────────────────────────────
+#
+# Integration IMPORT sources (contacts and suppressions,
+# apps/api/convex/integrationImports/providers/) are a different registry that
+# happens to share a vendor name with a send transport. That registry's own seam
+# work is not this plan's.
+
+apps/web/app/components/contacts/IntegrationImportModal.vue:mandrill  # an import source, not a transport

@@ -5,12 +5,20 @@ import { parsePackageArgument } from '../config';
 import { PluginCliError } from '../errors';
 import type { CliIo } from '../io';
 import { compareStrings, toPosix } from '../paths';
-import { buildScaffold, type ScaffoldFiles } from '../scaffold';
+import {
+	buildScaffold,
+	DEFAULT_SCAFFOLD_TEMPLATE,
+	parseScaffoldTemplate,
+	SCAFFOLD_TEMPLATE_DEFINITIONS,
+	type ScaffoldFiles,
+} from '../scaffold';
 
 export interface CreateArgs {
 	readonly idInput: string;
 	readonly name?: string;
 	readonly dir?: string;
+	/** `--template`; absent means the minimal skeleton. */
+	readonly template?: string;
 	readonly dryRun: boolean;
 }
 
@@ -24,10 +32,14 @@ export interface CreateArgs {
 export async function runCreate(workspaceRoot: string, args: CreateArgs, io: CliIo): Promise<void> {
 	const id = parseId(args.idInput);
 	const packageName = parsePackageArgument(args.name ?? `@owlat/plugin-${id}`);
+	// Parsed BEFORE the target directory is touched, so an unknown template name
+	// fails with the accepted set rather than after a directory has been created.
+	const template =
+		args.template === undefined ? DEFAULT_SCAFFOLD_TEMPLATE : parseScaffoldTemplate(args.template);
 	const relativeDir = args.dir ?? join('examples', 'plugins', id);
 	const targetDir = resolveTargetDir(workspaceRoot, relativeDir);
 	const displayDir = toPosix(relative(workspaceRoot, targetDir));
-	const files = buildScaffold(workspaceRoot, targetDir, id, packageName);
+	const files = buildScaffold(workspaceRoot, targetDir, id, packageName, template);
 
 	if (args.dryRun) {
 		io.log(`Dry run: would scaffold plugin ${id} (${packageName}) in ${displayDir}:`);
@@ -53,7 +65,10 @@ export async function runCreate(workspaceRoot: string, args: CreateArgs, io: Cli
 	await writeScaffold(targetDir, files, existing, displayDir);
 	io.log(`Scaffolded plugin ${id} (${packageName}) in ${displayDir}:`);
 	for (const path of sortedPaths(files)) io.log(`  + ${displayDir}/${path}`);
-	io.log('Declare capabilities and contributions in src/manifest.ts, then run its tests.');
+	// LOOKED UP, NOT COMPARED: the hint is one field of the template's own record,
+	// beside the file set and the export map it belongs with, so a new template
+	// cannot ship printing another template's next step.
+	io.log(SCAFFOLD_TEMPLATE_DEFINITIONS[template].completionHint);
 }
 
 function parseId(input: string) {
