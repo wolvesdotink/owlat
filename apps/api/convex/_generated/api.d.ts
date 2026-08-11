@@ -896,7 +896,6 @@ import type * as shareLinkHttp from '../shareLinkHttp.js';
 import type * as shareLinkQueries from '../shareLinkQueries.js';
 import type * as shareLinks from '../shareLinks.js';
 import type * as storage from '../storage.js';
-import type * as systemHealth from '../systemHealth.js';
 import type * as systemMail from '../systemMail.js';
 import type * as systemUpdates from '../systemUpdates.js';
 import type * as topics_apiHttp from '../topics/apiHttp.js';
@@ -1867,7 +1866,6 @@ declare const fullApi: ApiFromModules<{
 	shareLinkQueries: typeof shareLinkQueries;
 	shareLinks: typeof shareLinks;
 	storage: typeof storage;
-	systemHealth: typeof systemHealth;
 	systemMail: typeof systemMail;
 	systemUpdates: typeof systemUpdates;
 	'topics/apiHttp': typeof topics_apiHttp;

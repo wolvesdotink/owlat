@@ -82,20 +82,6 @@ export const list = authedQuery({
 });
 
 /**
- * Get a single media asset by ID.
- */
-export const get = authedQuery({
-	args: { assetId: v.id('mediaAssets') },
-	handler: async (ctx, args) => {
-		const asset = await ctx.db.get(args.assetId);
-		if (!asset) {
-			return null;
-		}
-		return asset;
-	},
-});
-
-/**
  * Get total count and total bytes for the organization's media library. The
  * summed `fileSize` is the server-reconciled blob size (set by
  * `scanAssetBytes` → `reconcileAssetSize` shortly after upload), not the
@@ -411,24 +397,6 @@ export const update = authedMutation({
 			searchableText,
 			updatedAt: Date.now(),
 		});
-	},
-});
-
-/**
- * Delete a single media asset and its storage file.
- */
-export const remove = authedMutation({
-	args: { assetId: v.id('mediaAssets') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'media:manage',
-			'Only owners and admins can delete media assets'
-		);
-		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
-
-		await ctx.storage.delete(asset.storageId);
-		await ctx.db.delete(args.assetId);
 	},
 });
 

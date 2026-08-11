@@ -51,19 +51,20 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
 			subject: sessionMock.user.id,
 			issuer: 'test',
@@ -98,8 +99,8 @@ const modules = Object.fromEntries(
 			!p.includes('knowledgeExtraction') &&
 			!p.includes('semanticFileProcessing') &&
 			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider'),
-	),
+			!p.includes('llmProvider')
+	)
 );
 
 function setupTest() {
@@ -136,21 +137,24 @@ interface SeedFormOpts {
 	doubleOptIn?: boolean;
 	redirectUrl?: string;
 	honeypotFieldName?: string;
-	fields?: Array<{ key: string; label: string; type: 'email' | 'text' | 'checkbox'; required: boolean }>;
+	fields?: Array<{
+		key: string;
+		label: string;
+		type: 'email' | 'text' | 'checkbox';
+		required: boolean;
+	}>;
 }
 
 async function seedForm(
 	t: TestConvex<typeof schema>,
-	opts: SeedFormOpts = {},
+	opts: SeedFormOpts = {}
 ): Promise<Id<'formEndpoints'>> {
 	const now = Date.now();
 	return await t.run(async (ctx) =>
 		ctx.db.insert('formEndpoints', {
 			name: 'Newsletter Signup',
 			topicId: opts.topicId,
-			fields: opts.fields ?? [
-				{ key: 'email', label: 'Email', type: 'email', required: true },
-			],
+			fields: opts.fields ?? [{ key: 'email', label: 'Email', type: 'email', required: true }],
 			redirectUrl: opts.redirectUrl,
 			honeypotFieldName: opts.honeypotFieldName,
 			isActive: opts.isActive ?? true,
@@ -158,7 +162,7 @@ async function seedForm(
 			submissionCount: 0,
 			createdAt: now,
 			updatedAt: now,
-		} as never),
+		} as never)
 	);
 }
 
@@ -334,7 +338,7 @@ describe('submitForm (POST /forms/{formId})', () => {
 	it('yields pending_confirmation for a DOI topic form (confirmationRequired in JSON)', async () => {
 		const t = setupTest();
 		const topicId = await t.run(async (ctx) =>
-			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }) as never),
+			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: true }) as never)
 		);
 		const formId = await seedForm(t, { topicId });
 
@@ -345,7 +349,10 @@ describe('submitForm (POST /forms/{formId})', () => {
 		});
 
 		expect(res.status).toBe(200);
-		const json = (await res.json()) as { ok: boolean; data: { confirmationRequired?: boolean; message: string } };
+		const json = (await res.json()) as {
+			ok: boolean;
+			data: { confirmationRequired?: boolean; message: string };
+		};
 		expect(json.ok).toBe(true);
 		expect(json.data.confirmationRequired).toBe(true);
 
@@ -361,7 +368,7 @@ describe('submitForm (POST /forms/{formId})', () => {
 	it('forces pending_confirmation when the FORM toggles doubleOptIn on a non-DOI topic', async () => {
 		const t = setupTest();
 		const topicId = await t.run(async (ctx) =>
-			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }) as never),
+			ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }) as never)
 		);
 		const formId = await seedForm(t, { topicId, doubleOptIn: true });
 
@@ -483,7 +490,7 @@ describe('submitForm (POST /forms/{formId})', () => {
 /** Store a small blob and return its `_storage` id so create() can resolve a URL. */
 async function storeBlob(t: TestConvex<typeof schema>, bytes = 16): Promise<Id<'_storage'>> {
 	return await t.run(async (ctx) =>
-		ctx.storage.store(new Blob([new Uint8Array(bytes).fill(1)], { type: 'image/png' })),
+		ctx.storage.store(new Blob([new Uint8Array(bytes).fill(1)], { type: 'image/png' }))
 	);
 }
 
@@ -531,7 +538,7 @@ describe('mediaAssets.create', () => {
 				filename: 'data.psd',
 				mimeType: 'image/png',
 				fileSize: 16,
-			}),
+			})
 		).rejects.toThrow(/File type not allowed/);
 	});
 
@@ -545,7 +552,7 @@ describe('mediaAssets.create', () => {
 				filename: 'malware.exe',
 				mimeType: 'image/png',
 				fileSize: 16,
-			}),
+			})
 		).rejects.toThrow(/Executable files are not allowed/);
 	});
 
@@ -559,7 +566,7 @@ describe('mediaAssets.create', () => {
 				filename: 'invoice.pdf.exe',
 				mimeType: 'application/pdf',
 				fileSize: 16,
-			}),
+			})
 		).rejects.toThrow(/File rejected/);
 	});
 
@@ -573,7 +580,7 @@ describe('mediaAssets.create', () => {
 				filename: 'logo.png',
 				mimeType: 'application/x-msdownload',
 				fileSize: 16,
-			}),
+			})
 		).rejects.toThrow(/MIME type not allowed/);
 	});
 
@@ -588,7 +595,7 @@ describe('mediaAssets.create', () => {
 				filename: 'logo.png',
 				mimeType: 'image/png',
 				fileSize: 16,
-			}),
+			})
 		).rejects.toThrow(/Only owners and admins/);
 	});
 
@@ -606,7 +613,7 @@ describe('mediaAssets.create', () => {
 				filename: 'logo.png',
 				mimeType: 'image/png',
 				fileSize: 999_000_000, // far over the 50 MB ceiling
-			}),
+			})
 		).rejects.toThrow(/upload limit/);
 	});
 
@@ -707,56 +714,6 @@ describe('storage.getUrl', () => {
 		// mail body/raw blob). Auth alone must NOT mint its signed URL.
 		const storageId = await storeBlob(t);
 
-		await expect(
-			t.query(api.storage.getUrl, { storageId }),
-		).rejects.toThrow(/File/);
-	});
-});
-
-describe('storage.deleteFile', () => {
-	it('rejects a non-admin (editor) caller', async () => {
-		const t = setupTest();
-		const storageId = await storeBlob(t);
-		setUser('editor-user', 'editor');
-
-		await expect(
-			t.mutation(api.storage.deleteFile, { storageId }),
-		).rejects.toThrow(/Only owners and admins/);
-	});
-
-	it('rejects an admin when the blob is owned by no mediaAsset (404)', async () => {
-		const t = setupTest();
-		const storageId = await storeBlob(t);
-		// Admin role, but no owning row references this storageId.
-		await expect(
-			t.mutation(api.storage.deleteFile, { storageId }),
-		).rejects.toThrow(/File/);
-	});
-
-	it('deletes the blob for an admin when a mediaAsset owns it', async () => {
-		const t = setupTest();
-		const storageId = await storeBlob(t);
-		await t.run(async (ctx) => {
-			const now = Date.now();
-			await ctx.db.insert('mediaAssets', {
-				storageId,
-				filename: 'owned.png',
-				mimeType: 'image/png',
-				fileSize: 16,
-				url: 'https://example.com/owned.png',
-				uploadedBy: 'test-user',
-				searchableText: 'owned',
-				createdAt: now,
-				updatedAt: now,
-			} as never);
-		});
-
-		// Owner role (admin) + owning asset → delete succeeds (no throw).
-		await t.mutation(api.storage.deleteFile, { storageId });
-
-		await t.run(async (ctx) => {
-			const blob = await ctx.storage.get(storageId);
-			expect(blob).toBeNull();
-		});
+		await expect(t.query(api.storage.getUrl, { storageId })).rejects.toThrow(/File/);
 	});
 });

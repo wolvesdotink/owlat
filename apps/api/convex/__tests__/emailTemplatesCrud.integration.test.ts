@@ -36,30 +36,27 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi
-			.fn()
-			.mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getUserIdFromSession: vi
-			.fn()
-			.mockImplementation(async () => sessionMock.user.id),
+		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 	};
 });
 
@@ -81,14 +78,11 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
-const setUser = (
-	id: string,
-	role: 'owner' | 'admin' | 'editor' = 'owner',
-) => {
+const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 	sessionMock.user.id = id;
 	sessionMock.user.role = role;
 };
@@ -105,20 +99,13 @@ const CONTENT_EN = JSON.stringify([
 
 const seedTemplate = async (
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'emailTemplates'>> =>
-	t.run(async (ctx) =>
-		ctx.db.insert('emailTemplates', createTestEmailTemplate(overrides)),
-	);
+	t.run(async (ctx) => ctx.db.insert('emailTemplates', createTestEmailTemplate(overrides)));
 
-const auditRowsFor = async (
-	t: TestConvex<typeof schema>,
-	resourceId: string,
-) =>
+const auditRowsFor = async (t: TestConvex<typeof schema>, resourceId: string) =>
 	t.run(async (ctx) =>
-		(await ctx.db.query('auditLogs').collect()).filter(
-			(l) => l.resourceId === resourceId,
-		),
+		(await ctx.db.query('auditLogs').collect()).filter((l) => l.resourceId === resourceId)
 	);
 
 // ============================================================================
@@ -134,7 +121,7 @@ describe('emailTemplates public mutations — templates:manage role gate', () =>
 			t.mutation(api.emailTemplates.emails.create, {
 				name: 'X',
 				type: 'marketing',
-			}),
+			})
 		).rejects.toThrow();
 
 		setUser('user-adam', 'admin');
@@ -162,29 +149,23 @@ describe('emailTemplates public mutations — templates:manage role gate', () =>
 			t.mutation(api.emailTemplates.emails.update, {
 				templateId,
 				name: 'Renamed',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.emails.changeType, {
 				templateId,
 				type: 'transactional',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.emails.publish, {
 				templateId,
 				htmlContent: '<p>x</p>',
-			}),
+			})
 		).rejects.toThrow();
-		await expect(
-			t.mutation(api.emailTemplates.emails.unpublish, { templateId }),
-		).rejects.toThrow();
-		await expect(
-			t.mutation(api.emailTemplates.emails.duplicate, { templateId }),
-		).rejects.toThrow();
-		await expect(
-			t.mutation(api.emailTemplates.emails.remove, { templateId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.emailTemplates.emails.unpublish, { templateId })).rejects.toThrow();
+		await expect(t.mutation(api.emailTemplates.emails.duplicate, { templateId })).rejects.toThrow();
+		await expect(t.mutation(api.emailTemplates.emails.remove, { templateId })).rejects.toThrow();
 
 		// Nothing was mutated by the rejected calls.
 		const row = await t.run(async (ctx) => ctx.db.get(templateId));
@@ -192,15 +173,15 @@ describe('emailTemplates public mutations — templates:manage role gate', () =>
 		expect(row).not.toBeNull();
 	});
 
-	it('rejects an editor on createForOrganization / createFromPreset', async () => {
+	it('rejects an editor on create / createFromPreset', async () => {
 		const t = convexTest(schema, modules);
 		setUser('user-eve', 'editor');
 
 		await expect(
-			t.mutation(api.emailTemplates.organization.createForOrganization, {
+			t.mutation(api.emailTemplates.emails.create, {
 				name: 'X',
 				type: 'marketing',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.organization.createFromPreset, {
@@ -208,7 +189,7 @@ describe('emailTemplates public mutations — templates:manage role gate', () =>
 				subject: 'S',
 				content: CONTENT_EN,
 				type: 'marketing',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -228,26 +209,26 @@ describe('emailTemplates public mutations — templates:manage role gate', () =>
 			t.mutation(api.emailTemplates.i18n.addTranslation, {
 				templateId,
 				language: 'fr',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.i18n.updateTranslation, {
 				templateId,
 				language: 'de',
 				subject: 'neu',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.i18n.removeTranslation, {
 				templateId,
 				language: 'de',
-			}),
+			})
 		).rejects.toThrow();
 		await expect(
 			t.mutation(api.emailTemplates.i18n.setDefaultLanguage, {
 				templateId,
 				language: 'de',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -295,7 +276,7 @@ describe('emailTemplates.update — audit + behavior', () => {
 			t.mutation(api.emailTemplates.emails.update, {
 				templateId,
 				name: 'Nope',
-			}),
+			})
 		).rejects.toThrow();
 
 		// forceWhilePublished: true is the explicit opt-in.
@@ -312,9 +293,12 @@ describe('emailTemplates.update — audit + behavior', () => {
 		const t = convexTest(schema, modules);
 		const blockId = await t.run(async (ctx) =>
 			ctx.db.insert('emailBlocks', {
-				name: 'Block', content: '[]', usageCount: 0,
-				createdAt: Date.now(), updatedAt: Date.now(),
-			}),
+				name: 'Block',
+				content: '[]',
+				usageCount: 0,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
 		);
 		const templateId = await seedTemplate(t, { status: 'draft', linkedBlockIds: [] });
 
@@ -432,24 +416,24 @@ describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers'
 			t.mutation(api.emailTemplates.emails.publish, {
 				templateId,
 				htmlContent: '<p>x</p>',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
 
 // ============================================================================
-// createForOrganization / createFromPreset — real-userId attribution
+// create / createFromPreset — real-userId attribution
 // ============================================================================
 
-describe('emailTemplates.organization create paths — attribute the acting userId', () => {
-	it('createForOrganization attributes the real session userId in the created audit', async () => {
+describe('email template create paths — attribute the acting userId', () => {
+	it('create attributes the real session userId in the created audit', async () => {
 		const t = convexTest(schema, modules);
 
 		setUser('user-real-org', 'admin');
-		const templateId = await t.mutation(
-			api.emailTemplates.organization.createForOrganization,
-			{ name: 'Org Template', type: 'marketing', defaultLanguage: 'en' },
-		);
+		const templateId = await t.mutation(api.emailTemplates.emails.create, {
+			name: 'Org Template',
+			type: 'marketing',
+		});
 
 		const audits = await auditRowsFor(t, templateId);
 		const created = audits.find((a) => a.action === 'email_template.created');
@@ -463,15 +447,12 @@ describe('emailTemplates.organization create paths — attribute the acting user
 		const t = convexTest(schema, modules);
 
 		setUser('user-real-preset', 'owner');
-		const templateId = await t.mutation(
-			api.emailTemplates.organization.createFromPreset,
-			{
-				name: 'Preset Template',
-				subject: 'Preset Subject',
-				content: CONTENT_EN,
-				type: 'marketing',
-			},
-		);
+		const templateId = await t.mutation(api.emailTemplates.organization.createFromPreset, {
+			name: 'Preset Template',
+			subject: 'Preset Subject',
+			content: CONTENT_EN,
+			type: 'marketing',
+		});
 
 		const row = await t.run(async (ctx) => ctx.db.get(templateId));
 		expect(row?.subject).toBe('Preset Subject');
@@ -533,7 +514,7 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 			t.mutation(api.emailTemplates.i18n.addTranslation, {
 				templateId,
 				language: 'de',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -596,7 +577,7 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 				templateId,
 				language: 'fr',
 				subject: 'x',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -617,7 +598,7 @@ describe('emailTemplates.i18n — translations CRUD', () => {
 			t.mutation(api.emailTemplates.i18n.removeTranslation, {
 				templateId,
 				language: 'en',
-			}),
+			})
 		).rejects.toThrow();
 
 		await t.mutation(api.emailTemplates.i18n.removeTranslation, {
@@ -752,9 +733,7 @@ describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body
 		expect(row?.content).toBeTruthy();
 		const mainBlocks = JSON.parse(row?.content ?? '[]');
 		expect(mainBlocks).toHaveLength(2);
-		const mainById = Object.fromEntries(
-			mainBlocks.map((b: { id: string }) => [b.id, b]),
-		);
+		const mainById = Object.fromEntries(mainBlocks.map((b: { id: string }) => [b.id, b]));
 		expect(mainById['b1'].content.html).toBe('Hallo Welt');
 		expect(mainById['b2'].content.text).toBe('Klick mich');
 		// Non-translatable styling/props from the original survive.
@@ -807,9 +786,7 @@ describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body
 		expect(row?.previewText).toBe('English preview');
 
 		const mainBlocks = JSON.parse(row?.content ?? '[]');
-		const mainById = Object.fromEntries(
-			mainBlocks.map((b: { id: string }) => [b.id, b]),
-		);
+		const mainById = Object.fromEntries(mainBlocks.map((b: { id: string }) => [b.id, b]));
 		// Original English text restored into the body.
 		expect(mainById['b1'].content.html).toBe('Hello world');
 		expect(mainById['b2'].content.text).toBe('Click me');
@@ -857,7 +834,7 @@ describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body
 			t.mutation(api.emailTemplates.i18n.setDefaultLanguage, {
 				templateId,
 				language: 'de',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -890,9 +867,7 @@ describe('emailTemplates.i18n.setDefaultLanguage — promotion round-trips, body
 
 		// No per-block German text existed, so the body keeps the original copy.
 		const mainBlocks = JSON.parse(row?.content ?? '[]');
-		const mainById = Object.fromEntries(
-			mainBlocks.map((b: { id: string }) => [b.id, b]),
-		);
+		const mainById = Object.fromEntries(mainBlocks.map((b: { id: string }) => [b.id, b]));
 		expect(mainById['b1'].content.html).toBe('Hello world');
 		expect(mainById['b2'].content.text).toBe('Click me');
 

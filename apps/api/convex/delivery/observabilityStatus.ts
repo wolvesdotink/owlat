@@ -26,6 +26,7 @@ export const get = adminQuery({
 			seedMailboxes: {
 				connected: seedAccounts.length,
 				rotationRemindersDue: seedAccounts.filter((account) => account.rotationReminderDue).length,
+				accounts: seedAccounts,
 			},
 			microsoftFeedback: {
 				configured: sndsFeeds.length > 0,

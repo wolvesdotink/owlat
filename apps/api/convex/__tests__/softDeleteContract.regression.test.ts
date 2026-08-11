@@ -35,28 +35,33 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -407,7 +412,12 @@ async function seedSendsFixture(): Promise<SendsFixture> {
 		});
 	});
 
-	return { ...base, templateId: templateId!, liveSendId: liveSendId!, deletedSendId: deletedSendId! };
+	return {
+		...base,
+		templateId: templateId!,
+		liveSendId: liveSendId!,
+		deletedSendId: deletedSendId!,
+	};
 }
 
 describe('transactional/sends.get', () => {
@@ -422,31 +432,6 @@ describe('transactional/sends.get', () => {
 		const { t, deletedSendId } = await seedSendsFixture();
 		const send = await t.query(api.transactional.sends.get, { id: deletedSendId });
 		expect(send).toBeNull();
-	});
-});
-
-describe('transactional/sends.listAll', () => {
-	it('excludes the soft-deleted send', async () => {
-		const { t, liveSendId, deletedSendId } = await seedSendsFixture();
-		const result = await t.query(api.transactional.sends.listAll, {});
-		const ids = result.sends.map((s) => s._id);
-		expect(ids).toContain(liveSendId);
-		expect(ids).not.toContain(deletedSendId);
-	});
-});
-
-describe('transactional/sends.getByEmail', () => {
-	it('returns no rows for the erased recipient address', async () => {
-		const { t } = await seedSendsFixture();
-		const rows = await t.query(api.transactional.sends.getByEmail, { email: DELETED_EMAIL });
-		expect(rows).toEqual([]);
-	});
-
-	it('returns the live send for the live recipient address', async () => {
-		const { t, liveSendId } = await seedSendsFixture();
-		const rows = await t.query(api.transactional.sends.getByEmail, { email: LIVE_EMAIL });
-		const ids = rows.map((s) => s._id);
-		expect(ids).toContain(liveSendId);
 	});
 });
 

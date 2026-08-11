@@ -4,7 +4,6 @@ apps/api/convex/campaigns/send.ts
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
 apps/api/convex/contacts/import.ts
-apps/api/convex/delivery/sends.ts
 apps/api/convex/domains/lifecycle.ts
 apps/api/convex/emailBlocks/module.ts
 apps/api/convex/knowledge/graph.ts
@@ -14,7 +13,6 @@ apps/api/convex/mail/draftLifecycle.ts
 apps/api/convex/mail/imap.ts
 apps/api/convex/mail/mailbox.ts
 apps/api/convex/mail/outbound.ts
-apps/api/convex/platformAdmin/queries.ts
 apps/api/convex/schema/mail.ts
 apps/api/convex/semanticFiles.ts
 apps/api/convex/topics/subscription.ts
@@ -22,7 +20,6 @@ apps/api/convex/topics/topics.ts
 apps/api/convex/transactional/lifecycle.ts
 apps/api/convex/unifiedMessages.ts
 apps/api/convex/visualizationAgent.ts
-apps/api/convex/webhooks/endpoints.ts
 apps/docs/app/components/content/ArchAgentPipeline.vue
 apps/docs/app/components/content/ArchCommunicationHub.vue
 apps/docs/app/components/content/ArchDataModel.vue

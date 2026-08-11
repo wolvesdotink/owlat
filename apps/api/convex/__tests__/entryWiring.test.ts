@@ -517,54 +517,7 @@ function reachedEntries(
  *
  * Tracked in issue #528.
  */
-const UNREACHED_ENTRIES: readonly string[] = [
-	'emailTemplates/emails.ts#changeType',
-	'emailTemplates/emails.ts#publish',
-	'emailTemplates/emails.ts#unpublish',
-	'emailTemplates/organization.ts#createForOrganization',
-	'forms/endpoints.ts#get',
-	'forms/endpoints.ts#getForSubmission',
-	'inbox/clarification.ts#answerClarification',
-	'inbox/clarificationMemory.ts#listClarificationMemory',
-	'inbox/clarificationMemory.ts#promoteClarificationMemory',
-	'inbox/clarificationMemory.ts#revokeClarificationMemory',
-	'inbox/mutations.ts#undoAutoSend',
-	'knowledge/edgeBackfill.ts#cancel',
-	'knowledge/edgeBackfill.ts#getStatus',
-	'knowledge/graph.ts#createPolicyEntry',
-	'knowledge/graph.ts#listPolicies',
-	'knowledge/graph.ts#setCommitmentStatus',
-	'mail/ai.ts#summarizeThread',
-	'mail/commitments.ts#listCommitments',
-	'mail/commitments.ts#resolveCommitment',
-	'mail/dailyBrief.ts#getLatestBrief',
-	'mail/externalAccountsActions.ts#connectSeed',
-	'mail/externalAccountsSeed.ts#acknowledgeSeedRotation',
-	'mail/folders.ts#list',
-	'mail/mailbox.ts#inboxUnreadCount',
-	'mail/mailbox.ts#latestInboxUnread',
-	'mail/voiceProfile.ts#removeDerivedAdjustment',
-	'mail/voiceProfile.ts#setStandingInstructions',
-	'mediaAssets.ts#get',
-	'mediaAssets.ts#remove',
-	'platformAdmin/queries.ts#getAdminAuditLog',
-	'platformAdmin/queries.ts#getBillingOverview',
-	'platformAdmin/queries.ts#getDeliveryStats',
-	'platformAdmin/queries.ts#listAllDomains',
-	'plugins/draftStrategySelections.ts#listCatalog',
-	'plugins/draftStrategySelections.ts#setSelection',
-	'storage.ts#deleteFile',
-	'systemHealth.ts#getHealthStats',
-	'topics/topics.ts#reorder',
-	'transactional/emails.ts#getBySlug',
-	'transactional/sends.ts#getByEmail',
-	'transactional/sends.ts#listAll',
-	'webhooks/endpoints.ts#countByOrganization',
-	'webhooks/endpoints.ts#disable',
-	'webhooks/endpoints.ts#enable',
-	'webhooks/endpoints.ts#get',
-	'webhooks/endpoints.ts#listDeliveryLogsByOrganization',
-];
+const UNREACHED_ENTRIES: readonly string[] = [];
 
 describe('the wiring guard is looking at production', () => {
 	it('walked both sides and skipped their tests', () => {
@@ -1001,7 +954,7 @@ describe('every Convex entry point is reachable, or on the ledger', () => {
 		// The scope this guard shipped with, held exactly where it was: every entry
 		// under `delivery/ramp*.ts` is registered, called or exported to a client,
 		// and none of them is written off as debt.
-		expect(UNREACHED_ENTRIES.filter((entry) => /^delivery\/ramp/.test(entry))).toEqual([]);
+		expect(UNREACHED_ENTRIES.filter((entry) => entry.startsWith('delivery/ramp'))).toEqual([]);
 	});
 
 	it('takes the hourly controller through its cron registration and not its own self-schedule', () => {

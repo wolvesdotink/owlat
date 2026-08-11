@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { authedMutation } from '../lib/authedFunctions';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -233,14 +233,3 @@ export const setSubscribed = authedMutation({
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
-export const list = publicQuery({
-	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		const owned = await requireMailboxAccess(ctx, args.mailboxId);
-		if (!owned.ok) return [];
-		return ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect(); // bounded: one mailbox's folders
-	},
-});

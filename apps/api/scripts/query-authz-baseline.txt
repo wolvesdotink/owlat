@@ -69,12 +69,10 @@ convex/emailTemplates/emails.ts:list
 convex/emailTemplates/i18n.ts:getForLanguage
 convex/emailTemplates/organization.ts:countByTypeByOrganization
 convex/emailTemplates/organization.ts:getRecentByOrganization
-convex/forms/endpoints.ts:get
 convex/forms/endpoints.ts:getSubmissions
 convex/forms/endpoints.ts:listByTeam
 convex/globalSearch.ts:search
 convex/integrationImports/walker.ts:getImportProgress
-convex/mediaAssets.ts:get
 convex/mediaAssets.ts:getStats
 convex/mediaAssets.ts:list
 convex/mediaAssets.ts:listTags
@@ -89,7 +87,6 @@ convex/semanticFiles.ts:listByContact
 convex/semanticFiles.ts:search
 convex/shareLinks.ts:listShareLinks
 convex/storage.ts:getUrl
-convex/systemHealth.ts:getHealthStats
 convex/topics/topics.ts:get
 convex/topics/topics.ts:getContactInTopicDetails
 convex/topics/topics.ts:getContacts
@@ -97,11 +94,8 @@ convex/topics/topics.ts:getTopicsForContact
 convex/topics/topics.ts:list
 convex/transactional/emails.ts:countByStatus
 convex/transactional/emails.ts:get
-convex/transactional/emails.ts:getBySlug
 convex/transactional/emails.ts:list
 convex/transactional/sends.ts:get
-convex/transactional/sends.ts:getByEmail
 convex/transactional/sends.ts:getCounts
-convex/transactional/sends.ts:listAll
 convex/transactional/sends.ts:listByTransactionalEmail
 convex/transactional/translations.ts:getForLanguage

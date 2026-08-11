@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 import { buildCredentialArgs, buildSharedConnectArgs } from '~/utils/postboxConnectArgs';
@@ -49,6 +50,8 @@ const props = defineProps<{
 	memberUserIds?: string[];
 	/** The team inbox being repaired — required for a shared credential update. */
 	mailboxId?: Id<'mailboxes'>;
+	/** Deliverability test-mailbox mode; stores the account outside personal Postbox. */
+	seedProvider?: DestinationProviderKey;
 }>();
 
 const emit = defineEmits<{
@@ -152,6 +155,11 @@ const connectSharedOp = useBackendOperation(api.mail.externalAccountsActions.con
 	label: 'Connect team inbox',
 	inlineTarget: formError,
 });
+const connectSeedOp = useBackendOperation(api.mail.externalAccountsActions.connectSeed, {
+	type: 'action',
+	label: 'Connect test mailbox',
+	inlineTarget: formError,
+});
 const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCredentials, {
 	type: 'action',
 	label: 'Update mail credentials',
@@ -171,6 +179,7 @@ const busy = computed(
 		testOp.isLoading.value ||
 		connectOp.isLoading.value ||
 		connectSharedOp.isLoading.value ||
+		connectSeedOp.isLoading.value ||
 		updateOp.isLoading.value ||
 		updateSharedOp.isLoading.value
 );
@@ -193,12 +202,18 @@ async function handleTest() {
 }
 
 async function handleSubmit() {
-	// Four cases, keyed on (mode, shared): a shared connect provisions a team
+	// Five cases, keyed on (mode, shared, seedProvider): a seed connect provisions
+	// an operator-owned deliverability mailbox; a shared connect provisions a team
 	// inbox (connectShared) with the picked roster; a shared update rotates a team
 	// inbox's credentials (updateCredentialsShared, keyed by mailboxId); the rest
 	// are the personal connect / credential update.
 	let res: { mailboxId: string } | undefined;
-	if (props.mode === 'connect' && props.shared) {
+	if (props.mode === 'connect' && props.seedProvider) {
+		res = await connectSeedOp.run({
+			...buildCredentialArgs(form),
+			seedProvider: props.seedProvider,
+		});
+	} else if (props.mode === 'connect' && props.shared) {
 		res = await connectSharedOp.run(
 			buildSharedConnectArgs(form, {
 				displayName: props.displayName,
@@ -243,7 +258,9 @@ const submitLabel = computed(() =>
 		? 'Save credentials'
 		: props.shared
 			? 'Connect team inbox'
-			: 'Connect & import'
+			: props.seedProvider
+				? 'Connect test mailbox'
+				: 'Connect & import'
 );
 </script>
 

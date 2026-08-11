@@ -28,14 +28,10 @@
 
 import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../lib/messageBody';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
-import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
-import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -307,74 +303,5 @@ export const sweep = internalMutation({
 			}
 		}
 		return { scheduled, reminded };
-	},
-});
-
-// ─── Read + resolve (in-app surface) ─────────────────────────────────────────
-
-/** Cap on the in-app commitments list. */
-const LIST_LIMIT = 100;
-
-interface CommitmentView {
-	id: Id<'mailCommitments'>;
-	threadId: Id<'mailThreads'>;
-	direction: CommitmentDirection;
-	description: string;
-	counterparty?: string;
-	dueAt?: number;
-	dueHintRaw?: string;
-	status: Doc<'mailCommitments'>['status'];
-}
-
-function toView(row: Doc<'mailCommitments'>): CommitmentView {
-	return {
-		id: row._id,
-		threadId: row.threadId,
-		direction: row.direction,
-		description: row.description,
-		counterparty: row.counterparty,
-		dueAt: row.dueAt,
-		dueHintRaw: row.dueHintRaw,
-		status: row.status,
-	};
-}
-
-/**
- * In-app commitments list for a mailbox (Daily Brief drill-in). Bounded; soft
- * auth (empty for anonymous / non-owner / inactive mailbox).
- */
-export const listCommitments = publicQuery({
-	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args): Promise<{ items: CommitmentView[] }> => {
-		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
-		if (!mailbox) return { items: [] };
-		const rows = await listMailboxCommitments(ctx, args.mailboxId);
-		const items: CommitmentView[] = [];
-		for (const row of rows) items.push(toView(row));
-		return { items };
-	},
-});
-
-async function listMailboxCommitments(
-	ctx: QueryCtx,
-	mailboxId: Id<'mailboxes'>
-): Promise<Doc<'mailCommitments'>[]> {
-	return await ctx.db
-		.query('mailCommitments')
-		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-		.order('desc')
-		.take(LIST_LIMIT);
-}
-
-/** Mark a commitment done (the owner fulfilled or dismissed it). */
-// authz: commitment → mailbox access via requireMailboxAccess; org membership via
-// authedMutation.
-export const resolveCommitment = authedMutation({
-	args: { commitmentId: v.id('mailCommitments') },
-	handler: async (ctx, args) => {
-		const commitment = await getOrThrow(ctx, args.commitmentId, 'Commitment');
-		const owned = await requireMailboxAccess(ctx, commitment.mailboxId);
-		if (!owned.ok) throwForbidden('Commitment not accessible');
-		await ctx.db.patch(args.commitmentId, { status: 'done', updatedAt: Date.now() });
 	},
 });

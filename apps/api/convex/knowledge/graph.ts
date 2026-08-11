@@ -19,8 +19,6 @@ import {
 	entryTypeValidator,
 	sourceTypeValidator,
 	relationTypeValidator,
-	edgeConfidenceTagValidator,
-	edgeProvenanceValidator,
 	commitmentStatusValidator,
 	COMMITMENT_ENTRY_TYPES,
 	POLICY_ENTRY_TYPES,

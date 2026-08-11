@@ -13,7 +13,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
+import { isFeatureEnabled } from './lib/featureFlags';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { extractEmail } from './lib/emailAddress';
 import { checkCodeAgentSafety } from './lib/codeAgentGuard';

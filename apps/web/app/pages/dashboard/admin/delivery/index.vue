@@ -19,9 +19,6 @@ const { isLoading: teamLoading } = useOrganizationContext();
 const { level, reason } = useDeliveryHealth();
 const verdict = computed(() => deliveryVerdict(level.value));
 const advancedOpen = ref(false);
-const observabilityOpen = ref(false);
-
-const { data: observabilityStatus } = useOrganizationQuery(api.delivery.observabilityStatus.get);
 
 // Sending overview: warm-up state, today's volume/budget, rolling reputation.
 const {
@@ -346,45 +343,7 @@ const sendingDetail = computed(() => {
 				:error="postmasterError"
 			/>
 
-			<UiCard>
-				<div class="flex items-start justify-between gap-4">
-					<div>
-						<h2 class="text-lg font-semibold text-text-primary">Measurement coverage</h2>
-						<p class="mt-1 text-sm text-text-secondary">
-							{{ observabilityStatus?.seedMailboxes.connected ?? 0 }} test mailboxes connected ·
-							Microsoft feedback
-							{{
-								observabilityStatus?.microsoftFeedback.configured ? 'connected' : 'not connected'
-							}}
-						</p>
-					</div>
-					<UiBadge :variant="observabilityStatus?.seedMailboxes.connected ? 'success' : 'neutral'">
-						{{ observabilityStatus?.seedMailboxes.connected ? 'Measured' : 'Optional' }}
-					</UiBadge>
-				</div>
-				<UiDisclosure v-model="observabilityOpen" class="mt-4" label="Measurement details">
-					<div class="grid gap-3 sm:grid-cols-2 text-sm">
-						<div class="rounded-lg bg-bg-surface p-3">
-							<p class="font-medium text-text-primary">Test mailboxes</p>
-							<p class="mt-1 text-text-secondary">
-								{{ observabilityStatus?.seedMailboxes.connected ?? 0 }} connected;
-								{{ observabilityStatus?.seedMailboxes.rotationRemindersDue ?? 0 }} need credential
-								rotation.
-							</p>
-						</div>
-						<div class="rounded-lg bg-bg-surface p-3">
-							<p class="font-medium text-text-primary">Microsoft sender feedback</p>
-							<p class="mt-1 text-text-secondary">
-								{{
-									observabilityStatus?.microsoftFeedback.configured
-										? `${observabilityStatus.microsoftFeedback.feedCount} feed${observabilityStatus.microsoftFeedback.feedCount === 1 ? '' : 's'} configured`
-										: 'No feed configured; sending remains available.'
-								}}
-							</p>
-						</div>
-					</div>
-				</UiDisclosure>
-			</UiCard>
+			<DeliveryMeasurementCoverageCard />
 
 			<!-- Domain table. Behind its own boundary: an empty domain list here reads
 				 "No sending domains yet — add a domain and publish its DNS records" and

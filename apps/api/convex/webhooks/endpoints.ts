@@ -100,54 +100,6 @@ export const listByOrganization = authedQuery({
 	},
 });
 
-/**
- * Get a single webhook by ID
- */
-export const get = authedQuery({
-	args: {
-		webhookId: v.id('webhooks'),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage webhooks'
-		);
-		const webhook = await ctx.db.get(args.webhookId);
-		if (!webhook) return null;
-		// Never return the HMAC secret to the client (shown only once, from
-		// create / regenerateSecret).
-		return stripWebhookSecret(webhook);
-	},
-});
-
-/**
- * Count webhooks
- */
-export const countByOrganization = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage webhooks'
-		);
-		// Both reads are bounded — webhooks are admin-curated.
-		const [allWebhooks, activeWebhooks] = await Promise.all([
-			ctx.db.query('webhooks').collect(), // bounded: admin-curated
-			ctx.db
-				.query('webhooks')
-				.withIndex('by_active', (q) => q.eq('isActive', true))
-				.collect(), // bounded: active subset
-		]);
-
-		return {
-			total: allWebhooks.length,
-			active: activeWebhooks.length,
-		};
-	},
-});
-
 // Firing webhook notifications resolves the per-event active set via the
 // internal query webhooks/deliveryQueries.getWebhooksForEvent (the live caller
 // is webhooks/fanout.ts). A public `listByEvent` authedQuery duplicating that
@@ -353,62 +305,6 @@ export const toggle = authedMutation({
 });
 
 /**
- * Enable a webhook
- */
-export const enable = authedMutation({
-	args: {
-		webhookId: v.id('webhooks'),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage webhooks'
-		);
-		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
-
-		if (webhook.isActive) {
-			return { success: true };
-		}
-
-		await ctx.db.patch(args.webhookId, {
-			isActive: true,
-			updatedAt: Date.now(),
-		});
-
-		return { success: true };
-	},
-});
-
-/**
- * Disable a webhook
- */
-export const disable = authedMutation({
-	args: {
-		webhookId: v.id('webhooks'),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage webhooks'
-		);
-		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
-
-		if (!webhook.isActive) {
-			return { success: true };
-		}
-
-		await ctx.db.patch(args.webhookId, {
-			isActive: false,
-			updatedAt: Date.now(),
-		});
-
-		return { success: true };
-	},
-});
-
-/**
  * Delete a webhook permanently
  * Also deletes all associated delivery logs
  */
@@ -525,44 +421,6 @@ export const listDeliveryLogs = authedQuery({
 			.withIndex('by_webhook', (q) => q.eq('webhookId', args.webhookId))
 			.order('desc')
 			.take(limit);
-
-		return logs;
-	},
-});
-
-/**
- * List all delivery logs (for the UI)
- */
-export const listDeliveryLogsByOrganization = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-		status: v.optional(
-			v.union(
-				v.literal('pending'),
-				v.literal('success'),
-				v.literal('failed'),
-				v.literal('retrying')
-			)
-		),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage webhooks'
-		);
-		const limit = args.limit ?? 50;
-
-		let logs;
-		if (args.status) {
-			logs = await ctx.db
-				.query('webhookDeliveryLogs')
-				.withIndex('by_status', (q) => q.eq('status', args.status!))
-				.order('desc')
-				.take(limit);
-		} else {
-			logs = await ctx.db.query('webhookDeliveryLogs').order('desc').take(limit);
-		}
 
 		return logs;
 	},

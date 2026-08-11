@@ -28,6 +28,9 @@ const {
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
 	label: 'Save settings',
 });
+const { run: changeTemplateType } = useBackendOperation(api.emailTemplates.emails.changeType, {
+	label: 'Change email type',
+});
 // Changing the default language re-keys subject/preview/body — it must route
 // through `setDefaultLanguage`, not a plain field patch.
 const { run: promoteDefaultLanguage } = useBackendOperation(
@@ -37,6 +40,7 @@ const { run: promoteDefaultLanguage } = useBackendOperation(
 
 // Form state
 const form = reactive({
+	type: 'marketing' as 'marketing' | 'transactional',
 	subject: '',
 	previewText: '',
 	defaultLanguage: 'en',
@@ -55,6 +59,7 @@ const isSaving = ref(false);
 // The default language as last persisted. Changing the form's defaultLanguage
 // away from this triggers the content-swapping `setDefaultLanguage` path.
 const persistedDefaultLanguage = ref('en');
+const persistedType = ref<'marketing' | 'transactional'>('marketing');
 
 // Currently selected language for editing
 const selectedLanguage = ref<string | null>(null);
@@ -104,6 +109,8 @@ const {
 const { hasChanges, markClean } = useEditorDirtyTracking({
 	source: template,
 	initialize: (t) => {
+		form.type = t.type;
+		persistedType.value = t.type;
 		form.subject = t.subject || '';
 		form.previewText = t.previewText || '';
 		form.defaultLanguage = t.defaultLanguage || 'en';
@@ -203,6 +210,12 @@ const handleSave = async (): Promise<boolean> => {
 				);
 				return false;
 			case 'language-promoted':
+				if (form.type !== persistedType.value) {
+					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type }))) {
+						return false;
+					}
+					persistedType.value = form.type;
+				}
 				// `setDefaultLanguage` re-keyed subject/preview/body; the live query
 				// reloads the form. Reflect the new default so a follow-up save is a
 				// plain patch, not another (now no-op) swap attempt.
@@ -211,6 +224,12 @@ const handleSave = async (): Promise<boolean> => {
 				showToast('Default language updated');
 				return true;
 			case 'saved':
+				if (form.type !== persistedType.value) {
+					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type }))) {
+						return false;
+					}
+					persistedType.value = form.type;
+				}
 				markClean();
 				showToast('Settings saved successfully');
 				return true;
@@ -292,53 +311,13 @@ const handleBack = () => {
 			<!-- Settings Content -->
 			<div v-else class="flex-1 overflow-y-auto p-6 lg:p-8">
 				<div class="max-w-3xl mx-auto space-y-8">
-					<!-- Default Language Subject & Preview -->
-					<UiCard>
-						<div class="flex items-center gap-3 mb-6">
-							<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-								<Icon name="lucide:mail" class="w-5 h-5 text-brand" />
-							</div>
-							<div>
-								<h2 class="text-lg font-semibold text-text-primary">Subject & Preview Text</h2>
-								<p class="text-sm text-text-secondary">
-									The subject line and preview text for your default language
-								</p>
-							</div>
-						</div>
-
-						<div class="space-y-6">
-							<!-- Default Language Selector -->
-							<UiSelect
-								v-model="form.defaultLanguage"
-								label="Default Language"
-								:options="
-									languageOptions.map((l) => ({
-										value: l.value,
-										label: `${l.label} (${l.nativeLabel})`,
-									}))
-								"
-							/>
-
-							<!-- Subject -->
-							<UiInput
-								v-model="form.subject"
-								label="Subject Line"
-								placeholder="Enter email subject line"
-								:required="true"
-								help-text="The subject line recipients will see in their inbox."
-							/>
-
-							<!-- Preview Text -->
-							<UiTextarea
-								v-model="form.previewText"
-								label="Preview Text"
-								placeholder="Enter preview text (optional)"
-								:rows="2"
-								:max-length="150"
-								help-text="The preview text appears after the subject line in email clients. Keep it under 150 characters."
-							/>
-						</div>
-					</UiCard>
+					<EmailSubjectSettingsCard
+						v-model:email-type="form.type"
+						v-model:default-language="form.defaultLanguage"
+						v-model:subject="form.subject"
+						v-model:preview-text="form.previewText"
+						:published="template.status === 'published'"
+					/>
 
 					<!-- Translations Section -->
 					<UiCard>

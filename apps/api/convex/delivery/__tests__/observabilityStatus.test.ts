@@ -178,7 +178,15 @@ describe('observabilityStatus.get — the status it reports', () => {
 		await connectSeed(t, { organizationId: OTHER_ORG, address: 'intruder.seed@outlook.example' });
 
 		const status = await t.query(api.delivery.observabilityStatus.get, {});
-		expect(status.seedMailboxes).toEqual({ connected: 2, rotationRemindersDue: 0 });
+		expect(status.seedMailboxes).toMatchObject({ connected: 2, rotationRemindersDue: 0 });
+		expect(status.seedMailboxes.accounts).toHaveLength(2);
+		expect(status.seedMailboxes.accounts.map((account) => account.address).sort()).toEqual([
+			'owlat.seed.01@outlook.example',
+			'owlat.seed.02@outlook.example',
+		]);
+		expect(JSON.stringify(status.seedMailboxes.accounts)).not.toMatch(
+			/ciphertext|password|authTag|imapHost|smtpHost/
+		);
 	});
 
 	it('surfaces a seed whose rotation is due', async () => {
@@ -186,7 +194,9 @@ describe('observabilityStatus.get — the status it reports', () => {
 		await connectSeed(t, { connectedAt: NOW - SEED_ROTATION_INTERVAL_MS - 1 });
 
 		const status = await t.query(api.delivery.observabilityStatus.get, {});
-		expect(status.seedMailboxes).toEqual({ connected: 1, rotationRemindersDue: 1 });
+		expect(status.seedMailboxes).toMatchObject({ connected: 1, rotationRemindersDue: 1 });
+		expect(status.seedMailboxes.accounts).toHaveLength(1);
+		expect(status.seedMailboxes.accounts[0]).toMatchObject({ rotationReminderDue: true });
 	});
 
 	it('reports the SNDS feed count and last observation without leaking a feed URL', async () => {

@@ -48,7 +48,7 @@ at top level.
 
 Post-ADR-0021 location. Carries `create`, `update`, `publish`,
 `unpublish`, `duplicate`, `remove`, `updateSchema`, plus the read
-queries (`get`, `getBySlug`, `list`, `countByStatus`). The `publish`
+queries (`get`, `list`, `countByStatus`). The `publish`
 mutation runs `scanContent` from `@owlat/email-scanner` inline (lines
 304-335) and branches the row's next state on the scan result.
 
@@ -344,8 +344,8 @@ force?)`. Consumed by every mutation in `emailTemplates/` and
 Each mutation calls the guard before patching. Default value of
 `forceWhilePublished` is `false`; the editor UX surfaces an "Unpublish
 to edit?" gate to the user and explicitly opts in when the user
-confirms. The public HTTP API mutations (`createForOrganization`,
-`createFromPreset` in `emailTemplates/organization.ts`) don't expose
+confirms. The preset-library mutation (`createFromPreset` in
+`emailTemplates/organization.ts`) doesn't expose
 publish/unpublish, so they refuse on published rows without the knob.
 
 ### File layout — subdirectory move for emailTemplates

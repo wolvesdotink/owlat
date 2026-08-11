@@ -16,6 +16,15 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 		if (auth.role === 'editor') throw new Error('forbidden');
 		return { userId: 'owner', role: auth.role };
 	}),
+	requireOrgMember: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
+		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
+		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant' };
+	}),
+	requireOrgPermission: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
+		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
+		if (auth.role === 'editor') throw new Error('forbidden');
+		return { userId: 'owner', role: auth.role };
+	}),
 	getSingletonOrganizationId: vi.fn().mockResolvedValue('tenant'),
 }));
 
@@ -51,6 +60,27 @@ beforeEach(() => {
 });
 
 describe('draft strategy selection mutations', () => {
+	it('lists the catalog together with persisted scope selections', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.mutation(api.plugins.draftStrategySelections.setSelection, {
+			scope: { type: 'classification', id: 'support' },
+			strategyKind: 'plugin.draft-pack.legal',
+		});
+
+		const result = await t.query(api.plugins.draftStrategySelections.listCatalog, {});
+		expect(result.strategies.map((strategy) => strategy.kind)).toEqual([
+			'default',
+			'plugin.draft-pack.legal',
+		]);
+		expect(result.selections).toEqual([
+			{
+				scopeType: 'classification',
+				scopeId: 'support',
+				strategyKind: 'plugin.draft-pack.legal',
+			},
+		]);
+	});
+
 	it('requires authentication and an admin role', async () => {
 		const anonymous = convexTest(schema, modules);
 		await expect(

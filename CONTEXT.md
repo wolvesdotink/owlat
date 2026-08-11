@@ -2087,9 +2087,9 @@ stay in the HTTP shell because they require action context and vary
 per content-type); the `transactionalEmails` CRUD (stays in
 `transactional/emails.ts`); the `transactionalEmails` translations
 CRUD (stays in `transactional/translations.ts`); the
-`transactionalSends` read queries (`listByTransactionalEmail`, `listAll`,
-`get`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`,
-`getCounts`, `getByEmail`, `getByProviderMessageId` stay in
+`transactionalSends` read queries (`listByTransactionalEmail`, `get`,
+`getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`,
+`getByProviderMessageId` stay in
 `transactional/sends.ts`); the worker dispatch and provider attempt
 (**Send dispatch (helper)** + `emailWorker.sendSingleEmail`); the
 `queued → sent | failed` transitions (**Send completion (module)**
@@ -2237,7 +2237,7 @@ send intake (module)** at `transactional/dispatch.ts`), the per-send
 worker dispatch (**Send dispatch (helper)**), the translation CRUD
 (stays in `transactional/translations.ts`), the per-template
 attachment management, the `updateSchema` mutation, or the read
-queries (`get`, `getBySlug`, `list`, `countByStatus`,
+queries (`get`, `list`, `countByStatus`,
 `getStatsByTransactionalEmail`, etc. — all stay in their respective
 read-side files).
 _Avoid_: Transactional template lifecycle (overloaded — the row is
