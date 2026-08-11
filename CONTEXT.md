@@ -1681,16 +1681,16 @@ entry points:
 - `remove({ blockId })` — detaches the saved block from every consumer
   and deletes the row. Effects: `detach_all`, `audit_log`.
 
-Plus one cross-cutting entry point used by **Saved block consumer**
-lifecycles:
+Plus one cross-cutting helper used by **Saved block consumer** lifecycles:
 
-- `updateBlockUsageCounts({ previousIds, nextIds })` —
+- `applyUsageCountDelta(ctx, previousIds, nextIds)` —
   increments/decrements `usageCount` on saved blocks based on a
   consumer's `linkedBlockIds` delta. The single writer of
   `emailBlocks.usageCount`. Called by **Email template lifecycle
   (module)**'s and **Transactional email lifecycle (module)**'s
-  `update_block_usage_counts` effect — those modules import this entry
-  and delegate.
+  `update_block_usage_counts` effect in the consumer mutation's own
+  transaction. The test-only `updateBlockUsageCounts` Convex wrapper was
+  removed under issue #528 because no production path could start it.
 
 Effects:
 
@@ -1732,8 +1732,8 @@ the decision lands.
 
 Replaces `lib/linkedBlockPropagation.ts` (deleted; its three
 propagation helpers become reducer effects, its walker helpers become
-private to `module.ts`, its `updateBlockUsageCounts` becomes the
-cross-cutting entry point) and absorbs the open-coded
+private to `module.ts`, its usage-count delta helper becomes the
+cross-cutting `applyUsageCountDelta`) and absorbs the open-coded
 `if (contentChanged) … else if (nameChanged)` branch at
 `emailBlocks.ts:196-225` into the `update` reducer's classification.
 
@@ -1879,7 +1879,7 @@ Effects:
   `auditActions/catalog.ts`.
 - `update_block_usage_counts(prev, next)` — fires when `linkedBlockIds`
   changes. Delegates to the **Saved block (module)**'s
-  `updateBlockUsageCounts` entry, the single writer of
+  `applyUsageCountDelta` helper, the single implementation of
   `emailBlocks.usageCount`. Replaces the open-coded calls at
   `emailTemplates/emails.ts:108` (still bypassing the lifecycle
   post-ADR-0022) and the pre-ADR-0022 sites at `emailTemplates.ts:102`
@@ -2194,7 +2194,7 @@ Effects:
   `transactional/emails.ts:307-315`.
 - `update_block_usage_counts(prev, next)` — fires when `linkedBlockIds`
   changes. Delegates to the **Saved block (module)**'s
-  `updateBlockUsageCounts` entry (parallel to the **Email template
+  `applyUsageCountDelta` helper (parallel to the **Email template
   lifecycle (module)**). Also closes the open-coded direct call at
   `transactional/emails.ts:252` that bypassed the lifecycle effect
   path.

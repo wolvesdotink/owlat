@@ -531,30 +531,6 @@ describe('Saved block module — applyUsageCountDelta', () => {
 			expect(aRow?.usageCount).toBe(0);
 		});
 	});
-
-	it('routes through the public mutation', async () => {
-		const t = convexTest(schema, modules);
-		let id: Id<'emailBlocks'>;
-		await t.run(async (ctx) => {
-			id = await ctx.db.insert('emailBlocks', {
-				name: 'X',
-				content: '[]',
-				usageCount: 0,
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
-			});
-		});
-
-		await t.mutation(internal.emailBlocks.module.updateBlockUsageCounts, {
-			previousIds: [],
-			nextIds: [id!],
-		});
-
-		await t.run(async (ctx) => {
-			const row = await ctx.db.get(id!);
-			expect(row?.usageCount).toBe(1);
-		});
-	});
 });
 
 // ============================================================================
