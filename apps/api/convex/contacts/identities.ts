@@ -408,31 +408,3 @@ export const autoMergeDuplicates = internalMutation({
 		return { merged };
 	},
 });
-
-/**
- * Ensure a contact has an identity for their email (bootstrap existing contacts)
- */
-export const ensureEmailIdentity = internalMutation({
-	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-		// No-op for contacts without an email (phone/SMS/WhatsApp/generic-only).
-		if (!contact || !contact.email) return;
-		const email = contact.email;
-
-		const existing = await ctx.db
-			.query('contactIdentities')
-			.withIndex('by_identifier', (q) => q.eq('channel', 'email').eq('identifier', email))
-			.first();
-
-		if (existing) return existing._id;
-
-		return await ctx.db.insert('contactIdentities', {
-			contactId: args.contactId,
-			channel: 'email',
-			identifier: email,
-			isPrimary: true,
-			createdAt: Date.now(),
-		});
-	},
-});

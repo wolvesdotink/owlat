@@ -436,8 +436,8 @@ If/when production data exists, this would need a backfill pass:
 1. **Backfill identity rows.** For every live Contact with a real
    email, insert a `contactIdentities` row with `channel: 'email'`,
    `identifier: contact.email`, `isPrimary: true`. The existing
-   `ensureEmailIdentity` internal mutation is the per-Contact primitive;
-   wrap in a batched cron.
+   Any production deployment needing this must use a bounded migration; the
+   unreachable `ensureEmailIdentity` mutation was removed under #528.
 2. **Clear fake-domain emails and backfill the real channel identity.**
    For Contacts whose `email` matches `*@(sms|whatsapp|chat).channel`,
    look up the matching channel record (via `unifiedMessages` joined
