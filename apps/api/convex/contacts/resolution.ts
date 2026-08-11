@@ -28,23 +28,23 @@
  * See docs/adr/0008-contact-resolution-module.md.
  */
 
-import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
-import { throwAlreadyExists } from '../_utils/errors';
-import { buildSearchableText } from '../lib/queryHelpers';
+import { v } from "convex/values";
+import type { MutationCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import { throwAlreadyExists } from "../_utils/errors";
+import { buildSearchableText } from "../lib/queryHelpers";
 
 // ============================================================
 // Types
 // ============================================================
 
 export const CHANNEL_KIND_LITERALS = [
-	'email',
-	'sms',
-	'whatsapp',
-	'phone',
-	'generic',
-	'chat',
+	"email",
+	"sms",
+	"whatsapp",
+	"phone",
+	"generic",
+	"chat",
 ] as const;
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
@@ -52,11 +52,11 @@ export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
 export const channelKindValidator = v.union(...CHANNEL_KIND_LITERALS.map((l) => v.literal(l)));
 
 export const CONTACT_SOURCE_LITERALS = [
-	'api',
-	'import',
-	'form',
-	'transactional',
-	'inbound',
+	"api",
+	"import",
+	"form",
+	"transactional",
+	"inbound",
 ] as const;
 
 export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
@@ -66,13 +66,13 @@ export const contactSourceValidator = v.union(...CONTACT_SOURCE_LITERALS.map((l)
 // Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
 // is assigned only internally the first time a contact appears via an inbound
 // message, never accepted from the create API.
-export const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
+export const CONTACT_CREATE_SOURCE_LITERALS = ["api", "import", "form", "transactional"] as const;
 
 export const contactCreateSourceValidator = v.union(
-	...CONTACT_CREATE_SOURCE_LITERALS.map((l) => v.literal(l))
+	...CONTACT_CREATE_SOURCE_LITERALS.map((l) => v.literal(l)),
 );
 
-export const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
+export const RESOLVE_MODE_LITERALS = ["strict", "upsert", "merge"] as const;
 
 export type ResolveMode = (typeof RESOLVE_MODE_LITERALS)[number];
 
@@ -97,10 +97,10 @@ export type ContactFields = {
 	timezone?: string;
 };
 
-export type ResolveAction = 'matched' | 'created' | 'updated';
+export type ResolveAction = "matched" | "created" | "updated";
 
 export interface ResolveResult {
-	contactId: Id<'contacts'>;
+	contactId: Id<"contacts">;
 	action: ResolveAction;
 	/**
 	 * Built-in fields whose value actually changed on a `merge` match (subset of
@@ -120,16 +120,16 @@ export interface ResolveResult {
  * Find a live Contact (and its identity row) by `(channel, identifier)`.
  * Returns null if no row matches or the matched Contact is soft-deleted.
  *
- * Exported for `addIdentity` and tests; internal callers should use `resolve`.
+ * Exported for `addIdentity` and tests; internal callers use `resolveContact`.
  */
 export async function findContactByIdentifier(
 	ctx: MutationCtx,
 	channel: ChannelKind,
-	identifier: string
-): Promise<{ contact: Doc<'contacts'>; identity: Doc<'contactIdentities'> } | null> {
+	identifier: string,
+): Promise<{ contact: Doc<"contacts">; identity: Doc<"contactIdentities"> } | null> {
 	const identity = await ctx.db
-		.query('contactIdentities')
-		.withIndex('by_identifier', (q) => q.eq('channel', channel).eq('identifier', identifier))
+		.query("contactIdentities")
+		.withIndex("by_identifier", (q) => q.eq("channel", channel).eq("identifier", identifier))
 		.first();
 
 	if (!identity) return null;
@@ -153,45 +153,44 @@ export interface ResolveSignal {
 }
 
 /**
- * Find-or-create a Contact. The core implementation — exported so other
- * mutations can call it directly (avoiding the `runMutation` round-trip) but
- * the public wire shape is the `resolve` mutation below.
+ * Find-or-create a Contact. Exported so mutations can call it directly without
+ * a `runMutation` round-trip.
  */
 export async function resolveContact(
 	ctx: MutationCtx,
-	signal: ResolveSignal
+	signal: ResolveSignal,
 ): Promise<ResolveResult> {
 	const identifier = normalizeIdentifier(signal.channel, signal.identifier);
 	const match = await findContactByIdentifier(ctx, signal.channel, identifier);
 
 	if (match) {
-		if (signal.mode === 'strict') {
+		if (signal.mode === "strict") {
 			throwAlreadyExists(`A contact with ${signal.channel}:${identifier} already exists`);
 		}
 
-		if (signal.mode === 'merge') {
+		if (signal.mode === "merge") {
 			const changedProperties = await mergeFields(ctx, match.contact, signal.contactFields);
 			return {
 				contactId: match.contact._id,
-				action: changedProperties.length > 0 ? 'updated' : 'matched',
+				action: changedProperties.length > 0 ? "updated" : "matched",
 				...(changedProperties.length > 0 ? { changedProperties } : {}),
 			};
 		}
 
 		// upsert
-		return { contactId: match.contact._id, action: 'matched' };
+		return { contactId: match.contact._id, action: "matched" };
 	}
 
 	// No match — create.
 	const contactId = await insertContactRow(ctx, signal, identifier);
-	return { contactId, action: 'created' };
+	return { contactId, action: "created" };
 }
 
 function normalizeIdentifier(channel: ChannelKind, identifier: string): string {
 	const trimmed = identifier.trim();
 	// Emails are case-insensitive. Phone-derived channels are kept verbatim —
 	// callers normalize to E.164 before reaching us.
-	return channel === 'email' ? trimmed.toLowerCase() : trimmed;
+	return channel === "email" ? trimmed.toLowerCase() : trimmed;
 }
 
 /**
@@ -203,36 +202,36 @@ function normalizeIdentifier(channel: ChannelKind, identifier: string): string {
  */
 async function mergeFields(
 	ctx: MutationCtx,
-	existing: Doc<'contacts'>,
-	contactFields: ContactFields | undefined
+	existing: Doc<"contacts">,
+	contactFields: ContactFields | undefined,
 ): Promise<string[]> {
 	if (!contactFields) return [];
 
-	const patch: Partial<Doc<'contacts'>> = {};
+	const patch: Partial<Doc<"contacts">> = {};
 	const changedProperties: string[] = [];
 
 	const newFirstName = contactFields.firstName?.trim();
 	if (newFirstName && newFirstName !== existing.firstName) {
 		patch.firstName = newFirstName;
-		changedProperties.push('firstName');
+		changedProperties.push("firstName");
 	}
 
 	const newLastName = contactFields.lastName?.trim();
 	if (newLastName && newLastName !== existing.lastName) {
 		patch.lastName = newLastName;
-		changedProperties.push('lastName');
+		changedProperties.push("lastName");
 	}
 
 	const newLanguage = contactFields.language?.trim();
 	if (newLanguage && newLanguage !== existing.language) {
 		patch.language = newLanguage;
-		changedProperties.push('language');
+		changedProperties.push("language");
 	}
 
 	const newTimezone = contactFields.timezone?.trim();
 	if (newTimezone && newTimezone !== existing.timezone) {
 		patch.timezone = newTimezone;
-		changedProperties.push('timezone');
+		changedProperties.push("timezone");
 	}
 
 	if (changedProperties.length === 0) return [];
@@ -242,7 +241,7 @@ async function mergeFields(
 		patch.searchableText = buildSearchableText(
 			existing.email,
 			patch.firstName ?? existing.firstName,
-			patch.lastName ?? existing.lastName
+			patch.lastName ?? existing.lastName,
 		);
 	}
 
@@ -254,8 +253,8 @@ async function mergeFields(
 async function insertContactRow(
 	ctx: MutationCtx,
 	signal: ResolveSignal,
-	identifier: string
-): Promise<Id<'contacts'>> {
+	identifier: string,
+): Promise<Id<"contacts">> {
 	const now = Date.now();
 	const fields = signal.contactFields ?? {};
 	const firstName = fields.firstName?.trim() || undefined;
@@ -265,10 +264,10 @@ async function insertContactRow(
 
 	// `contacts.email` is denormalized from the email-channel identity row.
 	// For non-email channels, the Contact has no email at all.
-	const email = signal.channel === 'email' ? identifier : undefined;
+	const email = signal.channel === "email" ? identifier : undefined;
 	const searchableText = buildSearchableText(email, firstName, lastName);
 
-	const contactId = await ctx.db.insert('contacts', {
+	const contactId = await ctx.db.insert("contacts", {
 		email,
 		firstName,
 		lastName,
@@ -278,7 +277,7 @@ async function insertContactRow(
 		searchableText,
 		// Initial DOI status — non-optional per ADR-0009. The DOI lifecycle
 		// (module) is the only later writer of this field and its companions.
-		doiStatus: 'not_required',
+		doiStatus: "not_required",
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -286,7 +285,7 @@ async function insertContactRow(
 	// Every Contact gets at least one `contactIdentities` row. The primary
 	// identity is the one created here; secondary identities for the same
 	// Contact go through `addIdentity` in `contacts/identities.ts`.
-	await ctx.db.insert('contactIdentities', {
+	await ctx.db.insert("contactIdentities", {
 		contactId,
 		channel: signal.channel,
 		identifier,
@@ -296,29 +295,6 @@ async function insertContactRow(
 
 	return contactId;
 }
-
-// ============================================================
-// Public mutation (Convex wire surface)
-// ============================================================
-
-/**
- * `resolve` — the public wire surface. Internal callers prefer
- * `resolveContact(ctx, signal)` directly to avoid the `runMutation`
- * round-trip; external/HTTP callers (`apps/api/convex/contacts/api.ts`)
- * use this mutation.
- */
-export const resolve = internalMutation({
-	args: {
-		channel: channelKindValidator,
-		identifier: v.string(),
-		source: contactSourceValidator,
-		mode: resolveModeValidator,
-		contactFields: v.optional(contactFieldsValidator),
-	},
-	handler: async (ctx, args): Promise<ResolveResult> => {
-		return await resolveContact(ctx, args);
-	},
-});
 
 // ============================================================
 // Cascade hook — called by softDeleteContact
@@ -335,11 +311,11 @@ export const resolve = internalMutation({
  */
 export async function deleteIdentitiesForContact(
 	ctx: MutationCtx,
-	contactId: Id<'contacts'>
+	contactId: Id<"contacts">,
 ): Promise<void> {
 	const identities = await ctx.db
-		.query('contactIdentities')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.query("contactIdentities")
+		.withIndex("by_contact", (q) => q.eq("contactId", contactId))
 		.collect(); // bounded: one contact's identities
 
 	for (const identity of identities) {

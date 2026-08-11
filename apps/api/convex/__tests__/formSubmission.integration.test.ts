@@ -11,15 +11,16 @@
  * live at the top.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
-import schema from '../schema';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { classifyAction, validateFields } from '../forms/submission';
+import { convexTest, type TestConvex } from "convex-test";
+import { describe, it, expect, vi } from "vitest";
+import schema from "../schema";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { classifyAction, validateFields } from "../forms/submission";
+import { resolveContact, type ResolveSignal } from "../contacts/resolution";
 
-vi.mock('../lib/contactCountHelpers', async () => {
-	const actual = await vi.importActual('../lib/contactCountHelpers');
+vi.mock("../lib/contactCountHelpers", async () => {
+	const actual = await vi.importActual("../lib/contactCountHelpers");
 	return {
 		...actual,
 		incrementContactCount: vi.fn().mockResolvedValue(undefined),
@@ -29,80 +30,84 @@ vi.mock('../lib/contactCountHelpers', async () => {
 	};
 });
 
-const allModules = import.meta.glob('../**/*.*s');
+const allModules = import.meta.glob("../**/*.*s");
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
-			!path.includes('sesActions') &&
-			!path.includes('agentSecurity') &&
-			!path.includes('agentContext') &&
-			!path.includes('agentClassifier') &&
-			!path.includes('agentDrafter') &&
-			!path.includes('agentRouter') &&
-			!path.includes('agent/walker') &&
-			!path.includes('agent/steps/index') &&
-			!path.includes('agent/steps/shared') &&
-			!path.includes('agent/steps/classify') &&
-			!path.includes('agent/steps/draft') &&
-			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
-			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
+			!path.includes("sesActions") &&
+			!path.includes("agentSecurity") &&
+			!path.includes("agentContext") &&
+			!path.includes("agentClassifier") &&
+			!path.includes("agentDrafter") &&
+			!path.includes("agentRouter") &&
+			!path.includes("agent/walker") &&
+			!path.includes("agent/steps/index") &&
+			!path.includes("agent/steps/shared") &&
+			!path.includes("agent/steps/classify") &&
+			!path.includes("agent/steps/draft") &&
+			!path.includes("knowledgeExtraction") &&
+			!path.includes("semanticFileProcessing") &&
+			!path.includes("visualizationAgent") &&
+			!path.includes("llmProvider"),
 	),
 );
 
+async function resolveThroughModule(t: TestConvex<typeof schema>, signal: ResolveSignal) {
+	return t.run((ctx) => resolveContact(ctx, signal));
+}
+
 // ─── Pure unit tests ────────────────────────────────────────────────────────
 
-describe('classifyAction (pure)', () => {
+describe("classifyAction (pure)", () => {
 	it("created + no topic → 'success'", () => {
-		expect(classifyAction('created', undefined)).toBe('success');
+		expect(classifyAction("created", undefined)).toBe("success");
 	});
 
 	it("matched + no topic → 'duplicate'", () => {
-		expect(classifyAction('matched', undefined)).toBe('duplicate');
+		expect(classifyAction("matched", undefined)).toBe("duplicate");
 	});
 
 	it("updated + no topic → 'duplicate'", () => {
-		expect(classifyAction('updated', undefined)).toBe('duplicate');
+		expect(classifyAction("updated", undefined)).toBe("duplicate");
 	});
 
 	it("topic expected but subscribe failed → 'invalid' (not 'success')", () => {
 		// subscribeResult is undefined on a failed subscribe; topicExpected
 		// distinguishes that from the no-topic path so a failed signup is not
 		// recorded as a successful submission.
-		expect(classifyAction('created', undefined, true)).toBe('invalid');
-		expect(classifyAction('matched', undefined, true)).toBe('invalid');
+		expect(classifyAction("created", undefined, true)).toBe("invalid");
+		expect(classifyAction("matched", undefined, true)).toBe("invalid");
 	});
 
 	it("created + subscribe 'subscribed' → 'success'", () => {
 		expect(
-			classifyAction('created', {
+			classifyAction("created", {
 				ok: true,
-				action: 'subscribed',
-				membershipId: 'fake' as Id<'contactTopics'>,
+				action: "subscribed",
+				membershipId: "fake" as Id<"contactTopics">,
 			}),
-		).toBe('success');
+		).toBe("success");
 	});
 
 	it("created + subscribe 'pending_doi' → 'pending_confirmation'", () => {
 		expect(
-			classifyAction('created', {
+			classifyAction("created", {
 				ok: true,
-				action: 'pending_doi',
-				membershipId: 'fake' as Id<'contactTopics'>,
-				doiToken: 'tok',
+				action: "pending_doi",
+				membershipId: "fake" as Id<"contactTopics">,
+				doiToken: "tok",
 			}),
-		).toBe('pending_confirmation');
+		).toBe("pending_confirmation");
 	});
 
 	it("matched + subscribe 'already_member' → 'duplicate'", () => {
 		expect(
-			classifyAction('matched', {
+			classifyAction("matched", {
 				ok: true,
-				action: 'already_member',
-				membershipId: 'fake' as Id<'contactTopics'>,
+				action: "already_member",
+				membershipId: "fake" as Id<"contactTopics">,
 			}),
-		).toBe('duplicate');
+		).toBe("duplicate");
 	});
 
 	it("matched + subscribe 'subscribed' → 'success' (existing contact joins new topic)", () => {
@@ -110,70 +115,66 @@ describe('classifyAction (pure)', () => {
 		// silently dropped the membership. Under the module, an existing
 		// contact joining a new topic classifies as `success`.
 		expect(
-			classifyAction('matched', {
+			classifyAction("matched", {
 				ok: true,
-				action: 'subscribed',
-				membershipId: 'fake' as Id<'contactTopics'>,
+				action: "subscribed",
+				membershipId: "fake" as Id<"contactTopics">,
 			}),
-		).toBe('success');
+		).toBe("success");
 	});
 
 	it("matched + subscribe 'pending_doi' → 'pending_confirmation'", () => {
 		expect(
-			classifyAction('matched', {
+			classifyAction("matched", {
 				ok: true,
-				action: 'pending_doi',
-				membershipId: 'fake' as Id<'contactTopics'>,
-				doiToken: 'tok',
+				action: "pending_doi",
+				membershipId: "fake" as Id<"contactTopics">,
+				doiToken: "tok",
 			}),
-		).toBe('pending_confirmation');
+		).toBe("pending_confirmation");
 	});
 });
 
-describe('validateFields (pure)', () => {
+describe("validateFields (pure)", () => {
 	const emailField = {
-		key: 'email',
-		label: 'Email',
-		type: 'email' as const,
+		key: "email",
+		label: "Email",
+		type: "email" as const,
 		required: true,
 	};
 
-	it('extracts a valid email lowercased and trimmed', () => {
-		const result = validateFields([emailField], { email: '  USER@Example.COM  ' });
-		expect(result.email).toBe('user@example.com');
+	it("extracts a valid email lowercased and trimmed", () => {
+		const result = validateFields([emailField], { email: "  USER@Example.COM  " });
+		expect(result.email).toBe("user@example.com");
 		expect(result.errors).toEqual([]);
 	});
 
-	it('reports an error when required email is missing', () => {
+	it("reports an error when required email is missing", () => {
 		const result = validateFields([emailField], {});
 		expect(result.email).toBeNull();
-		expect(result.errors).toContain('Email is required');
+		expect(result.errors).toContain("Email is required");
 	});
 
-	it('reports an error when email format is invalid', () => {
-		const result = validateFields([emailField], { email: 'not-an-email' });
+	it("reports an error when email format is invalid", () => {
+		const result = validateFields([emailField], { email: "not-an-email" });
 		expect(result.email).toBeNull();
-		expect(result.errors).toContain('Email must be a valid email address');
+		expect(result.errors).toContain("Email must be a valid email address");
 	});
 
-	it('reports an error for required non-email field that is empty', () => {
+	it("reports an error for required non-email field that is empty", () => {
 		const result = validateFields(
-			[
-				emailField,
-				{ key: 'name', label: 'Name', type: 'text', required: true },
-			],
-			{ email: 'user@example.com', name: '' },
+			[emailField, { key: "name", label: "Name", type: "text", required: true }],
+			{ email: "user@example.com", name: "" },
 		);
-		expect(result.errors).toContain('Name is required');
+		expect(result.errors).toContain("Name is required");
 	});
 
 	it('falls back to "Email is required" if no email field accepted a value', () => {
-		const result = validateFields(
-			[{ key: 'name', label: 'Name', type: 'text', required: true }],
-			{ name: 'Ada' },
-		);
+		const result = validateFields([{ key: "name", label: "Name", type: "text", required: true }], {
+			name: "Ada",
+		});
 		expect(result.email).toBeNull();
-		expect(result.errors).toContain('Email is required');
+		expect(result.errors).toContain("Email is required");
 	});
 });
 
@@ -182,10 +183,10 @@ describe('validateFields (pure)', () => {
 async function createTopic(
 	t: TestConvex<typeof schema>,
 	requireDoubleOptIn: boolean,
-	name = 'Newsletter',
-): Promise<Id<'topics'>> {
+	name = "Newsletter",
+): Promise<Id<"topics">> {
 	return await t.run(async (ctx) => {
-		return await ctx.db.insert('topics', {
+		return await ctx.db.insert("topics", {
 			name,
 			requireDoubleOptIn,
 			createdAt: Date.now(),
@@ -196,27 +197,27 @@ async function createTopic(
 async function createForm(
 	t: TestConvex<typeof schema>,
 	args: {
-		topicId?: Id<'topics'>;
+		topicId?: Id<"topics">;
 		honeypotFieldName?: string;
 		isActive?: boolean;
 		redirectUrl?: string;
 		fields?: Array<{
 			key: string;
 			label: string;
-			type: 'email' | 'text' | 'checkbox';
+			type: "email" | "text" | "checkbox";
 			required: boolean;
 		}>;
 	} = {},
-): Promise<Id<'formEndpoints'>> {
+): Promise<Id<"formEndpoints">> {
 	return await t.run(async (ctx) => {
-		return await ctx.db.insert('formEndpoints', {
-			name: 'Test form',
+		return await ctx.db.insert("formEndpoints", {
+			name: "Test form",
 			topicId: args.topicId,
 			fields: args.fields ?? [
 				{
-					key: 'email',
-					label: 'Email',
-					type: 'email' as const,
+					key: "email",
+					label: "Email",
+					type: "email" as const,
 					required: true,
 				},
 			],
@@ -230,24 +231,19 @@ async function createForm(
 	});
 }
 
-async function getSubmission(
-	t: TestConvex<typeof schema>,
-	submissionId: Id<'formSubmissions'>,
-) {
+async function getSubmission(t: TestConvex<typeof schema>, submissionId: Id<"formSubmissions">) {
 	return await t.run(async (ctx) => await ctx.db.get(submissionId));
 }
 
 async function getMembership(
 	t: TestConvex<typeof schema>,
-	contactId: Id<'contacts'>,
-	topicId: Id<'topics'>,
+	contactId: Id<"contacts">,
+	topicId: Id<"topics">,
 ) {
 	return await t.run(async (ctx) => {
 		return await ctx.db
-			.query('contactTopics')
-			.withIndex('by_contact_and_topic', (q) =>
-				q.eq('contactId', contactId).eq('topicId', topicId),
-			)
+			.query("contactTopics")
+			.withIndex("by_contact_and_topic", (q) => q.eq("contactId", contactId).eq("topicId", topicId))
 			.first();
 	});
 }
@@ -255,38 +251,38 @@ async function getMembership(
 async function getContactByEmail(t: TestConvex<typeof schema>, email: string) {
 	return await t.run(async (ctx) => {
 		return await ctx.db
-			.query('contacts')
-			.withIndex('by_email', (q) => q.eq('email', email))
+			.query("contacts")
+			.withIndex("by_email", (q) => q.eq("email", email))
 			.first();
 	});
 }
 
 // ─── submit ─────────────────────────────────────────────────────────────────
 
-describe('submission.submit', () => {
+describe("submission.submit", () => {
 	it("writes 'spam' and skips contact resolution when honeypot is set", async () => {
 		const t = convexTest(schema, modules);
 		const formEndpointId = await createForm(t, {
-			honeypotFieldName: 'website',
+			honeypotFieldName: "website",
 		});
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'user@example.com', website: 'spam' },
+			submissionData: { email: "user@example.com", website: "spam" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('spam');
+			expect(outcome.action).toBe("spam");
 			expect(outcome.contactId).toBeUndefined();
 
 			const submission = await getSubmission(t, outcome.submissionId);
-			expect(submission?.status).toBe('spam');
+			expect(submission?.status).toBe("spam");
 			expect(submission?.contactId).toBeUndefined();
 		}
 
 		// No contact was created.
-		expect(await getContactByEmail(t, 'user@example.com')).toBeNull();
+		expect(await getContactByEmail(t, "user@example.com")).toBeNull();
 	});
 
 	it("writes 'invalid' when required email is missing", async () => {
@@ -300,12 +296,12 @@ describe('submission.submit', () => {
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('invalid');
-			expect(outcome.errorMessage).toContain('Email is required');
+			expect(outcome.action).toBe("invalid");
+			expect(outcome.errorMessage).toContain("Email is required");
 			expect(outcome.contactId).toBeUndefined();
 		}
 
-		expect(await getContactByEmail(t, '')).toBeNull();
+		expect(await getContactByEmail(t, "")).toBeNull();
 	});
 
 	it("writes 'invalid' when the email format is bad", async () => {
@@ -314,14 +310,14 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'not-an-email' },
+			submissionData: { email: "not-an-email" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('invalid');
+			expect(outcome.action).toBe("invalid");
 			const submission = await getSubmission(t, outcome.submissionId);
-			expect(submission?.errorMessage).toContain('valid email');
+			expect(submission?.errorMessage).toContain("valid email");
 		}
 	});
 
@@ -331,18 +327,18 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'new@example.com' },
+			submissionData: { email: "new@example.com" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('success');
+			expect(outcome.action).toBe("success");
 			expect(outcome.contactId).toBeDefined();
 		}
 
-		const contact = await getContactByEmail(t, 'new@example.com');
+		const contact = await getContactByEmail(t, "new@example.com");
 		expect(contact).not.toBeNull();
-		expect(contact?.source).toBe('form');
+		expect(contact?.source).toBe("form");
 	});
 
 	it("writes 'duplicate' when an existing contact submits a form with no topic", async () => {
@@ -350,21 +346,21 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t);
 
 		// Seed an existing contact via the resolution module.
-		await t.mutation(internal.contacts.resolution.resolve, {
-			channel: 'email',
-			identifier: 'returning@example.com',
-			source: 'api',
-			mode: 'upsert',
+		await resolveThroughModule(t, {
+			channel: "email",
+			identifier: "returning@example.com",
+			source: "api",
+			mode: "upsert",
 		});
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'returning@example.com' },
+			submissionData: { email: "returning@example.com" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('duplicate');
+			expect(outcome.action).toBe("duplicate");
 			expect(outcome.contactId).toBeDefined();
 		}
 	});
@@ -376,20 +372,20 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'subscriber@example.com', firstName: 'Ada' },
+			submissionData: { email: "subscriber@example.com", firstName: "Ada" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('success');
+			expect(outcome.action).toBe("success");
 			expect(outcome.contactId).toBeDefined();
 
 			const membership = await getMembership(t, outcome.contactId!, topicId);
 			expect(membership).not.toBeNull();
 		}
 
-		const contact = await getContactByEmail(t, 'subscriber@example.com');
-		expect(contact?.firstName).toBe('Ada');
+		const contact = await getContactByEmail(t, "subscriber@example.com");
+		expect(contact?.firstName).toBe("Ada");
 	});
 
 	it("writes 'pending_confirmation' + records the DOI token for a DOI-required topic", async () => {
@@ -399,23 +395,23 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'doi@example.com' },
+			submissionData: { email: "doi@example.com" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('pending_confirmation');
+			expect(outcome.action).toBe("pending_confirmation");
 			expect(outcome.confirmationRequired).toBe(true);
 
 			const submission = await getSubmission(t, outcome.submissionId);
-			expect(submission?.status).toBe('pending_confirmation');
+			expect(submission?.status).toBe("pending_confirmation");
 			expect(submission?.confirmationToken).toBeDefined();
 			expect(submission?.confirmationEmailSentAt).toBeDefined();
 
 			// The submission's confirmationToken must equal the contact's
 			// doiConfirmationToken (unified token namespace, ADR-0009).
-			const contact = await getContactByEmail(t, 'doi@example.com');
-			expect(contact?.doiStatus).toBe('pending');
+			const contact = await getContactByEmail(t, "doi@example.com");
+			expect(contact?.doiStatus).toBe("pending");
 			expect(contact?.doiConfirmationToken).toBe(submission?.confirmationToken);
 		}
 	});
@@ -430,15 +426,12 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Seed an existing contact NOT on the topic.
-		const { contactId } = await t.mutation(
-			internal.contacts.resolution.resolve,
-			{
-				channel: 'email',
-				identifier: 'returning@example.com',
-				source: 'api',
-				mode: 'upsert',
-			},
-		);
+		const { contactId } = await resolveThroughModule(t, {
+			channel: "email",
+			identifier: "returning@example.com",
+			source: "api",
+			mode: "upsert",
+		});
 
 		// Confirm no membership before submission.
 		expect(await getMembership(t, contactId, topicId)).toBeNull();
@@ -446,13 +439,13 @@ describe('submission.submit', () => {
 		// Submit the form.
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'returning@example.com' },
+			submissionData: { email: "returning@example.com" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
 			// The action is 'success' — the contact was added.
-			expect(outcome.action).toBe('success');
+			expect(outcome.action).toBe("success");
 			// Membership now exists.
 			expect(await getMembership(t, contactId, topicId)).not.toBeNull();
 		}
@@ -464,29 +457,26 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Seed contact + membership.
-		const { contactId } = await t.mutation(
-			internal.contacts.resolution.resolve,
-			{
-				channel: 'email',
-				identifier: 'member@example.com',
-				source: 'api',
-				mode: 'upsert',
-			},
-		);
+		const { contactId } = await resolveThroughModule(t, {
+			channel: "email",
+			identifier: "member@example.com",
+			source: "api",
+			mode: "upsert",
+		});
 		await t.mutation(internal.topics.subscription.subscribe, {
 			topicId,
 			contactId,
-			source: 'admin',
+			source: "admin",
 		});
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'member@example.com' },
+			submissionData: { email: "member@example.com" },
 		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
-			expect(outcome.action).toBe('duplicate');
+			expect(outcome.action).toBe("duplicate");
 		}
 	});
 
@@ -494,8 +484,8 @@ describe('submission.submit', () => {
 		const t = convexTest(schema, modules);
 
 		const fakeFormId = await t.run(async (ctx) => {
-			const id = await ctx.db.insert('formEndpoints', {
-				name: 'temp',
+			const id = await ctx.db.insert("formEndpoints", {
+				name: "temp",
 				fields: [],
 				isActive: true,
 				createdAt: Date.now(),
@@ -507,12 +497,12 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId: fakeFormId,
-			submissionData: { email: 'user@example.com' },
+			submissionData: { email: "user@example.com" },
 		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.reason).toBe('form_not_found');
+			expect(outcome.reason).toBe("form_not_found");
 		}
 	});
 
@@ -522,87 +512,77 @@ describe('submission.submit', () => {
 
 		const outcome = await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'user@example.com' },
+			submissionData: { email: "user@example.com" },
 		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.reason).toBe('form_inactive');
+			expect(outcome.reason).toBe("form_inactive");
 		}
 	});
 
-	it('increments formEndpoints.submissionCount on every write', async () => {
+	it("increments formEndpoints.submissionCount on every write", async () => {
 		const t = convexTest(schema, modules);
 		const formEndpointId = await createForm(t);
 
 		await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'a@example.com' },
+			submissionData: { email: "a@example.com" },
 		});
 		await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'b@example.com' },
+			submissionData: { email: "b@example.com" },
 		});
 		// spam path also increments.
 		await t.mutation(internal.forms.submission.submit, {
 			formEndpointId,
-			submissionData: { email: 'c@example.com', _hp_field: 'spam' },
+			submissionData: { email: "c@example.com", _hp_field: "spam" },
 		});
 
-		const form = await t.run(
-			async (ctx) => await ctx.db.get(formEndpointId),
-		);
+		const form = await t.run(async (ctx) => await ctx.db.get(formEndpointId));
 		expect(form?.submissionCount).toBe(3);
 	});
 });
 
 // ─── markConfirmedByToken ──────────────────────────────────────────────────
 
-describe('submission.markConfirmedByToken', () => {
-	it('patches a pending_confirmation row to success', async () => {
+describe("submission.markConfirmedByToken", () => {
+	it("patches a pending_confirmation row to success", async () => {
 		const t = convexTest(schema, modules);
 		const topicId = await createTopic(t, true);
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Submit to land a pending_confirmation row + the contact's DOI token.
-		const submitOutcome = await t.mutation(
-			internal.forms.submission.submit,
-			{
-				formEndpointId,
-				submissionData: { email: 'confirm@example.com' },
-			},
-		);
-		if (!submitOutcome.ok)
-			throw new Error('submit failed: ' + submitOutcome.reason);
+		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
+			formEndpointId,
+			submissionData: { email: "confirm@example.com" },
+		});
+		if (!submitOutcome.ok) throw new Error("submit failed: " + submitOutcome.reason);
 		const submission = await getSubmission(t, submitOutcome.submissionId);
 		const token = submission?.confirmationToken;
-		if (!token) throw new Error('expected confirmationToken on row');
+		if (!token) throw new Error("expected confirmationToken on row");
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
 			expect(outcome.submissionId).toBe(submitOutcome.submissionId);
 		}
 		const after = await getSubmission(t, submitOutcome.submissionId);
-		expect(after?.status).toBe('success');
+		expect(after?.status).toBe("success");
 		expect(after?.confirmedAt).toBeDefined();
 	});
 
 	it("returns 'no_submission_for_token' for an unknown token", async () => {
 		const t = convexTest(schema, modules);
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token: 'no-such-token' },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token: "no-such-token",
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.reason).toBe('no_submission_for_token');
+			expect(outcome.reason).toBe("no_submission_for_token");
 		}
 	});
 
@@ -611,62 +591,51 @@ describe('submission.markConfirmedByToken', () => {
 		const topicId = await createTopic(t, true);
 		const formEndpointId = await createForm(t, { topicId });
 
-		const submitOutcome = await t.mutation(
-			internal.forms.submission.submit,
-			{
-				formEndpointId,
-				submissionData: { email: 'idem@example.com' },
-			},
-		);
-		if (!submitOutcome.ok)
-			throw new Error('submit failed: ' + submitOutcome.reason);
+		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
+			formEndpointId,
+			submissionData: { email: "idem@example.com" },
+		});
+		if (!submitOutcome.ok) throw new Error("submit failed: " + submitOutcome.reason);
 		const submission = await getSubmission(t, submitOutcome.submissionId);
 		const token = submission?.confirmationToken;
-		if (!token) throw new Error('expected confirmationToken on row');
+		if (!token) throw new Error("expected confirmationToken on row");
 
 		// First confirm.
-		const first = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const first = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 		expect(first.ok).toBe(true);
 
 		// Second confirm — idempotent.
-		const second = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const second = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 		expect(second.ok).toBe(false);
 		if (!second.ok) {
-			expect(second.reason).toBe('already_confirmed');
+			expect(second.reason).toBe("already_confirmed");
 		}
 	});
 
 	it("returns 'invalid_state' for a non-pending row (e.g. spam)", async () => {
 		const t = convexTest(schema, modules);
 		const formEndpointId = await createForm(t, {
-			honeypotFieldName: 'website',
+			honeypotFieldName: "website",
 		});
 
 		// Plant a spam row that somehow has a confirmationToken — schema permits it.
 		const submissionId = await t.run(async (ctx) => {
-			return await ctx.db.insert('formSubmissions', {
+			return await ctx.db.insert("formSubmissions", {
 				formEndpointId,
-				data: { email: 'spam@example.com' },
-				status: 'spam' as const,
-				confirmationToken: 'planted-token',
+				data: { email: "spam@example.com" },
+				status: "spam" as const,
+				confirmationToken: "planted-token",
 				submittedAt: Date.now(),
 			});
 		});
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token: 'planted-token' },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token: "planted-token",
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
-			expect(outcome.reason).toBe('invalid_state');
+			expect(outcome.reason).toBe("invalid_state");
 		}
 		expect(submissionId).toBeDefined();
 	});

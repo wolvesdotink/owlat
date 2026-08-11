@@ -551,7 +551,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/propertyValues.ts#getByContactAndProperty',
 	'contacts/propertyValues.ts#set',
 	'contacts/relationships.ts#getGraph',
-	'contacts/resolution.ts#resolve',
 	'contacts/sunset.ts#listSunsetStage',
 	'contacts/sunset.ts#restoreSunsetContact',
 	'contacts/sunset.ts#setSunsetContactExemption',
