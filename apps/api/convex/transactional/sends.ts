@@ -1,5 +1,4 @@
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOrThrow } from '../_utils/errors';
 
@@ -225,36 +224,6 @@ export const getCounts = authedQuery({
 	},
 });
 
-// Per ADR-0021, every `transactionalSends` row write is owned by the
-// **Transactional send intake (module)** (`transactional/dispatch.ts`) at
-// create time and by the **Send lifecycle (module)** (`delivery/sendLifecycle.ts`)
-// for every transition after. The pre-ADR-0006 `create` mutation that
-// inserted directly in `sent` is gone (zero callers); the pre-ADR-0006
-// `createInternal` was already removed.
-//
-// Status writes (markAsDelivered / recordOpen / recordClick / markAsBounced
-// / markAsComplained) flow through `internal.delivery.sendLifecycle.transition`
-// with a SendRef `{ kind: 'transactional', id }`. See CONTEXT.md
-// "Send lifecycle".
-
-// Delete sends for a transactional email (used when deleting the email template)
-export const deleteByTransactionalEmail = internalMutation({
-	args: { transactionalEmailId: v.id('transactionalEmails') },
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('transactionalSends')
-			.withIndex('by_transactional_email', (q) =>
-				q.eq('transactionalEmailId', args.transactionalEmailId)
-			)
-			.collect();
-
-		for (const send of sends) {
-			await ctx.db.delete(send._id);
-		}
-
-		return sends.length;
-	},
-});
 
 // Get recent sends for a recipient email
 export const getByEmail = authedQuery({

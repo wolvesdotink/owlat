@@ -1,4 +1,3 @@
-import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
@@ -6,7 +5,6 @@ import {
 	createAuthenticatedHandler,
 	jsonResponse,
 	errorResponse,
-	methodNotAllowed,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiAuth';
@@ -245,22 +243,3 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		}
 	}
 );
-
-/**
- * Handle unsupported methods for topic contacts collection endpoint
- */
-export const topicContactsCollection = httpAction(async (_, request) => {
-	if (request.method === 'OPTIONS') {
-		return new Response(null, {
-			status: 204,
-			headers: {
-				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-				'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-				'Access-Control-Max-Age': '86400',
-			},
-		});
-	}
-
-	return methodNotAllowed(`Method ${request.method} not allowed`);
-});

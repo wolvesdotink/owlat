@@ -522,35 +522,6 @@ export const getClickedContacts = authedQuery({
 	},
 });
 
-// Get sends that need to be processed (queued status)
-export const getQueuedSends = internalMutation({
-	args: {
-		campaignId: v.id('campaigns'),
-		limit: v.number(),
-	},
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign_and_status', (q) =>
-				q.eq('campaignId', args.campaignId).eq('status', 'queued')
-			)
-			.take(args.limit);
-
-		// Use denormalized contact info (no N+1 queries)
-		const sendsWithContacts = sends.map((send) => ({
-			id: send._id,
-			contactId: send.contactId,
-			personalizedSubject: send.personalizedSubject,
-			contact: {
-				email: send.contactEmail,
-				firstName: send.contactFirstName,
-				lastName: send.contactLastName,
-			},
-		}));
-
-		return sendsWithContacts;
-	},
-});
 
 // Get link click stats aggregated by URL for a campaign (for click heatmap)
 export const getLinkClickStats = authedQuery({
