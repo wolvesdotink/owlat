@@ -609,7 +609,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'mail/voiceProfile.ts#setStandingInstructions',
 	'mediaAssets.ts#get',
 	'mediaAssets.ts#remove',
-	'platformAdmin/platformAdmin.ts#seedPlatformAdmin',
 	'platformAdmin/queries.ts#getAdminAuditLog',
 	'platformAdmin/queries.ts#getBillingOverview',
 	'platformAdmin/queries.ts#getDeliveryStats',

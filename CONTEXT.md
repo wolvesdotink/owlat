@@ -5726,8 +5726,9 @@ matching code comment at the cited file.
 
 - **`platformAdmin/*` is control-plane-only and inert on OSS self-host.**
   No production path populates the `platformAdmins` table on an OSS
-  deployment (`seedPlatformAdmin` is an `internalMutation` with no production
-  caller; `addPlatformAdmin` needs an existing admin to bootstrap), so
+  deployment (the optional first-admin bootstrap is the hand-run
+  `migrations/0036_seed_platform_admin:run`; `addPlatformAdmin` needs an
+  existing admin), so
   `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
   Intentional: the multi-tenant control plane that would seed and use these
   admins lives in the separate private Nest repo (see _Nest Extracted_); this

@@ -12,8 +12,8 @@
  * the `by_auth_user_id` index. So org membership alone is NOT enough — there
  * must be a `platformAdmins` row for the calling subject.
  *
- * `seedPlatformAdmin` is an `internalMutation` with no auth floor; it is called
- * directly.
+ * The optional first-admin bootstrap is a hand-run migration with no auth
+ * floor; it is called directly here.
  */
 
 import { convexTest } from 'convex-test';
@@ -396,13 +396,13 @@ describe('platformAdmin.removePlatformAdmin', () => {
 	});
 });
 
-// ============ seedPlatformAdmin (internal) ============
+// ============ migrations/0036_seed_platform_admin:run ============
 
-describe('platformAdmin.seedPlatformAdmin', () => {
+describe('platform-admin bootstrap migration', () => {
 	it('succeeds when platformAdmins is empty and seeds a superadmin', async () => {
 		const t = convexTest(schema, modules);
 
-		const adminId = await t.mutation(internal.platformAdmin.platformAdmin.seedPlatformAdmin, {
+		const adminId = await t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
 			authUserId: 'first-admin',
 			email: 'first@example.com',
 		});
@@ -421,7 +421,7 @@ describe('platformAdmin.seedPlatformAdmin', () => {
 		await seedAdmin(t, 'existing-admin', 'superadmin');
 
 		await expect(
-			t.mutation(internal.platformAdmin.platformAdmin.seedPlatformAdmin, {
+			t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
 				authUserId: 'second-admin',
 				email: 'second@example.com',
 			}),
