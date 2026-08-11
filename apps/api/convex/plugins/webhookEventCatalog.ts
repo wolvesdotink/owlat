@@ -8,9 +8,8 @@ import {
 /**
  * Host view of a plugin-published webhook event. Data-only: a plugin ships no
  * executable code for the event itself, so the catalog carries just the
- * namespaced wire kind, its owner, and its subscription eligibility. The
- * authorization seam (`webhookEventAuthorization.ts`) rechecks flag, grant, and
- * env before a plugin is allowed to publish one of these kinds.
+ * namespaced wire kind, its owner, and its subscription eligibility. It remains
+ * data-only until a real host publish path is implemented.
  */
 export interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
 	readonly kind: PluginWebhookEventKind;

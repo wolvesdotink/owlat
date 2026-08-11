@@ -303,13 +303,12 @@ each tier's execution-specific registration is defined by its own ADR.
 
 ## Dispatch status of the opened registries
 
-Twelve contribution buckets carry a capability, a validator check, codegen output
-and a runtime-authorization seam. Four of them are **not invoked by any host path
-yet**, and the kernel records that in the `dispatch` column of
+Twelve contribution buckets carry a capability, validator checks, and generated
+catalog metadata. Four of them are **not invoked by any host path yet**, and the
+kernel records that in the `dispatch` column of
 `CONTRIBUTION_CAPABILITY_REQUIREMENTS`:
 
-- `automationTriggers` — `firePluginTrigger` resolves and fans out a plugin
-  trigger, but nothing in the host fires it.
+- `automationTriggers` — no host firing seam exists.
 - `automationConditions` — there is no plugin condition evaluator;
   `conditions/index.ts` throws for a `plugin.*` kind.
 - `webhookEvents` — the persisted event validators are closed core-only unions,
@@ -317,9 +316,9 @@ yet**, and the kernel records that in the `dispatch` column of
 - `importProviders` — the import walker's provider registry is core-only and
   `integrationImports.provider` cannot hold a plugin kind.
 
-Their contracts are final and tested; only the call sites are missing. They keep
-their capability requirement so wiring a call site cannot widen the manifest
-ceiling after the fact. The conformance suite
+They keep their capability requirement so a future implementation cannot widen
+the manifest ceiling after the fact, but no unreachable Convex authorization or
+dispatch entry is retained ahead of that implementation. The conformance suite
 `examples/conformance/src/__tests__/dispatchReachability.test.ts` asserts this
 set is exactly the set with no production consumer, so the classification cannot
 drift silently in either direction.
