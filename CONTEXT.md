@@ -1548,10 +1548,10 @@ the counting core in the domain sibling
 `audienceResolution.ts` → `audienceCandidates.ts`). Two thin entries
 route through it so a count can never disagree with a send:
 
-- `resolveRecipients({ audience }) → CampaignRecipient[]` —
-  internalQuery; the **Campaign send orchestrator (module)**'s
-  audience-resolution step. Materializes the rows. (`frozenFilters`
-  rides _inside_ the `audience` segment case, not as a sibling arg.)
+- `resolveRecipientPage({ audience, cursor }) → ResolvedPage` —
+  internalQuery; one bounded hop of the **Campaign send orchestrator
+  (module)**'s checkpointed audience walk. (`frozenFilters` rides
+  _inside_ the `audience` segment case, not as a sibling arg.)
 - `countRecipients({ audience }) → { total, eligible, completeness }` —
   public query; the wizard's audience-size readout. `completeness` is
   the **discriminant that says what the two numbers license**, and it

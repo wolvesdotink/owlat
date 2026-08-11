@@ -8,45 +8,38 @@
  * sibling `audienceCandidates.ts`. This file owns the PAGINATED walk and the
  * Convex entry points:
  *   - `resolveRecipientPage` — internalQuery, ONE page (the walker's hop).
- *   - `resolveRecipients`    — internalQuery, materializes candidates by streaming
- *                              (test/asserts only), bounded by COUNT_CEILING.
  *   - `countRecipients`      — public query, accumulates integers by streaming,
  *                              capped at COUNT_CEILING.
  *
  * The checkpointed send walker takes ONE page per scheduled hop via
- * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count and
- * materialize entries instead STREAM candidates via `streamAudienceCandidates`
- * (async iteration, no `.paginate()`) because Convex allows a single
- * `.paginate()` per function execution. All three apply the identical
- * eligibility, so the wizard count, the in-memory resolve, and the walker can
- * never disagree.
+ * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count path
+ * streams candidates because Convex allows a single `.paginate()` per function
+ * execution. Both paths apply the identical eligibility predicate.
  *
  * The binding capacity pre-flight (`campaigns/capacityPreflight.ts`) calls
  * `countAudience` from `audienceCandidates.ts` directly, with its own ceiling
  * and document budget.
  */
 
-import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
-import { authedQuery } from '../lib/authedFunctions';
-import type { QueryCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
-import { audienceValidator, type StoredAudience } from './audience';
-import { batchGet } from '../_utils/batchLoader';
-import { logWarn } from '../lib/runtimeLog';
-import { loadSuppressionSet } from '../lib/suppression';
-import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from '../conditions';
-import type { ParsedSegmentFilters } from '../conditions';
+import { v } from "convex/values";
+import { internalQuery } from "../_generated/server";
+import { authedQuery } from "../lib/authedFunctions";
+import type { QueryCtx } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
+import { audienceValidator, type StoredAudience } from "./audience";
+import { batchGet } from "../_utils/batchLoader";
+import { logWarn } from "../lib/runtimeLog";
+import { loadSuppressionSet } from "../lib/suppression";
+import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from "../conditions";
+import type { ParsedSegmentFilters } from "../conditions";
 import {
-	COUNT_CEILING,
 	countAudience,
 	selectRecipient,
 	SEND_PAGE_SIZE,
-	streamAudienceCandidates,
 	type AudienceCount,
 	type CampaignRecipient,
 	type SegmentFilters,
-} from './audienceCandidates';
+} from "./audienceCandidates";
 
 /** One resolved page: the eligible recipients, the next cursor, the raw
  *  candidate count examined on this page. `nextCursor === null` ⇒ exhausted. */
@@ -71,7 +64,7 @@ export interface ResolvedPage {
  */
 async function resolveRecipientPageImpl(
 	ctx: QueryCtx,
-	args: { audience: StoredAudience; cursor: string; numItems: number }
+	args: { audience: StoredAudience; cursor: string; numItems: number },
 ): Promise<ResolvedPage> {
 	const { audience, cursor, numItems } = args;
 
@@ -82,18 +75,18 @@ async function resolveRecipientPageImpl(
 	// hops is excluded on the later page (the "suppression mid-run" invariant).
 	const blockedEmails = await loadSuppressionSet(ctx);
 
-	if (audience.kind === 'topic') {
+	if (audience.kind === "topic") {
 		const topic = await ctx.db.get(audience.topicId);
 		const gate = { requiresDoi: topic?.requireDoubleOptIn === true, blockedEmails };
 
 		const { page, isDone, continueCursor } = await ctx.db
-			.query('contactTopics')
-			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))
-			.paginate({ cursor: cursor === '' ? null : cursor, numItems });
+			.query("contactTopics")
+			.withIndex("by_topic", (q) => q.eq("topicId", audience.topicId))
+			.paginate({ cursor: cursor === "" ? null : cursor, numItems });
 
-		const contacts = await batchGet<Doc<'contacts'>>(
+		const contacts = await batchGet<Doc<"contacts">>(
 			ctx,
-			page.map((membership) => membership.contactId)
+			page.map((membership) => membership.contactId),
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
@@ -129,7 +122,7 @@ async function resolveRecipientPageImpl(
 	try {
 		parsedFilters = parseSegmentFilters(filters);
 	} catch (err) {
-		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
+		logWarn("audienceResolution: segment filters failed to parse; resolving zero recipients", err);
 		return { recipients: [], nextCursor: null, pageCandidates: 0 };
 	}
 
@@ -142,9 +135,9 @@ async function resolveRecipientPageImpl(
 	// without a post-filter), and no single page collects the whole Contacts
 	// table.
 	const { page, isDone, continueCursor } = await ctx.db
-		.query('contacts')
-		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))
-		.paginate({ cursor: cursor === '' ? null : cursor, numItems });
+		.query("contacts")
+		.withIndex("by_deleted_at", (q) => q.eq("deletedAt", undefined))
+		.paginate({ cursor: cursor === "" ? null : cursor, numItems });
 
 	const recipients: CampaignRecipient[] = [];
 	let pageCandidates = 0;
@@ -181,35 +174,15 @@ export const resolveRecipientPage = internalQuery({
 	},
 });
 
-// ── Entry 1: materialize rows in ONE bounded page. Used only by tests/asserts
-// (`countRecipients(a).eligible === resolveRecipients(a).length`) — no production
-// path calls this; the send paths stream via the checkpointed walker
-// (`resolveRecipientPage`, one page per scheduled hop). Convex allows a single
-// `.paginate()` per function execution, so this cannot loop pages; it resolves a
-// single page bounded by COUNT_CEILING, which is more than any test seeds. ──
-export const resolveRecipients = internalQuery({
-	args: { audience: audienceValidator },
-	handler: async (ctx, { audience }): Promise<CampaignRecipient[]> => {
-		const recipients: CampaignRecipient[] = [];
-		let candidates = 0;
-		for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
-			candidates += 1;
-			if (recipient) recipients.push(recipient);
-			if (candidates >= COUNT_CEILING) break;
-		}
-		return recipients;
-	},
-});
-
-// ── Entry 2: accumulate integers. The wizard's audience-size readout. Runs
-// the IDENTICAL predicate (via the same candidate stream) as resolveRecipients,
+// ── Entry 1: accumulate integers. The wizard's audience-size readout. Runs
+// the IDENTICAL predicate (via the same candidate core) as resolveRecipientPage,
 // so `eligible` equals the delivered count; `total - eligible` is the honest
 // excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
 // reports `completeness: 'candidate_capped'` so the wizard renders `25,000+`. ──
 export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (ctx, { audience }): Promise<AudienceCount> => {
-		if (!audience) return { total: 0, eligible: 0, completeness: 'exact' };
+		if (!audience) return { total: 0, eligible: 0, completeness: "exact" };
 		return await countAudience(ctx, audience);
 	},
 });

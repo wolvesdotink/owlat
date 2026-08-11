@@ -534,7 +534,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'campaigns/analytics.ts#getRecentlySentByOrganization',
 	'campaigns/analytics.ts#getSendVolumeByDayByOrganization',
 	'campaigns/analytics.ts#getTopPerformingByOrganization',
-	'campaigns/audienceResolution.ts#resolveRecipients',
 	'campaigns/campaigns.ts#get',
 	'campaigns/organization.ts#getSentSummary',
 	'chat/cleanup.ts#cleanupLegacyChatData',

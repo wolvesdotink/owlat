@@ -15,34 +15,36 @@
  * and a tampered one is genuinely forged.
  */
 
-import { convexTest } from 'convex-test';
-import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import schema from '../schema';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { createTestContact, createTestTopic } from './factories';
+import { convexTest, type TestConvex } from "convex-test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import schema from "../schema";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { createTestContact, createTestTopic } from "./factories";
+import type { StoredAudience } from "../campaigns/audience";
+import type { CampaignRecipient } from "../campaigns/audienceCandidates";
 
-const allModules = import.meta.glob('../**/*.*s');
+const allModules = import.meta.glob("../**/*.*s");
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([p]) =>
-			!p.includes('sesActions') &&
-			!p.includes('agentSecurity') &&
-			!p.includes('agentContext') &&
-			!p.includes('agentClassifier') &&
-			!p.includes('agentDrafter') &&
-			!p.includes('agentRouter') &&
-			!p.includes('agent/walker') &&
-			!p.includes('agent/steps/index') &&
-			!p.includes('agent/steps/shared') &&
-			!p.includes('agent/steps/classify') &&
-			!p.includes('agent/steps/draft') &&
-			!p.includes('knowledgeExtraction') &&
-			!p.includes('semanticFileProcessing') &&
-			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider')
-	)
+			!p.includes("sesActions") &&
+			!p.includes("agentSecurity") &&
+			!p.includes("agentContext") &&
+			!p.includes("agentClassifier") &&
+			!p.includes("agentDrafter") &&
+			!p.includes("agentRouter") &&
+			!p.includes("agent/walker") &&
+			!p.includes("agent/steps/index") &&
+			!p.includes("agent/steps/shared") &&
+			!p.includes("agent/steps/classify") &&
+			!p.includes("agent/steps/draft") &&
+			!p.includes("knowledgeExtraction") &&
+			!p.includes("semanticFileProcessing") &&
+			!p.includes("visualizationAgent") &&
+			!p.includes("llmProvider"),
+	),
 );
 
 function setupTest() {
@@ -51,12 +53,29 @@ function setupTest() {
 	return t;
 }
 
-const SECRET = 'test-unsubscribe-secret';
+async function drainRecipientPages(
+	t: TestConvex<typeof schema>,
+	{ audience }: { audience: StoredAudience },
+): Promise<CampaignRecipient[]> {
+	const recipients: CampaignRecipient[] = [];
+	let cursor = "";
+	for (;;) {
+		const page = await t.query(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience,
+			cursor,
+		});
+		recipients.push(...page.recipients);
+		if (page.nextCursor === null) return recipients;
+		cursor = page.nextCursor;
+	}
+}
+
+const SECRET = "test-unsubscribe-secret";
 const SAVED_ENV = { ...process.env };
 
 beforeEach(() => {
-	process.env['UNSUBSCRIBE_SECRET'] = SECRET;
-	process.env['INSTANCE_SECRET'] = 'test-instance-secret';
+	process.env["UNSUBSCRIBE_SECRET"] = SECRET;
+	process.env["INSTANCE_SECRET"] = "test-instance-secret";
 });
 
 afterEach(() => {
@@ -68,9 +87,9 @@ afterEach(() => {
 // base64url WITHOUT padding — matches Node's `.digest('base64url')` and
 // `Buffer.from(...).toString('base64url')`.
 function bytesToBase64Url(bytes: Uint8Array): string {
-	let binary = '';
+	let binary = "";
 	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function utf8ToBase64Url(str: string): string {
@@ -80,13 +99,13 @@ function utf8ToBase64Url(str: string): string {
 
 async function hmacBase64Url(secret: string, data: string): Promise<string> {
 	const key = await crypto.subtle.importKey(
-		'raw',
+		"raw",
 		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
+		{ name: "HMAC", hash: "SHA-256" },
 		false,
-		['sign']
+		["sign"],
 	);
-	const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+	const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
 	return bytesToBase64Url(new Uint8Array(mac));
 }
 
@@ -115,25 +134,25 @@ async function makeClickPath(emailSendId: string, href: string): Promise<string>
 
 async function seedContact(
 	t: ReturnType<typeof convexTest>,
-	overrides: Record<string, unknown> = {}
-): Promise<Id<'contacts'>> {
+	overrides: Record<string, unknown> = {},
+): Promise<Id<"contacts">> {
 	return await t.run(async (ctx) =>
-		ctx.db.insert('contacts', createTestContact(overrides) as never)
+		ctx.db.insert("contacts", createTestContact(overrides) as never),
 	);
 }
 
 async function seedEmailSend(
 	t: ReturnType<typeof convexTest>,
-	overrides: Record<string, unknown> = {}
-): Promise<Id<'emailSends'>> {
+	overrides: Record<string, unknown> = {},
+): Promise<Id<"emailSends">> {
 	const now = Date.now();
 	return await t.run(async (ctx) => {
-		const campaignId = await ctx.db.insert('campaigns', {
-			name: 'Test Campaign',
-			status: 'sending',
-			fromName: 'Test',
-			fromEmail: 'sender@example.com',
-			subject: 'Subject',
+		const campaignId = await ctx.db.insert("campaigns", {
+			name: "Test Campaign",
+			status: "sending",
+			fromName: "Test",
+			fromEmail: "sender@example.com",
+			subject: "Subject",
 			statsSent: 0,
 			statsDelivered: 0,
 			statsOpened: 0,
@@ -141,16 +160,16 @@ async function seedEmailSend(
 			statsBounced: 0,
 			statsUnsubscribed: 0,
 			isABTest: false,
-			searchableText: 'test campaign',
+			searchableText: "test campaign",
 			createdAt: now,
 			updatedAt: now,
 		} as never);
-		const contactId = await ctx.db.insert('contacts', createTestContact() as never);
-		return ctx.db.insert('emailSends', {
+		const contactId = await ctx.db.insert("contacts", createTestContact() as never);
+		return ctx.db.insert("emailSends", {
 			campaignId,
 			contactId,
-			contactEmail: 'recipient@example.com',
-			status: 'delivered',
+			contactEmail: "recipient@example.com",
+			status: "delivered",
 			queuedAt: now,
 			openCount: 0,
 			...overrides,
@@ -162,37 +181,37 @@ async function seedEmailSend(
 // Click tracking — GET /t/c/{emailSendId}/{encodedUrl}/{signature}
 // ============================================================================
 
-describe('trackClick (GET /t/c/...)', () => {
-	const TARGET = 'https://example.com/landing?x=1';
+describe("trackClick (GET /t/c/...)", () => {
+	const TARGET = "https://example.com/landing?x=1";
 
-	it('302-redirects to the decoded URL for a valid signature', async () => {
+	it("302-redirects to the decoded URL for a valid signature", async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
 		const path = await makeClickPath(emailSendId, TARGET);
 
-		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 		expect(res.status).toBe(302);
 		// Location is the round-tripped target (new URL(...).toString()).
-		expect(res.headers.get('Location')).toBe(new URL(TARGET).toString());
+		expect(res.headers.get("Location")).toBe(new URL(TARGET).toString());
 	});
 
-	it('does NOT redirect to the attacker URL when the signature is tampered', async () => {
+	it("does NOT redirect to the attacker URL when the signature is tampered", async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
-		const encodedUrl = utf8ToBase64Url('https://attacker.example/phish');
+		const encodedUrl = utf8ToBase64Url("https://attacker.example/phish");
 		// A signature that is well-formed but not the real HMAC for this payload.
 		const forgedSig = bytesToBase64Url(new Uint8Array(32));
 		const path = `/t/c/${emailSendId}/${encodedUrl}/${forgedSig}`;
 
-		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 		expect(res.status).toBe(302);
 		// Open-redirect guard: falls back to '/', never the attacker host.
-		const location = res.headers.get('Location');
-		expect(location).toBe('/');
-		expect(location).not.toContain('attacker.example');
+		const location = res.headers.get("Location");
+		expect(location).toBe("/");
+		expect(location).not.toContain("attacker.example");
 	});
 
-	it('does NOT honor a valid signature replayed onto a different (swapped) URL', async () => {
+	it("does NOT honor a valid signature replayed onto a different (swapped) URL", async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
 		// Sign the benign URL...
@@ -201,25 +220,25 @@ describe('trackClick (GET /t/c/...)', () => {
 			return { sig: await hmacBase64Url(SECRET, `${emailSendId}.${encoded}`) };
 		})();
 		// ...then graft that signature onto the attacker-controlled encoded URL.
-		const swappedEncoded = utf8ToBase64Url('https://attacker.example/phish');
+		const swappedEncoded = utf8ToBase64Url("https://attacker.example/phish");
 		const path = `/t/c/${emailSendId}/${swappedEncoded}/${sig}`;
 
-		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 		expect(res.status).toBe(302);
-		const location = res.headers.get('Location');
-		expect(location).toBe('/');
-		expect(location).not.toContain('attacker.example');
+		const location = res.headers.get("Location");
+		expect(location).toBe("/");
+		expect(location).not.toContain("attacker.example");
 	});
 
 	it('falls back to "/" when the emailSendId is not a valid Convex id', async () => {
 		const t = setupTest();
 		// Sign a payload whose id is too short to pass isValidConvexId.
-		const badId = 'short';
+		const badId = "short";
 		const path = await makeClickPath(badId, TARGET);
 
-		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 		expect(res.status).toBe(302);
-		expect(res.headers.get('Location')).toBe('/');
+		expect(res.headers.get("Location")).toBe("/");
 	});
 
 	it('falls back to "/" for a valid signature whose emailSend row does not exist', async () => {
@@ -231,9 +250,9 @@ describe('trackClick (GET /t/c/...)', () => {
 		await t.run(async (ctx) => ctx.db.delete(ghostId));
 		const path = await makeClickPath(ghostId, TARGET);
 
-		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 		expect(res.status).toBe(302);
-		expect(res.headers.get('Location')).toBe('/');
+		expect(res.headers.get("Location")).toBe("/");
 	});
 });
 
@@ -241,24 +260,24 @@ describe('trackClick (GET /t/c/...)', () => {
 // Open tracking — GET /t/o/{emailSendId}
 // ============================================================================
 
-describe('trackOpen (GET /t/o/...)', () => {
-	it('returns a 200 GIF pixel for a real emailSendId', async () => {
+describe("trackOpen (GET /t/o/...)", () => {
+	it("returns a 200 GIF pixel for a real emailSendId", async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
 
-		const res = await t.fetch(`/t/o/${emailSendId}`, { method: 'GET' });
+		const res = await t.fetch(`/t/o/${emailSendId}`, { method: "GET" });
 		expect(res.status).toBe(200);
-		expect(res.headers.get('Content-Type')).toBe('image/gif');
+		expect(res.headers.get("Content-Type")).toBe("image/gif");
 		const body = new Uint8Array(await res.arrayBuffer());
 		// GIF magic: "GIF89a"
 		expect(Array.from(body.slice(0, 6))).toEqual([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
 	});
 
-	it('still returns a 200 pixel (benign) for a bogus emailSendId', async () => {
+	it("still returns a 200 pixel (benign) for a bogus emailSendId", async () => {
 		const t = setupTest();
-		const res = await t.fetch('/t/o/not-a-valid-id', { method: 'GET' });
+		const res = await t.fetch("/t/o/not-a-valid-id", { method: "GET" });
 		expect(res.status).toBe(200);
-		expect(res.headers.get('Content-Type')).toBe('image/gif');
+		expect(res.headers.get("Content-Type")).toBe("image/gif");
 	});
 });
 
@@ -273,32 +292,32 @@ describe('trackOpen (GET /t/o/...)', () => {
 // 500'd the public endpoint on every probe click.
 // ============================================================================
 
-describe('seed probe ids are rejected by the tracking endpoints', () => {
-	const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
+describe("seed probe ids are rejected by the tracking endpoints", () => {
+	const PROBE_ID = "sp_a1b2c3d4e5f60718293a4b";
 
-	it('is shaped like a Convex id, which is why the guard has to be by name', () => {
+	it("is shaped like a Convex id, which is why the guard has to be by name", () => {
 		expect(/^[a-zA-Z0-9_-]{10,}$/.test(PROBE_ID)).toBe(true);
 	});
 
-	it('/t/o/{probeId} returns the pixel and records no open', async () => {
+	it("/t/o/{probeId} returns the pixel and records no open", async () => {
 		const t = setupTest();
 		const errors: unknown[][] = [];
-		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+		const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
 			errors.push(args);
 		});
 		try {
-			const res = await t.fetch(`/t/o/${PROBE_ID}`, { method: 'GET' });
+			const res = await t.fetch(`/t/o/${PROBE_ID}`, { method: "GET" });
 			expect(res.status).toBe(200);
-			expect(res.headers.get('Content-Type')).toBe('image/gif');
+			expect(res.headers.get("Content-Type")).toBe("image/gif");
 		} finally {
 			spy.mockRestore();
 		}
 		expect(errors).toEqual([]);
-		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		const sends = await t.run(async (ctx) => ctx.db.query("emailSends").collect());
 		expect(sends).toEqual([]);
 	});
 
-	it('/t/c/{probeId}/… resolves the signed target without 500ing or recording', async () => {
+	it("/t/c/{probeId}/… resolves the signed target without 500ing or recording", async () => {
 		const t = setupTest();
 		// Signed with the probe id, exactly as the composer signs it. The HMAC
 		// genuinely verifies, so the probe follows the same hop a subscriber's
@@ -306,39 +325,39 @@ describe('seed probe ids are rejected by the tracking endpoints', () => {
 		// ANALYTICS: no send lookup, no lifecycle transition, no click row. Without
 		// that guard the handler would call `getEmailSendForTracking` with a
 		// non-document id outside any try/catch and 500 a public endpoint.
-		const target = 'https://example.com/landing?x=1';
+		const target = "https://example.com/landing?x=1";
 		const path = await makeClickPath(PROBE_ID, target);
 
 		const errors: unknown[][] = [];
-		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+		const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
 			errors.push(args);
 		});
 		try {
-			const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+			const res = await t.fetch(path, { method: "GET", redirect: "manual" });
 			expect(res.status).toBe(302);
-			expect(res.headers.get('Location')).toBe(new URL(target).toString());
+			expect(res.headers.get("Location")).toBe(new URL(target).toString());
 		} finally {
 			spy.mockRestore();
 		}
 		expect(errors).toEqual([]);
 		// Nothing countable was created by the probe's click.
-		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		const sends = await t.run(async (ctx) => ctx.db.query("emailSends").collect());
 		expect(sends).toEqual([]);
 	});
 
-	it('/t/c/{probeId}/… still refuses an unsigned or tampered target', async () => {
+	it("/t/c/{probeId}/… still refuses an unsigned or tampered target", async () => {
 		const t = setupTest();
-		const encodedUrl = utf8ToBase64Url('https://attacker.example/phish');
+		const encodedUrl = utf8ToBase64Url("https://attacker.example/phish");
 		const forgedSig = bytesToBase64Url(new Uint8Array(32));
 
 		const res = await t.fetch(`/t/c/${PROBE_ID}/${encodedUrl}/${forgedSig}`, {
-			method: 'GET',
-			redirect: 'manual',
+			method: "GET",
+			redirect: "manual",
 		});
 		expect(res.status).toBe(302);
-		const location = res.headers.get('Location');
-		expect(location).toBe('/');
-		expect(location).not.toContain('attacker.example');
+		const location = res.headers.get("Location");
+		expect(location).toBe("/");
+		expect(location).not.toContain("attacker.example");
 	});
 });
 
@@ -346,13 +365,13 @@ describe('seed probe ids are rejected by the tracking endpoints', () => {
 // One-click unsubscribe — POST /unsub/{token}
 // ============================================================================
 
-describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
-	it('unsubscribes a contact with a valid token (200, ok:true)', async () => {
+describe("handleOneClickUnsubscribe (POST /unsub/...)", () => {
+	it("unsubscribes a contact with a valid token (200, ok:true)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		const token = await makeUnsubToken(contactId);
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean; data: { listsRemoved: number } };
 		expect(json.ok).toBe(true);
@@ -360,17 +379,17 @@ describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 		expect(json.data.listsRemoved).toBe(0);
 	});
 
-	it('rejects a bogus token (400) without unsubscribing', async () => {
+	it("rejects a bogus token (400) without unsubscribing", async () => {
 		const t = setupTest();
-		const res = await t.fetch(`/unsub/${encodeURIComponent('not-a-real-token')}`, {
-			method: 'POST',
+		const res = await t.fetch(`/unsub/${encodeURIComponent("not-a-real-token")}`, {
+			method: "POST",
 		});
 		expect(res.status).toBe(400);
 		const json = (await res.json()) as { error: { message: string } };
 		expect(json.error).toBeDefined();
 	});
 
-	it('rejects a token whose signature does not match its contactId (IDOR-safe)', async () => {
+	it("rejects a token whose signature does not match its contactId (IDOR-safe)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		// Build a valid token for contactId, then swap the id segment for the
@@ -381,18 +400,18 @@ describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 		const sigForAttacker = await hmacBase64Url(SECRET, `${contactId}:${ts}`);
 		const forgedToken = `${victimId}:${ts}:${sigForAttacker}`;
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(forgedToken)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(forgedToken)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 	});
 
-	it('rejects an expired token (400)', async () => {
+	it("rejects an expired token (400)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		// 91 days old — past the 90-day TTL. Signature is correct for the payload.
 		const oldTs = Date.now() - 91 * 24 * 60 * 60 * 1000;
 		const token = await makeUnsubToken(contactId, oldTs);
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 	});
 });
@@ -417,13 +436,13 @@ describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 /** Seed a topic and subscribe `contactId` to it. Returns the topic id. */
 async function seedTopicMembership(
 	t: ReturnType<typeof convexTest>,
-	contactId: Id<'contacts'>,
-	topicOverrides: Record<string, unknown> = {}
-): Promise<Id<'topics'>> {
+	contactId: Id<"contacts">,
+	topicOverrides: Record<string, unknown> = {},
+): Promise<Id<"topics">> {
 	const now = Date.now();
 	return await t.run(async (ctx) => {
-		const topicId = await ctx.db.insert('topics', createTestTopic(topicOverrides) as never);
-		await ctx.db.insert('contactTopics', {
+		const topicId = await ctx.db.insert("topics", createTestTopic(topicOverrides) as never);
+		await ctx.db.insert("contactTopics", {
 			contactId,
 			topicId,
 			addedAt: now,
@@ -435,47 +454,47 @@ async function seedTopicMembership(
 /** Count the contact's current topic memberships. */
 async function countMemberships(
 	t: ReturnType<typeof setupTest>,
-	contactId: Id<'contacts'>
+	contactId: Id<"contacts">,
 ): Promise<number> {
 	const rows = await t.run(async (ctx) =>
 		ctx.db
-			.query('contactTopics')
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.collect()
+			.query("contactTopics")
+			.withIndex("by_contact", (q) => q.eq("contactId", contactId))
+			.collect(),
 	);
 	return rows.length;
 }
 
 async function unsubscribeLatencySampleCount(t: ReturnType<typeof setupTest>): Promise<number> {
 	return await t.run(async (ctx) => {
-		const rows = await ctx.db.query('unsubscribeLatencyBuckets').collect();
+		const rows = await ctx.db.query("unsubscribeLatencyBuckets").collect();
 		return rows.reduce((total, row) => total + row.totalSamples, 0);
 	});
 }
 
-describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () => {
-	it('records latency only for valid successful/idempotent operations', async () => {
+describe("handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)", () => {
+	it("records latency only for valid successful/idempotent operations", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Telemetry' });
+		await seedTopicMembership(t, contactId, { name: "Telemetry" });
 		const token = await makeUnsubToken(contactId);
 
-		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(first.status).toBe(200);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(1);
 
 		const idempotentRetry = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
-			method: 'POST',
+			method: "POST",
 		});
 		expect(idempotentRetry.status).toBe(200);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
 
-		const invalid = await t.fetch('/unsub/not-a-real-token', { method: 'POST' });
+		const invalid = await t.fetch("/unsub/not-a-real-token", { method: "POST" });
 		expect(invalid.status).toBe(400);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
 
 		const expiredToken = await makeUnsubToken(contactId, Date.now() - 91 * 24 * 60 * 60 * 1000);
-		const expired = await t.fetch(`/unsub/${encodeURIComponent(expiredToken)}`, { method: 'POST' });
+		const expired = await t.fetch(`/unsub/${encodeURIComponent(expiredToken)}`, { method: "POST" });
 		expect(expired.status).toBe(400);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
 
@@ -483,7 +502,7 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		const missingContactToken = await makeUnsubToken(deletedContactId);
 		await t.run(async (ctx) => ctx.db.delete(deletedContactId));
 		const missingContact = await t.fetch(`/unsub/${encodeURIComponent(missingContactToken)}`, {
-			method: 'POST',
+			method: "POST",
 		});
 		expect(missingContact.status).toBe(404);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
@@ -493,24 +512,24 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		// converts that processing failure to 500, and it must not become a
 		// business-latency sample.
 		const topicId = await t.run(async (ctx) =>
-			ctx.db.insert('topics', createTestTopic({ name: 'Wrong-table token' }) as never)
+			ctx.db.insert("topics", createTestTopic({ name: "Wrong-table token" }) as never),
 		);
 		const wrongTableToken = await makeUnsubToken(topicId);
 		const processingError = await t.fetch(`/unsub/${encodeURIComponent(wrongTableToken)}`, {
-			method: 'POST',
+			method: "POST",
 		});
 		expect(processingError.status).toBe(500);
 		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
 	});
 
-	it('keeps a successful unsubscribe response when latency telemetry fails', async () => {
+	it("keeps a successful unsubscribe response when latency telemetry fails", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Fail-open telemetry' });
+		await seedTopicMembership(t, contactId, { name: "Fail-open telemetry" });
 		const periodStart = new Date().setUTCHours(0, 0, 0, 0);
 		await t.run(async (ctx) => {
 			for (let index = 0; index < 2; index++) {
-				await ctx.db.insert('unsubscribeLatencyBuckets', {
+				await ctx.db.insert("unsubscribeLatencyBuckets", {
 					periodStart,
 					bucketCounts: Array(11).fill(0),
 					totalSamples: 0,
@@ -520,24 +539,24 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		});
 
 		const token = await makeUnsubToken(contactId);
-		const response = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const response = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(response.status).toBe(200);
 		expect((await response.json()) as { ok: boolean }).toMatchObject({ ok: true });
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('valid token removes the contactTopics rows and returns 200 {ok:true} with NO auth headers', async () => {
+	it("valid token removes the contactTopics rows and returns 200 {ok:true} with NO auth headers", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Alpha' });
-		await seedTopicMembership(t, contactId, { name: 'Beta' });
+		await seedTopicMembership(t, contactId, { name: "Alpha" });
+		await seedTopicMembership(t, contactId, { name: "Beta" });
 		expect(await countMemberships(t, contactId)).toBe(2);
 
 		const token = await makeUnsubToken(contactId);
 		// Deliberately send NO Authorization and NO Cookie header — RFC 8058 §3.2
 		// requires the one-click POST to be honored without any session.
 		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
-			method: 'POST',
+			method: "POST",
 		});
 
 		expect(res.status).toBe(200);
@@ -553,17 +572,17 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('still succeeds when Authorization and Cookie headers are present (auth is irrelevant, never blocks)', async () => {
+	it("still succeeds when Authorization and Cookie headers are present (auth is irrelevant, never blocks)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Gamma' });
+		await seedTopicMembership(t, contactId, { name: "Gamma" });
 
 		const token = await makeUnsubToken(contactId);
 		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
-			method: 'POST',
+			method: "POST",
 			headers: {
-				Authorization: 'Bearer totally-irrelevant',
-				Cookie: 'session=irrelevant',
+				Authorization: "Bearer totally-irrelevant",
+				Cookie: "session=irrelevant",
 			},
 		});
 
@@ -574,21 +593,21 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('re-POSTing the same valid token reports alreadyUnsubscribed (listsRemoved:0) and is idempotent', async () => {
+	it("re-POSTing the same valid token reports alreadyUnsubscribed (listsRemoved:0) and is idempotent", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Delta' });
+		await seedTopicMembership(t, contactId, { name: "Delta" });
 
 		const token = await makeUnsubToken(contactId);
 
-		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(first.status).toBe(200);
 		expect(((await first.json()) as { data: { listsRemoved: number } }).data.listsRemoved).toBe(1);
 		expect(await countMemberships(t, contactId)).toBe(0);
 
 		// Second POST with the SAME token — already removed → alreadyUnsubscribed,
 		// nothing further removed. Still a clean 200 {ok:true}.
-		const second = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const second = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(second.status).toBe(200);
 		const json = (await second.json()) as { ok: boolean; data: { listsRemoved: number } };
 		expect(json.ok).toBe(true);
@@ -596,10 +615,10 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('tampered signature is a 400 no-op — memberships are unchanged', async () => {
+	it("tampered signature is a 400 no-op — memberships are unchanged", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Epsilon' });
+		await seedTopicMembership(t, contactId, { name: "Epsilon" });
 		expect(await countMemberships(t, contactId)).toBe(1);
 
 		// Correct id + timestamp, but a forged (all-zero) signature.
@@ -607,24 +626,24 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		const forgedSig = bytesToBase64Url(new Uint8Array(32));
 		const tamperedToken = `${contactId}:${ts}:${forgedSig}`;
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(tamperedToken)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(tamperedToken)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 
 		// No change: the membership survives a forged unsubscribe.
 		expect(await countMemberships(t, contactId)).toBe(1);
 	});
 
-	it('expired token is a 400 no-op — memberships are unchanged', async () => {
+	it("expired token is a 400 no-op — memberships are unchanged", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Zeta' });
+		await seedTopicMembership(t, contactId, { name: "Zeta" });
 		expect(await countMemberships(t, contactId)).toBe(1);
 
 		// 91 days old — past the 90-day TTL, signature correct for the payload.
 		const oldTs = Date.now() - 91 * 24 * 60 * 60 * 1000;
 		const token = await makeUnsubToken(contactId, oldTs);
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 
 		expect(await countMemberships(t, contactId)).toBe(1);
@@ -633,15 +652,15 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 	it('tolerates the canonical "List-Unsubscribe=One-Click" form body (200, never a body error)', async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Eta' });
+		await seedTopicMembership(t, contactId, { name: "Eta" });
 
 		const token = await makeUnsubToken(contactId);
 		// RFC 8058 §3.1: the mail client POSTs `List-Unsubscribe=One-Click` as a
 		// urlencoded form body. It must be tolerated, not rejected as a bad body.
 		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'List-Unsubscribe=One-Click',
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: "List-Unsubscribe=One-Click",
 		});
 
 		expect(res.status).toBe(200);
@@ -651,16 +670,16 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('tolerates an empty body (200, never a body error)', async () => {
+	it("tolerates an empty body (200, never a body error)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
-		await seedTopicMembership(t, contactId, { name: 'Theta' });
+		await seedTopicMembership(t, contactId, { name: "Theta" });
 
 		const token = await makeUnsubToken(contactId);
 		// Some clients POST with no body at all — also valid one-click.
 		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			body: '',
+			method: "POST",
+			body: "",
 		});
 
 		expect(res.status).toBe(200);
@@ -669,34 +688,30 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 
-	it('campaign audience excludes the contact after a one-click unsubscribe', async () => {
+	it("campaign audience excludes the contact after a one-click unsubscribe", async () => {
 		const t = setupTest();
-		const contactId = await seedContact(t, { email: 'audience-test@example.com' });
+		const contactId = await seedContact(t, { email: "audience-test@example.com" });
 		const topicId = await seedTopicMembership(t, contactId, {
-			name: 'Audience Topic',
+			name: "Audience Topic",
 			// not_required DOI on the seeded contact + non-DOI topic → eligible.
 			requireDoubleOptIn: false,
 		});
 
 		// Before: the topic audience resolves to exactly this contact.
-		const before = await t.run(async (ctx) =>
-			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
-				audience: { kind: 'topic' as const, topicId },
-			})
-		);
-		expect(before.map((r: { email: string }) => r.email)).toContain('audience-test@example.com');
+		const before = await drainRecipientPages(t, {
+			audience: { kind: "topic" as const, topicId },
+		});
+		expect(before.map((r: { email: string }) => r.email)).toContain("audience-test@example.com");
 
 		// One-click unsubscribe.
 		const token = await makeUnsubToken(contactId);
-		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(200);
 
 		// After: the membership is gone, so the audience no longer includes them.
-		const after = await t.run(async (ctx) =>
-			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
-				audience: { kind: 'topic' as const, topicId },
-			})
-		);
+		const after = await drainRecipientPages(t, {
+			audience: { kind: "topic" as const, topicId },
+		});
 		expect(after).toHaveLength(0);
 	});
 });
@@ -705,24 +720,24 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 // Preference center — GET /prefs/verify/{token} + POST /prefs/update/{token}
 // ============================================================================
 
-describe('verifyPreferenceToken (GET /prefs/verify/...)', () => {
-	it('returns the contact preferences for a valid token (200, ok:true)', async () => {
+describe("verifyPreferenceToken (GET /prefs/verify/...)", () => {
+	it("returns the contact preferences for a valid token (200, ok:true)", async () => {
 		const t = setupTest();
-		const contactId = await seedContact(t, { email: 'pref-user@example.com' });
+		const contactId = await seedContact(t, { email: "pref-user@example.com" });
 		const token = await makePrefToken(contactId);
 
-		const res = await t.fetch(`/prefs/verify/${encodeURIComponent(token)}`, { method: 'GET' });
+		const res = await t.fetch(`/prefs/verify/${encodeURIComponent(token)}`, { method: "GET" });
 		// Outcome mode is always HTTP 200.
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean; data: { email: string } };
 		expect(json.ok).toBe(true);
-		expect(json.data.email).toBe('pref-user@example.com');
+		expect(json.data.email).toBe("pref-user@example.com");
 	});
 
-	it('returns ok:false for a bogus token (still HTTP 200, outcome mode)', async () => {
+	it("returns ok:false for a bogus token (still HTTP 200, outcome mode)", async () => {
 		const t = setupTest();
-		const res = await t.fetch(`/prefs/verify/${encodeURIComponent('garbage')}`, {
-			method: 'GET',
+		const res = await t.fetch(`/prefs/verify/${encodeURIComponent("garbage")}`, {
+			method: "GET",
 		});
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean; reason: string };
@@ -730,7 +745,7 @@ describe('verifyPreferenceToken (GET /prefs/verify/...)', () => {
 		expect(json.reason).toBeDefined();
 	});
 
-	it('rejects an unsubscribe-token reused on the prefs endpoint (wrong prefix)', async () => {
+	it("rejects an unsubscribe-token reused on the prefs endpoint (wrong prefix)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		// A valid UNSUBSCRIBE token (no `pref:` prefix) must NOT verify as a
@@ -738,24 +753,24 @@ describe('verifyPreferenceToken (GET /prefs/verify/...)', () => {
 		const unsubToken = await makeUnsubToken(contactId);
 
 		const res = await t.fetch(`/prefs/verify/${encodeURIComponent(unsubToken)}`, {
-			method: 'GET',
+			method: "GET",
 		});
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean; reason: string };
 		expect(json.ok).toBe(false);
-		expect(json.reason).toBe('invalid_signature');
+		expect(json.reason).toBe("invalid_signature");
 	});
 });
 
-describe('updatePreferences (POST /prefs/update/...)', () => {
-	it('updates preferences for a valid token (200, ok:true)', async () => {
+describe("updatePreferences (POST /prefs/update/...)", () => {
+	it("updates preferences for a valid token (200, ok:true)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		const token = await makePrefToken(contactId);
 
 		const res = await t.fetch(`/prefs/update/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
 		});
 		expect(res.status).toBe(200);
@@ -763,43 +778,43 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 		expect(json.ok).toBe(true);
 	});
 
-	it('rejects a bogus token (400)', async () => {
+	it("rejects a bogus token (400)", async () => {
 		const t = setupTest();
-		const res = await t.fetch(`/prefs/update/${encodeURIComponent('nope')}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+		const res = await t.fetch(`/prefs/update/${encodeURIComponent("nope")}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
 		});
 		expect(res.status).toBe(400);
 	});
 
-	it('rejects a non-array topicUpdates payload (400) for a valid token', async () => {
+	it("rejects a non-array topicUpdates payload (400) for a valid token", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		const token = await makePrefToken(contactId);
 
 		const res = await t.fetch(`/prefs/update/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ topicUpdates: 'not-an-array' }),
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ topicUpdates: "not-an-array" }),
 		});
 		expect(res.status).toBe(400);
 	});
 
-	it('rejects a non-boolean globalUnsubscribe payload (400) for a valid token', async () => {
+	it("rejects a non-boolean globalUnsubscribe payload (400) for a valid token", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		const token = await makePrefToken(contactId);
 
 		const res = await t.fetch(`/prefs/update/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ globalUnsubscribe: 'yes' }),
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ globalUnsubscribe: "yes" }),
 		});
 		expect(res.status).toBe(400);
 	});
 
-	it('globalUnsubscribe:true removes the contact from every topic (200, ok:true)', async () => {
+	it("globalUnsubscribe:true removes the contact from every topic (200, ok:true)", async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
 		const token = await makePrefToken(contactId);
@@ -807,9 +822,9 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 		// Seed two topics and subscribe the contact to both.
 		const now = Date.now();
 		await t.run(async (ctx) => {
-			for (const name of ['Alpha', 'Beta']) {
-				const topicId = await ctx.db.insert('topics', createTestTopic({ name }) as never);
-				await ctx.db.insert('contactTopics', {
+			for (const name of ["Alpha", "Beta"]) {
+				const topicId = await ctx.db.insert("topics", createTestTopic({ name }) as never);
+				await ctx.db.insert("contactTopics", {
 					contactId,
 					topicId,
 					addedAt: now,
@@ -818,8 +833,8 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 		});
 
 		const res = await t.fetch(`/prefs/update/${encodeURIComponent(token)}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ globalUnsubscribe: true }),
 		});
 		expect(res.status).toBe(200);
@@ -829,9 +844,9 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 		// Every membership for this contact is gone.
 		const remaining = await t.run(async (ctx) =>
 			ctx.db
-				.query('contactTopics')
-				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect()
+				.query("contactTopics")
+				.withIndex("by_contact", (q) => q.eq("contactId", contactId))
+				.collect(),
 		);
 		expect(remaining).toHaveLength(0);
 	});
@@ -841,59 +856,59 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 // Seed admin — POST /seed/admin
 // ============================================================================
 
-describe('seedAdmin (POST /seed/admin)', () => {
+describe("seedAdmin (POST /seed/admin)", () => {
 	const BODY = JSON.stringify({
-		email: 'admin@example.com',
-		name: 'Admin',
-		passwordHash: 'hashed-password',
+		email: "admin@example.com",
+		name: "Admin",
+		passwordHash: "hashed-password",
 	});
 
-	it('rejects (401) when the X-Instance-Secret header is missing', async () => {
+	it("rejects (401) when the X-Instance-Secret header is missing", async () => {
 		const t = setupTest();
-		const res = await t.fetch('/seed/admin', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+		const res = await t.fetch("/seed/admin", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: BODY,
 		});
 		expect(res.status).toBe(401);
 	});
 
-	it('rejects (401) when the X-Instance-Secret header is wrong', async () => {
+	it("rejects (401) when the X-Instance-Secret header is wrong", async () => {
 		const t = setupTest();
-		const res = await t.fetch('/seed/admin', {
-			method: 'POST',
+		const res = await t.fetch("/seed/admin", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'X-Instance-Secret': 'wrong-secret',
+				"Content-Type": "application/json",
+				"X-Instance-Secret": "wrong-secret",
 			},
 			body: BODY,
 		});
 		expect(res.status).toBe(401);
 	});
 
-	it('rejects (401) when INSTANCE_SECRET is unset on the server, even with a header', async () => {
-		delete process.env['INSTANCE_SECRET'];
+	it("rejects (401) when INSTANCE_SECRET is unset on the server, even with a header", async () => {
+		delete process.env["INSTANCE_SECRET"];
 		const t = setupTest();
-		const res = await t.fetch('/seed/admin', {
-			method: 'POST',
+		const res = await t.fetch("/seed/admin", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'X-Instance-Secret': 'anything',
+				"Content-Type": "application/json",
+				"X-Instance-Secret": "anything",
 			},
 			body: BODY,
 		});
 		expect(res.status).toBe(401);
 	});
 
-	it('rejects (400) with a valid secret but missing required fields', async () => {
+	it("rejects (400) with a valid secret but missing required fields", async () => {
 		const t = setupTest();
-		const res = await t.fetch('/seed/admin', {
-			method: 'POST',
+		const res = await t.fetch("/seed/admin", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'X-Instance-Secret': 'test-instance-secret',
+				"Content-Type": "application/json",
+				"X-Instance-Secret": "test-instance-secret",
 			},
-			body: JSON.stringify({ email: 'admin@example.com' }),
+			body: JSON.stringify({ email: "admin@example.com" }),
 		});
 		expect(res.status).toBe(400);
 	});
@@ -904,23 +919,23 @@ describe('seedAdmin (POST /seed/admin)', () => {
 	// `t.registerComponent` would need the betterAuth component's module map,
 	// which isn't wired into the test harness. The auth-gate (401/400) cases
 	// above cover the security-relevant surface of this endpoint.
-	it.skip('seeds once with the correct secret, then refuses a second call (one-shot)', async () => {
+	it.skip("seeds once with the correct secret, then refuses a second call (one-shot)", async () => {
 		const t = setupTest();
-		const first = await t.fetch('/seed/admin', {
-			method: 'POST',
+		const first = await t.fetch("/seed/admin", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'X-Instance-Secret': 'test-instance-secret',
+				"Content-Type": "application/json",
+				"X-Instance-Secret": "test-instance-secret",
 			},
 			body: BODY,
 		});
 		expect(first.status).toBe(201);
 
-		const second = await t.fetch('/seed/admin', {
-			method: 'POST',
+		const second = await t.fetch("/seed/admin", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'X-Instance-Secret': 'test-instance-secret',
+				"Content-Type": "application/json",
+				"X-Instance-Secret": "test-instance-secret",
 			},
 			body: BODY,
 		});
@@ -939,15 +954,15 @@ describe('seedAdmin (POST /seed/admin)', () => {
 // (`/unsub/probe/` must win over `/unsub/`) is exercised too.
 // ============================================================================
 
-const PROBE_ORG = 'org_probe_links';
-const PROBE_ID = 'sp_tokenlinks000000000';
+const PROBE_ORG = "org_probe_links";
+const PROBE_ID = "sp_tokenlinks000000000";
 
 // Probe token: payload is `{organizationId}.{probeId}`, signed in the
 // `seedprobe:` namespace — `{payload}:{timestamp}:{HMAC(secret, "seedprobe:{payload}:{timestamp}")}`.
 async function makeProbeToken(
 	organizationId: string,
 	probeId: string,
-	timestamp = Date.now()
+	timestamp = Date.now(),
 ): Promise<string> {
 	const payload = `${organizationId}.${probeId}`;
 	const ts = String(timestamp);
@@ -958,51 +973,51 @@ async function makeProbeToken(
 async function seedProbeRow(
 	t: ReturnType<typeof setupTest>,
 	organizationId = PROBE_ORG,
-	probeId = PROBE_ID
-): Promise<Id<'seedPlacementProbes'>> {
+	probeId = PROBE_ID,
+): Promise<Id<"seedPlacementProbes">> {
 	const now = Date.now();
 	return await t.run(async (ctx) => {
-		const mailboxId = await ctx.db.insert('mailboxes', {
-			userId: 'user_1',
+		const mailboxId = await ctx.db.insert("mailboxes", {
+			userId: "user_1",
 			organizationId,
-			kind: 'external',
-			scope: 'seed',
-			address: 'owlat.seed.0@gmail.example',
-			domain: 'gmail.example',
-			status: 'active',
+			kind: "external",
+			scope: "seed",
+			address: "owlat.seed.0@gmail.example",
+			domain: "gmail.example",
+			status: "active",
 			usedBytes: 0,
 			uidValidity: now,
 			createdAt: now,
 			updatedAt: now,
 		} as never);
-		const accountId = await ctx.db.insert('externalMailAccounts', {
-			userId: 'user_1',
+		const accountId = await ctx.db.insert("externalMailAccounts", {
+			userId: "user_1",
 			organizationId,
 			mailboxId,
-			purpose: 'seed',
-			seedProvider: 'gmail',
-			imapHost: 'imap.gmail.example',
+			purpose: "seed",
+			seedProvider: "gmail",
+			imapHost: "imap.gmail.example",
 			imapPort: 993,
 			isImapSecure: true,
-			smtpHost: 'smtp.gmail.example',
+			smtpHost: "smtp.gmail.example",
 			smtpPort: 465,
 			isSmtpSecure: true,
-			authMethod: 'password',
-			imapUsername: 'login-0',
-			secretCiphertext: 'ct',
-			secretIv: 'iv',
-			secretAuthTag: 'tag',
+			authMethod: "password",
+			imapUsername: "login-0",
+			secretCiphertext: "ct",
+			secretIv: "iv",
+			secretAuthTag: "tag",
 			secretEnvelopeVersion: 1,
-			status: 'connected',
+			status: "connected",
 			createdAt: now,
 			updatedAt: now,
 		} as never);
-		return ctx.db.insert('seedPlacementProbes', {
+		return ctx.db.insert("seedPlacementProbes", {
 			organizationId,
 			probeId,
 			accountId,
-			provider: 'gmail',
-			stream: 'campaign',
+			provider: "gmail",
+			stream: "campaign",
 			sentAt: now,
 			dispatchedAt: now,
 			expiresAt: now + 90 * 24 * 60 * 60 * 1000,
@@ -1018,66 +1033,66 @@ async function seedProbeRow(
  */
 async function readUnsubscribedAt(
 	t: ReturnType<typeof setupTest>,
-	ref: Id<'seedPlacementProbes'>
+	ref: Id<"seedPlacementProbes">,
 ): Promise<number | null> {
 	return await t.run(async (ctx) => (await ctx.db.get(ref))?.unsubscribedAt ?? null);
 }
 
-describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
-	it('stamps the probe row for a valid token (200, ok:true)', async () => {
+describe("handleSeedProbeUnsubscribe (POST /unsub/probe/...)", () => {
+	it("stamps the probe row for a valid token (200, ok:true)", async () => {
 		const t = setupTest();
 		const ref = await seedProbeRow(t);
 		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
 
-		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean };
 		expect(json.ok).toBe(true);
 		expect(await readUnsubscribedAt(t, ref)).toEqual(expect.any(Number));
 	});
 
-	it('records nothing for a token minted by a DIFFERENT organization', async () => {
+	it("records nothing for a token minted by a DIFFERENT organization", async () => {
 		const t = setupTest();
 		const ref = await seedProbeRow(t);
 		// Correctly signed, but its org claim does not own the probe.
-		const token = await makeProbeToken('org_someone_else', PROBE_ID);
+		const token = await makeProbeToken("org_someone_else", PROBE_ID);
 
-		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
-	it('refuses a CONTACT unsubscribe token replayed at /unsub/probe/', async () => {
+	it("refuses a CONTACT unsubscribe token replayed at /unsub/probe/", async () => {
 		const t = setupTest();
 		const ref = await seedProbeRow(t);
 		const contactId = await seedContact(t);
 		const token = await makeUnsubToken(contactId);
 
-		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
-	it('refuses a PROBE token replayed at the contact endpoint /unsub/', async () => {
+	it("refuses a PROBE token replayed at the contact endpoint /unsub/", async () => {
 		const t = setupTest();
 		const ref = await seedProbeRow(t);
 		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
 
-		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
-	it('refuses the degraded empty-organization token as invalid_format', async () => {
+	it("refuses the degraded empty-organization token as invalid_format", async () => {
 		// `delivery/worker.ts` builds the header with `organizationId ?? ''` so a
 		// campaign-shaped message never loses its RFC 8058 pair. The resulting
 		// token is unattributable and must record NOTHING rather than fall back
 		// to the row's own organization.
 		const t = setupTest();
 		const ref = await seedProbeRow(t);
-		const token = await makeProbeToken('', PROBE_ID);
+		const token = await makeProbeToken("", PROBE_ID);
 
-		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: "POST" });
 		expect(res.status).toBe(400);
 		const json = (await res.json()) as { error?: { message: string } };
 		expect(json.error).toBeDefined();
