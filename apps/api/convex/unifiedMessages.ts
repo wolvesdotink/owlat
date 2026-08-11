@@ -140,21 +140,6 @@ export const getChannelConfig = adminQuery({
 // ============================================================
 
 /**
- * Record an inbound message from any channel
- */
-export const recordInbound = internalMutation({
-	args: {
-		threadId: v.id('conversationThreads'),
-		channel: unifiedMessageChannelValidator,
-		contactId: v.optional(v.id('contacts')),
-		content: v.string(),
-		externalMessageId: v.optional(v.string()),
-		metadata: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => recordInboundMirror(ctx, args),
-});
-
-/**
  * Record an outbound message from any channel
  */
 export const recordOutbound = internalMutation({
@@ -557,32 +542,6 @@ export const updateChannelHealth = internalMutation({
 	},
 });
 
-/**
- * Mirror an existing email send to the unified messages table
- * Called after successful email delivery to maintain a unified timeline
- */
-export const mirrorEmailSend = internalMutation({
-	args: {
-		threadId: v.id('conversationThreads'),
-		contactId: v.id('contacts'),
-		subject: v.optional(v.string()),
-		textBody: v.optional(v.string()),
-		htmlBody: v.optional(v.string()),
-		externalMessageId: v.optional(v.string()),
-		status: v.optional(
-			v.union(
-				v.literal('received'),
-				v.literal('queued'),
-				v.literal('sent'),
-				v.literal('delivered'),
-				v.literal('read'),
-				v.literal('failed')
-			)
-		),
-	},
-	handler: async (ctx, args) => mirrorEmailSendWrite(ctx, args),
-});
-
 // ============================================================
 // Channel Health Check Action (called by cron)
 // ============================================================
@@ -684,8 +643,8 @@ async function stampChannelLastSuccessfulSend(
 
 /**
  * Find an already-mirrored `email` row by its provider message id, scoped to a
- * direction. The idempotency seam for the two email mirror writers
- * (`recordInbound` inbound, `mirrorEmailSend` outbound): re-delivery of an
+ * direction. The idempotency seam for the two email mirror helpers
+ * (`recordInboundMirror` inbound, `mirrorEmailSendWrite` outbound): re-delivery of an
  * inbound or a retried `onComplete` of an outbound must not append a duplicate
  * timeline row. Returns null when no `externalMessageId` is known — without a
  * stable key there is nothing to dedupe on, so the caller inserts.
@@ -708,11 +667,10 @@ async function findMirroredEmail(
 }
 
 /**
- * Mirror an inbound message into `unifiedMessages` (idempotent). Shared by the
- * `recordInbound` internalMutation and the in-transaction call site in
- * `inbox/messages.ts:receiveMessage` — a Convex mutation can't `ctx.runMutation`
- * a sibling mutation, so the dedupe-then-insert logic lives in this plain helper
- * both can call. Returns the existing row's id on a re-delivery.
+ * Mirror an inbound message into `unifiedMessages` (idempotent). Called in the
+ * same transaction as `inbox/messages.ts:receiveMessage`, so the
+ * dedupe-then-insert logic lives in this plain helper. Returns the existing
+ * row's id on a re-delivery.
  */
 export async function recordInboundMirror(
 	ctx: MutationCtx,
@@ -750,10 +708,9 @@ export async function recordInboundMirror(
 }
 
 /**
- * Mirror a confirmed outbound email into `unifiedMessages` (idempotent). Shared
- * by the `mirrorEmailSend` internalMutation and the in-transaction call site in
- * `delivery/sendCompletion.ts` (the `agent_reply` success branch). Returns the
- * existing row's id when the workpool `onComplete` fires more than once for the
+ * Mirror a confirmed outbound email into `unifiedMessages` (idempotent). Called
+ * in the same transaction as the Send lifecycle's `agent_reply` success branch.
+ * Returns the existing row's id when completion fires more than once for the
  * same Send.
  */
 export async function mirrorEmailSendWrite(

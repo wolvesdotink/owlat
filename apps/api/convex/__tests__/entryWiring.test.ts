@@ -634,8 +634,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'transactional/sends.ts#getByEmail',
 	'transactional/sends.ts#listAll',
 	'unifiedMessages.ts#getChannelConfig',
-	'unifiedMessages.ts#mirrorEmailSend',
-	'unifiedMessages.ts#recordInbound',
 	'visualizationAgent.ts#get',
 	'webhooks/endpoints.ts#countByOrganization',
 	'webhooks/endpoints.ts#disable',
