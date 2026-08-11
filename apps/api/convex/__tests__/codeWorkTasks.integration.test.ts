@@ -95,56 +95,7 @@ const modules = Object.fromEntries(
 	)
 );
 
-// ============ get ============
 
-describe('codeWorkTasks.get', () => {
-	it('should return a task by ID', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['inbox.codeTasks']);
-		let taskId!: Id<'codeWorkTasks'>;
-
-		await t.run(async (ctx) => {
-			taskId = await ctx.db.insert(
-				'codeWorkTasks',
-				createTestCodeWorkTask({
-					description: 'Implement login page',
-				})
-			);
-		});
-
-		const task = await t.query(api.codeWorkTasks.get, { taskId });
-		expect(task).not.toBeNull();
-		expect(task!.description).toBe('Implement login page');
-		expect(task!.status).toBe('queued');
-	});
-});
-
-// ============ listByStatus ============
-
-describe('codeWorkTasks.listByStatus', () => {
-	it('should return tasks filtered by status', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'queued' }));
-			await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'queued' }));
-			await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'running' }));
-			await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'failed' }));
-		});
-
-		const queued = await t.query(api.codeWorkTasks.listByStatus, { status: 'queued' });
-		expect(queued).toHaveLength(2);
-
-		const running = await t.query(api.codeWorkTasks.listByStatus, { status: 'running' });
-		expect(running).toHaveLength(1);
-	});
-
-	it('should return empty array when no tasks match status', async () => {
-		const t = convexTest(schema, modules);
-		const tasks = await t.query(api.codeWorkTasks.listByStatus, { status: 'merged' });
-		expect(tasks).toEqual([]);
-	});
-});
 
 // ============ listRecent ============
 
@@ -397,25 +348,6 @@ describe('codeWorkTasks.markFailed', () => {
 	});
 });
 
-// ============ markMerged (internal) ============
-
-describe('codeWorkTasks.markMerged', () => {
-	it('should transition task to merged status', async () => {
-		const t = convexTest(schema, modules);
-		let taskId!: Id<'codeWorkTasks'>;
-
-		await t.run(async (ctx) => {
-			taskId = await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'review' }));
-		});
-
-		await t.mutation(internal.codeWorkTasks.markMerged, { taskId });
-
-		await t.run(async (ctx) => {
-			const task = await ctx.db.get(taskId);
-			expect(task!.status).toBe('merged');
-		});
-	});
-});
 
 // ============ createFromInbound (trust gate + code-agent guard) ============
 

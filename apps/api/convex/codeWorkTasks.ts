@@ -45,44 +45,7 @@ async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Prom
 	return profiles.some((p) => !p.deletedAt && normalizeEmail(p.email) === sender);
 }
 
-// ============================================================
-// Queries
-// ============================================================
 
-/**
- * Get a task by ID
- */
-export const get = authedQuery({
-	args: { taskId: v.id('codeWorkTasks') },
-	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'inbox.codeTasks');
-		return await ctx.db.get(args.taskId);
-	},
-});
-
-/**
- * List tasks by status
- */
-export const listByStatus = authedQuery({
-	args: {
-		status: v.union(
-			v.literal('queued'),
-			v.literal('running'),
-			v.literal('testing'),
-			v.literal('review'),
-			v.literal('merged'),
-			v.literal('failed')
-		),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('codeWorkTasks')
-			.withIndex('by_status', (q) => q.eq('status', args.status))
-			.order('asc')
-			.take(args.limit ?? 50);
-	},
-});
 
 /**
  * List recent tasks (for dashboard / verification queue)
@@ -339,18 +302,6 @@ export const markFailed = internalMutation({
 	},
 });
 
-/**
- * Mark a task as merged (after PR approval)
- */
-export const markMerged = internalMutation({
-	args: { taskId: v.id('codeWorkTasks') },
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.taskId, {
-			status: 'merged',
-			updatedAt: Date.now(),
-		});
-	},
-});
 
 /**
  * Resolve a task by its PR URL and mark it merged.
