@@ -4,7 +4,6 @@ convex/agentConfigMutations.ts:updateConfig
 convex/analytics/complianceTelemetry.ts:getComplianceTelemetry
 convex/analytics/dashboard.ts:getRecentActivity
 convex/analytics/dashboard.ts:getStats
-convex/analytics/llmUsage.ts:getSpendByPlugin
 convex/analytics/reputationSnapshots.ts:getDeliverySnapshots
 convex/assistant/conversations.ts:createConversation
 convex/assistant/conversations.ts:deleteConversation

@@ -118,23 +118,6 @@ export const getChannelConfigs = authedQuery({
 	},
 });
 
-/**
- * Get a single channel config
- */
-export const getChannelConfig = adminQuery({
-	args: {
-		channel: unifiedMessageChannelValidator,
-	},
-	handler: async (ctx, args) => {
-		// Returns the encrypted credential envelope — same admin policy as
-		// updateChannelConfig.
-		return await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
-			.first();
-	},
-});
-
 // ============================================================
 // Mutations
 // ============================================================

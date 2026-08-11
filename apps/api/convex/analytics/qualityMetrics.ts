@@ -4,26 +4,23 @@
  * Aggregates the write-then-aggregate signals the pipeline already records into
  * the two north-star views the clarify loop and the auto-send path need:
  *
- *   - CLARIFY METRICS ({@link getClarifyMetrics}) rolls up `clarificationAskLog`
+ *   - CLARIFY METRICS roll up `clarificationAskLog`
  *     into question-rate, the answer→draft-delta (how often an answered ask
  *     actually moved the draft, and by how much), and the mean predicted value of
  *     asks — the clarify loop's core scorecard.
- *   - DRAFT-QUALITY METRICS ({@link getDraftQualityMetrics}) rolls up the
+ *   - DRAFT-QUALITY METRICS roll up the
  *     reconciled `agentShadowDecisions` into the draft→sent edit-distance
  *     north-star (overall and per contact/sender) plus the unedited-accept rate —
  *     the shadow scorecard's quality view.
  *
  * The aggregation logic is pure and exported ({@link aggregateClarifyMetrics},
  * {@link aggregateDraftQuality}) so vitest can assert it directly and the eval
- * harness can reuse it; the Convex queries are thin admin-gated fetch-then-fold
- * wrappers, windowed the same way as `analytics/llmUsage`.
+ * harness can reuse it. No dashboard query is shipped until a real UI consumes
+ * these folds.
  *
  * Pure observability — nothing here routes, sends, or gates. FAIL-SOFT by
  * construction: a metric read can only inform a human, never auto-send.
  */
-
-import { v } from 'convex/values';
-import { adminQuery } from '../lib/authedFunctions';
 
 // ============================================================
 // Clarify metrics (clarificationAskLog)
@@ -181,42 +178,3 @@ export function aggregateDraftQuality(rows: readonly ShadowDecisionRow[]): Draft
 		bySender: senders,
 	};
 }
-
-// ============================================================
-// Admin-gated dashboard queries
-// ============================================================
-
-const DEFAULT_WINDOW_HOURS = 24 * 7; // one week
-const SCAN_CAP = 5000; // windowed scan ceiling, matching analytics/llmUsage
-
-/** Clarify-loop scorecard over a recent window, for the autonomy/quality dashboard. */
-export const getClarifyMetrics = adminQuery({
-	args: { hoursBack: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<ClarifyMetrics & { hoursBack: number }> => {
-		const hoursBack = args.hoursBack ?? DEFAULT_WINDOW_HOURS;
-		const since = Date.now() - hoursBack * 60 * 60 * 1000;
-		// bounded: windowed scan capped at the most-recent SCAN_CAP ask rows.
-		const rows = await ctx.db
-			.query('clarificationAskLog')
-			.withIndex('by_created_at', (q) => q.gte('createdAt', since))
-			.order('desc')
-			.take(SCAN_CAP);
-		return { ...aggregateClarifyMetrics(rows), hoursBack };
-	},
-});
-
-/** Draft→sent edit-distance north-star + per-sender quality over a recent window. */
-export const getDraftQualityMetrics = adminQuery({
-	args: { hoursBack: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<DraftQualityMetrics & { hoursBack: number }> => {
-		const hoursBack = args.hoursBack ?? DEFAULT_WINDOW_HOURS;
-		const since = Date.now() - hoursBack * 60 * 60 * 1000;
-		// bounded: windowed scan capped at the most-recent SCAN_CAP shadow decisions.
-		const rows = await ctx.db
-			.query('agentShadowDecisions')
-			.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
-			.order('desc')
-			.take(SCAN_CAP);
-		return { ...aggregateDraftQuality(rows), hoursBack };
-	},
-});

@@ -72,16 +72,6 @@ function isDatasetKey(value: string): value is DatasetKey {
 // ============================================================
 
 /**
- * Get a visualization by ID
- */
-export const get = adminQuery({
-	args: { id: v.id('visualizations') },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
-	},
-});
-
-/**
  * List visualizations (most recent first)
  */
 export const list = adminQuery({

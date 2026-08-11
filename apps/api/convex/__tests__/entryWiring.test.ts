@@ -518,10 +518,6 @@ function reachedEntries(
  * Tracked in issue #528.
  */
 const UNREACHED_ENTRIES: readonly string[] = [
-	'agentHealth.ts#getCircuitBreakers',
-	'analytics/llmUsage.ts#getSpendByPlugin',
-	'analytics/qualityMetrics.ts#getClarifyMetrics',
-	'analytics/qualityMetrics.ts#getDraftQualityMetrics',
 	'analytics/reputationQueries.ts#getDomainReputations',
 	'assistant/conversations.ts#getConversation',
 	'auditLogs.ts#get',
@@ -529,7 +525,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'auth/apiKeys.ts#get',
 	'auth/apiKeys.ts#revokeByPlugin',
 	'automations/automations.ts#revertToDraft',
-	'autonomyFeedback.ts#getRecentFeedback',
 	'blockedEmails.ts#get',
 	'blockedEmails.ts#isBlocked',
 	'campaigns/analytics.ts#getActiveByOrganization',
@@ -554,7 +549,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/sunset.ts#restoreSunsetContact',
 	'contacts/sunset.ts#setSunsetContactExemption',
 	'contacts/sunset.ts#setSunsetPolicy',
-	'delivery/ipReadinessAlerts.ts#listRecent',
 	'delivery/sends.ts#create',
 	'delivery/sends.ts#listByCampaign',
 	'delivery/sends.ts#listByContact',
@@ -585,7 +579,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'knowledge/graph.ts#createPolicyEntry',
 	'knowledge/graph.ts#listPolicies',
 	'knowledge/graph.ts#setCommitmentStatus',
-	'knowledge/graphAnalytics.ts#getCrossContactLinks',
 	'mail/ai.ts#summarizeThread',
 	'mail/commitments.ts#listCommitments',
 	'mail/commitments.ts#resolveCommitment',
@@ -611,8 +604,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'transactional/emails.ts#getBySlug',
 	'transactional/sends.ts#getByEmail',
 	'transactional/sends.ts#listAll',
-	'unifiedMessages.ts#getChannelConfig',
-	'visualizationAgent.ts#get',
 	'webhooks/endpoints.ts#countByOrganization',
 	'webhooks/endpoints.ts#disable',
 	'webhooks/endpoints.ts#enable',

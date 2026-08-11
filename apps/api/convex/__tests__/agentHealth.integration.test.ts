@@ -2,7 +2,11 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { createTestAgentMetric, createTestAgentAction, createTestInboundMessage } from './factories';
+import {
+	createTestAgentMetric,
+	createTestAgentAction,
+	createTestInboundMessage,
+} from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -32,13 +36,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('agentContext') && !path.includes('agentClassifier') && !path.includes('agentDrafter') && !path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') && !path.includes('knowledgeExtraction') && !path.includes('semanticFileProcessing') && !path.includes('visualizationAgent') && !path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -93,20 +107,26 @@ describe('agentHealth.getMetricHistory', () => {
 		const now = Date.now();
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'queue_depth',
-				value: 10,
-				windowStart: now - 60000,
-				windowEnd: now,
-				createdAt: now,
-			}));
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'error_rate',
-				value: 0.05,
-				windowStart: now - 60000,
-				windowEnd: now,
-				createdAt: now,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'queue_depth',
+					value: 10,
+					windowStart: now - 60000,
+					windowEnd: now,
+					createdAt: now,
+				})
+			);
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'error_rate',
+					value: 0.05,
+					windowStart: now - 60000,
+					windowEnd: now,
+					createdAt: now,
+				})
+			);
 		});
 
 		const history = await t.query(api.agentHealth.getMetricHistory, { metricType: 'queue_depth' });
@@ -231,17 +251,23 @@ describe('agentHealth.cleanupOldMetrics', () => {
 
 		await t.run(async (ctx) => {
 			// Old metric (should be deleted)
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				windowStart: eightDaysAgo,
-				windowEnd: eightDaysAgo + 300000,
-				createdAt: eightDaysAgo,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					windowStart: eightDaysAgo,
+					windowEnd: eightDaysAgo + 300000,
+					createdAt: eightDaysAgo,
+				})
+			);
 			// Recent metric (should be kept)
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				windowStart: now - 60000,
-				windowEnd: now,
-				createdAt: now,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					windowStart: now - 60000,
+					windowEnd: now,
+					createdAt: now,
+				})
+			);
 		});
 
 		await t.mutation(internal.agentHealth.cleanupOldMetrics);
@@ -269,32 +295,47 @@ describe('agentHealth.getCostByStep', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			const messageId = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }));
+			const messageId = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
+			);
 			// Two classify actions, one draft action, one with no tokenUsage.
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'classify',
-				status: 'completed',
-				tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
-			}));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'classify',
-				status: 'completed',
-				tokenUsage: { promptTokens: 50, completionTokens: 30, totalTokens: 80 },
-			}));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'draft',
-				status: 'completed',
-				tokenUsage: { promptTokens: 200, completionTokens: 300, totalTokens: 500 },
-			}));
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'classify',
+					status: 'completed',
+					tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+				})
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'classify',
+					status: 'completed',
+					tokenUsage: { promptTokens: 50, completionTokens: 30, totalTokens: 80 },
+				})
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'draft',
+					status: 'completed',
+					tokenUsage: { promptTokens: 200, completionTokens: 300, totalTokens: 500 },
+				})
+			);
 			// No tokenUsage — must be ignored, not counted as a step.
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'security_scan',
-				status: 'completed',
-			}));
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'security_scan',
+					status: 'completed',
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getCostByStep, {});
@@ -320,22 +361,34 @@ describe('agentHealth.getCostByStep', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			const messageId = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'classify',
-				tokenUsage: { promptTokens: 10, completionTokens: 0, totalTokens: 10 },
-			}));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'draft',
-				tokenUsage: { promptTokens: 90, completionTokens: 0, totalTokens: 90 },
-			}));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'route',
-				tokenUsage: { promptTokens: 50, completionTokens: 0, totalTokens: 50 },
-			}));
+			const messageId = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'classify',
+					tokenUsage: { promptTokens: 10, completionTokens: 0, totalTokens: 10 },
+				})
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'draft',
+					tokenUsage: { promptTokens: 90, completionTokens: 0, totalTokens: 90 },
+				})
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'route',
+					tokenUsage: { promptTokens: 50, completionTokens: 0, totalTokens: 50 },
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getCostByStep, {});
@@ -345,12 +398,18 @@ describe('agentHealth.getCostByStep', () => {
 	it('estimates a non-zero dollar cost per step and in total', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			const messageId = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'draft',
-				tokenUsage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
-			}));
+			const messageId = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'draft',
+					tokenUsage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getCostByStep, {});
@@ -378,30 +437,73 @@ describe('agentHealth.getAccuracyTrend', () => {
 		const w2 = now - 5 * 60 * 1000;
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'auto_approve_ratio', value: 0.8, windowStart: w1, windowEnd: w1 + 300000, createdAt: w1,
-			}));
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'rejection_rate', value: 0.1, windowStart: w1, windowEnd: w1 + 300000, createdAt: w1,
-			}));
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'auto_approve_ratio', value: 0.6, windowStart: w2, windowEnd: w2 + 300000, createdAt: w2,
-			}));
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'rejection_rate', value: 0.3, windowStart: w2, windowEnd: w2 + 300000, createdAt: w2,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'auto_approve_ratio',
+					value: 0.8,
+					windowStart: w1,
+					windowEnd: w1 + 300000,
+					createdAt: w1,
+				})
+			);
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'rejection_rate',
+					value: 0.1,
+					windowStart: w1,
+					windowEnd: w1 + 300000,
+					createdAt: w1,
+				})
+			);
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'auto_approve_ratio',
+					value: 0.6,
+					windowStart: w2,
+					windowEnd: w2 + 300000,
+					createdAt: w2,
+				})
+			);
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'rejection_rate',
+					value: 0.3,
+					windowStart: w2,
+					windowEnd: w2 + 300000,
+					createdAt: w2,
+				})
+			);
 			// An unrelated metric type must not leak into the trend.
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'queue_depth', value: 99, windowStart: w2, windowEnd: w2 + 300000, createdAt: w2,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'queue_depth',
+					value: 99,
+					windowStart: w2,
+					windowEnd: w2 + 300000,
+					createdAt: w2,
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getAccuracyTrend, {});
 
 		expect(result.series).toHaveLength(2);
 		// Ascending by windowStart.
-		expect(result.series[0]).toMatchObject({ windowStart: w1, autoApproveRatio: 0.8, rejectionRate: 0.1 });
-		expect(result.series[1]).toMatchObject({ windowStart: w2, autoApproveRatio: 0.6, rejectionRate: 0.3 });
+		expect(result.series[0]).toMatchObject({
+			windowStart: w1,
+			autoApproveRatio: 0.8,
+			rejectionRate: 0.1,
+		});
+		expect(result.series[1]).toMatchObject({
+			windowStart: w2,
+			autoApproveRatio: 0.6,
+			rejectionRate: 0.3,
+		});
 	});
 
 	it('defaults the missing series value to 0 when only one type is recorded for a window', async () => {
@@ -410,14 +512,25 @@ describe('agentHealth.getAccuracyTrend', () => {
 		const w = now - 5 * 60 * 1000;
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'auto_approve_ratio', value: 0.5, windowStart: w, windowEnd: w + 300000, createdAt: w,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'auto_approve_ratio',
+					value: 0.5,
+					windowStart: w,
+					windowEnd: w + 300000,
+					createdAt: w,
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getAccuracyTrend, {});
 		expect(result.series).toHaveLength(1);
-		expect(result.series[0]).toMatchObject({ windowStart: w, autoApproveRatio: 0.5, rejectionRate: 0 });
+		expect(result.series[0]).toMatchObject({
+			windowStart: w,
+			autoApproveRatio: 0.5,
+			rejectionRate: 0,
+		});
 	});
 
 	it('excludes metrics outside the hoursBack window', async () => {
@@ -426,12 +539,26 @@ describe('agentHealth.getAccuracyTrend', () => {
 		const old = now - 48 * 60 * 60 * 1000; // 2 days ago, outside a 24h window
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'auto_approve_ratio', value: 0.9, windowStart: old, windowEnd: old + 300000, createdAt: old,
-			}));
-			await ctx.db.insert('agentMetrics', createTestAgentMetric({
-				metricType: 'auto_approve_ratio', value: 0.4, windowStart: now - 60000, windowEnd: now, createdAt: now,
-			}));
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'auto_approve_ratio',
+					value: 0.9,
+					windowStart: old,
+					windowEnd: old + 300000,
+					createdAt: old,
+				})
+			);
+			await ctx.db.insert(
+				'agentMetrics',
+				createTestAgentMetric({
+					metricType: 'auto_approve_ratio',
+					value: 0.4,
+					windowStart: now - 60000,
+					windowEnd: now,
+					createdAt: now,
+				})
+			);
 		});
 
 		const result = await t.query(api.agentHealth.getAccuracyTrend, { hoursBack: 24 });
@@ -447,25 +574,36 @@ describe('agentHealth.rollupMetrics', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			const messageId = await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId: undefined, contactId: undefined }));
+			const messageId = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
+			);
 			// Two classify actions with known confidence: mean = (0.8 + 0.4) / 2 = 0.6.
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'classify',
-				status: 'completed',
-				output: JSON.stringify({ confidence: 0.8 }),
-			}));
-			await ctx.db.insert('agentActions', createTestAgentAction({
-				inboundMessageId: messageId,
-				actionType: 'classify',
-				status: 'completed',
-				output: JSON.stringify({ confidence: 0.4 }),
-			}));
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'classify',
+					status: 'completed',
+					output: JSON.stringify({ confidence: 0.8 }),
+				})
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					actionType: 'classify',
+					status: 'completed',
+					output: JSON.stringify({ confidence: 0.4 }),
+				})
+			);
 		});
 
 		await t.action(internal.agentHealth.rollupMetrics);
 
-		const history = await t.query(api.agentHealth.getMetricHistory, { metricType: 'classification_accuracy' });
+		const history = await t.query(api.agentHealth.getMetricHistory, {
+			metricType: 'classification_accuracy',
+		});
 		expect(history).toHaveLength(1);
 		expect(history[0]!.value).toBeCloseTo(0.6, 5);
 	});
@@ -475,45 +613,10 @@ describe('agentHealth.rollupMetrics', () => {
 
 		await t.action(internal.agentHealth.rollupMetrics);
 
-		const history = await t.query(api.agentHealth.getMetricHistory, { metricType: 'classification_accuracy' });
+		const history = await t.query(api.agentHealth.getMetricHistory, {
+			metricType: 'classification_accuracy',
+		});
 		expect(history).toHaveLength(1);
 		expect(history[0]!.value).toBe(0);
-	});
-});
-
-// ============ getCircuitBreakers ============
-
-describe('agentHealth.getCircuitBreakers', () => {
-	it('should return empty array when no breakers exist', async () => {
-		const t = convexTest(schema, modules);
-		const breakers = await t.query(api.agentHealth.getCircuitBreakers);
-		expect(breakers).toEqual([]);
-	});
-
-	it('should return all breaker states', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert('agentCircuitBreakers', {
-				breakerType: 'llm_failure',
-				state: 'closed',
-				threshold: 0.2,
-				currentValue: 0.05,
-				createdAt: Date.now(),
-			});
-			await ctx.db.insert('agentCircuitBreakers', {
-				breakerType: 'confidence_degradation',
-				state: 'half_open',
-				threshold: 0.3,
-				currentValue: 0.25,
-				createdAt: Date.now(),
-			});
-		});
-
-		const breakers = await t.query(api.agentHealth.getCircuitBreakers);
-		expect(breakers).toHaveLength(2);
-		const types = breakers.map((b) => b.breakerType);
-		expect(types).toContain('llm_failure');
-		expect(types).toContain('confidence_degradation');
 	});
 });
