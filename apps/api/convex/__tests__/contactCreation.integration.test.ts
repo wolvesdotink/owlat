@@ -14,9 +14,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
+import { createContact } from '../contacts/creation';
 import { createTestAutomation, createTestAutomationStep } from './factories';
 
-const incrementContactCountMock = vi.fn().mockResolvedValue(undefined);
+const { incrementContactCountMock } = vi.hoisted(() => ({
+	incrementContactCountMock: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -50,6 +53,13 @@ const modules = Object.fromEntries(
 	)
 );
 
+async function createThroughModule(
+	t: ReturnType<typeof convexTest>,
+	args: Parameters<typeof createContact>[1]
+) {
+	return t.run((ctx) => createContact(ctx, args));
+}
+
 async function createdActivities(
 	t: ReturnType<typeof convexTest>,
 	contactId: string,
@@ -79,7 +89,7 @@ describe('Contact creation (module) — a created Contact fires the trio', () =>
 			);
 		});
 
-		const result = await t.mutation(internal.contacts.creation.create, {
+		const result = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'new@example.com',
 			source: 'inbound',
@@ -120,13 +130,13 @@ describe('Contact creation (module) — a matched upsert fires nothing', () => {
 			);
 		});
 
-		const first = await t.mutation(internal.contacts.creation.create, {
+		const first = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'inbound',
 			mode: 'upsert',
 		});
-		const second = await t.mutation(internal.contacts.creation.create, {
+		const second = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'inbound',
@@ -154,7 +164,7 @@ describe('Contact creation (module) — source propagation', () => {
 		const t = convexTest(schema, modules);
 		incrementContactCountMock.mockClear();
 
-		const result = await t.mutation(internal.contacts.creation.create, {
+		const result = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'formy@example.com',
 			source: 'form',
