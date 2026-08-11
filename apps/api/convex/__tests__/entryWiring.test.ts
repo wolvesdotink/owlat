@@ -516,8 +516,6 @@ function reachedEntries(
  */
 const UNREACHED_ENTRIES: readonly string[] = [
 	'agentHealth.ts#getCircuitBreakers',
-	'analytics/engagementScoreSync.ts#clearEngagementSuppression',
-	'analytics/engagementScoreSync.ts#recomputeContactScore',
 	'analytics/llmUsage.ts#getSpendByPlugin',
 	'analytics/qualityMetrics.ts#getClarifyMetrics',
 	'analytics/qualityMetrics.ts#getDraftQualityMetrics',

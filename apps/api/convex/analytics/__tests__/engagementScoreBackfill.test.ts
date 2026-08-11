@@ -17,6 +17,7 @@ import {
 	BACKFILL_READ_BUDGET_DOCS,
 	ENGAGEMENT_SCORE_STALE_MS,
 	MAX_ACTIVITIES_PER_RECOMPUTE,
+	recomputeContactEngagementScore,
 } from '../engagementScoreSync';
 import { engagementBand } from '../engagementScore';
 
@@ -78,6 +79,14 @@ async function scoresOf(t: Harness, ids: Id<'contacts'>[]): Promise<Array<number
 		const out: Array<number | null> = [];
 		for (const id of ids) out.push((await ctx.db.get(id))?.engagementScore ?? null);
 		return out;
+	});
+}
+
+async function recomputeScore(t: Harness, contactId: Id<'contacts'>): Promise<number | null> {
+	return t.run(async (ctx) => {
+		const contact = await ctx.db.get(contactId);
+		if (!contact || contact.deletedAt !== undefined) return null;
+		return (await recomputeContactEngagementScore(ctx, contact, Date.now())).score;
 	});
 }
 
@@ -370,10 +379,7 @@ describe('the acceptance criteria, end to end', () => {
 		expect(engagementBand(incremental)).toBe('high');
 
 		// …and the full recompute agrees with it.
-		const recomputed = await t.mutation(
-			internal.analytics.engagementScoreSync.recomputeContactScore,
-			{ contactId: id }
-		);
+		const recomputed = await recomputeScore(t, id);
 		expect(recomputed).not.toBeNull();
 		expect(engagementBand(recomputed ?? -1)).toBe('high');
 	});
@@ -392,68 +398,11 @@ describe('the acceptance criteria, end to end', () => {
 			});
 		});
 
-		const score = await t.mutation(internal.analytics.engagementScoreSync.recomputeContactScore, {
-			contactId: id,
-		});
+		const score = await recomputeScore(t, id);
 		expect(score).not.toBeNull();
 		expect(engagementBand(score ?? -1)).toBe('cold');
 	});
 
-	it('gives a suppression recorded in error a way back', async () => {
-		const t = harness();
-		const [id] = await seedContacts(t, 1, 200);
-		if (!id) throw new Error('seed failed');
-
-		const bounceId = await t.run(async (ctx) => {
-			await recordContactActivity(ctx, {
-				literal: 'email_clicked',
-				contactId: id,
-				metadata: { campaignId: 'c1', linkUrl: 'https://example.com' },
-				occurredAt: Date.now() - DAY,
-			});
-			return recordContactActivity(ctx, {
-				literal: 'email_bounced',
-				contactId: id,
-				metadata: { campaignId: 'c1', bounceType: 'hard' },
-			});
-		});
-
-		// Clearing alone is not enough while the offending row is still there —
-		// the recompute simply sees it again.
-		const stillSuppressed = await t.mutation(
-			internal.analytics.engagementScoreSync.clearEngagementSuppression,
-			{ contactId: id }
-		);
-		expect(stillSuppressed).toBe(0);
-
-		// Correct the record, then clear: the contact recovers.
-		await t.run(async (ctx) => {
-			await ctx.db.delete(bounceId);
-			return null;
-		});
-		const recovered = await t.mutation(
-			internal.analytics.engagementScoreSync.clearEngagementSuppression,
-			{ contactId: id }
-		);
-		expect(recovered).toBeGreaterThan(0);
-
-		const doc = await t.run(async (ctx) => ctx.db.get(id));
-		expect(doc?.engagementScoreState?.isSuppressed).toBe(false);
-		expect(doc?.engagementScoreState?.suppressedAt).toBeUndefined();
-
-		// And the nightly backfill does not resurrect it.
-		await t.run(async (ctx) => {
-			await ctx.db.patch(id, {
-				engagementScoreUpdatedAt: Date.now() - 2 * ENGAGEMENT_SCORE_STALE_MS,
-			});
-		});
-		await t.mutation(internal.analytics.engagementScoreSync.backfillEngagementScores, {
-			batchesRemaining: 1,
-		});
-		const afterBackfill = await t.run(async (ctx) => ctx.db.get(id));
-		expect(afterBackfill?.engagementScoreState?.isSuppressed).toBe(false);
-		expect(afterBackfill?.engagementScore ?? 0).toBeGreaterThan(0);
-	});
 
 	it('marks a hard-bounced contact isSuppressed on the writer hot path', async () => {
 		const t = harness();
@@ -626,10 +575,7 @@ describe('the incremental hot path — hostile inputs', () => {
 		expect(dupeDoc?.engagementScore).toBe(onceDoc?.engagementScore);
 
 		// And the full recompute — which dedupes the whole window — agrees.
-		const recomputed = await t.mutation(
-			internal.analytics.engagementScoreSync.recomputeContactScore,
-			{ contactId: dupe }
-		);
+		const recomputed = await recomputeScore(t, dupe);
 		expect(recomputed).toBe(onceDoc?.engagementScore);
 	});
 

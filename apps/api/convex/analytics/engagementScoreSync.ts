@@ -173,15 +173,13 @@ export async function recomputeContactEngagementScore(
 		now,
 	});
 
-	// STICKY, BUT NOT UNCLEARABLE. `.take(MAX_ACTIVITIES_PER_RECOMPUTE)` reads the
+	// STICKY, BUT NOT PERMANENT. `.take(MAX_ACTIVITIES_PER_RECOMPUTE)` reads the
 	// NEWEST rows, so a chatty contact's hard bounce can fall out of view while
 	// still being inside the lookback window; carrying the cached suppression
 	// forward keeps such a contact suppressed. It is scoped to the window on
-	// purpose: once the suppressing event is older than `RECOMPUTE_LOOKBACK_MS`
-	// — or once its row is corrected/removed and
-	// `clearEngagementSuppression` forces a recompute — the contact recovers.
-	// Without that scope a bounce recorded in error would pin the contact to 0
-	// forever with no reversal path anywhere in the module.
+	// purpose: once the suppressing event is older than `RECOMPUTE_LOOKBACK_MS`,
+	// the contact recovers. Without that scope a bounce recorded in error would
+	// pin the contact to 0 forever.
 	const cached = contact.engagementScoreState;
 	const cachedSuppressedAt =
 		cached !== undefined && cached.isSuppressed ? cached.suppressedAt : undefined;
@@ -365,64 +363,5 @@ export const backfillEngagementScores = internalMutation({
 		}
 
 		return { scanned, rescored, isDone, isBudgetExhausted };
-	},
-});
-
-/**
- * Force a full recompute for one contact. Internal-only escape hatch: tests
- * drive it, and an operator can invoke it from the Convex dashboard to
- * re-derive one contact immediately instead of waiting for the backfill to
- * reach it (for example right after correcting a mis-recorded bounce — see
- * `clearEngagementSuppression`, which is that flow with the sticky suppression
- * dropped first).
- */
-export const recomputeContactScore = internalMutation({
-	args: { contactId: v.id('contacts') },
-	returns: v.union(v.number(), v.null()),
-	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact || contact.deletedAt !== undefined) return null;
-		const { score } = await recomputeContactEngagementScore(ctx, contact, Date.now());
-		return score;
-	},
-});
-
-/**
- * THE REVERSAL PATH for suppression. A hard bounce or complaint recorded in
- * error zeroes a healthy contact, and the recompute deliberately carries that
- * suppression forward while its instant is inside the lookback window — so
- * deleting or correcting the offending `contactActivities` row is not, on its
- * own, enough. This drops the cached suppression and re-derives the score from
- * whatever the timeline now says. If the offending row is still there, the
- * recompute simply re-suppresses; fix the row first.
- *
- * Returns the score after the recompute, or `null` for a missing/soft-deleted
- * contact.
- */
-export const clearEngagementSuppression = internalMutation({
-	args: { contactId: v.id('contacts') },
-	returns: v.union(v.number(), v.null()),
-	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact || contact.deletedAt !== undefined) return null;
-
-		const cached = contact.engagementScoreState;
-		if (cached !== undefined) {
-			// Rebuild the state WITHOUT `suppressedAt` — an explicit `undefined` is
-			// not a storable Convex value, so the field has to be absent, not nulled.
-			await ctx.db.patch(args.contactId, {
-				engagementScoreState: {
-					raw: cached.raw,
-					softBounceRaw: cached.softBounceRaw,
-					isSuppressed: false,
-					...(cached.lastFoldedKey !== undefined ? { lastFoldedKey: cached.lastFoldedKey } : {}),
-				},
-			});
-		}
-
-		const reloaded = await ctx.db.get(args.contactId);
-		if (!reloaded) return null;
-		const { score } = await recomputeContactEngagementScore(ctx, reloaded, Date.now());
-		return score;
 	},
 });
