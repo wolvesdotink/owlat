@@ -17,6 +17,36 @@ definePageMeta({
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+const { isAdmin: canManageSunset } = usePermissions();
+
+const sunsetPage = { numItems: 100, cursor: null } as const;
+const { data: sunsetPolicies } = useConvexQuery(api.contacts.sunset.getSunsetPolicies, () =>
+	canManageSunset.value ? {} : 'skip'
+);
+const { data: reengagementContacts } = useConvexQuery(api.contacts.sunset.listSunsetStage, () =>
+	canManageSunset.value ? { stage: 'reengagement' as const, paginationOpts: sunsetPage } : 'skip'
+);
+const { data: sunsetSuppressedContacts } = useConvexQuery(
+	api.contacts.sunset.listSunsetStage,
+	() =>
+		canManageSunset.value ? { stage: 'suppressed' as const, paginationOpts: sunsetPage } : 'skip'
+);
+
+const sunsetPolicyForm = reactive({
+	isEnabled: true,
+	reengageAfterDays: 180,
+	suppressAfterDays: 270,
+});
+watch(
+	sunsetPolicies,
+	(value) => {
+		if (!value) return;
+		sunsetPolicyForm.isEnabled = value.global.isEnabled;
+		sunsetPolicyForm.reengageAfterDays = value.global.reengageAfterDays;
+		sunsetPolicyForm.suppressAfterDays = value.global.suppressAfterDays;
+	},
+	{ immediate: true }
+);
 
 // Filter state
 const reasonFilter = ref<'all' | BlockReason>('all');
@@ -54,6 +84,33 @@ const { run: removeBlockedEmail } = useBackendOperation(api.blockedEmails.remove
 const { run: bulkAddBlockedEmails } = useBackendOperation(api.blockedEmails.bulkAdd, {
 	label: 'Import blocklist',
 });
+const { run: setSunsetPolicy, isLoading: isSavingSunsetPolicy } = useBackendOperation(
+	api.contacts.sunset.setSunsetPolicy,
+	{ label: 'Save sunset policy' }
+);
+const { run: setSunsetContactExemption } = useBackendOperation(
+	api.contacts.sunset.setSunsetContactExemption,
+	{ label: 'Change sunset exemption' }
+);
+const { run: restoreSunsetContact } = useBackendOperation(
+	api.contacts.sunset.restoreSunsetContact,
+	{ label: 'Restore sunset contact' }
+);
+
+const saveSunsetPolicy = async () => {
+	const saved = await setSunsetPolicy({ ...sunsetPolicyForm });
+	if (saved !== undefined) showNotification('Sunset policy saved');
+};
+
+const toggleSunsetExemption = async (contactId: Id<'contacts'>, exempt: boolean) => {
+	const changed = await setSunsetContactExemption({ contactId, exempt });
+	if (changed !== undefined) showNotification(exempt ? 'Contact exempted' : 'Exemption removed');
+};
+
+const restoreSunset = async (contactId: Id<'contacts'>) => {
+	const result = await restoreSunsetContact({ contactId });
+	if (result?.outcome === 'restored') showNotification('Contact restored and exempted');
+};
 
 // Bulk import from a CSV / text file → blockedEmails.bulkAdd
 const blocklistImport = useBlocklistImport();
@@ -242,6 +299,88 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 								someone marks a send as spam — so you never send to it again. You can also suppress
 								an address by hand to stop sending to a specific recipient.
 							</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- The sunset operator surface used to be API-only. Keeping it beside
+				     suppressions gives every policy, stage, exemption and restore entry a
+				     concrete owner-facing workflow. -->
+				<div v-if="canManageSunset && sunsetPolicies" class="card p-6 space-y-6">
+					<div>
+						<h2 class="font-medium text-text-primary">Automatic list sunsetting</h2>
+						<p class="mt-1 text-sm text-text-secondary">
+							Move quiet contacts to re-engagement, then suppress them after a longer window.
+						</p>
+					</div>
+
+					<div class="grid gap-4 md:grid-cols-[auto_1fr_1fr_auto] md:items-end">
+						<label class="flex items-center gap-2 pb-2 text-sm text-text-secondary">
+							<input v-model="sunsetPolicyForm.isEnabled" type="checkbox" />
+							Enabled
+						</label>
+						<UiInput
+							v-model.number="sunsetPolicyForm.reengageAfterDays"
+							type="number"
+							label="Re-engage after days"
+							:min="30"
+						/>
+						<UiInput
+							v-model.number="sunsetPolicyForm.suppressAfterDays"
+							type="number"
+							label="Suppress after days"
+							:min="sunsetPolicyForm.reengageAfterDays"
+						/>
+						<UiButton :loading="isSavingSunsetPolicy" @click="saveSunsetPolicy">Save</UiButton>
+					</div>
+
+					<div class="grid gap-6 lg:grid-cols-2">
+						<div>
+							<h3 class="text-sm font-medium text-text-primary">Re-engagement track</h3>
+							<p v-if="!reengagementContacts?.page.length" class="mt-2 text-sm text-text-tertiary">
+								No contacts are currently on this track.
+							</p>
+							<ul v-else class="mt-2 divide-y divide-border-subtle">
+								<li
+									v-for="contact in reengagementContacts.page"
+									:key="contact.contactId"
+									class="flex items-center justify-between gap-3 py-2"
+								>
+									<span class="truncate text-sm text-text-secondary">{{
+										contact.email ?? 'No email'
+									}}</span>
+									<UiButton
+										variant="ghost"
+										@click="toggleSunsetExemption(contact.contactId, !contact.isExempt)"
+									>
+										{{ contact.isExempt ? 'Remove exemption' : 'Exempt' }}
+									</UiButton>
+								</li>
+							</ul>
+						</div>
+
+						<div>
+							<h3 class="text-sm font-medium text-text-primary">Auto-suppressed contacts</h3>
+							<p
+								v-if="!sunsetSuppressedContacts?.page.length"
+								class="mt-2 text-sm text-text-tertiary"
+							>
+								No contacts were auto-suppressed.
+							</p>
+							<ul v-else class="mt-2 divide-y divide-border-subtle">
+								<li
+									v-for="contact in sunsetSuppressedContacts.page"
+									:key="contact.contactId"
+									class="flex items-center justify-between gap-3 py-2"
+								>
+									<span class="truncate text-sm text-text-secondary">{{
+										contact.email ?? 'No email'
+									}}</span>
+									<UiButton variant="ghost" @click="restoreSunset(contact.contactId)"
+										>Restore</UiButton
+									>
+								</li>
+							</ul>
 						</div>
 					</div>
 				</div>

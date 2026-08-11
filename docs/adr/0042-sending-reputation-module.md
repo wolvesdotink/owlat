@@ -1,6 +1,6 @@
 # Sending reputation module — one scope-discriminated table, one summarizer behind a read-side seam, derive-on-read replacing five copied window loops
 
-**Status:** accepted (implementation deferred — see Execution)
+**Status:** accepted; the unconsumed grouped-domain public read was later removed under ADR-0020
 
 ## Context
 
@@ -23,7 +23,6 @@ and read by three disjoint consumer populations.
 |---|---|---|
 | Producer (only one) | `delivery/sendLifecycle.ts:816` (`reputation_update` effect → `updateStats`) | one event updates the org window always + the domain window when a domain is present |
 | Public read | `analytics/reputationQueries.ts:getSendingOverview` (`:53-80`) | 4 web consumers; **re-sums the window itself** |
-| Public read | `analytics/reputationQueries.ts:getDomainReputations` (`:201-256`) | 1 web consumer; **re-sums, grouped by domain** |
 | Platform-admin read | `platformAdmin/queries.ts` (`:18-22`, `:70-74`, `:210-214`, `:275-279`, `:391`) | 5 sites; read derived values **stale off "the latest bucket"** |
 | Cron | `crons.ts:37` → `recalculateAll` (`:397-450`) | org-only; re-sums the window a third time + prunes >60d |
 
@@ -283,9 +282,9 @@ former risk-recompute + missed-enforce safety net is moot.
   one `summarize`; `recalculateAll` shrinks to cleanup; `updateRiskLevel`,
   `getByOrganization`, `getByDomain`, `listByRiskLevel`,
   `listDomainsByRiskLevel` are deleted (dead or subsumed).
-- `analytics/reputationQueries.ts` — `getSendingOverview` and
-  `getDomainReputations` lose their inline window loops and call
-  `summarize` / `summarizeDomains`. `getCampaignSendEstimate` is untouched
+- `analytics/reputationQueries.ts` — `getSendingOverview` loses its inline
+  window loop and calls `summarize`; the unconsumed `getDomainReputations`
+  shell is removed. `getCampaignSendEstimate` is untouched
   (it is IP-warming, not reputation).
 - `platformAdmin/queries.ts` — the 5 raw `sendingReputation` reads route
   through `summarize({ kind: 'org' })`, which **fixes the stale-cache reads

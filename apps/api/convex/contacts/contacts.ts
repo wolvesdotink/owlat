@@ -9,9 +9,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing } from './listing';
-import { topicListing } from '../topics/listing';
 import { contactCreateSourceValidator } from './resolution';
-import { segmentListing } from '../segments/listing';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
 import { softDeleteContact, permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import { recordAuditLog } from '../lib/auditLog';
@@ -101,38 +99,6 @@ export const list = authedQuery({
 			order: args.order,
 			paginationOpts: args.paginationOpts,
 		}),
-});
-
-/**
- * Get total count of contacts — the descriptor's `total` facet (a denormalized
- * `instanceSettings` counter with a bounded-scan fallback).
- */
-export const count = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		const total = await countFacet(ctx.db, contactListing, 'total');
-		return total as number;
-	},
-});
-
-/**
- * Get audience stats — composes the `total` facet of three descriptors.
- */
-export const getAudienceStats = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		const [totalContacts, topicCount, segmentCount] = await Promise.all([
-			countFacet(ctx.db, contactListing, 'total'),
-			countFacet(ctx.db, topicListing, 'total'),
-			countFacet(ctx.db, segmentListing, 'total'),
-		]);
-
-		return {
-			totalContacts: totalContacts as number,
-			topicCount: topicCount as number,
-			segmentCount: segmentCount as number,
-		};
-	},
 });
 
 // ==========================================

@@ -92,6 +92,13 @@ async function register(t: ReturnType<typeof client>, overrides: Record<string, 
 	return t.action(api.connectedApps.actions.register, { ...VALID_REGISTER, ...overrides });
 }
 
+async function getListed(t: ReturnType<typeof client>, connectedAppId: string) {
+	const listed = await t.query(api.connectedApps.queries.listByTeam, {});
+	const app = listed.find((candidate) => candidate._id === connectedAppId);
+	if (!app) throw new Error('connected app is absent from the active tenant list');
+	return app;
+}
+
 describe('connected-app registration and secret exchange', () => {
 	it('registers an enabled app, reveals the secret once, and seals it at rest', async () => {
 		const t = client();
@@ -117,7 +124,7 @@ describe('connected-app registration and secret exchange', () => {
 	it('never returns the sealed secret through any read path', async () => {
 		const t = client();
 		const created = await register(t);
-		const fetched = await t.query(api.connectedApps.queries.get, { connectedAppId: created._id });
+		const fetched = await getListed(t, created._id);
 		expect(fetched).not.toHaveProperty('secretCiphertext');
 		expect(fetched).not.toHaveProperty('secret');
 		expect(JSON.stringify(fetched)).not.toContain(created.secret);
@@ -186,15 +193,15 @@ describe('connected-app lifecycle transitions', () => {
 		await expect(t.mutation(api.connectedApps.mutations.enable, id)).rejects.toThrow();
 
 		await t.mutation(api.connectedApps.mutations.disable, id);
-		expect((await t.query(api.connectedApps.queries.get, id)).status).toBe('disabled');
+		expect((await getListed(t, app._id)).status).toBe('disabled');
 		// disable on a disabled app is illegal.
 		await expect(t.mutation(api.connectedApps.mutations.disable, id)).rejects.toThrow();
 
 		await t.mutation(api.connectedApps.mutations.enable, id);
-		expect((await t.query(api.connectedApps.queries.get, id)).status).toBe('enabled');
+		expect((await getListed(t, app._id)).status).toBe('enabled');
 
 		await t.mutation(api.connectedApps.mutations.revoke, id);
-		const revoked = await t.query(api.connectedApps.queries.get, id);
+		const revoked = await getListed(t, app._id);
 		expect(revoked.status).toBe('revoked');
 		expect(revoked.revokedAt).toBeGreaterThan(0);
 
@@ -286,9 +293,6 @@ describe('connected-app tenant isolation', () => {
 		auth.organizationId = 'tenant-b';
 		auth.userId = 'user-b';
 		await expect(
-			t.query(api.connectedApps.queries.get, { connectedAppId: app._id })
-		).rejects.toThrow();
-		await expect(
 			t.mutation(api.connectedApps.mutations.revoke, { connectedAppId: app._id })
 		).rejects.toThrow();
 		await expect(
@@ -302,9 +306,7 @@ describe('connected-app tenant isolation', () => {
 		expect(await t.query(api.connectedApps.queries.listByTeam, {})).toHaveLength(0);
 		auth.organizationId = 'tenant-a';
 		auth.userId = 'user-a';
-		expect((await t.query(api.connectedApps.queries.get, { connectedAppId: app._id })).status).toBe(
-			'enabled'
-		);
+		expect((await getListed(t, app._id)).status).toBe('enabled');
 	});
 
 	it('scopes listByTeam to the active organization', async () => {

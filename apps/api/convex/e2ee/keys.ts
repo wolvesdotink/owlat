@@ -11,7 +11,6 @@
  *   - `getKeyDirectory` (internal) — the manifest's address->fingerprint map;
  *   - `listAddressesNeedingKeys` (internal) — the backfill worklist;
  *   - `backfillKeys` (admin) — the "publish encryption keys" trigger;
- *   - `getReadiness` (admin) — local publication status for delivery readiness.
  *
  * SECURITY INVARIANT (asserted in tests): NO public function returns
  * `sealedPrivateKey`. The private key is reachable only through `internalQuery`
@@ -24,7 +23,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
+import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
@@ -467,33 +466,5 @@ export const backfillKeys = adminMutation({
 		await assertFeatureEnabled(ctx, 'sealedMail');
 		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.runBackfill, {});
 		return { scheduled: true as const };
-	},
-});
-
-/**
- * Admin: local key-publication status for the delivery-readiness surface.
- * Reports whether the instance signing identity exists and how many address
- * keys are published — the local truth the "encryption keys published" readiness
- * check reads. The live counterpart that self-fetches our own WKD + manifest is
- * `domains/encryptionKeysReadiness.checkEncryptionKeysReadiness`.
- */
-export const getReadiness = adminQuery({
-	args: {},
-	handler: async (ctx) => {
-		const instance = await ctx.db
-			.query('keyVault')
-			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
-			.first();
-		const addressKeys = await ctx.db
-			.query('keyVault')
-			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.take(MAX_VAULT_ROWS + 1);
-		assertWithinLimit(addressKeys, MAX_VAULT_ROWS, 'address keys');
-		const activeAddressKeys = addressKeys.filter((r) => r.isActive).length;
-		return {
-			instanceIdentityPublished: instance !== null && instance.isActive,
-			addressKeyCount: activeAddressKeys,
-			isPublished: instance !== null && instance.isActive && activeAddressKeys > 0,
-		};
 	},
 });

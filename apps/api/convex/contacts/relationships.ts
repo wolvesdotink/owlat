@@ -8,7 +8,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireContactsManage } from './guards';
-import type { Id, Doc } from '../_generated/dataModel';
 import { throwInvalidInput } from '../_utils/errors';
 
 // ============================================================
@@ -55,65 +54,6 @@ export const listByContact = authedQuery({
 		}
 
 		return relationships;
-	},
-});
-
-/**
- * Get the relationship graph for a contact up to N hops
- */
-export const getGraph = authedQuery({
-	args: {
-		contactId: v.id('contacts'),
-		depth: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const maxDepth = args.depth ?? 2;
-		const visited = new Set<string>();
-		const nodes: Array<{ contact: Doc<'contacts'>; depth: number }> = [];
-		const edges: Array<Doc<'contactRelationships'>> = [];
-
-		const queue: Array<{ contactId: Id<'contacts'>; depth: number }> = [
-			{ contactId: args.contactId, depth: 0 },
-		];
-
-		while (queue.length > 0) {
-			const { contactId, depth } = queue.shift()!;
-			const key = contactId as string;
-			if (visited.has(key)) continue;
-			visited.add(key);
-
-			const contact = await ctx.db.get(contactId);
-			if (!contact) continue;
-			nodes.push({ contact, depth });
-
-			if (depth >= maxDepth) continue;
-
-			const outgoing = await ctx.db
-				.query('contactRelationships')
-				.withIndex('by_from', (q) => q.eq('fromContactId', contactId))
-				.collect(); // bounded: one contact's outgoing relationships
-
-			const incoming = await ctx.db
-				.query('contactRelationships')
-				.withIndex('by_to', (q) => q.eq('toContactId', contactId))
-				.collect(); // bounded: one contact's incoming relationships
-
-			for (const rel of outgoing) {
-				edges.push(rel);
-				if (!visited.has(rel.toContactId as string)) {
-					queue.push({ contactId: rel.toContactId, depth: depth + 1 });
-				}
-			}
-
-			for (const rel of incoming) {
-				edges.push(rel);
-				if (!visited.has(rel.fromContactId as string)) {
-					queue.push({ contactId: rel.fromContactId, depth: depth + 1 });
-				}
-			}
-		}
-
-		return { nodes, edges };
 	},
 });
 

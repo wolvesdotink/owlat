@@ -137,26 +137,6 @@ export const listProviderProvenance = authedQuery({
 	},
 });
 
-// Get a single blocked email by ID
-export const get = authedQuery({
-	args: { blockedEmailId: v.id('blockedEmails') },
-	handler: async (ctx, args) => {
-		const blockedEmail = await ctx.db.get(args.blockedEmailId);
-		if (!blockedEmail) return null;
-		return blockedEmail;
-	},
-});
-
-// Check if an email is blocked
-export const isBlocked = authedQuery({
-	args: {
-		email: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return (await findBlockedByEmail(ctx, args.email)) !== null;
-	},
-});
-
 // Get blocked email record by email (returns the record or null)
 export const getByEmail = authedQuery({
 	args: {

@@ -35,29 +35,6 @@ export const listByContact = authedQuery({
 });
 
 /**
- * Look up a contact by channel + identifier
- */
-export const findByIdentifier = authedQuery({
-	args: {
-		channel: v.string(),
-		identifier: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const identity = await ctx.db
-			.query('contactIdentities')
-			.withIndex('by_identifier', (q) =>
-				q.eq('channel', args.channel).eq('identifier', args.identifier)
-			)
-			.first();
-
-		if (!identity) return null;
-
-		const contact = await ctx.db.get(identity.contactId);
-		return contact ? { identity, contact } : null;
-	},
-});
-
-/**
  * Find potential merge candidates for a contact.
  * Returns other contacts that share identifiers with the given contact.
  */

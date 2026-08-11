@@ -160,7 +160,6 @@ import type * as channels_adapters_whatsapp from '../channels/adapters/whatsapp.
 import type * as channels_outbound from '../channels/outbound.js';
 import type * as chat__helpers from '../chat/_helpers.js';
 import type * as chat_attachments from '../chat/attachments.js';
-import type * as chat_cleanup from '../chat/cleanup.js';
 import type * as chat_dms from '../chat/dms.js';
 import type * as chat_emailLink from '../chat/emailLink.js';
 import type * as chat_members from '../chat/members.js';
@@ -401,7 +400,6 @@ import type * as domains_dmarc from '../domains/dmarc.js';
 import type * as domains_dnsMatch from '../domains/dnsMatch.js';
 import type * as domains_dnsVerification from '../domains/dnsVerification.js';
 import type * as domains_domains from '../domains/domains.js';
-import type * as domains_encryptionKeysReadiness from '../domains/encryptionKeysReadiness.js';
 import type * as domains_lifecycle from '../domains/lifecycle.js';
 import type * as domains_mandrillRelay from '../domains/mandrillRelay.js';
 import type * as domains_mandrillRelayMutations from '../domains/mandrillRelayMutations.js';
@@ -465,7 +463,6 @@ import type * as e2ee_recipientKeys from '../e2ee/recipientKeys.js';
 import type * as e2ee_recoveryKit from '../e2ee/recoveryKit.js';
 import type * as e2ee_seal from '../e2ee/seal.js';
 import type * as e2ee_sealing from '../e2ee/sealing.js';
-import type * as e2ee_selfCheck from '../e2ee/selfCheck.js';
 import type * as e2ee_wkd from '../e2ee/wkd.js';
 import type * as emailBlocks_blocks from '../emailBlocks/blocks.js';
 import type * as emailBlocks_module from '../emailBlocks/module.js';
@@ -1134,7 +1131,6 @@ declare const fullApi: ApiFromModules<{
 	'channels/outbound': typeof channels_outbound;
 	'chat/_helpers': typeof chat__helpers;
 	'chat/attachments': typeof chat_attachments;
-	'chat/cleanup': typeof chat_cleanup;
 	'chat/dms': typeof chat_dms;
 	'chat/emailLink': typeof chat_emailLink;
 	'chat/members': typeof chat_members;
@@ -1375,7 +1371,6 @@ declare const fullApi: ApiFromModules<{
 	'domains/dnsMatch': typeof domains_dnsMatch;
 	'domains/dnsVerification': typeof domains_dnsVerification;
 	'domains/domains': typeof domains_domains;
-	'domains/encryptionKeysReadiness': typeof domains_encryptionKeysReadiness;
 	'domains/lifecycle': typeof domains_lifecycle;
 	'domains/mandrillRelay': typeof domains_mandrillRelay;
 	'domains/mandrillRelayMutations': typeof domains_mandrillRelayMutations;
@@ -1439,7 +1434,6 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/recoveryKit': typeof e2ee_recoveryKit;
 	'e2ee/seal': typeof e2ee_seal;
 	'e2ee/sealing': typeof e2ee_sealing;
-	'e2ee/selfCheck': typeof e2ee_selfCheck;
 	'e2ee/wkd': typeof e2ee_wkd;
 	'emailBlocks/blocks': typeof emailBlocks_blocks;
 	'emailBlocks/module': typeof emailBlocks_module;

@@ -7,7 +7,6 @@ convex/analytics/dashboard.ts:getStats
 convex/analytics/reputationSnapshots.ts:getDeliverySnapshots
 convex/assistant/conversations.ts:createConversation
 convex/assistant/conversations.ts:deleteConversation
-convex/assistant/conversations.ts:getConversation
 convex/assistant/conversations.ts:listConversations
 convex/assistant/conversations.ts:listMessages
 convex/assistant/conversations.ts:renameConversation
@@ -16,13 +15,10 @@ convex/assistant/conversations.ts:stopGeneration
 convex/auth/accessRequest.ts:listPending
 convex/auth/accessRequest.ts:resolve
 convex/auth/accountManagement.ts:exportContactsForOrganization
-convex/auth/apiKeys.ts:countByTeam
 convex/auth/apiKeys.ts:create
-convex/auth/apiKeys.ts:get
 convex/auth/apiKeys.ts:listByTeam
 convex/auth/apiKeys.ts:remove
 convex/auth/apiKeys.ts:revoke
-convex/auth/apiKeys.ts:revokeByPlugin
 convex/auth/apiKeys.ts:updateName
 convex/auth/invitationResend.ts:throttleResend
 convex/autonomy.ts:deleteRule
@@ -48,7 +44,6 @@ convex/campaigns/senders.ts:listForPicker
 convex/chat/attachments.ts:generateUploadUrl
 convex/chat/attachments.ts:getAttachmentDetails
 convex/chat/attachments.ts:registerAttachment
-convex/chat/cleanup.ts:cleanupLegacyChatData
 convex/chat/dms.ts:findOrCreateDm
 convex/chat/dms.ts:listMyDms
 convex/chat/emailLink.ts:findChannelsForInboxThread
@@ -81,7 +76,6 @@ convex/chat/rooms.ts:updateChannel
 convex/codeWorkTasks.ts:cancel
 convex/codeWorkTasks.ts:create
 convex/connectedApps/mutations.ts:remove
-convex/connectedApps/queries.ts:get
 convex/connectedApps/queries.ts:listByTeam
 convex/contacts/contacts.ts:bulkDelete
 convex/contacts/contacts.ts:create
@@ -96,10 +90,8 @@ convex/contacts/identities.ts:removeIdentity
 convex/contacts/identities.ts:verifyIdentity
 convex/contacts/propertyValues.ts:bulkSet
 convex/contacts/propertyValues.ts:countByProperty
-convex/contacts/propertyValues.ts:getByContactAndProperty
 convex/contacts/propertyValues.ts:listByContact
 convex/contacts/propertyValues.ts:remove
-convex/contacts/propertyValues.ts:set
 convex/contacts/sunset.ts:confirmSunsetClock
 convex/contacts/sunset.ts:getSunsetPolicies
 convex/contacts/sunset.ts:listSunsetStage
@@ -113,15 +105,12 @@ convex/delivery/postmaster.ts:getPostmasterStatus
 convex/delivery/rampControls.ts:setStreamPreset
 convex/delivery/rampEnrollment.ts:enrollCell
 convex/delivery/rampPhasePromotion.ts:promoteCellPhase
-convex/delivery/sends.ts:create
 convex/delivery/sends.ts:get
 convex/delivery/sends.ts:getClickedContacts
 convex/delivery/sends.ts:getLinkClickStats
 convex/delivery/sends.ts:getOpenedContacts
 convex/delivery/sends.ts:getOpensTimeline
 convex/delivery/sends.ts:getStatsByCampaign
-convex/delivery/sends.ts:listByCampaign
-convex/delivery/sends.ts:listByContact
 convex/devShortcuts/forceVerifyDomain.ts:forceVerifyDomain
 convex/domains/domains.ts:create
 convex/domains/domains.ts:getInboundMailConfig

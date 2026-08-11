@@ -14,7 +14,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -24,9 +28,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // still cover the scheduling itself via `t.finishInProgressScheduledFunctions`.
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) => !path.includes('providers/registerAction'),
-	)
+	Object.entries(allModules).filter(([path]) => !path.includes('providers/registerAction'))
 );
 
 // ============ domains.create (integration) ============
@@ -99,121 +101,6 @@ describe('domains.create', () => {
 	});
 });
 
-// ============ domains.get (integration) ============
-
-describe('domains.get', () => {
-	it('should return domain with parsed dnsRecords and verificationResults', async () => {
-		const t = convexTest(schema, modules);
-		let domainId: Id<'domains'>;
-
-		const verificationResults = {
-			spf: { verified: true, lastChecked: Date.now() },
-			dkim: [
-				{ verified: false, lastChecked: Date.now(), error: 'Record not found' },
-				{ verified: false, lastChecked: Date.now(), error: 'Record not found' },
-				{ verified: false, lastChecked: Date.now(), error: 'Record not found' },
-			],
-		};
-
-		await t.run(async (ctx) => {
-			domainId = await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'test.com',
-					verificationResults,
-				})
-			);
-		});
-
-		const domain = await t.query(api.domains.domains.get, { domainId: domainId! });
-
-		expect(domain).toBeDefined();
-		expect(domain!.dnsRecords).toBeTypeOf('object');
-		expect(domain!.dnsRecords.spf).toBeDefined();
-		expect(domain!.verificationResults).toBeTypeOf('object');
-		expect(domain!.verificationResults!.spf!.verified).toBe(true);
-		expect(domain!.verificationResults!.dkim![0]!.verified).toBe(false);
-	});
-
-	it('should return null for non-existent domain', async () => {
-		const t = convexTest(schema, modules);
-
-		let domainId: Id<'domains'>;
-		await t.run(async (ctx) => {
-			domainId = await ctx.db.insert('domains', createTestDomain());
-			await ctx.db.delete(domainId);
-		});
-
-		const domain = await t.query(api.domains.domains.get, { domainId: domainId! });
-		expect(domain).toBeNull();
-	});
-});
-
-// ============ domains.getByDomain (integration) ============
-
-describe('domains.getByDomain', () => {
-	it('should find domain by organization and domain name', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({ domain: 'found.com' })
-			);
-		});
-
-		const result = await t.query(api.domains.domains.getByDomain, {
-			domain: 'found.com',
-		});
-
-		expect(result).toBeDefined();
-		expect(result!.domain).toBe('found.com');
-	});
-
-	it('should return null if not found', async () => {
-		const t = convexTest(schema, modules);
-
-		const result = await t.query(api.domains.domains.getByDomain, {
-			domain: 'nonexistent.com',
-		});
-
-		expect(result).toBeNull();
-	});
-});
-
-// ============ domains.countByStatus (integration) ============
-
-describe('domains.countByStatus', () => {
-	it('should count pending, verified, failed correctly', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert('domains', createTestDomain({ status: 'pending', domain: 'a.com' }));
-			await ctx.db.insert('domains', createTestDomain({ status: 'pending', domain: 'b.com' }));
-			await ctx.db.insert('domains', createTestDomain({ status: 'verified', domain: 'c.com' }));
-			await ctx.db.insert('domains', createTestDomain({ status: 'failed', domain: 'd.com' }));
-		});
-
-		const counts = await t.query(api.domains.domains.countByStatus, {});
-
-		expect(counts.total).toBe(4);
-		expect(counts.pending).toBe(2);
-		expect(counts.verified).toBe(1);
-		expect(counts.failed).toBe(1);
-	});
-
-	it('should return zeros for empty org', async () => {
-		const t = convexTest(schema, modules);
-
-		const counts = await t.query(api.domains.domains.countByStatus, {});
-
-		expect(counts.total).toBe(0);
-		expect(counts.pending).toBe(0);
-		expect(counts.verified).toBe(0);
-		expect(counts.failed).toBe(0);
-	});
-});
-
 // ============ domains.listVerified (integration) ============
 
 describe('domains.listVerified', () => {
@@ -221,8 +108,14 @@ describe('domains.listVerified', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('domains', createTestDomain({ status: 'verified', domain: 'verified.com', verifiedAt: Date.now() }));
-			await ctx.db.insert('domains', createTestDomain({ status: 'pending', domain: 'pending.com' }));
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ status: 'verified', domain: 'verified.com', verifiedAt: Date.now() })
+			);
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ status: 'pending', domain: 'pending.com' })
+			);
 			await ctx.db.insert('domains', createTestDomain({ status: 'failed', domain: 'failed.com' }));
 		});
 
@@ -278,9 +171,9 @@ describe('domains.remove', () => {
 			await ctx.db.delete(domainId);
 		});
 
-		await expect(
-			t.mutation(api.domains.domains.remove, { domainId: domainId! })
-		).rejects.toThrow(/Domain not found/);
+		await expect(t.mutation(api.domains.domains.remove, { domainId: domainId! })).rejects.toThrow(
+			/Domain not found/
+		);
 	});
 });
 
@@ -331,179 +224,6 @@ describe('domains.regenerateDnsRecords', () => {
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		await t.finishInProgressScheduledFunctions();
-	});
-});
-
-// ============ domains.isDomainVerified (integration) ============
-
-describe('domains.isDomainVerified', () => {
-	it('should return verified: true, exists: true for verified domain', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'verified.com',
-					status: 'verified',
-					verifiedAt: Date.now(),
-				})
-			);
-		});
-
-		const result = await t.query(api.domains.domains.isDomainVerified, {
-			domain: 'verified.com',
-		});
-
-		expect(result.verified).toBe(true);
-		expect(result.exists).toBe(true);
-	});
-
-	it('should return verified: false, exists: true for pending domain', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'pending.com',
-					status: 'pending',
-				})
-			);
-		});
-
-		const result = await t.query(api.domains.domains.isDomainVerified, {
-			domain: 'pending.com',
-		});
-
-		expect(result.verified).toBe(false);
-		expect(result.exists).toBe(true);
-	});
-
-	it('should return verified: false, exists: false for unknown domain', async () => {
-		const t = convexTest(schema, modules);
-
-		const result = await t.query(api.domains.domains.isDomainVerified, {
-			domain: 'unknown.com',
-		});
-
-		expect(result.verified).toBe(false);
-		expect(result.exists).toBe(false);
-	});
-});
-
-// ============ domains.isDomainVerificationFresh (integration) ============
-
-describe('domains.isDomainVerificationFresh', () => {
-	it('should return fresh: true when recently verified', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'fresh.com',
-					status: 'verified',
-					lastVerifiedAt: Date.now() - 60000, // 1 minute ago
-				})
-			);
-		});
-
-		const result = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'fresh.com',
-		});
-
-		expect(result.fresh).toBe(true);
-		expect(result.stale).toBe(false);
-		expect(result.verified).toBe(true);
-		expect(result.lastVerifiedAt).toBeTypeOf('number');
-	});
-
-	it('should return stale: true when verification is old', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'stale.com',
-					status: 'verified',
-					lastVerifiedAt: Date.now() - 25 * 60 * 60 * 1000,
-				})
-			);
-		});
-
-		const result = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'stale.com',
-		});
-
-		expect(result.fresh).toBe(false);
-		expect(result.stale).toBe(true);
-		expect(result.verified).toBe(true);
-	});
-
-	it('should return stale: true when verified but no lastVerifiedAt', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'nolast.com',
-					status: 'verified',
-				})
-			);
-		});
-
-		const result = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'nolast.com',
-		});
-
-		expect(result.fresh).toBe(false);
-		expect(result.stale).toBe(true);
-		expect(result.verified).toBe(true);
-		expect(result.lastVerifiedAt).toBeUndefined();
-	});
-
-	it('should return fresh: false, stale: false, verified: false for non-existent', async () => {
-		const t = convexTest(schema, modules);
-
-		const result = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'nonexistent.com',
-		});
-
-		expect(result.fresh).toBe(false);
-		expect(result.stale).toBe(false);
-		expect(result.verified).toBe(false);
-	});
-
-	it('should respect custom maxAgeHours', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'custom.com',
-					status: 'verified',
-					lastVerifiedAt: Date.now() - 2 * 60 * 60 * 1000,
-				})
-			);
-		});
-
-		const staleResult = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'custom.com',
-			maxAgeHours: 1,
-		});
-		expect(staleResult.stale).toBe(true);
-		expect(staleResult.fresh).toBe(false);
-
-		const freshResult = await t.query(api.domains.domains.isDomainVerificationFresh, {
-			domain: 'custom.com',
-			maxAgeHours: 4,
-		});
-		expect(freshResult.fresh).toBe(true);
-		expect(freshResult.stale).toBe(false);
 	});
 });
 

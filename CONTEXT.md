@@ -445,7 +445,7 @@ public mutation ever ships it owns its own auth shell), audit logs
 (separate concern owned by `recordAuditLog`), the conversation-thread
 or inbox-state side effects (those are **Inbox processing lifecycle
 (module)**'s domain), or activity reads (the read queries
-`listByContact`, `countByContact`, `getRecent`, `deleteByContact` in
+`listByContact`, `getRecent`, `deleteByContact` in
 `contacts/activities.ts` stay where they are — they are not under the
 writer-side scope this module covers).
 _Avoid_: Activity module (collides with **Agent action** the row),
@@ -1092,9 +1092,7 @@ in `dnsVerification.ts` runs `dns.resolveTxt` / `.resolveCname` /
 `recordVerification`), provider API calls (the per-provider
 adapter owns them — see below), the `trackingDomains` table
 (separate concept), `domainReputation` table (separate concept),
-or any of the read queries
-(`listByOrganization`, `get`, `getByDomain`, `countByStatus`,
-`listVerified`, `isDomainVerified`, `isDomainVerificationFresh`,
+or any of the read queries (`listByOrganization`, `listVerified`,
 `getEmailDomainVerificationStatus` — all stay where they are).
 _Avoid_: Domain lifecycle (module) (collides with
 `trackingDomains`), Domain registration lifecycle (names one
@@ -3978,8 +3976,8 @@ responsibilities behind one small interface:
 - `summarize(reader, scope)` — the only summarizer of the rolling 30-day
   window: sums the day buckets and derives `bounceRate` /
   `complaintRate` / `riskLevel` (via the pure `calculateRiskLevel`).
-  Reader-typed so the public auth-shell reads
-  (`reputationQueries.getSendingOverview` / `getDomainReputations`) and
+  Reader-typed so the public auth-shell read
+  (`reputationQueries.getSendingOverview`) and
   the platform-admin reads (`platformAdmin/queries.ts`) all cross the
   same seam — the shell-vs-engine split the **Listing engine** uses
   (ADR-0037). Derived rate/risk is computed on read, never stored: the
@@ -4740,8 +4738,8 @@ Preconditions enforced inside the `→ active` reducer (returned as
 
 Replaces the open-coded `ctx.db.patch(automation, { status: ... })`
 writes in `automations/automations.ts:333-430` (activate / pause /
-resume). Introduces a new `revertToDraft` public mutation for the
-`paused → draft` edge that did not exist pre-deepening.
+resume). The proposed `revertToDraft` shell was removed under ADR-0020
+because no product surface called it.
 
 The module does _not_ own: row creation (the `create` mutation and
 `duplicate` mutation stay as direct CRUD inserts at `status: 'draft'`

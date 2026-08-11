@@ -1,14 +1,14 @@
 # Contact resolution module — single entry point for find-or-create
 
-**Status:** accepted
+**Status:** accepted; the superseded public `findByIdentifier` query was removed under ADR-0020
 
 ## Context
 
 **Ten** sites in `apps/api/convex/` re-implement "given an identifier, find or
 create a Contact." Each varies in subtle, drift-prone ways. The pre-existing
-`contacts/identities.ts:findByIdentifier` query is the only typed read-side
-primitive — but it has no production callers because the identity table
-is only populated by _one_ of the ten create paths.
+`contacts/identities.ts:findByIdentifier` query was the only typed read-side
+primitive — but it had no production callers because the identity table
+was only populated by _one_ of the ten create paths.
 
 (The original review surfaced four sites; full implementation grep against
 `ctx.db.insert('contacts',` revealed six more, all sharing the same shape.)
@@ -392,8 +392,8 @@ caller's transaction.
     — strict mode; unauthenticated form ingest.
 
 - **Lookup primitive:**
-  - `apps/api/convex/contacts/identities.ts:findByIdentifier` — kept;
-    finally has production callers via the resolution module.
+  - `apps/api/convex/contacts/identities.ts:findByIdentifier` — removed after
+    callers converged on the resolution module's internal lookup helper.
 
 ### Files that grow
 
@@ -476,7 +476,8 @@ Five drift bugs are fixed opportunistically:
 1. The three sites that forget `searchableText` get it for free.
 2. The three sites that forget the soft-delete filter get it for free.
 3. The `${from}@${channel}.channel` fake-email rows go away.
-4. `findByIdentifier` becomes a load-bearing production query.
+4. The resolution module's internal lookup becomes load-bearing; the redundant
+   public `findByIdentifier` shell is removed.
 5. The "every Contact has at least one identity" invariant becomes
    true (was true only for channel-webhook contacts before).
 
