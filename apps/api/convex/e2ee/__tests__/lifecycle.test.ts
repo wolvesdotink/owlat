@@ -18,11 +18,13 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { evaluatePin } from '../pinning';
 import { verifyRotationStatement } from '../discovery';
 import { verifyManifest, type ManifestPayload } from '../manifest';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';
+import { wkdHashForAddress } from '../wkd';
 import { modules, enableSealedMail } from './sealedMailTestHelpers';
 import * as openpgp from 'openpgp';
 
@@ -62,7 +64,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		// The signing row (active) is the NEW key — the old key refuses to sign new
 		// mail. The outbound sealer loads the signing key via getAddressKeyInternal,
 		// which returns the ACTIVE row; the same active-row projection is published.
-		const signingRow = await t.query(api.e2ee.keys.getPublicKeyByAddress, { address });
+		const signingRow = await readAddressPublicKey(t, address);
 		expect(signingRow?.fingerprint).toBe(rotated.newFingerprint);
 		const activeInternal = await t.query(internal.e2ee.keys.getAddressKeyInternal, { address });
 		expect(activeInternal?.fingerprint).toBe(rotated.newFingerprint);
@@ -122,8 +124,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 
 		// Mint, then seal a fixture to the ORIGINAL (pre-rotation) published key.
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		const oldPublic = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
-			.publicKeyArmored;
+		const oldPublic = (await readAddressPublicKey(t, address))!.publicKeyArmored;
 		const sealedToOld = (await openpgp.encrypt({
 			message: await openpgp.createMessage({ text: 'sealed under the old key' }),
 			encryptionKeys: await openpgp.readKey({ armoredKey: oldPublic }),
@@ -135,8 +136,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		expect(rotated.rotated).toBe(true);
 
 		// Seal a second fixture to the NEW published key.
-		const newPublic = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
-			.publicKeyArmored;
+		const newPublic = (await readAddressPublicKey(t, address))!.publicKeyArmored;
 		expect((await openpgp.readKey({ armoredKey: newPublic })).getFingerprint().toUpperCase()).toBe(
 			rotated.newFingerprint
 		);
@@ -173,8 +173,7 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		const address = 'bob@sealed.example.com';
 
 		const minted = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		const oldPublicKeyArmored = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
-			.publicKeyArmored;
+		const oldPublicKeyArmored = (await readAddressPublicKey(t, address))!.publicKeyArmored;
 
 		const rotated = await t.action(internal.e2ee.lifecycleNode.runRotateAddressKey, { address });
 
@@ -265,18 +264,30 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		);
 	});
 
-	it('revocation stops publishing the address public key (WKD + discovery)', async () => {
+	it('revocation stops publishing the address public key through WKD', async () => {
 		const t = convexTest(schema, modules);
 		await enableSealedMail(t);
 		const address = 'dave@sealed.example.com';
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();
+		expect(await readAddressPublicKey(t, address)).not.toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'sealed.example.com',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).not.toBeNull();
 
 		const result = await t.mutation(internal.e2ee.lifecycle.deactivateAddressKeys, { address });
 		expect(result.deactivated).toBe(1);
 
 		// No active key ⇒ no public key served, no WKD body.
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(await readAddressPublicKey(t, address)).toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'sealed.example.com',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).toBeNull();
 		// The row is retained (decrypt-only) rather than deleted.
 		const rows = await t.run((ctx) =>
 			ctx.db

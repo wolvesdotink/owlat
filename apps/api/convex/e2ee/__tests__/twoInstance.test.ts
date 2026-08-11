@@ -44,6 +44,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import type { DatabaseWriter } from '../../_generated/server';
 import { createSecretBox } from '../../lib/credentialCrypto';
 import { decideSeal } from '../../mail/sealPolicy';
@@ -252,8 +253,8 @@ beforeAll(async () => {
 		await instanceB.action(api.e2ee.manifest.getSignedManifest, {});
 	});
 
-	const alicePub = await instanceA.query(api.e2ee.keys.getPublicKeyByAddress, { address: ALICE });
-	const bobPub = await instanceB.query(api.e2ee.keys.getPublicKeyByAddress, { address: BOB });
+	const alicePub = await readAddressPublicKey(instanceA, ALICE);
+	const bobPub = await readAddressPublicKey(instanceB, BOB);
 	const aInstance = await instanceRow(instanceA);
 	const bInstance = await instanceRow(instanceB);
 	if (!alicePub || !bobPub || !aInstance || !bInstance) {

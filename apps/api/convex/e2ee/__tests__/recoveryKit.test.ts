@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';
 import {
@@ -87,7 +88,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 		// Mint the address key and seal a fixture message TO its published public key.
 		const minted = await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		const published = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!;
+		const published = (await readAddressPublicKey(t, address))!;
 		const sealedFixture = (await openpgp.encrypt({
 			message: await openpgp.createMessage({ text: 'the sealed body' }),
 			encryptionKeys: await openpgp.readKey({ armoredKey: published.publicKeyArmored }),
@@ -108,7 +109,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 				.collect();
 			for (const row of rows) await ctx.db.delete(row._id);
 		});
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(await readAddressPublicKey(t, address)).toBeNull();
 
 		// IMPORT the recovery kit — restores the active key.
 		const imported = await t.action(api.e2ee.lifecycleNode.importRecoveryKit, {
@@ -144,8 +145,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 		// Mint key A and seal a fixture to it, then export A's recovery kit.
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		const publicA = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
-			.publicKeyArmored;
+		const publicA = (await readAddressPublicKey(t, address))!.publicKeyArmored;
 		const sealedToA = (await openpgp.encrypt({
 			message: await openpgp.createMessage({ text: 'sealed to key A' }),
 			encryptionKeys: await openpgp.readKey({ armoredKey: publicA }),
@@ -156,8 +156,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 
 		// Rotate to key B (A retired to decrypt-only), and seal a fixture to B.
 		await t.action(internal.e2ee.lifecycleNode.runRotateAddressKey, { address });
-		const publicB = (await t.query(api.e2ee.keys.getPublicKeyByAddress, { address }))!
-			.publicKeyArmored;
+		const publicB = (await readAddressPublicKey(t, address))!.publicKeyArmored;
 		const sealedToB = (await openpgp.encrypt({
 			message: await openpgp.createMessage({ text: 'sealed to key B' }),
 			encryptionKeys: await openpgp.readKey({ armoredKey: publicB }),
@@ -171,7 +170,7 @@ describe('e2ee/recoveryKit export -> wipe -> import round-trip', () => {
 			privateKeyArmored: kitA!.privateKeyArmored,
 		});
 		expect(imported.imported).toBe(true);
-		const publicAfterImport = await t.query(api.e2ee.keys.getPublicKeyByAddress, { address });
+		const publicAfterImport = await readAddressPublicKey(t, address);
 		expect(publicAfterImport?.publicKeyArmored).toBe(publicB);
 
 		// B remains published, while BOTH private keys are present and BOTH fixtures open.

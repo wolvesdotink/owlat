@@ -16,6 +16,8 @@ definePageMeta({
 // on the same floor and avoid flashing the gate before the role resolves.
 const { showAdminGate, isAdmin } = usePermissions();
 const { hasActiveOrganization } = useOrganizationContext();
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
 // `listShared` throws for non-admins (adminQuery), so only subscribe once the
 // caller's role has resolved to owner/admin — the gate renders for everyone else.
@@ -30,6 +32,37 @@ type SharedInbox = NonNullable<typeof inboxes.value>[number];
 // "Open inbox" makes the selected team inbox the active Postbox mailbox and
 // lands on its inbox — the same switch the sidebar switcher and Cmd-K perform.
 const { switchToMailbox } = usePostboxMailbox();
+
+const publishKeysOp = useBackendOperation(api.e2ee.keys.backfillKeys, {
+	label: 'Publish encryption keys',
+});
+const rotateKeyOp = useBackendOperation(api.e2ee.lifecycle.rotateAddressKey, {
+	label: 'Rotate encryption key',
+});
+const revokeKeyOp = useBackendOperation(api.e2ee.lifecycle.revokeAddressKey, {
+	label: 'Revoke encryption key',
+});
+const revokeKeyTarget = ref<SharedInbox | null>(null);
+const { showToast } = useToast();
+
+async function publishMissingKeys() {
+	const result = await publishKeysOp.run({});
+	if (result?.scheduled) showToast('Encryption-key publication scheduled');
+}
+
+async function rotateKey(address: string) {
+	const result = await rotateKeyOp.run({ address });
+	if (result?.scheduled) showToast(`Key rotation scheduled for ${address}`);
+}
+
+async function confirmRevokeKey() {
+	const target = revokeKeyTarget.value;
+	if (!target) return;
+	const result = await revokeKeyOp.run({ address: target.address });
+	if (!result) return;
+	showToast(`Encryption key revoked for ${target.address}`);
+	revokeKeyTarget.value = null;
+}
 
 // One inbox's management panel open at a time — the page stays scannable and
 // the expanded roster is unambiguous.
@@ -138,14 +171,21 @@ function formatCreated(createdAt: number) {
 					<code>support@</code> or <code>sales@</code>.
 				</p>
 			</div>
-			<UiButton
-				v-if="!showAdminGate"
-				to="/dashboard/preferences/add-account?mode=team"
-				class="shrink-0 mt-9"
-			>
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
-				New team inbox
-			</UiButton>
+			<div v-if="!showAdminGate" class="mt-9 flex shrink-0 items-center gap-2">
+				<UiButton
+					v-if="sealedMailEnabled"
+					variant="secondary"
+					:loading="publishKeysOp.isLoading.value"
+					@click="publishMissingKeys"
+				>
+					<Icon name="lucide:key-round" class="w-4 h-4 mr-1.5" />
+					Publish keys
+				</UiButton>
+				<UiButton to="/dashboard/preferences/add-account?mode=team">
+					<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+					New team inbox
+				</UiButton>
+			</div>
 		</div>
 
 		<!-- Admins-only gate -->
@@ -268,6 +308,25 @@ function formatCreated(createdAt: number) {
 								{{ expandedId === inbox._id ? 'Done' : 'Manage members' }}
 							</UiButton>
 							<UiButton
+								v-if="sealedMailEnabled"
+								variant="ghost"
+								size="sm"
+								title="Rotate this inbox's Sealed Mail key"
+								@click="rotateKey(inbox.address)"
+							>
+								<Icon name="lucide:key-round" class="w-4 h-4" />
+							</UiButton>
+							<UiButton
+								v-if="sealedMailEnabled"
+								variant="ghost"
+								size="sm"
+								class="text-error hover:text-error"
+								title="Stop publishing this inbox's Sealed Mail key"
+								@click="revokeKeyTarget = inbox"
+							>
+								<Icon name="lucide:key-round-x" class="w-4 h-4" />
+							</UiButton>
+							<UiButton
 								v-if="inbox.kind === 'external'"
 								variant="ghost"
 								size="sm"
@@ -375,6 +434,17 @@ function formatCreated(createdAt: number) {
 				</div>
 			</div>
 		</div>
+
+		<UiConfirmationDialog
+			:open="!!revokeKeyTarget"
+			variant="danger"
+			title="Revoke encryption key?"
+			:description="`New Sealed Mail senders will stop encrypting to ${revokeKeyTarget?.address ?? 'this inbox'} until a new key is published.`"
+			confirm-text="Revoke key"
+			:is-loading="revokeKeyOp.isLoading.value"
+			@update:open="(open: boolean) => !open && (revokeKeyTarget = null)"
+			@confirm="confirmRevokeKey"
+		/>
 
 		<!-- Hard-delete confirmation: purges the mailbox, its mail, the roster, and
 		     the encrypted credential row. Irreversible, so gate it behind a dialog. -->

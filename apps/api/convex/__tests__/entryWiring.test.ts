@@ -518,11 +518,6 @@ function reachedEntries(
  * Tracked in issue #528.
  */
 const UNREACHED_ENTRIES: readonly string[] = [
-	'e2ee/keys.ts#backfillKeys',
-	'e2ee/keys.ts#getInstancePublicKey',
-	'e2ee/keys.ts#getPublicKeyByAddress',
-	'e2ee/lifecycle.ts#revokeAddressKey',
-	'e2ee/lifecycle.ts#rotateAddressKey',
 	'emailTemplates/emails.ts#changeType',
 	'emailTemplates/emails.ts#publish',
 	'emailTemplates/emails.ts#unpublish',
